@@ -1,24 +1,18 @@
 // web/src/api/portalApi.ts
-/* iOS-forward API client for Cloud Functions
-   - stateless request/response
-   - explicit JSON parsing + normalized errors
-   - requestId + troubleshooting metadata
-   - SAFE curl example (tokens redacted by default)
-*/
+// iOS-forward API client with runtime base URL override (dynamic, not cached)
+
+export const FUNCTIONS_BASE_OVERRIDE_KEY = "mf_functions_base_override";
 
 export type PortalApiMeta = {
   atIso: string;
   requestId: string;
   fn: string;
   url: string;
-  payload: any;
-
+  payload: unknown;
   status?: number;
   ok?: boolean;
-  response?: any;
+  response?: unknown;
   error?: string;
-
-  // Safe for pasting into chat/logs
   curlExample?: string;
 };
 
@@ -31,53 +25,61 @@ export class PortalApiError extends Error {
   }
 }
 
-export type ContinueJourneyResp = {
+/* ======================
+   API CONTRACTS
+   ====================== */
+
+export type CreateBatchRequest = {
+  ownerUid: string;
+  ownerDisplayName: string;
+  title: string;
+  intakeMode: string;
+  estimatedCostCents: number;
+  estimateNotes?: string | null;
+  [k: string]: unknown;
+};
+
+export type CreateBatchResponse = {
   ok: boolean;
-  newBatchId?: string;
-  existingBatchId?: string;
   batchId?: string;
   message?: string;
 };
 
-function safeJsonStringify(v: any) {
+export type PickedUpAndCloseRequest = {
+  batchId: string;
+  uid?: string;
+  [k: string]: unknown;
+};
+
+export type PickedUpAndCloseResponse = {
+  ok: boolean;
+  message?: string;
+};
+
+export type ContinueJourneyRequest = {
+  uid: string;
+  fromBatchId: string;
+  [k: string]: unknown;
+};
+
+export type ContinueJourneyResponse = {
+  ok: boolean;
+  batchId?: string;
+  newBatchId?: string;
+  existingBatchId?: string;
+  message?: string;
+};
+
+/* ======================
+   INTERNALS
+   ====================== */
+
+function safeJson(v: unknown) {
   try {
     return JSON.stringify(v, null, 2);
   } catch {
     return String(v);
   }
-}
-
-async function readResponseBody(resp: Response) {
-  const ct = resp.headers.get("content-type") || "";
-  if (ct.includes("application/json")) return await resp.json();
-  const text = await resp.text();
-  return text;
-}
-
-function buildCurlExample(url: string, hasAdminToken: boolean, payload?: any) {
-  // IMPORTANT: keep tokens redacted in the generated curl
-  const headers: string[] = [
-    `-H 'Content-Type: application/json'`,
-    `-H 'Authorization: Bearer <ID_TOKEN>'`,
-  ];
-  if (hasAdminToken) headers.push(`-H 'x-admin-token: <ADMIN_TOKEN>'`);
-
-  const body = payload
-    ? `-d '${safeJsonStringify(payload).replace(/'/g, "'\\''")}'`
-    : "";
-
-  return `curl -X POST ${headers.join(" ")} ${body} '${url}'`;
-}
-
-function getBaseUrl() {
-  // iOS-forward: configurable via env. Defaults to prod.
-  // Example .env.local:
-  // VITE_FUNCTIONS_BASE_URL=http://localhost:5001/<projectId>/us-central1
-  const env = (import.meta as any)?.env;
-  const fromEnv = env?.VITE_FUNCTIONS_BASE_URL;
-  return typeof fromEnv === "string" && fromEnv.trim()
-    ? fromEnv.trim().replace(/\/+$/, "")
-    : "https://us-central1-monsoonfire-portal.cloudfunctions.net";
 }
 
 function newRequestId() {
@@ -88,20 +90,53 @@ function newRequestId() {
   }
 }
 
-export type PortalApiClientOptions = {
-  baseUrl?: string;
-};
+export function getFunctionsBaseUrl(): string {
+  // 1) Runtime override (wins)
+  try {
+    const override = localStorage.getItem(FUNCTIONS_BASE_OVERRIDE_KEY);
+    if (override && override.trim()) return override.trim().replace(/\/+$/, "");
+  } catch {
+    /* ignore */
+  }
 
-export function createPortalApi(opts?: PortalApiClientOptions) {
-  const baseUrl = (opts?.baseUrl || getBaseUrl()).replace(/\/+$/, "");
+  // 2) Vite env (best effort)
+  const env = (import.meta as any)?.env;
+  const fromEnv = env?.VITE_FUNCTIONS_BASE_URL;
+  if (typeof fromEnv === "string" && fromEnv.trim()) return fromEnv.trim().replace(/\/+$/, "");
 
-  async function callFn<TResp>(args: {
+  // 3) Default prod
+  return "https://us-central1-monsoonfire-portal.cloudfunctions.net";
+}
+
+function buildCurl(url: string, hasAdminToken: boolean, payload?: unknown) {
+  const headers = [
+    `-H 'Content-Type: application/json'`,
+    `-H 'Authorization: Bearer <ID_TOKEN>'`,
+  ];
+  if (hasAdminToken) headers.push(`-H 'x-admin-token: <ADMIN_TOKEN>'`);
+
+  const body = payload ? `-d '${safeJson(payload).replace(/'/g, "'\\''")}'` : "";
+  return `curl -X POST ${headers.join(" ")} ${body} '${url}'`;
+}
+
+async function readBody(resp: Response) {
+  const ct = resp.headers.get("content-type") || "";
+  return ct.includes("application/json") ? resp.json() : resp.text();
+}
+
+/* ======================
+   CLIENT
+   ====================== */
+
+export function createPortalApi() {
+  async function callFn<T>(args: {
     fn: string;
-    payload: any;
+    payload: unknown;
     idToken: string;
     adminToken?: string;
-  }): Promise<{ data: TResp; meta: PortalApiMeta }> {
+  }): Promise<{ data: T; meta: PortalApiMeta }> {
     const requestId = newRequestId();
+    const baseUrl = getFunctionsBaseUrl(); // ✅ dynamic every call
     const url = `${baseUrl}/${args.fn}`;
 
     const meta: PortalApiMeta = {
@@ -110,11 +145,9 @@ export function createPortalApi(opts?: PortalApiClientOptions) {
       fn: args.fn,
       url,
       payload: args.payload ?? {},
-      curlExample: buildCurlExample(url, !!args.adminToken, args.payload ?? {}),
+      curlExample: buildCurl(url, !!args.adminToken, args.payload),
     };
 
-    // NOTE: No custom headers beyond Content-Type/Authorization/x-admin-token.
-    // Adding new custom headers requires CORS allow-list updates server-side.
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${args.idToken}`,
@@ -129,74 +162,69 @@ export function createPortalApi(opts?: PortalApiClientOptions) {
         body: JSON.stringify(args.payload ?? {}),
       });
     } catch (e: any) {
-      meta.ok = false;
       meta.error = e?.message || String(e);
       throw new PortalApiError(meta.error, meta);
     }
 
-    const body = await readResponseBody(resp);
-
+    const body = await readBody(resp);
     meta.status = resp.status;
     meta.ok = resp.ok;
     meta.response = body;
 
     if (!resp.ok) {
       const msg =
-        (typeof body === "object" && body && (body.message || body.error)) ||
+        (typeof body === "object" && body && ((body as any).message || (body as any).error)) ||
         (typeof body === "string" ? body : "Request failed");
       meta.error = String(msg);
       throw new PortalApiError(String(msg), meta);
     }
 
-    return { data: body as TResp, meta };
-  }
-
-  // --- Function wrappers (tolerant payloads; backend remains source of truth) ---
-
-  async function createBatch(args: {
-    idToken: string;
-    adminToken?: string;
-    payload: Record<string, any>;
-  }) {
-    return callFn<{ ok: boolean; batchId?: string }>({
-      fn: "createBatch",
-      payload: args.payload,
-      idToken: args.idToken,
-      adminToken: args.adminToken,
-    });
-  }
-
-  async function pickedUpAndClose(args: {
-    idToken: string;
-    adminToken?: string;
-    payload: Record<string, any>;
-  }) {
-    return callFn<{ ok: boolean }>({
-      fn: "pickedUpAndClose",
-      payload: args.payload,
-      idToken: args.idToken,
-      adminToken: args.adminToken,
-    });
-  }
-
-  async function continueJourney(args: {
-    idToken: string;
-    adminToken?: string;
-    payload: Record<string, any>; // expects { uid, fromBatchId }
-  }) {
-    return callFn<ContinueJourneyResp>({
-      fn: "continueJourney",
-      payload: args.payload,
-      idToken: args.idToken,
-      adminToken: args.adminToken,
-    });
+    return { data: body as T, meta };
   }
 
   return {
-    baseUrl,
-    callFn,
-    createBatch,
-    pickedUpAndClose,
-    continueJourney,
+    // ✅ live getter for the UI header
+    get baseUrl() {
+      return getFunctionsBaseUrl();
+    },
+
+    createBatch(args: {
+      idToken: string;
+      adminToken?: string;
+      payload: CreateBatchRequest;
+    }) {
+      return callFn<CreateBatchResponse>({
+        fn: "createBatch",
+        payload: args.payload,
+        idToken: args.idToken,
+        adminToken: args.adminToken,
+      });
+    },
+
+    pickedUpAndClose(args: {
+      idToken: string;
+      adminToken?: string;
+      payload: PickedUpAndCloseRequest;
+    }) {
+      return callFn<PickedUpAndCloseResponse>({
+        fn: "pickedUpAndClose",
+        payload: args.payload,
+        idToken: args.idToken,
+        adminToken: args.adminToken,
+      });
+    },
+
+    continueJourney(args: {
+      idToken: string;
+      adminToken?: string;
+      payload: ContinueJourneyRequest;
+    }) {
+      return callFn<ContinueJourneyResponse>({
+        fn: "continueJourney",
+        payload: args.payload,
+        idToken: args.idToken,
+        adminToken: args.adminToken,
+      });
+    },
   };
 }

@@ -34,6 +34,8 @@ type NavItem = {
   hint?: string;
 };
 
+type PiecesFilter = "all" | "active" | "history";
+
 const CLIENT_NAV: NavItem[] = [
   { key: "dashboard", label: "Dashboard" },
   { key: "pieces", label: "My Pieces" },
@@ -341,9 +343,13 @@ function MyPiecesView({
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [timelineError, setTimelineError] = useState("");
+  const [piecesFilter, setPiecesFilter] = useState<PiecesFilter>("all");
 
   const visibleActive = showAllActive ? active : active.slice(0, PIECES_PREVIEW_COUNT);
   const visibleHistory = showAllHistory ? history : history.slice(0, PIECES_PREVIEW_COUNT);
+
+  const showActiveSection = piecesFilter === "all" || piecesFilter === "active";
+  const showHistorySection = piecesFilter === "all" || piecesFilter === "history";
 
   useEffect(() => {
     if (!timelineBatchId) return;
@@ -398,148 +404,177 @@ function MyPiecesView({
         </div>
       ) : null}
 
-      <div className="pieces-grid">
-        <div className="card card-3d">
-          <div className="card-title">In progress</div>
-          {active.length === 0 ? (
-            <div className="empty-state">No active pieces yet.</div>
-          ) : (
-            <div className="pieces-list">
-              {visibleActive.map((batch) => (
-                <div className="piece-row" key={batch.id}>
-                  <div>
-                    <div className="piece-title">{batch.title || "Untitled piece"}</div>
-                    <div className="piece-meta">ID: {batch.id}</div>
-                    <div className="piece-meta">Status: {batch.status || "In progress"}</div>
-                  </div>
-                  <div className="piece-right">
-                    {batch.status ? <div className="pill">{batch.status}</div> : null}
-                    <div className="piece-meta">Updated: {formatMaybeTimestamp(batch.updatedAt)}</div>
-                    <div className="piece-meta">Est. cost: {formatCents(batch.estimatedCostCents ?? batch.priceCents)}</div>
-                    <div className="piece-actions">
-                      <button className="btn btn-ghost" onClick={() => toggleTimeline(batch.id)}>
-                        {timelineBatchId === batch.id ? "Hide timeline" : "View timeline"}
-                      </button>
-                      <button
-                        className="btn btn-ghost"
-                        onClick={() => onArchive(batch.id)}
-                        disabled={isBusy(`archive:${batch.id}`)}
-                      >
-                        {isBusy(`archive:${batch.id}`) ? "Archiving..." : "Archive"}
-                      </button>
-                    </div>
-                  </div>
-                  {timelineBatchId === batch.id ? (
-                    <div className="timeline-inline">
-                      {timelineLoading ? (
-                        <div className="empty-state">Loading timeline...</div>
-                      ) : timelineError ? (
-                        <div className="alert inline-alert">{timelineError}</div>
-                      ) : timelineEvents.length === 0 ? (
-                        <div className="empty-state">No timeline events yet.</div>
-                      ) : (
-                        <div className="timeline-list">
-                          {timelineEvents.map((ev) => (
-                            <div className="timeline-row" key={ev.id}>
-                              <div className="timeline-at">{formatMaybeTimestamp(ev.at)}</div>
-                              <div>
-                                <div className="timeline-title">{ev.type || "Event"}</div>
-                                <div className="timeline-meta">
-                                  {ev.actorName ? `by ${ev.actorName}` : ""}
-                                  {ev.kilnName ? `  kiln: ${ev.kilnName}` : ""}
-                                </div>
-                                {ev.notes ? <div className="timeline-notes">{ev.notes}</div> : null}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-              {active.length > PIECES_PREVIEW_COUNT ? (
-                <button
-                  className="btn btn-ghost show-more"
-                  onClick={() => setShowAllActive((prev) => !prev)}
-                >
-                  {showAllActive ? "Show fewer" : `Show more (${active.length - PIECES_PREVIEW_COUNT})`}
-                </button>
-              ) : null}
-            </div>
-          )}
-        </div>
+      <div className="filter-chips">
+        <button
+          className={`chip ${piecesFilter === "all" ? "active" : ""}`}
+          onClick={() => setPiecesFilter("all")}
+        >
+          All ({active.length + history.length})
+        </button>
+        <button
+          className={`chip ${piecesFilter === "active" ? "active" : ""}`}
+          onClick={() => setPiecesFilter("active")}
+        >
+          In progress ({active.length})
+        </button>
+        <button
+          className={`chip ${piecesFilter === "history" ? "active" : ""}`}
+          onClick={() => setPiecesFilter("history")}
+        >
+          Completed ({history.length})
+        </button>
+      </div>
 
-        <div className="card card-3d">
-          <div className="card-title">Completed</div>
-          {history.length === 0 ? (
-            <div className="empty-state">No completed pieces yet.</div>
-          ) : (
-            <div className="pieces-list">
-              {visibleHistory.map((batch) => (
-                <div className="piece-row" key={batch.id}>
-                  <div>
-                    <div className="piece-title">{batch.title || "Untitled piece"}</div>
-                    <div className="piece-meta">ID: {batch.id}</div>
-                    <div className="piece-meta">Closed: {formatMaybeTimestamp(batch.closedAt)}</div>
-                  </div>
-                  <div className="piece-right">
-                    <div className="pill">Complete</div>
-                    <div className="piece-meta">Updated: {formatMaybeTimestamp(batch.updatedAt)}</div>
-                    <div className="piece-meta">Final cost: {formatCents(batch.priceCents ?? batch.estimatedCostCents)}</div>
-                    <div className="piece-actions">
-                      <button className="btn btn-ghost" onClick={() => toggleTimeline(batch.id)}>
-                        {timelineBatchId === batch.id ? "Hide timeline" : "View timeline"}
-                      </button>
-                      <button
-                        className="btn btn-ghost"
-                        onClick={() => onContinueJourney(batch.id)}
-                        disabled={!canContinue || isBusy(`continue:${batch.id}`)}
-                      >
-                        {isBusy(`continue:${batch.id}`) ? "Continuing..." : "Continue journey"}
-                      </button>
+      <div className="pieces-grid">
+        {showActiveSection ? (
+          <div className="card card-3d">
+            <div className="card-title">In progress</div>
+            {active.length === 0 ? (
+              <div className="empty-state">No active pieces yet.</div>
+            ) : (
+              <div className="pieces-list">
+                {visibleActive.map((batch) => (
+                  <div className="piece-row" key={batch.id}>
+                    <div>
+                      <div className="piece-title">{batch.title || "Untitled piece"}</div>
+                      <div className="piece-meta">ID: {batch.id}</div>
+                      <div className="piece-meta">Status: {batch.status || "In progress"}</div>
                     </div>
-                  </div>
-                  {timelineBatchId === batch.id ? (
-                    <div className="timeline-inline">
-                      {timelineLoading ? (
-                        <div className="empty-state">Loading timeline...</div>
-                      ) : timelineError ? (
-                        <div className="alert inline-alert">{timelineError}</div>
-                      ) : timelineEvents.length === 0 ? (
-                        <div className="empty-state">No timeline events yet.</div>
-                      ) : (
-                        <div className="timeline-list">
-                          {timelineEvents.map((ev) => (
-                            <div className="timeline-row" key={ev.id}>
-                              <div className="timeline-at">{formatMaybeTimestamp(ev.at)}</div>
-                              <div>
-                                <div className="timeline-title">{ev.type || "Event"}</div>
-                                <div className="timeline-meta">
-                                  {ev.actorName ? `by ${ev.actorName}` : ""}
-                                  {ev.kilnName ? `  kiln: ${ev.kilnName}` : ""}
+                    <div className="piece-right">
+                      {batch.status ? <div className="pill">{batch.status}</div> : null}
+                      <div className="piece-meta">Updated: {formatMaybeTimestamp(batch.updatedAt)}</div>
+                      <div className="piece-meta">
+                        Est. cost: {formatCents(batch.estimatedCostCents ?? batch.priceCents)}
+                      </div>
+                      <div className="piece-actions">
+                        <button className="btn btn-ghost" onClick={() => toggleTimeline(batch.id)}>
+                          {timelineBatchId === batch.id ? "Hide timeline" : "View timeline"}
+                        </button>
+                        <button
+                          className="btn btn-ghost"
+                          onClick={() => onArchive(batch.id)}
+                          disabled={isBusy(`archive:${batch.id}`)}
+                        >
+                          {isBusy(`archive:${batch.id}`) ? "Archiving..." : "Archive"}
+                        </button>
+                      </div>
+                    </div>
+                    {timelineBatchId === batch.id ? (
+                      <div className="timeline-inline">
+                        {timelineLoading ? (
+                          <div className="empty-state">Loading timeline...</div>
+                        ) : timelineError ? (
+                          <div className="alert inline-alert">{timelineError}</div>
+                        ) : timelineEvents.length === 0 ? (
+                          <div className="empty-state">No timeline events yet.</div>
+                        ) : (
+                          <div className="timeline-list">
+                            {timelineEvents.map((ev) => (
+                              <div className="timeline-row" key={ev.id}>
+                                <div className="timeline-at">{formatMaybeTimestamp(ev.at)}</div>
+                                <div>
+                                  <div className="timeline-title">{ev.type || "Event"}</div>
+                                  <div className="timeline-meta">
+                                    {ev.actorName ? `by ${ev.actorName}` : ""}
+                                    {ev.kilnName ? `  kiln: ${ev.kilnName}` : ""}
+                                  </div>
+                                  {ev.notes ? <div className="timeline-notes">{ev.notes}</div> : null}
                                 </div>
-                                {ev.notes ? <div className="timeline-notes">{ev.notes}</div> : null}
                               </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+                {active.length > PIECES_PREVIEW_COUNT ? (
+                  <button
+                    className="btn btn-ghost show-more"
+                    onClick={() => setShowAllActive((prev) => !prev)}
+                  >
+                    {showAllActive ? "Show fewer" : `Show more (${active.length - PIECES_PREVIEW_COUNT})`}
+                  </button>
+                ) : null}
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {showHistorySection ? (
+          <div className="card card-3d">
+            <div className="card-title">Completed</div>
+            {history.length === 0 ? (
+              <div className="empty-state">No completed pieces yet.</div>
+            ) : (
+              <div className="pieces-list">
+                {visibleHistory.map((batch) => (
+                  <div className="piece-row" key={batch.id}>
+                    <div>
+                      <div className="piece-title">{batch.title || "Untitled piece"}</div>
+                      <div className="piece-meta">ID: {batch.id}</div>
+                      <div className="piece-meta">Closed: {formatMaybeTimestamp(batch.closedAt)}</div>
                     </div>
-                  ) : null}
-                </div>
-              ))}
-              {history.length > PIECES_PREVIEW_COUNT ? (
-                <button
-                  className="btn btn-ghost show-more"
-                  onClick={() => setShowAllHistory((prev) => !prev)}
-                >
-                  {showAllHistory ? "Show fewer" : `Show more (${history.length - PIECES_PREVIEW_COUNT})`}
-                </button>
-              ) : null}
-            </div>
-          )}
-        </div>
+                    <div className="piece-right">
+                      <div className="pill">Complete</div>
+                      <div className="piece-meta">Updated: {formatMaybeTimestamp(batch.updatedAt)}</div>
+                      <div className="piece-meta">
+                        Final cost: {formatCents(batch.priceCents ?? batch.estimatedCostCents)}
+                      </div>
+                      <div className="piece-actions">
+                        <button className="btn btn-ghost" onClick={() => toggleTimeline(batch.id)}>
+                          {timelineBatchId === batch.id ? "Hide timeline" : "View timeline"}
+                        </button>
+                        <button
+                          className="btn btn-ghost"
+                          onClick={() => onContinueJourney(batch.id)}
+                          disabled={!canContinue || isBusy(`continue:${batch.id}`)}
+                        >
+                          {isBusy(`continue:${batch.id}`) ? "Continuing..." : "Continue journey"}
+                        </button>
+                      </div>
+                    </div>
+                    {timelineBatchId === batch.id ? (
+                      <div className="timeline-inline">
+                        {timelineLoading ? (
+                          <div className="empty-state">Loading timeline...</div>
+                        ) : timelineError ? (
+                          <div className="alert inline-alert">{timelineError}</div>
+                        ) : timelineEvents.length === 0 ? (
+                          <div className="empty-state">No timeline events yet.</div>
+                        ) : (
+                          <div className="timeline-list">
+                            {timelineEvents.map((ev) => (
+                              <div className="timeline-row" key={ev.id}>
+                                <div className="timeline-at">{formatMaybeTimestamp(ev.at)}</div>
+                                <div>
+                                  <div className="timeline-title">{ev.type || "Event"}</div>
+                                  <div className="timeline-meta">
+                                    {ev.actorName ? `by ${ev.actorName}` : ""}
+                                    {ev.kilnName ? `  kiln: ${ev.kilnName}` : ""}
+                                  </div>
+                                  {ev.notes ? <div className="timeline-notes">{ev.notes}</div> : null}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+                {history.length > PIECES_PREVIEW_COUNT ? (
+                  <button
+                    className="btn btn-ghost show-more"
+                    onClick={() => setShowAllHistory((prev) => !prev)}
+                  >
+                    {showAllHistory ? "Show fewer" : `Show more (${history.length - PIECES_PREVIEW_COUNT})`}
+                  </button>
+                ) : null}
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
 
       {meta ? (

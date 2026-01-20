@@ -1,0 +1,31 @@
+{
+  "name": "@monsoonfire/codex-agents",
+  "version": "0.1.0",
+  "description": "Canonical Codex agent guidance files for Monsoon Fire Portal (AGENTS.md + templates).",
+  "license": "MIT",
+  "private": false,
+  "type": "module",
+  "files": [
+    "AGENTS.md",
+    "web/AGENTS.md",
+    "functions/AGENTS.md",
+    "codex/SESSION_TEMPLATE.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/monsoonfirepottery-byte/codex-agents.git"
+  },
+  "bugs": {
+    "url": "https://github.com/monsoonfirepottery-byte/codex-agents/issues"
+  },
+  "homepage": "https://github.com/monsoonfirepottery-byte/codex-agents#readme",
+  "keywords": [
+    "codex",
+    "agents",
+    "firebase",
+    "react",
+    "monsoonfire"
+  ]
+}

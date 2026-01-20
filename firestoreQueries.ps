@@ -1,0 +1,25 @@
+import { collection, query, where, orderBy } from "firebase/firestore";
+import type { Firestore } from "firebase/firestore";
+
+
+query(
+  collection(db, "batches"),
+  where("ownerUid", "==", uid),
+  where("isClosed", "==", false),
+  orderBy("updatedAt", "desc")
+)
+query(
+  collection(db, "batches"),
+  where("ownerUid", "==", uid),
+  where("isClosed", "==", true),
+  orderBy("closedAt", "desc")
+)
+query(
+  collection(db, "batches", batchId, "timeline"),
+  orderBy("at", "desc")
+)
+query(
+  collection(db, "batches"),
+  where("journeyRootBatchId", "==", rootId),
+  orderBy("createdAt", "asc")
+)

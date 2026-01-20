@@ -1,4 +1,38 @@
-# functions/ - Agent Guide (Cloud Functions)
+# functions/ — Agent Guide (Cloud Functions)
+
+## Purpose
+Authoritative backend API layer. Keep rules here where possible, not in the UI.
+
+## Working directory rule
+Install/build from **functions/** (exact commands depend on repo scripts):
+
+- `cd functions`
+- `npm install`
+- build/deploy/emulate per repo setup
+
+## HTTP conventions
+- Stateless JSON request/response
+- Auth via Firebase ID token:
+  - `Authorization: Bearer <idToken>`
+- Dev-only admin header:
+  - `x-admin-token: <token>`
+  - Never commit secrets; token is user-provided in dev
+
+## Known endpoint contracts (must remain compatible)
+- `continueJourney`
+  - Request body MUST include: `{ uid, fromBatchId }`
+  - Response may return `newBatchId`, `existingBatchId`, or `batchId` (UI should accept any)
+
+## Firestore write rule
+Do not write undefined values to Firestore. Omit fields or set null if schema allows.
+
+## Debugging priorities (when things break)
+1) Missing composite Firestore index (failed-precondition)
+2) Undefined Firestore value written (kilnName etc.)
+3) Missing required request fields (uid/fromBatchId)
+4) Missing auth or x-admin-token headers
+5) Frontend mistakes (duplicate imports/state variables)
+functions/ - Agent Guide (Cloud Functions)
 
 ## Purpose
 Authoritative backend API layer. Keep rules here where possible, not in the UI.

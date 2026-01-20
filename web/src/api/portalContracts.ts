@@ -116,7 +116,7 @@ export type CreateBatchResponse = PortalApiOkEnvelope & {
 export type PickedUpAndCloseResponse = PortalApiOkEnvelope;
 
 export type ContinueJourneyResponse = PortalApiOkEnvelope & {
-  // We accept multiple variants because we’ve seen different naming patterns across iterations.
+  // We accept multiple variants because we've seen different naming patterns across iterations.
   batchId?: string;
   newBatchId?: string;
   existingBatchId?: string;
@@ -165,73 +165,3 @@ export type PortalApiMeta = {
   message?: string;
   code?: PortalApiErrorCode;
 };
-import Foundation
-
-// Matches TS: PortalApiOkEnvelope
-struct PortalApiOkEnvelope: Codable {
-    let ok: Bool
-}
-
-// Matches TS: CreateBatchRequest
-struct CreateBatchRequest: Codable {
-    let ownerUid: String
-    let ownerDisplayName: String
-    let title: String
-
-    // optional OR null — if nil, Swift will OMIT (good)
-    let kilnName: String?
-    let intakeMode: String
-    let estimatedCostCents: Int
-    let notes: String?
-}
-
-// Matches TS: PickedUpAndCloseRequest
-struct PickedUpAndCloseRequest: Codable {
-    let uid: String
-    let batchId: String
-}
-
-// Matches TS: ContinueJourneyRequest
-struct ContinueJourneyRequest: Codable {
-    let uid: String
-    let fromBatchId: String
-}
-
-// Matches TS: CreateBatchResponse = ok + optional ids
-struct CreateBatchResponse: Codable {
-    let ok: Bool
-    let batchId: String?
-    let newBatchId: String?
-    let existingBatchId: String?
-}
-
-// Matches TS: PickedUpAndCloseResponse = ok
-struct PickedUpAndCloseResponse: Codable {
-    let ok: Bool
-}
-
-// Matches TS: ContinueJourneyResponse = ok + ids + optional provenance
-struct ContinueJourneyResponse: Codable {
-    let ok: Bool
-    let batchId: String?
-    let newBatchId: String?
-    let existingBatchId: String?
-    let rootId: String?
-    let fromBatchId: String?
-    let message: String?
-}
-
-// Matches TS helper: getResultBatchId
-func getResultBatchId(_ resp: AnyResultBatchId) -> String? {
-    return resp.newBatchId ?? resp.batchId ?? resp.existingBatchId
-}
-
-// Simple protocol so we can share helper across create/continue
-protocol AnyResultBatchId {
-    var batchId: String? { get }
-    var newBatchId: String? { get }
-    var existingBatchId: String? { get }
-}
-
-extension CreateBatchResponse: AnyResultBatchId {}
-extension ContinueJourneyResponse: AnyResultBatchId {}

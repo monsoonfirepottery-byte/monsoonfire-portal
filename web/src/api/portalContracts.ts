@@ -1,0 +1,237 @@
+// web/src/api/portalContracts.ts
+// Canonical Portal API contracts (web + future iOS spec)
+// No runtime behavior changes; this is a types/contract boundary.
+
+export type PortalFnName =
+  | "createBatch"
+  | "pickedUpAndClose"
+  | "continueJourney"
+  // add more function names here as you ship them
+  | (string & {});
+
+/**
+ * Shared error envelope (client-side)
+ * - We keep this flexible because Functions errors can come in different shapes.
+ */
+export type PortalApiErrorCode =
+  | "UNAUTHENTICATED"
+  | "PERMISSION_DENIED"
+  | "INVALID_ARGUMENT"
+  | "NOT_FOUND"
+  | "CONFLICT"
+  | "FAILED_PRECONDITION"
+  | "INTERNAL"
+  | "UNKNOWN"
+  | (string & {});
+
+export type PortalApiErrorEnvelope = {
+  ok?: false;
+  error?: string;
+  message?: string;
+  code?: PortalApiErrorCode;
+  details?: unknown;
+};
+
+/**
+ * Shared success envelope (most functions)
+ */
+export type PortalApiOkEnvelope = {
+  ok: true;
+};
+
+/**
+ * Utility: narrow an unknown response into "ok: true"
+ */
+export function isOkEnvelope(x: unknown): x is PortalApiOkEnvelope {
+  return !!x && typeof x === "object" && (x as any).ok === true;
+}
+
+/**
+ * Utility: extract a human-friendly message from unknown error responses
+ */
+export function getErrorMessage(x: unknown): string {
+  if (!x) return "Request failed";
+  if (typeof x === "string") return x;
+  if (typeof x !== "object") return String(x);
+
+  const o = x as any;
+  return (
+    o.message ||
+    o.error ||
+    (o.details && typeof o.details === "string" ? o.details : undefined) ||
+    "Request failed"
+  );
+}
+
+/**
+ * Utility: extract an error code if present
+ */
+export function getErrorCode(x: unknown): PortalApiErrorCode | undefined {
+  if (!x || typeof x !== "object") return undefined;
+  const o = x as any;
+  return o.code as PortalApiErrorCode | undefined;
+}
+
+/* =========================
+   Requests
+   ========================= */
+
+export type CreateBatchRequest = {
+  ownerUid: string;
+  ownerDisplayName: string;
+  title: string;
+
+  // Important: Firestore rejects undefined; omit fields or use null if needed.
+  kilnName?: string | null;
+
+  // "STAFF_HANDOFF" is the current web UI default; keep it stringly for forward compatibility.
+  intakeMode: string;
+
+  estimatedCostCents: number;
+
+  // Future-safe optional fields
+  notes?: string | null;
+};
+
+export type PickedUpAndCloseRequest = {
+  uid: string;
+  batchId: string;
+};
+
+export type ContinueJourneyRequest = {
+  uid: string;
+  fromBatchId: string;
+};
+
+/* =========================
+   Responses
+   ========================= */
+
+export type CreateBatchResponse = PortalApiOkEnvelope & {
+  batchId?: string;
+  newBatchId?: string;
+  existingBatchId?: string;
+};
+
+export type PickedUpAndCloseResponse = PortalApiOkEnvelope;
+
+export type ContinueJourneyResponse = PortalApiOkEnvelope & {
+  // We accept multiple variants because we’ve seen different naming patterns across iterations.
+  batchId?: string;
+  newBatchId?: string;
+  existingBatchId?: string;
+
+  // Useful linkage / provenance (optional)
+  rootId?: string;
+  fromBatchId?: string;
+
+  // Some versions may add messages even on ok
+  message?: string;
+};
+
+/**
+ * Utility: best-effort extraction of "the batch id created/returned" from create/continue responses
+ * (helps keep UI + iOS logic consistent).
+ */
+export function getResultBatchId(
+  resp: CreateBatchResponse | ContinueJourneyResponse | unknown
+): string | undefined {
+  if (!resp || typeof resp !== "object") return undefined;
+  const o = resp as any;
+  return o.newBatchId || o.batchId || o.existingBatchId;
+}
+
+/* =========================
+   Meta / troubleshooting (shape-only)
+   ========================= */
+
+export type PortalApiMeta = {
+  atIso: string;
+  requestId: string;
+  fn: PortalFnName;
+  url: string;
+
+  payload: unknown;
+
+  curlExample?: string;
+
+  status?: number;
+  ok?: boolean;
+
+  response?: unknown;
+
+  // Optional error info when ok === false
+  error?: string;
+  message?: string;
+  code?: PortalApiErrorCode;
+};
+import Foundation
+
+// Matches TS: PortalApiOkEnvelope
+struct PortalApiOkEnvelope: Codable {
+    let ok: Bool
+}
+
+// Matches TS: CreateBatchRequest
+struct CreateBatchRequest: Codable {
+    let ownerUid: String
+    let ownerDisplayName: String
+    let title: String
+
+    // optional OR null — if nil, Swift will OMIT (good)
+    let kilnName: String?
+    let intakeMode: String
+    let estimatedCostCents: Int
+    let notes: String?
+}
+
+// Matches TS: PickedUpAndCloseRequest
+struct PickedUpAndCloseRequest: Codable {
+    let uid: String
+    let batchId: String
+}
+
+// Matches TS: ContinueJourneyRequest
+struct ContinueJourneyRequest: Codable {
+    let uid: String
+    let fromBatchId: String
+}
+
+// Matches TS: CreateBatchResponse = ok + optional ids
+struct CreateBatchResponse: Codable {
+    let ok: Bool
+    let batchId: String?
+    let newBatchId: String?
+    let existingBatchId: String?
+}
+
+// Matches TS: PickedUpAndCloseResponse = ok
+struct PickedUpAndCloseResponse: Codable {
+    let ok: Bool
+}
+
+// Matches TS: ContinueJourneyResponse = ok + ids + optional provenance
+struct ContinueJourneyResponse: Codable {
+    let ok: Bool
+    let batchId: String?
+    let newBatchId: String?
+    let existingBatchId: String?
+    let rootId: String?
+    let fromBatchId: String?
+    let message: String?
+}
+
+// Matches TS helper: getResultBatchId
+func getResultBatchId(_ resp: AnyResultBatchId) -> String? {
+    return resp.newBatchId ?? resp.batchId ?? resp.existingBatchId
+}
+
+// Simple protocol so we can share helper across create/continue
+protocol AnyResultBatchId {
+    var batchId: String? { get }
+    var newBatchId: String? { get }
+    var existingBatchId: String? { get }
+}
+
+extension CreateBatchResponse: AnyResultBatchId {}
+extension ContinueJourneyResponse: AnyResultBatchId {}

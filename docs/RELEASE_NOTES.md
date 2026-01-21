@@ -8,3 +8,18 @@
 - Dashboard shows live in-progress pieces and an archived summary card.
 - Dev-only admin token input for x-admin-token in the profile section (localStorage persisted).
 
+## v0.1.1 (2026-01-21)
+- Kiln Schedule view with kiln status cards, monthly calendar, and firing details.
+- Downloadable `.ics` reminders for upcoming kiln firings.
+- Mock kiln schedule data + dev-only Firestore seed helper.
+
+## v0.1.2 (2026-01-22)
+- Reservations view: kiln slot request form, preferred window fields, and reservation history.
+- `createReservation` Cloud Function + new `reservations` collection schema.
+- Firestore data + docs updated so the UI streams the client’s reservations.
+
+## v0.1.3 (2026-01-22)
+- Profile + settings view: account summary, membership stats, and history.
+- Editable display name, preferred kilns, and notification toggles.
+- Added `profiles/{uid}` schema docs and Firestore-backed updates for studio notes/history.
+

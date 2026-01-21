@@ -21,6 +21,23 @@ Do not assume a `dev` script exists at repo root.
 - History: `ownerUid == uid` AND `isClosed == true` ORDER BY `closedAt desc`
 These can require composite indexes. If the query fails, create the index.
 
+## Kiln schedule data (mock + Firestore)
+- Collections: `kilns` and `kilnFirings`.
+- Kiln Schedule view falls back to mock data when Firestore is empty.
+- Dev-only “Seed mock schedule” button can populate Firestore.
+- Reminders are downloadable `.ics` files (no email/push yet).
+
+## Reservations flow
+- Collection: `reservations`, filtered by `ownerUid` for each client.
+- Entries have status, firing type, shelf-equivalent, preferred window, and optional `linkedBatchId`.
+- `createReservation` Cloud Function validates the Authorization header, normalizes timestamps, and writes the document with `REQUESTED` status.
+- The Reservations view (and its CSS) renders a submission form plus the client’s reservation history (ordered by `createdAt`).
+
+## Profile & settings flow
+- `profiles/{uid}` stores displayName, preferred kilns, membership tier/renewal, notification toggles, and studio notes.
+- Profile view (`web/src/views/ProfileView.tsx`) surfaces account summary, pieces stats (from `useBatches`), and membership metadata for staff notes/history.
+- The client can edit display name, preferred kilns, and notification toggles; saves run through Firestore `setDoc` with `serverTimestamp`.
+
 ## Cloud Functions calls (must match)
 - All calls include `Authorization: Bearer <idToken>`
 - Dev-only: include `x-admin-token` if provided

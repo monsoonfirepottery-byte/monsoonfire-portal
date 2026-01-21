@@ -53,6 +53,7 @@ Authoritative backend API layer. Keep rules here where possible, not in the UI.
 - Scheduled: `syncFirings` (daily)
 - Batches: `createBatch` (admin), `submitDraftBatch`, `pickedUpAndClose` (admin)
 - Journey: `continueJourney`
+- Reservations: `createReservation` (client) — validates Authorization, preferred window, shelf equivalent.
 - Lifecycle helpers (admin): `shelveBatch`, `kilnLoad`, `kilnUnload`, `readyForPickup`
 - Maintenance: `backfillIsClosed` (admin)
 
@@ -60,6 +61,10 @@ Authoritative backend API layer. Keep rules here where possible, not in the UI.
 - continueJourney
   - Request body MUST include: `{ uid, fromBatchId }`
   - Response may return `newBatchId`, `existingBatchId`, or `batchId`
+- createReservation
+  - Requires Authorization: Bearer <idToken>
+  - Body must include `firingType`, `shelfEquivalent`, optional `preferredWindow` object, and optional `linkedBatchId`
+  - Response includes `reservationId` plus `ok: true`
 
 ## Firestore write rule
 Do not write undefined values to Firestore. Omit fields or set null if schema allows.

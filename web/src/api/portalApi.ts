@@ -7,6 +7,8 @@ import type {
   ContinueJourneyResponse as ContractsContinueJourneyResponse,
   CreateBatchRequest as ContractsCreateBatchRequest,
   CreateBatchResponse as ContractsCreateBatchResponse,
+  CreateReservationRequest as ContractsCreateReservationRequest,
+  CreateReservationResponse as ContractsCreateReservationResponse,
   PickedUpAndCloseRequest as ContractsPickedUpAndCloseRequest,
   PickedUpAndCloseResponse as ContractsPickedUpAndCloseResponse,
   PortalApiMeta,
@@ -26,6 +28,9 @@ export type PickedUpAndCloseResponse = ContractsPickedUpAndCloseResponse;
 
 export type ContinueJourneyRequest = ContractsContinueJourneyRequest;
 export type ContinueJourneyResponse = ContractsContinueJourneyResponse;
+
+export type CreateReservationRequest = ContractsCreateReservationRequest;
+export type CreateReservationResponse = ContractsCreateReservationResponse;
 
 type PortalApiCallArgs<TReq> = {
   idToken: string;
@@ -55,6 +60,9 @@ export type PortalApi = {
   pickedUpAndClose(
     args: PortalApiCallArgs<PickedUpAndCloseRequest>
   ): Promise<PortalApiCallResult<PickedUpAndCloseResponse>>;
+  createReservation(
+    args: PortalApiCallArgs<CreateReservationRequest>
+  ): Promise<PortalApiCallResult<CreateReservationResponse>>;
   continueJourney(
     args: PortalApiCallArgs<ContinueJourneyRequest>
   ): Promise<PortalApiCallResult<ContinueJourneyResponse>>;
@@ -207,6 +215,14 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
 
     async pickedUpAndClose(args) {
       return await callFn<PickedUpAndCloseRequest, PickedUpAndCloseResponse>(baseUrl, "pickedUpAndClose", args);
+    },
+
+    async createReservation(args) {
+      return await callFn<CreateReservationRequest, CreateReservationResponse>(
+        baseUrl,
+        "createReservation",
+        args
+      );
     },
 
     async continueJourney(args) {

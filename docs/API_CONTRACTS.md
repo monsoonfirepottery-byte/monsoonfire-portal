@@ -17,6 +17,38 @@ Base URL:
 Example endpoint:
 - `${BASE_URL}/createBatch`
 
+### createReservation
+
+POST `${BASE_URL}/createReservation`
+
+Headers:
+- `Authorization: Bearer <ID_TOKEN>`
+- `Content-Type: application/json`
+
+Request body (`CreateReservationRequest`):
+```json
+{
+  "firingType": "glaze",
+  "shelfEquivalent": 0.5,
+  "preferredWindow": {
+    "earliestDate": "2026-02-09T10:00:00.000Z",
+    "latestDate": "2026-02-11T22:30:00.000Z"
+  },
+  "linkedBatchId": null
+}
+```
+
+Response:
+```json
+{
+  "ok": true,
+  "reservationId": "abc123",
+  "status": "REQUESTED"
+}
+```
+
+`createReservation` verifies the ID token, trims the shelf equivalent to quarter/half/full values, validates that earliest ≤ latest, and writes the `reservations/{id}` document with `preferredWindow` timestamps plus `createdAt/updatedAt`.
+
 ### Local emulator (Firebase Functions emulator)
 Base URL:
 - `http://127.0.0.1:5001/monsoonfire-portal/us-central1`

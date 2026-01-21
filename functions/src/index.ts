@@ -4,14 +4,17 @@ import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
 
-import { initializeApp } from "firebase-admin/app";
-import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
-
-// -----------------------------
-// Firebase Admin init
-// -----------------------------
-initializeApp();
-const db = getFirestore();
+import {
+  db,
+  applyCors,
+  requireAdmin,
+  requireAuthUid,
+  nowTs,
+  asInt,
+  safeString,
+  FieldValue,
+  Timestamp,
+} from "./shared";
 
 // -----------------------------
 // Config
@@ -23,84 +26,13 @@ const REGION = "us-central1";
  * This is the Google Calendar ID for "MF Firings" (the calendar you're syncing from).
  * Keep it EXACT (no whitespace). You already verified it with /debugCalendarId.
  */
+
 const FIRINGS_CALENDAR_ID =
   "a985b8d46f34392d2ad6b520742b95e5e83e0db237980ea87dc690334da0f52f@group.calendar.google.com";
-
-// Secret env vars (configured in Cloud Functions Gen2 secret env vars)
-function getAdminToken(): string | null {
-  const t = (process.env.ADMIN_TOKEN ?? "").trim();
-  return t.length ? t : null;
-}
 
 function getGoogleCalendarCredsJson(): string | null {
   const raw = (process.env.GOOGLE_CALENDAR_CREDENTIALS ?? "").trim();
   return raw.length ? raw : null;
-}
-
-// -----------------------------
-// Helpers: CORS + auth
-// -----------------------------
-function applyCors(req: any, res: any): boolean {
-  // For local dev, allow localhost origin. For prod, you can tighten later.
-  const origin = (req.headers.origin as string | undefined) ?? "*";
-  res.set("Access-Control-Allow-Origin", origin);
-  res.set("Vary", "Origin");
-  res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.set(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, x-admin-token"
-  );
-  res.set("Access-Control-Max-Age", "3600");
-
-  if (req.method === "OPTIONS") {
-    res.status(204).send("");
-    return true; // handled
-  }
-  return false;
-}
-
-function readAdminTokenFromReq(req: any): string {
-  const h = req.headers["x-admin-token"];
-  if (typeof h === "string") return h.trim();
-  if (Array.isArray(h)) return (h[0] ?? "").trim();
-  return "";
-}
-
-function requireAdmin(req: any): { ok: true } | { ok: false; message: string } {
-  const expected = getAdminToken();
-  if (!expected) return { ok: false, message: "ADMIN_TOKEN not configured" };
-
-  const got = readAdminTokenFromReq(req);
-  if (!got) return { ok: false, message: "Missing x-admin-token" };
-
-  // Strict compare (token may contain commas)
-  if (got !== expected) return { ok: false, message: "Unauthorized" };
-
-  return { ok: true };
-}
-
-function requireAuthUid(req: any): string | null {
-  // If you later add Firebase Auth ID token verification on the backend, do it here.
-  // For now, the client can pass uid in body, OR you can enforce request.auth via callable.
-  // We'll support uid in body for dev, but validate presence.
-  const uid =
-    (req.body?.uid as string | undefined) ??
-    (req.body?.ownerUid as string | undefined);
-  if (!uid || typeof uid !== "string") return null;
-  return uid;
-}
-
-function nowTs(): Timestamp {
-  return Timestamp.now();
-}
-
-function asInt(n: any, fallback: number): number {
-  const x = Number(n);
-  return Number.isFinite(x) ? Math.trunc(x) : fallback;
-}
-
-function safeString(v: any, fallback = ""): string {
-  return typeof v === "string" ? v : fallback;
 }
 
 // -----------------------------
@@ -805,6 +737,8 @@ export const readyForPickup = onRequest({ region: REGION }, async (req, res) => 
 
   res.status(200).json({ ok: true });
 });
+
+export { createReservation } from "./createReservation";
 
 // -----------------------------
 // Backfill helper: ensure isClosed field exists (admin-only)

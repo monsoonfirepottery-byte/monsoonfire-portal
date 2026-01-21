@@ -1,0 +1,1017 @@
+diff --git a/web/src/App.tsx b/web/src/App.tsx
+index 684d8f8..e8fb64a 100644
+--- a/web/src/App.tsx
++++ b/web/src/App.tsx
+@@ -1,3 +1,4 @@
++
+ import React, { useEffect, useMemo, useState } from "react";
+ import {
+   GoogleAuthProvider,
+@@ -6,7 +7,20 @@ import {
+   signOut,
+   type User,
+ } from "firebase/auth";
+-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
++import {
++  addDoc,
++  arrayUnion,
++  collection,
++  doc,
++  limit,
++  onSnapshot,
++  orderBy,
++  query,
++  serverTimestamp,
++  setDoc,
++  updateDoc,
++  where,
++} from "firebase/firestore";
+ import { auth, db } from "./firebase";
+ import { useBatches } from "./hooks/useBatches";
+ import { createPortalApi, PortalApiError } from "./api/portalApi";
+@@ -36,6 +50,62 @@ type NavItem = {
+ 
+ type PiecesFilter = "all" | "active" | "history";
+ 
++type MessagesTab = "inbox" | "studio";
++
++type LiveUser = {
++  id: string;
++  displayName?: string;
++  email?: string;
++  role?: string;
++  isActive?: boolean;
++  [key: string]: unknown;
++};
++
++type DirectMessageThread = {
++  id: string;
++  subject?: string;
++  kind?: string;
++  participantUids?: string[];
++  lastMessagePreview?: string;
++  lastMessageId?: string;
++  lastMessageAt?: any;
++  lastSenderName?: string;
++  lastSenderEmail?: string | null;
++  lastReadAtByUid?: Record<string, any>;
++  references?: string[];
++  [key: string]: unknown;
++};
++
++type DirectMessage = {
++  id: string;
++  messageId?: string;
++  subject?: string;
++  body?: string;
++  fromUid?: string;
++  fromName?: string;
++  fromEmail?: string | null;
++  replyToEmail?: string | null;
++  toUids?: string[];
++  toEmails?: string[];
++  sentAt?: any;
++  inReplyTo?: string;
++  references?: string[];
++  [key: string]: unknown;
++};
++
++type Announcement = {
++  id: string;
++  title?: string;
++  body?: string;
++  type?: string;
++  createdAt?: any;
++  pinned?: boolean;
++  readBy?: string[];
++  ctaLabel?: string;
++  ctaUrl?: string;
++  [key: string]: unknown;
++};
++
+ const CLIENT_NAV: NavItem[] = [
+   { key: "dashboard", label: "Dashboard" },
+   { key: "pieces", label: "My Pieces" },
+@@ -64,37 +134,11 @@ const SAMPLE_CLASSES = [
+   { name: "Glaze Science", time: "Sun 4:00 PM", seats: "Waitlist" },
+ ];
+ 
+-const SAMPLE_UPDATES = [
+-  {
+-    title: "Monsoon Members Night",
+-    note: "Open studio until 9 PM this Friday. Bring a friend.",
+-  },
+-  {
+-    title: "Kiln Maintenance Window",
+-    note: "Kiln 2 will be offline Monday afternoon.",
+-  },
+-  {
+-    title: "New Glaze Arrivals",
+-    note: "Ask staff about the new desert haze palette.",
+-  },
+-];
+-
+-const SAMPLE_MESSAGES = [
+-  {
+-    sender: "Studio",
+-    subject: "Pickup reminder",
+-    preview: "Your stoneware vase is ready for pickup.",
+-  },
+-  {
+-    sender: "Micah",
+-    subject: "Class update",
+-    preview: "We opened two spots in Wheel Lab on Saturday.",
+-  },
+-];
+-
+ const PIECES_PREVIEW_COUNT = 10;
+ const DASHBOARD_PIECES_PREVIEW = 3;
+ const DEV_ADMIN_TOKEN_STORAGE_KEY = "mf_dev_admin_token";
++const SUPPORT_THREAD_PREFIX = "support_";
++const SUPPORT_EMAIL = "support@monsoonfire.com";
+ 
+ class AppErrorBoundary extends React.Component<
+   { children: React.ReactNode },
+@@ -143,6 +187,21 @@ function getShortName(user: User) {
+   return "there";
+ }
+ 
++function getDisplayName(user: User) {
++  return user.displayName || user.email || "Member";
++}
++
++function getLiveUserLabel(user: LiveUser) {
++  return user.displayName || user.email || user.id;
++}
++
++function createMessageId() {
++  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
++    return `<${crypto.randomUUID()}@monsoonfire.local>`;
++  }
++  return `<mf-${Math.random().toString(36).slice(2)}@monsoonfire.local>`;
++}
++
+ function formatMaybeTimestamp(value: unknown): string {
+   if (!value || typeof value !== "object") return "-";
+   const maybe = value as { toDate?: () => Date };
+@@ -162,717 +221,192 @@ function formatCents(value: unknown): string {
+   }).format(value / 100);
+ }
+ 
+-function DashboardView({
+-  user,
+-  name,
+-  onOpenMessages,
+-  onOpenPieces,
+-}: {
+-  user: User;
+-  name: string;
+-  onOpenMessages: () => void;
+-  onOpenPieces: () => void;
+-}) {
+-  const { active, history } = useBatches(user);
+-  const activePreview = active.slice(0, DASHBOARD_PIECES_PREVIEW);
+-  const archivedCount = history.length;
+-
+-  return (
+-    <div className="dashboard">
+-      <section className="card hero-card">
+-        <div className="hero-content">
+-          <p className="eyebrow">Client Dashboard</p>
+-          <h1>
+-            {getGreeting()}, {name}.
+-          </h1>
+-          <p className="hero-copy">
+-            Track your wares, reserve kiln time, and keep up with studio life from one place.
+-          </p>
+-          <div className="hero-actions">
+-            <button className="btn btn-primary">Book a class</button>
+-            <button className="btn btn-ghost">View kiln schedule</button>
+-          </div>
+-        </div>
+-        <div className="hero-media">
+-          <img className="hero-logo" src="/branding/logo.png" alt="Monsoon Fire logo" />
+-        </div>
+-      </section>
+-
+-      <section className="dashboard-grid">
+-        <div className="card card-3d">
+-          <div className="card-title">Studio snapshot</div>
+-          <div className="stat-grid">
+-            <div className="stat">
+-              <div className="stat-label">Pieces in progress</div>
+-              <div className="stat-value">{active.length}</div>
+-            </div>
+-            <div className="stat">
+-              <div className="stat-label">Ready for pickup</div>
+-              <div className="stat-value">{archivedCount}</div>
+-            </div>
+-            <div className="stat">
+-              <div className="stat-label">Membership level</div>
+-              <div className="stat-value">Studio</div>
+-            </div>
+-          </div>
+-        </div>
+-
+-        <div className="card card-3d">
+-          <div className="card-title">Kilns firing now</div>
+-          <div className="list">
+-            {SAMPLE_KILNS.map((kiln) => (
+-              <div className="list-row" key={kiln.name}>
+-                <div>
+-                  <div className="list-title">{kiln.name}</div>
+-                  <div className="list-meta">{kiln.status}</div>
+-                </div>
+-                <div className="list-right">
+-                  <div className="pill">{kiln.temp}</div>
+-                  <div className="list-meta">ETA {kiln.eta}</div>
+-                </div>
+-              </div>
+-            ))}
+-          </div>
+-        </div>
+-
+-        <div className="card card-3d">
+-          <div className="card-title">Your pieces</div>
+-          {activePreview.length === 0 ? (
+-            <div className="empty-state">No pieces in progress right now.</div>
+-          ) : (
+-            <div className="list">
+-              {activePreview.map((piece) => (
+-                <div className="list-row" key={piece.id}>
+-                  <div>
+-                    <div className="list-title">{piece.title || "Untitled piece"}</div>
+-                    <div className="list-meta">{piece.status || "In progress"}</div>
+-                  </div>
+-                  <div className="pill">{formatMaybeTimestamp(piece.updatedAt)}</div>
+-                </div>
+-              ))}
+-            </div>
+-          )}
+-          <button className="btn btn-ghost dashboard-link" onClick={onOpenPieces}>
+-            View all pieces
+-          </button>
+-        </div>
+-
+-        <div className="card card-3d">
+-          <div className="card-title">Upcoming classes</div>
+-          <div className="list">
+-            {SAMPLE_CLASSES.map((item) => (
+-              <div className="list-row" key={item.name}>
+-                <div>
+-                  <div className="list-title">{item.name}</div>
+-                  <div className="list-meta">{item.time}</div>
+-                </div>
+-                <div className="pill">{item.seats}</div>
+-              </div>
+-            ))}
+-          </div>
+-        </div>
+-
+-        <div className="card card-3d span-2">
+-          <div className="card-title">Studio updates</div>
+-          <div className="updates">
+-            {SAMPLE_UPDATES.map((item) => (
+-              <div className="update" key={item.title}>
+-                <div className="update-title">{item.title}</div>
+-                <p className="update-note">{item.note}</p>
+-              </div>
+-            ))}
+-          </div>
+-        </div>
+-
+-        <div className="card card-3d">
+-          <div className="card-title">Messages</div>
+-          <div className="messages-preview">
+-            {SAMPLE_MESSAGES.map((message) => (
+-              <div className="message" key={message.subject}>
+-                <div className="message-top">
+-                  <span className="message-sender">{message.sender}</span>
+-                  <span className="message-subject">{message.subject}</span>
+-                </div>
+-                <div className="message-preview">{message.preview}</div>
+-              </div>
+-            ))}
+-          </div>
+-          <button className="btn btn-ghost" onClick={onOpenMessages}>
+-            Open messages
+-          </button>
+-        </div>
++function isAfterTimestamp(a?: any, b?: any) {
++  if (!a || !b) return false;
++  const aMillis = typeof a.toMillis === "function" ? a.toMillis() : null;
++  const bMillis = typeof b.toMillis === "function" ? b.toMillis() : null;
++  if (aMillis === null || bMillis === null) return false;
++  return aMillis > bMillis;
++}
+ 
+-        <div className="card card-3d span-2 archived-summary">
+-          <div>
+-            <div className="card-title">Archived pieces</div>
+-            <div className="archived-count">
+-              {archivedCount === 0
+-                ? "No archived pieces yet."
+-                : `${archivedCount} piece${archivedCount === 1 ? "" : "s"} archived.`}
+-            </div>
+-          </div>
+-          <button className="btn btn-ghost" onClick={onOpenPieces}>
+-            Show more
+-          </button>
+-        </div>
+-      </section>
+-    </div>
+-  );
++function isPermissionError(message: string) {
++  return message.toLowerCase().includes("missing or insufficient permissions");
+ }
+ 
+-function MyPiecesView({
+-  user,
+-  onContinueJourney,
+-  onArchive,
+-  isBusy,
+-  status,
+-  meta,
+-}: {
+-  user: User;
+-  onContinueJourney: (batchId: string) => void;
+-  onArchive: (batchId: string) => void;
+-  isBusy: (key: string) => boolean;
+-  status: string;
+-  meta: PortalApiMeta | null;
+-}) {
+-  const { active, history, error } = useBatches(user);
+-  const canContinue = active.length === 0;
+-  const [showAllActive, setShowAllActive] = useState(false);
+-  const [showAllHistory, setShowAllHistory] = useState(false);
+-  const [timelineBatchId, setTimelineBatchId] = useState<string | null>(null);
+-  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
+-  const [timelineLoading, setTimelineLoading] = useState(false);
+-  const [timelineError, setTimelineError] = useState("");
+-  const [piecesFilter, setPiecesFilter] = useState<PiecesFilter>("all");
++function isDirectMessageUnread(thread: DirectMessageThread, uid: string) {
++  if (!thread.lastMessageAt) return false;
++  const lastRead = thread.lastReadAtByUid?.[uid];
++  if (!lastRead) return true;
++  return isAfterTimestamp(thread.lastMessageAt, lastRead);
++}
+ 
+-  const visibleActive = showAllActive ? active : active.slice(0, PIECES_PREVIEW_COUNT);
+-  const visibleHistory = showAllHistory ? history : history.slice(0, PIECES_PREVIEW_COUNT);
++function isAnnouncementUnread(announcement: Announcement, uid: string) {
++  if (!announcement.readBy || !Array.isArray(announcement.readBy)) return true;
++  return !announcement.readBy.includes(uid);
++}
+ 
+-  const showActiveSection = piecesFilter === "all" || piecesFilter === "active";
+-  const showHistorySection = piecesFilter === "all" || piecesFilter === "history";
++function useLiveUsers(user: User | null) {
++  const [users, setUsers] = useState<LiveUser[]>([]);
++  const [loading, setLoading] = useState(false);
++  const [error, setError] = useState("");
+ 
+   useEffect(() => {
+-    if (!timelineBatchId) return;
++    if (!user) {
++      setUsers([]);
++      return;
++    }
+ 
+-    setTimelineLoading(true);
+-    setTimelineError("");
+-    setTimelineEvents([]);
++    setLoading(true);
++    setError("");
+ 
+-    const timelineQuery = query(
+-      collection(db, "batches", timelineBatchId, "timeline"),
+-      orderBy("at", "asc")
+-    );
++    const usersQuery = query(collection(db, "users"), orderBy("displayName", "asc"), limit(100));
+ 
+     const unsub = onSnapshot(
+-      timelineQuery,
++      usersQuery,
+       (snap) => {
+-        const rows: TimelineEvent[] = snap.docs.map((doc) => ({
+-          id: doc.id,
+-          ...(doc.data() as any),
++        const rows: LiveUser[] = snap.docs.map((docSnap) => ({
++          id: docSnap.id,
++          ...(docSnap.data() as any),
+         }));
+-        setTimelineEvents(rows);
+-        setTimelineLoading(false);
++        setUsers(rows.filter((liveUser) => liveUser.id !== user.uid && liveUser.isActive !== false));
++        setLoading(false);
+       },
+       (err) => {
+-        setTimelineError(`Timeline failed: ${err.message}`);
+-        setTimelineLoading(false);
++        setError(`Users failed: ${err.message}`);
++        setLoading(false);
+       }
+     );
+ 
+     return () => unsub();
+-  }, [timelineBatchId]);
+-
+-  function toggleTimeline(batchId: string) {
+-    setTimelineBatchId((prev) => (prev === batchId ? null : batchId));
+-  }
+-
+-  return (
+-    <div className="page">
+-      <div className="page-header">
+-        <h1>My Pieces</h1>
+-        <p className="page-subtitle">
+-          Live studio tracking for your wares. Updates appear as the team moves your pieces through the kiln.
+-        </p>
+-      </div>
+-
+-      {status ? <div className="status-line">{status}</div> : null}
+-      {error ? <div className="card card-3d alert">{error}</div> : null}
+-
+-      {!canContinue && history.length > 0 ? (
+-        <div className="card card-3d alert">
+-          Continue journey is available once all active pieces are closed.
+-        </div>
+-      ) : null}
+-
+-      <div className="filter-chips">
+-        <button
+-          className={`chip ${piecesFilter === "all" ? "active" : ""}`}
+-          onClick={() => setPiecesFilter("all")}
+-        >
+-          All ({active.length + history.length})
+-        </button>
+-        <button
+-          className={`chip ${piecesFilter === "active" ? "active" : ""}`}
+-          onClick={() => setPiecesFilter("active")}
+-        >
+-          In progress ({active.length})
+-        </button>
+-        <button
+-          className={`chip ${piecesFilter === "history" ? "active" : ""}`}
+-          onClick={() => setPiecesFilter("history")}
+-        >
+-          Completed ({history.length})
+-        </button>
+-      </div>
+-
+-      <div className="pieces-grid">
+-        {showActiveSection ? (
+-          <div className="card card-3d">
+-            <div className="card-title">In progress</div>
+-            {active.length === 0 ? (
+-              <div className="empty-state">No active pieces yet.</div>
+-            ) : (
+-              <div className="pieces-list">
+-                {visibleActive.map((batch) => (
+-                  <div className="piece-row" key={batch.id}>
+-                    <div>
+-                      <div className="piece-title">{batch.title || "Untitled piece"}</div>
+-                      <div className="piece-meta">ID: {batch.id}</div>
+-                      <div className="piece-meta">Status: {batch.status || "In progress"}</div>
+-                    </div>
+-                    <div className="piece-right">
+-                      {batch.status ? <div className="pill">{batch.status}</div> : null}
+-                      <div className="piece-meta">Updated: {formatMaybeTimestamp(batch.updatedAt)}</div>
+-                      <div className="piece-meta">
+-                        Est. cost: {formatCents(batch.estimatedCostCents ?? batch.priceCents)}
+-                      </div>
+-                      <div className="piece-actions">
+-                        <button className="btn btn-ghost" onClick={() => toggleTimeline(batch.id)}>
+-                          {timelineBatchId === batch.id ? "Hide timeline" : "View timeline"}
+-                        </button>
+-                        <button
+-                          className="btn btn-ghost"
+-                          onClick={() => onArchive(batch.id)}
+-                          disabled={isBusy(`archive:${batch.id}`)}
+-                        >
+-                          {isBusy(`archive:${batch.id}`) ? "Archiving..." : "Archive"}
+-                        </button>
+-                      </div>
+-                    </div>
+-                    {timelineBatchId === batch.id ? (
+-                      <div className="timeline-inline">
+-                        {timelineLoading ? (
+-                          <div className="empty-state">Loading timeline...</div>
+-                        ) : timelineError ? (
+-                          <div className="alert inline-alert">{timelineError}</div>
+-                        ) : timelineEvents.length === 0 ? (
+-                          <div className="empty-state">No timeline events yet.</div>
+-                        ) : (
+-                          <div className="timeline-list">
+-                            {timelineEvents.map((ev) => (
+-                              <div className="timeline-row" key={ev.id}>
+-                                <div className="timeline-at">{formatMaybeTimestamp(ev.at)}</div>
+-                                <div>
+-                                  <div className="timeline-title">{ev.type || "Event"}</div>
+-                                  <div className="timeline-meta">
+-                                    {ev.actorName ? `by ${ev.actorName}` : ""}
+-                                    {ev.kilnName ? `  kiln: ${ev.kilnName}` : ""}
+-                                  </div>
+-                                  {ev.notes ? <div className="timeline-notes">{ev.notes}</div> : null}
+-                                </div>
+-                              </div>
+-                            ))}
+-                          </div>
+-                        )}
+-                      </div>
+-                    ) : null}
+-                  </div>
+-                ))}
+-                {active.length > PIECES_PREVIEW_COUNT ? (
+-                  <button
+-                    className="btn btn-ghost show-more"
+-                    onClick={() => setShowAllActive((prev) => !prev)}
+-                  >
+-                    {showAllActive ? "Show fewer" : `Show more (${active.length - PIECES_PREVIEW_COUNT})`}
+-                  </button>
+-                ) : null}
+-              </div>
+-            )}
+-          </div>
+-        ) : null}
+-
+-        {showHistorySection ? (
+-          <div className="card card-3d">
+-            <div className="card-title">Completed</div>
+-            {history.length === 0 ? (
+-              <div className="empty-state">No completed pieces yet.</div>
+-            ) : (
+-              <div className="pieces-list">
+-                {visibleHistory.map((batch) => (
+-                  <div className="piece-row" key={batch.id}>
+-                    <div>
+-                      <div className="piece-title">{batch.title || "Untitled piece"}</div>
+-                      <div className="piece-meta">ID: {batch.id}</div>
+-                      <div className="piece-meta">Closed: {formatMaybeTimestamp(batch.closedAt)}</div>
+-                    </div>
+-                    <div className="piece-right">
+-                      <div className="pill">Complete</div>
+-                      <div className="piece-meta">Updated: {formatMaybeTimestamp(batch.updatedAt)}</div>
+-                      <div className="piece-meta">
+-                        Final cost: {formatCents(batch.priceCents ?? batch.estimatedCostCents)}
+-                      </div>
+-                      <div className="piece-actions">
+-                        <button className="btn btn-ghost" onClick={() => toggleTimeline(batch.id)}>
+-                          {timelineBatchId === batch.id ? "Hide timeline" : "View timeline"}
+-                        </button>
+-                        <button
+-                          className="btn btn-ghost"
+-                          onClick={() => onContinueJourney(batch.id)}
+-                          disabled={!canContinue || isBusy(`continue:${batch.id}`)}
+-                        >
+-                          {isBusy(`continue:${batch.id}`) ? "Continuing..." : "Continue journey"}
+-                        </button>
+-                      </div>
+-                    </div>
+-                    {timelineBatchId === batch.id ? (
+-                      <div className="timeline-inline">
+-                        {timelineLoading ? (
+-                          <div className="empty-state">Loading timeline...</div>
+-                        ) : timelineError ? (
+-                          <div className="alert inline-alert">{timelineError}</div>
+-                        ) : timelineEvents.length === 0 ? (
+-                          <div className="empty-state">No timeline events yet.</div>
+-                        ) : (
+-                          <div className="timeline-list">
+-                            {timelineEvents.map((ev) => (
+-                              <div className="timeline-row" key={ev.id}>
+-                                <div className="timeline-at">{formatMaybeTimestamp(ev.at)}</div>
+-                                <div>
+-                                  <div className="timeline-title">{ev.type || "Event"}</div>
+-                                  <div className="timeline-meta">
+-                                    {ev.actorName ? `by ${ev.actorName}` : ""}
+-                                    {ev.kilnName ? `  kiln: ${ev.kilnName}` : ""}
+-                                  </div>
+-                                  {ev.notes ? <div className="timeline-notes">{ev.notes}</div> : null}
+-                                </div>
+-                              </div>
+-                            ))}
+-                          </div>
+-                        )}
+-                      </div>
+-                    ) : null}
+-                  </div>
+-                ))}
+-                {history.length > PIECES_PREVIEW_COUNT ? (
+-                  <button
+-                    className="btn btn-ghost show-more"
+-                    onClick={() => setShowAllHistory((prev) => !prev)}
+-                  >
+-                    {showAllHistory ? "Show fewer" : `Show more (${history.length - PIECES_PREVIEW_COUNT})`}
+-                  </button>
+-                ) : null}
+-              </div>
+-            )}
+-          </div>
+-        ) : null}
+-      </div>
++  }, [user]);
+ 
+-      {meta ? (
+-        <details className="card card-3d troubleshooting">
+-          <summary>Request details</summary>
+-          <pre className="mono">{JSON.stringify(meta, null, 2)}</pre>
+-        </details>
+-      ) : null}
+-    </div>
+-  );
++  return { users, loading, error };
+ }
+ 
+-function MessagesView() {
+-  return (
+-    <div className="page">
+-      <div className="page-header">
+-        <h1>Messages</h1>
+-        <p className="page-subtitle">
+-          Keep conversations with the studio in one place. Messaging is coming online here.
+-        </p>
+-      </div>
+-      <div className="card card-3d">
+-        <div className="card-title">Latest</div>
+-        <div className="messages-preview">
+-          {SAMPLE_MESSAGES.map((message) => (
+-            <div className="message" key={message.subject}>
+-              <div className="message-top">
+-                <span className="message-sender">{message.sender}</span>
+-                <span className="message-subject">{message.subject}</span>
+-              </div>
+-              <div className="message-preview">{message.preview}</div>
+-            </div>
+-          ))}
+-        </div>
+-        <button className="btn btn-primary">Start a new message</button>
+-      </div>
+-    </div>
+-  );
+-}
++function useDirectMessages(user: User | null) {
++  const [threads, setThreads] = useState<DirectMessageThread[]>([]);
++  const [loading, setLoading] = useState(false);
++  const [error, setError] = useState("");
+ 
+-function PlaceholderView({ title, description }: { title: string; description: string }) {
+-  return (
+-    <div className="page">
+-      <div className="page-header">
+-        <h1>{title}</h1>
+-        <p className="page-subtitle">{description}</p>
+-      </div>
+-      <div className="card card-3d">
+-        <div className="placeholder">This section is staged for the production build.</div>
+-        <button className="btn btn-ghost">Notify me when ready</button>
+-      </div>
+-    </div>
+-  );
+-}
++  useEffect(() => {
++    if (!user) {
++      setThreads([]);
++      return;
++    }
+ 
+-function SignedOutView({ onSignIn, busy }: { onSignIn: () => void; busy: boolean }) {
+-  return (
+-    <div className="signed-out">
+-      <div className="signed-out-card">
+-        <img className="signed-out-logo" src="/branding/logo.png" alt="Monsoon Fire logo" />
+-        <h1>Monsoon Fire Pottery Studio</h1>
+-        <p>
+-          A modern home for your studio journey. Track wares, plan classes, and stay connected with
+-          the kiln schedule.
+-        </p>
+-        <button className="btn btn-primary" onClick={onSignIn} disabled={busy}>
+-          {busy ? "Signing in..." : "Sign in with Google"}
+-        </button>
+-      </div>
+-    </div>
+-  );
+-}
++    setLoading(true);
++    setError("");
+ 
+-export default function App() {
+-  const [user, setUser] = useState<User | null>(null);
+-  const [drawerOpen, setDrawerOpen] = useState(false);
+-  const [activeNav, setActiveNav] = useState<NavKey>("dashboard");
+-  const [authBusy, setAuthBusy] = useState(false);
+-  const [piecesStatus, setPiecesStatus] = useState<string>("");
+-  const [piecesMeta, setPiecesMeta] = useState<PortalApiMeta | null>(null);
+-  const [inFlight, setInFlight] = useState<Record<string, boolean>>({});
+-  const [adminToken, setAdminToken] = useState<string>(() => {
+-    return localStorage.getItem(DEV_ADMIN_TOKEN_STORAGE_KEY) || "";
+-  });
++    const threadsQuery = query(
++      collection(db, "directMessages"),
++      where("participantUids", "array-contains", user.uid),
++      orderBy("lastMessageAt", "desc"),
++      limit(50)
++    );
+ 
+-  const api = useMemo(() => createPortalApi(), []);
++    const unsub = onSnapshot(
++      threadsQuery,
++      (snap) => {
++        const rows: DirectMessageThread[] = snap.docs.map((docSnap) => ({
++          id: docSnap.id,
++          ...(docSnap.data() as any),
++        }));
++        setThreads(rows);
++        setLoading(false);
++      },
++      (err) => {
++        setError(`Direct messages failed: ${err.message}`);
++        setLoading(false);
++      }
++    );
+ 
+-  useEffect(() => {
+-    const unsub = onAuthStateChanged(auth, (u) => setUser(u));
+     return () => unsub();
+-  }, []);
+-
+-  useEffect(() => {
+-    localStorage.setItem(DEV_ADMIN_TOKEN_STORAGE_KEY, adminToken);
+-  }, [adminToken]);
+-
+-  const isStaff = useMemo(() => {
+-    if (!user?.email) return false;
+-    return user.email.toLowerCase().endsWith("@monsoonfire.com");
+   }, [user]);
+ 
+-  const navItems = isStaff ? STAFF_NAV : CLIENT_NAV;
++  return { threads, loading, error };
++}
+ 
+-  const activeLabel = useMemo(() => {
+-    return navItems.find((item) => item.key === activeNav)?.label || "Dashboard";
+-  }, [activeNav, navItems]);
++function useDirectMessageMessages(threadId: string | null) {
++  const [messages, setMessages] = useState<DirectMessage[]>([]);
++  const [loading, setLoading] = useState(false);
++  const [error, setError] = useState("");
+ 
+-  const roleLabel = isStaff ? "Staff" : "Client";
++  useEffect(() => {
++    if (!threadId) {
++      setMessages([]);
++      return;
++    }
+ 
+-  function setBusy(key: string, value: boolean) {
+-    setInFlight((prev) => ({ ...prev, [key]: value }));
+-  }
++    setLoading(true);
++    setError("");
+ 
+-  function isBusy(key: string) {
+-    return !!inFlight[key];
+-  }
++    const messagesQuery = query(
++      collection(db, "directMessages", threadId, "messages"),
++      orderBy("sentAt", "asc"),
++      limit(200)
++    );
+ 
+-  async function handleSignIn() {
+-    if (authBusy) return;
+-    setAuthBusy(true);
+-    try {
+-      await signInWithPopup(auth, new GoogleAuthProvider());
+-    } finally {
+-      setAuthBusy(false);
+-    }
+-  }
++    const unsub = onSnapshot(
++      messagesQuery,
++      (snap) => {
++        const rows: DirectMessage[] = snap.docs.map((docSnap) => ({
++          id: docSnap.id,
++          ...(docSnap.data() as any),
++        }));
++        setMessages(rows);
++        setLoading(false);
++      },
++      (err) => {
++        setError(`Messages failed: ${err.message}`);
++        setLoading(false);
++      }
++    );
+ 
+-  async function handleContinueJourney(fromBatchId: string) {
+-    if (!user) return;
+-    const key = `continue:${fromBatchId}`;
+-    if (isBusy(key)) return;
+-    setBusy(key, true);
+-    setPiecesStatus("");
++    return () => unsub();
++  }, [threadId]);
+ 
+-    try {
+-      const idToken = await user.getIdToken();
+-      const payload = { uid: user.uid, fromBatchId };
+-      const { data, meta } = await api.continueJourney({
+-        idToken,
+-        adminToken: adminToken.trim() || undefined,
+-        payload,
+-      });
+-      setPiecesMeta(meta);
+-      const newId = getResultBatchId(data);
+-      setPiecesStatus(newId ? `Journey continued: ${newId}` : "Journey continued.");
+-    } catch (err: any) {
+-      if (err instanceof PortalApiError) setPiecesMeta(err.meta);
+-      setPiecesStatus(`Continue journey failed: ${err?.message || String(err)}`);
+-    } finally {
+-      setBusy(key, false);
+-    }
+-  }
++  return { messages, loading, error };
++}
+ 
+-  async function handleArchive(batchId: string) {
+-    if (!user) return;
+-    const key = `archive:${batchId}`;
+-    if (isBusy(key)) return;
+-    setBusy(key, true);
+-    setPiecesStatus("");
++function useAnnouncements(user: User | null) {
++  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
++  const [loading, setLoading] = useState(false);
++  const [error, setError] = useState("");
+ 
+-    try {
+-      const idToken = await user.getIdToken();
+-      const payload = { uid: user.uid, batchId };
+-      const { meta } = await api.pickedUpAndClose({
+-        idToken,
+-        adminToken: adminToken.trim() || undefined,
+-        payload,
+-      });
+-      setPiecesMeta(meta);
+-      setPiecesStatus("Piece archived.");
+-    } catch (err: any) {
+-      if (err instanceof PortalApiError) setPiecesMeta(err.meta);
+-      setPiecesStatus(`Archive failed: ${err?.message || String(err)}`);
+-    } finally {
+-      setBusy(key, false);
++  useEffect(() => {
++    if (!user) {
++      setAnnouncements([]);
++      return;
+     }
+-  }
+ 
+-  if (!user) {
+-    return (
+-      <AppErrorBoundary>
+-        <SignedOutView onSignIn={handleSignIn} busy={authBusy} />
+-      </AppErrorBoundary>
+-    );
+-  }
++    setLoading(true);
++    setError("");
+ 
+-  const name = getShortName(user);
++    const announcementsQuery = query(
++      collection(db, "announcements"),
++      orderBy("createdAt", "desc"),
++      limit(30)
++    );
+ 
+-  return (
+-    <AppErrorBoundary>
+-      <div className="app-root">
+-        <div className="app-bg" />
+-        <div className={`nav-overlay ${drawerOpen ? "show" : ""}`} onClick={() => setDrawerOpen(false)} />
+-        <div className="app-shell">
+-          <aside className={`app-nav ${drawerOpen ? "open" : ""}`}>
+-            <div className="nav-brand">
+-              <img src="/branding/logo.png" alt="Monsoon Fire" />
+-              <div>
+-                <div className="brand-title">Monsoon Fire</div>
+-                <div className="brand-sub">Pottery Studio</div>
+-              </div>
+-            </div>
+-            <div className="nav-section">Navigation</div>
+-            <nav className="nav-links">
+-              {navItems.map((item) => (
+-                <button
+-                  key={item.key}
+-                  className={`nav-item ${activeNav === item.key ? "active" : ""}`}
+-                  onClick={() => {
+-                    setActiveNav(item.key);
+-                    setDrawerOpen(false);
+-                  }}
+-                >
+-                  <span>{item.label}</span>
+-                  {item.hint ? <span className="nav-hint">{item.hint}</span> : null}
+-                </button>
+-              ))}
+-            </nav>
+-            <div className="nav-footer">
+-              <div className="nav-user">
+-                <div className="nav-avatar">
+-                  {user.photoURL ? (
+-                    <img src={user.photoURL} alt={user.displayName || "User"} />
+-                  ) : (
+-                    <span>{name.slice(0, 1).toUpperCase()}</span>
+-                  )}
+-                </div>
+-                <div>
+-                  <div className="nav-user-name">{user.displayName || user.email || "Member"}</div>
+-                  <div className="nav-user-role">{roleLabel}</div>
+-                </div>
+-              </div>
+-              {import.meta.env.DEV ? (
+-                <div className="dev-token">
+-                  <label htmlFor="dev-admin-token">Dev admin token</label>
+-                  <input
+-                    id="dev-admin-token"
+-                    type="password"
+-                    placeholder="x-admin-token"
+-                    value={adminToken}
+-                    onChange={(event) => setAdminToken(event.target.value)}
+-                  />
+-                </div>
+-              ) : null}
+-              <button className="btn btn-ghost" onClick={() => signOut(auth)}>
+-                Sign out
+-              </button>
+-            </div>
+-          </aside>
++    const unsub = onSnapshot(
++      announcementsQuery,
++      (snap) => {
++        const rows: Announcement[] = snap.docs.map((docSnap) => ({
++          id: docSnap.id,
++          ...(docSnap.data() as any),
++        }));
++        setAnnouncements(rows);
++        setLoading(false);
++      },
++      (err) => {
++        setError(`Announcements failed: ${err.message}`);
++        setLoading(false);
++      }
++    );
+ 
+-          <div className="app-main">
+-            <header className="top-bar">
+-              <div className="top-left">
+-                <button className="icon-btn" onClick={() => setDrawerOpen(true)} aria-label="Open navigation">
+-                  <span />
+-                </button>
+-                <div>
+-                  <div className="top-title">{activeLabel}</div>
+-                  <div className="top-subtitle">Phoenix studio overview</div>
+-                </div>
+-              </div>
+-              <div className="top-actions">
+-                <div className="pill">{roleLabel}</div>
+-                <button className="btn btn-ghost" onClick={() => signOut(auth)}>
+-                  Sign out
+-                </button>
+-              </div>
+-            </header>
++    return () => unsub();
++  }, [user]);
+ 
+-            <main className="app-content">
+-              {activeNav === "dashboard" ? (
+-                <DashboardView
+-                  user={user}
+-                  name={name}
+-                  onOpenMessages={() => setActiveNav("messages")}
+-                  onOpenPieces={() => setActiveNav("pieces")}
+-                />
+-              ) : activeNav === "messages" ? (
+-                <MessagesView />
+-              ) : activeNav === "pieces" ? (
+-                <MyPiecesView
+-                  user={user}
+-                  onContinueJourney={handleContinueJourney}
+-                  onArchive={handleArchive}
+-                  isBusy={isBusy}
+-                  status={piecesStatus}
+-                  meta={piecesMeta}
+-                />
+-              ) : (
+-                <PlaceholderView
+-                  title={activeLabel}
+-                  description="This page is being redesigned with the full Monsoon Fire experience."
+-                />
+-              )}
+-            </main>
+-          </div>
+-        </div>
+-      </div>
+-    </AppErrorBoundary>
+-  );
++  return { announcements, loading, error };
+ }
++

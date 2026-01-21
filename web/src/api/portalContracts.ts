@@ -6,6 +6,7 @@ export type PortalFnName =
   | "createBatch"
   | "pickedUpAndClose"
   | "continueJourney"
+  | "createReservation"
   // add more function names here as you ship them
   | (string & {});
 
@@ -93,6 +94,18 @@ export type CreateBatchRequest = {
   notes?: string | null;
 };
 
+export type ReservationPreferredWindow = {
+  earliestDate?: string | null;
+  latestDate?: string | null;
+};
+
+export type CreateReservationRequest = {
+  firingType: "bisque" | "glaze" | "other";
+  shelfEquivalent: number;
+  preferredWindow?: ReservationPreferredWindow;
+  linkedBatchId?: string | null;
+};
+
 export type PickedUpAndCloseRequest = {
   uid: string;
   batchId: string;
@@ -127,6 +140,11 @@ export type ContinueJourneyResponse = PortalApiOkEnvelope & {
 
   // Some versions may add messages even on ok
   message?: string;
+};
+
+export type CreateReservationResponse = PortalApiOkEnvelope & {
+  reservationId?: string;
+  status?: string;
 };
 
 /**

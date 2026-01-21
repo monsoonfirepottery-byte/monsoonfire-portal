@@ -1,0 +1,117 @@
+.reservations-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.reservation-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.reservation-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.reservation-form-grid select,
+.reservation-form-grid input {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.3);
+  color: #fff;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.reservation-form-grid input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.reservation-form .form-error,
+.reservation-form .form-status {
+  grid-column: 1 / -1;
+}
+
+.reservation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.reservation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.reservation-card {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.reservation-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.reservation-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+
+.status-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.status-requested {
+  color: #ffe8d7;
+  background: rgba(255, 139, 84, 0.2);
+}
+
+.status-confirmed {
+  color: #c9f7d9;
+  background: rgba(46, 204, 113, 0.18);
+}
+
+.status-waitlisted {
+  color: #ffe9a0;
+  background: rgba(255, 214, 117, 0.18);
+}
+
+.status-cancelled {
+  color: #e0e6e7;
+  background: rgba(149, 165, 166, 0.2);
+}
+
+.card-title {
+  margin-bottom: 14px;
+}
+
+@media (max-width: 750px) {
+  .reservation-card-header,
+  .reservation-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

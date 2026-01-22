@@ -92,7 +92,7 @@
 }
 
 .nav-item:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-3);
   transform: translateX(2px);
 }
 
@@ -162,7 +162,7 @@
 .dev-token input {
   width: 100%;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.3);
   color: #fff;
   padding: 10px 12px;
@@ -184,7 +184,7 @@
   padding: 14px 20px;
   border-radius: 20px;
   background: rgba(15, 18, 17, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-soft);
   box-shadow: var(--shadow);
 }
 
@@ -214,7 +214,7 @@
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.04);
   display: grid;
   place-items: center;
@@ -256,9 +256,9 @@
 }
 
 .card {
-  background: rgba(20, 23, 22, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 22px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
   padding: 24px;
   box-shadow: var(--shadow);
   position: relative;
@@ -266,12 +266,23 @@
   animation: rise-in 0.6s ease both;
 }
 
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(255, 139, 84, 0.12), transparent 45%),
+    radial-gradient(circle at 90% 0%, rgba(243, 194, 144, 0.1), transparent 40%);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
 .card-3d::after {
   content: "";
   position: absolute;
   inset: 1px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: calc(var(--radius-lg) - 2px);
+  border: 1px solid var(--border-soft);
   pointer-events: none;
 }
 
@@ -364,8 +375,8 @@
 }
 
 .chip {
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
   color: var(--text);
   padding: 6px 12px;
   border-radius: 999px;
@@ -377,7 +388,7 @@
 
 .chip:hover {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-3);
 }
 
 .chip.active {
@@ -404,7 +415,7 @@
   gap: 16px;
   padding: 14px 16px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-2);
   border: 1px solid rgba(255, 255, 255, 0.06);
   flex-wrap: wrap;
   align-items: flex-start;
@@ -462,7 +473,7 @@
 }
 
 .notice {
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--border-strong);
   background: rgba(255, 255, 255, 0.04);
   color: var(--muted);
 }
@@ -484,7 +495,7 @@
   gap: 12px;
   padding: 12px 14px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-2);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -518,7 +529,7 @@
   white-space: pre-wrap;
   word-break: break-word;
   background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-soft);
   border-radius: 12px;
   padding: 12px;
   font-size: 12px;
@@ -536,7 +547,7 @@
 .stat {
   padding: 14px 16px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-2);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -566,7 +577,7 @@
   align-items: center;
   padding: 12px 14px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-2);
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
@@ -590,7 +601,7 @@
   padding: 6px 12px;
   border-radius: 999px;
   border: 1px solid rgba(255, 139, 84, 0.35);
-  background: rgba(255, 139, 84, 0.15);
+  background: rgba(255, 139, 84, 0.18);
   font-size: 12px;
   color: #ffe8d7;
 }
@@ -630,7 +641,7 @@
 .update {
   padding: 16px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-2);
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
@@ -652,7 +663,7 @@
 .message {
   padding: 14px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-2);
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
@@ -721,7 +732,7 @@
 
 .faq-search input {
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.3);
   color: #fff;
   padding: 10px 14px;
@@ -738,7 +749,7 @@
   border-radius: 16px;
   padding: 14px;
   text-align: left;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-2);
   color: inherit;
   cursor: pointer;
   display: grid;
@@ -794,7 +805,7 @@
 .support-form input,
 .support-form select {
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.3);
   color: #fff;
   padding: 10px 12px;
@@ -804,7 +815,7 @@
 .support-form textarea {
   min-height: 140px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.3);
   color: #fff;
   padding: 12px 14px;
@@ -820,36 +831,45 @@
 
 .btn {
   padding: 10px 16px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.04);
-  color: #fff;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
   font-size: 14px;
   cursor: pointer;
-  transition: transform 0.2s ease, background 0.2s ease;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: var(--shadow-soft);
 }
 
 .btn:hover {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-3);
+  border-color: var(--border-strong);
 }
 
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
+  box-shadow: none;
 }
 
 .btn-primary {
-  background: linear-gradient(120deg, #ff8b54, #ffb37a);
+  background: linear-gradient(120deg, #ff8b54, #ffc08b);
   border: none;
   color: #1b0f08;
   font-weight: 700;
+  box-shadow: 0 18px 35px rgba(255, 139, 84, 0.25);
+}
+
+.btn-primary:hover {
+  border-color: transparent;
+  box-shadow: 0 20px 40px rgba(255, 139, 84, 0.32);
 }
 
 .btn-ghost {
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--border-strong);
 }
 
 .signed-out {
@@ -888,7 +908,7 @@
   max-width: 520px;
   padding: 32px;
   border-radius: 24px;
-  background: rgba(20, 23, 22, 0.95);
+  background: var(--surface-strong);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -908,7 +928,7 @@
   background: rgba(0, 0, 0, 0.4);
   padding: 12px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-soft);
   margin-bottom: 18px;
 }
 
@@ -1078,7 +1098,7 @@
   padding: 6px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border);
 }
 
 .segmented button {
@@ -1136,7 +1156,7 @@
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 16px;
   padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-2);
   text-align: left;
   color: inherit;
   cursor: pointer;
@@ -1185,7 +1205,7 @@
 .new-thread input,
 .new-thread select {
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.3);
   color: #fff;
   padding: 10px 12px;
@@ -1199,7 +1219,7 @@
 .new-thread textarea {
   min-height: 140px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.3);
   color: #fff;
   padding: 12px 14px;
@@ -1236,7 +1256,7 @@
   padding: 12px 14px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-soft);
 }
 
 .bubble.me {
@@ -1282,7 +1302,7 @@
 .composer textarea {
   min-height: 120px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.3);
   color: #fff;
   padding: 12px 14px;
@@ -1311,7 +1331,7 @@
   border-radius: 16px;
   padding: 14px;
   text-align: left;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-2);
   color: inherit;
   cursor: pointer;
   display: grid;
@@ -1460,7 +1480,7 @@
 }
 
 .sidebar nav button:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-3);
   transform: translateX(2px);
 }
 
@@ -1509,7 +1529,7 @@
 .admin-token input {
   width: 100%;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.3);
   color: #fff;
   padding: 10px 12px;
@@ -1525,7 +1545,7 @@
 .signout {
   padding: 10px 16px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--border-strong);
   background: transparent;
   color: #fff;
   font-size: 14px;
@@ -1575,6 +1595,10 @@
   gap: 24px;
 }
 
+.view-stack {
+  display: block;
+}
+
 .topbar {
   display: flex;
   align-items: center;
@@ -1583,7 +1607,7 @@
   padding: 14px 20px;
   border-radius: 20px;
   background: rgba(15, 18, 17, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-soft);
   box-shadow: var(--shadow);
 }
 
@@ -1613,7 +1637,7 @@
 .mobile-nav {
   padding: 8px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.04);
   color: #f7ede5;
   cursor: pointer;
@@ -1622,7 +1646,7 @@
 .ghost {
   padding: 10px 16px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--border-strong);
   background: transparent;
   color: #fff;
   font-size: 14px;
@@ -1681,8 +1705,8 @@
 }
 
 .panel {
-  background: rgba(20, 23, 22, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
   border-radius: 22px;
   padding: 24px;
   box-shadow: var(--shadow);

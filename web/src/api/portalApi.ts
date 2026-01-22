@@ -11,6 +11,35 @@ import type {
   CreateReservationResponse as ContractsCreateReservationResponse,
   PickedUpAndCloseRequest as ContractsPickedUpAndCloseRequest,
   PickedUpAndCloseResponse as ContractsPickedUpAndCloseResponse,
+  ListMaterialsProductsRequest as ContractsListMaterialsProductsRequest,
+  ListMaterialsProductsResponse as ContractsListMaterialsProductsResponse,
+  CreateMaterialsCheckoutSessionRequest as ContractsCreateMaterialsCheckoutSessionRequest,
+  CreateMaterialsCheckoutSessionResponse as ContractsCreateMaterialsCheckoutSessionResponse,
+  SeedMaterialsCatalogRequest as ContractsSeedMaterialsCatalogRequest,
+  SeedMaterialsCatalogResponse as ContractsSeedMaterialsCatalogResponse,
+  ListEventsRequest as ContractsListEventsRequest,
+  ListEventsResponse as ContractsListEventsResponse,
+  ListEventSignupsRequest as ContractsListEventSignupsRequest,
+  ListEventSignupsResponse as ContractsListEventSignupsResponse,
+  GetEventRequest as ContractsGetEventRequest,
+  GetEventResponse as ContractsGetEventResponse,
+  CreateEventRequest as ContractsCreateEventRequest,
+  CreateEventResponse as ContractsCreateEventResponse,
+  PublishEventRequest as ContractsPublishEventRequest,
+  PublishEventResponse as ContractsPublishEventResponse,
+  SignupForEventRequest as ContractsSignupForEventRequest,
+  SignupForEventResponse as ContractsSignupForEventResponse,
+  CancelEventSignupRequest as ContractsCancelEventSignupRequest,
+  CancelEventSignupResponse as ContractsCancelEventSignupResponse,
+  ClaimEventOfferRequest as ContractsClaimEventOfferRequest,
+  ClaimEventOfferResponse as ContractsClaimEventOfferResponse,
+  CheckInEventRequest as ContractsCheckInEventRequest,
+  CheckInEventResponse as ContractsCheckInEventResponse,
+  CreateEventCheckoutSessionRequest as ContractsCreateEventCheckoutSessionRequest,
+  CreateEventCheckoutSessionResponse as ContractsCreateEventCheckoutSessionResponse,
+  ListBillingSummaryRequest as ContractsListBillingSummaryRequest,
+  BillingReceipt as ContractsBillingReceipt,
+  BillingSummaryResponse as ContractsBillingSummaryResponse,
   PortalApiMeta,
   PortalFnName,
 } from "./portalContracts";
@@ -31,6 +60,37 @@ export type ContinueJourneyResponse = ContractsContinueJourneyResponse;
 
 export type CreateReservationRequest = ContractsCreateReservationRequest;
 export type CreateReservationResponse = ContractsCreateReservationResponse;
+
+export type ListMaterialsProductsRequest = ContractsListMaterialsProductsRequest;
+export type ListMaterialsProductsResponse = ContractsListMaterialsProductsResponse;
+export type CreateMaterialsCheckoutSessionRequest = ContractsCreateMaterialsCheckoutSessionRequest;
+export type CreateMaterialsCheckoutSessionResponse = ContractsCreateMaterialsCheckoutSessionResponse;
+export type SeedMaterialsCatalogRequest = ContractsSeedMaterialsCatalogRequest;
+export type SeedMaterialsCatalogResponse = ContractsSeedMaterialsCatalogResponse;
+
+export type ListEventsRequest = ContractsListEventsRequest;
+export type ListEventsResponse = ContractsListEventsResponse;
+export type ListEventSignupsRequest = ContractsListEventSignupsRequest;
+export type ListEventSignupsResponse = ContractsListEventSignupsResponse;
+export type GetEventRequest = ContractsGetEventRequest;
+export type GetEventResponse = ContractsGetEventResponse;
+export type CreateEventRequest = ContractsCreateEventRequest;
+export type CreateEventResponse = ContractsCreateEventResponse;
+export type PublishEventRequest = ContractsPublishEventRequest;
+export type PublishEventResponse = ContractsPublishEventResponse;
+export type SignupForEventRequest = ContractsSignupForEventRequest;
+export type SignupForEventResponse = ContractsSignupForEventResponse;
+export type CancelEventSignupRequest = ContractsCancelEventSignupRequest;
+export type CancelEventSignupResponse = ContractsCancelEventSignupResponse;
+export type ClaimEventOfferRequest = ContractsClaimEventOfferRequest;
+export type ClaimEventOfferResponse = ContractsClaimEventOfferResponse;
+export type CheckInEventRequest = ContractsCheckInEventRequest;
+export type CheckInEventResponse = ContractsCheckInEventResponse;
+export type CreateEventCheckoutSessionRequest = ContractsCreateEventCheckoutSessionRequest;
+export type CreateEventCheckoutSessionResponse = ContractsCreateEventCheckoutSessionResponse;
+export type ListBillingSummaryRequest = ContractsListBillingSummaryRequest;
+export type BillingReceipt = ContractsBillingReceipt;
+export type BillingSummaryResponse = ContractsBillingSummaryResponse;
 
 type PortalApiCallArgs<TReq> = {
   idToken: string;
@@ -66,6 +126,38 @@ export type PortalApi = {
   continueJourney(
     args: PortalApiCallArgs<ContinueJourneyRequest>
   ): Promise<PortalApiCallResult<ContinueJourneyResponse>>;
+  listMaterialsProducts(
+    args: PortalApiCallArgs<ListMaterialsProductsRequest>
+  ): Promise<PortalApiCallResult<ListMaterialsProductsResponse>>;
+  createMaterialsCheckoutSession(
+    args: PortalApiCallArgs<CreateMaterialsCheckoutSessionRequest>
+  ): Promise<PortalApiCallResult<CreateMaterialsCheckoutSessionResponse>>;
+  seedMaterialsCatalog(
+    args: PortalApiCallArgs<SeedMaterialsCatalogRequest>
+  ): Promise<PortalApiCallResult<SeedMaterialsCatalogResponse>>;
+  listEvents(args: PortalApiCallArgs<ListEventsRequest>): Promise<PortalApiCallResult<ListEventsResponse>>;
+  listEventSignups(args: PortalApiCallArgs<ListEventSignupsRequest>): Promise<PortalApiCallResult<ListEventSignupsResponse>>;
+  getEvent(args: PortalApiCallArgs<GetEventRequest>): Promise<PortalApiCallResult<GetEventResponse>>;
+  listBillingSummary(
+    args: PortalApiCallArgs<ListBillingSummaryRequest>
+  ): Promise<PortalApiCallResult<BillingSummaryResponse>>;
+  createEvent(args: PortalApiCallArgs<CreateEventRequest>): Promise<PortalApiCallResult<CreateEventResponse>>;
+  publishEvent(args: PortalApiCallArgs<PublishEventRequest>): Promise<PortalApiCallResult<PublishEventResponse>>;
+  signupForEvent(
+    args: PortalApiCallArgs<SignupForEventRequest>
+  ): Promise<PortalApiCallResult<SignupForEventResponse>>;
+  cancelEventSignup(
+    args: PortalApiCallArgs<CancelEventSignupRequest>
+  ): Promise<PortalApiCallResult<CancelEventSignupResponse>>;
+  claimEventOffer(
+    args: PortalApiCallArgs<ClaimEventOfferRequest>
+  ): Promise<PortalApiCallResult<ClaimEventOfferResponse>>;
+  checkInEvent(
+    args: PortalApiCallArgs<CheckInEventRequest>
+  ): Promise<PortalApiCallResult<CheckInEventResponse>>;
+  createEventCheckoutSession(
+    args: PortalApiCallArgs<CreateEventCheckoutSessionRequest>
+  ): Promise<PortalApiCallResult<CreateEventCheckoutSessionResponse>>;
 };
 
 type CreatePortalApiOptions = {
@@ -227,6 +319,83 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
 
     async continueJourney(args) {
       return await callFn<ContinueJourneyRequest, ContinueJourneyResponse>(baseUrl, "continueJourney", args);
+    },
+
+    async listMaterialsProducts(args) {
+      return await callFn<ListMaterialsProductsRequest, ListMaterialsProductsResponse>(
+        baseUrl,
+        "listMaterialsProducts",
+        args
+      );
+    },
+
+    async createMaterialsCheckoutSession(args) {
+      return await callFn<CreateMaterialsCheckoutSessionRequest, CreateMaterialsCheckoutSessionResponse>(
+        baseUrl,
+        "createMaterialsCheckoutSession",
+        args
+      );
+    },
+
+    async seedMaterialsCatalog(args) {
+      return await callFn<SeedMaterialsCatalogRequest, SeedMaterialsCatalogResponse>(
+        baseUrl,
+        "seedMaterialsCatalog",
+        args
+      );
+    },
+
+    async listEvents(args) {
+      return await callFn<ListEventsRequest, ListEventsResponse>(baseUrl, "listEvents", args);
+    },
+
+    async listEventSignups(args) {
+      return await callFn<ListEventSignupsRequest, ListEventSignupsResponse>(baseUrl, "listEventSignups", args);
+    },
+
+    async listBillingSummary(args) {
+      return await callFn<ListBillingSummaryRequest, BillingSummaryResponse>(
+        baseUrl,
+        "listBillingSummary",
+        args
+      );
+    },
+
+    async getEvent(args) {
+
+      return await callFn<GetEventRequest, GetEventResponse>(baseUrl, "getEvent", args);
+    },
+
+    async createEvent(args) {
+      return await callFn<CreateEventRequest, CreateEventResponse>(baseUrl, "createEvent", args);
+    },
+
+    async publishEvent(args) {
+      return await callFn<PublishEventRequest, PublishEventResponse>(baseUrl, "publishEvent", args);
+    },
+
+    async signupForEvent(args) {
+      return await callFn<SignupForEventRequest, SignupForEventResponse>(baseUrl, "signupForEvent", args);
+    },
+
+    async cancelEventSignup(args) {
+      return await callFn<CancelEventSignupRequest, CancelEventSignupResponse>(baseUrl, "cancelEventSignup", args);
+    },
+
+    async claimEventOffer(args) {
+      return await callFn<ClaimEventOfferRequest, ClaimEventOfferResponse>(baseUrl, "claimEventOffer", args);
+    },
+
+    async checkInEvent(args) {
+      return await callFn<CheckInEventRequest, CheckInEventResponse>(baseUrl, "checkInEvent", args);
+    },
+
+    async createEventCheckoutSession(args) {
+      return await callFn<CreateEventCheckoutSessionRequest, CreateEventCheckoutSessionResponse>(
+        baseUrl,
+        "createEventCheckoutSession",
+        args
+      );
     },
   };
 }

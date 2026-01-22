@@ -17,3 +17,9 @@ Install:
 
 ```bash
 npm install -D @monsoonfire/codex-agents
+```
+
+## Notes
+
+- Keep repo docs and runbooks in sync with the latest portal features (ex: materials catalog + Stripe checkout).
+- When updating AGENTS guidance, re-publish this package so downstream repos stay aligned.

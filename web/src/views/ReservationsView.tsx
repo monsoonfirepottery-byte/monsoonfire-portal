@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
-import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
 import { PortalApiError, createPortalApi } from "../api/portalApi";
 import { db } from "../firebase";
 import { formatDateTime } from "../utils/format";
@@ -74,23 +74,20 @@ export default function ReservationsView({ user }: { user: User }) {
       orderBy("createdAt", "desc")
     );
 
-    const unsub = onSnapshot(
-      reservationsQuery,
-      (snap) => {
+    getDocs(reservationsQuery)
+      .then((snap) => {
         const rows: ReservationRecord[] = snap.docs.map((docSnap) => ({
           id: docSnap.id,
           ...(docSnap.data() as any),
         }));
         setReservations(rows);
-        setLoading(false);
-      },
-      (err) => {
+      })
+      .catch((err) => {
         setListError(`Reservations failed: ${err.message}`);
-        setLoading(false);
-      }
-    );
+      })
+      .finally(() => setLoading(false));
 
-    return () => unsub();
+    return undefined;
   }, [user]);
 
   const sortedReservations = useMemo(() => {

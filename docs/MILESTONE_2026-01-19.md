@@ -10,3 +10,8 @@
 Notes:
 - Windows machine cannot run Swift/Xcode; iOS smoke test must be executed on macOS.
 - Emulator ADMIN_TOKEN must be set in env and emulator restarted.
+
+## Progress update (2026-01-22)
+- Events feature implemented (web UI + Functions + contracts + seed script).
+- Materials and Supplies catalog implemented with Stripe Checkout.
+- UI styling pass applied across core views to align with shared tokens.

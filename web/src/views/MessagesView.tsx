@@ -6,7 +6,7 @@ import {
   collection,
   doc,
   limit,
-  onSnapshot,
+  getDocs,
   orderBy,
   query,
   serverTimestamp,
@@ -99,29 +99,27 @@ function useDirectMessageMessages(threadId: string | null) {
     setLoading(true);
     setError("");
 
-    const messagesQuery = query(
-      collection(db, "directMessages", threadId, "messages"),
-      orderBy("sentAt", "asc"),
-      limit(200)
-    );
-
-    const unsub = onSnapshot(
-      messagesQuery,
-      (snap) => {
+    const load = async () => {
+      try {
+        const messagesQuery = query(
+          collection(db, "directMessages", threadId, "messages"),
+          orderBy("sentAt", "asc"),
+          limit(200)
+        );
+        const snap = await getDocs(messagesQuery);
         const rows: DirectMessage[] = snap.docs.map((docSnap) => ({
           id: docSnap.id,
           ...(docSnap.data() as any),
         }));
         setMessages(rows);
-        setLoading(false);
-      },
-      (err) => {
-        setError(`Messages failed: ${err.message}`);
+      } catch (err: any) {
+        setError(`Messages failed: ${err?.message || String(err)}`);
+      } finally {
         setLoading(false);
       }
-    );
+    };
 
-    return () => unsub();
+    void load();
   }, [threadId]);
 
   return { messages, loading, error };

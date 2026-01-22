@@ -1,6 +1,6 @@
 // src/hooks/useTimeline.ts
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, getDocs, orderBy, query } from "firebase/firestore";
 
 import { db } from "../firebase";
 import type { TimelineEvent } from "../types/domain";
@@ -34,28 +34,24 @@ export function useTimeline(batchId: string | null): Result {
 
     setLoading(true);
 
-    const q = query(collection(db, "batches", batchId, "timeline"), orderBy("at", "asc"));
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
+    const load = async () => {
+      try {
+        const q = query(collection(db, "batches", batchId, "timeline"), orderBy("at", "asc"));
+        const snap = await getDocs(q);
         const rows: TimelineEvent[] = snap.docs.map((d) => ({
           id: d.id,
           ...(d.data() as any),
         }));
         setTimeline(rows);
-        setLoading(false);
-      },
-      (err) => {
-        setError(`Timeline failed: ${err.message}`);
+      } catch (err: any) {
+        setError(`Timeline failed: ${err.message || String(err)}`);
         setTimeline([]);
+      } finally {
         setLoading(false);
       }
-    );
-
-    return () => {
-      unsub();
     };
+
+    void load();
   }, [batchId]);
 
   return { timeline, loading, error };

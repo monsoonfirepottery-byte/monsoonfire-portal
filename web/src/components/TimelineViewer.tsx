@@ -1,6 +1,7 @@
 // src/components/TimelineViewer.tsx
 import React from "react";
 import type { TimelineEvent } from "../types/domain";
+import { TIMELINE_EVENT_LABELS, normalizeTimelineEventType } from "../timelineEventTypes";
 import { styles as S } from "../ui/styles";
 
 type Props = {
@@ -18,6 +19,13 @@ function formatTs(ts: any) {
   } catch {
     return "";
   }
+}
+
+function getTimelineLabel(type: unknown): string {
+  const normalized = normalizeTimelineEventType(type);
+  if (normalized) return TIMELINE_EVENT_LABELS[normalized];
+  if (typeof type === "string" && type.trim()) return type;
+  return "Event";
 }
 
 export default function TimelineViewer({
@@ -50,7 +58,7 @@ export default function TimelineViewer({
             <div key={ev.id} style={S.timelineRow}>
               <div style={S.timelineAt}>{formatTs(ev.at)}</div>
               <div style={S.flex1}>
-                <div style={S.timelineType}>{ev.type || "event"}</div>
+                <div style={S.timelineType}>{getTimelineLabel(ev.type)}</div>
                 <div style={S.timelineMeta}>
                   {ev.actorName ? `by ${ev.actorName}` : ""}
                   {ev.kilnName ? ` • kiln: ${ev.kilnName}` : ""}

@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   collection,
   doc,
+  getDocs,
   limit,
-  onSnapshot,
   orderBy,
   query,
   writeBatch,
@@ -178,51 +178,35 @@ function useKilnSchedule(): ScheduleState {
   const [permissionDenied, setPermissionDenied] = useState(false);
 
   useEffect(() => {
-    const kilnsQuery = query(collection(db, "kilns"), orderBy("name", "asc"), limit(25));
-    const firingsQuery = query(collection(db, "kilnFirings"), orderBy("startAt", "asc"), limit(200));
-
-    const unsubKilns = onSnapshot(
-      kilnsQuery,
-      (snap) => {
-        const rows: Kiln[] = snap.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...(docSnap.data() as any),
-        }));
-        setKilns(rows);
+    const load = async () => {
+      try {
+        const kilnsQuery = query(collection(db, "kilns"), orderBy("name", "asc"), limit(25));
+        const firingsQuery = query(collection(db, "kilnFirings"), orderBy("startAt", "asc"), limit(200));
+        const [kilnSnap, firingSnap] = await Promise.all([getDocs(kilnsQuery), getDocs(firingsQuery)]);
+        setKilns(
+          kilnSnap.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...(docSnap.data() as any),
+          }))
+        );
+        setFirings(
+          firingSnap.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...(docSnap.data() as any),
+          }))
+        );
+      } catch (err: any) {
+        const msg = err?.message || String(err);
+        setKilnsError(`Kilns failed: ${msg}`);
+        setFiringsError(`Kiln schedule failed: ${msg}`);
+        if (isPermissionDenied(err)) setPermissionDenied(true);
+      } finally {
         setKilnsLoading(false);
-      },
-      (err) => {
-        setKilnsError(`Kilns failed: ${err.message}`);
-        setKilnsLoading(false);
-        if (isPermissionDenied(err)) {
-          setPermissionDenied(true);
-        }
-      }
-    );
-
-    const unsubFirings = onSnapshot(
-      firingsQuery,
-      (snap) => {
-        const rows: KilnFiring[] = snap.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...(docSnap.data() as any),
-        }));
-        setFirings(rows);
         setFiringsLoading(false);
-      },
-      (err) => {
-        setFiringsError(`Kiln schedule failed: ${err.message}`);
-        setFiringsLoading(false);
-        if (isPermissionDenied(err)) {
-          setPermissionDenied(true);
-        }
       }
-    );
-
-    return () => {
-      unsubKilns();
-      unsubFirings();
     };
+
+    void load();
   }, []);
 
   return {

@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyC7ynej0nGJas9me9M5oW6jHfLsWe5gHbU",
@@ -15,4 +15,9 @@ const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
-export const db = getFirestore(app);
+
+// Force long polling to avoid watch stream teardown races seen during rapid nav in dev.
+// This is emulator-safe and still works against prod.
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+});

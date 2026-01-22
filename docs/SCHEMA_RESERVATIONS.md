@@ -56,6 +56,24 @@ Body shape (see `web/src/api/portalContracts.ts`):
 
 The function validates the token, ensures earliest & latest dates are monotonic, normalizes shelf values, and writes the reservation with `status: REQUESTED`. It listens on `reservations` collection so the UI can stream updates.
 
+### Response
+- `201 Created` with `{ reservationId, status: "REQUESTED" }` so the client can optimistically display the new record.
+- `401 Unauthorized` if the token is missing or invalid.
+- `400 Bad Request` when validation fails (invalid shelf size, non-monotonic window, or missing preferred window map).
+
+### Validation highlights
+- Token/UID: `ownerUid` is derived from the verified ID token and never overwritten by the request body.
+- Preferred window: `earliestDate` and `latestDate` are cast to Firestore `Timestamp`s, empty values convert to `null`, and `earliestDate` must be before or equal to `latestDate` if both are supplied.
+- Shelf equivalent: values outside the supported set (0.25, 0.5, 1.0) are rejected to keep capacity math sane.
+- Linked batch: optional string kept as `null` when omitted to keep Firestore happy.
+- In-flight guard: clients should disable submit buttons while the function runs; the backend will reject repeated near-duplicates by checking `requestId` or timestamp gaps once future idempotency is implemented.
+
+## Security
+
+- Reservation documents are readable only by `ownerUid` (equal to `request.auth.uid`).
+- Creation requires the client to pass `ownerUid` matching their ID and writes the doc with `status: "REQUESTED"`.
+
+## Notes
 ## Notes
 - Firestore rejects `undefined`; the function writes `null` for missing `preferredWindow` entries.
 - The client-side view orders results by `createdAt desc` so a composite index may be required if you add additional filters later.

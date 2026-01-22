@@ -56,10 +56,30 @@ export function requireAdmin(req: any): { ok: true } | { ok: false; message: str
   return { ok: true };
 }
 
-export function requireAuthUid(req: any): string | null {
-  const uid =
-    (req.body?.uid as string | undefined) ??
-    (req.body?.ownerUid as string | undefined);
-  if (!uid || typeof uid !== "string") return null;
-  return uid;
+export function parseAuthToken(req: any): string | null {
+  const header = req.headers?.authorization ?? req.headers?.Authorization;
+  const raw =
+    typeof header === "string" ? header : Array.isArray(header) ? header[0] : "";
+  if (!raw) return null;
+
+  const parts = raw.trim().split(" ");
+  if (parts.length < 2) return null;
+  if (parts[0].toLowerCase() !== "bearer") return null;
+
+  const token = parts.slice(1).join(" ").trim();
+  return token.length ? token : null;
+}
+
+export async function requireAuthUid(
+  req: any
+): Promise<{ ok: true; uid: string } | { ok: false; message: string }> {
+  const token = parseAuthToken(req);
+  if (!token) return { ok: false, message: "Missing Authorization header" };
+
+  try {
+    const decoded = await adminAuth.verifyIdToken(token);
+    return { ok: true, uid: decoded.uid };
+  } catch {
+    return { ok: false, message: "Invalid Authorization token" };
+  }
 }

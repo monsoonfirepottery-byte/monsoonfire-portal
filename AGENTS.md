@@ -90,6 +90,32 @@ Always use Context7 MCP when I need library/API documentation, code generation, 
 
 ### Coordination log
 - YYYY-MM-DD HH:MM — [agent] claimed [file] for [task].
+- 2026-01-21 10:55 — [codex] claimed AGENTS.md; docs/MOBILE_PARITY_TODOS.md; functions/src/shared.ts; functions/src/index.ts; functions/src/createReservation.ts; web/src/api/portalContracts.ts; web/src/timelineEventTypes.ts; functions/src/timelineEventTypes.ts; ios/PortalContracts.swift; ios/PortalModels.swift; ios/PortalApiClient.swift; ios/PortalApiSmokeTest.swift; ios/README.md for mobile parity + auth + timeline normalization.
+- 2026-01-21 11:20 — [codex] claimed android/README.md; android/PortalContracts.kt; android/PortalApiClient.kt; android/PortalModels.kt; android/PortalApiSmokeTest.kt; docs/MOBILE_PARITY_TODOS.md; docs/API_CONTRACTS.md for Android parity scaffolding.
+- 2026-01-21 11:45 — [codex] claimed android/build.gradle.kts; android/settings.gradle.kts; android/gradle.properties; android/app/build.gradle.kts; android/app/src/main/AndroidManifest.xml; android/app/src/main/java/com/monsoonfire/portal/reference/*.kt; docs/API_CONTRACTS.md; android/README.md for Android compile scaffolding.
+- 2026-01-21 11:55 — [codex] claimed .github/workflows/android-compile.yml for Android compile CI.
+- 2026-01-21 12:10 — [codex] claimed docs/MOBILE_PARITY_TODOS.md; docs/API_CONTRACTS.md; docs/PLAN_TIMELINE_MIGRATION.md; functions/src/normalizeTimelineEventTypes.ts; functions/src/index.ts for mobile parity docs + timeline migration tooling.
+- 2026-01-21 12:35 — [codex] claimed web/src/views/MembershipView.tsx; web/src/views/MembershipView.css; web/src/App.tsx for membership page implementation.
+- 2026-01-21 13:30 — [codex] claimed web/src/views/MaterialsView.tsx; web/src/views/MaterialsView.css; web/src/App.tsx; web/src/api/portalContracts.ts; functions/src/materials.ts; functions/src/index.ts; functions/package.json; docs/API_CONTRACTS.md; docs/MOBILE_PARITY_TODOS.md; docs/SCHEMA_MATERIALS.md; docs/SCHEMA_ORDERS.md for materials + Stripe checkout.
+- 2026-01-21 16:17 — [codex] claimed web/src/views/EventsView.tsx; web/src/views/EventsView.css; functions/src/events.ts; functions/src/index.ts; web/src/api/portalContracts.ts; web/src/api/portalApi.ts; ios/PortalContracts.swift; ios/PortalApiClient.swift; android/app/src/main/java/com/monsoonfire/portal/reference/PortalContracts.kt; android/app/src/main/java/com/monsoonfire/portal/reference/PortalApiClient.kt; docs/API_CONTRACTS.md for events roster + web UI.
+- 2026-01-22 00:02 — [codex] claimed firebase.json for emulator port fix.
+- 2026-01-22 00:07 — [codex] claimed functions/scripts/seedEvents.js; docs/SCHEMA_EVENTS.md; docs/PLAN_EVENTS.md; docs/HANDOFF_EVENTS_2026-01-22.md for event seeding + handoff.
+- 2026-01-22 00:12 — [codex] claimed functions/scripts/seedMaterials.js; docs/SCHEMA_MATERIALS.md; docs/HANDOFF_MATERIALS_2026-01-21.md for materials seeding.
+- 2026-01-22 00:16 — [codex] claimed web/src/index.css; web/src/App.css; web/src/views/EventsView.css; web/src/views/MaterialsView.css; web/src/views/MembershipView.css; web/src/views/SupportView.css; web/src/views/ProfileView.css; web/src/views/ReservationsView.css; web/src/views/KilnScheduleView.css for UI pass.
+- 2026-01-22 18:17 — [codex] released web/src/index.css; web/src/App.css; web/src/views/EventsView.css; web/src/views/MaterialsView.css; web/src/views/MembershipView.css; web/src/views/SupportView.css; web/src/views/ProfileView.css; web/src/views/ReservationsView.css; web/src/views/KilnScheduleView.css after UI pass.
+- 2026-01-21 18:33 — [codex] claimed docs/PLAN_BILLING.md; docs/RELEASE_NOTES.md; docs/DESIGN_2026-01-20.md; docs/MOBILE_PARITY_TODOS.md; docs/MILESTONE_2026-01-19.md; docs/HANDOFF_EVENTS_2026-01-22.md; docs/HANDOFF_MATERIALS_2026-01-21.md; docs/API_CONTRACTS.md for billing plan + doc updates.
+- 2026-01-21 18:37 — [codex] released docs/PLAN_BILLING.md; docs/RELEASE_NOTES.md; docs/DESIGN_2026-01-20.md; docs/MOBILE_PARITY_TODOS.md; docs/MILESTONE_2026-01-19.md; docs/HANDOFF_EVENTS_2026-01-22.md; docs/HANDOFF_MATERIALS_2026-01-21.md; docs/API_CONTRACTS.md after billing plan + doc updates.
+- 2026-01-21 18:45 — [codex] claimed web/src/views/BillingView.tsx; web/src/views/BillingView.css; web/src/App.tsx; firestore.rules for Billing page implementation and Firestore access adjustments.
+- 2026-01-21 18:55 — [codex] released web/src/views/BillingView.tsx; web/src/views/BillingView.css; web/src/App.tsx; firestore.rules after Billing page implementation.
+- 2026-01-21 18:58 — [codex] claimed functions/scripts/seedBilling.js; docs/PLAN_BILLING.md for billing seed + doc updates.
+- 2026-01-21 19:02 — [codex] released functions/scripts/seedBilling.js; docs/PLAN_BILLING.md after billing seed + doc updates.
+- 2026-01-21 19:18 — [codex] claimed web/src/firebase.ts for Firestore transport stability (long polling).
+- 2026-01-21 19:22 — [codex] released web/src/firebase.ts after Firestore long-polling toggle.
+- 2026-01-21 14:31 — [codex] claimed web/src/views/SupportView.tsx; web/src/views/SupportView.css for FAQ content + usability refresh.
+- 2026-01-21 14:39 — [codex] claimed firestore.rules; docs/SCHEMA_SUPPORT.md for Firestore FAQ + support request schema.
+- 2026-01-21 15:10 — [codex] claimed docs/PLAN_EVENTS.md; docs/SCHEMA_EVENTS.md for Events planning + schema.
+- 2026-01-21 15:18 — [codex] claimed functions/src/events.ts; functions/src/index.ts for Events Cloud Functions.
+- 2026-01-21 15:45 — [codex] claimed web/src/api/portalContracts.ts; web/src/api/portalApi.ts; ios/PortalContracts.swift; ios/PortalApiClient.swift; android/app/src/main/java/com/monsoonfire/portal/reference/PortalContracts.kt; android/app/src/main/java/com/monsoonfire/portal/reference/PortalApiClient.kt for Events API contracts.
 
 ## Marketing materials scan (January 20, 2026)
 
@@ -151,3 +177,12 @@ Status: In progress
 
 ### Follow-up
 - Revisit FAQ content and assets with a dedicated marketing agent.
+
+## Agent findings & next steps (January 21, 2026)
+- Created `docs/PLAN_PROFILE.md` laying out the Profile & Settings view roadmap (account summary, journey stats, history timeline, settings controls, and supporting notes) along with resiliency best practices.
+- Confirmed `ProfileView` already streams `profiles/{uid}` plus batch history; the new page can lean on those same sources while adding the extra preferences/notes sections.
+- Noted that `createReservation` Cloud Function (see `docs/SCHEMA_RESERVATIONS.md`) is still an outstanding dependency for the Reservations view; keep the Firestore schema rules and docs synchronized.
+- Logged the need for staff tooling (e.g., staff role to confirm kiln firings) and for marketing-sourced content / metadata so future agents have guidance.
+- Documented the latest schema details in `docs/SCHEMA_PROFILE.md` (new notification toggles + personal notes) and `docs/SCHEMA_RESERVATIONS.md` (response contract, validation, security) so handoffs stay precise.
+
+**Note:** Revisit this repo with a dedicated marketing agent to curate the scanned assets, finalize metadata, and translate the recommendations above into concrete copy/media selections.

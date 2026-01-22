@@ -1,0 +1,373 @@
+.membership-page .summary-label {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1.3px;
+}
+
+.membership-page .summary-value {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.membership-journey {
+  display: grid;
+  gap: 20px;
+}
+
+.journey-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.journey-link {
+  align-self: flex-start;
+}
+
+.journey-now {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.journey-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 18px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-soft);
+}
+
+.journey-card.current {
+  border-color: rgba(255, 139, 84, 0.4);
+  background: rgba(255, 139, 84, 0.12);
+}
+
+.journey-card.next {
+  border-color: var(--border);
+}
+
+.journey-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.journey-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+.journey-tier {
+  font-weight: 600;
+  color: #ffe8d7;
+}
+
+.journey-card-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.journey-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.journey-card-meta strong {
+  color: #f7ede5;
+  font-weight: 600;
+}
+
+.journey-card-copy {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.membership-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.membership-status-actions .btn {
+  font-size: 12px;
+}
+
+.journey-milestones ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.journey-arrow {
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.journey-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.journey-action {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+}
+
+.journey-action.cancel {
+  border-color: var(--border-strong);
+}
+
+.journey-action-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.membership-copy {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.membership-label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.membership-label select,
+.membership-label textarea {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.membership-label textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
+.membership-table-card {
+  overflow-x: auto;
+}
+
+.membership-table {
+  display: grid;
+  gap: 8px;
+  min-width: 720px;
+}
+
+.membership-row {
+  display: grid;
+  grid-template-columns: 1.2fr repeat(4, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.membership-header {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+.membership-cell {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  font-size: 13px;
+}
+
+.membership-cell.heading {
+  font-weight: 600;
+  color: #f7ede5;
+}
+
+.membership-cell.label {
+  font-weight: 600;
+}
+
+.membership-cell.current {
+  border-color: rgba(255, 139, 84, 0.4);
+  background: rgba(255, 139, 84, 0.16);
+}
+
+.membership-features {
+  display: grid;
+  gap: 12px;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.feature-clip {
+  border: 1px solid var(--border-soft);
+  border-radius: 16px;
+  background: var(--surface-2);
+  padding: 0;
+  overflow: hidden;
+}
+
+.feature-clip summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 14px 16px;
+  display: grid;
+  gap: 6px;
+}
+
+.feature-clip summary::-webkit-details-marker {
+  display: none;
+}
+
+.feature-clip summary span {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.feature-clip summary em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.feature-clip p {
+  margin: 0;
+  padding: 0 16px 16px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.membership-help {
+  display: grid;
+  gap: 12px;
+}
+
+.membership-help-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.journey-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 8, 8, 0.75);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  z-index: 30;
+}
+
+.journey-modal-card {
+  max-width: 960px;
+  width: min(960px, 100%);
+  background: var(--surface-strong);
+  border-radius: 24px;
+  border: 1px solid var(--border-soft);
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+  box-shadow: var(--shadow);
+}
+
+.journey-modal-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.journey-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.journey-modal-tier {
+  border-radius: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-2);
+  display: grid;
+  gap: 6px;
+}
+
+.journey-modal-title {
+  font-weight: 700;
+}
+
+.journey-modal-stage {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+.journey-modal-copy {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.journey-modal-milestones ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  display: grid;
+  gap: 4px;
+}
+
+@media (max-width: 960px) {
+  .membership-table {
+    min-width: 640px;
+  }
+
+  .membership-row {
+    grid-template-columns: 1.3fr repeat(4, minmax(100px, 1fr));
+  }
+
+  .journey-now {
+    grid-template-columns: 1fr;
+  }
+
+  .journey-arrow {
+    display: none;
+  }
+}

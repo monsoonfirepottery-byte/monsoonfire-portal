@@ -46,5 +46,18 @@ npm run dev
 ## Kiln reservations
 
 - Reservations live under the `Reservations` nav pill (see `web/src/views/ReservationsView.tsx` + `ReservationsView.css`).
-- Requests call the new `createReservation` Cloud Function and write into the `reservations` collection with `REQUESTED` status.
+- Requests call the `createReservation` Cloud Function and write into the `reservations` collection with `REQUESTED` status.
 - Schema & preferred-window expectations are captured in `docs/SCHEMA_RESERVATIONS.md`.
+
+## Materials & supplies (Stripe Checkout)
+
+- The `Materials` nav item provides a pickup-only catalog + cart (`web/src/views/MaterialsView.tsx`).
+- Catalog is served by `listMaterialsProducts` and cached locally for faster reloads.
+- Checkout calls `createMaterialsCheckoutSession`, which returns a Stripe-hosted checkout URL.
+- Admins can seed a sample catalog via `seedMaterialsCatalog` (requires `x-admin-token`).
+- Payment completion is handled via the `stripeWebhook` Cloud Function.
+
+Required Functions env vars:
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `PORTAL_BASE_URL` (used for success/cancel redirect URLs)

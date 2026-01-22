@@ -15,6 +15,7 @@ import {
   FieldValue,
   Timestamp,
 } from "./shared";
+import { TimelineEventType } from "./timelineEventTypes";
 
 // -----------------------------
 // Config
@@ -50,17 +51,6 @@ type BatchState =
   | "CLOSED_PICKED_UP"
   | "CLOSED_OTHER";
 
-type TimelineEventType =
-  | "BATCH_CREATED"
-  | "SUBMITTED"
-  | "SHELVED"
-  | "KILN_LOAD"
-  | "KILN_UNLOAD"
-  | "ASSIGNED_FIRING"
-  | "READY_FOR_PICKUP"
-  | "PICKED_UP_AND_CLOSED"
-  | "CONTINUE_JOURNEY";
-
 type PieceState =
   | "OK"
   | "DAMAGED_IN_HANDLING"
@@ -84,13 +74,13 @@ async function addTimelineEvent(params: {
   batchId: string;
   type: TimelineEventType;
   at?: Timestamp;
-  actorUid?: string;
-  actorName?: string;
-  notes?: string;
-  kilnId?: string;
-  kilnName?: string;
+  actorUid?: string | null;
+  actorName?: string | null;
+  notes?: string | null;
+  kilnId?: string | null;
+  kilnName?: string | null;
   photos?: string[];
-  pieceState?: PieceState;
+  pieceState?: PieceState | null;
   extra?: Record<string, any>;
 }) {
   const {
@@ -119,16 +109,6 @@ async function addTimelineEvent(params: {
     pieceState,
     ...extra,
   });
-}
-async function findActiveBatchIdForUid(uid: string): Promise<string | null> {
-  const snap = await batchesCol()
-    .where("ownerUid", "==", uid)
-    .where("isClosed", "==", false)
-    .limit(1)
-    .get();
-
-  if (snap.empty) return null;
-  return snap.docs[0].id;
 }
 
 // -----------------------------
@@ -162,16 +142,29 @@ async function getCalendarClient() {
 // -----------------------------
 // Public: hello
 // -----------------------------
-export const hello = onRequest({ region: REGION }, (req, res) => {
+export const hello = onRequest({ region: REGION }, async (req, res) => {
   if (applyCors(req, res)) return;
+
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+
   res.status(200).json({ ok: true, message: "ok" });
 });
 
 // -----------------------------
 // Debug: calendar id sanity check
 // -----------------------------
-export const debugCalendarId = onRequest({ region: REGION }, (req, res) => {
+export const debugCalendarId = onRequest({ region: REGION }, async (req, res) => {
   if (applyCors(req, res)) return;
+
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
 
   const trimmed = FIRINGS_CALENDAR_ID.trim();
   const tail = trimmed.slice(-23);
@@ -196,6 +189,12 @@ export const acceptFiringsCalendar = onRequest(
   { region: REGION, timeoutSeconds: 60 },
   async (req, res) => {
     if (applyCors(req, res)) return;
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
 
     try {
       const { calendar, clientEmail } = await getCalendarClient();
@@ -288,6 +287,12 @@ export const syncFiringsNow = onRequest(
   async (req, res) => {
     if (applyCors(req, res)) return;
 
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+
     try {
       const out = await syncFiringsCore();
       res.status(200).json({
@@ -338,6 +343,12 @@ export const createBatch = onRequest(
       return;
     }
 
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+
     const admin = requireAdmin(req);
     if (!admin.ok) {
       res.status(401).json({ ok: false, message: admin.message });
@@ -349,7 +360,8 @@ export const createBatch = onRequest(
     const title = safeString(req.body?.title);
     const intakeMode = safeString(req.body?.intakeMode) as IntakeMode;
     const estimatedCostCents = asInt(req.body?.estimatedCostCents, 0);
-    const estimateNotes = safeString(req.body?.estimateNotes);
+    const kilnName = safeString(req.body?.kilnName);
+    const estimateNotes = safeString(req.body?.estimateNotes || req.body?.notes);
 
     if (!ownerUid || !title) {
       res.status(400).json({ ok: false, message: "ownerUid and title required" });
@@ -365,6 +377,7 @@ export const createBatch = onRequest(
       title,
       intakeMode: intakeMode || "STAFF_HANDOFF",
       estimatedCostCents,
+      kilnName: kilnName || null,
       estimateNotes: estimateNotes || null,
 
       state: "DRAFT" as BatchState,
@@ -381,7 +394,7 @@ export const createBatch = onRequest(
     await ref.set(doc);
     await addTimelineEvent({
       batchId: ref.id,
-      type: "BATCH_CREATED",
+      type: TimelineEventType.CREATE_BATCH,
       at: createdAt,
       actorUid: "admin",
       actorName: "admin",
@@ -394,7 +407,6 @@ export const createBatch = onRequest(
 
 // -----------------------------
 // Batches: submitDraftBatch (client sets state -> SUBMITTED)
-// (For now: uid in body; later: verify Firebase ID token)
 // -----------------------------
 export const submitDraftBatch = onRequest(
   { region: REGION, timeoutSeconds: 60 },
@@ -406,7 +418,13 @@ export const submitDraftBatch = onRequest(
       return;
     }
 
-    const uid = requireAuthUid(req);
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+    const uid = auth.uid;
+
     const batchId = safeString(req.body?.batchId);
 
     if (!uid || !batchId) {
@@ -438,7 +456,7 @@ export const submitDraftBatch = onRequest(
 
     await addTimelineEvent({
       batchId,
-      type: "SUBMITTED",
+      type: TimelineEventType.SUBMIT_DRAFT,
       at: t,
       actorUid: uid,
       actorName: data.ownerDisplayName ?? null,
@@ -460,6 +478,12 @@ export const pickedUpAndClose = onRequest(
 
     if (req.method !== "POST") {
       res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
       return;
     }
 
@@ -490,7 +514,7 @@ export const pickedUpAndClose = onRequest(
 
     await addTimelineEvent({
       batchId,
-      type: "PICKED_UP_AND_CLOSED",
+      type: TimelineEventType.PICKED_UP_AND_CLOSE,
       at: t,
       actorUid: "admin",
       actorName: "admin",
@@ -515,7 +539,13 @@ export const continueJourney = onRequest(
       return;
     }
 
-    const uid = requireAuthUid(req);
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+    const uid = auth.uid;
+
     const fromBatchId = safeString(req.body?.fromBatchId);
     if (!uid || !fromBatchId) {
       res.status(400).json({ ok: false, message: "uid and fromBatchId required" });
@@ -559,7 +589,7 @@ export const continueJourney = onRequest(
 
     await addTimelineEvent({
       batchId: newRef.id,
-      type: "CONTINUE_JOURNEY",
+      type: TimelineEventType.CONTINUE_JOURNEY,
       at: t,
       actorUid: uid,
       actorName: from.ownerDisplayName ?? null,
@@ -578,6 +608,12 @@ export const shelveBatch = onRequest({ region: REGION }, async (req, res) => {
   if (applyCors(req, res)) return;
   if (req.method !== "POST") {
     res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
     return;
   }
 
@@ -600,7 +636,7 @@ export const shelveBatch = onRequest({ region: REGION }, async (req, res) => {
   );
   await addTimelineEvent({
     batchId,
-    type: "SHELVED",
+    type: TimelineEventType.SHELVED,
     at: t,
     actorUid: "admin",
     actorName: "admin",
@@ -614,6 +650,12 @@ export const kilnLoad = onRequest({ region: REGION }, async (req, res) => {
   if (applyCors(req, res)) return;
   if (req.method !== "POST") {
     res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
     return;
   }
 
@@ -645,12 +687,12 @@ export const kilnLoad = onRequest({ region: REGION }, async (req, res) => {
 
   await addTimelineEvent({
     batchId,
-    type: "KILN_LOAD",
+    type: TimelineEventType.KILN_LOAD,
     at: t,
     actorUid: "admin",
     actorName: "admin",
     kilnId,
-    kilnName: kilnName || undefined,
+    kilnName: kilnName || null,
     notes: safeString(req.body?.notes) || "Loaded to kiln",
     photos: Array.isArray(req.body?.photos) ? req.body.photos : [],
   });
@@ -662,6 +704,12 @@ export const kilnUnload = onRequest({ region: REGION }, async (req, res) => {
   if (applyCors(req, res)) return;
   if (req.method !== "POST") {
     res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
     return;
   }
 
@@ -690,7 +738,7 @@ export const kilnUnload = onRequest({ region: REGION }, async (req, res) => {
 
   await addTimelineEvent({
     batchId,
-    type: "KILN_UNLOAD",
+    type: TimelineEventType.KILN_UNLOAD,
     at: t,
     actorUid: "admin",
     actorName: "admin",
@@ -705,6 +753,12 @@ export const readyForPickup = onRequest({ region: REGION }, async (req, res) => 
   if (applyCors(req, res)) return;
   if (req.method !== "POST") {
     res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
     return;
   }
 
@@ -728,7 +782,7 @@ export const readyForPickup = onRequest({ region: REGION }, async (req, res) => 
 
   await addTimelineEvent({
     batchId,
-    type: "READY_FOR_PICKUP",
+    type: TimelineEventType.READY_FOR_PICKUP,
     at: t,
     actorUid: "admin",
     actorName: "admin",
@@ -739,6 +793,23 @@ export const readyForPickup = onRequest({ region: REGION }, async (req, res) => 
 });
 
 export { createReservation } from "./createReservation";
+export { normalizeTimelineEventTypes } from "./normalizeTimelineEventTypes";
+export { createMaterialsCheckoutSession, listMaterialsProducts, seedMaterialsCatalog, stripeWebhook } from "./materials";
+export {
+  listEvents,
+  listEventSignups,
+  getEvent,
+  createEvent,
+  publishEvent,
+  signupForEvent,
+  cancelEventSignup,
+  claimEventOffer,
+  checkInEvent,
+  createEventCheckoutSession,
+  eventStripeWebhook,
+  sweepEventOffers,
+} from "./events";
+export { listBillingSummary } from "./billingSummary";
 
 // -----------------------------
 // Backfill helper: ensure isClosed field exists (admin-only)
@@ -747,6 +818,12 @@ export const backfillIsClosed = onRequest(
   { region: REGION, timeoutSeconds: 60 },
   async (req, res) => {
     if (applyCors(req, res)) return;
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
 
     const admin = requireAdmin(req);
     if (!admin.ok) {
@@ -773,3 +850,5 @@ export const backfillIsClosed = onRequest(
     res.status(200).json({ ok: true, scanned: snaps.size, updated });
   }
 );
+
+

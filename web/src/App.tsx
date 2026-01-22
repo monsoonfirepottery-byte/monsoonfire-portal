@@ -6,20 +6,15 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import {
-  addDoc,
-  collection,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  where,
-} from "firebase/firestore";
+import { addDoc, collection, getDocs, limit, orderBy, query, serverTimestamp, where } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import type { Announcement, DirectMessageThread, LiveUser } from "./types/messaging";
+import BillingView from "./views/BillingView";
 import DashboardView from "./views/DashboardView";
+import EventsView from "./views/EventsView";
 import KilnScheduleView from "./views/KilnScheduleView";
+import MembershipView from "./views/MembershipView";
+import MaterialsView from "./views/MaterialsView";
 import MessagesView from "./views/MessagesView";
 import MyPiecesView from "./views/MyPiecesView";
 import PlaceholderView from "./views/PlaceholderView";
@@ -38,6 +33,7 @@ type NavKey =
   | "reservations"
   | "events"
   | "membership"
+  | "materials"
   | "billing"
   | "messages"
   | "support"
@@ -60,6 +56,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: "reservations", label: "Reservations" },
   { key: "events", label: "Events" },
   { key: "membership", label: "Membership" },
+  { key: "materials", label: "Materials" },
   { key: "billing", label: "Billing" },
   { key: "messages", label: "Messages" },
   { key: "support", label: "Support" },
@@ -109,6 +106,7 @@ function useLiveUsers(user: User | null) {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let canceled = false;
     if (!user) {
       setUsers([]);
       return;
@@ -117,25 +115,27 @@ function useLiveUsers(user: User | null) {
     setLoading(true);
     setError("");
 
-    const usersQuery = query(collection(db, "users"), orderBy("displayName", "asc"), limit(100));
-
-    const unsub = onSnapshot(
-      usersQuery,
-      (snap) => {
+    const load = async () => {
+      try {
+        const usersQuery = query(collection(db, "users"), orderBy("displayName", "asc"), limit(100));
+        const snap = await getDocs(usersQuery);
+        if (canceled) return;
         const rows: LiveUser[] = snap.docs.map((docSnap) => ({
           id: docSnap.id,
           ...(docSnap.data() as any),
         }));
         setUsers(rows.filter((liveUser) => liveUser.id !== user.uid && liveUser.isActive !== false));
-        setLoading(false);
-      },
-      (err) => {
-        setError(`Users failed: ${err.message}`);
-        setLoading(false);
+      } catch (err: any) {
+        if (!canceled) setError(`Users failed: ${err.message || String(err)}`);
+      } finally {
+        if (!canceled) setLoading(false);
       }
-    );
+    };
 
-    return () => unsub();
+    void load();
+    return () => {
+      canceled = true;
+    };
   }, [user]);
 
   return { users, loading, error };
@@ -147,6 +147,7 @@ function useDirectMessages(user: User | null) {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let canceled = false;
     if (!user) {
       setThreads([]);
       return;
@@ -155,30 +156,32 @@ function useDirectMessages(user: User | null) {
     setLoading(true);
     setError("");
 
-    const threadsQuery = query(
-      collection(db, "directMessages"),
-      where("participantUids", "array-contains", user.uid),
-      orderBy("lastMessageAt", "desc"),
-      limit(50)
-    );
-
-    const unsub = onSnapshot(
-      threadsQuery,
-      (snap) => {
+    const load = async () => {
+      try {
+        const threadsQuery = query(
+          collection(db, "directMessages"),
+          where("participantUids", "array-contains", user.uid),
+          orderBy("lastMessageAt", "desc"),
+          limit(50)
+        );
+        const snap = await getDocs(threadsQuery);
+        if (canceled) return;
         const rows: DirectMessageThread[] = snap.docs.map((docSnap) => ({
           id: docSnap.id,
           ...(docSnap.data() as any),
         }));
         setThreads(rows);
-        setLoading(false);
-      },
-      (err) => {
-        setError(`Direct messages failed: ${err.message}`);
-        setLoading(false);
+      } catch (err: any) {
+        if (!canceled) setError(`Direct messages failed: ${err.message || String(err)}`);
+      } finally {
+        if (!canceled) setLoading(false);
       }
-    );
+    };
 
-    return () => unsub();
+    void load();
+    return () => {
+      canceled = true;
+    };
   }, [user]);
 
   return { threads, loading, error };
@@ -190,6 +193,7 @@ function useAnnouncements(user: User | null) {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let canceled = false;
     if (!user) {
       setAnnouncements([]);
       return;
@@ -198,29 +202,31 @@ function useAnnouncements(user: User | null) {
     setLoading(true);
     setError("");
 
-    const announcementsQuery = query(
-      collection(db, "announcements"),
-      orderBy("createdAt", "desc"),
-      limit(30)
-    );
-
-    const unsub = onSnapshot(
-      announcementsQuery,
-      (snap) => {
+    const load = async () => {
+      try {
+        const announcementsQuery = query(
+          collection(db, "announcements"),
+          orderBy("createdAt", "desc"),
+          limit(30)
+        );
+        const snap = await getDocs(announcementsQuery);
+        if (canceled) return;
         const rows: Announcement[] = snap.docs.map((docSnap) => ({
           id: docSnap.id,
           ...(docSnap.data() as any),
         }));
         setAnnouncements(rows);
-        setLoading(false);
-      },
-      (err) => {
-        setError(`Announcements failed: ${err.message}`);
-        setLoading(false);
+      } catch (err: any) {
+        if (!canceled) setError(`Announcements failed: ${err.message || String(err)}`);
+      } finally {
+        if (!canceled) setLoading(false);
       }
-    );
+    };
 
-    return () => unsub();
+    void load();
+    return () => {
+      canceled = true;
+    };
   }, [user]);
 
   return { announcements, loading, error };
@@ -259,6 +265,7 @@ export default function App() {
     const unsub = onAuthStateChanged(authClient, (nextUser) => {
       setUser(nextUser);
       setAuthReady(true);
+      if (!nextUser) setNav("dashboard");
     });
     return () => unsub();
   }, [authClient]);
@@ -354,12 +361,12 @@ export default function App() {
     />
   );
 
-  const renderBody = () => {
+  const renderView = (key: NavKey) => {
     if (!user) {
       return <SignedOutView onSignIn={handleSignIn} />;
     }
 
-    switch (nav) {
+    switch (key) {
       case "dashboard":
         return (
           <DashboardView
@@ -376,6 +383,14 @@ export default function App() {
         return <MyPiecesView user={user} adminToken={adminToken} />;
       case "profile":
         return <ProfileView user={user} />;
+      case "events":
+        return <EventsView user={user} adminToken={adminToken} />;
+      case "membership":
+        return <MembershipView user={user} />;
+      case "materials":
+        return <MaterialsView user={user} adminToken={adminToken} />;
+      case "billing":
+        return <BillingView user={user} />;
       case "reservations":
         return <ReservationsView user={user} />;
       case "kiln":
@@ -395,7 +410,7 @@ export default function App() {
       default:
         return (
           <PlaceholderView
-            title={NAV_ITEMS.find((item) => item.key === nav)?.label ?? "Page"}
+            title={NAV_ITEMS.find((item) => item.key === key)?.label ?? "Page"}
             subtitle="We are building this area now."
           />
         );
@@ -519,9 +534,11 @@ export default function App() {
             </div>
           )}
 
-          {authReady && renderBody()}
+          {authReady ? renderView(nav) : null}
         </main>
       </div>
     </AppErrorBoundary>
   );
 }
+
+

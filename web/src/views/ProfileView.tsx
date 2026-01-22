@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
-import { doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useBatches } from "../hooks/useBatches";
 import { formatDateTime } from "../utils/format";
@@ -43,13 +43,14 @@ export default function ProfileView({ user }: { user: User }) {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (!user) return undefined;
-    const ref = doc(db, "profiles", user.uid);
-    setProfileError("");
-
-    const unsub = onSnapshot(
-      ref,
-      (snap) => {
+    let cancelled = false;
+    async function loadProfile() {
+      if (!user) return;
+      setProfileError("");
+      try {
+        const ref = doc(db, "profiles", user.uid);
+        const snap = await getDoc(ref);
+        if (cancelled) return;
         const data = (snap.data() as ProfileDoc | undefined) ?? null;
         setProfileDoc(data);
         setDisplayNameInput(data?.displayName ?? user.displayName ?? "");
@@ -59,13 +60,15 @@ export default function ProfileView({ user }: { user: User }) {
           notifyClasses: typeof data?.notifyClasses === "boolean" ? data.notifyClasses : prev.notifyClasses,
           notifyPieces: typeof data?.notifyPieces === "boolean" ? data.notifyPieces : prev.notifyPieces,
         }));
-      },
-      (err) => {
-        setProfileError(`Profile failed: ${err.message}`);
+      } catch (err: any) {
+        if (cancelled) return;
+        setProfileError(`Profile failed: ${err?.message ?? "Unable to load profile."}`);
       }
-    );
-
-    return () => unsub();
+    }
+    loadProfile();
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   const totalPieces = active.length + history.length;

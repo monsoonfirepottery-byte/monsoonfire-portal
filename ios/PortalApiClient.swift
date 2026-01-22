@@ -1,72 +1,5 @@
 import Foundation
 
-// MARK: - Error Codes / Envelope (matches web/src/api/portalContracts.ts)
-
-typealias PortalApiErrorCode = String
-
-struct PortalApiErrorEnvelope: Decodable {
-    var ok: Bool?
-    var error: String?
-    var message: String?
-    var code: PortalApiErrorCode?
-    var details: JSONValue?
-}
-
-// MARK: - Troubleshooting meta (matches PortalApiMeta in TS)
-
-struct PortalApiMeta: Codable {
-    var atIso: String
-    var requestId: String
-    var fn: String
-    var url: String
-
-    var payload: JSONValue
-    var curlExample: String?
-
-    var status: Int?
-    var ok: Bool?
-
-    var response: JSONValue?
-
-    var error: String?
-    var message: String?
-    var code: PortalApiErrorCode?
-}
-
-// MARK: - JSONValue (for storing unknown JSON in meta)
-
-enum JSONValue: Codable {
-    case null
-    case bool(Bool)
-    case number(Double)
-    case string(String)
-    case array([JSONValue])
-    case object([String: JSONValue])
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.singleValueContainer()
-        if c.decodeNil() { self = .null; return }
-        if let b = try? c.decode(Bool.self) { self = .bool(b); return }
-        if let n = try? c.decode(Double.self) { self = .number(n); return }
-        if let s = try? c.decode(String.self) { self = .string(s); return }
-        if let a = try? c.decode([JSONValue].self) { self = .array(a); return }
-        if let o = try? c.decode([String: JSONValue].self) { self = .object(o); return }
-        throw PortalApiClientError.decodingFailed("Unknown JSONValue")
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.singleValueContainer()
-        switch self {
-        case .null: try c.encodeNil()
-        case .bool(let b): try c.encode(b)
-        case .number(let n): try c.encode(n)
-        case .string(let s): try c.encode(s)
-        case .array(let a): try c.encode(a)
-        case .object(let o): try c.encode(o)
-        }
-    }
-}
-
 private func toJSONValue<T: Encodable>(_ value: T) -> JSONValue {
     do {
         let enc = JSONEncoder()
@@ -260,5 +193,65 @@ final class PortalApiClient {
 
     func continueJourney(idToken: String, adminToken: String?, payload: ContinueJourneyRequest) async throws -> CallResult<ContinueJourneyResponse> {
         try await post(fn: "continueJourney", idToken: idToken, adminToken: adminToken, payload: payload, respType: ContinueJourneyResponse.self)
+    }
+
+    func listMaterialsProducts(idToken: String, adminToken: String?, payload: ListMaterialsProductsRequest) async throws -> CallResult<ListMaterialsProductsResponse> {
+        try await post(fn: "listMaterialsProducts", idToken: idToken, adminToken: adminToken, payload: payload, respType: ListMaterialsProductsResponse.self)
+    }
+
+    func createMaterialsCheckoutSession(idToken: String, adminToken: String?, payload: CreateMaterialsCheckoutSessionRequest) async throws -> CallResult<CreateMaterialsCheckoutSessionResponse> {
+        try await post(fn: "createMaterialsCheckoutSession", idToken: idToken, adminToken: adminToken, payload: payload, respType: CreateMaterialsCheckoutSessionResponse.self)
+    }
+
+    func seedMaterialsCatalog(idToken: String, adminToken: String?, payload: SeedMaterialsCatalogRequest) async throws -> CallResult<SeedMaterialsCatalogResponse> {
+        try await post(fn: "seedMaterialsCatalog", idToken: idToken, adminToken: adminToken, payload: payload, respType: SeedMaterialsCatalogResponse.self)
+    }
+
+    func createReservation(idToken: String, adminToken: String?, payload: CreateReservationRequest) async throws -> CallResult<CreateReservationResponse> {
+        try await post(fn: "createReservation", idToken: idToken, adminToken: adminToken, payload: payload, respType: CreateReservationResponse.self)
+    }
+
+    func listEvents(idToken: String, adminToken: String?, payload: ListEventsRequest) async throws -> CallResult<ListEventsResponse> {
+        try await post(fn: "listEvents", idToken: idToken, adminToken: adminToken, payload: payload, respType: ListEventsResponse.self)
+    }
+
+    func listEventSignups(idToken: String, adminToken: String?, payload: ListEventSignupsRequest) async throws -> CallResult<ListEventSignupsResponse> {
+        try await post(fn: "listEventSignups", idToken: idToken, adminToken: adminToken, payload: payload, respType: ListEventSignupsResponse.self)
+    }
+
+    func listBillingSummary(idToken: String, adminToken: String?, payload: ListBillingSummaryRequest) async throws -> CallResult<BillingSummaryResponse> {
+        try await post(fn: "listBillingSummary", idToken: idToken, adminToken: adminToken, payload: payload, respType: BillingSummaryResponse.self)
+    }
+
+    func getEvent(idToken: String, adminToken: String?, payload: GetEventRequest) async throws -> CallResult<GetEventResponse> {
+        try await post(fn: "getEvent", idToken: idToken, adminToken: adminToken, payload: payload, respType: GetEventResponse.self)
+    }
+
+    func createEvent(idToken: String, adminToken: String?, payload: CreateEventRequest) async throws -> CallResult<CreateEventResponse> {
+        try await post(fn: "createEvent", idToken: idToken, adminToken: adminToken, payload: payload, respType: CreateEventResponse.self)
+    }
+
+    func publishEvent(idToken: String, adminToken: String?, payload: PublishEventRequest) async throws -> CallResult<PublishEventResponse> {
+        try await post(fn: "publishEvent", idToken: idToken, adminToken: adminToken, payload: payload, respType: PublishEventResponse.self)
+    }
+
+    func signupForEvent(idToken: String, adminToken: String?, payload: SignupForEventRequest) async throws -> CallResult<SignupForEventResponse> {
+        try await post(fn: "signupForEvent", idToken: idToken, adminToken: adminToken, payload: payload, respType: SignupForEventResponse.self)
+    }
+
+    func cancelEventSignup(idToken: String, adminToken: String?, payload: CancelEventSignupRequest) async throws -> CallResult<CancelEventSignupResponse> {
+        try await post(fn: "cancelEventSignup", idToken: idToken, adminToken: adminToken, payload: payload, respType: CancelEventSignupResponse.self)
+    }
+
+    func claimEventOffer(idToken: String, adminToken: String?, payload: ClaimEventOfferRequest) async throws -> CallResult<ClaimEventOfferResponse> {
+        try await post(fn: "claimEventOffer", idToken: idToken, adminToken: adminToken, payload: payload, respType: ClaimEventOfferResponse.self)
+    }
+
+    func checkInEvent(idToken: String, adminToken: String?, payload: CheckInEventRequest) async throws -> CallResult<CheckInEventResponse> {
+        try await post(fn: "checkInEvent", idToken: idToken, adminToken: adminToken, payload: payload, respType: CheckInEventResponse.self)
+    }
+
+    func createEventCheckoutSession(idToken: String, adminToken: String?, payload: CreateEventCheckoutSessionRequest) async throws -> CallResult<CreateEventCheckoutSessionResponse> {
+        try await post(fn: "createEventCheckoutSession", idToken: idToken, adminToken: adminToken, payload: payload, respType: CreateEventCheckoutSessionResponse.self)
     }
 }

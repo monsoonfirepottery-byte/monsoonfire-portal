@@ -1,5 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
+import { collection, getDocs, orderBy, query } from "firebase/firestore";
+import { db } from "../firebase";
 import "./SupportView.css";
 
 export type SupportRequestCategory =
@@ -26,6 +28,7 @@ type FaqEntry = {
   answer: string;
   category: SupportRequestCategory;
   tags: string[];
+  rank: number;
 };
 
 type Props = {
@@ -59,96 +62,84 @@ const SUPPORT_FORM_CATEGORIES: SupportRequestCategory[] = [
   "Other",
 ];
 
-const FAQ_ENTRIES: FaqEntry[] = [
-  {
-    id: "faq-sign-in",
-    question: "I cannot sign in with Google. What should I do?",
-    answer:
-      "Confirm you are using the Google account tied to your studio membership. Try signing out and back in, and check for blocked pop-ups. If it still fails, send us a support request.",
-    category: "Account",
-    tags: ["signin", "google", "auth"],
-  },
-  {
-    id: "faq-track-pieces",
-    question: "Where do I track my pieces?",
-    answer:
-      "Open My Pieces to see active work and archived pieces. Select any piece to view its timeline updates.",
-    category: "Pieces",
-    tags: ["pieces", "timeline", "status"],
-  },
-  {
-    id: "faq-continue-journey",
-    question: "How do I continue a journey after a piece is closed?",
-    answer:
-      "When you have no active pieces, use Continue Journey on an archived piece to reopen the workflow. If you do not see the button, send us a note and we can help.",
-    category: "Pieces",
-    tags: ["continue", "archive"],
-  },
-  {
-    id: "faq-ready-pickup",
-    question: "How will I know when a piece is ready for pickup?",
-    answer:
-      "We update the piece status and timeline when it is ready. Check My Pieces for the latest update, and watch for announcements or direct messages.",
-    category: "Pieces",
-    tags: ["pickup", "ready"],
-  },
-  {
-    id: "faq-kiln-reservations",
-    question: "Can I reserve kiln time from the portal?",
-    answer:
-      "The Kiln Schedule view is currently a preview. Reservation workflows are in progress. Use this form to request a booking or change.",
-    category: "Kiln",
-    tags: ["kiln", "schedule"],
-  },
-  {
-    id: "faq-classes",
-    question: "How do I book a class or join a waitlist?",
-    answer:
-      "Classes are listed in the Classes tab, and full sessions show waitlist status. If you need help enrolling, send us the class name and preferred date.",
-    category: "Classes",
-    tags: ["classes", "waitlist"],
-  },
-  {
-    id: "faq-membership",
-    question: "Where can I update my membership tier?",
-    answer:
-      "Membership changes are being streamlined. Send a request and we will handle it for you until self-service is live.",
-    category: "Membership",
-    tags: ["membership", "plan"],
-  },
-  {
-    id: "faq-billing",
-    question: "I need help with billing or a receipt. What should I do?",
-    answer:
-      "Billing tools are still rolling out. Submit a request with the date and amount, and we will follow up.",
-    category: "Billing",
-    tags: ["billing", "receipt"],
-  },
-  {
-    id: "faq-notifications",
-    question: "Where do I find studio announcements?",
-    answer:
-      "Go to Messages to view announcements and direct messages. Unread items show a badge in the navigation and the top bar.",
-    category: "Studio",
-    tags: ["announcements", "messages"],
-  },
-  {
-    id: "faq-report-issue",
-    question: "Something looks wrong in my piece timeline. How do I report it?",
-    answer:
-      "Send a support request with the piece name and what looks off. We will review and correct the record.",
-    category: "Pieces",
-    tags: ["timeline", "issue"],
-  },
-  {
-    id: "faq-urgent",
-    question: "What counts as urgent support?",
-    answer:
-      "Anything time-sensitive such as same-day pickup or safety issues should go to the studio directly. Use the email below for urgent matters.",
-    category: "Studio",
-    tags: ["urgent", "contact"],
-  },
+const FAQ_COLLECTION = "faqItems";
+const QUICK_ANSWER_COUNT = 5;
+
+const SEARCH_SUGGESTIONS = [
+  "pickup",
+  "kiln schedule",
+  "membership change",
+  "billing receipt",
+  "class waitlist",
+  "studio storage",
 ];
+
+const SEARCH_SYNONYMS: Record<string, string[]> = {
+  pickup: ["ready", "collection", "collect", "retrieval"],
+  ready: ["pickup", "collection"],
+  kiln: ["firing", "schedule", "batch"],
+  firing: ["kiln", "schedule", "batch"],
+  schedule: ["calendar", "timeline"],
+  billing: ["payment", "invoice", "receipt"],
+  receipt: ["invoice", "billing"],
+  membership: ["plan", "tier"],
+  class: ["classes", "workshop"],
+  classes: ["class", "workshop", "lesson"],
+  waitlist: ["wait list", "full"],
+  storage: ["shelf", "shelving", "pickup"],
+  account: ["email", "profile", "signin", "sign-in"],
+  urgent: ["emergency", "safety", "same-day"],
+};
+
+function normalizeCategory(value: unknown): SupportRequestCategory {
+  if (typeof value === "string") {
+    const match = SUPPORT_FORM_CATEGORIES.find((item) => item === value);
+    if (match) return match;
+  }
+  return "Other";
+}
+
+function normalizeTags(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((tag): tag is string => typeof tag === "string")
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .map((tag) => tag.toLowerCase());
+}
+
+function normalizeFaqEntry(id: string, data: Record<string, unknown>): FaqEntry | null {
+  if (data.isActive === false) return null;
+
+  const question = typeof data.question === "string" ? data.question.trim() : "";
+  const answer = typeof data.answer === "string" ? data.answer.trim() : "";
+  if (!question || !answer) return null;
+
+  const rank = typeof data.rank === "number" && Number.isFinite(data.rank) ? data.rank : 999;
+  const tags = normalizeTags(data.tags ?? data.keywords ?? []);
+
+  return {
+    id,
+    question,
+    answer,
+    category: normalizeCategory(data.category),
+    tags,
+    rank,
+  };
+}
+
+function buildSearchTokens(value: string) {
+  const raw = value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/g)
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+  if (raw.length === 0) return [];
+
+  const expanded = raw.flatMap((token) => [token, ...(SEARCH_SYNONYMS[token] ?? [])]);
+  return Array.from(new Set(expanded));
+}
 
 export default function SupportView({ user, supportEmail, onSubmit, status, isBusy }: Props) {
   const [search, setSearch] = useState("");
@@ -158,17 +149,58 @@ export default function SupportView({ user, supportEmail, onSubmit, status, isBu
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [formStatus, setFormStatus] = useState("");
+  const [faqEntries, setFaqEntries] = useState<FaqEntry[]>([]);
+  const [faqLoading, setFaqLoading] = useState(true);
+  const [faqError, setFaqError] = useState("");
+
+  useEffect(() => {
+    const load = async () => {
+      setFaqLoading(true);
+      setFaqError("");
+      try {
+        const faqQuery = query(collection(db, FAQ_COLLECTION), orderBy("rank", "asc"));
+        const snap = await getDocs(faqQuery);
+        const rows = snap.docs
+          .map((docSnap) => normalizeFaqEntry(docSnap.id, docSnap.data() as Record<string, unknown>))
+          .filter((entry): entry is FaqEntry => Boolean(entry));
+        setFaqEntries(rows);
+      } catch (err: any) {
+        setFaqError(`FAQ failed: ${err.message ?? String(err)}`);
+      } finally {
+        setFaqLoading(false);
+      }
+    };
+    void load();
+  }, []);
+
+  const searchTokens = useMemo(() => buildSearchTokens(search), [search]);
 
   const filteredFaqs = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return FAQ_ENTRIES.filter((entry) => {
+    return faqEntries.filter((entry) => {
       const matchesCategory = filter === "All" || entry.category === filter;
       if (!matchesCategory) return false;
-      if (!term) return true;
+      if (searchTokens.length === 0) return true;
       const haystack = `${entry.question} ${entry.answer} ${entry.tags.join(" ")}`.toLowerCase();
-      return haystack.includes(term);
+      return searchTokens.some((token) => haystack.includes(token));
     });
-  }, [filter, search]);
+  }, [faqEntries, filter, searchTokens]);
+
+  const quickAnswers = useMemo(() => {
+    return [...faqEntries].sort((a, b) => a.rank - b.rank).slice(0, QUICK_ANSWER_COUNT);
+  }, [faqEntries]);
+
+  const quickAnswerIds = useMemo(() => new Set(quickAnswers.map((entry) => entry.id)), [quickAnswers]);
+
+  const showQuickAnswers = searchTokens.length === 0 && filter === "All" && quickAnswers.length > 0;
+  const listFaqs = showQuickAnswers
+    ? filteredFaqs.filter((entry) => !quickAnswerIds.has(entry.id))
+    : filteredFaqs;
+
+  const resultsLabel = searchTokens.length
+    ? `Search results for "${search.trim()}"`
+    : filter === "All"
+      ? "Browse all answers"
+      : `${filter} answers`;
 
   async function handleSubmit() {
     if (isBusy) return;
@@ -194,6 +226,25 @@ export default function SupportView({ user, supportEmail, onSubmit, status, isBu
     }
   }
 
+  const renderFaqItem = (entry: FaqEntry) => {
+    const isOpen = expandedId === entry.id;
+    return (
+      <button
+        key={entry.id}
+        type="button"
+        className={`faq-item ${isOpen ? "active" : ""}`}
+        onClick={() => setExpandedId(isOpen ? null : entry.id)}
+        aria-expanded={isOpen}
+      >
+        <div className="faq-top">
+          <div className="faq-question">{entry.question}</div>
+          <span className="pill">{entry.category}</span>
+        </div>
+        {isOpen ? <div className="faq-answer">{entry.answer}</div> : null}
+      </button>
+    );
+  };
+
   return (
     <div className="support-view">
       <div className="page-header">
@@ -205,20 +256,56 @@ export default function SupportView({ user, supportEmail, onSubmit, status, isBu
 
       <div className="support-layout">
         <section className="card card-3d support-faq">
-          <div className="card-title">Knowledge base</div>
+          <div className="faq-header">
+            <div>
+              <div className="card-title">Knowledge base</div>
+              <p className="faq-subtitle">Start with the top questions or search by topic.</p>
+            </div>
+            <div className="faq-meta">
+              <span>
+                {filteredFaqs.length} answer{filteredFaqs.length === 1 ? "" : "s"}
+              </span>
+              <span>{filter === "All" ? "All topics" : `${filter} only`}</span>
+            </div>
+          </div>
+
           <div className="faq-search">
             <input
               type="search"
               placeholder="Search the FAQ"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setExpandedId(null);
+              }}
             />
+            <div className="search-suggestions">
+              <span>Try:</span>
+              {SEARCH_SUGGESTIONS.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  className="chip"
+                  onClick={() => {
+                    setSearch(item);
+                    setFilter("All");
+                    setExpandedId(null);
+                  }}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
             <div className="filter-chips">
               {SUPPORT_FILTERS.map((item) => (
                 <button
                   key={item}
+                  type="button"
                   className={`chip ${filter === item ? "active" : ""}`}
-                  onClick={() => setFilter(item)}
+                  onClick={() => {
+                    setFilter(item);
+                    setExpandedId(null);
+                  }}
                 >
                   {item}
                 </button>
@@ -226,30 +313,28 @@ export default function SupportView({ user, supportEmail, onSubmit, status, isBu
             </div>
           </div>
 
-          {filteredFaqs.length === 0 ? (
-            <div className="empty-state">No answers matched that search yet.</div>
-          ) : (
-            <div className="faq-list">
-              {filteredFaqs.map((entry) => {
-                const isOpen = expandedId === entry.id;
-                return (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    className={`faq-item ${isOpen ? "active" : ""}`}
-                    onClick={() => setExpandedId(isOpen ? null : entry.id)}
-                    aria-expanded={isOpen}
-                  >
-                    <div className="faq-top">
-                      <div className="faq-question">{entry.question}</div>
-                      <span className="pill">{entry.category}</span>
-                    </div>
-                    {isOpen ? <div className="faq-answer">{entry.answer}</div> : null}
-                  </button>
-                );
-              })}
+          {faqError ? <div className="alert inline-alert">{faqError}</div> : null}
+          {faqLoading ? <div className="notice inline-alert">Loading answers...</div> : null}
+
+          {showQuickAnswers ? (
+            <div className="faq-featured">
+              <div className="faq-section-title">Top answers</div>
+              <div className="faq-list">{quickAnswers.map(renderFaqItem)}</div>
             </div>
-          )}
+          ) : null}
+
+          <div className="faq-results">
+            <div className="faq-section-title">{resultsLabel}</div>
+            {listFaqs.length === 0 ? (
+              <div className="empty-state">
+                {faqEntries.length === 0 && !faqLoading
+                  ? "No FAQ entries published yet. Send a question and we will help."
+                  : "No answers matched that search yet. Try another keyword or send a question on the right."}
+              </div>
+            ) : (
+              <div className="faq-list">{listFaqs.map(renderFaqItem)}</div>
+            )}
+          </div>
         </section>
 
         <aside className="support-side">
@@ -308,6 +393,15 @@ export default function SupportView({ user, supportEmail, onSubmit, status, isBu
                 {isBusy ? "Sending..." : "Send question"}
               </button>
             </form>
+
+            <div className="support-tips">
+              <div className="support-tips-title">Helpful details to include</div>
+              <ul>
+                <li>Piece name(s), clay body, or kiln batch if known.</li>
+                <li>Dates or deadlines you are trying to hit.</li>
+                <li>The best way to reach you for follow-up.</li>
+              </ul>
+            </div>
 
             <div className="support-footer">Urgent issue? Email {supportEmail}.</div>
           </section>

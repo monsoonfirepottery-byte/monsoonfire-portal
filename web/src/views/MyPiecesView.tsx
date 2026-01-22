@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, getDocs, orderBy, query } from "firebase/firestore";
 import { db } from "../firebase";
 import { useBatches } from "../hooks/useBatches";
 import { createPortalApi, PortalApiError } from "../api/portalApi";
 import type { PortalApiMeta } from "../api/portalContracts";
 import { getResultBatchId } from "../api/portalContracts";
 import type { TimelineEvent } from "../types/domain";
+import { TIMELINE_EVENT_LABELS, normalizeTimelineEventType } from "../timelineEventTypes";
 import { formatCents, formatMaybeTimestamp } from "../utils/format";
 
 const PIECES_PREVIEW_COUNT = 10;
@@ -15,6 +16,13 @@ type Props = {
   user: User;
   adminToken: string;
 };
+
+function getTimelineLabel(type: unknown): string {
+  const normalized = normalizeTimelineEventType(type);
+  if (normalized) return TIMELINE_EVENT_LABELS[normalized];
+  if (typeof type === "string" && type.trim()) return type;
+  return "Event";
+}
 
 export default function MyPiecesView({ user, adminToken }: Props) {
   const { active, history, error } = useBatches(user);
@@ -49,28 +57,26 @@ export default function MyPiecesView({ user, adminToken }: Props) {
     setTimelineError("");
     setTimelineEvents([]);
 
-    const timelineQuery = query(
-      collection(db, "batches", timelineBatchId, "timeline"),
-      orderBy("at", "asc")
-    );
-
-    const unsub = onSnapshot(
-      timelineQuery,
-      (snap) => {
+    const loadTimeline = async () => {
+      try {
+        const timelineQuery = query(
+          collection(db, "batches", timelineBatchId, "timeline"),
+          orderBy("at", "asc")
+        );
+        const snap = await getDocs(timelineQuery);
         const rows: TimelineEvent[] = snap.docs.map((docSnap) => ({
           id: docSnap.id,
           ...(docSnap.data() as any),
         }));
         setTimelineEvents(rows);
-        setTimelineLoading(false);
-      },
-      (err) => {
-        setTimelineError(`Timeline failed: ${err.message}`);
+      } catch (err: any) {
+        setTimelineError(`Timeline failed: ${err.message || String(err)}`);
+      } finally {
         setTimelineLoading(false);
       }
-    );
+    };
 
-    return () => unsub();
+    void loadTimeline();
   }, [timelineBatchId]);
 
   function toggleTimeline(batchId: string) {
@@ -227,7 +233,7 @@ export default function MyPiecesView({ user, adminToken }: Props) {
                               <div className="timeline-row" key={ev.id}>
                                 <div className="timeline-at">{formatMaybeTimestamp(ev.at)}</div>
                                 <div>
-                                  <div className="timeline-title">{ev.type || "Event"}</div>
+                                  <div className="timeline-title">{getTimelineLabel(ev.type)}</div>
                                   <div className="timeline-meta">
                                     {ev.actorName ? `by ${ev.actorName}` : ""}
                                     {ev.kilnName ? `  kiln: ${ev.kilnName}` : ""}
@@ -302,7 +308,7 @@ export default function MyPiecesView({ user, adminToken }: Props) {
                               <div className="timeline-row" key={ev.id}>
                                 <div className="timeline-at">{formatMaybeTimestamp(ev.at)}</div>
                                 <div>
-                                  <div className="timeline-title">{ev.type || "Event"}</div>
+                                  <div className="timeline-title">{getTimelineLabel(ev.type)}</div>
                                   <div className="timeline-meta">
                                     {ev.actorName ? `by ${ev.actorName}` : ""}
                                     {ev.kilnName ? `  kiln: ${ev.kilnName}` : ""}

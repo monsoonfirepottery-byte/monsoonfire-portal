@@ -1,7 +1,7 @@
 // src/hooks/useBatches.ts
 import { useEffect, useState } from "react";
 import type { User } from "firebase/auth";
-import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
 
 import { db } from "../firebase";
 import type { Batch } from "../types/domain";
@@ -37,48 +37,43 @@ export function useBatches(user: User | null): Result {
 
     const uid = user.uid;
 
-    const qActive = query(
-      collection(db, "batches"),
-      where("ownerUid", "==", uid),
-      where("isClosed", "==", false),
-      orderBy("updatedAt", "desc")
-    );
+    const load = async () => {
+      try {
+        const qActive = query(
+          collection(db, "batches"),
+          where("ownerUid", "==", uid),
+          where("isClosed", "==", false),
+          orderBy("updatedAt", "desc")
+        );
 
-    const unsubActive = onSnapshot(
-      qActive,
-      (snap) => {
-        const rows: Batch[] = snap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as any),
-        }));
-        setActive(rows);
-      },
-      (err) => setError(`Active query failed: ${err.message}`)
-    );
+        const qHistory = query(
+          collection(db, "batches"),
+          where("ownerUid", "==", uid),
+          where("isClosed", "==", true),
+          orderBy("closedAt", "desc")
+        );
 
-    const qHistory = query(
-      collection(db, "batches"),
-      where("ownerUid", "==", uid),
-      where("isClosed", "==", true),
-      orderBy("closedAt", "desc")
-    );
+        const [snapActive, snapHistory] = await Promise.all([getDocs(qActive), getDocs(qHistory)]);
 
-    const unsubHistory = onSnapshot(
-      qHistory,
-      (snap) => {
-        const rows: Batch[] = snap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as any),
-        }));
-        setHistory(rows);
-      },
-      (err) => setError(`History query failed: ${err.message}`)
-    );
+        setActive(
+          snapActive.docs.map((d) => ({
+            id: d.id,
+            ...(d.data() as any),
+          }))
+        );
 
-    return () => {
-      unsubActive();
-      unsubHistory();
+        setHistory(
+          snapHistory.docs.map((d) => ({
+            id: d.id,
+            ...(d.data() as any),
+          }))
+        );
+      } catch (err: any) {
+        setError(err?.message || String(err));
+      }
     };
+
+    void load();
   }, [user]);
 
   return { active, history, error };

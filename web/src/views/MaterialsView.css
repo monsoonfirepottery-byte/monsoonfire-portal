@@ -1,0 +1,271 @@
+.materials-page .summary-label {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1.3px;
+}
+
+.materials-page .summary-value {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.materials-banner {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.materials-banner-meta {
+  display: grid;
+  gap: 12px;
+  min-width: 220px;
+}
+
+.materials-copy {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.materials-toolbar {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  margin-bottom: 18px;
+}
+
+.materials-search {
+  display: grid;
+  gap: 6px;
+}
+
+.materials-search label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+.materials-search input {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.materials-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.materials-chip {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 6px 14px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: background 0.2s ease, border 0.2s ease, transform 0.2s ease;
+}
+
+.materials-chip:hover {
+  transform: translateY(-1px);
+  background: var(--surface-3);
+}
+
+.materials-chip.active {
+  border-color: rgba(255, 139, 84, 0.6);
+  background: rgba(255, 139, 84, 0.18);
+  color: #fff4ea;
+}
+
+.materials-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.materials-cache-note {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.materials-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.materials-list {
+  display: grid;
+  gap: 16px;
+}
+
+.materials-loading {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.materials-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.product-card {
+  display: grid;
+  gap: 10px;
+}
+
+.product-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.product-title {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.product-category {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.product-price {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--accent-2);
+}
+
+.inventory-badge {
+  font-size: 12px;
+  color: #ffe8d7;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-soft);
+  width: fit-content;
+}
+
+.inventory-badge.soft {
+  color: var(--muted);
+}
+
+.inventory-badge.empty {
+  background: rgba(255, 82, 82, 0.16);
+  color: #ffb3b3;
+}
+
+.product-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.product-qty {
+  min-width: 24px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.materials-cart {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  position: sticky;
+  top: 18px;
+}
+
+.cart-lines {
+  display: grid;
+  gap: 12px;
+}
+
+.cart-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.cart-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.cart-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cart-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.cart-summary {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 12px;
+}
+
+.materials-notes {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.materials-notes textarea {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 14px;
+  min-height: 100px;
+  resize: vertical;
+}
+
+.materials-help {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.materials-empty {
+  display: grid;
+  gap: 12px;
+}
+
+@media (max-width: 1024px) {
+  .materials-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .materials-cart {
+    position: static;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .materials-chip {
+    transition: none;
+  }
+}

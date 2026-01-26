@@ -320,7 +320,7 @@ export default function MaterialsView({ user, adminToken }: Props) {
         </div>
         <div className="materials-actions">
           <button className="btn btn-ghost" onClick={() => window.location.reload()}>
-            Refresh
+            Refresh catalog
           </button>
           {products.length === 0 && canSeed ? (
             <button className="btn btn-primary" onClick={handleSeedCatalog} disabled={seedBusy}>
@@ -466,11 +466,11 @@ export default function MaterialsView({ user, adminToken }: Props) {
           {status ? <div className="notice inline-alert">{status}</div> : null}
 
           <button className="btn btn-primary" onClick={handleCheckout} disabled={!canCheckout}>
-            {checkoutBusy ? "Starting checkout..." : "Checkout with Stripe"}
+            {checkoutBusy ? "Starting checkout..." : "Checkout (Stripe)"}
           </button>
 
           <button className="btn btn-ghost" onClick={() => setCart({})} disabled={cartLines.length === 0}>
-            Clear cart
+            Clear cart items
           </button>
         </aside>
       </div>

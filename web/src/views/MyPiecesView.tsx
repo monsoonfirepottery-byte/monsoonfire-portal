@@ -196,12 +196,13 @@ export default function MyPiecesView({ user, adminToken }: Props) {
                 {visibleActive.map((batch) => (
                   <div className="piece-row" key={batch.id}>
                     <div>
-                      <div className="piece-title">{batch.title || "Untitled piece"}</div>
+                      <div className="piece-title-row">
+                        <div className="piece-title">{batch.title || "Untitled piece"}</div>
+                        {batch.status ? <div className="pill piece-status">{batch.status}</div> : null}
+                      </div>
                       <div className="piece-meta">ID: {batch.id}</div>
-                      <div className="piece-meta">Status: {batch.status || "In progress"}</div>
                     </div>
                     <div className="piece-right">
-                      {batch.status ? <div className="pill">{batch.status}</div> : null}
                       <div className="piece-meta">Updated: {formatMaybeTimestamp(batch.updatedAt)}</div>
                       <div className="piece-meta">
                         Est. cost: {formatCents(batch.estimatedCostCents ?? batch.priceCents)}
@@ -271,12 +272,14 @@ export default function MyPiecesView({ user, adminToken }: Props) {
                 {visibleHistory.map((batch) => (
                   <div className="piece-row" key={batch.id}>
                     <div>
-                      <div className="piece-title">{batch.title || "Untitled piece"}</div>
+                      <div className="piece-title-row">
+                        <div className="piece-title">{batch.title || "Untitled piece"}</div>
+                        <div className="pill piece-status">Complete</div>
+                      </div>
                       <div className="piece-meta">ID: {batch.id}</div>
                       <div className="piece-meta">Closed: {formatMaybeTimestamp(batch.closedAt)}</div>
                     </div>
                     <div className="piece-right">
-                      <div className="pill">Complete</div>
                       <div className="piece-meta">Updated: {formatMaybeTimestamp(batch.updatedAt)}</div>
                       <div className="piece-meta">
                         Final cost: {formatCents(batch.priceCents ?? batch.estimatedCostCents)}
@@ -340,7 +343,36 @@ export default function MyPiecesView({ user, adminToken }: Props) {
       {meta ? (
         <details className="card card-3d troubleshooting">
           <summary>Request details</summary>
-          <pre className="mono">{JSON.stringify(meta, null, 2)}</pre>
+          <div className="troubleshooting-grid">
+            <div className="troubleshooting-block">
+              <div className="troubleshooting-label">Status</div>
+              <div className="troubleshooting-value">
+                {meta.ok ? "OK" : "Error"} · {meta.status ?? "No status"}
+              </div>
+            </div>
+            <div className="troubleshooting-block">
+              <div className="troubleshooting-label">Endpoint</div>
+              <div className="troubleshooting-value">
+                {meta.fn} · {meta.url}
+              </div>
+            </div>
+          </div>
+          <div className="troubleshooting-block">
+            <div className="troubleshooting-label">Curl (copy/paste)</div>
+            <pre className="mono">{meta.curlExample || "Unavailable"}</pre>
+          </div>
+          <div className="troubleshooting-block">
+            <div className="troubleshooting-label">Request payload</div>
+            <pre className="mono">{JSON.stringify(meta.payload ?? {}, null, 2)}</pre>
+          </div>
+          <div className="troubleshooting-block">
+            <div className="troubleshooting-label">Response body</div>
+            <pre className="mono">{JSON.stringify(meta.response ?? {}, null, 2)}</pre>
+          </div>
+          <div className="troubleshooting-block">
+            <div className="troubleshooting-label">Raw meta</div>
+            <pre className="mono">{JSON.stringify(meta, null, 2)}</pre>
+          </div>
         </details>
       ) : null}
     </div>

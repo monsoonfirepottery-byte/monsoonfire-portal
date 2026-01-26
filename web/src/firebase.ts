@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { initializeFirestore } from "firebase/firestore";
+import { connectFirestoreEmulator, initializeFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyC7ynej0nGJas9me9M5oW6jHfLsWe5gHbU",
@@ -21,3 +21,9 @@ export const googleProvider = new GoogleAuthProvider();
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 });
+
+if (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_USE_EMULATORS === "true") {
+  const host = String((import.meta as any).env?.VITE_FIRESTORE_EMULATOR_HOST || "127.0.0.1");
+  const port = Number((import.meta as any).env?.VITE_FIRESTORE_EMULATOR_PORT || 8080);
+  connectFirestoreEmulator(db, host, port);
+}

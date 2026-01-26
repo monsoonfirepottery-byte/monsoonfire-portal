@@ -503,7 +503,7 @@ export default function EventsView({ user, adminToken }: Props) {
         </div>
         <div className="events-actions">
           <button className="btn btn-ghost" onClick={refreshAll}>
-            Refresh
+            Refresh events
           </button>
         </div>
         {hasAdmin ? (
@@ -514,7 +514,7 @@ export default function EventsView({ user, adminToken }: Props) {
                 checked={includeDrafts}
                 onChange={(event) => setIncludeDrafts(event.target.checked)}
               />
-              Include drafts
+              Show drafts
             </label>
             <label>
               <input
@@ -522,7 +522,7 @@ export default function EventsView({ user, adminToken }: Props) {
                 checked={includeCancelled}
                 onChange={(event) => setIncludeCancelled(event.target.checked)}
               />
-              Include cancelled
+              Show cancelled
             </label>
           </div>
         ) : null}
@@ -663,12 +663,12 @@ export default function EventsView({ user, adminToken }: Props) {
                   ) : null}
                   {canCheckIn ? (
                     <button className="btn btn-primary" onClick={handleSelfCheckIn} disabled={actionBusy}>
-                      {actionBusy ? "Checking in..." : "Check in now"}
+                      {actionBusy ? "Checking in..." : "Self check-in"}
                     </button>
                   ) : null}
                   {canCancel ? (
                     <button className="btn btn-ghost" onClick={handleCancel} disabled={actionBusy}>
-                      {actionBusy ? "Canceling..." : "Cancel"}
+                      {actionBusy ? "Canceling..." : "Cancel signup"}
                     </button>
                   ) : null}
                 </div>
@@ -705,7 +705,7 @@ export default function EventsView({ user, adminToken }: Props) {
                       onClick={handleCheckout}
                       disabled={!canCheckout || checkoutBusy}
                     >
-                      {checkoutBusy ? "Starting checkout..." : "Pay for ticket"}
+                      {checkoutBusy ? "Starting checkout..." : "Pay event total"}
                     </button>
                   </div>
                 </div>
@@ -807,7 +807,7 @@ export default function EventsView({ user, adminToken }: Props) {
                             onClick={() => handleStaffCheckIn(row.id)}
                             disabled={!!rosterBusyIds[row.id]}
                           >
-                            {rosterBusyIds[row.id] ? "Checking..." : "Check in"}
+                            {rosterBusyIds[row.id] ? "Checking..." : "Check in attendee"}
                           </button>
                         ) : null}
                       </div>

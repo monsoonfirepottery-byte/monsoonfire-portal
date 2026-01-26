@@ -156,6 +156,7 @@ export default function ReservationsView({ user }: { user: User }) {
 
       <section className="card card-3d reservation-form">
         <div className="card-title">Request a kiln slot</div>
+        <p className="form-helper">Staff will confirm the reservation once a kiln is scheduled.</p>
         <form onSubmit={handleSubmit} className="reservation-form-grid">
           <label>
             Firing type
@@ -189,15 +190,18 @@ export default function ReservationsView({ user }: { user: User }) {
             Linked batch (optional)
             <input
               type="text"
-              placeholder="Existing batch id"
+              placeholder="Paste batch ID"
               value={linkedBatchId}
               onChange={(event) => setLinkedBatchId(event.target.value)}
             />
           </label>
+          <div className="form-helper">
+            Link a batch only if you already created one in My Pieces.
+          </div>
           {formError ? <div className="alert card card-3d form-error">{formError}</div> : null}
           {formStatus ? <div className="notice card card-3d form-status">{formStatus}</div> : null}
           <button type="submit" className="btn btn-primary" disabled={isSaving}>
-            {isSaving ? "Requesting..." : "Request reservation"}
+            {isSaving ? "Requesting..." : "Submit reservation request"}
           </button>
         </form>
       </section>

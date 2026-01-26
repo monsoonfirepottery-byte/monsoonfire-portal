@@ -33,7 +33,7 @@ function parseIsoDate(value: unknown): Date | null {
 }
 
 export const createReservation = onRequest(
-  { region: REGION, timeoutSeconds: 60 },
+  { region: REGION, timeoutSeconds: 60, cors: true },
   async (req, res) => {
     if (applyCors(req, res)) return;
 

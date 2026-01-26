@@ -414,13 +414,13 @@ export default function MessagesView({
           className={messagesTab === "inbox" ? "active" : ""}
           onClick={() => setMessagesTab("inbox")}
         >
-          Inbox
+          Direct messages
         </button>
         <button
           className={messagesTab === "studio" ? "active" : ""}
           onClick={() => setMessagesTab("studio")}
         >
-          Studio
+          Studio updates
           {unreadAnnouncements > 0 ? (
             <span className="segmented-count">{unreadAnnouncements}</span>
           ) : null}
@@ -437,7 +437,7 @@ export default function MessagesView({
           <div className="card-title-row">
             <div className="card-title">Direct messages</div>
             <button className="btn btn-ghost" onClick={() => setNewThreadOpen((prev) => !prev)}>
-              {newThreadOpen ? "Cancel" : "New message"}
+              {newThreadOpen ? "Cancel new message" : "Start new message"}
             </button>
           </div>
 
@@ -510,7 +510,7 @@ export default function MessagesView({
                 <div className="empty-state">No live users are available yet.</div>
               ) : null}
               <button className="btn btn-primary" onClick={handleCreateThread} disabled={composerBusy}>
-                {composerBusy ? "Starting..." : "Send message"}
+                {composerBusy ? "Starting..." : "Send new message"}
               </button>
             </div>
           ) : null}
@@ -593,7 +593,7 @@ export default function MessagesView({
                   onChange={(event) => setComposerText(event.target.value)}
                 />
                 <button className="btn btn-primary" onClick={handleSendMessage} disabled={composerBusy}>
-                  {composerBusy ? "Sending..." : "Reply"}
+                  {composerBusy ? "Sending..." : "Send reply"}
                 </button>
               </div>
             </div>

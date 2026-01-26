@@ -60,11 +60,11 @@ export default function DashboardView({
             Track your wares, reserve kiln time, and keep up with studio life from one place.
           </p>
           <div className="hero-actions">
-            <button className="btn btn-primary">Book a class</button>
-            <button className="btn btn-ghost">View kiln schedule</button>
+            <button className="btn btn-primary">Book a class (schedule)</button>
+            <button className="btn btn-ghost">View kiln schedule details</button>
             <button className="btn btn-ghost notif-inline" onClick={onOpenMessages}>
               <span className="bell-icon" />
-              Notifications
+              Open notifications
               {unreadTotal > 0 ? <span className="notif-count">{unreadTotal}</span> : null}
             </button>
           </div>
@@ -129,7 +129,7 @@ export default function DashboardView({
             </div>
           )}
           <button className="btn btn-ghost dashboard-link" onClick={onOpenPieces}>
-            View all pieces
+            Open My Pieces
           </button>
         </div>
 
@@ -153,6 +153,7 @@ export default function DashboardView({
             <div className="card-title">Studio updates</div>
             <button className="btn btn-ghost notif-inline" onClick={onOpenMessages}>
               <span className="bell-icon" />
+              Open inbox
               {unreadTotal > 0 ? <span className="notif-count">{unreadTotal}</span> : null}
             </button>
           </div>
@@ -190,7 +191,7 @@ export default function DashboardView({
             )}
           </div>
           <button className="btn btn-ghost" onClick={onOpenMessages}>
-            Open messages
+            Open messages inbox
           </button>
         </div>
 
@@ -204,7 +205,7 @@ export default function DashboardView({
             </div>
           </div>
           <button className="btn btn-ghost" onClick={onOpenPieces}>
-            Show more
+            View archived pieces
           </button>
         </div>
       </section>

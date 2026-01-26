@@ -22,6 +22,7 @@ import ProfileView from "./views/ProfileView";
 import ReservationsView from "./views/ReservationsView";
 import SignedOutView from "./views/SignedOutView";
 import SupportView, { type SupportRequestInput } from "./views/SupportView";
+import { portalTheme } from "./theme/themes";
 import "./App.css";
 
 type NavKey =
@@ -419,7 +420,7 @@ export default function App() {
 
   return (
     <AppErrorBoundary>
-      <div className="app-shell">
+      <div className="app-shell" style={portalTheme}>
         <aside className={`sidebar ${mobileNavOpen ? "open" : ""}`}>
           <div className="brand">
             <img src={MF_LOGO} alt="Monsoon Fire Pottery Studio" />

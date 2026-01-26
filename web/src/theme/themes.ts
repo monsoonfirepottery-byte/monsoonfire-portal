@@ -1,0 +1,26 @@
+import type { CSSProperties } from "react";
+
+export const portalTheme: CSSProperties = {
+  "--text": "#f7ede5",
+  "--muted": "#c7bbae",
+  "--bg": "#0b0c0b",
+  "--bg-2": "#121513",
+  "--surface": "rgba(20, 23, 22, 0.9)",
+  "--surface-strong": "rgba(20, 23, 22, 0.95)",
+  "--surface-2": "rgba(255, 255, 255, 0.03)",
+  "--surface-3": "rgba(255, 255, 255, 0.06)",
+  "--border-soft": "rgba(255, 255, 255, 0.08)",
+  "--border": "rgba(255, 255, 255, 0.12)",
+  "--border-strong": "rgba(255, 255, 255, 0.2)",
+  "--accent": "#ff8b54",
+  "--accent-soft": "#ffb37a",
+  "--accent-2": "#f3c290",
+  "--accent-3": "#7aa17a",
+  "--shadow": "0 24px 50px rgba(0, 0, 0, 0.4)",
+  "--shadow-soft": "0 12px 30px rgba(0, 0, 0, 0.28)",
+  "--display-font": "\"Cormorant Garamond\", \"Times New Roman\", serif",
+  "--body-font": "\"Manrope\", \"Segoe UI\", sans-serif",
+  "--radius-lg": "22px",
+  "--radius-md": "16px",
+  "--radius-sm": "12px",
+};

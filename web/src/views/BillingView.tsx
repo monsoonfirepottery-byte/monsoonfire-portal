@@ -390,7 +390,7 @@ export default function BillingView({ user }: Props) {
           onClick={refreshBilling}
           disabled={checkInsLoading || chargesLoading || materialsLoading}
         >
-          Refresh billing data
+          Refresh billing overview
         </button>
       </section>
 
@@ -429,7 +429,7 @@ export default function BillingView({ user }: Props) {
                       onClick={() => handleCheckout(signup)}
                       disabled={!!payBusyId}
                     >
-                      {payBusyId === signup.id ? "Preparing checkout..." : "Pay now"}
+                      {payBusyId === signup.id ? "Preparing checkout..." : "Pay now (Stripe)"}
                     </button>
                   </div>
                 </div>
@@ -477,7 +477,7 @@ export default function BillingView({ user }: Props) {
                       target="_blank"
                       rel="noreferrer"
                     >
-                      View receipt
+                      Open receipt
                     </a>
                   ) : null}
                 </div>
@@ -514,7 +514,7 @@ export default function BillingView({ user }: Props) {
                 <div className="receipt-amount">{formatCents(item.totalCents)}</div>
                 {item.link ? (
                   <a href={item.link} target="_blank" rel="noreferrer" className="receipt-link">
-                    View receipt
+                    Open receipt
                   </a>
                 ) : null}
               </div>

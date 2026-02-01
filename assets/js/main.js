@@ -5,7 +5,9 @@
     return cleaned.endsWith('/') ? cleaned : `${cleaned}/`;
   };
 
-  const currentPath = normalizePath(window.location.pathname);
+  const body = document.body;
+  const parentPath = body ? body.getAttribute('data-nav-parent') : null;
+  const currentPath = normalizePath(parentPath || window.location.pathname);
   document.querySelectorAll('[data-nav-links] a').forEach((link) => {
     const href = link.getAttribute('href');
     if (!href || !href.startsWith('/')) return;

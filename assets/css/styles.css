@@ -123,21 +123,60 @@ button:focus-visible,
 .nav-links {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  font-family: var(--font-ui);
-  font-size: var(--text-sm);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+  gap: var(--space-5);
+  font-family: var(--font-body);
+  font-size: 16px;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-weight: 500;
 }
 
 .nav-links a {
-  padding: 6px 0;
-  border-bottom: 2px solid transparent;
+  padding: 4px 0;
+  position: relative;
 }
 
-.nav-links a[aria-current="page"] {
-  border-bottom-color: var(--accent-600);
-  color: var(--ink-900);
+.nav-links a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -6px;
+  height: 1px;
+  background: var(--border);
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+
+.nav-links a:hover::after {
+  opacity: 1;
+  background: var(--ink-700);
+}
+
+.nav-links a[aria-current="page"]::after {
+  opacity: 1;
+  background: var(--accent-600);
+}
+
+.nav-portal {
+  padding: 6px 14px;
+  border: 1px solid var(--accent-600);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  border-radius: var(--radius-sm);
+  color: var(--accent-700);
+  margin-left: var(--space-2);
+}
+
+.nav-portal::after {
+  display: none;
+}
+
+.nav-portal:hover {
+  background: var(--paper-100);
+  color: var(--accent-700);
 }
 
 .nav-cta {
@@ -1040,7 +1079,7 @@ button:focus-visible,
     display: none;
     width: 100%;
     flex-direction: column;
-    gap: var(--space-3);
+    gap: 0;
     padding: var(--space-4) 0;
     border-top: 1px solid var(--border);
   }
@@ -1062,6 +1101,28 @@ button:focus-visible,
   .heading-block--inline {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .nav-links {
+    font-size: 18px;
+  }
+
+  .nav-links a {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .nav-links a::after {
+    display: none;
+  }
+
+  .nav-links a[aria-current="page"] {
+    color: var(--accent-700);
+  }
+
+  .nav-portal {
+    align-self: flex-start;
+    margin-top: var(--space-3);
   }
 }
 

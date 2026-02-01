@@ -1,0 +1,17 @@
+{
+  "lastUpdated": "2026-01-31 5:30 PM",
+  "updatedBy": "Manual",
+  "kilns": [
+    {
+      "name": "L&L eQ2827-3 (Dynatrol)",
+      "state": "Idle",
+      "currentTempF": "72",
+      "targetTempF": "2232",
+      "programName": "Cone 6 Glaze",
+      "segment": "Ramp / Hold",
+      "cone": "6",
+      "eta": "—",
+      "notes": "Next firing announced in the portal."
+    }
+  ]
+}

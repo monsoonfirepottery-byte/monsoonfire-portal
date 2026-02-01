@@ -1,0 +1,72 @@
+[
+  {
+    "question": "What is Monsoon Fire Pottery?",
+    "answer": "<p>Monsoon Fire is a production-first ceramics studio in the West Valley. We operate out of a 2,500 sqft basement studio plus 1,000 sqft of garage and outdoor workspace, built for steady firing and focused making.</p>",
+    "tags": ["studio", "overview", "west-valley"]
+  },
+  {
+    "question": "Who is the studio for?",
+    "answer": "<p>Production potters and serious hobbyists who need dependable firing and workspace. We welcome students, but we are not a large class facility.</p>",
+    "tags": ["studio", "memberships", "classes"]
+  },
+  {
+    "question": "How do I get the address and gate code?",
+    "answer": "<p>We share the exact address and access details through the portal. <a href=\"https://monsoonfire.kilnfire.com/new-user\" target=\"_blank\" rel=\"noopener\">Create a free portal account here</a>.</p>",
+    "tags": ["portal", "logistics"]
+  },
+  {
+    "question": "How do I submit a firing request?",
+    "answer": "<p>Use the portal to submit a firing request and view scheduling windows.</p>",
+    "tags": ["kiln", "portal", "scheduling"]
+  },
+  {
+    "question": "What are the kiln firing prices?",
+    "answer": "<ul><li>Full Kiln (or custom fire) — $60</li><li>Half-Shelf Bisque — $15</li><li>Half-Shelf Glaze — $25</li><li>By Volume — $0.03 per cubic inch</li><li>Delivery — $25 per trip</li></ul>",
+    "tags": ["kiln", "pricing"]
+  },
+  {
+    "question": "How often do you fire?",
+    "answer": "<p>We fire at least once per week and add additional loads when demand is high.</p>",
+    "tags": ["kiln", "scheduling"]
+  },
+  {
+    "question": "What kiln do you use?",
+    "answer": "<p>We fire in an L&amp;L eQ2827-3 electric oxidation kiln with a Dynatrol controller. A reduction kiln is planned for the property.</p>",
+    "tags": ["kiln", "equipment"]
+  },
+  {
+    "question": "Do you load the kiln for me?",
+    "answer": "<p>Yes. Kilns are loaded by studio technicians only, and pieces are tracked through our internal workflow.</p>",
+    "tags": ["kiln", "policies"]
+  },
+  {
+    "question": "What is a day pass?",
+    "answer": "<p>Day passes are $40 and include access to studio equipment and work areas by reservation.</p>",
+    "tags": ["studio", "pricing", "access"]
+  },
+  {
+    "question": "How do memberships work?",
+    "answer": "<p>Membership tiers include A la Carte, Apprentice, Journeyman, and Master. Compare perks on the Memberships page; pricing is published in the portal.</p>",
+    "tags": ["memberships", "pricing"]
+  },
+  {
+    "question": "How do payments work?",
+    "answer": "<p>We process online payments through Stripe. If you need to pay in person, we have a POS for tap card payments.</p>",
+    "tags": ["payments", "portal"]
+  },
+  {
+    "question": "How often are classes offered?",
+    "answer": "<p>Classes are typically offered about once per month. Current listings live in the portal.</p>",
+    "tags": ["classes", "scheduling"]
+  },
+  {
+    "question": "Can you pick up supplies for me?",
+    "answer": "<p>Yes. Members can order supplies through the portal and pick them up during their reservation, or request delivery.</p>",
+    "tags": ["supplies", "memberships"]
+  },
+  {
+    "question": "Do you offer reduction firing?",
+    "answer": "<p>Not yet. A reduction kiln is planned for the property.</p>",
+    "tags": ["kiln", "equipment"]
+  }
+]

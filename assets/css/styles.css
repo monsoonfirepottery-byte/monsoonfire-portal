@@ -116,8 +116,9 @@ button:focus-visible,
 .brand img {
   width: 40px;
   height: 40px;
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   object-fit: cover;
+  background: transparent;
 }
 
 .nav-links {
@@ -395,23 +396,15 @@ button:focus-visible,
 }
 
 .stamp-divider::after {
-  content: "MF";
+  content: "";
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--paper-50);
-  font-family: var(--font-display);
-  font-size: 14px;
-  letter-spacing: 0.2em;
-  color: var(--ink-700);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: url("/assets/images/logo-mark-black.png") center / contain no-repeat;
+  opacity: 0.9;
 }
 
 .feature-grid {

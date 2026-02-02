@@ -3,15 +3,12 @@
   "updatedBy": "Manual",
   "kilns": [
     {
-      "name": "L&L eQ2827-3 (Dynatrol)",
-      "state": "Idle",
-      "currentTempF": "72",
-      "targetTempF": "2232",
-      "programName": "Cone 6 Glaze",
-      "segment": "Ramp / Hold",
-      "cone": "6",
-      "eta": "—",
-      "notes": "Next firing announced in the portal."
+      "name": "L&L eQ2827-3",
+      "controller": "Genesis Touch Screen",
+      "nextFireType": "Cone 6 glaze",
+      "nextFirePlanned": "Next load announced in portal",
+      "readyForPickup": "2+ days after firing",
+      "notes": "All updates are posted in the portal."
     }
   ]
 }

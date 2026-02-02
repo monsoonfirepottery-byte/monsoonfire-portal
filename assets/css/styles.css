@@ -851,6 +851,12 @@ button:focus-visible,
   text-underline-offset: 4px;
 }
 
+.section-divider {
+  height: 1px;
+  background: var(--border);
+  margin: var(--space-5) 0;
+}
+
 .chip-list {
   display: flex;
   flex-wrap: wrap;

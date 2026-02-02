@@ -45,7 +45,7 @@
   const resolveCtaLabel = (href) => {
     if (!href) return null;
     const cleaned = href.toLowerCase();
-    if (cleaned.includes('monsoonfire.kilnfire.com')) return 'portal';
+    if (cleaned.includes('monsoonfire.kilnfire.com')) return 'login';
     if (cleaned.startsWith('mailto:')) return 'email';
     if (cleaned.startsWith('tel:')) return 'phone';
     if (cleaned.includes('discord')) return 'discord';

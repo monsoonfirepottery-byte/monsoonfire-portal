@@ -59,6 +59,24 @@ body {
   line-height: 1.6;
 }
 
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: 0.75rem;
+  padding: 0.5rem 0.85rem;
+  background: var(--surface);
+  color: var(--ink-900);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transform: translateY(-200%);
+  transition: transform 0.2s ease;
+  z-index: 200;
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
 img {
   max-width: 100%;
   display: block;
@@ -257,6 +275,10 @@ button:focus-visible,
   padding: var(--space-7) 0;
 }
 
+.section--tight {
+  padding-top: calc(var(--space-4) * 0.75);
+}
+
 .hero {
   padding-top: var(--space-8);
 }
@@ -280,6 +302,10 @@ button:focus-visible,
 .heading-block {
   max-width: 620px;
   margin-bottom: var(--space-5);
+}
+
+.heading-block--compact {
+  margin-bottom: calc(var(--space-3) * 0.75);
 }
 
 .heading-block--inline {
@@ -857,6 +883,93 @@ button:focus-visible,
   margin: var(--space-5) 0;
 }
 
+.calendar-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.6fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.calendar-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  background: var(--paper-100);
+}
+
+.calendar-panel .section-title {
+  font-size: 22px;
+}
+
+.chip-carousel {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-bottom: var(--space-2);
+  scroll-snap-type: x mandatory;
+}
+
+.chip-carousel--cards {
+  padding: var(--space-2) 0 var(--space-3);
+}
+
+.chip-carousel--cards .chip-card {
+  flex: 0 0 calc((100% - var(--space-2) * 3) / 4);
+  min-width: 220px;
+  padding: var(--space-3);
+  text-transform: none;
+  letter-spacing: 0.02em;
+  scroll-snap-align: start;
+}
+
+.chip-carousel--cards .chip-card summary {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: var(--text-xs);
+  justify-content: space-between;
+}
+
+.chip-carousel--cards .chip-card summary::after {
+  margin-left: auto;
+}
+
+.chip-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  background: var(--paper-100);
+  color: var(--ink-700);
+}
+
+.chip-title {
+  margin-left: var(--space-2);
+  flex: 1;
+}
+
+.chip-card[open] .chip-icon {
+  border-color: rgba(180, 79, 53, 0.4);
+  color: var(--accent-700);
+}
+
+.chip-pill {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  background: var(--surface-0);
+  color: var(--ink-800);
+  scroll-snap-align: start;
+}
+
 .chip-list {
   display: flex;
   flex-wrap: wrap;
@@ -1041,6 +1154,11 @@ button:focus-visible,
   padding: var(--space-5);
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
+}
+
+.card--flush {
+  padding: 0;
+  overflow: hidden;
 }
 
 .card h3 {
@@ -1261,6 +1379,22 @@ button:focus-visible,
   color: rgba(247, 241, 232, 0.7);
 }
 
+.footer-note {
+  font-size: var(--text-xs);
+  color: rgba(247, 241, 232, 0.7);
+}
+
+.footer .button {
+  color: var(--paper-50);
+  border-color: rgba(247, 241, 232, 0.4);
+}
+
+.footer .button:hover {
+  color: var(--paper-50);
+  border-color: rgba(247, 241, 232, 0.7);
+  background: rgba(247, 241, 232, 0.08);
+}
+
 @media (max-width: 980px) {
   .navbar {
     grid-template-columns: auto 1fr auto;
@@ -1322,8 +1456,13 @@ button:focus-visible,
 
 @media (max-width: 900px) {
   .hero-grid,
-  .workflow-grid {
+  .workflow-grid,
+  .calendar-grid {
     grid-template-columns: 1fr;
+  }
+
+  .chip-carousel--cards .chip-card {
+    flex: 0 0 calc((100% - var(--space-2)) / 2);
   }
 
   .photo-strip {
@@ -1338,6 +1477,10 @@ button:focus-visible,
 @media (max-width: 640px) {
   .hero-title {
     font-size: 44px;
+  }
+
+  .chip-carousel--cards .chip-card {
+    flex: 0 0 80%;
   }
 
   .cta-row {

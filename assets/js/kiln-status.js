@@ -3,54 +3,22 @@
   const updated = document.querySelector('[data-kiln-updated]');
   if (!list) return;
 
-  const stateClass = (state) => {
-    const key = String(state || '').toLowerCase();
-    if (!key) return 'state-idle';
-    if (key.includes('heat')) return 'state-heating';
-    if (key.includes('hold')) return 'state-holding';
-    if (key.includes('cool')) return 'state-cooling';
-    if (key.includes('off')) return 'state-offline';
-    if (key.includes('idle')) return 'state-idle';
-    return 'state-idle';
-  };
-
   const renderKiln = (kiln) => {
-    const state = kiln.state || 'Idle';
-    const temp = kiln.currentTempF ? `${kiln.currentTempF}°F` : '—';
-    const target = kiln.targetTempF ? `${kiln.targetTempF}°F` : '—';
-    const program = kiln.programName || '—';
-    const segment = kiln.segment || '—';
-    const cone = kiln.cone || '—';
-    const eta = kiln.eta || '—';
+    const controller = kiln.controller || '—';
+    const nextFireType = kiln.nextFireType || '—';
+    const planned = kiln.nextFirePlanned || '—';
+    const ready = kiln.readyForPickup || '—';
     const notes = kiln.notes || '';
 
     return `
-      <div>
-        <div class="status-pill ${stateClass(state)}">${state}</div>
-        <div style="margin-top: 10px; font-weight: 600;">${kiln.name || 'Kiln'}</div>
-        <div style="font-size: 14px; margin-top: 6px;">${program}</div>
+      <div class="kiln-info">
+        <div class="kiln-name">${kiln.name || 'Kiln'}</div>
+        <div class="kiln-detail"><span>Controller</span><strong>${controller}</strong></div>
+        <div class="kiln-detail"><span>Next fire</span><strong>${nextFireType}</strong></div>
+        <div class="kiln-detail"><span>Planned</span><strong>${planned}</strong></div>
+        <div class="kiln-detail"><span>Ready for pickup</span><strong>${ready}</strong></div>
+        ${notes ? `<div class="kiln-notes">${notes}</div>` : ''}
       </div>
-      <div>
-        <div class="status-label">Current</div>
-        <div style="font-size: 18px; font-weight: 600;">${temp}</div>
-      </div>
-      <div>
-        <div class="status-label">Target</div>
-        <div style="font-size: 18px; font-weight: 600;">${target}</div>
-      </div>
-      <div>
-        <div class="status-label">Segment</div>
-        <div style="font-size: 14px;">${segment}</div>
-      </div>
-      <div>
-        <div class="status-label">Cone</div>
-        <div style="font-size: 14px;">${cone}</div>
-      </div>
-      <div>
-        <div class="status-label">ETA</div>
-        <div style="font-size: 14px;">${eta}</div>
-      </div>
-      <div style="grid-column: 1 / -1; font-size: 13px; opacity: 0.8;">${notes}</div>
     `;
   };
 

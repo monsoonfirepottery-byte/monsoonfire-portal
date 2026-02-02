@@ -32,4 +32,30 @@
       }
     });
   }
+
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const carousels = document.querySelectorAll('[data-auto-rotate="true"]');
+  carousels.forEach((carousel) => {
+    if (prefersReducedMotion) return;
+    const items = carousel.querySelectorAll('.chip-card');
+    if (!items.length) return;
+    const getGap = () => {
+      const styles = window.getComputedStyle(carousel);
+      return parseFloat(styles.columnGap || styles.gap || '0');
+    };
+    const tick = () => {
+      if (carousel.matches(':hover') || carousel.matches(':focus-within')) return;
+      const gap = getGap();
+      const itemWidth = items[0].offsetWidth + gap;
+      const perView = Math.max(1, Math.round(carousel.clientWidth / itemWidth));
+      const scrollBy = itemWidth * perView;
+      const maxScroll = carousel.scrollWidth - carousel.clientWidth;
+      if (carousel.scrollLeft + scrollBy >= maxScroll - 4) {
+        carousel.scrollTo({ left: 0, behavior: 'smooth' });
+      } else {
+        carousel.scrollBy({ left: scrollBy, behavior: 'smooth' });
+      }
+    };
+    setInterval(tick, 4500);
+  });
 })();

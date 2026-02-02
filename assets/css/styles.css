@@ -98,6 +98,12 @@ button:focus-visible,
   outline-offset: 3px;
 }
 
+.meta {
+  margin: 0.35rem 0 0;
+  font-size: var(--text-sm);
+  color: var(--ink-500);
+}
+
 .container {
   width: min(var(--max-width), 100% - 2 * var(--gutter));
   margin: 0 auto;

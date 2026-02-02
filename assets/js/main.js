@@ -33,6 +33,30 @@
     });
   }
 
+  const resolveCtaLabel = (href) => {
+    if (!href) return null;
+    if (href.includes('monsoonfire.kilnfire.com')) return 'portal';
+    if (href.startsWith('/kiln-firing')) return 'kiln_rentals';
+    if (href.startsWith('/services/#studio-resources')) return 'studio_resources';
+    if (href.startsWith('/services/#community') || href.startsWith('/faq')) return 'community_hub';
+    return null;
+  };
+
+  document.addEventListener('click', (event) => {
+    const link = event.target && event.target.closest ? event.target.closest('a') : null;
+    if (!link) return;
+    if (!link.classList.contains('button') && !link.classList.contains('nav-portal')) return;
+    const href = link.getAttribute('href');
+    const label = resolveCtaLabel(href);
+    if (!label || typeof window.gtag !== 'function') return;
+    window.gtag('event', 'cta_click', {
+      event_category: 'engagement',
+      event_label: label,
+      cta_text: link.textContent.trim(),
+      page_path: window.location.pathname,
+    });
+  });
+
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const carousels = document.querySelectorAll('[data-auto-rotate="true"]');
   carousels.forEach((carousel) => {

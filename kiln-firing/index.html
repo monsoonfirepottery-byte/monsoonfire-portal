@@ -118,7 +118,27 @@
           <p class="hero-note">Why this kiln: Dynamic Zone Control and quad elements keep heat even, hard ceramic element channels protect the interior, and the Genesis touch screen with the Kiln Aid app makes monitoring straightforward.</p>
         </div>
         <div class="media-frame">
-          <img loading="lazy" src="/assets/images/kiln-interior.jpg" alt="Kiln interior with stacked shelves" />
+          <picture>
+            <source
+              type="image/avif"
+              srcset="/assets/images/kiln-interior-800.avif 800w, /assets/images/kiln-interior-1200.avif 1200w, /assets/images/kiln-interior-1600.avif 1600w"
+              sizes="(min-width: 1100px) 480px, (min-width: 700px) 45vw, 90vw"
+            />
+            <source
+              type="image/webp"
+              srcset="/assets/images/kiln-interior-800.webp 800w, /assets/images/kiln-interior-1200.webp 1200w, /assets/images/kiln-interior-1600.webp 1600w"
+              sizes="(min-width: 1100px) 480px, (min-width: 700px) 45vw, 90vw"
+            />
+            <img
+              loading="lazy"
+              src="/assets/images/kiln-interior-800.jpg"
+              srcset="/assets/images/kiln-interior-800.jpg 800w, /assets/images/kiln-interior-1200.jpg 1200w, /assets/images/kiln-interior-1600.jpg 1600w"
+              sizes="(min-width: 1100px) 480px, (min-width: 700px) 45vw, 90vw"
+              width="3024"
+              height="4032"
+              alt="Kiln interior with stacked shelves"
+            />
+          </picture>
         </div>
       </div>
     </section>

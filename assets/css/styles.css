@@ -109,7 +109,7 @@ button:focus-visible,
   gap: var(--space-3);
   font-family: var(--font-display);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   font-size: 22px;
   color: var(--ink-900);
 }
@@ -211,7 +211,7 @@ button:focus-visible,
   font-size: var(--text-sm);
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
 }
@@ -261,6 +261,10 @@ button:focus-visible,
   padding-top: var(--space-8);
 }
 
+.hero--home {
+  padding-top: var(--space-5);
+}
+
 .section--band {
   background: var(--paper-100);
   border-top: 1px solid var(--border);
@@ -293,6 +297,25 @@ button:focus-visible,
   letter-spacing: 0.22em;
   color: var(--ink-500);
   margin: 0 0 var(--space-2);
+}
+
+.eyebrow-rare {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  color: var(--ink-700);
+  letter-spacing: 0.32em;
+}
+
+.eyebrow-rare::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%23b44f35' d='M1 1h8l2 2-2 1 1 4-2 3H4L2 9l1-3-2-2 0-3z'/%3E%3C/svg%3E") center / contain no-repeat;
+  display: inline-block;
 }
 
 .section-title {
@@ -470,14 +493,79 @@ button:focus-visible,
   box-shadow: var(--shadow-1);
 }
 
+.kiln-board--compact {
+  padding: var(--space-4);
+  background: var(--paper-100);
+  box-shadow: none;
+}
+
+.kiln-board--compact .heading-block {
+  margin-bottom: var(--space-3);
+}
+
+.kiln-board--compact .section-title {
+  font-size: 24px;
+}
+
+.kiln-board--compact .kiln-status {
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+}
+
 .kiln-status {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: var(--space-4);
-  padding: var(--space-5) 0;
+  padding: var(--space-4) 0;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   font-family: var(--font-ui);
+}
+
+.kiln-info {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.kiln-info + .kiln-info {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.kiln-name {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+
+.kiln-detail {
+  display: grid;
+  gap: 2px;
+  font-size: var(--text-sm);
+  color: var(--ink-700);
+}
+
+.kiln-detail span {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+  color: var(--ink-500);
+}
+
+.kiln-detail strong {
+  font-weight: 600;
+  color: var(--ink-900);
+}
+
+.kiln-notes {
+  font-size: 13px;
+  color: var(--ink-700);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-2);
 }
 
 .status-pill {
@@ -533,9 +621,15 @@ button:focus-visible,
 
 .workflow-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.2fr) minmax(0, 0.6fr);
   gap: var(--space-6);
   align-items: start;
+}
+
+.workflow-aside {
+  display: grid;
+  gap: var(--space-5);
+  align-content: start;
 }
 
 .steps {
@@ -592,11 +686,16 @@ button:focus-visible,
   gap: var(--space-4);
 }
 
+.metrics-wide {
+  grid-column: 1 / -1;
+}
+
 .metrics span {
   font-family: var(--font-ui);
   font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.02em;
+  font-weight: 700;
   color: var(--ink-500);
 }
 
@@ -610,6 +709,23 @@ button:focus-visible,
   margin: 0;
   font-size: var(--text-sm);
   color: var(--ink-700);
+}
+
+.metrics-header {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.metrics-header .eyebrow {
+  margin-bottom: var(--space-1);
+}
+
+.metrics-title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-family: var(--font-body);
+  color: var(--ink-900);
 }
 
 .metrics-note {
@@ -652,7 +768,7 @@ button:focus-visible,
 }
 
 .membership-table tbody th {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--ink-900);
   width: 18%;
 }
@@ -700,6 +816,10 @@ button:focus-visible,
   gap: var(--space-3);
 }
 
+.meta-grid--stack {
+  grid-template-columns: 1fr;
+}
+
 .meta-grid li {
   border-top: 1px solid var(--border);
   padding-top: var(--space-2);
@@ -729,6 +849,66 @@ button:focus-visible,
   color: var(--accent-600);
   text-decoration: underline;
   text-underline-offset: 4px;
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-0);
+  padding: 6px 10px;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-800);
+  cursor: pointer;
+}
+
+.chip summary {
+  list-style: none;
+  outline: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.chip summary::-webkit-details-marker {
+  display: none;
+}
+
+.chip summary::after {
+  content: "+";
+  font-size: 14px;
+  color: var(--ink-500);
+}
+
+.chip[open] {
+  border-color: rgba(180, 79, 53, 0.4);
+  background: var(--paper-100);
+}
+
+.chip[open] summary {
+  color: var(--ink-900);
+}
+
+.chip[open] summary::after {
+  content: "-";
+  color: var(--ink-700);
+}
+
+.chip-body {
+  margin-top: 6px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  color: var(--ink-700);
 }
 
 .form-grid {
@@ -974,7 +1154,7 @@ button:focus-visible,
 }
 
 .accordion-title {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .accordion-meta {
@@ -1064,7 +1244,7 @@ button:focus-visible,
   font-family: var(--font-display);
   font-size: 22px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
 }
 
 .footer-title {
@@ -1180,7 +1360,6 @@ button:focus-visible,
   .metrics {
     grid-template-columns: 1fr;
   }
-
   .form-grid {
     grid-template-columns: 1fr;
   }

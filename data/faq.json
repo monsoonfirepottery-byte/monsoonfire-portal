@@ -6,8 +6,8 @@
   },
   {
     "question": "Who is the studio for?",
-    "answer": "<p>Production potters and serious hobbyists who need dependable firing and workspace. We welcome students, but we are not a large class facility.</p>",
-    "tags": ["studio", "memberships", "classes"]
+    "answer": "<p>Production potters and serious hobbyists who need dependable firing and workspace. We welcome students, but we are not a large teaching studio.</p>",
+    "tags": ["studio", "memberships", "workshops"]
   },
   {
     "question": "How do I get the address and gate code?",
@@ -21,8 +21,13 @@
   },
   {
     "question": "What are the kiln firing prices?",
-    "answer": "<ul><li>Full Kiln (or custom fire) — $60</li><li>Half-Shelf Bisque — $15</li><li>Half-Shelf Glaze — $25</li><li>By Volume — $0.03 per cubic inch</li><li>Delivery — $25 per trip</li></ul>",
+    "answer": "<p>Half shelf = about a carry-on suitcase laid flat. Tall pieces need clearance; handles waste space; stacks are more efficient.</p><ul><li>Full Kiln (or custom fire) — $60</li><li>Half-Shelf Bisque — $15</li><li>Half-Shelf Glaze — $25</li><li>By Volume — $0.03 per cubic inch</li><li>Delivery — $25 per trip</li></ul>",
     "tags": ["kiln", "pricing"]
+  },
+  {
+    "question": "How do I estimate how many half shelves I need?",
+    "answer": "<p>If your work fits laid flat inside a carry-on, that is about one half shelf. Tall pieces need clearance; handles/irregular shapes waste space; stacks (like plates) are more efficient.</p>",
+    "tags": ["kiln", "pricing", "scheduling"]
   },
   {
     "question": "How often do you fire?",
@@ -55,9 +60,9 @@
     "tags": ["payments", "portal"]
   },
   {
-    "question": "How often are classes offered?",
-    "answer": "<p>Classes are typically offered about once per month. Current listings live in the portal.</p>",
-    "tags": ["classes", "scheduling"]
+    "question": "How often are workshops offered?",
+    "answer": "<p>Workshops are typically offered about once per month. Current listings live in the portal.</p>",
+    "tags": ["workshops", "scheduling"]
   },
   {
     "question": "Can you pick up supplies for me?",

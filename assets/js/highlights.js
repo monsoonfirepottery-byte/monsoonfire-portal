@@ -121,59 +121,10 @@
         .join('');
     }
 
-    const nextUp = document.querySelector('[data-next-up]');
-    if (nextUp) {
-      const labelEl = document.querySelector('[data-next-up-label]');
-      if (upcoming) {
-        const monthLabel = upcoming.month || getMonthLabel(upcoming.start) || 'Upcoming';
-        const meta = `${upcoming.focus ? upcoming.focus : 'Pottery'}${upcoming.location ? ` · ${upcoming.location}` : ''}`;
-        setText('[data-next-up-month]', monthLabel);
-        setText('[data-next-up-name]', upcoming.name || 'Upcoming potter');
-        setText('[data-next-up-meta]', meta);
-        setImage('[data-next-up-image]', upcoming.image || '/assets/images/finished-work.jpg', upcoming.imageAlt || `Work by ${upcoming.name || 'upcoming potter'}`);
-        if (labelEl) {
-          labelEl.textContent = monthLabel;
-        }
-      } else {
-        setText('[data-next-up-month]', 'Upcoming');
-        setText('[data-next-up-name]', 'To be announced');
-        setText('[data-next-up-meta]', 'Schedule a feature through the portal.');
-        setImage('[data-next-up-image]', '/assets/images/finished-work.jpg', 'Upcoming potter work');
-        if (labelEl) {
-          labelEl.textContent = 'Next up';
-        }
-      }
-    }
-
-    const form = document.querySelector('[data-nomination-form]');
-    if (form && data.nominationEmail) {
-      form.dataset.email = data.nominationEmail;
-    }
-  };
-
-  const bindNominationForm = () => {
-    const form = document.querySelector('[data-nomination-form]');
-    if (!form) return;
-
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      const data = new FormData(form);
-      const name = data.get('name') || '';
-      const email = data.get('email') || '';
-      const potter = data.get('potter') || '';
-      const links = data.get('links') || '';
-      const note = data.get('note') || '';
-      const body = `Name: ${name}\nEmail: ${email}\nPotter: ${potter}\nLinks: ${links}\n\nWhy: ${note}`;
-      const subject = 'Potter of the Month Nomination';
-      const recipient = form.dataset.email || 'support@monsoonfire.com';
-      window.location.href = `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    });
   };
 
   fetch('/data/highlights.json', { cache: 'no-store' })
     .then((res) => (res.ok ? res.json() : null))
     .then(updateHighlights)
     .catch(() => {});
-
-  bindNominationForm();
 })();

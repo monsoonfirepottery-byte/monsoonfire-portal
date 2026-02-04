@@ -219,23 +219,71 @@ Record:
 
 ### Ownership (edit this list)
 
-- web/src/App.tsx: (unclaimed)
-- web/src/App.css: (unclaimed)
-- web/src/views/MyPiecesView.tsx: (unclaimed)
-- web/src/views/DashboardView.tsx: (unclaimed)
+- web/src/App.tsx: [Codex] claimed 2026-02-03 17:49 for kiln rentals overview
+- web/src/App.css: [Codex] claimed 2026-02-03 17:49 for dashboard embers
+- web/src/views/MyPiecesView.tsx: [Cdx] claimed 2026-01-26 13:08 for pieces workflow
+- web/src/views/DashboardView.tsx: [Codex] claimed 2026-02-03 17:49 for dashboard embers
+- web/src/views/KilnRentalsView.tsx: [Codex] claimed 2026-02-03 17:49 for kiln rentals overview
+- web/src/views/KilnRentalsView.css: [Codex] claimed 2026-02-03 17:49 for kiln rentals overview
+- web/src/views/StudioResourcesView.tsx: [Codex] claimed 2026-02-04 10:10 for studio resources overview
+- web/src/views/StudioResourcesView.css: [Codex] claimed 2026-02-04 10:10 for studio resources overview
 - web/src/views/MessagesView.tsx: (unclaimed)
 - web/src/views/EventsView.tsx: (unclaimed)
 - web/src/views/MaterialsView.tsx: (unclaimed)
-- web/src/views/BillingView.tsx: (unclaimed)
+- web/src/views/BillingView.tsx: [Codex] claimed 2026-02-04 10:32 for store rename follow-up
 - web/src/views/ReservationsView.tsx: (unclaimed)
-- web/src/firebase.ts: (unclaimed)
+- web/src/views/ReservationsView.tsx: [Codex] claimed 2026-02-03 01:14 for work submission renaming
+- web/src/views/LendingLibraryView.tsx: [Codex] claimed 2026-02-03 01:14 for lending library feature
+- web/src/views/LendingLibraryView.css: [Codex] claimed 2026-02-03 01:14 for lending library feature
+- web/src/views/CommunityView.tsx: [Codex] claimed 2026-02-03 01:14 for community overview updates
+- web/src/views/CommunityView.css: [Codex] claimed 2026-02-03 01:14 for community overview updates
+- web/src/views/KilnLaunchView.tsx: [Codex] claimed 2026-02-03 17:04 for nav availability update
+- web/src/views/KilnLaunchView.css: [Codex] claimed 2026-02-03 18:10 for kiln image integration
+- web/src/views/EventsView.css: (unclaimed)
+- web/src/views/MaterialsView.css: (unclaimed)
+- web/src/views/ReservationsView.css: (unclaimed)
+- web/src/views/SupportView.css: (unclaimed)
+- web/src/views/BillingView.css: (unclaimed)
+- web/src/views/ProfileView.css: (unclaimed)
+- web/src/views/KilnScheduleView.css: (unclaimed)
+- web/src/views/KilnScheduleView.tsx: [Codex] claimed 2026-02-03 01:14 for kiln schedule updates
+- web/src/views/MembershipView.css: (unclaimed)
+- web/src/views/SupportView.tsx: (unclaimed)
+- web/src/firebase.ts: [Cdx] claimed 2026-01-26 13:39 for emulator auth wiring
 - web/src/index.css: (unclaimed)
+- web/src/theme/themes.ts: (unclaimed)
+- web/src/data/kilnScheduleMock.ts: [Codex] claimed 2026-02-03 01:14 for kiln schedule updates
 - functions/src/createReservation.ts: (unclaimed)
 - docs/API_CONTRACTS.md: (unclaimed)
+- functions/scripts/seedEmulator.js: [Cdx] claimed 2026-01-26 14:04 for local emulator seed
+- firestore.rules: [Cdx] claimed 2026-01-26 23:16 for collection meta updates
 
 ### Coordination log
 
+- 2026-02-03 17:49 — [Codex] claimed `web/src/views/KilnRentalsView.tsx`, `web/src/views/KilnRentalsView.css`, and `web/src/App.tsx` for kiln rentals overview
+- 2026-02-03 17:49 — [Codex] claimed `web/src/views/DashboardView.tsx` and `web/src/App.css` for dashboard embers
+- 2026-02-03 17:26 — [Codex] claimed `web/src/views/DashboardView.tsx` and `web/src/App.css` for dashboard emphasis
+- 2026-02-03 17:26 — [Codex] claimed `web/src/App.tsx` and `web/src/App.css` for profile card spacing
+- 2026-02-03 17:04 — [Codex] claimed `web/src/views/KilnLaunchView.tsx` for nav availability update
+- 2026-02-03 16:55 — [Codex] claimed `web/src/App.tsx` and `web/src/App.css` for nav section collapse
 - 2026-01-26 00:57 — [Cdx] released claims on web/src/App.tsx, web/src/App.css, web/src/views/MyPiecesView.tsx, web/src/views/DashboardView.tsx, web/src/views/MessagesView.tsx, web/src/views/EventsView.tsx, web/src/views/MaterialsView.tsx, web/src/views/BillingView.tsx, web/src/views/ReservationsView.tsx, web/src/firebase.ts, web/src/index.css
+- 2026-02-03 15:45 — [Codex] claimed `web/src/views/EventsView.css`, `web/src/views/MaterialsView.css`, `web/src/views/ReservationsView.css`, `web/src/views/SupportView.css`, and `web/src/views/BillingView.css` for portal visual harmonization
+- 2026-02-03 16:05 — [Codex] claimed `web/src/views/ProfileView.css`, `web/src/views/KilnScheduleView.css`, and `web/src/views/MembershipView.css` for portal visual harmonization
+- 2026-02-03 16:20 — [Codex] released claims on `web/src/views/EventsView.css`, `web/src/views/MaterialsView.css`, `web/src/views/ReservationsView.css`, `web/src/views/SupportView.css`, `web/src/views/BillingView.css`, `web/src/views/ProfileView.css`, `web/src/views/KilnScheduleView.css`, and `web/src/views/MembershipView.css`
+- 2026-02-03 16:40 — [Codex] claimed `web/src/views/KilnLaunchView.tsx` and `web/src/views/KilnLaunchView.css` for kiln launch page
+- 2026-02-03 16:40 — [Codex] claimed `web/src/App.tsx` and `web/src/App.css` for kiln launch page integration
+- 2026-02-03 17:10 — [Codex] released claims on `web/src/App.tsx`, `web/src/App.css`, `web/src/views/KilnLaunchView.tsx`, and `web/src/views/KilnLaunchView.css`
+- 2026-02-03 17:35 — [Codex] claimed `web/src/App.tsx`, `web/src/App.css`, `web/src/views/KilnLaunchView.tsx`, and `web/src/views/KilnLaunchView.css` for kiln launch staff controls + kiln styling
+- 2026-02-03 17:55 — [Codex] released claims on `web/src/App.tsx`, `web/src/App.css`, `web/src/views/KilnLaunchView.tsx`, and `web/src/views/KilnLaunchView.css`
+- 2026-02-03 18:10 — [Codex] claimed `web/src/views/KilnLaunchView.tsx` and `web/src/views/KilnLaunchView.css` for kiln image integration
+- 2026-02-03 18:35 — [Codex] claimed `web/src/App.tsx`, `web/src/views/DashboardView.tsx`, and `web/src/views/SupportView.tsx` for workshop rename
+- 2026-02-03 18:55 — [Codex] claimed `web/src/App.tsx`, `web/src/App.css`, and `web/src/views/DashboardView.tsx` for nav restructure
+- 2026-02-03 19:10 — [Codex] released claims on `web/src/App.tsx`, `web/src/App.css`, and `web/src/views/DashboardView.tsx`
+- 2026-02-03 01:14 — [Codex] claimed `web/src/App.tsx` and `web/src/views/DashboardView.tsx` for dashboard hero actions
+- 2026-02-03 01:14 — [Codex] claimed `web/src/views/KilnScheduleView.tsx` and `web/src/data/kilnScheduleMock.ts` for kiln schedule updates
+- 2026-02-03 01:14 — [Codex] claimed `web/src/views/ReservationsView.tsx` for work submission renaming
+- 2026-02-03 01:14 — [Codex] claimed `web/src/views/LendingLibraryView.tsx`, `web/src/views/LendingLibraryView.css`, `web/src/views/CommunityView.tsx`, and `web/src/views/CommunityView.css` for lending library + community overview
+- 2026-02-03 01:14 — [Codex] updated `firestore.rules` for library collections (note: file previously claimed by [Cdx])
 - 2026-01-25 22:20 — [Cdx] claimed `web/src/views/MyPiecesView.tsx` and `web/src/App.css` for batch card hierarchy
 - 2026-01-25 22:30 — [Cdx] claimed `web/src/App.css` for timeline readability upgrade
 - 2026-01-25 22:36 — [Cdx] claimed `web/src/firebase.ts` for emulator wiring (continueJourney visibility)
@@ -247,4 +295,11 @@ Record:
 - 2026-01-25 22:06 — [Cdx] claimed `web/src/views/ReservationsView.tsx` and `web/src/views/ReservationsView.css` for action clarity pass
 - 2026-01-25 22:01 — [Cdx] claimed `web/src/App.tsx` and `web/src/theme/themes.ts` for theme token integration
 - 2026-01-25 21:57 — [Cdx] claimed `web/src/App.css` for responsive sanity pass
+- 2026-01-26 23:38 — [Cdx] claimed `web/src/views/MyPiecesView.tsx`, `web/src/App.css`, and `firebase.json` for wares split view + emulator auth config
+- 2026-01-26 23:44 — [Cdx] claimed `functions/src/index.ts` and `web/src/views/MyPiecesView.tsx` for client collection creation
+- 2026-01-26 23:53 — [Cdx] claimed TypeScript build fixes across `web/src/App.tsx`, `web/src/views/MessagesView.tsx`, `web/src/views/ReservationsView.tsx`, `web/src/theme/themes.ts`, and unused React import cleanup in related views/components
+- 2026-01-27 00:13 — [Cdx] claimed `functions/src/index.ts` for createBatch CORS preflight fix
+- 2026-01-27 00:18 — [Cdx] claimed `firestore.rules` and `functions/src/index.ts` for batch editors rule + createBatch editors field
+- 2026-02-03 14:40 — [Codex] claimed `web/src/App.css`, `web/src/index.css`, and `web/src/theme/themes.ts` for portal visual harmonization
+- 2026-02-03 15:30 — [Codex] released claims on `web/src/App.css`, `web/src/index.css`, and `web/src/theme/themes.ts`
 - YYYY-MM-DD HH:MM — [agent] claimed [file] for [task]

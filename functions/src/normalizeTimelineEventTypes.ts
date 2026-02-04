@@ -1,4 +1,5 @@
 import { onRequest } from "firebase-functions/v2/https";
+import { z } from "zod";
 
 import {
   applyCors,
@@ -7,6 +8,8 @@ import {
   requireAdmin,
   requireAuthUid,
   safeString,
+  enforceRateLimit,
+  parseBody,
 } from "./shared";
 
 const REGION = "us-central1";
@@ -16,6 +19,12 @@ const LEGACY_TYPE_MAP: Record<string, string> = {
   SUBMITTED: "SUBMIT_DRAFT",
   PICKED_UP_AND_CLOSED: "PICKED_UP_AND_CLOSE",
 };
+
+const normalizeSchema = z.object({
+  batchId: z.string().optional(),
+  dryRun: z.boolean().optional(),
+  limit: z.number().int().min(1).max(500).optional(),
+});
 
 export const normalizeTimelineEventTypes = onRequest(
   { region: REGION, timeoutSeconds: 60 },
@@ -33,13 +42,31 @@ export const normalizeTimelineEventTypes = onRequest(
       return;
     }
 
-    const admin = requireAdmin(req);
+    const admin = await requireAdmin(req);
     if (!admin.ok) {
-      res.status(401).json({ ok: false, message: admin.message });
+      res.status(403).json({ ok: false, message: "Forbidden" });
       return;
     }
 
-    const body = req.body ?? {};
+    const parsed = parseBody(normalizeSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const rate = enforceRateLimit({
+      req,
+      key: "normalizeTimelineEventTypes",
+      max: 2,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    const body = parsed.data;
     const batchId = safeString(body.batchId);
     const dryRun = !!body.dryRun;
     const limit = Math.min(Math.max(asInt(body.limit, 200), 1), 500);

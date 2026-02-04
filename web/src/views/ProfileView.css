@@ -32,7 +32,7 @@
 }
 
 .membership-meta {
-  border-top: 1px solid var(--border-soft);
+  border-top: 1px solid var(--border);
   padding-top: 12px;
 }
 
@@ -47,7 +47,7 @@
 .profile-form input {
   border-radius: 12px;
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--surface);
   color: var(--text);
   padding: 10px 12px;
 }
@@ -69,8 +69,8 @@
   margin: 0;
   padding: 10px 12px;
   border-radius: 12px;
-  background: rgba(255, 139, 84, 0.16);
-  border: 1px solid rgba(255, 139, 84, 0.35);
+  background: rgba(180, 79, 53, 0.12);
+  border: 1px solid var(--accent);
 }
 
 .profile-history-card .chips {
@@ -84,7 +84,7 @@
   padding: 4px 10px;
   border-radius: 999px;
   background: var(--surface-2);
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
   font-size: 12px;
 }
 

@@ -2,14 +2,216 @@ rules_version='2'
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isStaff() {
+      return isSignedIn()
+        && (
+          request.auth.token.staff == true
+          || (
+            request.auth.token.roles is list
+            && request.auth.token.roles.hasAny(["staff"])
+          )
+        );
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function hasOnlyKeys(keys) {
+      return request.resource.data.keys().hasOnly(keys);
+    }
+
+    function changedKeysOnly(keys) {
+      return request.resource.data.diff(resource.data).changedKeys().hasOnly(keys);
+    }
+
+    function isNonEmptyString(value) {
+      return value is string && value.size() > 0;
+    }
+
+    function isStage(value) {
+      return value is string
+        && ["GREENWARE", "BISQUE", "GLAZED", "FINISHED", "HOLD", "UNKNOWN"].hasAny([value]);
+    }
+
+    function isWareCategory(value) {
+      return value is string
+        && ["STONEWARE", "EARTHENWARE", "PORCELAIN", "RAKU", "OTHER", "UNKNOWN"].hasAny([value]);
+    }
+
+    function isFiringType(value) {
+      return value is string && ["bisque", "glaze", "other"].hasAny([value]);
+    }
+
+    function isShelfEquivalent(value) {
+      return value is number && [0.25, 0.5, 1.0].hasAny([value]);
+    }
+
+    function isBatchOwner(batchId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/batches/$(batchId))
+        && (
+          get(/databases/$(database)/documents/batches/$(batchId)).data.ownerUid == request.auth.uid
+          || (
+            get(/databases/$(database)/documents/batches/$(batchId)).data.editors is list
+            && get(/databases/$(database)/documents/batches/$(batchId)).data.editors.hasAny([request.auth.uid])
+          )
+        );
+    }
+
+    function canReadBatch(batchId) {
+      return isBatchOwner(batchId) || isStaff();
+    }
+
+    function isThreadParticipant(threadId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/directMessages/$(threadId))
+        && (
+          get(/databases/$(database)/documents/directMessages/$(threadId)).data.participantUids is list
+          && get(/databases/$(database)/documents/directMessages/$(threadId)).data.participantUids.hasAny([request.auth.uid])
+        );
+    }
+
+    match /batches/{batchId} {
+      allow read: if isStaff()
+        || (isSignedIn() && resource.data.ownerUid == request.auth.uid);
+      allow update: if isStaff()
+        || (
+          isSignedIn()
+          && resource.data.ownerUid == request.auth.uid
+          && request.resource.data.ownerUid == resource.data.ownerUid
+          && changedKeysOnly(["collectionName", "collectionDesc", "updatedAt"])
+        );
+      allow create, delete: if false;
+
+      match /timeline/{eventId} {
+        allow read: if canReadBatch(batchId);
+        allow write: if false;
+      }
+    }
+
+    match /batches/{batchId}/pieces/{pieceId} {
+      allow read: if canReadBatch(batchId);
+      allow create: if canReadBatch(batchId)
+        && hasOnlyKeys([
+          "pieceCode",
+          "shortDesc",
+          "ownerName",
+          "stage",
+          "wareCategory",
+          "isArchived",
+          "createdAt",
+          "updatedAt"
+        ])
+        && isNonEmptyString(request.resource.data.pieceCode)
+        && isNonEmptyString(request.resource.data.shortDesc)
+        && isNonEmptyString(request.resource.data.ownerName)
+        && isStage(request.resource.data.stage)
+        && isWareCategory(request.resource.data.wareCategory)
+        && request.resource.data.isArchived is bool
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+      allow update: if canReadBatch(batchId)
+        && changedKeysOnly(["shortDesc", "ownerName", "stage", "wareCategory", "isArchived", "updatedAt"])
+        && request.resource.data.pieceCode == resource.data.pieceCode
+        && request.resource.data.createdAt == resource.data.createdAt
+        && isNonEmptyString(request.resource.data.shortDesc)
+        && isNonEmptyString(request.resource.data.ownerName)
+        && isStage(request.resource.data.stage)
+        && isWareCategory(request.resource.data.wareCategory)
+        && request.resource.data.isArchived is bool
+        && request.resource.data.updatedAt is timestamp;
+      allow delete: if false;
+
+      match /clientNotes/{noteId} {
+        allow read: if canReadBatch(batchId);
+        allow create: if (
+          isStaff()
+          || (
+            isBatchOwner(batchId)
+            && request.resource.data.authorUid == request.auth.uid
+            && hasOnlyKeys(["text", "at", "authorUid", "authorName", "searchTokens"])
+            && isNonEmptyString(request.resource.data.text)
+            && request.resource.data.at is timestamp
+          )
+        );
+        allow update: if (
+          isStaff()
+          || (
+            isBatchOwner(batchId)
+            && resource.data.authorUid == request.auth.uid
+            && changedKeysOnly(["text", "updatedAt", "searchTokens"])
+            && isNonEmptyString(request.resource.data.text)
+            && request.resource.data.updatedAt is timestamp
+          )
+        );
+        allow delete: if false;
+      }
+
+      match /studioNotes/{noteId} {
+        allow read: if canReadBatch(batchId);
+        allow create: if isStaff()
+          && hasOnlyKeys(["text", "at", "authorUid", "authorName", "searchTokens"])
+          && isNonEmptyString(request.resource.data.text)
+          && request.resource.data.at is timestamp;
+        allow update: if isStaff()
+          && changedKeysOnly(["text", "updatedAt", "searchTokens"])
+          && isNonEmptyString(request.resource.data.text)
+          && request.resource.data.updatedAt is timestamp;
+        allow delete: if false;
+      }
+
+      match /audit/{eventId} {
+        allow read: if canReadBatch(batchId);
+        allow create: if canReadBatch(batchId)
+          && hasOnlyKeys(["type", "at", "actorUid", "actorName", "notes", "noteStream", "noteId"])
+          && isNonEmptyString(request.resource.data.type)
+          && request.resource.data.actorUid == request.auth.uid
+          && request.resource.data.at is timestamp;
+        allow update, delete: if false;
+      }
+
+      match /media/{mediaId} {
+        allow read: if canReadBatch(batchId);
+        allow create: if canReadBatch(batchId)
+          && hasOnlyKeys(["url", "type", "title", "notes", "createdAt", "updatedAt"])
+          && isNonEmptyString(request.resource.data.url)
+          && request.resource.data.createdAt is timestamp;
+        allow update, delete: if false;
+      }
+    }
+
     match /faqItems/{faqId} {
       allow read: if request.auth != null;
       allow write: if false;
     }
 
     match /supportRequests/{requestId} {
-      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
-      allow read, update, delete: if false;
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && hasOnlyKeys([
+          "uid",
+          "subject",
+          "body",
+          "category",
+          "status",
+          "urgency",
+          "channel",
+          "createdAt",
+          "displayName",
+          "email"
+        ])
+        && isNonEmptyString(request.resource.data.subject)
+        && isNonEmptyString(request.resource.data.body)
+        && request.resource.data.status == "new"
+        && request.resource.data.createdAt is timestamp;
+      allow read: if isStaff();
+      allow update: if isStaff();
+      allow delete: if false;
     }
 
     match /eventTemplates/{templateId} {
@@ -17,38 +219,264 @@ service cloud.firestore {
     }
 
     match /events/{eventId} {
-      allow read: if request.auth != null && resource.data.status == "published";
+      allow read: if isSignedIn()
+        && (resource.data.status == "published" || isStaff());
       allow write: if false;
     }
 
     match /eventSignups/{signupId} {
-      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
-      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
-      allow update, delete: if false;
+      allow read: if isStaff()
+        || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create, update, delete: if false;
     }
 
     match /eventCharges/{chargeId} {
-      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow read: if isStaff()
+        || (isSignedIn() && resource.data.uid == request.auth.uid);
       allow write: if false;
     }
 
     match /materialsOrders/{orderId} {
-      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow read: if isStaff()
+        || (isSignedIn() && resource.data.uid == request.auth.uid);
       allow write: if false;
     }
 
     match /profiles/{profileId} {
-      allow read: if request.auth != null && request.auth.uid == profileId;
-      allow create, update: if request.auth != null && request.auth.uid == profileId;
+      allow read: if isOwner(profileId);
+      allow create, update: if isOwner(profileId)
+        && hasOnlyKeys([
+          "displayName",
+          "preferredKilns",
+          "notifyKiln",
+          "notifyClasses",
+          "notifyPieces",
+          "updatedAt"
+        ])
+        && request.resource.data.updatedAt is timestamp;
       allow delete: if false;
     }
 
     match /reservations/{reservationId} {
-      allow create: if request.auth != null
+      allow create: if isSignedIn()
         && request.resource.data.ownerUid == request.auth.uid
-        && request.resource.data.status == "REQUESTED";
-      allow read: if request.auth != null && resource.data.ownerUid == request.auth.uid;
-      allow update, delete: if false;
+        && request.resource.data.status == "REQUESTED"
+        && hasOnlyKeys([
+          "ownerUid",
+          "status",
+          "firingType",
+          "shelfEquivalent",
+          "preferredWindow",
+          "linkedBatchId",
+          "createdAt",
+          "updatedAt"
+        ])
+        && isFiringType(request.resource.data.firingType)
+        && isShelfEquivalent(request.resource.data.shelfEquivalent)
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+      allow read: if isStaff()
+        || (isSignedIn() && resource.data.ownerUid == request.auth.uid);
+      allow update: if isStaff()
+        && changedKeysOnly(["status", "updatedAt", "staffNotes"])
+        && request.resource.data.updatedAt is timestamp;
+      allow delete: if false;
+    }
+
+    match /kilnLaunchRequests/{requestId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == "queued"
+        && request.resource.data.urgency is string
+        && ["asap", "next"].hasAny([request.resource.data.urgency])
+        && request.resource.data.halfShelves is number
+        && request.resource.data.halfShelves >= 1
+        && request.resource.data.halfShelves <= 4
+        && hasOnlyKeys([
+          "uid",
+          "userDisplayName",
+          "halfShelves",
+          "clayBody",
+          "notes",
+          "urgency",
+          "status",
+          "kilnId",
+          "createdAt",
+          "updatedAt"
+        ])
+        && isNonEmptyString(request.resource.data.clayBody)
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+      allow update: if isStaff()
+        && request.resource.data.uid == resource.data.uid
+        && changedKeysOnly(["status", "updatedAt"])
+        && request.resource.data.updatedAt is timestamp;
+      allow delete: if false;
+    }
+
+    match /kilns/{kilnId} {
+      allow read: if isSignedIn();
+      allow write: if isStaff();
+    }
+
+    match /kilnFirings/{firingId} {
+      allow read: if isSignedIn();
+      allow write: if isStaff();
+    }
+
+    match /firingsCalendarEvents/{eventId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /announcements/{announcementId} {
+      allow read: if isSignedIn();
+      allow create: if isStaff();
+      allow update: if isStaff()
+        || (
+          isSignedIn()
+          && changedKeysOnly(["readBy"])
+          && request.resource.data.readBy is list
+          && (
+            !(resource.data.readBy is list)
+            || request.resource.data.readBy.hasAll(resource.data.readBy)
+          )
+          && request.resource.data.readBy.hasAny([request.auth.uid])
+        );
+      allow delete: if false;
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /directMessages/{threadId} {
+      allow read: if isThreadParticipant(threadId);
+      allow create: if isSignedIn()
+        && request.resource.data.participantUids is list
+        && request.resource.data.participantUids.hasAny([request.auth.uid])
+        && hasOnlyKeys([
+          "subject",
+          "kind",
+          "participantUids",
+          "createdAt",
+          "updatedAt",
+          "lastMessagePreview",
+          "lastMessageAt",
+          "lastMessageId",
+          "lastSenderName",
+          "lastSenderEmail",
+          "references",
+          "lastReadAtByUid"
+        ]);
+      allow update: if isThreadParticipant(threadId)
+        && request.resource.data.participantUids == resource.data.participantUids
+        && changedKeysOnly([
+          "subject",
+          "updatedAt",
+          "lastMessagePreview",
+          "lastMessageAt",
+          "lastMessageId",
+          "lastSenderName",
+          "lastSenderEmail",
+          "references",
+          "lastReadAtByUid"
+        ]);
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isThreadParticipant(threadId);
+        allow create: if isThreadParticipant(threadId)
+          && request.resource.data.fromUid == request.auth.uid
+          && hasOnlyKeys([
+            "messageId",
+            "subject",
+            "body",
+            "fromUid",
+            "fromName",
+            "fromEmail",
+            "replyToEmail",
+            "toUids",
+            "toEmails",
+            "ccUids",
+            "ccEmails",
+            "bccUids",
+            "bccEmails",
+            "sentAt",
+            "inReplyTo",
+            "references"
+          ])
+          && isNonEmptyString(request.resource.data.body)
+          && request.resource.data.sentAt is timestamp;
+        allow update, delete: if false;
+      }
+    }
+
+    match /materialsProducts/{productId} {
+      allow read: if false;
+      allow write: if isStaff();
+    }
+
+    match /libraryItems/{itemId} {
+      allow read: if isSignedIn();
+      allow write: if isStaff();
+    }
+
+    match /libraryRequests/{requestId} {
+      allow create: if isSignedIn()
+        && request.resource.data.requesterUid == request.auth.uid
+        && request.resource.data.status == "pending_approval"
+        && hasOnlyKeys([
+          "itemId",
+          "itemTitle",
+          "type",
+          "status",
+          "requesterUid",
+          "requesterName",
+          "requesterEmail",
+          "requestedAt",
+          "updatedAt",
+          "notes"
+        ])
+        && request.resource.data.requestedAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+      allow read: if isStaff()
+        || (isSignedIn() && resource.data.requesterUid == request.auth.uid);
+      allow update: if isStaff();
+      allow delete: if false;
+    }
+
+    match /libraryLoans/{loanId} {
+      allow read: if (isSignedIn() && resource.data.borrowerUid == request.auth.uid) || isStaff();
+      allow create, update: if isStaff();
+      allow delete: if false;
+    }
+
+    match /libraryDonationRequests/{requestId} {
+      allow create: if isSignedIn()
+        && request.resource.data.donorUid == request.auth.uid
+        && request.resource.data.status == "pending"
+        && hasOnlyKeys([
+          "isbn",
+          "title",
+          "author",
+          "format",
+          "notes",
+          "status",
+          "donorUid",
+          "donorName",
+          "donorEmail",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+      allow read: if isStaff()
+        || (isSignedIn() && resource.data.donorUid == request.auth.uid);
+      allow update: if isStaff();
+      allow delete: if false;
     }
 
     match /{document=**} {

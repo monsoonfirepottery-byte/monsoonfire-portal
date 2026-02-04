@@ -22,14 +22,14 @@
 .reservation-form-grid input {
   border-radius: 12px;
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--surface);
   color: var(--text);
   padding: 10px 12px;
   font-size: 14px;
 }
 
 .reservation-form-grid input::placeholder {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--muted);
 }
 
 .reservation-form .form-error,
@@ -60,7 +60,7 @@
   padding: 16px;
   border-radius: 18px;
   background: var(--surface-2);
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -89,31 +89,31 @@
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  background: var(--surface-3);
-  border: 1px solid var(--border-soft);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
 }
 
 .status-requested {
-  color: #ffe8d7;
-  background: rgba(255, 139, 84, 0.2);
-  border-color: rgba(255, 139, 84, 0.3);
+  color: var(--accent);
+  background: rgba(180, 79, 53, 0.12);
+  border-color: rgba(180, 79, 53, 0.3);
 }
 
 .status-confirmed {
-  color: #c9f7d9;
-  background: rgba(46, 204, 113, 0.18);
+  color: #2d6b43;
+  background: rgba(46, 204, 113, 0.12);
   border-color: rgba(46, 204, 113, 0.3);
 }
 
 .status-waitlisted {
-  color: #ffe9a0;
-  background: rgba(255, 214, 117, 0.18);
-  border-color: rgba(255, 214, 117, 0.3);
+  color: #7a5b12;
+  background: rgba(241, 196, 15, 0.18);
+  border-color: rgba(241, 196, 15, 0.3);
 }
 
 .status-cancelled {
-  color: #e0e6e7;
-  background: rgba(149, 165, 166, 0.2);
+  color: #6b6256;
+  background: rgba(149, 165, 166, 0.18);
   border-color: rgba(149, 165, 166, 0.3);
 }
 

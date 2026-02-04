@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
 import { collection, getDocs, orderBy, query } from "firebase/firestore";
 import { db } from "../firebase";
@@ -8,7 +8,7 @@ export type SupportRequestCategory =
   | "Account"
   | "Pieces"
   | "Kiln"
-  | "Classes"
+  | "Workshops"
   | "Membership"
   | "Billing"
   | "Studio"
@@ -44,7 +44,7 @@ const SUPPORT_FILTERS: SupportCategory[] = [
   "Account",
   "Pieces",
   "Kiln",
-  "Classes",
+  "Workshops",
   "Membership",
   "Billing",
   "Studio",
@@ -55,7 +55,7 @@ const SUPPORT_FORM_CATEGORIES: SupportRequestCategory[] = [
   "Account",
   "Pieces",
   "Kiln",
-  "Classes",
+  "Workshops",
   "Membership",
   "Billing",
   "Studio",
@@ -70,7 +70,7 @@ const SEARCH_SUGGESTIONS = [
   "kiln schedule",
   "membership change",
   "billing receipt",
-  "class waitlist",
+  "workshop waitlist",
   "studio storage",
 ];
 
@@ -83,8 +83,8 @@ const SEARCH_SYNONYMS: Record<string, string[]> = {
   billing: ["payment", "invoice", "receipt"],
   receipt: ["invoice", "billing"],
   membership: ["plan", "tier"],
-  class: ["classes", "workshop"],
-  classes: ["class", "workshop", "lesson"],
+  workshop: ["workshops", "class", "lesson"],
+  workshops: ["workshop", "class", "lesson"],
   waitlist: ["wait list", "full"],
   storage: ["shelf", "shelving", "pickup"],
   account: ["email", "profile", "signin", "sign-in"],
@@ -93,6 +93,7 @@ const SEARCH_SYNONYMS: Record<string, string[]> = {
 
 function normalizeCategory(value: unknown): SupportRequestCategory {
   if (typeof value === "string") {
+    if (value === "Classes") return "Workshops";
     const match = SUPPORT_FORM_CATEGORIES.find((item) => item === value);
     if (match) return match;
   }

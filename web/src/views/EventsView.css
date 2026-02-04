@@ -15,7 +15,10 @@
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
   gap: 20px;
   align-items: center;
-  background: linear-gradient(120deg, rgba(255, 139, 84, 0.22), rgba(20, 23, 22, 0.92));
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 16px;
 }
 
 .events-hero-meta {
@@ -43,7 +46,7 @@
 .events-search input {
   border-radius: 14px;
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--surface);
   color: var(--text);
   padding: 10px 14px;
   font-size: 14px;
@@ -92,7 +95,7 @@
 }
 
 .event-card {
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 14px;
   background: var(--surface-2);
@@ -111,8 +114,8 @@
 }
 
 .event-card.active {
-  border-color: rgba(255, 139, 84, 0.4);
-  background: rgba(255, 139, 84, 0.12);
+  border-color: var(--accent);
+  background: rgba(180, 79, 53, 0.12);
 }
 
 .event-card-header {
@@ -155,15 +158,15 @@
   padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--surface-2);
   font-size: 11px;
   color: var(--muted);
 }
 
 .event-tag.accent {
-  border-color: rgba(255, 139, 84, 0.5);
-  background: rgba(255, 139, 84, 0.12);
-  color: #fff4ea;
+  border-color: var(--accent);
+  background: rgba(180, 79, 53, 0.12);
+  color: var(--accent);
 }
 
 .event-tag.status-cancelled {
@@ -199,7 +202,7 @@
   margin-top: 12px;
   padding: 12px 14px;
   border-radius: 16px;
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
   background: var(--surface-2);
 }
 
@@ -212,7 +215,7 @@
   margin-top: 16px;
   padding: 14px;
   border-radius: 16px;
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
   background: var(--surface-2);
   display: grid;
   gap: 12px;
@@ -251,7 +254,7 @@
   margin-top: 16px;
   padding: 14px;
   border-radius: 16px;
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
   background: var(--surface-2);
   display: grid;
   gap: 12px;
@@ -325,9 +328,9 @@
 }
 
 .events-chip.active {
-  border-color: rgba(255, 139, 84, 0.45);
-  background: rgba(255, 139, 84, 0.2);
-  color: #fff4ea;
+  border-color: var(--accent);
+  background: rgba(180, 79, 53, 0.2);
+  color: var(--accent);
 }
 
 .events-chip-count {
@@ -340,8 +343,8 @@
   border-radius: 999px;
   font-size: 10px;
   font-weight: 700;
-  background: rgba(255, 139, 84, 0.4);
-  color: #fff8f2;
+  background: rgba(180, 79, 53, 0.35);
+  color: #fff;
 }
 
 .roster-list {
@@ -352,7 +355,7 @@
 .roster-row {
   padding: 12px;
   border-radius: 14px;
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
   background: var(--surface-2);
   display: flex;
   justify-content: space-between;
@@ -361,8 +364,8 @@
 }
 
 .roster-row.unpaid {
-  border-color: rgba(255, 139, 84, 0.4);
-  background: rgba(255, 139, 84, 0.12);
+  border-color: var(--accent);
+  background: rgba(180, 79, 53, 0.12);
 }
 
 .roster-name {

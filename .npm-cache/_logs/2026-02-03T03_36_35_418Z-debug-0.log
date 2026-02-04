@@ -1,0 +1,19 @@
+0 verbose cli C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\npm\bin\npm-cli.js
+1 info using npm@10.8.2
+2 info using node@v20.19.0
+3 silly config load:file:C:\Users\micah\AppData\Local\nvm\v20.19.0\node_modules\npm\npmrc
+4 silly config load:file:D:\monsoonfire-portal\.npmrc
+5 silly config load:file:C:\Users\micah\.npmrc
+6 silly config load:file:C:\nvm4w\nodejs\etc\npmrc
+7 verbose title npm view @playwright/mcp bin
+8 verbose argv "view" "@playwright/mcp" "bin"
+9 verbose logfile logs-max:10 dir:D:\monsoonfire-portal\.npm-cache\_logs\2026-02-03T03_36_35_418Z-
+10 verbose logfile D:\monsoonfire-portal\.npm-cache\_logs\2026-02-03T03_36_35_418Z-debug-0.log
+11 silly logfile done cleaning log files
+12 http fetch GET 200 https://registry.npmjs.org/@playwright%2fmcp 270ms (cache revalidated)
+13 verbose cwd D:\monsoonfire-portal
+14 verbose os Windows_NT 10.0.26200
+15 verbose node v20.19.0
+16 verbose npm  v10.8.2
+17 verbose exit 0
+18 info ok

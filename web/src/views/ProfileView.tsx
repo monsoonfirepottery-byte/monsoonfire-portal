@@ -20,7 +20,7 @@ type ProfileDoc = {
 
 const NOTIFICATION_PREFS = [
   { key: "notifyKiln", label: "Kiln status updates" },
-  { key: "notifyClasses", label: "Class reminders" },
+  { key: "notifyClasses", label: "Workshop reminders" },
   { key: "notifyPieces", label: "Piece tracking insights" },
 ] as const;
 

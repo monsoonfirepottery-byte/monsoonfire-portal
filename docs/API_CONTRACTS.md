@@ -47,7 +47,8 @@ Request body (`CreateReservationRequest`):
     "earliestDate": "2026-02-09T10:00:00.000Z",
     "latestDate": "2026-02-11T22:30:00.000Z"
   },
-  "linkedBatchId": null
+  "linkedBatchId": null,
+  "clientRequestId": "req_8f9d1c3b"
 }
 ```
 
@@ -60,7 +61,7 @@ Response:
 }
 ```
 
-`createReservation` verifies the ID token, trims the shelf equivalent to quarter/half/full values, validates that earliest ≤ latest, and writes the `reservations/{id}` document with `preferredWindow` timestamps plus `createdAt/updatedAt`.
+`createReservation` verifies the ID token, trims the shelf equivalent to quarter/half/full values, validates that earliest ≤ latest, and writes the `reservations/{id}` document with `preferredWindow` timestamps plus `createdAt/updatedAt`. Reuse the same `clientRequestId` on retries to avoid duplicate submissions.
 
 ### Local emulator (Firebase Functions emulator)
 Base URL:
@@ -91,7 +92,7 @@ Dev-only admin header (required for admin-gated endpoints):
 
 Notes:
 - Never paste real `Authorization` tokens into chat/logs. Treat them as credentials.
-- The web UI lets you paste `x-admin-token` and persists it in localStorage for convenience.
+- The web UI only shows the dev admin token input when `VITE_ENABLE_DEV_ADMIN_TOKEN=true` and the functions base URL is localhost; it stores the token in sessionStorage for that browser session only.
 - Stripe webhook endpoints are verified via Stripe signature headers and **do not** use Firebase ID tokens.
 
 ---
@@ -106,6 +107,7 @@ Symptom:
 Fix:
 - Ensure the emulator process has an environment variable set:
   - `ADMIN_TOKEN=<your_dev_admin_token>`
+  - `ALLOW_DEV_ADMIN_TOKEN=true`
 - Then restart the emulator (env vars are read at process start).
 
 PowerShell example:
@@ -135,7 +137,8 @@ Request body (`CreateBatchRequest`):
   "intakeMode": "string",
   "estimatedCostCents": 2500,
   "kilnName": null,
-  "notes": null
+  "notes": null,
+  "clientRequestId": "req_8f9d1c3b"
 }
 ```
 

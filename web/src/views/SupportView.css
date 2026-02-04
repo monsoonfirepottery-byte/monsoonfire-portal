@@ -40,7 +40,7 @@
 .faq-meta span {
   padding: 4px 10px;
   border-radius: 999px;
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
   background: var(--surface-2);
 }
 
@@ -52,7 +52,7 @@
 .faq-search input {
   border-radius: 14px;
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--surface);
   color: var(--text);
   padding: 10px 14px;
   font-size: 14px;
@@ -79,8 +79,8 @@
   gap: 12px;
   padding: 14px;
   border-radius: 18px;
-  border: 1px solid rgba(255, 139, 84, 0.28);
-  background: rgba(255, 139, 84, 0.08);
+  border: 1px solid var(--accent);
+  background: rgba(180, 79, 53, 0.08);
   box-shadow: var(--shadow-soft);
 }
 
@@ -102,7 +102,7 @@
 }
 
 .faq-item {
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 14px;
   text-align: left;
@@ -120,8 +120,8 @@
 }
 
 .faq-item.active {
-  border-color: rgba(255, 139, 84, 0.4);
-  background: rgba(255, 139, 84, 0.12);
+  border-color: var(--accent);
+  background: rgba(180, 79, 53, 0.12);
 }
 
 .faq-top {
@@ -174,7 +174,7 @@
 .support-form select {
   border-radius: 12px;
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--surface);
   color: var(--text);
   padding: 10px 12px;
   font-size: 14px;
@@ -184,7 +184,7 @@
   min-height: 140px;
   border-radius: 16px;
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--surface);
   color: var(--text);
   padding: 12px 14px;
   font-size: 14px;
@@ -195,7 +195,7 @@
   margin-top: 16px;
   padding: 12px 14px;
   border-radius: 16px;
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
   background: var(--surface-2);
 }
 

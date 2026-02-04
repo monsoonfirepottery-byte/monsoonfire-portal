@@ -219,10 +219,10 @@ Record:
 
 ### Ownership (edit this list)
 
-- web/src/App.tsx: [Codex] claimed 2026-02-03 17:49 for kiln rentals overview
-- web/src/App.css: [Codex] claimed 2026-02-03 17:49 for dashboard embers
-- web/src/views/MyPiecesView.tsx: [Cdx] claimed 2026-01-26 13:08 for pieces workflow
-- web/src/views/DashboardView.tsx: [Codex] claimed 2026-02-03 17:49 for dashboard embers
+- web/src/App.tsx: [Codex] claimed 2026-02-04 10:12 for profile sign-out icon
+- web/src/App.css: [Codex] claimed 2026-02-04 11:24 for kiln offline styling
+- web/src/views/MyPiecesView.tsx: [Codex] claimed 2026-02-04 00:34 for check-in gate + remove new ware/collection UI
+- web/src/views/DashboardView.tsx: [Codex] claimed 2026-02-04 11:24 for kiln offline naming
 - web/src/views/KilnRentalsView.tsx: [Codex] claimed 2026-02-03 17:49 for kiln rentals overview
 - web/src/views/KilnRentalsView.css: [Codex] claimed 2026-02-03 17:49 for kiln rentals overview
 - web/src/views/StudioResourcesView.tsx: [Codex] claimed 2026-02-04 10:10 for studio resources overview
@@ -232,14 +232,17 @@ Record:
 - web/src/views/MaterialsView.tsx: (unclaimed)
 - web/src/views/BillingView.tsx: [Codex] claimed 2026-02-04 10:32 for store rename follow-up
 - web/src/views/ReservationsView.tsx: (unclaimed)
-- web/src/views/ReservationsView.tsx: [Codex] claimed 2026-02-03 01:14 for work submission renaming
+- web/src/views/GlazeBoardView.tsx: [Codex] claimed 2026-02-04 14:33 for glaze board staff uploads + filters
+- web/src/views/GlazeBoardView.css: [Codex] claimed 2026-02-04 14:33 for glaze board staff uploads + filters
+- web/src/views/ReservationsView.tsx: [Codex] claimed 2026-02-04 12:05 for load estimate bar
+- web/src/views/ReservationsView.css: [Codex] claimed 2026-02-04 12:05 for load estimate bar
 - web/src/views/LendingLibraryView.tsx: [Codex] claimed 2026-02-03 01:14 for lending library feature
 - web/src/views/LendingLibraryView.css: [Codex] claimed 2026-02-03 01:14 for lending library feature
 - web/src/views/CommunityView.tsx: [Codex] claimed 2026-02-03 01:14 for community overview updates
 - web/src/views/CommunityView.css: [Codex] claimed 2026-02-03 01:14 for community overview updates
-- web/src/views/KilnLaunchView.tsx: [Codex] claimed 2026-02-03 17:04 for nav availability update
-- web/src/views/KilnLaunchView.css: [Codex] claimed 2026-02-03 18:10 for kiln image integration
-- web/src/views/EventsView.css: (unclaimed)
+- web/src/views/KilnLaunchView.tsx: [Codex] claimed 2026-02-04 00:14 for kiln queue visualization update
+- web/src/views/KilnLaunchView.css: [Codex] claimed 2026-02-04 00:14 for kiln queue visualization update
+- web/src/views/EventsView.css: [Codex] claimed 2026-02-04 10:00 for events style normalization
 - web/src/views/MaterialsView.css: (unclaimed)
 - web/src/views/ReservationsView.css: (unclaimed)
 - web/src/views/SupportView.css: (unclaimed)
@@ -253,13 +256,49 @@ Record:
 - web/src/index.css: (unclaimed)
 - web/src/theme/themes.ts: (unclaimed)
 - web/src/data/kilnScheduleMock.ts: [Codex] claimed 2026-02-03 01:14 for kiln schedule updates
-- functions/src/createReservation.ts: (unclaimed)
+- web/src/views/KilnScheduleView.css: [Codex] claimed 2026-02-04 11:30 for offline status styling
+- web/src/types/kiln.ts: [Codex] claimed 2026-02-04 11:30 for offline status type
+- functions/src/createReservation.ts: [Codex] claimed 2026-02-04 00:14 for kiln queue load status
+- functions/src/createReservation.ts: [Codex] claimed 2026-02-04 10:58 for ware check-in workflow
+- web/src/api/portalContracts.ts: [Codex] claimed 2026-02-04 10:58 for ware check-in contract updates
+- web/src/lib/pricing.ts: [Codex] claimed 2026-02-04 12:25 for check-in estimator pricing utilities
+- web/src/lib/pricing.test.ts: [Codex] claimed 2026-02-04 12:25 for check-in estimator pricing tests
+- web/src/lib/glazes/filters.ts: [Codex] claimed 2026-02-04 14:33 for glaze board filters
+- web/src/lib/glazes/filters.test.ts: [Codex] claimed 2026-02-04 14:33 for glaze board filter tests
+- web/src/views/ReservationsView.tsx: [Codex] claimed 2026-02-04 12:25 for check-in estimator upgrade
+- web/src/views/ReservationsView.css: [Codex] claimed 2026-02-04 12:25 for check-in estimator styling
+- web/src/views/KilnLaunchView.tsx: [Codex] claimed 2026-02-04 12:25 for estimator queue display updates
+- web/src/views/MyPiecesView.tsx: [Codex] claimed 2026-02-04 12:25 for send-to-next-firing shortcut
+- web/src/App.tsx: [Codex] claimed 2026-02-04 12:25 for check-in prefill routing
+- web/vite.config.ts: [Codex] claimed 2026-02-04 12:25 for vitest config
+- web/package.json: [Codex] claimed 2026-02-04 12:25 for vitest scripts and deps
+- functions/src/createReservation.ts: [Codex] claimed 2026-02-04 12:25 for estimator payload support
+- firestore.rules: [Codex] claimed 2026-02-04 12:25 for estimator rules update
+- docs/API_CONTRACTS.md: [Codex] claimed 2026-02-04 10:58 for ware check-in contract updates
+- storage.rules: [Codex] claimed 2026-02-04 10:58 for check-in photo uploads
 - docs/API_CONTRACTS.md: (unclaimed)
 - functions/scripts/seedEmulator.js: [Cdx] claimed 2026-01-26 14:04 for local emulator seed
-- firestore.rules: [Cdx] claimed 2026-01-26 23:16 for collection meta updates
+- functions/scripts/updateKilnStatus.js: [Codex] claimed 2026-02-04 11:36 for kiln status follow-up
+- firestore.rules: [Codex] claimed 2026-02-04 00:14 for reservation load status rules
+- functions/src/materials.ts: [Codex] claimed 2026-02-04 11:12 for security hardening
+- SECURITY.md: [Codex] claimed 2026-02-04 11:12 for security checklist updates
 
 ### Coordination log
 
+- 2026-02-04 14:33 — [Codex] claimed `web/src/views/GlazeBoardView.tsx`, `web/src/views/GlazeBoardView.css`, `web/src/lib/glazes/filters.ts`, and `web/src/lib/glazes/filters.test.ts` for glaze board staff uploads + filters
+- 2026-02-04 00:34 — [Codex] claimed `web/src/views/MyPiecesView.tsx`, `web/src/views/ReservationsView.tsx`, and `web/src/views/ReservationsView.css` for check-in gate + pieces UI cleanup
+- 2026-02-04 10:00 — [Codex] claimed `web/src/views/EventsView.css` for events style normalization
+- 2026-02-04 10:01 — [Codex] claimed `web/src/views/LendingLibraryView.css` for lending hero style normalization
+- 2026-02-04 10:12 — [Codex] claimed `web/src/App.tsx` and `web/src/App.css` for profile sign-out icon
+- 2026-02-04 11:12 — [Codex] claimed `functions/src/materials.ts` and `SECURITY.md` for security hardening
+- 2026-02-04 11:20 — [Codex] claimed `web/src/views/DashboardView.tsx` for kiln status wiring
+- 2026-02-04 11:24 — [Codex] claimed `web/src/views/DashboardView.tsx` and `web/src/App.css` for kiln offline naming
+- 2026-02-04 11:30 — [Codex] claimed `web/src/types/kiln.ts` and `web/src/views/KilnScheduleView.css` for offline status support
+- 2026-02-04 11:40 — [Codex] claimed `web/src/views/ReservationsView.tsx` and `web/src/views/ReservationsView.css` for kiln offline gating
+- 2026-02-04 11:55 — [Codex] claimed `web/src/views/ReservationsView.tsx` and `web/src/views/ReservationsView.css` for load profile merge
+- 2026-02-04 12:05 — [Codex] claimed `web/src/views/ReservationsView.tsx` and `web/src/views/ReservationsView.css` for load estimate bar
+- 2026-02-04 11:36 — [Codex] claimed `functions/scripts/updateKilnStatus.js` for kiln status follow-up
+- 2026-02-04 00:14 — [Codex] claimed `web/src/views/KilnLaunchView.tsx`, `web/src/views/KilnLaunchView.css`, `functions/src/createReservation.ts`, and `firestore.rules` for kiln queue visualization + load status
 - 2026-02-03 17:49 — [Codex] claimed `web/src/views/KilnRentalsView.tsx`, `web/src/views/KilnRentalsView.css`, and `web/src/App.tsx` for kiln rentals overview
 - 2026-02-03 17:49 — [Codex] claimed `web/src/views/DashboardView.tsx` and `web/src/App.css` for dashboard embers
 - 2026-02-03 17:26 — [Codex] claimed `web/src/views/DashboardView.tsx` and `web/src/App.css` for dashboard emphasis

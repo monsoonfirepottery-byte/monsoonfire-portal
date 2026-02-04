@@ -4,7 +4,8 @@ export type KilnStatus =
   | "firing"
   | "cooling"
   | "unloading"
-  | "maintenance";
+  | "maintenance"
+  | "offline";
 
 export type KilnCycle = {
   id: string;

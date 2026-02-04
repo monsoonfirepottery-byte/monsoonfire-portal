@@ -1,0 +1,14 @@
+{
+  "lastUpdated": "2026-01-31 5:30 PM",
+  "updatedBy": "Manual",
+  "kilns": [
+    {
+      "name": "L&L eQ2827-3",
+      "controller": "Genesis Touch Screen",
+      "nextFireType": "Cone 6 glaze",
+      "nextFirePlanned": "Next load announced in portal",
+      "readyForPickup": "2+ days after firing",
+      "notes": "All updates are posted in the portal."
+    }
+  ]
+}

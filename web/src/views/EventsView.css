@@ -4,6 +4,19 @@
   gap: 20px;
 }
 
+.events-page .summary-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.events-page .summary-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
 .events-copy {
   color: var(--muted);
   font-size: 14px;
@@ -24,6 +37,16 @@
 .events-hero-meta {
   display: grid;
   gap: 12px;
+}
+
+.events-hero-meta > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .events-toolbar {

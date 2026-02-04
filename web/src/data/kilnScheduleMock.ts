@@ -36,11 +36,11 @@ export const mockKilns: Kiln[] = [
   },
   {
     id: "kiln-raku-reduction",
-    name: "Reduction Raku Kiln",
+    name: "Raku",
     type: "Gas reduction",
     volume: "Outdoor",
     maxTemp: "Variable",
-    status: "idle",
+    status: "offline",
     isAvailable: true,
     typicalCycles: [
       {

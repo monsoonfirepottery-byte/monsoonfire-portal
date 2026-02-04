@@ -41,6 +41,37 @@ Headers:
 Request body (`CreateReservationRequest`):
 ```json
 {
+  "ownerUid": "uid_123 (staff-only, optional)",
+  "wareType": "stoneware",
+  "kilnId": "studio-electric",
+  "kilnLabel": "Studio kiln (electric)",
+  "quantityTier": "small",
+  "quantityLabel": "Small batch",
+  "dropOffQuantity": {
+    "id": "small",
+    "label": "Small batch",
+    "pieceRange": "4–8 pieces"
+  },
+  "dropOffProfile": {
+    "id": "many-stackable-bisque",
+    "label": "Many flat pieces (bisque stack)",
+    "pieceCount": "many",
+    "hasTall": false,
+    "stackable": true,
+    "bisqueOnly": true,
+    "specialHandling": false
+  },
+  "photoUrl": "https://firebasestorage.googleapis.com/v0/b/.../checkins/uid_123/req_8f9d1c3b/work.jpg",
+  "photoPath": "checkins/uid_123/req_8f9d1c3b/work.jpg",
+  "notes": {
+    "general": "Please keep these together.",
+    "clayBody": "B-mix",
+    "glazeNotes": "Clear glaze on rim"
+  },
+  "addOns": {
+    "rushRequested": false,
+    "wholeKilnRequested": false
+  },
   "firingType": "glaze",
   "shelfEquivalent": 0.5,
   "preferredWindow": {
@@ -61,7 +92,7 @@ Response:
 }
 ```
 
-`createReservation` verifies the ID token, trims the shelf equivalent to quarter/half/full values, validates that earliest ≤ latest, and writes the `reservations/{id}` document with `preferredWindow` timestamps plus `createdAt/updatedAt`. Reuse the same `clientRequestId` on retries to avoid duplicate submissions.
+`createReservation` verifies the ID token, trims the shelf equivalent to quarter/half/full values, validates that earliest ≤ latest, and writes the `reservations/{id}` document with `preferredWindow` timestamps plus `createdAt/updatedAt`. If `ownerUid` is supplied, it must be a staff-authenticated call. Reuse the same `clientRequestId` on retries to avoid duplicate submissions.
 
 ### Local emulator (Firebase Functions emulator)
 Base URL:

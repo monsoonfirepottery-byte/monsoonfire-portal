@@ -4,6 +4,19 @@
   gap: 20px;
 }
 
+.lending-library-page .summary-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.lending-library-page .summary-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
 .lending-hero {
   display: flex;
   justify-content: space-between;
@@ -22,6 +35,16 @@
   display: flex;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.lending-hero-meta > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .lending-search {

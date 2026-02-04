@@ -21,6 +21,7 @@ const KilnLaunchView = React.lazy(() => import("./views/KilnLaunchView"));
 const KilnRentalsView = React.lazy(() => import("./views/KilnRentalsView"));
 const KilnScheduleView = React.lazy(() => import("./views/KilnScheduleView"));
 const LendingLibraryView = React.lazy(() => import("./views/LendingLibraryView"));
+const GlazeBoardView = React.lazy(() => import("./views/GlazeBoardView"));
 const MembershipView = React.lazy(() => import("./views/MembershipView"));
 const MaterialsView = React.lazy(() => import("./views/MaterialsView"));
 const MessagesView = React.lazy(() => import("./views/MessagesView"));
@@ -43,6 +44,7 @@ type NavKey =
   | "events"
   | "community"
   | "lendingLibrary"
+  | "glazes"
   | "membership"
   | "materials"
   | "billing"
@@ -91,6 +93,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { key: "studioResources", label: "Overview" },
       { key: "pieces", label: "My Pieces" },
+      { key: "glazes", label: "Glaze Board" },
       { key: "materials", label: "Store" },
       { key: "membership", label: "Membership" },
       { key: "billing", label: "Billing" },
@@ -194,6 +197,7 @@ const NAV_LABELS: Record<NavKey, string> = {
   community: "Community",
   events: "Workshops",
   lendingLibrary: "Lending Library",
+  glazes: "Glaze Board",
   membership: "Membership",
   materials: "Store",
   billing: "Billing",
@@ -271,15 +275,17 @@ class AppErrorBoundary extends React.Component<
   }
 }
 
-function useLiveUsers(user: User | null) {
+function useLiveUsers(user: User | null, canLoad: boolean) {
   const [users, setUsers] = useState<LiveUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let canceled = false;
-    if (!user) {
+    if (!user || !canLoad) {
       setUsers([]);
+      setLoading(false);
+      setError("");
       return;
     }
 
@@ -307,7 +313,7 @@ function useLiveUsers(user: User | null) {
     return () => {
       canceled = true;
     };
-  }, [user]);
+  }, [user, canLoad]);
 
   return { users, loading, error };
 }
@@ -408,6 +414,8 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [nav, setNav] = useState<NavKey>(() => {
     if (typeof window === "undefined") return "dashboard";
+    const path = window.location.pathname;
+    if (path === "/glazes" || path === "/community/glazes") return "glazes";
     const saved = localStorage.getItem(LOCAL_NAV_KEY);
     if (saved && isNavKey(saved)) return saved;
     return "dashboard";
@@ -447,6 +455,12 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem(LOCAL_NAV_KEY, nav);
+    if (typeof window === "undefined") return;
+    if (nav === "glazes") {
+      window.history.replaceState({}, "", "/glazes");
+    } else if (window.location.pathname === "/glazes") {
+      window.history.replaceState({}, "", "/");
+    }
   }, [nav]);
 
   useEffect(() => {
@@ -506,7 +520,10 @@ export default function App() {
     };
   }, [user]);
 
-  const { users: liveUsers, loading: liveUsersLoading, error: liveUsersError } = useLiveUsers(user);
+  const { users: liveUsers, loading: liveUsersLoading, error: liveUsersError } = useLiveUsers(
+    user,
+    isStaff
+  );
   const { threads, loading: threadsLoading, error: threadsError } = useDirectMessages(user);
   const {
     announcements,
@@ -624,7 +641,14 @@ export default function App() {
           />
         );
       case "pieces":
-        return <MyPiecesView user={user} adminToken={devAdminTokenValue} isStaff={staffUi} />;
+        return (
+          <MyPiecesView
+            user={user}
+            adminToken={devAdminTokenValue}
+            isStaff={staffUi}
+            onOpenCheckin={() => setNav("reservations")}
+          />
+        );
       case "profile":
         return <ProfileView user={user} />;
       case "community":
@@ -635,6 +659,8 @@ export default function App() {
         return (
           <LendingLibraryView user={user} adminToken={devAdminTokenValue} isStaff={staffUi} />
         );
+      case "glazes":
+        return <GlazeBoardView user={user} isStaff={staffUi} />;
       case "membership":
         return <MembershipView user={user} />;
       case "materials":
@@ -642,7 +668,7 @@ export default function App() {
       case "billing":
         return <BillingView user={user} />;
       case "reservations":
-        return <ReservationsView user={user} />;
+        return <ReservationsView user={user} isStaff={staffUi} adminToken={devAdminTokenValue} />;
       case "kiln":
         return <KilnScheduleView />;
       case "kilnRentals":
@@ -807,18 +833,53 @@ export default function App() {
             </div>
           </nav>
           {user && (
-            <button
-              className="profile-card profile-card-button"
-              onClick={() => setNav("profile")}
-            >
-              <div className="avatar">
-                {user.photoURL ? <img src={user.photoURL} alt={user.displayName ?? "User"} /> : null}
-              </div>
-              <div className="profile-meta">
-                <strong>{user.displayName ?? "Member"}</strong>
-                <span>{roleLabel}</span>
-              </div>
-            </button>
+            <div className="profile-actions">
+              <button
+                className="profile-card profile-card-button"
+                onClick={() => setNav("profile")}
+              >
+                <div className="avatar">
+                  {user.photoURL ? <img src={user.photoURL} alt={user.displayName ?? "User"} /> : null}
+                </div>
+                <div className="profile-meta">
+                  <strong>{user.displayName ?? "Member"}</strong>
+                  <span>{roleLabel}</span>
+                </div>
+              </button>
+              <button
+                className="signout-icon"
+                onClick={handleSignOut}
+                aria-label="Sign out"
+                title="Sign out"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M10 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M7 12h10"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M13 8l4 4-4 4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            </div>
           )}
           {user && DEV_ADMIN_TOKEN_ENABLED ? (
             <div className="admin-token">
@@ -832,11 +893,6 @@ export default function App() {
               />
               <p>Stored for this browser session only. Disabled in production.</p>
             </div>
-          ) : null}
-          {user ? (
-            <button className="signout" onClick={handleSignOut}>
-              Sign out
-            </button>
           ) : null}
         </aside>
 

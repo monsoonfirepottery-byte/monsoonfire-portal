@@ -48,7 +48,11 @@ service cloud.firestore {
     }
 
     function isShelfEquivalent(value) {
-      return value is number && [0.25, 0.5, 1.0].hasAny([value]);
+      return value is number && value > 0 && value <= 32;
+    }
+
+    function isLoadStatus(value) {
+      return value is string && ["queued", "loading", "loaded"].hasAny([value]);
     }
 
     function isBatchOwner(batchId) {
@@ -116,7 +120,15 @@ service cloud.firestore {
         && request.resource.data.createdAt is timestamp
         && request.resource.data.updatedAt is timestamp;
       allow update: if canReadBatch(batchId)
-        && changedKeysOnly(["shortDesc", "ownerName", "stage", "wareCategory", "isArchived", "updatedAt"])
+        && changedKeysOnly([
+          "shortDesc",
+          "ownerName",
+          "stage",
+          "wareCategory",
+          "isArchived",
+          "selectedGlazes",
+          "updatedAt"
+        ])
         && request.resource.data.pieceCode == resource.data.pieceCode
         && request.resource.data.createdAt == resource.data.createdAt
         && isNonEmptyString(request.resource.data.shortDesc)
@@ -124,7 +136,11 @@ service cloud.firestore {
         && isStage(request.resource.data.stage)
         && isWareCategory(request.resource.data.wareCategory)
         && request.resource.data.isArchived is bool
-        && request.resource.data.updatedAt is timestamp;
+        && request.resource.data.updatedAt is timestamp
+        && (
+          !request.resource.data.keys().hasAny(["selectedGlazes"])
+          || request.resource.data.selectedGlazes is list
+        );
       allow delete: if false;
 
       match /clientNotes/{noteId} {
@@ -271,6 +287,10 @@ service cloud.firestore {
           "createdAt",
           "updatedAt"
         ])
+        && (
+          request.resource.data.linkedBatchId == null
+          || isBatchOwner(request.resource.data.linkedBatchId)
+        )
         && isFiringType(request.resource.data.firingType)
         && isShelfEquivalent(request.resource.data.shelfEquivalent)
         && request.resource.data.createdAt is timestamp
@@ -278,8 +298,12 @@ service cloud.firestore {
       allow read: if isStaff()
         || (isSignedIn() && resource.data.ownerUid == request.auth.uid);
       allow update: if isStaff()
-        && changedKeysOnly(["status", "updatedAt", "staffNotes"])
-        && request.resource.data.updatedAt is timestamp;
+        && changedKeysOnly(["status", "updatedAt", "staffNotes", "loadStatus"])
+        && request.resource.data.updatedAt is timestamp
+        && (
+          !request.resource.data.keys().hasAny(["loadStatus"])
+          || isLoadStatus(request.resource.data.loadStatus)
+        );
       allow delete: if false;
     }
 
@@ -348,7 +372,7 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isSignedIn();
+      allow read: if isOwner(userId) || isStaff();
       allow write: if false;
     }
 
@@ -477,6 +501,21 @@ service cloud.firestore {
         || (isSignedIn() && resource.data.donorUid == request.auth.uid);
       allow update: if isStaff();
       allow delete: if false;
+    }
+
+    match /comboTiles/{comboId} {
+      allow read: if isSignedIn();
+      allow write: if isStaff();
+    }
+
+    match /singleTiles/{tileId} {
+      allow read: if isSignedIn();
+      allow write: if isStaff();
+    }
+
+    match /glazes/{glazeId} {
+      allow read: if isSignedIn();
+      allow write: if isStaff();
     }
 
     match /{document=**} {

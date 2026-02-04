@@ -27,6 +27,7 @@ const SEARCH_NOTES_PER_PIECE = 30;
 const NOTE_LOAD_LIMIT = 40;
 const MEDIA_LOAD_LIMIT = 30;
 const AUDIT_LOAD_LIMIT = 60;
+const CHECKIN_PREFILL_KEY = "mf_checkin_prefill";
 
 const STAGES = ["GREENWARE", "BISQUE", "GLAZED", "FINISHED", "HOLD", "UNKNOWN"] as const;
 const WARE_CATEGORIES = [
@@ -54,6 +55,7 @@ type Props = {
   user: User;
   adminToken?: string;
   isStaff: boolean;
+  onOpenCheckin?: () => void;
 };
 
 type PieceDoc = {
@@ -79,14 +81,6 @@ type PieceNote = {
   authorName: string;
   searchTokens?: string[];
 };
-
-function makeClientRequestId() {
-  try {
-    return crypto.randomUUID();
-  } catch {
-    return `req_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
-  }
-}
 
 type PieceAuditEvent = {
   id: string;
@@ -182,14 +176,13 @@ function groupPiecesByCategory(pieces: PieceDoc[]) {
   });
   return groups;
 }
-export default function MyPiecesView({ user, adminToken, isStaff }: Props) {
+export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin }: Props) {
   const { active, history, error } = useBatches(user);
   const canContinue = active.length === 0;
   const [status, setStatus] = useState("");
   const [meta, setMeta] = useState<PortalApiMeta | LocalMeta | null>(null);
   const [inFlight, setInFlight] = useState<Record<string, boolean>>({});
   const portalApi = useMemo(() => createPortalApi(), []);
-  const [createCollectionRequestId, setCreateCollectionRequestId] = useState<string | null>(null);
 
   const isBusy = (key: string) => !!inFlight[key];
   const setBusy = (key: string, value: boolean) => {
@@ -224,11 +217,6 @@ export default function MyPiecesView({ user, adminToken, isStaff }: Props) {
   const [pieceDetailLoading, setPieceDetailLoading] = useState(false);
   const [pieceDetailError, setPieceDetailError] = useState("");
 
-  const [newPieceCode, setNewPieceCode] = useState("");
-  const [newPieceDesc, setNewPieceDesc] = useState("");
-  const [newPieceOwner, setNewPieceOwner] = useState("");
-  const [newPieceStage, setNewPieceStage] = useState<Stage>("UNKNOWN");
-  const [newPieceCategory, setNewPieceCategory] = useState<WareCategory>("UNKNOWN");
   const [archivedExpanded, setArchivedExpanded] = useState(false);
 
   const [clientNoteDraft, setClientNoteDraft] = useState("");
@@ -502,10 +490,10 @@ export default function MyPiecesView({ user, adminToken, isStaff }: Props) {
   function toggleTimeline(batchId: string) {
     setTimelineBatchId((prev) => (prev === batchId ? null : batchId));
   }
-  async function handleContinueJourney(batchId: string) {
-    if (!batchId) return;
+  async function continueJourneyAndGetBatchId(batchId: string) {
+    if (!batchId) return null;
     const busyKey = `continue:${batchId}`;
-    if (isBusy(busyKey)) return;
+    if (isBusy(busyKey)) return null;
 
     setBusy(busyKey, true);
     setStatus("Continuing journey...");
@@ -522,6 +510,7 @@ export default function MyPiecesView({ user, adminToken, isStaff }: Props) {
       setMeta(response.meta);
       const newId = getResultBatchId(response.data);
       setStatus(newId ? `Journey continued. New batch id: ${newId}` : "Journey continued.");
+      return newId ?? batchId;
     } catch (err: any) {
       if (err instanceof PortalApiError) {
         setMeta(err.meta);
@@ -529,9 +518,40 @@ export default function MyPiecesView({ user, adminToken, isStaff }: Props) {
       } else {
         setStatus(`Continue journey failed: ${err?.message || String(err)}`);
       }
+      return null;
     } finally {
       setBusy(busyKey, false);
     }
+  }
+
+  async function handleContinueJourney(batchId: string) {
+    await continueJourneyAndGetBatchId(batchId);
+  }
+
+  async function handleSendToNextFiring(batchId: string, piece: PieceDoc) {
+    if (!batchId || !onOpenCheckin) return;
+    const nextFiringType = piece.stage === "BISQUE" ? "glaze" : piece.stage === "GREENWARE" ? "bisque" : null;
+    if (!nextFiringType) {
+      setStatus("This ware is already past firing.");
+      return;
+    }
+    const nextBatchId = await continueJourneyAndGetBatchId(batchId);
+    if (!nextBatchId) return;
+
+    try {
+      sessionStorage.setItem(
+        CHECKIN_PREFILL_KEY,
+        JSON.stringify({
+          linkedBatchId: nextBatchId,
+          firingType: nextFiringType,
+          pieceCode: piece.pieceCode || piece.id,
+        })
+      );
+    } catch {
+      // Ignore storage issues.
+    }
+
+    onOpenCheckin();
   }
 
   async function handleArchive(batchId: string) {
@@ -582,87 +602,6 @@ export default function MyPiecesView({ user, adminToken, isStaff }: Props) {
     setNoteSearchError("");
   }
 
-  async function handleCreateCollection() {
-    const busyKey = "createCollection";
-    if (isBusy(busyKey)) return;
-
-    const suggestedName = (user.displayName || "My") + " collection";
-    const promptValue = window.prompt("Collection name", suggestedName);
-    if (promptValue === null) {
-      setStatus("Collection creation cancelled.");
-      return;
-    }
-    const title = promptValue.trim() || suggestedName;
-    const ownerDisplayName = (user.displayName || user.email || "Client").trim();
-    const requestId = createCollectionRequestId ?? makeClientRequestId();
-    if (!createCollectionRequestId) {
-      setCreateCollectionRequestId(requestId);
-    }
-
-    setBusy(busyKey, true);
-    setStatus("Creating collection...");
-    setMeta(null);
-
-    const payload = {
-      ownerUid: user.uid,
-      ownerDisplayName,
-      title,
-      intakeMode: "SELF_SERVICE",
-      estimatedCostCents: 0,
-      kilnName: null,
-      estimateNotes: null,
-      clientRequestId: requestId,
-    };
-
-    try {
-      const idToken = await user.getIdToken();
-      const trimmedAdminToken = adminToken ? adminToken.trim() : "";
-      const response = await portalApi.createBatch({
-        idToken,
-        adminToken: trimmedAdminToken ? trimmedAdminToken : undefined,
-        payload,
-      });
-      setMeta(response.meta);
-      const newId = getResultBatchId(response.data);
-      if (newId) {
-        setCollectionOverrides((prev) => ({
-          ...prev,
-          [newId]: { name: title, desc: "" },
-        }));
-        selectBatch(newId, title);
-        setStatus(`Collection created. ID: ${newId}`);
-      } else {
-        setStatus("Collection created.");
-      }
-      setCreateCollectionRequestId(null);
-    } catch (err: any) {
-      if (err instanceof PortalApiError) {
-        setMeta(err.meta);
-        setStatus(`Create collection failed: ${err.message}`);
-      } else {
-        setStatus(`Create collection failed: ${err?.message || String(err)}`);
-      }
-    } finally {
-      setBusy(busyKey, false);
-    }
-  }
-
-  function handleNewWareCta() {
-    if (!selectedBatchId) {
-      const firstCollection = active[0] ?? history[0];
-      if (!firstCollection) {
-        setStatus("You need a collection before creating a ware.");
-        return;
-      }
-      selectBatch(firstCollection.id, firstCollection.title);
-    }
-    setStatus("Ready to add a new ware.");
-    setTimeout(() => {
-      const input = document.getElementById("ware-code") as HTMLInputElement | null;
-      input?.focus();
-    }, 0);
-  }
-
   async function handleSaveCollectionMeta() {
     if (!selectedBatchId) return;
     const busyKey = `collectionMeta:${selectedBatchId}`;
@@ -711,92 +650,6 @@ export default function MyPiecesView({ user, adminToken, isStaff }: Props) {
         fn: "firestore.updateCollectionMeta",
         url: `batches/${selectedBatchId}`,
         payload: { collectionName: trimmedName, collectionDesc: trimmedDesc || null },
-        response: { message: err?.message || String(err) },
-        curlExample: "N/A (Firestore SDK)",
-      });
-    } finally {
-      setBusy(busyKey, false);
-    }
-  }
-
-  async function handleCreatePiece() {
-    if (!selectedBatchId) return;
-    const busyKey = `createPiece:${selectedBatchId}`;
-    if (isBusy(busyKey)) return;
-
-    const trimmedCode = newPieceCode.trim();
-    const trimmedDesc = newPieceDesc.trim();
-    const trimmedOwner = newPieceOwner.trim();
-
-    if (!trimmedCode || !trimmedDesc || !trimmedOwner) {
-      setStatus("Ware code, short description, and owner name are required.");
-      return;
-    }
-
-    setBusy(busyKey, true);
-    setStatus("Creating piece...");
-    setMeta(null);
-
-    const payload = {
-      pieceCode: trimmedCode,
-      shortDesc: trimmedDesc,
-      ownerName: trimmedOwner,
-      stage: newPieceStage,
-      wareCategory: newPieceCategory,
-      isArchived: false,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    };
-
-    try {
-      const docRef = await addDoc(collection(db, "batches", selectedBatchId, "pieces"), payload);
-      await addDoc(collection(db, "batches", selectedBatchId, "pieces", docRef.id, "audit"), {
-        type: "CREATED",
-        at: serverTimestamp(),
-        actorUid: user.uid,
-        actorName: user.displayName ?? "Member",
-        notes: `Piece ${trimmedCode} created`,
-      });
-
-      setMeta({
-        ok: true,
-        status: 200,
-        fn: "firestore.createPiece",
-        url: `batches/${selectedBatchId}/pieces`,
-        payload,
-        response: { id: docRef.id },
-        curlExample: "N/A (Firestore SDK)",
-      });
-
-      setStatus("Ware created.");
-      setNewPieceCode("");
-      setNewPieceDesc("");
-      setNewPieceOwner("");
-      setNewPieceStage("UNKNOWN");
-      setNewPieceCategory("UNKNOWN");
-
-      setPieces((prev) => [
-        {
-          id: docRef.id,
-          pieceCode: trimmedCode,
-          shortDesc: trimmedDesc,
-          ownerName: trimmedOwner,
-          stage: newPieceStage,
-          wareCategory: newPieceCategory,
-          isArchived: false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        ...prev,
-      ]);
-    } catch (err: any) {
-      setStatus(`Create piece failed: ${err?.message || String(err)}`);
-      setMeta({
-        ok: false,
-        status: err?.code ?? "error",
-        fn: "firestore.createPiece",
-        url: `batches/${selectedBatchId}/pieces`,
-        payload,
         response: { message: err?.message || String(err) },
         curlExample: "N/A (Firestore SDK)",
       });
@@ -1200,18 +1053,9 @@ export default function MyPiecesView({ user, adminToken, isStaff }: Props) {
       </div>
 
       <div className="cta-bar">
-        <button className="btn btn-primary cta-primary" onClick={handleNewWareCta}>
-          New ware
-        </button>
-        <button
-          className="btn btn-ghost"
-          onClick={() => void handleCreateCollection()}
-          disabled={isBusy("createCollection")}
-        >
-          {isBusy("createCollection") ? "Creating..." : "New collection"}
-        </button>
         <div className="piece-meta">
-          Collections group wares together for kiln submissions and cost calculation.
+          New wares and collections are created during Ware Check-in. Use that flow to log new
+          pieces or move bisque work into glaze.
         </div>
       </div>
 
@@ -1446,83 +1290,6 @@ export default function MyPiecesView({ user, adminToken, isStaff }: Props) {
               {collectionMetaLoading ? <div className="piece-meta">Loading collection details...</div> : null}
               {collectionMetaError ? <div className="alert inline-alert">{collectionMetaError}</div> : null}
 
-              <div className="section-title">New ware</div>
-              <div className="form-grid ware-form-grid">
-                <div>
-                  <label className="field-label" htmlFor="ware-code">
-                    Ware code
-                  </label>
-                  <input
-                    id="ware-code"
-                    value={newPieceCode}
-                    onChange={(event) => setNewPieceCode(event.target.value)}
-                    placeholder="e.g. MF-122"
-                  />
-                </div>
-                <div>
-                  <label className="field-label" htmlFor="ware-desc">
-                    Short description
-                  </label>
-                  <input
-                    id="ware-desc"
-                    value={newPieceDesc}
-                    onChange={(event) => setNewPieceDesc(event.target.value)}
-                    placeholder="e.g. Blue vase"
-                  />
-                </div>
-                <div>
-                  <label className="field-label" htmlFor="ware-owner">
-                    Owner name
-                  </label>
-                  <input
-                    id="ware-owner"
-                    value={newPieceOwner}
-                    onChange={(event) => setNewPieceOwner(event.target.value)}
-                    placeholder="Client name"
-                  />
-                </div>
-                <div>
-                  <label className="field-label" htmlFor="ware-stage">
-                    Stage
-                  </label>
-                  <select
-                    id="ware-stage"
-                    value={newPieceStage}
-                    onChange={(event) => setNewPieceStage(normalizeStage(event.target.value))}
-                  >
-                    {STAGES.map((stage) => (
-                      <option value={stage} key={stage}>
-                        {stage}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="field-label" htmlFor="ware-category">
-                    Category
-                  </label>
-                  <select
-                    id="ware-category"
-                    value={newPieceCategory}
-                    onChange={(event) => setNewPieceCategory(normalizeWareCategory(event.target.value))}
-                  >
-                    {WARE_CATEGORIES.map((category) => (
-                      <option value={category} key={category}>
-                        {WARE_CATEGORY_LABELS[category]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="form-actions">
-                <button
-                  className="btn btn-primary"
-                  onClick={handleCreatePiece}
-                  disabled={isBusy(`createPiece:${selectedBatchId}`)}
-                >
-                  {isBusy(`createPiece:${selectedBatchId}`) ? "Creating..." : "Create ware"}
-                </button>
-              </div>
               <div className="section-title">Wares</div>
               {piecesLoading ? (
                 <div className="empty-state">Loading wares...</div>
@@ -1541,44 +1308,59 @@ export default function MyPiecesView({ user, adminToken, isStaff }: Props) {
                           {WARE_CATEGORY_LABELS[category]} ({categoryPieces.length})
                         </div>
                         <div className="pieces-list">
-                          {categoryPieces.map((piece) => (
-                            <div className="piece-row" key={piece.id}>
-                              <div>
-                                <div className="piece-title-row">
-                                  <div className="piece-title">{piece.pieceCode || piece.id}</div>
-                                  <div className="pill piece-status">{piece.stage}</div>
+                          {categoryPieces.map((piece) => {
+                            const isNextEligible = piece.stage === "GREENWARE" || piece.stage === "BISQUE";
+                            const canSendNext = isNextEligible && !!onOpenCheckin;
+                            const sendLabel = isNextEligible ? "Send to next firing" : "Firing complete";
+                            return (
+                              <div className="piece-row" key={piece.id}>
+                                <div>
+                                  <div className="piece-title-row">
+                                    <div className="piece-title">{piece.pieceCode || piece.id}</div>
+                                    <div className="pill piece-status">{piece.stage}</div>
+                                  </div>
+                                  <div className="piece-meta">{piece.shortDesc}</div>
+                                  <div className="piece-meta">Owner: {piece.ownerName}</div>
                                 </div>
-                                <div className="piece-meta">{piece.shortDesc}</div>
-                                <div className="piece-meta">Owner: {piece.ownerName}</div>
+                                <div className="piece-right">
+                                  <div className="piece-meta">
+                                    Updated: {formatMaybeTimestamp(piece.updatedAt)}
+                                  </div>
+                                  <div className="piece-actions">
+                                    <button
+                                      className="btn btn-ghost"
+                                      onClick={() => {
+                                        setSelectedPieceId(piece.id);
+                                        setSelectedPieceTab("client");
+                                      }}
+                                    >
+                                      View details
+                                    </button>
+                                    <button
+                                      className="btn btn-ghost"
+                                      onClick={() => {
+                                        if (!selectedBatchId) return;
+                                        void handleSendToNextFiring(selectedBatchId, piece);
+                                      }}
+                                      disabled={!selectedBatchId || !canSendNext || isBusy(`continue:${selectedBatchId}`)}
+                                    >
+                                      {sendLabel}
+                                    </button>
+                                    <button
+                                      className="btn btn-ghost"
+                                      onClick={() => {
+                                        if (!window.confirm("Archive this ware?")) return;
+                                        void handleArchivePiece(piece.id, true);
+                                      }}
+                                      disabled={isBusy(`archivePiece:${piece.id}`)}
+                                    >
+                                      {isBusy(`archivePiece:${piece.id}`) ? "Archiving..." : "Archive"}
+                                    </button>
+                                  </div>
+                                </div>
                               </div>
-                              <div className="piece-right">
-                                <div className="piece-meta">
-                                  Updated: {formatMaybeTimestamp(piece.updatedAt)}
-                                </div>
-                                <div className="piece-actions">
-                                  <button
-                                    className="btn btn-ghost"
-                                    onClick={() => {
-                                      setSelectedPieceId(piece.id);
-                                      setSelectedPieceTab("client");
-                                    }}
-                                  >
-                                    View details
-                                  </button>
-                                  <button
-                                    className="btn btn-ghost"
-                                    onClick={() => {
-                                      if (!window.confirm("Archive this ware?")) return;
-                                      void handleArchivePiece(piece.id, true);
-                                    }}
-                                    disabled={isBusy(`archivePiece:${piece.id}`)}
-                                  >
-                                    {isBusy(`archivePiece:${piece.id}`) ? "Archiving..." : "Archive"}
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     );

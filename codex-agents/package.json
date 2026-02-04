@@ -1,31 +1,37 @@
 {
-  "name": "@monsoonfire/codex-agents",
-  "version": "0.1.0",
-  "description": "Canonical Codex agent guidance files for Monsoon Fire Portal (AGENTS.md + templates).",
-  "license": "MIT",
-  "private": false,
+  "name": "web",
+  "private": true,
+  "version": "0.0.0",
   "type": "module",
-  "files": [
-    "AGENTS.md",
-    "web/AGENTS.md",
-    "functions/AGENTS.md",
-    "codex/SESSION_TEMPLATE.md",
-    "README.md",
-    "LICENSE"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/monsoonfirepottery-byte/codex-agents.git"
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "studio": "concurrently \"vite\" \"vitest\""
   },
-  "bugs": {
-    "url": "https://github.com/monsoonfirepottery-byte/codex-agents/issues"
+  "dependencies": {
+    "firebase": "^12.8.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
-  "homepage": "https://github.com/monsoonfirepottery-byte/codex-agents#readme",
-  "keywords": [
-    "codex",
-    "agents",
-    "firebase",
-    "react",
-    "monsoonfire"
-  ]
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "concurrently": "^8.2.2",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vite": "^7.3.1",
+    "vite-plugin-pwa": "^1.2.0",
+    "vitest": "^3.2.4"
+  }
 }

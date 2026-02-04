@@ -31,9 +31,9 @@ const STATUS_LABELS: Record<KilnStatus, string> = {
   cooling: "Cooling",
   unloading: "Unloading",
   maintenance: "Maintenance",
+  offline: "Offline",
 };
 
-const GOOGLE_CALENDAR_TZ = "America/Phoenix";
 const PRIMARY_KILN_NAME = "L&L eQ2827-3";
 const RAKU_KILN_NAME = "Reduction Raku Kiln";
 
@@ -65,27 +65,19 @@ function formatTimeRange(startDate: Date, endDate: Date) {
   return `${startLabel} - ${endLabel}`;
 }
 
-function resolveGoogleCalendarId() {
-  const env =
-    typeof import.meta !== "undefined" &&
-    (import.meta as any).env &&
-    (import.meta as any).env.VITE_GOOGLE_KILN_CALENDAR_ID
-      ? String((import.meta as any).env.VITE_GOOGLE_KILN_CALENDAR_ID)
-      : "";
-  return env;
+function formatIcsDate(date: Date) {
+  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
 }
 
-function formatGoogleDate(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  const seconds = String(date.getSeconds()).padStart(2, "0");
-  return `${year}${month}${day}T${hours}${minutes}${seconds}`;
+function escapeIcsText(text: string) {
+  return text
+    .replace(/\\/g, "\\\\")
+    .replace(/\n/g, "\\n")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;");
 }
 
-function openGoogleCalendarEvent(firing: NormalizedFiring, kiln: Kiln | undefined) {
+function downloadCalendarInvite(firing: NormalizedFiring, kiln: Kiln | undefined) {
   const summary = `${kiln?.name ?? "Kiln"} — ${firing.title}`;
   const details = [
     `Cycle: ${firing.cycleType}`,
@@ -95,24 +87,40 @@ function openGoogleCalendarEvent(firing: NormalizedFiring, kiln: Kiln | undefine
     .filter(Boolean)
     .join("\n");
 
-  const start = formatGoogleDate(firing.startDate);
-  const end = formatGoogleDate(firing.endDate);
+  const start = formatIcsDate(firing.startDate);
+  const end = formatIcsDate(firing.endDate);
+  const stamp = formatIcsDate(new Date());
+  const uid = `monsoonfire-${firing.id}@monsoonfire.com`;
 
-  const params = new URLSearchParams({
-    text: summary,
-    dates: `${start}/${end}`,
-    details,
-    location: kiln?.name ?? "Monsoon Fire Studio",
-    ctz: GOOGLE_CALENDAR_TZ,
-  });
+  const icsLines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Monsoon Fire//Kiln Schedule//EN",
+    "CALSCALE:GREGORIAN",
+    "BEGIN:VEVENT",
+    `UID:${uid}`,
+    `DTSTAMP:${stamp}`,
+    `SUMMARY:${escapeIcsText(summary)}`,
+    `DESCRIPTION:${escapeIcsText(details)}`,
+    `LOCATION:${escapeIcsText(kiln?.name ?? "Monsoon Fire Studio")}`,
+    `DTSTART:${start}`,
+    `DTEND:${end}`,
+    "BEGIN:VALARM",
+    "TRIGGER:-P1D",
+    "ACTION:DISPLAY",
+    "DESCRIPTION:Kiln firing reminder",
+    "END:VALARM",
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ];
 
-  const calendarId = resolveGoogleCalendarId();
-  if (calendarId) {
-    params.set("src", calendarId);
-  }
-
-  const url = `https://calendar.google.com/calendar/r/eventedit?${params.toString()}`;
-  window.open(url, "_blank", "noopener,noreferrer");
+  const blob = new Blob([icsLines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `monsoonfire-firing-${firing.id}.ics`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function toFirestoreKiln(kiln: Kiln) {
@@ -394,8 +402,8 @@ export default function KilnScheduleView() {
                         {formatDateTime(firing.startDate)} · {formatTimeRange(firing.startDate, firing.endDate)}
                       </div>
                     </div>
-                    <button className="btn btn-ghost" onClick={() => openGoogleCalendarEvent(firing, kiln)}>
-                      Add to Monsoon Fire calendar
+                    <button className="btn btn-ghost" onClick={() => downloadCalendarInvite(firing, kiln)}>
+                      Add to my calendar
                     </button>
                   </div>
                 );
@@ -422,11 +430,12 @@ export default function KilnScheduleView() {
               <div className="details-actions">
                 <button
                   className="btn btn-primary"
-                  onClick={() => openGoogleCalendarEvent(selectedFiring, kilnById.get(selectedFiring.kilnId))}
+                  onClick={() => downloadCalendarInvite(selectedFiring, kilnById.get(selectedFiring.kilnId))}
                 >
-                  Add to Monsoon Fire calendar
+                  Add to my calendar
                 </button>
               </div>
+              <p className="muted">Includes a 1‑day reminder.</p>
             </div>
           ) : (
             <div className="empty-state">Select a firing from the list to see details.</div>

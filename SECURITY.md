@@ -32,6 +32,11 @@ Highest‑risk flows:
 - Production must never enable the dev admin token path.
 - Prefer `ALLOWED_ORIGINS` for Cloud Functions CORS allowlist.
 
+**Preflight (Quick Checks)**
+1. `npm --prefix web run build`
+2. `npm --prefix functions run build`
+3. `firebase emulators:start --only firestore,functions` (optional for manual rule validation)
+
 **Manual Security Test Plan**
 1. Unauthenticated API access: call a function without `Authorization` and confirm 401.
 2. Non‑staff admin access: call `listEventSignups` or `seedMaterialsCatalog` and confirm 403.

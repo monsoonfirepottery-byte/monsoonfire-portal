@@ -4,9 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node ./scripts/dev.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "test": "node ./node_modules/vitest/vitest.mjs --configLoader runner",
+    "dev:all": "node ./scripts/dev.mjs",
+    "test:run": "node ./node_modules/vitest/vitest.mjs run --configLoader runner",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -27,6 +30,7 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.3.1",
-    "vite-plugin-pwa": "^1.2.0"
+    "vite-plugin-pwa": "^1.2.0",
+    "vitest": "^3.2.4"
   }
 }

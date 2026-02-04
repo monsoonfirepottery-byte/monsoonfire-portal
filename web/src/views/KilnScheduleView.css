@@ -92,6 +92,12 @@
   border-color: rgba(149, 165, 166, 0.3);
 }
 
+.status-offline {
+  background: rgba(107, 98, 86, 0.2);
+  color: #efe5d8;
+  border-color: rgba(107, 98, 86, 0.35);
+}
+
 .kiln-next .label,
 .kiln-cycles .label {
   font-size: 0.75rem;

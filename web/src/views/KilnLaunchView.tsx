@@ -1,5 +1,4 @@
 import {
-  addDoc,
   collection,
   doc,
   getDocs,
@@ -8,25 +7,49 @@ import {
   query,
   serverTimestamp,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { db } from "../firebase";
-import kilnIsoImage from "../assets/kiln-isometric.png";
 import "./KilnLaunchView.css";
 
+type LoadStatus = "queued" | "loading" | "loaded";
 
-type KilnLaunchRequest = {
+type ReservationQueueItem = {
   id: string;
-  uid: string;
-  userDisplayName: string | null;
-  halfShelves: number;
-  clayBody: string;
-  notes: string | null;
-  urgency: "asap" | "next";
-  status: "queued" | "loaded" | "fired" | "complete" | "cancelled";
+  ownerUid: string;
+  firingType?: string | null;
+  shelfEquivalent?: number | null;
+  footprintHalfShelves?: number | null;
+  heightInches?: number | null;
+  tiers?: number | null;
+  estimatedHalfShelves?: number | null;
+  useVolumePricing?: boolean;
+  volumeIn3?: number | null;
   kilnId?: string | null;
+  status?: string | null;
+  loadStatus?: string | null;
+  wareType?: string | null;
+  dropOffProfile?: {
+    label?: string | null;
+    specialHandling?: boolean | null;
+  } | null;
+  dropOffQuantity?: {
+    label?: string | null;
+    pieceRange?: string | null;
+  } | null;
+  addOns?: {
+    rushRequested?: boolean;
+    wholeKilnRequested?: boolean;
+  } | null;
   createdAt?: unknown;
+};
+
+type QueueEntry = ReservationQueueItem & {
+  halfShelves: number;
+  loadStatus: LoadStatus;
+  firingBucket: "bisque" | "glaze";
 };
 
 type KilnLaunchViewProps = {
@@ -34,16 +57,31 @@ type KilnLaunchViewProps = {
   isStaff: boolean;
 };
 
-const LAUNCH_TARGET_HALF_SHELVES = 4;
-const KILN_ID = "main";
+const KILN_CAPACITY_HALF_SHELVES = 8;
+const KILN_ID = "studio-electric";
 
-function normalizeHalfShelves(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
+const LOAD_STATUS_LABELS: Record<LoadStatus, string> = {
+  queued: "Awaiting",
+  loading: "Loading",
+  loaded: "Loaded",
+};
+
+function normalizeLoadStatus(value: unknown): LoadStatus {
+  if (value === "loading" || value === "loaded") return value;
+  return "queued";
+}
+
+function normalizeHalfShelves(value: unknown, alreadyHalfShelves = false) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(1, Math.ceil(alreadyHalfShelves ? value : value * 2));
+  }
   if (typeof value === "string") {
     const parsed = Number.parseFloat(value);
-    return Number.isFinite(parsed) ? parsed : 0;
+    if (Number.isFinite(parsed)) {
+      return Math.max(1, Math.ceil(alreadyHalfShelves ? parsed : parsed * 2));
+    }
   }
-  return 0;
+  return 1;
 }
 
 function formatHalfShelfLabel(value: number) {
@@ -51,176 +89,213 @@ function formatHalfShelfLabel(value: number) {
   return `${rounded} half shelf${rounded === 1 ? "" : "es"}`;
 }
 
+function isGlazeFiring(value: unknown) {
+  return typeof value === "string" && value.toLowerCase() === "glaze";
+}
+
+function formatWareLabel(value: unknown) {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return trimmed
+    .split(/[\s-_]+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function getQueueTitle(item: QueueEntry) {
+  if (item.dropOffProfile?.label) return item.dropOffProfile.label;
+  if (item.dropOffQuantity?.label) return item.dropOffQuantity.label;
+  if (Number.isFinite(item.estimatedHalfShelves)) {
+    return `${Math.round(item.estimatedHalfShelves as number)} half-shelf estimate`;
+  }
+  return "Checked-in work";
+}
+
+function getQueueMeta(item: QueueEntry) {
+  const parts: string[] = [];
+  const ware = formatWareLabel(item.wareType);
+  if (ware) parts.push(ware);
+  if (item.useVolumePricing && item.volumeIn3) {
+    parts.push(`${item.volumeIn3} in^3`);
+  } else if (item.dropOffQuantity?.pieceRange) {
+    parts.push(item.dropOffQuantity.pieceRange);
+  }
+  parts.push(item.firingBucket === "glaze" ? "Glaze" : "Bisque");
+  return parts.join(" · ") || "Member check-in";
+}
+
+function isCancelled(status: string | null | undefined) {
+  return typeof status === "string" && status.toUpperCase() === "CANCELLED";
+}
+
 export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
-  const [requests, setRequests] = useState<KilnLaunchRequest[]>([]);
+  const [reservations, setReservations] = useState<ReservationQueueItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [submitBusy, setSubmitBusy] = useState(false);
-  const [submitStatus, setSubmitStatus] = useState("");
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState("");
-  const [halfShelves, setHalfShelves] = useState(1);
-  const [clayBody, setClayBody] = useState("");
-  const [notes, setNotes] = useState("");
-  const [urgency, setUrgency] = useState<"asap" | "next">("next");
 
-  const loadRequests = useCallback(async () => {
+  const loadReservations = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const requestsQuery = query(
-        collection(db, "kilnLaunchRequests"),
-        orderBy("createdAt", "desc"),
-        limit(200)
-      );
-      const snap = await getDocs(requestsQuery);
-      const rows: KilnLaunchRequest[] = snap.docs.map((docSnap) => {
-        const data = docSnap.data() as Partial<KilnLaunchRequest>;
+      const baseRef = collection(db, "reservations");
+      const reservationsQuery = isStaff
+        ? query(baseRef, orderBy("createdAt", "desc"), limit(250))
+        : query(baseRef, where("ownerUid", "==", user.uid), orderBy("createdAt", "desc"), limit(200));
+      const snap = await getDocs(reservationsQuery);
+      const rows: ReservationQueueItem[] = snap.docs.map((docSnap) => {
+        const data = docSnap.data() as Partial<ReservationQueueItem>;
         return {
           id: docSnap.id,
-          uid: data.uid ?? "",
-          userDisplayName: data.userDisplayName ?? null,
-          halfShelves: normalizeHalfShelves(data.halfShelves),
-          clayBody: data.clayBody ?? "",
-          notes: data.notes ?? null,
-          urgency: data.urgency ?? "next",
-          status: data.status ?? "queued",
+          ownerUid: data.ownerUid ?? "",
+          firingType: data.firingType ?? null,
+          shelfEquivalent: typeof data.shelfEquivalent === "number" ? data.shelfEquivalent : null,
+          footprintHalfShelves:
+            typeof data.footprintHalfShelves === "number" ? data.footprintHalfShelves : null,
+          heightInches: typeof data.heightInches === "number" ? data.heightInches : null,
+          tiers: typeof data.tiers === "number" ? data.tiers : null,
+          estimatedHalfShelves:
+            typeof data.estimatedHalfShelves === "number" ? data.estimatedHalfShelves : null,
+          useVolumePricing: data.useVolumePricing === true,
+          volumeIn3: typeof data.volumeIn3 === "number" ? data.volumeIn3 : null,
           kilnId: data.kilnId ?? null,
+          status: data.status ?? null,
+          loadStatus: data.loadStatus ?? null,
+          wareType: data.wareType ?? null,
+          dropOffProfile: data.dropOffProfile ?? null,
+          dropOffQuantity: data.dropOffQuantity ?? null,
+          addOns: data.addOns ?? null,
           createdAt: data.createdAt,
         };
       });
-      setRequests(rows);
+      setReservations(rows);
       setLastUpdated(new Date());
     } catch (err: any) {
-      setError(`Kiln launch queue failed: ${err?.message || String(err)}`);
+      setError(`Queue load failed: ${err?.message || String(err)}`);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isStaff, user.uid]);
 
   useEffect(() => {
-    void loadRequests();
-  }, [loadRequests]);
+    void loadReservations();
+  }, [loadReservations]);
 
-  const scopedRequests = useMemo(
-    () => requests.filter((item) => (item.kilnId ?? KILN_ID) === KILN_ID),
-    [requests]
+  const scopedReservations = useMemo(
+    () => reservations.filter((item) => !item.kilnId || item.kilnId === KILN_ID),
+    [reservations]
   );
 
-  const activeRequests = useMemo(
-    () => scopedRequests.filter((item) => item.status !== "cancelled" && item.status !== "complete"),
-    [scopedRequests]
+  const activeReservations = useMemo(
+    () => scopedReservations.filter((item) => !isCancelled(item.status)),
+    [scopedReservations]
   );
 
-  const queuedRequests = useMemo(
-    () => activeRequests.filter((item) => item.status === "queued"),
-    [activeRequests]
+  const queueEntries = useMemo<QueueEntry[]>(
+    () =>
+      activeReservations.map((item) => ({
+        ...item,
+        loadStatus: normalizeLoadStatus(item.loadStatus),
+        halfShelves:
+          item.estimatedHalfShelves != null
+            ? normalizeHalfShelves(item.estimatedHalfShelves, true)
+            : normalizeHalfShelves(item.shelfEquivalent),
+        firingBucket: isGlazeFiring(item.firingType) ? "glaze" : "bisque",
+      })),
+    [activeReservations]
   );
 
-  const loadedRequests = useMemo(
-    () => activeRequests.filter((item) => item.status === "loaded"),
-    [activeRequests]
+  const queuedEntries = useMemo(
+    () => queueEntries.filter((item) => item.loadStatus === "queued"),
+    [queueEntries]
+  );
+  const loadingEntries = useMemo(
+    () => queueEntries.filter((item) => item.loadStatus === "loading"),
+    [queueEntries]
+  );
+  const loadedEntries = useMemo(
+    () => queueEntries.filter((item) => item.loadStatus === "loaded"),
+    [queueEntries]
   );
 
-  const firedRequests = useMemo(
-    () => activeRequests.filter((item) => item.status === "fired"),
-    [activeRequests]
+  const bisqueQueue = useMemo(
+    () => queuedEntries.filter((item) => item.firingBucket === "bisque"),
+    [queuedEntries]
+  );
+  const glazeQueue = useMemo(
+    () => queuedEntries.filter((item) => item.firingBucket === "glaze"),
+    [queuedEntries]
   );
 
-  const asapRequests = useMemo(
-    () => queuedRequests.filter((item) => item.urgency === "asap"),
-    [queuedRequests]
+  const bisqueHalfShelves = useMemo(
+    () => bisqueQueue.reduce((sum, item) => sum + item.halfShelves, 0),
+    [bisqueQueue]
   );
-  const nextRequests = useMemo(
-    () => queuedRequests.filter((item) => item.urgency === "next"),
-    [queuedRequests]
+  const glazeHalfShelves = useMemo(
+    () => glazeQueue.reduce((sum, item) => sum + item.halfShelves, 0),
+    [glazeQueue]
   );
-
   const queuedHalfShelves = useMemo(
-    () => queuedRequests.reduce((sum, item) => sum + normalizeHalfShelves(item.halfShelves), 0),
-    [queuedRequests]
+    () => queuedEntries.reduce((sum, item) => sum + item.halfShelves, 0),
+    [queuedEntries]
+  );
+  const loadingHalfShelves = useMemo(
+    () => loadingEntries.reduce((sum, item) => sum + item.halfShelves, 0),
+    [loadingEntries]
   );
   const loadedHalfShelves = useMemo(
-    () => loadedRequests.reduce((sum, item) => sum + normalizeHalfShelves(item.halfShelves), 0),
-    [loadedRequests]
-  );
-  const asapHalfShelves = useMemo(
-    () => asapRequests.reduce((sum, item) => sum + normalizeHalfShelves(item.halfShelves), 0),
-    [asapRequests]
-  );
-  const nextHalfShelves = useMemo(
-    () => nextRequests.reduce((sum, item) => sum + normalizeHalfShelves(item.halfShelves), 0),
-    [nextRequests]
+    () => loadedEntries.reduce((sum, item) => sum + item.halfShelves, 0),
+    [loadedEntries]
   );
 
-  const readyLaunches = Math.floor(loadedHalfShelves / LAUNCH_TARGET_HALF_SHELVES);
-  const currentLoad = loadedHalfShelves % LAUNCH_TARGET_HALF_SHELVES;
-  const visualLoad =
-    loadedHalfShelves > 0 && currentLoad === 0 ? LAUNCH_TARGET_HALF_SHELVES : currentLoad;
-  const filledSlots = Math.min(visualLoad, LAUNCH_TARGET_HALF_SHELVES);
+  const plannedHalfShelves = Math.min(
+    KILN_CAPACITY_HALF_SHELVES,
+    queuedHalfShelves + loadingHalfShelves + loadedHalfShelves
+  );
+
   const loadStateLabel =
-    loadedHalfShelves === 0
-      ? "Awaiting pieces"
-      : currentLoad === 0
-      ? "Ready to launch"
-      : "Loading";
+    loadedHalfShelves >= KILN_CAPACITY_HALF_SHELVES
+      ? "Ready to fire"
+      : loadingHalfShelves > 0
+      ? "Loading"
+      : queuedHalfShelves > 0
+      ? "Awaiting load"
+      : "Idle";
 
-  const handleSubmit = async () => {
-    if (submitBusy) return;
-    const trimmedClay = clayBody.trim();
-    if (!trimmedClay) {
-      setSubmitStatus("Please include the clay body.");
-      return;
-    }
-    const parsedHalfShelves = Math.round(Number(halfShelves));
-    if (!Number.isFinite(parsedHalfShelves) || parsedHalfShelves < 1 || parsedHalfShelves > LAUNCH_TARGET_HALF_SHELVES) {
-      setSubmitStatus(`Half shelves must be between 1 and ${LAUNCH_TARGET_HALF_SHELVES}.`);
-      return;
-    }
-    const trimmedNotes = notes.trim();
-
-    setSubmitBusy(true);
-    setSubmitStatus("");
-    try {
-      await addDoc(collection(db, "kilnLaunchRequests"), {
-        uid: user.uid,
-        userDisplayName: user.displayName || null,
-        halfShelves: parsedHalfShelves,
-        clayBody: trimmedClay,
-        notes: trimmedNotes ? trimmedNotes : null,
-        urgency,
-        status: "queued",
-        kilnId: KILN_ID,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+  const loadSlots = useMemo(() => {
+    const slots: Array<LoadStatus | "empty"> = [];
+    const pushSlots = (items: QueueEntry[], status: LoadStatus) => {
+      items.forEach((item) => {
+        for (let i = 0; i < item.halfShelves && slots.length < KILN_CAPACITY_HALF_SHELVES; i += 1) {
+          slots.push(status);
+        }
       });
-      setSubmitStatus("Submitted. We will slot you into the next load.");
-      setHalfShelves(1);
-      setClayBody("");
-      setNotes("");
-      setUrgency("next");
-      await loadRequests();
-    } catch (err: any) {
-      setSubmitStatus(`Submission failed: ${err?.message || String(err)}`);
-    } finally {
-      setSubmitBusy(false);
+    };
+    pushSlots(loadedEntries, "loaded");
+    pushSlots(loadingEntries, "loading");
+    pushSlots(queuedEntries, "queued");
+    while (slots.length < KILN_CAPACITY_HALF_SHELVES) {
+      slots.push("empty");
     }
-  };
+    return slots;
+  }, [loadedEntries, loadingEntries, queuedEntries]);
 
-  const handleStatusUpdate = async (requestId: string, nextStatus: KilnLaunchRequest["status"]) => {
+  const handleLoadStatusUpdate = async (reservationId: string, nextStatus: LoadStatus) => {
     if (!isStaff || actionBusyId) return;
-    setActionBusyId(requestId);
+    setActionBusyId(reservationId);
     setActionStatus("");
     try {
-      await updateDoc(doc(db, "kilnLaunchRequests", requestId), {
-        status: nextStatus,
+      await updateDoc(doc(db, "reservations", reservationId), {
+        loadStatus: nextStatus,
         updatedAt: serverTimestamp(),
       });
-      setActionStatus("Status updated.");
-      await loadRequests();
+      setActionStatus("Load status updated.");
+      await loadReservations();
     } catch (err: any) {
-      setActionStatus(`Status update failed: ${err?.message || String(err)}`);
+      setActionStatus(`Update failed: ${err?.message || String(err)}`);
     } finally {
       setActionBusyId(null);
     }
@@ -233,14 +308,15 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
           <p className="kiln-launch-kicker">View the Queues</p>
           <h1 className="kiln-launch-title">View the Queues</h1>
           <p className="kiln-launch-subtitle">
-            A launch is ready when the kiln reaches {LAUNCH_TARGET_HALF_SHELVES} half shelves.
+            The studio kiln holds {KILN_CAPACITY_HALF_SHELVES} half shelves. Queued work
+            fills the planned load, and staff confirm what’s actually in the kiln.
           </p>
           {lastUpdated ? (
             <p className="kiln-launch-updated">Last updated {lastUpdated.toLocaleTimeString()}</p>
           ) : null}
         </div>
         <div className="kiln-launch-actions">
-          <button className="btn btn-ghost" onClick={loadRequests} disabled={loading}>
+          <button className="btn btn-ghost" onClick={loadReservations} disabled={loading}>
             {loading ? "Refreshing..." : "Refresh"}
           </button>
         </div>
@@ -253,38 +329,52 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
         <section className="kiln-launch-panel">
           <div className="kiln-panel-header">
             <div>
-              <h2>ASAP Queue</h2>
-              <p className="kiln-panel-meta">{formatHalfShelfLabel(asapHalfShelves)} waiting</p>
+              <h2>Bisque queue</h2>
+              <p className="kiln-panel-meta">{formatHalfShelfLabel(bisqueHalfShelves)} waiting</p>
             </div>
-            <span className="kiln-panel-count">{asapRequests.length} requests</span>
+            <span className="kiln-panel-count">{bisqueQueue.length} check-ins</span>
           </div>
           <div className="kiln-queue-list">
-            {asapRequests.length === 0 ? (
-              <p className="kiln-empty">No ASAP requests yet.</p>
+            {bisqueQueue.length === 0 ? (
+              <p className="kiln-empty">No bisque requests yet.</p>
             ) : (
-              asapRequests.map((item) => (
+              bisqueQueue.map((item) => (
                 <div key={item.id} className="kiln-queue-card">
                   <div className="kiln-queue-title">
-                    <strong>{item.userDisplayName ?? "Member"}</strong>
+                    <strong>{getQueueTitle(item)}</strong>
                     <span>{formatHalfShelfLabel(item.halfShelves)}</span>
                   </div>
-                  <div className="kiln-queue-meta">{item.clayBody}</div>
-                  {item.notes ? <div className="kiln-queue-notes">{item.notes}</div> : null}
+                  <div className="kiln-queue-meta">
+                    <span>{getQueueMeta(item)}</span>
+                  </div>
+                  {item.dropOffProfile?.specialHandling ? (
+                    <div className="kiln-queue-tags">
+                      <span className="kiln-tag">Special handling</span>
+                    </div>
+                  ) : null}
+                  {item.addOns?.rushRequested || item.addOns?.wholeKilnRequested ? (
+                    <div className="kiln-queue-tags">
+                      {item.addOns?.rushRequested ? <span className="kiln-tag">Rush</span> : null}
+                      {item.addOns?.wholeKilnRequested ? (
+                        <span className="kiln-tag">Whole kiln</span>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {isStaff ? (
                     <div className="kiln-queue-actions">
                       <button
                         className="kiln-action primary"
-                        onClick={() => handleStatusUpdate(item.id, "loaded")}
+                        onClick={() => handleLoadStatusUpdate(item.id, "loading")}
                         disabled={actionBusyId === item.id}
                       >
-                        Load
+                        Start loading
                       </button>
                       <button
                         className="kiln-action ghost"
-                        onClick={() => handleStatusUpdate(item.id, "cancelled")}
+                        onClick={() => handleLoadStatusUpdate(item.id, "loaded")}
                         disabled={actionBusyId === item.id}
                       >
-                        Cancel
+                        Mark loaded
                       </button>
                     </div>
                   ) : null}
@@ -297,43 +387,62 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
         <section className="kiln-launch-center">
           <div className="kiln-launch-panel kiln-meter-panel">
             <div className="kiln-panel-header">
-            <div>
-              <h2>Current Load</h2>
-              <p className="kiln-panel-meta">{formatHalfShelfLabel(loadedHalfShelves)} loaded</p>
+              <div>
+                <h2>Studio kiln load</h2>
+                <p className="kiln-panel-meta">
+                  {formatHalfShelfLabel(plannedHalfShelves)} in the plan
+                </p>
+              </div>
+              <span className={`kiln-ready ${plannedHalfShelves > 0 ? "active" : ""}`}>
+                {loadStateLabel}
+              </span>
             </div>
-            <span className={`kiln-ready ${loadedHalfShelves > 0 ? "active" : ""}`}>
-              {loadStateLabel}
-            </span>
-          </div>
 
             <div className="kiln-meter">
-              <div className="kiln-iso">
-                <img className="kiln-iso-image" src={kilnIsoImage} alt="Kiln" />
-                <div className="kiln-iso-shelves">
-                  {Array.from({ length: LAUNCH_TARGET_HALF_SHELVES }).map((_, index) => (
-                    <div
-                      key={`slot-${index}`}
-                      className={`kiln-iso-shelf ${index < filledSlots ? "filled" : ""}`}
-                    />
-                  ))}
+              <div className="kiln-graphic" aria-hidden="true">
+                <div className="kiln-ring">
+                  <div className="kiln-ring-inner">
+                    <div className="kiln-slots">
+                      {loadSlots.map((slot, index) => (
+                        <div
+                          key={`slot-${index}`}
+                          className={`kiln-slot status-${slot}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="kiln-meter-label">
-                {formatHalfShelfLabel(visualLoad)} / {LAUNCH_TARGET_HALF_SHELVES} loaded
+                {plannedHalfShelves} / {KILN_CAPACITY_HALF_SHELVES} half shelves planned
+              </div>
+              <div className="kiln-legend">
+                <div className="kiln-legend-item">
+                  <span className="kiln-legend-dot status-queued" />
+                  Awaiting load
+                </div>
+                <div className="kiln-legend-item">
+                  <span className="kiln-legend-dot status-loading" />
+                  Loading
+                </div>
+                <div className="kiln-legend-item">
+                  <span className="kiln-legend-dot status-loaded" />
+                  Confirmed loaded
+                </div>
               </div>
             </div>
 
             <div className="kiln-meter-footer">
               <div>
-                <span className="kiln-metric-label">Ready launches</span>
-                <strong>{readyLaunches}</strong>
+                <span className="kiln-metric-label">In kiln</span>
+                <strong>{loadedHalfShelves}</strong>
               </div>
               <div>
-                <span className="kiln-metric-label">Next launch need</span>
-                <strong>{LAUNCH_TARGET_HALF_SHELVES - filledSlots} half shelves</strong>
+                <span className="kiln-metric-label">Loading</span>
+                <strong>{loadingHalfShelves}</strong>
               </div>
               <div>
-                <span className="kiln-metric-label">Queued waiting</span>
+                <span className="kiln-metric-label">Waiting</span>
                 <strong>{queuedHalfShelves}</strong>
               </div>
             </div>
@@ -342,34 +451,42 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
           <div className="kiln-launch-panel">
             <div className="kiln-panel-header">
               <div>
-                <h2>Loaded In Kiln</h2>
-                <p className="kiln-panel-meta">{loadedRequests.length} items loaded</p>
+                <h2>Load status</h2>
+                <p className="kiln-panel-meta">
+                  {loadingEntries.length + loadedEntries.length} check-ins in progress
+                </p>
               </div>
             </div>
             <div className="kiln-queue-list">
-              {loadedRequests.length === 0 ? (
-                <p className="kiln-empty">Nothing loaded yet.</p>
+              {loadingEntries.length + loadedEntries.length === 0 ? (
+                <p className="kiln-empty">No loads in progress yet.</p>
               ) : (
-                loadedRequests.map((item) => (
+                [...loadingEntries, ...loadedEntries].map((item) => (
                   <div key={item.id} className="kiln-queue-card">
                     <div className="kiln-queue-title">
-                      <strong>{item.userDisplayName ?? "Member"}</strong>
+                      <strong>{getQueueTitle(item)}</strong>
                       <span>{formatHalfShelfLabel(item.halfShelves)}</span>
                     </div>
-                    <div className="kiln-queue-meta">{item.clayBody}</div>
-                    {item.notes ? <div className="kiln-queue-notes">{item.notes}</div> : null}
+                    <div className="kiln-queue-meta">
+                      <span>{getQueueMeta(item)}</span>
+                      <span className={`kiln-status-pill status-${item.loadStatus}`}>
+                        {LOAD_STATUS_LABELS[item.loadStatus]}
+                      </span>
+                    </div>
                     {isStaff ? (
                       <div className="kiln-queue-actions">
-                        <button
-                          className="kiln-action primary"
-                          onClick={() => handleStatusUpdate(item.id, "fired")}
-                          disabled={actionBusyId === item.id}
-                        >
-                          Mark fired
-                        </button>
+                        {item.loadStatus === "loading" ? (
+                          <button
+                            className="kiln-action primary"
+                            onClick={() => handleLoadStatusUpdate(item.id, "loaded")}
+                            disabled={actionBusyId === item.id}
+                          >
+                            Confirm loaded
+                          </button>
+                        ) : null}
                         <button
                           className="kiln-action ghost"
-                          onClick={() => handleStatusUpdate(item.id, "queued")}
+                          onClick={() => handleLoadStatusUpdate(item.id, "queued")}
                           disabled={actionBusyId === item.id}
                         >
                           Return to queue
@@ -381,142 +498,57 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
               )}
             </div>
           </div>
-
-          {firedRequests.length > 0 ? (
-            <div className="kiln-launch-panel">
-              <div className="kiln-panel-header">
-                <div>
-                  <h2>Fired</h2>
-                  <p className="kiln-panel-meta">{firedRequests.length} batches</p>
-                </div>
-              </div>
-              <div className="kiln-queue-list">
-                {firedRequests.map((item) => (
-                  <div key={item.id} className="kiln-queue-card">
-                    <div className="kiln-queue-title">
-                      <strong>{item.userDisplayName ?? "Member"}</strong>
-                      <span>{formatHalfShelfLabel(item.halfShelves)}</span>
-                    </div>
-                    <div className="kiln-queue-meta">{item.clayBody}</div>
-                    {isStaff ? (
-                      <div className="kiln-queue-actions">
-                        <button
-                          className="kiln-action primary"
-                          onClick={() => handleStatusUpdate(item.id, "complete")}
-                          disabled={actionBusyId === item.id}
-                        >
-                          Complete
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          <div className="kiln-launch-panel">
-            <div className="kiln-panel-header">
-              <div>
-                <h2>Submit Half Shelves</h2>
-                <p className="kiln-panel-meta">Tell us what needs to be fired next.</p>
-              </div>
-            </div>
-
-              <div className="kiln-form">
-                <label>
-                  Half shelves
-                  <input
-                    type="number"
-                    min={1}
-                  max={LAUNCH_TARGET_HALF_SHELVES}
-                  step={1}
-                  value={halfShelves}
-                  onChange={(event) => setHalfShelves(Number(event.target.value))}
-                />
-              </label>
-              <label>
-                Clay body
-                <input
-                  type="text"
-                  value={clayBody}
-                  onChange={(event) => setClayBody(event.target.value)}
-                  placeholder="e.g. B-mix, Standard 240"
-                />
-              </label>
-              <label>
-                Notes (optional)
-                <textarea
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  placeholder="Glaze details, firing notes, pickup timing..."
-                />
-              </label>
-
-              <div className="kiln-urgency">
-                <span>Timing</span>
-                <div className="kiln-urgency-options">
-                  <button
-                    type="button"
-                    className={urgency === "asap" ? "active" : ""}
-                    onClick={() => setUrgency("asap")}
-                  >
-                    ASAP firing
-                  </button>
-                  <button
-                    type="button"
-                    className={urgency === "next" ? "active" : ""}
-                    onClick={() => setUrgency("next")}
-                  >
-                    Next available
-                  </button>
-                </div>
-              </div>
-
-              {submitStatus ? <p className="kiln-form-status">{submitStatus}</p> : null}
-
-              <button className="btn btn-primary" onClick={handleSubmit} disabled={submitBusy}>
-                {submitBusy ? "Submitting..." : "Submit request"}
-              </button>
-            </div>
-          </div>
         </section>
 
         <section className="kiln-launch-panel">
           <div className="kiln-panel-header">
             <div>
-              <h2>Next Available</h2>
-              <p className="kiln-panel-meta">{formatHalfShelfLabel(nextHalfShelves)} waiting</p>
+              <h2>Glaze queue</h2>
+              <p className="kiln-panel-meta">{formatHalfShelfLabel(glazeHalfShelves)} waiting</p>
             </div>
-            <span className="kiln-panel-count">{nextRequests.length} requests</span>
+            <span className="kiln-panel-count">{glazeQueue.length} check-ins</span>
           </div>
           <div className="kiln-queue-list">
-            {nextRequests.length === 0 ? (
-              <p className="kiln-empty">No requests yet.</p>
+            {glazeQueue.length === 0 ? (
+              <p className="kiln-empty">No glaze requests yet.</p>
             ) : (
-              nextRequests.map((item) => (
+              glazeQueue.map((item) => (
                 <div key={item.id} className="kiln-queue-card">
                   <div className="kiln-queue-title">
-                    <strong>{item.userDisplayName ?? "Member"}</strong>
+                    <strong>{getQueueTitle(item)}</strong>
                     <span>{formatHalfShelfLabel(item.halfShelves)}</span>
                   </div>
-                  <div className="kiln-queue-meta">{item.clayBody}</div>
-                  {item.notes ? <div className="kiln-queue-notes">{item.notes}</div> : null}
+                  <div className="kiln-queue-meta">
+                    <span>{getQueueMeta(item)}</span>
+                  </div>
+                  {item.dropOffProfile?.specialHandling ? (
+                    <div className="kiln-queue-tags">
+                      <span className="kiln-tag">Special handling</span>
+                    </div>
+                  ) : null}
+                  {item.addOns?.rushRequested || item.addOns?.wholeKilnRequested ? (
+                    <div className="kiln-queue-tags">
+                      {item.addOns?.rushRequested ? <span className="kiln-tag">Rush</span> : null}
+                      {item.addOns?.wholeKilnRequested ? (
+                        <span className="kiln-tag">Whole kiln</span>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {isStaff ? (
                     <div className="kiln-queue-actions">
                       <button
                         className="kiln-action primary"
-                        onClick={() => handleStatusUpdate(item.id, "loaded")}
+                        onClick={() => handleLoadStatusUpdate(item.id, "loading")}
                         disabled={actionBusyId === item.id}
                       >
-                        Load
+                        Start loading
                       </button>
                       <button
                         className="kiln-action ghost"
-                        onClick={() => handleStatusUpdate(item.id, "cancelled")}
+                        onClick={() => handleLoadStatusUpdate(item.id, "loaded")}
                         disabled={actionBusyId === item.id}
                       >
-                        Cancel
+                        Mark loaded
                       </button>
                     </div>
                   ) : null}

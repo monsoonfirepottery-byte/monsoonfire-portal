@@ -119,9 +119,51 @@ export type ReservationPreferredWindow = {
 export type CreateReservationRequest = {
   firingType: "bisque" | "glaze" | "other";
   shelfEquivalent: number;
+  footprintHalfShelves?: number | null;
+  heightInches?: number | null;
+  tiers?: number | null;
+  estimatedHalfShelves?: number | null;
+  useVolumePricing?: boolean;
+  volumeIn3?: number | null;
+  estimatedCost?: number | null;
   preferredWindow?: ReservationPreferredWindow;
   linkedBatchId?: string | null;
   clientRequestId?: string | null;
+  ownerUid?: string | null;
+  wareType?: string | null;
+  kilnId?: string | null;
+  kilnLabel?: string | null;
+  quantityTier?: string | null;
+  quantityLabel?: string | null;
+  photoUrl?: string | null;
+  photoPath?: string | null;
+  dropOffProfile?: {
+    id?: string | null;
+    label?: string | null;
+    pieceCount?: "single" | "many" | null;
+    hasTall?: boolean | null;
+    stackable?: boolean | null;
+    bisqueOnly?: boolean | null;
+    specialHandling?: boolean | null;
+  } | null;
+  dropOffQuantity?: {
+    id?: string | null;
+    label?: string | null;
+    pieceRange?: string | null;
+  } | null;
+  notes?: {
+    general?: string | null;
+    clayBody?: string | null;
+    glazeNotes?: string | null;
+  } | null;
+  addOns?: {
+    rushRequested?: boolean;
+    wholeKilnRequested?: boolean;
+    pickupDeliveryRequested?: boolean;
+    returnDeliveryRequested?: boolean;
+    useStudioGlazes?: boolean;
+    glazeAccessCost?: number | null;
+  } | null;
 };
 
 export type PickedUpAndCloseRequest = {

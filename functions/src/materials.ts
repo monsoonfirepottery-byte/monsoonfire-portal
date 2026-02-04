@@ -144,6 +144,13 @@ export const listMaterialsProducts = onRequest({ region: REGION, cors: true }, a
   }
 
   const includeInactive = parsed.data.includeInactive === true;
+  if (includeInactive) {
+    const admin = await requireAdmin(req);
+    if (!admin.ok) {
+      res.status(403).json({ ok: false, message: "Forbidden" });
+      return;
+    }
+  }
 
   try {
     const snap = await db.collection(PRODUCTS_COL).get();

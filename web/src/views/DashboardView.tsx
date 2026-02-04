@@ -1,12 +1,12 @@
+import { useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
+import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
+import { db } from "../firebase";
+import { mockFirings, mockKilns } from "../data/kilnScheduleMock";
 import { useBatches } from "../hooks/useBatches";
+import type { Kiln, KilnFiring } from "../types/kiln";
 import type { Announcement, DirectMessageThread } from "../types/messaging";
 import { formatMaybeTimestamp } from "../utils/format";
-
-const SAMPLE_KILNS = [
-  { name: "Kiln 3", status: "Firing", temp: "2200F", eta: "6h" },
-  { name: "Kiln 1", status: "Loading", temp: "Ambient", eta: "Tonight" },
-];
 
 const SAMPLE_WORKSHOPS = [
   { name: "Wheel Lab", time: "Sat 10:00 AM", seats: "3 open" },
@@ -14,6 +14,179 @@ const SAMPLE_WORKSHOPS = [
 ];
 
 const DASHBOARD_PIECES_PREVIEW = 3;
+
+const STATUS_LABELS: Record<string, string> = {
+  idle: "Idle",
+  loading: "Loading",
+  firing: "Firing",
+  cooling: "Cooling",
+  unloading: "Unloading",
+  maintenance: "Maintenance",
+};
+
+const PRIMARY_KILN_NAME = "L&L eQ2827-3";
+const RAKU_KILN_NAME = "Reduction Raku Kiln";
+
+type KilnRow = {
+  id: string;
+  name: string;
+  statusLabel: string;
+  pill: string;
+  etaLabel: string;
+  isOffline: boolean;
+};
+
+function isPermissionDenied(err: unknown) {
+  const message = (err as { message?: string })?.message ?? "";
+  const code = (err as { code?: string })?.code ?? "";
+  return code === "permission-denied" || /missing or insufficient permissions/i.test(message);
+}
+
+function coerceDate(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  if (typeof value === "object") {
+    const maybe = value as { toDate?: () => Date };
+    if (typeof maybe.toDate === "function") {
+      return maybe.toDate();
+    }
+  }
+  return null;
+}
+
+function formatRelativeEta(target: Date, now: Date) {
+  const diffMs = target.getTime() - now.getTime();
+  if (diffMs <= 0) return "now";
+  const minutes = Math.round(diffMs / 60000);
+  if (minutes < 60) return `in ${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `in ${hours}h`;
+  const days = Math.round(hours / 24);
+  return `in ${days}d`;
+}
+
+function useKilnDashboardRows() {
+  const [kilns, setKilns] = useState<Kiln[]>([]);
+  const [firings, setFirings] = useState<KilnFiring[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [permissionDenied, setPermissionDenied] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const kilnsQuery = query(collection(db, "kilns"), orderBy("name", "asc"), limit(25));
+        const firingsQuery = query(collection(db, "kilnFirings"), orderBy("startAt", "asc"), limit(200));
+        const [kilnSnap, firingSnap] = await Promise.all([getDocs(kilnsQuery), getDocs(firingsQuery)]);
+        setKilns(
+          kilnSnap.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...(docSnap.data() as any),
+          }))
+        );
+        setFirings(
+          firingSnap.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...(docSnap.data() as any),
+          }))
+        );
+      } catch (err) {
+        if (isPermissionDenied(err)) setPermissionDenied(true);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void load();
+  }, []);
+
+  const useMock = permissionDenied || (!loading && kilns.length === 0 && firings.length === 0);
+  const rawKilns = useMock ? mockKilns : kilns;
+  const rawFirings = useMock ? mockFirings : firings;
+
+  const primaryKiln =
+    rawKilns.find((kiln) => kiln.name === PRIMARY_KILN_NAME) ??
+    rawKilns.find((kiln) => /eQ2827|L&L/i.test(kiln.name)) ??
+    rawKilns[0];
+  const rakuKiln =
+    rawKilns.find((kiln) => kiln.name === RAKU_KILN_NAME) ??
+    rawKilns.find((kiln) => /raku|reduction/i.test(kiln.name)) ??
+    rawKilns[1];
+
+  const displayKilns = [primaryKiln, rakuKiln].filter(
+    (kiln, index, arr) => kiln && arr.findIndex((item) => item?.id === kiln?.id) === index
+  );
+
+  const normalizedFirings = useMemo(() => {
+    return rawFirings
+      .map((firing) => {
+        const startDate = coerceDate(firing.startAt);
+        const endDate = coerceDate(firing.endAt);
+        if (!startDate || !endDate) return null;
+        return { ...firing, startDate, endDate };
+      })
+      .filter(Boolean) as Array<KilnFiring & { startDate: Date; endDate: Date }>;
+  }, [rawFirings]);
+
+  const rows: KilnRow[] = useMemo(() => {
+    const now = new Date();
+    return displayKilns
+      .filter(Boolean)
+      .map((kiln) => {
+        const isRaku = /raku/i.test(kiln.name);
+        const isOffline = kiln.status === "offline";
+        const active = normalizedFirings.find(
+          (firing) =>
+            firing.kilnId === kiln.id &&
+            firing.status !== "cancelled" &&
+            firing.startDate <= now &&
+            firing.endDate >= now
+        );
+        const next = normalizedFirings
+          .filter(
+            (firing) =>
+              firing.kilnId === kiln.id &&
+              firing.status !== "cancelled" &&
+              firing.startDate > now
+          )
+          .sort((a, b) => a.startDate.getTime() - b.startDate.getTime())[0];
+
+        const statusLabel = isOffline
+          ? "Offline"
+          : active
+            ? "Firing now"
+            : STATUS_LABELS[kiln.status] || "Idle";
+        const pill = isOffline
+          ? "Offline"
+          : active
+            ? active.title || active.cycleType || "Firing"
+            : next
+              ? next.title || next.cycleType || "Scheduled"
+              : STATUS_LABELS[kiln.status] || "Idle";
+        const etaLabel = isOffline
+          ? "Temporarily offline"
+          : active
+            ? `Ends ${formatRelativeEta(active.endDate, now)}`
+            : next
+              ? `Starts ${formatRelativeEta(next.startDate, now)}`
+              : "No firing scheduled";
+
+        return {
+          id: kiln.id,
+          name: isRaku ? "Raku" : kiln.name,
+          statusLabel,
+          pill,
+          etaLabel,
+          isOffline,
+        };
+      });
+  }, [displayKilns, normalizedFirings]);
+
+  return rows;
+}
 
 type Props = {
   user: User;
@@ -43,22 +216,10 @@ export default function DashboardView({
   const archivedCount = history.length;
   const messagePreview = threads.slice(0, 3);
   const announcementPreview = announcements.slice(0, 3);
+  const kilnRows = useKilnDashboardRows();
 
   return (
     <div className="dashboard">
-      <div className="dashboard-heat" aria-hidden="true" />
-      <div className="dashboard-embers" aria-hidden="true">
-        <span className="dashboard-ember" />
-        <span className="dashboard-ember" />
-        <span className="dashboard-ember" />
-        <span className="dashboard-ember" />
-        <span className="dashboard-ember" />
-        <span className="dashboard-ember" />
-        <span className="dashboard-ember" />
-        <span className="dashboard-ember" />
-        <span className="dashboard-ember" />
-        <span className="dashboard-ember" />
-      </div>
       <section className="card hero-card">
         <div className="hero-content">
           <p className="eyebrow">Client Dashboard</p>
@@ -146,18 +307,22 @@ export default function DashboardView({
         <div className="card card-3d">
           <div className="card-title">Kilns firing now</div>
           <div className="list">
-            {SAMPLE_KILNS.map((kiln) => (
-              <div className="list-row" key={kiln.name}>
+            {kilnRows.length === 0 ? (
+              <div className="empty-state">No kiln status available yet.</div>
+            ) : (
+              kilnRows.map((kiln) => (
+              <div className={`list-row ${kiln.isOffline ? "kiln-offline" : ""}`} key={kiln.id}>
                 <div>
                   <div className="list-title">{kiln.name}</div>
-                  <div className="list-meta">{kiln.status}</div>
+                  <div className="list-meta">{kiln.statusLabel}</div>
                 </div>
                 <div className="list-right">
-                  <div className="pill">{kiln.temp}</div>
-                  <div className="list-meta">ETA {kiln.eta}</div>
+                  <div className="pill">{kiln.pill}</div>
+                  <div className="list-meta">{kiln.etaLabel}</div>
                 </div>
               </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 

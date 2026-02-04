@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import type { User } from "firebase/auth";
 import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
 import { PortalApiError, createPortalApi } from "../api/portalApi";
@@ -23,7 +23,8 @@ type ReservationRecord = {
 };
 
 const SHELF_OPTIONS = ["0.25", "0.5", "1.0"];
-const FIRING_TYPES = ["bisque", "glaze", "other"];
+const FIRING_TYPES = ["bisque", "glaze", "other"] as const;
+type FiringType = (typeof FIRING_TYPES)[number];
 
 function formatPreferredWindow(record: ReservationRecord): string {
   const earliest = record.preferredWindow?.earliestDate?.toDate?.();
@@ -42,12 +43,20 @@ function sanitizeDateInput(value: string) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function makeClientRequestId() {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `req_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+  }
+}
+
 export default function ReservationsView({ user }: { user: User }) {
   const [reservations, setReservations] = useState<ReservationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
 
-  const [firingType, setFiringType] = useState("bisque");
+  const [firingType, setFiringType] = useState<FiringType>("bisque");
   const [shelfEquivalent, setShelfEquivalent] = useState("1.0");
   const [earliest, setEarliest] = useState("");
   const [latest, setLatest] = useState("");
@@ -55,6 +64,7 @@ export default function ReservationsView({ user }: { user: User }) {
   const [formError, setFormError] = useState("");
   const [formStatus, setFormStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [submitRequestId, setSubmitRequestId] = useState<string | null>(null);
 
   const portalApi = useMemo(() => createPortalApi(), []);
 
@@ -83,7 +93,7 @@ export default function ReservationsView({ user }: { user: User }) {
         setReservations(rows);
       })
       .catch((err) => {
-        setListError(`Reservations failed: ${err.message}`);
+        setListError(`Check-ins failed: ${err.message}`);
       })
       .finally(() => setLoading(false));
 
@@ -98,7 +108,7 @@ export default function ReservationsView({ user }: { user: User }) {
     });
   }, [reservations]);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (isSaving) return;
     setFormError("");
@@ -117,6 +127,10 @@ export default function ReservationsView({ user }: { user: User }) {
     }
 
     const shelfNum = Number(shelfEquivalent);
+    const requestId = submitRequestId ?? makeClientRequestId();
+    if (!submitRequestId) {
+      setSubmitRequestId(requestId);
+    }
 
     setIsSaving(true);
     try {
@@ -128,15 +142,17 @@ export default function ReservationsView({ user }: { user: User }) {
           latestDate: latestDate ? latestDate.toISOString() : null,
         },
         linkedBatchId: linkedBatchId.trim() || null,
+        clientRequestId: requestId,
       };
       const idToken = await user.getIdToken();
       await portalApi.createReservation({ idToken, payload });
-      setFormStatus("Reservation request submitted.");
+      setFormStatus("Check-in sent.");
       setEarliest("");
       setLatest("");
       setLinkedBatchId("");
+      setSubmitRequestId(null);
     } catch (err: any) {
-      const msg = err instanceof PortalApiError ? err.message : err?.message ?? "Reservation failed.";
+      const msg = err instanceof PortalApiError ? err.message : err?.message ?? "Submission failed.";
       setFormError(msg);
     } finally {
       setIsSaving(false);
@@ -147,20 +163,23 @@ export default function ReservationsView({ user }: { user: User }) {
     <div className="page reservations-page">
       <div className="page-header">
         <div>
-          <h1>Reservations</h1>
+          <h1>Ware Check-in</h1>
           <p className="page-subtitle">
-            Request capacity for upcoming kiln firings without tying yourself to a specific kiln.
+            Pre-check in your work so you can drop off at the front pickup area or speed through
+            in-studio check-in.
           </p>
         </div>
       </div>
 
       <section className="card card-3d reservation-form">
-        <div className="card-title">Request a kiln slot</div>
-        <p className="form-helper">Staff will confirm the reservation once a kiln is scheduled.</p>
+        <div className="card-title">Check in work for firing</div>
+        <p className="form-helper">
+          Use this to pre-check in and note firing type, shelf size, and timing preferences.
+        </p>
         <form onSubmit={handleSubmit} className="reservation-form-grid">
           <label>
             Firing type
-            <select value={firingType} onChange={(event) => setFiringType(event.target.value)}>
+            <select value={firingType} onChange={(event) => setFiringType(event.target.value as FiringType)}>
               {FIRING_TYPES.map((type) => (
                 <option key={type} value={type}>
                   {type[0].toUpperCase() + type.slice(1)}
@@ -201,18 +220,18 @@ export default function ReservationsView({ user }: { user: User }) {
           {formError ? <div className="alert card card-3d form-error">{formError}</div> : null}
           {formStatus ? <div className="notice card card-3d form-status">{formStatus}</div> : null}
           <button type="submit" className="btn btn-primary" disabled={isSaving}>
-            {isSaving ? "Requesting..." : "Submit reservation request"}
+            {isSaving ? "Submitting..." : "Submit check-in"}
           </button>
         </form>
       </section>
 
       <section className="card card-3d reservation-list">
-        <div className="card-title">Your reservations</div>
+        <div className="card-title">Your check-ins</div>
         {listError ? <div className="alert">{listError}</div> : null}
         {loading ? (
-          <div className="empty-state">Loading reservations...</div>
+          <div className="empty-state">Loading check-ins...</div>
         ) : sortedReservations.length === 0 ? (
-          <div className="empty-state">No reservations yet.</div>
+          <div className="empty-state">No check-ins yet.</div>
         ) : (
           <div className="reservation-grid">
             {sortedReservations.map((reservation) => (

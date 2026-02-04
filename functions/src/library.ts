@@ -1,0 +1,409 @@
+import { onRequest } from "firebase-functions/v2/https";
+import * as logger from "firebase-functions/logger";
+import { z } from "zod";
+import {
+  applyCors,
+  db,
+  requireAdmin,
+  requireAuthUid,
+  nowTs,
+  enforceRateLimit,
+  parseBody,
+} from "./shared";
+
+const REGION = "us-central1";
+
+type ImportRequest = {
+  isbns: string[];
+  source?: string;
+};
+
+type LookupSource = "openlibrary" | "googlebooks" | "manual";
+
+type LookupResult = {
+  title: string;
+  subtitle?: string | null;
+  authors: string[];
+  description?: string | null;
+  publisher?: string | null;
+  publishedDate?: string | null;
+  pageCount?: number | null;
+  subjects?: string[];
+  coverUrl?: string | null;
+  format?: string | null;
+  identifiers: {
+    isbn10?: string | null;
+    isbn13?: string | null;
+    olid?: string | null;
+    googleVolumeId?: string | null;
+  };
+  source: LookupSource;
+  raw?: Record<string, unknown>;
+};
+
+const importSchema = z.object({
+  isbns: z.array(z.string().min(1)).min(1).max(200),
+  source: z.string().optional(),
+});
+
+function cleanIsbn(raw: string): string {
+  return raw.replace(/[^0-9xX]/g, "").toUpperCase();
+}
+
+function computeIsbn13Check(base12: string): string {
+  let sum = 0;
+  for (let i = 0; i < base12.length; i += 1) {
+    const digit = Number(base12[i]);
+    if (!Number.isFinite(digit)) return "";
+    sum += i % 2 === 0 ? digit : digit * 3;
+  }
+  const remainder = sum % 10;
+  return String((10 - remainder) % 10);
+}
+
+function computeIsbn10Check(base9: string): string {
+  let sum = 0;
+  for (let i = 0; i < base9.length; i += 1) {
+    const digit = Number(base9[i]);
+    if (!Number.isFinite(digit)) return "";
+    sum += digit * (10 - i);
+  }
+  const remainder = sum % 11;
+  const check = (11 - remainder) % 11;
+  return check === 10 ? "X" : String(check);
+}
+
+function isbn10To13(isbn10: string): string | null {
+  if (isbn10.length !== 10) return null;
+  const base = `978${isbn10.slice(0, 9)}`;
+  const check = computeIsbn13Check(base);
+  return check ? `${base}${check}` : null;
+}
+
+function isbn13To10(isbn13: string): string | null {
+  if (isbn13.length !== 13) return null;
+  if (!isbn13.startsWith("978")) return null;
+  const base = isbn13.slice(3, 12);
+  const check = computeIsbn10Check(base);
+  return check ? `${base}${check}` : null;
+}
+
+function normalizeIsbn(raw: string) {
+  const cleaned = cleanIsbn(raw);
+  let isbn10: string | null = null;
+  let isbn13: string | null = null;
+
+  if (cleaned.length === 10) {
+    isbn10 = cleaned;
+    isbn13 = isbn10To13(cleaned);
+  } else if (cleaned.length === 13) {
+    isbn13 = cleaned;
+    isbn10 = isbn13To10(cleaned);
+  }
+
+  const primary = isbn13 || isbn10 || cleaned;
+  return { primary, isbn10, isbn13 };
+}
+
+function buildSearchTokens(input: Array<string | null | undefined>) {
+  const tokens = input
+    .filter(Boolean)
+    .flatMap((value) =>
+      String(value)
+        .toLowerCase()
+        .split(/[^a-z0-9]+/g)
+        .map((token) => token.trim())
+        .filter(Boolean)
+    );
+  return Array.from(new Set(tokens));
+}
+
+async function fetchOpenLibrary(isbn: string): Promise<LookupResult | null> {
+  const url = `https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`;
+  const resp = await fetch(url);
+  if (!resp.ok) return null;
+  const data = (await resp.json()) as Record<string, any>;
+  const entry = data[`ISBN:${isbn}`];
+  if (!entry) return null;
+
+  const authors = Array.isArray(entry.authors)
+    ? entry.authors.map((author: any) => author?.name).filter(Boolean)
+    : [];
+  const subjects = Array.isArray(entry.subjects)
+    ? entry.subjects.map((subject: any) => subject?.name).filter(Boolean)
+    : [];
+
+  return {
+    title: entry.title || `ISBN ${isbn}`,
+    subtitle: entry.subtitle ?? null,
+    authors,
+    description:
+      typeof entry.description === "string"
+        ? entry.description
+        : entry.description?.value ?? null,
+    publisher: Array.isArray(entry.publishers) ? entry.publishers[0]?.name ?? null : null,
+    publishedDate: entry.publish_date ?? null,
+    pageCount: typeof entry.number_of_pages === "number" ? entry.number_of_pages : null,
+    subjects,
+    coverUrl: entry.cover?.large ?? entry.cover?.medium ?? entry.cover?.small ?? null,
+    format: entry.physical_format ?? null,
+    identifiers: {
+      isbn10: Array.isArray(entry.identifiers?.isbn_10) ? entry.identifiers.isbn_10[0] : null,
+      isbn13: Array.isArray(entry.identifiers?.isbn_13) ? entry.identifiers.isbn_13[0] : null,
+      olid: Array.isArray(entry.identifiers?.openlibrary) ? entry.identifiers.openlibrary[0] : null,
+      googleVolumeId: null,
+    },
+    source: "openlibrary",
+    raw: {
+      title: entry.title ?? null,
+      subtitle: entry.subtitle ?? null,
+      authors,
+      publish_date: entry.publish_date ?? null,
+      number_of_pages: entry.number_of_pages ?? null,
+      publishers: Array.isArray(entry.publishers)
+        ? entry.publishers.map((publisher: any) => publisher?.name).filter(Boolean)
+        : [],
+      subjects,
+      cover: entry.cover ?? null,
+    },
+  };
+}
+
+async function fetchGoogleBooks(isbn: string): Promise<LookupResult | null> {
+  const url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`;
+  const resp = await fetch(url);
+  if (!resp.ok) return null;
+  const data = (await resp.json()) as any;
+  const item = Array.isArray(data.items) ? data.items[0] : null;
+  if (!item?.volumeInfo) return null;
+
+  const info = item.volumeInfo;
+  return {
+    title: info.title || `ISBN ${isbn}`,
+    subtitle: info.subtitle ?? null,
+    authors: Array.isArray(info.authors) ? info.authors : [],
+    description: info.description ?? null,
+    publisher: info.publisher ?? null,
+    publishedDate: info.publishedDate ?? null,
+    pageCount: typeof info.pageCount === "number" ? info.pageCount : null,
+    subjects: Array.isArray(info.categories) ? info.categories : [],
+    coverUrl:
+      info.imageLinks?.thumbnail ??
+      info.imageLinks?.smallThumbnail ??
+      info.imageLinks?.small ??
+      null,
+    format: info.printType ?? null,
+    identifiers: {
+      isbn10:
+        Array.isArray(info.industryIdentifiers) &&
+        info.industryIdentifiers.find((id: any) => id.type === "ISBN_10")?.identifier
+          ? info.industryIdentifiers.find((id: any) => id.type === "ISBN_10")?.identifier
+          : null,
+      isbn13:
+        Array.isArray(info.industryIdentifiers) &&
+        info.industryIdentifiers.find((id: any) => id.type === "ISBN_13")?.identifier
+          ? info.industryIdentifiers.find((id: any) => id.type === "ISBN_13")?.identifier
+          : null,
+      olid: null,
+      googleVolumeId: item.id ?? null,
+    },
+    source: "googlebooks",
+    raw: {
+      title: info.title ?? null,
+      subtitle: info.subtitle ?? null,
+      authors: info.authors ?? null,
+      publisher: info.publisher ?? null,
+      publishedDate: info.publishedDate ?? null,
+      pageCount: info.pageCount ?? null,
+      categories: info.categories ?? null,
+      imageLinks: info.imageLinks ?? null,
+    },
+  };
+}
+
+function mergeResults(primary: LookupResult | null, secondary: LookupResult | null): LookupResult | null {
+  if (!primary && !secondary) return null;
+  if (primary && !secondary) return primary;
+  if (!primary && secondary) return secondary;
+
+  const best = primary as LookupResult;
+  const other = secondary as LookupResult;
+
+  return {
+    title: best.title || other.title,
+    subtitle: best.subtitle ?? other.subtitle ?? null,
+    authors: best.authors.length ? best.authors : other.authors,
+    description: best.description ?? other.description ?? null,
+    publisher: best.publisher ?? other.publisher ?? null,
+    publishedDate: best.publishedDate ?? other.publishedDate ?? null,
+    pageCount: best.pageCount ?? other.pageCount ?? null,
+    subjects: (best.subjects && best.subjects.length ? best.subjects : other.subjects) ?? [],
+    coverUrl: best.coverUrl ?? other.coverUrl ?? null,
+    format: best.format ?? other.format ?? null,
+    identifiers: {
+      isbn10: best.identifiers.isbn10 ?? other.identifiers.isbn10 ?? null,
+      isbn13: best.identifiers.isbn13 ?? other.identifiers.isbn13 ?? null,
+      olid: best.identifiers.olid ?? other.identifiers.olid ?? null,
+      googleVolumeId: best.identifiers.googleVolumeId ?? other.identifiers.googleVolumeId ?? null,
+    },
+    source: best.source,
+    raw: {
+      primary: best.raw ?? null,
+      secondary: other.raw ?? null,
+    },
+  };
+}
+
+async function lookupIsbn(isbn: string): Promise<LookupResult> {
+  const [openLibrary, googleBooks] = await Promise.all([
+    fetchOpenLibrary(isbn).catch((err) => {
+      logger.warn("OpenLibrary lookup failed", { isbn, message: err?.message ?? String(err) });
+      return null;
+    }),
+    fetchGoogleBooks(isbn).catch((err) => {
+      logger.warn("Google Books lookup failed", { isbn, message: err?.message ?? String(err) });
+      return null;
+    }),
+  ]);
+
+  const merged = mergeResults(openLibrary, googleBooks);
+  if (merged) return merged;
+
+  return {
+    title: `ISBN ${isbn}`,
+    subtitle: null,
+    authors: [],
+    description: null,
+    publisher: null,
+    publishedDate: null,
+    pageCount: null,
+    subjects: [],
+    coverUrl: null,
+    format: null,
+    identifiers: { isbn10: null, isbn13: null, olid: null, googleVolumeId: null },
+    source: "manual",
+  };
+}
+
+export const importLibraryIsbns = onRequest(
+  { region: REGION, timeoutSeconds: 120 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+
+    const admin = await requireAdmin(req);
+    if (!admin.ok) {
+      res.status(403).json({ ok: false, message: "Forbidden" });
+      return;
+    }
+
+    const parsed = parseBody(importSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const rate = enforceRateLimit({
+      req,
+      key: "importLibraryIsbns",
+      max: 3,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    const body = parsed.data as ImportRequest;
+    const isbns = Array.isArray(body.isbns) ? body.isbns : [];
+    const source = typeof body.source === "string" ? body.source : "csv";
+    const cleaned = isbns.map((isbn) => cleanIsbn(String(isbn))).filter(Boolean);
+    const deduped = Array.from(new Set(cleaned));
+
+    if (deduped.length === 0) {
+      res.status(400).json({ ok: false, message: "Provide at least one ISBN" });
+      return;
+    }
+
+    const capped = deduped.slice(0, 200);
+    const created: string[] = [];
+    const updated: string[] = [];
+    const errors: Array<{ isbn: string; message: string }> = [];
+
+    for (const rawIsbn of capped) {
+      try {
+        const normalized = normalizeIsbn(rawIsbn);
+        const itemId = `isbn-${normalized.primary}`;
+        const lookup = await lookupIsbn(normalized.primary);
+        const searchTokens = buildSearchTokens([
+          lookup.title,
+          lookup.subtitle,
+          ...(lookup.authors ?? []),
+          ...(lookup.subjects ?? []),
+        ]);
+
+        const docRef = db.collection("libraryItems").doc(itemId);
+        const snap = await docRef.get();
+        const now = nowTs();
+        const baseDoc = {
+          title: lookup.title,
+          subtitle: lookup.subtitle ?? null,
+          authors: lookup.authors ?? [],
+          description: lookup.description ?? null,
+          publisher: lookup.publisher ?? null,
+          publishedDate: lookup.publishedDate ?? null,
+          pageCount: lookup.pageCount ?? null,
+          subjects: lookup.subjects ?? [],
+          coverUrl: lookup.coverUrl ?? null,
+          format: lookup.format ?? null,
+          mediaType: "book",
+          identifiers: {
+            isbn10: lookup.identifiers.isbn10 ?? normalized.isbn10 ?? null,
+            isbn13: lookup.identifiers.isbn13 ?? normalized.isbn13 ?? null,
+            olid: lookup.identifiers.olid ?? null,
+            googleVolumeId: lookup.identifiers.googleVolumeId ?? null,
+          },
+          source: lookup.source,
+          searchTokens,
+          metadataSource: source,
+          updatedAt: now,
+          metadataSnapshot: lookup.raw ?? null,
+        };
+
+        if (!snap.exists) {
+          await docRef.set({
+            ...baseDoc,
+            totalCopies: 1,
+            availableCopies: 1,
+            status: "available",
+            createdAt: now,
+          });
+          created.push(itemId);
+        } else {
+          await docRef.set(baseDoc, { merge: true });
+          updated.push(itemId);
+        }
+      } catch (err: any) {
+        errors.push({ isbn: rawIsbn, message: err?.message ?? String(err) });
+      }
+    }
+
+    res.status(200).json({
+      ok: true,
+      requested: capped.length,
+      created: created.length,
+      updated: updated.length,
+      errors,
+    });
+  }
+);

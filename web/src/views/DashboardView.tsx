@@ -1,4 +1,3 @@
-import React from "react";
 import type { User } from "firebase/auth";
 import { useBatches } from "../hooks/useBatches";
 import type { Announcement, DirectMessageThread } from "../types/messaging";
@@ -9,26 +8,21 @@ const SAMPLE_KILNS = [
   { name: "Kiln 1", status: "Loading", temp: "Ambient", eta: "Tonight" },
 ];
 
-const SAMPLE_CLASSES = [
+const SAMPLE_WORKSHOPS = [
   { name: "Wheel Lab", time: "Sat 10:00 AM", seats: "3 open" },
   { name: "Glaze Science", time: "Sun 4:00 PM", seats: "Waitlist" },
 ];
 
 const DASHBOARD_PIECES_PREVIEW = 3;
 
-function getGreeting() {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
-}
-
 type Props = {
   user: User;
   name: string;
   threads: DirectMessageThread[];
   announcements: Announcement[];
-  unreadTotal: number;
+  onOpenKilnRentals: () => void;
+  onOpenStudioResources: () => void;
+  onOpenCommunity: () => void;
   onOpenMessages: () => void;
   onOpenPieces: () => void;
 };
@@ -38,7 +32,9 @@ export default function DashboardView({
   name,
   threads,
   announcements,
-  unreadTotal,
+  onOpenKilnRentals,
+  onOpenStudioResources,
+  onOpenCommunity,
   onOpenMessages,
   onOpenPieces,
 }: Props) {
@@ -50,33 +46,87 @@ export default function DashboardView({
 
   return (
     <div className="dashboard">
+      <div className="dashboard-heat" aria-hidden="true" />
+      <div className="dashboard-embers" aria-hidden="true">
+        <span className="dashboard-ember" />
+        <span className="dashboard-ember" />
+        <span className="dashboard-ember" />
+        <span className="dashboard-ember" />
+        <span className="dashboard-ember" />
+        <span className="dashboard-ember" />
+        <span className="dashboard-ember" />
+        <span className="dashboard-ember" />
+        <span className="dashboard-ember" />
+        <span className="dashboard-ember" />
+      </div>
       <section className="card hero-card">
         <div className="hero-content">
           <p className="eyebrow">Client Dashboard</p>
-          <h1>
-            {getGreeting()}, {name}.
-          </h1>
+          <h1>Your studio dashboard</h1>
           <p className="hero-copy">
             Track your wares, reserve kiln time, and keep up with studio life from one place.
           </p>
           <div className="hero-actions">
-            <button className="btn btn-primary">Book a class (schedule)</button>
-            <button className="btn btn-ghost">View kiln schedule details</button>
-            <button className="btn btn-ghost notif-inline" onClick={onOpenMessages}>
-              <span className="bell-icon" />
-              Open notifications
-              {unreadTotal > 0 ? <span className="notif-count">{unreadTotal}</span> : null}
+            <button className="btn btn-primary" onClick={onOpenKilnRentals}>
+              Kiln rentals
+            </button>
+            <button className="btn btn-ghost" onClick={onOpenStudioResources}>
+              Studio &amp; resources
+            </button>
+            <button className="btn btn-ghost" onClick={onOpenCommunity}>
+              Community
             </button>
           </div>
+          <div className="hero-profile">
+            <span className="hero-profile-label">Signed in as</span>
+            <span className="hero-profile-name">{name}</span>
+            {user.email ? <span className="hero-profile-meta">{user.email}</span> : null}
+          </div>
         </div>
-        <div className="hero-media">
-          <img className="hero-logo" src="/branding/logo.png" alt="Monsoon Fire logo" />
+        <div className="hero-updates">
+          <div className="hero-updates-title">Studio updates</div>
+          {announcementPreview.length === 0 ? (
+            <div className="hero-updates-empty">No studio announcements yet.</div>
+          ) : (
+            <div className="hero-updates-list">
+              {announcementPreview.map((item) => (
+                <div className="hero-update" key={item.id}>
+                  <div className="hero-update-title">{item.title || "Studio update"}</div>
+                  <p className="hero-update-body">{item.body || "Details coming soon."}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
       <section className="dashboard-grid">
         <div className="card card-3d">
+          <div className="card-title">Your pieces</div>
+          <div className="card-subtitle">Personal queue</div>
+          {activePreview.length === 0 ? (
+            <div className="empty-state">No pieces in progress right now.</div>
+          ) : (
+            <div className="list">
+              {activePreview.map((piece) => (
+                <div className="list-row" key={piece.id}>
+                  <div>
+                    <div className="list-title">{piece.title || "Untitled piece"}</div>
+                    <div className="list-meta">{piece.status || "In progress"}</div>
+                  </div>
+                  <div className="pill">{formatMaybeTimestamp(piece.updatedAt)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <button className="btn btn-ghost dashboard-link" onClick={onOpenPieces}>
+            Open My Pieces
+          </button>
+        </div>
+
+        <div className="card card-3d">
           <div className="card-title">Studio snapshot</div>
+          <div className="card-subtitle">Studio-wide status</div>
           <div className="stat-grid">
             <div className="stat">
               <div className="stat-label">Pieces in progress</div>
@@ -112,31 +162,9 @@ export default function DashboardView({
         </div>
 
         <div className="card card-3d">
-          <div className="card-title">Your pieces</div>
-          {activePreview.length === 0 ? (
-            <div className="empty-state">No pieces in progress right now.</div>
-          ) : (
-            <div className="list">
-              {activePreview.map((piece) => (
-                <div className="list-row" key={piece.id}>
-                  <div>
-                    <div className="list-title">{piece.title || "Untitled piece"}</div>
-                    <div className="list-meta">{piece.status || "In progress"}</div>
-                  </div>
-                  <div className="pill">{formatMaybeTimestamp(piece.updatedAt)}</div>
-                </div>
-              ))}
-            </div>
-          )}
-          <button className="btn btn-ghost dashboard-link" onClick={onOpenPieces}>
-            Open My Pieces
-          </button>
-        </div>
-
-        <div className="card card-3d">
-          <div className="card-title">Upcoming classes</div>
+          <div className="card-title">Upcoming workshops</div>
           <div className="list">
-            {SAMPLE_CLASSES.map((item) => (
+            {SAMPLE_WORKSHOPS.map((item) => (
               <div className="list-row" key={item.name}>
                 <div>
                   <div className="list-title">{item.name}</div>
@@ -145,29 +173,6 @@ export default function DashboardView({
                 <div className="pill">{item.seats}</div>
               </div>
             ))}
-          </div>
-        </div>
-
-        <div className="card card-3d span-2">
-          <div className="card-title-row">
-            <div className="card-title">Studio updates</div>
-            <button className="btn btn-ghost notif-inline" onClick={onOpenMessages}>
-              <span className="bell-icon" />
-              Open inbox
-              {unreadTotal > 0 ? <span className="notif-count">{unreadTotal}</span> : null}
-            </button>
-          </div>
-          <div className="updates">
-            {announcementPreview.length === 0 ? (
-              <div className="empty-state">No studio announcements yet.</div>
-            ) : (
-              announcementPreview.map((item) => (
-                <div className="update" key={item.id}>
-                  <div className="update-title">{item.title || "Studio update"}</div>
-                  <p className="update-note">{item.body || "Details coming soon."}</p>
-                </div>
-              ))
-            )}
           </div>
         </div>
 

@@ -12,10 +12,14 @@ import {
   nowTs,
   asInt,
   safeString,
+  enforceRateLimit,
+  parseBody,
+  makeIdempotencyId,
   FieldValue,
   Timestamp,
 } from "./shared";
 import { TimelineEventType } from "./timelineEventTypes";
+import { z } from "zod";
 
 // -----------------------------
 // Config
@@ -56,6 +60,52 @@ type PieceState =
   | "DAMAGED_IN_HANDLING"
   | "DESTROYED_IN_HANDLING"
   | "FIRING_ISSUE";
+
+const createBatchSchema = z.object({
+  ownerUid: z.string().min(1),
+  ownerDisplayName: z.string().optional().nullable(),
+  title: z.string().min(1),
+  intakeMode: z.string().min(1),
+  estimatedCostCents: z.number().int().nonnegative(),
+  kilnName: z.string().optional().nullable(),
+  estimateNotes: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  clientRequestId: z.string().optional().nullable(),
+});
+
+const submitDraftSchema = z.object({
+  batchId: z.string().min(1),
+  notes: z.string().optional().nullable(),
+});
+
+const continueJourneySchema = z.object({
+  uid: z.string().min(1),
+  fromBatchId: z.string().min(1),
+  title: z.string().optional().nullable(),
+});
+
+const batchActionSchema = z.object({
+  batchId: z.string().min(1),
+  notes: z.string().optional().nullable(),
+});
+
+const kilnLoadSchema = z.object({
+  batchId: z.string().min(1),
+  kilnId: z.string().min(1),
+  kilnName: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  photos: z.array(z.string()).optional(),
+});
+
+const kilnUnloadSchema = z.object({
+  batchId: z.string().min(1),
+  notes: z.string().optional().nullable(),
+  photos: z.array(z.string()).optional(),
+});
+
+const backfillSchema = z.object({
+  limit: z.number().int().min(1).max(500).optional(),
+});
 
 function batchesCol() {
   return db.collection("batches");
@@ -165,6 +215,11 @@ export const debugCalendarId = onRequest({ region: REGION }, async (req, res) =>
     res.status(401).json({ ok: false, message: auth.message });
     return;
   }
+  const admin = await requireAdmin(req);
+  if (!admin.ok) {
+    res.status(403).json({ ok: false, message: "Forbidden" });
+    return;
+  }
 
   const trimmed = FIRINGS_CALENDAR_ID.trim();
   const tail = trimmed.slice(-23);
@@ -193,6 +248,11 @@ export const acceptFiringsCalendar = onRequest(
     const auth = await requireAuthUid(req);
     if (!auth.ok) {
       res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+    const admin = await requireAdmin(req);
+    if (!admin.ok) {
+      res.status(403).json({ ok: false, message: "Forbidden" });
       return;
     }
 
@@ -292,6 +352,23 @@ export const syncFiringsNow = onRequest(
       res.status(401).json({ ok: false, message: auth.message });
       return;
     }
+    const admin = await requireAdmin(req);
+    if (!admin.ok) {
+      res.status(403).json({ ok: false, message: "Forbidden" });
+      return;
+    }
+
+    const rate = enforceRateLimit({
+      req,
+      key: "syncFiringsNow",
+      max: 3,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
 
     try {
       const out = await syncFiringsCore();
@@ -334,7 +411,7 @@ export const syncFirings = onSchedule(
 // Batches: createBatch (admin-only)
 // -----------------------------
 export const createBatch = onRequest(
-  { region: REGION, timeoutSeconds: 60 },
+  { region: REGION, timeoutSeconds: 60, cors: true },
   async (req, res) => {
     if (applyCors(req, res)) return;
 
@@ -349,31 +426,60 @@ export const createBatch = onRequest(
       return;
     }
 
-    const admin = requireAdmin(req);
-    if (!admin.ok) {
-      res.status(401).json({ ok: false, message: admin.message });
+    const parsed = parseBody(createBatchSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
       return;
     }
 
-    const ownerUid = safeString(req.body?.ownerUid);
-    const ownerDisplayName = safeString(req.body?.ownerDisplayName);
-    const title = safeString(req.body?.title);
-    const intakeMode = safeString(req.body?.intakeMode) as IntakeMode;
-    const estimatedCostCents = asInt(req.body?.estimatedCostCents, 0);
-    const kilnName = safeString(req.body?.kilnName);
-    const estimateNotes = safeString(req.body?.estimateNotes || req.body?.notes);
-
-    if (!ownerUid || !title) {
-      res.status(400).json({ ok: false, message: "ownerUid and title required" });
+    const rate = enforceRateLimit({
+      req,
+      key: "createBatch",
+      max: 6,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
       return;
     }
 
-    const ref = batchesCol().doc();
+    const ownerUid = safeString(parsed.data.ownerUid);
+    const ownerDisplayName = safeString(parsed.data.ownerDisplayName);
+    const title = safeString(parsed.data.title);
+    const intakeMode = safeString(parsed.data.intakeMode) as IntakeMode;
+    const estimatedCostCents = asInt(parsed.data.estimatedCostCents, 0);
+    const kilnName = safeString(parsed.data.kilnName);
+    const estimateNotes = safeString(parsed.data.estimateNotes || parsed.data.notes);
+    const clientRequestId = safeString(parsed.data.clientRequestId);
+
+    const admin = await requireAdmin(req);
+    const isSelfService = ownerUid === auth.uid;
+    if (!admin.ok && !isSelfService) {
+      res.status(403).json({ ok: false, message: "Forbidden" });
+      return;
+    }
+
+    const ref = clientRequestId
+      ? batchesCol().doc(makeIdempotencyId("batch", ownerUid, clientRequestId))
+      : batchesCol().doc();
+
+    if (clientRequestId) {
+      const existing = await ref.get();
+      if (existing.exists) {
+        res.status(200).json({ ok: true, existingBatchId: ref.id });
+        return;
+      }
+    }
     const createdAt = nowTs();
+    const editors = isSelfService
+      ? [auth.uid]
+      : [ownerUid, auth.uid].filter((uid, idx, arr) => arr.indexOf(uid) === idx);
 
     const doc = {
       ownerUid,
       ownerDisplayName: ownerDisplayName || null,
+      editors,
       title,
       intakeMode: intakeMode || "STAFF_HANDOFF",
       estimatedCostCents,
@@ -392,12 +498,14 @@ export const createBatch = onRequest(
     };
 
     await ref.set(doc);
+    const actorUid = isSelfService ? auth.uid : "admin";
+    const actorName = isSelfService ? ownerDisplayName || "client" : "admin";
     await addTimelineEvent({
       batchId: ref.id,
       type: TimelineEventType.CREATE_BATCH,
       at: createdAt,
-      actorUid: "admin",
-      actorName: "admin",
+      actorUid,
+      actorName,
       notes: "Batch created",
     });
 
@@ -425,12 +533,25 @@ export const submitDraftBatch = onRequest(
     }
     const uid = auth.uid;
 
-    const batchId = safeString(req.body?.batchId);
-
-    if (!uid || !batchId) {
-      res.status(400).json({ ok: false, message: "uid and batchId required" });
+    const parsed = parseBody(submitDraftSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
       return;
     }
+
+    const rate = enforceRateLimit({
+      req,
+      key: "submitDraftBatch",
+      max: 6,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    const batchId = safeString(parsed.data.batchId);
 
     const ref = batchDoc(batchId);
     const snap = await ref.get();
@@ -460,7 +581,7 @@ export const submitDraftBatch = onRequest(
       at: t,
       actorUid: uid,
       actorName: data.ownerDisplayName ?? null,
-      notes: safeString(req.body?.notes) || "Submitted",
+      notes: safeString(parsed.data.notes) || "Submitted",
     });
 
     res.status(200).json({ ok: true });
@@ -487,17 +608,31 @@ export const pickedUpAndClose = onRequest(
       return;
     }
 
-    const admin = requireAdmin(req);
+    const admin = await requireAdmin(req);
     if (!admin.ok) {
-      res.status(401).json({ ok: false, message: admin.message });
+      res.status(403).json({ ok: false, message: "Forbidden" });
       return;
     }
 
-    const batchId = safeString(req.body?.batchId);
-    if (!batchId) {
-      res.status(400).json({ ok: false, message: "batchId required" });
+    const parsed = parseBody(batchActionSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
       return;
     }
+
+    const rate = enforceRateLimit({
+      req,
+      key: "pickedUpAndClose",
+      max: 10,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    const batchId = safeString(parsed.data.batchId);
 
     const ref = batchDoc(batchId);
     const t = nowTs();
@@ -518,7 +653,7 @@ export const pickedUpAndClose = onRequest(
       at: t,
       actorUid: "admin",
       actorName: "admin",
-      notes: safeString(req.body?.notes) || "Picked up; batch closed",
+      notes: safeString(parsed.data.notes) || "Picked up; batch closed",
     });
 
     res.status(200).json({ ok: true });
@@ -546,9 +681,27 @@ export const continueJourney = onRequest(
     }
     const uid = auth.uid;
 
-    const fromBatchId = safeString(req.body?.fromBatchId);
-    if (!uid || !fromBatchId) {
-      res.status(400).json({ ok: false, message: "uid and fromBatchId required" });
+    const parsed = parseBody(continueJourneySchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const rate = enforceRateLimit({
+      req,
+      key: "continueJourney",
+      max: 4,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    const fromBatchId = safeString(parsed.data.fromBatchId);
+    if (safeString(parsed.data.uid) !== uid) {
+      res.status(403).json({ ok: false, message: "Forbidden" });
       return;
     }
 
@@ -572,7 +725,7 @@ export const continueJourney = onRequest(
     await newRef.set({
       ownerUid: uid,
       ownerDisplayName: from.ownerDisplayName ?? null,
-      title: safeString(req.body?.title) || `${from.title} (resubmission)`,
+      title: safeString(parsed.data.title) || `${from.title} (resubmission)`,
       intakeMode: from.intakeMode ?? "SELF_SERVICE",
       estimatedCostCents: 0,
       estimateNotes: null,
@@ -617,17 +770,31 @@ export const shelveBatch = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  const admin = requireAdmin(req);
+  const admin = await requireAdmin(req);
   if (!admin.ok) {
-    res.status(401).json({ ok: false, message: admin.message });
+    res.status(403).json({ ok: false, message: "Forbidden" });
     return;
   }
 
-  const batchId = safeString(req.body?.batchId);
-  if (!batchId) {
-    res.status(400).json({ ok: false, message: "batchId required" });
+  const parsed = parseBody(batchActionSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
     return;
   }
+
+  const rate = enforceRateLimit({
+    req,
+    key: "shelveBatch",
+    max: 15,
+    windowMs: 60_000,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ ok: false, message: "Too many requests" });
+    return;
+  }
+
+  const batchId = safeString(parsed.data.batchId);
 
   const t = nowTs();
   await batchDoc(batchId).set(
@@ -640,7 +807,7 @@ export const shelveBatch = onRequest({ region: REGION }, async (req, res) => {
     at: t,
     actorUid: "admin",
     actorName: "admin",
-    notes: safeString(req.body?.notes) || "Shelved",
+    notes: safeString(parsed.data.notes) || "Shelved",
   });
 
   res.status(200).json({ ok: true });
@@ -659,20 +826,33 @@ export const kilnLoad = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  const admin = requireAdmin(req);
+  const admin = await requireAdmin(req);
   if (!admin.ok) {
-    res.status(401).json({ ok: false, message: admin.message });
+    res.status(403).json({ ok: false, message: "Forbidden" });
     return;
   }
 
-  const batchId = safeString(req.body?.batchId);
-  const kilnId = safeString(req.body?.kilnId);
-  const kilnName = safeString(req.body?.kilnName);
-
-  if (!batchId || !kilnId) {
-    res.status(400).json({ ok: false, message: "batchId and kilnId required" });
+  const parsed = parseBody(kilnLoadSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
     return;
   }
+
+  const rate = enforceRateLimit({
+    req,
+    key: "kilnLoad",
+    max: 20,
+    windowMs: 60_000,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ ok: false, message: "Too many requests" });
+    return;
+  }
+
+  const batchId = safeString(parsed.data.batchId);
+  const kilnId = safeString(parsed.data.kilnId);
+  const kilnName = safeString(parsed.data.kilnName);
 
   const t = nowTs();
   await batchDoc(batchId).set(
@@ -693,8 +873,8 @@ export const kilnLoad = onRequest({ region: REGION }, async (req, res) => {
     actorName: "admin",
     kilnId,
     kilnName: kilnName || null,
-    notes: safeString(req.body?.notes) || "Loaded to kiln",
-    photos: Array.isArray(req.body?.photos) ? req.body.photos : [],
+    notes: safeString(parsed.data.notes) || "Loaded to kiln",
+    photos: Array.isArray(parsed.data.photos) ? parsed.data.photos : [],
   });
 
   res.status(200).json({ ok: true });
@@ -713,17 +893,31 @@ export const kilnUnload = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  const admin = requireAdmin(req);
+  const admin = await requireAdmin(req);
   if (!admin.ok) {
-    res.status(401).json({ ok: false, message: admin.message });
+    res.status(403).json({ ok: false, message: "Forbidden" });
     return;
   }
 
-  const batchId = safeString(req.body?.batchId);
-  if (!batchId) {
-    res.status(400).json({ ok: false, message: "batchId required" });
+  const parsed = parseBody(kilnUnloadSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
     return;
   }
+
+  const rate = enforceRateLimit({
+    req,
+    key: "kilnUnload",
+    max: 20,
+    windowMs: 60_000,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ ok: false, message: "Too many requests" });
+    return;
+  }
+
+  const batchId = safeString(parsed.data.batchId);
 
   const t = nowTs();
   await batchDoc(batchId).set(
@@ -742,8 +936,8 @@ export const kilnUnload = onRequest({ region: REGION }, async (req, res) => {
     at: t,
     actorUid: "admin",
     actorName: "admin",
-    notes: safeString(req.body?.notes) || "Unloaded from kiln",
-    photos: Array.isArray(req.body?.photos) ? req.body.photos : [],
+    notes: safeString(parsed.data.notes) || "Unloaded from kiln",
+    photos: Array.isArray(parsed.data.photos) ? parsed.data.photos : [],
   });
 
   res.status(200).json({ ok: true });
@@ -762,17 +956,31 @@ export const readyForPickup = onRequest({ region: REGION }, async (req, res) => 
     return;
   }
 
-  const admin = requireAdmin(req);
+  const admin = await requireAdmin(req);
   if (!admin.ok) {
-    res.status(401).json({ ok: false, message: admin.message });
+    res.status(403).json({ ok: false, message: "Forbidden" });
     return;
   }
 
-  const batchId = safeString(req.body?.batchId);
-  if (!batchId) {
-    res.status(400).json({ ok: false, message: "batchId required" });
+  const parsed = parseBody(batchActionSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
     return;
   }
+
+  const rate = enforceRateLimit({
+    req,
+    key: "readyForPickup",
+    max: 20,
+    windowMs: 60_000,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ ok: false, message: "Too many requests" });
+    return;
+  }
+
+  const batchId = safeString(parsed.data.batchId);
 
   const t = nowTs();
   await batchDoc(batchId).set(
@@ -786,7 +994,7 @@ export const readyForPickup = onRequest({ region: REGION }, async (req, res) => 
     at: t,
     actorUid: "admin",
     actorName: "admin",
-    notes: safeString(req.body?.notes) || "Ready for pickup",
+    notes: safeString(parsed.data.notes) || "Ready for pickup",
   });
 
   res.status(200).json({ ok: true });
@@ -795,6 +1003,7 @@ export const readyForPickup = onRequest({ region: REGION }, async (req, res) => 
 export { createReservation } from "./createReservation";
 export { normalizeTimelineEventTypes } from "./normalizeTimelineEventTypes";
 export { createMaterialsCheckoutSession, listMaterialsProducts, seedMaterialsCatalog, stripeWebhook } from "./materials";
+export { importLibraryIsbns } from "./library";
 export {
   listEvents,
   listEventSignups,
@@ -825,13 +1034,19 @@ export const backfillIsClosed = onRequest(
       return;
     }
 
-    const admin = requireAdmin(req);
+    const admin = await requireAdmin(req);
     if (!admin.ok) {
-      res.status(401).json({ ok: false, message: admin.message });
+      res.status(403).json({ ok: false, message: "Forbidden" });
       return;
     }
 
-    const limit = Math.min(Math.max(asInt(req.body?.limit, 200), 1), 500);
+    const parsed = parseBody(backfillSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const limit = Math.min(Math.max(asInt(parsed.data.limit, 200), 1), 500);
 
     const snaps = await batchesCol().limit(limit).get();
     const batch = db.batch();

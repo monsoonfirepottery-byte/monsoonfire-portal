@@ -40,13 +40,13 @@
   padding: 16px;
   border-radius: 18px;
   background: var(--surface-2);
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
   box-shadow: var(--shadow-soft);
 }
 
 .journey-card.current {
-  border-color: rgba(255, 139, 84, 0.4);
-  background: rgba(255, 139, 84, 0.12);
+  border-color: var(--accent);
+  background: rgba(180, 79, 53, 0.12);
 }
 
 .journey-card.next {
@@ -70,7 +70,7 @@
 
 .journey-tier {
   font-weight: 600;
-  color: #ffe8d7;
+  color: var(--accent);
 }
 
 .journey-card-title {
@@ -88,7 +88,7 @@
 }
 
 .journey-card-meta strong {
-  color: #f7ede5;
+  color: var(--text);
   font-weight: 600;
 }
 
@@ -122,7 +122,7 @@
   display: grid;
   place-items: center;
   font-size: 28px;
-  color: rgba(255, 255, 255, 0.3);
+  color: rgba(27, 26, 23, 0.3);
 }
 
 .journey-actions {
@@ -137,7 +137,7 @@
   padding: 14px 16px;
   border-radius: 16px;
   background: var(--surface-2);
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
 }
 
 .journey-action.cancel {
@@ -166,7 +166,7 @@
 .membership-label textarea {
   border-radius: 12px;
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--surface);
   color: var(--text);
   padding: 10px 12px;
   font-size: 14px;
@@ -204,13 +204,13 @@
   padding: 10px 12px;
   border-radius: 12px;
   background: var(--surface-2);
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
   font-size: 13px;
 }
 
 .membership-cell.heading {
   font-weight: 600;
-  color: #f7ede5;
+  color: var(--text);
 }
 
 .membership-cell.label {
@@ -218,8 +218,8 @@
 }
 
 .membership-cell.current {
-  border-color: rgba(255, 139, 84, 0.4);
-  background: rgba(255, 139, 84, 0.16);
+  border-color: var(--accent);
+  background: rgba(180, 79, 53, 0.16);
 }
 
 .membership-features {
@@ -234,7 +234,7 @@
 }
 
 .feature-clip {
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--surface-2);
   padding: 0;
@@ -286,7 +286,7 @@
 .journey-modal {
   position: fixed;
   inset: 0;
-  background: rgba(8, 8, 8, 0.75);
+  background: rgba(27, 26, 23, 0.6);
   display: grid;
   place-items: center;
   padding: 20px;
@@ -298,7 +298,7 @@
   width: min(960px, 100%);
   background: var(--surface-strong);
   border-radius: 24px;
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
   padding: 24px;
   display: grid;
   gap: 16px;
@@ -322,7 +322,7 @@
 .journey-modal-tier {
   border-radius: 16px;
   padding: 14px 16px;
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
   background: var(--surface-2);
   display: grid;
   gap: 6px;

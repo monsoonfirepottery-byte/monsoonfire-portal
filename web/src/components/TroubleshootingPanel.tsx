@@ -1,5 +1,4 @@
 // src/components/TroubleshootingPanel.tsx
-import React from "react";
 import type { LastRequest } from "../api/functionsClient";
 import { safeJsonStringify } from "../api/functionsClient";
 import { styles as S } from "../ui/styles";

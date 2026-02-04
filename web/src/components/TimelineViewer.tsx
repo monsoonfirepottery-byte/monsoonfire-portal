@@ -1,5 +1,4 @@
 // src/components/TimelineViewer.tsx
-import React from "react";
 import type { TimelineEvent } from "../types/domain";
 import { TIMELINE_EVENT_LABELS, normalizeTimelineEventType } from "../timelineEventTypes";
 import { styles as S } from "../ui/styles";

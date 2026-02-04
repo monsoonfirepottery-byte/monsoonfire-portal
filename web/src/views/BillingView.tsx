@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
 import {
   collection,
@@ -67,7 +67,7 @@ type MaterialsOrderDoc = {
 
 type ReceiptItem = {
   id: string;
-  kind: "events" | "materials";
+  kind: "events" | "store";
   title: string;
   subtitle?: string;
   totalCents: number;
@@ -114,7 +114,7 @@ export default function BillingView({ user }: Props) {
   const [eventTitles, setEventTitles] = useState<Record<string, string>>({});
   const [statusMessage, setStatusMessage] = useState("");
   const [payBusyId, setPayBusyId] = useState("");
-  const [receiptFilter, setReceiptFilter] = useState<"all" | "events" | "materials">("all");
+  const [receiptFilter, setReceiptFilter] = useState<"all" | "events" | "store">("all");
   const [lastReq, setLastReq] = useState<LastRequest | null>(null);
 
   const baseUrl = useMemo(() => resolveFunctionsBaseUrl(), []);
@@ -143,8 +143,8 @@ export default function BillingView({ user }: Props) {
         )
       );
       const rows: EventSignupDoc[] = snap.docs.map((docSnap) => ({
-        id: docSnap.id,
         ...(docSnap.data() as EventSignupDoc),
+        id: docSnap.id,
       }));
       setCheckIns(rows.filter((row) => row.paymentStatus !== "paid"));
     } catch (err: any) {
@@ -168,8 +168,8 @@ export default function BillingView({ user }: Props) {
         )
       );
       const rows: EventChargeDoc[] = snap.docs.map((docSnap) => ({
-        id: docSnap.id,
         ...(docSnap.data() as EventChargeDoc),
+        id: docSnap.id,
       }));
       setCharges(rows);
     } catch (err: any) {
@@ -193,8 +193,8 @@ export default function BillingView({ user }: Props) {
         )
       );
       const rows: MaterialsOrderDoc[] = snap.docs.map((docSnap) => ({
-        id: docSnap.id,
         ...(docSnap.data() as MaterialsOrderDoc),
+        id: docSnap.id,
       }));
       setMaterials(rows);
     } catch (err: any) {
@@ -283,15 +283,15 @@ export default function BillingView({ user }: Props) {
         link: charge.stripeCheckoutSessionId ? `https://stripe.com/checkout/${charge.stripeCheckoutSessionId}` : null,
       }));
 
-    const materialReceipts = materials
+    const storeReceipts = materials
       .filter((order) => {
         const status = (order.status || "").toLowerCase();
         return status === "paid" || status === "picked_up";
       })
       .map((order) => ({
         id: order.id,
-        kind: "materials" as const,
-        title: `Materials order ${order.id}`,
+        kind: "store" as const,
+        title: `Store order ${order.id}`,
         subtitle:
           (order.items ?? [])
             .map((item) => `${item.name ?? "Item"} (${item.quantity ?? 0})`)
@@ -302,7 +302,7 @@ export default function BillingView({ user }: Props) {
         link: order.checkoutUrl ?? null,
       }));
 
-    return [...eventReceipts, ...materialReceipts].sort((a, b) => {
+    return [...eventReceipts, ...storeReceipts].sort((a, b) => {
       const timeA = a.createdAt?.getTime() ?? 0;
       const timeB = b.createdAt?.getTime() ?? 0;
       return timeB - timeA;
@@ -327,7 +327,7 @@ export default function BillingView({ user }: Props) {
   const receiptFilters = [
     { key: "all", label: "All receipts" },
     { key: "events", label: "Events" },
-    { key: "materials", label: "Materials" },
+    { key: "store", label: "Store" },
   ] as const;
 
   const handleCheckout = async (signup: EventSignupDoc) => {
@@ -378,10 +378,10 @@ export default function BillingView({ user }: Props) {
         <article className="billing-summary-card">
           <div className="summary-label">Paid in last 30 days</div>
           <div className="summary-value">{formatCents(paidLast30Days)}</div>
-          <div className="summary-note">Includes events + materials receipts.</div>
+          <div className="summary-note">Includes events + store receipts.</div>
         </article>
         <article className="billing-summary-card">
-          <div className="summary-label">Pending materials</div>
+          <div className="summary-label">Pending store orders</div>
           <div className="summary-value">{pendingMaterialsCount}</div>
           <div className="summary-note">Checkout or confirm pickup to close the order.</div>
         </article>
@@ -397,6 +397,7 @@ export default function BillingView({ user }: Props) {
       {statusMessage ? (
         <div className="billing-status inline-alert">{statusMessage}</div>
       ) : null}
+      {chargesError ? <div className="billing-status inline-alert">{chargesError}</div> : null}
 
       <section className="card billing-section">
         <div className="card-title">Unpaid check-ins</div>
@@ -440,13 +441,13 @@ export default function BillingView({ user }: Props) {
       </section>
 
       <section className="card billing-section">
-        <div className="card-title">Materials orders</div>
+        <div className="card-title">Store orders</div>
         {materialsLoading ? (
           <div className="billing-empty">Loading orders...</div>
         ) : materialsError ? (
           <div className="billing-empty">{materialsError}</div>
         ) : materials.length === 0 ? (
-          <div className="billing-empty">No materials orders yet.</div>
+          <div className="billing-empty">No store orders yet.</div>
         ) : (
           <div className="billing-materials">
             {materials.map((order) => (

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   collection,
   doc,
@@ -33,7 +33,9 @@ const STATUS_LABELS: Record<KilnStatus, string> = {
   maintenance: "Maintenance",
 };
 
-const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const GOOGLE_CALENDAR_TZ = "America/Phoenix";
+const PRIMARY_KILN_NAME = "L&L eQ2827-3";
+const RAKU_KILN_NAME = "Reduction Raku Kiln";
 
 function isPermissionDenied(err: unknown) {
   const message = (err as { message?: string })?.message ?? "";
@@ -57,50 +59,35 @@ function coerceDate(value: unknown): Date | null {
   return null;
 }
 
-function formatDayKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 function formatTimeRange(startDate: Date, endDate: Date) {
   const startLabel = startDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const endLabel = endDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   return `${startLabel} - ${endLabel}`;
 }
 
-function getMonthGrid(target: Date) {
-  const year = target.getFullYear();
-  const month = target.getMonth();
-  const firstOfMonth = new Date(year, month, 1);
-  const dayOffset = firstOfMonth.getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  const cells: Array<Date | null> = [];
-  for (let i = 0; i < dayOffset; i += 1) {
-    cells.push(null);
-  }
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    cells.push(new Date(year, month, day));
-  }
-  while (cells.length % 7 !== 0) {
-    cells.push(null);
-  }
-  return cells;
+function resolveGoogleCalendarId() {
+  const env =
+    typeof import.meta !== "undefined" &&
+    (import.meta as any).env &&
+    (import.meta as any).env.VITE_GOOGLE_KILN_CALENDAR_ID
+      ? String((import.meta as any).env.VITE_GOOGLE_KILN_CALENDAR_ID)
+      : "";
+  return env;
 }
 
-function formatIcsDate(date: Date) {
-  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+function formatGoogleDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  return `${year}${month}${day}T${hours}${minutes}${seconds}`;
 }
 
-function escapeIcsText(value: string) {
-  return value.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
-}
-
-function downloadIcs(firing: NormalizedFiring, kiln: Kiln | undefined) {
+function openGoogleCalendarEvent(firing: NormalizedFiring, kiln: Kiln | undefined) {
   const summary = `${kiln?.name ?? "Kiln"} — ${firing.title}`;
-  const description = [
+  const details = [
     `Cycle: ${firing.cycleType}`,
     `Status: ${firing.status}`,
     firing.notes ? `Notes: ${firing.notes}` : null,
@@ -108,32 +95,24 @@ function downloadIcs(firing: NormalizedFiring, kiln: Kiln | undefined) {
     .filter(Boolean)
     .join("\n");
 
-  const lines = [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//Monsoon Fire//Kiln Schedule//EN",
-    "CALSCALE:GREGORIAN",
-    "BEGIN:VEVENT",
-    `UID:${firing.id}@monsoonfire.com`,
-    `DTSTAMP:${formatIcsDate(new Date())}`,
-    `DTSTART:${formatIcsDate(firing.startDate)}`,
-    `DTEND:${formatIcsDate(firing.endDate)}`,
-    `SUMMARY:${escapeIcsText(summary)}`,
-    `DESCRIPTION:${escapeIcsText(description)}`,
-    `LOCATION:${escapeIcsText(kiln?.name ?? "Monsoon Fire Studio")}`,
-    "END:VEVENT",
-    "END:VCALENDAR",
-  ];
+  const start = formatGoogleDate(firing.startDate);
+  const end = formatGoogleDate(firing.endDate);
 
-  const blob = new Blob([`${lines.join("\r\n")}\r\n`], {
-    type: "text/calendar;charset=utf-8",
+  const params = new URLSearchParams({
+    text: summary,
+    dates: `${start}/${end}`,
+    details,
+    location: kiln?.name ?? "Monsoon Fire Studio",
+    ctz: GOOGLE_CALENDAR_TZ,
   });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${firing.id}.ics`;
-  link.click();
-  URL.revokeObjectURL(url);
+
+  const calendarId = resolveGoogleCalendarId();
+  if (calendarId) {
+    params.set("src", calendarId);
+  }
+
+  const url = `https://calendar.google.com/calendar/r/eventedit?${params.toString()}`;
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 function toFirestoreKiln(kiln: Kiln) {
@@ -221,14 +200,31 @@ function useKilnSchedule(): ScheduleState {
 export default function KilnScheduleView() {
   const { kilns, firings, loading, error, permissionDenied } = useKilnSchedule();
   const [selectedFiringId, setSelectedFiringId] = useState<string | null>(null);
-  const [monthCursor, setMonthCursor] = useState(() => new Date());
   const [seedBusy, setSeedBusy] = useState(false);
   const [seedStatus, setSeedStatus] = useState("");
 
   const dataReady = !loading;
   const useMock = permissionDenied || (dataReady && kilns.length === 0 && firings.length === 0);
-  const displayKilns = useMock ? mockKilns : kilns;
-  const displayFirings = useMock ? mockFirings : firings;
+  const rawKilns = useMock ? mockKilns : kilns;
+  const rawFirings = useMock ? mockFirings : firings;
+
+  const fallbackPrimary = mockKilns.find((kiln) => kiln.name === PRIMARY_KILN_NAME) ?? mockKilns[0];
+  const fallbackRaku = mockKilns.find((kiln) => kiln.name === RAKU_KILN_NAME) ?? mockKilns[1];
+
+  const primaryKiln =
+    rawKilns.find((kiln) => kiln.name === PRIMARY_KILN_NAME) ??
+    rawKilns.find((kiln) => /eQ2827|L&L/i.test(kiln.name)) ??
+    fallbackPrimary;
+  const rakuKiln =
+    rawKilns.find((kiln) => kiln.name === RAKU_KILN_NAME) ??
+    rawKilns.find((kiln) => /raku|reduction/i.test(kiln.name)) ??
+    fallbackRaku;
+
+  const displayKilns = [primaryKiln, rakuKiln].filter(
+    (kiln, index, arr) => arr.findIndex((item) => item.id === kiln.id) === index
+  );
+  const displayKilnIds = new Set(displayKilns.map((kiln) => kiln.id));
+  const displayFirings = rawFirings.filter((firing) => displayKilnIds.has(firing.kilnId));
 
   const normalizedFirings = useMemo(() => {
     return displayFirings
@@ -275,35 +271,6 @@ export default function KilnScheduleView() {
     ? normalizedFirings.find((firing) => firing.id === selectedFiringId) || null
     : null;
 
-  const monthLabel = monthCursor.toLocaleString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
-  const monthCells = useMemo(() => getMonthGrid(monthCursor), [monthCursor]);
-  const monthKeyPrefix = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}`;
-
-  const eventsByDay = useMemo(() => {
-    const map = new Map<string, NormalizedFiring[]>();
-    normalizedFirings.forEach((firing) => {
-      const dayKey = formatDayKey(firing.startDate);
-      if (!dayKey.startsWith(monthKeyPrefix)) return;
-      const bucket = map.get(dayKey) ?? [];
-      bucket.push(firing);
-      map.set(dayKey, bucket);
-    });
-    return map;
-  }, [normalizedFirings, monthKeyPrefix]);
-
-  const todayKey = formatDayKey(new Date());
-
-  const handlePrevMonth = () => {
-    setMonthCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
-  };
-
-  const handleNextMonth = () => {
-    setMonthCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
-  };
-
   const handleSeedMock = async () => {
     if (seedBusy || permissionDenied) return;
     setSeedBusy(true);
@@ -336,9 +303,9 @@ export default function KilnScheduleView() {
     <div className="page kiln-page">
       <div className="page-header">
         <div>
-          <h1>Kiln Schedule</h1>
+          <h1>Firings</h1>
           <p className="page-subtitle">
-            See what kilns are available, their current status, and upcoming firing windows.
+            See what is firing next, what is in progress, and what has already fired.
           </p>
         </div>
         <div className="kiln-header-actions">
@@ -408,70 +375,6 @@ export default function KilnScheduleView() {
         })}
       </section>
 
-      <section className="card card-3d kiln-calendar">
-        <div className="calendar-header">
-          <div>
-            <div className="card-title">Monthly kiln calendar</div>
-            <p className="calendar-subtitle">Tap a firing to see details and download reminders.</p>
-          </div>
-          <div className="calendar-actions">
-            <button className="btn btn-ghost" onClick={handlePrevMonth}>
-              Prev
-            </button>
-            <div className="calendar-month">{monthLabel}</div>
-            <button className="btn btn-ghost" onClick={handleNextMonth}>
-              Next
-            </button>
-          </div>
-        </div>
-        <div className="calendar-grid">
-          {WEEKDAY_LABELS.map((label) => (
-            <div className="calendar-weekday" key={label}>
-              {label}
-            </div>
-          ))}
-          {monthCells.map((cell, index) => {
-            if (!cell) {
-              return <div className="calendar-cell empty" key={`empty-${index}`} />;
-            }
-            const dayKey = formatDayKey(cell);
-            const dayEvents = eventsByDay.get(dayKey) ?? [];
-            const isToday = dayKey === todayKey;
-
-            return (
-              <div className={`calendar-cell ${isToday ? "today" : ""}`} key={dayKey}>
-                <div className="calendar-date">{cell.getDate()}</div>
-                <div className="calendar-events">
-                  {dayEvents.length === 0 ? (
-                    <div className="calendar-empty">—</div>
-                  ) : (
-                    dayEvents.map((event) => {
-                      const kiln = kilnById.get(event.kilnId);
-                      const timeLabel = event.startDate.toLocaleTimeString([], {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      });
-                      return (
-                        <button
-                          className={`calendar-event status-${event.status}`}
-                          key={event.id}
-                          onClick={() => setSelectedFiringId(event.id)}
-                        >
-                          <span className="event-time">{timeLabel}</span>
-                          <span className="event-title">
-                            {kiln?.name ?? "Kiln"}: {event.title}
-                          </span>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-      {/* TODO: add filters for kiln availability, calendar lane view/tab for day/week, and allow staffing controls (firing kickoff, maintenance overrides). */}
       <section className="kiln-lower-grid">
         <div className="card card-3d kiln-upcoming">
           <div className="card-title">Upcoming firings</div>
@@ -491,8 +394,8 @@ export default function KilnScheduleView() {
                         {formatDateTime(firing.startDate)} · {formatTimeRange(firing.startDate, firing.endDate)}
                       </div>
                     </div>
-                    <button className="btn btn-ghost" onClick={() => downloadIcs(firing, kiln)}>
-                      Add to calendar
+                    <button className="btn btn-ghost" onClick={() => openGoogleCalendarEvent(firing, kiln)}>
+                      Add to Monsoon Fire calendar
                     </button>
                   </div>
                 );
@@ -519,14 +422,14 @@ export default function KilnScheduleView() {
               <div className="details-actions">
                 <button
                   className="btn btn-primary"
-                  onClick={() => downloadIcs(selectedFiring, kilnById.get(selectedFiring.kilnId))}
+                  onClick={() => openGoogleCalendarEvent(selectedFiring, kilnById.get(selectedFiring.kilnId))}
                 >
-                  Download reminder (.ics)
+                  Add to Monsoon Fire calendar
                 </button>
               </div>
             </div>
           ) : (
-            <div className="empty-state">Select a firing from the calendar to see details.</div>
+            <div className="empty-state">Select a firing from the list to see details.</div>
           )}
           {/* TODO: Staff role can kick off new firings and adjust schedules here. */}
         </div>

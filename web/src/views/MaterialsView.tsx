@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
 import type {
   CreateMaterialsCheckoutSessionResponse,
@@ -21,6 +21,7 @@ const CATALOG_CACHE_TTL_MS = 5 * 60 * 1000;
 type Props = {
   user: User;
   adminToken?: string;
+  isStaff: boolean;
 };
 
 type CartLine = {
@@ -68,7 +69,7 @@ function writeCachedCatalog(products: MaterialProduct[]) {
   }
 }
 
-export default function MaterialsView({ user, adminToken }: Props) {
+export default function MaterialsView({ user, adminToken, isStaff }: Props) {
   const [products, setProducts] = useState<MaterialProduct[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -181,7 +182,7 @@ export default function MaterialsView({ user, adminToken }: Props) {
     return cartLines.reduce((total, line) => total + line.product.priceCents * line.quantity, 0);
   }, [cartLines]);
 
-  const canSeed = !!adminToken?.trim();
+  const canSeed = isStaff || !!adminToken?.trim();
   const canCheckout = cartLines.length > 0 && !checkoutBusy;
 
   const updateCart = (productId: string, delta: number, maxAvailable: number | null) => {
@@ -268,7 +269,7 @@ export default function MaterialsView({ user, adminToken }: Props) {
     <div className="page materials-page">
       <div className="page-header">
         <div>
-          <h1>Materials & supplies</h1>
+          <h1>Store</h1>
           <p className="page-subtitle">
             Pickup-only supplies for the work you are already doing. Take what you need today, and
             keep your studio momentum steady.

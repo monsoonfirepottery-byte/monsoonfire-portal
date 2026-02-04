@@ -1,5 +1,4 @@
 // src/components/ActiveBatchCard.tsx
-import React from "react";
 import type { Batch } from "../types/domain";
 import { styles as S } from "../ui/styles";
 

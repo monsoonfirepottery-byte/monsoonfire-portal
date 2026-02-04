@@ -1,0 +1,75 @@
+.kiln-rentals-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.kiln-rentals-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: 24px;
+  align-items: center;
+}
+
+.kiln-rentals-hero-media {
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  background: var(--surface-2);
+  border-radius: 18px;
+  border: 1px solid var(--border);
+}
+
+.kiln-rentals-hero-media img {
+  width: min(420px, 100%);
+  height: auto;
+}
+
+.kiln-rentals-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.kiln-rentals-steps {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.kiln-step-button {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.kiln-step-button:hover {
+  transform: translateY(-1px);
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+
+.kiln-step-title {
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.kiln-step-copy {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .kiln-rentals-hero {
+    grid-template-columns: 1fr;
+  }
+}

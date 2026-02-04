@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
 import type {
   EventDetail,
@@ -41,6 +41,7 @@ const ROSTER_FILTERS = [
 type Props = {
   user: User;
   adminToken?: string;
+  isStaff: boolean;
 };
 
 type RosterFilter = (typeof ROSTER_FILTERS)[number]["key"];
@@ -102,7 +103,7 @@ function buildRosterCounts(rows: EventSignupRosterEntry[]): RosterCounts {
   return counts;
 }
 
-export default function EventsView({ user, adminToken }: Props) {
+export default function EventsView({ user, adminToken, isStaff }: Props) {
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError, setEventsError] = useState("");
@@ -129,7 +130,7 @@ export default function EventsView({ user, adminToken }: Props) {
   const [lastReq, setLastReq] = useState<LastRequest | null>(null);
 
   const baseUrl = useMemo(() => resolveFunctionsBaseUrl(), []);
-  const hasAdmin = !!adminToken?.trim();
+  const hasAdmin = isStaff || !!adminToken?.trim();
 
   const client = useMemo(() => {
     return createFunctionsClient({

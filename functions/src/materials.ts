@@ -12,11 +12,35 @@ import {
   requireAuthUid,
   safeString,
   adminAuth,
+  enforceRateLimit,
+  parseBody,
 } from "./shared";
+import { z } from "zod";
 
 const REGION = "us-central1";
 const PRODUCTS_COL = "materialsProducts";
 const ORDERS_COL = "materialsOrders";
+
+const listMaterialsSchema = z.object({
+  includeInactive: z.boolean().optional(),
+});
+
+const checkoutSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        productId: z.string().min(1),
+        quantity: z.number().int().positive(),
+      })
+    )
+    .min(1)
+    .max(50),
+  pickupNotes: z.string().optional().nullable(),
+});
+
+const seedCatalogSchema = z.object({
+  force: z.boolean().optional(),
+});
 
 let stripeClient: Stripe | null = null;
 
@@ -87,7 +111,7 @@ function slugify(value: string): string {
     .replace(/(^-|-$)/g, "");
 }
 
-export const listMaterialsProducts = onRequest({ region: REGION }, async (req, res) => {
+export const listMaterialsProducts = onRequest({ region: REGION, cors: true }, async (req, res) => {
   if (applyCors(req, res)) return;
 
   if (req.method !== "POST") {
@@ -101,7 +125,25 @@ export const listMaterialsProducts = onRequest({ region: REGION }, async (req, r
     return;
   }
 
-  const includeInactive = !!req.body?.includeInactive;
+  const parsed = parseBody(listMaterialsSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const rate = enforceRateLimit({
+    req,
+    key: "listMaterialsProducts",
+    max: 30,
+    windowMs: 60_000,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ ok: false, message: "Too many requests" });
+    return;
+  }
+
+  const includeInactive = parsed.data.includeInactive === true;
 
   try {
     const snap = await db.collection(PRODUCTS_COL).get();
@@ -158,9 +200,27 @@ export const seedMaterialsCatalog = onRequest({ region: REGION }, async (req, re
     return;
   }
 
-  const admin = requireAdmin(req);
+  const admin = await requireAdmin(req);
   if (!admin.ok) {
-    res.status(401).json({ ok: false, message: admin.message });
+    res.status(403).json({ ok: false, message: "Forbidden" });
+    return;
+  }
+
+  const parsed = parseBody(seedCatalogSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const rate = enforceRateLimit({
+    req,
+    key: "seedMaterialsCatalog",
+    max: 5,
+    windowMs: 60_000,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ ok: false, message: "Too many requests" });
     return;
   }
 
@@ -303,8 +363,26 @@ export const createMaterialsCheckoutSession = onRequest(
       return;
     }
 
-    const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
-    const pickupNotes = safeString(req.body?.pickupNotes).trim();
+    const parsed = parseBody(checkoutSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const rate = enforceRateLimit({
+      req,
+      key: "materialsCheckout",
+      max: 8,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    const rawItems = Array.isArray(parsed.data.items) ? parsed.data.items : [];
+    const pickupNotes = safeString(parsed.data.pickupNotes).trim();
 
     const itemMap = new Map<string, number>();
     rawItems.forEach((item: any) => {

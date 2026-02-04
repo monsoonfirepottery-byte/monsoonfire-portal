@@ -15,8 +15,11 @@ import {
   requireAuthUid,
   safeString,
   adminAuth,
+  enforceRateLimit,
+  parseBody,
   Timestamp,
 } from "./shared";
+import { z } from "zod";
 
 const REGION = "us-central1";
 const EVENTS_COL = "events";
@@ -27,6 +30,71 @@ const DEFAULT_OFFER_HOURS = 12;
 const DEFAULT_CANCEL_HOURS = 3;
 
 let stripeClient: Stripe | null = null;
+
+const listEventsSchema = z.object({
+  includeDrafts: z.boolean().optional(),
+  includeCancelled: z.boolean().optional(),
+});
+
+const listEventSignupsSchema = z.object({
+  eventId: z.string().min(1),
+  includeCancelled: z.boolean().optional(),
+  includeExpired: z.boolean().optional(),
+  limit: z.number().int().min(1).max(500).optional(),
+});
+
+const eventIdSchema = z.object({
+  eventId: z.string().min(1),
+});
+
+const createEventSchema = z.object({
+  templateId: z.string().optional().nullable(),
+  title: z.string().min(1),
+  summary: z.string().min(1),
+  description: z.string().min(1),
+  location: z.string().min(1),
+  timezone: z.string().min(1),
+  startAt: z.any(),
+  endAt: z.any(),
+  capacity: z.number().int().nonnegative(),
+  priceCents: z.number().int().nonnegative(),
+  currency: z.string().min(1),
+  includesFiring: z.boolean(),
+  firingDetails: z.string().optional().nullable(),
+  policyCopy: z.string().optional().nullable(),
+  addOns: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        title: z.string().min(1),
+        priceCents: z.number().int().nonnegative(),
+        isActive: z.boolean(),
+      })
+    )
+    .optional(),
+  waitlistEnabled: z.boolean().optional(),
+  offerClaimWindowHours: z.number().int().positive().optional(),
+  cancelCutoffHours: z.number().int().nonnegative().optional(),
+});
+
+const signupSchema = z.object({
+  eventId: z.string().min(1),
+});
+
+const signupIdSchema = z.object({
+  signupId: z.string().min(1),
+});
+
+const checkInSchema = z.object({
+  signupId: z.string().min(1),
+  method: z.enum(["staff", "self"]),
+});
+
+const checkoutSchema = z.object({
+  eventId: z.string().min(1),
+  signupId: z.string().min(1),
+  addOnIds: z.array(z.string()).optional(),
+});
 
 function getStripe(): Stripe {
   const key = (process.env.STRIPE_SECRET_KEY ?? "").trim();
@@ -147,7 +215,7 @@ async function readUserIdentity(uid: string): Promise<{ displayName: string | nu
 function defaultPolicyCopy() {
   return "You won't be charged unless you attend. If plans change, no worries - cancel anytime up to 3 hours before the event.";
 }
-export const listEvents = onRequest({ region: REGION }, async (req, res) => {
+export const listEvents = onRequest({ region: REGION, cors: true }, async (req, res) => {
   if (applyCors(req, res)) return;
 
   if (req.method !== "POST") {
@@ -161,12 +229,33 @@ export const listEvents = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  const includeDrafts = !!req.body?.includeDrafts;
-  const includeCancelled = !!req.body?.includeCancelled;
-
-  if ((includeDrafts || includeCancelled) && !requireAdmin(req).ok) {
-    res.status(401).json({ ok: false, message: "Admin required" });
+  const parsed = parseBody(listEventsSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
     return;
+  }
+
+  const rate = enforceRateLimit({
+    req,
+    key: "listEvents",
+    max: 30,
+    windowMs: 60_000,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ ok: false, message: "Too many requests" });
+    return;
+  }
+
+  const includeDrafts = parsed.data.includeDrafts === true;
+  const includeCancelled = parsed.data.includeCancelled === true;
+
+  if (includeDrafts || includeCancelled) {
+    const admin = await requireAdmin(req);
+    if (!admin.ok) {
+      res.status(403).json({ ok: false, message: "Forbidden" });
+      return;
+    }
   }
 
   try {
@@ -225,21 +314,34 @@ export const listEventSignups = onRequest({ region: REGION }, async (req, res) =
     return;
   }
 
-  const admin = requireAdmin(req);
+  const admin = await requireAdmin(req);
   if (!admin.ok) {
-    res.status(401).json({ ok: false, message: admin.message });
+    res.status(403).json({ ok: false, message: "Forbidden" });
     return;
   }
 
-  const eventId = safeString(req.body?.eventId).trim();
-  if (!eventId) {
-    res.status(400).json({ ok: false, message: "eventId required" });
+  const parsed = parseBody(listEventSignupsSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
     return;
   }
 
-  const includeCancelled = req.body?.includeCancelled === true;
-  const includeExpired = req.body?.includeExpired === true;
-  const limit = Math.min(Math.max(asInt(req.body?.limit, 200), 1), 500);
+  const rate = enforceRateLimit({
+    req,
+    key: "listEventSignups",
+    max: 20,
+    windowMs: 60_000,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ ok: false, message: "Too many requests" });
+    return;
+  }
+
+  const eventId = safeString(parsed.data.eventId).trim();
+  const includeCancelled = parsed.data.includeCancelled === true;
+  const includeExpired = parsed.data.includeExpired === true;
+  const limit = Math.min(Math.max(asInt(parsed.data.limit, 200), 1), 500);
 
   try {
     const snaps = await db
@@ -294,11 +396,13 @@ export const getEvent = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  const eventId = safeString(req.body?.eventId).trim();
-  if (!eventId) {
-    res.status(400).json({ ok: false, message: "eventId required" });
+  const parsed = parseBody(eventIdSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
     return;
   }
+
+  const eventId = safeString(parsed.data.eventId).trim();
 
   try {
     const eventRef = db.collection(EVENTS_COL).doc(eventId);
@@ -310,7 +414,7 @@ export const getEvent = onRequest({ region: REGION }, async (req, res) => {
 
     const eventData = (eventSnap.data() as Record<string, any>) ?? {};
     const status = safeString(eventData.status).trim();
-    const admin = requireAdmin(req);
+    const admin = await requireAdmin(req);
 
     if (status !== "published" && !admin.ok) {
       res.status(403).json({ ok: false, message: "Forbidden" });
@@ -376,39 +480,52 @@ export const createEvent = onRequest({ region: REGION, timeoutSeconds: 60 }, asy
     return;
   }
 
-  const admin = requireAdmin(req);
+  const admin = await requireAdmin(req);
   if (!admin.ok) {
-    res.status(401).json({ ok: false, message: admin.message });
+    res.status(403).json({ ok: false, message: "Forbidden" });
     return;
   }
 
-  const templateId = safeString(req.body?.templateId).trim() || null;
-  const title = safeString(req.body?.title).trim();
-  const summary = safeString(req.body?.summary).trim();
-  const description = safeString(req.body?.description).trim();
-  const location = safeString(req.body?.location).trim();
-  const timezone = safeString(req.body?.timezone).trim();
-  const capacity = Math.max(asInt(req.body?.capacity, 0), 0);
-  const priceCents = Math.max(asInt(req.body?.priceCents, 0), 0);
-  const currency = normalizeCurrency(req.body?.currency);
-  const includesFiring = req.body?.includesFiring === true;
-  const firingDetails = safeString(req.body?.firingDetails).trim() || null;
-  const policyCopy = safeString(req.body?.policyCopy).trim() || defaultPolicyCopy();
-  const addOns = normalizeAddOns(req.body?.addOns ?? []);
-  const waitlistEnabled = req.body?.waitlistEnabled !== false;
+  const parsed = parseBody(createEventSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const rate = enforceRateLimit({
+    req,
+    key: "createEvent",
+    max: 10,
+    windowMs: 60_000,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ ok: false, message: "Too many requests" });
+    return;
+  }
+
+  const templateId = safeString(parsed.data.templateId).trim() || null;
+  const title = safeString(parsed.data.title).trim();
+  const summary = safeString(parsed.data.summary).trim();
+  const description = safeString(parsed.data.description).trim();
+  const location = safeString(parsed.data.location).trim();
+  const timezone = safeString(parsed.data.timezone).trim();
+  const capacity = Math.max(asInt(parsed.data.capacity, 0), 0);
+  const priceCents = Math.max(asInt(parsed.data.priceCents, 0), 0);
+  const currency = normalizeCurrency(parsed.data.currency);
+  const includesFiring = parsed.data.includesFiring === true;
+  const firingDetails = safeString(parsed.data.firingDetails).trim() || null;
+  const policyCopy = safeString(parsed.data.policyCopy).trim() || defaultPolicyCopy();
+  const addOns = normalizeAddOns(parsed.data.addOns ?? []);
+  const waitlistEnabled = parsed.data.waitlistEnabled !== false;
   const offerClaimWindowHours = Math.max(
-    asInt(req.body?.offerClaimWindowHours, DEFAULT_OFFER_HOURS),
+    asInt(parsed.data.offerClaimWindowHours, DEFAULT_OFFER_HOURS),
     1
   );
-  const cancelCutoffHours = Math.max(asInt(req.body?.cancelCutoffHours, DEFAULT_CANCEL_HOURS), 0);
+  const cancelCutoffHours = Math.max(asInt(parsed.data.cancelCutoffHours, DEFAULT_CANCEL_HOURS), 0);
 
-  const startAt = parseTimestamp(req.body?.startAt);
-  const endAt = parseTimestamp(req.body?.endAt);
-
-  if (!title || !summary || !description || !location || !timezone) {
-    res.status(400).json({ ok: false, message: "Missing required fields" });
-    return;
-  }
+  const startAt = parseTimestamp(parsed.data.startAt);
+  const endAt = parseTimestamp(parsed.data.endAt);
 
   if (!startAt || !endAt) {
     res.status(400).json({ ok: false, message: "startAt and endAt required" });
@@ -469,17 +586,31 @@ export const publishEvent = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  const admin = requireAdmin(req);
+  const admin = await requireAdmin(req);
   if (!admin.ok) {
-    res.status(401).json({ ok: false, message: admin.message });
+    res.status(403).json({ ok: false, message: "Forbidden" });
     return;
   }
 
-  const eventId = safeString(req.body?.eventId).trim();
-  if (!eventId) {
-    res.status(400).json({ ok: false, message: "eventId required" });
+  const parsed = parseBody(eventIdSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
     return;
   }
+
+  const rate = enforceRateLimit({
+    req,
+    key: "publishEvent",
+    max: 10,
+    windowMs: 60_000,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ ok: false, message: "Too many requests" });
+    return;
+  }
+
+  const eventId = safeString(parsed.data.eventId).trim();
 
   const ref = db.collection(EVENTS_COL).doc(eventId);
   const t = nowTs();
@@ -510,11 +641,25 @@ export const signupForEvent = onRequest({ region: REGION, timeoutSeconds: 60 }, 
     return;
   }
 
-  const eventId = safeString(req.body?.eventId).trim();
-  if (!eventId) {
-    res.status(400).json({ ok: false, message: "eventId required" });
+  const parsed = parseBody(signupSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
     return;
   }
+
+  const rate = enforceRateLimit({
+    req,
+    key: "signupForEvent",
+    max: 6,
+    windowMs: 60_000,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ ok: false, message: "Too many requests" });
+    return;
+  }
+
+  const eventId = safeString(parsed.data.eventId).trim();
 
   const { displayName, email } = await readUserIdentity(auth.uid);
 
@@ -613,17 +758,31 @@ export const cancelEventSignup = onRequest(
       return;
     }
 
-    const auth = await requireAuthUid(req);
-    if (!auth.ok) {
-      res.status(401).json({ ok: false, message: auth.message });
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+
+    const parsed = parseBody(signupIdSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
       return;
     }
 
-    const signupId = safeString(req.body?.signupId).trim();
-    if (!signupId) {
-      res.status(400).json({ ok: false, message: "signupId required" });
+    const rate = enforceRateLimit({
+      req,
+      key: "cancelEventSignup",
+      max: 6,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
       return;
     }
+
+    const signupId = safeString(parsed.data.signupId).trim();
 
     const signupRef = db.collection(SIGNUPS_COL).doc(signupId);
 
@@ -776,11 +935,25 @@ export const claimEventOffer = onRequest(
       return;
     }
 
-    const signupId = safeString(req.body?.signupId).trim();
-    if (!signupId) {
-      res.status(400).json({ ok: false, message: "signupId required" });
+    const parsed = parseBody(signupIdSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
       return;
     }
+
+    const rate = enforceRateLimit({
+      req,
+      key: "claimEventOffer",
+      max: 6,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    const signupId = safeString(parsed.data.signupId).trim();
 
     const signupRef = db.collection(SIGNUPS_COL).doc(signupId);
 
@@ -891,22 +1064,31 @@ export const checkInEvent = onRequest(
       return;
     }
 
-    const signupId = safeString(req.body?.signupId).trim();
-    const method = safeString(req.body?.method).trim() as "staff" | "self";
-    if (!signupId) {
-      res.status(400).json({ ok: false, message: "signupId required" });
+    const parsed = parseBody(checkInSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
       return;
     }
 
-    if (method !== "staff" && method !== "self") {
-      res.status(400).json({ ok: false, message: "method must be staff or self" });
+    const rate = enforceRateLimit({
+      req,
+      key: "checkInEvent",
+      max: 10,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
       return;
     }
+
+    const signupId = safeString(parsed.data.signupId).trim();
+    const method = parsed.data.method;
 
     if (method === "staff") {
-      const admin = requireAdmin(req);
+      const admin = await requireAdmin(req);
       if (!admin.ok) {
-        res.status(401).json({ ok: false, message: admin.message });
+        res.status(403).json({ ok: false, message: "Forbidden" });
         return;
       }
     }
@@ -998,14 +1180,27 @@ export const createEventCheckoutSession = onRequest(
       return;
     }
 
-    const eventId = safeString(req.body?.eventId).trim();
-    const signupId = safeString(req.body?.signupId).trim();
-    const rawAddOns = Array.isArray(req.body?.addOnIds) ? req.body.addOnIds : [];
-
-    if (!eventId || !signupId) {
-      res.status(400).json({ ok: false, message: "eventId and signupId required" });
+    const parsed = parseBody(checkoutSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
       return;
     }
+
+    const rate = enforceRateLimit({
+      req,
+      key: "eventCheckout",
+      max: 6,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    const eventId = safeString(parsed.data.eventId).trim();
+    const signupId = safeString(parsed.data.signupId).trim();
+    const rawAddOns = Array.isArray(parsed.data.addOnIds) ? parsed.data.addOnIds : [];
 
     try {
       const eventRef = db.collection(EVENTS_COL).doc(eventId);

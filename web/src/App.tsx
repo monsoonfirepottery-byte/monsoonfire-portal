@@ -9,33 +9,44 @@ import {
 import { addDoc, collection, getDocs, limit, orderBy, query, serverTimestamp, where } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import type { Announcement, DirectMessageThread, LiveUser } from "./types/messaging";
-import BillingView from "./views/BillingView";
-import DashboardView from "./views/DashboardView";
-import EventsView from "./views/EventsView";
-import KilnScheduleView from "./views/KilnScheduleView";
-import MembershipView from "./views/MembershipView";
-import MaterialsView from "./views/MaterialsView";
-import MessagesView from "./views/MessagesView";
-import MyPiecesView from "./views/MyPiecesView";
-import PlaceholderView from "./views/PlaceholderView";
-import ProfileView from "./views/ProfileView";
-import ReservationsView from "./views/ReservationsView";
-import SignedOutView from "./views/SignedOutView";
-import SupportView, { type SupportRequestInput } from "./views/SupportView";
+import type { SupportRequestInput } from "./views/SupportView";
 import { portalTheme } from "./theme/themes";
 import "./App.css";
+
+const BillingView = React.lazy(() => import("./views/BillingView"));
+const CommunityView = React.lazy(() => import("./views/CommunityView"));
+const DashboardView = React.lazy(() => import("./views/DashboardView"));
+const EventsView = React.lazy(() => import("./views/EventsView"));
+const KilnLaunchView = React.lazy(() => import("./views/KilnLaunchView"));
+const KilnRentalsView = React.lazy(() => import("./views/KilnRentalsView"));
+const KilnScheduleView = React.lazy(() => import("./views/KilnScheduleView"));
+const LendingLibraryView = React.lazy(() => import("./views/LendingLibraryView"));
+const MembershipView = React.lazy(() => import("./views/MembershipView"));
+const MaterialsView = React.lazy(() => import("./views/MaterialsView"));
+const MessagesView = React.lazy(() => import("./views/MessagesView"));
+const MyPiecesView = React.lazy(() => import("./views/MyPiecesView"));
+const PlaceholderView = React.lazy(() => import("./views/PlaceholderView"));
+const ProfileView = React.lazy(() => import("./views/ProfileView"));
+const ReservationsView = React.lazy(() => import("./views/ReservationsView"));
+const SignedOutView = React.lazy(() => import("./views/SignedOutView"));
+const StudioResourcesView = React.lazy(() => import("./views/StudioResourcesView"));
+const SupportView = React.lazy(() => import("./views/SupportView"));
 
 type NavKey =
   | "dashboard"
   | "profile"
   | "pieces"
   | "kiln"
-  | "classes"
+  | "kilnRentals"
+  | "kilnLaunch"
   | "reservations"
   | "events"
+  | "community"
+  | "lendingLibrary"
   | "membership"
   | "materials"
   | "billing"
+  | "studioResources"
   | "messages"
   | "support"
   | "staff";
@@ -46,26 +57,185 @@ type NavItem = {
   hint?: string;
 };
 
-type UserRole = "client" | "staff";
+type NavSectionKey = "kilnRentals" | "studioResources" | "community";
 
-const NAV_ITEMS: NavItem[] = [
+type NavSection = {
+  key: NavSectionKey;
+  title: string;
+  items: NavItem[];
+};
+
+const NAV_TOP_ITEMS: NavItem[] = [
   { key: "dashboard", label: "Dashboard" },
-  { key: "profile", label: "Profile" },
-  { key: "pieces", label: "My Pieces" },
-  { key: "kiln", label: "Kiln Schedule" },
-  { key: "classes", label: "Classes" },
-  { key: "reservations", label: "Reservations" },
-  { key: "events", label: "Events" },
-  { key: "membership", label: "Membership" },
-  { key: "materials", label: "Materials" },
-  { key: "billing", label: "Billing" },
+];
+
+const NAV_BOTTOM_ITEMS: NavItem[] = [
   { key: "messages", label: "Messages" },
   { key: "support", label: "Support" },
 ];
 
-const LOCAL_ADMIN_TOKEN_KEY = "mf_admin_token";
+const NAV_SECTIONS: NavSection[] = [
+  {
+    key: "kilnRentals",
+    title: "Kiln Rentals",
+    items: [
+      { key: "kilnRentals", label: "Overview" },
+      { key: "reservations", label: "Ware Check-in" },
+      { key: "kilnLaunch", label: "View the Queues" },
+      { key: "kiln", label: "Firings" },
+    ],
+  },
+  {
+    key: "studioResources",
+    title: "Studio & Resources",
+    items: [
+      { key: "studioResources", label: "Overview" },
+      { key: "pieces", label: "My Pieces" },
+      { key: "materials", label: "Store" },
+      { key: "membership", label: "Membership" },
+      { key: "billing", label: "Billing" },
+    ],
+  },
+  {
+    key: "community",
+    title: "Community",
+    items: [
+      { key: "community", label: "Overview" },
+      { key: "events", label: "Workshops" },
+      { key: "lendingLibrary", label: "Lending Library" },
+    ],
+  },
+];
+
+const NAV_ITEM_ICONS: Partial<Record<NavKey, React.ReactNode>> = {
+  dashboard: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="3" y="3" width="7" height="7" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />
+      <rect x="14" y="3" width="7" height="7" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />
+      <rect x="3" y="14" width="7" height="7" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />
+      <rect x="14" y="14" width="7" height="7" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  ),
+  messages: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M6 7h12a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3H10l-4 3v-3H6a3 3 0 0 1-3-3v-5a3 3 0 0 1 3-3z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  support: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M9.5 9.2a2.7 2.7 0 0 1 5 1.1c0 1.8-2 2.3-2.3 3.7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <circle cx="12" cy="17.5" r="1" fill="currentColor" />
+    </svg>
+  ),
+};
+
+const NAV_SECTION_ICONS: Record<NavSectionKey, React.ReactNode> = {
+  kilnRentals: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="4" y="4" width="16" height="16" rx="3" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M12 9c1.6 1.8 2.4 2.9 2.4 4.2a2.4 2.4 0 0 1-4.8 0c0-1.3.8-2.4 2.4-4.2z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  studioResources: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="4" y="5" width="16" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M8 9h8M8 13h8M8 17h8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  ),
+  community: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="9" cy="10" r="3" fill="none" stroke="currentColor" strokeWidth="2" />
+      <circle cx="16.5" cy="11" r="2.5" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M4.5 19a4.5 4.5 0 0 1 9 0M13 19c.3-1.8 1.9-3 3.7-3 1.8 0 3.3 1.2 3.8 3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  ),
+};
+
+const NAV_LABELS: Record<NavKey, string> = {
+  dashboard: "Dashboard",
+  profile: "Profile",
+  pieces: "My Pieces",
+  kiln: "Firings",
+  kilnRentals: "Kiln Rentals",
+  kilnLaunch: "View the Queues",
+  reservations: "Ware Check-in",
+  community: "Community",
+  events: "Workshops",
+  lendingLibrary: "Lending Library",
+  membership: "Membership",
+  materials: "Store",
+  billing: "Billing",
+  studioResources: "Studio & Resources",
+  messages: "Messages",
+  support: "Support",
+  staff: "Staff",
+};
+
+const SESSION_ADMIN_TOKEN_KEY = "mf_dev_admin_token";
+const LOCAL_NAV_KEY = "mf_nav_key";
+const LOCAL_NAV_SECTION_KEY = "mf_nav_section_key";
+const LOCAL_NAV_COLLAPSED_KEY = "mf_nav_collapsed";
 const SUPPORT_EMAIL = "support@monsoonfire.com";
 const MF_LOGO = "/branding/logo.png";
+const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
+const FUNCTIONS_BASE_URL =
+  typeof import.meta !== "undefined" &&
+  (import.meta as any).env &&
+  (import.meta as any).env.VITE_FUNCTIONS_BASE_URL
+    ? String((import.meta as any).env.VITE_FUNCTIONS_BASE_URL)
+    : DEFAULT_FUNCTIONS_BASE_URL;
+const DEV_ADMIN_TOKEN_ENABLED =
+  typeof import.meta !== "undefined" &&
+  (import.meta as any).env?.DEV === true &&
+  (import.meta as any).env?.VITE_ENABLE_DEV_ADMIN_TOKEN === "true" &&
+  (FUNCTIONS_BASE_URL.includes("localhost") || FUNCTIONS_BASE_URL.includes("127.0.0.1"));
+
+const NAV_SECTION_KEYS: NavSectionKey[] = ["kilnRentals", "studioResources", "community"];
+
+const isNavKey = (value: string): value is NavKey =>
+  Object.prototype.hasOwnProperty.call(NAV_LABELS, value);
+
+const isNavSectionKey = (value: string): value is NavSectionKey =>
+  NAV_SECTION_KEYS.includes(value as NavSectionKey);
+
+const getSectionForNav = (navKey: NavKey): NavSectionKey | null => {
+  const match = NAV_SECTIONS.find((section) =>
+    section.items.some((item) => item.key === navKey)
+  );
+  return match?.key ?? null;
+};
 
 class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -236,31 +406,69 @@ function useAnnouncements(user: User | null) {
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
-  const [nav, setNav] = useState<NavKey>("dashboard");
-  const [adminToken, setAdminToken] = useState("" as string);
+  const [nav, setNav] = useState<NavKey>(() => {
+    if (typeof window === "undefined") return "dashboard";
+    const saved = localStorage.getItem(LOCAL_NAV_KEY);
+    if (saved && isNavKey(saved)) return saved;
+    return "dashboard";
+  });
+  const [navCollapsed, setNavCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(LOCAL_NAV_COLLAPSED_KEY) === "1";
+  });
+  const [openSection, setOpenSection] = useState<NavSectionKey | null>(() => {
+    if (typeof window === "undefined") return NAV_SECTIONS[0]?.key ?? null;
+    const saved = localStorage.getItem(LOCAL_NAV_SECTION_KEY);
+    if (saved && isNavSectionKey(saved)) return saved;
+    const savedNav = localStorage.getItem(LOCAL_NAV_KEY);
+    if (savedNav && isNavKey(savedNav)) return getSectionForNav(savedNav);
+    return NAV_SECTIONS[0]?.key ?? null;
+  });
+  const [devAdminToken, setDevAdminToken] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [role, setRole] = useState<UserRole>("client");
+  const [isStaff, setIsStaff] = useState(false);
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [supportStatus, setSupportStatus] = useState("");
   const [supportBusy, setSupportBusy] = useState(false);
 
   const authClient = auth;
+  const devAdminActive = DEV_ADMIN_TOKEN_ENABLED && devAdminToken.trim().length > 0;
+  const staffUi = isStaff || devAdminActive;
+  const devAdminTokenValue = devAdminActive ? devAdminToken.trim() : "";
 
   useEffect(() => {
-    const saved = localStorage.getItem(LOCAL_ADMIN_TOKEN_KEY);
+    if (!DEV_ADMIN_TOKEN_ENABLED) return;
+    const saved = sessionStorage.getItem(SESSION_ADMIN_TOKEN_KEY);
     if (saved) {
-      setAdminToken(saved);
+      setDevAdminToken(saved);
     }
   }, []);
 
   useEffect(() => {
-    if (adminToken) {
-      localStorage.setItem(LOCAL_ADMIN_TOKEN_KEY, adminToken);
-    } else {
-      localStorage.removeItem(LOCAL_ADMIN_TOKEN_KEY);
+    localStorage.setItem(LOCAL_NAV_KEY, nav);
+  }, [nav]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_NAV_COLLAPSED_KEY, navCollapsed ? "1" : "0");
+  }, [navCollapsed]);
+
+  useEffect(() => {
+    if (!openSection) {
+      localStorage.removeItem(LOCAL_NAV_SECTION_KEY);
+      return;
     }
-  }, [adminToken]);
+    localStorage.setItem(LOCAL_NAV_SECTION_KEY, openSection);
+  }, [openSection]);
+
+  useEffect(() => {
+    if (!DEV_ADMIN_TOKEN_ENABLED) return;
+    if (devAdminToken) {
+      sessionStorage.setItem(SESSION_ADMIN_TOKEN_KEY, devAdminToken);
+    } else {
+      sessionStorage.removeItem(SESSION_ADMIN_TOKEN_KEY);
+    }
+  }, [devAdminToken]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(authClient, (nextUser) => {
@@ -270,6 +478,33 @@ export default function App() {
     });
     return () => unsub();
   }, [authClient]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) {
+      setIsStaff(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    user
+      .getIdTokenResult()
+      .then((result) => {
+        if (cancelled) return;
+        const claims: any = result.claims ?? {};
+        const roles = Array.isArray(claims.roles) ? claims.roles : [];
+        const staff = claims.staff === true || roles.includes("staff");
+        setIsStaff(staff);
+      })
+      .catch(() => {
+        if (!cancelled) setIsStaff(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   const { users: liveUsers, loading: liveUsersLoading, error: liveUsersError } = useLiveUsers(user);
   const { threads, loading: threadsLoading, error: threadsError } = useDirectMessages(user);
@@ -285,8 +520,11 @@ export default function App() {
       return;
     }
     const count = threads.reduce((total, thread) => {
-      const hasUnread = thread.participants?.some(
-        (participant) => participant.uid !== user.uid && participant.hasUnread
+      const participants = Array.isArray(thread.participants)
+        ? (thread.participants as Array<{ uid?: string; hasUnread?: boolean }>)
+        : [];
+      const hasUnread = participants.some(
+        (participant) => participant.uid !== user.uid && participant.hasUnread === true
       );
       return total + (hasUnread ? 1 : 0);
     }, 0);
@@ -345,22 +583,25 @@ export default function App() {
     }
   };
 
-  const messagesBody = (
-    <MessagesView
-      user={user}
-      supportEmail={SUPPORT_EMAIL}
-      threads={threads}
-      threadsLoading={threadsLoading}
-      threadsError={threadsError}
-      liveUsers={liveUsers}
-      liveUsersLoading={liveUsersLoading}
-      liveUsersError={liveUsersError}
-      announcements={announcements}
-      announcementsLoading={announcementsLoading}
-      announcementsError={announcementsError}
-      unreadAnnouncements={unreadAnnouncements}
-    />
-  );
+  const navSection = getSectionForNav(nav);
+  const roleLabel = staffUi ? (isStaff ? "Staff" : "Dev Admin") : "Client";
+
+  useEffect(() => {
+    if (navSection && navSection !== openSection) {
+      setOpenSection(navSection);
+    }
+  }, [navSection, openSection]);
+
+  const handleSectionToggle = (sectionKey: NavSectionKey) => {
+    if (nav !== sectionKey) {
+      setNav(sectionKey);
+    }
+    if (navCollapsed) {
+      setNavCollapsed(false);
+    }
+    setOpenSection(sectionKey);
+    setMobileNavOpen(false);
+  };
 
   const renderView = (key: NavKey) => {
     if (!user) {
@@ -375,29 +616,71 @@ export default function App() {
             name={user.displayName ?? "Member"}
             threads={threads}
             announcements={announcements}
-            unreadTotal={unreadMessages + unreadAnnouncements}
+            onOpenKilnRentals={() => setNav("kilnRentals")}
+            onOpenStudioResources={() => setNav("studioResources")}
+            onOpenCommunity={() => setNav("community")}
             onOpenMessages={() => setNav("messages")}
             onOpenPieces={() => setNav("pieces")}
           />
         );
       case "pieces":
-        return <MyPiecesView user={user} adminToken={adminToken} />;
+        return <MyPiecesView user={user} adminToken={devAdminTokenValue} isStaff={staffUi} />;
       case "profile":
         return <ProfileView user={user} />;
+      case "community":
+        return <CommunityView onOpenLendingLibrary={() => setNav("lendingLibrary")} />;
       case "events":
-        return <EventsView user={user} adminToken={adminToken} />;
+        return <EventsView user={user} adminToken={devAdminTokenValue} isStaff={staffUi} />;
+      case "lendingLibrary":
+        return (
+          <LendingLibraryView user={user} adminToken={devAdminTokenValue} isStaff={staffUi} />
+        );
       case "membership":
         return <MembershipView user={user} />;
       case "materials":
-        return <MaterialsView user={user} adminToken={adminToken} />;
+        return <MaterialsView user={user} adminToken={devAdminTokenValue} isStaff={staffUi} />;
       case "billing":
         return <BillingView user={user} />;
       case "reservations":
         return <ReservationsView user={user} />;
       case "kiln":
         return <KilnScheduleView />;
+      case "kilnRentals":
+        return (
+          <KilnRentalsView
+            onOpenKilnLaunch={() => setNav("kilnLaunch")}
+            onOpenKilnSchedule={() => setNav("kiln")}
+            onOpenWorkSubmission={() => setNav("reservations")}
+          />
+        );
+      case "kilnLaunch":
+        return <KilnLaunchView user={user} isStaff={staffUi} />;
+      case "studioResources":
+        return (
+          <StudioResourcesView
+            onOpenPieces={() => setNav("pieces")}
+            onOpenMaterials={() => setNav("materials")}
+            onOpenMembership={() => setNav("membership")}
+            onOpenBilling={() => setNav("billing")}
+          />
+        );
       case "messages":
-        return messagesBody;
+        return (
+          <MessagesView
+            user={user}
+            supportEmail={SUPPORT_EMAIL}
+            threads={threads}
+            threadsLoading={threadsLoading}
+            threadsError={threadsError}
+            liveUsers={liveUsers}
+            liveUsersLoading={liveUsersLoading}
+            liveUsersError={liveUsersError}
+            announcements={announcements}
+            announcementsLoading={announcementsLoading}
+            announcementsError={announcementsError}
+            unreadAnnouncements={unreadAnnouncements}
+          />
+        );
       case "support":
         return (
           <SupportView
@@ -411,7 +694,7 @@ export default function App() {
       default:
         return (
           <PlaceholderView
-            title={NAV_ITEMS.find((item) => item.key === key)?.label ?? "Page"}
+            title={NAV_LABELS[key] ?? "Page"}
             subtitle="We are building this area now."
           />
         );
@@ -420,8 +703,8 @@ export default function App() {
 
   return (
     <AppErrorBoundary>
-      <div className="app-shell" style={portalTheme}>
-        <aside className={`sidebar ${mobileNavOpen ? "open" : ""}`}>
+      <div className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`} style={portalTheme}>
+        <aside className={`sidebar ${mobileNavOpen ? "open" : ""} ${navCollapsed ? "collapsed" : ""}`}>
           <div className="brand">
             <img src={MF_LOGO} alt="Monsoon Fire Pottery Studio" />
             <div>
@@ -430,103 +713,140 @@ export default function App() {
             </div>
           </div>
           <nav>
-            <div className="nav-title">Navigation</div>
-            {NAV_ITEMS.map((item) => (
+            <div className="nav-primary">
+              {NAV_TOP_ITEMS.map((item) => (
+                <button
+                  key={item.key}
+                  className={`nav-top-item ${nav === item.key ? "active" : ""}`}
+                  title={item.label}
+                  onClick={() => {
+                    setNav(item.key);
+                    setMobileNavOpen(false);
+                  }}
+                >
+                  {NAV_ITEM_ICONS[item.key] ? (
+                    <span className="nav-icon">{NAV_ITEM_ICONS[item.key]}</span>
+                  ) : null}
+                  <span className="nav-label">{item.label}</span>
+                </button>
+              ))}
+              {NAV_SECTIONS.map((section) => (
+                <div
+                  key={section.key}
+                  className={`nav-section ${openSection === section.key ? "open" : "closed"}`}
+                >
+                  <button
+                    type="button"
+                    className="nav-section-title"
+                    aria-expanded={openSection === section.key}
+                    title={section.title}
+                    onClick={() => handleSectionToggle(section.key)}
+                  >
+                    <span className="nav-icon">{NAV_SECTION_ICONS[section.key]}</span>
+                    <span className="nav-label">{section.title}</span>
+                  </button>
+                  <div
+                    className="nav-section-items"
+                    aria-hidden={openSection !== section.key}
+                  >
+                    {section.items.map((item) => (
+                      <button
+                        key={item.key}
+                        className={`nav-subitem ${nav === item.key ? "active" : ""}`}
+                        title={item.label}
+                        onClick={() => {
+                          setNav(item.key);
+                          setMobileNavOpen(false);
+                        }}
+                      >
+                        {item.label === "Overview" ? null : (
+                          <span className="nav-subdot" aria-hidden="true" />
+                        )}
+                        <span className="nav-label">{item.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="nav-bottom">
+              {NAV_BOTTOM_ITEMS.map((item) => (
+                <button
+                  key={item.key}
+                  className={nav === item.key ? "active" : ""}
+                  title={item.label}
+                  onClick={() => {
+                    setNav(item.key);
+                    setMobileNavOpen(false);
+                  }}
+                >
+                  {NAV_ITEM_ICONS[item.key] ? (
+                    <span className="nav-icon">{NAV_ITEM_ICONS[item.key]}</span>
+                  ) : null}
+                  <span className="nav-label">{item.label}</span>
+                  {item.key === "messages" && unreadMessages + unreadAnnouncements > 0 ? (
+                    <span className="badge">{unreadMessages + unreadAnnouncements}</span>
+                  ) : null}
+                </button>
+              ))}
               <button
-                key={item.key}
-                className={nav === item.key ? "active" : ""}
+                className="nav-toggle nav-toggle-inline"
+                data-collapsed={navCollapsed ? "true" : "false"}
+                title={navCollapsed ? "Open nav" : "Collapse nav"}
                 onClick={() => {
-                  setNav(item.key);
+                  setNavCollapsed((prev) => !prev);
                   setMobileNavOpen(false);
                 }}
+                aria-label={navCollapsed ? "Open navigation" : "Collapse navigation"}
               >
-                {item.label}
-                {item.key === "messages" && unreadMessages + unreadAnnouncements > 0 ? (
-                  <span className="badge">{unreadMessages + unreadAnnouncements}</span>
-                ) : null}
+                <span className="nav-toggle-icon" aria-hidden="true" />
+                <span className="nav-label nav-toggle-text">
+                  {navCollapsed ? "Open nav" : "Collapse nav"}
+                </span>
               </button>
-            ))}
+            </div>
           </nav>
           {user && (
-            <div className="profile-card">
+            <button
+              className="profile-card profile-card-button"
+              onClick={() => setNav("profile")}
+            >
               <div className="avatar">
                 {user.photoURL ? <img src={user.photoURL} alt={user.displayName ?? "User"} /> : null}
               </div>
-              <div>
+              <div className="profile-meta">
                 <strong>{user.displayName ?? "Member"}</strong>
-                <span>{role === "client" ? "Client" : "Staff"}</span>
+                <span>{roleLabel}</span>
               </div>
-            </div>
+            </button>
           )}
-          {user && (
+          {user && DEV_ADMIN_TOKEN_ENABLED ? (
             <div className="admin-token">
-              <label htmlFor="admin-token-input">Dev Admin Token</label>
+              <label htmlFor="admin-token-input">Dev admin token (emulator only)</label>
               <input
                 id="admin-token-input"
                 type="password"
-                value={adminToken}
+                value={devAdminToken}
                 placeholder="Paste token"
-                onChange={(event) => setAdminToken(event.target.value)}
+                onChange={(event) => setDevAdminToken(event.target.value)}
               />
-              <p>Stored locally for this device only.</p>
+              <p>Stored for this browser session only. Disabled in production.</p>
             </div>
-          )}
+          ) : null}
           {user ? (
             <button className="signout" onClick={handleSignOut}>
               Sign out
             </button>
           ) : null}
-          {user && (
-            <button
-              className="profile-link"
-              onClick={() => {
-                setNav("profile");
-                setMobileNavOpen(false);
-              }}
-            >
-              <span className="profile-link-icon" aria-hidden="true" />
-              Profile & settings
-            </button>
-          )}
         </aside>
 
         <main className="main">
-          <header className="topbar">
-            <div className="topbar-left">
-              <button className="mobile-nav" onClick={() => setMobileNavOpen((prev) => !prev)}>
-                Menu
-              </button>
-              <div>
-                <h2>{NAV_ITEMS.find((item) => item.key === nav)?.label ?? "Dashboard"}</h2>
-                <span>Phoenix studio overview</span>
-              </div>
-            </div>
-            {user ? (
-              <div className="topbar-actions">
-                <button className="pill profile-pill" onClick={() => setNav("profile")} aria-label="Profile">
-                  <span className="profile-pill-avatar" aria-hidden="true">
-                    {user.photoURL ? <img src={user.photoURL} alt={user.displayName ?? "User"} /> : user.displayName?.[0] ?? "?"}
-                  </span>
-                  Profile
-                </button>
-                <button className="pill" onClick={() => setNav("messages")} aria-label="Notifications">
-                  <span className="bell" aria-hidden="true" />
-                  {unreadMessages + unreadAnnouncements > 0 ? (
-                    <span className="badge">{unreadMessages + unreadAnnouncements}</span>
-                  ) : null}
-                </button>
-                <button
-                  className="pill role"
-                  onClick={() => setRole((prev) => (prev === "client" ? "staff" : "client"))}
-                >
-                  {role === "client" ? "Client" : "Staff"}
-                </button>
-                <button className="ghost" onClick={handleSignOut}>
-                  Sign out
-                </button>
-              </div>
-            ) : null}
-          </header>
+          <div className="nav-toggle-row">
+            <button className="mobile-nav" onClick={() => setMobileNavOpen((prev) => !prev)}>
+              <span className="mobile-nav-icon" aria-hidden="true" />
+              Menu
+            </button>
+          </div>
 
           {!authReady && (
             <div className="loading">
@@ -535,7 +855,18 @@ export default function App() {
             </div>
           )}
 
-          {authReady ? renderView(nav) : null}
+          {authReady ? (
+            <React.Suspense
+              fallback={
+                <div className="loading">
+                  <span />
+                  Loading studio view
+                </div>
+              }
+            >
+              {renderView(nav)}
+            </React.Suspense>
+          ) : null}
         </main>
       </div>
     </AppErrorBoundary>

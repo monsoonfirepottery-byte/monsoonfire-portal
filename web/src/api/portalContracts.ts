@@ -20,6 +20,7 @@ export type PortalFnName =
   | "claimEventOffer"
   | "checkInEvent"
   | "createEventCheckoutSession"
+  | "importLibraryIsbns"
   | "listBillingSummary"
   // add more function names here as you ship them
   | (string & {});
@@ -107,6 +108,7 @@ export type CreateBatchRequest = {
   // Notes (prefer estimateNotes; notes is legacy alias)
   estimateNotes?: string | null;
   notes?: string | null;
+  clientRequestId?: string | null;
 };
 
 export type ReservationPreferredWindow = {
@@ -119,6 +121,7 @@ export type CreateReservationRequest = {
   shelfEquivalent: number;
   preferredWindow?: ReservationPreferredWindow;
   linkedBatchId?: string | null;
+  clientRequestId?: string | null;
 };
 
 export type PickedUpAndCloseRequest = {
@@ -230,6 +233,11 @@ export type CreateEventCheckoutSessionRequest = {
   eventId: string;
   signupId: string;
   addOnIds?: string[];
+};
+
+export type ImportLibraryIsbnsRequest = {
+  isbns: string[];
+  source?: "csv" | "manual" | "donation" | (string & {});
 };
 
 /* =========================
@@ -420,6 +428,13 @@ export type CheckInEventResponse = PortalApiOkEnvelope & {
 
 export type CreateEventCheckoutSessionResponse = PortalApiOkEnvelope & {
   checkoutUrl?: string | null;
+};
+
+export type ImportLibraryIsbnsResponse = PortalApiOkEnvelope & {
+  requested: number;
+  created: number;
+  updated: number;
+  errors?: Array<{ isbn: string; message: string }>;
 };
 
 export type MaterialOrderItemSummary = {

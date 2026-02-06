@@ -1,0 +1,14 @@
+Status: Open (2026-02-05)
+
+# P0 - Complete release candidate evidence pack (alpha gate)
+
+- Repo: portal
+- Area: Release / Ops
+- Evidence: `docs/RELEASE_CANDIDATE_EVIDENCE.md` contains unchecked items and placeholder counters/sign-off.
+- Recommendation:
+  - Run CI gates and drills, then fill evidence sections with real outputs/links.
+  - Record baseline counters (`statusCounts`, `reasonCounts`, `providerCounts`) and final risk register owners.
+- Update (2026-02-06): local verification now recorded in `docs/RELEASE_CANDIDATE_EVIDENCE.md` (functions/web lint, web tests/build, chunk budgets). Remaining: production drill run with real staff auth, CI workflow links, counters/sign-off fields.
+- Effort: S
+- Risk: Med
+- What to test: evidence pack has no unresolved checkboxes except explicit accepted risks with owner + mitigation.

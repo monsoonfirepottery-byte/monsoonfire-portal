@@ -1,0 +1,14 @@
+Status: Open (2026-02-05)
+
+# P1 - iOS runtime verification on macOS (Xcode)
+
+- Repo: portal
+- Area: iOS runtime
+- Evidence: Windows-only workflow cannot run iOS simulator/runtime; Sprint 10 requires macOS/Xcode validation.
+- Recommendation:
+  - Use a macOS machine (local or CI runner) to build and run the iOS app on simulator/device.
+  - Validate critical flows (auth, deep links, token copy/submit, push controls) and capture notes/screenshots in `docs/IOS_RUNBOOK.md`.
+- Update (2026-02-06): macOS CI smoke workflow exists (`.github/workflows/ios-macos-smoke.yml`) but does not replace manual simulator/device runtime validation.
+- Effort: M
+- Risk: Med
+- What to test: no crashes on startup, auth succeeds, and API calls succeed against expected base URL.

@@ -1,0 +1,78 @@
+.notifications-page .page-header {
+  align-items: flex-end;
+}
+
+.notifications-header-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.notifications-list {
+  display: grid;
+  gap: 16px;
+}
+
+.notification-card {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.notification-card.unread {
+  border-color: rgba(186, 120, 86, 0.45);
+  box-shadow: 0 12px 24px rgba(120, 78, 48, 0.12);
+}
+
+.notification-body {
+  flex: 1;
+}
+
+.notification-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ink-900, #2f2520);
+}
+
+.notification-text {
+  margin-top: 6px;
+  color: var(--ink-700, #5b4a40);
+  line-height: 1.45;
+}
+
+.notification-meta {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: var(--ink-500, #7a6a60);
+  font-size: 0.85rem;
+}
+
+.notification-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 160px;
+}
+
+.notification-actions .pill {
+  align-self: flex-start;
+}
+
+.meta-chip .chip {
+  margin-left: 6px;
+}
+
+@media (max-width: 840px) {
+  .notification-card {
+    flex-direction: column;
+  }
+
+  .notification-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}

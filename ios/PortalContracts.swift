@@ -84,6 +84,7 @@ struct CreateBatchRequest: Codable {
     let estimatedCostCents: Int
     let estimateNotes: String?
     let notes: String?
+    let clientRequestId: String?
 }
 
 struct ReservationPreferredWindow: Codable {
@@ -94,8 +95,59 @@ struct ReservationPreferredWindow: Codable {
 struct CreateReservationRequest: Codable {
     let firingType: String
     let shelfEquivalent: Double
+    let footprintHalfShelves: Double?
+    let heightInches: Double?
+    let tiers: Int?
+    let estimatedHalfShelves: Double?
+    let useVolumePricing: Bool?
+    let volumeIn3: Double?
+    let estimatedCost: Double?
     let preferredWindow: ReservationPreferredWindow?
     let linkedBatchId: String?
+    let clientRequestId: String?
+    let ownerUid: String?
+    let wareType: String?
+    let kilnId: String?
+    let kilnLabel: String?
+    let quantityTier: String?
+    let quantityLabel: String?
+    let photoUrl: String?
+    let photoPath: String?
+    let dropOffProfile: ReservationDropOffProfile?
+    let dropOffQuantity: ReservationDropOffQuantity?
+    let notes: ReservationNotes?
+    let addOns: ReservationAddOns?
+}
+
+struct ReservationDropOffProfile: Codable {
+    let id: String?
+    let label: String?
+    let pieceCount: String?
+    let hasTall: Bool?
+    let stackable: Bool?
+    let bisqueOnly: Bool?
+    let specialHandling: Bool?
+}
+
+struct ReservationDropOffQuantity: Codable {
+    let id: String?
+    let label: String?
+    let pieceRange: String?
+}
+
+struct ReservationNotes: Codable {
+    let general: String?
+    let clayBody: String?
+    let glazeNotes: String?
+}
+
+struct ReservationAddOns: Codable {
+    let rushRequested: Bool?
+    let wholeKilnRequested: Bool?
+    let pickupDeliveryRequested: Bool?
+    let returnDeliveryRequested: Bool?
+    let useStudioGlazes: Bool?
+    let glazeAccessCost: Double?
 }
 
 struct PickedUpAndCloseRequest: Codable {
@@ -208,6 +260,40 @@ struct CreateEventCheckoutSessionRequest: Codable {
     let signupId: String
     let addOnIds: [String]?
 }
+
+struct ImportLibraryIsbnsRequest: Codable {
+    let isbns: [String]
+    let source: String?
+}
+
+struct RegisterDeviceTokenRequest: Codable {
+    let token: String
+    let platform: String?
+    let environment: String?
+    let appVersion: String?
+    let appBuild: String?
+    let deviceModel: String?
+}
+
+struct UnregisterDeviceTokenRequest: Codable {
+    let token: String?
+    let tokenHash: String?
+}
+
+struct RunNotificationFailureDrillRequest: Codable {
+    let uid: String
+    let mode: String
+    let channels: DrillChannels?
+    let forceRunNow: Bool?
+}
+
+struct DrillChannels: Codable {
+    let inApp: Bool?
+    let email: Bool?
+    let push: Bool?
+}
+
+struct RunNotificationMetricsAggregationNowRequest: Codable {}
 
 // MARK: - Responses
 
@@ -402,6 +488,47 @@ struct CreateEventCheckoutSessionResponse: Codable {
     let checkoutUrl: String?
 }
 
+struct ImportLibraryIsbnError: Codable {
+    let isbn: String
+    let message: String
+}
+
+struct ImportLibraryIsbnsResponse: Codable {
+    let ok: Bool
+    let requested: Int
+    let created: Int
+    let updated: Int
+    let errors: [ImportLibraryIsbnError]?
+}
+
+struct RegisterDeviceTokenResponse: Codable {
+    let ok: Bool
+    let uid: String
+    let tokenHash: String
+}
+
+struct UnregisterDeviceTokenResponse: Codable {
+    let ok: Bool
+    let uid: String
+    let tokenHash: String
+}
+
+struct RunNotificationFailureDrillResponse: Codable {
+    let ok: Bool
+    let jobId: String
+    let uid: String
+    let mode: String
+}
+
+struct RunNotificationMetricsAggregationNowResponse: Codable {
+    let ok: Bool
+    let windowHours: Int
+    let totalAttempts: Int
+    let statusCounts: [String: Int]
+    let reasonCounts: [String: Int]
+    let providerCounts: [String: Int]
+}
+
 struct MaterialOrderItemSummary: Codable {
     let productId: String
     let name: String
@@ -436,7 +563,7 @@ struct BillingReceipt: Codable {
     let currency: String
     let paidAt: String?
     let createdAt: String?
-    let metadata: JSONValue?
+    let metadata: [String: JSONValue]?
 }
 
 struct BillingSummaryTotals: Codable {

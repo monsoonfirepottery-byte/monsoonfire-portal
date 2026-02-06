@@ -5,14 +5,14 @@ import Foundation
 import FirebaseFirestore
 #endif
 
-private struct KilnListItem: Identifiable {
+struct KilnListItem: Identifiable {
     let id: String
     let name: String
     let type: String
     let status: String
 }
 
-private struct KilnFiringListItem: Identifiable {
+struct KilnFiringListItem: Identifiable {
     let id: String
     let kilnId: String
     let title: String

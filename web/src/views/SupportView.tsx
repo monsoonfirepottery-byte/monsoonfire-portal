@@ -165,8 +165,9 @@ export default function SupportView({ user, supportEmail, onSubmit, status, isBu
           .map((docSnap) => normalizeFaqEntry(docSnap.id, docSnap.data() as Record<string, unknown>))
           .filter((entry): entry is FaqEntry => Boolean(entry));
         setFaqEntries(rows);
-      } catch (err: any) {
-        setFaqError(`FAQ failed: ${err.message ?? String(err)}`);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        setFaqError(`FAQ failed: ${message}`);
       } finally {
         setFaqLoading(false);
       }

@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
 import {
   collection,
@@ -33,6 +33,7 @@ import {
   type ComboFilterState,
 } from "../lib/glazes/filters";
 import type { ComboKey, Glaze } from "../lib/glazes/types";
+import { toVoidHandler } from "../utils/toVoidHandler";
 import "./GlazeBoardView.css";
 
 const GLAZE_NAMES = [
@@ -53,6 +54,12 @@ const GLAZY_SEARCH_BASE = "https://glazy.org/search?search=";
 const MAX_IMAGE_EDGE = 1600;
 const JPEG_QUALITY = 0.8;
 const FAVORITES_KEY = "mf_glaze_favorites";
+type ImportMetaEnvShape = {
+  VITE_USE_EMULATORS?: string;
+  VITE_STORAGE_EMULATOR_HOST?: string;
+  VITE_STORAGE_EMULATOR_PORT?: string;
+};
+const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
 
 function buildSampleMatrix(names: string[]) {
   let nextId = 1;
@@ -78,6 +85,10 @@ function createShortId() {
 
 function getUserLabel(user: User) {
   return user.displayName || user.email || "Staff";
+}
+
+function groupHasTag(tags: readonly string[], tag: GlazeTag): boolean {
+  return tags.includes(tag);
 }
 
 function normalizeTagList(tags?: string[] | null): GlazeTag[] {
@@ -196,6 +207,8 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
   const [tab, setTab] = useState<"studio" | "raku">("studio");
   const [searchQuery, setSearchQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filterChipsOpen, setFilterChipsOpen] = useState(true);
+  const [filtersCollapsed, setFiltersCollapsed] = useState(true);
   const [filterHasPhoto, setFilterHasPhoto] = useState(false);
   const [filterHasNotes, setFilterHasNotes] = useState(false);
   const [filterFavorites, setFilterFavorites] = useState(false);
@@ -352,7 +365,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
       if (match) count += 1;
     });
     return { map: next, count };
-  }, [comboKeys, comboMetaById, filterState]);
+  }, [comboKeys, comboMetaById, filterState, filterFavorites, favoriteSet]);
 
   const matchingCount = filtersActive ? comboMatches.count : comboKeys.length;
 
@@ -397,9 +410,9 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
 
   const storage = useMemo(() => {
     const instance = getStorage();
-    if (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_USE_EMULATORS === "true") {
-      const host = String((import.meta as any).env?.VITE_STORAGE_EMULATOR_HOST || "127.0.0.1");
-      const port = Number((import.meta as any).env?.VITE_STORAGE_EMULATOR_PORT || 9199);
+    if (typeof import.meta !== "undefined" && ENV.VITE_USE_EMULATORS === "true") {
+      const host = String(ENV.VITE_STORAGE_EMULATOR_HOST || "127.0.0.1");
+      const port = Number(ENV.VITE_STORAGE_EMULATOR_PORT || 9199);
       connectStorageEmulator(instance, host, port);
     }
     return instance;
@@ -509,14 +522,14 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
     if (!selectedCombo) return;
     setGlazyBaseUrl(selectedCombo.base.glazy?.url ?? "");
     setGlazyTopUrl(selectedCombo.top.glazy?.url ?? "");
-  }, [selectedCombo?.base.id, selectedCombo?.top.id, selectedCombo?.base.glazy?.url, selectedCombo?.top.glazy?.url]);
+  }, [selectedCombo]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       const raw = window.localStorage.getItem(FAVORITES_KEY);
       if (!raw) return;
-      const parsed = JSON.parse(raw);
+      const parsed: unknown = JSON.parse(raw);
       if (Array.isArray(parsed)) {
         setFavoriteComboIds(parsed.filter((id) => Number.isFinite(id)) as number[]);
       }
@@ -529,11 +542,6 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(favoriteComboIds));
   }, [favoriteComboIds]);
-
-  useEffect(() => {
-    if (!attachOpen) return;
-    void loadAttachPieces();
-  }, [attachOpen]);
 
   const selectedTileTags = useMemo(() => {
     if (!selectedCombo?.tile) return [];
@@ -570,7 +578,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
         key: `tag-${tag}`,
         label: tag.replace(/-/g, " "),
         onRemove: () => {
-          const group = TAG_GROUPS.find((entry) => entry.tags.includes(tag));
+          const group = TAG_GROUPS.find((entry) => groupHasTag(entry.tags, tag));
           if (!group) return;
           setFilterTagsByGroup((prev) => ({
             ...prev,
@@ -580,7 +588,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
       });
     });
     return pills;
-  }, [activeTags, filterHasPhoto, filterHasNotes]);
+  }, [activeTags, filterHasPhoto, filterHasNotes, filterFavorites]);
 
   const selectedComboPhotos = useMemo(() => {
     if (!selectedCombo?.tile?.photos?.length) return [];
@@ -705,8 +713,8 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
 
       setSheetStatus("Saved.");
       closeSheet();
-    } catch (error: any) {
-      setSheetStatus(error?.message || "Unable to save this combo right now.");
+    } catch (error: unknown) {
+      setSheetStatus(error instanceof Error ? error.message : "Unable to save this combo right now.");
     } finally {
       setSheetSaving(false);
     }
@@ -758,8 +766,8 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
         { merge: true }
       );
       setGlazyStatus("Saved.");
-    } catch (error: any) {
-      setGlazyStatus(error?.message || "Unable to save Glazy link.");
+    } catch (error: unknown) {
+      setGlazyStatus(error instanceof Error ? error.message : "Unable to save Glazy link.");
     }
   };
 
@@ -773,7 +781,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
     });
   };
 
-  const loadAttachPieces = async () => {
+  const loadAttachPieces = useCallback(async () => {
     if (attachLoading) return;
     setAttachLoading(true);
     setAttachStatus("");
@@ -789,7 +797,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
     try {
       const pieceGroups = await Promise.all(
         allBatches.map(async (batch) => {
-          const batchId = (batch as any).id as string;
+          const batchId = batch.id;
           const piecesQuery = query(
             collection(db, "batches", batchId, "pieces"),
             orderBy("updatedAt", "desc"),
@@ -797,7 +805,12 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
           );
           const snap = await getDocs(piecesQuery);
           return snap.docs.map((docSnap) => {
-            const data = docSnap.data() as any;
+            const data = docSnap.data() as {
+              pieceCode?: unknown;
+              shortDesc?: unknown;
+              stage?: unknown;
+              selectedGlazes?: unknown;
+            };
             return {
               batchId,
               pieceId: docSnap.id,
@@ -816,12 +829,17 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
       if (combined.length === 0) {
         setAttachStatus("No pieces found yet.");
       }
-    } catch (error: any) {
-      setAttachStatus(error?.message || "Unable to load pieces right now.");
+    } catch (error: unknown) {
+      setAttachStatus(error instanceof Error ? error.message : "Unable to load pieces right now.");
     } finally {
       setAttachLoading(false);
     }
-  };
+  }, [activeBatches, historyBatches, attachLoading]);
+
+  useEffect(() => {
+    if (!attachOpen) return;
+    void loadAttachPieces();
+  }, [attachOpen, loadAttachPieces]);
 
   const handleAttachPiece = async (piece: AttachPieceOption) => {
     if (!selectedCombo) return;
@@ -921,6 +939,19 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
           Filters
         </button>
         <div className="glaze-filter-count">Matching tiles: {matchingCount}</div>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => {
+            setFiltersCollapsed((prev) => {
+              const next = !prev;
+              if (next) setFiltersOpen(false);
+              return next;
+            });
+          }}
+        >
+          {filtersCollapsed ? "Show filters" : "Hide filters"}
+        </button>
         {filtersActive ? (
           <button type="button" className="btn btn-ghost" onClick={resetFilters}>
             Reset filters
@@ -929,17 +960,31 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
       </div>
 
       {filtersActive && activeFilterPills.length ? (
-        <div className="glaze-active-filters">
-          {activeFilterPills.map((pill) => (
+        <div className="glaze-active-filter-wrap">
+          <div className="glaze-active-filter-header">
+            <div className="glaze-active-filter-label">
+              Active filters ({activeFilterPills.length})
+            </div>
             <button
-              key={pill.key}
               type="button"
-              className="glaze-filter-pill"
-              onClick={pill.onRemove}
+              className="btn btn-ghost btn-small"
+              onClick={() => setFilterChipsOpen((prev) => !prev)}
             >
-              {pill.label}
+              {filterChipsOpen ? "Hide chips" : "Show chips"}
             </button>
-          ))}
+          </div>
+          <div className={`glaze-active-filters ${filterChipsOpen ? "open" : "collapsed"}`}>
+            {activeFilterPills.map((pill) => (
+              <button
+                key={pill.key}
+                type="button"
+                className="glaze-filter-pill"
+                onClick={pill.onRemove}
+              >
+                {pill.label}
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
 
@@ -952,19 +997,16 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
         />
       ) : null}
 
-      <section className={`glaze-filter-panel card card-3d ${filtersOpen ? "open" : ""}`}>
+      <section
+        className={`glaze-filter-panel card card-3d ${filtersOpen ? "open" : ""} ${
+          filtersCollapsed ? "collapsed" : ""
+        }`}
+      >
         <div className="glaze-filter-header">
           <div>
             <div className="card-title">Filters</div>
             <div className="glaze-subtitle">Use tags to narrow to the combos you want.</div>
           </div>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => setFiltersOpen(false)}
-          >
-            Close
-          </button>
         </div>
 
         <label className="glaze-filter-field">
@@ -1005,7 +1047,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                 type="button"
                 className={`glaze-tag ${activeTags.includes(tag) ? "active" : ""}`}
                 onClick={() => {
-                  const group = TAG_GROUPS.find((entry) => entry.tags.includes(tag));
+                  const group = TAG_GROUPS.find((entry) => groupHasTag(entry.tags, tag));
                   if (!group) return;
                   toggleFilterTag(group.id, tag);
                 }}
@@ -1124,13 +1166,13 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                             className={
                               selectedCombo.tile?.coverPhotoPath === photo.path ? "active" : ""
                             }
-                            onClick={() => handleSetCover(photo.path)}
+                            onClick={toVoidHandler(() => handleSetCover(photo.path))}
                           >
                             {selectedCombo.tile?.coverPhotoPath === photo.path
                               ? "Cover"
                               : "Set as cover"}
                           </button>
-                          <button type="button" onClick={() => handleDeletePhoto(photo.path)}>
+                          <button type="button" onClick={toVoidHandler(() => handleDeletePhoto(photo.path))}>
                             Delete
                           </button>
                         </div>
@@ -1199,7 +1241,9 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                     <button
                       type="button"
                       className="btn btn-ghost"
-                      onClick={() => handleSaveGlazyUrl(selectedCombo.base.id, glazyBaseUrl)}
+                      onClick={toVoidHandler(() =>
+                        handleSaveGlazyUrl(selectedCombo.base.id, glazyBaseUrl)
+                      )}
                     >
                       Save base link
                     </button>
@@ -1217,7 +1261,9 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                     <button
                       type="button"
                       className="btn btn-ghost"
-                      onClick={() => handleSaveGlazyUrl(selectedCombo.top.id, glazyTopUrl)}
+                      onClick={toVoidHandler(() =>
+                        handleSaveGlazyUrl(selectedCombo.top.id, glazyTopUrl)
+                      )}
                     >
                       Save top link
                     </button>
@@ -1315,7 +1361,11 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
                   {piece.stage ? ` · ${piece.stage}` : ""}
                 </div>
               </div>
-              <button type="button" className="btn btn-secondary" onClick={() => handleAttachPiece(piece)}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={toVoidHandler(() => handleAttachPiece(piece))}
+              >
                 Attach
               </button>
             </div>
@@ -1445,7 +1495,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={handleSaveSheet}
+            onClick={toVoidHandler(handleSaveSheet)}
             disabled={sheetSaving}
           >
             {sheetSaving ? "Saving..." : "Save"}

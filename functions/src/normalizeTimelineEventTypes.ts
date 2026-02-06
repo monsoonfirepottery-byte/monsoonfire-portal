@@ -54,7 +54,7 @@ export const normalizeTimelineEventTypes = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "normalizeTimelineEventTypes",
       max: 2,
@@ -166,3 +166,4 @@ export const normalizeTimelineEventTypes = onRequest(
     });
   }
 );
+

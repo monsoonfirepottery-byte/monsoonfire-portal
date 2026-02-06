@@ -17,10 +17,13 @@ function formatMoney(cents?: number) {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-function formatTs(ts: any) {
+type TimestampLike = { toDate?: () => Date };
+
+function formatTs(ts: unknown) {
   if (!ts) return "";
   try {
-    return typeof ts.toDate === "function" ? ts.toDate().toLocaleString() : String(ts);
+    const value = ts as TimestampLike;
+    return typeof value.toDate === "function" ? value.toDate().toLocaleString() : String(ts);
   } catch {
     return "";
   }

@@ -39,4 +39,10 @@ export type KilnFiring = {
   status: KilnFiringStatus;
   confidence: "scheduled" | "estimated";
   notes?: string | null;
+  unloadedAt?: unknown;
+  unloadedByUid?: string | null;
+  unloadNote?: string | null;
+  batchIds?: string[];
+  pieceIds?: string[];
+  kilnName?: string | null;
 };

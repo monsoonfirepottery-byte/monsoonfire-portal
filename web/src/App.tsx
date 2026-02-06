@@ -1,14 +1,25 @@
 import React, { useEffect, useState } from "react";
 import {
+  FacebookAuthProvider,
   GoogleAuthProvider,
-  onAuthStateChanged,
+  OAuthProvider,
+  createUserWithEmailAndPassword,
+  getRedirectResult,
+  isSignInWithEmailLink,
+  onIdTokenChanged,
+  signInAnonymously,
+  signInWithEmailAndPassword,
+  signInWithEmailLink,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
+  sendSignInLinkToEmail,
   type User,
 } from "firebase/auth";
 import { addDoc, collection, getDocs, limit, orderBy, query, serverTimestamp, where } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import type { Announcement, DirectMessageThread, LiveUser } from "./types/messaging";
+import { toVoidHandler } from "./utils/toVoidHandler";
 import type { SupportRequestInput } from "./views/SupportView";
 import { portalTheme } from "./theme/themes";
 import "./App.css";
@@ -26,12 +37,14 @@ const MembershipView = React.lazy(() => import("./views/MembershipView"));
 const MaterialsView = React.lazy(() => import("./views/MaterialsView"));
 const MessagesView = React.lazy(() => import("./views/MessagesView"));
 const MyPiecesView = React.lazy(() => import("./views/MyPiecesView"));
+const NotificationsView = React.lazy(() => import("./views/NotificationsView"));
 const PlaceholderView = React.lazy(() => import("./views/PlaceholderView"));
 const ProfileView = React.lazy(() => import("./views/ProfileView"));
 const ReservationsView = React.lazy(() => import("./views/ReservationsView"));
 const SignedOutView = React.lazy(() => import("./views/SignedOutView"));
 const StudioResourcesView = React.lazy(() => import("./views/StudioResourcesView"));
 const SupportView = React.lazy(() => import("./views/SupportView"));
+const StaffView = React.lazy(() => import("./views/StaffView"));
 
 type NavKey =
   | "dashboard"
@@ -49,6 +62,7 @@ type NavKey =
   | "materials"
   | "billing"
   | "studioResources"
+  | "notifications"
   | "messages"
   | "support"
   | "staff";
@@ -67,11 +81,37 @@ type NavSection = {
   items: NavItem[];
 };
 
+type ImportMetaEnvShape = {
+  DEV?: boolean;
+  VITE_FUNCTIONS_BASE_URL?: string;
+  VITE_ENABLE_DEV_ADMIN_TOKEN?: string;
+  VITE_USE_EMULATORS?: string;
+};
+
+type NotificationItem = {
+  id: string;
+  title?: string;
+  body?: string;
+  createdAt?: { toDate?: () => Date } | null;
+  readAt?: { toDate?: () => Date } | null;
+  data?: {
+    firingId?: string;
+    kilnName?: string | null;
+    firingType?: string | null;
+  };
+};
+
+type StaffClaims = {
+  staff?: boolean;
+  roles?: string[];
+};
+
 const NAV_TOP_ITEMS: NavItem[] = [
   { key: "dashboard", label: "Dashboard" },
 ];
 
 const NAV_BOTTOM_ITEMS: NavItem[] = [
+  { key: "notifications", label: "Notifications" },
   { key: "messages", label: "Messages" },
   { key: "support", label: "Support" },
 ];
@@ -130,6 +170,24 @@ const NAV_ITEM_ICONS: Partial<Record<NavKey, React.ReactNode>> = {
       />
     </svg>
   ),
+  notifications: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M6 9a6 6 0 0 1 12 0v5l2 3H4l2-3V9z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9.5 18a2.5 2.5 0 0 0 5 0"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  ),
   support: (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2" />
@@ -141,6 +199,24 @@ const NAV_ITEM_ICONS: Partial<Record<NavKey, React.ReactNode>> = {
         strokeLinecap="round"
       />
       <circle cx="12" cy="17.5" r="1" fill="currentColor" />
+    </svg>
+  ),
+  staff: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9 12l2 2 4-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
   ),
 };
@@ -202,28 +278,29 @@ const NAV_LABELS: Record<NavKey, string> = {
   materials: "Store",
   billing: "Billing",
   studioResources: "Studio & Resources",
+  notifications: "Notifications",
   messages: "Messages",
   support: "Support",
   staff: "Staff",
 };
 
 const SESSION_ADMIN_TOKEN_KEY = "mf_dev_admin_token";
+const EMAIL_LINK_KEY = "mf_email_link_email";
 const LOCAL_NAV_KEY = "mf_nav_key";
 const LOCAL_NAV_SECTION_KEY = "mf_nav_section_key";
 const LOCAL_NAV_COLLAPSED_KEY = "mf_nav_collapsed";
 const SUPPORT_EMAIL = "support@monsoonfire.com";
-const MF_LOGO = "/branding/logo.png";
+const MF_LOGO = "/branding/logo-mark-black.webp";
+const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
 const FUNCTIONS_BASE_URL =
-  typeof import.meta !== "undefined" &&
-  (import.meta as any).env &&
-  (import.meta as any).env.VITE_FUNCTIONS_BASE_URL
-    ? String((import.meta as any).env.VITE_FUNCTIONS_BASE_URL)
+  typeof import.meta !== "undefined" && ENV.VITE_FUNCTIONS_BASE_URL
+    ? String(ENV.VITE_FUNCTIONS_BASE_URL)
     : DEFAULT_FUNCTIONS_BASE_URL;
 const DEV_ADMIN_TOKEN_ENABLED =
   typeof import.meta !== "undefined" &&
-  (import.meta as any).env?.DEV === true &&
-  (import.meta as any).env?.VITE_ENABLE_DEV_ADMIN_TOKEN === "true" &&
+  ENV.DEV === true &&
+  ENV.VITE_ENABLE_DEV_ADMIN_TOKEN === "true" &&
   (FUNCTIONS_BASE_URL.includes("localhost") || FUNCTIONS_BASE_URL.includes("127.0.0.1"));
 
 const NAV_SECTION_KEYS: NavSectionKey[] = ["kilnRentals", "studioResources", "community"];
@@ -241,6 +318,10 @@ const getSectionForNav = (navKey: NavKey): NavSectionKey | null => {
   return match?.key ?? null;
 };
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean; message: string }
@@ -249,12 +330,11 @@ class AppErrorBoundary extends React.Component<
     super(props);
     this.state = { hasError: false, message: "" };
   }
-  static getDerivedStateFromError(err: any) {
-    return { hasError: true, message: err?.message || String(err) };
+  static getDerivedStateFromError(error: unknown) {
+    return { hasError: true, message: getErrorMessage(error) };
   }
-  componentDidCatch(err: any) {
-    // eslint-disable-next-line no-console
-    console.error("AppErrorBoundary caught:", err);
+  componentDidCatch(error: unknown) {
+    console.error("AppErrorBoundary caught:", error);
   }
   render() {
     if (!this.state.hasError) return this.props.children;
@@ -299,11 +379,11 @@ function useLiveUsers(user: User | null, canLoad: boolean) {
         if (canceled) return;
         const rows: LiveUser[] = snap.docs.map((docSnap) => ({
           id: docSnap.id,
-          ...(docSnap.data() as any),
+          ...(docSnap.data() as Partial<LiveUser>),
         }));
         setUsers(rows.filter((liveUser) => liveUser.id !== user.uid && liveUser.isActive !== false));
-      } catch (err: any) {
-        if (!canceled) setError(`Users failed: ${err.message || String(err)}`);
+      } catch (error: unknown) {
+        if (!canceled) setError(`Users failed: ${getErrorMessage(error)}`);
       } finally {
         if (!canceled) setLoading(false);
       }
@@ -345,11 +425,11 @@ function useDirectMessages(user: User | null) {
         if (canceled) return;
         const rows: DirectMessageThread[] = snap.docs.map((docSnap) => ({
           id: docSnap.id,
-          ...(docSnap.data() as any),
+          ...(docSnap.data() as Partial<DirectMessageThread>),
         }));
         setThreads(rows);
-      } catch (err: any) {
-        if (!canceled) setError(`Direct messages failed: ${err.message || String(err)}`);
+      } catch (error: unknown) {
+        if (!canceled) setError(`Direct messages failed: ${getErrorMessage(error)}`);
       } finally {
         if (!canceled) setLoading(false);
       }
@@ -390,11 +470,11 @@ function useAnnouncements(user: User | null) {
         if (canceled) return;
         const rows: Announcement[] = snap.docs.map((docSnap) => ({
           id: docSnap.id,
-          ...(docSnap.data() as any),
+          ...(docSnap.data() as Partial<Announcement>),
         }));
         setAnnouncements(rows);
-      } catch (err: any) {
-        if (!canceled) setError(`Announcements failed: ${err.message || String(err)}`);
+      } catch (error: unknown) {
+        if (!canceled) setError(`Announcements failed: ${getErrorMessage(error)}`);
       } finally {
         if (!canceled) setLoading(false);
       }
@@ -409,9 +489,65 @@ function useAnnouncements(user: User | null) {
   return { announcements, loading, error };
 }
 
+function useNotifications(user: User | null, canLoad: boolean) {
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let canceled = false;
+    if (!user || !canLoad) {
+      setNotifications([]);
+      setLoading(false);
+      setError("");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    const load = async () => {
+      try {
+        const notificationsQuery = query(
+          collection(db, "users", user.uid, "notifications"),
+          orderBy("createdAt", "desc"),
+          limit(50)
+        );
+        const snap = await getDocs(notificationsQuery);
+        if (canceled) return;
+        const rows = snap.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...(docSnap.data() as Record<string, unknown>),
+        }));
+        setNotifications(rows as NotificationItem[]);
+      } catch (error: unknown) {
+        if (!canceled) setError(`Notifications failed: ${getErrorMessage(error)}`);
+      } finally {
+        if (!canceled) setLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      canceled = true;
+    };
+  }, [user, canLoad]);
+
+  return { notifications, loading, error };
+}
+
+function prefetchLikelyNextViews() {
+  void import("./views/KilnRentalsView");
+  void import("./views/ReservationsView");
+  void import("./views/KilnLaunchView");
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [authStatus, setAuthStatus] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [emailLinkPending, setEmailLinkPending] = useState(false);
   const [nav, setNav] = useState<NavKey>(() => {
     if (typeof window === "undefined") return "dashboard";
     const path = window.location.pathname;
@@ -437,13 +573,21 @@ export default function App() {
   const [isStaff, setIsStaff] = useState(false);
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [supportStatus, setSupportStatus] = useState("");
   const [supportBusy, setSupportBusy] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   const authClient = auth;
+  const isAuthEmulator =
+    typeof import.meta !== "undefined" &&
+    ENV.VITE_USE_EMULATORS === "true";
   const devAdminActive = DEV_ADMIN_TOKEN_ENABLED && devAdminToken.trim().length > 0;
   const staffUi = isStaff || devAdminActive;
   const devAdminTokenValue = devAdminActive ? devAdminToken.trim() : "";
+  const navBottomItems: NavItem[] = staffUi
+    ? [...NAV_BOTTOM_ITEMS, { key: "staff", label: "Staff" }]
+    : NAV_BOTTOM_ITEMS;
 
   useEffect(() => {
     if (!DEV_ADMIN_TOKEN_ENABLED) return;
@@ -485,13 +629,90 @@ export default function App() {
   }, [devAdminToken]);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(authClient, (nextUser) => {
-      setUser(nextUser);
-      setAuthReady(true);
-      if (!nextUser) setNav("dashboard");
-    });
-    return () => unsub();
-  }, [authClient]);
+    let cancelled = false;
+    let unsub = () => {};
+
+    const init = async () => {
+      if (typeof window !== "undefined") {
+        const link = window.location.href;
+        if (isSignInWithEmailLink(authClient, link)) {
+          const storedEmail = localStorage.getItem(EMAIL_LINK_KEY);
+          if (storedEmail) {
+            try {
+              await signInWithEmailLink(authClient, storedEmail, link);
+              localStorage.removeItem(EMAIL_LINK_KEY);
+              if (!cancelled) setEmailLinkPending(false);
+            } catch (_err: unknown) {
+              if (!cancelled) {
+                setEmailLinkPending(true);
+                setAuthStatus("Sign-in link failed. Please try again.");
+              }
+            }
+          } else if (!cancelled) {
+            setEmailLinkPending(true);
+          }
+        }
+      }
+      if (isAuthEmulator) {
+        try {
+          const result = await getRedirectResult(authClient);
+          if (!cancelled && result?.user) {
+            setUser(result.user);
+            setAuthReady(true);
+          }
+        } catch {
+          // Emulator redirect can fail quietly; user can retry from the button.
+        }
+      }
+      if (cancelled) return;
+      unsub = onIdTokenChanged(authClient, (nextUser) => {
+        setUser(nextUser);
+        setAuthReady(true);
+        if (!nextUser) setNav("dashboard");
+      });
+    };
+
+    void init();
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [authClient, isAuthEmulator]);
+
+  useEffect(() => {
+    if (!user) {
+      setNotificationsEnabled(false);
+      return;
+    }
+    if (nav === "notifications") {
+      setNotificationsEnabled(true);
+      return;
+    }
+
+    let canceled = false;
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (
+        callback: IdleRequestCallback,
+        options?: IdleRequestOptions
+      ) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    const enable = () => {
+      if (!canceled) setNotificationsEnabled(true);
+    };
+    if (idleWindow.requestIdleCallback) {
+      const handle = idleWindow.requestIdleCallback(enable, { timeout: 2200 });
+      return () => {
+        canceled = true;
+        idleWindow.cancelIdleCallback?.(handle);
+      };
+    }
+    const timer = window.setTimeout(enable, 700);
+    return () => {
+      canceled = true;
+      window.clearTimeout(timer);
+    };
+  }, [user, nav]);
 
   useEffect(() => {
     let cancelled = false;
@@ -506,7 +727,7 @@ export default function App() {
       .getIdTokenResult()
       .then((result) => {
         if (cancelled) return;
-        const claims: any = result.claims ?? {};
+        const claims = (result.claims ?? {}) as StaffClaims;
         const roles = Array.isArray(claims.roles) ? claims.roles : [];
         const staff = claims.staff === true || roles.includes("staff");
         setIsStaff(staff);
@@ -522,7 +743,7 @@ export default function App() {
 
   const { users: liveUsers, loading: liveUsersLoading, error: liveUsersError } = useLiveUsers(
     user,
-    isStaff
+    isStaff && nav === "messages"
   );
   const { threads, loading: threadsLoading, error: threadsError } = useDirectMessages(user);
   const {
@@ -530,6 +751,11 @@ export default function App() {
     loading: announcementsLoading,
     error: announcementsError,
   } = useAnnouncements(user);
+  const {
+    notifications,
+    loading: notificationsLoading,
+    error: notificationsError,
+  } = useNotifications(user, notificationsEnabled);
 
   useEffect(() => {
     if (!user) {
@@ -553,14 +779,131 @@ export default function App() {
     setUnreadAnnouncements(unread);
   }, [announcements]);
 
-  const handleSignIn = async () => {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(authClient, provider);
+  useEffect(() => {
+    const unread = notifications.filter((item) => !item.readAt).length;
+    setUnreadNotifications(unread);
+  }, [notifications]);
+
+  const handleProviderSignIn = async (
+    providerId: "google" | "apple" | "facebook" | "microsoft"
+  ) => {
+    setAuthStatus("");
+    setAuthBusy(true);
+    try {
+      let provider;
+      switch (providerId) {
+        case "google":
+          provider = new GoogleAuthProvider();
+          provider.addScope("email");
+          break;
+        case "facebook":
+          provider = new FacebookAuthProvider();
+          provider.addScope("email");
+          break;
+        case "apple":
+          provider = new OAuthProvider("apple.com");
+          provider.addScope("email");
+          provider.addScope("name");
+          break;
+        case "microsoft":
+          provider = new OAuthProvider("microsoft.com");
+          provider.addScope("email");
+          break;
+        default:
+          return;
+      }
+      if (isAuthEmulator) {
+        await signInWithRedirect(authClient, provider);
+        return;
+      }
+      await signInWithPopup(authClient, provider);
+    } catch (error: unknown) {
+      setAuthStatus(getErrorMessage(error) || "Sign-in failed. Please try again.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleEmailPassword = async (
+    email: string,
+    password: string,
+    mode: "signin" | "create"
+  ) => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
+      setAuthStatus("Please enter your email and password.");
+      return;
+    }
+    setAuthStatus("");
+    setAuthBusy(true);
+    try {
+      if (mode === "create") {
+        await createUserWithEmailAndPassword(authClient, trimmedEmail, password);
+      } else {
+        await signInWithEmailAndPassword(authClient, trimmedEmail, password);
+      }
+    } catch (error: unknown) {
+      setAuthStatus(getErrorMessage(error) || "Email sign-in failed. Please try again.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleEmailLink = async (email: string) => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setAuthStatus("Enter an email to receive a sign-in link.");
+      return;
+    }
+    setAuthStatus("");
+    setAuthBusy(true);
+    try {
+      const actionCodeSettings = {
+        url: window.location.origin,
+        handleCodeInApp: true,
+      };
+      await sendSignInLinkToEmail(authClient, trimmedEmail, actionCodeSettings);
+      localStorage.setItem(EMAIL_LINK_KEY, trimmedEmail);
+      setAuthStatus("Check your email for your sign-in link.");
+    } catch (error: unknown) {
+      setAuthStatus(getErrorMessage(error) || "Unable to send sign-in link.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleCompleteEmailLink = async (email: string) => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setAuthStatus("Enter the email that received the link.");
+      return;
+    }
+    setAuthStatus("");
+    setAuthBusy(true);
+    try {
+      await signInWithEmailLink(authClient, trimmedEmail, window.location.href);
+      localStorage.removeItem(EMAIL_LINK_KEY);
+      setEmailLinkPending(false);
+    } catch (error: unknown) {
+      setAuthStatus(getErrorMessage(error) || "Unable to finish sign-in.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleEmulatorSignIn = async () => {
+    if (!isAuthEmulator) return;
+    await signInAnonymously(authClient);
   };
 
   const handleSignOut = async () => {
     await signOut(authClient);
     setNav("dashboard");
+  };
+
+  const handleAuthHandlerError = (error: unknown) => {
+    setAuthStatus(getErrorMessage(error) || "Authentication action failed.");
+    setAuthBusy(false);
   };
 
   const handleSupportSubmit = async (input: SupportRequestInput) => {
@@ -592,8 +935,8 @@ export default function App() {
       });
       setSupportStatus("Thanks! Your question was sent to the studio.");
       return true;
-    } catch (err: any) {
-      setSupportStatus(`Support request failed: ${err?.message || String(err)}`);
+    } catch (error: unknown) {
+      setSupportStatus(`Support request failed: ${getErrorMessage(error)}`);
       return false;
     } finally {
       setSupportBusy(false);
@@ -609,6 +952,46 @@ export default function App() {
     }
   }, [navSection, openSection]);
 
+  useEffect(() => {
+    if (!staffUi && nav === "staff") {
+      setNav("dashboard");
+    }
+  }, [staffUi, nav]);
+
+  useEffect(() => {
+    if (!authReady || !user || nav !== "dashboard" || typeof window === "undefined") {
+      return;
+    }
+
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (
+        callback: IdleRequestCallback,
+        options?: IdleRequestOptions
+      ) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+
+    let canceled = false;
+    const runPrefetch = () => {
+      if (canceled) return;
+      prefetchLikelyNextViews();
+    };
+
+    if (idleWindow.requestIdleCallback) {
+      const handle = idleWindow.requestIdleCallback(runPrefetch, { timeout: 1500 });
+      return () => {
+        canceled = true;
+        idleWindow.cancelIdleCallback?.(handle);
+      };
+    }
+
+    const timer = window.setTimeout(runPrefetch, 300);
+    return () => {
+      canceled = true;
+      window.clearTimeout(timer);
+    };
+  }, [authReady, user, nav]);
+
   const handleSectionToggle = (sectionKey: NavSectionKey) => {
     if (nav !== sectionKey) {
       setNav(sectionKey);
@@ -620,10 +1003,22 @@ export default function App() {
     setMobileNavOpen(false);
   };
 
-  const renderView = (key: NavKey) => {
-    if (!user) {
-      return <SignedOutView onSignIn={handleSignIn} />;
-    }
+    const renderView = (key: NavKey) => {
+      if (!user) {
+        return (
+          <SignedOutView
+            onProviderSignIn={toVoidHandler(handleProviderSignIn, handleAuthHandlerError, "auth.provider")}
+            onEmailPassword={toVoidHandler(handleEmailPassword, handleAuthHandlerError, "auth.emailPassword")}
+            onEmailLink={toVoidHandler(handleEmailLink, handleAuthHandlerError, "auth.emailLinkSend")}
+            onCompleteEmailLink={toVoidHandler(handleCompleteEmailLink, handleAuthHandlerError, "auth.emailLinkComplete")}
+            emailLinkPending={emailLinkPending}
+            status={authStatus}
+            busy={authBusy}
+            onEmulatorSignIn={toVoidHandler(handleEmulatorSignIn, handleAuthHandlerError, "auth.emulator")}
+            showEmulatorTools={isAuthEmulator}
+          />
+        );
+      }
 
     switch (key) {
       case "dashboard":
@@ -634,7 +1029,11 @@ export default function App() {
             threads={threads}
             announcements={announcements}
             onOpenKilnRentals={() => setNav("kilnRentals")}
+            onOpenCheckin={() => setNav("reservations")}
+            onOpenQueues={() => setNav("kilnLaunch")}
+            onOpenFirings={() => setNav("kiln")}
             onOpenStudioResources={() => setNav("studioResources")}
+            onOpenGlazeBoard={() => setNav("glazes")}
             onOpenCommunity={() => setNav("community")}
             onOpenMessages={() => setNav("messages")}
             onOpenPieces={() => setNav("pieces")}
@@ -670,7 +1069,7 @@ export default function App() {
       case "reservations":
         return <ReservationsView user={user} isStaff={staffUi} adminToken={devAdminTokenValue} />;
       case "kiln":
-        return <KilnScheduleView />;
+        return <KilnScheduleView user={user} isStaff={staffUi} />;
       case "kilnRentals":
         return (
           <KilnRentalsView
@@ -707,6 +1106,16 @@ export default function App() {
             unreadAnnouncements={unreadAnnouncements}
           />
         );
+      case "notifications":
+        return (
+          <NotificationsView
+            user={user}
+            onOpenFirings={() => setNav("kiln")}
+            notifications={notifications}
+            loading={notificationsLoading}
+            error={notificationsError}
+          />
+        );
       case "support":
         return (
           <SupportView
@@ -715,6 +1124,17 @@ export default function App() {
             onSubmit={handleSupportSubmit}
             status={supportStatus}
             isBusy={supportBusy}
+          />
+        );
+      case "staff":
+        return (
+          <StaffView
+            user={user}
+            isStaff={isStaff}
+            devAdminToken={devAdminToken}
+            onDevAdminTokenChange={setDevAdminToken}
+            devAdminEnabled={DEV_ADMIN_TOKEN_ENABLED}
+            showEmulatorTools={isAuthEmulator}
           />
         );
       default:
@@ -732,7 +1152,13 @@ export default function App() {
       <div className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`} style={portalTheme}>
         <aside className={`sidebar ${mobileNavOpen ? "open" : ""} ${navCollapsed ? "collapsed" : ""}`}>
           <div className="brand">
-            <img src={MF_LOGO} alt="Monsoon Fire Pottery Studio" />
+            <img
+              src={MF_LOGO}
+              alt="Monsoon Fire Pottery Studio"
+              loading="eager"
+              decoding="async"
+              fetchPriority="high"
+            />
             <div>
               <h1>Monsoon Fire</h1>
               <span>Pottery Studio</span>
@@ -765,6 +1191,7 @@ export default function App() {
                     type="button"
                     className="nav-section-title"
                     aria-expanded={openSection === section.key}
+                    aria-controls={`nav-section-${section.key}`}
                     title={section.title}
                     onClick={() => handleSectionToggle(section.key)}
                   >
@@ -773,6 +1200,7 @@ export default function App() {
                   </button>
                   <div
                     className="nav-section-items"
+                    id={`nav-section-${section.key}`}
                     aria-hidden={openSection !== section.key}
                   >
                     {section.items.map((item) => (
@@ -796,7 +1224,7 @@ export default function App() {
               ))}
             </div>
             <div className="nav-bottom">
-              {NAV_BOTTOM_ITEMS.map((item) => (
+              {navBottomItems.map((item) => (
                 <button
                   key={item.key}
                   className={nav === item.key ? "active" : ""}
@@ -812,6 +1240,9 @@ export default function App() {
                   <span className="nav-label">{item.label}</span>
                   {item.key === "messages" && unreadMessages + unreadAnnouncements > 0 ? (
                     <span className="badge">{unreadMessages + unreadAnnouncements}</span>
+                  ) : null}
+                  {item.key === "notifications" && unreadNotifications > 0 ? (
+                    <span className="badge">{unreadNotifications}</span>
                   ) : null}
                 </button>
               ))}
@@ -848,7 +1279,7 @@ export default function App() {
               </button>
               <button
                 className="signout-icon"
-                onClick={handleSignOut}
+                onClick={toVoidHandler(handleSignOut, handleAuthHandlerError, "auth.signOut")}
                 aria-label="Sign out"
                 title="Sign out"
               >
@@ -881,19 +1312,6 @@ export default function App() {
               </button>
             </div>
           )}
-          {user && DEV_ADMIN_TOKEN_ENABLED ? (
-            <div className="admin-token">
-              <label htmlFor="admin-token-input">Dev admin token (emulator only)</label>
-              <input
-                id="admin-token-input"
-                type="password"
-                value={devAdminToken}
-                placeholder="Paste token"
-                onChange={(event) => setDevAdminToken(event.target.value)}
-              />
-              <p>Stored for this browser session only. Disabled in production.</p>
-            </div>
-          ) : null}
         </aside>
 
         <main className="main">

@@ -99,14 +99,24 @@
 }
 
 .membership-status-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 10px;
   margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
 }
 
 .membership-status-actions .btn {
   font-size: 12px;
+}
+
+.membership-target {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .journey-milestones ul {

@@ -2,6 +2,7 @@
 import type { LastRequest } from "../api/functionsClient";
 import { safeJsonStringify } from "../api/functionsClient";
 import { styles as S } from "../ui/styles";
+import { toVoidHandler } from "../utils/toVoidHandler";
 
 type Props = {
   lastReq: LastRequest | null;
@@ -14,8 +15,9 @@ export default function TroubleshootingPanel({ lastReq, curl, onStatus }: Props)
     try {
       await navigator.clipboard.writeText(text);
       onStatus?.("Copied curl to clipboard.");
-    } catch (e: any) {
-      onStatus?.(`Copy failed: ${e?.message || String(e)}`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      onStatus?.(`Copy failed: ${message}`);
     }
   }
 
@@ -84,7 +86,7 @@ export default function TroubleshootingPanel({ lastReq, curl, onStatus }: Props)
           <div style={S.muted}>(Redacted by default; safe for sharing.)</div>
           <pre style={S.pre}>{curl || "(no request yet)"}</pre>
 
-          <button style={S.btnSmall} onClick={() => copyToClipboard(curl)} disabled={!curl}>
+          <button style={S.btnSmall} onClick={toVoidHandler(() => copyToClipboard(curl))} disabled={!curl}>
             Copy curl
           </button>
         </>

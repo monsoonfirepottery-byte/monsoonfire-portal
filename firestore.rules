@@ -33,6 +33,20 @@ service cloud.firestore {
       return value is string && value.size() > 0;
     }
 
+    function isMembershipTier(value) {
+      return value is string
+        && [
+          "A la carte",
+          "Apprentice",
+          "Journeyman",
+          "Master",
+          "Studio",
+          "Premium",
+          "Founding",
+          "Studio Member"
+        ].hasAny([value]);
+    }
+
     function isStage(value) {
       return value is string
         && ["GREENWARE", "BISQUE", "GLAZED", "FINISHED", "HOLD", "UNKNOWN"].hasAny([value]);
@@ -127,6 +141,8 @@ service cloud.firestore {
           "wareCategory",
           "isArchived",
           "selectedGlazes",
+          "clientRating",
+          "clientRatingUpdatedAt",
           "updatedAt"
         ])
         && request.resource.data.pieceCode == resource.data.pieceCode
@@ -137,6 +153,18 @@ service cloud.firestore {
         && isWareCategory(request.resource.data.wareCategory)
         && request.resource.data.isArchived is bool
         && request.resource.data.updatedAt is timestamp
+        && (
+          !request.resource.data.keys().hasAny(["clientRating"])
+          || (
+            request.resource.data.clientRating is int
+            && request.resource.data.clientRating >= 1
+            && request.resource.data.clientRating <= 5
+          )
+        )
+        && (
+          !request.resource.data.keys().hasAny(["clientRatingUpdatedAt"])
+          || request.resource.data.clientRatingUpdatedAt is timestamp
+        )
         && (
           !request.resource.data.keys().hasAny(["selectedGlazes"])
           || request.resource.data.selectedGlazes is list
@@ -264,12 +292,59 @@ service cloud.firestore {
         && hasOnlyKeys([
           "displayName",
           "preferredKilns",
+          "membershipTier",
+          "membershipSince",
+          "membershipExpiresAt",
           "notifyKiln",
           "notifyClasses",
           "notifyPieces",
+          "notifyReservations",
+          "personalNotes",
+          "studioNotes",
           "updatedAt"
         ])
-        && request.resource.data.updatedAt is timestamp;
+        && request.resource.data.updatedAt is timestamp
+        && (
+          !request.resource.data.keys().hasAny(["membershipTier"])
+          || isMembershipTier(request.resource.data.membershipTier)
+        )
+        && (
+          !request.resource.data.keys().hasAny(["membershipSince"])
+          || request.resource.data.membershipSince is timestamp
+        )
+        && (
+          !request.resource.data.keys().hasAny(["membershipExpiresAt"])
+          || request.resource.data.membershipExpiresAt is timestamp
+        )
+        && (
+          !request.resource.data.keys().hasAny(["notifyReservations"])
+          || request.resource.data.notifyReservations is bool
+        )
+        && (
+          !request.resource.data.keys().hasAny(["personalNotes"])
+          || request.resource.data.personalNotes is string
+          || request.resource.data.personalNotes == null
+        )
+        && (
+          !request.resource.data.keys().hasAny(["studioNotes"])
+          || request.resource.data.studioNotes is string
+          || request.resource.data.studioNotes == null
+        )
+        && (
+          resource == null
+          || !request.resource.data.keys().hasAny(["membershipSince"])
+          || request.resource.data.membershipSince == resource.data.membershipSince
+        )
+        && (
+          resource == null
+          || !request.resource.data.keys().hasAny(["membershipExpiresAt"])
+          || request.resource.data.membershipExpiresAt == resource.data.membershipExpiresAt
+        )
+        && (
+          resource == null
+          || !request.resource.data.keys().hasAny(["studioNotes"])
+          || request.resource.data.studioNotes == resource.data.studioNotes
+        );
       allow delete: if false;
     }
 
@@ -374,6 +449,65 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId) || isStaff();
       allow write: if false;
+    }
+
+    match /users/{userId}/prefs/{prefId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && prefId == "notifications"
+        && request.resource.data.enabled is bool
+        && request.resource.data.channels is map
+        && request.resource.data.events is map
+        && request.resource.data.frequency is map
+        && request.resource.data.channels.keys().hasOnly([
+          "inApp",
+          "email",
+          "push",
+          "sms"
+        ])
+        && request.resource.data.events.keys().hasOnly([
+          "kilnUnloaded",
+          "kilnUnloadedBisque",
+          "kilnUnloadedGlaze"
+        ])
+        && request.resource.data.frequency.keys().hasOnly([
+          "mode",
+          "digestHours"
+        ])
+        && (
+          !request.resource.data.keys().hasAny(["quietHours"])
+          || (
+            request.resource.data.quietHours is map
+            && request.resource.data.quietHours.keys().hasOnly([
+              "enabled",
+              "startLocal",
+              "endLocal",
+              "timezone"
+            ])
+          )
+        )
+        && request.resource.data.updatedAt is timestamp;
+      allow delete: if false;
+    }
+
+    match /users/{userId}/notifications/{notificationId} {
+      allow read: if isOwner(userId);
+      allow update: if isOwner(userId)
+        && changedKeysOnly(["readAt"])
+        && request.resource.data.readAt is timestamp;
+      allow create, delete: if false;
+    }
+
+    match /notificationJobs/{jobId} {
+      allow read, write: if false;
+    }
+
+    match /rateLimits/{rateId} {
+      allow read, write: if false;
+    }
+
+    match /mail/{mailId} {
+      allow read, write: if false;
     }
 
     match /directMessages/{threadId} {
@@ -514,6 +648,30 @@ service cloud.firestore {
     }
 
     match /glazes/{glazeId} {
+      allow read: if isSignedIn();
+      allow write: if isStaff();
+    }
+
+    match /config/studioJukebox {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    match /studioJukebox/tracks/items/{trackId} {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    match /studioJukebox/queue/items/{itemId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /studioJukebox/votes/items/{itemId}/byUid/{uid} {
+      allow read, write: if false;
+    }
+
+    match /studioJukebox/state {
       allow read: if isSignedIn();
       allow write: if isStaff();
     }

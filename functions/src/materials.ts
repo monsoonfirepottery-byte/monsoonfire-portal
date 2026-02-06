@@ -131,7 +131,7 @@ export const listMaterialsProducts = onRequest({ region: REGION, cors: true }, a
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "listMaterialsProducts",
     max: 30,
@@ -219,7 +219,7 @@ export const seedMaterialsCatalog = onRequest({ region: REGION }, async (req, re
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "seedMaterialsCatalog",
     max: 5,
@@ -235,7 +235,8 @@ export const seedMaterialsCatalog = onRequest({ region: REGION }, async (req, re
     {
       sku: "DAY_PASS",
       name: "Day Pass",
-      description: "Full day of studio access with tools, wheels, and glaze stations.",
+      description:
+        "Reserve your creative time in our fully equipped west-side studio. Full access to workspace, tools, wheels, glazes, and materials. Drop-offs and pickups do not require a pass, but work sessions do.",
       category: "Studio Access",
       priceCents: 4000,
       trackInventory: false,
@@ -243,64 +244,128 @@ export const seedMaterialsCatalog = onRequest({ region: REGION }, async (req, re
     {
       sku: "LAGUNA_BMIX_5_25",
       name: "Laguna WC-401 B-Mix Cone 5/6 (25 lb)",
-      description: "Smooth, white body for mid-fire porcelain-style work.",
+      description:
+        "Wet clay direct from Laguna in a 25 lb bag. Mid-fire stoneware, smooth porcelain texture, fires to a cream color in oxidation.",
       category: "Clays",
       priceCents: 4000,
-      trackInventory: true,
-      inventoryOnHand: 40,
+      trackInventory: false,
+    },
+    {
+      sku: "LAGUNA_BMIX_5_50",
+      name: "Laguna WC-401 B-Mix Cone 5/6 (50 lb)",
+      description:
+        "Wet clay direct from Laguna in a 50 lb box. Mid-fire stoneware, smooth porcelain texture, fires to a cream color in oxidation.",
+      category: "Clays",
+      priceCents: 8000,
+      trackInventory: false,
     },
     {
       sku: "LAGUNA_BMIX_10_25",
       name: "Laguna WC-401 B-Mix Cone 10 (25 lb)",
-      description: "High-fire version of B-Mix for cone 10 workflows.",
+      description:
+        "Wet clay direct from Laguna in a 25 lb bag. High-fire stoneware, smooth porcelain texture, fires to a cream color in oxidation.",
       category: "Clays",
       priceCents: 4000,
-      trackInventory: true,
-      inventoryOnHand: 28,
+      trackInventory: false,
+    },
+    {
+      sku: "LAGUNA_BMIX_10_50",
+      name: "Laguna WC-401 B-Mix Cone 10 (50 lb)",
+      description:
+        "Wet clay direct from Laguna in a 50 lb box. High-fire stoneware, smooth porcelain texture, fires to a cream color in oxidation.",
+      category: "Clays",
+      priceCents: 8000,
+      trackInventory: false,
     },
     {
       sku: "LAGUNA_BMIX_SPECKS_5_25",
       name: "Laguna B-Mix w/ Specks Cone 5/6 (25 lb)",
-      description: "Mid-fire speckled body with warm texture.",
+      description:
+        "Wet clay direct from Laguna in a 25 lb bag. Mid-fire stoneware with specks, smooth and workable. Prefers slow drying and ample compression.",
       category: "Clays",
       priceCents: 4500,
-      trackInventory: true,
-      inventoryOnHand: 24,
+      trackInventory: false,
+    },
+    {
+      sku: "LAGUNA_BMIX_SPECKS_5_50",
+      name: "Laguna B-Mix w/ Specks Cone 5/6 (50 lb)",
+      description:
+        "Wet clay direct from Laguna in a 50 lb box. Mid-fire stoneware with specks, smooth and workable. Prefers slow drying and ample compression.",
+      category: "Clays",
+      priceCents: 9000,
+      trackInventory: false,
     },
     {
       sku: "RECYCLED_CLAY_MIDFIRE",
-      name: "Recycled Clay - Mixed Midfire (per lb)",
-      description: "Recycled midfire clay for practice and tests.",
+      name: "Recycled Clay - Mixed MidFire (per lb)",
+      description:
+        "Freshly pugged clay from the studio. Budget friendly option for practice. Sold by the lb.",
       category: "Clays",
       priceCents: 100,
-      trackInventory: true,
-      inventoryOnHand: 300,
+      trackInventory: false,
     },
     {
       sku: "MAYCO_WAX_RESIST_PINT",
       name: "Mayco AC-302 Wax Resist (pint)",
-      description: "Water-based wax resist for clean glaze breaks.",
+      description:
+        "Water-based coating that repels glaze and keeps surfaces clean. Blue in the jar so you can see where it is applied.",
       category: "Glaze Supplies",
       priceCents: 800,
-      trackInventory: true,
-      inventoryOnHand: 18,
+      trackInventory: false,
+    },
+    {
+      sku: "MAYCO_WAX_RESIST_GALLON",
+      name: "Mayco AC-302 Wax Resist (gallon)",
+      description:
+        "Water-based coating that repels glaze and keeps surfaces clean. Blue in the jar so you can see where it is applied.",
+      category: "Glaze Supplies",
+      priceCents: 7000,
+      trackInventory: false,
     },
     {
       sku: "LOCKER_ACCESS_MONTH",
       name: "Locker Access - One Month",
-      description: "Small locker for tools and personal items.",
+      description:
+        "Rent a studio locker for a month. Supply your own lock. Locker dimensions are 11\" x 9\" x 16\". Best for tools, dry components, and bagged clays.",
       category: "Studio Add-ons",
       priceCents: 500,
       trackInventory: false,
     },
     {
-      sku: "GLAZES_TAKE_HOME_SET",
-      name: "Glazes (Take Home) - Starter Set",
-      description: "Curated glaze selection ready to take home.",
+      sku: "GLAZES_TAKE_HOME_4OZ",
+      name: "Glazes (Take Home) - 4 oz",
+      description:
+        "Take any of our studio glazes home. Includes a glass storage jug. Rotating tap of glazes, including specialty options.",
       category: "Glaze Supplies",
-      priceCents: 4000,
-      trackInventory: true,
-      inventoryOnHand: 12,
+      priceCents: 400,
+      trackInventory: false,
+    },
+    {
+      sku: "GLAZES_TAKE_HOME_16OZ",
+      name: "Glazes (Take Home) - 16 oz",
+      description:
+        "Take any of our studio glazes home. Includes a glass storage jug. Rotating tap of glazes, including specialty options.",
+      category: "Glaze Supplies",
+      priceCents: 1600,
+      trackInventory: false,
+    },
+    {
+      sku: "GLAZES_TAKE_HOME_32OZ",
+      name: "Glazes (Take Home) - 32 oz",
+      description:
+        "Take any of our studio glazes home. Includes a glass storage jug. Rotating tap of glazes, including specialty options.",
+      category: "Glaze Supplies",
+      priceCents: 2800,
+      trackInventory: false,
+    },
+    {
+      sku: "GLAZES_TAKE_HOME_64OZ",
+      name: "Glazes (Take Home) - 64 oz",
+      description:
+        "Take any of our studio glazes home. Includes a glass storage jug. Rotating tap of glazes, including specialty options.",
+      category: "Glaze Supplies",
+      priceCents: 5600,
+      trackInventory: false,
     },
   ];
 
@@ -328,7 +393,7 @@ export const seedMaterialsCatalog = onRequest({ region: REGION }, async (req, re
       stripePriceId: null,
       imageUrl: null,
       trackInventory: sample.trackInventory,
-      inventoryOnHand: sample.trackInventory ? sample.inventoryOnHand ?? 0 : null,
+      inventoryOnHand: sample.trackInventory ? 0 : null,
       inventoryReserved: sample.trackInventory ? 0 : null,
       active: true,
       createdAt: exists ? snap.data()?.createdAt ?? t : t,
@@ -376,7 +441,7 @@ export const createMaterialsCheckoutSession = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "materialsCheckout",
       max: 8,
@@ -569,7 +634,10 @@ export const createMaterialsCheckoutSession = onRequest(
       });
     } catch (err: any) {
       logger.error("createMaterialsCheckoutSession failed", err);
-      res.status(500).json({ ok: false, message: err?.message ?? String(err) });
+      res.status(500).json({
+        ok: false,
+        message: "Unable to start checkout right now. Please try again in a minute.",
+      });
     }
   }
 );
@@ -668,3 +736,4 @@ export const stripeWebhook = onRequest({ region: REGION, timeoutSeconds: 60 }, a
 
   res.status(200).json({ ok: true });
 });
+

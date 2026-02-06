@@ -20,6 +20,17 @@ import {
 } from "./shared";
 import { TimelineEventType } from "./timelineEventTypes";
 import { z } from "zod";
+export {
+  registerDeviceToken,
+  unregisterDeviceToken,
+  runNotificationFailureDrill,
+  onKilnFiringUnloaded,
+  processNotificationJob,
+  processQueuedNotificationJobs,
+  aggregateNotificationDeliveryMetrics,
+  runNotificationMetricsAggregationNow,
+  cleanupStaleDeviceTokens,
+} from "./notifications";
 
 // -----------------------------
 // Config
@@ -358,7 +369,7 @@ export const syncFiringsNow = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "syncFiringsNow",
       max: 3,
@@ -432,7 +443,7 @@ export const createBatch = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "createBatch",
       max: 6,
@@ -539,7 +550,7 @@ export const submitDraftBatch = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "submitDraftBatch",
       max: 6,
@@ -620,7 +631,7 @@ export const pickedUpAndClose = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "pickedUpAndClose",
       max: 10,
@@ -687,7 +698,7 @@ export const continueJourney = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "continueJourney",
       max: 4,
@@ -782,7 +793,7 @@ export const shelveBatch = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "shelveBatch",
     max: 15,
@@ -838,7 +849,7 @@ export const kilnLoad = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "kilnLoad",
     max: 20,
@@ -905,7 +916,7 @@ export const kilnUnload = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "kilnUnload",
     max: 20,
@@ -968,7 +979,7 @@ export const readyForPickup = onRequest({ region: REGION }, async (req, res) => 
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "readyForPickup",
     max: 20,
@@ -1004,6 +1015,21 @@ export { createReservation } from "./createReservation";
 export { normalizeTimelineEventTypes } from "./normalizeTimelineEventTypes";
 export { createMaterialsCheckoutSession, listMaterialsProducts, seedMaterialsCatalog, stripeWebhook } from "./materials";
 export { importLibraryIsbns } from "./library";
+export {
+  getJukeboxConfig,
+  listTracks,
+  listQueue,
+  getJukeboxState,
+  enqueueTrack,
+  vote,
+  requestSkip,
+  adminUpsertTrack,
+  adminSetConfig,
+  adminAdvanceQueue,
+  adminSetPlaybackState,
+  adminSkipNowPlaying,
+  adminClearQueue,
+} from "./jukebox";
 export {
   listEvents,
   listEventSignups,
@@ -1065,5 +1091,6 @@ export const backfillIsClosed = onRequest(
     res.status(200).json({ ok: true, scanned: snaps.size, updated });
   }
 );
+
 
 

@@ -11,14 +11,21 @@ import {
   where,
 } from "firebase/firestore";
 import type { ImportLibraryIsbnsResponse } from "../api/portalContracts";
-import { createFunctionsClient, type LastRequest } from "../api/functionsClient";
-import TroubleshootingPanel from "../components/TroubleshootingPanel";
+import { createFunctionsClient } from "../api/functionsClient";
 import { db } from "../firebase";
+import {
+  normalizeLibraryItem,
+  normalizeLibraryLoan,
+  normalizeLibraryRequest,
+} from "../lib/normalizers/library";
 import type { LibraryItem, LibraryLoan, LibraryRequest } from "../types/library";
+import { toVoidHandler } from "../utils/toVoidHandler";
 import { formatMaybeTimestamp } from "../utils/format";
 import "./LendingLibraryView.css";
 
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
+type ImportMetaEnvShape = { VITE_FUNCTIONS_BASE_URL?: string };
+const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
 const MAX_LOANS = 2;
 const LOAN_LENGTH_LABEL = "1 month";
 
@@ -32,12 +39,14 @@ type Props = {
 
 function resolveFunctionsBaseUrl() {
   const env =
-    typeof import.meta !== "undefined" &&
-    (import.meta as any).env &&
-    (import.meta as any).env.VITE_FUNCTIONS_BASE_URL
-      ? String((import.meta as any).env.VITE_FUNCTIONS_BASE_URL)
+    typeof import.meta !== "undefined" && ENV.VITE_FUNCTIONS_BASE_URL
+      ? String(ENV.VITE_FUNCTIONS_BASE_URL)
       : "";
   return env || DEFAULT_FUNCTIONS_BASE_URL;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function normalizeIsbnList(raw: string) {
@@ -95,7 +104,6 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
   const [csvImportBusy, setCsvImportBusy] = useState(false);
   const [csvImportStatus, setCsvImportStatus] = useState("");
   const [csvImportError, setCsvImportError] = useState("");
-  const [lastReq, setLastReq] = useState<LastRequest | null>(null);
 
   const baseUrl = useMemo(() => resolveFunctionsBaseUrl(), []);
   const hasAdmin = isStaff || !!adminToken?.trim();
@@ -105,7 +113,6 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
       baseUrl,
       getIdToken: async () => await user.getIdToken(),
       getAdminToken: () => adminToken,
-      onLastRequest: setLastReq,
     });
   }, [adminToken, baseUrl, user]);
 
@@ -115,13 +122,12 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
     try {
       const itemsQuery = query(collection(db, "libraryItems"), orderBy("title", "asc"), limit(500));
       const snap = await getDocs(itemsQuery);
-      const rows: LibraryItem[] = snap.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...(docSnap.data() as any),
-      }));
+      const rows: LibraryItem[] = snap.docs.map((docSnap) =>
+        normalizeLibraryItem(docSnap.id, docSnap.data() as Partial<LibraryItem>)
+      );
       setItems(rows);
-    } catch (err: any) {
-      setItemsError(`Library items failed: ${err?.message || String(err)}`);
+    } catch (error: unknown) {
+      setItemsError(`Library items failed: ${getErrorMessage(error)}`);
     } finally {
       setItemsLoading(false);
     }
@@ -142,18 +148,17 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
           limit(200)
         );
         const snap = await getDocs(requestsQuery);
-        const rows: LibraryRequest[] = snap.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...(docSnap.data() as any),
-        }));
+        const rows: LibraryRequest[] = snap.docs.map((docSnap) =>
+          normalizeLibraryRequest(docSnap.id, docSnap.data() as Partial<LibraryRequest>)
+        );
         rows.sort((a, b) => {
           const aTime = a.requestedAt?.toDate?.()?.getTime() ?? 0;
           const bTime = b.requestedAt?.toDate?.()?.getTime() ?? 0;
           return bTime - aTime;
         });
         setRequests(rows);
-      } catch (err: any) {
-        setRequestsError(`Requests failed: ${err?.message || String(err)}`);
+      } catch (error: unknown) {
+        setRequestsError(`Requests failed: ${getErrorMessage(error)}`);
       } finally {
         setRequestsLoading(false);
       }
@@ -173,18 +178,17 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
           limit(50)
         );
         const snap = await getDocs(loansQuery);
-        const rows: LibraryLoan[] = snap.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...(docSnap.data() as any),
-        }));
+        const rows: LibraryLoan[] = snap.docs.map((docSnap) =>
+          normalizeLibraryLoan(docSnap.id, docSnap.data() as Partial<LibraryLoan>)
+        );
         rows.sort((a, b) => {
           const aTime = a.loanedAt?.toDate?.()?.getTime() ?? 0;
           const bTime = b.loanedAt?.toDate?.()?.getTime() ?? 0;
           return bTime - aTime;
         });
         setLoans(rows);
-      } catch (err: any) {
-        setLoansError(`Loans failed: ${err?.message || String(err)}`);
+      } catch (error: unknown) {
+        setLoansError(`Loans failed: ${getErrorMessage(error)}`);
       } finally {
         setLoansLoading(false);
       }
@@ -266,13 +270,12 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
       const refreshed = await getDocs(
         query(collection(db, "libraryRequests"), where("requesterUid", "==", user.uid), limit(200))
       );
-      const rows: LibraryRequest[] = refreshed.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...(docSnap.data() as any),
-      }));
+      const rows: LibraryRequest[] = refreshed.docs.map((docSnap) =>
+        normalizeLibraryRequest(docSnap.id, docSnap.data() as Partial<LibraryRequest>)
+      );
       setRequests(rows);
-    } catch (err: any) {
-      setActionStatus(`Request failed: ${err?.message || String(err)}`);
+    } catch (error: unknown) {
+      setActionStatus(`Request failed: ${getErrorMessage(error)}`);
     } finally {
       setActionBusy(false);
     }
@@ -315,8 +318,8 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
       setDonationAuthor("");
       setDonationFormat("");
       setDonationNotes("");
-    } catch (err: any) {
-      setDonationStatus(`Donation request failed: ${err?.message || String(err)}`);
+    } catch (error: unknown) {
+      setDonationStatus(`Donation request failed: ${getErrorMessage(error)}`);
     } finally {
       setDonationBusy(false);
     }
@@ -343,8 +346,8 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
       setCsvImportStatus(
         `Imported ${resp.created} new, updated ${resp.updated}. ${errorCount} errors.`
       );
-    } catch (err: any) {
-      setCsvImportError(err?.message || String(err));
+    } catch (error: unknown) {
+      setCsvImportError(getErrorMessage(error));
     } finally {
       await reloadItems();
       setCsvImportBusy(false);
@@ -373,8 +376,8 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
       });
       setScanStatus("Scan saved.");
       setScanIsbn("");
-    } catch (err: any) {
-      setScanStatus(err?.message || String(err));
+    } catch (error: unknown) {
+      setScanStatus(getErrorMessage(error));
     } finally {
       await reloadItems();
       setScanBusy(false);
@@ -386,8 +389,8 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
     try {
       const text = await file.text();
       setCsvText(text);
-    } catch (err: any) {
-      setCsvImportError(`Failed to read file: ${err?.message || String(err)}`);
+    } catch (error: unknown) {
+      setCsvImportError(`Failed to read file: ${getErrorMessage(error)}`);
     }
   };
 
@@ -484,7 +487,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                   {activeLoan ? (
                     <button
                       className="btn btn-primary"
-                      onClick={() => handleRequest(item, "return")}
+                      onClick={toVoidHandler(() => handleRequest(item, "return"))}
                       disabled={actionBusy}
                     >
                       {actionBusy ? "Requesting..." : "Request return"}
@@ -500,7 +503,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                   ) : (
                     <button
                       className="btn btn-primary"
-                      onClick={() => handleRequest(item, actionType)}
+                      onClick={toVoidHandler(() => handleRequest(item, actionType))}
                       disabled={actionBusy || !canRequest}
                     >
                       {actionBusy ? "Requesting..." : actionLabel}
@@ -625,7 +628,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
           </label>
         </div>
         {donationStatus ? <div className="notice inline-alert">{donationStatus}</div> : null}
-        <button className="btn btn-primary" onClick={handleDonation} disabled={donationBusy}>
+        <button className="btn btn-primary" onClick={toVoidHandler(handleDonation)} disabled={donationBusy}>
           {donationBusy ? "Submitting..." : "Submit donation"}
         </button>
       </section>
@@ -643,7 +646,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
               accept=".csv,text/csv,text/plain"
               onChange={(event) => {
                 const file = event.target.files?.[0] ?? null;
-                void handleCsvFile(file);
+                toVoidHandler(handleCsvFile)(file);
               }}
             />
           </label>
@@ -655,7 +658,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
           />
           {csvImportError ? <div className="alert inline-alert">{csvImportError}</div> : null}
           {csvImportStatus ? <div className="notice inline-alert">{csvImportStatus}</div> : null}
-          <button className="btn btn-primary" onClick={handleCsvImport} disabled={csvImportBusy}>
+          <button className="btn btn-primary" onClick={toVoidHandler(handleCsvImport)} disabled={csvImportBusy}>
             {csvImportBusy ? "Importing..." : "Import ISBNs"}
           </button>
         </section>
@@ -675,22 +678,17 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
-                void handleScanSubmit();
+                toVoidHandler(handleScanSubmit)();
               }
             }}
           />
           {scanStatus ? <div className="notice inline-alert">{scanStatus}</div> : null}
-          <button className="btn btn-primary" onClick={handleScanSubmit} disabled={scanBusy}>
+          <button className="btn btn-primary" onClick={toVoidHandler(handleScanSubmit)} disabled={scanBusy}>
             {scanBusy ? "Adding..." : "Add scanned ISBN"}
           </button>
         </section>
       ) : null}
 
-      <TroubleshootingPanel
-        lastReq={lastReq}
-        curl={client.getLastCurl()}
-        onStatus={(msg) => setCsvImportStatus(msg)}
-      />
     </div>
   );
 }

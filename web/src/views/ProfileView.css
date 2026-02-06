@@ -65,6 +65,49 @@
   font-size: 13px;
 }
 
+.notification-settings {
+  display: grid;
+  gap: 16px;
+}
+
+.notification-group {
+  display: grid;
+  gap: 10px;
+}
+
+.notification-settings .toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.notification-settings .toggle.disabled {
+  opacity: 0.6;
+}
+
+.notification-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.notification-settings select {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 10px 12px;
+}
+
+.notification-settings input {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 10px 12px;
+}
+
 .form-alert {
   margin: 0;
   padding: 10px 12px;

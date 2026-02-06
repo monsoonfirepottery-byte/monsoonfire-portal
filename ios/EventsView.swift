@@ -1,6 +1,6 @@
 import SwiftUI
 
-private enum RosterFilter: String, CaseIterable, Identifiable {
+enum RosterFilter: String, CaseIterable, Identifiable {
     case all
     case ticketed
     case waitlisted

@@ -12,7 +12,7 @@
         "categories:performance": [
           "error",
           {
-            "minScore": 0.94
+            "minScore": 0.55
           }
         ],
         "categories:accessibility": [

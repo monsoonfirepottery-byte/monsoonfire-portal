@@ -12,24 +12,26 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { formatCents, formatDateTime } from "../utils/format";
-import {
-  createFunctionsClient,
-  type LastRequest,
-} from "../api/functionsClient";
+import { checkoutErrorMessage } from "../utils/userFacingErrors";
+import { createFunctionsClient } from "../api/functionsClient";
 import type { CreateEventCheckoutSessionResponse } from "../api/portalContracts";
-import TroubleshootingPanel from "../components/TroubleshootingPanel";
+import { toVoidHandler } from "../utils/toVoidHandler";
 import "./BillingView.css";
 
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
+type ImportMetaEnvShape = { VITE_FUNCTIONS_BASE_URL?: string };
+const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
 
 function resolveFunctionsBaseUrl() {
   const env =
-    typeof import.meta !== "undefined" &&
-    (import.meta as any).env &&
-    (import.meta as any).env.VITE_FUNCTIONS_BASE_URL
-      ? String((import.meta as any).env.VITE_FUNCTIONS_BASE_URL)
+    typeof import.meta !== "undefined" && ENV.VITE_FUNCTIONS_BASE_URL
+      ? String(ENV.VITE_FUNCTIONS_BASE_URL)
       : "";
   return env || DEFAULT_FUNCTIONS_BASE_URL;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 type FirestoreTimestamp = { toDate?: () => Date };
@@ -115,7 +117,6 @@ export default function BillingView({ user }: Props) {
   const [statusMessage, setStatusMessage] = useState("");
   const [payBusyId, setPayBusyId] = useState("");
   const [receiptFilter, setReceiptFilter] = useState<"all" | "events" | "store">("all");
-  const [lastReq, setLastReq] = useState<LastRequest | null>(null);
 
   const baseUrl = useMemo(() => resolveFunctionsBaseUrl(), []);
   const client = useMemo(
@@ -123,7 +124,6 @@ export default function BillingView({ user }: Props) {
       createFunctionsClient({
         baseUrl,
         getIdToken: async () => await user.getIdToken(),
-        onLastRequest: setLastReq,
       }),
     [baseUrl, user]
   );
@@ -147,8 +147,8 @@ export default function BillingView({ user }: Props) {
         id: docSnap.id,
       }));
       setCheckIns(rows.filter((row) => row.paymentStatus !== "paid"));
-    } catch (err: any) {
-      setCheckInsError(err?.message || String(err));
+    } catch (error: unknown) {
+      setCheckInsError(getErrorMessage(error));
     } finally {
       setCheckInsLoading(false);
     }
@@ -172,8 +172,8 @@ export default function BillingView({ user }: Props) {
         id: docSnap.id,
       }));
       setCharges(rows);
-    } catch (err: any) {
-      setChargesError(err?.message || String(err));
+    } catch (error: unknown) {
+      setChargesError(getErrorMessage(error));
     } finally {
       setChargesLoading(false);
     }
@@ -197,30 +197,30 @@ export default function BillingView({ user }: Props) {
         id: docSnap.id,
       }));
       setMaterials(rows);
-    } catch (err: any) {
-      setMaterialsError(err?.message || String(err));
+    } catch (error: unknown) {
+      setMaterialsError(getErrorMessage(error));
     } finally {
       setMaterialsLoading(false);
     }
   }, [user]);
 
   const refreshBilling = useCallback(() => {
-    loadCheckIns();
-    loadCharges();
-    loadMaterials();
+    void loadCheckIns();
+    void loadCharges();
+    void loadMaterials();
     setStatusMessage("Billing data refreshed.");
   }, [loadCheckIns, loadCharges, loadMaterials]);
 
   useEffect(() => {
-    loadCheckIns();
+    void loadCheckIns();
   }, [loadCheckIns]);
 
   useEffect(() => {
-    loadCharges();
+    void loadCharges();
   }, [loadCharges]);
 
   useEffect(() => {
-    loadMaterials();
+    void loadMaterials();
   }, [loadMaterials]);
 
   const uniqueEventIds = useMemo(() => {
@@ -238,14 +238,15 @@ export default function BillingView({ user }: Props) {
   useEffect(() => {
     if (missingEventIds.length === 0) return;
     let active = true;
-    (async () => {
+    void (async () => {
       const updates: Record<string, string> = {};
       await Promise.all(
         missingEventIds.map(async (eventId) => {
           try {
             const snap = await getDoc(doc(db, "events", eventId));
             if (snap.exists()) {
-              const title = (snap.data() as Record<string, any>).title || eventId;
+              const maybeTitle = (snap.data() as { title?: unknown }).title;
+              const title = typeof maybeTitle === "string" && maybeTitle.trim() ? maybeTitle : eventId;
               updates[eventId] = title;
             }
           } catch {
@@ -351,11 +352,15 @@ export default function BillingView({ user }: Props) {
         return;
       }
       setStatusMessage("Checkout session created, but no URL returned.");
-    } catch (err: any) {
-      setStatusMessage(err?.message || String(err));
+    } catch (error: unknown) {
+      setStatusMessage(checkoutErrorMessage(error));
     } finally {
       setPayBusyId("");
     }
+  };
+
+  const handleCheckoutHandlerError = (error: unknown) => {
+    setStatusMessage(checkoutErrorMessage(error));
   };
 
   return (
@@ -427,7 +432,11 @@ export default function BillingView({ user }: Props) {
                   <div className="billing-row-actions">
                     <button
                       className="btn btn-primary"
-                      onClick={() => handleCheckout(signup)}
+                      onClick={toVoidHandler(
+                        () => handleCheckout(signup),
+                        handleCheckoutHandlerError,
+                        "billing.checkout"
+                      )}
                       disabled={!!payBusyId}
                     >
                       {payBusyId === signup.id ? "Preparing checkout..." : "Pay now (Stripe)"}
@@ -537,7 +546,6 @@ export default function BillingView({ user }: Props) {
         </p>
       </section>
 
-      <TroubleshootingPanel lastReq={lastReq} curl={client.getLastCurl()} onStatus={setStatusMessage} />
     </div>
   );
 }

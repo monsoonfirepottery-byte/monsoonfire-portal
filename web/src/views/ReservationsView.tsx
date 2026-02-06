@@ -17,68 +17,13 @@ import {
   computeDeliveryCost,
   computeEstimatedCost,
 } from "../lib/pricing";
+import {
+  normalizeReservationRecord,
+  type ReservationRecord,
+} from "../lib/normalizers/reservations";
 import { formatDateTime } from "../utils/format";
+import { toVoidHandler } from "../utils/toVoidHandler";
 import "./ReservationsView.css";
-
-type ReservationStatus = "REQUESTED" | "CONFIRMED" | "WAITLISTED" | "CANCELLED" | string;
-
-type ReservationRecord = {
-  id: string;
-  status: ReservationStatus;
-  firingType: string;
-  shelfEquivalent: number;
-  footprintHalfShelves?: number | null;
-  heightInches?: number | null;
-  tiers?: number | null;
-  estimatedHalfShelves?: number | null;
-  useVolumePricing?: boolean;
-  volumeIn3?: number | null;
-  estimatedCost?: number | null;
-  preferredWindow?: {
-    latestDate?: { toDate?: () => Date } | null;
-  } | null;
-  linkedBatchId?: string | null;
-  wareType?: string | null;
-  kilnId?: string | null;
-  kilnLabel?: string | null;
-  quantityTier?: string | null;
-  quantityLabel?: string | null;
-  dropOffQuantity?: {
-    id?: string | null;
-    label?: string | null;
-    pieceRange?: string | null;
-  } | null;
-  dropOffProfile?: {
-    id?: string | null;
-    label?: string | null;
-    pieceCount?: "single" | "many" | null;
-    hasTall?: boolean | null;
-    stackable?: boolean | null;
-    bisqueOnly?: boolean | null;
-    specialHandling?: boolean | null;
-  } | null;
-  photoUrl?: string | null;
-  notes?: {
-    general?: string | null;
-    clayBody?: string | null;
-    glazeNotes?: string | null;
-  } | null;
-  addOns?: {
-    rushRequested?: boolean;
-    wholeKilnRequested?: boolean;
-    pickupDeliveryRequested?: boolean;
-    returnDeliveryRequested?: boolean;
-    useStudioGlazes?: boolean;
-    glazeAccessCost?: number | null;
-    waxResistAssistRequested?: boolean;
-    glazeSanityCheckRequested?: boolean;
-    deliveryAddress?: string | null;
-    deliveryInstructions?: string | null;
-  } | null;
-  createdByRole?: string | null;
-  createdAt?: { toDate?: () => Date } | null;
-  updatedAt?: { toDate?: () => Date } | null;
-};
 
 type StaffUserOption = {
   id: string;
@@ -133,16 +78,35 @@ const CHECKIN_PREFILL_KEY = "mf_checkin_prefill";
 
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
-const DEV_MODE = typeof import.meta !== "undefined" && Boolean((import.meta as any).env?.DEV);
+type ImportMetaEnvShape = {
+  DEV?: boolean;
+  VITE_FUNCTIONS_BASE_URL?: string;
+  VITE_USE_EMULATORS?: string;
+  VITE_STORAGE_EMULATOR_HOST?: string;
+  VITE_STORAGE_EMULATOR_PORT?: string;
+};
+type StaffClaims = { staff?: boolean; roles?: string[] };
+const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
+const DEV_MODE = typeof import.meta !== "undefined" && Boolean(ENV.DEV);
 
 function resolveFunctionsBaseUrl() {
   const env =
-    typeof import.meta !== "undefined" &&
-    (import.meta as any).env &&
-    (import.meta as any).env.VITE_FUNCTIONS_BASE_URL
-      ? String((import.meta as any).env.VITE_FUNCTIONS_BASE_URL)
+    typeof import.meta !== "undefined" && ENV.VITE_FUNCTIONS_BASE_URL
+      ? String(ENV.VITE_FUNCTIONS_BASE_URL)
       : "";
   return env || DEFAULT_FUNCTIONS_BASE_URL;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const value = error as { code?: unknown; name?: unknown };
+  if (typeof value.code === "string") return value.code;
+  if (typeof value.name === "string") return value.name;
+  return undefined;
 }
 
 function formatPreferredWindow(record: ReservationRecord): string {
@@ -167,7 +131,7 @@ function formatHalfShelfCount(value: number | null | undefined) {
   return `${rounded} half shelf${rounded === 1 ? "" : "es"}`;
 }
 
-function sanitizeDebugPayload(payload: Record<string, any> | null | undefined) {
+function sanitizeDebugPayload(payload: Record<string, unknown> | null | undefined) {
   if (!payload || typeof payload !== "object") return payload;
   const next = { ...payload };
   if (next.photoUrl) next.photoUrl = "<redacted>";
@@ -424,11 +388,11 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
       .getIdTokenResult()
       .then((result) => {
         if (cancelled) return;
-        const claims = result?.claims ?? {};
-        const roles = Array.isArray((claims as any).roles)
-          ? (claims as any).roles.filter((role: unknown) => typeof role === "string")
+        const claims = (result?.claims ?? {}) as StaffClaims;
+        const roles = Array.isArray(claims.roles)
+          ? claims.roles.filter((role: unknown) => typeof role === "string")
           : [];
-        const isStaffClaim = Boolean((claims as any).staff) || roles.includes("staff");
+        const isStaffClaim = Boolean(claims.staff) || roles.includes("staff");
         setHasStaffClaim(isStaffClaim);
         if (!DEV_MODE) return;
         setAuthDebug({
@@ -450,8 +414,8 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         });
         setDevError({
           context: "auth",
-          code: error?.code,
-          message: error?.message || "Unable to read auth claims.",
+          code: getErrorCode(error),
+          message: getErrorMessage(error) || "Unable to read auth claims.",
         });
       });
     return () => {
@@ -459,12 +423,12 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     };
   }, [user]);
 
-  const captureDevError = (context: string, error: any, path?: string) => {
+  const captureDevError = (context: string, error: unknown, path?: string) => {
     if (!DEV_MODE) return;
     const detail = {
       context,
-      code: error?.code || error?.name,
-      message: error?.message || String(error),
+      code: getErrorCode(error),
+      message: getErrorMessage(error),
       path,
     };
     setDevError(detail);
@@ -591,7 +555,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     getDocs(usersQuery)
       .then((snap) => {
         const rows: StaffUserOption[] = snap.docs.map((docSnap) => {
-          const data = docSnap.data() as any;
+          const data = docSnap.data() as Partial<StaffUserOption>;
           return {
             id: docSnap.id,
             displayName: data?.displayName || "Member",
@@ -612,7 +576,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
       .then((snap) => {
         const next: Record<string, string> = {};
         snap.docs.forEach((docSnap) => {
-          const data = docSnap.data() as any;
+          const data = docSnap.data() as { name?: unknown; status?: unknown };
           if (data?.name) {
             next[String(data.name)] = String(data.status || "idle");
           }
@@ -656,15 +620,16 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
 
     getDocs(reservationsQuery)
       .then((snap) => {
-        const rows: ReservationRecord[] = snap.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...(docSnap.data() as any),
-        }));
+        const rows: ReservationRecord[] = snap.docs.map((docSnap) =>
+          normalizeReservationRecord(docSnap.id, docSnap.data() as Partial<ReservationRecord>)
+        );
         setReservations(rows);
       })
       .catch((err) => {
-        const message = err?.message || "Unable to load check-ins.";
-        const code = String(err?.code || "");
+        const errObj = err as { message?: unknown; code?: unknown } | null | undefined;
+        const message =
+          typeof errObj?.message === "string" ? errObj.message : "Unable to load check-ins.";
+        const code = typeof errObj?.code === "string" ? errObj.code : "";
         const isPermission =
           code.includes("permission-denied") ||
           String(message).toLowerCase().includes("missing or insufficient permissions");
@@ -705,7 +670,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
           status: lastReq.status,
           ok: lastReq.ok,
           error: lastReq.error,
-          payload: sanitizeDebugPayload(lastReq.payload as Record<string, any>),
+          payload: sanitizeDebugPayload(lastReq.payload as Record<string, unknown>),
         }
         : null,
       firestorePaths: {
@@ -723,9 +688,18 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     try {
       await navigator.clipboard.writeText(JSON.stringify(debugPacket, null, 2));
       setDevCopyStatus("Debug snapshot copied.");
-    } catch (error: any) {
-      setDevCopyStatus(error?.message || "Copy failed.");
+    } catch (error: unknown) {
+      setDevCopyStatus(getErrorMessage(error) || "Copy failed.");
     }
+  };
+
+  const handleFormHandlerError = (error: unknown) => {
+    setFormError(getErrorMessage(error) || "Submission failed.");
+    setIsSaving(false);
+  };
+
+  const handleCopyDebugError = (error: unknown) => {
+    setDevCopyStatus(getErrorMessage(error) || "Copy failed.");
   };
 
   const toggleNotesTag = (tag: string) => {
@@ -761,9 +735,9 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     const file = photoFile;
     if (!file) return { url: null, path: null };
     const storage = getStorage();
-    if (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_USE_EMULATORS === "true") {
-      const host = String((import.meta as any).env?.VITE_STORAGE_EMULATOR_HOST || "127.0.0.1");
-      const port = Number((import.meta as any).env?.VITE_STORAGE_EMULATOR_PORT || 9199);
+    if (typeof import.meta !== "undefined" && ENV.VITE_USE_EMULATORS === "true") {
+      const host = String(ENV.VITE_STORAGE_EMULATOR_HOST || "127.0.0.1");
+      const port = Number(ENV.VITE_STORAGE_EMULATOR_PORT || 9199);
       connectStorageEmulator(storage, host, port);
     }
 
@@ -930,10 +904,10 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
       await client.postJson("createReservation", payload);
       setFormStatus(mode === "staff" ? "Staff check-in saved." : "Check-in sent.");
       resetForm();
-    } catch (err: any) {
+    } catch (error: unknown) {
       const recentReq = client.getLastRequest();
-      captureDevError("submit", err, recentReq?.url || "functions/createReservation");
-      setFormError(err?.message || "Submission failed.");
+      captureDevError("submit", error, recentReq?.url || "functions/createReservation");
+      setFormError(getErrorMessage(error) || "Submission failed.");
     } finally {
       setIsSaving(false);
     }
@@ -1042,7 +1016,10 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         {mode === "staff" && !staffTargetUid ? (
           <div className="notice inline-alert">Select a client above to unlock the form.</div>
         ) : (
-          <form onSubmit={handleSubmit} className="checkin-form">
+          <form
+            onSubmit={toVoidHandler(handleSubmit, handleFormHandlerError, "reservations.submit")}
+            className="checkin-form"
+          >
             <div className="checkin-step">
               <div className="checkin-step-title">1. Choose the clay body</div>
               <div className="option-grid">
@@ -1791,7 +1768,11 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
           </div>
 
           <div className="debug-actions">
-            <button type="button" className="btn btn-ghost" onClick={handleCopyDebug}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={toVoidHandler(handleCopyDebug, handleCopyDebugError, "reservations.copyDebug")}
+            >
               Copy debug snapshot
             </button>
             {devCopyStatus ? <span className="form-helper">{devCopyStatus}</span> : null}

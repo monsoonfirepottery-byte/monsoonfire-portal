@@ -3,11 +3,27 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("firebase/auth")) return "vendor-firebase-auth";
+          if (id.includes("firebase/firestore")) return "vendor-firebase-firestore";
+          if (id.includes("firebase/storage")) return "vendor-firebase-storage";
+          if (id.includes("firebase/app")) return "vendor-firebase-app";
+          if (id.includes("firebase")) return "vendor-firebase-core";
+          if (id.includes("react")) return "vendor-react";
+          return "vendor";
+        }
+      }
+    }
+  },
   plugins: [
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.ico", "apple-touch-icon.png"],
+      includeAssets: ["apple-touch-icon.png"],
       manifest: {
         name: "Monsoon Fire Portal",
         short_name: "MonsoonFire",

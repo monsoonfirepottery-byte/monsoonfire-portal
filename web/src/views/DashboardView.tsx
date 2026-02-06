@@ -4,13 +4,26 @@ import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 import { db } from "../firebase";
 import { mockFirings, mockKilns } from "../data/kilnScheduleMock";
 import { useBatches } from "../hooks/useBatches";
+import { normalizeFiringDoc as normalizeFiringRow, normalizeKilnDoc as normalizeKilnRow } from "../lib/normalizers/kiln";
 import type { Kiln, KilnFiring } from "../types/kiln";
 import type { Announcement, DirectMessageThread } from "../types/messaging";
 import { formatMaybeTimestamp } from "../utils/format";
 
 const SAMPLE_WORKSHOPS = [
-  { name: "Wheel Lab", time: "Sat 10:00 AM", seats: "3 open" },
-  { name: "Glaze Science", time: "Sun 4:00 PM", seats: "Waitlist" },
+  {
+    name: "Wheel Lab",
+    time: "Sat 10:00 AM",
+    spotsLeft: 3,
+    waitlist: 0,
+    level: "Beginner",
+  },
+  {
+    name: "Glaze Science",
+    time: "Sun 4:00 PM",
+    spotsLeft: 0,
+    waitlist: 6,
+    level: "Intermediate",
+  },
 ];
 
 const DASHBOARD_PIECES_PREVIEW = 3;
@@ -30,9 +43,12 @@ const RAKU_KILN_NAME = "Reduction Raku Kiln";
 type KilnRow = {
   id: string;
   name: string;
+  timeLabel: string;
   statusLabel: string;
   pill: string;
   etaLabel: string;
+  firingTypeLabel: string;
+  progress: number | null;
   isOffline: boolean;
 };
 
@@ -69,6 +85,24 @@ function formatRelativeEta(target: Date, now: Date) {
   return `in ${days}d`;
 }
 
+function formatShortDate(value: Date) {
+  return value.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function inferFiringTypeLabel(value?: string) {
+  if (!value) return "Firing";
+  const normalized = value.toLowerCase();
+  if (normalized.includes("bisque")) return "Bisque";
+  if (normalized.includes("glaze")) return "Glaze";
+  if (normalized.includes("raku")) return "Raku";
+  return "Firing";
+}
+
 function useKilnDashboardRows() {
   const [kilns, setKilns] = useState<Kiln[]>([]);
   const [firings, setFirings] = useState<KilnFiring[]>([]);
@@ -83,14 +117,12 @@ function useKilnDashboardRows() {
         const [kilnSnap, firingSnap] = await Promise.all([getDocs(kilnsQuery), getDocs(firingsQuery)]);
         setKilns(
           kilnSnap.docs.map((docSnap) => ({
-            id: docSnap.id,
-            ...(docSnap.data() as any),
+            ...normalizeKilnRow(docSnap.id, docSnap.data() as Partial<Kiln>),
           }))
         );
         setFirings(
           firingSnap.docs.map((docSnap) => ({
-            id: docSnap.id,
-            ...(docSnap.data() as any),
+            ...normalizeFiringRow(docSnap.id, docSnap.data() as Partial<KilnFiring>),
           }))
         );
       } catch (err) {
@@ -131,6 +163,13 @@ function useKilnDashboardRows() {
       .filter(Boolean) as Array<KilnFiring & { startDate: Date; endDate: Date }>;
   }, [rawFirings]);
 
+  const nextFiring = useMemo(() => {
+    const now = new Date();
+    return normalizedFirings
+      .filter((firing) => firing.status !== "cancelled" && firing.startDate > now)
+      .sort((a, b) => a.startDate.getTime() - b.startDate.getTime())[0];
+  }, [normalizedFirings]);
+
   const rows: KilnRow[] = useMemo(() => {
     const now = new Date();
     return displayKilns
@@ -152,7 +191,7 @@ function useKilnDashboardRows() {
               firing.status !== "cancelled" &&
               firing.startDate > now
           )
-          .sort((a, b) => a.startDate.getTime() - b.startDate.getTime())[0];
+            .sort((a, b) => a.startDate.getTime() - b.startDate.getTime())[0];
 
         const statusLabel = isOffline
           ? "Offline"
@@ -170,22 +209,51 @@ function useKilnDashboardRows() {
           ? "Temporarily offline"
           : active
             ? `Ends ${formatRelativeEta(active.endDate, now)}`
+          : next
+            ? `Starts ${formatRelativeEta(next.startDate, now)}`
+            : "No firing scheduled";
+        const firingSource = active ?? next;
+        const firingTypeLabel = inferFiringTypeLabel(
+          firingSource?.title || firingSource?.cycleType || ""
+        );
+        const timeLabel = isOffline
+          ? "Offline"
+          : active
+            ? `Ends ${formatRelativeEta(active.endDate, now)}`
             : next
               ? `Starts ${formatRelativeEta(next.startDate, now)}`
-              : "No firing scheduled";
+              : "No start scheduled";
+        const progress =
+          active && active.endDate.getTime() > active.startDate.getTime()
+            ? Math.min(
+                1,
+                Math.max(
+                  0,
+                  (now.getTime() - active.startDate.getTime()) /
+                    (active.endDate.getTime() - active.startDate.getTime())
+                )
+              )
+            : null;
 
         return {
           id: kiln.id,
           name: isRaku ? "Raku" : kiln.name,
+          timeLabel,
           statusLabel,
           pill,
           etaLabel,
+          firingTypeLabel,
+          progress,
           isOffline,
         };
       });
   }, [displayKilns, normalizedFirings]);
 
-  return rows;
+  const nextFiringLabel = nextFiring
+    ? `${formatShortDate(nextFiring.startDate)} · ${nextFiring.title || nextFiring.cycleType || "Firing"}`
+    : "No firings scheduled yet";
+
+  return { rows, nextFiringLabel };
 }
 
 type Props = {
@@ -194,7 +262,11 @@ type Props = {
   threads: DirectMessageThread[];
   announcements: Announcement[];
   onOpenKilnRentals: () => void;
+  onOpenCheckin: () => void;
+  onOpenQueues: () => void;
+  onOpenFirings: () => void;
   onOpenStudioResources: () => void;
+  onOpenGlazeBoard: () => void;
   onOpenCommunity: () => void;
   onOpenMessages: () => void;
   onOpenPieces: () => void;
@@ -206,7 +278,11 @@ export default function DashboardView({
   threads,
   announcements,
   onOpenKilnRentals,
+  onOpenCheckin,
+  onOpenQueues,
+  onOpenFirings,
   onOpenStudioResources,
+  onOpenGlazeBoard,
   onOpenCommunity,
   onOpenMessages,
   onOpenPieces,
@@ -216,7 +292,29 @@ export default function DashboardView({
   const archivedCount = history.length;
   const messagePreview = threads.slice(0, 3);
   const announcementPreview = announcements.slice(0, 3);
-  const kilnRows = useKilnDashboardRows();
+  const { rows: kilnRows, nextFiringLabel } = useKilnDashboardRows();
+  const queueFillCount = Math.min(8, Math.max(active.length, 0));
+  const queueFillRatio = Math.min(1, queueFillCount / 8);
+  const averageTurnaroundDays = useMemo(() => {
+    const durations = history
+      .map((item) => {
+        const created = coerceDate(item.createdAt);
+        const closed = coerceDate(item.closedAt);
+        if (!created || !closed) return null;
+        const diffDays = (closed.getTime() - created.getTime()) / (1000 * 60 * 60 * 24);
+        return diffDays > 0 ? diffDays : null;
+      })
+      .filter(Boolean) as number[];
+    if (durations.length === 0) return null;
+    const sample = durations.slice(0, 8);
+    const avg = sample.reduce((total, value) => total + value, 0) / sample.length;
+    return Math.round(avg);
+  }, [history]);
+  const nextPiece = activePreview[0];
+  const nextPieceStatus = nextPiece?.status || "In progress";
+  const nextPieceEta = nextPiece?.updatedAt
+    ? formatMaybeTimestamp(nextPiece.updatedAt)
+    : "Check back soon";
 
   return (
     <div className="dashboard">
@@ -261,23 +359,71 @@ export default function DashboardView({
         </div>
       </section>
 
+      <section className="quick-actions">
+        <div className="card card-3d quick-action-card">
+          <div className="card-title">Quick actions</div>
+          <div className="quick-action-row">
+            <button className="btn btn-primary" onClick={onOpenCheckin}>
+              Start a check-in
+            </button>
+            <button className="btn btn-ghost" onClick={onOpenQueues}>
+              View the queues
+            </button>
+            <button className="btn btn-ghost" onClick={onOpenFirings}>
+              Firings
+            </button>
+            <button className="btn btn-ghost" onClick={onOpenGlazeBoard}>
+              Glaze inspiration
+            </button>
+            <button className="btn btn-ghost" onClick={onOpenMessages}>
+              Message the studio
+            </button>
+          </div>
+          <p className="quick-action-note">Pick a lane and we will take it from there.</p>
+        </div>
+      </section>
+
       <section className="dashboard-grid">
         <div className="card card-3d">
           <div className="card-title">Your pieces</div>
           <div className="card-subtitle">Personal queue</div>
           {activePreview.length === 0 ? (
-            <div className="empty-state">No pieces in progress right now.</div>
+            <div className="empty-block">
+              <div className="empty-state">Nothing in the kiln line yet.</div>
+              <div className="empty-meta">Add work to the next firing.</div>
+              <button className="btn btn-primary" onClick={onOpenCheckin}>
+                Start a Check-In
+              </button>
+            </div>
           ) : (
-            <div className="list">
-              {activePreview.map((piece) => (
-                <div className="list-row" key={piece.id}>
-                  <div>
-                    <div className="list-title">{piece.title || "Untitled piece"}</div>
-                    <div className="list-meta">{piece.status || "In progress"}</div>
-                  </div>
-                  <div className="pill">{formatMaybeTimestamp(piece.updatedAt)}</div>
-                </div>
-              ))}
+            <div className="pieces-preview">
+              <div className="pieces-next">
+                <div className="pieces-next-label">Next status</div>
+                <div className="pieces-next-title">{nextPieceStatus}</div>
+                <div className="pieces-next-meta">{nextPieceEta}</div>
+              </div>
+              <div className="pieces-thumbs">
+                {activePreview.map((piece, index) => {
+                  const title = piece.title || "Piece";
+                  const initials = title
+                    .split(" ")
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((word) => word[0]?.toUpperCase())
+                    .join("");
+                  return (
+                    <div
+                      key={piece.id}
+                      className="piece-thumb"
+                      aria-label={`${title} preview`}
+                      title={title}
+                      data-index={index + 1}
+                    >
+                      {initials || "•"}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
           <button className="btn btn-ghost dashboard-link" onClick={onOpenPieces}>
@@ -288,18 +434,25 @@ export default function DashboardView({
         <div className="card card-3d">
           <div className="card-title">Studio snapshot</div>
           <div className="card-subtitle">Studio-wide status</div>
-          <div className="stat-grid">
-            <div className="stat">
-              <div className="stat-label">Pieces in progress</div>
-              <div className="stat-value">{active.length}</div>
+          <div className="snapshot-grid">
+            <div className="snapshot-block">
+              <div className="snapshot-label">Next scheduled firing</div>
+              <div className="snapshot-value">{nextFiringLabel}</div>
             </div>
-            <div className="stat">
-              <div className="stat-label">Ready for pickup</div>
-              <div className="stat-value">{archivedCount}</div>
+            <div className="snapshot-block">
+              <div className="snapshot-label">Queue fullness</div>
+              <div className="snapshot-value">
+                {queueFillCount} / 8 half shelves
+              </div>
+              <div className="meter">
+                <span style={{ width: `${queueFillRatio * 100}%` }} />
+              </div>
             </div>
-            <div className="stat">
-              <div className="stat-label">Membership level</div>
-              <div className="stat-value">Studio</div>
+            <div className="snapshot-block">
+              <div className="snapshot-label">Average turnaround this month</div>
+              <div className="snapshot-value">
+                {averageTurnaroundDays ? `${averageTurnaroundDays} days` : "We are still collecting data"}
+              </div>
             </div>
           </div>
         </div>
@@ -311,16 +464,22 @@ export default function DashboardView({
               <div className="empty-state">No kiln status available yet.</div>
             ) : (
               kilnRows.map((kiln) => (
-              <div className={`list-row ${kiln.isOffline ? "kiln-offline" : ""}`} key={kiln.id}>
-                <div>
-                  <div className="list-title">{kiln.name}</div>
-                  <div className="list-meta">{kiln.statusLabel}</div>
+                <div className={`list-row kiln-row ${kiln.isOffline ? "kiln-offline" : ""}`} key={kiln.id}>
+                  <div className="kiln-left">
+                    <div className="list-title">{kiln.name}</div>
+                    <div className="kiln-time" title={`Firing type: ${kiln.firingTypeLabel}`}>
+                      {kiln.timeLabel}
+                    </div>
+                    <div className="list-meta">{kiln.statusLabel}</div>
+                  </div>
+                  <div className="list-right">
+                    <div className="pill">{kiln.pill}</div>
+                    <div className="list-meta">{kiln.etaLabel}</div>
+                  </div>
+                  <div className="kiln-progress" aria-hidden="true">
+                    <span style={{ width: `${(kiln.progress ?? 0) * 100}%` }} />
+                  </div>
                 </div>
-                <div className="list-right">
-                  <div className="pill">{kiln.pill}</div>
-                  <div className="list-meta">{kiln.etaLabel}</div>
-                </div>
-              </div>
               ))
             )}
           </div>
@@ -334,18 +493,44 @@ export default function DashboardView({
                 <div>
                   <div className="list-title">{item.name}</div>
                   <div className="list-meta">{item.time}</div>
+                  <div className="workshop-tags">
+                    <span className="pill pill-muted">{item.level}</span>
+                  </div>
                 </div>
-                <div className="pill">{item.seats}</div>
+                <div className="workshop-right">
+                  <div className="pill">
+                    {item.spotsLeft > 0
+                      ? `${item.spotsLeft} spot${item.spotsLeft === 1 ? "" : "s"} left`
+                      : `${item.waitlist} on waitlist`}
+                  </div>
+                  <button className="btn btn-ghost btn-small">Quick RSVP</button>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
         <div className="card card-3d">
+          <div className="card-title">Glaze inspiration</div>
+          <div className="card-subtitle">Pick a base + top combo</div>
+          <p className="card-body-copy">
+            Browse the studio glaze matrix and save combos for your next firing.
+          </p>
+          <button className="btn btn-ghost dashboard-link" onClick={onOpenGlazeBoard}>
+            Open the glaze board
+          </button>
+        </div>
+
+        <div className="card card-3d">
           <div className="card-title">Direct messages</div>
           <div className="messages-preview">
             {messagePreview.length === 0 ? (
-              <div className="empty-state">No conversations yet.</div>
+              <div className="empty-block">
+                <div className="empty-state">Questions about your work? We're here.</div>
+                <button className="btn btn-ghost btn-small" onClick={onOpenMessages}>
+                  Ask the studio
+                </button>
+              </div>
             ) : (
               messagePreview.map((thread) => (
                 <div className="message" key={thread.id}>

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node ./scripts/dev.mjs",
     "build": "tsc -b && vite build",
-    "lint": "eslint .",
+    "perf:chunks": "node ./scripts/check-chunk-budgets.mjs",
+    "lint": "eslint . --max-warnings=0",
     "test": "node ./node_modules/vitest/vitest.mjs --configLoader runner",
     "dev:all": "node ./scripts/dev.mjs",
     "test:run": "node ./node_modules/vitest/vitest.mjs run --configLoader runner",

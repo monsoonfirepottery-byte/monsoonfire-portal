@@ -1,5 +1,13 @@
 {
   "projects": {
     "default": "monsoonfire-portal"
+  },
+  "targets": {},
+  "etags": {
+    "monsoonfire-portal": {
+      "extensionInstances": {
+        "firestore-send-email-5y3b": "56025c9d1cc051a648c38e082214b3364054166bba8d35877a7443ec3475dae2"
+      }
+    }
   }
 }

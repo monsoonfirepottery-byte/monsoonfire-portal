@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
-import { addDoc, collection, doc, getDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { formatDateTime } from "../utils/format";
+import { toVoidHandler } from "../utils/toVoidHandler";
 import "./MembershipView.css";
 
 type ProfileDoc = {
@@ -180,44 +181,52 @@ const FEATURE_CLIPS: FeatureClip[] = [
 const normalizeTier = (value: string | undefined | null) =>
   (value ?? "").toLowerCase().replace(/[^a-z]/g, "");
 
-function getTierIndex(label: string): number {
-  const normalized = normalizeTier(label);
-  return TIERS.findIndex((tier) => normalizeTier(tier.label) === normalized);
+const TIER_ALIASES: Record<string, string> = {
+  studio: "A la carte",
+  studiomember: "A la carte",
+  premium: "Apprentice",
+  founding: "Master",
+};
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
-function getDefaultTarget(direction: "upgrade" | "downgrade", currentIndex: number): string {
-  if (TIERS.length === 0) return "";
-  if (currentIndex < 0) {
-    if (direction === "upgrade") {
-      return TIERS[Math.min(1, TIERS.length - 1)].label;
-    }
-    return TIERS[0].label;
-  }
+function resolveTierLabel(value: string | undefined | null): string | null {
+  const normalized = normalizeTier(value);
+  if (!normalized) return null;
 
-  if (direction === "upgrade") {
-    return TIERS[Math.min(currentIndex + 1, TIERS.length - 1)].label;
-  }
-  return TIERS[Math.max(currentIndex - 1, 0)].label;
+  const direct = TIERS.find(
+    (tier) =>
+      normalizeTier(tier.label) === normalized || normalizeTier(tier.key) === normalized
+  );
+  if (direct) return direct.label;
+
+  const alias = TIER_ALIASES[normalized];
+  if (!alias) return null;
+
+  const aliasNormalized = normalizeTier(alias);
+  const aliasTier = TIERS.find((tier) => normalizeTier(tier.label) === aliasNormalized);
+  return aliasTier ? aliasTier.label : alias;
+}
+
+function getTierIndex(label: string): number {
+  const resolved = resolveTierLabel(label) ?? TIERS[0]?.label ?? label;
+  const normalized = normalizeTier(resolved);
+  return TIERS.findIndex((tier) => normalizeTier(tier.label) === normalized);
 }
 
 export default function MembershipView({ user }: { user: User }) {
   const [profileDoc, setProfileDoc] = useState<ProfileDoc | null>(null);
   const [profileError, setProfileError] = useState("");
 
-  const [upgradeTarget, setUpgradeTarget] = useState(TIERS[0]?.label ?? "");
-  const [downgradeTarget, setDowngradeTarget] = useState(TIERS[0]?.label ?? "");
-  const [upgradeNotes, setUpgradeNotes] = useState("");
-  const [downgradeNotes, setDowngradeNotes] = useState("");
-  const [cancelNotes, setCancelNotes] = useState("");
   const [upgradeBusy, setUpgradeBusy] = useState(false);
   const [downgradeBusy, setDowngradeBusy] = useState(false);
   const [cancelBusy, setCancelBusy] = useState(false);
   const [upgradeStatus, setUpgradeStatus] = useState("");
-  const [downgradeStatus, setDowngradeStatus] = useState("");
+  const [, setDowngradeStatus] = useState("");
   const [cancelStatus, setCancelStatus] = useState("");
   const [journeyOpen, setJourneyOpen] = useState(false);
-  const [showDowngradeForm, setShowDowngradeForm] = useState(false);
-  const [showCancelForm, setShowCancelForm] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -229,117 +238,125 @@ export default function MembershipView({ user }: { user: User }) {
         const snap = await getDoc(ref);
         if (cancelled) return;
         setProfileDoc((snap.data() as ProfileDoc | undefined) ?? null);
-      } catch (err: any) {
+      } catch (error: unknown) {
         if (cancelled) return;
-        setProfileError(`Membership failed: ${err?.message ?? "Unable to load profile."}`);
+        setProfileError(`Membership failed: ${getErrorMessage(error) || "Unable to load profile."}`);
       }
     }
-    loadProfile();
+    void loadProfile();
     return () => {
       cancelled = true;
     };
   }, [user]);
 
-  const membershipTier = profileDoc?.membershipTier ?? "Studio Member";
+  const membershipTierRaw = profileDoc?.membershipTier ?? "Studio Member";
+  const membershipTierLabel = resolveTierLabel(membershipTierRaw) ?? membershipTierRaw;
   const membershipSince =
     profileDoc?.membershipSince?.toDate?.() ??
     (user.metadata.creationTime ? new Date(user.metadata.creationTime) : null);
   const membershipExpires = profileDoc?.membershipExpiresAt?.toDate?.() ?? null;
 
-  const currentTierIndex = useMemo(() => getTierIndex(membershipTier), [membershipTier]);
+  const currentTierIndex = useMemo(() => getTierIndex(membershipTierLabel), [membershipTierLabel]);
   const currentTier = currentTierIndex >= 0 ? TIERS[currentTierIndex] : null;
   const nextTier =
     currentTierIndex >= 0 && currentTierIndex < TIERS.length - 1
       ? TIERS[currentTierIndex + 1]
       : null;
+  const previousTier = currentTierIndex > 0 ? TIERS[currentTierIndex - 1] : null;
 
-  useEffect(() => {
-    setUpgradeTarget(getDefaultTarget("upgrade", currentTierIndex));
-    setDowngradeTarget(getDefaultTarget("downgrade", currentTierIndex));
-  }, [currentTierIndex]);
-
-  const tierOptions = TIERS.map((tier) => tier.label);
-
-  const handleMembershipRequest = async (
-    type: "upgrade" | "downgrade" | "cancel",
-    requestedTier: string | null,
-    notes: string
+  const handleTierUpdate = async (
+    type: "upgrade" | "downgrade",
+    targetTier: string | null
   ) => {
     if (!user) return;
 
     if (type === "upgrade") {
       if (upgradeBusy) return;
       setUpgradeBusy(true);
-      setUpgradeStatus("Sending upgrade request...");
+      setUpgradeStatus("Updating membership...");
     } else if (type === "downgrade") {
       if (downgradeBusy) return;
       setDowngradeBusy(true);
-      setDowngradeStatus("Sending downgrade request...");
-    } else {
-      if (cancelBusy) return;
-      setCancelBusy(true);
-      setCancelStatus("Sending cancellation request...");
+      setDowngradeStatus("Updating membership...");
     }
 
-    const trimmedRequestedTier = (requestedTier ?? "").trim();
-    const trimmedNotes = notes.trim();
-
-    const subject =
-      type === "cancel"
-        ? "Membership cancellation request"
-        : `Membership change request (${type})`;
-    const body = `Current tier: ${membershipTier}\nRequested tier: ${
-      trimmedRequestedTier || "unspecified"
-    }\nNotes: ${trimmedNotes || "none"}`;
-
-    try {
-      await addDoc(collection(db, "supportRequests"), {
-        uid: user.uid,
-        subject,
-        body,
-        category: "Membership",
-        status: "new",
-        urgency: "non-urgent",
-        channel: "portal",
-        createdAt: serverTimestamp(),
-        displayName: user.displayName || null,
-        email: user.email || null,
-        membershipChangeType: type,
-        currentTier: membershipTier || null,
-        requestedTier: trimmedRequestedTier || null,
-        membershipChangeNotes: trimmedNotes || null,
-        source: "membership-page",
-      });
-
-      const successMessage =
-        "Thanks — we received your request. We'll confirm details before any billing changes.";
-      if (type === "upgrade") {
-        setUpgradeStatus(successMessage);
-        setUpgradeNotes("");
-      } else if (type === "downgrade") {
-        setDowngradeStatus(successMessage);
-        setDowngradeNotes("");
-      } else {
-        setCancelStatus(successMessage);
-        setCancelNotes("");
-      }
-    } catch (err: any) {
-      const message = `Request failed: ${err?.message || String(err)}`;
+    const resolvedTier = (targetTier ?? "").trim();
+    if (!resolvedTier) {
+      const message = type === "upgrade" ? "You're already at the highest tier." : "No lower tier available.";
       if (type === "upgrade") {
         setUpgradeStatus(message);
-      } else if (type === "downgrade") {
-        setDowngradeStatus(message);
+        setUpgradeBusy(false);
       } else {
-        setCancelStatus(message);
+        setDowngradeStatus(message);
+        setDowngradeBusy(false);
+      }
+      return;
+    }
+
+    try {
+      const ref = doc(db, "profiles", user.uid);
+      await setDoc(
+        ref,
+        {
+          membershipTier: resolvedTier,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setProfileDoc((prev) => ({
+        ...(prev ?? {}),
+        membershipTier: resolvedTier,
+      }));
+
+      const successMessage = `Membership updated to ${resolvedTier}.`;
+      if (type === "upgrade") {
+        setUpgradeStatus(successMessage);
+      } else {
+        setDowngradeStatus(successMessage);
+      }
+    } catch (error: unknown) {
+      const message = `Update failed: ${getErrorMessage(error)}`;
+      if (type === "upgrade") {
+        setUpgradeStatus(message);
+      } else {
+        setDowngradeStatus(message);
       }
     } finally {
       if (type === "upgrade") {
         setUpgradeBusy(false);
       } else if (type === "downgrade") {
         setDowngradeBusy(false);
-      } else {
-        setCancelBusy(false);
       }
+    }
+  };
+
+  const handleCancelRequest = async () => {
+    if (!user || cancelBusy) return;
+    setCancelBusy(true);
+    setCancelStatus("Updating membership...");
+    const targetTier = TIERS[0]?.label ?? "A la carte";
+
+    try {
+      const ref = doc(db, "profiles", user.uid);
+      await setDoc(
+        ref,
+        {
+          membershipTier: targetTier,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      setProfileDoc((prev) => ({
+        ...(prev ?? {}),
+        membershipTier: targetTier,
+      }));
+
+      setCancelStatus(`Membership set to ${targetTier}.`);
+    } catch (error: unknown) {
+      setCancelStatus(`Update failed: ${getErrorMessage(error)}`);
+    } finally {
+      setCancelBusy(false);
     }
   };
 
@@ -380,7 +397,7 @@ export default function MembershipView({ user }: { user: User }) {
               <span className="journey-label">Current tier</span>
               <span className="pill">Current</span>
             </div>
-            <div className="journey-card-title">{membershipTier}</div>
+            <div className="journey-card-title">{membershipTierLabel}</div>
             <div className="journey-card-meta">
               <span>Member since</span>
               <strong>{membershipSince ? formatDateTime(membershipSince) : "—"}</strong>
@@ -398,17 +415,35 @@ export default function MembershipView({ user }: { user: User }) {
             )}
             {profileError ? <div className="alert inline-alert">{profileError}</div> : null}
             <div className="membership-status-actions">
+              <div className="membership-target">
+                <span className="summary-label">Next tier</span>
+                <span className="summary-value">{nextTier?.label ?? "Highest tier"}</span>
+              </div>
+            {upgradeStatus ? <div className="notice inline-alert">{upgradeStatus}</div> : null}
               <button
-                className="btn btn-ghost"
-                onClick={() => setShowDowngradeForm((prev) => !prev)}
-              >
-                {showDowngradeForm ? "Hide downgrade" : "Request downgrade"}
-              </button>
-              <button
-                className="btn btn-ghost"
-                onClick={() => setShowCancelForm((prev) => !prev)}
-              >
-                {showCancelForm ? "Hide cancellation" : "Request cancellation"}
+                className="btn btn-primary"
+               onClick={toVoidHandler(() => handleTierUpdate("upgrade", nextTier?.label ?? null))}
+               disabled={upgradeBusy || !nextTier}
+             >
+              {upgradeBusy ? "Sending..." : nextTier ? "Request upgrade" : "Upgrade unavailable"}
+            </button>
+             <button
+               className="btn btn-ghost"
+               onClick={toVoidHandler(() => handleTierUpdate("downgrade", previousTier?.label ?? null))}
+               disabled={downgradeBusy || !previousTier}
+             >
+              {downgradeBusy
+                ? "Updating..."
+                : previousTier
+                ? `Downgrade to ${previousTier.label}`
+                : "Downgrade unavailable"}
+            </button>
+               <button
+                 className="btn btn-ghost"
+                 onClick={toVoidHandler(handleCancelRequest)}
+                 disabled={cancelBusy}
+               >
+                {cancelBusy ? "Updating..." : "Cancel membership"}
               </button>
             </div>
           </div>
@@ -444,96 +479,7 @@ export default function MembershipView({ user }: { user: User }) {
         </div>
 
         <div className="journey-actions">
-          <div className="journey-action">
-            <div className="journey-action-title">Request an upgrade</div>
-            <label className="membership-label">
-              Choose a tier
-              <select value={upgradeTarget} onChange={(event) => setUpgradeTarget(event.target.value)}>
-                {tierOptions.map((tier) => (
-                  <option key={tier} value={tier}>
-                    {tier}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="membership-label">
-              Notes (optional)
-              <textarea
-                value={upgradeNotes}
-                onChange={(event) => setUpgradeNotes(event.target.value)}
-                placeholder="Anything you'd like us to know?"
-              />
-            </label>
-            {upgradeStatus ? <div className="notice inline-alert">{upgradeStatus}</div> : null}
-            <button
-              className="btn btn-primary"
-              onClick={() => handleMembershipRequest("upgrade", upgradeTarget, upgradeNotes)}
-              disabled={upgradeBusy}
-            >
-              {upgradeBusy ? "Sending..." : "Request upgrade"}
-            </button>
-          </div>
-
-          {showDowngradeForm ? (
-            <div className="journey-action">
-              <div className="journey-action-title">Request a downgrade</div>
-              <label className="membership-label">
-                Choose a tier
-                <select
-                  value={downgradeTarget}
-                  onChange={(event) => setDowngradeTarget(event.target.value)}
-                >
-                  {tierOptions.map((tier) => (
-                    <option key={tier} value={tier}>
-                      {tier}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="membership-label">
-                Notes (optional)
-                <textarea
-                  value={downgradeNotes}
-                  onChange={(event) => setDowngradeNotes(event.target.value)}
-                  placeholder="Let us know what you need."
-                />
-              </label>
-              {downgradeStatus ? <div className="notice inline-alert">{downgradeStatus}</div> : null}
-              <button
-                className="btn btn-ghost"
-                onClick={() => handleMembershipRequest("downgrade", downgradeTarget, downgradeNotes)}
-                disabled={downgradeBusy}
-              >
-                {downgradeBusy ? "Sending..." : "Send downgrade request"}
-              </button>
-            </div>
-          ) : null}
-
-          {showCancelForm ? (
-            <div className="journey-action cancel">
-              <div className="journey-action-title">Cancel service</div>
-              <p className="membership-copy">
-                If you need to pause your membership entirely, we can take care of it. We'll confirm the
-                timing first.
-              </p>
-              <label className="membership-label">
-                Notes (optional)
-                <textarea
-                  value={cancelNotes}
-                  onChange={(event) => setCancelNotes(event.target.value)}
-                  placeholder="Share context if helpful."
-                />
-              </label>
-              {cancelStatus ? <div className="notice inline-alert">{cancelStatus}</div> : null}
-              <button
-                className="btn btn-ghost"
-                onClick={() => handleMembershipRequest("cancel", null, cancelNotes)}
-                disabled={cancelBusy}
-              >
-                {cancelBusy ? "Sending..." : "Send cancellation request"}
-              </button>
-            </div>
-          ) : null}
+          {cancelStatus ? <div className="notice inline-alert">{cancelStatus}</div> : null}
         </div>
       </section>
 
@@ -582,7 +528,7 @@ export default function MembershipView({ user }: { user: User }) {
               <div
                 key={tier.key}
                 className={`membership-cell heading ${
-                  normalizeTier(tier.label) === normalizeTier(membershipTier) ? "current" : ""
+                  normalizeTier(tier.label) === normalizeTier(membershipTierLabel) ? "current" : ""
                 }`}
               >
                 {tier.label}
@@ -596,7 +542,7 @@ export default function MembershipView({ user }: { user: User }) {
                 <div
                   key={`${perk.label}-${TIERS[index]?.key}`}
                   className={`membership-cell ${
-                    normalizeTier(TIERS[index]?.label) === normalizeTier(membershipTier) ? "current" : ""
+                    normalizeTier(TIERS[index]?.label) === normalizeTier(membershipTierLabel) ? "current" : ""
                   }`}
                 >
                   {value}

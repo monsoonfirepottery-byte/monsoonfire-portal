@@ -162,6 +162,7 @@ export async function requireAdmin(
 type RateLimitState = {
   count: number;
   resetAt: number;
+  expiresAt?: Timestamp;
 };
 
 const RATE_LIMIT_BUCKETS = new Map<string, RateLimitState>();
@@ -175,32 +176,51 @@ function getClientIp(req: any): string {
   return typeof req.ip === "string" ? req.ip : "unknown";
 }
 
-export function enforceRateLimit(params: {
+export async function enforceRateLimit(params: {
   req: any;
   key: string;
   max: number;
   windowMs: number;
-}): { ok: true } | { ok: false; retryAfterMs: number } {
+}): Promise<{ ok: true } | { ok: false; retryAfterMs: number }> {
   const { req, key, max, windowMs } = params;
   const uid = (req as any).__mfAuth?.uid ?? "anon";
   const ip = getClientIp(req);
   const bucketKey = `${key}:${uid}:${ip}`;
   const now = Date.now();
 
-  const existing = RATE_LIMIT_BUCKETS.get(bucketKey);
-  if (!existing || existing.resetAt <= now) {
+  const local = RATE_LIMIT_BUCKETS.get(bucketKey);
+  if (!local || local.resetAt <= now) {
     RATE_LIMIT_BUCKETS.set(bucketKey, { count: 1, resetAt: now + windowMs });
+  } else {
+    local.count += 1;
+    RATE_LIMIT_BUCKETS.set(bucketKey, local);
+  }
+
+  const docRef = db.collection("rateLimits").doc(bucketKey);
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(docRef);
+      const data = snap.exists ? (snap.data() as RateLimitState) : null;
+      const resetAt = data?.resetAt && data.resetAt > now ? data.resetAt : now + windowMs;
+      const count = data?.resetAt && data.resetAt > now ? (data.count ?? 0) + 1 : 1;
+
+      // Enables Firestore TTL cleanup if configured on `rateLimits.expiresAt`.
+      const expiresAt = Timestamp.fromMillis(resetAt + windowMs * 2);
+      tx.set(docRef, { count, resetAt, expiresAt }, { merge: true });
+      return { count, resetAt };
+    });
+
+    if (result.count > max) {
+      return { ok: false, retryAfterMs: result.resetAt - now };
+    }
+    return { ok: true };
+  } catch {
+    const fallback = RATE_LIMIT_BUCKETS.get(bucketKey);
+    if (fallback && fallback.count > max) {
+      return { ok: false, retryAfterMs: Math.max(fallback.resetAt - now, 0) };
+    }
     return { ok: true };
   }
-
-  existing.count += 1;
-  RATE_LIMIT_BUCKETS.set(bucketKey, existing);
-
-  if (existing.count > max) {
-    return { ok: false, retryAfterMs: existing.resetAt - now };
-  }
-
-  return { ok: true };
 }
 
 export function parseBody<T>(

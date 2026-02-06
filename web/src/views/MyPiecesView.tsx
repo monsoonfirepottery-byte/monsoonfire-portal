@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
 import {
   addDoc,
   collection,
   doc,
-  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -17,13 +17,10 @@ import { useBatches } from "../hooks/useBatches";
 import { createPortalApi, PortalApiError } from "../api/portalApi";
 import type { PortalApiMeta } from "../api/portalContracts";
 import { getResultBatchId } from "../api/portalContracts";
-import type { TimelineEvent } from "../types/domain";
-import { TIMELINE_EVENT_LABELS, normalizeTimelineEventType } from "../timelineEventTypes";
-import { formatCents, formatMaybeTimestamp } from "../utils/format";
+import { formatMaybeTimestamp } from "../utils/format";
+import { toVoidHandler } from "../utils/toVoidHandler";
 
-const PIECES_PREVIEW_COUNT = 10;
-const SEARCH_PIECE_LIMIT = 20;
-const SEARCH_NOTES_PER_PIECE = 30;
+const PIECES_PREVIEW_COUNT = 12;
 const NOTE_LOAD_LIMIT = 40;
 const MEDIA_LOAD_LIMIT = 30;
 const AUDIT_LOAD_LIMIT = 60;
@@ -60,14 +57,20 @@ type Props = {
 
 type PieceDoc = {
   id: string;
+  key: string;
+  batchId: string;
+  batchTitle: string;
+  batchIsHistory: boolean;
   pieceCode: string;
   shortDesc: string;
   ownerName: string;
   stage: Stage;
   wareCategory: WareCategory;
   isArchived: boolean;
-  createdAt?: any;
-  updatedAt?: any;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  clientRating?: number | null;
+  clientRatingUpdatedAt?: unknown;
 };
 
 type PieceNoteStream = "client" | "studio";
@@ -75,8 +78,8 @@ type PieceNoteStream = "client" | "studio";
 type PieceNote = {
   id: string;
   text: string;
-  at?: any;
-  updatedAt?: any;
+  at?: unknown;
+  updatedAt?: unknown;
   authorUid?: string;
   authorName: string;
   searchTokens?: string[];
@@ -85,7 +88,7 @@ type PieceNote = {
 type PieceAuditEvent = {
   id: string;
   type: string;
-  at?: any;
+  at?: unknown;
   actorUid?: string;
   actorName?: string;
   noteStream?: PieceNoteStream;
@@ -98,17 +101,10 @@ type PieceMedia = {
   stage: Stage;
   storagePath: string;
   caption?: string;
-  at?: any;
+  at?: unknown;
   uploadedByUid?: string;
   uploadedByName?: string;
   searchTokens?: string[];
-};
-
-type NoteSearchResult = {
-  pieceId: string;
-  pieceCode: string;
-  stream: PieceNoteStream;
-  note: PieceNote;
 };
 
 type LocalMeta = {
@@ -116,17 +112,10 @@ type LocalMeta = {
   status: number | string | null;
   fn: string;
   url: string;
-  payload: any;
-  response: any;
+  payload: unknown;
+  response: unknown;
   curlExample?: string;
 };
-
-function getTimelineLabel(type: unknown): string {
-  const normalized = normalizeTimelineEventType(type);
-  if (normalized) return TIMELINE_EVENT_LABELS[normalized];
-  if (typeof type === "string" && type.trim()) return type;
-  return "Event";
-}
 
 function normalizeStage(value: unknown): Stage {
   if (typeof value !== "string") return "UNKNOWN";
@@ -150,7 +139,7 @@ function toTokens(text: string): string[] {
   return Array.from(new Set(normalized)).slice(0, 24);
 }
 
-function buildNoteDoc(note: any): PieceNote {
+function buildNoteDoc(note: Partial<PieceNote> & { id: string }): PieceNote {
   return {
     id: note.id,
     text: note.text ?? "",
@@ -162,51 +151,85 @@ function buildNoteDoc(note: any): PieceNote {
   };
 }
 
-function groupPiecesByCategory(pieces: PieceDoc[]) {
-  const groups: Record<WareCategory, PieceDoc[]> = {
-    STONEWARE: [],
-    EARTHENWARE: [],
-    PORCELAIN: [],
-    RAKU: [],
-    OTHER: [],
-    UNKNOWN: [],
-  };
-  pieces.forEach((piece) => {
-    groups[piece.wareCategory].push(piece);
-  });
-  return groups;
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
+
+function normalizeAuditDoc(id: string, raw: Partial<PieceAuditEvent>): PieceAuditEvent {
+  return {
+    id,
+    type: typeof raw.type === "string" ? raw.type : "UNKNOWN",
+    at: raw.at ?? null,
+    actorUid: raw.actorUid,
+    actorName: raw.actorName,
+    noteStream: raw.noteStream,
+    noteId: raw.noteId,
+    notes: raw.notes,
+  };
+}
+
+function normalizeMediaDoc(id: string, raw: Partial<PieceMedia>): PieceMedia {
+  return {
+    id,
+    stage: normalizeStage(raw.stage),
+    storagePath: typeof raw.storagePath === "string" ? raw.storagePath : "",
+    caption: raw.caption,
+    at: raw.at ?? null,
+    uploadedByUid: raw.uploadedByUid,
+    uploadedByName: raw.uploadedByName,
+    searchTokens: Array.isArray(raw.searchTokens) ? raw.searchTokens : [],
+  };
+}
+
+function toMillis(value: unknown): number {
+  if (value && typeof value === "object" && typeof (value as { toMillis?: () => number }).toMillis === "function") {
+    return (value as { toMillis: () => number }).toMillis();
+  }
+  return new Date((value as string | number | Date | null) ?? 0).getTime();
+}
+
+type StarRatingProps = {
+  value: number | null | undefined;
+  onSelect: (value: number) => void;
+  disabled?: boolean;
+  pulse?: boolean;
+};
+
+function StarRating({ value, onSelect, disabled, pulse }: StarRatingProps) {
+  return (
+    <div className={`rating-stars ${pulse ? "rating-pulse" : ""}`} aria-label="Piece rating">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <button
+          key={star}
+          type="button"
+          className={`star-button ${value && value >= star ? "active" : ""}`}
+          onClick={() => onSelect(star)}
+          disabled={disabled}
+          aria-label={`Rate ${star} star${star === 1 ? "" : "s"}`}
+        >
+          ★
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin }: Props) {
   const { active, history, error } = useBatches(user);
-  const canContinue = active.length === 0;
   const [status, setStatus] = useState("");
   const [meta, setMeta] = useState<PortalApiMeta | LocalMeta | null>(null);
   const [inFlight, setInFlight] = useState<Record<string, boolean>>({});
   const portalApi = useMemo(() => createPortalApi(), []);
 
-  const isBusy = (key: string) => !!inFlight[key];
-  const setBusy = (key: string, value: boolean) => {
+  const isBusy = useCallback((key: string) => !!inFlight[key], [inFlight]);
+  const setBusy = useCallback((key: string, value: boolean) => {
     setInFlight((prev) => ({ ...prev, [key]: value }));
-  };
-  const [showAllActive, setShowAllActive] = useState(false);
-  const [showAllHistory, setShowAllHistory] = useState(false);
-  const [timelineBatchId, setTimelineBatchId] = useState<string | null>(null);
-  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
-  const [timelineLoading, setTimelineLoading] = useState(false);
-  const [timelineError, setTimelineError] = useState("");
-  const [piecesFilter, setPiecesFilter] = useState<"all" | "active" | "history">("all");
+  }, []);
 
-  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
-  const [selectedBatchTitle, setSelectedBatchTitle] = useState("");
-  const [collectionNameDraft, setCollectionNameDraft] = useState("");
-  const [collectionDescDraft, setCollectionDescDraft] = useState("");
-  const [collectionMetaLoading, setCollectionMetaLoading] = useState(false);
-  const [collectionMetaError, setCollectionMetaError] = useState("");
-  const [collectionOverrides, setCollectionOverrides] = useState<Record<string, { name: string; desc: string }>>({});
   const [pieces, setPieces] = useState<PieceDoc[]>([]);
   const [piecesLoading, setPiecesLoading] = useState(false);
   const [piecesError, setPiecesError] = useState("");
-  const [selectedPieceId, setSelectedPieceId] = useState<string | null>(null);
+  const [selectedPieceKey, setSelectedPieceKey] = useState<string | null>(null);
   const [selectedPieceTab, setSelectedPieceTab] = useState<"client" | "studio" | "photos" | "audit">(
     "client"
   );
@@ -216,8 +239,7 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
   const [mediaItems, setMediaItems] = useState<PieceMedia[]>([]);
   const [pieceDetailLoading, setPieceDetailLoading] = useState(false);
   const [pieceDetailError, setPieceDetailError] = useState("");
-
-  const [archivedExpanded, setArchivedExpanded] = useState(false);
+  const [detailRefreshKey, setDetailRefreshKey] = useState(0);
 
   const [clientNoteDraft, setClientNoteDraft] = useState("");
   const [studioNoteDraft, setStudioNoteDraft] = useState("");
@@ -225,173 +247,72 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
   const [editingNoteStream, setEditingNoteStream] = useState<PieceNoteStream | null>(null);
   const [editingNoteText, setEditingNoteText] = useState("");
 
-  const [noteSearchQuery, setNoteSearchQuery] = useState("");
-  const [noteSearchResults, setNoteSearchResults] = useState<NoteSearchResult[]>([]);
-  const [noteSearchBusy, setNoteSearchBusy] = useState(false);
-  const [noteSearchError, setNoteSearchError] = useState("");
-  const [noteSearchSummary, setNoteSearchSummary] = useState("");
+  const [piecesFilter, setPiecesFilter] = useState<"all" | "active" | "history">("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"recent" | "oldest" | "stage" | "rating">("recent");
+  const [ratingStatus, setRatingStatus] = useState<Record<string, string>>({});
+  const [ratingPulseKey, setRatingPulseKey] = useState<string | null>(null);
 
-
-  const visibleActive = showAllActive ? active : active.slice(0, PIECES_PREVIEW_COUNT);
-  const visibleHistory = showAllHistory ? history : history.slice(0, PIECES_PREVIEW_COUNT);
-
-  const showActiveSection = piecesFilter === "all" || piecesFilter === "active";
-  const showHistorySection = piecesFilter === "all" || piecesFilter === "history";
-  const selectedBatch = useMemo(
-    () => [...active, ...history].find((batch) => batch.id === selectedBatchId) ?? null,
-    [active, history, selectedBatchId]
-  );
-
-  const collectionNameFor = (batch: any) => {
-    const override = collectionOverrides[batch.id];
-    if (override?.name) return override.name;
-    const fromDoc = typeof batch.collectionName === "string" ? batch.collectionName.trim() : "";
-    if (fromDoc) return fromDoc;
-    const title = typeof batch.title === "string" ? batch.title.trim() : "";
-    return title || "Untitled collection";
-  };
-
-  const collectionDescFor = (batch: any) => {
-    const override = collectionOverrides[batch.id];
-    if (override?.desc) return override.desc;
-    return typeof batch.collectionDesc === "string" ? batch.collectionDesc : "";
-  };
-
-  const selectedPiece = useMemo(
-    () => pieces.find((piece) => piece.id === selectedPieceId) ?? null,
-    [pieces, selectedPieceId]
-  );
-
-  const activePieces = pieces.filter((piece) => !piece.isArchived);
-  const archivedPieces = pieces.filter((piece) => piece.isArchived);
-  const activeByCategory = useMemo(() => groupPiecesByCategory(activePieces), [activePieces]);
-  const archivedByCategory = useMemo(() => groupPiecesByCategory(archivedPieces), [archivedPieces]);
-
-  const participants = useMemo(() => {
-    const names = auditEvents
-      .map((event) => event.actorName)
-      .filter((name): name is string => !!name && name.trim().length > 0);
-    return Array.from(new Set(names));
-  }, [auditEvents]);
+  const canContinue = active.length === 0;
+  const historyBatchIds = useMemo(() => new Set(history.map((batch) => batch.id)), [history]);
+  const totalPieceCount = pieces.length;
 
   useEffect(() => {
-    if (!timelineBatchId) return;
-
-    setTimelineLoading(true);
-    setTimelineError("");
-    setTimelineEvents([]);
-
-    const loadTimeline = async () => {
-      try {
-        const timelineQuery = query(
-          collection(db, "batches", timelineBatchId, "timeline"),
-          orderBy("at", "asc")
-        );
-        const snap = await getDocs(timelineQuery);
-        const rows: TimelineEvent[] = snap.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...(docSnap.data() as any),
-        }));
-        setTimelineEvents(rows);
-      } catch (err: any) {
-        setTimelineError(`Timeline failed: ${err.message || String(err)}`);
-      } finally {
-        setTimelineLoading(false);
-      }
-    };
-
-    void loadTimeline();
-  }, [timelineBatchId]);
-
-  useEffect(() => {
-    if (!selectedBatchId) {
-      setCollectionNameDraft("");
-      setCollectionDescDraft("");
-      setCollectionMetaLoading(false);
-      setCollectionMetaError("");
-      return;
-    }
-
-    const loadCollectionMeta = async () => {
-      const busyKey = `loadCollection:${selectedBatchId}`;
-      if (isBusy(busyKey)) return;
-      setBusy(busyKey, true);
-      setCollectionMetaLoading(true);
-      setCollectionMetaError("");
-
-      try {
-        const batchRef = doc(db, "batches", selectedBatchId);
-        const snap = await getDoc(batchRef);
-        const batchData = snap.exists() ? (snap.data() as any) : {};
-        const batchFallback = [...active, ...history].find((batch) => batch.id === selectedBatchId);
-        const fallbackTitle = typeof batchFallback?.title === "string" ? batchFallback.title : "";
-        const nameFromDoc =
-          typeof batchData.collectionName === "string" ? batchData.collectionName.trim() : "";
-        const nextName = nameFromDoc || fallbackTitle || "Untitled collection";
-        const nextDesc =
-          typeof batchData.collectionDesc === "string" ? batchData.collectionDesc : "";
-
-        setCollectionNameDraft(nextName);
-        setCollectionDescDraft(nextDesc);
-        setCollectionOverrides((prev) => ({
-          ...prev,
-          [selectedBatchId]: { name: nextName, desc: nextDesc },
-        }));
-      } catch (err: any) {
-        setCollectionMetaError(`Collection failed: ${err?.message || String(err)}`);
-      } finally {
-        setCollectionMetaLoading(false);
-        setBusy(busyKey, false);
-      }
-    };
-
-    void loadCollectionMeta();
-  }, [selectedBatchId]);
-
-  useEffect(() => {
-    if (!selectedBatchId) {
+    if (!user) {
       setPieces([]);
-      setPiecesError("");
-      setPiecesLoading(false);
-      setSelectedPieceId(null);
-      setClientNotes([]);
-      setStudioNotes([]);
-      setAuditEvents([]);
-      setMediaItems([]);
       return;
     }
 
     const loadPieces = async () => {
-      const busyKey = `loadPieces:${selectedBatchId}`;
+      const busyKey = "loadPieces";
       if (isBusy(busyKey)) return;
       setBusy(busyKey, true);
       setPiecesLoading(true);
       setPiecesError("");
 
       try {
-        const piecesQuery = query(
-          collection(db, "batches", selectedBatchId, "pieces"),
-          orderBy("createdAt", "desc"),
-          limit(200)
+        const batches = [...active, ...history];
+        if (batches.length === 0) {
+          setPieces([]);
+          return;
+        }
+
+        const rows = await Promise.all(
+          batches.map(async (batch) => {
+            const piecesQuery = query(
+              collection(db, "batches", batch.id, "pieces"),
+              orderBy("updatedAt", "desc"),
+              limit(200)
+            );
+            const snap = await getDocs(piecesQuery);
+            return snap.docs.map((docSnap) => {
+              const data = docSnap.data() as Partial<PieceDoc>;
+              const batchTitle =
+                typeof batch.title === "string" && batch.title.trim() ? batch.title : "Check-in";
+              return {
+                id: docSnap.id,
+                key: `${batch.id}:${docSnap.id}`,
+                batchId: batch.id,
+                batchTitle,
+                batchIsHistory: historyBatchIds.has(batch.id),
+                pieceCode: data.pieceCode ?? "",
+                shortDesc: data.shortDesc ?? "",
+                ownerName: data.ownerName ?? "",
+                stage: normalizeStage(data.stage),
+                wareCategory: normalizeWareCategory(data.wareCategory),
+                isArchived: data.isArchived === true,
+                createdAt: data.createdAt,
+                updatedAt: data.updatedAt,
+                clientRating: typeof data.clientRating === "number" ? data.clientRating : null,
+                clientRatingUpdatedAt: data.clientRatingUpdatedAt ?? null,
+              } as PieceDoc;
+            });
+          })
         );
-        const snap = await getDocs(piecesQuery);
-        const rows: PieceDoc[] = snap.docs.map((docSnap) => {
-          const data = docSnap.data() as any;
-          return {
-            id: docSnap.id,
-            pieceCode: data.pieceCode ?? "",
-            shortDesc: data.shortDesc ?? "",
-            ownerName: data.ownerName ?? "",
-            stage: normalizeStage(data.stage),
-            wareCategory: normalizeWareCategory(data.wareCategory),
-            isArchived: data.isArchived === true,
-            createdAt: data.createdAt,
-            updatedAt: data.updatedAt,
-          };
-        });
-        setPieces(rows);
-      } catch (err: any) {
-        setPiecesError(`Pieces failed: ${err.message || String(err)}`);
+
+        setPieces(rows.flat());
+      } catch (error: unknown) {
+        setPiecesError(`Pieces failed: ${getErrorMessage(error)}`);
       } finally {
         setPiecesLoading(false);
         setBusy(busyKey, false);
@@ -399,19 +320,21 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
     };
 
     void loadPieces();
-  }, [selectedBatchId]);
+  }, [user, active, history, historyBatchIds, isBusy, setBusy]);
+
+  const selectedPiece = useMemo(
+    () => pieces.find((piece) => piece.key === selectedPieceKey) ?? null,
+    [pieces, selectedPieceKey]
+  );
 
   useEffect(() => {
-    if (!selectedBatchId) return;
-    const stillExists = [...active, ...history].some((batch) => batch.id === selectedBatchId);
-    if (!stillExists) {
-      setSelectedBatchId(null);
-      setSelectedBatchTitle("");
-    }
-  }, [active, history, selectedBatchId]);
+    if (!selectedPieceKey) return;
+    const stillExists = pieces.some((piece) => piece.key === selectedPieceKey);
+    if (!stillExists) setSelectedPieceKey(null);
+  }, [pieces, selectedPieceKey]);
 
   useEffect(() => {
-    if (!selectedBatchId || !selectedPieceId) {
+    if (!selectedPiece) {
       setClientNotes([]);
       setStudioNotes([]);
       setAuditEvents([]);
@@ -422,7 +345,7 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
     }
 
     const loadPieceDetails = async () => {
-      const busyKey = `loadPiece:${selectedPieceId}`;
+      const busyKey = `loadPiece:${selectedPiece.key}`;
       if (isBusy(busyKey)) return;
       setBusy(busyKey, true);
       setPieceDetailLoading(true);
@@ -430,22 +353,22 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
 
       try {
         const clientQuery = query(
-          collection(db, "batches", selectedBatchId, "pieces", selectedPieceId, "clientNotes"),
+          collection(db, "batches", selectedPiece.batchId, "pieces", selectedPiece.id, "clientNotes"),
           orderBy("at", "desc"),
           limit(NOTE_LOAD_LIMIT)
         );
         const studioQuery = query(
-          collection(db, "batches", selectedBatchId, "pieces", selectedPieceId, "studioNotes"),
+          collection(db, "batches", selectedPiece.batchId, "pieces", selectedPiece.id, "studioNotes"),
           orderBy("at", "desc"),
           limit(NOTE_LOAD_LIMIT)
         );
         const auditQuery = query(
-          collection(db, "batches", selectedBatchId, "pieces", selectedPieceId, "audit"),
+          collection(db, "batches", selectedPiece.batchId, "pieces", selectedPiece.id, "audit"),
           orderBy("at", "desc"),
           limit(AUDIT_LOAD_LIMIT)
         );
         const mediaQuery = query(
-          collection(db, "batches", selectedBatchId, "pieces", selectedPieceId, "media"),
+          collection(db, "batches", selectedPiece.batchId, "pieces", selectedPiece.id, "media"),
           orderBy("at", "desc"),
           limit(MEDIA_LOAD_LIMIT)
         );
@@ -458,26 +381,27 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
         ]);
 
         setClientNotes(
-          clientSnap.docs.map((docSnap) => buildNoteDoc({ id: docSnap.id, ...(docSnap.data() as any) }))
+          clientSnap.docs.map((docSnap) =>
+            buildNoteDoc({ id: docSnap.id, ...(docSnap.data() as Partial<PieceNote>) })
+          )
         );
         setStudioNotes(
-          studioSnap.docs.map((docSnap) => buildNoteDoc({ id: docSnap.id, ...(docSnap.data() as any) }))
+          studioSnap.docs.map((docSnap) =>
+            buildNoteDoc({ id: docSnap.id, ...(docSnap.data() as Partial<PieceNote>) })
+          )
         );
         setAuditEvents(
-          auditSnap.docs.map((docSnap) => ({
-            id: docSnap.id,
-            ...(docSnap.data() as any),
-          }))
+          auditSnap.docs.map((docSnap) =>
+            normalizeAuditDoc(docSnap.id, docSnap.data() as Partial<PieceAuditEvent>)
+          )
         );
         setMediaItems(
-          mediaSnap.docs.map((docSnap) => ({
-            id: docSnap.id,
-            stage: normalizeStage((docSnap.data() as any).stage),
-            ...(docSnap.data() as any),
-          }))
+          mediaSnap.docs.map((docSnap) =>
+            normalizeMediaDoc(docSnap.id, docSnap.data() as Partial<PieceMedia>)
+          )
         );
-      } catch (err: any) {
-        setPieceDetailError(`Piece detail failed: ${err.message || String(err)}`);
+      } catch (error: unknown) {
+        setPieceDetailError(`Piece detail failed: ${getErrorMessage(error)}`);
       } finally {
         setPieceDetailLoading(false);
         setBusy(busyKey, false);
@@ -485,11 +409,217 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
     };
 
     void loadPieceDetails();
-  }, [selectedBatchId, selectedPieceId]);
+  }, [selectedPiece, detailRefreshKey, isBusy, setBusy]);
 
-  function toggleTimeline(batchId: string) {
-    setTimelineBatchId((prev) => (prev === batchId ? null : batchId));
-  }
+  const filteredPieces = useMemo(() => {
+    let list = pieces;
+    if (piecesFilter === "active") {
+      list = list.filter((piece) => !piece.batchIsHistory);
+    } else if (piecesFilter === "history") {
+      list = list.filter((piece) => piece.batchIsHistory);
+    }
+
+    if (searchQuery.trim()) {
+      const queryLower = searchQuery.toLowerCase();
+      list = list.filter((piece) => {
+        const fields = [piece.pieceCode, piece.shortDesc, piece.ownerName, piece.batchTitle];
+        return fields.some((field) => field?.toLowerCase().includes(queryLower));
+      });
+    }
+
+    const sorted = [...list];
+    sorted.sort((a, b) => {
+      const timeA = toMillis(a.updatedAt);
+      const timeB = toMillis(b.updatedAt);
+      switch (sortBy) {
+        case "oldest":
+          return timeA - timeB;
+        case "stage":
+          return a.stage.localeCompare(b.stage);
+        case "rating":
+          return (b.clientRating ?? 0) - (a.clientRating ?? 0);
+        case "recent":
+        default:
+          return timeB - timeA;
+      }
+    });
+    return sorted;
+  }, [pieces, piecesFilter, searchQuery, sortBy]);
+
+  const visiblePieces =
+    piecesFilter === "all" ? filteredPieces.slice(0, PIECES_PREVIEW_COUNT) : filteredPieces;
+
+  const selectedPieceCanContinue =
+    selectedPiece?.stage === "BISQUE" || selectedPiece?.stage === "GREENWARE";
+
+  const handleUpdatePiece = async (piece: PieceDoc, payload: Record<string, unknown>) => {
+    const busyKey = `update:${piece.key}`;
+    if (isBusy(busyKey)) return;
+    setBusy(busyKey, true);
+    setStatus("");
+
+    try {
+      await updateDoc(doc(db, "batches", piece.batchId, "pieces", piece.id), {
+        ...payload,
+        updatedAt: serverTimestamp(),
+      });
+      setPieces((prev) =>
+        prev.map((row) => (row.key === piece.key ? { ...row, ...payload } : row))
+      );
+    } catch (error: unknown) {
+      setStatus(`Update failed: ${getErrorMessage(error)}`);
+    } finally {
+      setBusy(busyKey, false);
+    }
+  };
+
+  const handleArchivePiece = async (piece: PieceDoc, archived: boolean) => {
+    await handleUpdatePiece(piece, { isArchived: archived });
+  };
+
+  const handleRating = async (piece: PieceDoc, rating: number) => {
+    const busyKey = `rating:${piece.key}`;
+    if (isBusy(busyKey)) return;
+    setBusy(busyKey, true);
+    setRatingStatus((prev) => ({ ...prev, [piece.key]: "" }));
+
+    try {
+      await updateDoc(doc(db, "batches", piece.batchId, "pieces", piece.id), {
+        clientRating: rating,
+        clientRatingUpdatedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      setPieces((prev) =>
+        prev.map((row) =>
+          row.key === piece.key ? { ...row, clientRating: rating, clientRatingUpdatedAt: new Date() } : row
+        )
+      );
+      setRatingStatus((prev) => ({ ...prev, [piece.key]: "Thanks — saved." }));
+      setRatingPulseKey(piece.key);
+      setTimeout(() => {
+        setRatingPulseKey((current) => (current === piece.key ? null : current));
+      }, 900);
+      setTimeout(() => {
+        setRatingStatus((prev) => ({ ...prev, [piece.key]: "" }));
+      }, 2000);
+    } catch (error: unknown) {
+      setStatus(`Rating failed: ${getErrorMessage(error)}`);
+    } finally {
+      setBusy(busyKey, false);
+    }
+  };
+
+  const refreshDetails = () => setDetailRefreshKey((prev) => prev + 1);
+
+  const handleAddNote = async (stream: PieceNoteStream) => {
+    if (!selectedPiece) return;
+    const text = stream === "client" ? clientNoteDraft.trim() : studioNoteDraft.trim();
+    if (!text) return;
+    const busyKey = `addNote:${selectedPiece.key}:${stream}`;
+    if (isBusy(busyKey)) return;
+    setBusy(busyKey, true);
+
+    try {
+      const payload = {
+        text,
+        at: serverTimestamp(),
+        authorUid: user.uid,
+        authorName: user.displayName || (stream === "client" ? "Member" : "Staff"),
+        searchTokens: toTokens(text),
+      };
+      await addDoc(
+        collection(
+          db,
+          "batches",
+          selectedPiece.batchId,
+          "pieces",
+          selectedPiece.id,
+          stream === "client" ? "clientNotes" : "studioNotes"
+        ),
+        payload
+      );
+      await addDoc(
+        collection(db, "batches", selectedPiece.batchId, "pieces", selectedPiece.id, "audit"),
+        {
+          type: "NOTE_ADDED",
+          at: serverTimestamp(),
+          actorUid: user.uid,
+          actorName: user.displayName || "Member",
+          noteStream: stream,
+          notes: text,
+        }
+      );
+      if (stream === "client") setClientNoteDraft("");
+      else setStudioNoteDraft("");
+      refreshDetails();
+    } catch (error: unknown) {
+      setStatus(`Note failed: ${getErrorMessage(error)}`);
+    } finally {
+      setBusy(busyKey, false);
+    }
+  };
+
+  const startEditingNote = (note: PieceNote, stream: PieceNoteStream) => {
+    setEditingNoteId(note.id);
+    setEditingNoteStream(stream);
+    setEditingNoteText(note.text);
+  };
+
+  const cancelEditingNote = () => {
+    setEditingNoteId(null);
+    setEditingNoteStream(null);
+    setEditingNoteText("");
+  };
+
+  const handleSaveNoteEdit = async () => {
+    if (!selectedPiece || !editingNoteId || !editingNoteStream) return;
+    const busyKey = `editNote:${editingNoteId}`;
+    if (isBusy(busyKey)) return;
+    setBusy(busyKey, true);
+
+    try {
+      await updateDoc(
+        doc(
+          db,
+          "batches",
+          selectedPiece.batchId,
+          "pieces",
+          selectedPiece.id,
+          editingNoteStream === "client" ? "clientNotes" : "studioNotes",
+          editingNoteId
+        ),
+        {
+          text: editingNoteText.trim(),
+          updatedAt: serverTimestamp(),
+          searchTokens: toTokens(editingNoteText),
+        }
+      );
+      await addDoc(
+        collection(db, "batches", selectedPiece.batchId, "pieces", selectedPiece.id, "audit"),
+        {
+          type: "NOTE_EDITED",
+          at: serverTimestamp(),
+          actorUid: user.uid,
+          actorName: user.displayName || "Member",
+          noteStream: editingNoteStream,
+          noteId: editingNoteId,
+          notes: editingNoteText.trim(),
+        }
+      );
+      cancelEditingNote();
+      refreshDetails();
+    } catch (error: unknown) {
+      setStatus(`Edit failed: ${getErrorMessage(error)}`);
+    } finally {
+      setBusy(busyKey, false);
+    }
+  };
+
+  const canEditNote = (note: PieceNote, stream: PieceNoteStream) => {
+    if (stream === "studio") return isStaff;
+    return note.authorUid === user.uid || isStaff;
+  };
+
   async function continueJourneyAndGetBatchId(batchId: string) {
     if (!batchId) return null;
     const busyKey = `continue:${batchId}`;
@@ -511,12 +641,12 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
       const newId = getResultBatchId(response.data);
       setStatus(newId ? `Journey continued. New batch id: ${newId}` : "Journey continued.");
       return newId ?? batchId;
-    } catch (err: any) {
-      if (err instanceof PortalApiError) {
-        setMeta(err.meta);
-        setStatus(`Continue journey failed: ${err.message}`);
+    } catch (error: unknown) {
+      if (error instanceof PortalApiError) {
+        setMeta(error.meta);
+        setStatus(`Continue journey failed: ${error.message}`);
       } else {
-        setStatus(`Continue journey failed: ${err?.message || String(err)}`);
+        setStatus(`Continue journey failed: ${getErrorMessage(error)}`);
       }
       return null;
     } finally {
@@ -524,18 +654,14 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
     }
   }
 
-  async function handleContinueJourney(batchId: string) {
-    await continueJourneyAndGetBatchId(batchId);
-  }
-
-  async function handleSendToNextFiring(batchId: string, piece: PieceDoc) {
-    if (!batchId || !onOpenCheckin) return;
+  async function handleSendToNextFiring(piece: PieceDoc) {
+    if (!onOpenCheckin) return;
     const nextFiringType = piece.stage === "BISQUE" ? "glaze" : piece.stage === "GREENWARE" ? "bisque" : null;
     if (!nextFiringType) {
       setStatus("This ware is already past firing.");
       return;
     }
-    const nextBatchId = await continueJourneyAndGetBatchId(batchId);
+    const nextBatchId = await continueJourneyAndGetBatchId(piece.batchId);
     if (!nextBatchId) return;
 
     try {
@@ -554,471 +680,12 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
     onOpenCheckin();
   }
 
-  async function handleArchive(batchId: string) {
-    if (!batchId) return;
-    const busyKey = `archive:${batchId}`;
-    if (isBusy(busyKey)) return;
-
-    setBusy(busyKey, true);
-    setStatus("Archiving collection...");
-    setMeta(null);
-
-    try {
-      const idToken = await user.getIdToken();
-      const trimmedAdminToken = adminToken ? adminToken.trim() : "";
-      const response = await portalApi.pickedUpAndClose({
-        idToken,
-        adminToken: trimmedAdminToken ? trimmedAdminToken : undefined,
-        payload: { uid: user.uid, batchId },
-      });
-      setMeta(response.meta);
-      setStatus("Collection archived.");
-    } catch (err: any) {
-      if (err instanceof PortalApiError) {
-        setMeta(err.meta);
-        setStatus(`Archive failed: ${err.message}`);
-      } else {
-        setStatus(`Archive failed: ${err?.message || String(err)}`);
-      }
-    } finally {
-      setBusy(busyKey, false);
-    }
-  }
-
-  function selectBatch(batchId: string, title?: string | null) {
-    setSelectedBatchId(batchId);
-    setSelectedBatchTitle(title ?? "");
-    const baseName = typeof title === "string" ? title.trim() : "";
-    if (baseName) {
-      setCollectionNameDraft(baseName);
-    }
-    setCollectionDescDraft("");
-    setCollectionMetaError("");
-    setSelectedPieceId(null);
-    setSelectedPieceTab("client");
-    setNoteSearchQuery("");
-    setNoteSearchResults([]);
-    setNoteSearchSummary("");
-    setNoteSearchError("");
-  }
-
-  async function handleSaveCollectionMeta() {
-    if (!selectedBatchId) return;
-    const busyKey = `collectionMeta:${selectedBatchId}`;
-    if (isBusy(busyKey)) return;
-
-    const trimmedName = collectionNameDraft.trim();
-    const trimmedDesc = collectionDescDraft.trim();
-
-    if (!trimmedName) {
-      setStatus("Collection name is required.");
-      return;
-    }
-
-    setBusy(busyKey, true);
-    setStatus("Saving collection...");
-    setMeta(null);
-
-    const payload = {
-      collectionName: trimmedName,
-      collectionDesc: trimmedDesc || null,
-      updatedAt: serverTimestamp(),
-    };
-
-    try {
-      await updateDoc(doc(db, "batches", selectedBatchId), payload);
-      setCollectionOverrides((prev) => ({
-        ...prev,
-        [selectedBatchId]: { name: trimmedName, desc: trimmedDesc },
-      }));
-      setSelectedBatchTitle(trimmedName);
-      setMeta({
-        ok: true,
-        status: 200,
-        fn: "firestore.updateCollectionMeta",
-        url: `batches/${selectedBatchId}`,
-        payload: { collectionName: trimmedName, collectionDesc: trimmedDesc || null },
-        response: { ok: true },
-        curlExample: "N/A (Firestore SDK)",
-      });
-      setStatus("Collection updated.");
-    } catch (err: any) {
-      setStatus(`Collection save failed: ${err?.message || String(err)}`);
-      setMeta({
-        ok: false,
-        status: err?.code ?? "error",
-        fn: "firestore.updateCollectionMeta",
-        url: `batches/${selectedBatchId}`,
-        payload: { collectionName: trimmedName, collectionDesc: trimmedDesc || null },
-        response: { message: err?.message || String(err) },
-        curlExample: "N/A (Firestore SDK)",
-      });
-    } finally {
-      setBusy(busyKey, false);
-    }
-  }
-
-  async function handleStageChange(pieceId: string, nextStage: Stage) {
-    if (!selectedBatchId) return;
-    const busyKey = `stage:${pieceId}`;
-    if (isBusy(busyKey)) return;
-
-    setBusy(busyKey, true);
-    setStatus("Updating stage...");
-    setMeta(null);
-
-    const payload = { stage: nextStage, updatedAt: serverTimestamp() };
-
-    try {
-      await updateDoc(doc(db, "batches", selectedBatchId, "pieces", pieceId), payload);
-      await addDoc(collection(db, "batches", selectedBatchId, "pieces", pieceId, "audit"), {
-        type: "STAGE_CHANGED",
-        at: serverTimestamp(),
-        actorUid: user.uid,
-        actorName: user.displayName ?? "Member",
-        notes: `Stage → ${nextStage}`,
-      });
-
-      setMeta({
-        ok: true,
-        status: 200,
-        fn: "firestore.updatePieceStage",
-        url: `batches/${selectedBatchId}/pieces/${pieceId}`,
-        payload: { stage: nextStage },
-        response: { ok: true },
-        curlExample: "N/A (Firestore SDK)",
-      });
-
-      setPieces((prev) =>
-        prev.map((piece) => (piece.id === pieceId ? { ...piece, stage: nextStage } : piece))
-      );
-      setStatus("Ware stage updated.");
-    } catch (err: any) {
-      setStatus(`Stage update failed: ${err?.message || String(err)}`);
-      setMeta({
-        ok: false,
-        status: err?.code ?? "error",
-        fn: "firestore.updatePieceStage",
-        url: `batches/${selectedBatchId}/pieces/${pieceId}`,
-        payload: { stage: nextStage },
-        response: { message: err?.message || String(err) },
-        curlExample: "N/A (Firestore SDK)",
-      });
-    } finally {
-      setBusy(busyKey, false);
-    }
-  }
-
-  async function handleArchivePiece(pieceId: string, nextArchived: boolean) {
-    if (!selectedBatchId) return;
-    const busyKey = `archivePiece:${pieceId}`;
-    if (isBusy(busyKey)) return;
-
-    setBusy(busyKey, true);
-    setStatus(nextArchived ? "Archiving ware..." : "Restoring ware...");
-    setMeta(null);
-
-    const payload = { isArchived: nextArchived, updatedAt: serverTimestamp() };
-
-    try {
-      await updateDoc(doc(db, "batches", selectedBatchId, "pieces", pieceId), payload);
-      await addDoc(collection(db, "batches", selectedBatchId, "pieces", pieceId, "audit"), {
-        type: nextArchived ? "ARCHIVED" : "UNARCHIVED",
-        at: serverTimestamp(),
-        actorUid: user.uid,
-        actorName: user.displayName ?? "Member",
-        notes: nextArchived ? "Archived piece" : "Unarchived piece",
-      });
-
-      setMeta({
-        ok: true,
-        status: 200,
-        fn: "firestore.setPieceArchived",
-        url: `batches/${selectedBatchId}/pieces/${pieceId}`,
-        payload: { isArchived: nextArchived },
-        response: { ok: true },
-        curlExample: "N/A (Firestore SDK)",
-      });
-
-      setPieces((prev) =>
-        prev.map((piece) => (piece.id === pieceId ? { ...piece, isArchived: nextArchived } : piece))
-      );
-      setStatus(nextArchived ? "Ware archived." : "Ware restored.");
-    } catch (err: any) {
-      setStatus(`Archive update failed: ${err?.message || String(err)}`);
-      setMeta({
-        ok: false,
-        status: err?.code ?? "error",
-        fn: "firestore.setPieceArchived",
-        url: `batches/${selectedBatchId}/pieces/${pieceId}`,
-        payload: { isArchived: nextArchived },
-        response: { message: err?.message || String(err) },
-        curlExample: "N/A (Firestore SDK)",
-      });
-    } finally {
-      setBusy(busyKey, false);
-    }
-  }
-
-  function canEditNote(note: PieceNote, stream: PieceNoteStream) {
-    if (isStaff) return true;
-    if (stream === "studio") return false;
-    return note.authorUid === user.uid;
-  }
-
-  async function handleAddNote(stream: PieceNoteStream) {
-    if (!selectedBatchId || !selectedPieceId) return;
-    if (stream === "studio" && !isStaff) {
-      setStatus("Studio notes are staff-only.");
-      return;
-    }
-
-    const busyKey = `addNote:${selectedPieceId}:${stream}`;
-    if (isBusy(busyKey)) return;
-
-    const draft = stream === "client" ? clientNoteDraft.trim() : studioNoteDraft.trim();
-    if (!draft) {
-      setStatus("Note text is required.");
-      return;
-    }
-
-    setBusy(busyKey, true);
-    setStatus("Adding note...");
-    setMeta(null);
-
-    const tokens = toTokens(draft);
-    const payload = {
-      text: draft,
-      at: serverTimestamp(),
-      authorUid: user.uid,
-      authorName: user.displayName ?? "Member",
-      searchTokens: tokens,
-    };
-
-    const collectionName = stream === "client" ? "clientNotes" : "studioNotes";
-
-    try {
-      const noteRef = await addDoc(
-        collection(db, "batches", selectedBatchId, "pieces", selectedPieceId, collectionName),
-        payload
-      );
-      await addDoc(collection(db, "batches", selectedBatchId, "pieces", selectedPieceId, "audit"), {
-        type: "NOTE_ADDED",
-        at: serverTimestamp(),
-        actorUid: user.uid,
-        actorName: user.displayName ?? "Member",
-        noteStream: stream,
-        noteId: noteRef.id,
-        notes: draft.slice(0, 120),
-      });
-
-      const newNote: PieceNote = {
-        id: noteRef.id,
-        text: draft,
-        at: new Date(),
-        updatedAt: null,
-        authorUid: user.uid,
-        authorName: user.displayName ?? "Member",
-        searchTokens: tokens,
-      };
-
-      if (stream === "client") {
-        setClientNotes((prev) => [newNote, ...prev]);
-        setClientNoteDraft("");
-      } else {
-        setStudioNotes((prev) => [newNote, ...prev]);
-        setStudioNoteDraft("");
-      }
-
-      setMeta({
-        ok: true,
-        status: 200,
-        fn: "firestore.addPieceNote",
-        url: `batches/${selectedBatchId}/pieces/${selectedPieceId}/${collectionName}`,
-        payload: { stream, text: draft },
-        response: { id: noteRef.id },
-        curlExample: "N/A (Firestore SDK)",
-      });
-
-      setStatus("Note added.");
-    } catch (err: any) {
-      setStatus(`Add note failed: ${err?.message || String(err)}`);
-      setMeta({
-        ok: false,
-        status: err?.code ?? "error",
-        fn: "firestore.addPieceNote",
-        url: `batches/${selectedBatchId}/pieces/${selectedPieceId}/${collectionName}`,
-        payload: { stream, text: draft },
-        response: { message: err?.message || String(err) },
-        curlExample: "N/A (Firestore SDK)",
-      });
-    } finally {
-      setBusy(busyKey, false);
-    }
-  }
-
-  function startEditingNote(note: PieceNote, stream: PieceNoteStream) {
-    if (!canEditNote(note, stream)) return;
-    setEditingNoteId(note.id);
-    setEditingNoteStream(stream);
-    setEditingNoteText(note.text);
-  }
-
-  function cancelEditingNote() {
-    setEditingNoteId(null);
-    setEditingNoteStream(null);
-    setEditingNoteText("");
-  }
-
-  async function handleSaveNoteEdit() {
-    if (!selectedBatchId || !selectedPieceId || !editingNoteId || !editingNoteStream) return;
-
-    const trimmed = editingNoteText.trim();
-    if (!trimmed) {
-      setStatus("Note text is required.");
-      return;
-    }
-
-    const busyKey = `editNote:${editingNoteId}`;
-    if (isBusy(busyKey)) return;
-
-    setBusy(busyKey, true);
-    setStatus("Saving note...");
-    setMeta(null);
-
-    const tokens = toTokens(trimmed);
-    const payload = {
-      text: trimmed,
-      updatedAt: serverTimestamp(),
-      searchTokens: tokens,
-    };
-
-    const collectionName = editingNoteStream === "client" ? "clientNotes" : "studioNotes";
-
-    try {
-      await updateDoc(
-        doc(db, "batches", selectedBatchId, "pieces", selectedPieceId, collectionName, editingNoteId),
-        payload
-      );
-      await addDoc(collection(db, "batches", selectedBatchId, "pieces", selectedPieceId, "audit"), {
-        type: "NOTE_EDITED",
-        at: serverTimestamp(),
-        actorUid: user.uid,
-        actorName: user.displayName ?? "Member",
-        noteStream: editingNoteStream,
-        noteId: editingNoteId,
-        notes: trimmed.slice(0, 120),
-      });
-
-      const applyEdit = (notes: PieceNote[]) =>
-        notes.map((note) =>
-          note.id === editingNoteId
-            ? { ...note, text: trimmed, updatedAt: new Date(), searchTokens: tokens }
-            : note
-        );
-
-      if (editingNoteStream === "client") {
-        setClientNotes((prev) => applyEdit(prev));
-      } else {
-        setStudioNotes((prev) => applyEdit(prev));
-      }
-
-      setMeta({
-        ok: true,
-        status: 200,
-        fn: "firestore.editPieceNote",
-        url: `batches/${selectedBatchId}/pieces/${selectedPieceId}/${collectionName}/${editingNoteId}`,
-        payload: { stream: editingNoteStream, text: trimmed },
-        response: { ok: true },
-        curlExample: "N/A (Firestore SDK)",
-      });
-
-      setStatus("Note updated.");
-      cancelEditingNote();
-    } catch (err: any) {
-      setStatus(`Edit note failed: ${err?.message || String(err)}`);
-      setMeta({
-        ok: false,
-        status: err?.code ?? "error",
-        fn: "firestore.editPieceNote",
-        url: `batches/${selectedBatchId}/pieces/${selectedPieceId}/${collectionName}/${editingNoteId}`,
-        payload: { stream: editingNoteStream, text: trimmed },
-        response: { message: err?.message || String(err) },
-        curlExample: "N/A (Firestore SDK)",
-      });
-    } finally {
-      setBusy(busyKey, false);
-    }
-  }
-
-  async function handleNoteSearch() {
-    if (!selectedBatchId) return;
-    const trimmed = noteSearchQuery.trim();
-    if (!trimmed) {
-      setNoteSearchResults([]);
-      setNoteSearchSummary("");
-      return;
-    }
-
-    if (noteSearchBusy) return;
-    setNoteSearchBusy(true);
-    setNoteSearchError("");
-    setNoteSearchSummary("");
-    setNoteSearchResults([]);
-
-    const tokens = toTokens(trimmed);
-    const piecesToScan = pieces.slice(0, SEARCH_PIECE_LIMIT);
-    const streams: PieceNoteStream[] = isStaff ? ["client", "studio"] : ["client"];
-
-    try {
-      const results: NoteSearchResult[] = [];
-
-      for (const piece of piecesToScan) {
-        for (const stream of streams) {
-          const collectionName = stream === "client" ? "clientNotes" : "studioNotes";
-          const notesQuery = query(
-            collection(db, "batches", selectedBatchId, "pieces", piece.id, collectionName),
-            orderBy("at", "desc"),
-            limit(SEARCH_NOTES_PER_PIECE)
-          );
-          const snap = await getDocs(notesQuery);
-          snap.docs.forEach((docSnap) => {
-            const data = buildNoteDoc({ id: docSnap.id, ...(docSnap.data() as any) });
-            const haystackTokens = Array.isArray(data.searchTokens) ? data.searchTokens : [];
-            const matches =
-              tokens.length === 0 ||
-              tokens.some((token) => haystackTokens.includes(token)) ||
-              data.text.toLowerCase().includes(trimmed.toLowerCase());
-            if (matches) {
-              results.push({
-                pieceId: piece.id,
-                pieceCode: piece.pieceCode || piece.id,
-                stream,
-                note: data,
-              });
-            }
-          });
-        }
-      }
-
-      setNoteSearchResults(results);
-      setNoteSearchSummary(
-        `Searched ${piecesToScan.length} piece${piecesToScan.length === 1 ? "" : "s"} · ${results.length} match${
-          results.length === 1 ? "" : "es"
-        }`
-      );
-    } catch (err: any) {
-      setNoteSearchError(`Note search failed: ${err?.message || String(err)}`);
-    } finally {
-      setNoteSearchBusy(false);
-    }
-  }
   return (
     <div className="page">
       <div className="page-header">
         <h1>My Pieces</h1>
         <p className="page-subtitle">
-          Live studio tracking for your wares. Updates appear as the team moves your pieces through the kiln.
+          Review your pieces, edit details, and keep your history tidy. We track the firing steps for you.
         </p>
       </div>
 
@@ -1031,705 +698,437 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
         </div>
       ) : null}
 
-      <div className="filter-chips">
-        <button
-          className={`chip ${piecesFilter === "all" ? "active" : ""}`}
-          onClick={() => setPiecesFilter("all")}
-        >
-          All ({active.length + history.length})
-        </button>
-        <button
-          className={`chip ${piecesFilter === "active" ? "active" : ""}`}
-          onClick={() => setPiecesFilter("active")}
-        >
-          In progress ({active.length})
-        </button>
-        <button
-          className={`chip ${piecesFilter === "history" ? "active" : ""}`}
-          onClick={() => setPiecesFilter("history")}
-        >
-          Completed ({history.length})
-        </button>
+      <div className="pieces-toolbar">
+        <div className="filter-chips">
+          <button
+            className={`chip ${piecesFilter === "all" ? "active" : ""}`}
+            onClick={() => setPiecesFilter("all")}
+          >
+            All ({totalPieceCount})
+          </button>
+          <button
+            className={`chip ${piecesFilter === "active" ? "active" : ""}`}
+            onClick={() => setPiecesFilter("active")}
+          >
+            In progress ({pieces.filter((piece) => !piece.batchIsHistory).length})
+          </button>
+          <button
+            className={`chip ${piecesFilter === "history" ? "active" : ""}`}
+            onClick={() => setPiecesFilter("history")}
+          >
+            History ({pieces.filter((piece) => piece.batchIsHistory).length})
+          </button>
+        </div>
+        <div className="toolbar-fields">
+          <input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search pieces"
+          />
+          <select value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)}>
+            <option value="recent">Newest updates</option>
+            <option value="oldest">Oldest updates</option>
+            <option value="stage">Stage</option>
+            <option value="rating">Rating</option>
+          </select>
+        </div>
       </div>
 
       <div className="cta-bar">
         <div className="piece-meta">
-          New wares and collections are created during Ware Check-in. Use that flow to log new
-          pieces or move bisque work into glaze.
+          Use Ware Check-in to add new pieces. You can archive, rate, and update details right here.
         </div>
       </div>
 
       <div className="wares-layout">
         <div className="pieces-grid collections-pane">
-        {showActiveSection ? (
           <div className="card card-3d">
-            <div className="card-title">Active collections</div>
-            {active.length === 0 ? (
-              <div className="empty-state">No active collections yet.</div>
-            ) : (
-              <div className="pieces-list">
-                {visibleActive.map((batch) => (
-                  <div className="piece-row" key={batch.id}>
-                    <div>
-                      <div className="piece-title-row">
-                        <div className="piece-title">{collectionNameFor(batch)}</div>
-                        {batch.status ? <div className="pill piece-status">{batch.status}</div> : null}
-                      </div>
-                      <div className="piece-meta">ID: {batch.id}</div>
-                      {collectionDescFor(batch) ? (
-                        <div className="piece-meta">{collectionDescFor(batch)}</div>
-                      ) : null}
-                    </div>
-                    <div className="piece-right">
-                      <div className="piece-meta">Updated: {formatMaybeTimestamp(batch.updatedAt)}</div>
-                      <div className="piece-meta">
-                        Est. cost: {formatCents(batch.estimatedCostCents ?? batch.priceCents)}
-                      </div>
-                      <div className="piece-actions">
-                        <button className="btn btn-ghost" onClick={() => toggleTimeline(batch.id)}>
-                          {timelineBatchId === batch.id ? "Hide timeline" : "View timeline"}
-                        </button>
-                        <button
-                          className="btn btn-ghost"
-                          onClick={() => selectBatch(batch.id, collectionNameFor(batch))}
-                        >
-                          Open collection
-                        </button>
-                        <button
-                          className="btn btn-ghost"
-                          onClick={() => handleArchive(batch.id)}
-                          disabled={isBusy(`archive:${batch.id}`)}
-                        >
-                          {isBusy(`archive:${batch.id}`) ? "Closing..." : "Close"}
-                        </button>
-                      </div>
-                    </div>
-                    {timelineBatchId === batch.id ? (
-                      <div className="timeline-inline">
-                        {timelineLoading ? (
-                          <div className="empty-state">Loading timeline...</div>
-                        ) : timelineError ? (
-                          <div className="alert inline-alert">{timelineError}</div>
-                        ) : timelineEvents.length === 0 ? (
-                          <div className="empty-state">No timeline events yet.</div>
-                        ) : (
-                          <div className="timeline-list">
-                            {timelineEvents.map((ev) => (
-                              <div className="timeline-row" key={ev.id}>
-                                <div className="timeline-at">{formatMaybeTimestamp(ev.at)}</div>
-                                <div>
-                                  <div className="timeline-title">{getTimelineLabel(ev.type)}</div>
-                                  <div className="timeline-meta">
-                                    {ev.actorName ? `by ${ev.actorName}` : ""}
-                                    {ev.kilnName ? `  kiln: ${ev.kilnName}` : ""}
-                                  </div>
-                                  {ev.notes ? <div className="timeline-notes">{ev.notes}</div> : null}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-                {active.length > PIECES_PREVIEW_COUNT ? (
-                  <button
-                    className="btn btn-ghost show-more"
-                    onClick={() => setShowAllActive((prev) => !prev)}
-                  >
-                    {showAllActive ? "Show fewer" : `Show more (${active.length - PIECES_PREVIEW_COUNT})`}
-                  </button>
-                ) : null}
-              </div>
-            )}
-          </div>
-        ) : null}
-
-        {showHistorySection ? (
-          <div className="card card-3d">
-            <div className="card-title">Completed collections</div>
-            {history.length === 0 ? (
-              <div className="empty-state">No completed collections yet.</div>
-            ) : (
-              <div className="pieces-list">
-                {visibleHistory.map((batch) => (
-                  <div className="piece-row" key={batch.id}>
-                    <div>
-                      <div className="piece-title-row">
-                        <div className="piece-title">{collectionNameFor(batch)}</div>
-                        <div className="pill piece-status">Complete</div>
-                      </div>
-                      <div className="piece-meta">ID: {batch.id}</div>
-                      <div className="piece-meta">Closed: {formatMaybeTimestamp(batch.closedAt)}</div>
-                      {collectionDescFor(batch) ? (
-                        <div className="piece-meta">{collectionDescFor(batch)}</div>
-                      ) : null}
-                    </div>
-                    <div className="piece-right">
-                      <div className="piece-meta">Updated: {formatMaybeTimestamp(batch.updatedAt)}</div>
-                      <div className="piece-meta">
-                        Final cost: {formatCents(batch.priceCents ?? batch.estimatedCostCents)}
-                      </div>
-                      <div className="piece-actions">
-                        <button className="btn btn-ghost" onClick={() => toggleTimeline(batch.id)}>
-                          {timelineBatchId === batch.id ? "Hide timeline" : "View timeline"}
-                        </button>
-                        <button
-                          className="btn btn-ghost"
-                          onClick={() => selectBatch(batch.id, collectionNameFor(batch))}
-                        >
-                          Open collection
-                        </button>
-                        <button
-                          className="btn btn-ghost"
-                          onClick={() => handleContinueJourney(batch.id)}
-                          disabled={!canContinue || isBusy(`continue:${batch.id}`)}
-                        >
-                          {isBusy(`continue:${batch.id}`) ? "Resubmitting..." : "Continue journey"}
-                        </button>
-                      </div>
-                    </div>
-                    {timelineBatchId === batch.id ? (
-                      <div className="timeline-inline">
-                        {timelineLoading ? (
-                          <div className="empty-state">Loading timeline...</div>
-                        ) : timelineError ? (
-                          <div className="alert inline-alert">{timelineError}</div>
-                        ) : timelineEvents.length === 0 ? (
-                          <div className="empty-state">No timeline events yet.</div>
-                        ) : (
-                          <div className="timeline-list">
-                            {timelineEvents.map((ev) => (
-                              <div className="timeline-row" key={ev.id}>
-                                <div className="timeline-at">{formatMaybeTimestamp(ev.at)}</div>
-                                <div>
-                                  <div className="timeline-title">{getTimelineLabel(ev.type)}</div>
-                                  <div className="timeline-meta">
-                                    {ev.actorName ? `by ${ev.actorName}` : ""}
-                                    {ev.kilnName ? `  kiln: ${ev.kilnName}` : ""}
-                                  </div>
-                                  {ev.notes ? <div className="timeline-notes">{ev.notes}</div> : null}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-                {history.length > PIECES_PREVIEW_COUNT ? (
-                  <button
-                    className="btn btn-ghost show-more"
-                    onClick={() => setShowAllHistory((prev) => !prev)}
-                  >
-                    {showAllHistory ? "Show fewer" : `Show more (${history.length - PIECES_PREVIEW_COUNT})`}
-                  </button>
-                ) : null}
-              </div>
-            )}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="card card-3d collection-detail-pane">
-        <div className="card-title">Collection detail</div>
-        {!selectedBatchId ? (
-          <div className="empty-state">Select a collection to view wares.</div>
-        ) : (
-          <div className="detail-grid">
-            <div className="detail-block">
-              <div className="detail-header">
-                <div>
-                  <div className="detail-title">
-                    {collectionNameDraft ||
-                      (selectedBatch ? collectionNameFor(selectedBatch) : selectedBatchTitle || "Collection")}
-                  </div>
-                  <div className="piece-meta">Collection ID: {selectedBatchId}</div>
-                </div>
-                <button className="btn btn-ghost" onClick={() => setSelectedBatchId(null)}>
-                  Close
-                </button>
-              </div>
-
-              <div className="section-title">Collection details</div>
-              <div className="form-grid collection-form-grid">
-                <div>
-                  <label className="field-label" htmlFor="collection-name">
-                    Collection name
-                  </label>
-                  <input
-                    id="collection-name"
-                    value={collectionNameDraft}
-                    onChange={(event) => setCollectionNameDraft(event.target.value)}
-                    placeholder="e.g. Spring kiln load"
-                  />
-                </div>
-                <div>
-                  <label className="field-label" htmlFor="collection-desc">
-                    Description
-                  </label>
-                  <textarea
-                    id="collection-desc"
-                    value={collectionDescDraft}
-                    onChange={(event) => setCollectionDescDraft(event.target.value)}
-                    placeholder="Notes about this collection"
-                  />
-                </div>
-              </div>
-              <div className="form-actions">
-                <button
-                  className="btn btn-ghost"
-                  onClick={handleSaveCollectionMeta}
-                  disabled={isBusy(`collectionMeta:${selectedBatchId}`)}
-                >
-                  {isBusy(`collectionMeta:${selectedBatchId}`) ? "Saving..." : "Save collection"}
-                </button>
-              </div>
-              {collectionMetaLoading ? <div className="piece-meta">Loading collection details...</div> : null}
-              {collectionMetaError ? <div className="alert inline-alert">{collectionMetaError}</div> : null}
-
-              <div className="section-title">Wares</div>
-              {piecesLoading ? (
-                <div className="empty-state">Loading wares...</div>
-              ) : piecesError ? (
-                <div className="alert inline-alert">{piecesError}</div>
-              ) : pieces.length === 0 ? (
-                <div className="empty-state">No wares for this collection yet.</div>
-              ) : (
-                <div className="ware-groups">
-                  {WARE_CATEGORIES.map((category) => {
-                    const categoryPieces = activeByCategory[category];
-                    if (!categoryPieces.length) return null;
-                    return (
-                      <div className="category-group" key={`active-${category}`}>
-                        <div className="category-title">
-                          {WARE_CATEGORY_LABELS[category]} ({categoryPieces.length})
-                        </div>
-                        <div className="pieces-list">
-                          {categoryPieces.map((piece) => {
-                            const isNextEligible = piece.stage === "GREENWARE" || piece.stage === "BISQUE";
-                            const canSendNext = isNextEligible && !!onOpenCheckin;
-                            const sendLabel = isNextEligible ? "Send to next firing" : "Firing complete";
-                            return (
-                              <div className="piece-row" key={piece.id}>
-                                <div>
-                                  <div className="piece-title-row">
-                                    <div className="piece-title">{piece.pieceCode || piece.id}</div>
-                                    <div className="pill piece-status">{piece.stage}</div>
-                                  </div>
-                                  <div className="piece-meta">{piece.shortDesc}</div>
-                                  <div className="piece-meta">Owner: {piece.ownerName}</div>
-                                </div>
-                                <div className="piece-right">
-                                  <div className="piece-meta">
-                                    Updated: {formatMaybeTimestamp(piece.updatedAt)}
-                                  </div>
-                                  <div className="piece-actions">
-                                    <button
-                                      className="btn btn-ghost"
-                                      onClick={() => {
-                                        setSelectedPieceId(piece.id);
-                                        setSelectedPieceTab("client");
-                                      }}
-                                    >
-                                      View details
-                                    </button>
-                                    <button
-                                      className="btn btn-ghost"
-                                      onClick={() => {
-                                        if (!selectedBatchId) return;
-                                        void handleSendToNextFiring(selectedBatchId, piece);
-                                      }}
-                                      disabled={!selectedBatchId || !canSendNext || isBusy(`continue:${selectedBatchId}`)}
-                                    >
-                                      {sendLabel}
-                                    </button>
-                                    <button
-                                      className="btn btn-ghost"
-                                      onClick={() => {
-                                        if (!window.confirm("Archive this ware?")) return;
-                                        void handleArchivePiece(piece.id, true);
-                                      }}
-                                      disabled={isBusy(`archivePiece:${piece.id}`)}
-                                    >
-                                      {isBusy(`archivePiece:${piece.id}`) ? "Archiving..." : "Archive"}
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {archivedPieces.length > 0 ? (
-                    <div className="archived-group">
-                      <button className="btn btn-ghost" onClick={() => setArchivedExpanded((prev) => !prev)}>
-                        {archivedExpanded
-                          ? `Hide archived (${archivedPieces.length})`
-                          : `Show archived (${archivedPieces.length})`}
-                      </button>
-                      {archivedExpanded ? (
-                        <div className="ware-groups">
-                          {WARE_CATEGORIES.map((category) => {
-                            const categoryPieces = archivedByCategory[category];
-                            if (!categoryPieces.length) return null;
-                            return (
-                              <div className="category-group" key={`archived-${category}`}>
-                                <div className="category-title">
-                                  {WARE_CATEGORY_LABELS[category]} ({categoryPieces.length})
-                                </div>
-                                <div className="pieces-list">
-                                  {categoryPieces.map((piece) => (
-                                    <div className="piece-row" key={piece.id}>
-                                      <div>
-                                        <div className="piece-title-row">
-                                          <div className="piece-title">{piece.pieceCode || piece.id}</div>
-                                          <div className="pill piece-status">Archived</div>
-                                        </div>
-                                        <div className="piece-meta">{piece.shortDesc}</div>
-                                        <div className="piece-meta">Owner: {piece.ownerName}</div>
-                                      </div>
-                                      <div className="piece-right">
-                                        <div className="piece-meta">
-                                          Updated: {formatMaybeTimestamp(piece.updatedAt)}
-                                        </div>
-                                        <div className="piece-actions">
-                                          <button
-                                            className="btn btn-ghost"
-                                            onClick={() => {
-                                              setSelectedPieceId(piece.id);
-                                              setSelectedPieceTab("client");
-                                            }}
-                                          >
-                                            View details
-                                          </button>
-                                          <button
-                                            className="btn btn-ghost"
-                                            onClick={() => {
-                                              if (!window.confirm("Restore this ware?")) return;
-                                              void handleArchivePiece(piece.id, false);
-                                            }}
-                                            disabled={isBusy(`archivePiece:${piece.id}`)}
-                                          >
-                                            {isBusy(`archivePiece:${piece.id}`) ? "Restoring..." : "Restore"}
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              )}
+            <div className="card-title">
+              {piecesFilter === "history" ? "History" : piecesFilter === "active" ? "In progress" : "Your pieces"}
             </div>
-
-            <div className="detail-block">
-              <div className="section-title">Note search (this collection)</div>
-              <div className="form-grid note-search-grid">
-                <input
-                  value={noteSearchQuery}
-                  onChange={(event) => setNoteSearchQuery(event.target.value)}
-                  placeholder="Search notes"
-                />
-                <button className="btn btn-ghost" onClick={handleNoteSearch} disabled={noteSearchBusy}>
-                  {noteSearchBusy ? "Searching..." : "Search"}
-                </button>
-              </div>
-              {noteSearchError ? <div className="alert inline-alert">{noteSearchError}</div> : null}
-              {noteSearchSummary ? <div className="piece-meta">{noteSearchSummary}</div> : null}
-              {noteSearchResults.length > 0 ? (
-                <div className="note-results">
-                  {noteSearchResults.map((result) => (
-                    <div className="note-card" key={`${result.pieceId}-${result.stream}-${result.note.id}`}>
+            {piecesLoading ? (
+              <div className="empty-state">Loading pieces...</div>
+            ) : piecesError ? (
+              <div className="alert inline-alert">{piecesError}</div>
+            ) : visiblePieces.length === 0 ? (
+              <div className="empty-state">No pieces yet.</div>
+            ) : (
+              <div className="pieces-list">
+                {visiblePieces.map((piece) => (
+                  <div className="piece-row" key={piece.key}>
+                    <div>
                       <div className="piece-title-row">
-                        <div className="piece-title">{result.pieceCode}</div>
-                        <div className="pill piece-status">{result.stream}</div>
+                        <div className="piece-title">{piece.pieceCode || piece.id}</div>
+                        <div className="pill piece-status">{piece.stage}</div>
+                        {piece.isArchived ? <div className="pill piece-status">Archived</div> : null}
                       </div>
-                      <div className="piece-meta">{formatMaybeTimestamp(result.note.at)}</div>
-                      <div>{result.note.text}</div>
+                      <div className="piece-meta">{piece.shortDesc || "No description yet."}</div>
+                      <div className="piece-meta">Check-in: {piece.batchTitle}</div>
+                      <div className="piece-meta">
+                        Updated: {formatMaybeTimestamp(piece.updatedAt)}
+                      </div>
+                    </div>
+                    <div className="piece-right">
+                      <div className="piece-meta">
+                        {piece.clientRating ? `Rating: ${piece.clientRating}★` : "No rating yet"}
+                      </div>
                       <div className="piece-actions">
+                        <button className="btn btn-ghost" onClick={() => setSelectedPieceKey(piece.key)}>
+                          View details
+                        </button>
                         <button
                           className="btn btn-ghost"
-                          onClick={() => {
-                            setSelectedPieceId(result.pieceId);
-                            setSelectedPieceTab(result.stream === "studio" ? "studio" : "client");
-                          }}
+                          onClick={toVoidHandler(() => handleArchivePiece(piece, !piece.isArchived))}
+                          disabled={isBusy(`update:${piece.key}`)}
                         >
-                          Open ware
+                          {isBusy(`update:${piece.key}`)
+                            ? "Saving..."
+                            : piece.isArchived
+                              ? "Restore"
+                              : "Archive"}
                         </button>
                       </div>
                     </div>
-                  ))}
+                  </div>
+                ))}
+                {piecesFilter === "all" && filteredPieces.length > PIECES_PREVIEW_COUNT ? (
+                  <div className="piece-meta">
+                    Showing {PIECES_PREVIEW_COUNT} of {filteredPieces.length}. Use filters to see more.
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="card card-3d collection-detail-pane">
+          <div className="card-title">Piece detail</div>
+          {!selectedPiece ? (
+            <div className="empty-state">Select a piece to view details.</div>
+          ) : (
+            <div className="detail-grid">
+              <div className="detail-block">
+                <div className="detail-header">
+                  <div>
+                    <div className="detail-title">{selectedPiece.pieceCode || selectedPiece.id}</div>
+                    <div className="piece-meta">{selectedPiece.shortDesc}</div>
+                    <div className="piece-meta">Owner: {selectedPiece.ownerName}</div>
+                    <div className="piece-meta">Check-in: {selectedPiece.batchTitle}</div>
+                    <div className="piece-meta">
+                      Updated: {formatMaybeTimestamp(selectedPiece.updatedAt)}
+                    </div>
+                  </div>
+                  <button className="btn btn-ghost" onClick={() => setSelectedPieceKey(null)}>
+                    Close
+                  </button>
                 </div>
-              ) : null}
 
-              <div className="section-title">Ware detail</div>
-              {!selectedPiece ? (
-                <div className="empty-state">Select a ware to view details.</div>
-              ) : (
-                <div className="piece-detail">
-                  <div className="piece-title-row">
-                    <div>
-                      <div className="piece-title">{selectedPiece.pieceCode || selectedPiece.id}</div>
-                      <div className="piece-meta">{selectedPiece.shortDesc}</div>
-                      <div className="piece-meta">Owner: {selectedPiece.ownerName}</div>
-                      <div className="piece-meta">
-                        Category: {WARE_CATEGORY_LABELS[selectedPiece.wareCategory]}
-                      </div>
-                      <div className="piece-meta">Updated: {formatMaybeTimestamp(selectedPiece.updatedAt)}</div>
-                    </div>
-                    <div>
-                      <label className="field-label" htmlFor="stage-select">
-                        Stage
-                      </label>
-                      <select
-                        id="stage-select"
-                        value={selectedPiece.stage}
-                        onChange={(event) =>
-                          handleStageChange(selectedPiece.id, normalizeStage(event.target.value))
-                        }
-                        disabled={isBusy(`stage:${selectedPiece.id}`)}
+                <div className="section-title">Piece details</div>
+                <div className="form-grid collection-form-grid">
+                  <div>
+                    <label className="field-label" htmlFor="piece-desc">
+                      Description
+                    </label>
+                    <input
+                      id="piece-desc"
+                      value={selectedPiece.shortDesc}
+                      onChange={(event) =>
+                        toVoidHandler(handleUpdatePiece)(
+                          selectedPiece,
+                          { shortDesc: event.target.value }
+                        )
+                      }
+                      placeholder="Short description"
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label" htmlFor="piece-category">
+                      Category
+                    </label>
+                    <select
+                      id="piece-category"
+                      value={selectedPiece.wareCategory}
+                      onChange={(event) =>
+                        toVoidHandler(handleUpdatePiece)(selectedPiece, {
+                          wareCategory: normalizeWareCategory(event.target.value),
+                        })
+                      }
+                    >
+                      {WARE_CATEGORIES.map((category) => (
+                        <option value={category} key={category}>
+                          {WARE_CATEGORY_LABELS[category]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="field-label" htmlFor="stage-select">
+                      Stage
+                    </label>
+                    <select
+                      id="stage-select"
+                      value={selectedPiece.stage}
+                      onChange={(event) =>
+                        toVoidHandler(handleUpdatePiece)(selectedPiece, {
+                          stage: normalizeStage(event.target.value),
+                        })
+                      }
+                    >
+                      {STAGES.map((stage) => (
+                        <option value={stage} key={stage}>
+                          {stage}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="piece-actions">
+                    <button
+                      className="btn btn-ghost"
+                      onClick={toVoidHandler(() =>
+                        handleArchivePiece(selectedPiece, !selectedPiece.isArchived)
+                      )}
+                    >
+                      {selectedPiece.isArchived ? "Restore piece" : "Archive piece"}
+                    </button>
+                    {selectedPieceCanContinue ? (
+                      <button
+                        className="btn btn-ghost"
+                        onClick={toVoidHandler(() => handleSendToNextFiring(selectedPiece))}
                       >
-                        {STAGES.map((stage) => (
-                          <option value={stage} key={stage}>
-                            {stage}
-                          </option>
-                        ))}
-                      </select>
+                        Send to next firing
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="section-title">Feedback for the studio</div>
+                <div className="feedback-card">
+                  <div className="feedback-copy">
+                    Tap to rate how the loading went. This helps the loaders and makers dial it in.
+                  </div>
+                  <StarRating
+                    value={selectedPiece.clientRating}
+                    onSelect={toVoidHandler((value: number) => handleRating(selectedPiece, value))}
+                    disabled={isBusy(`rating:${selectedPiece.key}`)}
+                    pulse={ratingPulseKey === selectedPiece.key}
+                  />
+                  <div className="feedback-meta">
+                    {ratingStatus[selectedPiece.key] || "You can update this anytime."}
+                  </div>
+                </div>
+
+                <div className="tab-row">
+                  <button
+                    className={`chip ${selectedPieceTab === "client" ? "active" : ""}`}
+                    onClick={() => setSelectedPieceTab("client")}
+                  >
+                    Client notes
+                  </button>
+                  <button
+                    className={`chip ${selectedPieceTab === "studio" ? "active" : ""}`}
+                    onClick={() => setSelectedPieceTab("studio")}
+                  >
+                    Studio notes
+                  </button>
+                  <button
+                    className={`chip ${selectedPieceTab === "photos" ? "active" : ""}`}
+                    onClick={() => setSelectedPieceTab("photos")}
+                  >
+                    Photos
+                  </button>
+                  <button
+                    className={`chip ${selectedPieceTab === "audit" ? "active" : ""}`}
+                    onClick={() => setSelectedPieceTab("audit")}
+                  >
+                    Audit
+                  </button>
+                </div>
+
+                {pieceDetailLoading ? <div className="empty-state">Loading detail...</div> : null}
+                {pieceDetailError ? <div className="alert inline-alert">{pieceDetailError}</div> : null}
+
+                {selectedPieceTab === "client" ? (
+                  <div>
+                    <div className="form-grid note-form-grid">
+                      <textarea
+                        value={clientNoteDraft}
+                        onChange={(event) => setClientNoteDraft(event.target.value)}
+                        placeholder="Add a client note"
+                      />
+                      <button
+                        className="btn btn-primary"
+                        onClick={toVoidHandler(() => handleAddNote("client"))}
+                        disabled={isBusy(`addNote:${selectedPiece.key}:client`)}
+                      >
+                        {isBusy(`addNote:${selectedPiece.key}:client`) ? "Adding..." : "Add note"}
+                      </button>
                     </div>
+
+                    {clientNotes.length === 0 ? (
+                      <div className="empty-state">No client notes yet.</div>
+                    ) : (
+                      <div className="note-list">
+                        {clientNotes.map((note) => (
+                          <div className="note-card" key={note.id}>
+                            <div className="piece-meta">
+                              {note.authorName || "Member"} · {formatMaybeTimestamp(note.at)}
+                              {note.updatedAt ? ` · edited ${formatMaybeTimestamp(note.updatedAt)}` : ""}
+                            </div>
+                            {editingNoteId === note.id && editingNoteStream === "client" ? (
+                              <div className="form-grid note-edit-grid">
+                                <textarea
+                                  value={editingNoteText}
+                                  onChange={(event) => setEditingNoteText(event.target.value)}
+                                />
+                                <div className="form-actions">
+                                  <button
+                                    className="btn btn-primary"
+                                    onClick={toVoidHandler(handleSaveNoteEdit)}
+                                    disabled={isBusy(`editNote:${note.id}`)}
+                                  >
+                                    {isBusy(`editNote:${note.id}`) ? "Saving..." : "Save"}
+                                  </button>
+                                  <button className="btn btn-ghost" onClick={cancelEditingNote}>
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div>
+                                <div>{note.text}</div>
+                                {canEditNote(note, "client") ? (
+                                  <button className="btn btn-ghost" onClick={() => startEditingNote(note, "client")}>
+                                    Edit
+                                  </button>
+                                ) : null}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-
-                  {participants.length > 0 ? (
-                    <div className="piece-meta">Participants: {participants.join(", ")}</div>
-                  ) : (
-                    <div className="piece-meta">Participants: -</div>
-                  )}
-
-                  <div className="tab-row">
-                    <button
-                      className={`chip ${selectedPieceTab === "client" ? "active" : ""}`}
-                      onClick={() => setSelectedPieceTab("client")}
-                    >
-                      Client notes
-                    </button>
-                    <button
-                      className={`chip ${selectedPieceTab === "studio" ? "active" : ""}`}
-                      onClick={() => setSelectedPieceTab("studio")}
-                    >
-                      Studio notes
-                    </button>
-                    <button
-                      className={`chip ${selectedPieceTab === "photos" ? "active" : ""}`}
-                      onClick={() => setSelectedPieceTab("photos")}
-                    >
-                      Photos
-                    </button>
-                    <button
-                      className={`chip ${selectedPieceTab === "audit" ? "active" : ""}`}
-                      onClick={() => setSelectedPieceTab("audit")}
-                    >
-                      Audit
-                    </button>
-                  </div>
-
-                  {pieceDetailLoading ? <div className="empty-state">Loading detail...</div> : null}
-                  {pieceDetailError ? <div className="alert inline-alert">{pieceDetailError}</div> : null}
-
-                  {selectedPieceTab === "client" ? (
-                    <div>
+                ) : null}
+                {selectedPieceTab === "studio" ? (
+                  <div>
+                    {!isStaff ? (
+                      <div className="alert inline-alert">Studio notes are staff-only.</div>
+                    ) : (
                       <div className="form-grid note-form-grid">
                         <textarea
-                          value={clientNoteDraft}
-                          onChange={(event) => setClientNoteDraft(event.target.value)}
-                          placeholder="Add a client note"
+                          value={studioNoteDraft}
+                          onChange={(event) => setStudioNoteDraft(event.target.value)}
+                          placeholder="Add a studio note"
                         />
                         <button
                           className="btn btn-primary"
-                          onClick={() => handleAddNote("client")}
-                          disabled={isBusy(`addNote:${selectedPiece.id}:client`)}
+                          onClick={toVoidHandler(() => handleAddNote("studio"))}
+                          disabled={isBusy(`addNote:${selectedPiece.key}:studio`)}
                         >
-                          {isBusy(`addNote:${selectedPiece.id}:client`) ? "Adding..." : "Add note"}
+                          {isBusy(`addNote:${selectedPiece.key}:studio`) ? "Adding..." : "Add note"}
                         </button>
                       </div>
+                    )}
 
-                      {clientNotes.length === 0 ? (
-                        <div className="empty-state">No client notes yet.</div>
-                      ) : (
-                        <div className="note-list">
-                          {clientNotes.map((note) => (
-                            <div className="note-card" key={note.id}>
-                              <div className="piece-meta">
-                                {note.authorName || "Member"} · {formatMaybeTimestamp(note.at)}
-                                {note.updatedAt ? ` · edited ${formatMaybeTimestamp(note.updatedAt)}` : ""}
-                              </div>
-                              {editingNoteId === note.id && editingNoteStream === "client" ? (
-                                <div className="form-grid note-edit-grid">
-                                  <textarea
-                                    value={editingNoteText}
-                                    onChange={(event) => setEditingNoteText(event.target.value)}
-                                  />
-                                  <div className="form-actions">
-                                    <button
-                                      className="btn btn-primary"
-                                      onClick={handleSaveNoteEdit}
-                                      disabled={isBusy(`editNote:${note.id}`)}
-                                    >
-                                      {isBusy(`editNote:${note.id}`) ? "Saving..." : "Save"}
-                                    </button>
-                                    <button className="btn btn-ghost" onClick={cancelEditingNote}>
-                                      Cancel
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div>
-                                  <div>{note.text}</div>
-                                  {canEditNote(note, "client") ? (
-                                    <button className="btn btn-ghost" onClick={() => startEditingNote(note, "client")}>
-                                      Edit
-                                    </button>
-                                  ) : null}
-                                </div>
-                              )}
+                    {studioNotes.length === 0 ? (
+                      <div className="empty-state">No studio notes yet.</div>
+                    ) : (
+                      <div className="note-list">
+                        {studioNotes.map((note) => (
+                          <div className="note-card" key={note.id}>
+                            <div className="piece-meta">
+                              {note.authorName || "Staff"} · {formatMaybeTimestamp(note.at)}
+                              {note.updatedAt ? ` · edited ${formatMaybeTimestamp(note.updatedAt)}` : ""}
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-                  {selectedPieceTab === "studio" ? (
-                    <div>
-                      {!isStaff ? (
-                        <div className="alert inline-alert">Studio notes are staff-only.</div>
-                      ) : (
-                        <div className="form-grid note-form-grid">
-                          <textarea
-                            value={studioNoteDraft}
-                            onChange={(event) => setStudioNoteDraft(event.target.value)}
-                            placeholder="Add a studio note"
-                          />
-                          <button
-                            className="btn btn-primary"
-                            onClick={() => handleAddNote("studio")}
-                            disabled={isBusy(`addNote:${selectedPiece.id}:studio`)}
-                          >
-                            {isBusy(`addNote:${selectedPiece.id}:studio`) ? "Adding..." : "Add note"}
-                          </button>
-                        </div>
-                      )}
-
-                      {studioNotes.length === 0 ? (
-                        <div className="empty-state">No studio notes yet.</div>
-                      ) : (
-                        <div className="note-list">
-                          {studioNotes.map((note) => (
-                            <div className="note-card" key={note.id}>
-                              <div className="piece-meta">
-                                {note.authorName || "Staff"} · {formatMaybeTimestamp(note.at)}
-                                {note.updatedAt ? ` · edited ${formatMaybeTimestamp(note.updatedAt)}` : ""}
-                              </div>
-                              {editingNoteId === note.id && editingNoteStream === "studio" ? (
-                                <div className="form-grid note-edit-grid">
-                                  <textarea
-                                    value={editingNoteText}
-                                    onChange={(event) => setEditingNoteText(event.target.value)}
-                                  />
-                                  <div className="form-actions">
-                                    <button
-                                      className="btn btn-primary"
-                                      onClick={handleSaveNoteEdit}
-                                      disabled={isBusy(`editNote:${note.id}`)}
-                                    >
-                                      {isBusy(`editNote:${note.id}`) ? "Saving..." : "Save"}
-                                    </button>
-                                    <button className="btn btn-ghost" onClick={cancelEditingNote}>
-                                      Cancel
-                                    </button>
-                                  </div>
+                            {editingNoteId === note.id && editingNoteStream === "studio" ? (
+                              <div className="form-grid note-edit-grid">
+                                <textarea
+                                  value={editingNoteText}
+                                  onChange={(event) => setEditingNoteText(event.target.value)}
+                                />
+                                <div className="form-actions">
+                                  <button
+                                    className="btn btn-primary"
+                                    onClick={toVoidHandler(handleSaveNoteEdit)}
+                                    disabled={isBusy(`editNote:${note.id}`)}
+                                  >
+                                    {isBusy(`editNote:${note.id}`) ? "Saving..." : "Save"}
+                                  </button>
+                                  <button className="btn btn-ghost" onClick={cancelEditingNote}>
+                                    Cancel
+                                  </button>
                                 </div>
-                              ) : (
-                                <div>
-                                  <div>{note.text}</div>
-                                  {canEditNote(note, "studio") ? (
-                                    <button className="btn btn-ghost" onClick={() => startEditingNote(note, "studio")}>
-                                      Edit
-                                    </button>
-                                  ) : null}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-
-                  {selectedPieceTab === "photos" ? (
-                    <div>
-                      {mediaItems.length === 0 ? (
-                        <div className="empty-state">No photos yet.</div>
-                      ) : (
-                        <div className="note-list">
-                          {mediaItems.map((item) => (
-                            <div className="note-card" key={item.id}>
-                              <div className="piece-title-row">
-                                <div className="piece-title">{item.storagePath}</div>
-                                <div className="pill piece-status">{item.stage}</div>
                               </div>
-                              <div className="piece-meta">
-                                {item.uploadedByName ? `by ${item.uploadedByName}` : ""}
-                                {item.at ? ` · ${formatMaybeTimestamp(item.at)}` : ""}
-                              </div>
-                              {item.caption ? <div>{item.caption}</div> : null}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-
-                  {selectedPieceTab === "audit" ? (
-                    <div>
-                      {auditEvents.length === 0 ? (
-                        <div className="empty-state">No audit events yet.</div>
-                      ) : (
-                        <div className="note-list">
-                          {auditEvents.map((event) => (
-                            <div className="note-card" key={event.id}>
-                              <div className="piece-title-row">
-                                <div className="piece-title">{event.type}</div>
-                                {event.noteStream ? (
-                                  <div className="pill piece-status">{event.noteStream}</div>
+                            ) : (
+                              <div>
+                                <div>{note.text}</div>
+                                {canEditNote(note, "studio") ? (
+                                  <button className="btn btn-ghost" onClick={() => startEditingNote(note, "studio")}>
+                                    Edit
+                                  </button>
                                 ) : null}
                               </div>
-                              <div className="piece-meta">
-                                {event.actorName ? `by ${event.actorName}` : ""}
-                                {event.at ? ` · ${formatMaybeTimestamp(event.at)}` : ""}
-                              </div>
-                              {event.notes ? <div>{event.notes}</div> : null}
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+
+                {selectedPieceTab === "photos" ? (
+                  <div>
+                    {mediaItems.length === 0 ? (
+                      <div className="empty-state">No photos yet.</div>
+                    ) : (
+                      <div className="note-list">
+                        {mediaItems.map((item) => (
+                          <div className="note-card" key={item.id}>
+                            <div className="piece-title-row">
+                              <div className="piece-title">{item.storagePath}</div>
+                              <div className="pill piece-status">{item.stage}</div>
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              )}
+                            <div className="piece-meta">
+                              {item.uploadedByName ? `by ${item.uploadedByName}` : ""}
+                              {item.at ? ` · ${formatMaybeTimestamp(item.at)}` : ""}
+                            </div>
+                            {item.caption ? <div>{item.caption}</div> : null}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+
+                {selectedPieceTab === "audit" ? (
+                  <div>
+                    {auditEvents.length === 0 ? (
+                      <div className="empty-state">No audit events yet.</div>
+                    ) : (
+                      <div className="note-list">
+                        {auditEvents.map((event) => (
+                          <div className="note-card" key={event.id}>
+                            <div className="piece-title-row">
+                              <div className="piece-title">{event.type}</div>
+                              {event.noteStream ? (
+                                <div className="pill piece-status">{event.noteStream}</div>
+                              ) : null}
+                            </div>
+                            <div className="piece-meta">
+                              {event.actorName ? `by ${event.actorName}` : ""}
+                              {event.at ? ` · ${formatMaybeTimestamp(event.at)}` : ""}
+                            </div>
+                            {event.notes ? <div>{event.notes}</div> : null}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
       </div>
 
       {meta ? (

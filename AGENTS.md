@@ -15,7 +15,7 @@ Always use Context7 MCP when you need library/API documentation, code generation
 - functions/ — Firebase Cloud Functions (HTTP)
   - Stateless request/response JSON contracts
   - Authorization: Bearer <idToken>
-  - Dev-only admin token header: x-admin-token (user-pasted; never hardcode; stored in localStorage for convenience)
+  - Dev-only admin token header: x-admin-token (user-pasted; never hardcode; stored in sessionStorage for convenience)
 
 ---
 
@@ -219,6 +219,11 @@ Record:
 
 ### Ownership (edit this list)
 
+- .gitignore: [Codex] claimed 2026-02-06 23:05 for alpha hygiene (untrack caches/logs)
+- docs/ALPHA_REVIEW_EXTENDED_2026-02-06.md: [Codex] claimed 2026-02-06 23:05 for alpha review updates
+- docs/RELEASE_CANDIDATE_EVIDENCE.md: [Codex] claimed 2026-02-06 23:05 for evidence pack updates
+- docs/SESSION_HANDOFF_2026-02-06.md: [Codex] claimed 2026-02-06 23:05 for session handoff accuracy updates
+- docs/GIT_ACCESS_AND_STRUCTURE.md: [Codex] claimed 2026-02-06 23:28 for git access + release hygiene notes
 - web/src/App.tsx: [Codex] claimed 2026-02-04 10:12 for profile sign-out icon
 - web/src/App.css: [Codex] claimed 2026-02-04 11:24 for kiln offline styling
 - web/src/views/MyPiecesView.tsx: [Codex] claimed 2026-02-04 00:34 for check-in gate + remove new ware/collection UI
@@ -229,11 +234,13 @@ Record:
 - web/src/views/StudioResourcesView.css: [Codex] claimed 2026-02-04 10:10 for studio resources overview
 - web/src/views/MessagesView.tsx: (unclaimed)
 - web/src/views/EventsView.tsx: (unclaimed)
-- web/src/views/MaterialsView.tsx: (unclaimed)
+- web/src/views/MaterialsView.tsx: [Codex] claimed 2026-02-05 07:10 for store consolidation pass
 - web/src/views/BillingView.tsx: [Codex] claimed 2026-02-04 10:32 for store rename follow-up
 - web/src/views/ReservationsView.tsx: (unclaimed)
 - web/src/views/GlazeBoardView.tsx: [Codex] claimed 2026-02-04 14:33 for glaze board staff uploads + filters
 - web/src/views/GlazeBoardView.css: [Codex] claimed 2026-02-04 14:33 for glaze board staff uploads + filters
+- web/src/views/NotificationsView.tsx: [Codex] claimed 2026-02-05 08:12 for unload notifications inbox UI
+- web/src/views/NotificationsView.css: [Codex] claimed 2026-02-05 08:12 for unload notifications inbox UI
 - web/src/views/ReservationsView.tsx: [Codex] claimed 2026-02-04 12:05 for load estimate bar
 - web/src/views/ReservationsView.css: [Codex] claimed 2026-02-04 12:05 for load estimate bar
 - web/src/views/LendingLibraryView.tsx: [Codex] claimed 2026-02-03 01:14 for lending library feature
@@ -242,8 +249,10 @@ Record:
 - web/src/views/CommunityView.css: [Codex] claimed 2026-02-03 01:14 for community overview updates
 - web/src/views/KilnLaunchView.tsx: [Codex] claimed 2026-02-04 00:14 for kiln queue visualization update
 - web/src/views/KilnLaunchView.css: [Codex] claimed 2026-02-04 00:14 for kiln queue visualization update
+- web/src/views/SignedOutView.tsx: [Codex] claimed 2026-02-05 06:05 for auth providers update
+- web/src/views/StaffView.tsx: [Codex] claimed 2026-02-05 06:05 for staff tools pane
 - web/src/views/EventsView.css: [Codex] claimed 2026-02-04 10:00 for events style normalization
-- web/src/views/MaterialsView.css: (unclaimed)
+- web/src/views/MaterialsView.css: [Codex] claimed 2026-02-05 07:10 for store consolidation pass
 - web/src/views/ReservationsView.css: (unclaimed)
 - web/src/views/SupportView.css: (unclaimed)
 - web/src/views/BillingView.css: (unclaimed)
@@ -251,6 +260,7 @@ Record:
 - web/src/views/KilnScheduleView.css: (unclaimed)
 - web/src/views/KilnScheduleView.tsx: [Codex] claimed 2026-02-03 01:14 for kiln schedule updates
 - web/src/views/MembershipView.css: (unclaimed)
+- web/src/views/MembershipView.tsx: [Codex] claimed 2026-02-05 07:18 for membership tier linking
 - web/src/views/SupportView.tsx: (unclaimed)
 - web/src/firebase.ts: [Cdx] claimed 2026-01-26 13:39 for emulator auth wiring
 - web/src/index.css: (unclaimed)
@@ -281,10 +291,24 @@ Record:
 - functions/scripts/updateKilnStatus.js: [Codex] claimed 2026-02-04 11:36 for kiln status follow-up
 - firestore.rules: [Codex] claimed 2026-02-04 00:14 for reservation load status rules
 - functions/src/materials.ts: [Codex] claimed 2026-02-04 11:12 for security hardening
+- functions/src/notifications.ts: [Codex] claimed 2026-02-05 08:12 for unload notifications triggers
+- functions/.eslintrc.js: [Codex] claimed 2026-02-05 21:20 for functions lint stabilization
+- functions/src/shared.ts: [Codex] claimed 2026-02-05 21:20 for rate limit TTL + auth helpers
+- functions/src/billingSummary.ts: [Codex] claimed 2026-02-05 21:20 for lint fix (quotes)
 - SECURITY.md: [Codex] claimed 2026-02-04 11:12 for security checklist updates
+- scripts/run-notification-drills.ps1: [Codex] claimed 2026-02-05 18:09 for drill token validation + guardrails
+- docs/NOTIFICATION_ONCALL_RUNBOOK.md: [Codex] claimed 2026-02-05 18:09 for drill token sourcing docs
+- docs/DRILL_EXECUTION_LOG.md: [Codex] claimed 2026-02-05 18:09 for evidence template hardening (no token pastes)
+- docs/sprints/SWARM_BOARD.md: [Codex] claimed 2026-02-05 18:09 for Sprint 11 backlog wiring
+- docs/sprints/SPRINT_11_PERF_TESTING.md: [Codex] claimed 2026-02-05 18:09 for post-alpha perf/testing sprint plan
+- firebase.json: [Codex] claimed 2026-02-05 21:20 for alpha deploy safety (hosting output)
+- website/web.config: [Codex] claimed 2026-02-05 21:20 for website cache TTL hardening
+- web/index.html: [Codex] claimed 2026-02-05 21:20 for portal title/favicon polish
+- web/vite.config.js: [Codex] claimed 2026-02-05 21:20 for PWA includeAssets cleanup
 
 ### Coordination log
 
+- 2026-02-05 08:12 — [Codex] claimed `web/src/views/NotificationsView.tsx`, `web/src/views/NotificationsView.css`, and `functions/src/notifications.ts` for unload notifications
 - 2026-02-04 14:33 — [Codex] claimed `web/src/views/GlazeBoardView.tsx`, `web/src/views/GlazeBoardView.css`, `web/src/lib/glazes/filters.ts`, and `web/src/lib/glazes/filters.test.ts` for glaze board staff uploads + filters
 - 2026-02-04 00:34 — [Codex] claimed `web/src/views/MyPiecesView.tsx`, `web/src/views/ReservationsView.tsx`, and `web/src/views/ReservationsView.css` for check-in gate + pieces UI cleanup
 - 2026-02-04 10:00 — [Codex] claimed `web/src/views/EventsView.css` for events style normalization
@@ -341,4 +365,6 @@ Record:
 - 2026-01-27 00:18 — [Cdx] claimed `firestore.rules` and `functions/src/index.ts` for batch editors rule + createBatch editors field
 - 2026-02-03 14:40 — [Codex] claimed `web/src/App.css`, `web/src/index.css`, and `web/src/theme/themes.ts` for portal visual harmonization
 - 2026-02-03 15:30 — [Codex] released claims on `web/src/App.css`, `web/src/index.css`, and `web/src/theme/themes.ts`
+- 2026-02-05 11:51 — [Codex] claimed `website/web.config` for static asset cache headers
+- 2026-02-05 12:06 — [Codex] claimed `web/src/views/MaterialsView.tsx`, `web/src/views/MaterialsView.css`, `web/src/views/EventsView.tsx`, `web/src/views/BillingView.tsx`, `web/src/utils/userFacingErrors.ts`, `functions/src/materials.ts`, `functions/src/events.ts`, `functions/src/index_old.ts`, `functions/archive/index_old.ts`, `.github/workflows/lighthouse.yml`, `web/lighthouserc.json`, and docs updates for open-ticket sweep
 - YYYY-MM-DD HH:MM — [agent] claimed [file] for [task]

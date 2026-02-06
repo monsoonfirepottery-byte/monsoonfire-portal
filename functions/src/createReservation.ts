@@ -164,7 +164,7 @@ export const createReservation = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "createReservation",
       max: 6,
@@ -434,3 +434,4 @@ export const createReservation = onRequest(
       .json({ ok: true, reservationId: ref.id, status: "REQUESTED" });
   }
 );
+

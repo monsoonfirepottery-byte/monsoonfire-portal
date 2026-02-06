@@ -1,6 +1,4 @@
 // src/api/functionsClient.ts
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 /**
  * Monsoon Fire Portal — Cloud Functions client (web reference + iOS-portable shape)
  *
@@ -21,11 +19,11 @@ export type LastRequest = {
 
   fn: string;
   url: string;
-  payload: any;
+  payload: unknown;
 
   status?: number;
   ok?: boolean;
-  response?: any;
+  response?: unknown;
   error?: string;
 
   /** Redacted curl suitable for sharing/logging. */
@@ -46,7 +44,7 @@ export type FunctionsClientConfig = {
   redactCurlByDefault?: boolean;
 };
 
-export function safeJsonStringify(v: any) {
+export function safeJsonStringify(v: unknown) {
   try {
     return JSON.stringify(v, null, 2);
   } catch {
@@ -59,11 +57,11 @@ function escapeSingleQuotesForBash(s: string) {
   return s.replace(/'/g, "'\\''");
 }
 
-async function readResponseBody(resp: Response) {
+async function readResponseBody(resp: Response): Promise<unknown> {
   const ct = resp.headers.get("content-type") || "";
   if (ct.includes("application/json")) {
     try {
-      return await resp.json();
+      return (await resp.json()) as unknown;
     } catch {
       // fall through
     }
@@ -81,7 +79,7 @@ function makeRequestId() {
   }
 }
 
-export function buildCurlRedacted(url: string, payload?: any) {
+export function buildCurlRedacted(url: string, payload?: unknown) {
   const headerArgs = [
     `-H 'Content-Type: application/json'`,
     `-H 'Authorization: Bearer <ID_TOKEN>'`,
@@ -99,7 +97,7 @@ export function buildCurlReal(
   url: string,
   idToken: string,
   adminToken?: string,
-  payload?: any
+  payload?: unknown
 ) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -119,7 +117,7 @@ export function buildCurlReal(
 }
 
 export type FunctionsClient = {
-  postJson<TResp>(fn: string, payload: any): Promise<TResp>;
+  postJson<TResp>(fn: string, payload: unknown): Promise<TResp>;
   getLastRequest(): LastRequest | null;
 
   /** Returns a curl string; redacted by default. */
@@ -137,7 +135,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
     config.onLastRequest?.(req);
   }
 
-  async function postJson<TResp>(fn: string, payload: any): Promise<TResp> {
+  async function postJson<TResp>(fn: string, payload: unknown): Promise<TResp> {
     const base = config.baseUrl.replace(/\/+$/, "");
     const path = fn.replace(/^\/+/, "");
     const url = `${base}/${path}`;
@@ -179,8 +177,13 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
     };
 
     if (!resp.ok) {
+      const messageFromBody =
+        typeof body === "object" && body
+          ? (body as { message?: unknown; error?: unknown })
+          : null;
       const msg =
-        (typeof body === "object" && body && (body.message || body.error)) ||
+        (typeof messageFromBody?.message === "string" && messageFromBody.message) ||
+        (typeof messageFromBody?.error === "string" && messageFromBody.error) ||
         (typeof body === "string" ? body : `HTTP ${resp.status}`);
 
       updated.error = String(msg);

@@ -175,6 +175,136 @@ Request body (`CreateBatchRequest`):
 
 ---
 
+### registerDeviceToken
+
+POST `${BASE_URL}/registerDeviceToken`
+
+Headers:
+- `Authorization: Bearer <ID_TOKEN>`
+- `Content-Type: application/json`
+
+Request body (`RegisterDeviceTokenRequest`):
+```json
+{
+  "token": "<APNS_HEX_TOKEN>",
+  "platform": "ios",
+  "environment": "production",
+  "appVersion": "1.0.0",
+  "appBuild": "1",
+  "deviceModel": "iPhone"
+}
+```
+
+Response (`RegisterDeviceTokenResponse`):
+```json
+{
+  "ok": true,
+  "uid": "uid_123",
+  "tokenHash": "sha256hex..."
+}
+```
+
+Persistence contract:
+- Function enforces Firebase auth (`401` + `code: UNAUTHENTICATED` without valid bearer token).
+- Writes idempotently to `users/{uid}/deviceTokens/{tokenHash}`.
+- Keeps first `createdAt` and updates `updatedAt` on re-registration.
+- Stores metadata: `platform`, `environment`, `appVersion`, `appBuild`, `deviceModel`.
+
+---
+
+### unregisterDeviceToken
+
+POST `${BASE_URL}/unregisterDeviceToken`
+
+Headers:
+- `Authorization: Bearer <ID_TOKEN>`
+- `Content-Type: application/json`
+
+Request body (`UnregisterDeviceTokenRequest`):
+```json
+{
+  "tokenHash": "sha256hex..."
+}
+```
+
+Response (`UnregisterDeviceTokenResponse`):
+```json
+{
+  "ok": true,
+  "uid": "uid_123",
+  "tokenHash": "sha256hex..."
+}
+```
+
+Behavior:
+- Authenticated user can deactivate only their own token record.
+- Accepts either raw token (`token`) or precomputed hash (`tokenHash`).
+- Sets `active=false`, `deactivatedAt`, and `updatedAt`.
+
+---
+
+### Push delivery telemetry + cleanup
+
+Notification jobs with `channels.push=true` now write push delivery attempt telemetry to:
+- `notificationDeliveryAttempts/{attemptId}`
+
+Current provider state:
+- Push delivery uses an APNs relay adapter when configured.
+- Relay configuration env vars:
+  - `APNS_RELAY_URL`
+  - `APNS_RELAY_KEY`
+- Attempts are recorded with statuses and reasons such as:
+  - `NO_ACTIVE_DEVICE_TOKENS`
+  - `PUSH_PROVIDER_SENT`
+  - `PUSH_PROVIDER_PARTIAL`
+  - `APNS relay failed: ...`
+
+Token invalidation:
+- Provider rejection codes `BadDeviceToken`, `Unregistered`, and `Device_Token_Not_For_Topic`
+  trigger token deactivation with `deactivationReason` set to the provider code.
+
+Scheduled cleanup:
+- `cleanupStaleDeviceTokens` runs daily and deactivates device tokens with:
+  - `active=true`
+  - `updatedAt` older than 90 days
+
+Reliability controls:
+- Notification job processing now classifies failures into:
+  - `auth`
+  - `provider_4xx`
+  - `provider_5xx`
+  - `network`
+  - `unknown`
+- Retryable classes (`provider_5xx`, `network`, `unknown`) are re-queued with exponential backoff.
+- Max attempts: 5. Exhausted or non-retryable failures are written to:
+  - `notificationJobDeadLetters/{jobId}`
+
+Aggregate metrics:
+- `aggregateNotificationDeliveryMetrics` runs every 30 minutes.
+- Writes 24-hour aggregate snapshot to:
+  - `notificationMetrics/delivery_24h`
+- Snapshot includes:
+  - `totalAttempts`
+  - `statusCounts`
+  - `reasonCounts`
+  - `providerCounts`
+- Staff-gated manual trigger endpoint:
+  - `POST ${BASE_URL}/runNotificationMetricsAggregationNow`
+
+Drill endpoints (staff-gated):
+- `POST ${BASE_URL}/runNotificationFailureDrill`
+  - body: `{ uid, mode, channels?, forceRunNow? }`
+  - `mode`: `auth | provider_4xx | provider_5xx | network | success`
+  - queues deterministic drill jobs for retry/dead-letter validation.
+- `POST ${BASE_URL}/runNotificationMetricsAggregationNow`
+  - triggers immediate 24h metrics snapshot refresh.
+
+Secret management:
+- Push relay key is read from runtime environment variable `APNS_RELAY_KEY`.
+- Configure it in deploy environment and emulator `.env` before running push relay sends.
+
+---
+
 ## Materials + Supplies (Stripe Checkout)
 
 ### listMaterialsProducts

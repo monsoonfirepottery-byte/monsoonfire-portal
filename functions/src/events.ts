@@ -235,7 +235,7 @@ export const listEvents = onRequest({ region: REGION, cors: true }, async (req, 
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "listEvents",
     max: 30,
@@ -326,7 +326,7 @@ export const listEventSignups = onRequest({ region: REGION }, async (req, res) =
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "listEventSignups",
     max: 20,
@@ -492,7 +492,7 @@ export const createEvent = onRequest({ region: REGION, timeoutSeconds: 60 }, asy
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "createEvent",
     max: 10,
@@ -598,7 +598,7 @@ export const publishEvent = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "publishEvent",
     max: 10,
@@ -647,7 +647,7 @@ export const signupForEvent = onRequest({ region: REGION, timeoutSeconds: 60 }, 
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "signupForEvent",
     max: 6,
@@ -770,7 +770,7 @@ export const cancelEventSignup = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "cancelEventSignup",
       max: 6,
@@ -941,7 +941,7 @@ export const claimEventOffer = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "claimEventOffer",
       max: 6,
@@ -1070,7 +1070,7 @@ export const checkInEvent = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "checkInEvent",
       max: 10,
@@ -1186,7 +1186,7 @@ export const createEventCheckoutSession = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "eventCheckout",
       max: 6,
@@ -1357,7 +1357,10 @@ export const createEventCheckoutSession = onRequest(
       res.status(200).json({ ok: true, checkoutUrl: session.url });
     } catch (err: any) {
       logger.error("createEventCheckoutSession failed", err);
-      res.status(500).json({ ok: false, message: err?.message ?? String(err) });
+      res.status(500).json({
+        ok: false,
+        message: "Unable to start checkout right now. Please try again in a minute.",
+      });
     }
   }
 );
@@ -1550,3 +1553,4 @@ export const sweepEventOffers = onSchedule(
     }
   }
 );
+

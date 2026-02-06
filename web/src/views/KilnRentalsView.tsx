@@ -1,4 +1,7 @@
-import flowImage from "../assets/kiln-rentals-flow.png";
+import flowImage840Png from "../assets/kiln-rentals-flow-840.png";
+import flowImage1200Png from "../assets/kiln-rentals-flow-1200.png";
+import flowImage840Webp from "../assets/kiln-rentals-flow-840.webp";
+import flowImage1200Webp from "../assets/kiln-rentals-flow-1200.webp";
 import "./KilnRentalsView.css";
 
 type Props = {
@@ -54,7 +57,22 @@ export default function KilnRentalsView({
           </div>
         </div>
         <div className="kiln-rentals-hero-media">
-          <img src={flowImage} alt="Kiln rentals flow overview" />
+          <picture>
+            <source
+              type="image/webp"
+              srcSet={`${flowImage840Webp} 840w, ${flowImage1200Webp} 1200w`}
+              sizes="(min-width: 901px) 420px, 92vw"
+            />
+            <img
+              src={flowImage840Png}
+              srcSet={`${flowImage840Png} 840w, ${flowImage1200Png} 1200w`}
+              sizes="(min-width: 901px) 420px, 92vw"
+              alt="Kiln rentals flow overview"
+              loading="lazy"
+              decoding="async"
+              fetchPriority="low"
+            />
+          </picture>
         </div>
       </section>
     </div>

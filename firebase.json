@@ -23,11 +23,14 @@
     }
   ],
   "hosting": {
-    "public": "public",
+    "public": "web/dist",
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
+    ],
+    "predeploy": [
+      "npm --prefix web run build"
     ],
     "rewrites": [
       {
@@ -54,5 +57,8 @@
       "port": 4000
     },
     "singleProjectMode": true
+  },
+  "extensions": {
+    "firestore-send-email-5y3b": "firebase/firestore-send-email@0.2.4"
   }
 }

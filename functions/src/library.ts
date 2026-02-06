@@ -312,7 +312,7 @@ export const importLibraryIsbns = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "importLibraryIsbns",
       max: 3,
@@ -407,3 +407,4 @@ export const importLibraryIsbns = onRequest(
     });
   }
 );
+

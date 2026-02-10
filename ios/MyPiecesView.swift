@@ -5,13 +5,13 @@ import Foundation
 import FirebaseFirestore
 #endif
 
-private struct BatchListItem: Identifiable {
+struct BatchListItem: Identifiable {
     let id: String
     let title: String
     let isClosed: Bool
 }
 
-private struct PieceListItem: Identifiable {
+struct PieceListItem: Identifiable {
     let id: String
     let batchId: String
     let pieceCode: String

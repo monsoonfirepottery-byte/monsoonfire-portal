@@ -15,6 +15,7 @@ Use this board for daily execution and ticket routing.
 - Sprint 09: `docs/sprints/SPRINT_09_STABILIZATION_DRILLS.md`
 - Sprint 10: `docs/sprints/SPRINT_10_ALPHA_LAUNCH.md`
 - Sprint 11: `docs/sprints/SPRINT_11_PERF_TESTING.md`
+- Sprint 12: `docs/sprints/SPRINT_12_MOBILE_TRANSLATION_RISKS.md`
 
 ## Swarm Allocation
 - `Swarm A` (Auth + Contracts):

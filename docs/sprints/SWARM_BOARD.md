@@ -45,6 +45,7 @@ Use this board for daily execution and ticket routing.
 
 ## Open Tickets (Reality-Based)
 - `P0` (`todo`): `tickets/P0-alpha-drills-real-auth.md`
+- `P0` (`todo`): `tickets/P0-portal-hosting-cutover.md`
 - `P1` (`todo`): `tickets/P1-prod-auth-oauth-provider-credentials.md`
 - `P1` (`todo`): `tickets/S12-01-auth-domain-strategy.md` (blocked on DNS + Firebase console)
 - `P1` (`todo`): `tickets/S12-02-universal-links-and-callbacks.md` (blocked on real AASA/assetlinks values + deploy)

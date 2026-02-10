@@ -2,17 +2,8 @@ import { initializeApp } from "firebase/app";
 import { connectAuthEmulator, getAuth, GoogleAuthProvider } from "firebase/auth";
 import { connectFirestoreEmulator, initializeFirestore } from "firebase/firestore";
 
-const firebaseConfig = {
-  apiKey: "AIzaREDACTED",
-  authDomain: "monsoonfire-portal.firebaseapp.com",
-  projectId: "monsoonfire-portal",
-  storageBucket: "monsoonfire-portal.firebasestorage.app",
-  messagingSenderId: "667865114946",
-  appId: "1:667865114946:web:7275b02c9345aa975200db",
-};
-
-const app = initializeApp(firebaseConfig);
 type ImportMetaEnvShape = {
+  VITE_AUTH_DOMAIN?: string;
   VITE_USE_EMULATORS?: string;
   VITE_USE_AUTH_EMULATOR?: string;
   VITE_USE_FIRESTORE_EMULATOR?: string;
@@ -22,6 +13,23 @@ type ImportMetaEnvShape = {
   VITE_FIRESTORE_EMULATOR_PORT?: string;
 };
 const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
+
+const DEFAULT_AUTH_DOMAIN = "monsoonfire-portal.firebaseapp.com";
+const AUTH_DOMAIN =
+  typeof import.meta !== "undefined" && ENV.VITE_AUTH_DOMAIN
+    ? String(ENV.VITE_AUTH_DOMAIN)
+    : DEFAULT_AUTH_DOMAIN;
+
+const firebaseConfig = {
+  apiKey: "AIzaREDACTED",
+  authDomain: AUTH_DOMAIN,
+  projectId: "monsoonfire-portal",
+  storageBucket: "monsoonfire-portal.firebasestorage.app",
+  messagingSenderId: "667865114946",
+  appId: "1:667865114946:web:7275b02c9345aa975200db",
+};
+
+const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();

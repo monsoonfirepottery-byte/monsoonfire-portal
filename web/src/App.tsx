@@ -653,21 +653,45 @@ export default function App() {
           }
         }
       }
-      if (isAuthEmulator) {
-        try {
-          const result = await getRedirectResult(authClient);
-          if (!cancelled && result?.user) {
-            setUser(result.user);
-            setAuthReady(true);
-          }
-        } catch {
-          // Emulator redirect can fail quietly; user can retry from the button.
+      try {
+        const result = await getRedirectResult(authClient);
+        if (!cancelled && result?.user) {
+          setUser(result.user);
+          setAuthReady(true);
         }
+      } catch {
+        // Redirect result is best-effort; when no redirect occurred it may throw or return null.
       }
       if (cancelled) return;
       unsub = onIdTokenChanged(authClient, (nextUser) => {
         setUser(nextUser);
         setAuthReady(true);
+        if (typeof window !== "undefined" && import.meta.env?.DEV) {
+          const debugWindow = window as Window & {
+            __mfGetIdToken?: () => Promise<string>;
+            __mfGetUid?: () => string | null;
+          };
+          if (!nextUser) {
+            delete debugWindow.__mfGetIdToken;
+            delete debugWindow.__mfGetUid;
+          } else {
+            debugWindow.__mfGetUid = () => nextUser.uid ?? null;
+            debugWindow.__mfGetIdToken = async () => await nextUser.getIdToken(true);
+          }
+        }
+        if (!nextUser) {
+          setIsStaff(false);
+        } else {
+          nextUser
+            .getIdTokenResult()
+            .then((result) => {
+              const claims = (result.claims ?? {}) as StaffClaims;
+              const roles = Array.isArray(claims.roles) ? claims.roles : [];
+              const staff = claims.staff === true || roles.includes("staff");
+              setIsStaff(staff);
+            })
+            .catch(() => setIsStaff(false));
+        }
         if (!nextUser) setNav("dashboard");
       });
     };
@@ -713,33 +737,6 @@ export default function App() {
       window.clearTimeout(timer);
     };
   }, [user, nav]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!user) {
-      setIsStaff(false);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    user
-      .getIdTokenResult()
-      .then((result) => {
-        if (cancelled) return;
-        const claims = (result.claims ?? {}) as StaffClaims;
-        const roles = Array.isArray(claims.roles) ? claims.roles : [];
-        const staff = claims.staff === true || roles.includes("staff");
-        setIsStaff(staff);
-      })
-      .catch(() => {
-        if (!cancelled) setIsStaff(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
 
   const { users: liveUsers, loading: liveUsersLoading, error: liveUsersError } = useLiveUsers(
     user,
@@ -816,7 +813,22 @@ export default function App() {
         await signInWithRedirect(authClient, provider);
         return;
       }
-      await signInWithPopup(authClient, provider);
+      try {
+        await signInWithPopup(authClient, provider);
+      } catch (error: unknown) {
+        // Popups can be blocked (mobile Safari, aggressive privacy settings). Redirect is a reliable fallback.
+        const code =
+          typeof error === "object" && error && "code" in error ? String((error as any).code) : "";
+        const shouldFallbackToRedirect =
+          code === "auth/popup-blocked" ||
+          code === "auth/popup-closed-by-user" ||
+          code === "auth/operation-not-supported-in-this-environment";
+        if (shouldFallbackToRedirect) {
+          await signInWithRedirect(authClient, provider);
+          return;
+        }
+        throw error;
+      }
     } catch (error: unknown) {
       setAuthStatus(getErrorMessage(error) || "Sign-in failed. Please try again.");
     } finally {

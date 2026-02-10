@@ -319,6 +319,12 @@ const getSectionForNav = (navKey: NavKey): NavSectionKey | null => {
 };
 
 function getErrorMessage(error: unknown): string {
+  if (error && typeof error === "object" && "code" in error) {
+    const code = String((error as any).code || "");
+    const message = error instanceof Error ? error.message : String(error);
+    if (code && message && !message.includes(code)) return `${message} (${code})`;
+    if (code) return code;
+  }
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -814,7 +820,11 @@ export default function App() {
         return;
       }
       try {
-        await signInWithPopup(authClient, provider);
+        const result = await signInWithPopup(authClient, provider);
+        if (result?.user) {
+          setUser(result.user);
+          setAuthReady(true);
+        }
       } catch (error: unknown) {
         // Popups can be blocked (mobile Safari, aggressive privacy settings). Redirect is a reliable fallback.
         const code =
@@ -850,9 +860,17 @@ export default function App() {
     setAuthBusy(true);
     try {
       if (mode === "create") {
-        await createUserWithEmailAndPassword(authClient, trimmedEmail, password);
+        const result = await createUserWithEmailAndPassword(authClient, trimmedEmail, password);
+        if (result?.user) {
+          setUser(result.user);
+          setAuthReady(true);
+        }
       } else {
-        await signInWithEmailAndPassword(authClient, trimmedEmail, password);
+        const result = await signInWithEmailAndPassword(authClient, trimmedEmail, password);
+        if (result?.user) {
+          setUser(result.user);
+          setAuthReady(true);
+        }
       }
     } catch (error: unknown) {
       setAuthStatus(getErrorMessage(error) || "Email sign-in failed. Please try again.");
@@ -893,9 +911,13 @@ export default function App() {
     setAuthStatus("");
     setAuthBusy(true);
     try {
-      await signInWithEmailLink(authClient, trimmedEmail, window.location.href);
+      const result = await signInWithEmailLink(authClient, trimmedEmail, window.location.href);
       localStorage.removeItem(EMAIL_LINK_KEY);
       setEmailLinkPending(false);
+      if (result?.user) {
+        setUser(result.user);
+        setAuthReady(true);
+      }
     } catch (error: unknown) {
       setAuthStatus(getErrorMessage(error) || "Unable to finish sign-in.");
     } finally {
@@ -905,7 +927,11 @@ export default function App() {
 
   const handleEmulatorSignIn = async () => {
     if (!isAuthEmulator) return;
-    await signInAnonymously(authClient);
+    const result = await signInAnonymously(authClient);
+    if (result?.user) {
+      setUser(result.user);
+      setAuthReady(true);
+    }
   };
 
   const handleSignOut = async () => {

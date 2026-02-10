@@ -20,7 +20,7 @@ Choose one:
 1. Keep Firebase auth handler domain (`monsoonfire-portal.firebaseapp.com`) for alpha.
 2. Introduce a dedicated auth handler domain:
    - `auth.monsoonfire.com` mapped to Firebase Hosting
-   - `authDomain` updated in `web/src/firebase.ts`
+   - `authDomain` updated via `VITE_AUTH_DOMAIN` (see `docs/AUTH_DOMAIN_SETUP.md`)
 
 ## Tasks
 
@@ -32,7 +32,7 @@ Choose one:
   - Set up DNS for `auth.monsoonfire.com`
   - Configure Firebase Hosting custom domain for `auth.monsoonfire.com`
   - Ensure `https://auth.monsoonfire.com/__/auth/handler` serves correctly
-  - Update `web/src/firebase.ts` `authDomain` to `auth.monsoonfire.com`
+  - Set portal build env `VITE_AUTH_DOMAIN=auth.monsoonfire.com`
   - Update docs: `tickets/P1-prod-auth-oauth-provider-credentials.md`
 
 ## Acceptance
@@ -44,3 +44,6 @@ Choose one:
 - No `auth/unauthorized-domain` for `portal.monsoonfire.com`.
 - Redirect-based auth works reliably on mobile (no popup dependency).
 
+## Execution notes
+
+- Step-by-step: `docs/AUTH_DOMAIN_SETUP.md`

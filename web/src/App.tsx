@@ -86,6 +86,7 @@ type ImportMetaEnvShape = {
   VITE_FUNCTIONS_BASE_URL?: string;
   VITE_ENABLE_DEV_ADMIN_TOKEN?: string;
   VITE_USE_EMULATORS?: string;
+  VITE_USE_AUTH_EMULATOR?: string;
 };
 
 type NotificationItem = {
@@ -587,7 +588,7 @@ export default function App() {
   const authClient = auth;
   const isAuthEmulator =
     typeof import.meta !== "undefined" &&
-    ENV.VITE_USE_EMULATORS === "true";
+    (ENV.VITE_USE_AUTH_EMULATOR ?? ENV.VITE_USE_EMULATORS) === "true";
   const devAdminActive = DEV_ADMIN_TOKEN_ENABLED && devAdminToken.trim().length > 0;
   const staffUi = isStaff || devAdminActive;
   const devAdminTokenValue = devAdminActive ? devAdminToken.trim() : "";

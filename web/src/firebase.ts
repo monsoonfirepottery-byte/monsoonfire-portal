@@ -14,6 +14,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 type ImportMetaEnvShape = {
   VITE_USE_EMULATORS?: string;
+  VITE_USE_AUTH_EMULATOR?: string;
+  VITE_USE_FIRESTORE_EMULATOR?: string;
   VITE_AUTH_EMULATOR_HOST?: string;
   VITE_AUTH_EMULATOR_PORT?: string;
   VITE_FIRESTORE_EMULATOR_HOST?: string;
@@ -30,11 +32,20 @@ export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 });
 
-if (typeof import.meta !== "undefined" && ENV.VITE_USE_EMULATORS === "true") {
+const USE_AUTH_EMULATOR =
+  typeof import.meta !== "undefined" &&
+  (ENV.VITE_USE_AUTH_EMULATOR ?? ENV.VITE_USE_EMULATORS) === "true";
+const USE_FIRESTORE_EMULATOR =
+  typeof import.meta !== "undefined" &&
+  (ENV.VITE_USE_FIRESTORE_EMULATOR ?? ENV.VITE_USE_EMULATORS) === "true";
+
+if (USE_AUTH_EMULATOR) {
   const authHost = String(ENV.VITE_AUTH_EMULATOR_HOST || "127.0.0.1");
   const authPort = Number(ENV.VITE_AUTH_EMULATOR_PORT || 9099);
   connectAuthEmulator(auth, `http://${authHost}:${authPort}`, { disableWarnings: true });
+}
 
+if (USE_FIRESTORE_EMULATOR) {
   const host = String(ENV.VITE_FIRESTORE_EMULATOR_HOST || "127.0.0.1");
   const port = Number(ENV.VITE_FIRESTORE_EMULATOR_PORT || 8080);
   connectFirestoreEmulator(db, host, port);

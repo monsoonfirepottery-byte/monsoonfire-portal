@@ -29,6 +29,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "http://127.0.0.1:5173",
   "https://monsoonfire.com",
   "https://www.monsoonfire.com",
+  "https://portal.monsoonfire.com",
 ];
 
 function readAllowedOrigins(): string[] {

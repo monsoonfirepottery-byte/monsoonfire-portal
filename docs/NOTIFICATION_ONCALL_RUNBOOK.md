@@ -32,6 +32,9 @@ Expected response:
 
 ### Getting A Real Firebase ID Token
 1. Open the portal in a browser and sign in as the staff user.
+2. Optional (local dev only): if you are running the portal locally, you can use:
+   - `await window.__mfGetUid?.()` to confirm the Firebase Auth UID
+   - `await window.__mfGetIdToken?.()` to copy a fresh ID token (JWT)
 2. Open DevTools -> `Network`.
 3. Trigger any portal action that calls Cloud Functions.
 4. Click the request to `*.cloudfunctions.net/*`.

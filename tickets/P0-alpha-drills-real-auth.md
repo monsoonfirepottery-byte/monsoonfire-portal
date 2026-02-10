@@ -13,3 +13,6 @@ Status: Open (2026-02-05)
 - Effort: S
 - Risk: Low
 - What to test: all drill modes execute without `UNAUTHENTICATED` and produce expected retry/dead-letter behavior.
+
+Notes:
+- `-Uid` must be the Firebase Auth UID (not a display name like `studiomgr`). Use `window.__mfGetUid?.()` (local dev helper) or inspect the token's `user_id` claim.

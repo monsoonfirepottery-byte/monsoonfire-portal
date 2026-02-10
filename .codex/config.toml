@@ -1,4 +1,4 @@
 # [Codex] claimed 2026-02-10 12:09 for MCP timeout tuning
 [mcp_servers.context7]
 url = "https://mcp.context7.com/mcp"
-startup_timeout_ms = 30000
+startup_timeout_ms = 120000

@@ -23,11 +23,17 @@ If this is not completed, sign-in buttons may fail and/or providers cannot be en
 
 ## Tasks (Provider Consoles)
 
+Redirect URI note:
+- If you adopt the Hosting-backed auth handler domain (`auth.monsoonfire.com`), the redirect URI will be:
+  - `https://auth.monsoonfire.com/__/auth/handler`
+- Otherwise it will remain on the default Firebase domain:
+  - `https://monsoonfire-portal.firebaseapp.com/__/auth/handler`
+
 ### Microsoft (Entra ID / Azure App Registration)
 
 - Create a new app registration
 - Add Redirect URI shown in Firebase Console (copy/paste exactly):
-  - Typically `https://monsoonfire-portal.firebaseapp.com/__/auth/handler`
+- Copy/paste the exact redirect URI shown in Firebase (do not guess).
 - Copy values into Firebase:
   - `Application (client) ID` -> Firebase "Application ID"
   - Create `Client secret` -> Firebase "Application secret"
@@ -49,4 +55,3 @@ If this is not completed, sign-in buttons may fail and/or providers cannot be en
 - Visiting `https://portal.monsoonfire.com` and clicking each provider sign-in completes successfully.
 - No `auth/unauthorized-domain` errors.
 - Popup blocked cases fall back to redirect (client code).
-

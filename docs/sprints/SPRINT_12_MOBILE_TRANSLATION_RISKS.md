@@ -1,7 +1,7 @@
 # Sprint 12 - Mobile Translation Risk Register (Web -> iOS/Android)
 
 Date: 2026-02-10  
-Status: Draft (planning)
+Status: In progress
 
 ## Goal
 
@@ -46,6 +46,18 @@ This sprint is intentionally heavy on decisions, runbooks, and environment wirin
 - iOS compilation, signing, and runtime verification require macOS + Xcode.
 - A CI strategy is needed for iOS builds and smoke tests.
 
+## Progress (2026-02-10)
+
+- S12-01 (Auth domain strategy): implemented code support + runbook
+  - `web/src/firebase.ts` now supports `VITE_AUTH_DOMAIN`
+  - Runbook: `docs/AUTH_DOMAIN_SETUP.md`
+- S12-02 (Deep link contract): documented and added `.well-known` templates
+  - Contract: `docs/DEEP_LINK_CONTRACT.md`
+  - Templates: `website/.well-known/apple-app-site-association`, `website/.well-known/assetlinks.json`
+- S12-06 (iOS build gate, B-tier): added Swift Package + CI build
+  - `ios-gate/`
+  - `.github/workflows/ios-build-gate.yml`
+
 ## Tickets
 
 ### S12-01 - Portal Auth Domain Strategy (Apple + Multi-provider)
@@ -87,4 +99,3 @@ This sprint is intentionally heavy on decisions, runbooks, and environment wirin
 - `Swarm B` (Deep Links + Routing): S12-02
 - `Swarm C` (Push + Telemetry): S12-03
 - `Swarm D` (QA + CI): S12-04, S12-06
-

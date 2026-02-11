@@ -33,6 +33,7 @@
 - Decorative images must use empty `alt=""`.
 - Audio/video with speech must include captions; long-form content should include transcript access.
 - No critical information can be conveyed by color-only or audio-only cues.
+- Media publishing checklist: `docs/WEBSITE_MEDIA_ACCESSIBILITY_CHECKLIST.md`.
 
 ## Reporting + Triage
 - Public accessibility contact: `support@monsoonfire.com`.
@@ -44,4 +45,3 @@
 ## Ownership
 - Website owner is responsible for accessibility sign-off before publish.
 - Any exception to WCAG 2.2 AA requires a documented rationale and follow-up ticket.
-

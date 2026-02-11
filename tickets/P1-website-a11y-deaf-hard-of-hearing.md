@@ -1,6 +1,6 @@
 # P1 — Website A11y: Deaf / Hard-of-Hearing Support
 
-**Status:** Planned
+**Status:** In Progress
 
 ## Problem
 - Video/audio content can block users who are deaf or hard-of-hearing when captions/transcripts are missing.
@@ -37,3 +37,15 @@
 ## Dependencies
 - `tickets/P1-website-a11y-baseline-and-policy.md`
 
+## Progress
+- Added internal publishing checklist for caption/transcript enforcement:
+  - `docs/WEBSITE_MEDIA_ACCESSIBILITY_CHECKLIST.md`
+- Added public media accessibility policy page:
+  - `website/policies/media-accessibility/index.html`
+- Linked media standard from accessibility and support surfaces:
+  - `website/policies/accessibility/index.html`
+  - `website/support/index.html`
+  - `website/policies/index.html`
+- Added policy data entry and sitemap discoverability:
+  - `website/data/policies.json`
+  - `website/sitemap.xml`

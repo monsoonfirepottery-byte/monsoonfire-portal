@@ -287,7 +287,7 @@ service cloud.firestore {
     }
 
     match /profiles/{profileId} {
-      allow read: if isOwner(profileId);
+      allow read: if isOwner(profileId) || isStaff();
       allow create, update: if isOwner(profileId)
         && hasOnlyKeys([
           "displayName",
@@ -590,7 +590,7 @@ service cloud.firestore {
     }
 
     match /materialsProducts/{productId} {
-      allow read: if false;
+      allow read: if isSignedIn();
       allow write: if isStaff();
     }
 
@@ -672,6 +672,16 @@ service cloud.firestore {
     match /config/studioJukebox {
       allow read: if isStaff();
       allow write: if isStaff();
+    }
+
+    match /config/stripe {
+      allow read: if isStaff();
+      allow write: if false;
+
+      match /stripe_audit/{auditId} {
+        allow read: if isStaff();
+        allow write: if false;
+      }
     }
 
     match /trackerProjects/{projectId} {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
+import { collection, doc, getDocs, serverTimestamp, setDoc } from "firebase/firestore";
 import type {
   CreateMaterialsCheckoutSessionResponse,
   ListMaterialsProductsResponse,
@@ -7,6 +8,7 @@ import type {
   SeedMaterialsCatalogResponse,
 } from "../api/portalContracts";
 import { createFunctionsClient } from "../api/functionsClient";
+import { db } from "../firebase";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import { formatCents } from "../utils/format";
 import {
@@ -51,6 +53,56 @@ type ProductGroup = {
   variants: VariantOption[];
 };
 
+type MaterialProductFirestoreDoc = {
+  name?: string;
+  description?: string | null;
+  category?: string | null;
+  sku?: string | null;
+  priceCents?: number;
+  currency?: string;
+  stripePriceId?: string | null;
+  imageUrl?: string | null;
+  trackInventory?: boolean;
+  inventoryOnHand?: number | null;
+  inventoryReserved?: number | null;
+  active?: boolean;
+};
+
+const LOCAL_SEED_PRODUCTS: Array<{
+  sku: string;
+  name: string;
+  description: string;
+  category: string;
+  priceCents: number;
+  trackInventory: boolean;
+}> = [
+  {
+    sku: "DAY_PASS",
+    name: "Day Pass",
+    description:
+      "Reserve your creative time in our fully equipped west-side studio. Full access to workspace, tools, wheels, glazes, and materials.",
+    category: "Studio Access",
+    priceCents: 4000,
+    trackInventory: false,
+  },
+  {
+    sku: "LAGUNA_BMIX_5_25",
+    name: "Laguna WC-401 B-Mix Cone 5/6 (25 lb)",
+    description: "Wet clay direct from Laguna in a 25 lb bag.",
+    category: "Clays",
+    priceCents: 4000,
+    trackInventory: false,
+  },
+  {
+    sku: "TOOL_KIT_BASIC",
+    name: "Studio Starter Tool Kit",
+    description: "Needle, rib, sponge, trim tool, and loop set.",
+    category: "Tools",
+    priceCents: 2800,
+    trackInventory: true,
+  },
+];
+
 function resolveFunctionsBaseUrl() {
   const env =
     typeof import.meta !== "undefined" && ENV.VITE_FUNCTIONS_BASE_URL
@@ -61,6 +113,15 @@ function resolveFunctionsBaseUrl() {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isAuthTokenError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    message.includes("invalid authorization token") ||
+    message.includes("unauthenticated") ||
+    message.includes("unauthorized")
+  );
 }
 
 function readCachedCatalog(): CachedCatalog | null {
@@ -110,6 +171,33 @@ function slugify(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
+}
+
+function normalizeProductFromDoc(id: string, data: MaterialProductFirestoreDoc): MaterialProduct {
+  const trackInventory = data.trackInventory === true;
+  const inventoryOnHand = trackInventory ? Number(data.inventoryOnHand ?? 0) : null;
+  const inventoryReserved = trackInventory ? Number(data.inventoryReserved ?? 0) : null;
+  const inventoryAvailable =
+    trackInventory && inventoryOnHand !== null && inventoryReserved !== null
+      ? Math.max(inventoryOnHand - inventoryReserved, 0)
+      : null;
+
+  return {
+    id,
+    name: String(data.name ?? "").trim(),
+    description: data.description ?? null,
+    category: data.category ?? null,
+    sku: data.sku ?? null,
+    priceCents: Number(data.priceCents ?? 0),
+    currency: String(data.currency ?? "USD").toUpperCase(),
+    stripePriceId: data.stripePriceId ?? null,
+    imageUrl: data.imageUrl ?? null,
+    trackInventory,
+    inventoryOnHand,
+    inventoryReserved,
+    inventoryAvailable,
+    active: data.active !== false,
+  };
 }
 
 export default function MaterialsView({ user, adminToken, isStaff }: Props) {
@@ -177,6 +265,28 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
           setServiceOffline(true);
           setError(serviceOfflineMessage());
           return;
+        }
+        if (isAuthTokenError(error)) {
+          try {
+            const snap = await getDocs(collection(db, "materialsProducts"));
+            if (!mounted) return;
+            const fallbackProducts = snap.docs
+              .map((docSnap) =>
+                normalizeProductFromDoc(
+                  docSnap.id,
+                  (docSnap.data() as MaterialProductFirestoreDoc) ?? {}
+                )
+              )
+              .filter((product) => product.active);
+            setProducts(fallbackProducts);
+            writeCachedCatalog(fallbackProducts);
+            setCacheNote("Loaded from Firestore fallback (local functions auth mismatch).");
+            setStatus("Store is running in fallback mode while functions auth is unavailable.");
+            setError("");
+            return;
+          } catch {
+            // fall through to standard error handling
+          }
         }
         setError(getErrorMessage(error));
       } finally {
@@ -368,6 +478,53 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
       writeCachedCatalog(refreshed.products ?? []);
       setCacheNote("");
     } catch (error: unknown) {
+      if (isAuthTokenError(error) && isStaff) {
+        try {
+          for (const product of LOCAL_SEED_PRODUCTS) {
+            const id = slugify(product.sku);
+            await setDoc(
+              doc(db, "materialsProducts", id),
+              {
+                sku: product.sku,
+                name: product.name,
+                description: product.description,
+                category: product.category,
+                priceCents: product.priceCents,
+                currency: "USD",
+                stripePriceId: null,
+                imageUrl: null,
+                trackInventory: product.trackInventory,
+                inventoryOnHand: product.trackInventory ? 30 : 0,
+                inventoryReserved: 0,
+                active: true,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              },
+              { merge: true }
+            );
+          }
+
+          const snap = await getDocs(collection(db, "materialsProducts"));
+          const fallbackProducts = snap.docs
+            .map((docSnap) =>
+              normalizeProductFromDoc(
+                docSnap.id,
+                (docSnap.data() as MaterialProductFirestoreDoc) ?? {}
+              )
+            )
+            .filter((product) => product.active);
+          setProducts(fallbackProducts);
+          writeCachedCatalog(fallbackProducts);
+          setCacheNote("Seeded via Firestore fallback.");
+          setStatus("Sample catalog seeded via Firestore fallback.");
+          setError("");
+          return;
+        } catch (fallbackError: unknown) {
+          setStatus(getErrorMessage(fallbackError));
+          return;
+        }
+      }
+
       setStatus(getErrorMessage(error));
     } finally {
       setSeedBusy(false);

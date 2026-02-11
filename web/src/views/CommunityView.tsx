@@ -25,6 +25,14 @@ type MemberQuote = {
   author: string;
 };
 
+type WorkflowProof = {
+  title: string;
+  valueStatement: string;
+  testimonial: string;
+  example: string;
+  impact: string;
+};
+
 const COMMUNITY_VALUES: ValueChip[] = [
   {
     title: "Find your people",
@@ -83,11 +91,43 @@ const COMMUNITY_VALUES: ValueChip[] = [
   },
 ];
 
-const LOW_FRICTION_WAYS = [
-  "Drop in for 20 minutes (no RSVP).",
-  "Headphones welcome.",
-  "Lurkers are welcome.",
-  "Bring a mug, leave with one tip.",
+const WORKFLOW_PROOFS: WorkflowProof[] = [
+  {
+    title: "Pricing clarity in one huddle",
+    valueStatement: "Turn pricing guesswork into margin-aware pricing you can stand behind.",
+    testimonial:
+      "“I finally stopped underpricing mugs once someone helped me map glaze loss + firing cost in one sitting.”",
+    example:
+      "A member adjusted pricing tiers after a 15-minute review, then sold through the next market run without discounting.",
+    impact: "Impact: sales confidence + healthier margin",
+  },
+  {
+    title: "Batch flow that ships",
+    valueStatement: "Replace scattered solo work with a repeatable batching rhythm.",
+    testimonial:
+      "“I used to finish random pieces. Now I run in batches and actually get full collections out the door.”",
+    example:
+      "Weekly accountability rounds moved a maker from sporadic output to consistent batch releases.",
+    impact: "Impact: higher output + more completed inventory",
+  },
+  {
+    title: "Fewer firing losses",
+    valueStatement: "Reduce preventable defects with shared troubleshooting and process checks.",
+    testimonial:
+      "“One loading tip from the group saved a whole glaze run I probably would’ve ruined.”",
+    example:
+      "A shelf-loading adjustment reduced warping and pinholing issues across repeat forms.",
+    impact: "Impact: better quality + less rework",
+  },
+  {
+    title: "From stuck to sellable",
+    valueStatement: "Get unstuck quickly by bringing one concrete bottleneck to the room.",
+    testimonial:
+      "“I came in blocked on handles, left with a sequence I could repeat, and finished my preorder set.”",
+    example:
+      "Skill-swap demos converted a recurring form issue into a repeatable method used across product lines.",
+    impact: "Impact: faster execution + stronger confidence",
+  },
 ];
 
 const COMMUNITY_EVENTS: CommunityEvent[] = [
@@ -116,12 +156,11 @@ const COMMUNITY_EVENTS: CommunityEvent[] = [
     detail: "Short member demos on glazing, trimming, and workflow hacks.",
     outcome: "What you’ll get: troubleshooting and better consistency.",
   },
-];
-
-const SHOP_RECAPS = [
-  "Three teapots survived their first glaze firing. 🎉",
-  "Best tip: wax resist is not optional.",
-  "We found the fastest way to pull consistent handles.",
+  {
+    title: "Office Hours",
+    detail: "Bring one workflow bottleneck and get direct staff feedback.",
+    outcome: "What you’ll get: faster fixes on pricing, batching, or kiln planning.",
+  },
 ];
 
 const MEMBER_QUOTES: MemberQuote[] = [
@@ -165,9 +204,10 @@ const SUGGESTED_VIDEOS: VideoLink[] = [
 
 type Props = {
   onOpenLendingLibrary: () => void;
+  onOpenWorkshops: () => void;
 };
 
-export default function CommunityView({ onOpenLendingLibrary }: Props) {
+export default function CommunityView({ onOpenLendingLibrary, onOpenWorkshops }: Props) {
   const [quoteIndex, setQuoteIndex] = useState(0);
 
   useEffect(() => {
@@ -211,15 +251,25 @@ export default function CommunityView({ onOpenLendingLibrary }: Props) {
           </section>
 
           <section className="card card-3d community-friction">
-            <h2 className="card-title">Low-friction ways to join</h2>
+            <h2 className="card-title">Workflow-first ways to plug in</h2>
             <p className="community-copy">
-              Easy entry points — drop in, take what you need, and head back to your wheel.
+              This is not a social club. It is a working community built to help ceramic artists
+              produce consistently, sell confidently, and make income on their own terms.
             </p>
-            <div className="community-pills" role="list">
-              {LOW_FRICTION_WAYS.map((item) => (
-                <div className="community-pill" role="listitem" key={item}>
-                  {item}
-                </div>
+            <div className="community-proof-grid">
+              {WORKFLOW_PROOFS.map((proof) => (
+                <details className="community-proof" key={proof.title}>
+                  <summary>
+                    <span className="community-proof-title">{proof.title}</span>
+                    <span className="community-proof-hint">Open proof</span>
+                  </summary>
+                  <div className="community-proof-body">
+                    <p className="community-proof-value">{proof.valueStatement}</p>
+                    <p className="community-proof-testimonial">{proof.testimonial}</p>
+                    <p className="community-proof-example">{proof.example}</p>
+                    <div className="community-proof-impact">{proof.impact}</div>
+                  </div>
+                </details>
               ))}
             </div>
           </section>
@@ -230,6 +280,15 @@ export default function CommunityView({ onOpenLendingLibrary }: Props) {
               Low-pressure meetups with real payoffs. Come to learn, finish, and keep the momentum
               going between firings.
             </p>
+            <div className="community-event-chips">
+              <button className="community-event-chip" onClick={onOpenWorkshops}>
+                <span className="community-event-chip-title">Workshops</span>
+                <span className="community-event-chip-detail">
+                  Browse upcoming sessions and reserve your spot.
+                </span>
+                <span className="community-event-chip-outcome">Open workshops</span>
+              </button>
+            </div>
             <div className="community-events">
               {COMMUNITY_EVENTS.map((event) => (
                 <article className="community-event" key={event.title}>
@@ -239,16 +298,6 @@ export default function CommunityView({ onOpenLendingLibrary }: Props) {
                 </article>
               ))}
             </div>
-          </section>
-
-          <section className="card card-3d community-recap">
-            <h2 className="card-title">Last time in the shop</h2>
-            <p className="community-copy">A little whiteboard energy from the last meetup.</p>
-            <ul className="community-recap-list">
-              {SHOP_RECAPS.map((recap) => (
-                <li key={recap}>{recap}</li>
-              ))}
-            </ul>
           </section>
 
           <section className="card card-3d community-library">

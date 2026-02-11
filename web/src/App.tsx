@@ -1252,7 +1252,12 @@ export default function App() {
           />
         );
       case "community":
-        return <CommunityView onOpenLendingLibrary={() => setNav("lendingLibrary")} />;
+        return (
+          <CommunityView
+            onOpenLendingLibrary={() => setNav("lendingLibrary")}
+            onOpenWorkshops={() => setNav("events")}
+          />
+        );
       case "events":
         return <EventsView user={user} adminToken={devAdminTokenValue} isStaff={staffUi} />;
       case "lendingLibrary":

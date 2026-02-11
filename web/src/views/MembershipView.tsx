@@ -219,13 +219,9 @@ function getTierIndex(label: string): number {
 export default function MembershipView({ user }: { user: User }) {
   const [profileDoc, setProfileDoc] = useState<ProfileDoc | null>(null);
   const [profileError, setProfileError] = useState("");
-
-  const [upgradeBusy, setUpgradeBusy] = useState(false);
-  const [downgradeBusy, setDowngradeBusy] = useState(false);
-  const [cancelBusy, setCancelBusy] = useState(false);
-  const [upgradeStatus, setUpgradeStatus] = useState("");
-  const [, setDowngradeStatus] = useState("");
-  const [cancelStatus, setCancelStatus] = useState("");
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("");
+  const [selectedTierIndex, setSelectedTierIndex] = useState(0);
   const [journeyOpen, setJourneyOpen] = useState(false);
 
   useEffect(() => {
@@ -258,105 +254,77 @@ export default function MembershipView({ user }: { user: User }) {
 
   const currentTierIndex = useMemo(() => getTierIndex(membershipTierLabel), [membershipTierLabel]);
   const currentTier = currentTierIndex >= 0 ? TIERS[currentTierIndex] : null;
-  const nextTier =
-    currentTierIndex >= 0 && currentTierIndex < TIERS.length - 1
-      ? TIERS[currentTierIndex + 1]
-      : null;
-  const previousTier = currentTierIndex > 0 ? TIERS[currentTierIndex - 1] : null;
-
-  const handleTierUpdate = async (
-    type: "upgrade" | "downgrade",
-    targetTier: string | null
-  ) => {
-    if (!user) return;
-
-    if (type === "upgrade") {
-      if (upgradeBusy) return;
-      setUpgradeBusy(true);
-      setUpgradeStatus("Updating membership...");
-    } else if (type === "downgrade") {
-      if (downgradeBusy) return;
-      setDowngradeBusy(true);
-      setDowngradeStatus("Updating membership...");
+  const selectedTier =
+    selectedTierIndex >= 0 && selectedTierIndex < TIERS.length ? TIERS[selectedTierIndex] : null;
+  const hasSelectionChange = currentTierIndex >= 0 && selectedTierIndex !== currentTierIndex;
+  const canMoveDown = selectedTierIndex > 0;
+  const canMoveUp = selectedTierIndex < TIERS.length - 1;
+  const selectedTierChanges = useMemo(() => {
+    if (!selectedTier || currentTierIndex < 0) {
+      return {
+        visibleLines: [] as string[],
+        hiddenCount: 0,
+      };
     }
 
-    const resolvedTier = (targetTier ?? "").trim();
-    if (!resolvedTier) {
-      const message = type === "upgrade" ? "You're already at the highest tier." : "No lower tier available.";
-      if (type === "upgrade") {
-        setUpgradeStatus(message);
-        setUpgradeBusy(false);
-      } else {
-        setDowngradeStatus(message);
-        setDowngradeBusy(false);
-      }
-      return;
+    if (!hasSelectionChange) {
+      return {
+        visibleLines: [] as string[],
+        hiddenCount: 0,
+      };
     }
 
-    try {
-      const ref = doc(db, "profiles", user.uid);
-      await setDoc(
-        ref,
-        {
-          membershipTier: resolvedTier,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+    const allChanges = PERKS.map((perk) => {
+      const fromValue = perk.values[currentTierIndex] ?? "—";
+      const toValue = perk.values[selectedTierIndex] ?? "—";
+      if (fromValue === toValue) return null;
+      return `${perk.label}: ${fromValue} → ${toValue}`;
+    }).filter((line): line is string => Boolean(line));
 
-      setProfileDoc((prev) => ({
-        ...(prev ?? {}),
-        membershipTier: resolvedTier,
-      }));
+    return {
+      visibleLines: allChanges.slice(0, 4),
+      hiddenCount: Math.max(allChanges.length - 4, 0),
+    };
+  }, [currentTierIndex, hasSelectionChange, selectedTier, selectedTierIndex]);
 
-      const successMessage = `Membership updated to ${resolvedTier}.`;
-      if (type === "upgrade") {
-        setUpgradeStatus(successMessage);
-      } else {
-        setDowngradeStatus(successMessage);
-      }
-    } catch (error: unknown) {
-      const message = `Update failed: ${getErrorMessage(error)}`;
-      if (type === "upgrade") {
-        setUpgradeStatus(message);
-      } else {
-        setDowngradeStatus(message);
-      }
-    } finally {
-      if (type === "upgrade") {
-        setUpgradeBusy(false);
-      } else if (type === "downgrade") {
-        setDowngradeBusy(false);
-      }
+  useEffect(() => {
+    if (currentTierIndex >= 0) {
+      setSelectedTierIndex(currentTierIndex);
     }
+  }, [currentTierIndex]);
+
+  const handleShiftTierSelection = (direction: "down" | "up") => {
+    setSaveStatus("");
+    setSelectedTierIndex((prev) => {
+      if (direction === "down") return Math.max(prev - 1, 0);
+      return Math.min(prev + 1, TIERS.length - 1);
+    });
   };
 
-  const handleCancelRequest = async () => {
-    if (!user || cancelBusy) return;
-    setCancelBusy(true);
-    setCancelStatus("Updating membership...");
-    const targetTier = TIERS[0]?.label ?? "A la carte";
+  const handleSaveTier = async () => {
+    if (!user || saveBusy || !selectedTier || !hasSelectionChange) return;
+    setSaveBusy(true);
+    setSaveStatus("Saving membership level...");
 
     try {
       const ref = doc(db, "profiles", user.uid);
       await setDoc(
         ref,
         {
-          membershipTier: targetTier,
+          membershipTier: selectedTier.label,
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
       setProfileDoc((prev) => ({
         ...(prev ?? {}),
-        membershipTier: targetTier,
+        membershipTier: selectedTier.label,
       }));
-
-      setCancelStatus(`Membership set to ${targetTier}.`);
+      setSaveStatus(`Membership updated to ${selectedTier.label}.`);
     } catch (error: unknown) {
-      setCancelStatus(`Update failed: ${getErrorMessage(error)}`);
+      setSaveStatus(`Update failed: ${getErrorMessage(error)}`);
     } finally {
-      setCancelBusy(false);
+      setSaveBusy(false);
     }
   };
 
@@ -364,26 +332,16 @@ export default function MembershipView({ user }: { user: User }) {
     <div className="page membership-page">
       <div className="page-header">
         <div>
-          <h1>Membership, without pressure</h1>
-          <p className="page-subtitle">
-            If you're making at home, you know the frustration: just enough space and tools to begin,
-            but not enough to execute the bigger ideas.
-          </p>
+          <h1>Memberships</h1>
         </div>
       </div>
 
       <section className="card card-3d membership-journey">
         <div className="journey-head">
           <div>
-            <div className="card-title">Your journey right now</div>
+            <div className="card-title">Membership level</div>
             <p className="membership-copy">
-              We built Monsoon Fire to hold that middle space. You don't need a sales pitch — you need
-              a partner who understands how hard it is to grow a practice with inconsistent firings and
-              no room to breathe.
-            </p>
-            <p className="membership-copy">
-              As you move into production, firing partners become the bottleneck. Our memberships shift
-              as your career changes, so the studio keeps serving you.
+              Use the arrows to move between tiers, then save when you are ready.
             </p>
           </div>
           <button className="btn btn-ghost journey-link" onClick={() => setJourneyOpen(true)}>
@@ -416,55 +374,89 @@ export default function MembershipView({ user }: { user: User }) {
             {profileError ? <div className="alert inline-alert">{profileError}</div> : null}
             <div className="membership-status-actions">
               <div className="membership-target">
-                <span className="summary-label">Next tier</span>
-                <span className="summary-value">{nextTier?.label ?? "Highest tier"}</span>
+                <span className="summary-label">Upgraded Features</span>
+                <span className="summary-value">
+                  {selectedTier?.label ?? membershipTierLabel}
+                </span>
+                {hasSelectionChange ? (
+                  <div className="membership-target-list">
+                    {selectedTierChanges.visibleLines.length > 0 ? (
+                      selectedTierChanges.visibleLines.map((line) => (
+                        <div key={line} className="membership-target-item">
+                          {line}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="membership-target-item">No perk changes for this tier move.</div>
+                    )}
+                    {selectedTierChanges.hiddenCount > 0 ? (
+                      <div className="membership-target-more">
+                        +{selectedTierChanges.hiddenCount} more changes
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="membership-target-item">
+                    Select a different tier to preview feature changes.
+                  </div>
+                )}
               </div>
-            {upgradeStatus ? <div className="notice inline-alert">{upgradeStatus}</div> : null}
-              <button
-                className="btn btn-primary"
-               onClick={toVoidHandler(() => handleTierUpdate("upgrade", nextTier?.label ?? null))}
-               disabled={upgradeBusy || !nextTier}
-             >
-              {upgradeBusy ? "Sending..." : nextTier ? "Request upgrade" : "Upgrade unavailable"}
-            </button>
-             <button
-               className="btn btn-ghost"
-               onClick={toVoidHandler(() => handleTierUpdate("downgrade", previousTier?.label ?? null))}
-               disabled={downgradeBusy || !previousTier}
-             >
-              {downgradeBusy
-                ? "Updating..."
-                : previousTier
-                ? `Downgrade to ${previousTier.label}`
-                : "Downgrade unavailable"}
-            </button>
-               <button
-                 className="btn btn-ghost"
-                 onClick={toVoidHandler(handleCancelRequest)}
-                 disabled={cancelBusy}
-               >
-                {cancelBusy ? "Updating..." : "Cancel membership"}
-              </button>
+              {saveStatus ? <div className="notice inline-alert">{saveStatus}</div> : null}
+              {hasSelectionChange ? (
+                <button
+                  className="btn btn-primary"
+                  onClick={toVoidHandler(handleSaveTier)}
+                  disabled={saveBusy || !selectedTier}
+                >
+                  {saveBusy ? "Saving..." : "Save membership level"}
+                </button>
+              ) : null}
             </div>
           </div>
 
-          <div className="journey-arrow" aria-hidden="true">
-            →
+          <div className="journey-arrow" role="group" aria-label="Membership tier selector">
+            {canMoveDown ? (
+              <button
+                type="button"
+                className="journey-arrow-btn"
+                onClick={() => handleShiftTierSelection("down")}
+                aria-label="Move down one membership tier"
+                title="Move down one tier"
+              >
+                ←
+              </button>
+            ) : null}
+            {canMoveDown && canMoveUp ? (
+              <span className="journey-arrow-symbol" aria-hidden="true">
+                ↔
+              </span>
+            ) : null}
+            {canMoveUp ? (
+              <button
+                type="button"
+                className="journey-arrow-btn"
+                onClick={() => handleShiftTierSelection("up")}
+                aria-label="Move up one membership tier"
+                title="Move up one tier"
+              >
+                →
+              </button>
+            ) : null}
           </div>
 
           <div className="journey-card next">
             <div className="journey-card-top">
-              <span className="journey-label">Next step</span>
-              {nextTier ? <span className="journey-tier">{nextTier.label}</span> : <span>—</span>}
+              <span className="journey-label">Selected level</span>
+              {selectedTier ? <span className="journey-tier">{selectedTier.label}</span> : <span>—</span>}
             </div>
-            {nextTier ? (
+            {selectedTier ? (
               <>
-                <div className="journey-card-title">{nextTier.stage}</div>
-                <div className="journey-card-copy">{nextTier.summary}</div>
+                <div className="journey-card-title">{selectedTier.stage}</div>
+                <div className="journey-card-copy">{selectedTier.summary}</div>
                 <div className="journey-milestones">
-                  <div className="journey-label">Milestones to unlock</div>
+                  <div className="journey-label">Milestones</div>
                   <ul>
-                    {nextTier.milestones.map((milestone) => (
+                    {selectedTier.milestones.map((milestone) => (
                       <li key={milestone}>{milestone}</li>
                     ))}
                   </ul>
@@ -472,14 +464,10 @@ export default function MembershipView({ user }: { user: User }) {
               </>
             ) : (
               <div className="journey-card-copy">
-                You're at the highest tier. If you want to make adjustments, we can help.
+                We're still syncing available membership levels.
               </div>
             )}
           </div>
-        </div>
-
-        <div className="journey-actions">
-          {cancelStatus ? <div className="notice inline-alert">{cancelStatus}</div> : null}
         </div>
       </section>
 
@@ -531,7 +519,12 @@ export default function MembershipView({ user }: { user: User }) {
                   normalizeTier(tier.label) === normalizeTier(membershipTierLabel) ? "current" : ""
                 }`}
               >
-                {tier.label}
+                <span>{tier.label}</span>
+                {normalizeTier(tier.label) === normalizeTier(membershipTierLabel) ? (
+                  <span className="membership-you-are-here" aria-label="You are here">
+                    👉 You are here
+                  </span>
+                ) : null}
               </div>
             ))}
           </div>
@@ -572,22 +565,6 @@ export default function MembershipView({ user }: { user: User }) {
         </div>
       </section>
 
-      <section className="card card-3d membership-help">
-        <div className="card-title">Need help choosing?</div>
-        <p className="membership-copy">
-          If you're unsure which tier fits your season, send a note. We'll make a plan together.
-        </p>
-        <div className="membership-help-row">
-          <div>
-            <div className="summary-label">Support response time</div>
-            <div className="summary-value">1–2 business days</div>
-          </div>
-          <div>
-            <div className="summary-label">Email</div>
-            <div className="summary-value">support@monsoonfire.com</div>
-          </div>
-        </div>
-      </section>
     </div>
   );
 }

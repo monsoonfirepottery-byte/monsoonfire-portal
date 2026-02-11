@@ -119,6 +119,24 @@
   background: var(--surface);
 }
 
+.membership-target-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.membership-target-item {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.membership-target-more {
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .journey-milestones ul {
   margin: 8px 0 0;
   padding-left: 18px;
@@ -129,10 +147,43 @@
 }
 
 .journey-arrow {
-  display: grid;
-  place-items: center;
-  font-size: 28px;
-  color: rgba(27, 26, 23, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.journey-arrow-symbol {
+  font-size: 26px;
+  font-weight: 800;
+  color: rgba(27, 26, 23, 0.42);
+}
+
+.journey-arrow-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.16s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.journey-arrow-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+
+.journey-arrow-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .journey-actions {
@@ -221,6 +272,15 @@
 .membership-cell.heading {
   font-weight: 600;
   color: var(--text);
+  display: grid;
+  gap: 4px;
+}
+
+.membership-you-are-here {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent);
 }
 
 .membership-cell.label {
@@ -378,6 +438,169 @@
   }
 
   .journey-arrow {
-    display: none;
+    margin: 2px 0;
   }
+}
+
+html[data-portal-theme="memoria"] .membership-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  background: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+html[data-portal-theme="memoria"] .membership-page .membership-journey,
+html[data-portal-theme="memoria"] .membership-page .membership-table-card,
+html[data-portal-theme="memoria"] .membership-page .membership-features,
+html[data-portal-theme="memoria"] .membership-page .membership-help,
+html[data-portal-theme="memoria"] .membership-page .journey-modal-card {
+  border-color: rgba(153, 174, 207, 0.36);
+  background:
+    linear-gradient(168deg, rgba(30, 42, 62, 0.9), rgba(20, 29, 44, 0.92)),
+    radial-gradient(circle at 84% -16%, rgba(141, 171, 223, 0.2), transparent 58%);
+  box-shadow: inset 0 1px 0 rgba(194, 211, 239, 0.08), 0 16px 30px rgba(4, 9, 18, 0.34);
+}
+
+html[data-portal-theme="memoria"] .membership-page .page-subtitle,
+html[data-portal-theme="memoria"] .membership-page .membership-copy,
+html[data-portal-theme="memoria"] .membership-page .journey-card-copy,
+html[data-portal-theme="memoria"] .membership-page .journey-card-meta,
+html[data-portal-theme="memoria"] .membership-page .journey-milestones ul,
+html[data-portal-theme="memoria"] .membership-page .summary-label,
+html[data-portal-theme="memoria"] .membership-page .journey-modal-copy,
+html[data-portal-theme="memoria"] .membership-page .journey-modal-milestones ul,
+html[data-portal-theme="memoria"] .membership-page .feature-clip summary em,
+html[data-portal-theme="memoria"] .membership-page .feature-clip p {
+  color: rgba(223, 232, 247, 0.76);
+}
+
+html[data-portal-theme="memoria"] .membership-page .journey-card,
+html[data-portal-theme="memoria"] .membership-page .journey-action,
+html[data-portal-theme="memoria"] .membership-page .membership-target,
+html[data-portal-theme="memoria"] .membership-page .membership-cell,
+html[data-portal-theme="memoria"] .membership-page .feature-clip,
+html[data-portal-theme="memoria"] .membership-page .journey-modal-tier {
+  border-color: rgba(154, 176, 212, 0.34);
+  background: linear-gradient(170deg, rgba(34, 46, 67, 0.86), rgba(23, 33, 50, 0.9));
+}
+
+html[data-portal-theme="memoria"] .membership-page .journey-card.current,
+html[data-portal-theme="memoria"] .membership-page .membership-cell.current,
+html[data-portal-theme="memoria"] .membership-page .membership-header .membership-cell.current {
+  border-color: rgba(143, 220, 189, 0.84);
+  background: linear-gradient(165deg, rgba(38, 77, 66, 0.9), rgba(24, 53, 45, 0.94));
+  color: #d8f7ea;
+  box-shadow: 0 0 0 1px rgba(143, 220, 189, 0.18);
+}
+
+html[data-portal-theme="memoria"] .membership-page .journey-card.current .journey-card-title,
+html[data-portal-theme="memoria"] .membership-page .journey-card.current .journey-tier,
+html[data-portal-theme="memoria"] .membership-page .membership-cell.current {
+  color: #d8f7ea;
+}
+
+html[data-portal-theme="memoria"] .membership-page .journey-card.current .pill {
+  border-color: rgba(143, 220, 189, 0.5);
+  background: rgba(143, 220, 189, 0.2);
+  color: #d8f7ea;
+}
+
+html[data-portal-theme="memoria"] .membership-page .journey-arrow {
+  color: rgba(173, 198, 233, 0.72);
+}
+
+html[data-portal-theme="memoria"] .membership-page .journey-arrow-symbol {
+  color: rgba(173, 198, 233, 0.88);
+}
+
+html[data-portal-theme="memoria"] .membership-page .journey-arrow-btn {
+  border-color: rgba(154, 176, 212, 0.42);
+  background: rgba(116, 141, 184, 0.18);
+  color: rgba(236, 244, 255, 0.95);
+}
+
+html[data-portal-theme="memoria"] .membership-page .journey-arrow-btn:hover:not(:disabled) {
+  border-color: rgba(173, 200, 236, 0.56);
+  background: rgba(128, 156, 200, 0.28);
+}
+
+html[data-portal-theme="memoria"] .membership-page .journey-label,
+html[data-portal-theme="memoria"] .membership-page .membership-header {
+  color: rgba(205, 220, 244, 0.68);
+}
+
+html[data-portal-theme="memoria"] .membership-page .journey-card-meta strong,
+html[data-portal-theme="memoria"] .membership-page .membership-cell.heading,
+html[data-portal-theme="memoria"] .membership-page .journey-modal-title,
+html[data-portal-theme="memoria"] .membership-page .feature-clip summary span {
+  color: rgba(240, 247, 255, 0.94);
+}
+
+html[data-portal-theme="memoria"] .membership-page .membership-you-are-here {
+  color: #d8f7ea;
+}
+
+html[data-portal-theme="memoria"] .membership-page .summary-value {
+  color: rgba(240, 247, 255, 0.96);
+}
+
+html[data-portal-theme="memoria"] .membership-page .membership-target-item {
+  color: rgba(223, 232, 247, 0.78);
+}
+
+html[data-portal-theme="memoria"] .membership-page .membership-target-more {
+  color: #d8f7ea;
+}
+
+html[data-portal-theme="memoria"] .membership-page .journey-link,
+html[data-portal-theme="memoria"] .membership-page .membership-status-actions .btn.btn-ghost,
+html[data-portal-theme="memoria"] .membership-page .journey-modal-head .btn.btn-ghost {
+  border-color: rgba(154, 176, 212, 0.42);
+  background: rgba(116, 141, 184, 0.16);
+  color: rgba(228, 238, 255, 0.9);
+}
+
+html[data-portal-theme="memoria"] .membership-page .journey-link:hover,
+html[data-portal-theme="memoria"] .membership-page .membership-status-actions .btn.btn-ghost:hover,
+html[data-portal-theme="memoria"] .membership-page .journey-modal-head .btn.btn-ghost:hover {
+  border-color: rgba(173, 200, 236, 0.56);
+  background: rgba(128, 156, 200, 0.26);
+}
+
+html[data-portal-theme="memoria"] .membership-page .membership-status-actions .btn.btn-primary {
+  border-color: rgba(143, 220, 189, 0.84);
+  background: linear-gradient(165deg, rgba(47, 98, 83, 0.92), rgba(27, 61, 52, 0.95));
+  color: #dcfaee;
+  box-shadow: 0 10px 24px rgba(8, 28, 23, 0.42);
+}
+
+html[data-portal-theme="memoria"] .membership-page .membership-status-actions .btn.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(7, 24, 20, 0.5);
+}
+
+html[data-portal-theme="memoria"] .membership-page .notice.inline-alert {
+  border-color: rgba(143, 220, 189, 0.5);
+  background: linear-gradient(170deg, rgba(33, 70, 59, 0.7), rgba(22, 47, 39, 0.75));
+  color: #d9f7ea;
+}
+
+html[data-portal-theme="memoria"] .membership-page .alert.inline-alert {
+  border-color: rgba(255, 160, 147, 0.58);
+  background: linear-gradient(170deg, rgba(92, 42, 35, 0.78), rgba(65, 28, 23, 0.82));
+  color: #ffe3dc;
+}
+
+html[data-portal-theme="memoria"] .membership-page .feature-clip summary {
+  transition: background 0.2s ease;
+}
+
+html[data-portal-theme="memoria"] .membership-page .feature-clip[open] summary {
+  background: rgba(122, 151, 196, 0.18);
+}
+
+html[data-portal-theme="memoria"] .membership-page .feature-clip summary:hover {
+  background: rgba(122, 151, 196, 0.14);
 }

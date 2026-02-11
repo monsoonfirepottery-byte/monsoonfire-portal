@@ -280,3 +280,33 @@
     transition: none;
   }
 }
+
+html[data-portal-theme="memoria"] .community-page {
+  background:
+    radial-gradient(circle at 8% -10%, rgba(146, 178, 226, 0.12), transparent 40%),
+    radial-gradient(circle at 90% 0%, rgba(122, 155, 214, 0.12), transparent 42%);
+  border-radius: 20px;
+  padding: 4px;
+}
+
+html[data-portal-theme="memoria"] .community-page .community-value,
+html[data-portal-theme="memoria"] .community-page .community-pill,
+html[data-portal-theme="memoria"] .community-page .community-event,
+html[data-portal-theme="memoria"] .community-page .video-row {
+  border-color: rgba(154, 176, 212, 0.34);
+  background: linear-gradient(170deg, rgba(34, 46, 67, 0.86), rgba(23, 33, 50, 0.9));
+}
+
+html[data-portal-theme="memoria"] .community-page .community-copy,
+html[data-portal-theme="memoria"] .community-page .community-value-detail,
+html[data-portal-theme="memoria"] .community-page .community-event-detail,
+html[data-portal-theme="memoria"] .community-page .community-recap-list,
+html[data-portal-theme="memoria"] .community-page .community-quote-author,
+html[data-portal-theme="memoria"] .community-page .video-skill {
+  color: rgba(223, 232, 247, 0.72);
+}
+
+html[data-portal-theme="memoria"] .community-page .community-event-outcome,
+html[data-portal-theme="memoria"] .community-page .video-link {
+  color: #9ddac3;
+}

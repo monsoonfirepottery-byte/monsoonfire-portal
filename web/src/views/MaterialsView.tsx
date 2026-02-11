@@ -379,10 +379,6 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
       <div className="page-header">
         <div>
           <h1>Store</h1>
-          <p className="page-subtitle">
-            Pickup-only supplies for the work you are already doing. Take what you need today, and
-            keep your studio momentum steady.
-          </p>
         </div>
       </div>
 

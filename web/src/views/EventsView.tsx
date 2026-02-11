@@ -468,9 +468,6 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       <div className="page-header">
         <div>
           <h1>Events & workshops</h1>
-          <p className="page-subtitle">
-            One-night experiences, studio collaborations, and firing-focused gatherings.
-          </p>
         </div>
       </div>
 

@@ -2878,12 +2878,30 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   place-items: center;
   overflow: hidden;
   font-weight: 700;
+  position: relative;
+}
+
+.avatar-fallback {
+  width: 24px;
+  height: 24px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-fallback svg {
+  width: 100%;
+  height: 100%;
 }
 
 .avatar img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
 .admin-token {

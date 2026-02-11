@@ -18,9 +18,6 @@ export default function StudioResourcesView({
       <div className="page-header">
         <div>
           <h1>Studio &amp; Resources</h1>
-          <p className="page-subtitle">
-            Your home base for pieces, supplies, membership, and billing. Start wherever you are.
-          </p>
         </div>
       </div>
 

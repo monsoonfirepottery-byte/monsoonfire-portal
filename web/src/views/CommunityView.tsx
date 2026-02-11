@@ -184,10 +184,6 @@ export default function CommunityView({ onOpenLendingLibrary }: Props) {
       <div className="page-header">
         <div>
           <h1>Community</h1>
-          <p className="page-subtitle">
-            Studio life beyond the wheel. Meet other makers, learn from each other, and stay
-            connected.
-          </p>
         </div>
       </div>
 

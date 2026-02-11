@@ -324,11 +324,7 @@ export default function DashboardView({
     <div className="dashboard">
       <RevealCard as="section" className="card hero-card" index={0} enabled={motionEnabled}>
         <div className="hero-content">
-          <p className="eyebrow">Client Dashboard</p>
           <h1>Your studio dashboard</h1>
-          <p className="hero-copy">
-            Track your wares, reserve kiln time, and keep up with studio life from one place.
-          </p>
           <div className="hero-actions">
             <button className="btn btn-primary" onClick={onOpenKilnRentals}>
               Kiln rentals

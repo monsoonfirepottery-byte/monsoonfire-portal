@@ -46,3 +46,9 @@
 ## Progress
 - Added global skip-link injection in `website/assets/js/main.js` for pages with `#main`.
 - Existing stylesheet already includes `.skip-link` and focus-visible outlines; now activated consistently across pages.
+- Support page search now has an explicit accessible label and live-region result count:
+  - `website/support/index.html`
+- Added reusable visually-hidden utility:
+  - `website/assets/css/styles.css`
+- FAQ filter/topic toggles now expose `aria-pressed` states:
+  - `website/assets/js/faq.js`

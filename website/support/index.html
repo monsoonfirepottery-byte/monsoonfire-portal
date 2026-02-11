@@ -58,7 +58,13 @@
         </div>
         <div class="faq-toolbar">
           <div class="faq-search">
-            <input type="search" placeholder="Search questions and policies" data-faq-search />
+            <label for="support-search" class="visually-hidden">Search questions and policies</label>
+            <input
+              id="support-search"
+              type="search"
+              placeholder="Search questions and policies"
+              data-faq-search
+            />
           </div>
           <div class="filter-group" data-type-filters>
             <button class="filter-toggle active" type="button" data-type-filter="all">All</button>
@@ -77,7 +83,7 @@
           </div>
           <div class="tag-list" data-tag-list></div>
         </div>
-        <div class="faq-meta" data-faq-count>Showing all entries.</div>
+        <div class="faq-meta" data-faq-count role="status" aria-live="polite">Showing all entries.</div>
       </div>
     </section>
 

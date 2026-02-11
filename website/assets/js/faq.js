@@ -129,12 +129,15 @@
       }
     }
     typeFilters.forEach((button) => {
-      button.classList.toggle('active', button.dataset.typeFilter === state.type);
+      const isActive = button.dataset.typeFilter === state.type;
+      button.classList.toggle('active', isActive);
+      button.setAttribute('aria-pressed', String(isActive));
     });
     topicButtons.forEach((button) => {
       const topic = button.dataset.topic;
       const active = state.tags.size === 1 && state.tags.has(topic);
       button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
     });
   };
 

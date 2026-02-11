@@ -136,10 +136,11 @@
     });
   });
 
-  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const prefersReducedMotion = () => reducedMotionQuery.matches;
   const carousels = document.querySelectorAll('[data-auto-rotate="true"]');
   carousels.forEach((carousel) => {
-    if (prefersReducedMotion) return;
+    if (prefersReducedMotion()) return;
     const items = carousel.querySelectorAll('.chip-card');
     if (!items.length) return;
     const getGap = () => {
@@ -154,9 +155,9 @@
       const scrollBy = itemWidth * perView;
       const maxScroll = carousel.scrollWidth - carousel.clientWidth;
       if (carousel.scrollLeft + scrollBy >= maxScroll - 4) {
-        carousel.scrollTo({ left: 0, behavior: 'smooth' });
+        carousel.scrollTo({ left: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
       } else {
-        carousel.scrollBy({ left: scrollBy, behavior: 'smooth' });
+        carousel.scrollBy({ left: scrollBy, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
       }
     };
     setInterval(tick, 4500);

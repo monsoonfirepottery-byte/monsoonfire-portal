@@ -1,6 +1,6 @@
 # P1 — Website A11y: Motor, Cognitive, and Neurodiverse Users
 
-**Status:** Planned
+**Status:** In Progress
 
 ## Problem
 - Small targets, animation-heavy UI, and dense copy create barriers for users with motor and cognitive differences.
@@ -39,3 +39,19 @@
 ## Dependencies
 - `tickets/P1-website-a11y-baseline-and-policy.md`
 
+## Progress
+- Increased interactive target sizing and spacing in shared website controls:
+  - `website/assets/css/styles.css`
+  - Applied `min-height: 44px` pass across primary buttons, nav links, menu toggle, filter chips, tags, accordion triggers, and form inputs.
+- Expanded focus visibility coverage to form controls:
+  - `website/assets/css/styles.css`
+  - Added `:focus-visible` outline support for `input`, `textarea`, and `select`.
+- Added reusable form helper/error text styles for explicit, persistent validation messages:
+  - `website/assets/css/styles.css`
+- Reduced-motion improvements in interactive modules:
+  - `website/assets/js/main.js`
+  - `website/assets/js/faq.js`
+  - Auto-rotate and smooth scrolling now respect `prefers-reduced-motion`.
+- Improved accordion state clarity for assistive tech and keyboard users:
+  - `website/assets/js/faq.js`
+  - Added `aria-expanded` state updates on accordion toggles.

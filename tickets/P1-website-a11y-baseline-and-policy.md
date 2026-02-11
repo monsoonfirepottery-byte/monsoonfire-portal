@@ -1,6 +1,6 @@
 # P1 — Website Accessibility Baseline + Policy (WCAG 2.2 AA)
 
-**Status:** Planned
+**Status:** In Progress
 
 ## Problem
 - The marketing website needs a formal accessibility baseline so improvements are consistent, testable, and durable.
@@ -37,3 +37,12 @@
 ## Dependencies
 - None. This ticket enables all other website a11y tickets.
 
+## Progress
+- Added baseline policy doc: `docs/WEBSITE_ACCESSIBILITY_BASELINE.md`
+- Added public statement page: `website/policies/accessibility/index.html`
+- Added discoverability links:
+  - `website/index.html`
+  - `website/support/index.html`
+  - `website/contact/index.html`
+  - `website/policies/index.html`
+- Added sitemap entry: `website/sitemap.xml`

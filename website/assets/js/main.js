@@ -15,6 +15,22 @@
     body.insertBefore(skipLink, body.firstChild);
   }
 
+  const contactTitleNodes = Array.from(document.querySelectorAll('.footer .footer-title'));
+  contactTitleNodes.forEach((titleNode) => {
+    if (!titleNode || !titleNode.textContent) return;
+    if (titleNode.textContent.trim().toLowerCase() !== 'contact') return;
+    const contactContainer = titleNode.parentElement;
+    if (!contactContainer) return;
+    if (contactContainer.querySelector('a[href="/policies/accessibility/"]')) return;
+
+    const line = document.createElement('p');
+    const link = document.createElement('a');
+    link.href = '/policies/accessibility/';
+    link.textContent = 'Accessibility statement';
+    line.appendChild(link);
+    contactContainer.appendChild(line);
+  });
+
   const parentPath = body ? body.getAttribute('data-nav-parent') : null;
   const currentPath = normalizePath(parentPath || window.location.pathname);
   document.querySelectorAll('[data-nav-links] a').forEach((link) => {

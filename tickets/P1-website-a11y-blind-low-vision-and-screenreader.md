@@ -52,3 +52,7 @@
   - `website/assets/css/styles.css`
 - FAQ filter/topic toggles now expose `aria-pressed` states:
   - `website/assets/js/faq.js`
+- Fixed heading hierarchy on services page by adding a proper page `h1`:
+  - `website/services/index.html`
+- Added global footer accessibility-link injection so statement is reachable from contact footer blocks:
+  - `website/assets/js/main.js`

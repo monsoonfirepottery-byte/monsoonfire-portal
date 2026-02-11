@@ -323,12 +323,17 @@
 
 .cart-summary {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   border-top: 1px solid var(--border);
   padding-top: 12px;
   background: var(--surface-2);
   border-radius: 12px;
   padding: 12px;
+}
+
+.cart-summary > div {
+  display: grid;
+  gap: 4px;
 }
 
 .materials-notes {
@@ -382,4 +387,81 @@
   .materials-skeleton-card {
     animation: none;
   }
+}
+
+html[data-portal-theme="memoria"] .materials-page {
+  background:
+    radial-gradient(circle at 10% -8%, rgba(145, 177, 225, 0.12), transparent 38%),
+    radial-gradient(circle at 90% 0%, rgba(122, 155, 214, 0.12), transparent 42%);
+  border-radius: 20px;
+  padding: 4px;
+}
+
+html[data-portal-theme="memoria"] .materials-page .materials-banner,
+html[data-portal-theme="memoria"] .materials-page .materials-toolbar,
+html[data-portal-theme="memoria"] .materials-page .product-card,
+html[data-portal-theme="memoria"] .materials-page .materials-cart,
+html[data-portal-theme="memoria"] .materials-page .materials-help,
+html[data-portal-theme="memoria"] .materials-page .materials-empty {
+  border-color: rgba(153, 174, 207, 0.36);
+  background:
+    linear-gradient(168deg, rgba(30, 42, 62, 0.9), rgba(20, 29, 44, 0.92)),
+    radial-gradient(circle at 84% -16%, rgba(141, 171, 223, 0.2), transparent 58%);
+  box-shadow: inset 0 1px 0 rgba(194, 211, 239, 0.08), 0 16px 30px rgba(4, 9, 18, 0.34);
+}
+
+html[data-portal-theme="memoria"] .materials-page .materials-banner-meta > div,
+html[data-portal-theme="memoria"] .materials-page .cycle,
+html[data-portal-theme="memoria"] .materials-page .cart-summary {
+  border-color: rgba(154, 176, 212, 0.34);
+  background: linear-gradient(170deg, rgba(34, 46, 67, 0.86), rgba(23, 33, 50, 0.9));
+}
+
+html[data-portal-theme="memoria"] .materials-page .materials-copy,
+html[data-portal-theme="memoria"] .materials-page .materials-cache-note,
+html[data-portal-theme="memoria"] .materials-page .product-category,
+html[data-portal-theme="memoria"] .materials-page .variant-label,
+html[data-portal-theme="memoria"] .materials-page .variant-price,
+html[data-portal-theme="memoria"] .materials-page .cart-meta,
+html[data-portal-theme="memoria"] .materials-page .materials-notes,
+html[data-portal-theme="memoria"] .materials-page .materials-search label {
+  color: rgba(223, 232, 247, 0.72);
+}
+
+html[data-portal-theme="memoria"] .materials-page .materials-search input,
+html[data-portal-theme="memoria"] .materials-page .materials-notes textarea {
+  border-color: rgba(154, 176, 212, 0.4);
+  background: linear-gradient(170deg, rgba(28, 39, 58, 0.92), rgba(19, 28, 42, 0.94));
+  box-shadow: inset 0 1px 0 rgba(190, 208, 235, 0.08);
+}
+
+html[data-portal-theme="memoria"] .materials-page .materials-chip,
+html[data-portal-theme="memoria"] .materials-page .variant-chip {
+  border-color: rgba(154, 176, 212, 0.4);
+  background: rgba(116, 141, 184, 0.16);
+  color: rgba(228, 238, 255, 0.9);
+}
+
+html[data-portal-theme="memoria"] .materials-page .materials-chip.active,
+html[data-portal-theme="memoria"] .materials-page .variant-chip.active {
+  border-color: rgba(143, 220, 189, 0.84);
+  background: linear-gradient(165deg, rgba(38, 77, 66, 0.92), rgba(24, 53, 45, 0.94));
+  color: #d8f7ea;
+  box-shadow: 0 0 0 1px rgba(143, 220, 189, 0.2);
+}
+
+html[data-portal-theme="memoria"] .materials-page .inventory-badge {
+  border-color: rgba(154, 176, 212, 0.4);
+  background: rgba(112, 140, 187, 0.18);
+  color: rgba(232, 240, 255, 0.9);
+}
+
+html[data-portal-theme="memoria"] .materials-page .inventory-badge.empty {
+  border-color: rgba(255, 160, 147, 0.58);
+  background: rgba(164, 71, 59, 0.3);
+  color: #ffd8d1;
+}
+
+html[data-portal-theme="memoria"] .materials-page .product-card:hover {
+  box-shadow: 0 14px 28px rgba(2, 7, 15, 0.38);
 }

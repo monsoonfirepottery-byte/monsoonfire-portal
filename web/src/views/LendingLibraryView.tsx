@@ -399,10 +399,6 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
       <div className="page-header">
         <div>
           <h1>Lending Library</h1>
-          <p className="page-subtitle">
-            Borrow studio books and media for short-term inspiration. Staff approvals keep the
-            queue moving smoothly.
-          </p>
         </div>
       </div>
 

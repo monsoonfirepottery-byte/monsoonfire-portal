@@ -368,9 +368,6 @@ export default function BillingView({ user }: Props) {
       <div className="page-header">
         <div>
           <h1>Billing</h1>
-          <p className="page-subtitle">
-            We only charge you after check-in. Pay for attendance or orders at your own pace.
-          </p>
         </div>
       </div>
 

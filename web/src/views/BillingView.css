@@ -173,3 +173,59 @@
     align-items: flex-start;
   }
 }
+
+html[data-portal-theme="memoria"] .billing-page {
+  background:
+    radial-gradient(circle at 8% -10%, rgba(146, 178, 226, 0.12), transparent 40%),
+    radial-gradient(circle at 90% 0%, rgba(122, 155, 214, 0.12), transparent 42%);
+  border-radius: 20px;
+  padding: 4px;
+}
+
+html[data-portal-theme="memoria"] .billing-summary-card,
+html[data-portal-theme="memoria"] .billing-section {
+  border-color: rgba(153, 174, 207, 0.36);
+  background:
+    linear-gradient(168deg, rgba(30, 42, 62, 0.9), rgba(20, 29, 44, 0.92)),
+    radial-gradient(circle at 84% -16%, rgba(141, 171, 223, 0.2), transparent 58%);
+  box-shadow: inset 0 1px 0 rgba(194, 211, 239, 0.08), 0 16px 30px rgba(4, 9, 18, 0.34);
+}
+
+html[data-portal-theme="memoria"] .summary-label,
+html[data-portal-theme="memoria"] .summary-note,
+html[data-portal-theme="memoria"] .billing-empty,
+html[data-portal-theme="memoria"] .billing-row-meta,
+html[data-portal-theme="memoria"] .receipt-meta,
+html[data-portal-theme="memoria"] .receipt-date,
+html[data-portal-theme="memoria"] .billing-copy {
+  color: rgba(223, 232, 247, 0.72);
+}
+
+html[data-portal-theme="memoria"] .billing-status {
+  border-color: rgba(255, 161, 147, 0.54);
+  background: linear-gradient(170deg, rgba(92, 42, 35, 0.78), rgba(65, 28, 23, 0.82));
+  color: #ffe3dc;
+}
+
+html[data-portal-theme="memoria"] .billing-row,
+html[data-portal-theme="memoria"] .billing-material-row,
+html[data-portal-theme="memoria"] .receipt-row {
+  border-color: rgba(154, 176, 212, 0.34);
+  background: linear-gradient(170deg, rgba(34, 46, 67, 0.86), rgba(23, 33, 50, 0.9));
+}
+
+html[data-portal-theme="memoria"] .receipt-tab {
+  border-color: rgba(154, 176, 212, 0.4);
+  background: rgba(116, 141, 184, 0.16);
+  color: rgba(228, 238, 255, 0.9);
+}
+
+html[data-portal-theme="memoria"] .receipt-tab.active {
+  border-color: rgba(143, 220, 189, 0.84);
+  background: linear-gradient(165deg, rgba(38, 77, 66, 0.92), rgba(24, 53, 45, 0.94));
+  color: #d8f7ea;
+}
+
+html[data-portal-theme="memoria"] .receipt-link {
+  color: #9ddac3;
+}

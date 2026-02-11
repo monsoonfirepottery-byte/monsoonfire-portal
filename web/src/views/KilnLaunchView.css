@@ -412,6 +412,150 @@
   color: var(--muted);
 }
 
+html[data-portal-theme="memoria"] .kiln-launch-page {
+  background:
+    radial-gradient(circle at 8% -12%, rgba(144, 176, 222, 0.12), transparent 42%),
+    radial-gradient(circle at 92% 0%, rgba(119, 152, 209, 0.12), transparent 40%),
+    var(--bg);
+}
+
+html[data-portal-theme="memoria"] .kiln-launch-subtitle,
+html[data-portal-theme="memoria"] .kiln-launch-updated,
+html[data-portal-theme="memoria"] .kiln-panel-meta,
+html[data-portal-theme="memoria"] .kiln-meter-label,
+html[data-portal-theme="memoria"] .kiln-progress-note,
+html[data-portal-theme="memoria"] .kiln-progress-moment,
+html[data-portal-theme="memoria"] .kiln-meter-footer,
+html[data-portal-theme="memoria"] .kiln-empty,
+html[data-portal-theme="memoria"] .kiln-queue-meta {
+  color: rgba(223, 232, 247, 0.72);
+}
+
+html[data-portal-theme="memoria"] .kiln-launch-meaning,
+html[data-portal-theme="memoria"] .kiln-progress-copy {
+  color: rgba(241, 246, 255, 0.9);
+}
+
+html[data-portal-theme="memoria"] .kiln-launch-status {
+  border-color: rgba(157, 181, 218, 0.38);
+  background: linear-gradient(170deg, rgba(32, 43, 63, 0.88), rgba(20, 28, 43, 0.9));
+  color: rgba(232, 240, 252, 0.88);
+}
+
+html[data-portal-theme="memoria"] .kiln-launch-error {
+  border-color: rgba(255, 156, 122, 0.58);
+  background: linear-gradient(170deg, rgba(93, 43, 34, 0.78), rgba(65, 29, 23, 0.82));
+  color: #ffe4da;
+}
+
+html[data-portal-theme="memoria"] .kiln-launch-panel {
+  border-color: rgba(155, 174, 205, 0.34);
+  background:
+    linear-gradient(165deg, rgba(30, 41, 60, 0.9), rgba(20, 29, 44, 0.92)),
+    radial-gradient(circle at 82% -15%, rgba(140, 170, 224, 0.22), transparent 58%);
+  box-shadow: inset 0 1px 0 rgba(196, 214, 241, 0.08), 0 16px 30px rgba(4, 9, 18, 0.34);
+}
+
+html[data-portal-theme="memoria"] .kiln-flow-panel {
+  border-style: solid;
+  border-color: rgba(143, 171, 215, 0.5);
+  background:
+    linear-gradient(165deg, rgba(34, 47, 70, 0.9), rgba(22, 32, 49, 0.92)),
+    radial-gradient(circle at 95% 10%, rgba(166, 196, 245, 0.18), transparent 56%);
+}
+
+html[data-portal-theme="memoria"] .kiln-meter {
+  border-color: rgba(151, 174, 211, 0.48);
+  background:
+    radial-gradient(circle at 50% -10%, rgba(139, 172, 228, 0.2), transparent 52%),
+    linear-gradient(180deg, rgba(26, 37, 56, 0.9), rgba(18, 26, 40, 0.92));
+}
+
+html[data-portal-theme="memoria"] .kiln-ring {
+  border-color: rgba(160, 185, 226, 0.45);
+  background: radial-gradient(circle, rgba(60, 81, 115, 0.78) 0%, rgba(36, 50, 73, 0.9) 58%, rgba(22, 32, 47, 0.96) 100%);
+  box-shadow: inset 0 12px 22px rgba(135, 166, 221, 0.12), 0 14px 28px rgba(1, 6, 13, 0.36);
+}
+
+html[data-portal-theme="memoria"] .kiln-ring-inner {
+  border-color: rgba(149, 172, 209, 0.42);
+  background: linear-gradient(180deg, rgba(27, 39, 60, 0.92), rgba(17, 25, 38, 0.96));
+}
+
+html[data-portal-theme="memoria"] .kiln-slot.status-empty {
+  border-color: rgba(145, 163, 193, 0.3);
+  background: rgba(109, 128, 159, 0.12);
+}
+
+html[data-portal-theme="memoria"] .kiln-slot.status-queued,
+html[data-portal-theme="memoria"] .kiln-legend-dot.status-queued,
+html[data-portal-theme="memoria"] .kiln-status-pill.status-queued {
+  border-color: rgba(255, 153, 130, 0.72);
+  color: #ffd8cd;
+  background: rgba(177, 83, 62, 0.32);
+}
+
+html[data-portal-theme="memoria"] .kiln-slot.status-loading,
+html[data-portal-theme="memoria"] .kiln-legend-dot.status-loading,
+html[data-portal-theme="memoria"] .kiln-status-pill.status-loading {
+  border-color: rgba(239, 208, 127, 0.74);
+  color: #ffeec2;
+  background: rgba(162, 127, 58, 0.34);
+}
+
+html[data-portal-theme="memoria"] .kiln-slot.status-loaded,
+html[data-portal-theme="memoria"] .kiln-legend-dot.status-loaded,
+html[data-portal-theme="memoria"] .kiln-status-pill.status-loaded {
+  border-color: rgba(133, 225, 190, 0.72);
+  color: #dafbea;
+  background: rgba(64, 151, 121, 0.34);
+}
+
+html[data-portal-theme="memoria"] .kiln-ready {
+  border-color: rgba(154, 176, 214, 0.46);
+  background: rgba(110, 139, 186, 0.2);
+  color: rgba(231, 240, 255, 0.84);
+}
+
+html[data-portal-theme="memoria"] .kiln-ready.active {
+  border-color: rgba(141, 218, 188, 0.78);
+  background: rgba(62, 139, 113, 0.3);
+  color: #d8f6ea;
+  box-shadow: 0 0 0 1px rgba(141, 218, 188, 0.22);
+}
+
+html[data-portal-theme="memoria"] .kiln-queue-card {
+  border-color: rgba(152, 173, 205, 0.34);
+  background:
+    linear-gradient(165deg, rgba(31, 42, 62, 0.88), rgba(20, 29, 45, 0.9)),
+    radial-gradient(circle at 84% -20%, rgba(140, 168, 216, 0.2), transparent 58%);
+  box-shadow: 0 10px 24px rgba(2, 8, 16, 0.28);
+}
+
+html[data-portal-theme="memoria"] .kiln-tag,
+html[data-portal-theme="memoria"] .kiln-status-pill {
+  border-color: rgba(154, 176, 211, 0.4);
+  background: rgba(121, 146, 188, 0.16);
+  color: rgba(225, 236, 255, 0.86);
+}
+
+html[data-portal-theme="memoria"] .kiln-action {
+  border-color: rgba(154, 176, 210, 0.42);
+  background: linear-gradient(170deg, rgba(34, 45, 66, 0.9), rgba(22, 31, 47, 0.94));
+  color: rgba(234, 242, 255, 0.9);
+}
+
+html[data-portal-theme="memoria"] .kiln-action.primary {
+  border-color: rgba(145, 220, 189, 0.85);
+  background: linear-gradient(165deg, rgba(38, 77, 66, 0.92), rgba(24, 53, 45, 0.94));
+  color: #d8f7ea;
+}
+
+html[data-portal-theme="memoria"] .kiln-action.ghost {
+  border-color: rgba(154, 176, 210, 0.35);
+  color: rgba(218, 229, 248, 0.84);
+}
+
 @media (max-width: 1200px) {
   .kiln-launch-grid {
     grid-template-columns: 1fr;

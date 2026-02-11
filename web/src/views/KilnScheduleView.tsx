@@ -11,10 +11,11 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import { mockFirings, mockKilns } from "../data/kilnScheduleMock";
 import { normalizeFiringDoc, normalizeKilnDoc } from "../lib/normalizers/kiln";
 import type { Kiln, KilnFiring, KilnStatus } from "../types/kiln";
 import { formatDateTime } from "../utils/format";
+import RevealCard from "../components/RevealCard";
+import { useUiSettings } from "../context/UiSettingsContext";
 import "./KilnScheduleView.css";
 
 type NormalizedFiring = KilnFiring & { startDate: Date; endDate: Date };
@@ -189,34 +190,33 @@ function getErrorMessage(error: unknown): string {
 }
 
 export default function KilnScheduleView({ user, isStaff }: { user?: User | null; isStaff?: boolean }) {
-  const { kilns, firings, loading, error, errorDetails, permissionDenied } = useKilnSchedule();
+  const { themeName, portalMotion } = useUiSettings();
+  const motionEnabled = themeName === "memoria" && portalMotion === "enhanced";
+  const { kilns, firings, loading, error, errorDetails } = useKilnSchedule();
   const [selectedFiringId, setSelectedFiringId] = useState<string | null>(null);
   const [unloadStatus, setUnloadStatus] = useState("");
   const [unloadBusy, setUnloadBusy] = useState(false);
   const [unloadError, setUnloadError] = useState("");
 
-  const dataReady = !loading;
-  const useMock = permissionDenied || (dataReady && kilns.length === 0 && firings.length === 0);
-  const rawKilns = useMock ? mockKilns : kilns;
-  const rawFirings = useMock ? mockFirings : firings;
-
-  const fallbackPrimary = mockKilns.find((kiln) => kiln.name === PRIMARY_KILN_NAME) ?? mockKilns[0];
-  const fallbackRaku = mockKilns.find((kiln) => kiln.name === RAKU_KILN_NAME) ?? mockKilns[1];
-
   const primaryKiln =
-    rawKilns.find((kiln) => kiln.name === PRIMARY_KILN_NAME) ??
-    rawKilns.find((kiln) => /eQ2827|L&L/i.test(kiln.name)) ??
-    fallbackPrimary;
+    kilns.find((kiln) => kiln.name === PRIMARY_KILN_NAME) ??
+    kilns.find((kiln) => /eQ2827|L&L/i.test(kiln.name)) ??
+    kilns[0] ??
+    null;
   const rakuKiln =
-    rawKilns.find((kiln) => kiln.name === RAKU_KILN_NAME) ??
-    rawKilns.find((kiln) => /raku|reduction/i.test(kiln.name)) ??
-    fallbackRaku;
+    kilns.find((kiln) => kiln.name === RAKU_KILN_NAME) ??
+    kilns.find((kiln) => /raku|reduction/i.test(kiln.name)) ??
+    kilns.find((kiln) => kiln.id !== primaryKiln?.id) ??
+    null;
 
-  const displayKilns = [primaryKiln, rakuKiln].filter(
+  const displayKilns = [primaryKiln, rakuKiln].filter((kiln): kiln is Kiln => Boolean(kiln)).filter(
     (kiln, index, arr) => arr.findIndex((item) => item.id === kiln.id) === index
   );
   const displayKilnIds = new Set(displayKilns.map((kiln) => kiln.id));
-  const displayFirings = rawFirings.filter((firing) => displayKilnIds.has(firing.kilnId));
+  const displayFirings =
+    displayKilnIds.size > 0
+      ? firings.filter((firing) => displayKilnIds.has(firing.kilnId))
+      : firings;
 
   const normalizedFirings = useMemo(() => {
     return displayFirings
@@ -266,28 +266,16 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
     : null;
   const unloadedAt = selectedFiring ? coerceDate(selectedFiring.unloadedAt) : null;
 
-  const headerPill = useMock
-    ? permissionDenied
-      ? "Mock data (no Firestore access)"
-      : "Mock data"
-    : "Live data";
-
   return (
     <div className="page kiln-page">
       <div className="page-header">
         <div>
           <h1>Firings</h1>
-          <p className="page-subtitle">
-            Plan your kiln timing, then add the firings you care about to your own calendar.
-          </p>
-        </div>
-        <div className="kiln-header-actions">
-          <span className="pill subtle">{headerPill}</span>
         </div>
       </div>
 
       <section className="kiln-intro-grid">
-        <div className="card card-3d">
+        <RevealCard className="card card-3d" index={0} enabled={motionEnabled}>
           <div className="card-title">Next expected firing</div>
           {nextOverallFiring ? (
             <>
@@ -311,8 +299,8 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
           ) : (
             <div className="empty-state">No upcoming firings scheduled yet.</div>
           )}
-        </div>
-        <div className="card card-3d">
+        </RevealCard>
+        <RevealCard className="card card-3d" index={1} enabled={motionEnabled}>
           <div className="card-title">How to use this page</div>
           <div className="page-subtitle">
             Check the next firing, pick the one that fits your timing, and we will confirm details at
@@ -323,7 +311,7 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
             <li>Use “Add to my calendar” for a reminder.</li>
             <li>Drop off by the posted cutoff time.</li>
           </ul>
-        </div>
+        </RevealCard>
       </section>
 
       {loading ? (
@@ -333,14 +321,7 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
         </div>
       ) : null}
 
-      {permissionDenied ? (
-        <div className="card card-3d notice">
-          Firestore permissions are missing for `kilns` or `kilnFirings`. Showing mock schedule
-          data until read access is granted.
-        </div>
-      ) : null}
-
-      {!permissionDenied && error ? <div className="card card-3d alert">{error}</div> : null}
+      {error ? <div className="card card-3d alert">{error}</div> : null}
 
       {import.meta.env.DEV && errorDetails ? (
         <div className="card card-3d notice">
@@ -360,10 +341,15 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
       ) : null}
 
       <section className="kiln-card-grid">
-        {displayKilns.map((kiln) => {
+        {displayKilns.map((kiln, idx) => {
           const nextFiring = nextFiringByKiln.get(kiln.id);
           return (
-            <div className="card card-3d kiln-card" key={kiln.id}>
+            <RevealCard
+              className="card card-3d kiln-card"
+              key={kiln.id}
+              index={2 + idx}
+              enabled={motionEnabled}
+            >
               <div className="kiln-card-header">
                 <div>
                   <div className="kiln-name">{kiln.name}</div>
@@ -400,13 +386,13 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
                 </div>
               </div>
               {kiln.notes ? <div className="kiln-notes">{kiln.notes}</div> : null}
-            </div>
+            </RevealCard>
           );
         })}
       </section>
 
       <section className="kiln-lower-grid">
-        <div className="card card-3d kiln-upcoming">
+        <RevealCard className="card card-3d kiln-upcoming" index={4} enabled={motionEnabled}>
           <div className="card-title">Upcoming firings</div>
           {upcomingFirings.length === 0 ? (
             <div className="empty-state">No upcoming firings scheduled.</div>
@@ -452,8 +438,8 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
             </div>
           )}
           <p className="muted">Calendar invites add a 1‑day reminder.</p>
-        </div>
-        <div className="card card-3d kiln-details">
+        </RevealCard>
+        <RevealCard className="card card-3d kiln-details" index={5} enabled={motionEnabled}>
           <div className="card-title">Selected firing</div>
           {selectedFiring ? (
             <div className="details-body">
@@ -518,7 +504,7 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
             <div className="empty-state">Select a firing from the list to see details.</div>
           )}
           {/* TODO: Staff role can kick off new firings and adjust schedules here. */}
-        </div>
+        </RevealCard>
       </section>
     </div>
   );

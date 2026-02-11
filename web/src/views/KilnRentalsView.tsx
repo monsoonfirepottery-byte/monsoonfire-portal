@@ -20,10 +20,6 @@ export default function KilnRentalsView({
       <div className="page-header">
         <div>
           <h1>Kiln Rentals</h1>
-          <p className="page-subtitle">
-            Everything you need to submit work, join the load queue, and track upcoming firings.
-            Use the overview to understand the flow, then jump into the subpages to take action.
-          </p>
         </div>
       </div>
 

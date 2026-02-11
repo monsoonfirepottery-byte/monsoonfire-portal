@@ -19,6 +19,8 @@ import type { PortalApiMeta } from "../api/portalContracts";
 import { getResultBatchId } from "../api/portalContracts";
 import { formatMaybeTimestamp } from "../utils/format";
 import { toVoidHandler } from "../utils/toVoidHandler";
+import RevealCard from "../components/RevealCard";
+import { useUiSettings } from "../context/UiSettingsContext";
 
 const PIECES_PREVIEW_COUNT = 12;
 const NOTE_LOAD_LIMIT = 40;
@@ -215,6 +217,8 @@ function StarRating({ value, onSelect, disabled, pulse }: StarRatingProps) {
 }
 
 export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin }: Props) {
+  const { themeName, portalMotion } = useUiSettings();
+  const motionEnabled = themeName === "memoria" && portalMotion === "enhanced";
   const { active, history, error } = useBatches(user);
   const [status, setStatus] = useState("");
   const [meta, setMeta] = useState<PortalApiMeta | LocalMeta | null>(null);
@@ -684,9 +688,6 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
     <div className="page">
       <div className="page-header">
         <h1>My Pieces</h1>
-        <p className="page-subtitle">
-          Review your pieces, edit details, and keep your history tidy. We track the firing steps for you.
-        </p>
       </div>
 
       {status ? <div className="status-line">{status}</div> : null}
@@ -742,7 +743,7 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
 
       <div className="wares-layout">
         <div className="pieces-grid collections-pane">
-          <div className="card card-3d">
+          <RevealCard className="card card-3d" index={0} enabled={motionEnabled}>
             <div className="card-title">
               {piecesFilter === "history" ? "History" : piecesFilter === "active" ? "In progress" : "Your pieces"}
             </div>
@@ -798,10 +799,10 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
                 ) : null}
               </div>
             )}
-          </div>
+          </RevealCard>
         </div>
 
-        <div className="card card-3d collection-detail-pane">
+        <RevealCard className="card card-3d collection-detail-pane" index={1} enabled={motionEnabled}>
           <div className="card-title">Piece detail</div>
           {!selectedPiece ? (
             <div className="empty-state">Select a piece to view details.</div>
@@ -1128,7 +1129,7 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
               </div>
             </div>
           )}
-        </div>
+        </RevealCard>
       </div>
 
       {meta ? (

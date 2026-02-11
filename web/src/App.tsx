@@ -1491,7 +1491,23 @@ export default function App() {
                 onClick={() => setNav("profile")}
               >
                 <div className="avatar">
-                  {user.photoURL ? <img src={user.photoURL} alt={user.displayName ?? "User"} /> : null}
+                  <span className="avatar-fallback" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                      <path
+                        d="M12 12.5a4.25 4.25 0 1 0-4.25-4.25A4.26 4.26 0 0 0 12 12.5Zm0 2c-4.28 0-7.75 2.55-7.75 5.7a.8.8 0 0 0 .8.8h13.9a.8.8 0 0 0 .8-.8c0-3.15-3.47-5.7-7.75-5.7Z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                  </span>
+                  {user.photoURL ? (
+                    <img
+                      src={user.photoURL}
+                      alt={user.displayName ?? "User"}
+                      onError={(event) => {
+                        event.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : null}
                 </div>
                 <div className="profile-meta">
                   <strong>{user.displayName ?? "Member"}</strong>

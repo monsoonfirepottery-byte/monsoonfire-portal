@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
 import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
+import RevealCard from "../components/RevealCard";
+import { useUiSettings } from "../context/UiSettingsContext";
 import { db } from "../firebase";
 import { mockFirings, mockKilns } from "../data/kilnScheduleMock";
 import { useBatches } from "../hooks/useBatches";
@@ -287,6 +289,8 @@ export default function DashboardView({
   onOpenMessages,
   onOpenPieces,
 }: Props) {
+  const { themeName, portalMotion } = useUiSettings();
+  const motionEnabled = themeName === "memoria" && portalMotion === "enhanced";
   const { active, history } = useBatches(user);
   const activePreview = active.slice(0, DASHBOARD_PIECES_PREVIEW);
   const archivedCount = history.length;
@@ -318,7 +322,7 @@ export default function DashboardView({
 
   return (
     <div className="dashboard">
-      <section className="card hero-card">
+      <RevealCard as="section" className="card hero-card" index={0} enabled={motionEnabled}>
         <div className="hero-content">
           <p className="eyebrow">Client Dashboard</p>
           <h1>Your studio dashboard</h1>
@@ -357,10 +361,10 @@ export default function DashboardView({
             </div>
           )}
         </div>
-      </section>
+      </RevealCard>
 
       <section className="quick-actions">
-        <div className="card card-3d quick-action-card">
+        <RevealCard className="card card-3d quick-action-card" index={1} enabled={motionEnabled}>
           <div className="card-title">Quick actions</div>
           <div className="quick-action-row">
             <button className="btn btn-primary" onClick={onOpenCheckin}>
@@ -380,11 +384,11 @@ export default function DashboardView({
             </button>
           </div>
           <p className="quick-action-note">Pick a lane and we will take it from there.</p>
-        </div>
+        </RevealCard>
       </section>
 
       <section className="dashboard-grid">
-        <div className="card card-3d">
+        <RevealCard className="card card-3d" index={2} enabled={motionEnabled}>
           <div className="card-title">Your pieces</div>
           <div className="card-subtitle">Personal queue</div>
           {activePreview.length === 0 ? (
@@ -429,9 +433,9 @@ export default function DashboardView({
           <button className="btn btn-ghost dashboard-link" onClick={onOpenPieces}>
             Open My Pieces
           </button>
-        </div>
+        </RevealCard>
 
-        <div className="card card-3d">
+        <RevealCard className="card card-3d" index={3} enabled={motionEnabled}>
           <div className="card-title">Studio snapshot</div>
           <div className="card-subtitle">Studio-wide status</div>
           <div className="snapshot-grid">
@@ -455,9 +459,9 @@ export default function DashboardView({
               </div>
             </div>
           </div>
-        </div>
+        </RevealCard>
 
-        <div className="card card-3d">
+        <RevealCard className="card card-3d" index={4} enabled={motionEnabled}>
           <div className="card-title">Kilns firing now</div>
           <div className="list">
             {kilnRows.length === 0 ? (
@@ -483,13 +487,13 @@ export default function DashboardView({
               ))
             )}
           </div>
-        </div>
+        </RevealCard>
 
-        <div className="card card-3d">
+        <RevealCard className="card card-3d" index={5} enabled={motionEnabled}>
           <div className="card-title">Upcoming workshops</div>
           <div className="list">
             {SAMPLE_WORKSHOPS.map((item) => (
-              <div className="list-row" key={item.name}>
+              <div className="list-row workshop-row" key={item.name}>
                 <div>
                   <div className="list-title">{item.name}</div>
                   <div className="list-meta">{item.time}</div>
@@ -508,9 +512,9 @@ export default function DashboardView({
               </div>
             ))}
           </div>
-        </div>
+        </RevealCard>
 
-        <div className="card card-3d">
+        <RevealCard className="card card-3d" index={6} enabled={motionEnabled}>
           <div className="card-title">Glaze inspiration</div>
           <div className="card-subtitle">Pick a base + top combo</div>
           <p className="card-body-copy">
@@ -519,9 +523,9 @@ export default function DashboardView({
           <button className="btn btn-ghost dashboard-link" onClick={onOpenGlazeBoard}>
             Open the glaze board
           </button>
-        </div>
+        </RevealCard>
 
-        <div className="card card-3d">
+        <RevealCard className="card card-3d" index={7} enabled={motionEnabled}>
           <div className="card-title">Direct messages</div>
           <div className="messages-preview">
             {messagePreview.length === 0 ? (
@@ -548,9 +552,9 @@ export default function DashboardView({
           <button className="btn btn-ghost" onClick={onOpenMessages}>
             Open messages inbox
           </button>
-        </div>
+        </RevealCard>
 
-        <div className="card card-3d span-2 archived-summary">
+        <RevealCard className="card card-3d span-2 archived-summary" index={8} enabled={motionEnabled}>
           <div>
             <div className="card-title">Archived pieces</div>
             <div className="archived-count">
@@ -562,7 +566,7 @@ export default function DashboardView({
           <button className="btn btn-ghost" onClick={onOpenPieces}>
             View archived pieces
           </button>
-        </div>
+        </RevealCard>
       </section>
     </div>
   );

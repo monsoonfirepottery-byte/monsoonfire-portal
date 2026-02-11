@@ -301,6 +301,8 @@ service cloud.firestore {
           "notifyReservations",
           "personalNotes",
           "studioNotes",
+          "uiTheme",
+          "uiEnhancedMotion",
           "updatedAt"
         ])
         && request.resource.data.updatedAt is timestamp
@@ -329,6 +331,21 @@ service cloud.firestore {
           !request.resource.data.keys().hasAny(["studioNotes"])
           || request.resource.data.studioNotes is string
           || request.resource.data.studioNotes == null
+        )
+        && (
+          !request.resource.data.keys().hasAny(["uiTheme"])
+          || request.resource.data.uiTheme is string
+          || request.resource.data.uiTheme == null
+        )
+        && (
+          !request.resource.data.keys().hasAny(["uiTheme"])
+          || request.resource.data.uiTheme == null
+          || request.resource.data.uiTheme in ["portal", "memoria"]
+        )
+        && (
+          !request.resource.data.keys().hasAny(["uiEnhancedMotion"])
+          || request.resource.data.uiEnhancedMotion is bool
+          || request.resource.data.uiEnhancedMotion == null
         )
         && (
           resource == null
@@ -655,6 +672,62 @@ service cloud.firestore {
     match /config/studioJukebox {
       allow read: if isStaff();
       allow write: if isStaff();
+    }
+
+    match /trackerProjects/{projectId} {
+      allow read: if isSignedIn()
+        && resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isSignedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if false;
+    }
+
+    match /trackerEpics/{epicId} {
+      allow read: if isSignedIn()
+        && resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isSignedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if false;
+    }
+
+    match /trackerTickets/{ticketId} {
+      allow read: if isSignedIn()
+        && resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.trackerVisible == true;
+      allow update: if isSignedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.trackerVisible == true;
+      allow delete: if false;
+
+      match /comments/{commentId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/trackerTickets/$(ticketId)).data.ownerUid == request.auth.uid;
+        allow create, update: if isSignedIn()
+          && get(/databases/$(database)/documents/trackerTickets/$(ticketId)).data.ownerUid == request.auth.uid;
+        allow delete: if false;
+      }
+
+      match /activity/{activityId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/trackerTickets/$(ticketId)).data.ownerUid == request.auth.uid;
+        allow create, update: if isSignedIn()
+          && get(/databases/$(database)/documents/trackerTickets/$(ticketId)).data.ownerUid == request.auth.uid;
+        allow delete: if false;
+      }
+    }
+
+    match /trackerIntegrationHealth/{uid} {
+      allow read, create, update: if isOwner(uid);
+      allow delete: if false;
     }
 
     match /studioJukebox/tracks/items/{trackId} {

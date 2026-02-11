@@ -9,6 +9,7 @@ import {
   applyCors,
   requireAdmin,
   requireAuthUid,
+  requireAuthContext,
   nowTs,
   asInt,
   safeString,
@@ -20,6 +21,14 @@ import {
 } from "./shared";
 import { TimelineEventType } from "./timelineEventTypes";
 import { z } from "zod";
+import { handleApiV1 } from "./apiV1";
+import {
+  createIntegrationToken as createIntegrationTokenRecord,
+  listIntegrationTokensForOwner,
+  normalizeAndValidateScopes,
+  revokeIntegrationTokenForOwner,
+} from "./integrationTokens";
+import { emitIntegrationEvent } from "./integrationEvents";
 export {
   registerDeviceToken,
   unregisterDeviceToken,
@@ -36,6 +45,8 @@ export {
 // Config
 // -----------------------------
 const REGION = "us-central1";
+
+export const apiV1 = onRequest({ region: REGION, timeoutSeconds: 60 }, handleApiV1);
 
 /**
  * IMPORTANT:
@@ -116,6 +127,22 @@ const kilnUnloadSchema = z.object({
 
 const backfillSchema = z.object({
   limit: z.number().int().min(1).max(500).optional(),
+});
+
+const createIntegrationTokenSchema = z.object({
+  label: z.string().max(60).optional().nullable(),
+  scopes: z.array(z.string()).min(1).max(20),
+});
+
+const revokeIntegrationTokenSchema = z.object({
+  tokenId: z.string().min(1),
+});
+
+const githubLookupSchema = z.object({
+  owner: z.string().min(1),
+  repo: z.string().min(1),
+  number: z.number().int().positive(),
+  type: z.enum(["issue", "pr"]),
 });
 
 function batchesCol() {
@@ -213,6 +240,275 @@ export const hello = onRequest({ region: REGION }, async (req, res) => {
   }
 
   res.status(200).json({ ok: true, message: "ok" });
+});
+
+function readGitHubToken(): string {
+  const preferred = (process.env.GITHUB_LOOKUP_TOKEN ?? "").trim();
+  if (preferred) return preferred;
+  return (process.env.GITHUB_TOKEN ?? "").trim();
+}
+
+async function fetchGitHubResource(input: {
+  owner: string;
+  repo: string;
+  number: number;
+  type: "issue" | "pr";
+}) {
+  const path =
+    input.type === "issue"
+      ? `/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repo)}/issues/${input.number}`
+      : `/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repo)}/pulls/${input.number}`;
+  const url = `https://api.github.com${path}`;
+
+  const token = readGitHubToken();
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "monsoonfire-portal-tracker",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(url, { method: "GET", headers });
+  const body = (await response.json()) as {
+    html_url?: unknown;
+    title?: unknown;
+    state?: unknown;
+    updated_at?: unknown;
+    merged?: unknown;
+  };
+
+  if (!response.ok) {
+    return {
+      ok: false as const,
+      status: response.status,
+      message:
+        typeof (body as { message?: unknown }).message === "string"
+          ? String((body as { message?: unknown }).message)
+          : "GitHub lookup failed",
+    };
+  }
+
+  return {
+    ok: true as const,
+    status: response.status,
+    data: {
+      url: typeof body.html_url === "string" ? body.html_url : url,
+      title: typeof body.title === "string" ? body.title : "",
+      state: typeof body.state === "string" ? body.state : "unknown",
+      updatedAt:
+        typeof body.updated_at === "string"
+          ? body.updated_at
+          : new Date().toISOString(),
+      merged: input.type === "pr" && typeof body.merged === "boolean" ? body.merged : undefined,
+    },
+  };
+}
+
+export const githubLookup = onRequest(
+  { region: REGION, timeoutSeconds: 30 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+
+    const rate = await enforceRateLimit({
+      req,
+      key: "githubLookup",
+      max: 60,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    const parsed = parseBody(githubLookupSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    try {
+      const result = await fetchGitHubResource(parsed.data);
+      if (!result.ok) {
+        res.status(result.status).json({ ok: false, message: result.message });
+        return;
+      }
+
+      res.status(200).json({ ok: true, data: result.data });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error("githubLookup failed", { message });
+      res.status(500).json({ ok: false, message: "GitHub lookup failed" });
+    }
+  }
+);
+
+// -----------------------------
+// Integrations: PATs (integration tokens)
+// -----------------------------
+export const createIntegrationToken = onRequest(
+  { region: REGION, timeoutSeconds: 60 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+
+    const parsed = parseBody(createIntegrationTokenSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const rate = await enforceRateLimit({
+      req,
+      key: "createIntegrationToken",
+      max: 6,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    const scopesParsed = normalizeAndValidateScopes(parsed.data.scopes);
+    if (!scopesParsed.ok) {
+      res.status(400).json({ ok: false, message: scopesParsed.message });
+      return;
+    }
+
+    try {
+      const out = await createIntegrationTokenRecord({
+        ownerUid: auth.uid,
+        label: parsed.data.label ? String(parsed.data.label) : null,
+        scopes: scopesParsed.scopes,
+      });
+
+      res.status(200).json({
+        ok: true,
+        tokenId: out.tokenId,
+        token: out.token,
+        record: out.record,
+      });
+    } catch (e: any) {
+      logger.error("createIntegrationToken failed", e);
+      res.status(500).json({ ok: false, message: e?.message ?? "Failed to create token" });
+    }
+  }
+);
+
+export const listIntegrationTokens = onRequest(
+  { region: REGION, timeoutSeconds: 60 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+
+    const rate = await enforceRateLimit({
+      req,
+      key: "listIntegrationTokens",
+      max: 30,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    const tokens = await listIntegrationTokensForOwner(auth.uid);
+    res.status(200).json({ ok: true, tokens });
+  }
+);
+
+export const revokeIntegrationToken = onRequest(
+  { region: REGION, timeoutSeconds: 60 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+
+    const parsed = parseBody(revokeIntegrationTokenSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const rate = await enforceRateLimit({
+      req,
+      key: "revokeIntegrationToken",
+      max: 20,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    const tokenId = safeString(parsed.data.tokenId);
+    const out = await revokeIntegrationTokenForOwner({ ownerUid: auth.uid, tokenId });
+    if (!out.ok) {
+      res.status(out.message === "Token not found" ? 404 : 403).json({ ok: false, message: out.message });
+      return;
+    }
+
+    res.status(200).json({ ok: true });
+  }
+);
+
+export const helloPat = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+
+  const auth = await requireAuthContext(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, code: auth.code, message: auth.message });
+    return;
+  }
+
+  res.status(200).json({
+    ok: true,
+    uid: auth.ctx.uid,
+    mode: auth.ctx.mode,
+    scopes: auth.ctx.mode === "pat" ? auth.ctx.scopes : null,
+  });
 });
 
 // -----------------------------
@@ -519,6 +815,21 @@ export const createBatch = onRequest(
       actorName,
       notes: "Batch created",
     });
+
+    // Best-effort integration event for agent clients.
+    try {
+      const evt = await emitIntegrationEvent({
+        uid: ownerUid,
+        type: "batch.updated",
+        subject: { batchId: ref.id },
+        data: { state: doc.state, isClosed: doc.isClosed, title: doc.title },
+      });
+      if (!evt.ok) {
+        logger.warn("emitIntegrationEvent failed", { message: evt.message });
+      }
+    } catch (e: any) {
+      logger.warn("emitIntegrationEvent exception", { message: e?.message ?? String(e) });
+    }
 
     res.status(200).json({ ok: true, batchId: ref.id });
   }

@@ -1,6 +1,6 @@
 # P1 — Website A11y: Blind / Low-Vision / Screen Reader
 
-**Status:** Planned
+**Status:** In Progress
 
 ## Problem
 - Blind and low-vision users need reliable semantics, labels, focus order, and contrast.
@@ -43,3 +43,6 @@
 ## Dependencies
 - `tickets/P1-website-a11y-baseline-and-policy.md`
 
+## Progress
+- Added global skip-link injection in `website/assets/js/main.js` for pages with `#main`.
+- Existing stylesheet already includes `.skip-link` and focus-visible outlines; now activated consistently across pages.

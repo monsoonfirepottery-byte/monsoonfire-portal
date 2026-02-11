@@ -6,6 +6,15 @@
   };
 
   const body = document.body;
+  const main = document.getElementById('main');
+  if (body && main && !document.querySelector('.skip-link')) {
+    const skipLink = document.createElement('a');
+    skipLink.className = 'skip-link';
+    skipLink.href = '#main';
+    skipLink.textContent = 'Skip to main content';
+    body.insertBefore(skipLink, body.firstChild);
+  }
+
   const parentPath = body ? body.getAttribute('data-nav-parent') : null;
   const currentPath = normalizePath(parentPath || window.location.pathname);
   document.querySelectorAll('[data-nav-links] a').forEach((link) => {

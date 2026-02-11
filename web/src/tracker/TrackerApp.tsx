@@ -56,6 +56,11 @@ const TICKET_DOC_PATHS = [
   "tickets/README.md",
   "tickets/P0-portal-hosting-cutover.md",
   "tickets/P1-agent-api-v1-contracts.md",
+  "tickets/P1-website-a11y-baseline-and-policy.md",
+  "tickets/P1-website-a11y-blind-low-vision-and-screenreader.md",
+  "tickets/P1-website-a11y-deaf-hard-of-hearing.md",
+  "tickets/P1-website-a11y-motor-cognitive-and-neurodiverse.md",
+  "tickets/P2-website-a11y-ongoing-qa-and-regression-guardrails.md",
   "tickets/P2-portal-integrations-ui.md",
 ];
 

@@ -16,18 +16,35 @@ import {
   sendSignInLinkToEmail,
   type User,
 } from "firebase/auth";
-import { addDoc, collection, getDocs, limit, orderBy, query, serverTimestamp, where } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  where,
+} from "firebase/firestore";
 import { auth, db } from "./firebase";
 import type { Announcement, DirectMessageThread, LiveUser } from "./types/messaging";
 import { toVoidHandler } from "./utils/toVoidHandler";
 import type { SupportRequestInput } from "./views/SupportView";
-import { portalTheme } from "./theme/themes";
+import { DEFAULT_PORTAL_THEME, isPortalThemeName, PORTAL_THEMES, type PortalThemeName } from "./theme/themes";
+import { readStoredPortalTheme, writeStoredPortalTheme } from "./theme/themeStorage";
+import { readStoredEnhancedMotion, writeStoredEnhancedMotion } from "./theme/motionStorage";
+import { usePrefersReducedMotion } from "./hooks/usePrefersReducedMotion";
+import { UiSettingsProvider } from "./context/UiSettingsContext";
 import "./App.css";
 
 const BillingView = React.lazy(() => import("./views/BillingView"));
 const CommunityView = React.lazy(() => import("./views/CommunityView"));
 const DashboardView = React.lazy(() => import("./views/DashboardView"));
 const EventsView = React.lazy(() => import("./views/EventsView"));
+const IntegrationsView = React.lazy(() => import("./views/IntegrationsView"));
 const KilnLaunchView = React.lazy(() => import("./views/KilnLaunchView"));
 const KilnRentalsView = React.lazy(() => import("./views/KilnRentalsView"));
 const KilnScheduleView = React.lazy(() => import("./views/KilnScheduleView"));
@@ -49,6 +66,7 @@ const StaffView = React.lazy(() => import("./views/StaffView"));
 type NavKey =
   | "dashboard"
   | "profile"
+  | "integrations"
   | "pieces"
   | "kiln"
   | "kilnRentals"
@@ -266,6 +284,7 @@ const NAV_SECTION_ICONS: Record<NavSectionKey, React.ReactNode> = {
 const NAV_LABELS: Record<NavKey, string> = {
   dashboard: "Dashboard",
   profile: "Profile",
+  integrations: "Integrations",
   pieces: "My Pieces",
   kiln: "Firings",
   kilnRentals: "Kiln Rentals",
@@ -319,9 +338,15 @@ const getSectionForNav = (navKey: NavKey): NavSectionKey | null => {
   return match?.key ?? null;
 };
 
+function getErrorCode(error: unknown): string {
+  if (!error || typeof error !== "object") return "";
+  const code = (error as Record<string, unknown>).code;
+  return typeof code === "string" ? code : "";
+}
+
 function getErrorMessage(error: unknown): string {
-  if (error && typeof error === "object" && "code" in error) {
-    const code = String((error as any).code || "");
+  const code = getErrorCode(error);
+  if (code) {
     const message = error instanceof Error ? error.message : String(error);
     if (code && message && !message.includes(code)) return `${message} (${code})`;
     if (code) return code;
@@ -584,6 +609,19 @@ export default function App() {
   const [supportStatus, setSupportStatus] = useState("");
   const [supportBusy, setSupportBusy] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [themeName, setThemeName] = useState<PortalThemeName>(() => readStoredPortalTheme());
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const [enhancedMotion, setEnhancedMotion] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const likelyMobile = window.matchMedia?.("(max-width: 720px)")?.matches ?? false;
+    const saveData = (navigator as { connection?: { saveData?: boolean } }).connection?.saveData ?? false;
+    const deviceMemory = (navigator as { deviceMemory?: number }).deviceMemory ?? null;
+    const cores = (navigator as { hardwareConcurrency?: number }).hardwareConcurrency ?? null;
+    const lowPower = (typeof deviceMemory === "number" && deviceMemory <= 4) || (typeof cores === "number" && cores <= 4);
+    const defaultValue = !(likelyMobile || saveData || lowPower);
+    return readStoredEnhancedMotion(defaultValue);
+  });
+  const [motionAutoReduced, setMotionAutoReduced] = useState(false);
 
   const authClient = auth;
   const isAuthEmulator =
@@ -595,6 +633,108 @@ export default function App() {
   const navBottomItems: NavItem[] = staffUi
     ? [...NAV_BOTTOM_ITEMS, { key: "staff", label: "Staff" }]
     : NAV_BOTTOM_ITEMS;
+
+  useEffect(() => {
+    const theme = PORTAL_THEMES[themeName] ?? PORTAL_THEMES[DEFAULT_PORTAL_THEME];
+    if (typeof document === "undefined") return;
+    document.documentElement.dataset.portalTheme = themeName;
+    document.documentElement.dataset.portalMotion =
+      prefersReducedMotion || !enhancedMotion ? "reduced" : "enhanced";
+    document.documentElement.style.colorScheme = themeName === "memoria" ? "dark" : "light";
+    for (const [key, value] of Object.entries(theme)) {
+      if (!key.startsWith("--") || value == null) continue;
+      document.documentElement.style.setProperty(key, String(value));
+    }
+  }, [themeName, prefersReducedMotion, enhancedMotion]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (prefersReducedMotion) return;
+    if (!enhancedMotion) return;
+    if (themeName !== "memoria") return;
+
+    let stopped = false;
+    let armed = true;
+
+    const runProbe = () => {
+      if (stopped || !armed) return;
+      armed = false;
+      let frames = 0;
+      let last = performance.now();
+      const deltas: number[] = [];
+
+      const tick = (now: number) => {
+        if (stopped) return;
+        const dt = now - last;
+        last = now;
+        deltas.push(dt);
+        frames += 1;
+        if (frames < 50) {
+          requestAnimationFrame(tick);
+          return;
+        }
+        const sorted = deltas.slice().sort((a, b) => a - b);
+        const avg = deltas.reduce((t, v) => t + v, 0) / Math.max(1, deltas.length);
+        const p95 = sorted[Math.floor(sorted.length * 0.95)] ?? avg;
+        const slow = avg > 24 || p95 > 34;
+        if (slow) {
+          setEnhancedMotion(false);
+          writeStoredEnhancedMotion(false);
+          setMotionAutoReduced(true);
+          // Best effort: sync to profile when signed in.
+          if (user?.uid) {
+            setDoc(
+              doc(db, "profiles", user.uid),
+              { uiEnhancedMotion: false, updatedAt: serverTimestamp() },
+              { merge: true }
+            ).catch(() => {});
+          }
+        }
+      };
+
+      requestAnimationFrame(tick);
+    };
+
+    const onFirstInteraction = () => runProbe();
+    window.addEventListener("pointerdown", onFirstInteraction, { once: true, passive: true });
+    window.addEventListener("keydown", onFirstInteraction, { once: true, passive: true });
+    window.addEventListener("scroll", onFirstInteraction, { once: true, passive: true });
+
+    return () => {
+      stopped = true;
+      window.removeEventListener("pointerdown", onFirstInteraction);
+      window.removeEventListener("keydown", onFirstInteraction);
+      window.removeEventListener("scroll", onFirstInteraction);
+    };
+  }, [prefersReducedMotion, enhancedMotion, themeName, user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    let cancelled = false;
+    async function loadThemeFromProfile(uid: string) {
+      try {
+        const snap = await getDoc(doc(db, "profiles", uid));
+        const data = (snap.data() as { uiTheme?: unknown; uiEnhancedMotion?: unknown } | undefined) ?? undefined;
+        const raw = data?.uiTheme;
+        const rawMotion = data?.uiEnhancedMotion;
+        if (cancelled) return;
+        if (isPortalThemeName(raw)) {
+          setThemeName(raw);
+          writeStoredPortalTheme(raw);
+        }
+        if (typeof rawMotion === "boolean") {
+          setEnhancedMotion(rawMotion);
+          writeStoredEnhancedMotion(rawMotion);
+        }
+      } catch {
+        // Ignore theme load failures; default/localStorage theme still works.
+      }
+    }
+    void loadThemeFromProfile(user.uid);
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid]);
 
   useEffect(() => {
     if (!DEV_ADMIN_TOKEN_ENABLED) return;
@@ -828,8 +968,7 @@ export default function App() {
         }
       } catch (error: unknown) {
         // Popups can be blocked (mobile Safari, aggressive privacy settings). Redirect is a reliable fallback.
-        const code =
-          typeof error === "object" && error && "code" in error ? String((error as any).code) : "";
+        const code = getErrorCode(error);
         const shouldFallbackToRedirect =
           code === "auth/popup-blocked" ||
           code === "auth/popup-closed-by-user" ||
@@ -1042,7 +1181,7 @@ export default function App() {
     setMobileNavOpen(false);
   };
 
-    const renderView = (key: NavKey) => {
+  const renderView = (key: NavKey) => {
       if (!user) {
         return (
           <SignedOutView
@@ -1088,7 +1227,30 @@ export default function App() {
           />
         );
       case "profile":
-        return <ProfileView user={user} />;
+        return (
+          <ProfileView
+            user={user}
+            themeName={themeName}
+            onThemeChange={(next) => {
+              setThemeName(next);
+              writeStoredPortalTheme(next);
+            }}
+            enhancedMotion={enhancedMotion}
+            onEnhancedMotionChange={(next) => {
+              setEnhancedMotion(next);
+              writeStoredEnhancedMotion(next);
+            }}
+            onOpenIntegrations={() => setNav("integrations")}
+          />
+        );
+      case "integrations":
+        return (
+          <IntegrationsView
+            user={user}
+            functionsBaseUrl={FUNCTIONS_BASE_URL}
+            onBack={() => setNav("profile")}
+          />
+        );
       case "community":
         return <CommunityView onOpenLendingLibrary={() => setNav("lendingLibrary")} />;
       case "events":
@@ -1188,9 +1350,29 @@ export default function App() {
 
   return (
     <AppErrorBoundary>
-      <div className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`} style={portalTheme}>
+      <div
+        className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`}
+        style={PORTAL_THEMES[themeName] ?? PORTAL_THEMES[DEFAULT_PORTAL_THEME]}
+      >
         <aside className={`sidebar ${mobileNavOpen ? "open" : ""} ${navCollapsed ? "collapsed" : ""}`}>
-          <div className="brand">
+          <div
+            className="brand brand-home"
+            role="button"
+            tabIndex={0}
+            onClick={() => {
+              setNav("dashboard");
+              setMobileNavOpen(false);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setNav("dashboard");
+                setMobileNavOpen(false);
+              }
+            }}
+            aria-label="Go to dashboard"
+            title="Go to dashboard"
+          >
             <img
               src={MF_LOGO}
               alt="Monsoon Fire Pottery Studio"
@@ -1377,7 +1559,23 @@ export default function App() {
                 </div>
               }
             >
-              {renderView(nav)}
+              {motionAutoReduced && themeName === "memoria" ? (
+                <div className="notice motion-notice">
+                  Enhanced motion was disabled for performance. You can re-enable it in Profile.
+                </div>
+              ) : null}
+              <UiSettingsProvider
+                value={{
+                  themeName,
+                  portalMotion: prefersReducedMotion || !enhancedMotion ? "reduced" : "enhanced",
+                  enhancedMotion,
+                  prefersReducedMotion,
+                }}
+              >
+                <div key={`${nav}:${themeName}:${enhancedMotion ? "m1" : "m0"}`} className="view-root">
+                  {renderView(nav)}
+                </div>
+              </UiSettingsProvider>
             </React.Suspense>
           ) : null}
         </main>

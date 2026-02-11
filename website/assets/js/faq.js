@@ -1,4 +1,7 @@
 (() => {
+  const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const prefersReducedMotion = () => reducedMotionQuery.matches;
+
   const faqList = document.querySelector('[data-faq-list]');
   const policyList = document.querySelector('[data-policy-list]');
   const tagContainer = document.querySelector('[data-tag-list]');
@@ -69,12 +72,14 @@
     const button = document.createElement('button');
     button.className = 'accordion-button';
     button.type = 'button';
+    button.setAttribute('aria-expanded', 'false');
     button.innerHTML = `<span class="accordion-title">${title}</span>${meta || ''}`;
     const panel = document.createElement('div');
     panel.className = 'accordion-panel';
     panel.innerHTML = body;
     button.addEventListener('click', () => {
       wrapper.classList.toggle('open');
+      button.setAttribute('aria-expanded', String(wrapper.classList.contains('open')));
     });
     wrapper.appendChild(button);
     wrapper.appendChild(panel);
@@ -176,7 +181,7 @@
         state.query = '';
         searchInput.value = '';
         if (faqSection) {
-          faqSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          faqSection.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
         }
         render();
       }

@@ -105,7 +105,10 @@ a:hover {
 
 a:focus-visible,
 button:focus-visible,
-.button:focus-visible {
+.button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
   outline: 2px solid var(--accent-600);
   outline-offset: 3px;
 }
@@ -171,7 +174,10 @@ button:focus-visible,
 }
 
 .nav-links a {
-  padding: 4px 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 0;
   position: relative;
 }
 
@@ -205,6 +211,7 @@ button:focus-visible,
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 44px;
   padding: 10px 18px;
   border: 1px solid #8d3b27;
   border-radius: 10px;
@@ -238,6 +245,7 @@ button:focus-visible,
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 44px;
   padding: 12px 20px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -274,6 +282,8 @@ button:focus-visible,
   background: none;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  min-height: 44px;
+  min-width: 44px;
   padding: 8px 10px;
   font-family: var(--font-ui);
   text-transform: uppercase;
@@ -1074,6 +1084,7 @@ button:focus-visible,
 
 .form-field input,
 .form-field textarea {
+  min-height: 44px;
   padding: 12px 14px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -1084,6 +1095,21 @@ button:focus-visible,
 .form-field textarea {
   min-height: 140px;
   resize: vertical;
+}
+
+.form-help {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: var(--ink-500);
+}
+
+.form-error {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: #8f2f21;
+  letter-spacing: 0.02em;
 }
 
 .form-actions {
@@ -1218,7 +1244,8 @@ button:focus-visible,
 }
 
 .filter-toggle {
-  padding: 6px 14px;
+  min-height: 44px;
+  padding: 10px 14px;
   border-radius: 999px;
   border: 1px solid var(--border);
   font-size: var(--text-xs);
@@ -1256,7 +1283,8 @@ button:focus-visible,
 }
 
 .tag {
-  padding: 6px 12px;
+  min-height: 44px;
+  padding: 10px 12px;
   border-radius: 999px;
   border: 1px solid var(--border);
   font-size: var(--text-xs);
@@ -1284,6 +1312,7 @@ button:focus-visible,
   width: 100%;
   text-align: left;
   padding: var(--space-4) var(--space-4);
+  min-height: 44px;
   background: none;
   border: none;
   font-family: var(--font-body);

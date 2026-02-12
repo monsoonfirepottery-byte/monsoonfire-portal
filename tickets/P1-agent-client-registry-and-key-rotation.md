@@ -1,6 +1,6 @@
 # P1 — Agent Client Registry and Key Rotation
 
-Status: Open
+Status: Completed
 
 ## Problem
 - Agent integrations need a first-class identity model.
@@ -25,3 +25,12 @@ Status: Open
 - Staff can create/rotate/revoke clients end-to-end.
 - Revoked keys fail auth immediately.
 - All key lifecycle events produce audit logs.
+
+## Progress notes
+- Implemented registry and lifecycle endpoints in `functions/src/agentClients.ts`:
+  - `staffCreateAgentClient`
+  - `staffRotateAgentClientKey`
+  - `staffUpdateAgentClientStatus`
+  - `staffUpdateAgentClientProfile`
+- Agent client keys are hashed and compared server-side; plaintext is returned only at issue/rotation time.
+- Staff UI lifecycle operations are wired in `web/src/views/staff/AgentOpsModule.tsx`.

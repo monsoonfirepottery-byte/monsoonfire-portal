@@ -1,6 +1,6 @@
 # P1 — Agent Staff Ops Console and Kill Switch
 
-Status: Open
+Status: Completed
 
 ## Problem
 - Staff need operational control of agent traffic without engineering intervention.
@@ -24,3 +24,13 @@ Status: Open
 - Staff can suspend a single agent and disable all agent traffic globally.
 - Changes propagate to enforcement middleware immediately.
 - Audit timeline is visible in staff UI.
+
+## Progress notes
+- Staff Agent Ops module implemented in `web/src/views/staff/AgentOpsModule.tsx` with:
+  - per-client suspend/re-enable controls
+  - global API/payment control toggles and reason capture
+  - audit timeline and denied-event analytics
+- Backend controls implemented in `functions/src/agentCommerce.ts` and wired through `functions/src/index.ts`:
+  - `staffGetAgentOpsConfig`
+  - `staffUpdateAgentOpsConfig`
+  - `staffListAgentOperations`

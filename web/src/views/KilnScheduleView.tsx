@@ -405,15 +405,6 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
                   <div
                     className={`upcoming-row ${isSelected ? "active" : ""}`}
                     key={firing.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedFiringId(firing.id)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        setSelectedFiringId(firing.id);
-                      }
-                    }}
                   >
                     <div>
                       <div className="upcoming-title">
@@ -425,10 +416,14 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
                     </div>
                     <button
                       className="btn btn-ghost"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        downloadCalendarInvite(firing, kiln);
-                      }}
+                      onClick={() => setSelectedFiringId(firing.id)}
+                      disabled={isSelected}
+                    >
+                      {isSelected ? "Selected" : "View details"}
+                    </button>
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() => downloadCalendarInvite(firing, kiln)}
                     >
                       Add to my calendar
                     </button>

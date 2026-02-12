@@ -18,6 +18,31 @@ type PolicyVersion = {
   updatedAtMs: number;
 };
 
+type CommunitySafetyConfig = {
+  enabled: boolean;
+  publishKillSwitch: boolean;
+  autoFlagEnabled: boolean;
+  highSeverityThreshold: number;
+  mediumSeverityThreshold: number;
+  blockedTerms: string[];
+  blockedUrlHosts: string[];
+};
+
+type SafetyTrigger = {
+  type: string;
+  field: string;
+  value: string;
+  scoreDelta: number;
+};
+
+type SafetyRisk = {
+  score: number;
+  severity: "low" | "medium" | "high";
+  flagged: boolean;
+  triggers: SafetyTrigger[];
+  inspectedUrlCount: number;
+};
+
 type Props = {
   client: FunctionsClient;
   active: boolean;
@@ -36,6 +61,14 @@ type ListPoliciesResponse = {
 };
 
 type BasicResponse = { ok: boolean; message?: string; activeVersion?: string };
+type GetCommunitySafetyConfigResponse = {
+  ok: boolean;
+  config?: Record<string, unknown>;
+};
+type ScanCommunityDraftResponse = {
+  ok: boolean;
+  risk?: SafetyRisk;
+};
 
 function str(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
@@ -104,6 +137,40 @@ function serializeRulesToText(rules: PolicyRule[]): string {
     .join("\n");
 }
 
+function parseMultiline(input: string): string[] {
+  return input
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function toBoolean(v: unknown, fallback = false): boolean {
+  return typeof v === "boolean" ? v : fallback;
+}
+
+function normalizeSafetyConfig(row: Record<string, unknown> | undefined): CommunitySafetyConfig {
+  const blockedTerms = Array.isArray(row?.blockedTerms)
+    ? row?.blockedTerms.map((entry) => str(entry).trim()).filter(Boolean)
+    : [];
+  const blockedUrlHosts = Array.isArray(row?.blockedUrlHosts)
+    ? row?.blockedUrlHosts.map((entry) => str(entry).trim()).filter(Boolean)
+    : [];
+
+  return {
+    enabled: toBoolean(row?.enabled, true),
+    publishKillSwitch: toBoolean(row?.publishKillSwitch, false),
+    autoFlagEnabled: toBoolean(row?.autoFlagEnabled, true),
+    highSeverityThreshold: Number.isFinite(row?.highSeverityThreshold as number)
+      ? Number(row?.highSeverityThreshold)
+      : 70,
+    mediumSeverityThreshold: Number.isFinite(row?.mediumSeverityThreshold as number)
+      ? Number(row?.mediumSeverityThreshold)
+      : 35,
+    blockedTerms,
+    blockedUrlHosts,
+  };
+}
+
 export default function PolicyModule({ client, active, disabled }: Props) {
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
@@ -111,11 +178,27 @@ export default function PolicyModule({ client, active, disabled }: Props) {
   const [activeVersion, setActiveVersion] = useState("");
   const [policies, setPolicies] = useState<PolicyVersion[]>([]);
   const [currentPolicy, setCurrentPolicy] = useState<PolicyVersion | null>(null);
+  const [safetyConfig, setSafetyConfig] = useState<CommunitySafetyConfig>({
+    enabled: true,
+    publishKillSwitch: false,
+    autoFlagEnabled: true,
+    highSeverityThreshold: 70,
+    mediumSeverityThreshold: 35,
+    blockedTerms: [],
+    blockedUrlHosts: [],
+  });
 
   const [versionDraft, setVersionDraft] = useState("");
   const [titleDraft, setTitleDraft] = useState("");
   const [summaryDraft, setSummaryDraft] = useState("");
   const [rulesDraft, setRulesDraft] = useState("R1.respectful_conduct | Respectful conduct | Harassment or hate speech is not allowed. | high");
+  const [blockedTermsDraft, setBlockedTermsDraft] = useState("");
+  const [blockedHostsDraft, setBlockedHostsDraft] = useState("");
+  const [scanTitle, setScanTitle] = useState("");
+  const [scanSummary, setScanSummary] = useState("");
+  const [scanDescription, setScanDescription] = useState("");
+  const [scanUrls, setScanUrls] = useState("");
+  const [scanResult, setScanResult] = useState<SafetyRisk | null>(null);
 
   const selectedVersion = useMemo(() => {
     if (!versionDraft) return null;
@@ -137,9 +220,10 @@ export default function PolicyModule({ client, active, disabled }: Props) {
   };
 
   const loadAll = async () => {
-    const [currentResp, listResp] = await Promise.all([
+    const [currentResp, listResp, safetyResp] = await Promise.all([
       client.postJson<CurrentPolicyResponse>("getModerationPolicyCurrent", {}),
       client.postJson<ListPoliciesResponse>("listModerationPolicies", { includeArchived: false, limit: 40 }),
+      client.postJson<GetCommunitySafetyConfigResponse>("staffGetCommunitySafetyConfig", {}),
     ]);
 
     const normalizedPolicies = Array.isArray(listResp.policies)
@@ -153,6 +237,12 @@ export default function PolicyModule({ client, active, disabled }: Props) {
       ? normalizePolicy(currentResp.policy)
       : null;
     setCurrentPolicy(normalizedCurrent);
+    const normalizedSafety = normalizeSafetyConfig(
+      (safetyResp.config ?? {}) as Record<string, unknown>
+    );
+    setSafetyConfig(normalizedSafety);
+    setBlockedTermsDraft(normalizedSafety.blockedTerms.join("\n"));
+    setBlockedHostsDraft(normalizedSafety.blockedUrlHosts.join("\n"));
 
     if (!versionDraft && normalizedPolicies.length > 0) {
       const nextVersion = str(listResp.activeVersion) || normalizedPolicies[0].version;
@@ -278,6 +368,173 @@ export default function PolicyModule({ client, active, disabled }: Props) {
           Publish version
         </button>
       </div>
+
+      <hr />
+      <div className="card-title">Proactive moderation safety controls</div>
+      <div className="staff-note">
+        These controls apply to community publishing flows and staff draft scans.
+      </div>
+      <div className="staff-actions-row">
+        <label className="staff-inline-check">
+          <input
+            type="checkbox"
+            checked={safetyConfig.enabled}
+            onChange={(event) =>
+              setSafetyConfig((prev) => ({ ...prev, enabled: event.target.checked }))
+            }
+          />
+          Safety scanner enabled
+        </label>
+        <label className="staff-inline-check">
+          <input
+            type="checkbox"
+            checked={safetyConfig.autoFlagEnabled}
+            onChange={(event) =>
+              setSafetyConfig((prev) => ({ ...prev, autoFlagEnabled: event.target.checked }))
+            }
+          />
+          Auto-flag high severity drafts
+        </label>
+        <label className="staff-inline-check">
+          <input
+            type="checkbox"
+            checked={safetyConfig.publishKillSwitch}
+            onChange={(event) =>
+              setSafetyConfig((prev) => ({ ...prev, publishKillSwitch: event.target.checked }))
+            }
+          />
+          Publish kill switch
+        </label>
+      </div>
+
+      <div className="staff-actions-row">
+        <label className="staff-field">
+          Medium threshold
+          <input
+            type="number"
+            min={1}
+            max={99}
+            value={safetyConfig.mediumSeverityThreshold}
+            onChange={(event) =>
+              setSafetyConfig((prev) => ({
+                ...prev,
+                mediumSeverityThreshold: Number(event.target.value || prev.mediumSeverityThreshold),
+              }))
+            }
+          />
+        </label>
+        <label className="staff-field">
+          High threshold
+          <input
+            type="number"
+            min={2}
+            max={100}
+            value={safetyConfig.highSeverityThreshold}
+            onChange={(event) =>
+              setSafetyConfig((prev) => ({
+                ...prev,
+                highSeverityThreshold: Number(event.target.value || prev.highSeverityThreshold),
+              }))
+            }
+          />
+        </label>
+      </div>
+
+      <label className="staff-field">
+        Blocked terms (one per line)
+        <textarea
+          value={blockedTermsDraft}
+          onChange={(event) => setBlockedTermsDraft(event.target.value)}
+          placeholder="scam&#10;counterfeit&#10;violent threat"
+        />
+      </label>
+      <label className="staff-field">
+        Blocked URL hosts (one per line)
+        <textarea
+          value={blockedHostsDraft}
+          onChange={(event) => setBlockedHostsDraft(event.target.value)}
+          placeholder="tinyurl.com&#10;bit.ly"
+        />
+      </label>
+      <div className="staff-actions-row">
+        <button
+          className="btn btn-primary"
+          disabled={Boolean(busy) || disabled}
+          onClick={() =>
+            void run("saveSafetyConfig", async () => {
+              await client.postJson<BasicResponse>("staffUpdateCommunitySafetyConfig", {
+                enabled: safetyConfig.enabled,
+                publishKillSwitch: safetyConfig.publishKillSwitch,
+                autoFlagEnabled: safetyConfig.autoFlagEnabled,
+                highSeverityThreshold: safetyConfig.highSeverityThreshold,
+                mediumSeverityThreshold: safetyConfig.mediumSeverityThreshold,
+                blockedTerms: parseMultiline(blockedTermsDraft),
+                blockedUrlHosts: parseMultiline(blockedHostsDraft),
+              });
+              await loadAll();
+              setStatus("Community safety controls saved.");
+            })
+          }
+        >
+          Save safety controls
+        </button>
+      </div>
+
+      <hr />
+      <div className="card-title">Draft risk scan</div>
+      <div className="staff-note">
+        Run a pre-publish scan for event/community copy before publishing.
+      </div>
+      <label className="staff-field">
+        Scan title
+        <input value={scanTitle} onChange={(event) => setScanTitle(event.target.value)} placeholder="Draft title" />
+      </label>
+      <label className="staff-field">
+        Scan summary
+        <textarea value={scanSummary} onChange={(event) => setScanSummary(event.target.value)} placeholder="Draft summary" />
+      </label>
+      <label className="staff-field">
+        Scan description
+        <textarea value={scanDescription} onChange={(event) => setScanDescription(event.target.value)} placeholder="Draft description" />
+      </label>
+      <label className="staff-field">
+        Scan URLs (one per line)
+        <textarea value={scanUrls} onChange={(event) => setScanUrls(event.target.value)} placeholder="https://..." />
+      </label>
+      <div className="staff-actions-row">
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy) || disabled}
+          onClick={() =>
+            void run("scanDraft", async () => {
+              const resp = await client.postJson<ScanCommunityDraftResponse>("staffScanCommunityDraft", {
+                title: scanTitle.trim() || null,
+                summary: scanSummary.trim() || null,
+                description: scanDescription.trim() || null,
+                urls: parseMultiline(scanUrls),
+              });
+              setScanResult(resp.risk ?? null);
+              setStatus("Draft scan completed.");
+            })
+          }
+        >
+          Run draft scan
+        </button>
+      </div>
+      {scanResult ? (
+        <div className="staff-note">
+          <strong>Risk: {scanResult.severity.toUpperCase()}</strong> · score {scanResult.score} · triggers {scanResult.triggers.length}<br />
+          {scanResult.triggers.length ? (
+            <span>
+              {scanResult.triggers
+                .map((trigger) => `${trigger.type}:${trigger.value} (+${trigger.scoreDelta})`)
+                .join(" | ")}
+            </span>
+          ) : (
+            <span>No triggers detected.</span>
+          )}
+        </div>
+      ) : null}
 
       {status ? <div className="staff-note">{status}</div> : null}
       {error ? <div className="staff-note staff-note-error">{error}</div> : null}

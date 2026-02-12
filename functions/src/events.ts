@@ -20,6 +20,7 @@ import {
   Timestamp,
 } from "./shared";
 import { z } from "zod";
+import { evaluateCommunityContentRisk, getCommunitySafetyConfig } from "./communitySafety";
 
 const REGION = "us-central1";
 const EVENTS_COL = "events";
@@ -45,6 +46,12 @@ const listEventSignupsSchema = z.object({
 
 const eventIdSchema = z.object({
   eventId: z.string().min(1),
+});
+
+const publishEventSchema = z.object({
+  eventId: z.string().min(1),
+  forcePublish: z.boolean().optional(),
+  overrideReason: z.string().max(500).optional().nullable(),
 });
 
 const createEventSchema = z.object({
@@ -537,6 +544,32 @@ export const createEvent = onRequest({ region: REGION, timeoutSeconds: 60 }, asy
     return;
   }
 
+  const safetyConfig = await getCommunitySafetyConfig();
+  if (safetyConfig.publishKillSwitch) {
+    res.status(503).json({
+      ok: false,
+      message: "Community publishing is temporarily paused by staff.",
+    });
+    return;
+  }
+
+  const scan = evaluateCommunityContentRisk(
+    {
+      textFields: [
+        { field: "title", text: title },
+        { field: "summary", text: summary },
+        { field: "description", text: description },
+        { field: "location", text: location },
+        { field: "policyCopy", text: policyCopy },
+        { field: "firingDetails", text: firingDetails ?? "" },
+      ],
+      explicitUrls: [],
+    },
+    safetyConfig
+  );
+  const requiresReview = safetyConfig.autoFlagEnabled && scan.flagged && scan.severity === "high";
+  const initialStatus = requiresReview ? "review_required" : "draft";
+
   const ref = db.collection(EVENTS_COL).doc();
   const t = nowTs();
 
@@ -559,7 +592,19 @@ export const createEvent = onRequest({ region: REGION, timeoutSeconds: 60 }, asy
     waitlistEnabled,
     offerClaimWindowHours,
     cancelCutoffHours,
-    status: "draft",
+    status: initialStatus,
+    moderation: {
+      score: scan.score,
+      severity: scan.severity,
+      flagged: scan.flagged,
+      triggers: scan.triggers,
+      requiresReview,
+      reviewed: false,
+      reviewDecision: null,
+      reviewNote: null,
+      scannedAt: t,
+      scannedByUid: auth.uid,
+    },
     ticketedCount: 0,
     offeredCount: 0,
     checkedInCount: 0,
@@ -569,7 +614,18 @@ export const createEvent = onRequest({ region: REGION, timeoutSeconds: 60 }, asy
     publishedAt: null,
   });
 
-  res.status(200).json({ ok: true, eventId: ref.id });
+  res.status(200).json({
+    ok: true,
+    eventId: ref.id,
+    status: initialStatus,
+    moderation: {
+      score: scan.score,
+      severity: scan.severity,
+      flagged: scan.flagged,
+      triggerCount: scan.triggers.length,
+      requiresReview,
+    },
+  });
 });
 
 export const publishEvent = onRequest({ region: REGION }, async (req, res) => {
@@ -592,7 +648,7 @@ export const publishEvent = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  const parsed = parseBody(eventIdSchema, req.body);
+  const parsed = parseBody(publishEventSchema, req.body);
   if (!parsed.ok) {
     res.status(400).json({ ok: false, message: parsed.message });
     return;
@@ -610,16 +666,60 @@ export const publishEvent = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  const eventId = safeString(parsed.data.eventId).trim();
+  const safetyConfig = await getCommunitySafetyConfig();
+  if (safetyConfig.publishKillSwitch) {
+    res.status(503).json({
+      ok: false,
+      message: "Community publishing is temporarily paused by staff.",
+    });
+    return;
+  }
 
-  const ref = db.collection(EVENTS_COL).doc(eventId);
+  const eventId = safeString(parsed.data.eventId).trim();
+  const forcePublish = parsed.data.forcePublish === true;
+  const overrideReason = safeString(parsed.data.overrideReason).trim();
+
+  const eventRef = db.collection(EVENTS_COL).doc(eventId);
+  const eventSnap = await eventRef.get();
+  if (!eventSnap.exists) {
+    res.status(404).json({ ok: false, message: "Event not found" });
+    return;
+  }
+
+  const eventData = (eventSnap.data() as Record<string, any>) ?? {};
+  const moderation = (eventData.moderation as Record<string, any> | undefined) ?? {};
+  const requiresReview = moderation.requiresReview === true || (moderation.flagged === true && safeString(moderation.severity) === "high");
+
+  if (requiresReview && !forcePublish) {
+    res.status(409).json({
+      ok: false,
+      message: "Event is flagged for safety review. Provide forcePublish with overrideReason to proceed.",
+    });
+    return;
+  }
+  if (forcePublish && !overrideReason) {
+    res.status(400).json({
+      ok: false,
+      message: "overrideReason is required when forcePublish is true.",
+    });
+    return;
+  }
+
   const t = nowTs();
 
-  await ref.set(
+  await eventRef.set(
     {
       status: "published",
       publishedAt: t,
       updatedAt: t,
+      moderation: {
+        ...moderation,
+        reviewed: true,
+        reviewDecision: forcePublish ? "allow_override" : "allow",
+        reviewNote: forcePublish ? overrideReason : null,
+        reviewedAt: t,
+        reviewedByUid: auth.uid,
+      },
     },
     { merge: true }
   );

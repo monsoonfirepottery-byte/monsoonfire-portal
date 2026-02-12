@@ -389,6 +389,16 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     setStatus("Agent service catalog updated.");
   };
 
+  const reviewReservation = async (reservationId: string, decision: "approve" | "reject") => {
+    await client.postJson("staffReviewAgentReservation", {
+      reservationId,
+      decision,
+      reason: decision === "reject" ? "Rejected by staff review" : "Approved by staff review",
+    });
+    await load();
+    setStatus(`Reservation ${reservationId} ${decision}d.`);
+  };
+
   const copyDelegatedToken = async () => {
     if (!latestDelegatedToken) return;
     await navigator.clipboard.writeText(latestDelegatedToken);
@@ -757,6 +767,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                   <th>Quote</th>
                   <th>Status</th>
                   <th>Review</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -766,10 +777,32 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                     <td><code>{str(row.quoteId, "-")}</code></td>
                     <td>{str(row.status, "-")}</td>
                     <td>{row.requiresManualReview === true ? "Required" : "Auto"}</td>
+                    <td>
+                      {str(row.status) === "pending_review" ? (
+                        <div className="staff-actions-row">
+                          <button
+                            className="btn btn-secondary"
+                            disabled={Boolean(busy) || disabled}
+                            onClick={() => void run("approveReservation", () => reviewReservation(str(row.id), "approve"))}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            className="btn btn-secondary"
+                            disabled={Boolean(busy) || disabled}
+                            onClick={() => void run("rejectReservation", () => reviewReservation(str(row.id), "reject"))}
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="staff-mini">-</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {opsReservations.length === 0 ? (
-                  <tr><td colSpan={4}>No reservations yet.</td></tr>
+                  <tr><td colSpan={5}>No reservations yet.</td></tr>
                 ) : null}
               </tbody>
             </table>

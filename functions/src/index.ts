@@ -65,7 +65,10 @@ import {
   staffGetAgentServiceCatalog,
   staffUpdateAgentServiceCatalog,
 } from "./agentCatalog";
-import { staffListAgentOperations } from "./agentCommerce";
+import {
+  staffListAgentOperations,
+  staffReviewAgentReservation,
+} from "./agentCommerce";
 import { emitIntegrationEvent } from "./integrationEvents";
 export {
   registerDeviceToken,
@@ -121,7 +124,10 @@ export {
   staffGetAgentServiceCatalog,
   staffUpdateAgentServiceCatalog,
 };
-export { staffListAgentOperations };
+export {
+  staffListAgentOperations,
+  staffReviewAgentReservation,
+};
 
 /**
  * IMPORTANT:

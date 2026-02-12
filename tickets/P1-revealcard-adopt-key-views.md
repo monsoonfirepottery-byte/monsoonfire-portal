@@ -1,4 +1,4 @@
-Status: Open
+Status: Completed
 
 # P1 - Adopt `RevealCard` for Memoria Across Key Views (Event-Driven Only)
 
@@ -27,3 +27,14 @@ We want:
 - With Enhanced motion OFF (or reduced-motion):
   - No reveal animations; UI is stable and responsive.
 - No regression in Portal default theme visuals.
+
+## Progress notes
+- `RevealCard` is active in all scoped views with shared gating:
+  - `web/src/views/MyPiecesView.tsx`
+  - `web/src/views/KilnScheduleView.tsx`
+  - `web/src/views/ReservationsView.tsx`
+  - `web/src/views/MessagesView.tsx`
+- Motion remains conditional on Memoria + enhanced motion:
+  - `const motionEnabled = themeName === "memoria" && portalMotion === "enhanced";`
+- `RevealCard` itself honors reduced motion and disables IO-based reveals when motion is off:
+  - `web/src/components/RevealCard.tsx`

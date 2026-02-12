@@ -345,6 +345,7 @@ export default function StaffView({
   const [commerceStatusFilter, setCommerceStatusFilter] = useState("all");
   const [libraryRequests, setLibraryRequests] = useState<LendingRequestRecord[]>([]);
   const [libraryLoans, setLibraryLoans] = useState<LendingLoanRecord[]>([]);
+  const [reportOps, setReportOps] = useState({ total: 0, open: 0, highOpen: 0, slaBreaches: 0 });
 
   const [memberSearch, setMemberSearch] = useState("");
   const [memberRoleFilter, setMemberRoleFilter] = useState<MemberRoleFilter>("all");
@@ -730,10 +731,9 @@ export default function StaffView({
       (batch) => !batch.isClosed && batch.updatedAtMs > 0 && Date.now() - batch.updatedAtMs > 7 * 24 * 60 * 60 * 1000
     ).length;
     const pendingOrders = orders.filter((order) => order.status !== "paid").length;
-    const unresolvedReports = (() => {
-      // report rows are loaded in reports module only; keep this as 0 baseline for now.
-      return 0;
-    })();
+    const unresolvedReports = reportOps.open;
+    const reportSlaBreaches = reportOps.slaBreaches;
+    const highSeverityReports = reportOps.highOpen;
     const activeFirings = firings.filter((firing) =>
       ["loading", "firing", "cooling", "unloading", "loaded"].includes(firing.status.toLowerCase())
     ).length;
@@ -781,6 +781,32 @@ export default function StaffView({
         module: "pieces",
       });
     }
+    if (highSeverityReports > 0) {
+      alerts.push({
+        id: "reports-high-open",
+        severity: "high",
+        label: `${highSeverityReports} high-severity report${highSeverityReports === 1 ? "" : "s"} still open`,
+        actionLabel: "Open reports triage",
+        module: "reports",
+      });
+    }
+    if (reportSlaBreaches > 0) {
+      alerts.push({
+        id: "reports-sla",
+        severity: "high",
+        label: `${reportSlaBreaches} report SLA breach${reportSlaBreaches === 1 ? "" : "es"} need review`,
+        actionLabel: "Open reports triage",
+        module: "reports",
+      });
+    } else if (unresolvedReports > 0) {
+      alerts.push({
+        id: "reports-open",
+        severity: "medium",
+        label: `${unresolvedReports} moderation report${unresolvedReports === 1 ? "" : "s"} pending`,
+        actionLabel: "Open reports triage",
+        module: "reports",
+      });
+    }
     if (events.filter((event) => event.status === "review_required").length > 0) {
       const count = events.filter((event) => event.status === "review_required").length;
       alerts.push({
@@ -801,7 +827,7 @@ export default function StaffView({
       });
     }
     return alerts;
-  }, [batches, events, firings, orders, unpaidCheckIns.length]);
+  }, [batches, events, firings, orders, reportOps.highOpen, reportOps.open, reportOps.slaBreaches, unpaidCheckIns.length]);
 
   const memberRoleCounts = useMemo(() => {
     const staffCount = users.filter((u) => u.role === "staff").length;
@@ -1397,8 +1423,38 @@ const loadEvents = useCallback(async () => {
     );
   }, [qTrace]);
 
+  const loadReportOps = useCallback(async () => {
+    qTrace("communityReports", { orderBy: "createdAt:desc", limit: 250 });
+    const snap = await getDocs(query(collection(db, "communityReports"), orderBy("createdAt", "desc"), limit(250)));
+    const now = Date.now();
+    let open = 0;
+    let highOpen = 0;
+    let slaBreaches = 0;
+    for (const row of snap.docs) {
+      const data = row.data();
+      const statusName = str(data.status, "open").toLowerCase();
+      if (statusName !== "open") continue;
+      open += 1;
+      const severity = str(data.severity, "low").toLowerCase();
+      const createdAtMs = toTsMs(data.createdAt);
+      const ageMs = createdAtMs > 0 ? now - createdAtMs : 0;
+      if (severity === "high") {
+        highOpen += 1;
+        if (ageMs > 24 * 60 * 60 * 1000) slaBreaches += 1;
+      } else if (ageMs > 48 * 60 * 60 * 1000) {
+        slaBreaches += 1;
+      }
+    }
+    setReportOps({
+      total: snap.size,
+      open,
+      highOpen,
+      slaBreaches,
+    });
+  }, [qTrace]);
+
   const loadAll = useCallback(async () => {
-    const tasks: Array<Promise<unknown>> = [loadUsers(), loadBatches(), loadFirings(), loadLending(), loadEvents()];
+    const tasks: Array<Promise<unknown>> = [loadUsers(), loadBatches(), loadFirings(), loadLending(), loadEvents(), loadReportOps()];
     if (!hasFunctionsAuthMismatch) {
       tasks.push(loadCommerce(), loadSystemStats());
     } else {
@@ -1410,7 +1466,7 @@ const loadEvents = useCallback(async () => {
     }
     await Promise.allSettled(tasks);
     if (selectedEventId) await loadSignups(selectedEventId);
-  }, [hasFunctionsAuthMismatch, loadBatches, loadCommerce, loadEvents, loadFirings, loadLending, loadSignups, loadSystemStats, loadUsers, selectedEventId]);
+  }, [hasFunctionsAuthMismatch, loadBatches, loadCommerce, loadEvents, loadFirings, loadLending, loadReportOps, loadSignups, loadSystemStats, loadUsers, selectedEventId]);
 
   useEffect(() => {
     void run("bootstrap", async () => {
@@ -1588,6 +1644,8 @@ const loadEvents = useCallback(async () => {
         <div className="staff-kpi"><span>Events</span><strong>{events.length}</strong></div>
         <div className="staff-kpi"><span>Pending orders</span><strong>{orders.filter((o) => o.status !== "paid").length}</strong></div>
         <div className="staff-kpi"><span>Lending requests</span><strong>{libraryRequests.length}</strong></div>
+        <div className="staff-kpi"><span>Open reports</span><strong>{reportOps.open}</strong></div>
+        <div className="staff-kpi"><span>Report SLA breaches</span><strong>{reportOps.slaBreaches}</strong></div>
       </div>
       <div className="staff-subtitle">Action queue</div>
       <div className="staff-log-list">
@@ -1626,6 +1684,9 @@ const loadEvents = useCallback(async () => {
         </button>
         <button className="btn btn-secondary" onClick={() => setModuleKey("system")}>
           Open system health
+        </button>
+        <button className="btn btn-secondary" onClick={() => setModuleKey("reports")}>
+          Open reports triage
         </button>
       </div>
     </section>

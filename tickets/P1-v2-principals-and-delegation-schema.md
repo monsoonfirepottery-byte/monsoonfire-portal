@@ -29,4 +29,3 @@ Delegated agent actions need a first-class, revocable grant model bound to owner
 ## Security notes
 - No secret material in delegation docs.
 - Delegation IDs are opaque and non-sequential.
-

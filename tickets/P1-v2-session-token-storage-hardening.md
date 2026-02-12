@@ -28,4 +28,3 @@ Token handling strategy needs explicit hardening guidance for SPA and future nat
 ## Security notes
 - Follow OWASP session guidance.
 - Prefer short-lived delegated tokens + server-side grant checks.
-

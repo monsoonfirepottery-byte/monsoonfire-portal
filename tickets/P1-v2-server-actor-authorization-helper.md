@@ -28,4 +28,3 @@ Authorization logic is duplicated across handlers and risks inconsistent owner/s
 ## Security notes
 - Client-side checks remain UX-only.
 - Server helper remains canonical enforcement.
-

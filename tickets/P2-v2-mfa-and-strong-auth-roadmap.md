@@ -29,4 +29,3 @@ High-risk actions (revocations, fulfillment overrides, financial actions) should
 ## Security notes
 - Prevent MFA bypass on admin/staff paths.
 - Audit every step-up challenge and failure.
-

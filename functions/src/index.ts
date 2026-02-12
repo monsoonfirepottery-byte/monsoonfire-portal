@@ -92,6 +92,35 @@ export {
 // -----------------------------
 const REGION = "us-central1";
 
+async function bestEffortEmitIntegrationEvent(params: {
+  uid: string;
+  type: string;
+  subject?: Record<string, unknown>;
+  data?: Record<string, unknown>;
+}) {
+  try {
+    const evt = await emitIntegrationEvent({
+      uid: params.uid,
+      type: params.type,
+      subject: (params.subject ?? {}) as Record<string, any>,
+      data: (params.data ?? {}) as Record<string, any>,
+    });
+    if (!evt.ok) {
+      logger.warn("emitIntegrationEvent failed", {
+        uid: params.uid,
+        type: params.type,
+        message: evt.message,
+      });
+    }
+  } catch (e: any) {
+    logger.warn("emitIntegrationEvent exception", {
+      uid: params.uid,
+      type: params.type,
+      message: e?.message ?? String(e),
+    });
+  }
+}
+
 export const apiV1 = onRequest({ region: REGION, timeoutSeconds: 60 }, handleApiV1);
 export {
   createReport,
@@ -1150,20 +1179,12 @@ export const createBatch = onRequest(
       notes: "Batch created",
     });
 
-    // Best-effort integration event for agent clients.
-    try {
-      const evt = await emitIntegrationEvent({
-        uid: ownerUid,
-        type: "batch.updated",
-        subject: { batchId: ref.id },
-        data: { state: doc.state, isClosed: doc.isClosed, title: doc.title },
-      });
-      if (!evt.ok) {
-        logger.warn("emitIntegrationEvent failed", { message: evt.message });
-      }
-    } catch (e: any) {
-      logger.warn("emitIntegrationEvent exception", { message: e?.message ?? String(e) });
-    }
+    await bestEffortEmitIntegrationEvent({
+      uid: ownerUid,
+      type: "batch.updated",
+      subject: { batchId: ref.id },
+      data: { state: doc.state, isClosed: doc.isClosed, title: doc.title },
+    });
 
     res.status(200).json({ ok: true, batchId: ref.id });
   }
@@ -1240,6 +1261,17 @@ export const submitDraftBatch = onRequest(
       notes: safeString(parsed.data.notes) || "Submitted",
     });
 
+    await bestEffortEmitIntegrationEvent({
+      uid,
+      type: "batch.updated",
+      subject: { batchId },
+      data: {
+        state: "SUBMITTED",
+        isClosed: Boolean(data.isClosed),
+        title: safeString(data.title),
+      },
+    });
+
     res.status(200).json({ ok: true });
   }
 );
@@ -1291,6 +1323,14 @@ export const pickedUpAndClose = onRequest(
     const batchId = safeString(parsed.data.batchId);
 
     const ref = batchDoc(batchId);
+    const batchSnap = await ref.get();
+    if (!batchSnap.exists) {
+      res.status(404).json({ ok: false, message: "Batch not found" });
+      return;
+    }
+    const batch = batchSnap.data() as Record<string, unknown>;
+    const ownerUid = safeString(batch.ownerUid);
+    const batchTitle = safeString(batch.title);
     const t = nowTs();
 
     await ref.set(
@@ -1311,6 +1351,15 @@ export const pickedUpAndClose = onRequest(
       actorName: "admin",
       notes: safeString(parsed.data.notes) || "Picked up; batch closed",
     });
+
+    if (ownerUid) {
+      await bestEffortEmitIntegrationEvent({
+        uid: ownerUid,
+        type: "batch.closed",
+        subject: { batchId },
+        data: { state: "CLOSED_PICKED_UP", isClosed: true, title: batchTitle || null },
+      });
+    }
 
     res.status(200).json({ ok: true });
   }
@@ -1404,6 +1453,18 @@ export const continueJourney = onRequest(
       actorName: from.ownerDisplayName ?? null,
       notes: `Continued journey from ${fromBatchId}`,
       extra: { fromBatchId },
+    });
+
+    await bestEffortEmitIntegrationEvent({
+      uid,
+      type: "batch.updated",
+      subject: { batchId: newRef.id, fromBatchId },
+      data: {
+        state: "DRAFT",
+        isClosed: false,
+        title: safeString(parsed.data.title) || safeString(from.title),
+        journeyRootBatchId: rootId,
+      },
     });
 
     res.status(200).json({ ok: true, batchId: newRef.id, rootId });
@@ -1509,6 +1570,14 @@ export const kilnLoad = onRequest({ region: REGION }, async (req, res) => {
   const batchId = safeString(parsed.data.batchId);
   const kilnId = safeString(parsed.data.kilnId);
   const kilnName = safeString(parsed.data.kilnName);
+  const batchSnap = await batchDoc(batchId).get();
+  if (!batchSnap.exists) {
+    res.status(404).json({ ok: false, message: "Batch not found" });
+    return;
+  }
+  const batch = batchSnap.data() as Record<string, unknown>;
+  const ownerUid = safeString(batch.ownerUid);
+  const batchTitle = safeString(batch.title);
 
   const t = nowTs();
   await batchDoc(batchId).set(
@@ -1532,6 +1601,21 @@ export const kilnLoad = onRequest({ region: REGION }, async (req, res) => {
     notes: safeString(parsed.data.notes) || "Loaded to kiln",
     photos: Array.isArray(parsed.data.photos) ? parsed.data.photos : [],
   });
+
+  if (ownerUid) {
+    await bestEffortEmitIntegrationEvent({
+      uid: ownerUid,
+      type: "batch.updated",
+      subject: { batchId },
+      data: {
+        state: "LOADED",
+        kilnId,
+        kilnName: kilnName || null,
+        isClosed: false,
+        title: batchTitle || null,
+      },
+    });
+  }
 
   res.status(200).json({ ok: true });
 });
@@ -1574,6 +1658,15 @@ export const kilnUnload = onRequest({ region: REGION }, async (req, res) => {
   }
 
   const batchId = safeString(parsed.data.batchId);
+  const batchSnap = await batchDoc(batchId).get();
+  if (!batchSnap.exists) {
+    res.status(404).json({ ok: false, message: "Batch not found" });
+    return;
+  }
+  const batch = batchSnap.data() as Record<string, unknown>;
+  const ownerUid = safeString(batch.ownerUid);
+  const batchTitle = safeString(batch.title);
+  const batchState = safeString(batch.state);
 
   const t = nowTs();
   await batchDoc(batchId).set(
@@ -1595,6 +1688,21 @@ export const kilnUnload = onRequest({ region: REGION }, async (req, res) => {
     notes: safeString(parsed.data.notes) || "Unloaded from kiln",
     photos: Array.isArray(parsed.data.photos) ? parsed.data.photos : [],
   });
+
+  if (ownerUid) {
+    await bestEffortEmitIntegrationEvent({
+      uid: ownerUid,
+      type: "batch.updated",
+      subject: { batchId },
+      data: {
+        state: batchState || "UNKNOWN",
+        kilnId: null,
+        kilnName: null,
+        isClosed: false,
+        title: batchTitle || null,
+      },
+    });
+  }
 
   res.status(200).json({ ok: true });
 });

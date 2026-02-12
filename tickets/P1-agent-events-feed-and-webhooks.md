@@ -132,3 +132,11 @@ Signature:
   - Emit additional event types (`batch.closed`, `reservation.updated`, etc.)
   - Decide retention/TTL strategy for `integrationEvents` + add `expiresAt` if needed
   - (Optional) Phase B webhooks after SSRF constraints and delivery worker are designed
+
+## Progress notes
+- Expanded best-effort event emission coverage in batch lifecycle handlers:
+  - `submitDraftBatch` → `batch.updated`
+  - `pickedUpAndClose` → `batch.closed`
+  - `continueJourney` → `batch.updated` for the new journey batch
+  - `kilnLoad` / `kilnUnload` → `batch.updated` with kiln transition details
+- Added existence checks for lifecycle handlers before state writes, preventing accidental implicit doc creation during ops actions.

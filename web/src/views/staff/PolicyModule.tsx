@@ -205,6 +205,31 @@ export default function PolicyModule({ client, active, disabled }: Props) {
     return policies.find((policy) => policy.version === versionDraft || policy.id === versionDraft) ?? null;
   }, [policies, versionDraft]);
 
+  const safetyPosture = useMemo(() => {
+    if (safetyConfig.publishKillSwitch) {
+      return {
+        level: "emergency",
+        message: "Publish kill switch is active. New community publishing should remain paused.",
+      };
+    }
+    if (!safetyConfig.enabled) {
+      return {
+        level: "critical",
+        message: "Safety scanner is disabled. Community publishing is running without proactive scanning.",
+      };
+    }
+    if (!safetyConfig.autoFlagEnabled) {
+      return {
+        level: "warning",
+        message: "Auto-flagging is disabled. High-risk drafts will not be auto-routed for review.",
+      };
+    }
+    return {
+      level: "healthy",
+      message: "Safety controls are active and auto-flagging is enabled.",
+    };
+  }, [safetyConfig]);
+
   const run = async (key: string, fn: () => Promise<void>) => {
     if (busy || disabled) return;
     setBusy(key);
@@ -252,6 +277,12 @@ export default function PolicyModule({ client, active, disabled }: Props) {
       setSummaryDraft(selected.summary);
       setRulesDraft(serializeRulesToText(selected.rules));
     }
+  };
+
+  const persistSafetyPatch = async (patch: Partial<CommunitySafetyConfig>, successMessage: string) => {
+    await client.postJson<BasicResponse>("staffUpdateCommunitySafetyConfig", patch);
+    await loadAll();
+    setStatus(successMessage);
   };
 
   useEffect(() => {
@@ -374,6 +405,45 @@ export default function PolicyModule({ client, active, disabled }: Props) {
       <div className="staff-note">
         These controls apply to community publishing flows and staff draft scans.
       </div>
+      <div className={`staff-note ${safetyPosture.level === "healthy" ? "" : "staff-note-error"}`}>
+        Safety posture: <strong>{safetyPosture.level}</strong> · {safetyPosture.message}
+      </div>
+      <div className="staff-actions-row">
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy) || disabled || safetyConfig.publishKillSwitch}
+          onClick={() =>
+            void run("engageKillSwitch", async () => {
+              await persistSafetyPatch(
+                {
+                  publishKillSwitch: true,
+                },
+                "Emergency publish kill switch enabled."
+              );
+            })
+          }
+        >
+          Engage emergency kill switch
+        </button>
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy) || disabled}
+          onClick={() =>
+            void run("restoreSafetyDefaults", async () => {
+              await persistSafetyPatch(
+                {
+                  enabled: true,
+                  autoFlagEnabled: true,
+                  publishKillSwitch: false,
+                },
+                "Safety controls restored to normal operations."
+              );
+            })
+          }
+        >
+          Restore normal safety defaults
+        </button>
+      </div>
       <div className="staff-actions-row">
         <label className="staff-inline-check">
           <input
@@ -462,17 +532,18 @@ export default function PolicyModule({ client, active, disabled }: Props) {
           disabled={Boolean(busy) || disabled}
           onClick={() =>
             void run("saveSafetyConfig", async () => {
-              await client.postJson<BasicResponse>("staffUpdateCommunitySafetyConfig", {
-                enabled: safetyConfig.enabled,
-                publishKillSwitch: safetyConfig.publishKillSwitch,
-                autoFlagEnabled: safetyConfig.autoFlagEnabled,
-                highSeverityThreshold: safetyConfig.highSeverityThreshold,
-                mediumSeverityThreshold: safetyConfig.mediumSeverityThreshold,
-                blockedTerms: parseMultiline(blockedTermsDraft),
-                blockedUrlHosts: parseMultiline(blockedHostsDraft),
-              });
-              await loadAll();
-              setStatus("Community safety controls saved.");
+              await persistSafetyPatch(
+                {
+                  enabled: safetyConfig.enabled,
+                  publishKillSwitch: safetyConfig.publishKillSwitch,
+                  autoFlagEnabled: safetyConfig.autoFlagEnabled,
+                  highSeverityThreshold: safetyConfig.highSeverityThreshold,
+                  mediumSeverityThreshold: safetyConfig.mediumSeverityThreshold,
+                  blockedTerms: parseMultiline(blockedTermsDraft),
+                  blockedUrlHosts: parseMultiline(blockedHostsDraft),
+                },
+                "Community safety controls saved."
+              );
             })
           }
         >

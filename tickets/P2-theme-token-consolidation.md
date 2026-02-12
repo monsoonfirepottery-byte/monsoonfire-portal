@@ -1,4 +1,4 @@
-Status: In Progress
+Status: Completed
 
 # P2 - Consolidate Theme Tokens (Shadows, Focus, Motion)
 
@@ -26,4 +26,14 @@ We started introducing cross-theme tokens (`--shadow-card*`, `--focus-ring`) but
 - Replaced hard-coded values in `web/src/App.css` with tokenized values + fallbacks:
   - brand image shadow (`.nav-brand img`, `.brand img`)
   - stronger focus ring for nav focus-visible states
-- Remaining work: broader pass for Memoria-only hard-coded borders/shadows across portal views.
+- Extended tokenization for Memoria nav/button/dashboard styles:
+  - active rail + glow
+  - subdot/default-active colors
+  - dashboard card border soft color
+  - secondary/ghost/primary button borders + shadows
+  - signed-out active toggle shadow
+  - sidebar active border/shadow
+  - hover border/background tokens
+- Acceptance checks passed:
+  - `npm --prefix web run lint`
+  - `npm --prefix web run build`

@@ -65,4 +65,5 @@ Redirect URI note:
   - evidence capture table
   - rollback steps
 - Added run-log helper: `scripts/new-auth-provider-run-entry.ps1` to append a standardized execution/evidence template.
+- Added one-command external checklist runner: `scripts/run-external-cutover-checklist.ps1` (generates consolidated cutover/auth/drill checklist).
 - Remaining work is provider-console and Firebase-console execution with real credentials.

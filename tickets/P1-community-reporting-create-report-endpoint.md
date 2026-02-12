@@ -1,6 +1,6 @@
 # P1 — Community Reporting `createReport()` Endpoint
 
-Status: Planned
+Status: Completed
 
 ## Context / user story
 - As a signed-in user, when I report a card, backend must validate and persist report/audit records.
@@ -35,3 +35,12 @@ Status: Planned
 
 ## Estimate
 - M
+
+## Progress notes
+- Implemented `createReport` endpoint in `functions/src/reports.ts`:
+  - authenticated reporter attribution
+  - schema validation for target/category/severity/note/snapshot
+  - per-uid/day rate limiting
+  - 24h dedupe for same reporter+target
+  - writes to `communityReports` and `communityReportAuditLogs`
+- Rejected outcomes (`rate_limited`, `duplicate_report`) are also audited.

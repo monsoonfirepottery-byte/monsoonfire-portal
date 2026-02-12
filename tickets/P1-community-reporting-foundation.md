@@ -1,6 +1,6 @@
 # P1 — Community Reporting Foundation
 
-Status: Planned
+Status: Completed
 
 ## Context / user story
 - As a portal member, I need a simple way to report problematic community content.
@@ -28,3 +28,9 @@ Status: Planned
 
 ## Estimate
 - S
+
+## Progress notes
+- Added architecture + schema + contract doc:
+  - `docs/COMMUNITY_REPORTING_ARCHITECTURE.md`
+- Reporting function contracts are implemented in `functions/src/reports.ts` and exported via `functions/src/index.ts`.
+- Firestore rules strategy and moderation/audit collections are in place in `firestore.rules`.

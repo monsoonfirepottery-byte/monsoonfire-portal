@@ -1,6 +1,6 @@
 # P1 — Community Card Reporting UI + Modal
 
-Status: Planned
+Status: Completed
 
 ## Context / user story
 - As a user, I can open an overflow menu on each community card and choose `Report`.
@@ -41,3 +41,11 @@ Status: Planned
 
 ## Estimate
 - M
+
+## Progress notes
+- Implemented card overflow actions in `web/src/views/CommunityView.tsx`:
+  - `Report`
+  - `Not interested / Hide this card` (local preference)
+- Implemented report modal with category/severity/note, single-flight submit, and success/error feedback.
+- Added support for current target types (`youtube_video`, `blog_post`, `studio_update`, `event`) and wired submission to `createReport`.
+- Added semantic improvements (menu roles, Escape close, labeled controls, live-region status messaging).

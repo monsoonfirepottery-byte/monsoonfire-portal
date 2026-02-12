@@ -5,6 +5,7 @@
  *
  * Usage:
  *   node functions/scripts/agent_commerce_smoke.js --token "<token>" --baseUrl "http://127.0.0.1:5001/monsoonfire-portal/us-central1"
+ *   node functions/scripts/agent_commerce_smoke.js --token "<agent_token>" --staffToken "<staff_firebase_id_token>"
  *
  * Notes:
  * - Token must include: catalog:read, quote:write, reserve:write, pay:write, status:read
@@ -43,6 +44,24 @@ async function postJson(baseApiUrl, token, route, payload) {
   return { status: resp.status, body };
 }
 
+async function postFunction(baseUrl, token, fnName, payload) {
+  const url = `${baseUrl}/${fnName}`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      "x-request-id": `agent_commerce_smoke_fn_${Date.now()}`,
+    },
+    body: JSON.stringify(payload ?? {}),
+  });
+  const ct = resp.headers.get("content-type") || "";
+  const body = ct.includes("application/json")
+    ? await resp.json().catch(() => null)
+    : await resp.text().catch(() => null);
+  return { status: resp.status, body };
+}
+
 function logStep(label, result) {
   console.log(`\n${label} => ${result.status}`);
   console.log(JSON.stringify(result.body, null, 2));
@@ -51,6 +70,7 @@ function logStep(label, result) {
 async function main() {
   const baseUrl = (readArg("baseUrl") || process.env.MF_FUNCTIONS_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, "");
   const token = readArg("token") || process.env.MF_AGENT_TOKEN || process.env.MF_PAT || process.env.PAT || "";
+  const staffToken = readArg("staffToken") || process.env.MF_STAFF_ID_TOKEN || "";
   if (!token) {
     console.error("Missing token. Provide --token or set MF_AGENT_TOKEN/MF_PAT.");
     process.exit(2);
@@ -59,6 +79,9 @@ async function main() {
   const apiBase = `${baseUrl}/apiV1`;
   console.log("Base URL:", baseUrl);
   console.log("Token:", redactToken(token));
+  if (staffToken) {
+    console.log("Staff Token:", redactToken(staffToken));
+  }
 
   const catalog = await postJson(apiBase, token, "/v1/agent.catalog", {});
   logStep("/v1/agent.catalog", catalog);
@@ -85,6 +108,19 @@ async function main() {
     process.exit(1);
   }
 
+  if (reserve.body?.data?.reservation?.requiresManualReview === true) {
+    if (!staffToken) {
+      console.warn("Reservation needs manual review; provide --staffToken to auto-approve in smoke test.");
+    } else {
+      const review = await postFunction(baseUrl, staffToken, "staffReviewAgentReservation", {
+        reservationId,
+        decision: "approve",
+        reason: "Automated smoke test approval",
+      });
+      logStep("/staffReviewAgentReservation", review);
+    }
+  }
+
   const pay = await postJson(apiBase, token, "/v1/agent.pay", { reservationId });
   logStep("/v1/agent.pay", pay);
   const orderId = pay.body?.data?.orderId;
@@ -98,10 +134,22 @@ async function main() {
 
   const status = await postJson(apiBase, token, "/v1/agent.status", { orderId });
   logStep("/v1/agent.status", status);
+
+  if (staffToken) {
+    const transitions = ["scheduled", "loaded", "firing", "cooling", "ready"];
+    for (const next of transitions) {
+      const move = await postFunction(baseUrl, staffToken, "staffUpdateAgentOrderFulfillment", {
+        orderId,
+        toStatus: next,
+        reason: "Automated smoke transition",
+      });
+      logStep(`/staffUpdateAgentOrderFulfillment -> ${next}`, move);
+      if (move.status >= 400) break;
+    }
+  }
 }
 
 main().catch((err) => {
   console.error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 });
-

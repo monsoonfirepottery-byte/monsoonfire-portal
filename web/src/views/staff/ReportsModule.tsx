@@ -178,6 +178,16 @@ function reasonTemplatesForRule(ruleId: string): string[] {
   return Array.from(new Set(templates));
 }
 
+function csvCell(value: unknown): string {
+  const raw = value == null ? "" : String(value);
+  if (!/[",\n]/.test(raw)) return raw;
+  return `"${raw.replace(/"/g, "\"\"")}"`;
+}
+
+function csvLine(values: unknown[]): string {
+  return values.map((value) => csvCell(value)).join(",");
+}
+
 function normalizeReport(row: Record<string, unknown>): ReportRow {
   const targetRef = (row.targetRef ?? {}) as Record<string, unknown>;
   const targetSnapshot = (row.targetSnapshot ?? {}) as Record<string, unknown>;
@@ -483,6 +493,90 @@ export default function ReportsModule({ client, active, disabled }: Props) {
     };
   }, [reports]);
 
+  const exportReportsJson = async () => {
+    const payload = reports.map((report) => ({
+      id: report.id,
+      status: report.status,
+      severity: report.severity,
+      category: report.category,
+      targetType: report.targetType,
+      reporterUid: report.reporterUid,
+      assigneeUid: report.assigneeUid || null,
+      createdAtIso: report.createdAtMs ? new Date(report.createdAtMs).toISOString() : null,
+      updatedAtIso: report.updatedAtMs ? new Date(report.updatedAtMs).toISOString() : null,
+      resolvedAtIso: report.resolvedAtMs ? new Date(report.resolvedAtMs).toISOString() : null,
+      policyVersion: report.lastPolicyVersion || null,
+      ruleId: report.lastRuleId || null,
+      reasonCode: report.lastReasonCode || null,
+      resolutionCode: report.resolutionCode || null,
+      targetTitle: report.targetSnapshot.title || null,
+      targetUrl: report.targetSnapshot.url || null,
+      targetId: report.targetRef.id || null,
+      note: report.note || null,
+    }));
+    await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+    setStatus(`Copied ${payload.length} report rows as JSON.`);
+  };
+
+  const exportReportsCsv = async () => {
+    const header = [
+      "id",
+      "status",
+      "severity",
+      "category",
+      "targetType",
+      "reporterUid",
+      "assigneeUid",
+      "createdAtIso",
+      "updatedAtIso",
+      "resolvedAtIso",
+      "policyVersion",
+      "ruleId",
+      "reasonCode",
+      "resolutionCode",
+      "targetTitle",
+      "targetUrl",
+      "targetId",
+      "note",
+    ];
+    const lines = [csvLine(header)];
+    for (const report of reports) {
+      lines.push(
+        csvLine([
+          report.id,
+          report.status,
+          report.severity,
+          report.category,
+          report.targetType,
+          report.reporterUid,
+          report.assigneeUid || "",
+          report.createdAtMs ? new Date(report.createdAtMs).toISOString() : "",
+          report.updatedAtMs ? new Date(report.updatedAtMs).toISOString() : "",
+          report.resolvedAtMs ? new Date(report.resolvedAtMs).toISOString() : "",
+          report.lastPolicyVersion || "",
+          report.lastRuleId || "",
+          report.lastReasonCode || "",
+          report.resolutionCode || "",
+          report.targetSnapshot.title || "",
+          report.targetSnapshot.url || "",
+          report.targetRef.id || "",
+          report.note || "",
+        ])
+      );
+    }
+    const csv = `${lines.join("\n")}\n`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = `community-reports-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(objectUrl);
+    setStatus(`Downloaded CSV (${reports.length} rows).`);
+  };
+
   return (
     <section className="card staff-console-card">
       <div className="card-title-row">
@@ -584,6 +678,20 @@ export default function ReportsModule({ client, active, disabled }: Props) {
           <option value="studio_update">Studio update</option>
           <option value="event">Event</option>
         </select>
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy) || reports.length === 0}
+          onClick={() => void run("exportReportsJson", exportReportsJson)}
+        >
+          Copy JSON
+        </button>
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy) || reports.length === 0}
+          onClick={() => void run("exportReportsCsv", exportReportsCsv)}
+        >
+          Download CSV
+        </button>
       </div>
 
       <div className="staff-module-grid">

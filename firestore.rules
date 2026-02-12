@@ -826,6 +826,17 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /delegations/{delegationId} {
+      allow read: if isStaff()
+        || (isSignedIn() && resource.data.ownerUid == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /auditEvents/{auditId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
     match /delegatedTokenNonces/{nonceId} {
       allow read, write: if false;
     }

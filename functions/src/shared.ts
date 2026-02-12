@@ -24,6 +24,12 @@ export function safeString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
+function boolEnv(name: string, fallback = false): boolean {
+  const raw = (process.env[name] ?? "").trim().toLowerCase();
+  if (!raw) return fallback;
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:5173",
   "http://127.0.0.1:5173",
@@ -118,7 +124,8 @@ export async function requireAuthUid(
   if (!token) return { ok: false, message: "Missing Authorization header" };
 
   try {
-    const decoded = await adminAuth.verifyIdToken(token);
+    const checkRevoked = boolEnv("STRICT_TOKEN_REVOCATION_CHECK", false);
+    const decoded = await adminAuth.verifyIdToken(token, checkRevoked);
     (req as any).__mfAuth = decoded;
     return { ok: true, uid: decoded.uid, decoded };
   } catch {
@@ -154,6 +161,7 @@ export type AuthContext =
         audience: string;
         expiresAt: number;
         nonce: string;
+        delegationId: string | null;
       };
     };
 
@@ -252,6 +260,7 @@ type DelegatedTokenPayload = {
   exp: number;
   iat: number;
   nonce: string;
+  delegationId?: string;
 };
 
 function readDelegatedTokenSecret(): string | null {
@@ -262,6 +271,12 @@ function readDelegatedTokenSecret(): string | null {
 function delegatedAudience(): string {
   const raw = (process.env.DELEGATED_TOKEN_AUDIENCE ?? "").trim();
   return raw.length ? raw : DEFAULT_DELEGATED_AUDIENCE;
+}
+
+function delegatedMaxAgeMs(): number {
+  const raw = Number(process.env.DELEGATED_TOKEN_MAX_AGE_MS ?? "");
+  if (Number.isFinite(raw) && raw > 0) return Math.trunc(raw);
+  return 10 * 60 * 1000;
 }
 
 function signDelegatedPayload(encodedPayload: string): string | null {
@@ -293,10 +308,14 @@ function decodeDelegatedPayload(encodedPayload: string): DelegatedTokenPayload |
     const exp = typeof parsed.exp === "number" && Number.isFinite(parsed.exp) ? Math.trunc(parsed.exp) : 0;
     const iat = typeof parsed.iat === "number" && Number.isFinite(parsed.iat) ? Math.trunc(parsed.iat) : 0;
     const nonce = typeof parsed.nonce === "string" ? parsed.nonce.trim() : "";
+    const delegationId =
+      typeof parsed.delegationId === "string" && parsed.delegationId.trim().length
+        ? parsed.delegationId.trim()
+        : undefined;
     if (!principalUid || !agentClientId || !aud || !nonce || !scopes.length || exp <= 0 || iat <= 0) {
       return null;
     }
-    return { principalUid, agentClientId, scopes, aud, exp, iat, nonce };
+    return { principalUid, agentClientId, scopes, aud, exp, iat, nonce, delegationId };
   } catch {
     return null;
   }
@@ -345,6 +364,7 @@ export function createDelegatedAgentToken(params: {
   scopes: string[];
   ttlSeconds: number;
   audience?: string | null;
+  delegationId?: string | null;
 }): { token: string; expiresAt: number; nonce: string; audience: string } {
   const now = Date.now();
   const ttlSeconds = Math.max(30, Math.min(params.ttlSeconds, 600));
@@ -359,6 +379,7 @@ export function createDelegatedAgentToken(params: {
     exp: expiresAt,
     iat: now,
     nonce,
+    delegationId: params.delegationId ?? undefined,
   };
   const payloadEncoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
   const signature = signDelegatedPayload(payloadEncoded);
@@ -414,8 +435,17 @@ export async function requireAuthContext(
       void logSecurityEvent({ req, type: "auth_delegated_denied", outcome: "deny", code: "DELEGATED_AUDIENCE_MISMATCH", mode: "delegated", tokenId: payload.agentClientId });
       return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
     }
-    if (payload.exp <= Date.now()) {
+    const nowMs = Date.now();
+    if (payload.exp <= nowMs) {
       void logSecurityEvent({ req, type: "auth_delegated_denied", outcome: "deny", code: "DELEGATED_EXPIRED", mode: "delegated", tokenId: payload.agentClientId, uid: payload.principalUid });
+      return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    }
+    if (payload.iat > nowMs + 60_000) {
+      void logSecurityEvent({ req, type: "auth_delegated_denied", outcome: "deny", code: "DELEGATED_ISSUED_IN_FUTURE", mode: "delegated", tokenId: payload.agentClientId, uid: payload.principalUid });
+      return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    }
+    if (nowMs - payload.iat > delegatedMaxAgeMs()) {
+      void logSecurityEvent({ req, type: "auth_delegated_denied", outcome: "deny", code: "DELEGATED_TOKEN_TOO_OLD", mode: "delegated", tokenId: payload.agentClientId, uid: payload.principalUid });
       return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
     }
 
@@ -456,6 +486,7 @@ export async function requireAuthContext(
         audience: payload.aud,
         expiresAt: payload.exp,
         nonce: payload.nonce,
+        delegationId: payload.delegationId ?? null,
       },
     };
     (req as any).__mfAuthContext = ctx;

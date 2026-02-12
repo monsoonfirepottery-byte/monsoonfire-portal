@@ -4,6 +4,7 @@
     "lint": "eslint --ext .js,.ts .",
     "build": "tsc",
     "build:watch": "tsc --watch",
+    "test": "npm run build && node --test \"lib/**/*.test.js\"",
     "tracker:sync": "node scripts/syncTrackerTicketsFromMarkdown.js",
     "tracker:seed": "node scripts/seedTracker.js",
     "tracker:counts": "node scripts/tracker_counts.js",

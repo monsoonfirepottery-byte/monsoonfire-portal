@@ -21,6 +21,11 @@ import {
   Timestamp,
   logIntegrationTokenAudit,
 } from "./shared";
+import {
+  enforceAppCheckIfEnabled,
+  logAuditEvent,
+  readAuthFeatureFlags,
+} from "./authz";
 import { TimelineEventType } from "./timelineEventTypes";
 import { z } from "zod";
 import { handleApiV1 } from "./apiV1";
@@ -92,6 +97,13 @@ export {
 // Config
 // -----------------------------
 const REGION = "us-central1";
+
+function requestIdFromReq(req: any): string {
+  const raw = req.headers?.["x-request-id"];
+  if (typeof raw === "string" && raw.trim()) return raw.trim().slice(0, 128);
+  if (Array.isArray(raw) && raw[0]) return String(raw[0]).trim().slice(0, 128);
+  return `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
 
 async function bestEffortEmitIntegrationEvent(params: {
   uid: string;
@@ -265,6 +277,20 @@ const createDelegatedAgentTokenSchema = z.object({
   ttlSeconds: z.number().int().min(30).max(600).optional(),
   audience: z.string().min(1).max(120).optional().nullable(),
   principalUid: z.string().min(1).max(128).optional().nullable(),
+  resources: z.array(z.string().min(1).max(200)).max(20).optional(),
+  note: z.string().max(240).optional().nullable(),
+});
+
+const listDelegationsSchema = z.object({
+  ownerUid: z.string().min(1).max(128).optional().nullable(),
+  includeRevoked: z.boolean().optional(),
+  limit: z.number().int().min(1).max(200).optional(),
+});
+
+const revokeDelegationSchema = z.object({
+  delegationId: z.string().min(1).max(200),
+  ownerUid: z.string().min(1).max(128).optional().nullable(),
+  reason: z.string().max(240).optional().nullable(),
 });
 
 const githubLookupSchema = z.object({
@@ -602,14 +628,37 @@ export const createIntegrationToken = onRequest(
   { region: REGION, timeoutSeconds: 60 },
   async (req, res) => {
     if (applyCors(req, res)) return;
+    const requestId = requestIdFromReq(req);
 
     if (req.method !== "POST") {
       res.status(405).json({ ok: false, message: "Use POST" });
       return;
     }
 
+    const appCheck = await enforceAppCheckIfEnabled(req);
+    if (!appCheck.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "create_integration_token",
+        resourceType: "integration_token",
+        result: "deny",
+        reasonCode: appCheck.code,
+      });
+      res.status(appCheck.httpStatus).json({ ok: false, code: appCheck.code, message: appCheck.message });
+      return;
+    }
+
     const auth = await requireAuthUid(req);
     if (!auth.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "create_integration_token",
+        resourceType: "integration_token",
+        result: "deny",
+        reasonCode: "UNAUTHENTICATED",
+      });
       res.status(401).json({ ok: false, message: auth.message });
       return;
     }
@@ -654,6 +703,28 @@ export const createIntegrationToken = onRequest(
           label: out.record.label ?? null,
         },
       });
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "create_integration_token",
+        resourceType: "integration_token",
+        resourceId: out.tokenId,
+        ownerUid: auth.uid,
+        result: "allow",
+        ctx: {
+          mode: "firebase",
+          uid: auth.uid,
+          decoded: auth.decoded,
+          scopes: null,
+          tokenId: null,
+          delegated: null,
+        },
+        metadata: {
+          appId: appCheck.appId,
+          appCheckBypassed: appCheck.bypassed,
+          scopeCount: out.record.scopes.length,
+        },
+      });
 
       res.status(200).json({
         ok: true,
@@ -663,6 +734,15 @@ export const createIntegrationToken = onRequest(
       });
     } catch (e: any) {
       logger.error("createIntegrationToken failed", e);
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "create_integration_token",
+        resourceType: "integration_token",
+        ownerUid: auth.uid,
+        result: "error",
+        reasonCode: "CREATE_FAILED",
+      });
       res.status(500).json({ ok: false, message: e?.message ?? "Failed to create token" });
     }
   }
@@ -672,14 +752,37 @@ export const listIntegrationTokens = onRequest(
   { region: REGION, timeoutSeconds: 60 },
   async (req, res) => {
     if (applyCors(req, res)) return;
+    const requestId = requestIdFromReq(req);
 
     if (req.method !== "POST") {
       res.status(405).json({ ok: false, message: "Use POST" });
       return;
     }
 
+    const appCheck = await enforceAppCheckIfEnabled(req);
+    if (!appCheck.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "list_integration_tokens",
+        resourceType: "integration_token",
+        result: "deny",
+        reasonCode: appCheck.code,
+      });
+      res.status(appCheck.httpStatus).json({ ok: false, code: appCheck.code, message: appCheck.message });
+      return;
+    }
+
     const auth = await requireAuthUid(req);
     if (!auth.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "list_integration_tokens",
+        resourceType: "integration_token",
+        result: "deny",
+        reasonCode: "UNAUTHENTICATED",
+      });
       res.status(401).json({ ok: false, message: auth.message });
       return;
     }
@@ -703,6 +806,27 @@ export const listIntegrationTokens = onRequest(
       ownerUid: auth.uid,
       details: { count: tokens.length },
     });
+    await logAuditEvent({
+      req,
+      requestId,
+      action: "list_integration_tokens",
+      resourceType: "integration_token",
+      ownerUid: auth.uid,
+      result: "allow",
+      ctx: {
+        mode: "firebase",
+        uid: auth.uid,
+        decoded: auth.decoded,
+        scopes: null,
+        tokenId: null,
+        delegated: null,
+      },
+      metadata: {
+        count: tokens.length,
+        appId: appCheck.appId,
+        appCheckBypassed: appCheck.bypassed,
+      },
+    });
     res.status(200).json({ ok: true, tokens });
   }
 );
@@ -711,14 +835,37 @@ export const revokeIntegrationToken = onRequest(
   { region: REGION, timeoutSeconds: 60 },
   async (req, res) => {
     if (applyCors(req, res)) return;
+    const requestId = requestIdFromReq(req);
 
     if (req.method !== "POST") {
       res.status(405).json({ ok: false, message: "Use POST" });
       return;
     }
 
+    const appCheck = await enforceAppCheckIfEnabled(req);
+    if (!appCheck.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "revoke_integration_token",
+        resourceType: "integration_token",
+        result: "deny",
+        reasonCode: appCheck.code,
+      });
+      res.status(appCheck.httpStatus).json({ ok: false, code: appCheck.code, message: appCheck.message });
+      return;
+    }
+
     const auth = await requireAuthUid(req);
     if (!auth.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "revoke_integration_token",
+        resourceType: "integration_token",
+        result: "deny",
+        reasonCode: "UNAUTHENTICATED",
+      });
       res.status(401).json({ ok: false, message: auth.message });
       return;
     }
@@ -744,6 +891,16 @@ export const revokeIntegrationToken = onRequest(
     const tokenId = safeString(parsed.data.tokenId);
     const out = await revokeIntegrationTokenForOwner({ ownerUid: auth.uid, tokenId });
     if (!out.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "revoke_integration_token",
+        resourceType: "integration_token",
+        resourceId: tokenId,
+        ownerUid: auth.uid,
+        result: "deny",
+        reasonCode: out.message === "Token not found" ? "TOKEN_NOT_FOUND" : "FORBIDDEN",
+      });
       res.status(out.message === "Token not found" ? 404 : 403).json({ ok: false, message: out.message });
       return;
     }
@@ -752,6 +909,27 @@ export const revokeIntegrationToken = onRequest(
       type: "revoked",
       tokenId,
       ownerUid: auth.uid,
+    });
+    await logAuditEvent({
+      req,
+      requestId,
+      action: "revoke_integration_token",
+      resourceType: "integration_token",
+      resourceId: tokenId,
+      ownerUid: auth.uid,
+      result: "allow",
+      ctx: {
+        mode: "firebase",
+        uid: auth.uid,
+        decoded: auth.decoded,
+        scopes: null,
+        tokenId: null,
+        delegated: null,
+      },
+      metadata: {
+        appId: appCheck.appId,
+        appCheckBypassed: appCheck.bypassed,
+      },
     });
 
     res.status(200).json({ ok: true });
@@ -762,14 +940,37 @@ export const createDelegatedAgentToken = onRequest(
   { region: REGION, timeoutSeconds: 60 },
   async (req, res) => {
     if (applyCors(req, res)) return;
+    const requestId = requestIdFromReq(req);
 
     if (req.method !== "POST") {
       res.status(405).json({ ok: false, message: "Use POST" });
       return;
     }
 
+    const appCheck = await enforceAppCheckIfEnabled(req);
+    if (!appCheck.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "create_delegated_agent_token",
+        resourceType: "delegation",
+        result: "deny",
+        reasonCode: appCheck.code,
+      });
+      res.status(appCheck.httpStatus).json({ ok: false, code: appCheck.code, message: appCheck.message });
+      return;
+    }
+
     const auth = await requireAuthUid(req);
     if (!auth.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "create_delegated_agent_token",
+        resourceType: "delegation",
+        result: "deny",
+        reasonCode: "UNAUTHENTICATED",
+      });
       res.status(401).json({ ok: false, message: auth.message });
       return;
     }
@@ -840,12 +1041,39 @@ export const createDelegatedAgentToken = onRequest(
     }
 
     try {
+      const flags = readAuthFeatureFlags();
+      const ttlSeconds = parsed.data.ttlSeconds ?? 300;
+      const resources = Array.isArray(parsed.data.resources)
+        ? [...new Set(parsed.data.resources.map((entry) => String(entry).trim()).filter(Boolean))]
+        : [];
+      if (!resources.includes(`owner:${principalUid}`)) {
+        resources.push(`owner:${principalUid}`);
+      }
+
+      const now = nowTs();
+      const expiresAt = Timestamp.fromMillis(Date.now() + ttlSeconds * 1000);
+      const delegationRef = db.collection("delegations").doc();
+      await delegationRef.set({
+        ownerUid: principalUid,
+        agentClientId: clientId,
+        scopes: requestedScopes,
+        resources,
+        status: "active",
+        note: parsed.data.note ?? null,
+        createdBy: auth.uid,
+        createdAt: now,
+        updatedAt: now,
+        expiresAt,
+        revokedAt: null,
+      });
+
       const issued = createDelegatedToken({
         principalUid,
         agentClientId: clientId,
         scopes: requestedScopes,
-        ttlSeconds: parsed.data.ttlSeconds ?? 300,
+        ttlSeconds,
         audience: parsed.data.audience ?? null,
+        delegationId: flags.v2AgenticEnabled ? delegationRef.id : null,
       });
 
       await db.collection("agentClientAuditLogs").add({
@@ -853,19 +1081,47 @@ export const createDelegatedAgentToken = onRequest(
         action: "issue_delegated_token",
         clientId,
         metadata: {
+          requestId,
+          delegationId: delegationRef.id,
           principalUid,
           scopes: requestedScopes,
-          ttlSeconds: parsed.data.ttlSeconds ?? 300,
+          ttlSeconds,
           audience: issued.audience,
           expiresAtMs: issued.expiresAt,
           nonce: issued.nonce,
+          strictDelegationChecksEnabled: flags.v2AgenticEnabled && flags.strictDelegationChecks,
         },
         createdAt: nowTs(),
+      });
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "create_delegated_agent_token",
+        resourceType: "delegation",
+        resourceId: delegationRef.id,
+        ownerUid: principalUid,
+        result: "allow",
+        ctx: {
+          mode: "firebase",
+          uid: auth.uid,
+          decoded: auth.decoded,
+          scopes: null,
+          tokenId: null,
+          delegated: null,
+        },
+        metadata: {
+          agentClientId: clientId,
+          scopeCount: requestedScopes.length,
+          appId: appCheck.appId,
+          appCheckBypassed: appCheck.bypassed,
+          strictDelegationChecksEnabled: flags.v2AgenticEnabled && flags.strictDelegationChecks,
+        },
       });
 
       res.status(200).json({
         ok: true,
         delegatedToken: issued.token,
+        delegationId: delegationRef.id,
         expiresAtMs: issued.expiresAt,
         audience: issued.audience,
         principalUid,
@@ -874,19 +1130,177 @@ export const createDelegatedAgentToken = onRequest(
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "create_delegated_agent_token",
+        resourceType: "delegation",
+        ownerUid: principalUid,
+        result: "error",
+        reasonCode: "CREATE_FAILED",
+      });
       res.status(500).json({ ok: false, message });
     }
   }
 );
 
+export const listDelegations = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  const requestId = requestIdFromReq(req);
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+  const admin = await requireAdmin(req);
+  const parsed = parseBody(listDelegationsSchema, req.body ?? {});
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+  const ownerUid = safeString(parsed.data.ownerUid) || auth.uid;
+  if (!admin.ok && ownerUid !== auth.uid) {
+    res.status(403).json({ ok: false, message: "Forbidden" });
+    return;
+  }
+  const includeRevoked = parsed.data.includeRevoked === true;
+  const limitValue = parsed.data.limit ?? 100;
+  const snap = await db
+    .collection("delegations")
+    .where("ownerUid", "==", ownerUid)
+    .limit(limitValue)
+    .get();
+  type DelegationRow = {
+    id: string;
+    revokedAt?: unknown;
+    createdAt?: { seconds?: number } | null;
+    [key: string]: unknown;
+  };
+  const rows = snap.docs
+    .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Record<string, unknown>) }) as DelegationRow)
+    .filter((row) => includeRevoked || !row.revokedAt)
+    .sort((a, b) => {
+      const aMs = Number((a.createdAt?.seconds ?? 0));
+      const bMs = Number((b.createdAt?.seconds ?? 0));
+      return bMs - aMs;
+    });
+  await logAuditEvent({
+    req,
+    requestId,
+    action: "list_delegations",
+    resourceType: "delegation",
+    ownerUid,
+    result: "allow",
+    ctx: {
+      mode: "firebase",
+      uid: auth.uid,
+      decoded: auth.decoded,
+      scopes: null,
+      tokenId: null,
+      delegated: null,
+    },
+    metadata: { count: rows.length, includeRevoked },
+  });
+  res.status(200).json({ ok: true, ownerUid, rows });
+});
+
+export const revokeDelegation = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  const requestId = requestIdFromReq(req);
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+  const parsed = parseBody(revokeDelegationSchema, req.body ?? {});
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+  const ref = db.collection("delegations").doc(parsed.data.delegationId.trim());
+  const snap = await ref.get();
+  if (!snap.exists) {
+    res.status(404).json({ ok: false, message: "Delegation not found" });
+    return;
+  }
+  const row = snap.data() as Record<string, unknown>;
+  const ownerUid = safeString(parsed.data.ownerUid) || safeString(row.ownerUid);
+  const admin = await requireAdmin(req);
+  if (!admin.ok && ownerUid !== auth.uid) {
+    res.status(403).json({ ok: false, message: "Forbidden" });
+    return;
+  }
+  const now = nowTs();
+  await ref.set(
+    {
+      status: "revoked",
+      revokedAt: now,
+      updatedAt: now,
+      updatedBy: auth.uid,
+      revokeReason: parsed.data.reason ?? null,
+    },
+    { merge: true }
+  );
+  await logAuditEvent({
+    req,
+    requestId,
+    action: "revoke_delegation",
+    resourceType: "delegation",
+    resourceId: ref.id,
+    ownerUid,
+    result: "allow",
+    reasonCode: "MANUAL_REVOCATION",
+    ctx: {
+      mode: "firebase",
+      uid: auth.uid,
+      decoded: auth.decoded,
+      scopes: null,
+      tokenId: null,
+      delegated: null,
+    },
+    metadata: {
+      reason: parsed.data.reason ?? null,
+    },
+  });
+  res.status(200).json({ ok: true, delegationId: ref.id });
+});
+
 export const helloPat = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
   if (applyCors(req, res)) return;
+  const requestId = requestIdFromReq(req);
 
   const auth = await requireAuthContext(req);
   if (!auth.ok) {
+    await logAuditEvent({
+      req,
+      requestId,
+      action: "hello_pat",
+      resourceType: "auth_probe",
+      result: "deny",
+      reasonCode: auth.code,
+    });
     res.status(401).json({ ok: false, code: auth.code, message: auth.message });
     return;
   }
+
+  await logAuditEvent({
+    req,
+    requestId,
+    action: "hello_pat",
+    resourceType: "auth_probe",
+    ownerUid: auth.ctx.uid,
+    result: "allow",
+    ctx: auth.ctx,
+  });
 
   res.status(200).json({
     ok: true,

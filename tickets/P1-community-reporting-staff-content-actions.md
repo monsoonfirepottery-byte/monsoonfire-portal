@@ -39,3 +39,7 @@ Status: In Progress
 - Staff report detail now supports policy-linked content actions with reason codes and action notes.
 - Action options are target-aware in UI (`disable_from_feed` for YouTube, `unpublish` for internal items).
 - Action execution is wired through `takeContentAction` and reflected in triage outcomes.
+- `takeContentAction` now writes explicit before/after action summaries:
+  - prior vs next report status/action metadata
+  - prior vs next feed override state for YouTube targets (`disabled`, `flaggedForReview`, `replacementUrl`, `reason`)
+  - summaries are recorded in both action records and moderation audit metadata.

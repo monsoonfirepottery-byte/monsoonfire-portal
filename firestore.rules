@@ -796,6 +796,16 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /communityReportTargetSignals/{signalId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /communityReportHousekeeping/{jobId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
     match /communityFeedOverrides/{overrideId} {
       allow read: if isSignedIn();
       allow write: if false;

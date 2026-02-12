@@ -268,6 +268,7 @@ export default function ReportsModule({ client, active, disabled }: Props) {
   const [nextStatus, setNextStatus] = useState<ReportStatus>("triaged");
   const [resolutionCode, setResolutionCode] = useState("");
   const [selectedRuleId, setSelectedRuleId] = useState("");
+  const [bulkRuleId, setBulkRuleId] = useState("");
   const [reasonCode, setReasonCode] = useState("");
   const [contentActionType, setContentActionType] = useState<ContentActionType>("flag_for_review");
   const [actionReason, setActionReason] = useState("");
@@ -344,6 +345,7 @@ export default function ReportsModule({ client, active, disabled }: Props) {
     if (!row) {
       setActivePolicy(null);
       setSelectedRuleId("");
+      setBulkRuleId("");
       return;
     }
     const rulesRaw = Array.isArray(row.rules) ? row.rules : [];
@@ -366,6 +368,9 @@ export default function ReportsModule({ client, active, disabled }: Props) {
     setActivePolicy(nextPolicy);
     if (!selectedRuleId && rules.length > 0) {
       setSelectedRuleId(rules[0].id);
+    }
+    if (!bulkRuleId && rules.length > 0) {
+      setBulkRuleId(rules[0].id);
     }
   };
 
@@ -432,7 +437,10 @@ export default function ReportsModule({ client, active, disabled }: Props) {
     if (!selectedRuleId || !activePolicy.rules.some((rule) => rule.id === selectedRuleId)) {
       setSelectedRuleId(activePolicy.rules[0].id);
     }
-  }, [activePolicy, selectedRuleId]);
+    if (!bulkRuleId || !activePolicy.rules.some((rule) => rule.id === bulkRuleId)) {
+      setBulkRuleId(activePolicy.rules[0].id);
+    }
+  }, [activePolicy, selectedRuleId, bulkRuleId]);
 
   const statusCounts = useMemo(() => {
     return {
@@ -449,7 +457,13 @@ export default function ReportsModule({ client, active, disabled }: Props) {
     [activePolicy, selectedRuleId]
   );
 
+  const bulkSelectedRule = useMemo(
+    () => (activePolicy?.rules ?? []).find((rule) => rule.id === bulkRuleId) ?? null,
+    [activePolicy, bulkRuleId]
+  );
+
   const reasonTemplates = useMemo(() => reasonTemplatesForRule(selectedRuleId), [selectedRuleId]);
+  const bulkReasonTemplates = useMemo(() => reasonTemplatesForRule(bulkRuleId), [bulkRuleId]);
 
   const consistency = useMemo(() => {
     const reviewed = reports.filter((report) =>
@@ -545,7 +559,7 @@ export default function ReportsModule({ client, active, disabled }: Props) {
 
   const applyBulkStatus = async () => {
     if (!activePolicy?.version) throw new Error("Publish a moderation policy before bulk triage.");
-    if (!selectedRuleId.trim()) throw new Error("Select a policy rule before bulk triage.");
+    if (!bulkRuleId.trim()) throw new Error("Select a policy rule before bulk triage.");
     if (!bulkReasonCode.trim()) throw new Error("Reason code is required for bulk triage.");
     if (selectedReportIds.length === 0) throw new Error("Select at least one report for bulk triage.");
 
@@ -558,7 +572,7 @@ export default function ReportsModule({ client, active, disabled }: Props) {
           reportId: report.id,
           status: bulkStatus,
           policyVersion: activePolicy.version,
-          ruleId: selectedRuleId.trim(),
+          ruleId: bulkRuleId.trim(),
           reasonCode: bulkReasonCode.trim(),
           resolutionCode: bulkResolutionCode.trim() || null,
         })
@@ -840,6 +854,13 @@ export default function ReportsModule({ client, active, disabled }: Props) {
           <option value="resolved">Resolved</option>
           <option value="dismissed">Dismissed</option>
         </select>
+        <select value={bulkRuleId} onChange={(event) => setBulkRuleId(event.target.value)}>
+          {(activePolicy?.rules ?? []).map((rule) => (
+            <option key={rule.id} value={rule.id}>
+              {rule.id} · {rule.title}
+            </option>
+          ))}
+        </select>
         <input
           placeholder="Bulk reason code"
           value={bulkReasonCode}
@@ -852,11 +873,28 @@ export default function ReportsModule({ client, active, disabled }: Props) {
         />
         <button
           className="btn btn-primary"
-          disabled={Boolean(busy) || disabled || !activePolicy?.version || !selectedRuleId.trim() || !bulkReasonCode.trim() || selectedCount === 0}
+          disabled={Boolean(busy) || disabled || !activePolicy?.version || !bulkRuleId.trim() || !bulkReasonCode.trim() || selectedCount === 0}
           onClick={() => void run("bulkUpdateReportStatus", applyBulkStatus)}
         >
           Apply bulk status
         </button>
+      </div>
+      {bulkSelectedRule ? (
+        <div className="staff-note">
+          Bulk policy guidance: <strong>{bulkSelectedRule.id}</strong> · {bulkSelectedRule.title}
+        </div>
+      ) : null}
+      <div className="staff-template-list">
+        {bulkReasonTemplates.map((template) => (
+          <button
+            key={`bulk-reason-${template}`}
+            type="button"
+            className={`staff-template-chip ${bulkReasonCode === template ? "active" : ""}`}
+            onClick={() => setBulkReasonCode(template)}
+          >
+            {template}
+          </button>
+        ))}
       </div>
 
       <div className="staff-module-grid">

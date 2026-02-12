@@ -269,6 +269,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [orderNextStatus, setOrderNextStatus] = useState<Record<string, string>>({});
   const [agentApiEnabled, setAgentApiEnabled] = useState(true);
   const [agentPaymentsEnabled, setAgentPaymentsEnabled] = useState(true);
+  const [agentControlsReason, setAgentControlsReason] = useState("");
 
   const selected = useMemo(() => clients.find((row) => row.id === selectedId) ?? null, [clients, selectedId]);
   const deniedEvents = useMemo(() => {
@@ -558,11 +559,17 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   };
 
   const saveAgentOpsConfig = async () => {
+    const reason = agentControlsReason.trim();
+    if ((!agentApiEnabled || !agentPaymentsEnabled) && !reason) {
+      throw new Error("Reason is required when disabling agent API or payments.");
+    }
     await client.postJson("staffUpdateAgentOpsConfig", {
       enabled: agentApiEnabled,
       allowPayments: agentPaymentsEnabled,
+      reason: reason || null,
     });
     await load();
+    setAgentControlsReason("");
     setStatus("Agent ops controls updated.");
   };
 
@@ -660,6 +667,16 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             type="checkbox"
             checked={agentPaymentsEnabled}
             onChange={(event) => setAgentPaymentsEnabled(event.target.checked)}
+          />
+        </label>
+      </div>
+      <div className="staff-actions-row">
+        <label className="staff-field" style={{ flex: 1 }}>
+          <span>Controls change reason (required when disabling)</span>
+          <input
+            value={agentControlsReason}
+            onChange={(event) => setAgentControlsReason(event.target.value)}
+            placeholder="Why this control change is needed"
           />
         </label>
         <button

@@ -1,6 +1,6 @@
 # P1 — Staff Reports Queue + Triage Workflow
 
-Status: In Progress
+Status: Completed
 
 ## Context / user story
 - As staff, I need a reports queue with filters, details, and resolution actions.

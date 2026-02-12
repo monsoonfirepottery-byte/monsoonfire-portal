@@ -355,13 +355,24 @@ const agentOrdersListSchema = z.object({
 });
 
 const agentRequestCreateSchema = z.object({
-  kind: z.enum(["firing", "pickup", "delivery", "shipping", "commission", "other"]),
+  kind: z.enum(["firing", "pickup", "delivery", "shipping", "commission", "x1c_print", "other"]),
   title: z.string().min(1).max(160),
   summary: z.string().max(500).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
   logisticsMode: z.enum(["dropoff", "pickup", "ship_in", "ship_out", "local_delivery"]).optional().nullable(),
   rightsAttested: z.boolean().optional(),
   intendedUse: z.string().max(500).optional().nullable(),
+  x1cFileType: z.enum(["3mf", "stl", "step"]).optional().nullable(),
+  x1cMaterialProfile: z.enum(["pla", "petg", "abs", "asa", "pa_cf", "tpu"]).optional().nullable(),
+  x1cDimensionsMm: z
+    .object({
+      x: z.number().positive().max(256),
+      y: z.number().positive().max(256),
+      z: z.number().positive().max(256),
+    })
+    .optional()
+    .nullable(),
+  x1cQuantity: z.number().int().min(1).max(20).optional().nullable(),
   constraints: z.record(z.string(), z.unknown()).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
@@ -375,7 +386,7 @@ const agentRequestListStaffSchema = z.object({
   status: z
     .enum(["all", "new", "triaged", "accepted", "in_progress", "ready", "fulfilled", "rejected", "cancelled"])
     .optional(),
-  kind: z.enum(["all", "firing", "pickup", "delivery", "shipping", "commission", "other"]).optional(),
+  kind: z.enum(["all", "firing", "pickup", "delivery", "shipping", "commission", "x1c_print", "other"]).optional(),
   limit: z.number().int().min(1).max(500).optional(),
 });
 
@@ -420,6 +431,7 @@ const AGENT_TERMS_EXEMPT_ROUTES = new Set<string>([
   "/v1/agent.terms.get",
   "/v1/agent.terms.accept",
 ]);
+const X1C_VALIDATION_VERSION = "2026-02-12.v1";
 
 function trimOrNull(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -447,6 +459,44 @@ function evaluateCommissionPolicy(payload: {
     return { disposition: "reject", reasonCodes };
   }
   return { disposition: "review", reasonCodes: ["manual_ip_review_required"] };
+}
+
+function evaluateX1cPolicy(payload: {
+  fileType: string | null;
+  materialProfile: string | null;
+  dimensionsMm: { x: number; y: number; z: number } | null;
+  quantity: number | null;
+  title: string;
+  summary: string | null;
+  notes: string | null;
+}): { ok: true; normalized: { fileType: string; materialProfile: string; dimensionsMm: { x: number; y: number; z: number }; quantity: number } } | { ok: false; reasonCodes: string[] } {
+  const reasonCodes: string[] = [];
+  if (!payload.fileType) reasonCodes.push("x1c_missing_file_type");
+  if (!payload.materialProfile) reasonCodes.push("x1c_missing_material_profile");
+  if (!payload.dimensionsMm) reasonCodes.push("x1c_missing_dimensions");
+  if (!payload.quantity) reasonCodes.push("x1c_missing_quantity");
+
+  const text = `${payload.title} ${payload.summary ?? ""} ${payload.notes ?? ""}`;
+  if (/\b(weapon|ghost gun|silencer|explosive)\b/i.test(text)) {
+    reasonCodes.push("x1c_prohibited_use");
+  }
+
+  if (reasonCodes.length > 0 || !payload.fileType || !payload.materialProfile || !payload.dimensionsMm || !payload.quantity) {
+    return { ok: false, reasonCodes };
+  }
+  return {
+    ok: true,
+    normalized: {
+      fileType: payload.fileType,
+      materialProfile: payload.materialProfile,
+      dimensionsMm: {
+        x: Math.round(payload.dimensionsMm.x * 100) / 100,
+        y: Math.round(payload.dimensionsMm.y * 100) / 100,
+        z: Math.round(payload.dimensionsMm.z * 100) / 100,
+      },
+      quantity: Math.trunc(payload.quantity),
+    },
+  };
 }
 
 function acceptanceKeyPart(value: string): string {
@@ -1645,6 +1695,7 @@ export async function handleApiV1(req: any, res: any) {
       const requesterMode = ctx.mode === "pat" || ctx.mode === "delegated" ? "pat" : "firebase";
       const requesterTokenId = ctx.mode === "pat" ? ctx.tokenId : null;
       const isCommission = parsed.data.kind === "commission";
+      const isX1cPrint = parsed.data.kind === "x1c_print";
       const rightsAttested = parsed.data.rightsAttested === true;
       const intendedUse = trimOrNull(parsed.data.intendedUse);
       if (isCommission && !rightsAttested) {
@@ -1677,6 +1728,34 @@ export async function handleApiV1(req: any, res: any) {
         );
         return;
       }
+      const x1cPolicy = isX1cPrint
+        ? evaluateX1cPolicy({
+            fileType: trimOrNull(parsed.data.x1cFileType),
+            materialProfile: trimOrNull(parsed.data.x1cMaterialProfile),
+            dimensionsMm: parsed.data.x1cDimensionsMm
+              ? {
+                  x: parsed.data.x1cDimensionsMm.x,
+                  y: parsed.data.x1cDimensionsMm.y,
+                  z: parsed.data.x1cDimensionsMm.z,
+                }
+              : null,
+            quantity: parsed.data.x1cQuantity ?? null,
+            title: parsed.data.title,
+            summary: trimOrNull(parsed.data.summary),
+            notes: trimOrNull(parsed.data.notes),
+          })
+        : null;
+      if (x1cPolicy && !x1cPolicy.ok) {
+        jsonError(
+          res,
+          requestId,
+          400,
+          "FAILED_PRECONDITION",
+          "X1C request failed validation.",
+          { validationVersion: X1C_VALIDATION_VERSION, reasonCodes: x1cPolicy.reasonCodes }
+        );
+        return;
+      }
       const initialStatus = commissionPolicy?.disposition === "review" ? "triaged" : "new";
 
       const payload = {
@@ -1697,7 +1776,9 @@ export async function handleApiV1(req: any, res: any) {
         metadata: {
           ...(parsed.data.metadata ?? {}),
           commissionPolicyVersion: isCommission ? COMMISSION_POLICY_VERSION : null,
+          x1cValidationVersion: isX1cPrint ? X1C_VALIDATION_VERSION : null,
         },
+        x1cSpec: x1cPolicy && x1cPolicy.ok ? x1cPolicy.normalized : null,
         policy:
           commissionPolicy && isCommission
             ? {
@@ -1731,6 +1812,8 @@ export async function handleApiV1(req: any, res: any) {
           policyVersion: commissionPolicy ? COMMISSION_POLICY_VERSION : null,
           policyDisposition: commissionPolicy?.disposition ?? null,
           policyReasonCodes: commissionPolicy?.reasonCodes ?? [],
+          x1cValidationVersion: isX1cPrint ? X1C_VALIDATION_VERSION : null,
+          x1cReasonCodes: [],
           idempotencyKey: idempotencyKey || null,
         },
       });
@@ -1744,6 +1827,7 @@ export async function handleApiV1(req: any, res: any) {
         policyVersion: commissionPolicy ? COMMISSION_POLICY_VERSION : null,
         policyDisposition: commissionPolicy?.disposition ?? null,
         policyReasonCodes: commissionPolicy?.reasonCodes ?? [],
+        x1cValidationVersion: isX1cPrint ? X1C_VALIDATION_VERSION : null,
         createdAt: nowValue,
       });
 

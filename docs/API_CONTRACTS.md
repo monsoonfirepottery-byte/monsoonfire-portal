@@ -351,6 +351,16 @@ Request:
 }
 ```
 
+For X1C print intake (`kind: "x1c_print"`), include:
+```json
+{
+  "x1cFileType": "3mf",
+  "x1cMaterialProfile": "pla",
+  "x1cDimensionsMm": { "x": 120, "y": 80, "z": 60 },
+  "x1cQuantity": 2
+}
+```
+
 Optional idempotency header:
 - `x-idempotency-key: <client-generated-key>`
 

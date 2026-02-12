@@ -3,7 +3,7 @@ import type { User } from "firebase/auth";
 import { createFunctionsClient, type LastRequest } from "../api/functionsClient";
 import "./AgentRequestsView.css";
 
-type RequestKind = "firing" | "pickup" | "delivery" | "shipping" | "commission" | "other";
+type RequestKind = "firing" | "pickup" | "delivery" | "shipping" | "commission" | "x1c_print" | "other";
 type RequestStatus = "new" | "triaged" | "accepted" | "in_progress" | "ready" | "fulfilled" | "rejected" | "cancelled";
 
 type RequestRecord = {
@@ -77,6 +77,7 @@ function normalizeRequest(row: Record<string, unknown>): RequestRecord {
       rawKind === "delivery" ||
       rawKind === "shipping" ||
       rawKind === "commission" ||
+      rawKind === "x1c_print" ||
       rawKind === "other"
         ? rawKind
         : "other",
@@ -106,6 +107,12 @@ export default function AgentRequestsView({
   const [logisticsMode, setLogisticsMode] = useState("dropoff");
   const [rightsAttested, setRightsAttested] = useState(false);
   const [intendedUse, setIntendedUse] = useState("");
+  const [x1cFileType, setX1cFileType] = useState("3mf");
+  const [x1cMaterialProfile, setX1cMaterialProfile] = useState("pla");
+  const [x1cDimX, setX1cDimX] = useState("120");
+  const [x1cDimY, setX1cDimY] = useState("120");
+  const [x1cDimZ, setX1cDimZ] = useState("120");
+  const [x1cQuantity, setX1cQuantity] = useState("1");
   const [statusFilter, setStatusFilter] = useState<"all" | RequestStatus>("all");
 
   const client = useMemo(
@@ -162,6 +169,17 @@ export default function AgentRequestsView({
       logisticsMode: logisticsMode.trim() || null,
       rightsAttested,
       intendedUse: intendedUse.trim() || null,
+      x1cFileType: kind === "x1c_print" ? x1cFileType : null,
+      x1cMaterialProfile: kind === "x1c_print" ? x1cMaterialProfile : null,
+      x1cDimensionsMm:
+        kind === "x1c_print"
+          ? {
+              x: Number(x1cDimX) || 0,
+              y: Number(x1cDimY) || 0,
+              z: Number(x1cDimZ) || 0,
+            }
+          : null,
+      x1cQuantity: kind === "x1c_print" ? Number(x1cQuantity) || 0 : null,
       metadata: {
         source: "portal_member_requests",
       },
@@ -180,6 +198,16 @@ export default function AgentRequestsView({
     () => requests.filter((row) => (statusFilter === "all" ? true : row.status === statusFilter)),
     [requests, statusFilter]
   );
+  const x1cInputValid =
+    kind !== "x1c_print" ||
+    (Number(x1cDimX) > 0 &&
+      Number(x1cDimY) > 0 &&
+      Number(x1cDimZ) > 0 &&
+      Number(x1cDimX) <= 256 &&
+      Number(x1cDimY) <= 256 &&
+      Number(x1cDimZ) <= 256 &&
+      Number(x1cQuantity) >= 1 &&
+      Number(x1cQuantity) <= 20);
 
   return (
     <div className="page requests-page">
@@ -206,6 +234,7 @@ export default function AgentRequestsView({
               <option value="delivery">Delivery</option>
               <option value="shipping">Shipping</option>
               <option value="commission">Commission</option>
+              <option value="x1c_print">X1C print</option>
               <option value="other">Other</option>
             </select>
           </label>
@@ -252,10 +281,53 @@ export default function AgentRequestsView({
             </label>
           </>
         ) : null}
+        {kind === "x1c_print" ? (
+          <>
+            <div className="requests-grid">
+              <label className="requests-field">
+                File type
+                <select value={x1cFileType} onChange={(event) => setX1cFileType(event.target.value)}>
+                  <option value="3mf">3mf</option>
+                  <option value="stl">stl</option>
+                  <option value="step">step</option>
+                </select>
+              </label>
+              <label className="requests-field">
+                Material profile
+                <select value={x1cMaterialProfile} onChange={(event) => setX1cMaterialProfile(event.target.value)}>
+                  <option value="pla">pla</option>
+                  <option value="petg">petg</option>
+                  <option value="abs">abs</option>
+                  <option value="asa">asa</option>
+                  <option value="pa_cf">pa_cf</option>
+                  <option value="tpu">tpu</option>
+                </select>
+              </label>
+            </div>
+            <div className="requests-grid">
+              <label className="requests-field">
+                X (mm)
+                <input value={x1cDimX} onChange={(event) => setX1cDimX(event.target.value)} />
+              </label>
+              <label className="requests-field">
+                Y (mm)
+                <input value={x1cDimY} onChange={(event) => setX1cDimY(event.target.value)} />
+              </label>
+              <label className="requests-field">
+                Z (mm)
+                <input value={x1cDimZ} onChange={(event) => setX1cDimZ(event.target.value)} />
+              </label>
+              <label className="requests-field">
+                Quantity
+                <input value={x1cQuantity} onChange={(event) => setX1cQuantity(event.target.value)} />
+              </label>
+            </div>
+          </>
+        ) : null}
         <div className="requests-actions">
           <button
             className="btn btn-primary"
-            disabled={Boolean(busy) || !title.trim() || (kind === "commission" && !rightsAttested)}
+            disabled={Boolean(busy) || !title.trim() || (kind === "commission" && !rightsAttested) || !x1cInputValid}
             onClick={() => void run("createRequest", createRequest)}
           >
             {busy === "createRequest" ? "Creating..." : "Submit request"}

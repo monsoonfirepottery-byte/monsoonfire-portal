@@ -65,7 +65,7 @@ type AgentCatalogConfig = {
 };
 
 type AgentRequestStatus = "new" | "triaged" | "accepted" | "in_progress" | "ready" | "fulfilled" | "rejected" | "cancelled";
-type AgentRequestKind = "firing" | "pickup" | "delivery" | "shipping" | "commission" | "other";
+type AgentRequestKind = "firing" | "pickup" | "delivery" | "shipping" | "commission" | "x1c_print" | "other";
 
 type AgentRequest = {
   id: string;
@@ -290,6 +290,7 @@ function toAgentRequest(row: Record<string, unknown>): AgentRequest {
       rawKind === "delivery" ||
       rawKind === "shipping" ||
       rawKind === "commission" ||
+      rawKind === "x1c_print" ||
       rawKind === "other"
         ? rawKind
         : "other",
@@ -1480,6 +1481,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             <option value="delivery">delivery</option>
             <option value="shipping">shipping</option>
             <option value="commission">commission</option>
+            <option value="x1c_print">x1c_print</option>
             <option value="other">other</option>
           </select>
         </label>

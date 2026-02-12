@@ -1,6 +1,6 @@
 # P2 — Agent X1C Print Intake Validation and Safety
 
-Status: Open
+Status: Completed
 
 ## Problem
 - 3D print jobs from agents can contain unsafe, unprintable, or policy-violating requests.
@@ -24,3 +24,18 @@ Status: Open
 - Invalid or disallowed jobs are rejected with machine-readable reason codes.
 - Valid jobs produce deterministic quote inputs.
 - Staff can override with logged justification when policy allows.
+
+## Progress notes
+- Added deterministic X1C intake validation in `functions/src/apiV1.ts`:
+  - Added `kind: "x1c_print"` support.
+  - Added schema fields:
+    - `x1cFileType` (`3mf|stl|step`)
+    - `x1cMaterialProfile` (`pla|petg|abs|asa|pa_cf|tpu`)
+    - `x1cDimensionsMm` (bounded to <= 256mm on all axes)
+    - `x1cQuantity` (1..20)
+  - Added validation rejection with machine-readable reason codes and validation version.
+  - Added normalized `x1cSpec` persistence for accepted intake payloads.
+- Updated user intake UI (`web/src/views/AgentRequestsView.tsx`) for X1C requests:
+  - Captures file type, material profile, dimensions, and quantity.
+  - Adds client-side guardrails for dimensional and quantity bounds.
+- Updated staff triage filters (`web/src/views/staff/AgentOpsModule.tsx`) to include `x1c_print`.

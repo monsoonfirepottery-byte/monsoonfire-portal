@@ -1,9 +1,12 @@
 # Release Candidate Evidence Pack
 
 ## Build + CI Evidence
-- [ ] `Smoke Tests` workflow pass
-- [ ] `Lighthouse Audit` workflow pass
-- [ ] `iOS macOS Smoke` workflow pass
+- [x] `Smoke Tests` workflow pass ([run 21955700046](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/21955700046))
+- [x] `Lighthouse Audit` workflow pass ([run 21955700011](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/21955700011))
+- [x] `iOS macOS Smoke` workflow pass ([run 21955699963](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/21955699963))
+- [x] `ios-build-gate` workflow pass ([run 21955700012](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/21955700012))
+- [x] `Android Compile Check` workflow pass ([run 21955700047](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/21955700047))
+- [x] `Deploy to Firebase Hosting on PR` workflow pass ([run 21955700044](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/21955700044))
 - [x] Functions TypeScript build pass (`npm --prefix functions run build`)
 - [x] Functions lint pass (`npm --prefix functions run lint`) (warnings only)
 - [x] Web lint pass (`npm --prefix web run lint`)

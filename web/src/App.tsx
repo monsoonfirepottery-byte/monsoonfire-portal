@@ -1356,11 +1356,17 @@ export default function App() {
 
   return (
     <AppErrorBoundary>
+      <a className="skip-link" href="#main-content">
+        Skip to main content
+      </a>
       <div
         className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`}
         style={PORTAL_THEMES[themeName] ?? PORTAL_THEMES[DEFAULT_PORTAL_THEME]}
       >
-        <aside className={`sidebar ${mobileNavOpen ? "open" : ""} ${navCollapsed ? "collapsed" : ""}`}>
+        <aside
+          className={`sidebar ${mobileNavOpen ? "open" : ""} ${navCollapsed ? "collapsed" : ""}`}
+          aria-label="Primary navigation"
+        >
           <div
             className="brand brand-home"
             role="button"
@@ -1391,7 +1397,7 @@ export default function App() {
               <span>Pottery Studio</span>
             </div>
           </div>
-          <nav>
+          <nav aria-label="Main navigation">
             <div className="nav-primary">
               {NAV_TOP_ITEMS.map((item) => (
                 <button
@@ -1557,7 +1563,7 @@ export default function App() {
           )}
         </aside>
 
-        <main className="main">
+        <main id="main-content" className="main" tabIndex={-1}>
           <div className="nav-toggle-row">
             <button className="mobile-nav" onClick={() => setMobileNavOpen((prev) => !prev)}>
               <span className="mobile-nav-icon" aria-hidden="true" />

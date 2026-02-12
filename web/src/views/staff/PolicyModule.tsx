@@ -711,8 +711,16 @@ export default function PolicyModule({ client, active, disabled }: Props) {
         </div>
       ) : null}
 
-      {status ? <div className="staff-note">{status}</div> : null}
-      {error ? <div className="staff-note staff-note-error">{error}</div> : null}
+      {status ? (
+        <div className="staff-note" role="status" aria-live="polite">
+          {status}
+        </div>
+      ) : null}
+      {error ? (
+        <div className="staff-note staff-note-error" role="alert" aria-live="assertive">
+          {error}
+        </div>
+      ) : null}
     </section>
   );
 }

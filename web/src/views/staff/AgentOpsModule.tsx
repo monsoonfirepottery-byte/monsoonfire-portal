@@ -102,6 +102,12 @@ type AgentOpsConfigResponse = {
     allowPayments?: boolean;
   };
 };
+type ExportDeniedEventsCsvResponse = {
+  ok: boolean;
+  rowCount?: number;
+  filename?: string;
+  csv?: string;
+};
 
 function str(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
@@ -255,6 +261,8 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [riskByClient, setRiskByClient] = useState<Record<string, { total: number; quoteLimit: number; payLimit: number; velocity: number }>>({});
   const [deniedClientFilter, setDeniedClientFilter] = useState("all");
   const [deniedActionFilter, setDeniedActionFilter] = useState<"all" | DeniedAction>("all");
+  const [deniedFromDate, setDeniedFromDate] = useState("");
+  const [deniedToDate, setDeniedToDate] = useState("");
   const [orderNextStatus, setOrderNextStatus] = useState<Record<string, string>>({});
   const [agentApiEnabled, setAgentApiEnabled] = useState(true);
   const [agentPaymentsEnabled, setAgentPaymentsEnabled] = useState(true);
@@ -539,6 +547,40 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     }));
     await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
     setStatus(`Copied ${payload.length} denied events JSON.`);
+  };
+
+  const downloadDeniedEventsCsv = async () => {
+    const fromIso = deniedFromDate ? new Date(`${deniedFromDate}T00:00:00.000Z`).toISOString() : undefined;
+    const toIso = deniedToDate ? new Date(`${deniedToDate}T23:59:59.999Z`).toISOString() : undefined;
+    const payload: {
+      clientId?: string;
+      action: "all" | DeniedAction;
+      fromIso?: string;
+      toIso?: string;
+      limit: number;
+    } = {
+      action: deniedActionFilter,
+      limit: 500,
+    };
+    if (deniedClientFilter !== "all") payload.clientId = deniedClientFilter;
+    if (fromIso) payload.fromIso = fromIso;
+    if (toIso) payload.toIso = toIso;
+    const resp = await client.postJson<ExportDeniedEventsCsvResponse>("staffExportAgentDeniedEventsCsv", {
+      ...payload,
+    });
+    const csv = typeof resp.csv === "string" ? resp.csv : "";
+    if (!csv) throw new Error("CSV export returned empty content.");
+    const filename = (resp.filename && resp.filename.trim()) || "agent-denied-events.csv";
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(objectUrl);
+    setStatus(`Downloaded CSV (${num(resp.rowCount, 0)} rows).`);
   };
 
   return (
@@ -1134,12 +1176,35 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             <option value="agent_pay_denied_velocity">pay denied - velocity</option>
           </select>
         </label>
+        <label className="staff-field">
+          From
+          <input
+            type="date"
+            value={deniedFromDate}
+            onChange={(event) => setDeniedFromDate(event.target.value)}
+          />
+        </label>
+        <label className="staff-field">
+          To
+          <input
+            type="date"
+            value={deniedToDate}
+            onChange={(event) => setDeniedToDate(event.target.value)}
+          />
+        </label>
         <button
           className="btn btn-secondary"
           disabled={Boolean(busy) || filteredDeniedEvents.length === 0}
           onClick={() => void exportDeniedEvents()}
         >
           Copy JSON export
+        </button>
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy)}
+          onClick={() => void run("downloadDeniedCsv", downloadDeniedEventsCsv)}
+        >
+          Download CSV
         </button>
       </div>
       <div className="staff-table-wrap">

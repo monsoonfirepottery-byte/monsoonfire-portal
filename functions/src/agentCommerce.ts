@@ -43,6 +43,21 @@ const updateOrderFulfillmentSchema = z.object({
   reason: z.string().max(500).optional().nullable(),
 });
 
+const exportDeniedEventsSchema = z.object({
+  clientId: z.string().trim().min(1).max(120).optional(),
+  action: z
+    .enum([
+      "agent_quote_denied_risk_limit",
+      "agent_pay_denied_risk_limit",
+      "agent_pay_denied_velocity",
+      "all",
+    ])
+    .optional(),
+  fromIso: z.string().trim().min(1).max(60).optional(),
+  toIso: z.string().trim().min(1).max(60).optional(),
+  limit: z.number().int().min(1).max(2000).optional(),
+});
+
 const FULFILLMENT_ORDER = [
   "queued",
   "scheduled",
@@ -55,6 +70,11 @@ const FULFILLMENT_ORDER = [
 ] as const;
 
 const TERMINAL_OR_EXCEPTION = new Set<string>(["picked_up", "shipped", "exception"]);
+const DENIED_ACTIONS = new Set<string>([
+  "agent_quote_denied_risk_limit",
+  "agent_pay_denied_risk_limit",
+  "agent_pay_denied_velocity",
+]);
 
 function canTransitionFulfillment(from: string, to: string): boolean {
   if (from === to) return true;
@@ -65,6 +85,33 @@ function canTransitionFulfillment(from: string, to: string): boolean {
   const toIdx = FULFILLMENT_ORDER.indexOf(to as (typeof FULFILLMENT_ORDER)[number]);
   if (fromIdx < 0 || toIdx < 0) return false;
   return toIdx === fromIdx + 1;
+}
+
+function tsToMillis(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (!value || typeof value !== "object") return 0;
+  const row = value as {
+    toMillis?: () => number;
+    toDate?: () => Date;
+    seconds?: number;
+    nanoseconds?: number;
+  };
+  if (typeof row.toMillis === "function") return row.toMillis();
+  if (typeof row.toDate === "function") return row.toDate().getTime();
+  if (typeof row.seconds === "number") {
+    return Math.floor(row.seconds * 1000 + (typeof row.nanoseconds === "number" ? row.nanoseconds : 0) / 1_000_000);
+  }
+  return 0;
+}
+
+function toCsvCell(value: unknown): string {
+  const raw = value == null ? "" : String(value);
+  if (!/[",\n]/.test(raw)) return raw;
+  return `"${raw.replace(/"/g, "\"\"")}"`;
+}
+
+function toCsvLine(cells: unknown[]): string {
+  return cells.map((cell) => toCsvCell(cell)).join(",");
 }
 
 export async function getAgentOpsConfig(): Promise<{ enabled: boolean; allowPayments: boolean }> {
@@ -425,6 +472,124 @@ export const staffUpdateAgentOrderFulfillment = onRequest(
       orderId,
       fromStatus,
       toStatus,
+    });
+  }
+);
+
+export const staffExportAgentDeniedEventsCsv = onRequest(
+  { region: REGION, timeoutSeconds: 60 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+    const admin = await requireAdmin(req);
+    if (!admin.ok) {
+      res.status(403).json({ ok: false, message: admin.message });
+      return;
+    }
+
+    const parsed = parseBody(exportDeniedEventsSchema, req.body ?? {});
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const limit = parsed.data.limit ?? 500;
+    const clientIdFilter = (parsed.data.clientId ?? "").trim();
+    const actionFilter = parsed.data.action ?? "all";
+    const fromMs = parsed.data.fromIso ? Date.parse(parsed.data.fromIso) : NaN;
+    const toMs = parsed.data.toIso ? Date.parse(parsed.data.toIso) : NaN;
+    if (parsed.data.fromIso && !Number.isFinite(fromMs)) {
+      res.status(400).json({ ok: false, message: "Invalid fromIso" });
+      return;
+    }
+    if (parsed.data.toIso && !Number.isFinite(toMs)) {
+      res.status(400).json({ ok: false, message: "Invalid toIso" });
+      return;
+    }
+
+    const auditRows = await readCollection("agentAuditLogs", "createdAt", Math.max(limit * 4, 300));
+    const filtered = auditRows
+      .filter((row) => {
+        const action = typeof row.action === "string" ? row.action : "";
+        if (!DENIED_ACTIONS.has(action)) return false;
+        if (actionFilter !== "all" && action !== actionFilter) return false;
+
+        const rowClientId = typeof row.agentClientId === "string" ? row.agentClientId : "";
+        if (clientIdFilter && rowClientId !== clientIdFilter) return false;
+
+        const createdAtMs = tsToMillis(row.createdAt);
+        if (Number.isFinite(fromMs) && createdAtMs && createdAtMs < fromMs) return false;
+        if (Number.isFinite(toMs) && createdAtMs && createdAtMs > toMs) return false;
+        return true;
+      })
+      .slice(0, limit);
+
+    const header = [
+      "id",
+      "atIso",
+      "action",
+      "clientId",
+      "actorUid",
+      "quoteId",
+      "reservationId",
+      "orderId",
+      "riskLevel",
+      "serviceId",
+      "reason",
+      "metadataJson",
+    ];
+    const lines = [toCsvLine(header)];
+    for (const row of filtered) {
+      const createdAtMs = tsToMillis(row.createdAt);
+      const metadata = row.metadata && typeof row.metadata === "object"
+        ? (row.metadata as Record<string, unknown>)
+        : null;
+      lines.push(
+        toCsvLine([
+          row.id ?? "",
+          createdAtMs ? new Date(createdAtMs).toISOString() : "",
+          typeof row.action === "string" ? row.action : "",
+          typeof row.agentClientId === "string" ? row.agentClientId : "",
+          typeof row.actorUid === "string" ? row.actorUid : "",
+          typeof row.quoteId === "string" ? row.quoteId : "",
+          typeof row.reservationId === "string" ? row.reservationId : "",
+          typeof row.orderId === "string" ? row.orderId : "",
+          typeof row.riskLevel === "string" ? row.riskLevel : "",
+          typeof row.serviceId === "string" ? row.serviceId : "",
+          typeof row.reason === "string" ? row.reason : "",
+          metadata ? JSON.stringify(metadata) : "",
+        ])
+      );
+    }
+    const csv = `${lines.join("\n")}\n`;
+    const filename = `agent-denied-events-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.csv`;
+
+    await db.collection("agentAuditLogs").add({
+      actorUid: auth.uid,
+      actorMode: "firebase",
+      action: "staff_export_agent_denied_events_csv",
+      clientIdFilter: clientIdFilter || null,
+      actionFilter,
+      fromIso: parsed.data.fromIso ?? null,
+      toIso: parsed.data.toIso ?? null,
+      rowCount: filtered.length,
+      createdAt: nowTs(),
+    });
+
+    res.status(200).json({
+      ok: true,
+      rowCount: filtered.length,
+      filename,
+      csv,
     });
   }
 );

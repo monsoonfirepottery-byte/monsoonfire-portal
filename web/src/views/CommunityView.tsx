@@ -220,6 +220,27 @@ type ReportTarget = {
   targetSnapshot: { title: string; url?: string | null; source?: string | null; author?: string | null; publishedAtMs?: number | null };
 };
 
+type ReportReceipt = {
+  id: string;
+  status: "open" | "triaged" | "actioned" | "resolved" | "dismissed";
+  category: ReportCategory;
+  severity: ReportSeverity;
+  targetType: ReportTargetType;
+  title: string;
+  createdAtMs: number;
+};
+
+type ListMyReportsResponse = {
+  ok: boolean;
+  message?: string;
+  reports?: Array<Record<string, unknown>>;
+};
+
+type CurrentPolicyResponse = {
+  ok: boolean;
+  policy?: Record<string, unknown> | null;
+};
+
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
 type ImportMetaEnvShape = { VITE_FUNCTIONS_BASE_URL?: string };
 const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
@@ -236,6 +257,43 @@ const REPORT_CATEGORIES: Array<{ value: ReportCategory; label: string }> = [
   { value: "other", label: "Other" },
 ];
 
+function toMs(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (value && typeof value === "object") {
+    const maybe = value as { toMillis?: () => number; seconds?: number; nanoseconds?: number };
+    if (typeof maybe.toMillis === "function") return maybe.toMillis();
+    if (typeof maybe.seconds === "number") {
+      const nanos = typeof maybe.nanoseconds === "number" ? maybe.nanoseconds : 0;
+      return Math.floor(maybe.seconds * 1000 + nanos / 1_000_000);
+    }
+  }
+  return 0;
+}
+
+function normalizeReceipt(row: Record<string, unknown>): ReportReceipt {
+  const snapshot = (row.targetSnapshot ?? {}) as Record<string, unknown>;
+  const title = typeof snapshot.title === "string" && snapshot.title.trim().length ? snapshot.title.trim() : "Reported content";
+  const statusRaw = typeof row.status === "string" ? row.status : "open";
+  const categoryRaw = typeof row.category === "string" ? row.category : "other";
+  const severityRaw = typeof row.severity === "string" ? row.severity : "low";
+  const typeRaw = typeof row.targetType === "string" ? row.targetType : "blog_post";
+
+  return {
+    id: typeof row.id === "string" ? row.id : "",
+    status: (statusRaw as ReportReceipt["status"]),
+    category: (categoryRaw as ReportCategory),
+    severity: (severityRaw as ReportSeverity),
+    targetType: (typeRaw as ReportTargetType),
+    title,
+    createdAtMs: toMs(row.createdAt),
+  };
+}
+
+function formatWhen(ms: number): string {
+  if (!ms) return "recently";
+  return new Date(ms).toLocaleString();
+}
+
 export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorkshops }: Props) {
   const [quoteIndex, setQuoteIndex] = useState(0);
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
@@ -245,6 +303,10 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
   const [reportNote, setReportNote] = useState("");
   const [reportBusy, setReportBusy] = useState(false);
   const [reportStatus, setReportStatus] = useState("");
+  const [reportHistory, setReportHistory] = useState<ReportReceipt[]>([]);
+  const [reportHistoryBusy, setReportHistoryBusy] = useState(false);
+  const [reportHistoryError, setReportHistoryError] = useState("");
+  const [activePolicyLabel, setActivePolicyLabel] = useState("");
   const [hiddenCards, setHiddenCards] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -276,6 +338,48 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
     }, 7000);
     return () => window.clearInterval(interval);
   }, []);
+
+  const loadReportHistory = async () => {
+    setReportHistoryBusy(true);
+    setReportHistoryError("");
+    try {
+      const resp = await functionsClient.postJson<ListMyReportsResponse>("listMyReports", { limit: 8, includeClosed: true });
+      if (!resp.ok) {
+        setReportHistoryError(resp.message ?? "Could not load your reports.");
+        return;
+      }
+      const rows = Array.isArray(resp.reports) ? resp.reports.map((row) => normalizeReceipt(row)).filter((row) => row.id) : [];
+      setReportHistory(rows);
+    } catch (error: unknown) {
+      setReportHistoryError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setReportHistoryBusy(false);
+    }
+  };
+
+  const loadActivePolicyLabel = async () => {
+    try {
+      const resp = await functionsClient.postJson<CurrentPolicyResponse>("getModerationPolicyCurrent", {});
+      if (!resp.ok || !resp.policy) {
+        setActivePolicyLabel("");
+        return;
+      }
+      const version = typeof resp.policy.version === "string" ? resp.policy.version : "";
+      const title = typeof resp.policy.title === "string" ? resp.policy.title : "Code of Conduct";
+      if (!version) {
+        setActivePolicyLabel(title);
+        return;
+      }
+      setActivePolicyLabel(`${title} (${version})`);
+    } catch {
+      setActivePolicyLabel("");
+    }
+  };
+
+  useEffect(() => {
+    void loadReportHistory();
+    void loadActivePolicyLabel();
+  }, [functionsClient]);
 
   const activeQuote = MEMBER_QUOTES[quoteIndex];
 
@@ -325,6 +429,7 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
         return;
       }
       setReportStatus(`Report submitted. Reference: ${resp.reportId ?? "pending"}`);
+      void loadReportHistory();
       setTimeout(() => {
         setReportTarget(null);
         setReportStatus("");
@@ -469,6 +574,40 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
         </div>
 
         <aside className="community-sidebar">
+          <section className="card card-3d community-report-history">
+            <div className="community-card-head">
+              <h2 className="card-title">Your reports</h2>
+              <button type="button" className="btn btn-ghost btn-small" onClick={() => void loadReportHistory()} disabled={reportHistoryBusy}>
+                {reportHistoryBusy ? "Refreshing..." : "Refresh"}
+              </button>
+            </div>
+            <p className="community-copy">
+              Track report receipts and moderation status updates.
+            </p>
+            {reportHistoryError ? <div className="staff-note">{reportHistoryError}</div> : null}
+            {!reportHistoryError && reportHistory.length === 0 ? (
+              <div className="staff-note">No reports yet. Use “Report” on any card when something looks off.</div>
+            ) : null}
+            {reportHistory.length > 0 ? (
+              <div className="community-report-list">
+                {reportHistory.map((item) => (
+                  <article className="community-report-item" key={item.id}>
+                    <div className="community-report-item-head">
+                      <strong>{item.title}</strong>
+                      <span className={`community-report-status status-${item.status}`}>{item.status}</span>
+                    </div>
+                    <div className="community-report-item-meta">
+                      {item.category.replace("_", " ")} · {item.targetType.replace("_", " ")} · {formatWhen(item.createdAtMs)}
+                    </div>
+                    <div className="community-report-item-id">
+                      Ref: <code>{item.id}</code>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </section>
+
           <section className="card card-3d community-quote" key={activeQuote.quote}>
             <div className="community-card-head">
             <h2 className="card-title">Member note</h2>
@@ -536,6 +675,9 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
             </div>
             <div className="community-copy">
               {reportTarget.targetSnapshot.title} · {reportTarget.targetType}
+            </div>
+            <div className="community-report-policy">
+              Reviewed against: {activePolicyLabel || "Current community policy"}
             </div>
             <label className="staff-field">
               Category

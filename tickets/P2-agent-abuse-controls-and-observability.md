@@ -85,3 +85,4 @@ Collection: `securityMetrics/daily`
 - Added best-effort `securityAudit` logging in auth middleware for PAT/delegated auth success and deny paths (no token secrets or raw IPs stored).
 - Staff audit feed now merges relevant `securityAudit` auth events into agent-client timelines for faster triage of token failures and abuse spikes.
 - Staff Agent Ops audit log now supports source/outcome filters plus KPI chips, making deny/error investigations substantially faster.
+- Agent Ops control toggles now require a reason when disabling API/payments, and that reason is persisted in audit/config metadata.

@@ -378,7 +378,7 @@ class AppErrorBoundary extends React.Component<
             The app hit a runtime error. Refresh usually fixes it.
           </div>
           <pre className="error-pre">{this.state.message}</pre>
-          <button className="btn btn-primary" onClick={() => window.location.reload()}>
+          <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>
             Reload
           </button>
         </div>
@@ -1364,6 +1364,7 @@ export default function App() {
         style={PORTAL_THEMES[themeName] ?? PORTAL_THEMES[DEFAULT_PORTAL_THEME]}
       >
         <aside
+          id="portal-sidebar-nav"
           className={`sidebar ${mobileNavOpen ? "open" : ""} ${navCollapsed ? "collapsed" : ""}`}
           aria-label="Primary navigation"
         >
@@ -1401,8 +1402,10 @@ export default function App() {
             <div className="nav-primary">
               {NAV_TOP_ITEMS.map((item) => (
                 <button
+                  type="button"
                   key={item.key}
                   className={`nav-top-item ${nav === item.key ? "active" : ""}`}
+                  aria-current={nav === item.key ? "page" : undefined}
                   title={item.label}
                   onClick={() => {
                     setNav(item.key);
@@ -1438,8 +1441,10 @@ export default function App() {
                   >
                     {section.items.map((item) => (
                       <button
+                        type="button"
                         key={item.key}
                         className={`nav-subitem ${nav === item.key ? "active" : ""}`}
+                        aria-current={nav === item.key ? "page" : undefined}
                         title={item.label}
                         onClick={() => {
                           setNav(item.key);
@@ -1459,8 +1464,10 @@ export default function App() {
             <div className="nav-bottom">
               {navBottomItems.map((item) => (
                 <button
+                  type="button"
                   key={item.key}
                   className={nav === item.key ? "active" : ""}
+                  aria-current={nav === item.key ? "page" : undefined}
                   title={item.label}
                   onClick={() => {
                     setNav(item.key);
@@ -1480,6 +1487,7 @@ export default function App() {
                 </button>
               ))}
               <button
+                type="button"
                 className="nav-toggle nav-toggle-inline"
                 data-collapsed={navCollapsed ? "true" : "false"}
                 title={navCollapsed ? "Open nav" : "Collapse nav"}
@@ -1488,6 +1496,7 @@ export default function App() {
                   setMobileNavOpen(false);
                 }}
                 aria-label={navCollapsed ? "Open navigation" : "Collapse navigation"}
+                aria-pressed={!navCollapsed}
               >
                 <span className="nav-toggle-icon" aria-hidden="true" />
                 <span className="nav-label nav-toggle-text">
@@ -1499,6 +1508,7 @@ export default function App() {
           {user && (
             <div className="profile-actions">
               <button
+                type="button"
                 className="profile-card profile-card-button"
                 onClick={() => setNav("profile")}
               >
@@ -1527,6 +1537,7 @@ export default function App() {
                 </div>
               </button>
               <button
+                type="button"
                 className="signout-icon"
                 onClick={toVoidHandler(handleSignOut, handleAuthHandlerError, "auth.signOut")}
                 aria-label="Sign out"
@@ -1565,7 +1576,13 @@ export default function App() {
 
         <main id="main-content" className="main" tabIndex={-1}>
           <div className="nav-toggle-row">
-            <button className="mobile-nav" onClick={() => setMobileNavOpen((prev) => !prev)}>
+            <button
+              type="button"
+              className="mobile-nav"
+              onClick={() => setMobileNavOpen((prev) => !prev)}
+              aria-expanded={mobileNavOpen}
+              aria-controls="portal-sidebar-nav"
+            >
               <span className="mobile-nav-icon" aria-hidden="true" />
               Menu
             </button>

@@ -241,6 +241,20 @@ type CurrentPolicyResponse = {
   policy?: Record<string, unknown> | null;
 };
 
+type AppealStatus = "open" | "in_review" | "upheld" | "reversed" | "rejected";
+type ReportAppeal = {
+  id: string;
+  reportId: string;
+  status: AppealStatus;
+  createdAtMs: number;
+};
+
+type ListMyAppealsResponse = {
+  ok: boolean;
+  message?: string;
+  appeals?: Array<Record<string, unknown>>;
+};
+
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
 type ImportMetaEnvShape = { VITE_FUNCTIONS_BASE_URL?: string };
 const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
@@ -294,6 +308,16 @@ function formatWhen(ms: number): string {
   return new Date(ms).toLocaleString();
 }
 
+function normalizeAppeal(row: Record<string, unknown>): ReportAppeal {
+  const statusRaw = typeof row.status === "string" ? row.status : "open";
+  return {
+    id: typeof row.id === "string" ? row.id : "",
+    reportId: typeof row.reportId === "string" ? row.reportId : "",
+    status: (statusRaw as AppealStatus),
+    createdAtMs: toMs(row.createdAt),
+  };
+}
+
 export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorkshops }: Props) {
   const [quoteIndex, setQuoteIndex] = useState(0);
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
@@ -307,6 +331,11 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
   const [reportHistoryBusy, setReportHistoryBusy] = useState(false);
   const [reportHistoryError, setReportHistoryError] = useState("");
   const [activePolicyLabel, setActivePolicyLabel] = useState("");
+  const [appealsByReport, setAppealsByReport] = useState<Record<string, ReportAppeal>>({});
+  const [appealTarget, setAppealTarget] = useState<ReportReceipt | null>(null);
+  const [appealNote, setAppealNote] = useState("");
+  const [appealBusy, setAppealBusy] = useState(false);
+  const [appealStatus, setAppealStatus] = useState("");
   const [hiddenCards, setHiddenCards] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -357,6 +386,26 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
     }
   };
 
+  const loadAppeals = async () => {
+    try {
+      const resp = await functionsClient.postJson<ListMyAppealsResponse>("listMyReportAppeals", { limit: 50, status: "all" });
+      if (!resp.ok) return;
+      const rows = Array.isArray(resp.appeals)
+        ? resp.appeals.map((row) => normalizeAppeal(row)).filter((row) => row.id && row.reportId)
+        : [];
+      const next: Record<string, ReportAppeal> = {};
+      for (const appeal of rows) {
+        const existing = next[appeal.reportId];
+        if (!existing || appeal.createdAtMs > existing.createdAtMs) {
+          next[appeal.reportId] = appeal;
+        }
+      }
+      setAppealsByReport(next);
+    } catch {
+      // best-effort; report history remains available even if appeal lookup fails
+    }
+  };
+
   const loadActivePolicyLabel = async () => {
     try {
       const resp = await functionsClient.postJson<CurrentPolicyResponse>("getModerationPolicyCurrent", {});
@@ -378,6 +427,7 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
 
   useEffect(() => {
     void loadReportHistory();
+    void loadAppeals();
     void loadActivePolicyLabel();
   }, [functionsClient]);
 
@@ -438,6 +488,45 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
       setReportStatus(error instanceof Error ? error.message : String(error));
     } finally {
       setReportBusy(false);
+    }
+  };
+
+  const openAppeal = (report: ReportReceipt) => {
+    setAppealTarget(report);
+    setAppealNote("");
+    setAppealStatus("");
+  };
+
+  const submitAppeal = async () => {
+    if (!appealTarget || appealBusy) return;
+    if (!appealNote.trim().length) {
+      setAppealStatus("Please include a brief note for review.");
+      return;
+    }
+    setAppealBusy(true);
+    setAppealStatus("");
+    try {
+      const resp = await functionsClient.postJson<{ ok: boolean; message?: string; appealId?: string }>(
+        "createReportAppeal",
+        {
+          reportId: appealTarget.id,
+          note: appealNote.trim(),
+        }
+      );
+      if (!resp.ok) {
+        setAppealStatus(resp.message ?? "Could not submit appeal.");
+        return;
+      }
+      setAppealStatus(`Appeal submitted. Reference: ${resp.appealId ?? "pending"}`);
+      void loadAppeals();
+      setTimeout(() => {
+        setAppealTarget(null);
+        setAppealStatus("");
+      }, 1200);
+    } catch (error: unknown) {
+      setAppealStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setAppealBusy(false);
     }
   };
 
@@ -577,7 +666,15 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
           <section className="card card-3d community-report-history">
             <div className="community-card-head">
               <h2 className="card-title">Your reports</h2>
-              <button type="button" className="btn btn-ghost btn-small" onClick={() => void loadReportHistory()} disabled={reportHistoryBusy}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={() => {
+                  void loadReportHistory();
+                  void loadAppeals();
+                }}
+                disabled={reportHistoryBusy}
+              >
                 {reportHistoryBusy ? "Refreshing..." : "Refresh"}
               </button>
             </div>
@@ -599,6 +696,18 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
                     <div className="community-report-item-meta">
                       {item.category.replace("_", " ")} · {item.targetType.replace("_", " ")} · {formatWhen(item.createdAtMs)}
                     </div>
+                    {appealsByReport[item.id] ? (
+                      <div className="community-report-appeal-chip">
+                        Appeal: {appealsByReport[item.id].status.replace("_", " ")}
+                      </div>
+                    ) : null}
+                    {(item.status === "resolved" || item.status === "dismissed") && !appealsByReport[item.id] ? (
+                      <div className="community-report-actions">
+                        <button type="button" className="btn btn-ghost btn-small" onClick={() => openAppeal(item)}>
+                          Request review
+                        </button>
+                      </div>
+                    ) : null}
                     <div className="community-report-item-id">
                       Ref: <code>{item.id}</code>
                     </div>
@@ -720,6 +829,40 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
               </button>
             </div>
             {reportStatus ? <div className="staff-note">{reportStatus}</div> : null}
+          </div>
+        </div>
+      ) : null}
+
+      {appealTarget ? (
+        <div className="community-report-modal-backdrop" role="dialog" aria-modal="true" aria-label="Request moderation review">
+          <div className="community-report-modal card card-3d">
+            <div className="community-card-head">
+              <h2 className="card-title">Request moderation review</h2>
+              <button type="button" className="btn btn-ghost btn-small" onClick={() => setAppealTarget(null)} disabled={appealBusy}>
+                Close
+              </button>
+            </div>
+            <div className="community-copy">
+              {appealTarget.title} · Ref <code>{appealTarget.id}</code>
+            </div>
+            <label className="staff-field">
+              Why should this be reviewed again?
+              <textarea
+                value={appealNote}
+                maxLength={2000}
+                onChange={(event) => setAppealNote(event.target.value)}
+                placeholder="Share the context staff should reconsider."
+              />
+            </label>
+            <div className="staff-actions-row">
+              <button type="button" className="btn btn-primary" onClick={() => void submitAppeal()} disabled={appealBusy}>
+                {appealBusy ? "Submitting..." : "Submit review request"}
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={() => setAppealTarget(null)} disabled={appealBusy}>
+                Cancel
+              </button>
+            </div>
+            {appealStatus ? <div className="staff-note">{appealStatus}</div> : null}
           </div>
         </div>
       ) : null}

@@ -244,6 +244,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [profilePerHour, setProfilePerHour] = useState("600");
   const [profileOrderMaxCents, setProfileOrderMaxCents] = useState("75000");
   const [profileMaxOrdersPerHour, setProfileMaxOrdersPerHour] = useState("30");
+  const [statusReasonDraft, setStatusReasonDraft] = useState("");
   const [delegatedScopesDraft, setDelegatedScopesDraft] = useState(
     "catalog:read,quote:write,reserve:write,pay:write,status:read"
   );
@@ -403,23 +404,34 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
 
   const rotateKey = async () => {
     if (!selected) return;
+    if (!window.confirm(`Rotate API key for ${selected.name}? Existing key access will stop immediately.`)) {
+      return;
+    }
     const resp = await client.postJson<UpsertClientResponse>("staffRotateAgentClientKey", {
       clientId: selected.id,
-      reason: "staff-initiated-rotation",
+      reason: statusReasonDraft.trim() || "staff-initiated-rotation",
     });
     setLatestKey(resp.apiKey ?? "");
     await load();
+    setStatusReasonDraft("");
     setStatus(resp.warning ?? "Agent key rotated.");
   };
 
   const setClientStatus = async (nextStatus: "active" | "suspended" | "revoked") => {
     if (!selected) return;
+    if (nextStatus === "suspended" || nextStatus === "revoked") {
+      const confirmed = window.confirm(
+        `${nextStatus === "revoked" ? "Revoke" : "Suspend"} ${selected.name}? This is a high-impact action.`
+      );
+      if (!confirmed) return;
+    }
     await client.postJson("staffUpdateAgentClientStatus", {
       clientId: selected.id,
       status: nextStatus,
-      reason: "staff-status-change",
+      reason: statusReasonDraft.trim() || "staff-status-change",
     });
     await load();
+    setStatusReasonDraft("");
     setStatus(`Client status set to ${nextStatus}.`);
   };
 
@@ -775,6 +787,16 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                   Cooldown: {selected.cooldownUntilMs ? when(selected.cooldownUntilMs) : "none"}
                   {selected.cooldownReason ? ` (${selected.cooldownReason})` : ""}
                 </span>
+              </div>
+              <div className="staff-actions-row">
+                <label className="staff-field" style={{ flex: 1 }}>
+                  Admin reason (saved to audit)
+                  <input
+                    value={statusReasonDraft}
+                    onChange={(event) => setStatusReasonDraft(event.target.value)}
+                    placeholder="Optional: abuse investigation #, incident note, or rotation reason"
+                  />
+                </label>
               </div>
               <div className="staff-actions-row">
                 <button className="btn btn-secondary" disabled={Boolean(busy) || disabled || selected.status === "revoked"} onClick={() => void run("rotateAgentKey", rotateKey)}>

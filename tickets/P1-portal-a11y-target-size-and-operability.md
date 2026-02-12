@@ -1,6 +1,6 @@
 # P1 — Portal A11y: Target Size and Operability
 
-Status: In Progress
+Status: Completed
 
 ## Problem
 - Some controls are smaller than WCAG 2.2 target-size guidance (44x44 CSS px).

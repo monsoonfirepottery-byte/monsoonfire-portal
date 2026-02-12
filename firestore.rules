@@ -821,6 +821,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /integrationTokenAudit/{logId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
     match /delegatedTokenNonces/{nonceId} {
       allow read, write: if false;
     }

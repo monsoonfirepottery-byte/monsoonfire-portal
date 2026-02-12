@@ -195,6 +195,31 @@ export async function logSecurityEvent(params: {
   }
 }
 
+export async function logIntegrationTokenAudit(params: {
+  req: any;
+  type: "created" | "used" | "revoked" | "failed_auth" | "listed";
+  tokenId?: string | null;
+  ownerUid?: string | null;
+  details?: Record<string, unknown> | null;
+}) {
+  try {
+    const ipHash = hashClientIp(getClientIp(params.req));
+    const uaHeader = params.req?.headers?.["user-agent"];
+    const ua = typeof uaHeader === "string" ? uaHeader.slice(0, 200) : "";
+    await db.collection("integrationTokenAudit").add({
+      at: nowTs(),
+      type: params.type,
+      tokenId: (params.tokenId ?? "").trim() || null,
+      ownerUid: (params.ownerUid ?? "").trim() || null,
+      ipHash,
+      userAgent: ua || null,
+      details: params.details ?? null,
+    });
+  } catch {
+    // Best-effort audit logging should never block request handling.
+  }
+}
+
 function readIntegrationTokenPepper(): string | null {
   const raw = (process.env.INTEGRATION_TOKEN_PEPPER ?? "").trim();
   return raw.length ? raw : null;
@@ -460,12 +485,19 @@ export async function requireAuthContext(
     const parsed = parsePatToken(token);
     if (!parsed.ok) {
       void logSecurityEvent({ req, type: "auth_pat_denied", outcome: "deny", code: "PAT_PARSE_FAILED", mode: "pat" });
+      void logIntegrationTokenAudit({ req, type: "failed_auth", details: { reason: "PAT_PARSE_FAILED" } });
       return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
     }
 
     const gotHash = hashIntegrationTokenSecret(parsed.secret);
     if (!gotHash) {
       void logSecurityEvent({ req, type: "auth_pat_denied", outcome: "deny", code: "PAT_HASH_UNAVAILABLE", mode: "pat", tokenId: parsed.tokenId });
+      void logIntegrationTokenAudit({
+        req,
+        type: "failed_auth",
+        tokenId: parsed.tokenId,
+        details: { reason: "PAT_HASH_UNAVAILABLE" },
+      });
       return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
     }
 
@@ -473,6 +505,12 @@ export async function requireAuthContext(
     const snap = await ref.get();
     if (!snap.exists) {
       void logSecurityEvent({ req, type: "auth_pat_denied", outcome: "deny", code: "PAT_TOKEN_NOT_FOUND", mode: "pat", tokenId: parsed.tokenId });
+      void logIntegrationTokenAudit({
+        req,
+        type: "failed_auth",
+        tokenId: parsed.tokenId,
+        details: { reason: "PAT_TOKEN_NOT_FOUND" },
+      });
       return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
     }
 
@@ -485,6 +523,13 @@ export async function requireAuthContext(
     // Revoked or malformed records are treated as unauthorized.
     if (!expectedHash || !ownerUid || revokedAt) {
       void logSecurityEvent({ req, type: "auth_pat_denied", outcome: "deny", code: "PAT_REVOKED_OR_INVALID", mode: "pat", tokenId: parsed.tokenId, uid: ownerUid || null });
+      void logIntegrationTokenAudit({
+        req,
+        type: "failed_auth",
+        tokenId: parsed.tokenId,
+        ownerUid: ownerUid || null,
+        details: { reason: "PAT_REVOKED_OR_INVALID" },
+      });
       return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
     }
 
@@ -492,10 +537,24 @@ export async function requireAuthContext(
     const gotBuf = Buffer.from(gotHash, "hex");
     if (expectedBuf.length !== gotBuf.length) {
       void logSecurityEvent({ req, type: "auth_pat_denied", outcome: "deny", code: "PAT_HASH_LENGTH_MISMATCH", mode: "pat", tokenId: parsed.tokenId, uid: ownerUid });
+      void logIntegrationTokenAudit({
+        req,
+        type: "failed_auth",
+        tokenId: parsed.tokenId,
+        ownerUid,
+        details: { reason: "PAT_HASH_LENGTH_MISMATCH" },
+      });
       return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
     }
     if (!timingSafeEqual(expectedBuf, gotBuf)) {
       void logSecurityEvent({ req, type: "auth_pat_denied", outcome: "deny", code: "PAT_HASH_MISMATCH", mode: "pat", tokenId: parsed.tokenId, uid: ownerUid });
+      void logIntegrationTokenAudit({
+        req,
+        type: "failed_auth",
+        tokenId: parsed.tokenId,
+        ownerUid,
+        details: { reason: "PAT_HASH_MISMATCH" },
+      });
       return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
     }
 
@@ -525,6 +584,13 @@ export async function requireAuthContext(
       uid: ownerUid,
       tokenId: parsed.tokenId,
       metadata: { scopeCount: scopes.length },
+    });
+    void logIntegrationTokenAudit({
+      req,
+      type: "used",
+      tokenId: parsed.tokenId,
+      ownerUid,
+      details: { scopeCount: scopes.length },
     });
 
     return { ok: true, ctx };

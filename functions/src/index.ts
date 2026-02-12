@@ -19,6 +19,7 @@ import {
   createDelegatedAgentToken as createDelegatedToken,
   FieldValue,
   Timestamp,
+  logIntegrationTokenAudit,
 } from "./shared";
 import { TimelineEventType } from "./timelineEventTypes";
 import { z } from "zod";
@@ -643,6 +644,16 @@ export const createIntegrationToken = onRequest(
         label: parsed.data.label ? String(parsed.data.label) : null,
         scopes: scopesParsed.scopes,
       });
+      void logIntegrationTokenAudit({
+        req,
+        type: "created",
+        tokenId: out.tokenId,
+        ownerUid: auth.uid,
+        details: {
+          scopeCount: out.record.scopes.length,
+          label: out.record.label ?? null,
+        },
+      });
 
       res.status(200).json({
         ok: true,
@@ -686,6 +697,12 @@ export const listIntegrationTokens = onRequest(
     }
 
     const tokens = await listIntegrationTokensForOwner(auth.uid);
+    void logIntegrationTokenAudit({
+      req,
+      type: "listed",
+      ownerUid: auth.uid,
+      details: { count: tokens.length },
+    });
     res.status(200).json({ ok: true, tokens });
   }
 );
@@ -730,6 +747,12 @@ export const revokeIntegrationToken = onRequest(
       res.status(out.message === "Token not found" ? 404 : 403).json({ ok: false, message: out.message });
       return;
     }
+    void logIntegrationTokenAudit({
+      req,
+      type: "revoked",
+      tokenId,
+      ownerUid: auth.uid,
+    });
 
     res.status(200).json({ ok: true });
   }

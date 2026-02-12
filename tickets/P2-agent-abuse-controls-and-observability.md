@@ -88,3 +88,4 @@ Collection: `securityMetrics/daily`
 - Agent Ops control toggles now require a reason when disabling API/payments, and that reason is persisted in audit/config metadata.
 - Added explicit Firestore rules stanza for `securityAudit/*` (staff read only, writes denied from client).
 - Staff Agent Ops now surfaces last control change metadata (reason, actor UID, timestamp) to make kill-switch/history state immediately legible.
+- Added dedicated `integrationTokenAudit` records for PAT lifecycle visibility (`created`, `listed`, `used`, `revoked`, `failed_auth`) with hashed IP and truncated UA.

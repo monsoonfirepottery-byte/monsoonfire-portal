@@ -1,6 +1,6 @@
 # P1 — Agent Integrations: Scoped Integration Tokens (PATs)
 
-Status: In Progress
+Status: Completed
 
 ## Problem
 - Agents / external automations need **non-interactive** access to the Portal backend.
@@ -129,5 +129,10 @@ All endpoints require **Firebase ID token** (not PAT) except where explicitly no
   - `functions/.env.local.example` now includes `INTEGRATION_TOKEN_PEPPER`
   - `docs/API_CONTRACTS.md` includes PAT documentation
 - Remaining:
-  - Configure `INTEGRATION_TOKEN_PEPPER` via Firebase Secret Manager for production
-  - Add token audit records (`integrationTokenAudit`) for created/used/revoked/failed-auth events (optional but recommended)
+  - Configure `INTEGRATION_TOKEN_PEPPER` via Firebase Secret Manager for production (environment rollout task)
+
+## Progress notes
+- Added dedicated `integrationTokenAudit` telemetry:
+  - auth middleware now writes `failed_auth` and `used` events for PAT flows
+  - token management endpoints now write `created`, `listed`, and `revoked` events
+- Added Firestore rules for `integrationTokenAudit/*` (staff read only, no client writes).

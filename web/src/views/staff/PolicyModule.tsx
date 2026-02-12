@@ -508,22 +508,41 @@ export default function PolicyModule({ client, active, disabled }: Props) {
       <div className="staff-subtitle">Safety presets</div>
       <div className="staff-actions-row">
         {SAFETY_PRESETS.map((preset) => (
-          <button
-            key={preset.id}
-            className="btn btn-secondary"
-            disabled={Boolean(busy) || disabled}
-            onClick={() => {
-              setSafetyConfig((prev) => ({
-                ...prev,
-                ...preset.config,
-              }));
-              setBlockedTermsDraft(normalizePresetList(preset.blockedTerms).join("\n"));
-              setBlockedHostsDraft(normalizePresetList(preset.blockedUrlHosts).join("\n"));
-              setStatus(`Loaded "${preset.label}" preset. Save safety controls to apply.`);
-            }}
-          >
-            {preset.label}
-          </button>
+          <div key={preset.id} className="staff-actions-row">
+            <button
+              className="btn btn-secondary"
+              disabled={Boolean(busy) || disabled}
+              onClick={() => {
+                setSafetyConfig((prev) => ({
+                  ...prev,
+                  ...preset.config,
+                }));
+                setBlockedTermsDraft(normalizePresetList(preset.blockedTerms).join("\n"));
+                setBlockedHostsDraft(normalizePresetList(preset.blockedUrlHosts).join("\n"));
+                setStatus(`Loaded "${preset.label}" preset. Save safety controls to apply.`);
+              }}
+            >
+              Load {preset.label}
+            </button>
+            <button
+              className="btn btn-ghost"
+              disabled={Boolean(busy) || disabled}
+              onClick={() =>
+                void run(`applyPreset-${preset.id}`, async () => {
+                  await persistSafetyPatch(
+                    {
+                      ...preset.config,
+                      blockedTerms: normalizePresetList(preset.blockedTerms),
+                      blockedUrlHosts: normalizePresetList(preset.blockedUrlHosts),
+                    },
+                    `Applied "${preset.label}" preset.`
+                  );
+                })
+              }
+            >
+              Apply now
+            </button>
+          </div>
         ))}
       </div>
       <div className="staff-note">

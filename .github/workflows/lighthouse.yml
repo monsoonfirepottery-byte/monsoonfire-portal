@@ -32,3 +32,6 @@ jobs:
 
       - name: Run Lighthouse CI
         run: npx --yes @lhci/cli@0.14.x autorun --config=./web/lighthouserc.json
+
+      - name: Run Lighthouse CI (website)
+        run: npx --yes @lhci/cli@0.14.x autorun --config=./website/lighthouserc.json

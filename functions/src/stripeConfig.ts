@@ -18,6 +18,7 @@ import {
   requireAuthUid,
   safeString,
 } from "./shared";
+import { assertActorAuthorized, logAuditEvent } from "./authz";
 import {
   STRIPE_SECRET_PARAMS,
   type StripeMode,
@@ -720,9 +721,20 @@ export const createAgentCheckoutSession = onRequest(
       res.status(405).json({ ok: false, message: "Use POST" });
       return;
     }
+    const requestId =
+      (typeof req.headers?.["x-request-id"] === "string" && req.headers["x-request-id"].trim()) ||
+      `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 
     const auth = await requireAuthContext(req);
     if (!auth.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "agent_checkout_create",
+        resourceType: "agent_order",
+        result: "deny",
+        reasonCode: auth.code,
+      });
       res.status(401).json({ ok: false, message: auth.message });
       return;
     }
@@ -752,8 +764,27 @@ export const createAgentCheckoutSession = onRequest(
       res.status(500).json({ ok: false, message: "Order missing uid" });
       return;
     }
-    if (orderUid !== auth.ctx.uid && !isStaff) {
-      res.status(403).json({ ok: false, message: "Forbidden" });
+    const authz = await assertActorAuthorized({
+      req,
+      ctx: auth.ctx,
+      ownerUid: orderUid,
+      scope: "pay:write",
+      resource: `agent_order:${orderId}`,
+      allowStaff: true,
+    });
+    if (!authz.ok || (orderUid !== auth.ctx.uid && !isStaff)) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "agent_checkout_create",
+        resourceType: "agent_order",
+        resourceId: orderId,
+        ownerUid: orderUid,
+        result: "deny",
+        reasonCode: authz.ok ? "FORBIDDEN" : authz.code,
+        ctx: auth.ctx,
+      });
+      res.status(authz.ok ? 403 : authz.httpStatus).json({ ok: false, message: authz.ok ? "Forbidden" : authz.message });
       return;
     }
 
@@ -916,9 +947,31 @@ export const createAgentCheckoutSession = onRequest(
         sessionId: session.id,
         mode,
       });
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "agent_checkout_create",
+        resourceType: "agent_order",
+        resourceId: orderId,
+        ownerUid: orderUid,
+        result: "allow",
+        ctx: auth.ctx,
+        metadata: { sessionId: session.id, mode },
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error("createAgentCheckoutSession failed", { message, orderId });
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "agent_checkout_create",
+        resourceType: "agent_order",
+        resourceId: orderId,
+        ownerUid: orderUid,
+        result: "error",
+        reasonCode: "STRIPE_CHECKOUT_CREATE_FAILED",
+        ctx: auth.ctx,
+      });
       res.status(500).json({ ok: false, message: "Unable to create agent checkout session" });
     }
   }

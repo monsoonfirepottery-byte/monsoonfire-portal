@@ -226,6 +226,69 @@ Response:
 { "ok": true, "uid": "uid_123", "mode": "firebase|pat", "scopes": ["..."] }
 ```
 
+### Delegations (V2 strict mode)
+
+Delegation-backed agent auth is feature-flagged:
+- `V2_AGENTIC_ENABLED=true`
+- `STRICT_DELEGATION_CHECKS_ENABLED=true`
+
+When strict mode is enabled, delegated tokens must carry a valid `delegationId`.
+
+#### createDelegatedAgentToken
+
+POST `${BASE_URL}/createDelegatedAgentToken`
+
+Auth:
+- Firebase ID token (owner or staff)
+
+Request:
+```json
+{
+  "agentClientId": "client_123",
+  "scopes": ["quote:write", "reserve:write", "pay:write", "status:read"],
+  "ttlSeconds": 300,
+  "principalUid": "uid_123",
+  "resources": ["owner:uid_123", "route:/v1/agent.pay"],
+  "note": "assistant worker"
+}
+```
+
+Response:
+```json
+{
+  "ok": true,
+  "delegatedToken": "mf_dlg_v1....",
+  "delegationId": "delegation_doc_id",
+  "expiresAtMs": 1760000000000,
+  "audience": "monsoonfire-agent-v1",
+  "principalUid": "uid_123"
+}
+```
+
+#### listDelegations
+
+POST `${BASE_URL}/listDelegations`
+
+Auth:
+- Firebase ID token
+
+Request:
+```json
+{ "ownerUid": "uid_123", "includeRevoked": false, "limit": 100 }
+```
+
+#### revokeDelegation
+
+POST `${BASE_URL}/revokeDelegation`
+
+Auth:
+- Firebase ID token (owner or staff)
+
+Request:
+```json
+{ "delegationId": "delegation_doc_id", "reason": "suspicious behavior" }
+```
+
 ---
 
 ## Agent API v1 (JSON envelope + scopes)

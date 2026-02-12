@@ -14,6 +14,12 @@ import {
   enforceRateLimit,
   type AuthContext,
 } from "./shared";
+import {
+  assertActorAuthorized,
+  enforceAppCheckIfEnabled,
+  logAuditEvent,
+  readAuthFeatureFlags,
+} from "./authz";
 import { listIntegrationEvents } from "./integrationEvents";
 import { getAgentServiceCatalogConfig } from "./agentCatalog";
 import { getAgentOpsConfig } from "./agentCommerce";
@@ -449,6 +455,21 @@ const AGENT_TERMS_EXEMPT_ROUTES = new Set<string>([
   "/v1/agent.terms.get",
   "/v1/agent.terms.accept",
 ]);
+const ROUTE_SCOPE_HINTS: Record<string, string | null> = {
+  "/v1/agent.catalog": "catalog:read",
+  "/v1/agent.quote": "quote:write",
+  "/v1/agent.reserve": "reserve:write",
+  "/v1/agent.pay": "pay:write",
+  "/v1/agent.status": "status:read",
+  "/v1/agent.order.get": "status:read",
+  "/v1/agent.orders.list": "status:read",
+  "/v1/agent.requests.create": "requests:write",
+  "/v1/agent.requests.listMine": "requests:read",
+  "/v1/agent.requests.listStaff": "requests:read",
+  "/v1/agent.requests.updateStatus": "requests:write",
+  "/v1/agent.requests.linkBatch": "requests:write",
+  "/v1/agent.requests.createCommissionOrder": "requests:write",
+};
 const X1C_VALIDATION_VERSION = "2026-02-12.v1";
 const AGENT_ACCOUNT_DEFAULT_DAILY_SPEND_CAP_CENTS = 200_000;
 const AGENT_ACCOUNT_DEFAULTS = {
@@ -674,14 +695,40 @@ export async function handleApiV1(req: any, res: any) {
   if (applyCors(req, res)) return;
 
   const requestId = getRequestId(req);
+  const flags = readAuthFeatureFlags();
 
   if (req.method !== "POST") {
     jsonError(res, requestId, 405, "INVALID_ARGUMENT", "Use POST");
     return;
   }
 
+  const appCheck = await enforceAppCheckIfEnabled(req);
+  if (!appCheck.ok) {
+    await logAuditEvent({
+      req,
+      requestId,
+      action: "api_v1_request",
+      resourceType: "api_v1",
+      resourceId: typeof req.path === "string" ? req.path : "/",
+      result: "deny",
+      reasonCode: appCheck.code,
+      metadata: { enforcedByFlag: flags.enforceAppCheck },
+    });
+    jsonError(res, requestId, appCheck.httpStatus, appCheck.code, appCheck.message);
+    return;
+  }
+
   const ctxResult = await requireAuthContext(req);
   if (!ctxResult.ok) {
+    await logAuditEvent({
+      req,
+      requestId,
+      action: "api_v1_request",
+      resourceType: "api_v1",
+      resourceId: typeof req.path === "string" ? req.path : "/",
+      result: "deny",
+      reasonCode: ctxResult.code,
+    });
     jsonError(res, requestId, 401, "UNAUTHENTICATED", ctxResult.message);
     return;
   }
@@ -766,6 +813,37 @@ export async function handleApiV1(req: any, res: any) {
             acceptRoute: "/v1/agent.terms.accept",
           }
         );
+        return;
+      }
+    }
+
+    const hintedScope = ROUTE_SCOPE_HINTS[route] ?? null;
+    if (hintedScope) {
+      const routeAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid: ctx.uid,
+        scope: hintedScope,
+        resource: `route:${route}`,
+        allowStaff: true,
+      });
+      if (!routeAuthz.ok) {
+        await logAuditEvent({
+          req,
+          requestId,
+          action: "api_v1_route_authz",
+          resourceType: "api_v1_route",
+          resourceId: route,
+          ownerUid: ctx.uid,
+          result: "deny",
+          reasonCode: routeAuthz.code,
+          ctx,
+          metadata: {
+            scope: hintedScope,
+            strictDelegationChecks: flags.v2AgenticEnabled && flags.strictDelegationChecks,
+          },
+        });
+        jsonError(res, requestId, routeAuthz.httpStatus, routeAuthz.code, routeAuthz.message);
         return;
       }
     }
@@ -961,8 +1039,26 @@ export async function handleApiV1(req: any, res: any) {
       }
 
       const ownerUid = parsed.data.ownerUid ? String(parsed.data.ownerUid) : ctx.uid;
-      if (ownerUid !== ctx.uid && !isStaff) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+      const authz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid,
+        scope: "batches:read",
+        resource: `owner:${ownerUid}`,
+        allowStaff: true,
+      });
+      if (!authz.ok) {
+        await logAuditEvent({
+          req,
+          requestId,
+          action: "batches_list",
+          resourceType: "batch",
+          ownerUid,
+          result: "deny",
+          reasonCode: authz.code,
+          ctx,
+        });
+        jsonError(res, requestId, authz.httpStatus, authz.code, authz.message);
         return;
       }
 
@@ -1017,8 +1113,28 @@ export async function handleApiV1(req: any, res: any) {
       }
 
       const data = snap.data() as any;
-      if (!canReadBatchDoc({ uid: ctx.uid, isStaff, batch: data })) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+      const ownerUid = typeof data?.ownerUid === "string" ? data.ownerUid : "";
+      const authz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid,
+        scope: "batches:read",
+        resource: `batch:${batchId}`,
+        allowStaff: true,
+      });
+      if (!authz.ok || !canReadBatchDoc({ uid: ctx.uid, isStaff, batch: data })) {
+        await logAuditEvent({
+          req,
+          requestId,
+          action: "batches_get",
+          resourceType: "batch",
+          resourceId: batchId,
+          ownerUid,
+          result: "deny",
+          reasonCode: authz.ok ? "FORBIDDEN" : authz.code,
+          ctx,
+        });
+        jsonError(res, requestId, authz.ok ? 403 : authz.httpStatus, authz.ok ? "FORBIDDEN" : authz.code, authz.ok ? "Forbidden" : authz.message);
         return;
       }
 
@@ -1048,8 +1164,28 @@ export async function handleApiV1(req: any, res: any) {
         return;
       }
       const batch = batchSnap.data() as any;
-      if (!canReadBatchTimeline({ uid: ctx.uid, isStaff, batch })) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+      const ownerUid = typeof batch?.ownerUid === "string" ? batch.ownerUid : "";
+      const authz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid,
+        scope: "timeline:read",
+        resource: `batch:${batchId}:timeline`,
+        allowStaff: true,
+      });
+      if (!authz.ok || !canReadBatchTimeline({ uid: ctx.uid, isStaff, batch })) {
+        await logAuditEvent({
+          req,
+          requestId,
+          action: "batches_timeline_list",
+          resourceType: "batch_timeline",
+          resourceId: batchId,
+          ownerUid,
+          result: "deny",
+          reasonCode: authz.ok ? "FORBIDDEN" : authz.code,
+          ctx,
+        });
+        jsonError(res, requestId, authz.ok ? 403 : authz.httpStatus, authz.ok ? "FORBIDDEN" : authz.code, authz.ok ? "Forbidden" : authz.message);
         return;
       }
 

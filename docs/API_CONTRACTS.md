@@ -339,6 +339,8 @@ Request:
   "summary": "Drop-off this week, 2 half shelves.",
   "notes": "Please keep pieces from this request together.",
   "logisticsMode": "dropoff",
+  "rightsAttested": true,
+  "intendedUse": "Commissioned storefront display pieces",
   "constraints": {
     "targetCone": "06",
     "estimatedPieces": 18
@@ -397,9 +399,14 @@ Request:
 {
   "requestId": "agentRequest_123",
   "status": "triaged",
-  "reason": "Queued for next bisque load"
+  "reason": "Queued for next bisque load",
+  "reasonCode": "rights_verified"
 }
 ```
+
+Notes:
+- For `kind == "commission"`, transitions to `accepted` or `rejected` require `reasonCode`.
+- Commission create requests require `rightsAttested=true`.
 
 ### v1/agent.requests.linkBatch
 

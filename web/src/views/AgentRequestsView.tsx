@@ -104,6 +104,8 @@ export default function AgentRequestsView({
   const [summary, setSummary] = useState("");
   const [notes, setNotes] = useState("");
   const [logisticsMode, setLogisticsMode] = useState("dropoff");
+  const [rightsAttested, setRightsAttested] = useState(false);
+  const [intendedUse, setIntendedUse] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | RequestStatus>("all");
 
   const client = useMemo(
@@ -158,6 +160,8 @@ export default function AgentRequestsView({
       summary: summary.trim() || null,
       notes: notes.trim() || null,
       logisticsMode: logisticsMode.trim() || null,
+      rightsAttested,
+      intendedUse: intendedUse.trim() || null,
       metadata: {
         source: "portal_member_requests",
       },
@@ -166,6 +170,8 @@ export default function AgentRequestsView({
     setTitle("");
     setSummary("");
     setNotes("");
+    setIntendedUse("");
+    setRightsAttested(false);
     await load();
     setStatus(`Request created (${resp.data?.agentRequestId ?? "ok"}). Staff will triage it soon.`);
   };
@@ -226,10 +232,30 @@ export default function AgentRequestsView({
           Notes
           <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={4} placeholder="Special handling constraints and timing." />
         </label>
+        {kind === "commission" ? (
+          <>
+            <label className="requests-field">
+              Intended use
+              <input
+                value={intendedUse}
+                onChange={(event) => setIntendedUse(event.target.value)}
+                placeholder="Personal studio use, resale line, educational kit, etc."
+              />
+            </label>
+            <label className="requests-field requests-check">
+              <input
+                type="checkbox"
+                checked={rightsAttested}
+                onChange={(event) => setRightsAttested(event.target.checked)}
+              />
+              <span>I confirm I have rights/permission to request this commission work.</span>
+            </label>
+          </>
+        ) : null}
         <div className="requests-actions">
           <button
             className="btn btn-primary"
-            disabled={Boolean(busy) || !title.trim()}
+            disabled={Boolean(busy) || !title.trim() || (kind === "commission" && !rightsAttested)}
             onClick={() => void run("createRequest", createRequest)}
           >
             {busy === "createRequest" ? "Creating..." : "Submit request"}

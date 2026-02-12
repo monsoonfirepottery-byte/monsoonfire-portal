@@ -360,6 +360,8 @@ const agentRequestCreateSchema = z.object({
   summary: z.string().max(500).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
   logisticsMode: z.enum(["dropoff", "pickup", "ship_in", "ship_out", "local_delivery"]).optional().nullable(),
+  rightsAttested: z.boolean().optional(),
+  intendedUse: z.string().max(500).optional().nullable(),
   constraints: z.record(z.string(), z.unknown()).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
@@ -381,6 +383,7 @@ const agentRequestUpdateStatusSchema = z.object({
   requestId: z.string().min(1),
   status: z.enum(["new", "triaged", "accepted", "in_progress", "ready", "fulfilled", "rejected", "cancelled"]),
   reason: z.string().max(500).optional().nullable(),
+  reasonCode: z.string().max(120).optional().nullable(),
 });
 
 const agentRequestLinkBatchSchema = z.object({
@@ -391,6 +394,22 @@ const agentRequestLinkBatchSchema = z.object({
 const AGENT_REQUESTS_COL = "agentRequests";
 
 const CLOSED_AGENT_REQUEST_STATUSES = new Set<string>(["fulfilled", "rejected", "cancelled"]);
+const COMMISSION_POLICY_VERSION = "2026-02-12.v1";
+const COMMISSION_REQUIRED_REASON_CODES = new Set<string>([
+  "rights_verified",
+  "licensed_use_verified",
+  "staff_discretion_low_risk",
+  "prohibited_content",
+  "copyright_risk_unresolved",
+  "illegal_request",
+  "insufficient_rights_attestation",
+]);
+const PROHIBITED_COMMISSION_PATTERNS: Array<{ code: string; pattern: RegExp }> = [
+  { code: "weapons_instruction", pattern: /\b(weapon|explosive|ghost gun|silencer)\b/i },
+  { code: "counterfeit_or_fraud", pattern: /\b(counterfeit|fake id|forgery|money laundering)\b/i },
+  { code: "copyright_bypass", pattern: /\b(copyright bypass|pirated|stolen design|ripoff)\b/i },
+  { code: "hate_or_harassment", pattern: /\b(hate symbol|harassment|targeted abuse)\b/i },
+];
 
 function trimOrNull(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -402,6 +421,22 @@ function readTimestampSeconds(value: unknown): number {
   return typeof (value as { seconds?: unknown } | undefined)?.seconds === "number"
     ? Number((value as { seconds: number }).seconds)
     : 0;
+}
+
+function evaluateCommissionPolicy(payload: {
+  title: string;
+  summary: string | null;
+  notes: string | null;
+  intendedUse: string | null;
+}): { disposition: "allow" | "review" | "reject"; reasonCodes: string[] } {
+  const text = [payload.title, payload.summary ?? "", payload.notes ?? "", payload.intendedUse ?? ""]
+    .join(" ")
+    .trim();
+  const reasonCodes = PROHIBITED_COMMISSION_PATTERNS.filter((row) => row.pattern.test(text)).map((row) => row.code);
+  if (reasonCodes.length > 0) {
+    return { disposition: "reject", reasonCodes };
+  }
+  return { disposition: "review", reasonCodes: ["manual_ip_review_required"] };
 }
 
 export async function handleApiV1(req: any, res: any) {
@@ -1471,7 +1506,41 @@ export async function handleApiV1(req: any, res: any) {
         ? db.collection(AGENT_REQUESTS_COL).doc(makeIdempotencyId("agent-request", ctx.uid, idempotencyKey))
         : db.collection(AGENT_REQUESTS_COL).doc();
       const requesterMode = ctx.mode === "pat" || ctx.mode === "delegated" ? "pat" : "firebase";
-      const requesterTokenId = ctx.mode === "pat" ? ctx.tokenId : ctx.mode === "delegated" ? ctx.delegated.tokenId : null;
+      const requesterTokenId = ctx.mode === "pat" ? ctx.tokenId : null;
+      const isCommission = parsed.data.kind === "commission";
+      const rightsAttested = parsed.data.rightsAttested === true;
+      const intendedUse = trimOrNull(parsed.data.intendedUse);
+      if (isCommission && !rightsAttested) {
+        jsonError(
+          res,
+          requestId,
+          400,
+          "FAILED_PRECONDITION",
+          "Commission requests require rights attestation (rightsAttested=true).",
+          { policyVersion: COMMISSION_POLICY_VERSION, reasonCode: "insufficient_rights_attestation" }
+        );
+        return;
+      }
+      const commissionPolicy = isCommission
+        ? evaluateCommissionPolicy({
+            title: parsed.data.title,
+            summary: trimOrNull(parsed.data.summary),
+            notes: trimOrNull(parsed.data.notes),
+            intendedUse,
+          })
+        : null;
+      if (commissionPolicy?.disposition === "reject") {
+        jsonError(
+          res,
+          requestId,
+          400,
+          "FAILED_PRECONDITION",
+          "Commission request violated prohibited content policy.",
+          { policyVersion: COMMISSION_POLICY_VERSION, reasonCodes: commissionPolicy.reasonCodes }
+        );
+        return;
+      }
+      const initialStatus = commissionPolicy?.disposition === "review" ? "triaged" : "new";
 
       const payload = {
         createdAt: nowValue,
@@ -1479,7 +1548,7 @@ export async function handleApiV1(req: any, res: any) {
         createdByUid: ctx.uid,
         createdByMode: requesterMode,
         createdByTokenId: requesterTokenId,
-        status: "new",
+        status: initialStatus,
         kind: parsed.data.kind,
         title: parsed.data.title.trim(),
         summary: trimOrNull(parsed.data.summary),
@@ -1488,7 +1557,24 @@ export async function handleApiV1(req: any, res: any) {
         logistics: {
           mode: trimOrNull(parsed.data.logisticsMode),
         },
-        metadata: parsed.data.metadata ?? {},
+        metadata: {
+          ...(parsed.data.metadata ?? {}),
+          commissionPolicyVersion: isCommission ? COMMISSION_POLICY_VERSION : null,
+        },
+        policy:
+          commissionPolicy && isCommission
+            ? {
+                version: COMMISSION_POLICY_VERSION,
+                rightsAttested,
+                intendedUse,
+                disposition: commissionPolicy.disposition,
+                reasonCodes: commissionPolicy.reasonCodes,
+                reviewDecision: null,
+                reviewReasonCode: null,
+                reviewedAt: null,
+                reviewedByUid: null,
+              }
+            : null,
         linkedBatchId: null,
         staff: {
           assignedToUid: null,
@@ -1505,6 +1591,9 @@ export async function handleApiV1(req: any, res: any) {
         details: {
           requestId: requestRef.id,
           kind: parsed.data.kind,
+          policyVersion: commissionPolicy ? COMMISSION_POLICY_VERSION : null,
+          policyDisposition: commissionPolicy?.disposition ?? null,
+          policyReasonCodes: commissionPolicy?.reasonCodes ?? [],
           idempotencyKey: idempotencyKey || null,
         },
       });
@@ -1515,12 +1604,15 @@ export async function handleApiV1(req: any, res: any) {
         requestId,
         agentRequestId: requestRef.id,
         kind: parsed.data.kind,
+        policyVersion: commissionPolicy ? COMMISSION_POLICY_VERSION : null,
+        policyDisposition: commissionPolicy?.disposition ?? null,
+        policyReasonCodes: commissionPolicy?.reasonCodes ?? [],
         createdAt: nowValue,
       });
 
       jsonOk(res, requestId, {
         agentRequestId: requestRef.id,
-        status: "new",
+        status: initialStatus,
         idempotencyReplay: false,
       });
       return;
@@ -1541,7 +1633,10 @@ export async function handleApiV1(req: any, res: any) {
       const includeClosed = parsed.data.includeClosed ?? true;
       const snap = await db.collection(AGENT_REQUESTS_COL).where("createdByUid", "==", ctx.uid).limit(300).get();
       const rows = snap.docs
-        .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Record<string, unknown>) }))
+        .map((docSnap) => {
+          const data = docSnap.data() as Record<string, unknown>;
+          return { id: docSnap.id, ...data } as Record<string, unknown> & { id: string };
+        })
         .filter((row) => includeClosed || !CLOSED_AGENT_REQUEST_STATUSES.has(String(row.status ?? "")))
         .sort((a, b) => readTimestampSeconds(b.updatedAt) - readTimestampSeconds(a.updatedAt))
         .slice(0, limit);
@@ -1579,7 +1674,10 @@ export async function handleApiV1(req: any, res: any) {
       const limit = parsed.data.limit ?? 120;
       const snap = await db.collection(AGENT_REQUESTS_COL).limit(500).get();
       const rows = snap.docs
-        .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Record<string, unknown>) }))
+        .map((docSnap) => {
+          const data = docSnap.data() as Record<string, unknown>;
+          return { id: docSnap.id, ...data } as Record<string, unknown> & { id: string };
+        })
         .filter((row) => (statusFilter === "all" ? true : String(row.status ?? "") === statusFilter))
         .filter((row) => (kindFilter === "all" ? true : String(row.kind ?? "") === kindFilter))
         .sort((a, b) => readTimestampSeconds(b.updatedAt) - readTimestampSeconds(a.updatedAt))
@@ -1621,6 +1719,32 @@ export async function handleApiV1(req: any, res: any) {
       const ownerUid = typeof row.createdByUid === "string" ? row.createdByUid : "";
       const toStatus = parsed.data.status;
       const reason = trimOrNull(parsed.data.reason);
+      const reasonCode = trimOrNull(parsed.data.reasonCode);
+      const isCommission = String(row.kind ?? "") === "commission";
+      const requiresPolicyReasonCode =
+        isCommission && isStaff && (toStatus === "accepted" || toStatus === "rejected");
+      if (requiresPolicyReasonCode && !reasonCode) {
+        jsonError(
+          res,
+          requestId,
+          400,
+          "FAILED_PRECONDITION",
+          "Commission status updates to accepted/rejected require reasonCode.",
+          { policyVersion: COMMISSION_POLICY_VERSION }
+        );
+        return;
+      }
+      if (requiresPolicyReasonCode && reasonCode && !COMMISSION_REQUIRED_REASON_CODES.has(reasonCode)) {
+        jsonError(
+          res,
+          requestId,
+          400,
+          "INVALID_ARGUMENT",
+          "Unsupported reasonCode for commission review decision.",
+          { allowed: Array.from(COMMISSION_REQUIRED_REASON_CODES.values()) }
+        );
+        return;
+      }
 
       const ownerCanCancel = ownerUid === ctx.uid && toStatus === "cancelled";
       if (!isStaff && !ownerCanCancel) {
@@ -1638,6 +1762,22 @@ export async function handleApiV1(req: any, res: any) {
           triagedAt: nowTs(),
           internalNotes: reason,
         };
+        if (isCommission) {
+          const previousPolicy =
+            row.policy && typeof row.policy === "object" ? (row.policy as Record<string, unknown>) : {};
+          const previousVersion =
+            typeof previousPolicy.version === "string" && previousPolicy.version.trim()
+              ? previousPolicy.version
+              : COMMISSION_POLICY_VERSION;
+          patch.policy = {
+            ...previousPolicy,
+            version: previousVersion,
+            reviewDecision: toStatus === "accepted" ? "approved" : toStatus === "rejected" ? "rejected" : previousPolicy.reviewDecision ?? null,
+            reviewReasonCode: reasonCode ?? previousPolicy.reviewReasonCode ?? null,
+            reviewedAt: toStatus === "accepted" || toStatus === "rejected" ? nowTs() : previousPolicy.reviewedAt ?? null,
+            reviewedByUid: toStatus === "accepted" || toStatus === "rejected" ? ctx.uid : previousPolicy.reviewedByUid ?? null,
+          };
+        }
       }
       await ref.set(patch, { merge: true });
       await ref.collection("audit").add({
@@ -1649,6 +1789,8 @@ export async function handleApiV1(req: any, res: any) {
           from: typeof row.status === "string" ? row.status : "new",
           to: toStatus,
           reason,
+          reasonCode,
+          policyVersion: isCommission ? COMMISSION_POLICY_VERSION : null,
         },
       });
       await db.collection("agentAuditLogs").add({
@@ -1659,6 +1801,8 @@ export async function handleApiV1(req: any, res: any) {
         agentRequestId: ref.id,
         status: toStatus,
         reason,
+        reasonCode,
+        policyVersion: isCommission ? COMMISSION_POLICY_VERSION : null,
         createdAt: nowTs(),
       });
       jsonOk(res, requestId, { agentRequestId: ref.id, status: toStatus });

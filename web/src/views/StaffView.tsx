@@ -13,6 +13,7 @@ import {
 import { createFunctionsClient, safeJsonStringify, type LastRequest } from "../api/functionsClient";
 import { db } from "../firebase";
 import { clearHandlerErrorLog, getHandlerErrorLog } from "../utils/handlerLog";
+import PolicyModule from "./staff/PolicyModule";
 import StripeSettingsModule from "./staff/StripeSettingsModule";
 import ReportsModule from "./staff/ReportsModule";
 
@@ -32,6 +33,7 @@ type ModuleKey =
   | "firings"
   | "events"
   | "reports"
+  | "governance"
   | "stripe"
   | "commerce"
   | "lending"
@@ -174,6 +176,7 @@ const MODULES: Array<{ key: ModuleKey; label: string }> = [
   { key: "firings", label: "Firings" },
   { key: "events", label: "Events" },
   { key: "reports", label: "Reports" },
+  { key: "governance", label: "Governance" },
   { key: "stripe", label: "Stripe settings" },
   { key: "commerce", label: "Store & billing" },
   { key: "lending", label: "Lending" },
@@ -1901,6 +1904,9 @@ const loadEvents = useCallback(async () => {
   const reportsContent = (
     <ReportsModule client={client} active={moduleKey === "reports"} disabled={hasFunctionsAuthMismatch} />
   );
+  const governanceContent = (
+    <PolicyModule client={client} active={moduleKey === "governance"} disabled={hasFunctionsAuthMismatch} />
+  );
 
 const lendingContent = (
     <section className="card staff-console-card">
@@ -2128,6 +2134,7 @@ const lendingContent = (
     firings: firingsContent,
     events: eventsContent,
     reports: reportsContent,
+    governance: governanceContent,
     stripe: stripeContent,
     commerce: commerceContent,
     lending: lendingContent,

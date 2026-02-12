@@ -17,6 +17,8 @@ const REGION = "us-central1";
 const REPORTS_COL = "communityReports";
 const REPORT_AUDIT_COL = "communityReportAuditLogs";
 const FEED_OVERRIDES_COL = "communityFeedOverrides";
+const POLICY_CONFIG_PATH = "config/moderationPolicy";
+const POLICY_VERSIONS_COL = "moderationPolicyVersions";
 
 const reportCategorySchema = z.enum([
   "broken_link",
@@ -63,6 +65,9 @@ const listReportsSchema = z.object({
 const updateReportStatusSchema = z.object({
   reportId: z.string().min(1),
   status: z.enum(["open", "triaged", "actioned", "resolved", "dismissed"]),
+  policyVersion: z.string().min(1).max(80),
+  ruleId: z.string().min(1).max(80),
+  reasonCode: z.string().min(1).max(120),
   resolutionCode: z.string().max(120).optional().nullable(),
 });
 
@@ -73,6 +78,9 @@ const addInternalNoteSchema = z.object({
 
 const takeContentActionSchema = z.object({
   reportId: z.string().min(1),
+  policyVersion: z.string().min(1).max(80),
+  ruleId: z.string().min(1).max(80),
+  reasonCode: z.string().min(1).max(120),
   actionType: z.enum(["unpublish", "replace_link", "flag_for_review", "disable_from_feed"]),
   reason: z.string().max(400).optional().nullable(),
   replacementUrl: z.string().url().optional().nullable(),
@@ -92,6 +100,29 @@ function dedupeKey(uid: string, targetType: string, targetId: string) {
     .update(`${uid}::${targetType}::${targetId}`)
     .digest("hex")
     .slice(0, 40);
+}
+
+type ActivePolicy = {
+  version: string;
+  rules: Array<{ id: string }>;
+};
+
+async function readActivePolicy(): Promise<ActivePolicy | null> {
+  const configSnap = await db.doc(POLICY_CONFIG_PATH).get();
+  const version = safeString(configSnap.data()?.activeVersion);
+  if (!version) return null;
+  const policySnap = await db.collection(POLICY_VERSIONS_COL).doc(version).get();
+  if (!policySnap.exists) return null;
+  const data = policySnap.data() as { rules?: unknown } | undefined;
+  const rules = Array.isArray(data?.rules)
+    ? data.rules
+        .map((entry) => {
+          const row = entry as { id?: unknown };
+          return { id: safeString(row.id) };
+        })
+        .filter((entry) => entry.id.length > 0)
+    : [];
+  return { version, rules };
 }
 
 async function writeAudit(params: {
@@ -317,7 +348,28 @@ export const updateReportStatus = onRequest({ region: REGION, timeoutSeconds: 60
     res.status(400).json({ ok: false, message: parsed.message });
     return;
   }
-  const { reportId, status, resolutionCode } = parsed.data;
+  const { reportId, status, policyVersion, ruleId, reasonCode, resolutionCode } = parsed.data;
+  const activePolicy = await readActivePolicy();
+  if (!activePolicy) {
+    res.status(412).json({ ok: false, message: "No active moderation policy is published." });
+    return;
+  }
+  if (activePolicy.version !== policyVersion) {
+    res.status(400).json({
+      ok: false,
+      message: `Policy mismatch. Active policy is ${activePolicy.version}. Refresh and retry.`,
+    });
+    return;
+  }
+  const normalizedRuleId = safeString(ruleId).trim().toLowerCase();
+  const allowedRuleIds = new Set(
+    activePolicy.rules.map((entry) => safeString(entry.id).trim().toLowerCase())
+  );
+  if (!allowedRuleIds.has(normalizedRuleId)) {
+    res.status(400).json({ ok: false, message: "Rule ID is not valid for active policy." });
+    return;
+  }
+
   const ref = db.collection(REPORTS_COL).doc(reportId);
   const snap = await ref.get();
   if (!snap.exists) {
@@ -329,6 +381,9 @@ export const updateReportStatus = onRequest({ region: REGION, timeoutSeconds: 60
     {
       status,
       resolutionCode: normalizeNullableString(resolutionCode),
+      lastPolicyVersion: policyVersion,
+      lastRuleId: normalizedRuleId,
+      lastReasonCode: safeString(reasonCode).trim(),
       assigneeUid: auth.uid,
       resolvedAt: status === "resolved" || status === "dismissed" ? nowTs() : null,
       updatedAt: nowTs(),
@@ -344,7 +399,13 @@ export const updateReportStatus = onRequest({ region: REGION, timeoutSeconds: 60
     targetId: safeString((row.targetRef as { id?: unknown } | undefined)?.id),
     category: safeString(row.category),
     severity: safeString(row.severity),
-    metadata: { status, resolutionCode: normalizeNullableString(resolutionCode) },
+    metadata: {
+      status,
+      resolutionCode: normalizeNullableString(resolutionCode),
+      policyVersion,
+      ruleId: normalizedRuleId,
+      reasonCode: safeString(reasonCode).trim(),
+    },
   });
   res.status(200).json({ ok: true });
 });
@@ -417,7 +478,28 @@ export const takeContentAction = onRequest({ region: REGION, timeoutSeconds: 60 
     res.status(400).json({ ok: false, message: parsed.message });
     return;
   }
-  const { reportId, actionType, reason, replacementUrl } = parsed.data;
+  const { reportId, policyVersion, ruleId, reasonCode, actionType, reason, replacementUrl } = parsed.data;
+  const activePolicy = await readActivePolicy();
+  if (!activePolicy) {
+    res.status(412).json({ ok: false, message: "No active moderation policy is published." });
+    return;
+  }
+  if (activePolicy.version !== policyVersion) {
+    res.status(400).json({
+      ok: false,
+      message: `Policy mismatch. Active policy is ${activePolicy.version}. Refresh and retry.`,
+    });
+    return;
+  }
+  const normalizedRuleId = safeString(ruleId).trim().toLowerCase();
+  const allowedRuleIds = new Set(
+    activePolicy.rules.map((entry) => safeString(entry.id).trim().toLowerCase())
+  );
+  if (!allowedRuleIds.has(normalizedRuleId)) {
+    res.status(400).json({ ok: false, message: "Rule ID is not valid for active policy." });
+    return;
+  }
+
   const reportRef = db.collection(REPORTS_COL).doc(reportId);
   const reportSnap = await reportRef.get();
   if (!reportSnap.exists) {
@@ -468,6 +550,9 @@ export const takeContentAction = onRequest({ region: REGION, timeoutSeconds: 60 
     {
       status: "actioned",
       lastActionType: actionType,
+      lastPolicyVersion: policyVersion,
+      lastRuleId: normalizedRuleId,
+      lastReasonCode: safeString(reasonCode).trim(),
       assigneeUid: auth.uid,
       updatedAt: nowTs(),
     },
@@ -487,6 +572,9 @@ export const takeContentAction = onRequest({ region: REGION, timeoutSeconds: 60 
       actionType,
       reason: normalizeNullableString(reason),
       replacementUrl: normalizeNullableString(replacementUrl),
+      policyVersion,
+      ruleId: normalizedRuleId,
+      reasonCode: safeString(reasonCode).trim(),
     },
   });
   res.status(200).json({ ok: true, actionId: actionRef.id });

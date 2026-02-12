@@ -684,6 +684,21 @@ service cloud.firestore {
       }
     }
 
+    match /config/moderationPolicy {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /moderationPolicyVersions/{versionId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /moderationPolicyAuditLogs/{logId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
     match /trackerProjects/{projectId} {
       allow read: if isSignedIn()
         && resource.data.ownerUid == request.auth.uid;

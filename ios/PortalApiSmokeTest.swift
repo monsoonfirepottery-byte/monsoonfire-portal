@@ -17,7 +17,8 @@ func portalApiSmokeTest() async {
         intakeMode: "STAFF_HANDOFF",
         estimatedCostCents: 2500,
         estimateNotes: nil,
-        notes: nil
+        notes: nil,
+        clientRequestId: UUID().uuidString
     )
 
     do {

@@ -42,3 +42,6 @@ Status: In Progress
   - dedupe window evaluation
   - coordination signal threshold logic
 - Refactored report logic in `functions/src/reports.ts` to expose testable helpers without changing endpoint contracts.
+- Added deterministic rate-limit decision helper + tests:
+  - helper: `evaluateRateLimitWindow` in `functions/src/shared.ts`
+  - tests: `functions/src/sharedRateLimit.test.ts`

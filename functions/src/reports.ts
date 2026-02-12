@@ -130,6 +130,13 @@ function dedupeKey(uid: string, targetType: string, targetId: string) {
     .slice(0, 40);
 }
 
+function targetSignalKey(targetType: string, targetId: string) {
+  return createHash("sha256")
+    .update(`${targetType}::${targetId}`)
+    .digest("hex")
+    .slice(0, 40);
+}
+
 type ActivePolicy = {
   version: string;
   rules: Array<{ id: string }>;
@@ -227,9 +234,15 @@ export const createReport = onRequest({ region: REGION, timeoutSeconds: 60 }, as
   }
 
   const dedupeId = dedupeKey(uid, targetType, targetId);
+  const targetSignalId = targetSignalKey(targetType, targetId);
   const dedupeRef = db.collection("communityReportDedupe").doc(dedupeId);
+  const signalRef = db.collection("communityReportTargetSignals").doc(targetSignalId);
   const reportRef = db.collection(REPORTS_COL).doc();
   const nowMs = Date.now();
+  let coordinationSignal = false;
+  let coordinationReportCount = 0;
+  let coordinationUniqueReporterCount = 0;
+  let coordinationWindowStartMs = nowMs;
 
   try {
     await db.runTransaction(async (tx) => {
@@ -244,6 +257,45 @@ export const createReport = onRequest({ region: REGION, timeoutSeconds: 60 }, as
         }
       }
 
+      const signalSnap = await tx.get(signalRef);
+      const signalData = signalSnap.data() as
+        | { windowStartMs?: unknown; reportCount?: unknown; reporterUids?: unknown[] }
+        | undefined;
+      const currentWindowStartMsRaw = typeof signalData?.windowStartMs === "number" ? signalData.windowStartMs : 0;
+      const withinWindow = currentWindowStartMsRaw > 0 && nowMs - currentWindowStartMsRaw < 60 * 60 * 1000;
+      const windowStartMs = withinWindow ? currentWindowStartMsRaw : nowMs;
+      const existingReportCountRaw = typeof signalData?.reportCount === "number" ? signalData.reportCount : 0;
+      const existingReportCount = withinWindow ? existingReportCountRaw : 0;
+      const existingReporterUids = withinWindow
+        ? Array.isArray(signalData?.reporterUids)
+          ? signalData.reporterUids.filter((entry): entry is string => typeof entry === "string").slice(-40)
+          : []
+        : [];
+      const reporterUidSet = new Set(existingReporterUids);
+      reporterUidSet.add(uid);
+      const reporterUids = Array.from(reporterUidSet).slice(-40);
+
+      coordinationReportCount = existingReportCount + 1;
+      coordinationUniqueReporterCount = reporterUids.length;
+      coordinationWindowStartMs = windowStartMs;
+      coordinationSignal = coordinationUniqueReporterCount >= 4 && coordinationReportCount >= 6;
+
+      tx.set(
+        signalRef,
+        {
+          targetType,
+          targetId,
+          windowStartMs,
+          reportCount: coordinationReportCount,
+          uniqueReporterCount: coordinationUniqueReporterCount,
+          reporterUids,
+          lastReportedAtMs: nowMs,
+          lastSignalAtMs: coordinationSignal ? nowMs : null,
+          updatedAt: nowTs(),
+        },
+        { merge: true }
+      );
+
       tx.set(reportRef, {
         reporterUid: uid,
         status: "open",
@@ -257,6 +309,10 @@ export const createReport = onRequest({ region: REGION, timeoutSeconds: 60 }, as
         targetRef: payload.targetRef,
         targetSnapshot: payload.targetSnapshot,
         dedupeKey: dedupeId,
+        coordinationSignal,
+        coordinationWindowStartMs,
+        coordinationReportCount,
+        coordinationUniqueReporterCount,
         createdAt: nowTs(),
         updatedAt: nowTs(),
       });
@@ -303,7 +359,30 @@ export const createReport = onRequest({ region: REGION, timeoutSeconds: 60 }, as
     targetId,
     category,
     severity,
+    metadata: {
+      coordinationSignal,
+      coordinationReportCount,
+      coordinationUniqueReporterCount,
+    },
   });
+
+  if (coordinationSignal) {
+    await writeAudit({
+      actorUid: uid,
+      actorRole: "user",
+      action: "report_coordination_signal",
+      reportId: reportRef.id,
+      targetType,
+      targetId,
+      category,
+      severity,
+      metadata: {
+        coordinationWindowStartMs,
+        coordinationReportCount,
+        coordinationUniqueReporterCount,
+      },
+    });
+  }
 
   res.status(200).json({ ok: true, reportId: reportRef.id, status: "open" });
 });

@@ -35,6 +35,7 @@ import {
 } from "./moderationPolicy";
 import {
   addInternalNote,
+  cleanupCommunityReportArtifacts,
   createReportAppeal,
   createReport,
   listMyReports,
@@ -81,6 +82,7 @@ export {
   createReportAppeal,
   listReportAppeals,
   updateReportAppeal,
+  cleanupCommunityReportArtifacts,
 };
 export {
   getModerationPolicyCurrent,

@@ -47,6 +47,21 @@ type InternalNote = {
   createdAtMs: number;
 };
 
+type AppealStatus = "open" | "in_review" | "upheld" | "reversed" | "rejected";
+type AppealRow = {
+  id: string;
+  reportId: string;
+  reporterUid: string;
+  status: AppealStatus;
+  note: string;
+  decisionReasonCode: string;
+  decisionNote: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+  reviewedByUid: string;
+  reviewedAtMs: number;
+};
+
 type Props = {
   client: FunctionsClient;
   active: boolean;
@@ -54,6 +69,7 @@ type Props = {
 };
 
 type ListReportsResponse = { ok: boolean; reports?: Array<Record<string, unknown>> };
+type ListReportAppealsResponse = { ok: boolean; appeals?: Array<Record<string, unknown>> };
 type CurrentPolicyResponse = { ok: boolean; policy?: Record<string, unknown> | null };
 type BasicResponse = { ok: boolean; message?: string };
 
@@ -106,11 +122,28 @@ function normalizeReport(row: Record<string, unknown>): ReportRow {
   };
 }
 
+function normalizeAppeal(row: Record<string, unknown>): AppealRow {
+  return {
+    id: str(row.id),
+    reportId: str(row.reportId),
+    reporterUid: str(row.reporterUid),
+    status: (str(row.status, "open") as AppealStatus),
+    note: str(row.note),
+    decisionReasonCode: str(row.decisionReasonCode),
+    decisionNote: str(row.decisionNote),
+    createdAtMs: toMs(row.createdAt),
+    updatedAtMs: toMs(row.updatedAt),
+    reviewedByUid: str(row.reviewedByUid),
+    reviewedAtMs: toMs(row.reviewedAt),
+  };
+}
+
 export default function ReportsModule({ client, active, disabled }: Props) {
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [reports, setReports] = useState<ReportRow[]>([]);
+  const [appeals, setAppeals] = useState<AppealRow[]>([]);
   const [activePolicy, setActivePolicy] = useState<ActivePolicy | null>(null);
   const [selectedReportId, setSelectedReportId] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | ReportStatus>("open");
@@ -126,10 +159,24 @@ export default function ReportsModule({ client, active, disabled }: Props) {
   const [contentActionType, setContentActionType] = useState<ContentActionType>("flag_for_review");
   const [actionReason, setActionReason] = useState("");
   const [replacementUrl, setReplacementUrl] = useState("");
+  const [nextAppealStatus, setNextAppealStatus] = useState<AppealStatus>("in_review");
+  const [appealDecisionReasonCode, setAppealDecisionReasonCode] = useState("");
+  const [appealDecisionNote, setAppealDecisionNote] = useState("");
 
   const selected = useMemo(
     () => reports.find((report) => report.id === selectedReportId) ?? null,
     [reports, selectedReportId]
+  );
+  const selectedAppeals = useMemo(
+    () => appeals.filter((appeal) => appeal.reportId === selectedReportId),
+    [appeals, selectedReportId]
+  );
+  const selectedActiveAppeal = useMemo(
+    () =>
+      selectedAppeals.find(
+        (appeal) => appeal.status === "open" || appeal.status === "in_review"
+      ) ?? selectedAppeals[0] ?? null,
+    [selectedAppeals]
   );
 
   const run = async (key: string, fn: () => Promise<void>) => {
@@ -162,6 +209,15 @@ export default function ReportsModule({ client, active, disabled }: Props) {
     if (selectedReportId && !rows.some((row) => row.id === selectedReportId)) {
       setSelectedReportId(rows[0]?.id ?? "");
     }
+  };
+
+  const loadAppeals = async () => {
+    const resp = await client.postJson<ListReportAppealsResponse>("listReportAppeals", {
+      status: "all",
+      limit: 120,
+    });
+    const rows = Array.isArray(resp.appeals) ? resp.appeals.map((row) => normalizeAppeal(row)) : [];
+    setAppeals(rows);
   };
 
   const loadActivePolicy = async () => {
@@ -222,7 +278,7 @@ export default function ReportsModule({ client, active, disabled }: Props) {
   useEffect(() => {
     if (!active || disabled) return;
     void run("loadReports", async () => {
-      await Promise.all([loadReports(), loadActivePolicy()]);
+      await Promise.all([loadReports(), loadAppeals(), loadActivePolicy()]);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, disabled, filterStatus, filterSeverity, filterCategory, filterType]);
@@ -240,6 +296,18 @@ export default function ReportsModule({ client, active, disabled }: Props) {
     setNextStatus(selected.status === "open" ? "triaged" : selected.status);
     setContentActionType(selected.targetType === "youtube_video" ? "disable_from_feed" : "unpublish");
   }, [selected]);
+
+  useEffect(() => {
+    if (!selectedActiveAppeal) {
+      setNextAppealStatus("in_review");
+      setAppealDecisionReasonCode("");
+      setAppealDecisionNote("");
+      return;
+    }
+    setNextAppealStatus(selectedActiveAppeal.status);
+    setAppealDecisionReasonCode(selectedActiveAppeal.decisionReasonCode || "");
+    setAppealDecisionNote(selectedActiveAppeal.decisionNote || "");
+  }, [selectedActiveAppeal]);
 
   useEffect(() => {
     if (!activePolicy || !activePolicy.rules.length) return;
@@ -535,6 +603,72 @@ export default function ReportsModule({ client, active, disabled }: Props) {
                   ))
                 )}
               </div>
+
+              <div className="staff-subtitle">Appeals</div>
+              {selectedAppeals.length === 0 ? (
+                <div className="staff-note">No appeals for this report.</div>
+              ) : (
+                <div className="staff-log-list">
+                  {selectedAppeals.map((appeal) => (
+                    <div key={appeal.id} className="staff-log-entry">
+                      <div className="staff-log-meta">
+                        <span className="staff-log-label">{appeal.status}</span>
+                        <span>{when(appeal.createdAtMs)}</span>
+                      </div>
+                      <div className="staff-log-message">
+                        <strong>Appeal note:</strong> {appeal.note || "-"}<br />
+                        <strong>Reporter:</strong> <code>{appeal.reporterUid || "-"}</code><br />
+                        <strong>Decision reason:</strong> {appeal.decisionReasonCode || "-"}<br />
+                        <strong>Decision note:</strong> {appeal.decisionNote || "-"}<br />
+                        <strong>Reviewed by:</strong> <code>{appeal.reviewedByUid || "-"}</code> · {when(appeal.reviewedAtMs)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {selectedActiveAppeal ? (
+                <label className="staff-field">
+                  Review active appeal
+                  <div className="staff-actions-row">
+                    <select value={nextAppealStatus} onChange={(event) => setNextAppealStatus(event.target.value as AppealStatus)}>
+                      <option value="open">Open</option>
+                      <option value="in_review">In review</option>
+                      <option value="upheld">Upheld</option>
+                      <option value="reversed">Reversed</option>
+                      <option value="rejected">Rejected</option>
+                    </select>
+                    <input
+                      placeholder="Decision reason code"
+                      value={appealDecisionReasonCode}
+                      onChange={(event) => setAppealDecisionReasonCode(event.target.value)}
+                    />
+                    <input
+                      placeholder="Decision note (optional)"
+                      value={appealDecisionNote}
+                      onChange={(event) => setAppealDecisionNote(event.target.value)}
+                    />
+                    <button
+                      className="btn btn-secondary"
+                      disabled={Boolean(busy) || disabled || !selectedActiveAppeal.id}
+                      onClick={() =>
+                        void run("updateReportAppeal", async () => {
+                          await client.postJson<BasicResponse>("updateReportAppeal", {
+                            appealId: selectedActiveAppeal.id,
+                            status: nextAppealStatus,
+                            decisionReasonCode: appealDecisionReasonCode.trim() || null,
+                            decisionNote: appealDecisionNote.trim() || null,
+                          });
+                          await Promise.all([loadReports(), loadAppeals()]);
+                          setStatus("Appeal updated.");
+                        })
+                      }
+                    >
+                      Save appeal decision
+                    </button>
+                  </div>
+                </label>
+              ) : null}
             </>
           ) : (
             <div className="staff-note">Select a report to inspect details and apply actions.</div>

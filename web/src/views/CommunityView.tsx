@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { User } from "firebase/auth";
 import { createFunctionsClient } from "../api/functionsClient";
 import "./CommunityView.css";
@@ -349,7 +349,7 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
     try {
       const raw = window.localStorage.getItem(HIDDEN_CARDS_KEY);
       if (!raw) return [];
-      const parsed = JSON.parse(raw);
+      const parsed: unknown = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
     } catch {
       return [];
@@ -387,7 +387,7 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [openMenuKey]);
 
-  const loadReportHistory = async () => {
+  const loadReportHistory = useCallback(async () => {
     setReportHistoryBusy(true);
     setReportHistoryError("");
     try {
@@ -403,9 +403,9 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
     } finally {
       setReportHistoryBusy(false);
     }
-  };
+  }, [functionsClient]);
 
-  const loadAppeals = async () => {
+  const loadAppeals = useCallback(async () => {
     try {
       const resp = await functionsClient.postJson<ListMyAppealsResponse>("listMyReportAppeals", { limit: 50, status: "all" });
       if (!resp.ok) return;
@@ -423,9 +423,9 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
     } catch {
       // best-effort; report history remains available even if appeal lookup fails
     }
-  };
+  }, [functionsClient]);
 
-  const loadActivePolicyLabel = async () => {
+  const loadActivePolicyLabel = useCallback(async () => {
     try {
       const resp = await functionsClient.postJson<CurrentPolicyResponse>("getModerationPolicyCurrent", {});
       if (!resp.ok || !resp.policy) {
@@ -442,13 +442,13 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
     } catch {
       setActivePolicyLabel("");
     }
-  };
+  }, [functionsClient]);
 
   useEffect(() => {
     void loadReportHistory();
     void loadAppeals();
     void loadActivePolicyLabel();
-  }, [functionsClient]);
+  }, [loadActivePolicyLabel, loadAppeals, loadReportHistory]);
 
   const activeQuote = MEMBER_QUOTES[quoteIndex];
   const reportStatusIsError = isErrorMessage(reportStatus);

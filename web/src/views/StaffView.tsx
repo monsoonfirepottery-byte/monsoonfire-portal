@@ -1243,7 +1243,7 @@ const loadEvents = useCallback(async () => {
     }
     setEvents(next);
     if (!selectedEventId && next[0]) setSelectedEventId(next[0].id);
-  }, [client, hasFunctionsAuthMismatch, selectedEventId]);
+  }, [client, hasFunctionsAuthMismatch, qTrace, selectedEventId]);
 
   const loadSignups = useCallback(
     async (eventId: string) => {

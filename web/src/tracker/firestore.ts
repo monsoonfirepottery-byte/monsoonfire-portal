@@ -124,7 +124,8 @@ function mapGithubPrArray(raw: unknown): TrackerTicket["githubPRs"] {
 
 function stripUndefined<T>(value: T): T {
   if (Array.isArray(value)) {
-    return value.map((entry) => stripUndefined(entry)) as T;
+    const arrayValue = value as unknown as unknown[];
+    return arrayValue.map((entry) => stripUndefined(entry)) as unknown as T;
   }
   if (value && typeof value === "object") {
     const output: Record<string, unknown> = {};

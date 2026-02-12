@@ -1758,6 +1758,13 @@ const loadEvents = useCallback(async () => {
                       key={member.id}
                       className={`staff-click-row ${selectedMemberId === member.id ? "active" : ""}`}
                       onClick={() => setSelectedMemberId(member.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedMemberId(member.id);
+                        }
+                      }}
+                      tabIndex={0}
                     >
                       <td>{member.displayName}</td>
                       <td><span className="pill">{member.role}</span></td>
@@ -1952,6 +1959,13 @@ const loadEvents = useCallback(async () => {
                       key={batch.id}
                       className={`staff-click-row ${selectedBatchId === batch.id ? "active" : ""}`}
                       onClick={() => setSelectedBatchId(batch.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedBatchId(batch.id);
+                        }
+                      }}
+                      tabIndex={0}
                     >
                       <td>
                         <div>{batch.title}</div>
@@ -2177,6 +2191,13 @@ const loadEvents = useCallback(async () => {
                       key={firing.id}
                       className={`staff-click-row ${selectedFiringId === firing.id ? "active" : ""}`}
                       onClick={() => setSelectedFiringId(firing.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedFiringId(firing.id);
+                        }
+                      }}
+                      tabIndex={0}
                     >
                       <td>
                         <div>{firing.title}</div>
@@ -2517,6 +2538,13 @@ const loadEvents = useCallback(async () => {
                           key={eventRow.id}
                           className={`staff-click-row ${selectedEventId === eventRow.id ? "active" : ""}`}
                           onClick={() => setSelectedEventId(eventRow.id)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setSelectedEventId(eventRow.id);
+                            }
+                          }}
+                          tabIndex={0}
                         >
                           <td>
                             <div>{eventRow.title}</div>
@@ -2582,6 +2610,13 @@ const loadEvents = useCallback(async () => {
                           key={signup.id}
                           className={`staff-click-row ${selectedSignupId === signup.id ? "active" : ""}`}
                           onClick={() => setSelectedSignupId(signup.id)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setSelectedSignupId(signup.id);
+                            }
+                          }}
+                          tabIndex={0}
                         >
                           <td>{signup.displayName}</td>
                           <td>{signup.email}</td>
@@ -2846,6 +2881,13 @@ const lendingContent = (
                       key={request.id}
                       className={`staff-click-row ${selectedRequestId === request.id ? "active" : ""}`}
                       onClick={() => setSelectedRequestId(request.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedRequestId(request.id);
+                        }
+                      }}
+                      tabIndex={0}
                     >
                       <td>
                         <div>{request.title}</div>
@@ -2875,6 +2917,13 @@ const lendingContent = (
                       key={loan.id}
                       className={`staff-click-row ${selectedLoanId === loan.id ? "active" : ""}`}
                       onClick={() => setSelectedLoanId(loan.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedLoanId(loan.id);
+                        }
+                      }}
+                      tabIndex={0}
                     >
                       <td>
                         <div>{loan.title}</div>

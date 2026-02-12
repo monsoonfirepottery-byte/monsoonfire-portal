@@ -689,12 +689,22 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /config/communitySafety {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
     match /moderationPolicyVersions/{versionId} {
       allow read: if isSignedIn();
       allow write: if false;
     }
 
     match /moderationPolicyAuditLogs/{logId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /communitySafetyAuditLogs/{logId} {
       allow read: if isStaff();
       allow write: if false;
     }

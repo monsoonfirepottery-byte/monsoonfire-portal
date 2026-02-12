@@ -23,6 +23,11 @@ import { TimelineEventType } from "./timelineEventTypes";
 import { z } from "zod";
 import { handleApiV1 } from "./apiV1";
 import {
+  staffGetCommunitySafetyConfig,
+  staffScanCommunityDraft,
+  staffUpdateCommunitySafetyConfig,
+} from "./communitySafety";
+import {
   getModerationPolicyCurrent,
   listModerationPolicies,
   staffPublishModerationPolicy,
@@ -66,6 +71,11 @@ export {
   listModerationPolicies,
   staffUpsertModerationPolicy,
   staffPublishModerationPolicy,
+};
+export {
+  staffGetCommunitySafetyConfig,
+  staffUpdateCommunitySafetyConfig,
+  staffScanCommunityDraft,
 };
 
 /**

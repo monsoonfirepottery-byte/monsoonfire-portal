@@ -1920,6 +1920,19 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   gap: 8px;
 }
 
+.staff-inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+}
+
 .staff-member-search {
   flex: 1 1 240px;
   min-width: 220px;

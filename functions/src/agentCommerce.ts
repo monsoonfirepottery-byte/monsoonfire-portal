@@ -85,6 +85,35 @@ async function readCollection(
   return snap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Record<string, unknown>) }));
 }
 
+function summarizeRiskDenialsByClient(auditRows: Array<Record<string, unknown>>): Record<string, {
+  total: number;
+  quoteLimit: number;
+  payLimit: number;
+  velocity: number;
+}> {
+  const out: Record<string, { total: number; quoteLimit: number; payLimit: number; velocity: number }> = {};
+  for (const row of auditRows) {
+    const action = typeof row.action === "string" ? row.action : "";
+    if (
+      action !== "agent_quote_denied_risk_limit" &&
+      action !== "agent_pay_denied_risk_limit" &&
+      action !== "agent_pay_denied_velocity"
+    ) {
+      continue;
+    }
+    const clientId = typeof row.agentClientId === "string" ? row.agentClientId : "";
+    if (!clientId) continue;
+    if (!out[clientId]) {
+      out[clientId] = { total: 0, quoteLimit: 0, payLimit: 0, velocity: 0 };
+    }
+    out[clientId].total += 1;
+    if (action === "agent_quote_denied_risk_limit") out[clientId].quoteLimit += 1;
+    if (action === "agent_pay_denied_risk_limit") out[clientId].payLimit += 1;
+    if (action === "agent_pay_denied_velocity") out[clientId].velocity += 1;
+  }
+  return out;
+}
+
 export const staffListAgentOperations = onRequest(
   { region: REGION, timeoutSeconds: 60 },
   async (req, res) => {
@@ -116,8 +145,9 @@ export const staffListAgentOperations = onRequest(
       readCollection("agentQuotes", "createdAt", limit),
       readCollection("agentReservations", "createdAt", limit),
       readCollection("agentOrders", "updatedAt", limit),
-      readCollection("agentAuditLogs", "createdAt", limit),
+      readCollection("agentAuditLogs", "createdAt", Math.max(limit, 300)),
     ]);
+    const riskByClient = summarizeRiskDenialsByClient(audit);
 
     res.status(200).json({
       ok: true,
@@ -126,11 +156,13 @@ export const staffListAgentOperations = onRequest(
         reservations: reservations.length,
         orders: orders.length,
         auditEvents: audit.length,
+        riskDeniedEvents: Object.values(riskByClient).reduce((sum, row) => sum + row.total, 0),
       },
       quotes,
       reservations,
       orders,
       audit,
+      riskByClient,
     });
   }
 );

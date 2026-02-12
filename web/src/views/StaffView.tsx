@@ -136,6 +136,8 @@ type EventRecord = {
   waitlistCount: number;
   location: string;
   priceCents: number;
+  lastStatusReason: string;
+  lastStatusChangedAtMs: number;
 };
 
 type SignupRecord = {
@@ -1214,6 +1216,8 @@ const loadEvents = useCallback(async () => {
           waitlistCount: num(e.waitlistCount, 0),
           location: str(e.location, "-"),
           priceCents: num(e.priceCents, 0),
+          lastStatusReason: str(e.lastStatusReason, ""),
+          lastStatusChangedAtMs: toTsMs(e.lastStatusChangedAt),
         } satisfies EventRecord;
       });
     } else {
@@ -1233,6 +1237,8 @@ const loadEvents = useCallback(async () => {
         waitlistCount: num(e.waitlistCount, 0),
         location: str(e.location, "-"),
         priceCents: num(e.priceCents, 0),
+        lastStatusReason: str(e.lastStatusReason, ""),
+        lastStatusChangedAtMs: toTsMs(e.lastStatusChangedAt),
       } satisfies EventRecord));
     }
     setEvents(next);
@@ -2633,7 +2639,9 @@ const loadEvents = useCallback(async () => {
                     <span>Starts: {selectedEvent.startAt || when(selectedEvent.startAtMs)}</span><br />
                     <span>Ends: {when(selectedEvent.endAtMs)}</span><br />
                     <span>Seats: {selectedEvent.remainingCapacity}/{selectedEvent.capacity} · Waitlist: {selectedEvent.waitlistCount}</span><br />
-                    <span>Price: {selectedEvent.priceCents > 0 ? dollars(selectedEvent.priceCents) : "Free / n/a"}</span>
+                    <span>Price: {selectedEvent.priceCents > 0 ? dollars(selectedEvent.priceCents) : "Free / n/a"}</span><br />
+                    <span>Last status note: {selectedEvent.lastStatusReason || "-"}</span><br />
+                    <span>Status changed: {when(selectedEvent.lastStatusChangedAtMs)}</span>
                   </>
                 ) : (
                   "Select an event to inspect signups."

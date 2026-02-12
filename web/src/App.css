@@ -700,13 +700,14 @@
 }
 
 .btn-small {
-  padding: 6px 10px;
-  font-size: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   line-height: 1.2;
-  min-height: 30px;
+  min-height: 44px;
+  min-width: 44px;
   text-align: center;
   white-space: nowrap;
 }
@@ -772,10 +773,14 @@
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
-  padding: 6px 12px;
+  padding: 10px 14px;
   border-radius: 999px;
   font-size: 12px;
   letter-spacing: 0.4px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   transition: background 0.2s ease, border 0.2s ease, transform 0.2s ease;
 }

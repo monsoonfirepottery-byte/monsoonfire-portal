@@ -1,6 +1,6 @@
 # P1 — Portal A11y: Target Size and Operability
 
-Status: Planned
+Status: In Progress
 
 ## Problem
 - Some controls are smaller than WCAG 2.2 target-size guidance (44x44 CSS px).
@@ -31,3 +31,11 @@ Status: Planned
 - `web/src/App.css:3244`
 - `web/src/App.css:683`
 - `web/src/App.css:752`
+
+## Progress notes
+- Increased compact control hit areas in shared styles:
+  - `.btn-small` now enforces `min-height/min-width: 44px`
+  - `.chip` now enforces `min-height: 44px` with centered inline-flex layout
+- Increased Community overflow menu tap targets:
+  - `.community-card-menu-btn` now `44x44`
+  - menu action buttons now `min-height: 44px`

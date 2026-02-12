@@ -25,6 +25,7 @@ const reviewReservationSchema = z.object({
 const updateAgentOpsConfigSchema = z.object({
   enabled: z.boolean().optional(),
   allowPayments: z.boolean().optional(),
+  reason: z.string().max(500).optional().nullable(),
 });
 
 const updateOrderFulfillmentSchema = z.object({
@@ -369,6 +370,12 @@ export const staffUpdateAgentOpsConfig = onRequest(
     if (typeof parsed.data.allowPayments === "boolean") {
       patch.allowPayments = parsed.data.allowPayments;
     }
+    const reason = parsed.data.reason?.trim() || null;
+    if ((parsed.data.enabled === false || parsed.data.allowPayments === false) && !reason) {
+      res.status(400).json({ ok: false, message: "Reason is required when disabling agent controls." });
+      return;
+    }
+    if (reason) patch.lastControlReason = reason;
 
     await db.doc(AGENT_OPS_CONFIG_PATH).set(patch, { merge: true });
     await db.collection("agentAuditLogs").add({
@@ -376,6 +383,7 @@ export const staffUpdateAgentOpsConfig = onRequest(
       actorMode: "firebase",
       action: "agent_ops_config_updated",
       patch,
+      reason,
       createdAt: nowTs(),
     });
 

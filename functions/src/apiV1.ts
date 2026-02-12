@@ -75,6 +75,12 @@ type DelegatedRiskPolicy = {
   maxOrdersPerHour: number;
 };
 
+const DENIAL_ACTIONS = new Set<string>([
+  "agent_quote_denied_risk_limit",
+  "agent_pay_denied_risk_limit",
+  "agent_pay_denied_velocity",
+]);
+
 function defaultPolicyForTrustTier(tier: string): {
   trustTier: "low" | "medium" | "high";
   orderMaxCents: number;
@@ -97,7 +103,28 @@ async function loadDelegatedRiskPolicy(ctx: AuthContext): Promise<DelegatedRiskP
     throw new Error("DELEGATED_CLIENT_NOT_FOUND");
   }
   const row = snap.data() as Record<string, unknown>;
-  const status = typeof row.status === "string" ? row.status : "active";
+  const cooldownSeconds =
+    typeof (row.cooldownUntil as { seconds?: unknown } | undefined)?.seconds === "number"
+      ? Number((row.cooldownUntil as { seconds?: unknown }).seconds)
+      : 0;
+  const nowSeconds = Date.now() / 1000;
+  if (cooldownSeconds > nowSeconds) {
+    throw new Error("DELEGATED_CLIENT_COOLDOWN");
+  }
+  let status = typeof row.status === "string" ? row.status : "active";
+  if (status === "suspended" && cooldownSeconds > 0 && cooldownSeconds <= nowSeconds) {
+    await db.collection("agentClients").doc(clientId).set(
+      {
+        status: "active",
+        cooldownUntil: null,
+        cooldownReason: null,
+        updatedAt: nowTs(),
+        updatedByUid: "system:auto",
+      },
+      { merge: true }
+    );
+    status = "active";
+  }
   if (status !== "active") {
     throw new Error("DELEGATED_CLIENT_INACTIVE");
   }
@@ -143,6 +170,76 @@ async function countRecentOrdersForClient(agentClientId: string): Promise<number
     }
   }
   return count;
+}
+
+async function countRecentDenialsForClient(agentClientId: string): Promise<number> {
+  const snap = await db
+    .collection("agentAuditLogs")
+    .where("agentClientId", "==", agentClientId)
+    .limit(400)
+    .get();
+  const cutoffMs = Date.now() - 24 * 60 * 60 * 1000;
+  let count = 0;
+  for (const docSnap of snap.docs) {
+    const row = docSnap.data() as Record<string, unknown>;
+    const action = typeof row.action === "string" ? row.action : "";
+    if (!DENIAL_ACTIONS.has(action)) continue;
+    const seconds =
+      typeof (row.createdAt as { seconds?: unknown } | undefined)?.seconds === "number"
+        ? Number((row.createdAt as { seconds?: unknown }).seconds)
+        : 0;
+    if (seconds > 0 && seconds * 1000 >= cutoffMs) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+async function enforceDelegatedCooldownIfNeeded(params: {
+  agentClientId: string;
+  actorUid: string;
+  actorMode: string;
+  requestId: string;
+}) {
+  const { agentClientId, actorUid, actorMode, requestId } = params;
+  const denials24h = await countRecentDenialsForClient(agentClientId);
+  const threshold = 6;
+  if (denials24h < threshold) return;
+
+  const clientRef = db.collection("agentClients").doc(agentClientId);
+  const snap = await clientRef.get();
+  if (!snap.exists) return;
+  const row = snap.data() as Record<string, unknown>;
+  const existingStatus = typeof row.status === "string" ? row.status : "active";
+  const cooldownSeconds =
+    typeof (row.cooldownUntil as { seconds?: unknown } | undefined)?.seconds === "number"
+      ? Number((row.cooldownUntil as { seconds?: unknown }).seconds)
+      : 0;
+  if (existingStatus === "suspended" && cooldownSeconds * 1000 > Date.now()) return;
+
+  const cooldownUntil = Timestamp.fromMillis(Date.now() + 30 * 60 * 1000);
+  const now = nowTs();
+  await clientRef.set(
+    {
+      status: "suspended",
+      cooldownUntil,
+      cooldownReason: `auto_cooldown_denials_${threshold}_in_24h`,
+      updatedAt: now,
+      updatedByUid: "system:auto",
+    },
+    { merge: true }
+  );
+  await db.collection("agentAuditLogs").add({
+    actorUid,
+    actorMode,
+    action: "agent_client_auto_suspended_cooldown",
+    requestId,
+    agentClientId,
+    denials24h,
+    threshold,
+    cooldownUntil,
+    createdAt: now,
+  });
 }
 
 function isMissingIndexError(error: unknown): boolean {
@@ -602,6 +699,12 @@ export async function handleApiV1(req: any, res: any) {
           limitCents: delegatedPolicy.orderMaxCents,
           createdAt: nowTs(),
         });
+        await enforceDelegatedCooldownIfNeeded({
+          agentClientId: delegatedPolicy.agentClientId,
+          actorUid: ctx.uid,
+          actorMode: ctx.mode,
+          requestId,
+        });
         jsonError(
           res,
           requestId,
@@ -891,6 +994,12 @@ export async function handleApiV1(req: any, res: any) {
             limitCents: delegatedPolicy.orderMaxCents,
             createdAt: now,
           });
+          await enforceDelegatedCooldownIfNeeded({
+            agentClientId: delegatedPolicy.agentClientId,
+            actorUid: ctx.uid,
+            actorMode: ctx.mode,
+            requestId,
+          });
           jsonError(
             res,
             requestId,
@@ -913,6 +1022,12 @@ export async function handleApiV1(req: any, res: any) {
             recentOrders: recentCount,
             maxOrdersPerHour: delegatedPolicy.maxOrdersPerHour,
             createdAt: now,
+          });
+          await enforceDelegatedCooldownIfNeeded({
+            agentClientId: delegatedPolicy.agentClientId,
+            actorUid: ctx.uid,
+            actorMode: ctx.mode,
+            requestId,
           });
           jsonError(
             res,
@@ -1312,6 +1427,10 @@ export async function handleApiV1(req: any, res: any) {
     }
     if (msg === "DELEGATED_CLIENT_INACTIVE") {
       jsonError(res, requestId, 403, "UNAUTHORIZED", "Delegated client is not active");
+      return;
+    }
+    if (msg === "DELEGATED_CLIENT_COOLDOWN") {
+      jsonError(res, requestId, 429, "RATE_LIMITED", "Delegated client is in cooldown");
       return;
     }
 

@@ -54,6 +54,7 @@ import {
   revokeIntegrationTokenForOwner,
 } from "./integrationTokens";
 import {
+  staffClearAgentClientCooldown,
   staffCreateAgentClient,
   staffListAgentClientAuditLogs,
   staffListAgentClients,
@@ -116,6 +117,7 @@ export {
   staffScanCommunityDraft,
 };
 export {
+  staffClearAgentClientCooldown,
   staffCreateAgentClient,
   staffListAgentClients,
   staffRotateAgentClientKey,

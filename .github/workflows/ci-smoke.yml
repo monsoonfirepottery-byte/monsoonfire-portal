@@ -41,6 +41,9 @@ jobs:
       - name: Web tests
         run: npm --prefix web run test:run
 
+      - name: Web accessibility smoke
+        run: npm --prefix web run a11y:smoke
+
       - name: Web build
         run: npm --prefix web run build
 

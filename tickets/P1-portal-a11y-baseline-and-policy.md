@@ -1,6 +1,6 @@
 # P1 — Portal Accessibility Baseline + Policy (WCAG 2.2 AA)
 
-Status: In Progress
+Status: Done
 
 ## Problem
 - Portal accessibility has meaningful improvements but no explicit portal-specific baseline, release gate, or ownership.
@@ -36,3 +36,7 @@ Status: In Progress
 - Added baseline policy doc:
   - `docs/PORTAL_ACCESSIBILITY_BASELINE.md`
 - Defined WCAG 2.2 AA target, release gate expectations, manual QA matrix, and portal-specific triage conventions (`a11y-portal`).
+- Added portal accessibility smoke gate to CI:
+  - `web/scripts/a11y-smoke.mjs`
+  - `web/package.json` script `a11y:smoke`
+  - `.github/workflows/ci-smoke.yml` step `Web accessibility smoke`

@@ -690,6 +690,11 @@ export const takeContentAction = onRequest({ region: REGION, timeoutSeconds: 60 
   const targetType = safeString(report.targetType);
   const targetRef = (report.targetRef as { id?: unknown; url?: unknown; videoId?: unknown } | undefined) ?? {};
   const targetId = safeString(targetRef.id);
+  const priorReportStatus = safeString(report.status) || "open";
+  const priorLastActionType = safeString(report.lastActionType);
+  const priorTargetUrl = safeString(targetRef.url) || safeString((report.targetSnapshot as { url?: unknown } | undefined)?.url);
+  const normalizedReason = normalizeNullableString(reason);
+  const normalizedReplacementUrl = normalizeNullableString(replacementUrl);
 
   if (targetType === "youtube_video" && !["disable_from_feed", "replace_link", "flag_for_review"].includes(actionType)) {
     res.status(400).json({ ok: false, message: "Action not supported for youtube_video" });
@@ -701,30 +706,61 @@ export const takeContentAction = onRequest({ region: REGION, timeoutSeconds: 60 
   }
 
   const actionRef = reportRef.collection("actions").doc();
-  await actionRef.set({
-    actorUid: auth.uid,
-    actionType,
-    reason: normalizeNullableString(reason),
-    replacementUrl: normalizeNullableString(replacementUrl),
-    createdAt: nowTs(),
-  });
+  let feedOverrideBefore: Record<string, unknown> | null = null;
+  let feedOverrideAfter: Record<string, unknown> | null = null;
 
   if (targetType === "youtube_video") {
     const feedId = safeString(targetRef.videoId) || targetId;
-    await db.collection(FEED_OVERRIDES_COL).doc(`youtube_video:${feedId}`).set(
+    const overrideRef = db.collection(FEED_OVERRIDES_COL).doc(`youtube_video:${feedId}`);
+    const overrideSnap = await overrideRef.get();
+    const existingOverride =
+      (overrideSnap.exists ? (overrideSnap.data() as Record<string, unknown> | undefined) : undefined) ?? {};
+    feedOverrideBefore = {
+      disabled: Boolean(existingOverride.disabled),
+      flaggedForReview: Boolean(existingOverride.flaggedForReview),
+      replacementUrl: normalizeNullableString(safeString(existingOverride.replacementUrl)),
+      reason: normalizeNullableString(safeString(existingOverride.reason)),
+    };
+    feedOverrideAfter = {
+      disabled: actionType === "disable_from_feed",
+      flaggedForReview: actionType === "flag_for_review",
+      replacementUrl: normalizedReplacementUrl,
+      reason: normalizedReason,
+    };
+    await overrideRef.set(
       {
         targetType: "youtube_video",
         targetId: feedId,
-        disabled: actionType === "disable_from_feed",
-        replacementUrl: normalizeNullableString(replacementUrl),
-        flaggedForReview: actionType === "flag_for_review",
-        reason: normalizeNullableString(reason),
+        disabled: feedOverrideAfter.disabled,
+        replacementUrl: feedOverrideAfter.replacementUrl,
+        flaggedForReview: feedOverrideAfter.flaggedForReview,
+        reason: feedOverrideAfter.reason,
         updatedBy: auth.uid,
         updatedAt: nowTs(),
       },
       { merge: true }
     );
   }
+
+  await actionRef.set({
+    actorUid: auth.uid,
+    actionType,
+    reason: normalizedReason,
+    replacementUrl: normalizedReplacementUrl,
+    before: {
+      reportStatus: priorReportStatus,
+      lastActionType: normalizeNullableString(priorLastActionType),
+      targetUrl: normalizeNullableString(priorTargetUrl),
+      feedOverride: feedOverrideBefore,
+    },
+    after: {
+      reportStatus: "actioned",
+      lastActionType: actionType,
+      targetUrl: normalizedReplacementUrl ?? normalizeNullableString(priorTargetUrl),
+      feedOverride: feedOverrideAfter,
+    },
+    createdAt: nowTs(),
+  });
 
   await reportRef.set(
     {
@@ -750,11 +786,23 @@ export const takeContentAction = onRequest({ region: REGION, timeoutSeconds: 60 
     severity: safeString(report.severity),
     metadata: {
       actionType,
-      reason: normalizeNullableString(reason),
-      replacementUrl: normalizeNullableString(replacementUrl),
+      reason: normalizedReason,
+      replacementUrl: normalizedReplacementUrl,
       policyVersion,
       ruleId: normalizedRuleId,
       reasonCode: safeString(reasonCode).trim(),
+      before: {
+        reportStatus: priorReportStatus,
+        lastActionType: normalizeNullableString(priorLastActionType),
+        targetUrl: normalizeNullableString(priorTargetUrl),
+        feedOverride: feedOverrideBefore,
+      },
+      after: {
+        reportStatus: "actioned",
+        lastActionType: actionType,
+        targetUrl: normalizedReplacementUrl ?? normalizeNullableString(priorTargetUrl),
+        feedOverride: feedOverrideAfter,
+      },
     },
   });
   res.status(200).json({ ok: true, actionId: actionRef.id });

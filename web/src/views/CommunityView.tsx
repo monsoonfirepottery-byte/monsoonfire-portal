@@ -308,6 +308,10 @@ function formatWhen(ms: number): string {
   return new Date(ms).toLocaleString();
 }
 
+function isErrorMessage(value: string): boolean {
+  return /could|failed|error|invalid|limit|already|please include/i.test(value);
+}
+
 function normalizeAppeal(row: Record<string, unknown>): ReportAppeal {
   const statusRaw = typeof row.status === "string" ? row.status : "open";
   return {
@@ -432,6 +436,10 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
   }, [functionsClient]);
 
   const activeQuote = MEMBER_QUOTES[quoteIndex];
+  const reportStatusIsError = isErrorMessage(reportStatus);
+  const appealStatusIsError = isErrorMessage(appealStatus);
+  const reportNoteChars = reportNote.trim().length;
+  const appealNoteChars = appealNote.trim().length;
 
   const isHidden = (cardKey: string) => hiddenCards.includes(cardKey);
   const persistHidden = (next: string[]) => {
@@ -788,9 +796,10 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
             <div className="community-report-policy">
               Reviewed against: {activePolicyLabel || "Current community policy"}
             </div>
-            <label className="staff-field">
+            <label className="staff-field" htmlFor="community-report-category">
               Category
               <select
+                id="community-report-category"
                 value={reportCategory}
                 onChange={(event) => {
                   const next = event.target.value as ReportCategory;
@@ -803,23 +812,35 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
                 ))}
               </select>
             </label>
-            <label className="staff-field">
+            <label className="staff-field" htmlFor="community-report-severity">
               Severity
-              <select value={reportSeverity} onChange={(event) => setReportSeverity(event.target.value as ReportSeverity)}>
+              <select
+                id="community-report-severity"
+                value={reportSeverity}
+                onChange={(event) => setReportSeverity(event.target.value as ReportSeverity)}
+              >
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
                 <option value="high">High</option>
               </select>
             </label>
-            <label className="staff-field">
+            <label className="staff-field" htmlFor="community-report-note">
               Note (optional)
               <textarea
+                id="community-report-note"
                 value={reportNote}
                 maxLength={1200}
+                aria-describedby="community-report-note-help community-report-note-count"
                 onChange={(event) => setReportNote(event.target.value)}
                 placeholder="Add context for staff triage (optional)."
               />
             </label>
+            <div className="staff-mini" id="community-report-note-help">
+              Keep this focused on what looked wrong and where you saw it.
+            </div>
+            <div className="staff-mini" id="community-report-note-count">
+              {reportNoteChars}/1200 characters
+            </div>
             <div className="staff-actions-row">
               <button type="button" className="btn btn-primary" onClick={() => void submitReport()} disabled={reportBusy}>
                 {reportBusy ? "Submitting..." : "Submit report"}
@@ -828,7 +849,11 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
                 Cancel
               </button>
             </div>
-            {reportStatus ? <div className="staff-note">{reportStatus}</div> : null}
+            {reportStatus ? (
+              <div className="staff-note" role={reportStatusIsError ? "alert" : "status"} aria-live={reportStatusIsError ? "assertive" : "polite"}>
+                {reportStatus}
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -845,15 +870,23 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
             <div className="community-copy">
               {appealTarget.title} · Ref <code>{appealTarget.id}</code>
             </div>
-            <label className="staff-field">
+            <label className="staff-field" htmlFor="community-appeal-note">
               Why should this be reviewed again?
               <textarea
+                id="community-appeal-note"
                 value={appealNote}
                 maxLength={2000}
+                aria-describedby="community-appeal-note-help community-appeal-note-count"
                 onChange={(event) => setAppealNote(event.target.value)}
                 placeholder="Share the context staff should reconsider."
               />
             </label>
+            <div className="staff-mini" id="community-appeal-note-help">
+              Mention concrete facts that staff can verify quickly.
+            </div>
+            <div className="staff-mini" id="community-appeal-note-count">
+              {appealNoteChars}/2000 characters
+            </div>
             <div className="staff-actions-row">
               <button type="button" className="btn btn-primary" onClick={() => void submitAppeal()} disabled={appealBusy}>
                 {appealBusy ? "Submitting..." : "Submit review request"}
@@ -862,7 +895,11 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
                 Cancel
               </button>
             </div>
-            {appealStatus ? <div className="staff-note">{appealStatus}</div> : null}
+            {appealStatus ? (
+              <div className="staff-note" role={appealStatusIsError ? "alert" : "status"} aria-live={appealStatusIsError ? "assertive" : "polite"}>
+                {appealStatus}
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}

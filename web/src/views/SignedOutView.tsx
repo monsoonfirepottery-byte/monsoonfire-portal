@@ -211,7 +211,11 @@ export default function SignedOutView({
           ) : null}
         </div>
 
-        {status ? <div className="signed-out-status">{status}</div> : null}
+        {status ? (
+          <div className="signed-out-status" role="status" aria-live="polite">
+            {status}
+          </div>
+        ) : null}
 
         {showEmulatorTools && onEmulatorSignIn ? (
           <div className="signed-out-dev">

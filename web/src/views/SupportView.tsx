@@ -273,8 +273,10 @@ export default function SupportView({ user, supportEmail, onSubmit, status, isBu
 
           <div className="faq-search">
             <input
+              id="support-faq-search"
               type="search"
               placeholder="Search the FAQ"
+              aria-label="Search frequently asked questions"
               value={search}
               onChange={(event) => {
                 setSearch(event.target.value);
@@ -304,6 +306,7 @@ export default function SupportView({ user, supportEmail, onSubmit, status, isBu
                   key={item}
                   type="button"
                   className={`chip ${filter === item ? "active" : ""}`}
+                  aria-pressed={filter === item}
                   onClick={() => {
                     setFilter(item);
                     setExpandedId(null);
@@ -315,8 +318,16 @@ export default function SupportView({ user, supportEmail, onSubmit, status, isBu
             </div>
           </div>
 
-          {faqError ? <div className="alert inline-alert">{faqError}</div> : null}
-          {faqLoading ? <div className="notice inline-alert">Loading answers...</div> : null}
+          {faqError ? (
+            <div className="alert inline-alert" role="alert" aria-live="assertive">
+              {faqError}
+            </div>
+          ) : null}
+          {faqLoading ? (
+            <div className="notice inline-alert" role="status" aria-live="polite">
+              Loading answers...
+            </div>
+          ) : null}
 
           {showQuickAnswers ? (
             <div className="faq-featured">
@@ -388,8 +399,16 @@ export default function SupportView({ user, supportEmail, onSubmit, status, isBu
                 />
               </label>
 
-              {formStatus ? <div className="alert inline-alert">{formStatus}</div> : null}
-              {status ? <div className="notice inline-alert">{status}</div> : null}
+              {formStatus ? (
+                <div className="alert inline-alert" role="alert" aria-live="assertive">
+                  {formStatus}
+                </div>
+              ) : null}
+              {status ? (
+                <div className="notice inline-alert" role="status" aria-live="polite">
+                  {status}
+                </div>
+              ) : null}
 
               <button className="btn btn-primary" type="submit" disabled={isBusy}>
                 {isBusy ? "Sending..." : "Send question"}

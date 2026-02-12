@@ -2115,6 +2115,16 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   box-shadow: inset 2px 0 0 var(--accent-soft);
 }
 
+.staff-row-sla-high {
+  box-shadow: inset 3px 0 0 rgba(230, 102, 112, 0.85);
+  background: rgba(230, 102, 112, 0.08);
+}
+
+.staff-row-sla-stale {
+  box-shadow: inset 3px 0 0 rgba(223, 185, 108, 0.8);
+  background: rgba(223, 185, 108, 0.07);
+}
+
 .staff-table code {
   overflow-wrap: anywhere;
 }

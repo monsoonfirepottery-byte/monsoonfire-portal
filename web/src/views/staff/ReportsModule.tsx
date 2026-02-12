@@ -15,6 +15,7 @@ type ReportCategory =
   | "other";
 type ReportTargetType = "youtube_video" | "blog_post" | "studio_update" | "event";
 type ContentActionType = "unpublish" | "replace_link" | "flag_for_review" | "disable_from_feed";
+type SlaBreachType = "none" | "high_over24" | "open_over48";
 type PolicyRule = {
   id: string;
   title: string;
@@ -158,6 +159,14 @@ function when(ms: number): string {
   return new Date(ms).toLocaleString();
 }
 
+function getReportSlaBreach(report: ReportRow, nowMs: number): SlaBreachType {
+  if (report.status !== "open" || report.createdAtMs <= 0) return "none";
+  const ageMs = nowMs - report.createdAtMs;
+  if (report.severity === "high" && ageMs > 24 * 60 * 60 * 1000) return "high_over24";
+  if (ageMs > 48 * 60 * 60 * 1000) return "open_over48";
+  return "none";
+}
+
 function median(values: number[]): number {
   if (!values.length) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -265,6 +274,10 @@ export default function ReportsModule({ client, active, disabled }: Props) {
   const [nextAppealStatus, setNextAppealStatus] = useState<AppealStatus>("in_review");
   const [appealDecisionReasonCode, setAppealDecisionReasonCode] = useState("");
   const [appealDecisionNote, setAppealDecisionNote] = useState("");
+  const [selectedReportIds, setSelectedReportIds] = useState<string[]>([]);
+  const [bulkStatus, setBulkStatus] = useState<ReportStatus>("triaged");
+  const [bulkReasonCode, setBulkReasonCode] = useState("");
+  const [bulkResolutionCode, setBulkResolutionCode] = useState("");
 
   const selected = useMemo(
     () => reports.find((report) => report.id === selectedReportId) ?? null,
@@ -308,6 +321,7 @@ export default function ReportsModule({ client, active, disabled }: Props) {
       ? resp.reports.map((row) => normalizeReport(row))
       : [];
     setReports(rows);
+    setSelectedReportIds((prev) => prev.filter((id) => rows.some((row) => row.id === id)));
     if (!selectedReportId && rows.length > 0) setSelectedReportId(rows[0].id);
     if (selectedReportId && !rows.some((row) => row.id === selectedReportId)) {
       setSelectedReportId(rows[0]?.id ?? "");
@@ -493,6 +507,59 @@ export default function ReportsModule({ client, active, disabled }: Props) {
     };
   }, [reports]);
 
+  const slaCounts = useMemo(() => {
+    const now = Date.now();
+    let highOver24h = 0;
+    let openOver48h = 0;
+    for (const report of reports) {
+      const breach = getReportSlaBreach(report, now);
+      if (breach === "high_over24") highOver24h += 1;
+      if (breach === "open_over48") openOver48h += 1;
+    }
+    return {
+      highOver24h,
+      openOver48h,
+      totalBreached: highOver24h + openOver48h,
+    };
+  }, [reports]);
+
+  const selectedCount = selectedReportIds.length;
+  const allSelected = reports.length > 0 && selectedCount === reports.length;
+
+  const toggleReportSelected = (reportId: string, checked: boolean) => {
+    setSelectedReportIds((prev) => {
+      if (checked) {
+        if (prev.includes(reportId)) return prev;
+        return [...prev, reportId];
+      }
+      return prev.filter((id) => id !== reportId);
+    });
+  };
+
+  const applyBulkStatus = async () => {
+    if (!activePolicy?.version) throw new Error("Publish a moderation policy before bulk triage.");
+    if (!selectedRuleId.trim()) throw new Error("Select a policy rule before bulk triage.");
+    if (!bulkReasonCode.trim()) throw new Error("Reason code is required for bulk triage.");
+    if (selectedReportIds.length === 0) throw new Error("Select at least one report for bulk triage.");
+
+    const targets = reports.filter((report) => selectedReportIds.includes(report.id));
+    if (targets.length === 0) throw new Error("No selected reports match current filter.");
+
+    for (const report of targets) {
+      await client.postJson<BasicResponse>("updateReportStatus", {
+        reportId: report.id,
+        status: bulkStatus,
+        policyVersion: activePolicy.version,
+        ruleId: selectedRuleId.trim(),
+        reasonCode: bulkReasonCode.trim(),
+        resolutionCode: bulkResolutionCode.trim() || null,
+      });
+    }
+
+    await loadReports();
+    setStatus(`Bulk updated ${targets.length} report${targets.length === 1 ? "" : "s"} to ${bulkStatus}.`);
+  };
+
   const exportReportsJson = async () => {
     const payload = reports.map((report) => ({
       id: report.id,
@@ -617,6 +684,9 @@ export default function ReportsModule({ client, active, disabled }: Props) {
       <div className="staff-note">
         Decision consistency: {consistency.coveragePct}% of reviewed reports include policy + rule + reason linkage.
       </div>
+      <div className={`staff-note ${slaCounts.totalBreached > 0 ? "staff-note-error" : ""}`}>
+        SLA watch: {slaCounts.highOver24h} high-severity open &gt;24h, {slaCounts.openOver48h} open &gt;48h.
+      </div>
 
       <div className="staff-kpi-grid">
         <div className="staff-kpi">
@@ -694,21 +764,78 @@ export default function ReportsModule({ client, active, disabled }: Props) {
         </button>
       </div>
 
+      <div className="staff-actions-row">
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy) || reports.length === 0}
+          onClick={() => setSelectedReportIds(reports.map((report) => report.id))}
+        >
+          Select all
+        </button>
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy) || reports.length === 0}
+          onClick={() =>
+            setSelectedReportIds(
+              reports
+                .filter((report) => getReportSlaBreach(report, Date.now()) !== "none")
+                .map((report) => report.id)
+            )
+          }
+        >
+          Select SLA breaches
+        </button>
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy) || selectedCount === 0}
+          onClick={() => setSelectedReportIds([])}
+        >
+          Clear
+        </button>
+        <span className="staff-mini" style={{ marginInlineEnd: 8 }}>Selected: {selectedCount}</span>
+        <select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value as ReportStatus)}>
+          <option value="open">Open</option>
+          <option value="triaged">Triaged</option>
+          <option value="actioned">Actioned</option>
+          <option value="resolved">Resolved</option>
+          <option value="dismissed">Dismissed</option>
+        </select>
+        <input
+          placeholder="Bulk reason code"
+          value={bulkReasonCode}
+          onChange={(event) => setBulkReasonCode(event.target.value)}
+        />
+        <input
+          placeholder="Bulk resolution code (optional)"
+          value={bulkResolutionCode}
+          onChange={(event) => setBulkResolutionCode(event.target.value)}
+        />
+        <button
+          className="btn btn-primary"
+          disabled={Boolean(busy) || disabled || !activePolicy?.version || !selectedRuleId.trim() || !bulkReasonCode.trim() || selectedCount === 0}
+          onClick={() => void run("bulkUpdateReportStatus", applyBulkStatus)}
+        >
+          Apply bulk status
+        </button>
+      </div>
+
       <div className="staff-module-grid">
         <div className="staff-column">
           <div className="staff-table-wrap">
             <table className="staff-table">
               <thead>
-                <tr><th>Target</th><th>Status</th><th>Severity</th><th>Category</th><th>Created</th></tr>
+                <tr><th><input type="checkbox" aria-label="Select all reports" checked={allSelected} onChange={(event) => setSelectedReportIds(event.target.checked ? reports.map((report) => report.id) : [])} /></th><th>Target</th><th>Status</th><th>Severity</th><th>Category</th><th>Created</th></tr>
               </thead>
               <tbody>
                 {reports.length === 0 ? (
-                  <tr><td colSpan={5}>No reports found with current filters.</td></tr>
+                  <tr><td colSpan={6}>No reports found with current filters.</td></tr>
                 ) : (
-                  reports.map((report) => (
+                  reports.map((report) => {
+                    const slaBreach = getReportSlaBreach(report, Date.now());
+                    return (
                     <tr
                       key={report.id}
-                      className={`staff-click-row ${selectedReportId === report.id ? "active" : ""}`}
+                      className={`staff-click-row ${selectedReportId === report.id ? "active" : ""} ${slaBreach === "high_over24" ? "staff-row-sla-high" : ""} ${slaBreach === "open_over48" ? "staff-row-sla-stale" : ""}`}
                       onClick={() => setSelectedReportId(report.id)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
@@ -721,16 +848,28 @@ export default function ReportsModule({ client, active, disabled }: Props) {
                       aria-pressed={selectedReportId === report.id}
                       aria-label={`Select report ${report.id}`}
                     >
+                      <td onClick={(event) => event.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          aria-label={`Select report ${report.id} for bulk actions`}
+                          checked={selectedReportIds.includes(report.id)}
+                          onChange={(event) => toggleReportSelected(report.id, event.target.checked)}
+                        />
+                      </td>
                       <td>
                         <div>{report.targetSnapshot.title || report.targetRef.id || report.id}</div>
                         <div className="staff-mini"><code>{report.id}</code> · {report.targetType}</div>
                       </td>
-                      <td><span className="pill">{report.status}</span></td>
+                      <td>
+                        <span className="pill">{report.status}</span>
+                        {slaBreach === "high_over24" ? <div className="staff-mini">SLA breach: high &gt;24h</div> : null}
+                        {slaBreach === "open_over48" ? <div className="staff-mini">SLA breach: open &gt;48h</div> : null}
+                      </td>
                       <td>{report.severity}</td>
                       <td>{report.category}</td>
                       <td>{when(report.createdAtMs)}</td>
                     </tr>
-                  ))
+                  );})
                 )}
               </tbody>
             </table>

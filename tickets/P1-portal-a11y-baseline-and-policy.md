@@ -1,6 +1,6 @@
 # P1 — Portal Accessibility Baseline + Policy (WCAG 2.2 AA)
 
-Status: Planned
+Status: In Progress
 
 ## Problem
 - Portal accessibility has meaningful improvements but no explicit portal-specific baseline, release gate, or ownership.
@@ -31,3 +31,8 @@ Status: Planned
 
 ## Dependencies
 - `docs/PORTAL_ACCESSIBILITY_ASSESSMENT_2026-02-11.md`
+
+## Progress notes
+- Added baseline policy doc:
+  - `docs/PORTAL_ACCESSIBILITY_BASELINE.md`
+- Defined WCAG 2.2 AA target, release gate expectations, manual QA matrix, and portal-specific triage conventions (`a11y-portal`).

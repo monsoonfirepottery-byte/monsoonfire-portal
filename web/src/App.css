@@ -2861,6 +2861,11 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
 
 .brand-home {
   cursor: pointer;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 0;
 }
 
 .brand-home:hover {

@@ -70,6 +70,14 @@ type CatalogResponse = {
   config?: Record<string, unknown>;
   audit?: Array<Record<string, unknown>>;
 };
+type OpsResponse = {
+  ok: boolean;
+  snapshot?: Record<string, unknown>;
+  quotes?: Array<Record<string, unknown>>;
+  reservations?: Array<Record<string, unknown>>;
+  orders?: Array<Record<string, unknown>>;
+  audit?: Array<Record<string, unknown>>;
+};
 
 function str(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
@@ -205,6 +213,10 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [catalogConfig, setCatalogConfig] = useState<AgentCatalogConfig | null>(null);
   const [catalogAudit, setCatalogAudit] = useState<Array<Record<string, unknown>>>([]);
   const [catalogJsonDraft, setCatalogJsonDraft] = useState("");
+  const [opsSnapshot, setOpsSnapshot] = useState<Record<string, unknown> | null>(null);
+  const [opsQuotes, setOpsQuotes] = useState<Array<Record<string, unknown>>>([]);
+  const [opsReservations, setOpsReservations] = useState<Array<Record<string, unknown>>>([]);
+  const [opsOrders, setOpsOrders] = useState<Array<Record<string, unknown>>>([]);
 
   const selected = useMemo(() => clients.find((row) => row.id === selectedId) ?? null, [clients, selectedId]);
 
@@ -223,10 +235,11 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   };
 
   const load = useCallback(async () => {
-    const [clientsResp, logsResp, catalogResp] = await Promise.all([
+    const [clientsResp, logsResp, catalogResp, opsResp] = await Promise.all([
       client.postJson<ListClientsResponse>("staffListAgentClients", { includeRevoked: true, limit: 200 }),
       client.postJson<ListLogsResponse>("staffListAgentClientAuditLogs", { limit: 80 }),
       client.postJson<CatalogResponse>("staffGetAgentServiceCatalog", {}),
+      client.postJson<OpsResponse>("staffListAgentOperations", { limit: 60 }),
     ]);
 
     const rows = Array.isArray(clientsResp.clients) ? clientsResp.clients.map((row) => normalizeClient(row)) : [];
@@ -242,6 +255,11 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     setCatalogConfig(nextCatalog);
     setCatalogJsonDraft(nextCatalog ? JSON.stringify(nextCatalog, null, 2) : "");
     setCatalogAudit(Array.isArray(catalogResp.audit) ? catalogResp.audit : []);
+
+    setOpsSnapshot(opsResp.snapshot && typeof opsResp.snapshot === "object" ? opsResp.snapshot : null);
+    setOpsQuotes(Array.isArray(opsResp.quotes) ? opsResp.quotes : []);
+    setOpsReservations(Array.isArray(opsResp.reservations) ? opsResp.reservations : []);
+    setOpsOrders(Array.isArray(opsResp.orders) ? opsResp.orders : []);
 
     if (!selectedId && rows.length > 0) setSelectedId(rows[0].id);
     if (selectedId && !rows.some((row) => row.id === selectedId)) {
@@ -683,6 +701,108 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             </div>
           ))
         )}
+      </div>
+
+      <div className="staff-subtitle">Operations feed</div>
+      {opsSnapshot ? (
+        <div className="staff-actions-row">
+          <div className="pill">Quotes: {num(opsSnapshot.quotes, 0)}</div>
+          <div className="pill">Reservations: {num(opsSnapshot.reservations, 0)}</div>
+          <div className="pill">Orders: {num(opsSnapshot.orders, 0)}</div>
+          <div className="pill">Audit: {num(opsSnapshot.auditEvents, 0)}</div>
+        </div>
+      ) : null}
+
+      <div className="staff-module-grid">
+        <div className="staff-column">
+          <div className="staff-subtitle">Recent quotes</div>
+          <div className="staff-table-wrap">
+            <table className="staff-table">
+              <thead>
+                <tr>
+                  <th>Quote</th>
+                  <th>Service</th>
+                  <th>Status</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {opsQuotes.slice(0, 8).map((row) => (
+                  <tr key={str(row.id)}>
+                    <td><code>{str(row.id)}</code></td>
+                    <td>{str(row.serviceTitle, str(row.serviceId, "-"))}</td>
+                    <td>{str(row.status, "-")}</td>
+                    <td>
+                      {((num(row.subtotalCents, 0) || 0) / 100).toLocaleString(undefined, {
+                        style: "currency",
+                        currency: str(row.currency, "USD"),
+                      })}
+                    </td>
+                  </tr>
+                ))}
+                {opsQuotes.length === 0 ? (
+                  <tr><td colSpan={4}>No quotes yet.</td></tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div className="staff-column">
+          <div className="staff-subtitle">Recent reservations</div>
+          <div className="staff-table-wrap">
+            <table className="staff-table">
+              <thead>
+                <tr>
+                  <th>Reservation</th>
+                  <th>Quote</th>
+                  <th>Status</th>
+                  <th>Review</th>
+                </tr>
+              </thead>
+              <tbody>
+                {opsReservations.slice(0, 8).map((row) => (
+                  <tr key={str(row.id)}>
+                    <td><code>{str(row.id)}</code></td>
+                    <td><code>{str(row.quoteId, "-")}</code></td>
+                    <td>{str(row.status, "-")}</td>
+                    <td>{row.requiresManualReview === true ? "Required" : "Auto"}</td>
+                  </tr>
+                ))}
+                {opsReservations.length === 0 ? (
+                  <tr><td colSpan={4}>No reservations yet.</td></tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div className="staff-column">
+          <div className="staff-subtitle">Recent orders</div>
+          <div className="staff-table-wrap">
+            <table className="staff-table">
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Payment</th>
+                  <th>Fulfillment</th>
+                  <th>Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {opsOrders.slice(0, 8).map((row) => (
+                  <tr key={str(row.id)}>
+                    <td><code>{str(row.id)}</code></td>
+                    <td>{str(row.paymentStatus, "-")}</td>
+                    <td>{str(row.fulfillmentStatus, "-")}</td>
+                    <td>{when(tsMs(row.updatedAt))}</td>
+                  </tr>
+                ))}
+                {opsOrders.length === 0 ? (
+                  <tr><td colSpan={4}>No orders yet.</td></tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       <div className="staff-subtitle">Audit log</div>

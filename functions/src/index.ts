@@ -65,6 +65,7 @@ import {
   staffGetAgentServiceCatalog,
   staffUpdateAgentServiceCatalog,
 } from "./agentCatalog";
+import { staffListAgentOperations } from "./agentCommerce";
 import { emitIntegrationEvent } from "./integrationEvents";
 export {
   registerDeviceToken,
@@ -120,6 +121,7 @@ export {
   staffGetAgentServiceCatalog,
   staffUpdateAgentServiceCatalog,
 };
+export { staffListAgentOperations };
 
 /**
  * IMPORTANT:

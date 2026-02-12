@@ -723,6 +723,13 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                       key={row.id}
                       className={`staff-click-row ${row.id === selectedId ? "active" : ""}`}
                       onClick={() => setSelectedId(row.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedId(row.id);
+                        }
+                      }}
+                      tabIndex={0}
                     >
                       <td>
                         <div>{row.name}</div>

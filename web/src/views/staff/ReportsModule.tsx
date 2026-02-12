@@ -545,19 +545,42 @@ export default function ReportsModule({ client, active, disabled }: Props) {
     const targets = reports.filter((report) => selectedReportIds.includes(report.id));
     if (targets.length === 0) throw new Error("No selected reports match current filter.");
 
-    for (const report of targets) {
-      await client.postJson<BasicResponse>("updateReportStatus", {
-        reportId: report.id,
-        status: bulkStatus,
-        policyVersion: activePolicy.version,
-        ruleId: selectedRuleId.trim(),
-        reasonCode: bulkReasonCode.trim(),
-        resolutionCode: bulkResolutionCode.trim() || null,
-      });
-    }
+    const updates = await Promise.allSettled(
+      targets.map((report) =>
+        client.postJson<BasicResponse>("updateReportStatus", {
+          reportId: report.id,
+          status: bulkStatus,
+          policyVersion: activePolicy.version,
+          ruleId: selectedRuleId.trim(),
+          reasonCode: bulkReasonCode.trim(),
+          resolutionCode: bulkResolutionCode.trim() || null,
+        })
+      )
+    );
+
+    const failedIds: string[] = [];
+    updates.forEach((result, index) => {
+      if (result.status === "rejected") {
+        failedIds.push(targets[index].id);
+      }
+    });
 
     await loadReports();
-    setStatus(`Bulk updated ${targets.length} report${targets.length === 1 ? "" : "s"} to ${bulkStatus}.`);
+
+    if (failedIds.length === 0) {
+      setSelectedReportIds([]);
+      setStatus(`Bulk updated ${targets.length} report${targets.length === 1 ? "" : "s"} to ${bulkStatus}.`);
+      return;
+    }
+
+    if (failedIds.length === targets.length) {
+      throw new Error(`Bulk update failed for all ${targets.length} selected reports.`);
+    }
+
+    setSelectedReportIds(failedIds);
+    setStatus(
+      `Bulk update partial: ${targets.length - failedIds.length} succeeded, ${failedIds.length} failed. Failed reports remain selected.`
+    );
   };
 
   const exportReportsJson = async () => {

@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
 import {
+  addDoc,
   collection,
+  doc,
   getCountFromServer,
   getDocs,
   limit,
   orderBy,
   query,
+  setDoc,
   where,
   type QueryConstraint,
 } from "firebase/firestore";
@@ -322,6 +325,15 @@ export default function StaffView({
   const [selectedEventId, setSelectedEventId] = useState("");
   const [eventSearch, setEventSearch] = useState("");
   const [eventStatusFilter, setEventStatusFilter] = useState("all");
+  const [eventCreateDraft, setEventCreateDraft] = useState({
+    title: "",
+    location: "Monsoon Fire Studio",
+    startAt: "",
+    durationMinutes: "120",
+    capacity: "12",
+    priceCents: "0",
+  });
+  const [publishOverrideReason, setPublishOverrideReason] = useState("");
   const [signupSearch, setSignupSearch] = useState("");
   const [signupStatusFilter, setSignupStatusFilter] = useState("all");
   const [selectedSignupId, setSelectedSignupId] = useState("");
@@ -442,6 +454,22 @@ export default function StaffView({
       })
       .sort((a, b) => b.createdAtMs - a.createdAtMs);
   }, [signupSearch, signupStatusFilter, signups]);
+  const eventKpis = useMemo(() => {
+    const now = Date.now();
+    const total = events.length;
+    const upcoming = events.filter((event) => event.startAtMs > now).length;
+    const reviewRequired = events.filter((event) => event.status === "review_required").length;
+    const published = events.filter((event) => event.status === "published").length;
+    const openSeats = events.reduce(
+      (sum, event) => sum + Math.max(event.remainingCapacity, 0),
+      0
+    );
+    const waitlisted = events.reduce(
+      (sum, event) => sum + Math.max(event.waitlistCount, 0),
+      0
+    );
+    return { total, upcoming, reviewRequired, published, openSeats, waitlisted };
+  }, [events]);
   const lendingStatusOptions = useMemo(() => {
     const next = new Set<string>();
     [...libraryRequests, ...libraryLoans].forEach((item) => {
@@ -1696,6 +1724,103 @@ const loadEvents = useCallback(async () => {
     </section>
   );
 
+  const createQuickEvent = async () => {
+    const title = eventCreateDraft.title.trim();
+    if (!title) throw new Error("Event title is required.");
+    if (!eventCreateDraft.startAt) throw new Error("Start date/time is required.");
+
+    const start = new Date(eventCreateDraft.startAt);
+    if (Number.isNaN(start.getTime())) throw new Error("Start date/time is invalid.");
+
+    const durationMinutes = Math.max(Number(eventCreateDraft.durationMinutes) || 120, 30);
+    const end = new Date(start.getTime() + durationMinutes * 60_000);
+    const capacity = Math.max(Number(eventCreateDraft.capacity) || 0, 0);
+    const priceCents = Math.max(Number(eventCreateDraft.priceCents) || 0, 0);
+    const location = eventCreateDraft.location.trim() || "Monsoon Fire Studio";
+
+    if (hasFunctionsAuthMismatch) {
+      const now = new Date();
+      await addDoc(collection(db, "events"), {
+        title,
+        summary: "Staff-created event draft",
+        description: "Complete details in the Events module when function auth is available.",
+        location,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Phoenix",
+        startAt: start,
+        endAt: end,
+        capacity,
+        remainingCapacity: capacity,
+        priceCents,
+        currency: "USD",
+        includesFiring: false,
+        status: "draft",
+        waitlistEnabled: true,
+        offerClaimWindowHours: 24,
+        cancelCutoffHours: 24,
+        ticketedCount: 0,
+        offeredCount: 0,
+        checkedInCount: 0,
+        waitlistCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      });
+    } else {
+      await client.postJson("createEvent", {
+        title,
+        summary: "Staff-created quick draft",
+        description: "Quick draft from Staff console. Expand details in Events module.",
+        location,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Phoenix",
+        startAt: start.toISOString(),
+        endAt: end.toISOString(),
+        capacity,
+        priceCents,
+        currency: "USD",
+        includesFiring: false,
+        firingDetails: null,
+        policyCopy: null,
+        addOns: [],
+        waitlistEnabled: true,
+        offerClaimWindowHours: 24,
+        cancelCutoffHours: 24,
+      });
+    }
+
+    setEventCreateDraft((prev) => ({ ...prev, title: "" }));
+    await loadEvents();
+    setStatus("Quick event draft created.");
+  };
+
+  const publishSelectedEvent = async () => {
+    if (!selectedEvent) throw new Error("Select an event first.");
+    const alreadyPublished = selectedEvent.status === "published";
+    if (alreadyPublished) throw new Error("Selected event is already published.");
+
+    if (hasFunctionsAuthMismatch) {
+      await setDoc(
+        doc(db, "events", selectedEvent.id),
+        {
+          status: "published",
+          publishedAt: new Date(),
+          updatedAt: new Date(),
+        },
+        { merge: true }
+      );
+    } else {
+      const forcePublish = publishOverrideReason.trim().length > 0;
+      await client.postJson("publishEvent", {
+        eventId: selectedEvent.id,
+        forcePublish,
+        overrideReason: forcePublish ? publishOverrideReason.trim() : null,
+      });
+    }
+
+    setPublishOverrideReason("");
+    await loadEvents();
+    if (selectedEventId) await loadSignups(selectedEventId);
+    setStatus(`Event ${selectedEvent.id} published.`);
+  };
+
   const eventsContent = (
     <section className="card staff-console-card">
       <div className="card-title-row">
@@ -1721,11 +1846,74 @@ const loadEvents = useCallback(async () => {
       ) : null}
       <>
           <div className="staff-kpi-grid">
-            <div className="staff-kpi"><span>Total events</span><strong>{events.length}</strong></div>
-            <div className="staff-kpi"><span>Filtered events</span><strong>{filteredEvents.length}</strong></div>
+            <div className="staff-kpi"><span>Total events</span><strong>{eventKpis.total}</strong></div>
+            <div className="staff-kpi"><span>Upcoming</span><strong>{eventKpis.upcoming}</strong></div>
+            <div className="staff-kpi"><span>Published</span><strong>{eventKpis.published}</strong></div>
+            <div className="staff-kpi"><span>Needs review</span><strong>{eventKpis.reviewRequired}</strong></div>
+            <div className="staff-kpi"><span>Open seats</span><strong>{eventKpis.openSeats}</strong></div>
+            <div className="staff-kpi"><span>Waitlisted</span><strong>{eventKpis.waitlisted}</strong></div>
             <div className="staff-kpi"><span>Signups loaded</span><strong>{signups.length}</strong></div>
             <div className="staff-kpi"><span>Checked in</span><strong>{signups.filter((signup) => signup.status === "checked_in").length}</strong></div>
             <div className="staff-kpi"><span>Paid</span><strong>{signups.filter((signup) => signup.paymentStatus === "paid").length}</strong></div>
+          </div>
+          <div className="staff-actions-row">
+            <label className="staff-field" style={{ flex: 2 }}>
+              Quick title
+              <input
+                value={eventCreateDraft.title}
+                onChange={(event) => setEventCreateDraft((prev) => ({ ...prev, title: event.target.value }))}
+                placeholder="Wheel Lab: Production Sprint"
+              />
+            </label>
+            <label className="staff-field">
+              Starts
+              <input
+                type="datetime-local"
+                value={eventCreateDraft.startAt}
+                onChange={(event) => setEventCreateDraft((prev) => ({ ...prev, startAt: event.target.value }))}
+              />
+            </label>
+            <label className="staff-field">
+              Duration (min)
+              <input
+                value={eventCreateDraft.durationMinutes}
+                onChange={(event) => setEventCreateDraft((prev) => ({ ...prev, durationMinutes: event.target.value }))}
+              />
+            </label>
+            <label className="staff-field">
+              Capacity
+              <input
+                value={eventCreateDraft.capacity}
+                onChange={(event) => setEventCreateDraft((prev) => ({ ...prev, capacity: event.target.value }))}
+              />
+            </label>
+            <button
+              className="btn btn-secondary"
+              disabled={Boolean(busy)}
+              onClick={() => void run("createQuickEvent", createQuickEvent)}
+            >
+              Create quick event
+            </button>
+          </div>
+          <div className="staff-actions-row">
+            <label className="staff-field" style={{ flex: 1 }}>
+              Publish override reason (optional)
+              <input
+                value={publishOverrideReason}
+                onChange={(event) => setPublishOverrideReason(event.target.value)}
+                placeholder="Required only for review-gated events"
+              />
+            </label>
+            <button
+              className="btn btn-secondary"
+              disabled={Boolean(busy) || !selectedEvent || selectedEvent.status === "published"}
+              onClick={() => void run("publishSelectedEvent", publishSelectedEvent)}
+            >
+              Publish selected
+            </button>
+          </div>
+          <div className="staff-note">
+            Use quick create for same-day ops. Full event copy and add-ons still live in the main Events view.
           </div>
           <div className="staff-module-grid">
             <div className="staff-column">

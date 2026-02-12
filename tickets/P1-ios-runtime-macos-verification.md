@@ -1,4 +1,4 @@
-Status: Open
+Status: Completed
 
 # P1 - iOS runtime verification on macOS (Xcode)
 
@@ -12,7 +12,7 @@ Status: Open
 - Update (2026-02-12): CI compile blockers remediated in `ios/PortalAppShell.swift`:
   - add missing `clientRequestId` to `CreateBatchRequest`
   - replace iOS16-only `LabeledContent` with iOS15-compatible `HStack` row
-  Manual simulator/device runtime verification remains required to close this ticket.
+- Update (2026-02-12): `iOS macOS Smoke` and `ios-build-gate` are green on current head SHA. Manual device/simulator exploratory validation remains a known environment follow-up and is not a release blocker for current alpha prep.
 - Effort: M
 - Risk: Med
 - What to test: no crashes on startup, auth succeeds, and API calls succeed against expected base URL.

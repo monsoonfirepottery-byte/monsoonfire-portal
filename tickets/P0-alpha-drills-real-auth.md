@@ -10,6 +10,7 @@ Status: Open
   - Run `scripts/run-notification-drills.ps1` against deployed functions.
   - Capture outputs and verify Firestore collections: `notificationJobDeadLetters`, `notificationDeliveryAttempts`, `notificationMetrics/delivery_24h`.
 - Update (2026-02-06): drill runner now validates `-IdToken` (JWT issuer check), strips accidental `Bearer ` prefix, and refuses placeholder tokens. Still blocked on obtaining a real staff ID token.
+- Update (2026-02-12): remains pending owner environment/config completion (real production staff token acquisition and execution window). Tagged as non-blocking config follow-up for ongoing alpha hardening.
 - Effort: S
 - Risk: Low
 - What to test: all drill modes execute without `UNAUTHENTICATED` and produce expected retry/dead-letter behavior.

@@ -90,6 +90,8 @@ type PaymentUpdate = {
   sessionId: string | null;
   paymentIntentId: string | null;
   invoiceId: string | null;
+  orderId: string | null;
+  reservationId: string | null;
   amountTotal: number | null;
   currency: string | null;
   sourceEventType: string;
@@ -271,6 +273,14 @@ function parseCheckoutSessionPayload(session: Stripe.Checkout.Session): PaymentU
   const sessionId = typeof session.id === "string" ? session.id : null;
   const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null;
   const uid = safeString(session.metadata?.uid) || safeString(session.client_reference_id) || null;
+  const orderId =
+    safeString(session.metadata?.orderId) ||
+    safeString(session.metadata?.agentOrderId) ||
+    null;
+  const reservationId =
+    safeString(session.metadata?.reservationId) ||
+    safeString(session.metadata?.agentReservationId) ||
+    null;
   return {
     paymentId: sessionId || paymentIntentId || `checkout_${Date.now()}`,
     status: "checkout_completed",
@@ -278,6 +288,8 @@ function parseCheckoutSessionPayload(session: Stripe.Checkout.Session): PaymentU
     sessionId,
     paymentIntentId,
     invoiceId: null,
+    orderId,
+    reservationId,
     amountTotal,
     currency,
     sourceEventType: "checkout.session.completed",
@@ -288,6 +300,14 @@ function parsePaymentIntentPayload(intent: Stripe.PaymentIntent): PaymentUpdate 
   const amountTotal = typeof intent.amount_received === "number" ? intent.amount_received : null;
   const currency = typeof intent.currency === "string" ? intent.currency : null;
   const uid = safeString(intent.metadata?.uid) || null;
+  const orderId =
+    safeString(intent.metadata?.orderId) ||
+    safeString(intent.metadata?.agentOrderId) ||
+    null;
+  const reservationId =
+    safeString(intent.metadata?.reservationId) ||
+    safeString(intent.metadata?.agentReservationId) ||
+    null;
   return {
     paymentId: intent.id,
     status: "payment_succeeded",
@@ -295,6 +315,8 @@ function parsePaymentIntentPayload(intent: Stripe.PaymentIntent): PaymentUpdate 
     sessionId: safeString(intent.metadata?.checkoutSessionId) || null,
     paymentIntentId: intent.id,
     invoiceId: null,
+    orderId,
+    reservationId,
     amountTotal,
     currency,
     sourceEventType: "payment_intent.succeeded",
@@ -305,13 +327,26 @@ function parseInvoicePayload(invoice: Stripe.Invoice): PaymentUpdate {
   const amountTotal = typeof invoice.amount_paid === "number" ? invoice.amount_paid : null;
   const currency = typeof invoice.currency === "string" ? invoice.currency : null;
   const uid = safeString(invoice.metadata?.uid) || null;
+  const orderId =
+    safeString(invoice.metadata?.orderId) ||
+    safeString(invoice.metadata?.agentOrderId) ||
+    null;
+  const reservationId =
+    safeString(invoice.metadata?.reservationId) ||
+    safeString(invoice.metadata?.agentReservationId) ||
+    null;
   return {
     paymentId: invoice.id,
     status: "invoice_paid",
     uid,
     sessionId: safeString(invoice.metadata?.checkoutSessionId) || null,
-    paymentIntentId: typeof invoice.payment_intent === "string" ? invoice.payment_intent : null,
+    paymentIntentId:
+      typeof (invoice as unknown as { payment_intent?: unknown }).payment_intent === "string"
+        ? ((invoice as unknown as { payment_intent: string }).payment_intent)
+        : null,
     invoiceId: invoice.id,
+    orderId,
+    reservationId,
     amountTotal,
     currency,
     sourceEventType: "invoice.paid",
@@ -794,7 +829,9 @@ export const createAgentCheckoutSession = onRequest(
             uid: orderUid,
             mode,
             source: "agent",
+            orderId,
             agentOrderId: orderId,
+            reservationId: safeString(order.reservationId) || "",
             agentReservationId: safeString(order.reservationId) || "",
             agentQuoteId: safeString(order.quoteId) || "",
           },
@@ -936,54 +973,70 @@ async function applyPaymentUpdate(params: {
   });
 
   const checkoutSessionId = safeString(update.sessionId).trim();
+  const paymentIntentId = safeString(update.paymentIntentId).trim();
+  const hintedOrderId = safeString(update.orderId).trim();
+
+  const candidateOrderIds = new Set<string>();
+  if (hintedOrderId) candidateOrderIds.add(hintedOrderId);
+
   if (checkoutSessionId) {
-    const orderMatches = await db
+    const bySessionSnap = await db
       .collection("agentOrders")
       .where("stripeCheckoutSessionId", "==", checkoutSessionId)
-      .limit(5)
+      .limit(10)
       .get();
-    if (orderMatches.empty) return;
-
-    const orderStatus =
-      update.status === "payment_succeeded" || update.status === "invoice_paid"
-        ? "paid"
-        : update.status === "checkout_completed"
-          ? "payment_pending"
-          : "payment_pending";
-    const fulfillmentStatus =
-      update.status === "payment_succeeded" || update.status === "invoice_paid"
-        ? "scheduled"
-        : "queued";
-    const batch = db.batch();
-    for (const docSnap of orderMatches.docs) {
-      batch.set(
-        docSnap.ref,
-        {
-          paymentStatus: orderStatus,
-          status: orderStatus === "paid" ? "paid" : "payment_pending",
-          fulfillmentStatus,
-          stripeCheckoutSessionId: checkoutSessionId,
-          stripePaymentIntentId: update.paymentIntentId ?? null,
-          updatedAt: now,
-          lastEventId: eventId,
-          lastEventType: eventType,
-        },
-        { merge: true }
-      );
-      batch.set(db.collection("agentAuditLogs").doc(), {
-        actorUid: null,
-        actorMode: "system",
-        action: "agent_order_payment_updated",
-        orderId: docSnap.id,
-        paymentId: update.paymentId,
-        status: orderStatus,
-        sourceEventType: eventType,
-        eventId,
-        createdAt: now,
-      });
-    }
-    await batch.commit();
+    for (const docSnap of bySessionSnap.docs) candidateOrderIds.add(docSnap.id);
   }
+
+  if (paymentIntentId) {
+    const byIntentSnap = await db
+      .collection("agentOrders")
+      .where("stripePaymentIntentId", "==", paymentIntentId)
+      .limit(10)
+      .get();
+    for (const docSnap of byIntentSnap.docs) candidateOrderIds.add(docSnap.id);
+  }
+
+  if (!candidateOrderIds.size) return;
+
+  const orderStatus =
+    update.status === "payment_succeeded" || update.status === "invoice_paid"
+      ? "paid"
+      : "payment_pending";
+  const fulfillmentStatus =
+    update.status === "payment_succeeded" || update.status === "invoice_paid"
+      ? "scheduled"
+      : "queued";
+  const batch = db.batch();
+  for (const orderId of candidateOrderIds) {
+    const orderRef = db.collection("agentOrders").doc(orderId);
+    batch.set(
+      orderRef,
+      {
+        paymentStatus: orderStatus,
+        status: orderStatus === "paid" ? "paid" : "payment_pending",
+        fulfillmentStatus,
+        stripeCheckoutSessionId: checkoutSessionId || null,
+        stripePaymentIntentId: paymentIntentId || null,
+        updatedAt: now,
+        lastEventId: eventId,
+        lastEventType: eventType,
+      },
+      { merge: true }
+    );
+    batch.set(db.collection("agentAuditLogs").doc(), {
+      actorUid: null,
+      actorMode: "system",
+      action: "agent_order_payment_updated",
+      orderId,
+      paymentId: update.paymentId,
+      status: orderStatus,
+      sourceEventType: eventType,
+      eventId,
+      createdAt: now,
+    });
+  }
+  await batch.commit();
 }
 
 export const stripePortalWebhook = onRequest(

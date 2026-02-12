@@ -115,12 +115,21 @@ function toCsvLine(cells: unknown[]): string {
   return cells.map((cell) => toCsvCell(cell)).join(",");
 }
 
-export async function getAgentOpsConfig(): Promise<{ enabled: boolean; allowPayments: boolean }> {
+export async function getAgentOpsConfig(): Promise<{
+  enabled: boolean;
+  allowPayments: boolean;
+  lastControlReason: string | null;
+  updatedByUid: string | null;
+  updatedAtMs: number;
+}> {
   const snap = await db.doc(AGENT_OPS_CONFIG_PATH).get();
   const row = (snap.data() ?? {}) as Record<string, unknown>;
   return {
     enabled: row.enabled !== false,
     allowPayments: row.allowPayments !== false,
+    lastControlReason: typeof row.lastControlReason === "string" ? row.lastControlReason : null,
+    updatedByUid: typeof row.updatedByUid === "string" ? row.updatedByUid : null,
+    updatedAtMs: tsToMillis(row.updatedAt),
   };
 }
 

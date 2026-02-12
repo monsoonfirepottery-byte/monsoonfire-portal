@@ -9,6 +9,7 @@ import {
   db,
   nowTs,
   Timestamp,
+  makeIdempotencyId,
   parseBody,
   enforceRateLimit,
   type AuthContext,
@@ -149,6 +150,12 @@ const agentQuoteSchema = z.object({
   serviceId: z.string().min(1),
   quantity: z.number().int().min(1).max(10_000).optional(),
   currency: z.string().min(3).max(8).optional().nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+const agentReserveSchema = z.object({
+  quoteId: z.string().min(1),
+  holdMinutes: z.number().int().min(5).max(1_440).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -523,9 +530,171 @@ export async function handleApiV1(req: any, res: any) {
       return;
     }
 
+    if (route === "/v1/agent.reserve") {
+      const scopeCheck = requireScopes(ctx, ["reserve:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(agentReserveSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const config = await getAgentServiceCatalogConfig();
+      if (!config.featureFlags.reserveEnabled) {
+        jsonError(res, requestId, 503, "UNAVAILABLE", "Agent reservation capability is disabled");
+        return;
+      }
+
+      const quoteId = String(parsed.data.quoteId).trim();
+      const quoteRef = db.collection("agentQuotes").doc(quoteId);
+      const reservationId = makeIdempotencyId("agent-reservation", ctx.uid, quoteId);
+      const reservationRef = db.collection("agentReservations").doc(reservationId);
+
+      const holdMinutes = parsed.data.holdMinutes ?? 60;
+      const holdExpiresAt = Timestamp.fromMillis(Date.now() + holdMinutes * 60_000);
+      const reservationMetadata = parsed.data.metadata ?? {};
+
+      const txResult = await db.runTransaction(async (tx) => {
+        const [quoteSnap, existingReservationSnap] = await Promise.all([
+          tx.get(quoteRef),
+          tx.get(reservationRef),
+        ]);
+
+        if (!quoteSnap.exists) {
+          throw new Error("QUOTE_NOT_FOUND");
+        }
+        const quote = quoteSnap.data() as Record<string, unknown>;
+
+        const quoteOwnerUid = typeof quote.uid === "string" ? quote.uid : "";
+        if (quoteOwnerUid !== ctx.uid && !isStaff) {
+          throw new Error("FORBIDDEN");
+        }
+
+        const quoteStatus = typeof quote.status === "string" ? quote.status : "quoted";
+        if (quoteStatus !== "quoted" && quoteStatus !== "reserved") {
+          throw new Error("QUOTE_NOT_RESERVABLE");
+        }
+
+        const expiresAtSeconds =
+          typeof (quote.expiresAt as { seconds?: unknown } | undefined)?.seconds === "number"
+            ? Number((quote.expiresAt as { seconds?: unknown }).seconds)
+            : 0;
+        if (!expiresAtSeconds || Date.now() > expiresAtSeconds * 1000) {
+          throw new Error("QUOTE_EXPIRED");
+        }
+
+        if (existingReservationSnap.exists) {
+          const existing = existingReservationSnap.data() as Record<string, unknown>;
+          return {
+            reservationId: existingReservationSnap.id,
+            reservation: existing,
+            idempotentReplay: true,
+          };
+        }
+
+        const requiresManualReview = quote.requiresManualReview === true;
+        const reservationStatus = requiresManualReview ? "pending_review" : "reserved";
+        const now = nowTs();
+
+        const reservation = {
+          reservationId,
+          quoteId,
+          uid: ctx.uid,
+          authMode: ctx.mode,
+          scopes: ctx.mode === "firebase" ? null : ctx.scopes,
+          agentClientId: ctx.mode === "delegated" ? ctx.delegated.agentClientId : null,
+          delegatedTokenId: ctx.mode === "delegated" ? ctx.tokenId : null,
+          serviceId: typeof quote.serviceId === "string" ? quote.serviceId : null,
+          serviceTitle: typeof quote.serviceTitle === "string" ? quote.serviceTitle : null,
+          category: typeof quote.category === "string" ? quote.category : null,
+          quantity: typeof quote.quantity === "number" ? quote.quantity : 1,
+          unitPriceCents: typeof quote.unitPriceCents === "number" ? quote.unitPriceCents : 0,
+          subtotalCents: typeof quote.subtotalCents === "number" ? quote.subtotalCents : 0,
+          currency: typeof quote.currency === "string" ? quote.currency : config.defaultCurrency,
+          riskLevel: typeof quote.riskLevel === "string" ? quote.riskLevel : "medium",
+          requiresManualReview,
+          status: reservationStatus,
+          mode: typeof quote.mode === "string" ? quote.mode : config.pricingMode,
+          quoteExpiresAt: quote.expiresAt ?? null,
+          holdExpiresAt,
+          metadata: reservationMetadata,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        tx.set(reservationRef, reservation);
+        tx.set(
+          quoteRef,
+          {
+            status: "reserved",
+            reservationId,
+            reservedAt: now,
+            updatedAt: now,
+          },
+          { merge: true }
+        );
+
+        const auditRef = db.collection("agentAuditLogs").doc();
+        tx.set(auditRef, {
+          actorUid: ctx.uid,
+          actorMode: ctx.mode,
+          action: "agent_reservation_created",
+          requestId,
+          quoteId,
+          reservationId,
+          reservationStatus,
+          requiresManualReview,
+          createdAt: now,
+        });
+
+        return { reservationId, reservation, idempotentReplay: false };
+      });
+
+      jsonOk(res, requestId, {
+        reservationId: txResult.reservationId,
+        status: txResult.reservation.status ?? "reserved",
+        idempotentReplay: txResult.idempotentReplay,
+        reservation: {
+          quoteId: txResult.reservation.quoteId ?? quoteId,
+          holdExpiresAt: txResult.reservation.holdExpiresAt ?? null,
+          requiresManualReview: txResult.reservation.requiresManualReview === true,
+          subtotalCents:
+            typeof txResult.reservation.subtotalCents === "number"
+              ? txResult.reservation.subtotalCents
+              : 0,
+          currency:
+            typeof txResult.reservation.currency === "string"
+              ? txResult.reservation.currency
+              : config.defaultCurrency,
+        },
+      });
+      return;
+    }
+
     jsonError(res, requestId, 404, "NOT_FOUND", "Unknown route", { route });
   } catch (error: unknown) {
     const msg = safeErrorMessage(error);
+    if (msg === "QUOTE_NOT_FOUND") {
+      jsonError(res, requestId, 404, "NOT_FOUND", "Quote not found");
+      return;
+    }
+    if (msg === "FORBIDDEN") {
+      jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+      return;
+    }
+    if (msg === "QUOTE_NOT_RESERVABLE") {
+      jsonError(res, requestId, 409, "FAILED_PRECONDITION", "Quote is not in a reservable state");
+      return;
+    }
+    if (msg === "QUOTE_EXPIRED") {
+      jsonError(res, requestId, 410, "FAILED_PRECONDITION", "Quote has expired");
+      return;
+    }
+
     if (isMissingIndexError(error)) {
       jsonError(res, requestId, 412, "FAILED_PRECONDITION", "Missing Firestore composite index", {
         message: msg,

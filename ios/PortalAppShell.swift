@@ -68,7 +68,7 @@ final class PortalAppShellViewModel: ObservableObject {
                 operation: {
                     try await client.createBatch(
                         idToken: token,
-                        adminToken: config.adminToken,
+                        adminToken: self.config.adminToken,
                         payload: payload
                     )
                 }

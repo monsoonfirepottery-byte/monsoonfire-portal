@@ -2,7 +2,9 @@ param(
   [Parameter(Mandatory = $true)] [string] $BaseUrl,
   [Parameter(Mandatory = $true)] [string] $IdToken,
   [Parameter(Mandatory = $true)] [string] $Uid,
-  [string] $AdminToken = ""
+  [string] $AdminToken = "",
+  [string] $LogFile = "",
+  [switch] $OutputJson
 )
 
 function Test-Placeholder([string] $value) {
@@ -86,6 +88,14 @@ if ($AdminToken -ne "") {
 }
 
 $modes = @("auth", "provider_4xx", "provider_5xx", "network", "success")
+$runSummary = [ordered]@{
+  atUtc = (Get-Date).ToUniversalTime().ToString("o")
+  baseUrl = $BaseUrl
+  uid = $Uid
+  adminTokenUsed = [bool]($AdminToken -ne "")
+  drills = @()
+  metrics = $null
+}
 
 foreach ($mode in $modes) {
   $payload = @{
@@ -101,17 +111,49 @@ foreach ($mode in $modes) {
 
   Write-Host "Queueing drill mode: $mode"
   try {
-    Invoke-RestMethod -Method Post -Uri "$BaseUrl/runNotificationFailureDrill" -Headers $headers -Body $payload | Out-Host
+    $resp = Invoke-RestMethod -Method Post -Uri "$BaseUrl/runNotificationFailureDrill" -Headers $headers -Body $payload
+    $runSummary.drills += [ordered]@{
+      mode = $mode
+      ok = $true
+      status = $resp.status
+      failureClass = $resp.failureClass
+      retryable = $resp.retryable
+      response = $resp
+    }
+    $resp | Out-Host
   } catch {
     Write-Host "Drill mode '$mode' failed: $($_.Exception.Message)"
+    $runSummary.drills += [ordered]@{
+      mode = $mode
+      ok = $false
+      error = $_.Exception.Message
+    }
   }
 }
 
 Write-Host "Running metrics aggregation snapshot..."
 try {
-  Invoke-RestMethod -Method Post -Uri "$BaseUrl/runNotificationMetricsAggregationNow" -Headers $headers -Body "{}" | Out-Host
+  $metricsResp = Invoke-RestMethod -Method Post -Uri "$BaseUrl/runNotificationMetricsAggregationNow" -Headers $headers -Body "{}"
+  $runSummary.metrics = $metricsResp
+  $metricsResp | Out-Host
 } catch {
   Write-Host "Metrics aggregation failed: $($_.Exception.Message)"
+  $runSummary.metrics = [ordered]@{
+    ok = $false
+    error = $_.Exception.Message
+  }
+}
+
+if ($OutputJson) {
+  $json = $runSummary | ConvertTo-Json -Depth 10
+  Write-Output $json
+}
+
+if ($LogFile) {
+  $logPath = $LogFile.Trim()
+  $line = $runSummary | ConvertTo-Json -Depth 10 -Compress
+  Add-Content -Path $logPath -Value $line
+  Write-Host "Appended structured run summary to $logPath"
 }
 
 Write-Host "Drill run completed."

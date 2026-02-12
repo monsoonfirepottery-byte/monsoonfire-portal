@@ -27,6 +27,46 @@ const updateAgentOpsConfigSchema = z.object({
   allowPayments: z.boolean().optional(),
 });
 
+const updateOrderFulfillmentSchema = z.object({
+  orderId: z.string().min(1),
+  toStatus: z.enum([
+    "queued",
+    "scheduled",
+    "loaded",
+    "firing",
+    "cooling",
+    "ready",
+    "picked_up",
+    "shipped",
+    "exception",
+  ]),
+  reason: z.string().max(500).optional().nullable(),
+});
+
+const FULFILLMENT_ORDER = [
+  "queued",
+  "scheduled",
+  "loaded",
+  "firing",
+  "cooling",
+  "ready",
+  "picked_up",
+  "shipped",
+] as const;
+
+const TERMINAL_OR_EXCEPTION = new Set<string>(["picked_up", "shipped", "exception"]);
+
+function canTransitionFulfillment(from: string, to: string): boolean {
+  if (from === to) return true;
+  if (to === "exception") return true;
+  if (from === "exception") return false;
+  if (TERMINAL_OR_EXCEPTION.has(from)) return false;
+  const fromIdx = FULFILLMENT_ORDER.indexOf(from as (typeof FULFILLMENT_ORDER)[number]);
+  const toIdx = FULFILLMENT_ORDER.indexOf(to as (typeof FULFILLMENT_ORDER)[number]);
+  if (fromIdx < 0 || toIdx < 0) return false;
+  return toIdx === fromIdx + 1;
+}
+
 export async function getAgentOpsConfig(): Promise<{ enabled: boolean; allowPayments: boolean }> {
   const snap = await db.doc(AGENT_OPS_CONFIG_PATH).get();
   const row = (snap.data() ?? {}) as Record<string, unknown>;
@@ -262,5 +302,97 @@ export const staffUpdateAgentOpsConfig = onRequest(
 
     const config = await getAgentOpsConfig();
     res.status(200).json({ ok: true, config });
+  }
+);
+
+export const staffUpdateAgentOrderFulfillment = onRequest(
+  { region: REGION, timeoutSeconds: 60 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+    const admin = await requireAdmin(req);
+    if (!admin.ok) {
+      res.status(403).json({ ok: false, message: admin.message });
+      return;
+    }
+
+    const parsed = parseBody(updateOrderFulfillmentSchema, req.body ?? {});
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const orderId = parsed.data.orderId.trim();
+    const toStatus = parsed.data.toStatus;
+    const reason = (parsed.data.reason ?? "").trim() || null;
+
+    const orderRef = db.collection("agentOrders").doc(orderId);
+    const orderSnap = await orderRef.get();
+    if (!orderSnap.exists) {
+      res.status(404).json({ ok: false, message: "Order not found" });
+      return;
+    }
+
+    const row = orderSnap.data() as Record<string, unknown>;
+    const fromStatus =
+      typeof row.fulfillmentStatus === "string" ? row.fulfillmentStatus : "queued";
+    if (!canTransitionFulfillment(fromStatus, toStatus)) {
+      res.status(409).json({
+        ok: false,
+        message: `Invalid fulfillment transition: ${fromStatus} -> ${toStatus}`,
+      });
+      return;
+    }
+
+    const paymentStatus = typeof row.paymentStatus === "string" ? row.paymentStatus : "";
+    const isPaid = paymentStatus === "paid" || paymentStatus === "payment_succeeded";
+    if (!isPaid && toStatus !== "exception") {
+      res.status(409).json({
+        ok: false,
+        message: "Order must be paid before non-exception fulfillment updates.",
+      });
+      return;
+    }
+
+    const now = nowTs();
+    await Promise.all([
+      orderRef.set(
+        {
+          fulfillmentStatus: toStatus,
+          status: toStatus === "exception" ? "exception" : row.status ?? "paid",
+          fulfillmentUpdatedAt: now,
+          fulfillmentUpdatedByUid: auth.uid,
+          fulfillmentReason: reason,
+          updatedAt: now,
+        },
+        { merge: true }
+      ),
+      db.collection("agentAuditLogs").add({
+        actorUid: auth.uid,
+        actorMode: "firebase",
+        action: "agent_order_fulfillment_updated",
+        orderId,
+        fromStatus,
+        toStatus,
+        reason,
+        createdAt: now,
+      }),
+    ]);
+
+    res.status(200).json({
+      ok: true,
+      orderId,
+      fromStatus,
+      toStatus,
+    });
   }
 );

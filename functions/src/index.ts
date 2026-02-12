@@ -68,6 +68,7 @@ import {
 import {
   staffListAgentOperations,
   staffGetAgentOpsConfig,
+  staffUpdateAgentOrderFulfillment,
   staffReviewAgentReservation,
   staffUpdateAgentOpsConfig,
 } from "./agentCommerce";
@@ -129,6 +130,7 @@ export {
 export {
   staffGetAgentOpsConfig,
   staffListAgentOperations,
+  staffUpdateAgentOrderFulfillment,
   staffReviewAgentReservation,
   staffUpdateAgentOpsConfig,
 };

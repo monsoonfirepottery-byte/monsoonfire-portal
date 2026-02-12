@@ -29,6 +29,7 @@ Highest‑risk flows:
 **Config & Secrets**
 - `ALLOW_DEV_ADMIN_TOKEN=true` and `ADMIN_TOKEN=...` are required for dev admin tokens in the emulator.
 - Dev admin token UI only appears when `VITE_ENABLE_DEV_ADMIN_TOKEN=true` and the Functions base URL is localhost.
+- Dev admin token session persistence is opt-in via `VITE_PERSIST_DEV_ADMIN_TOKEN=true`; otherwise token storage is memory-only per page session.
 - Production must never enable the dev admin token path.
 - Prefer `ALLOWED_ORIGINS` for Cloud Functions CORS allowlist.
 - Agentic identity hardening flags:

@@ -1,4 +1,4 @@
-Status: Open
+Status: Completed
 
 # P2 - Document Theme + Motion System (Portal)
 
@@ -17,3 +17,10 @@ We now have multiple UI modes (Portal default + Memoria) and a motion setting. W
 ## Acceptance
 - A new contributor can add a themed component without reading the entire CSS file.
 - No secrets included.
+
+## Progress notes
+- Existing theme/motion contributor documentation already covers this scope:
+  - `docs/PORTAL_THEME_AND_MOTION.md`
+  - Includes theme names, persistence precedence, DOM hooks, token guidance, and motion implementation constraints.
+- AGENTS guide links the doc for contributor discovery:
+  - `AGENTS.md` → Theme + Motion section references `docs/PORTAL_THEME_AND_MOTION.md`.

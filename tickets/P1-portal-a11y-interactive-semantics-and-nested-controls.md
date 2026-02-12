@@ -1,6 +1,6 @@
 # P1 — Portal A11y: Interactive Semantics and Nested Controls
 
-Status: Planned
+Status: In Progress
 
 ## Problem
 - Some interactive areas are implemented as non-semantic containers with `role="button"`.
@@ -33,3 +33,9 @@ Status: Planned
 ## Evidence
 - `web/src/App.tsx:1365`
 - `web/src/views/KilnScheduleView.tsx:408`
+
+## Progress notes
+- Refactored `KilnScheduleView` upcoming rows to remove nested interactive controls:
+  - removed row-level `role="button"`/keyboard handler wrapping nested buttons
+  - added explicit per-row action controls (`View details`, `Add to my calendar`)
+- This resolves one concrete nested-interactive pattern while preserving keyboard access.

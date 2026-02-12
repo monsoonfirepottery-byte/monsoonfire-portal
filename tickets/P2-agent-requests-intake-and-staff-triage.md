@@ -1,6 +1,6 @@
 # P2 — Agent/Human Request Intake: “Do This For Me” Queue (Staff Triage)
 
-Status: Open
+Status: In Progress
 
 ## Problem
 - If we want to support agents (and humans) delegating work to the studio, we need a safe, auditable intake funnel.
@@ -126,3 +126,23 @@ Recommended: option (2) if we expect real shipping usage.
 - Staff can triage, assign, and link to a batch.
 - Requests are authenticated, rate-limited, and audited.
 - No PII is logged; PII access is restricted to owner+staff.
+
+## Progress notes
+- Added v1 request-intake backend routes in `functions/src/apiV1.ts`:
+  - `POST /v1/agent.requests.create`
+  - `POST /v1/agent.requests.listMine`
+  - `POST /v1/agent.requests.listStaff`
+  - `POST /v1/agent.requests.updateStatus`
+  - `POST /v1/agent.requests.linkBatch`
+- Added authenticated scope enforcement:
+  - `requests:read` / `requests:write`
+  - staff-only gates for triage/listStaff/linkBatch
+  - owner-only cancel fallback in updateStatus.
+- Added audit trail writes:
+  - `agentRequests/{id}/audit/*`
+  - top-level `agentAuditLogs` action events.
+- Added API contract documentation for new endpoints:
+  - `docs/API_CONTRACTS.md`
+- Remaining:
+  - StaffView module UX for request queue/details.
+  - Dedicated user-facing Requests view in portal nav.

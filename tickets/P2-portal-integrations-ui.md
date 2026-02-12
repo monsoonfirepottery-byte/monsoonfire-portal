@@ -66,3 +66,8 @@ Status: Completed
   - Navigation entrypoint from Profile header (“Integrations” button)
   - Token create/list/revoke UX + “shown once” warning + copy-to-clipboard
   - Curl examples for `apiV1` endpoints and last-request debug panel (redacted)
+  - Events feed smoke-test panel:
+    - paste PAT (`events:read`)
+    - fetch by cursor/limit
+    - preview recent event rows and payloads
+    - apply `nextCursor` directly for follow-up pulls

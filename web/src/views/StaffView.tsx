@@ -174,6 +174,40 @@ type LendingLoanRecord = {
   rawDoc: Record<string, unknown>;
 };
 
+type CommerceOrderRecord = {
+  id: string;
+  status: string;
+  totalCents: number;
+  currency: string;
+  updatedAt: string;
+  createdAt: string;
+  checkoutUrl: string | null;
+  pickupNotes: string | null;
+  itemCount: number;
+};
+
+type UnpaidCheckInRecord = {
+  signupId: string;
+  eventId: string;
+  eventTitle: string;
+  amountCents: number | null;
+  currency: string | null;
+  paymentStatus: string | null;
+  checkInMethod: string | null;
+  createdAt: string | null;
+  checkedInAt: string | null;
+};
+
+type ReceiptRecord = {
+  id: string;
+  type: string;
+  title: string;
+  amountCents: number;
+  currency: string;
+  createdAt: string | null;
+  paidAt: string | null;
+};
+
 const MODULES: Array<{ key: ModuleKey; label: string }> = [
   { key: "overview", label: "Overview" },
   { key: "members", label: "Members" },
@@ -285,7 +319,11 @@ export default function StaffView({
     receiptsCount: number;
     receiptsAmountCents: number;
   } | null>(null);
-  const [orders, setOrders] = useState<Array<{ id: string; status: string; totalCents: number; updatedAt: string }>>([]);
+  const [orders, setOrders] = useState<CommerceOrderRecord[]>([]);
+  const [unpaidCheckIns, setUnpaidCheckIns] = useState<UnpaidCheckInRecord[]>([]);
+  const [receipts, setReceipts] = useState<ReceiptRecord[]>([]);
+  const [commerceSearch, setCommerceSearch] = useState("");
+  const [commerceStatusFilter, setCommerceStatusFilter] = useState("all");
   const [libraryRequests, setLibraryRequests] = useState<LendingRequestRecord[]>([]);
   const [libraryLoans, setLibraryLoans] = useState<LendingLoanRecord[]>([]);
 
@@ -526,6 +564,37 @@ export default function StaffView({
       })
       .sort((a, b) => b.updatedAtMs - a.updatedAtMs);
   }, [batchSearch, batchStatusFilter, batches]);
+  const commerceStatusOptions = useMemo(() => {
+    const next = new Set<string>();
+    orders.forEach((order) => {
+      if (order.status) next.add(order.status);
+    });
+    return Array.from(next).sort((a, b) => a.localeCompare(b));
+  }, [orders]);
+  const filteredOrders = useMemo(() => {
+    const search = commerceSearch.trim().toLowerCase();
+    return orders
+      .filter((order) => {
+        if (commerceStatusFilter !== "all" && order.status !== commerceStatusFilter) return false;
+        if (!search) return true;
+        const haystack = `${order.id} ${order.status} ${order.pickupNotes || ""}`.toLowerCase();
+        return haystack.includes(search);
+      })
+      .sort((a, b) => Date.parse(b.updatedAt || "1970-01-01") - Date.parse(a.updatedAt || "1970-01-01"));
+  }, [commerceSearch, commerceStatusFilter, orders]);
+  const commerceKpis = useMemo(() => {
+    const pendingOrders = orders.filter((order) => order.status !== "paid");
+    const paidOrders = orders.filter((order) => order.status === "paid");
+    const pendingAmount = pendingOrders.reduce((sum, order) => sum + Math.max(order.totalCents, 0), 0);
+    return {
+      ordersTotal: orders.length,
+      pendingOrders: pendingOrders.length,
+      paidOrders: paidOrders.length,
+      pendingAmount,
+      unpaidCheckIns: unpaidCheckIns.length,
+      receiptsTotal: receipts.length,
+    };
+  }, [orders, receipts.length, unpaidCheckIns.length]);
 
   const memberRoleCounts = useMemo(() => {
     const staffCount = users.filter((u) => u.role === "staff").length;
@@ -981,11 +1050,15 @@ const loadEvents = useCallback(async () => {
     if (hasFunctionsAuthMismatch) {
       setSummary(null);
       setOrders([]);
+      setUnpaidCheckIns([]);
+      setReceipts([]);
       return;
     }
     const resp = await client.postJson<{
       summary?: typeof summary;
+      unpaidCheckIns?: Array<Record<string, unknown>>;
       materialsOrders?: Array<Record<string, unknown>>;
+      receipts?: Array<Record<string, unknown>>;
     }>("listBillingSummary", { limit: 60 });
     setSummary(resp.summary ?? null);
     setOrders(
@@ -993,7 +1066,66 @@ const loadEvents = useCallback(async () => {
         id: str(o.id),
         status: str(o.status, "unknown"),
         totalCents: num(o.totalCents, 0),
+        currency: str(o.currency, "USD"),
         updatedAt: str(o.updatedAt, "-"),
+        createdAt: str(o.createdAt, "-"),
+        checkoutUrl: (() => {
+          const raw = str(o.checkoutUrl, "");
+          return raw || null;
+        })(),
+        pickupNotes: (() => {
+          const raw = str(o.pickupNotes, "");
+          return raw || null;
+        })(),
+        itemCount: Array.isArray(o.items) ? o.items.length : 0,
+      }))
+    );
+    setUnpaidCheckIns(
+      (resp.unpaidCheckIns ?? []).map((entry) => ({
+        signupId: str(entry.signupId),
+        eventId: str(entry.eventId),
+        eventTitle: str(entry.eventTitle, "Event"),
+        amountCents:
+          typeof entry.amountCents === "number" && Number.isFinite(entry.amountCents)
+            ? entry.amountCents
+            : null,
+        currency: (() => {
+          const raw = str(entry.currency, "");
+          return raw || null;
+        })(),
+        paymentStatus: (() => {
+          const raw = str(entry.paymentStatus, "");
+          return raw || null;
+        })(),
+        checkInMethod: (() => {
+          const raw = str(entry.checkInMethod, "");
+          return raw || null;
+        })(),
+        createdAt: (() => {
+          const raw = str(entry.createdAt, "");
+          return raw || null;
+        })(),
+        checkedInAt: (() => {
+          const raw = str(entry.checkedInAt, "");
+          return raw || null;
+        })(),
+      }))
+    );
+    setReceipts(
+      (resp.receipts ?? []).map((entry) => ({
+        id: str(entry.id),
+        type: str(entry.type, "unknown"),
+        title: str(entry.title, "Receipt"),
+        amountCents: num(entry.amountCents, 0),
+        currency: str(entry.currency, "USD"),
+        createdAt: (() => {
+          const raw = str(entry.createdAt, "");
+          return raw || null;
+        })(),
+        paidAt: (() => {
+          const raw = str(entry.paidAt, "");
+          return raw || null;
+        })(),
       }))
     );
   }, [client, hasFunctionsAuthMismatch]);
@@ -1045,6 +1177,8 @@ const loadEvents = useCallback(async () => {
     } else {
       setSummary(null);
       setOrders([]);
+      setUnpaidCheckIns([]);
+      setReceipts([]);
     }
     await Promise.allSettled(tasks);
     if (selectedEventId) await loadSignups(selectedEventId);
@@ -2070,20 +2204,104 @@ const loadEvents = useCallback(async () => {
       ) : (
         <>
           <div className="staff-kpi-grid">
-            <div className="staff-kpi"><span>Unpaid check-ins</span><strong>{summary?.unpaidCheckInsCount ?? 0}</strong></div>
-            <div className="staff-kpi"><span>Unpaid check-ins</span><strong>{dollars(summary?.unpaidCheckInsAmountCents ?? 0)}</strong></div>
-            <div className="staff-kpi"><span>Pending materials</span><strong>{summary?.materialsPendingCount ?? 0}</strong></div>
-            <div className="staff-kpi"><span>Pending amount</span><strong>{dollars(summary?.materialsPendingAmountCents ?? 0)}</strong></div>
-            <div className="staff-kpi"><span>Receipts</span><strong>{summary?.receiptsCount ?? 0}</strong></div>
+            <div className="staff-kpi"><span>Order queue</span><strong>{commerceKpis.ordersTotal}</strong></div>
+            <div className="staff-kpi"><span>Pending orders</span><strong>{commerceKpis.pendingOrders}</strong></div>
+            <div className="staff-kpi"><span>Pending value</span><strong>{dollars(commerceKpis.pendingAmount)}</strong></div>
+            <div className="staff-kpi"><span>Unpaid check-ins</span><strong>{commerceKpis.unpaidCheckIns}</strong></div>
+            <div className="staff-kpi"><span>Receipts</span><strong>{commerceKpis.receiptsTotal}</strong></div>
             <div className="staff-kpi"><span>Receipts total</span><strong>{dollars(summary?.receiptsAmountCents ?? 0)}</strong></div>
           </div>
           <div className="staff-actions-row">
             <button className="btn btn-secondary" disabled={!!busy} onClick={() => void run("seedMaterialsCatalog", async () => { await client.postJson("seedMaterialsCatalog", {}); await loadCommerce(); setStatus("seedMaterialsCatalog completed"); })}>Seed materials catalog</button>
+            <input
+              className="staff-member-search"
+              placeholder="Search orders by id, status, notes"
+              value={commerceSearch}
+              onChange={(event) => setCommerceSearch(event.target.value)}
+            />
+            <select
+              className="staff-member-role-filter"
+              value={commerceStatusFilter}
+              onChange={(event) => setCommerceStatusFilter(event.target.value)}
+            >
+              <option value="all">All order statuses</option>
+              {commerceStatusOptions.map((statusName) => (
+                <option key={statusName} value={statusName}>{statusName}</option>
+              ))}
+            </select>
           </div>
+          <div className="staff-subtitle">Unpaid check-ins</div>
           <div className="staff-table-wrap">
             <table className="staff-table">
-              <thead><tr><th>Order</th><th>Status</th><th>Total</th><th>Updated</th></tr></thead>
-              <tbody>{orders.map((o) => <tr key={o.id}><td><code>{o.id}</code></td><td><span className="pill">{o.status}</span></td><td>{dollars(o.totalCents)}</td><td>{o.updatedAt}</td></tr>)}</tbody>
+              <thead><tr><th>Event</th><th>Signup</th><th>Amount</th><th>Status</th><th>Checked in</th></tr></thead>
+              <tbody>
+                {unpaidCheckIns.length === 0 ? (
+                  <tr><td colSpan={5}>No unpaid check-ins.</td></tr>
+                ) : (
+                  unpaidCheckIns.slice(0, 40).map((entry) => (
+                    <tr key={entry.signupId}>
+                      <td>{entry.eventTitle}<div className="staff-mini"><code>{entry.eventId || "-"}</code></div></td>
+                      <td><code>{entry.signupId}</code></td>
+                      <td>{entry.amountCents !== null ? dollars(entry.amountCents) : "-"}</td>
+                      <td>{entry.paymentStatus || "pending"}</td>
+                      <td>{entry.checkedInAt || entry.createdAt || "-"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="staff-subtitle">Material orders</div>
+          <div className="staff-table-wrap">
+            <table className="staff-table">
+              <thead><tr><th>Order</th><th>Status</th><th>Total</th><th>Items</th><th>Updated</th><th>Action</th></tr></thead>
+              <tbody>
+                {filteredOrders.length === 0 ? (
+                  <tr><td colSpan={6}>No orders match current filters.</td></tr>
+                ) : (
+                  filteredOrders.map((o) => (
+                    <tr key={o.id}>
+                      <td><code>{o.id}</code></td>
+                      <td><span className="pill">{o.status}</span></td>
+                      <td>{dollars(o.totalCents)}</td>
+                      <td>{o.itemCount}</td>
+                      <td>{o.updatedAt}</td>
+                      <td>
+                        {o.checkoutUrl ? (
+                          <button
+                            className="btn btn-ghost btn-small"
+                            onClick={() => void copy(o.checkoutUrl ?? "")}
+                          >
+                            Copy checkout link
+                          </button>
+                        ) : (
+                          <span className="staff-mini">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="staff-subtitle">Recent receipts</div>
+          <div className="staff-table-wrap">
+            <table className="staff-table">
+              <thead><tr><th>Receipt</th><th>Type</th><th>Amount</th><th>Paid</th></tr></thead>
+              <tbody>
+                {receipts.length === 0 ? (
+                  <tr><td colSpan={4}>No receipts yet.</td></tr>
+                ) : (
+                  receipts.slice(0, 40).map((entry) => (
+                    <tr key={entry.id}>
+                      <td>{entry.title}<div className="staff-mini"><code>{entry.id}</code></div></td>
+                      <td>{entry.type}</td>
+                      <td>{dollars(entry.amountCents)}</td>
+                      <td>{entry.paidAt || entry.createdAt || "-"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
             </table>
           </div>
         </>

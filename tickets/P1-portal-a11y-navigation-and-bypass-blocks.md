@@ -1,6 +1,6 @@
 # P1 — Portal A11y: Navigation + Bypass Blocks
 
-Status: Planned
+Status: In Progress
 
 ## Problem
 - App shell lacks a skip-link pattern and puts dense navigation before content.
@@ -40,3 +40,7 @@ Status: Planned
 - `web/src/App.css:3011`
 - `web/src/App.css:3015`
 - `web/src/App.css:3032`
+
+## Progress notes
+- Verified shell skip-link and `main` landmark wiring are present.
+- Updated collapsed-sidebar tooltip behavior so labels are exposed on keyboard focus (`:focus-visible`), not hover-only.

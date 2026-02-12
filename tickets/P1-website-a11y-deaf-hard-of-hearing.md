@@ -1,6 +1,6 @@
 # P1 — Website A11y: Deaf / Hard-of-Hearing Support
 
-Status: In Progress
+Status: Completed
 
 ## Problem
 - Video/audio content can block users who are deaf or hard-of-hearing when captions/transcripts are missing.

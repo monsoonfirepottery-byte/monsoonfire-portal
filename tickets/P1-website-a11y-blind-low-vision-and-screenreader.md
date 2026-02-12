@@ -1,6 +1,6 @@
 # P1 — Website A11y: Blind / Low-Vision / Screen Reader
 
-Status: In Progress
+Status: Completed
 
 ## Problem
 - Blind and low-vision users need reliable semantics, labels, focus order, and contrast.

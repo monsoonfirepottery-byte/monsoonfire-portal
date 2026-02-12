@@ -46,7 +46,7 @@ function jsonError(
 }
 
 function requireScopes(ctx: AuthContext, required: string[]): { ok: true } | { ok: false; message: string } {
-  if (ctx.mode !== "pat") return { ok: true };
+  if (ctx.mode === "firebase") return { ok: true };
   const scopes = ctx.scopes ?? [];
   const missing = required.filter((s) => !scopes.includes(s));
   if (missing.length) return { ok: false, message: `Missing scope(s): ${missing.join(", ")}` };

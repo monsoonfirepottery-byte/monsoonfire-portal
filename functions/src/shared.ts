@@ -1,7 +1,7 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAuth, type DecodedIdToken } from "firebase-admin/auth";
-import { createHash, createHmac, timingSafeEqual } from "crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { z } from "zod";
 
 initializeApp();
@@ -133,6 +133,7 @@ export type AuthContext =
       decoded: DecodedIdToken;
       scopes: null;
       tokenId: null;
+      delegated: null;
     }
   | {
       mode: "pat";
@@ -140,6 +141,20 @@ export type AuthContext =
       decoded: null;
       scopes: string[];
       tokenId: string;
+      delegated: null;
+    }
+  | {
+      mode: "delegated";
+      uid: string;
+      decoded: null;
+      scopes: string[];
+      tokenId: string;
+      delegated: {
+        agentClientId: string;
+        audience: string;
+        expiresAt: number;
+        nonce: string;
+      };
     };
 
 function readIntegrationTokenPepper(): string | null {
@@ -163,6 +178,138 @@ function parsePatToken(raw: string): { ok: true; tokenId: string; secret: string
   return { ok: true, tokenId, secret };
 }
 
+const DELEGATED_TOKEN_PREFIX = "mf_dlg_v1";
+const DEFAULT_DELEGATED_AUDIENCE = "monsoonfire-agent-v1";
+
+type DelegatedTokenPayload = {
+  principalUid: string;
+  agentClientId: string;
+  scopes: string[];
+  aud: string;
+  exp: number;
+  iat: number;
+  nonce: string;
+};
+
+function readDelegatedTokenSecret(): string | null {
+  const raw = (process.env.DELEGATED_AGENT_TOKEN_SECRET ?? "").trim();
+  return raw.length ? raw : null;
+}
+
+function delegatedAudience(): string {
+  const raw = (process.env.DELEGATED_TOKEN_AUDIENCE ?? "").trim();
+  return raw.length ? raw : DEFAULT_DELEGATED_AUDIENCE;
+}
+
+function signDelegatedPayload(encodedPayload: string): string | null {
+  const secret = readDelegatedTokenSecret();
+  if (!secret) return null;
+  return createHmac("sha256", secret).update(encodedPayload).digest("base64url");
+}
+
+function parseDelegatedToken(raw: string): { ok: true; payloadEncoded: string; signature: string } | { ok: false } {
+  const parts = raw.split(".");
+  if (parts.length !== 3) return { ok: false };
+  if (parts[0] !== DELEGATED_TOKEN_PREFIX) return { ok: false };
+  const payloadEncoded = parts[1] ?? "";
+  const signature = parts[2] ?? "";
+  if (!payloadEncoded || !signature) return { ok: false };
+  return { ok: true, payloadEncoded, signature };
+}
+
+function decodeDelegatedPayload(encodedPayload: string): DelegatedTokenPayload | null {
+  try {
+    const decoded = Buffer.from(encodedPayload, "base64url").toString("utf8");
+    const parsed = JSON.parse(decoded) as Record<string, unknown>;
+    const principalUid = typeof parsed.principalUid === "string" ? parsed.principalUid.trim() : "";
+    const agentClientId = typeof parsed.agentClientId === "string" ? parsed.agentClientId.trim() : "";
+    const scopes = Array.isArray(parsed.scopes)
+      ? parsed.scopes.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+      : [];
+    const aud = typeof parsed.aud === "string" ? parsed.aud.trim() : "";
+    const exp = typeof parsed.exp === "number" && Number.isFinite(parsed.exp) ? Math.trunc(parsed.exp) : 0;
+    const iat = typeof parsed.iat === "number" && Number.isFinite(parsed.iat) ? Math.trunc(parsed.iat) : 0;
+    const nonce = typeof parsed.nonce === "string" ? parsed.nonce.trim() : "";
+    if (!principalUid || !agentClientId || !aud || !nonce || !scopes.length || exp <= 0 || iat <= 0) {
+      return null;
+    }
+    return { principalUid, agentClientId, scopes, aud, exp, iat, nonce };
+  } catch {
+    return null;
+  }
+}
+
+function constantTimeCompareStrings(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
+}
+
+async function claimDelegatedNonce(payload: DelegatedTokenPayload): Promise<boolean> {
+  const now = Date.now();
+  if (payload.exp <= now) return false;
+  const nonceHash = createHash("sha256")
+    .update(`${payload.nonce}:${payload.agentClientId}:${payload.principalUid}:${payload.exp}`)
+    .digest("hex")
+    .slice(0, 40);
+  const ref = db.collection("delegatedTokenNonces").doc(nonceHash);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (snap.exists) {
+        throw new Error("nonce_replayed");
+      }
+      tx.create(ref, {
+        nonce: payload.nonce,
+        principalUid: payload.principalUid,
+        agentClientId: payload.agentClientId,
+        expMs: payload.exp,
+        aud: payload.aud,
+        createdAt: nowTs(),
+        expiresAt: Timestamp.fromMillis(payload.exp),
+      });
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function createDelegatedAgentToken(params: {
+  principalUid: string;
+  agentClientId: string;
+  scopes: string[];
+  ttlSeconds: number;
+  audience?: string | null;
+}): { token: string; expiresAt: number; nonce: string; audience: string } {
+  const now = Date.now();
+  const ttlSeconds = Math.max(30, Math.min(params.ttlSeconds, 600));
+  const expiresAt = now + ttlSeconds * 1000;
+  const nonce = randomBytes(12).toString("base64url");
+  const audience = (params.audience ?? "").trim() || delegatedAudience();
+  const payload: DelegatedTokenPayload = {
+    principalUid: params.principalUid,
+    agentClientId: params.agentClientId,
+    scopes: params.scopes,
+    aud: audience,
+    exp: expiresAt,
+    iat: now,
+    nonce,
+  };
+  const payloadEncoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const signature = signDelegatedPayload(payloadEncoded);
+  if (!signature) {
+    throw new Error("DELEGATED_AGENT_TOKEN_SECRET not configured");
+  }
+  return {
+    token: `${DELEGATED_TOKEN_PREFIX}.${payloadEncoded}.${signature}`,
+    expiresAt,
+    nonce,
+    audience,
+  };
+}
+
 export async function requireAuthContext(
   req: any
 ): Promise<{ ok: true; ctx: AuthContext } | { ok: false; code: "UNAUTHENTICATED"; message: string }> {
@@ -171,6 +318,66 @@ export async function requireAuthContext(
 
   const token = parseAuthToken(req);
   if (!token) return { ok: false, code: "UNAUTHENTICATED", message: "Missing Authorization header" };
+
+  // Delegated auth token
+  if (token.startsWith(`${DELEGATED_TOKEN_PREFIX}.`)) {
+    const parsed = parseDelegatedToken(token);
+    if (!parsed.ok) return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+
+    const expectedSignature = signDelegatedPayload(parsed.payloadEncoded);
+    if (!expectedSignature || !constantTimeCompareStrings(expectedSignature, parsed.signature)) {
+      return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    }
+
+    const payload = decodeDelegatedPayload(parsed.payloadEncoded);
+    if (!payload) return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    if (payload.aud !== delegatedAudience()) {
+      return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    }
+    if (payload.exp <= Date.now()) {
+      return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    }
+
+    const clientRef = db.collection("agentClients").doc(payload.agentClientId);
+    const clientSnap = await clientRef.get();
+    if (!clientSnap.exists) return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    const clientData = clientSnap.data() as Record<string, unknown>;
+    const status = typeof clientData.status === "string" ? clientData.status : "active";
+    if (status !== "active") return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    const allowedScopes = Array.isArray(clientData.scopes)
+      ? clientData.scopes.filter((entry): entry is string => typeof entry === "string")
+      : [];
+    if (payload.scopes.some((scope) => !allowedScopes.includes(scope))) {
+      return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    }
+
+    const nonceOk = await claimDelegatedNonce(payload);
+    if (!nonceOk) return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+
+    const ctx: AuthContext = {
+      mode: "delegated",
+      uid: payload.principalUid,
+      decoded: null,
+      scopes: payload.scopes,
+      tokenId: payload.agentClientId,
+      delegated: {
+        agentClientId: payload.agentClientId,
+        audience: payload.aud,
+        expiresAt: payload.exp,
+        nonce: payload.nonce,
+      },
+    };
+    (req as any).__mfAuthContext = ctx;
+
+    try {
+      const t = nowTs();
+      await clientRef.set({ lastUsedAt: t, updatedAt: t }, { merge: true });
+    } catch {
+      // ignore
+    }
+
+    return { ok: true, ctx };
+  }
 
   // PAT auth
   if (token.startsWith("mf_pat_v1.")) {
@@ -210,6 +417,7 @@ export async function requireAuthContext(
       decoded: null,
       scopes,
       tokenId: parsed.tokenId,
+      delegated: null,
     };
     (req as any).__mfAuthContext = ctx;
 
@@ -234,6 +442,7 @@ export async function requireAuthContext(
     decoded: auth.decoded,
     scopes: null,
     tokenId: null,
+    delegated: null,
   };
   (req as any).__mfAuthContext = ctx;
   return { ok: true, ctx };

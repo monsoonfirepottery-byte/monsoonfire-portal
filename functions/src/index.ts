@@ -16,6 +16,7 @@ import {
   enforceRateLimit,
   parseBody,
   makeIdempotencyId,
+  createDelegatedAgentToken as createDelegatedToken,
   FieldValue,
   Timestamp,
 } from "./shared";
@@ -200,6 +201,14 @@ const createIntegrationTokenSchema = z.object({
 
 const revokeIntegrationTokenSchema = z.object({
   tokenId: z.string().min(1),
+});
+
+const createDelegatedAgentTokenSchema = z.object({
+  agentClientId: z.string().min(1).max(120),
+  scopes: z.array(z.string().min(1).max(120)).min(1).max(20),
+  ttlSeconds: z.number().int().min(30).max(600).optional(),
+  audience: z.string().min(1).max(120).optional().nullable(),
+  principalUid: z.string().min(1).max(128).optional().nullable(),
 });
 
 const githubLookupSchema = z.object({
@@ -671,6 +680,127 @@ export const revokeIntegrationToken = onRequest(
   }
 );
 
+export const createDelegatedAgentToken = onRequest(
+  { region: REGION, timeoutSeconds: 60 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+
+    const parsed = parseBody(createDelegatedAgentTokenSchema, req.body ?? {});
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const rate = await enforceRateLimit({
+      req,
+      key: "createDelegatedAgentToken",
+      max: 30,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    const clientId = safeString(parsed.data.agentClientId);
+    const ref = db.collection("agentClients").doc(clientId);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      res.status(404).json({ ok: false, message: "Agent client not found" });
+      return;
+    }
+
+    const row = snap.data() as Record<string, unknown>;
+    const clientStatus = safeString(row.status, "active");
+    if (clientStatus !== "active") {
+      res.status(400).json({ ok: false, message: "Agent client must be active for delegated tokens." });
+      return;
+    }
+
+    const ownerUid = safeString(row.ownerUid) || safeString(row.createdByUid);
+    const admin = await requireAdmin(req);
+    const isStaff = admin.ok;
+    if (!isStaff && ownerUid && ownerUid !== auth.uid) {
+      res.status(403).json({ ok: false, message: "Forbidden" });
+      return;
+    }
+
+    const requestedScopes = [...new Set(parsed.data.scopes.map((entry) => String(entry).trim()).filter(Boolean))];
+    if (!requestedScopes.length) {
+      res.status(400).json({ ok: false, message: "At least one scope is required." });
+      return;
+    }
+
+    const allowedScopes = Array.isArray(row.scopes)
+      ? row.scopes.filter((entry): entry is string => typeof entry === "string")
+      : [];
+    const missingScopes = requestedScopes.filter((scope) => !allowedScopes.includes(scope));
+    if (missingScopes.length) {
+      res.status(403).json({
+        ok: false,
+        message: `Agent client missing scope(s): ${missingScopes.join(", ")}`,
+      });
+      return;
+    }
+
+    const principalUid = safeString(parsed.data.principalUid) || auth.uid;
+    if (principalUid !== auth.uid && !isStaff) {
+      res.status(403).json({ ok: false, message: "Only staff can issue delegated tokens for other principals." });
+      return;
+    }
+
+    try {
+      const issued = createDelegatedToken({
+        principalUid,
+        agentClientId: clientId,
+        scopes: requestedScopes,
+        ttlSeconds: parsed.data.ttlSeconds ?? 300,
+        audience: parsed.data.audience ?? null,
+      });
+
+      await db.collection("agentClientAuditLogs").add({
+        actorUid: auth.uid,
+        action: "issue_delegated_token",
+        clientId,
+        metadata: {
+          principalUid,
+          scopes: requestedScopes,
+          ttlSeconds: parsed.data.ttlSeconds ?? 300,
+          audience: issued.audience,
+          expiresAtMs: issued.expiresAt,
+          nonce: issued.nonce,
+        },
+        createdAt: nowTs(),
+      });
+
+      res.status(200).json({
+        ok: true,
+        delegatedToken: issued.token,
+        expiresAtMs: issued.expiresAt,
+        audience: issued.audience,
+        principalUid,
+        mode: "delegated",
+        warning: "Delegated token is short-lived and single-use (nonce protected).",
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ ok: false, message });
+    }
+  }
+);
+
 export const helloPat = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
   if (applyCors(req, res)) return;
 
@@ -684,7 +814,8 @@ export const helloPat = onRequest({ region: REGION, timeoutSeconds: 60 }, async 
     ok: true,
     uid: auth.ctx.uid,
     mode: auth.ctx.mode,
-    scopes: auth.ctx.mode === "pat" ? auth.ctx.scopes : null,
+    scopes: auth.ctx.mode === "firebase" ? null : auth.ctx.scopes,
+    delegated: auth.ctx.mode === "delegated" ? auth.ctx.delegated : null,
   });
 });
 

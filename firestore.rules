@@ -816,6 +816,10 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /delegatedTokenNonces/{nonceId} {
+      allow read, write: if false;
+    }
+
     match /communityFeedOverrides/{overrideId} {
       allow read: if isSignedIn();
       allow write: if false;

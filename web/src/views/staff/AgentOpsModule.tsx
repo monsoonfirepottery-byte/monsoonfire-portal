@@ -120,6 +120,11 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [profileNotes, setProfileNotes] = useState("");
   const [profilePerMinute, setProfilePerMinute] = useState("60");
   const [profilePerHour, setProfilePerHour] = useState("600");
+  const [delegatedScopesDraft, setDelegatedScopesDraft] = useState("quote:write,reserve:write,pay:write,status:read");
+  const [delegatedTtlDraft, setDelegatedTtlDraft] = useState("300");
+  const [delegatedAudienceDraft, setDelegatedAudienceDraft] = useState("monsoonfire-agent-v1");
+  const [delegatedPrincipalDraft, setDelegatedPrincipalDraft] = useState("");
+  const [latestDelegatedToken, setLatestDelegatedToken] = useState("");
 
   const selected = useMemo(() => clients.find((row) => row.id === selectedId) ?? null, [clients, selectedId]);
 
@@ -171,6 +176,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     setProfileNotes(selected.notes ?? "");
     setProfilePerMinute(String(selected.rateLimits.perMinute || 60));
     setProfilePerHour(String(selected.rateLimits.perHour || 600));
+    setDelegatedScopesDraft(selected.scopes.join(","));
   }, [selected]);
 
   const parseScopes = (text: string): string[] =>
@@ -241,6 +247,32 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     setStatus("Latest API key copied.");
   };
 
+  const issueDelegatedToken = async () => {
+    if (!selected) return;
+    const ttlSeconds = Math.max(30, Math.min(Number(delegatedTtlDraft) || 300, 600));
+    const resp = await client.postJson<{ ok: boolean; delegatedToken?: string; message?: string }>(
+      "createDelegatedAgentToken",
+      {
+        agentClientId: selected.id,
+        scopes: parseScopes(delegatedScopesDraft),
+        ttlSeconds,
+        audience: delegatedAudienceDraft.trim() || null,
+        principalUid: delegatedPrincipalDraft.trim() || null,
+      }
+    );
+    if (!resp.ok || !resp.delegatedToken) {
+      throw new Error(resp.message ?? "Failed to issue delegated token.");
+    }
+    setLatestDelegatedToken(resp.delegatedToken);
+    setStatus("Delegated token issued.");
+  };
+
+  const copyDelegatedToken = async () => {
+    if (!latestDelegatedToken) return;
+    await navigator.clipboard.writeText(latestDelegatedToken);
+    setStatus("Delegated token copied.");
+  };
+
   return (
     <section className="card staff-console-card">
       <div className="card-title-row">
@@ -262,6 +294,18 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
           <div className="staff-actions-row">
             <input value={latestKey} readOnly />
             <button className="btn btn-secondary" onClick={() => void copyLatestKey()}>
+              Copy
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {latestDelegatedToken ? (
+        <div className="staff-field">
+          Latest delegated token (copy now)
+          <div className="staff-actions-row">
+            <input value={latestDelegatedToken} readOnly />
+            <button className="btn btn-secondary" onClick={() => void copyDelegatedToken()}>
               Copy
             </button>
           </div>
@@ -412,6 +456,33 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 onClick={() => void run("saveAgentProfile", saveProfile)}
               >
                 Save profile
+              </button>
+
+              <div className="staff-subtitle">Issue delegated token</div>
+              <label className="staff-field">
+                Principal UID (optional; default is your UID)
+                <input value={delegatedPrincipalDraft} onChange={(event) => setDelegatedPrincipalDraft(event.target.value)} placeholder="uid_override_optional" />
+              </label>
+              <label className="staff-field">
+                Delegated scopes (comma-separated)
+                <input value={delegatedScopesDraft} onChange={(event) => setDelegatedScopesDraft(event.target.value)} />
+              </label>
+              <div className="staff-actions-row">
+                <label className="staff-field" style={{ flex: 1 }}>
+                  TTL seconds (30-600)
+                  <input value={delegatedTtlDraft} onChange={(event) => setDelegatedTtlDraft(event.target.value)} />
+                </label>
+                <label className="staff-field" style={{ flex: 1 }}>
+                  Audience
+                  <input value={delegatedAudienceDraft} onChange={(event) => setDelegatedAudienceDraft(event.target.value)} />
+                </label>
+              </div>
+              <button
+                className="btn btn-secondary"
+                disabled={Boolean(busy) || disabled || parseScopes(delegatedScopesDraft).length < 1}
+                onClick={() => void run("issueDelegatedToken", issueDelegatedToken)}
+              >
+                Issue delegated token
               </button>
             </>
           ) : (

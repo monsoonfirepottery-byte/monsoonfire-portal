@@ -1,6 +1,6 @@
 # P1 — Reporting Rules, Validation, and Security Test Pack
 
-Status: In Progress
+Status: Completed
 
 ## Context / user story
 - As platform/security owners, we need hard guarantees that users cannot tamper with report workflow fields and cannot abuse endpoints.
@@ -45,3 +45,10 @@ Status: In Progress
 - Added deterministic rate-limit decision helper + tests:
   - helper: `evaluateRateLimitWindow` in `functions/src/shared.ts`
   - tests: `functions/src/sharedRateLimit.test.ts`
+- Firestore rules enforce function-only report writes and scoped reads:
+  - `communityReports`, `communityReportAppeals`, and `communityReportAuditLogs` deny direct client writes.
+  - reporter can only read their own report/appeal records; staff has triage visibility.
+  - nested triage artifacts (`internalNotes`, `actions`) are staff-read only and client-write denied.
+- Function-level controls remain canonical for abuse protections:
+  - create-report rate limit and dedupe windows
+  - rejected request audit events (`rate_limited`, `duplicate_report`)

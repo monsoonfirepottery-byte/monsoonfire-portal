@@ -710,6 +710,16 @@ export default function ReportsModule({ client, active, disabled }: Props) {
                       key={report.id}
                       className={`staff-click-row ${selectedReportId === report.id ? "active" : ""}`}
                       onClick={() => setSelectedReportId(report.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedReportId(report.id);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      aria-pressed={selectedReportId === report.id}
+                      aria-label={`Select report ${report.id}`}
                     >
                       <td>
                         <div>{report.targetSnapshot.title || report.targetRef.id || report.id}</div>

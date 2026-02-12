@@ -23,6 +23,12 @@ import { TimelineEventType } from "./timelineEventTypes";
 import { z } from "zod";
 import { handleApiV1 } from "./apiV1";
 import {
+  getModerationPolicyCurrent,
+  listModerationPolicies,
+  staffPublishModerationPolicy,
+  staffUpsertModerationPolicy,
+} from "./moderationPolicy";
+import {
   addInternalNote,
   createReport,
   listReports,
@@ -55,6 +61,12 @@ const REGION = "us-central1";
 
 export const apiV1 = onRequest({ region: REGION, timeoutSeconds: 60 }, handleApiV1);
 export { createReport, listReports, updateReportStatus, addInternalNote, takeContentAction };
+export {
+  getModerationPolicyCurrent,
+  listModerationPolicies,
+  staffUpsertModerationPolicy,
+  staffPublishModerationPolicy,
+};
 
 /**
  * IMPORTANT:

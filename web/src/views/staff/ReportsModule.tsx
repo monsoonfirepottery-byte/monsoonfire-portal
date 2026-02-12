@@ -15,6 +15,16 @@ type ReportCategory =
   | "other";
 type ReportTargetType = "youtube_video" | "blog_post" | "studio_update" | "event";
 type ContentActionType = "unpublish" | "replace_link" | "flag_for_review" | "disable_from_feed";
+type PolicyRule = {
+  id: string;
+  title: string;
+  description: string;
+};
+type ActivePolicy = {
+  version: string;
+  title: string;
+  rules: PolicyRule[];
+};
 
 type ReportRow = {
   id: string;
@@ -44,6 +54,7 @@ type Props = {
 };
 
 type ListReportsResponse = { ok: boolean; reports?: Array<Record<string, unknown>> };
+type CurrentPolicyResponse = { ok: boolean; policy?: Record<string, unknown> | null };
 type BasicResponse = { ok: boolean; message?: string };
 
 function str(v: unknown, fallback = ""): string {
@@ -100,6 +111,7 @@ export default function ReportsModule({ client, active, disabled }: Props) {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [reports, setReports] = useState<ReportRow[]>([]);
+  const [activePolicy, setActivePolicy] = useState<ActivePolicy | null>(null);
   const [selectedReportId, setSelectedReportId] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | ReportStatus>("open");
   const [filterSeverity, setFilterSeverity] = useState<"all" | ReportSeverity>("all");
@@ -109,6 +121,8 @@ export default function ReportsModule({ client, active, disabled }: Props) {
   const [newInternalNote, setNewInternalNote] = useState("");
   const [nextStatus, setNextStatus] = useState<ReportStatus>("triaged");
   const [resolutionCode, setResolutionCode] = useState("");
+  const [selectedRuleId, setSelectedRuleId] = useState("");
+  const [reasonCode, setReasonCode] = useState("");
   const [contentActionType, setContentActionType] = useState<ContentActionType>("flag_for_review");
   const [actionReason, setActionReason] = useState("");
   const [replacementUrl, setReplacementUrl] = useState("");
@@ -150,6 +164,37 @@ export default function ReportsModule({ client, active, disabled }: Props) {
     }
   };
 
+  const loadActivePolicy = async () => {
+    const resp = await client.postJson<CurrentPolicyResponse>("getModerationPolicyCurrent", {});
+    const row = resp.policy as Record<string, unknown> | null | undefined;
+    if (!row) {
+      setActivePolicy(null);
+      setSelectedRuleId("");
+      return;
+    }
+    const rulesRaw = Array.isArray(row.rules) ? row.rules : [];
+    const rules: PolicyRule[] = rulesRaw
+      .map((entry) => {
+        const item = entry as Record<string, unknown>;
+        return {
+          id: str(item.id).trim(),
+          title: str(item.title).trim(),
+          description: str(item.description).trim(),
+        };
+      })
+      .filter((rule) => rule.id.length > 0);
+
+    const nextPolicy: ActivePolicy = {
+      version: str(row.version || row.id),
+      title: str(row.title),
+      rules,
+    };
+    setActivePolicy(nextPolicy);
+    if (!selectedRuleId && rules.length > 0) {
+      setSelectedRuleId(rules[0].id);
+    }
+  };
+
   const loadInternalNotes = async (reportId: string) => {
     if (!reportId) {
       setInternalNotes([]);
@@ -176,7 +221,9 @@ export default function ReportsModule({ client, active, disabled }: Props) {
 
   useEffect(() => {
     if (!active || disabled) return;
-    void run("loadReports", loadReports);
+    void run("loadReports", async () => {
+      await Promise.all([loadReports(), loadActivePolicy()]);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, disabled, filterStatus, filterSeverity, filterCategory, filterType]);
 
@@ -193,6 +240,13 @@ export default function ReportsModule({ client, active, disabled }: Props) {
     setNextStatus(selected.status === "open" ? "triaged" : selected.status);
     setContentActionType(selected.targetType === "youtube_video" ? "disable_from_feed" : "unpublish");
   }, [selected]);
+
+  useEffect(() => {
+    if (!activePolicy || !activePolicy.rules.length) return;
+    if (!selectedRuleId || !activePolicy.rules.some((rule) => rule.id === selectedRuleId)) {
+      setSelectedRuleId(activePolicy.rules[0].id);
+    }
+  }, [activePolicy, selectedRuleId]);
 
   const statusCounts = useMemo(() => {
     return {
@@ -220,6 +274,16 @@ export default function ReportsModule({ client, active, disabled }: Props) {
       {disabled ? (
         <div className="staff-note">
           Reports module requires function auth. Enable auth emulator (`VITE_USE_AUTH_EMULATOR=true`) or point Functions to production.
+        </div>
+      ) : null}
+      {!disabled && !activePolicy ? (
+        <div className="staff-note staff-note-error">
+          No active Code of Conduct policy is published. Open Governance module, publish a policy version, then return to reports triage.
+        </div>
+      ) : null}
+      {activePolicy ? (
+        <div className="staff-note">
+          Active policy: <strong>{activePolicy.version}</strong> {activePolicy.title ? `· ${activePolicy.title}` : ""}
         </div>
       ) : null}
 
@@ -327,14 +391,30 @@ export default function ReportsModule({ client, active, disabled }: Props) {
                     value={resolutionCode}
                     onChange={(event) => setResolutionCode(event.target.value)}
                   />
+                  <select value={selectedRuleId} onChange={(event) => setSelectedRuleId(event.target.value)}>
+                    {(activePolicy?.rules ?? []).map((rule) => (
+                      <option key={rule.id} value={rule.id}>
+                        {rule.id} · {rule.title}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    placeholder="Reason code (required)"
+                    value={reasonCode}
+                    onChange={(event) => setReasonCode(event.target.value)}
+                  />
                   <button
                     className="btn btn-primary"
-                    disabled={Boolean(busy) || disabled}
+                    disabled={Boolean(busy) || disabled || !activePolicy?.version || !selectedRuleId.trim() || !reasonCode.trim()}
                     onClick={() =>
                       void run("updateReportStatus", async () => {
+                        const policyVersion = activePolicy?.version ?? "";
                         await client.postJson<BasicResponse>("updateReportStatus", {
                           reportId: selected.id,
                           status: nextStatus,
+                          policyVersion,
+                          ruleId: selectedRuleId.trim(),
+                          reasonCode: reasonCode.trim(),
                           resolutionCode: resolutionCode.trim() || null,
                         });
                         await loadReports();
@@ -402,13 +482,29 @@ export default function ReportsModule({ client, active, disabled }: Props) {
                     value={replacementUrl}
                     onChange={(event) => setReplacementUrl(event.target.value)}
                   />
+                  <select value={selectedRuleId} onChange={(event) => setSelectedRuleId(event.target.value)}>
+                    {(activePolicy?.rules ?? []).map((rule) => (
+                      <option key={rule.id} value={rule.id}>
+                        {rule.id} · {rule.title}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    placeholder="Reason code (required)"
+                    value={reasonCode}
+                    onChange={(event) => setReasonCode(event.target.value)}
+                  />
                   <button
                     className="btn btn-secondary"
-                    disabled={Boolean(busy) || disabled}
+                    disabled={Boolean(busy) || disabled || !activePolicy?.version || !selectedRuleId.trim() || !reasonCode.trim()}
                     onClick={() =>
                       void run("takeContentAction", async () => {
+                        const policyVersion = activePolicy?.version ?? "";
                         await client.postJson<BasicResponse>("takeContentAction", {
                           reportId: selected.id,
+                          policyVersion,
+                          ruleId: selectedRuleId.trim(),
+                          reasonCode: reasonCode.trim(),
                           actionType: contentActionType,
                           reason: actionReason.trim() || null,
                           replacementUrl: replacementUrl.trim() || null,

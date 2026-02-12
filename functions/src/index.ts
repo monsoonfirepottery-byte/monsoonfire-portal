@@ -67,7 +67,9 @@ import {
 } from "./agentCatalog";
 import {
   staffListAgentOperations,
+  staffGetAgentOpsConfig,
   staffReviewAgentReservation,
+  staffUpdateAgentOpsConfig,
 } from "./agentCommerce";
 import { emitIntegrationEvent } from "./integrationEvents";
 export {
@@ -125,8 +127,10 @@ export {
   staffUpdateAgentServiceCatalog,
 };
 export {
+  staffGetAgentOpsConfig,
   staffListAgentOperations,
   staffReviewAgentReservation,
+  staffUpdateAgentOpsConfig,
 };
 
 /**

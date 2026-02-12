@@ -78,6 +78,13 @@ type OpsResponse = {
   orders?: Array<Record<string, unknown>>;
   audit?: Array<Record<string, unknown>>;
 };
+type AgentOpsConfigResponse = {
+  ok: boolean;
+  config?: {
+    enabled?: boolean;
+    allowPayments?: boolean;
+  };
+};
 
 function str(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
@@ -217,6 +224,8 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [opsQuotes, setOpsQuotes] = useState<Array<Record<string, unknown>>>([]);
   const [opsReservations, setOpsReservations] = useState<Array<Record<string, unknown>>>([]);
   const [opsOrders, setOpsOrders] = useState<Array<Record<string, unknown>>>([]);
+  const [agentApiEnabled, setAgentApiEnabled] = useState(true);
+  const [agentPaymentsEnabled, setAgentPaymentsEnabled] = useState(true);
 
   const selected = useMemo(() => clients.find((row) => row.id === selectedId) ?? null, [clients, selectedId]);
 
@@ -235,11 +244,12 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   };
 
   const load = useCallback(async () => {
-    const [clientsResp, logsResp, catalogResp, opsResp] = await Promise.all([
+    const [clientsResp, logsResp, catalogResp, opsResp, opsConfigResp] = await Promise.all([
       client.postJson<ListClientsResponse>("staffListAgentClients", { includeRevoked: true, limit: 200 }),
       client.postJson<ListLogsResponse>("staffListAgentClientAuditLogs", { limit: 80 }),
       client.postJson<CatalogResponse>("staffGetAgentServiceCatalog", {}),
       client.postJson<OpsResponse>("staffListAgentOperations", { limit: 60 }),
+      client.postJson<AgentOpsConfigResponse>("staffGetAgentOpsConfig", {}),
     ]);
 
     const rows = Array.isArray(clientsResp.clients) ? clientsResp.clients.map((row) => normalizeClient(row)) : [];
@@ -260,6 +270,9 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     setOpsQuotes(Array.isArray(opsResp.quotes) ? opsResp.quotes : []);
     setOpsReservations(Array.isArray(opsResp.reservations) ? opsResp.reservations : []);
     setOpsOrders(Array.isArray(opsResp.orders) ? opsResp.orders : []);
+
+    setAgentApiEnabled(opsConfigResp.config?.enabled !== false);
+    setAgentPaymentsEnabled(opsConfigResp.config?.allowPayments !== false);
 
     if (!selectedId && rows.length > 0) setSelectedId(rows[0].id);
     if (selectedId && !rows.some((row) => row.id === selectedId)) {
@@ -399,6 +412,15 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     setStatus(`Reservation ${reservationId} ${decision}d.`);
   };
 
+  const saveAgentOpsConfig = async () => {
+    await client.postJson("staffUpdateAgentOpsConfig", {
+      enabled: agentApiEnabled,
+      allowPayments: agentPaymentsEnabled,
+    });
+    await load();
+    setStatus("Agent ops controls updated.");
+  };
+
   const copyDelegatedToken = async () => {
     if (!latestDelegatedToken) return;
     await navigator.clipboard.writeText(latestDelegatedToken);
@@ -416,6 +438,31 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
 
       <div className="staff-note">
         Agent keys are shown once at creation/rotation and never stored in plaintext.
+      </div>
+      <div className="staff-actions-row">
+        <label className="staff-field" style={{ flex: 1 }}>
+          <span>Agent API enabled</span>
+          <input
+            type="checkbox"
+            checked={agentApiEnabled}
+            onChange={(event) => setAgentApiEnabled(event.target.checked)}
+          />
+        </label>
+        <label className="staff-field" style={{ flex: 1 }}>
+          <span>Agent payments enabled</span>
+          <input
+            type="checkbox"
+            checked={agentPaymentsEnabled}
+            onChange={(event) => setAgentPaymentsEnabled(event.target.checked)}
+          />
+        </label>
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy) || disabled}
+          onClick={() => void run("saveAgentOpsConfig", saveAgentOpsConfig)}
+        >
+          Save controls
+        </button>
       </div>
       {status ? <div className="staff-note">{status}</div> : null}
       {error ? <div className="staff-note staff-note-error">{error}</div> : null}

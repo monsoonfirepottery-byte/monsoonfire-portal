@@ -24,6 +24,7 @@ import {
   getStripeSecretKey,
   getStripeWebhookSecret,
 } from "./stripeSecrets";
+import { getAgentOpsConfig } from "./agentCommerce";
 
 const REGION = "us-central1";
 const CONFIG_DOC_PATH = "config/stripe";
@@ -527,6 +528,12 @@ export const staffValidateStripeConfig = onRequest(
     }
 
     try {
+      const opsConfig = await getAgentOpsConfig();
+      if (!opsConfig.enabled || !opsConfig.allowPayments) {
+        res.status(503).json({ ok: false, message: "Agent payments are disabled by staff" });
+        return;
+      }
+
       const configSnap = await db.doc(CONFIG_DOC_PATH).get();
       const configData = (configSnap.data() ?? {}) as Record<string, unknown>;
       const config = validateStripeConfigForPersist(normalizeStripeConfig(configData));

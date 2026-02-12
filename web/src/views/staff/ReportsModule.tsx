@@ -36,6 +36,9 @@ type ReportRow = {
   reporterUid: string;
   createdAtMs: number;
   updatedAtMs: number;
+  coordinationSignal: boolean;
+  coordinationReportCount: number;
+  coordinationUniqueReporterCount: number;
   targetRef: { id?: string; url?: string; videoId?: string; slug?: string };
   targetSnapshot: { title?: string; url?: string; source?: string; author?: string };
 };
@@ -77,6 +80,10 @@ function str(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
 }
 
+function bool(v: unknown): boolean {
+  return v === true;
+}
+
 function toMs(v: unknown): number {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (v && typeof v === "object") {
@@ -107,6 +114,9 @@ function normalizeReport(row: Record<string, unknown>): ReportRow {
     reporterUid: str(row.reporterUid),
     createdAtMs: toMs(row.createdAt),
     updatedAtMs: toMs(row.updatedAt),
+    coordinationSignal: bool(row.coordinationSignal),
+    coordinationReportCount: Number(row.coordinationReportCount ?? 0) || 0,
+    coordinationUniqueReporterCount: Number(row.coordinationUniqueReporterCount ?? 0) || 0,
     targetRef: {
       id: str(targetRef.id),
       url: str(targetRef.url),
@@ -439,6 +449,14 @@ export default function ReportsModule({ client, active, disabled }: Props) {
                 <span>{selected.targetType} · status {selected.status}</span><br />
                 <span>Reporter: <code>{selected.reporterUid}</code></span><br />
                 <span>Created: {when(selected.createdAtMs)} · Updated: {when(selected.updatedAtMs)}</span><br />
+                {selected.coordinationSignal ? (
+                  <>
+                    <span>
+                      Coordination signal detected: {selected.coordinationUniqueReporterCount} unique reporters / {selected.coordinationReportCount} reports in the active window.
+                    </span>
+                    <br />
+                  </>
+                ) : null}
                 {selected.targetSnapshot.url ? (
                   <a href={selected.targetSnapshot.url} target="_blank" rel="noreferrer">Open target</a>
                 ) : null}

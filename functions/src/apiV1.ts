@@ -2,6 +2,7 @@
 
 import { randomBytes } from "crypto";
 import { z } from "zod";
+import * as logger from "firebase-functions/logger";
 import {
   applyCors,
   requireAuthContext,
@@ -23,6 +24,18 @@ import {
 import { listIntegrationEvents } from "./integrationEvents";
 import { getAgentServiceCatalogConfig } from "./agentCatalog";
 import { getAgentOpsConfig } from "./agentCommerce";
+
+function boolEnv(name: string, fallback = false): boolean {
+  const raw = process.env[name];
+  if (typeof raw !== "string") return fallback;
+  const normalized = raw.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
+const AUTO_COOLDOWN_ON_RATE_LIMIT = boolEnv("AUTO_COOLDOWN_ON_RATE_LIMIT", false);
+const AUTO_COOLDOWN_MINUTES = Math.max(1, Number(process.env.AUTO_COOLDOWN_MINUTES ?? 5) || 5);
 
 function readHeaderFirst(req: any, name: string): string {
   const key = name.toLowerCase();
@@ -755,6 +768,13 @@ export async function handleApiV1(req: any, res: any) {
     windowMs: rateLimit.windowMs,
   });
   if (!rate.ok) {
+    logger.warn("apiV1 route rate limited", {
+      route,
+      requestId,
+      actorUid: ctx.uid,
+      mode: ctx.mode,
+      retryAfterMs: rate.retryAfterMs,
+    });
     res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
     jsonError(res, requestId, 429, "RATE_LIMITED", "Too many requests", {
       retryAfterMs: rate.retryAfterMs,
@@ -774,6 +794,43 @@ export async function handleApiV1(req: any, res: any) {
       windowMs: 60_000,
     });
     if (!agentRate.ok) {
+      logger.warn("apiV1 agent actor rate limited", {
+        route,
+        requestId,
+        actorUid: ctx.uid,
+        actorKey,
+        mode: ctx.mode,
+        retryAfterMs: agentRate.retryAfterMs,
+      });
+      if (ctx.mode === "delegated") {
+        const cooldownUntil = Timestamp.fromMillis(Date.now() + AUTO_COOLDOWN_MINUTES * 60_000);
+        const clientRef = db.collection("agentClients").doc(ctx.delegated.agentClientId);
+        if (AUTO_COOLDOWN_ON_RATE_LIMIT) {
+          await clientRef.set(
+            {
+              cooldownUntil,
+              cooldownReason: "auto_rate_limit",
+              updatedAt: nowTs(),
+            },
+            { merge: true }
+          );
+        }
+        await db.collection("agentClientAuditLogs").add({
+          actorUid: ctx.uid,
+          action: AUTO_COOLDOWN_ON_RATE_LIMIT ? "auto_cooldown_rate_limit" : "rate_limit_observed",
+          clientId: ctx.delegated.agentClientId,
+          route,
+          requestId,
+          retryAfterMs: agentRate.retryAfterMs,
+          cooldownApplied: AUTO_COOLDOWN_ON_RATE_LIMIT,
+          cooldownUntil: AUTO_COOLDOWN_ON_RATE_LIMIT ? cooldownUntil : null,
+          createdAt: nowTs(),
+          metadata: {
+            source: "security",
+            outcome: "deny",
+          },
+        });
+      }
       res.set("Retry-After", String(Math.ceil(agentRate.retryAfterMs / 1000)));
       jsonError(res, requestId, 429, "RATE_LIMITED", "Agent route rate limit exceeded", {
         retryAfterMs: agentRate.retryAfterMs,

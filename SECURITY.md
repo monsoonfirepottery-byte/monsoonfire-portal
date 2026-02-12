@@ -31,6 +31,9 @@ Highest‑risk flows:
 - Dev admin token UI only appears when `VITE_ENABLE_DEV_ADMIN_TOKEN=true` and the Functions base URL is localhost.
 - Dev admin token session persistence is opt-in via `VITE_PERSIST_DEV_ADMIN_TOKEN=true`; otherwise token storage is memory-only per page session.
 - Production must never enable the dev admin token path.
+- Optional abuse control flags:
+  - `AUTO_COOLDOWN_ON_RATE_LIMIT=true` auto-applies delegated client cooldowns after agent route rate-limit denials.
+  - `AUTO_COOLDOWN_MINUTES=<n>` controls auto cooldown duration (default `5`).
 - Prefer `ALLOWED_ORIGINS` for Cloud Functions CORS allowlist.
 - Agentic identity hardening flags:
   - `V2_AGENTIC_ENABLED` (default false)

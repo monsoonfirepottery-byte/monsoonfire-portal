@@ -4,6 +4,10 @@ Use this log while running `scripts/run-notification-drills.ps1` against deploye
 
 IMPORTANT: Do not paste real Firebase ID tokens or admin tokens into this file. Keep token values in your shell/clipboard only and record sources/results here.
 
+Helper:
+- You can append a fresh run template automatically with:
+  - `pwsh scripts/new-drill-log-entry.ps1 -Uid "<REAL_UID>"`
+
 ## Run metadata
 ```txt
 dateUtc:

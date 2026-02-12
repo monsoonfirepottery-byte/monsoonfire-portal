@@ -1,6 +1,6 @@
 # P1 — Portal A11y: Navigation + Bypass Blocks
 
-Status: In Progress
+Status: Completed
 
 ## Problem
 - App shell lacks a skip-link pattern and puts dense navigation before content.
@@ -44,3 +44,5 @@ Status: In Progress
 ## Progress notes
 - Verified shell skip-link and `main` landmark wiring are present.
 - Updated collapsed-sidebar tooltip behavior so labels are exposed on keyboard focus (`:focus-visible`), not hover-only.
+- Replaced sidebar brand home control from `div role="button"` to semantic `<button type="button">`.
+- Improved mobile menu trigger semantics with explicit dynamic `aria-label`/`title` and `aria-pressed` state.

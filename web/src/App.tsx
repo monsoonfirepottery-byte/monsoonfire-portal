@@ -1368,20 +1368,12 @@ export default function App() {
           className={`sidebar ${mobileNavOpen ? "open" : ""} ${navCollapsed ? "collapsed" : ""}`}
           aria-label="Primary navigation"
         >
-          <div
+          <button
+            type="button"
             className="brand brand-home"
-            role="button"
-            tabIndex={0}
             onClick={() => {
               setNav("dashboard");
               setMobileNavOpen(false);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                setNav("dashboard");
-                setMobileNavOpen(false);
-              }
             }}
             aria-label="Go to dashboard"
             title="Go to dashboard"
@@ -1397,7 +1389,7 @@ export default function App() {
               <h1>Monsoon Fire</h1>
               <span>Pottery Studio</span>
             </div>
-          </div>
+          </button>
           <nav aria-label="Main navigation">
             <div className="nav-primary">
               {NAV_TOP_ITEMS.map((item) => (
@@ -1582,6 +1574,9 @@ export default function App() {
               onClick={() => setMobileNavOpen((prev) => !prev)}
               aria-expanded={mobileNavOpen}
               aria-controls="portal-sidebar-nav"
+              aria-label={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"}
+              title={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"}
+              aria-pressed={mobileNavOpen}
             >
               <span className="mobile-nav-icon" aria-hidden="true" />
               Menu

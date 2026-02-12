@@ -37,6 +37,7 @@ import {
   addInternalNote,
   createReportAppeal,
   createReport,
+  listMyReports,
   listReportAppeals,
   listReports,
   takeContentAction,
@@ -70,6 +71,7 @@ const REGION = "us-central1";
 export const apiV1 = onRequest({ region: REGION, timeoutSeconds: 60 }, handleApiV1);
 export {
   createReport,
+  listMyReports,
   listReports,
   updateReportStatus,
   addInternalNote,

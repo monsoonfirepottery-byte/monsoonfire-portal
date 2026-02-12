@@ -63,6 +63,11 @@ const listReportsSchema = z.object({
   limit: z.number().int().min(1).max(200).optional(),
 });
 
+const listMyReportsSchema = z.object({
+  limit: z.number().int().min(1).max(100).optional(),
+  includeClosed: z.boolean().optional(),
+});
+
 const updateReportStatusSchema = z.object({
   reportId: z.string().min(1),
   status: z.enum(["open", "triaged", "actioned", "resolved", "dismissed"]),
@@ -342,6 +347,56 @@ export const listReports = onRequest({ region: REGION, timeoutSeconds: 60 }, asy
     metadata: { status, category, severity, targetType, limit },
   });
   res.status(200).json({ ok: true, reports });
+});
+
+export const listMyReports = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Method not allowed" });
+    return;
+  }
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+
+  const parsed = parseBody(listMyReportsSchema, req.body ?? {});
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const { limit = 12, includeClosed = true } = parsed.data;
+  const scanLimit = Math.min(Math.max(limit * 3, limit), 200);
+
+  const snap = await db.collection(REPORTS_COL).where("reporterUid", "==", auth.uid).limit(scanLimit).get();
+  let reports: Array<Record<string, unknown>> = snap.docs.map((docSnap) => ({
+    id: docSnap.id,
+    ...(docSnap.data() as Record<string, unknown>),
+  }));
+
+  if (!includeClosed) {
+    reports = reports.filter((row) => {
+      const status = safeString(row.status);
+      return status === "open" || status === "triaged" || status === "actioned";
+    });
+  }
+
+  reports.sort((a, b) => {
+    const aSeconds = Number((a.createdAt as { seconds?: unknown } | undefined)?.seconds ?? 0);
+    const bSeconds = Number((b.createdAt as { seconds?: unknown } | undefined)?.seconds ?? 0);
+    return bSeconds - aSeconds;
+  });
+
+  await writeAudit({
+    actorUid: auth.uid,
+    actorRole: "user",
+    action: "list_my_reports",
+    metadata: { limit, includeClosed, returned: reports.length },
+  });
+
+  res.status(200).json({ ok: true, reports: reports.slice(0, limit) });
 });
 
 export const updateReportStatus = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {

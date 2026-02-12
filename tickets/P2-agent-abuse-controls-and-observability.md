@@ -83,3 +83,4 @@ Collection: `securityMetrics/daily`
 - Staff Agent Ops now enforces confirmation and explicit reason capture for high-impact actions (rotate/suspend/revoke), improving audit quality and reducing accidental misuse.
 - Denied-event analytics in Agent Ops now respect date-window filters in UI and exports for faster incident scoping.
 - Added best-effort `securityAudit` logging in auth middleware for PAT/delegated auth success and deny paths (no token secrets or raw IPs stored).
+- Staff audit feed now merges relevant `securityAudit` auth events into agent-client timelines for faster triage of token failures and abuse spikes.

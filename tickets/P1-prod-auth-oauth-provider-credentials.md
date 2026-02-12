@@ -1,6 +1,6 @@
 # P1 - Production Auth: Create OAuth Apps + Configure Provider Secrets
 
-Status: Planned
+Status: Open
 
 Created: 2026-02-10
 
@@ -57,3 +57,11 @@ Redirect URI note:
 - Visiting `https://portal.monsoonfire.com` and clicking each provider sign-in completes successfully.
 - No `auth/unauthorized-domain` errors.
 - Popup blocked cases fall back to redirect (client code).
+
+## Update (2026-02-12)
+- Added execution runbook: `docs/PROD_AUTH_PROVIDER_EXECUTION.md` with:
+  - Firebase baseline checklist
+  - provider-specific setup sequence
+  - evidence capture table
+  - rollback steps
+- Remaining work is provider-console and Firebase-console execution with real credentials.

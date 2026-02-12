@@ -1,6 +1,6 @@
 # P0 - Portal Hosting Cutover (portal.monsoonfire.com)
 
-Status: Planned
+Status: Open
 
 Goal: ship the portal at `https://portal.monsoonfire.com` on Namecheap hosting, with working Firebase Auth + Cloud Functions calls, and the correct static hosting behavior for a SPA.
 
@@ -54,3 +54,8 @@ If any of these are off, we get login loops, broken routes, or silent failures t
 
 - Requires Namecheap hosting panel + DNS access.
 - Provider secrets (Apple/Microsoft/Facebook) are separate: `tickets/P1-prod-auth-oauth-provider-credentials.md`.
+
+## Update (2026-02-12)
+- Added preflight validation script: `web/deploy/namecheap/verify-cutover.ps1`.
+- Updated deploy guide with verification step + expected checks in `web/deploy/namecheap/README.md`.
+- Remaining work is external-console execution (DNS/HTTPS/Auth domain checks/evidence capture).

@@ -2110,6 +2110,11 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   cursor: pointer;
 }
 
+.staff-click-row:focus-visible {
+  outline: 2px solid rgba(190, 244, 217, 0.85);
+  outline-offset: -2px;
+}
+
 .staff-click-row.active {
   background: rgba(180, 79, 53, 0.16) !important;
   box-shadow: inset 2px 0 0 var(--accent-soft);

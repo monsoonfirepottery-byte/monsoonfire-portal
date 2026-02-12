@@ -1,4 +1,4 @@
-Status: Open (2026-02-05)
+Status: Open
 
 # P0 - Run notification drill suite in production with real staff auth
 

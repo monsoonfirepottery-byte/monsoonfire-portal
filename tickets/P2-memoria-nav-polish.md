@@ -1,4 +1,4 @@
-Status: Open (2026-02-10)
+Status: Open
 
 # P2 - Memoria Nav Polish (Active Rail + Collapsed Tooltips)
 
@@ -20,4 +20,3 @@ Memoria nav is close, but the “active” state and collapsed-nav ergonomics ca
 - Active item is unambiguous in both expanded and collapsed nav.
 - Tooltips are readable and feel “native” to Memoria.
 - No additional motion beyond existing hover/press.
-

@@ -1,4 +1,4 @@
-Status: Open (2026-02-10)
+Status: Open
 
 # P2 - Consolidate Theme Tokens (Shadows, Focus, Motion)
 
@@ -18,4 +18,3 @@ We started introducing cross-theme tokens (`--shadow-card*`, `--focus-ring`) but
 - Default Portal theme remains visually unchanged.
 - Memoria theme values are mostly driven by tokens, not hard-coded CSS.
 - `npm --prefix web run lint` and `npm --prefix web run build` pass.
-

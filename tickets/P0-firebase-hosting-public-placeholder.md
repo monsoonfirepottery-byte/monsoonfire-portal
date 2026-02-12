@@ -1,4 +1,4 @@
-Status: Completed (2026-02-05)
+Status: Completed
 
 # P0 - Firebase Hosting config points to placeholder `public/` output
 

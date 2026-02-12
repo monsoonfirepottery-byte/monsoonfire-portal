@@ -1,4 +1,4 @@
-Status: Open (2026-02-05)
+Status: Open
 
 # P0 - Complete release candidate evidence pack (alpha gate)
 

@@ -1,4 +1,4 @@
-Status: Completed (2026-02-05)
+Status: Completed
 
 # P1 - Website `/assets` cache headers are too aggressive for non-hashed CSS/JS
 

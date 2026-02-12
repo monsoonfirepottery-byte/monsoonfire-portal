@@ -1,6 +1,6 @@
 # P2 — Independent Agent Accounts, Prepay, and Limits
 
-**Status:** Open
+Status: Open
 
 ## Problem
 - Future agents may transact independently without a human principal.

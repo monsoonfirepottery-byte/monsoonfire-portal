@@ -1,6 +1,6 @@
 # P2 — “Agent Commission” Program: Safe Intake + Manual Fulfillment (No Backdoors)
 
-**Status:** Open
+Status: Open
 
 ## Problem
 - You want a way for future “agentic clients” to:
@@ -95,4 +95,3 @@ Recommended for v1: Option A.
 - Staff can accept + generate a Stripe checkout link.
 - On payment success, request becomes “paid” and can proceed to fulfillment.
 - No unauthenticated or obscurity-based access paths exist.
-

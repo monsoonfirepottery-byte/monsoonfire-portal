@@ -32,4 +32,3 @@ We need a written spec so iOS/Android client behavior matches backend expectatio
 
 - iOS and Android implement identical token registration/unregistration semantics.
 - Telemetry is consistent enough to support alerting without false positives.
-

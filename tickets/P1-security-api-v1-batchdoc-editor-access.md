@@ -1,6 +1,6 @@
 # P1 — Security: API v1 Batch Doc Reads Must Match Firestore Rules (No Editor Access)
 
-**Status:** Done (2026-02-11)
+Status: Completed
 
 ## Problem
 - Firestore rules intentionally restrict reads of `batches/{batchId}` to:
@@ -32,4 +32,3 @@
 3. Call:
    - `POST /apiV1/v1/batches.timeline.list` with `{ "batchId": "<id>" }`
    - Expect `200` (if rules intend editors can read timeline).
-

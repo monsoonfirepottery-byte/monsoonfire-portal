@@ -1,4 +1,4 @@
-Status: Completed (2026-02-05)
+Status: Completed
 
 # P2 - Rate limit docs need TTL/cleanup
 

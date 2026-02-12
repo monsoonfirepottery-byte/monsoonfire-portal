@@ -35,4 +35,3 @@ Web uses browser URLs + query params. Native clients require an explicit deep-li
 - Stripe return URLs land the user in the correct native screen with a visible success/cancel message.
 - Notification taps route to the correct screen, even from cold start.
 - Unknown links fail safely (no crash; show a fallback message).
-

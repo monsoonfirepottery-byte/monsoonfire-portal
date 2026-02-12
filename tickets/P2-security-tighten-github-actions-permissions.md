@@ -1,6 +1,6 @@
 # P2 — Security: Tighten GitHub Actions `GITHUB_TOKEN` Permissions
 
-**Status:** Done
+Status: Completed
 
 **Problem**
 - `.github/workflows/firebase-hosting-merge.yml` does not declare `permissions:`, so it uses GitHub defaults for `GITHUB_TOKEN`.

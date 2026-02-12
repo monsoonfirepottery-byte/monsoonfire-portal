@@ -1,6 +1,6 @@
 # P1 — Agent Integrations: Scoped Integration Tokens (PATs)
 
-**Status:** In Progress
+Status: In Progress
 
 ## Problem
 - Agents / external automations need **non-interactive** access to the Portal backend.

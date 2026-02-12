@@ -1,6 +1,6 @@
 # P1 — Community Reporting Foundation
 
-**Status:** Planned
+Status: Planned
 
 ## Context / user story
 - As a portal member, I need a simple way to report problematic community content.

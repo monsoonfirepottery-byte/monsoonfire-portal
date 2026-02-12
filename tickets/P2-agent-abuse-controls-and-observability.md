@@ -1,6 +1,6 @@
 # P2 — Agent Integrations: Abuse Controls + Observability
 
-**Status:** Open
+Status: Open
 
 ## Problem
 - Adding machine-facing endpoints increases attack surface:
@@ -78,4 +78,3 @@ Collection: `securityMetrics/daily`
 - Agent endpoints are rate-limited and return consistent `RATE_LIMITED` responses.
 - Security audit data is present and does not contain secrets.
 - A staff member can diagnose common failure modes (bad token, missing scope, rate limited) from logs + requestId.
-

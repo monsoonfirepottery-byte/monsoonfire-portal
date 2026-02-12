@@ -1,4 +1,4 @@
-Status: Completed (2026-02-05)
+Status: Completed
 
 # P2 - Firestore rules: editors read access to batch doc
 

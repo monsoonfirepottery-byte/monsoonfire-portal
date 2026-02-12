@@ -1,6 +1,6 @@
 # P1 — Agent API v1: Stable JSON Envelope + Scopes + Idempotency
 
-**Status:** In Progress
+Status: In Progress
 
 ## Problem
 - Agents need a **stable**, **versioned**, **machine-friendly** API surface.

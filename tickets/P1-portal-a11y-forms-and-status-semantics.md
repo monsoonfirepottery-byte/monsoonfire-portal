@@ -1,6 +1,6 @@
 # P1 — Portal A11y: Forms, Filters, and Status Semantics
 
-**Status:** Planned
+Status: Planned
 
 ## Problem
 - Some form/search controls rely on placeholder text instead of explicit labels.

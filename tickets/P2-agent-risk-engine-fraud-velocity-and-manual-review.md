@@ -1,6 +1,6 @@
 # P2 — Agent Risk Engine: Fraud, Velocity, and Manual Review
 
-**Status:** Open
+Status: Open
 
 ## Problem
 - Automated actors can amplify abuse quickly across quote/reserve/pay surfaces.

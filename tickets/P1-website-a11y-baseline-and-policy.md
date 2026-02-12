@@ -1,6 +1,6 @@
 # P1 — Website Accessibility Baseline + Policy (WCAG 2.2 AA)
 
-**Status:** In Progress
+Status: In Progress
 
 ## Problem
 - The marketing website needs a formal accessibility baseline so improvements are consistent, testable, and durable.

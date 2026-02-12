@@ -1,6 +1,6 @@
 # P1 — Reporting Rules, Validation, and Security Test Pack
 
-**Status:** Planned
+Status: Planned
 
 ## Context / user story
 - As platform/security owners, we need hard guarantees that users cannot tamper with report workflow fields and cannot abuse endpoints.

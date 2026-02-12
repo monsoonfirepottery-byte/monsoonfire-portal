@@ -1,4 +1,4 @@
-Status: Completed (2026-02-05)
+Status: Completed
 
 # P1 - Tighten notification prefs schema in Firestore rules
 

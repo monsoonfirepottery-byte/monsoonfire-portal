@@ -1,6 +1,6 @@
 # P1 — Website A11y: Motor, Cognitive, and Neurodiverse Users
 
-**Status:** In Progress
+Status: In Progress
 
 ## Problem
 - Small targets, animation-heavy UI, and dense copy create barriers for users with motor and cognitive differences.

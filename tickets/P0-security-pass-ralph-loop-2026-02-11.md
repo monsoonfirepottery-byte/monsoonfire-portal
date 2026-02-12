@@ -1,4 +1,4 @@
-Status: Completed (2026-02-11)
+Status: Completed
 
 # P0 - Repo security pass (Ralph loop style) — 2026-02-11
 
@@ -39,4 +39,3 @@ Status: Completed (2026-02-11)
 - `tickets/P2-security-pin-github-actions.md` (completed)
 - `tickets/P2-security-tighten-github-actions-permissions.md` (completed)
 - `tickets/P1-dependency-audit-triage.md` (now completed)
-

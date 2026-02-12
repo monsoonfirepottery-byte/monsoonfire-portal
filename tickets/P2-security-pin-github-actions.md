@@ -1,6 +1,6 @@
 # P2 — Security: Pin GitHub Actions to Immutable Revisions
 
-**Status:** Done
+Status: Completed
 
 **Problem**
 - Some workflows use third-party actions pinned only to a major tag:

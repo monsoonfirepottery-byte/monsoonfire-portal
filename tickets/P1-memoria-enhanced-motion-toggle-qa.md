@@ -1,4 +1,4 @@
-Status: Open (2026-02-10)
+Status: Open
 
 # P1 - QA: Enhanced Motion Toggle (Memoria)
 
@@ -25,4 +25,3 @@ We introduced an Enhanced motion user setting (`profiles.uiEnhancedMotion` + `lo
 - No white screens, no console errors.
 - Toggle updates motion behavior immediately (no refresh needed).
 - Setting persists across reload and (when signed in) across devices via Firestore.
-

@@ -17,6 +17,8 @@ type RequestRecord = {
   logisticsMode: string | null;
   createdAtMs: number;
   updatedAtMs: number;
+  commissionOrderId: string | null;
+  commissionPaymentStatus: string | null;
 };
 
 type ApiV1Envelope<TData> = {
@@ -29,6 +31,12 @@ type ApiV1Envelope<TData> = {
 
 type ListMineResponse = ApiV1Envelope<{ requests?: Array<Record<string, unknown>> }>;
 type CreateResponse = ApiV1Envelope<{ agentRequestId?: string; status?: RequestStatus }>;
+type AgentCheckoutResponse = {
+  ok: boolean;
+  message?: string;
+  checkoutUrl?: string | null;
+  sessionId?: string | null;
+};
 
 function str(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
@@ -85,6 +93,8 @@ function normalizeRequest(row: Record<string, unknown>): RequestRecord {
     logisticsMode: typeof logistics.mode === "string" ? logistics.mode : null,
     createdAtMs: tsMs(row.createdAt),
     updatedAtMs: tsMs(row.updatedAt),
+    commissionOrderId: typeof row.commissionOrderId === "string" ? row.commissionOrderId : null,
+    commissionPaymentStatus: typeof row.commissionPaymentStatus === "string" ? row.commissionPaymentStatus : null,
   };
 }
 
@@ -192,6 +202,15 @@ export default function AgentRequestsView({
     setRightsAttested(false);
     await load();
     setStatus(`Request created (${resp.data?.agentRequestId ?? "ok"}). Staff will triage it soon.`);
+  };
+  const openCommissionCheckout = async (orderId: string) => {
+    const resp = await client.postJson<AgentCheckoutResponse>("createAgentCheckoutSession", {
+      orderId,
+    });
+    if (!resp.ok) throw new Error(resp.message ?? "Unable to create checkout session.");
+    const checkoutUrl = typeof resp.checkoutUrl === "string" ? resp.checkoutUrl : "";
+    if (!checkoutUrl) throw new Error("Checkout URL was not returned.");
+    window.location.assign(checkoutUrl);
   };
 
   const filtered = useMemo(
@@ -376,6 +395,7 @@ export default function AgentRequestsView({
                   <th>Request</th>
                   <th>Status</th>
                   <th>Kind</th>
+                  <th>Payment</th>
                   <th>Batch</th>
                   <th>Updated</th>
                 </tr>
@@ -391,6 +411,28 @@ export default function AgentRequestsView({
                     </td>
                     <td><span className="pill">{row.status}</span></td>
                     <td>{row.kind}</td>
+                    <td>
+                      {row.kind === "commission" ? (
+                        row.commissionOrderId ? (
+                          <>
+                            <div className="requests-mini">{row.commissionPaymentStatus || "checkout_pending"}</div>
+                            {row.commissionPaymentStatus !== "paid" ? (
+                              <button
+                                className="btn btn-secondary"
+                                disabled={Boolean(busy)}
+                                onClick={() => void run(`commissionCheckout:${row.id}`, () => openCommissionCheckout(row.commissionOrderId as string))}
+                              >
+                                Open checkout
+                              </button>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span className="requests-mini">Awaiting staff checkout link</span>
+                        )
+                      ) : (
+                        <span className="requests-mini">n/a</span>
+                      )}
+                    </td>
                     <td>
                       <code>{row.linkedBatchId || "-"}</code>
                     </td>

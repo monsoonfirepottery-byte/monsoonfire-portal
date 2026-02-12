@@ -433,6 +433,46 @@ Request:
 }
 ```
 
+### v1/agent.requests.createCommissionOrder
+
+POST `${BASE_URL}/apiV1/v1/agent.requests.createCommissionOrder`
+
+Auth:
+- Staff Firebase user with `requests:write`
+
+Request:
+```json
+{
+  "requestId": "agentRequest_123",
+  "priceId": "price_optional_override",
+  "quantity": 1
+}
+```
+
+Response:
+```json
+{
+  "ok": true,
+  "requestId": "req_...",
+  "data": {
+    "agentRequestId": "agentRequest_123",
+    "orderId": "agent-commission-order_...",
+    "idempotentReplay": false
+  }
+}
+```
+
+Notes:
+- Request must be `kind == "commission"` and status in `accepted | in_progress | ready`.
+- Price ID resolution order:
+  - request payload `priceId`
+  - request metadata `commissionPriceId`
+  - `config/stripe.priceIds.agent_commission`
+  - `config/stripe.priceIds.commission`
+  - `config/stripe.priceIds.agent_default`
+- This endpoint creates/attaches `commissionOrderId` and sets `commissionPaymentStatus="checkout_pending"` on the request.
+- Use `POST createAgentCheckoutSession` with returned `orderId` to generate checkout URL.
+
 ### v1/agent.terms.get
 
 POST `${BASE_URL}/apiV1/v1/agent.terms.get`

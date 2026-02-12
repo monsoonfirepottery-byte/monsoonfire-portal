@@ -48,7 +48,7 @@ function Show-Header {
     return
   }
 
-  Write-Host "[info] $Label $HeaderName: $value"
+  Write-Host ("[info] {0} {1}: {2}" -f $Label, $HeaderName, $value)
 }
 
 function Resolve-AssetPathsFromHtml {

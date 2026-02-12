@@ -15,6 +15,7 @@ import {
 const REGION = "us-central1";
 const AGENT_CLIENTS_COL = "agentClients";
 const AGENT_CLIENT_AUDIT_COL = "agentClientAuditLogs";
+const SECURITY_AUDIT_COL = "securityAudit";
 
 const TRUST_TIERS = ["low", "medium", "high"] as const;
 const CLIENT_STATUSES = ["active", "suspended", "revoked"] as const;
@@ -593,6 +594,39 @@ export const staffListAgentClientAuditLogs = onRequest({ region: REGION, timeout
     id: docSnap.id,
     ...(docSnap.data() as Record<string, unknown>),
   }));
+
+  const securitySnap = await db.collection(SECURITY_AUDIT_COL).limit(Math.max(limit * 2, 120)).get();
+  const securityLogs: Array<Record<string, unknown>> = securitySnap.docs
+    .map((docSnap) => {
+      const row = docSnap.data() as Record<string, unknown>;
+      const mode = safeString(row.mode);
+      const tokenId = safeString(row.tokenId);
+      const metadata = (row.metadata as Record<string, unknown> | undefined) ?? {};
+      const agentClientId = safeString(metadata.agentClientId);
+      if (mode !== "delegated" && !agentClientId) return null;
+      const resolvedClientId = mode === "delegated" ? tokenId : agentClientId;
+      if (!resolvedClientId) return null;
+      return {
+        id: `security_${docSnap.id}`,
+        actorUid: safeString(row.uid),
+        action: `security_${safeString(row.type, "event")}`,
+        clientId: resolvedClientId,
+        createdAt: row.at ?? null,
+        metadata: {
+          ...(metadata ?? {}),
+          source: "securityAudit",
+          outcome: safeString(row.outcome),
+          code: safeString(row.code),
+          mode,
+          requestId: safeString(row.requestId),
+          path: safeString(row.path),
+          ipHash: safeString(row.ipHash),
+        },
+      } as Record<string, unknown>;
+    })
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry));
+  logs = [...logs, ...securityLogs];
+
   if (clientId) {
     logs = logs.filter((entry) => safeString(entry.clientId) === clientId);
   }

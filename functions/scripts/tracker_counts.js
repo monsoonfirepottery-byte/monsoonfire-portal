@@ -36,6 +36,14 @@ function canonicalStatus(rawStatus) {
   return "Planned";
 }
 
+function trackerStatusFromMarkdownCanonical(status) {
+  if (status === "Completed") return "Done";
+  if (status === "In Progress") return "InProgress";
+  if (status === "Blocked") return "Blocked";
+  if (status === "Open") return "Ready";
+  return "Backlog";
+}
+
 function getMarkdownCounts() {
   const counts = { total: 0, byStatus: {} };
   const files = fs
@@ -86,6 +94,11 @@ async function run() {
   });
 
   const markdownCounts = getMarkdownCounts();
+  const mappedMarkdownToTracker = {};
+  for (const [status, count] of Object.entries(markdownCounts.byStatus)) {
+    const mapped = trackerStatusFromMarkdownCanonical(status);
+    mappedMarkdownToTracker[mapped] = (mappedMarkdownToTracker[mapped] || 0) + count;
+  }
 
   console.log(
     JSON.stringify(
@@ -94,6 +107,7 @@ async function run() {
         projectId,
         tracker: trackerCounts,
         markdown: markdownCounts,
+        markdownMappedToTrackerStatuses: mappedMarkdownToTracker,
       },
       null,
       2

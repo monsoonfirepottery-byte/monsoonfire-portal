@@ -15,6 +15,7 @@ import {
 const REGION = "us-central1";
 
 const REPORTS_COL = "communityReports";
+const REPORT_APPEALS_COL = "communityReportAppeals";
 const REPORT_AUDIT_COL = "communityReportAuditLogs";
 const FEED_OVERRIDES_COL = "communityFeedOverrides";
 const POLICY_CONFIG_PATH = "config/moderationPolicy";
@@ -84,6 +85,23 @@ const takeContentActionSchema = z.object({
   actionType: z.enum(["unpublish", "replace_link", "flag_for_review", "disable_from_feed"]),
   reason: z.string().max(400).optional().nullable(),
   replacementUrl: z.string().url().optional().nullable(),
+});
+
+const createReportAppealSchema = z.object({
+  reportId: z.string().min(1),
+  note: z.string().min(1).max(2000),
+});
+
+const listReportAppealsSchema = z.object({
+  status: z.enum(["all", "open", "in_review", "upheld", "reversed", "rejected"]).optional(),
+  limit: z.number().int().min(1).max(200).optional(),
+});
+
+const updateReportAppealSchema = z.object({
+  appealId: z.string().min(1),
+  status: z.enum(["open", "in_review", "upheld", "reversed", "rejected"]),
+  decisionReasonCode: z.string().max(120).optional().nullable(),
+  decisionNote: z.string().max(2000).optional().nullable(),
 });
 
 function safeString(v: unknown): string {
@@ -578,4 +596,241 @@ export const takeContentAction = onRequest({ region: REGION, timeoutSeconds: 60 
     },
   });
   res.status(200).json({ ok: true, actionId: actionRef.id });
+});
+
+export const createReportAppeal = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Method not allowed" });
+    return;
+  }
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+
+  const parsed = parseBody(createReportAppealSchema, req.body ?? {});
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const { reportId, note } = parsed.data;
+  const reportRef = db.collection(REPORTS_COL).doc(reportId);
+  const reportSnap = await reportRef.get();
+  if (!reportSnap.exists) {
+    res.status(404).json({ ok: false, message: "Report not found" });
+    return;
+  }
+
+  const report = reportSnap.data() as Record<string, unknown>;
+  const reporterUid = safeString(report.reporterUid);
+  if (reporterUid !== auth.uid) {
+    res.status(403).json({ ok: false, message: "Only the original reporter can file an appeal." });
+    return;
+  }
+
+  const reportStatus = safeString(report.status);
+  if (reportStatus === "open" || reportStatus === "triaged") {
+    res.status(409).json({
+      ok: false,
+      message: "Appeals are available after a final moderation outcome is recorded.",
+    });
+    return;
+  }
+
+  const existingAppealsSnap = await db
+    .collection(REPORT_APPEALS_COL)
+    .where("reportId", "==", reportId)
+    .where("reporterUid", "==", auth.uid)
+    .limit(40)
+    .get();
+
+  const hasOpenAppeal = existingAppealsSnap.docs.some((docSnap) => {
+    const row = docSnap.data() as Record<string, unknown>;
+    const status = safeString(row.status);
+    return status === "open" || status === "in_review";
+  });
+  if (hasOpenAppeal) {
+    res.status(409).json({ ok: false, message: "An appeal is already in progress for this report." });
+    return;
+  }
+
+  const appealRef = db.collection(REPORT_APPEALS_COL).doc();
+  await appealRef.set({
+    reportId,
+    reporterUid: auth.uid,
+    status: "open",
+    note: safeString(note).trim(),
+    reportStatusAtAppeal: reportStatus,
+    createdAt: nowTs(),
+    updatedAt: nowTs(),
+    reviewedByUid: null,
+    reviewedAt: null,
+    decisionReasonCode: null,
+    decisionNote: null,
+  });
+
+  await writeAudit({
+    actorUid: auth.uid,
+    actorRole: "user",
+    action: "create_report_appeal",
+    reportId,
+    targetType: safeString(report.targetType),
+    targetId: safeString((report.targetRef as { id?: unknown } | undefined)?.id),
+    category: safeString(report.category),
+    severity: safeString(report.severity),
+    metadata: { appealId: appealRef.id },
+  });
+
+  res.status(200).json({ ok: true, appealId: appealRef.id });
+});
+
+export const listReportAppeals = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Method not allowed" });
+    return;
+  }
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+  const admin = await requireAdmin(req);
+  if (!admin.ok) {
+    res.status(403).json({ ok: false, message: admin.message });
+    return;
+  }
+
+  const parsed = parseBody(listReportAppealsSchema, req.body ?? {});
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const { status = "all", limit = 80 } = parsed.data;
+  const snap = await db.collection(REPORT_APPEALS_COL).orderBy("createdAt", "desc").limit(limit).get();
+  let appeals: Array<Record<string, unknown>> = snap.docs.map((docSnap) => ({
+    id: docSnap.id,
+    ...(docSnap.data() as Record<string, unknown>),
+  }));
+  if (status !== "all") {
+    appeals = appeals.filter((row) => safeString(row.status) === status);
+  }
+
+  await writeAudit({
+    actorUid: auth.uid,
+    actorRole: "staff",
+    action: "list_report_appeals",
+    metadata: { status, limit },
+  });
+
+  res.status(200).json({ ok: true, appeals });
+});
+
+export const updateReportAppeal = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Method not allowed" });
+    return;
+  }
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+  const admin = await requireAdmin(req);
+  if (!admin.ok) {
+    res.status(403).json({ ok: false, message: admin.message });
+    return;
+  }
+
+  const parsed = parseBody(updateReportAppealSchema, req.body ?? {});
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const { appealId, status, decisionReasonCode, decisionNote } = parsed.data;
+  const appealRef = db.collection(REPORT_APPEALS_COL).doc(appealId);
+  const appealSnap = await appealRef.get();
+  if (!appealSnap.exists) {
+    res.status(404).json({ ok: false, message: "Appeal not found" });
+    return;
+  }
+
+  const appeal = appealSnap.data() as Record<string, unknown>;
+  const reportId = safeString(appeal.reportId);
+  if (!reportId) {
+    res.status(400).json({ ok: false, message: "Appeal is missing report linkage." });
+    return;
+  }
+
+  if (status === "upheld" || status === "reversed" || status === "rejected") {
+    if (!safeString(decisionReasonCode).trim()) {
+      res.status(400).json({ ok: false, message: "decisionReasonCode is required for final appeal outcomes." });
+      return;
+    }
+  }
+
+  const reportRef = db.collection(REPORTS_COL).doc(reportId);
+  const reportSnap = await reportRef.get();
+  if (!reportSnap.exists) {
+    res.status(404).json({ ok: false, message: "Linked report not found." });
+    return;
+  }
+  const report = reportSnap.data() as Record<string, unknown>;
+  const lastAssignee = safeString(report.assigneeUid);
+  if ((status === "upheld" || status === "reversed" || status === "rejected") && lastAssignee && lastAssignee === auth.uid) {
+    res.status(409).json({
+      ok: false,
+      message: "Final appeal review must be completed by a different staff member than the original moderator.",
+    });
+    return;
+  }
+
+  await appealRef.set(
+    {
+      status,
+      reviewedByUid: auth.uid,
+      reviewedAt: status === "open" ? null : nowTs(),
+      decisionReasonCode: safeString(decisionReasonCode).trim() || null,
+      decisionNote: normalizeNullableString(decisionNote),
+      updatedAt: nowTs(),
+    },
+    { merge: true }
+  );
+
+  if (status === "reversed") {
+    await reportRef.set(
+      {
+        status: "open",
+        assigneeUid: null,
+        resolvedAt: null,
+        reopenedByAppealId: appealId,
+        updatedAt: nowTs(),
+      },
+      { merge: true }
+    );
+  }
+
+  await writeAudit({
+    actorUid: auth.uid,
+    actorRole: "staff",
+    action: "update_report_appeal",
+    reportId,
+    targetType: safeString(report.targetType),
+    targetId: safeString((report.targetRef as { id?: unknown } | undefined)?.id),
+    category: safeString(report.category),
+    severity: safeString(report.severity),
+    metadata: {
+      appealId,
+      status,
+      decisionReasonCode: safeString(decisionReasonCode).trim() || null,
+    },
+  });
+
+  res.status(200).json({ ok: true });
 });

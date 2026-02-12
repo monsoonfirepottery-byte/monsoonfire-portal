@@ -35,9 +35,12 @@ import {
 } from "./moderationPolicy";
 import {
   addInternalNote,
+  createReportAppeal,
   createReport,
+  listReportAppeals,
   listReports,
   takeContentAction,
+  updateReportAppeal,
   updateReportStatus,
 } from "./reports";
 import {
@@ -65,7 +68,16 @@ export {
 const REGION = "us-central1";
 
 export const apiV1 = onRequest({ region: REGION, timeoutSeconds: 60 }, handleApiV1);
-export { createReport, listReports, updateReportStatus, addInternalNote, takeContentAction };
+export {
+  createReport,
+  listReports,
+  updateReportStatus,
+  addInternalNote,
+  takeContentAction,
+  createReportAppeal,
+  listReportAppeals,
+  updateReportAppeal,
+};
 export {
   getModerationPolicyCurrent,
   listModerationPolicies,

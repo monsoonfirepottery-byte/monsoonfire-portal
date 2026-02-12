@@ -692,6 +692,85 @@ export default function StaffView({
       receiptsTotal: receipts.length,
     };
   }, [orders, receipts.length, unpaidCheckIns.length]);
+  const overviewAlerts = useMemo(() => {
+    const alerts: Array<{ id: string; severity: "high" | "medium" | "low"; label: string; actionLabel: string; module: ModuleKey }> = [];
+    const openBatches = batches.filter((batch) => !batch.isClosed).length;
+    const staleOpenBatches = batches.filter(
+      (batch) => !batch.isClosed && batch.updatedAtMs > 0 && Date.now() - batch.updatedAtMs > 7 * 24 * 60 * 60 * 1000
+    ).length;
+    const pendingOrders = orders.filter((order) => order.status !== "paid").length;
+    const unresolvedReports = (() => {
+      // report rows are loaded in reports module only; keep this as 0 baseline for now.
+      return 0;
+    })();
+    const activeFirings = firings.filter((firing) =>
+      ["loading", "firing", "cooling", "unloading", "loaded"].includes(firing.status.toLowerCase())
+    ).length;
+    const attentionFirings = firings.filter((firing) => {
+      const statusLower = firing.status.toLowerCase();
+      const isActive = ["loading", "firing", "cooling", "unloading", "loaded"].includes(statusLower);
+      const stale = isActive && firing.updatedAtMs > 0 && Date.now() - firing.updatedAtMs > 12 * 60 * 60 * 1000;
+      const lowConfidence = firing.confidence.toLowerCase() === "low";
+      return stale || lowConfidence;
+    }).length;
+
+    if (attentionFirings > 0) {
+      alerts.push({
+        id: "firings-attention",
+        severity: "high",
+        label: `${attentionFirings} firing${attentionFirings === 1 ? "" : "s"} need attention`,
+        actionLabel: "Review firings",
+        module: "firings",
+      });
+    }
+    if (pendingOrders > 0) {
+      alerts.push({
+        id: "orders-pending",
+        severity: "medium",
+        label: `${pendingOrders} store order${pendingOrders === 1 ? "" : "s"} pending payment`,
+        actionLabel: "Open store & billing",
+        module: "commerce",
+      });
+    }
+    if (unpaidCheckIns.length > 0) {
+      alerts.push({
+        id: "checkins-unpaid",
+        severity: "medium",
+        label: `${unpaidCheckIns.length} checked-in event signup${unpaidCheckIns.length === 1 ? "" : "s"} still unpaid`,
+        actionLabel: "Open store & billing",
+        module: "commerce",
+      });
+    }
+    if (staleOpenBatches > 0) {
+      alerts.push({
+        id: "batches-stale",
+        severity: "medium",
+        label: `${staleOpenBatches} open batch${staleOpenBatches === 1 ? "" : "es"} stale for 7+ days`,
+        actionLabel: "Review pieces & batches",
+        module: "pieces",
+      });
+    }
+    if (events.filter((event) => event.status === "review_required").length > 0) {
+      const count = events.filter((event) => event.status === "review_required").length;
+      alerts.push({
+        id: "events-review",
+        severity: "high",
+        label: `${count} event${count === 1 ? "" : "s"} blocked for review`,
+        actionLabel: "Open events",
+        module: "events",
+      });
+    }
+    if (openBatches === 0 && activeFirings === 0 && pendingOrders === 0 && unresolvedReports === 0) {
+      alerts.push({
+        id: "all-clear",
+        severity: "low",
+        label: "No immediate operational alerts.",
+        actionLabel: "Stay on overview",
+        module: "overview",
+      });
+    }
+    return alerts;
+  }, [batches, events, firings, orders, unpaidCheckIns.length]);
 
   const memberRoleCounts = useMemo(() => {
     const staffCount = users.filter((u) => u.role === "staff").length;
@@ -1478,6 +1557,45 @@ const loadEvents = useCallback(async () => {
         <div className="staff-kpi"><span>Events</span><strong>{events.length}</strong></div>
         <div className="staff-kpi"><span>Pending orders</span><strong>{orders.filter((o) => o.status !== "paid").length}</strong></div>
         <div className="staff-kpi"><span>Lending requests</span><strong>{libraryRequests.length}</strong></div>
+      </div>
+      <div className="staff-subtitle">Action queue</div>
+      <div className="staff-log-list">
+        {overviewAlerts.map((alert) => (
+          <div key={alert.id} className="staff-log-entry">
+            <div className="staff-log-meta">
+              <span className="staff-log-label">{alert.severity.toUpperCase()}</span>
+              <span>{new Date().toLocaleDateString()}</span>
+            </div>
+            <div className="staff-log-message">
+              {alert.label}
+              <div className="staff-actions-row" style={{ marginTop: 8 }}>
+                <button
+                  className="btn btn-ghost btn-small"
+                  onClick={() => setModuleKey(alert.module)}
+                >
+                  {alert.actionLabel}
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="staff-actions-row">
+        <button className="btn btn-secondary" onClick={() => setModuleKey("pieces")}>
+          Open pieces queue
+        </button>
+        <button className="btn btn-secondary" onClick={() => setModuleKey("firings")}>
+          Open firings triage
+        </button>
+        <button className="btn btn-secondary" onClick={() => setModuleKey("events")}>
+          Open events desk
+        </button>
+        <button className="btn btn-secondary" onClick={() => setModuleKey("commerce")}>
+          Open billing queue
+        </button>
+        <button className="btn btn-secondary" onClick={() => setModuleKey("system")}>
+          Open system health
+        </button>
       </div>
     </section>
   );

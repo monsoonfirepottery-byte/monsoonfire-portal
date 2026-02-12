@@ -1914,6 +1914,11 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   line-height: 1;
 }
 
+.staff-kpi-subtle {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .staff-actions-row {
   display: flex;
   flex-wrap: wrap;
@@ -1986,6 +1991,34 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   text-transform: none;
   letter-spacing: normal;
   color: var(--muted);
+}
+
+.staff-template-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.staff-template-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.staff-template-chip:hover {
+  border-color: var(--border-strong);
+}
+
+.staff-template-chip.active {
+  border-color: rgba(139, 214, 181, 0.5);
+  background: rgba(139, 214, 181, 0.16);
+  color: #9ddac3;
 }
 
 .staff-note {

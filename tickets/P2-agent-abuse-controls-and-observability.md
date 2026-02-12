@@ -86,3 +86,4 @@ Collection: `securityMetrics/daily`
 - Staff audit feed now merges relevant `securityAudit` auth events into agent-client timelines for faster triage of token failures and abuse spikes.
 - Staff Agent Ops audit log now supports source/outcome filters plus KPI chips, making deny/error investigations substantially faster.
 - Agent Ops control toggles now require a reason when disabling API/payments, and that reason is persisted in audit/config metadata.
+- Added explicit Firestore rules stanza for `securityAudit/*` (staff read only, writes denied from client).

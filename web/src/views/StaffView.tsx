@@ -393,6 +393,7 @@ export default function StaffView({
     priceCents: "0",
   });
   const [publishOverrideReason, setPublishOverrideReason] = useState("");
+  const [eventStatusReason, setEventStatusReason] = useState("");
   const [signupSearch, setSignupSearch] = useState("");
   const [signupStatusFilter, setSignupStatusFilter] = useState("all");
   const [selectedSignupId, setSelectedSignupId] = useState("");
@@ -2363,6 +2364,44 @@ const loadEvents = useCallback(async () => {
     setStatus(`Event ${selectedEvent.id} published.`);
   };
 
+  const setSelectedEventStatus = async (nextStatus: "draft" | "cancelled") => {
+    if (!selectedEvent) throw new Error("Select an event first.");
+    if (selectedEvent.status === nextStatus) {
+      throw new Error(`Selected event is already ${nextStatus}.`);
+    }
+    const reason = eventStatusReason.trim();
+    if (nextStatus === "cancelled" && !reason) {
+      throw new Error("Reason is required when cancelling an event.");
+    }
+
+    if (hasFunctionsAuthMismatch) {
+      const now = new Date();
+      const patch: Record<string, unknown> = {
+        status: nextStatus,
+        updatedAt: now,
+        lastStatusReason: reason || null,
+        lastStatusChangedAt: now,
+      };
+      if (nextStatus === "cancelled") {
+        patch.cancelledAt = now;
+      } else if (nextStatus === "draft") {
+        patch.cancelledAt = null;
+      }
+      await setDoc(doc(db, "events", selectedEvent.id), patch, { merge: true });
+    } else {
+      await client.postJson("staffSetEventStatus", {
+        eventId: selectedEvent.id,
+        status: nextStatus,
+        reason: reason || null,
+      });
+    }
+
+    setEventStatusReason("");
+    await loadEvents();
+    if (selectedEventId) await loadSignups(selectedEventId);
+    setStatus(`Event ${selectedEvent.id} moved to ${nextStatus}.`);
+  };
+
   const checkInSignupFallback = async (signup: SignupRecord) => {
     if (!selectedEventId) throw new Error("Select an event first.");
     if (signup.status === "checked_in") return;
@@ -2501,6 +2540,30 @@ const loadEvents = useCallback(async () => {
               onClick={() => void run("publishSelectedEvent", publishSelectedEvent)}
             >
               Publish selected
+            </button>
+          </div>
+          <div className="staff-actions-row">
+            <label className="staff-field" style={{ flex: 1 }}>
+              Status change reason {selectedEvent?.status !== "cancelled" ? "(required for cancel)" : "(optional)"}
+              <input
+                value={eventStatusReason}
+                onChange={(event) => setEventStatusReason(event.target.value)}
+                placeholder="Staff reason for lifecycle move"
+              />
+            </label>
+            <button
+              className="btn btn-secondary"
+              disabled={Boolean(busy) || !selectedEvent || selectedEvent.status === "draft"}
+              onClick={() => void run("setEventDraft", async () => setSelectedEventStatus("draft"))}
+            >
+              Move to draft
+            </button>
+            <button
+              className="btn btn-secondary"
+              disabled={Boolean(busy) || !selectedEvent || selectedEvent.status === "cancelled"}
+              onClick={() => void run("setEventCancelled", async () => setSelectedEventStatus("cancelled"))}
+            >
+              Cancel event
             </button>
           </div>
           <div className="staff-note">

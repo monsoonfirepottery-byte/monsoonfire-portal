@@ -54,6 +54,12 @@ const publishEventSchema = z.object({
   overrideReason: z.string().max(500).optional().nullable(),
 });
 
+const staffSetEventStatusSchema = z.object({
+  eventId: z.string().min(1),
+  status: z.enum(["draft", "cancelled"]),
+  reason: z.string().max(500).optional().nullable(),
+});
+
 const createEventSchema = z.object({
   templateId: z.string().optional().nullable(),
   title: z.string().min(1),
@@ -725,6 +731,78 @@ export const publishEvent = onRequest({ region: REGION }, async (req, res) => {
   );
 
   res.status(200).json({ ok: true, status: "published" });
+});
+
+export const staffSetEventStatus = onRequest({ region: REGION }, async (req, res) => {
+  if (applyCors(req, res)) return;
+
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+
+  const admin = await requireAdmin(req);
+  if (!admin.ok) {
+    res.status(403).json({ ok: false, message: "Forbidden" });
+    return;
+  }
+
+  const parsed = parseBody(staffSetEventStatusSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const rate = await enforceRateLimit({
+    req,
+    key: "staffSetEventStatus",
+    max: 20,
+    windowMs: 60_000,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ ok: false, message: "Too many requests" });
+    return;
+  }
+
+  const eventId = safeString(parsed.data.eventId).trim();
+  const nextStatus = parsed.data.status;
+  const reason = safeString(parsed.data.reason).trim();
+  if (nextStatus === "cancelled" && !reason) {
+    res.status(400).json({ ok: false, message: "Reason is required when cancelling an event." });
+    return;
+  }
+
+  const eventRef = db.collection(EVENTS_COL).doc(eventId);
+  const eventSnap = await eventRef.get();
+  if (!eventSnap.exists) {
+    res.status(404).json({ ok: false, message: "Event not found" });
+    return;
+  }
+
+  const t = nowTs();
+  const patch: Record<string, unknown> = {
+    status: nextStatus,
+    updatedAt: t,
+    lastStatusChangedByUid: auth.uid,
+    lastStatusReason: reason || null,
+    lastStatusChangedAt: t,
+  };
+
+  if (nextStatus === "cancelled") {
+    patch.cancelledAt = t;
+  } else if (nextStatus === "draft") {
+    patch.cancelledAt = null;
+  }
+
+  await eventRef.set(patch, { merge: true });
+  res.status(200).json({ ok: true, status: nextStatus });
 });
 
 export const signupForEvent = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {

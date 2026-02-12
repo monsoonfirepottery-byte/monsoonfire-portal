@@ -1681,6 +1681,7 @@ export {
   getEvent,
   createEvent,
   publishEvent,
+  staffSetEventStatus,
   signupForEvent,
   cancelEventSignup,
   claimEventOffer,

@@ -42,6 +42,7 @@ import { UiSettingsProvider } from "./context/UiSettingsContext";
 import "./App.css";
 
 const BillingView = React.lazy(() => import("./views/BillingView"));
+const AgentRequestsView = React.lazy(() => import("./views/AgentRequestsView"));
 const CommunityView = React.lazy(() => import("./views/CommunityView"));
 const DashboardView = React.lazy(() => import("./views/DashboardView"));
 const EventsView = React.lazy(() => import("./views/EventsView"));
@@ -79,6 +80,7 @@ type NavKey =
   | "glazes"
   | "membership"
   | "materials"
+  | "requests"
   | "billing"
   | "studioResources"
   | "notifications"
@@ -156,6 +158,7 @@ const NAV_SECTIONS: NavSection[] = [
       { key: "glazes", label: "Glaze Board" },
       { key: "materials", label: "Store" },
       { key: "membership", label: "Membership" },
+      { key: "requests", label: "Requests" },
       { key: "billing", label: "Billing" },
     ],
   },
@@ -297,6 +300,7 @@ const NAV_LABELS: Record<NavKey, string> = {
   glazes: "Glaze Board",
   membership: "Membership",
   materials: "Store",
+  requests: "Requests",
   billing: "Billing",
   studioResources: "Studio & Resources",
   notifications: "Notifications",
@@ -1275,6 +1279,8 @@ export default function App() {
         return <MembershipView user={user} />;
       case "materials":
         return <MaterialsView user={user} adminToken={devAdminTokenValue} isStaff={staffUi} />;
+      case "requests":
+        return <AgentRequestsView user={user} functionsBaseUrl={FUNCTIONS_BASE_URL} />;
       case "billing":
         return <BillingView user={user} />;
       case "reservations":

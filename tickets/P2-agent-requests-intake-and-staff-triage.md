@@ -1,6 +1,6 @@
 # P2 — Agent/Human Request Intake: “Do This For Me” Queue (Staff Triage)
 
-Status: In Progress
+Status: Completed
 
 ## Problem
 - If we want to support agents (and humans) delegating work to the studio, we need a safe, auditable intake funnel.
@@ -143,9 +143,6 @@ Recommended: option (2) if we expect real shipping usage.
   - top-level `agentAuditLogs` action events.
 - Added API contract documentation for new endpoints:
   - `docs/API_CONTRACTS.md`
-- Remaining:
-  - Dedicated user-facing Requests view in portal nav.
-  - Optional: richer audit timeline rendering from `agentRequests/{id}/audit`.
 - Completed staff triage UX in `web/src/views/staff/AgentOpsModule.tsx`:
   - Agent request queue table with status/kind/search filters and KPI pills.
   - Request detail pane with requester context, payload details, and linked batch visibility.
@@ -154,3 +151,10 @@ Recommended: option (2) if we expect real shipping usage.
     - `apiV1/v1/agent.requests.linkBatch`
     - `apiV1/v1/agent.requests.listStaff` (refresh)
   - In-flight guardrails + explicit status/error banners retained.
+- Completed user-facing request intake + tracking view:
+  - Added `web/src/views/AgentRequestsView.tsx` + `web/src/views/AgentRequestsView.css`.
+  - Added Studio & Resources nav item `Requests` in `web/src/App.tsx`.
+  - Implemented authenticated create/list experience against:
+    - `apiV1/v1/agent.requests.create`
+    - `apiV1/v1/agent.requests.listMine`
+  - Added visible request statuses, linked batch visibility, and troubleshooting payload panel.

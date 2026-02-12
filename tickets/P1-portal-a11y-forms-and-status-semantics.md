@@ -1,6 +1,6 @@
 # P1 — Portal A11y: Forms, Filters, and Status Semantics
 
-Status: In Progress
+Status: Completed
 
 ## Problem
 - Some form/search controls rely on placeholder text instead of explicit labels.

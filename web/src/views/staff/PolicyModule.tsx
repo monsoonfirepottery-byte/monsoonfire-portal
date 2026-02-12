@@ -70,6 +70,63 @@ type ScanCommunityDraftResponse = {
   risk?: SafetyRisk;
 };
 
+type SafetyPreset = {
+  id: string;
+  label: string;
+  description: string;
+  config: Pick<
+    CommunitySafetyConfig,
+    "enabled" | "publishKillSwitch" | "autoFlagEnabled" | "mediumSeverityThreshold" | "highSeverityThreshold"
+  >;
+  blockedTerms: string[];
+  blockedUrlHosts: string[];
+};
+
+const SAFETY_PRESETS: SafetyPreset[] = [
+  {
+    id: "balanced",
+    label: "Balanced",
+    description: "General studio operations with proactive scanning and moderate thresholds.",
+    config: {
+      enabled: true,
+      publishKillSwitch: false,
+      autoFlagEnabled: true,
+      mediumSeverityThreshold: 35,
+      highSeverityThreshold: 70,
+    },
+    blockedTerms: ["scam", "counterfeit", "violent threat", "hate group", "doxx"],
+    blockedUrlHosts: ["tinyurl.com", "bit.ly", "t.co"],
+  },
+  {
+    id: "strict",
+    label: "Strict",
+    description: "High-alert moderation for abuse spikes and active incidents.",
+    config: {
+      enabled: true,
+      publishKillSwitch: false,
+      autoFlagEnabled: true,
+      mediumSeverityThreshold: 25,
+      highSeverityThreshold: 55,
+    },
+    blockedTerms: ["scam", "counterfeit", "violent threat", "hate group", "doxx", "harass", "attack", "swat", "exploit"],
+    blockedUrlHosts: ["tinyurl.com", "bit.ly", "t.co", "shorturl.at", "cutt.ly"],
+  },
+  {
+    id: "review-only",
+    label: "Review-Only",
+    description: "Keep scanner on, but disable auto-flagging for manual moderation windows.",
+    config: {
+      enabled: true,
+      publishKillSwitch: false,
+      autoFlagEnabled: false,
+      mediumSeverityThreshold: 35,
+      highSeverityThreshold: 70,
+    },
+    blockedTerms: ["scam", "counterfeit", "violent threat", "hate group", "doxx"],
+    blockedUrlHosts: ["tinyurl.com", "bit.ly", "t.co"],
+  },
+];
+
 function str(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
 }
@@ -142,6 +199,10 @@ function parseMultiline(input: string): string[] {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+function normalizePresetList(list: string[]): string[] {
+  return list.map((entry) => entry.trim()).filter(Boolean);
 }
 
 function toBoolean(v: unknown, fallback = false): boolean {
@@ -443,6 +504,30 @@ export default function PolicyModule({ client, active, disabled }: Props) {
         >
           Restore normal safety defaults
         </button>
+      </div>
+      <div className="staff-subtitle">Safety presets</div>
+      <div className="staff-actions-row">
+        {SAFETY_PRESETS.map((preset) => (
+          <button
+            key={preset.id}
+            className="btn btn-secondary"
+            disabled={Boolean(busy) || disabled}
+            onClick={() => {
+              setSafetyConfig((prev) => ({
+                ...prev,
+                ...preset.config,
+              }));
+              setBlockedTermsDraft(normalizePresetList(preset.blockedTerms).join("\n"));
+              setBlockedHostsDraft(normalizePresetList(preset.blockedUrlHosts).join("\n"));
+              setStatus(`Loaded "${preset.label}" preset. Save safety controls to apply.`);
+            }}
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
+      <div className="staff-note">
+        {SAFETY_PRESETS.map((preset) => `${preset.label}: ${preset.description}`).join(" | ")}
       </div>
       <div className="staff-actions-row">
         <label className="staff-inline-check">

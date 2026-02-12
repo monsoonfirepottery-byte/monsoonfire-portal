@@ -278,6 +278,11 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     return audit.filter((entry) => deniedSet.has(entry.action));
   }, [audit]);
   const filteredDeniedEvents = useMemo(() => {
+    const fromMs = deniedFromDate ? Date.parse(`${deniedFromDate}T00:00:00.000Z`) : 0;
+    const toMs = deniedToDate ? Date.parse(`${deniedToDate}T23:59:59.999Z`) : 0;
+    const hasFrom = Number.isFinite(fromMs) && fromMs > 0;
+    const hasTo = Number.isFinite(toMs) && toMs > 0;
+
     return deniedEvents.filter((entry) => {
       const clientId =
         typeof entry.metadata?.agentClientId === "string"
@@ -287,9 +292,11 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
         deniedClientFilter === "all" ? true : clientId === deniedClientFilter;
       const matchesAction =
         deniedActionFilter === "all" ? true : entry.action === deniedActionFilter;
-      return matchesClient && matchesAction;
+      const matchesFrom = !hasFrom || entry.createdAtMs >= fromMs;
+      const matchesTo = !hasTo || entry.createdAtMs <= toMs;
+      return matchesClient && matchesAction && matchesFrom && matchesTo;
     });
-  }, [deniedEvents, deniedClientFilter, deniedActionFilter]);
+  }, [deniedEvents, deniedClientFilter, deniedActionFilter, deniedFromDate, deniedToDate]);
 
   const run = async (key: string, fn: () => Promise<void>) => {
     if (busy || disabled) return;
@@ -1223,19 +1230,22 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
         </label>
         <button
           className="btn btn-secondary"
-          disabled={Boolean(busy) || filteredDeniedEvents.length === 0}
+          disabled={Boolean(busy) || filteredDeniedEvents.length === 0 || Boolean(deniedFromDate && deniedToDate && deniedFromDate > deniedToDate)}
           onClick={() => void exportDeniedEvents()}
         >
           Copy JSON export
         </button>
         <button
           className="btn btn-secondary"
-          disabled={Boolean(busy)}
+          disabled={Boolean(busy) || Boolean(deniedFromDate && deniedToDate && deniedFromDate > deniedToDate)}
           onClick={() => void run("downloadDeniedCsv", downloadDeniedEventsCsv)}
         >
           Download CSV
         </button>
       </div>
+      {deniedFromDate && deniedToDate && deniedFromDate > deniedToDate ? (
+        <div className="staff-note staff-note-error">Date range is invalid. Set "From" to a date before "To".</div>
+      ) : null}
       <div className="staff-table-wrap">
         <table className="staff-table">
           <thead>

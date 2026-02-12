@@ -43,3 +43,5 @@ Status: In Progress
   - blocking errors use `role="alert"` + `aria-live="assertive"`
   - non-blocking status notices use `role="status"` + `aria-live="polite"`
 - Applied to token create/revoke flows and events-feed smoke test feedback.
+- Added explicit search input naming + `aria-pressed` filter-chip states in Support FAQ.
+- Added live-region semantics for Support FAQ/form updates and SignedOut auth status feedback.

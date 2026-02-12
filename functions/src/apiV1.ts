@@ -165,6 +165,11 @@ const agentStatusSchema = z.object({
   orderId: z.string().min(1).optional(),
 });
 
+const agentPaySchema = z.object({
+  reservationId: z.string().min(1),
+  idempotencyKey: z.string().min(1).max(120).optional(),
+});
+
 export async function handleApiV1(req: any, res: any) {
   if (applyCors(req, res)) return;
 
@@ -491,6 +496,8 @@ export async function handleApiV1(req: any, res: any) {
         currency,
         riskLevel: service.riskLevel,
         requiresManualReview: service.requiresManualReview,
+        priceId: service.priceId ?? null,
+        productId: service.productId ?? null,
         leadTimeDays: service.leadTimeDays,
         status: "quoted",
         mode: config.pricingMode,
@@ -623,6 +630,8 @@ export async function handleApiV1(req: any, res: any) {
           currency: typeof quote.currency === "string" ? quote.currency : config.defaultCurrency,
           riskLevel: typeof quote.riskLevel === "string" ? quote.riskLevel : "medium",
           requiresManualReview,
+          priceId: typeof quote.priceId === "string" ? quote.priceId : null,
+          productId: typeof quote.productId === "string" ? quote.productId : null,
           status: reservationStatus,
           mode: typeof quote.mode === "string" ? quote.mode : config.pricingMode,
           quoteExpiresAt: quote.expiresAt ?? null,
@@ -681,6 +690,151 @@ export async function handleApiV1(req: any, res: any) {
       return;
     }
 
+    if (route === "/v1/agent.pay") {
+      const scopeCheck = requireScopes(ctx, ["pay:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(agentPaySchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const catalogConfig = await getAgentServiceCatalogConfig();
+      if (!catalogConfig.featureFlags.payEnabled) {
+        jsonError(res, requestId, 503, "UNAVAILABLE", "Agent payment capability is disabled");
+        return;
+      }
+
+      const reservationId = String(parsed.data.reservationId).trim();
+      const reservationRef = db.collection("agentReservations").doc(reservationId);
+      const reservationSnap = await reservationRef.get();
+      if (!reservationSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Reservation not found");
+        return;
+      }
+
+      const reservation = reservationSnap.data() as Record<string, unknown>;
+      const reservationUid = typeof reservation.uid === "string" ? reservation.uid : "";
+      if (!reservationUid) {
+        jsonError(res, requestId, 500, "INTERNAL", "Reservation missing owner");
+        return;
+      }
+      if (reservationUid !== ctx.uid && !isStaff) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+        return;
+      }
+
+      const reservationStatus = typeof reservation.status === "string" ? reservation.status : "reserved";
+      if (reservationStatus === "cancelled" || reservationStatus === "expired") {
+        jsonError(res, requestId, 409, "FAILED_PRECONDITION", "Reservation is no longer payable");
+        return;
+      }
+
+      const orderId = parsed.data.idempotencyKey
+        ? makeIdempotencyId("agent-order", reservationUid, String(parsed.data.idempotencyKey))
+        : makeIdempotencyId("agent-order", reservationUid, reservationId);
+      const orderRef = db.collection("agentOrders").doc(orderId);
+      const now = nowTs();
+
+      const checkoutPriceId =
+        typeof reservation.priceId === "string" && reservation.priceId.trim()
+          ? reservation.priceId.trim()
+          : null;
+      const quantity = typeof reservation.quantity === "number" ? Math.max(1, Math.trunc(reservation.quantity)) : 1;
+
+      const orderResult = await db.runTransaction(async (tx) => {
+        const existingSnap = await tx.get(orderRef);
+        if (existingSnap.exists) {
+          const existing = existingSnap.data() as Record<string, unknown>;
+          return {
+            idempotentReplay: true,
+            order: existing,
+          };
+        }
+
+        const order = {
+          orderId,
+          uid: reservationUid,
+          reservationId,
+          quoteId: typeof reservation.quoteId === "string" ? reservation.quoteId : null,
+          agentClientId:
+            ctx.mode === "delegated"
+              ? ctx.delegated.agentClientId
+              : (typeof reservation.agentClientId === "string" ? reservation.agentClientId : null),
+          status: "payment_required",
+          paymentStatus: "checkout_pending",
+          fulfillmentStatus: "queued",
+          paymentProvider: "stripe",
+          stripeCheckoutSessionId: null,
+          stripePaymentIntentId: null,
+          amountCents: typeof reservation.subtotalCents === "number" ? reservation.subtotalCents : 0,
+          currency:
+            typeof reservation.currency === "string"
+              ? reservation.currency
+              : catalogConfig.defaultCurrency,
+          quantity,
+          priceId: checkoutPriceId,
+          mode: typeof reservation.mode === "string" ? reservation.mode : catalogConfig.pricingMode,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        tx.set(orderRef, order);
+        tx.set(
+          reservationRef,
+          {
+            status: "payment_required",
+            orderId,
+            updatedAt: now,
+          },
+          { merge: true }
+        );
+        const auditRef = db.collection("agentAuditLogs").doc();
+        tx.set(auditRef, {
+          actorUid: ctx.uid,
+          actorMode: ctx.mode,
+          action: "agent_pay_requested",
+          requestId,
+          reservationId,
+          orderId,
+          createdAt: now,
+        });
+        return { idempotentReplay: false, order };
+      });
+
+      const order = orderResult.order;
+      const priceConfigured = typeof order.priceId === "string" && order.priceId.trim().length > 0;
+      jsonOk(res, requestId, {
+        orderId,
+        idempotentReplay: orderResult.idempotentReplay,
+        status: typeof order.status === "string" ? order.status : "payment_required",
+        paymentStatus:
+          typeof order.paymentStatus === "string" ? order.paymentStatus : "checkout_pending",
+        fulfillmentStatus:
+          typeof order.fulfillmentStatus === "string" ? order.fulfillmentStatus : "queued",
+        checkout: {
+          provider: "stripe",
+          ready: priceConfigured,
+          requiresUserFirebaseAuth: true,
+          checkoutEndpoint: "createCheckoutSession",
+          payloadHint: priceConfigured
+            ? {
+                priceId: order.priceId,
+                quantity: typeof order.quantity === "number" ? order.quantity : quantity,
+              }
+            : null,
+          message: priceConfigured
+            ? "Call createCheckoutSession with a Firebase user token to complete payment."
+            : "No Stripe priceId is configured for this service. Staff must update Agent service catalog.",
+        },
+      });
+      return;
+    }
+
     if (route === "/v1/agent.status") {
       const scopeCheck = requireScopes(ctx, ["status:read"]);
       if (!scopeCheck.ok) {
@@ -717,7 +871,19 @@ export async function handleApiV1(req: any, res: any) {
       const reservation = reservationSnap?.exists
         ? (reservationSnap.data() as Record<string, unknown>)
         : null;
-      const order = orderSnap?.exists ? (orderSnap.data() as Record<string, unknown>) : null;
+      let order = orderSnap?.exists ? (orderSnap.data() as Record<string, unknown>) : null;
+      let resolvedOrderId = orderId || null;
+      if (!order && reservation) {
+        const inferredOrderId =
+          typeof reservation.orderId === "string" ? reservation.orderId.trim() : "";
+        if (inferredOrderId) {
+          const inferredOrderSnap = await db.collection("agentOrders").doc(inferredOrderId).get();
+          if (inferredOrderSnap.exists) {
+            order = inferredOrderSnap.data() as Record<string, unknown>;
+            resolvedOrderId = inferredOrderId;
+          }
+        }
+      }
 
       const ownerUid =
         (typeof quote?.uid === "string" ? quote.uid : "") ||
@@ -763,7 +929,7 @@ export async function handleApiV1(req: any, res: any) {
         requestId,
         quoteId: responseQuoteId,
         reservationId: responseReservationId,
-        orderId: orderId || null,
+        orderId: resolvedOrderId,
         createdAt: nowTs(),
       });
 
@@ -771,7 +937,7 @@ export async function handleApiV1(req: any, res: any) {
         uid: ownerUid,
         quoteId: responseQuoteId,
         reservationId: responseReservationId,
-        orderId: orderId || null,
+        orderId: resolvedOrderId,
         lifecycleStatus,
         paymentStatus,
         fulfillmentStatus,

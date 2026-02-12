@@ -31,6 +31,11 @@ type AgentAudit = {
   metadata: Record<string, unknown> | null;
 };
 
+type DeniedAction =
+  | "agent_quote_denied_risk_limit"
+  | "agent_pay_denied_risk_limit"
+  | "agent_pay_denied_velocity";
+
 type AgentCatalogService = {
   id: string;
   title: string;
@@ -248,11 +253,34 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [opsReservations, setOpsReservations] = useState<Array<Record<string, unknown>>>([]);
   const [opsOrders, setOpsOrders] = useState<Array<Record<string, unknown>>>([]);
   const [riskByClient, setRiskByClient] = useState<Record<string, { total: number; quoteLimit: number; payLimit: number; velocity: number }>>({});
+  const [deniedClientFilter, setDeniedClientFilter] = useState("all");
+  const [deniedActionFilter, setDeniedActionFilter] = useState<"all" | DeniedAction>("all");
   const [orderNextStatus, setOrderNextStatus] = useState<Record<string, string>>({});
   const [agentApiEnabled, setAgentApiEnabled] = useState(true);
   const [agentPaymentsEnabled, setAgentPaymentsEnabled] = useState(true);
 
   const selected = useMemo(() => clients.find((row) => row.id === selectedId) ?? null, [clients, selectedId]);
+  const deniedEvents = useMemo(() => {
+    const deniedSet = new Set<string>([
+      "agent_quote_denied_risk_limit",
+      "agent_pay_denied_risk_limit",
+      "agent_pay_denied_velocity",
+    ]);
+    return audit.filter((entry) => deniedSet.has(entry.action));
+  }, [audit]);
+  const filteredDeniedEvents = useMemo(() => {
+    return deniedEvents.filter((entry) => {
+      const clientId =
+        typeof entry.metadata?.agentClientId === "string"
+          ? entry.metadata.agentClientId
+          : "";
+      const matchesClient =
+        deniedClientFilter === "all" ? true : clientId === deniedClientFilter;
+      const matchesAction =
+        deniedActionFilter === "all" ? true : entry.action === deniedActionFilter;
+      return matchesClient && matchesAction;
+    });
+  }, [deniedEvents, deniedClientFilter, deniedActionFilter]);
 
   const run = async (key: string, fn: () => Promise<void>) => {
     if (busy || disabled) return;
@@ -495,6 +523,22 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     if (!latestDelegatedToken) return;
     await navigator.clipboard.writeText(latestDelegatedToken);
     setStatus("Delegated token copied.");
+  };
+
+  const exportDeniedEvents = async () => {
+    const payload = filteredDeniedEvents.map((entry) => ({
+      id: entry.id,
+      at: entry.createdAtMs ? new Date(entry.createdAtMs).toISOString() : null,
+      action: entry.action,
+      actorUid: entry.actorUid,
+      clientId:
+        typeof entry.metadata?.agentClientId === "string"
+          ? entry.metadata.agentClientId
+          : null,
+      metadata: entry.metadata ?? null,
+    }));
+    await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+    setStatus(`Copied ${payload.length} denied events JSON.`);
   };
 
   return (
@@ -1056,6 +1100,82 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             </div>
           ))
         )}
+      </div>
+
+      <div className="staff-subtitle">Denied events</div>
+      <div className="staff-actions-row">
+        <label className="staff-field" style={{ flex: 1 }}>
+          Client filter
+          <select
+            value={deniedClientFilter}
+            onChange={(event) => setDeniedClientFilter(event.target.value)}
+          >
+            <option value="all">All clients</option>
+            {clients.map((clientRow) => (
+              <option key={clientRow.id} value={clientRow.id}>
+                {clientRow.name} ({clientRow.id})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="staff-field" style={{ flex: 1 }}>
+          Action filter
+          <select
+            value={deniedActionFilter}
+            onChange={(event) =>
+              setDeniedActionFilter(
+                event.target.value as "all" | DeniedAction
+              )
+            }
+          >
+            <option value="all">All denied actions</option>
+            <option value="agent_quote_denied_risk_limit">quote denied - risk limit</option>
+            <option value="agent_pay_denied_risk_limit">pay denied - risk limit</option>
+            <option value="agent_pay_denied_velocity">pay denied - velocity</option>
+          </select>
+        </label>
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy) || filteredDeniedEvents.length === 0}
+          onClick={() => void exportDeniedEvents()}
+        >
+          Copy JSON export
+        </button>
+      </div>
+      <div className="staff-table-wrap">
+        <table className="staff-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Action</th>
+              <th>Client</th>
+              <th>Actor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredDeniedEvents.slice(0, 50).map((entry) => (
+              <tr key={entry.id}>
+                <td>{when(entry.createdAtMs)}</td>
+                <td>{entry.action}</td>
+                <td>
+                  <code>
+                    {typeof entry.metadata?.agentClientId === "string"
+                      ? entry.metadata.agentClientId
+                      : "-"}
+                  </code>
+                </td>
+                <td>
+                  <code>{entry.actorUid || "-"}</code>
+                </td>
+              </tr>
+            ))}
+            {filteredDeniedEvents.length === 0 ? (
+              <tr>
+                <td colSpan={4}>No denied events for current filters.</td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
       </div>
     </section>
   );

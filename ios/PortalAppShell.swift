@@ -51,7 +51,8 @@ final class PortalAppShellViewModel: ObservableObject {
             intakeMode: "STAFF_HANDOFF",
             estimatedCostCents: 2500,
             estimateNotes: "Smoke test from iOS shell",
-            notes: nil
+            notes: nil,
+            clientRequestId: UUID().uuidString
         )
 
         do {
@@ -153,7 +154,13 @@ struct PortalAppShellView: View {
                         .autocorrectionDisabled()
                 }
 
-                LabeledContent("Resolved base URL", value: vm.config.resolvedBaseUrl)
+                HStack {
+                    Text("Resolved base URL")
+                    Spacer()
+                    Text(vm.config.resolvedBaseUrl)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
+                }
             }
 
             Section("Auth") {

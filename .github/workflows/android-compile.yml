@@ -27,13 +27,13 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: gradle
+      - uses: gradle/actions/setup-gradle@v4
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
       - name: Install SDK packages
         run: |
           yes | sdkmanager --licenses
           sdkmanager "platforms;android-34" "build-tools;34.0.0"
       - name: Compile Kotlin
+        working-directory: android
         run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew :app:compileDebugKotlin --no-daemon
+          gradle :app:compileDebugKotlin --no-daemon

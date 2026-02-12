@@ -1,6 +1,6 @@
 # P2 — Agent Integrations: Abuse Controls + Observability
 
-Status: In Progress
+Status: Completed
 
 ## Problem
 - Adding machine-facing endpoints increases attack surface:
@@ -89,3 +89,4 @@ Collection: `securityMetrics/daily`
 - Added explicit Firestore rules stanza for `securityAudit/*` (staff read only, writes denied from client).
 - Staff Agent Ops now surfaces last control change metadata (reason, actor UID, timestamp) to make kill-switch/history state immediately legible.
 - Added dedicated `integrationTokenAudit` records for PAT lifecycle visibility (`created`, `listed`, `used`, `revoked`, `failed_auth`) with hashed IP and truncated UA.
+- Added operator runbook `docs/AGENT_SECURITY_PLAYBOOK.md` for auth-failure spikes, token compromise, kill switch usage, and pepper rotation/recovery steps.

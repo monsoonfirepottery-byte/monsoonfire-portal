@@ -264,6 +264,8 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [deniedActionFilter, setDeniedActionFilter] = useState<"all" | DeniedAction>("all");
   const [deniedFromDate, setDeniedFromDate] = useState("");
   const [deniedToDate, setDeniedToDate] = useState("");
+  const [auditSourceFilter, setAuditSourceFilter] = useState<"all" | "client" | "security">("all");
+  const [auditOutcomeFilter, setAuditOutcomeFilter] = useState<"all" | "ok" | "deny" | "error">("all");
   const [orderNextStatus, setOrderNextStatus] = useState<Record<string, string>>({});
   const [agentApiEnabled, setAgentApiEnabled] = useState(true);
   const [agentPaymentsEnabled, setAgentPaymentsEnabled] = useState(true);
@@ -297,6 +299,35 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
       return matchesClient && matchesAction && matchesFrom && matchesTo;
     });
   }, [deniedEvents, deniedClientFilter, deniedActionFilter, deniedFromDate, deniedToDate]);
+  const filteredAudit = useMemo(() => {
+    return audit.filter((entry) => {
+      const source = str(entry.metadata?.source, "client");
+      if (auditSourceFilter !== "all" && source !== auditSourceFilter) return false;
+      if (auditOutcomeFilter !== "all") {
+        const outcome = str(entry.metadata?.outcome, "");
+        if (outcome !== auditOutcomeFilter) return false;
+      }
+      return true;
+    });
+  }, [audit, auditSourceFilter, auditOutcomeFilter]);
+  const auditKpis = useMemo(() => {
+    let security = 0;
+    let denied = 0;
+    let errored = 0;
+    for (const entry of audit) {
+      const source = str(entry.metadata?.source, "client");
+      if (source === "security") security += 1;
+      const outcome = str(entry.metadata?.outcome, "");
+      if (outcome === "deny") denied += 1;
+      if (outcome === "error") errored += 1;
+    }
+    return {
+      total: audit.length,
+      security,
+      denied,
+      errored,
+    };
+  }, [audit]);
 
   const run = async (key: string, fn: () => Promise<void>) => {
     if (busy || disabled) return;
@@ -1161,11 +1192,36 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
       </div>
 
       <div className="staff-subtitle">Audit log</div>
+      <div className="staff-actions-row">
+        <div className="pill">Total: {auditKpis.total}</div>
+        <div className="pill">Security: {auditKpis.security}</div>
+        <div className="pill">Denied: {auditKpis.denied}</div>
+        <div className="pill">Errored: {auditKpis.errored}</div>
+      </div>
+      <div className="staff-actions-row">
+        <label className="staff-field">
+          Source
+          <select value={auditSourceFilter} onChange={(event) => setAuditSourceFilter(event.target.value as "all" | "client" | "security")}>
+            <option value="all">All sources</option>
+            <option value="client">Client audit</option>
+            <option value="security">Security audit</option>
+          </select>
+        </label>
+        <label className="staff-field">
+          Outcome
+          <select value={auditOutcomeFilter} onChange={(event) => setAuditOutcomeFilter(event.target.value as "all" | "ok" | "deny" | "error")}>
+            <option value="all">All outcomes</option>
+            <option value="ok">ok</option>
+            <option value="deny">deny</option>
+            <option value="error">error</option>
+          </select>
+        </label>
+      </div>
       <div className="staff-log-list">
-        {audit.length === 0 ? (
+        {filteredAudit.length === 0 ? (
           <div className="staff-note">No agent client audit events yet.</div>
         ) : (
-          audit.slice(0, 40).map((entry) => (
+          filteredAudit.slice(0, 40).map((entry) => (
             <div key={entry.id} className="staff-log-entry">
               <div className="staff-log-meta">
                 <span className="staff-log-label">{entry.action}</span>

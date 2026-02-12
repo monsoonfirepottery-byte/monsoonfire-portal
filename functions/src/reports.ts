@@ -102,6 +102,11 @@ const listReportAppealsSchema = z.object({
   limit: z.number().int().min(1).max(200).optional(),
 });
 
+const listMyReportAppealsSchema = z.object({
+  status: z.enum(["all", "open", "in_review", "upheld", "reversed", "rejected"]).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+});
+
 const updateReportAppealSchema = z.object({
   appealId: z.string().min(1),
   status: z.enum(["open", "in_review", "upheld", "reversed", "rejected"]),
@@ -783,6 +788,53 @@ export const listReportAppeals = onRequest({ region: REGION, timeoutSeconds: 60 
   });
 
   res.status(200).json({ ok: true, appeals });
+});
+
+export const listMyReportAppeals = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Method not allowed" });
+    return;
+  }
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+
+  const parsed = parseBody(listMyReportAppealsSchema, req.body ?? {});
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const { status = "all", limit = 60 } = parsed.data;
+  const scanLimit = Math.min(Math.max(limit * 3, limit), 200);
+
+  const snap = await db.collection(REPORT_APPEALS_COL).where("reporterUid", "==", auth.uid).limit(scanLimit).get();
+  let appeals: Array<Record<string, unknown>> = snap.docs.map((docSnap) => ({
+    id: docSnap.id,
+    ...(docSnap.data() as Record<string, unknown>),
+  }));
+
+  if (status !== "all") {
+    appeals = appeals.filter((row) => safeString(row.status) === status);
+  }
+
+  appeals.sort((a, b) => {
+    const aSeconds = Number((a.createdAt as { seconds?: unknown } | undefined)?.seconds ?? 0);
+    const bSeconds = Number((b.createdAt as { seconds?: unknown } | undefined)?.seconds ?? 0);
+    return bSeconds - aSeconds;
+  });
+
+  await writeAudit({
+    actorUid: auth.uid,
+    actorRole: "user",
+    action: "list_my_report_appeals",
+    metadata: { status, limit, returned: appeals.length },
+  });
+
+  res.status(200).json({ ok: true, appeals: appeals.slice(0, limit) });
 });
 
 export const updateReportAppeal = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {

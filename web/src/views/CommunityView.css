@@ -403,6 +403,25 @@
   line-height: 1.45;
 }
 
+.community-report-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.community-report-appeal-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(180, 79, 53, 0.35);
+  background: rgba(180, 79, 53, 0.12);
+  color: var(--accent);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+}
+
 .community-report-item-id code {
   font-size: 11px;
 }

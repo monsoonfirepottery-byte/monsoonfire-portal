@@ -1,4 +1,4 @@
-Status: Open
+Status: In Progress
 
 # P2 - Consolidate Theme Tokens (Shadows, Focus, Motion)
 
@@ -18,3 +18,12 @@ We started introducing cross-theme tokens (`--shadow-card*`, `--focus-ring`) but
 - Default Portal theme remains visually unchanged.
 - Memoria theme values are mostly driven by tokens, not hard-coded CSS.
 - `npm --prefix web run lint` and `npm --prefix web run build` pass.
+
+## Progress notes
+- Added shared theme tokens in `web/src/theme/themes.ts`:
+  - `--shadow-brand`
+  - `--focus-ring-strong`
+- Replaced hard-coded values in `web/src/App.css` with tokenized values + fallbacks:
+  - brand image shadow (`.nav-brand img`, `.brand img`)
+  - stronger focus ring for nav focus-visible states
+- Remaining work: broader pass for Memoria-only hard-coded borders/shadows across portal views.

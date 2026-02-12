@@ -93,7 +93,7 @@
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  box-shadow: 0 8px 18px rgba(27, 26, 23, 0.16);
+  box-shadow: var(--shadow-brand, 0 8px 18px rgba(27, 26, 23, 0.16));
 }
 
 .brand-title {
@@ -2882,7 +2882,7 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  box-shadow: 0 8px 18px rgba(27, 26, 23, 0.16);
+  box-shadow: var(--shadow-brand, 0 8px 18px rgba(27, 26, 23, 0.16));
 }
 
 .brand h1 {
@@ -3714,7 +3714,7 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
 .nav-subitem:focus-visible,
 .nav-bottom button:focus-visible,
 .sidebar .nav-rail button:focus-visible {
-  outline: 2px solid var(--focus-ring, rgba(215, 132, 92, 0.7));
+  outline: 2px solid var(--focus-ring-strong, var(--focus-ring, rgba(215, 132, 92, 0.7)));
   outline-offset: 2px;
 }
 

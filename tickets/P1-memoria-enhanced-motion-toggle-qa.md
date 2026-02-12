@@ -1,4 +1,4 @@
-Status: Open
+Status: Completed
 
 # P1 - QA: Enhanced Motion Toggle (Memoria)
 
@@ -25,3 +25,14 @@ We introduced an Enhanced motion user setting (`profiles.uiEnhancedMotion` + `lo
 - No white screens, no console errors.
 - Toggle updates motion behavior immediately (no refresh needed).
 - Setting persists across reload and (when signed in) across devices via Firestore.
+
+## Progress notes
+- Added motion preference helper coverage:
+  - `web/src/theme/motionPreference.ts`
+  - `web/src/theme/motionPreference.test.ts`
+- Added QA runbook and matrix:
+  - `docs/MEMORIA_ENHANCED_MOTION_QA.md`
+- Confirmed Firestore rule support for `profiles.uiEnhancedMotion`:
+  - `firestore.rules` allows `bool | null`.
+- Known environment note captured in QA doc:
+  - iOS simulator validation deferred until Xcode tooling is available.

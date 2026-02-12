@@ -36,6 +36,7 @@ import type { SupportRequestInput } from "./views/SupportView";
 import { DEFAULT_PORTAL_THEME, isPortalThemeName, PORTAL_THEMES, type PortalThemeName } from "./theme/themes";
 import { readStoredPortalTheme, writeStoredPortalTheme } from "./theme/themeStorage";
 import { readStoredEnhancedMotion, writeStoredEnhancedMotion } from "./theme/motionStorage";
+import { computeEnhancedMotionDefault, resolvePortalMotion } from "./theme/motionPreference";
 import { usePrefersReducedMotion } from "./hooks/usePrefersReducedMotion";
 import { UiSettingsProvider } from "./context/UiSettingsContext";
 import "./App.css";
@@ -617,8 +618,12 @@ export default function App() {
     const saveData = (navigator as { connection?: { saveData?: boolean } }).connection?.saveData ?? false;
     const deviceMemory = (navigator as { deviceMemory?: number }).deviceMemory ?? null;
     const cores = (navigator as { hardwareConcurrency?: number }).hardwareConcurrency ?? null;
-    const lowPower = (typeof deviceMemory === "number" && deviceMemory <= 4) || (typeof cores === "number" && cores <= 4);
-    const defaultValue = !(likelyMobile || saveData || lowPower);
+    const defaultValue = computeEnhancedMotionDefault({
+      likelyMobile,
+      saveData,
+      deviceMemory,
+      hardwareConcurrency: cores,
+    });
     return readStoredEnhancedMotion(defaultValue);
   });
   const [motionAutoReduced, setMotionAutoReduced] = useState(false);
@@ -638,8 +643,7 @@ export default function App() {
     const theme = PORTAL_THEMES[themeName] ?? PORTAL_THEMES[DEFAULT_PORTAL_THEME];
     if (typeof document === "undefined") return;
     document.documentElement.dataset.portalTheme = themeName;
-    document.documentElement.dataset.portalMotion =
-      prefersReducedMotion || !enhancedMotion ? "reduced" : "enhanced";
+    document.documentElement.dataset.portalMotion = resolvePortalMotion(prefersReducedMotion, enhancedMotion);
     document.documentElement.style.colorScheme = themeName === "memoria" ? "dark" : "light";
     for (const [key, value] of Object.entries(theme)) {
       if (!key.startsWith("--") || value == null) continue;
@@ -1607,7 +1611,7 @@ export default function App() {
               <UiSettingsProvider
                 value={{
                   themeName,
-                  portalMotion: prefersReducedMotion || !enhancedMotion ? "reduced" : "enhanced",
+                  portalMotion: resolvePortalMotion(prefersReducedMotion, enhancedMotion),
                   enhancedMotion,
                   prefersReducedMotion,
                 }}

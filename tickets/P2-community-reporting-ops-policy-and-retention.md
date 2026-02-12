@@ -1,6 +1,6 @@
 # P2 — Reporting Ops Policy, Abuse Playbook, and Retention
 
-Status: Planned
+Status: Completed
 
 ## Context / user story
 - As operators, we need clear policy + retention + incident response for report abuse and escalations.
@@ -31,3 +31,8 @@ Status: Planned
 
 ## Estimate
 - S
+
+## Completion Notes (2026-02-12)
+- Added `docs/COMMUNITY_REPORTING_OPS_POLICY.md` covering category/severity SLA, escalation ladder, emergency response paths, communication templates, abuse handling signals, and retention windows.
+- Documented scheduled retention job plan (`communityReportRetentionSweep`) with required summary telemetry fields.
+- Linked architecture to policy document in `docs/COMMUNITY_REPORTING_ARCHITECTURE.md`.

@@ -1,6 +1,6 @@
 # P1 - iOS Build Gate (B-tier)
 
-Status: Planned
+Status: Completed
 
 You are Codex (gpt-5.3). Implement an iOS build gate (B-tier) for this repo.
 
@@ -60,3 +60,8 @@ Keep it minimal, Codable, and resilient to extra fields.
 - `cd ios-gate && swift build` works locally on macOS.
 - CI workflow runs on PR and fails when the Swift package doesnt compile.
 - Contracts in Swift reflect current Cloud Function request/response shapes (especially continueJourney).
+
+## Completion Notes (2026-02-12)
+- `ios-gate/` Swift Package is present with contract mirror models and builds via `swift build` on macOS.
+- CI gate exists at `.github/workflows/ios-build-gate.yml` and runs on PRs + `main`.
+- Workflow is currently green on head SHA in GitHub Actions.

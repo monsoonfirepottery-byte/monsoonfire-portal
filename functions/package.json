@@ -6,6 +6,7 @@
     "build:watch": "tsc --watch",
     "tracker:seed": "node scripts/seedTracker.js",
     "tracker:smoke": "node scripts/tracker_smoke.js",
+    "agent:commerce:smoke": "node scripts/agent_commerce_smoke.js",
     "serve": "npm run build && firebase emulators:start --only functions",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",

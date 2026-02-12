@@ -622,6 +622,7 @@ export default function ReportsModule({ client, active, disabled }: Props) {
   };
 
   const exportReportsJson = async () => {
+    const now = Date.now();
     const payload = visibleReports.map((report) => ({
       id: report.id,
       status: report.status,
@@ -641,6 +642,10 @@ export default function ReportsModule({ client, active, disabled }: Props) {
       targetUrl: report.targetSnapshot.url || null,
       targetId: report.targetRef.id || null,
       note: report.note || null,
+      slaBreach: getReportSlaBreach(report, now),
+      coordinationSignal: report.coordinationSignal,
+      coordinationReportCount: report.coordinationReportCount,
+      coordinationUniqueReporterCount: report.coordinationUniqueReporterCount,
     }));
     await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
     setStatus(`Copied ${payload.length} report rows as JSON.`);
@@ -666,9 +671,15 @@ export default function ReportsModule({ client, active, disabled }: Props) {
       "targetUrl",
       "targetId",
       "note",
+      "slaBreach",
+      "coordinationSignal",
+      "coordinationReportCount",
+      "coordinationUniqueReporterCount",
     ];
+    const now = Date.now();
     const lines = [csvLine(header)];
     for (const report of visibleReports) {
+      const slaBreach = getReportSlaBreach(report, now);
       lines.push(
         csvLine([
           report.id,
@@ -689,6 +700,10 @@ export default function ReportsModule({ client, active, disabled }: Props) {
           report.targetSnapshot.url || "",
           report.targetRef.id || "",
           report.note || "",
+          slaBreach,
+          report.coordinationSignal ? "true" : "false",
+          report.coordinationReportCount,
+          report.coordinationUniqueReporterCount,
         ])
       );
     }

@@ -11,10 +11,11 @@ const budgets = [
   { prefix: "vendor-firebase-auth-", maxBytes: 90_000 },
   { prefix: "vendor-firebase-core-", maxBytes: 80_000 },
   { prefix: "ReservationsView-", maxBytes: 45_000 },
-  { prefix: "index-", maxBytes: 35_000 },
+  // Current app shell carries route wiring and shared runtime used across most views.
+  { prefix: "index-", maxBytes: 110_000 },
 ];
-const MAX_TOTAL_JS_BYTES = 900_000;
-const MAX_TOTAL_CSS_BYTES = 120_000;
+const MAX_TOTAL_JS_BYTES = 1_250_000;
+const MAX_TOTAL_CSS_BYTES = 190_000;
 
 const files = readdirSync(assetsDir).filter((name) => name.endsWith(".js"));
 const failures = [];

@@ -1,4 +1,5 @@
 import { onRequest } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
 import { createHash } from "crypto";
 import { z } from "zod";
@@ -20,6 +21,9 @@ const REPORT_AUDIT_COL = "communityReportAuditLogs";
 const FEED_OVERRIDES_COL = "communityFeedOverrides";
 const POLICY_CONFIG_PATH = "config/moderationPolicy";
 const POLICY_VERSIONS_COL = "moderationPolicyVersions";
+const REPORT_DEDUPE_COL = "communityReportDedupe";
+const REPORT_SIGNALS_COL = "communityReportTargetSignals";
+const REPORTS_HOUSEKEEPING_COL = "communityReportHousekeeping";
 
 const reportCategorySchema = z.enum([
   "broken_link",
@@ -235,8 +239,8 @@ export const createReport = onRequest({ region: REGION, timeoutSeconds: 60 }, as
 
   const dedupeId = dedupeKey(uid, targetType, targetId);
   const targetSignalId = targetSignalKey(targetType, targetId);
-  const dedupeRef = db.collection("communityReportDedupe").doc(dedupeId);
-  const signalRef = db.collection("communityReportTargetSignals").doc(targetSignalId);
+  const dedupeRef = db.collection(REPORT_DEDUPE_COL).doc(dedupeId);
+  const signalRef = db.collection(REPORT_SIGNALS_COL).doc(targetSignalId);
   const reportRef = db.collection(REPORTS_COL).doc();
   const nowMs = Date.now();
   let coordinationSignal = false;
@@ -1020,3 +1024,82 @@ export const updateReportAppeal = onRequest({ region: REGION, timeoutSeconds: 60
 
   res.status(200).json({ ok: true });
 });
+
+async function cleanupNumericThreshold(
+  collectionName: string,
+  fieldName: string,
+  threshold: number,
+  label: string
+): Promise<number> {
+  const snap = await db
+    .collection(collectionName)
+    .where(fieldName, "<", threshold)
+    .limit(300)
+    .get();
+
+  if (snap.empty) return 0;
+
+  const batch = db.batch();
+  for (const docSnap of snap.docs) {
+    batch.delete(docSnap.ref);
+  }
+  await batch.commit();
+  logger.info("community report cleanup batch", { label, deleted: snap.size, threshold });
+  return snap.size;
+}
+
+export const cleanupCommunityReportArtifacts = onSchedule(
+  {
+    region: REGION,
+    schedule: "every day 03:20",
+    timeZone: "Etc/UTC",
+    timeoutSeconds: 540,
+    memory: "256MiB",
+  },
+  async () => {
+    const nowMs = Date.now();
+    const dedupeThreshold = nowMs - 2 * 24 * 60 * 60 * 1000;
+    const signalThreshold = nowMs - 10 * 24 * 60 * 60 * 1000;
+
+    let deletedDedupe = 0;
+    let deletedSignals = 0;
+
+    for (let i = 0; i < 8; i += 1) {
+      const deleted = await cleanupNumericThreshold(
+        REPORT_DEDUPE_COL,
+        "expiresAtMs",
+        dedupeThreshold,
+        "report_dedupe"
+      );
+      deletedDedupe += deleted;
+      if (deleted === 0) break;
+    }
+
+    for (let i = 0; i < 8; i += 1) {
+      const deleted = await cleanupNumericThreshold(
+        REPORT_SIGNALS_COL,
+        "lastReportedAtMs",
+        signalThreshold,
+        "report_signal"
+      );
+      deletedSignals += deleted;
+      if (deleted === 0) break;
+    }
+
+    await db.collection(REPORTS_HOUSEKEEPING_COL).add({
+      type: "cleanup_report_artifacts",
+      deletedDedupe,
+      deletedSignals,
+      dedupeThreshold,
+      signalThreshold,
+      createdAt: nowTs(),
+    });
+
+    logger.info("cleanupCommunityReportArtifacts complete", {
+      deletedDedupe,
+      deletedSignals,
+      dedupeThreshold,
+      signalThreshold,
+    });
+  }
+);

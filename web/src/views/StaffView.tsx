@@ -208,6 +208,14 @@ type ReceiptRecord = {
   paidAt: string | null;
 };
 
+type SystemCheckRecord = {
+  key: string;
+  label: string;
+  ok: boolean;
+  atMs: number;
+  details: string;
+};
+
 const MODULES: Array<{ key: ModuleKey; label: string }> = [
   { key: "overview", label: "Overview" },
   { key: "members", label: "Members" },
@@ -380,6 +388,13 @@ export default function StaffView({
   const [lendingStatusFilter, setLendingStatusFilter] = useState("all");
   const [selectedRequestId, setSelectedRequestId] = useState("");
   const [selectedLoanId, setSelectedLoanId] = useState("");
+  const [systemChecks, setSystemChecks] = useState<SystemCheckRecord[]>([]);
+  const [integrationTokenCount, setIntegrationTokenCount] = useState<number | null>(null);
+  const [notificationMetricsSummary, setNotificationMetricsSummary] = useState<{
+    totalSent?: number;
+    totalFailed?: number;
+    successRate?: number;
+  } | null>(null);
 
   const fBaseUrl = useMemo(() => functionsBaseUrl(), []);
   const usingLocalFunctions = useMemo(
@@ -663,6 +678,13 @@ export default function StaffView({
     } catch (err) {
       setCopyStatus(err instanceof Error ? err.message : String(err));
     }
+  }, []);
+
+  const upsertSystemCheck = useCallback((entry: SystemCheckRecord) => {
+    setSystemChecks((prev) => {
+      const next = [entry, ...prev.filter((row) => row.key !== entry.key)];
+      return next.slice(0, 16);
+    });
   }, []);
 
   const loadUsers = useCallback(async () => {
@@ -1130,6 +1152,19 @@ const loadEvents = useCallback(async () => {
     );
   }, [client, hasFunctionsAuthMismatch]);
 
+  const loadSystemStats = useCallback(async () => {
+    if (hasFunctionsAuthMismatch) {
+      setIntegrationTokenCount(null);
+      return;
+    }
+    const tokensResp = await client.postJson<{ tokens?: Array<Record<string, unknown>> }>(
+      "listIntegrationTokens",
+      {}
+    );
+    const tokens = Array.isArray(tokensResp.tokens) ? tokensResp.tokens : [];
+    setIntegrationTokenCount(tokens.length);
+  }, [client, hasFunctionsAuthMismatch]);
+
   const loadLending = useCallback(async () => {
     qTrace("libraryRequests", { orderBy: "createdAt:desc", limit: 60 });
     const reqSnap = await getDocs(query(collection(db, "libraryRequests"), orderBy("createdAt", "desc"), limit(60)));
@@ -1173,16 +1208,17 @@ const loadEvents = useCallback(async () => {
   const loadAll = useCallback(async () => {
     const tasks: Array<Promise<unknown>> = [loadUsers(), loadBatches(), loadFirings(), loadLending(), loadEvents()];
     if (!hasFunctionsAuthMismatch) {
-      tasks.push(loadCommerce());
+      tasks.push(loadCommerce(), loadSystemStats());
     } else {
       setSummary(null);
       setOrders([]);
       setUnpaidCheckIns([]);
       setReceipts([]);
+      setIntegrationTokenCount(null);
     }
     await Promise.allSettled(tasks);
     if (selectedEventId) await loadSignups(selectedEventId);
-  }, [hasFunctionsAuthMismatch, loadBatches, loadCommerce, loadEvents, loadFirings, loadLending, loadSignups, loadUsers, selectedEventId]);
+  }, [hasFunctionsAuthMismatch, loadBatches, loadCommerce, loadEvents, loadFirings, loadLending, loadSignups, loadSystemStats, loadUsers, selectedEventId]);
 
   useEffect(() => {
     void run("bootstrap", async () => {
@@ -2483,9 +2519,164 @@ const lendingContent = (
     </section>
   );
 
+  const runSystemPing = async () => {
+    const atMs = Date.now();
+    try {
+      const resp = await client.postJson<{ ok?: boolean; message?: string }>("hello", {});
+      upsertSystemCheck({
+        key: "functions_ping",
+        label: "Functions ping",
+        ok: resp.ok === true,
+        atMs,
+        details: resp.message ?? (resp.ok ? "ok" : "unexpected response"),
+      });
+      setStatus("Functions ping completed.");
+    } catch (err: unknown) {
+      upsertSystemCheck({
+        key: "functions_ping",
+        label: "Functions ping",
+        ok: false,
+        atMs,
+        details: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  };
+
+  const runCalendarProbe = async () => {
+    const atMs = Date.now();
+    try {
+      const resp = await client.postJson<{ ok?: boolean; calendarId?: string }>("debugCalendarId", {});
+      const calendarId = str(resp.calendarId, "");
+      upsertSystemCheck({
+        key: "calendar_probe",
+        label: "Calendar probe",
+        ok: resp.ok === true,
+        atMs,
+        details: calendarId ? `calendarId: ${calendarId}` : "debugCalendarId returned",
+      });
+      setStatus("Calendar probe completed.");
+    } catch (err: unknown) {
+      upsertSystemCheck({
+        key: "calendar_probe",
+        label: "Calendar probe",
+        ok: false,
+        atMs,
+        details: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  };
+
+  const runNotificationMetricsProbe = async () => {
+    const atMs = Date.now();
+    try {
+      const resp = await client.postJson<{ ok?: boolean; totalSent?: number; totalFailed?: number; successRate?: number }>(
+        "runNotificationMetricsAggregationNow",
+        {}
+      );
+      setNotificationMetricsSummary({
+        totalSent: num(resp.totalSent, 0),
+        totalFailed: num(resp.totalFailed, 0),
+        successRate: num(resp.successRate, 0),
+      });
+      upsertSystemCheck({
+        key: "notification_metrics",
+        label: "Notification metrics",
+        ok: resp.ok === true,
+        atMs,
+        details: `sent=${num(resp.totalSent, 0)} failed=${num(resp.totalFailed, 0)} success=${num(resp.successRate, 0)}%`,
+      });
+      setStatus("Notification metrics refreshed.");
+    } catch (err: unknown) {
+      upsertSystemCheck({
+        key: "notification_metrics",
+        label: "Notification metrics",
+        ok: false,
+        atMs,
+        details: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  };
+
+  const runNotificationFailureDrillNow = async () => {
+    const atMs = Date.now();
+    try {
+      const resp = await client.postJson<{ ok?: boolean; jobId?: string }>("runNotificationFailureDrill", {
+        uid: user.uid,
+        mode: "invalidToken",
+        forceRunNow: true,
+        channels: { inApp: false, email: false, push: true },
+      });
+      upsertSystemCheck({
+        key: "notification_drill",
+        label: "Notification drill",
+        ok: resp.ok === true,
+        atMs,
+        details: resp.jobId ? `job=${resp.jobId}` : "queued",
+      });
+      setStatus("Notification failure drill queued.");
+    } catch (err: unknown) {
+      upsertSystemCheck({
+        key: "notification_drill",
+        label: "Notification drill",
+        ok: false,
+        atMs,
+        details: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  };
+
   const systemContent = (
     <section className="card staff-console-card">
       <div className="card-title">System</div>
+      <div className="staff-kpi-grid">
+        <div className="staff-kpi"><span>Functions base</span><strong>{usingLocalFunctions ? "Local" : "Remote"}</strong></div>
+        <div className="staff-kpi"><span>Auth mode</span><strong>{showEmulatorTools ? "Emulator" : "Production"}</strong></div>
+        <div className="staff-kpi"><span>Integration tokens</span><strong>{integrationTokenCount ?? 0}</strong></div>
+        <div className="staff-kpi"><span>System checks</span><strong>{systemChecks.length}</strong></div>
+        <div className="staff-kpi"><span>Notif success</span><strong>{notificationMetricsSummary ? `${num(notificationMetricsSummary.successRate, 0)}%` : "-"}</strong></div>
+        <div className="staff-kpi"><span>Notif failed</span><strong>{notificationMetricsSummary ? num(notificationMetricsSummary.totalFailed, 0) : "-"}</strong></div>
+      </div>
+      <div className="staff-actions-row">
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+          onClick={() => void run("systemPing", runSystemPing)}
+        >
+          Ping functions
+        </button>
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+          onClick={() => void run("calendarProbe", runCalendarProbe)}
+        >
+          Probe calendar
+        </button>
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+          onClick={() => void run("notificationMetricsProbe", runNotificationMetricsProbe)}
+        >
+          Refresh notif metrics
+        </button>
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+          onClick={() => void run("notificationDrill", runNotificationFailureDrillNow)}
+        >
+          Run push failure drill
+        </button>
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+          onClick={() => void run("refreshSystemStats", loadSystemStats)}
+        >
+          Refresh token stats
+        </button>
+      </div>
       {hasFunctionsAuthMismatch ? (
         <div className="staff-note">
           Local functions detected at <code>{fBaseUrl}</code> while auth emulator is disabled.
@@ -2507,6 +2698,28 @@ const lendingContent = (
       </div>
       <div className="staff-log-list">
         {latestErrors.length === 0 ? <div className="staff-note">No handler errors logged.</div> : latestErrors.map((entry, idx) => <div key={`${entry.atIso}-${idx}`} className="staff-log-entry"><div className="staff-log-meta"><span className="staff-log-label">{entry.label}</span><span>{new Date(entry.atIso).toLocaleString()}</span></div><div className="staff-log-message">{entry.message}</div></div>)}
+      </div>
+      <div className="card-title-row">
+        <div className="staff-subtitle">System checks</div>
+      </div>
+      <div className="staff-table-wrap">
+        <table className="staff-table">
+          <thead><tr><th>Check</th><th>Status</th><th>Ran at</th><th>Details</th></tr></thead>
+          <tbody>
+            {systemChecks.length === 0 ? (
+              <tr><td colSpan={4}>No checks run yet.</td></tr>
+            ) : (
+              systemChecks.map((entry) => (
+                <tr key={`${entry.key}-${entry.atMs}`}>
+                  <td>{entry.label}</td>
+                  <td><span className="pill">{entry.ok ? "ok" : "failed"}</span></td>
+                  <td>{when(entry.atMs)}</td>
+                  <td>{entry.details}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
       <details className="staff-troubleshooting">
         <summary>Troubleshooting drawer</summary>

@@ -1676,6 +1676,7 @@ export {
   staffGetStripeConfig,
   staffUpdateStripeConfig,
   staffValidateStripeConfig,
+  createAgentCheckoutSession,
   createCheckoutSession,
   stripePortalWebhook,
 } from "./stripeConfig";

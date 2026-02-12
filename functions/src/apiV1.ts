@@ -170,6 +170,15 @@ const agentPaySchema = z.object({
   idempotencyKey: z.string().min(1).max(120).optional(),
 });
 
+const agentOrderGetSchema = z.object({
+  orderId: z.string().min(1),
+});
+
+const agentOrdersListSchema = z.object({
+  uid: z.string().min(1).optional().nullable(),
+  limit: z.number().int().min(1).max(200).optional(),
+});
+
 export async function handleApiV1(req: any, res: any) {
   if (applyCors(req, res)) return;
 
@@ -984,6 +993,141 @@ export async function handleApiV1(req: any, res: any) {
             }
           : null,
       });
+      return;
+    }
+
+    if (route === "/v1/agent.order.get") {
+      const scopeCheck = requireScopes(ctx, ["status:read"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(agentOrderGetSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const orderId = String(parsed.data.orderId).trim();
+      const orderSnap = await db.collection("agentOrders").doc(orderId).get();
+      if (!orderSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Order not found");
+        return;
+      }
+
+      const order = orderSnap.data() as Record<string, unknown>;
+      const ownerUid = typeof order.uid === "string" ? order.uid : "";
+      if (!ownerUid) {
+        jsonError(res, requestId, 500, "INTERNAL", "Order missing owner");
+        return;
+      }
+      if (ownerUid !== ctx.uid && !isStaff) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+        return;
+      }
+
+      await db.collection("agentAuditLogs").add({
+        actorUid: ctx.uid,
+        actorMode: ctx.mode,
+        action: "agent_order_read",
+        requestId,
+        orderId,
+        createdAt: nowTs(),
+      });
+
+      jsonOk(res, requestId, {
+        order: {
+          id: orderSnap.id,
+          uid: ownerUid,
+          quoteId: typeof order.quoteId === "string" ? order.quoteId : null,
+          reservationId:
+            typeof order.reservationId === "string" ? order.reservationId : null,
+          status: typeof order.status === "string" ? order.status : "unknown",
+          paymentStatus:
+            typeof order.paymentStatus === "string" ? order.paymentStatus : "unknown",
+          fulfillmentStatus:
+            typeof order.fulfillmentStatus === "string"
+              ? order.fulfillmentStatus
+              : "queued",
+          amountCents: typeof order.amountCents === "number" ? order.amountCents : 0,
+          currency: typeof order.currency === "string" ? order.currency : "USD",
+          stripeCheckoutSessionId:
+            typeof order.stripeCheckoutSessionId === "string"
+              ? order.stripeCheckoutSessionId
+              : null,
+          stripePaymentIntentId:
+            typeof order.stripePaymentIntentId === "string"
+              ? order.stripePaymentIntentId
+              : null,
+          createdAt: order.createdAt ?? null,
+          updatedAt: order.updatedAt ?? null,
+        },
+      });
+      return;
+    }
+
+    if (route === "/v1/agent.orders.list") {
+      const scopeCheck = requireScopes(ctx, ["status:read"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(agentOrdersListSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const targetUid = parsed.data.uid ? String(parsed.data.uid) : ctx.uid;
+      if (targetUid !== ctx.uid && !isStaff) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+        return;
+      }
+
+      const limit = parsed.data.limit ?? 50;
+      const snap = await db.collection("agentOrders").where("uid", "==", targetUid).limit(200).get();
+      const rows = snap.docs
+        .map((docSnap) => {
+          const row = docSnap.data() as Record<string, unknown>;
+          return {
+            id: docSnap.id,
+            uid: targetUid,
+            quoteId: typeof row.quoteId === "string" ? row.quoteId : null,
+            reservationId:
+              typeof row.reservationId === "string" ? row.reservationId : null,
+            status: typeof row.status === "string" ? row.status : "unknown",
+            paymentStatus:
+              typeof row.paymentStatus === "string" ? row.paymentStatus : "unknown",
+            fulfillmentStatus:
+              typeof row.fulfillmentStatus === "string"
+                ? row.fulfillmentStatus
+                : "queued",
+            amountCents: typeof row.amountCents === "number" ? row.amountCents : 0,
+            currency: typeof row.currency === "string" ? row.currency : "USD",
+            updatedAt: row.updatedAt ?? null,
+            createdAt: row.createdAt ?? null,
+          };
+        })
+        .sort((a, b) => {
+          const aMs = Number(((a.updatedAt as { seconds?: unknown } | undefined)?.seconds ?? 0));
+          const bMs = Number(((b.updatedAt as { seconds?: unknown } | undefined)?.seconds ?? 0));
+          return bMs - aMs;
+        })
+        .slice(0, limit);
+
+      await db.collection("agentAuditLogs").add({
+        actorUid: ctx.uid,
+        actorMode: ctx.mode,
+        action: "agent_orders_list_read",
+        requestId,
+        uid: targetUid,
+        returned: rows.length,
+        createdAt: nowTs(),
+      });
+
+      jsonOk(res, requestId, { uid: targetUid, orders: rows });
       return;
     }
 

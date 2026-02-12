@@ -376,6 +376,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [selectedAgentRequestId, setSelectedAgentRequestId] = useState("");
   const [agentRequestNextStatus, setAgentRequestNextStatus] = useState<AgentRequestStatus>("triaged");
   const [agentRequestReasonDraft, setAgentRequestReasonDraft] = useState("");
+  const [agentRequestReasonCodeDraft, setAgentRequestReasonCodeDraft] = useState("");
   const [agentRequestBatchDraft, setAgentRequestBatchDraft] = useState("");
 
   const selected = useMemo(() => clients.find((row) => row.id === selectedId) ?? null, [clients, selectedId]);
@@ -582,6 +583,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     setAgentRequestNextStatus(selectedAgentRequest.status === "new" ? "triaged" : selectedAgentRequest.status);
     setAgentRequestBatchDraft(selectedAgentRequest.linkedBatchId ?? "");
     setAgentRequestReasonDraft(selectedAgentRequest.internalNotes ?? "");
+    setAgentRequestReasonCodeDraft("");
   }, [selectedAgentRequest]);
 
   const parseScopes = (text: string): string[] =>
@@ -834,6 +836,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
       requestId: selectedAgentRequest.id,
       status: agentRequestNextStatus,
       reason: agentRequestReasonDraft.trim() || null,
+      reasonCode: agentRequestReasonCodeDraft.trim() || null,
     });
     if (!resp.ok) throw new Error(resp.message ?? "Failed to update request status.");
     await refreshAgentRequests();
@@ -1577,6 +1580,22 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                     onChange={(event) => setAgentRequestReasonDraft(event.target.value)}
                     placeholder="Queued for next bisque cycle"
                   />
+                </label>
+                <label className="staff-field" style={{ flex: 1 }}>
+                  Reason code
+                  <select
+                    value={agentRequestReasonCodeDraft}
+                    onChange={(event) => setAgentRequestReasonCodeDraft(event.target.value)}
+                  >
+                    <option value="">(optional)</option>
+                    <option value="rights_verified">rights_verified</option>
+                    <option value="licensed_use_verified">licensed_use_verified</option>
+                    <option value="staff_discretion_low_risk">staff_discretion_low_risk</option>
+                    <option value="prohibited_content">prohibited_content</option>
+                    <option value="copyright_risk_unresolved">copyright_risk_unresolved</option>
+                    <option value="illegal_request">illegal_request</option>
+                    <option value="insufficient_rights_attestation">insufficient_rights_attestation</option>
+                  </select>
                 </label>
                 <button
                   className="btn btn-secondary"

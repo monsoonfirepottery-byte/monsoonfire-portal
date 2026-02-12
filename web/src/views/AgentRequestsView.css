@@ -38,6 +38,18 @@
   font: inherit;
 }
 
+.requests-check {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.requests-check input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+}
+
 .requests-actions {
   display: flex;
   flex-wrap: wrap;

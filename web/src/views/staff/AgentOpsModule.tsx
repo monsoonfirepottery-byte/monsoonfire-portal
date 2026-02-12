@@ -17,6 +17,7 @@ type AgentClient = {
   rotatedAtMs: number;
   revokedAtMs: number;
   rateLimits: { perMinute: number; perHour: number };
+  spendingLimits: { orderMaxCents: number; maxOrdersPerHour: number };
 };
 
 type AgentAudit = {
@@ -113,6 +114,7 @@ function when(ms: number): string {
 
 function normalizeClient(row: Record<string, unknown>): AgentClient {
   const rawRateLimits = row.rateLimits as { perMinute?: unknown; perHour?: unknown } | undefined;
+  const rawSpendingLimits = row.spendingLimits as { orderMaxCents?: unknown; maxOrdersPerHour?: unknown } | undefined;
   return {
     id: str(row.id),
     name: str(row.name),
@@ -131,6 +133,10 @@ function normalizeClient(row: Record<string, unknown>): AgentClient {
     rateLimits: {
       perMinute: num(rawRateLimits?.perMinute, 60),
       perHour: num(rawRateLimits?.perHour, 600),
+    },
+    spendingLimits: {
+      orderMaxCents: num(rawSpendingLimits?.orderMaxCents, 75_000),
+      maxOrdersPerHour: num(rawSpendingLimits?.maxOrdersPerHour, 30),
     },
   };
 }
@@ -202,6 +208,8 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [notesDraft, setNotesDraft] = useState("");
   const [perMinuteDraft, setPerMinuteDraft] = useState("60");
   const [perHourDraft, setPerHourDraft] = useState("600");
+  const [orderMaxCentsDraft, setOrderMaxCentsDraft] = useState("75000");
+  const [maxOrdersPerHourDraft, setMaxOrdersPerHourDraft] = useState("30");
   const [latestKey, setLatestKey] = useState("");
 
   const [profileName, setProfileName] = useState("");
@@ -210,6 +218,8 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [profileNotes, setProfileNotes] = useState("");
   const [profilePerMinute, setProfilePerMinute] = useState("60");
   const [profilePerHour, setProfilePerHour] = useState("600");
+  const [profileOrderMaxCents, setProfileOrderMaxCents] = useState("75000");
+  const [profileMaxOrdersPerHour, setProfileMaxOrdersPerHour] = useState("30");
   const [delegatedScopesDraft, setDelegatedScopesDraft] = useState(
     "catalog:read,quote:write,reserve:write,pay:write,status:read"
   );
@@ -295,6 +305,8 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     setProfileNotes(selected.notes ?? "");
     setProfilePerMinute(String(selected.rateLimits.perMinute || 60));
     setProfilePerHour(String(selected.rateLimits.perHour || 600));
+    setProfileOrderMaxCents(String(selected.spendingLimits.orderMaxCents || 75_000));
+    setProfileMaxOrdersPerHour(String(selected.spendingLimits.maxOrdersPerHour || 30));
     setDelegatedScopesDraft(selected.scopes.length ? selected.scopes.join(",") : "catalog:read,quote:write,status:read");
   }, [selected]);
 
@@ -313,6 +325,10 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
       rateLimits: {
         perMinute: Math.max(Number(perMinuteDraft) || 60, 1),
         perHour: Math.max(Number(perHourDraft) || 600, 1),
+      },
+      spendingLimits: {
+        orderMaxCents: Math.max(Number(orderMaxCentsDraft) || 75_000, 100),
+        maxOrdersPerHour: Math.max(Number(maxOrdersPerHourDraft) || 30, 1),
       },
     });
     setLatestKey(resp.apiKey ?? "");
@@ -354,6 +370,10 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
       rateLimits: {
         perMinute: Math.max(Number(profilePerMinute) || 60, 1),
         perHour: Math.max(Number(profilePerHour) || 600, 1),
+      },
+      spendingLimits: {
+        orderMaxCents: Math.max(Number(profileOrderMaxCents) || 75_000, 100),
+        maxOrdersPerHour: Math.max(Number(profileMaxOrdersPerHour) || 30, 1),
       },
     });
     await load();
@@ -527,9 +547,19 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
               Per-minute limit
               <input value={perMinuteDraft} onChange={(event) => setPerMinuteDraft(event.target.value)} />
             </label>
+              <label className="staff-field" style={{ flex: 1 }}>
+                Per-hour limit
+                <input value={perHourDraft} onChange={(event) => setPerHourDraft(event.target.value)} />
+              </label>
+            </div>
+          <div className="staff-actions-row">
             <label className="staff-field" style={{ flex: 1 }}>
-              Per-hour limit
-              <input value={perHourDraft} onChange={(event) => setPerHourDraft(event.target.value)} />
+              Max order cents
+              <input value={orderMaxCentsDraft} onChange={(event) => setOrderMaxCentsDraft(event.target.value)} />
+            </label>
+            <label className="staff-field" style={{ flex: 1 }}>
+              Max orders / hour
+              <input value={maxOrdersPerHourDraft} onChange={(event) => setMaxOrdersPerHourDraft(event.target.value)} />
             </label>
           </div>
           <label className="staff-field">
@@ -595,6 +625,10 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 <span>Status: {selected.status} · Trust: {selected.trustTier}</span><br />
                 <span>Key v{selected.keyVersion} · {selected.keyPrefix ?? "--"}...{selected.keyLast4 ?? "----"}</span><br />
                 <span>Last used: {when(selected.lastUsedAtMs)} · Rotated: {when(selected.rotatedAtMs)}</span>
+                <br />
+                <span>
+                  Spending: max {selected.spendingLimits.orderMaxCents} cents · {selected.spendingLimits.maxOrdersPerHour}/hr
+                </span>
               </div>
               <div className="staff-actions-row">
                 <button className="btn btn-secondary" disabled={Boolean(busy) || disabled || selected.status === "revoked"} onClick={() => void run("rotateAgentKey", rotateKey)}>
@@ -635,6 +669,16 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 <label className="staff-field" style={{ flex: 1 }}>
                   Per-hour limit
                   <input value={profilePerHour} onChange={(event) => setProfilePerHour(event.target.value)} />
+                </label>
+              </div>
+              <div className="staff-actions-row">
+                <label className="staff-field" style={{ flex: 1 }}>
+                  Max order cents
+                  <input value={profileOrderMaxCents} onChange={(event) => setProfileOrderMaxCents(event.target.value)} />
+                </label>
+                <label className="staff-field" style={{ flex: 1 }}>
+                  Max orders / hour
+                  <input value={profileMaxOrdersPerHour} onChange={(event) => setProfileMaxOrdersPerHour(event.target.value)} />
                 </label>
               </div>
               <label className="staff-field">

@@ -33,6 +33,12 @@ const createAgentClientSchema = z.object({
       perHour: z.number().int().min(1).max(5000).optional(),
     })
     .optional(),
+  spendingLimits: z
+    .object({
+      orderMaxCents: z.number().int().min(100).max(5_000_000).optional(),
+      maxOrdersPerHour: z.number().int().min(1).max(2_000).optional(),
+    })
+    .optional(),
 });
 
 const listAgentClientsSchema = z.object({
@@ -61,6 +67,12 @@ const updateAgentClientProfileSchema = z.object({
     .object({
       perMinute: z.number().int().min(1).max(600).optional(),
       perHour: z.number().int().min(1).max(5000).optional(),
+    })
+    .optional(),
+  spendingLimits: z
+    .object({
+      orderMaxCents: z.number().int().min(100).max(5_000_000).optional(),
+      maxOrdersPerHour: z.number().int().min(1).max(2_000).optional(),
     })
     .optional(),
 });
@@ -129,6 +141,19 @@ function summarizeClient(row: Record<string, unknown>): Record<string, unknown> 
                 : 600,
           }
         : { perMinute: 60, perHour: 600 },
+    spendingLimits:
+      row.spendingLimits && typeof row.spendingLimits === "object"
+        ? {
+            orderMaxCents:
+              typeof (row.spendingLimits as { orderMaxCents?: unknown }).orderMaxCents === "number"
+                ? (row.spendingLimits as { orderMaxCents: number }).orderMaxCents
+                : 75_000,
+            maxOrdersPerHour:
+              typeof (row.spendingLimits as { maxOrdersPerHour?: unknown }).maxOrdersPerHour === "number"
+                ? (row.spendingLimits as { maxOrdersPerHour: number }).maxOrdersPerHour
+                : 30,
+          }
+        : { orderMaxCents: 75_000, maxOrdersPerHour: 30 },
   };
 }
 
@@ -209,6 +234,10 @@ export const staffCreateAgentClient = onRequest({ region: REGION, timeoutSeconds
       perMinute: parsed.data.rateLimits?.perMinute ?? 60,
       perHour: parsed.data.rateLimits?.perHour ?? 600,
     };
+    const spendingLimits = {
+      orderMaxCents: parsed.data.spendingLimits?.orderMaxCents ?? 75_000,
+      maxOrdersPerHour: parsed.data.spendingLimits?.maxOrdersPerHour ?? 30,
+    };
 
     const payload = {
       ownerUid: auth.uid,
@@ -218,6 +247,7 @@ export const staffCreateAgentClient = onRequest({ region: REGION, timeoutSeconds
       scopes,
       notes: parsed.data.notes?.trim() || null,
       rateLimits,
+      spendingLimits,
       keyHash: credentials.keyHash,
       keyPrefix: credentials.keyPrefix,
       keyLast4: credentials.keyLast4,
@@ -500,6 +530,12 @@ export const staffUpdateAgentClientProfile = onRequest({ region: REGION, timeout
     patch.rateLimits = {
       perMinute: parsed.data.rateLimits.perMinute ?? 60,
       perHour: parsed.data.rateLimits.perHour ?? 600,
+    };
+  }
+  if (parsed.data.spendingLimits) {
+    patch.spendingLimits = {
+      orderMaxCents: parsed.data.spendingLimits.orderMaxCents ?? 75_000,
+      maxOrdersPerHour: parsed.data.spendingLimits.maxOrdersPerHour ?? 30,
     };
   }
 

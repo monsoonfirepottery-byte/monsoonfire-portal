@@ -325,7 +325,11 @@ export default function IntegrationsView({
           </div>
         </div>
 
-        {createError ? <div className="alert">{createError}</div> : null}
+        {createError ? (
+          <div className="alert" role="alert" aria-live="assertive">
+            {createError}
+          </div>
+        ) : null}
         <div className="integration-actions">
           <button className="btn btn-primary" onClick={toVoidHandler(handleCreate)} disabled={createBusy}>
             {createBusy ? "Creating..." : "Create token"}
@@ -351,16 +355,32 @@ export default function IntegrationsView({
                 Hide
               </button>
             </div>
-            {copyStatus ? <div className="notice">{copyStatus}</div> : null}
+            {copyStatus ? (
+              <div className="notice" role="status" aria-live="polite">
+                {copyStatus}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </section>
 
       <section className="card card-3d integrations-card">
         <div className="card-title">Your tokens</div>
-        {loading ? <div className="status-line">Loading…</div> : null}
-        {loadError ? <div className="alert">{loadError}</div> : null}
-        {revokeError ? <div className="alert">{revokeError}</div> : null}
+        {loading ? (
+          <div className="status-line" role="status" aria-live="polite">
+            Loading…
+          </div>
+        ) : null}
+        {loadError ? (
+          <div className="alert" role="alert" aria-live="assertive">
+            {loadError}
+          </div>
+        ) : null}
+        {revokeError ? (
+          <div className="alert" role="alert" aria-live="assertive">
+            {revokeError}
+          </div>
+        ) : null}
 
         {tokens.length === 0 && !loading ? (
           <div className="empty-state">No integration tokens yet.</div>
@@ -450,7 +470,11 @@ export default function IntegrationsView({
             Use next cursor
           </button>
         </div>
-        {eventsFeedError ? <div className="alert">{eventsFeedError}</div> : null}
+        {eventsFeedError ? (
+          <div className="alert" role="alert" aria-live="assertive">
+            {eventsFeedError}
+          </div>
+        ) : null}
         {eventsFeedRows.length === 0 ? (
           <div className="empty-state">No events loaded yet.</div>
         ) : (
@@ -473,7 +497,7 @@ export default function IntegrationsView({
             ))}
           </div>
         )}
-        <div className="token-subtle">
+        <div className="token-subtle" role="status" aria-live="polite">
           nextCursor: <code>{eventsFeedNextCursor == null ? "—" : String(eventsFeedNextCursor)}</code>
         </div>
       </section>

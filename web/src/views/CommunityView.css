@@ -175,6 +175,73 @@
   gap: 12px;
 }
 
+.community-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.community-proof-summary-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.community-card-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.community-card-menu-btn {
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.community-card-menu-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.community-card-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  min-width: 220px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 6px;
+  display: grid;
+  gap: 4px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.25);
+}
+
+.community-card-menu button {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.community-card-menu button:hover {
+  background: var(--surface-2);
+}
+
 .community-event-chips {
   display: flex;
   flex-wrap: wrap;
@@ -396,6 +463,28 @@
   .video-row {
     transition: none;
   }
+}
+
+.video-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.community-report-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(5, 8, 14, 0.7);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.community-report-modal {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 12px;
 }
 
 html[data-portal-theme="memoria"] .community-page {

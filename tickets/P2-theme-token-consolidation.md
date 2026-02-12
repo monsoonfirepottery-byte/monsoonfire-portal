@@ -1,0 +1,21 @@
+Status: Open (2026-02-10)
+
+# P2 - Consolidate Theme Tokens (Shadows, Focus, Motion)
+
+## Problem
+We started introducing cross-theme tokens (`--shadow-card*`, `--focus-ring`) but there are still hard-coded values in CSS. This makes theme iteration brittle.
+
+## Tasks
+- Scan `web/src/App.css` (and view CSS files) for hard-coded:
+  - `rgba(...)` focus rings
+  - card/dashboard shadows
+  - Memoria-only border colors
+- Replace with theme tokens where appropriate.
+- Add any missing tokens to `web/src/theme/themes.ts` for both themes.
+- Ensure tokens are optional-safe (CSS fallbacks) so older themes don’t break.
+
+## Acceptance
+- Default Portal theme remains visually unchanged.
+- Memoria theme values are mostly driven by tokens, not hard-coded CSS.
+- `npm --prefix web run lint` and `npm --prefix web run build` pass.
+

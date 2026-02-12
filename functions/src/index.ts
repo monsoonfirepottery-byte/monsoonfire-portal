@@ -23,6 +23,13 @@ import { TimelineEventType } from "./timelineEventTypes";
 import { z } from "zod";
 import { handleApiV1 } from "./apiV1";
 import {
+  addInternalNote,
+  createReport,
+  listReports,
+  takeContentAction,
+  updateReportStatus,
+} from "./reports";
+import {
   createIntegrationToken as createIntegrationTokenRecord,
   listIntegrationTokensForOwner,
   normalizeAndValidateScopes,
@@ -47,6 +54,7 @@ export {
 const REGION = "us-central1";
 
 export const apiV1 = onRequest({ region: REGION, timeoutSeconds: 60 }, handleApiV1);
+export { createReport, listReports, updateReportStatus, addInternalNote, takeContentAction };
 
 /**
  * IMPORTANT:
@@ -143,6 +151,17 @@ const githubLookupSchema = z.object({
   repo: z.string().min(1),
   number: z.number().int().positive(),
   type: z.enum(["issue", "pr"]),
+});
+
+const staffUpdateUserProfileSchema = z.object({
+  uid: z.string().min(1),
+  reason: z.string().max(240).optional().nullable(),
+  patch: z.object({
+    displayName: z.string().min(1).max(80).optional().nullable(),
+    membershipTier: z.string().min(1).max(60).optional().nullable(),
+    kilnPreferences: z.string().max(240).optional().nullable(),
+    staffNotes: z.string().max(2000).optional().nullable(),
+  }),
 });
 
 function batchesCol() {
@@ -349,6 +368,108 @@ export const githubLookup = onRequest(
       const message = error instanceof Error ? error.message : String(error);
       logger.error("githubLookup failed", { message });
       res.status(500).json({ ok: false, message: "GitHub lookup failed" });
+    }
+  }
+);
+
+export const staffUpdateUserProfile = onRequest(
+  { region: REGION, timeoutSeconds: 30 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+
+    const admin = await requireAdmin(req);
+    if (!admin.ok) {
+      res.status(403).json({ ok: false, message: "Forbidden" });
+      return;
+    }
+
+    const parsed = parseBody(staffUpdateUserProfileSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const patchInput = parsed.data.patch;
+    const hasPatchField =
+      patchInput.displayName !== undefined ||
+      patchInput.membershipTier !== undefined ||
+      patchInput.kilnPreferences !== undefined ||
+      patchInput.staffNotes !== undefined;
+
+    if (!hasPatchField) {
+      res.status(400).json({ ok: false, message: "Patch must include at least one editable field" });
+      return;
+    }
+
+    try {
+      const userRef = db.collection("users").doc(parsed.data.uid);
+      const auditRef = db.collection("staffProfileEdits").doc();
+
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(userRef);
+        if (!snap.exists) throw new Error("User not found");
+
+        const current = (snap.data() ?? {}) as Record<string, any>;
+        const before = {
+          displayName: current.displayName ?? null,
+          membershipTier: current.membershipTier ?? null,
+          kilnPreferences: current.kilnPreferences ?? null,
+          staffNotes: current.staffNotes ?? null,
+        };
+
+        const writePatch: Record<string, unknown> = {
+          updatedAt: nowTs(),
+          staffProfileUpdatedBy: auth.uid,
+        };
+
+        const after = { ...before } as Record<string, unknown>;
+
+        if (patchInput.displayName !== undefined) {
+          writePatch.displayName = patchInput.displayName;
+          after.displayName = patchInput.displayName;
+        }
+        if (patchInput.membershipTier !== undefined) {
+          writePatch.membershipTier = patchInput.membershipTier;
+          after.membershipTier = patchInput.membershipTier;
+        }
+        if (patchInput.kilnPreferences !== undefined) {
+          writePatch.kilnPreferences = patchInput.kilnPreferences;
+          after.kilnPreferences = patchInput.kilnPreferences;
+        }
+        if (patchInput.staffNotes !== undefined) {
+          writePatch.staffNotes = patchInput.staffNotes;
+          after.staffNotes = patchInput.staffNotes;
+        }
+
+        tx.set(userRef, writePatch, { merge: true });
+        tx.set(auditRef, {
+          uid: parsed.data.uid,
+          editedByUid: auth.uid,
+          editedByMode: admin.mode,
+          reason: parsed.data.reason ?? null,
+          before,
+          after,
+          at: nowTs(),
+        });
+      });
+
+      res.status(200).json({ ok: true });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const code = message === "User not found" ? 404 : 500;
+      logger.error("staffUpdateUserProfile failed", { message });
+      res.status(code).json({ ok: false, message });
     }
   }
 );
@@ -1356,6 +1477,13 @@ export {
   sweepEventOffers,
 } from "./events";
 export { listBillingSummary } from "./billingSummary";
+export {
+  staffGetStripeConfig,
+  staffUpdateStripeConfig,
+  staffValidateStripeConfig,
+  createCheckoutSession,
+  stripePortalWebhook,
+} from "./stripeConfig";
 
 // -----------------------------
 // Backfill helper: ensure isClosed field exists (admin-only)

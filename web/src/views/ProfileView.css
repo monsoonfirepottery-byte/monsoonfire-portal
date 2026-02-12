@@ -4,6 +4,19 @@
   gap: 24px;
 }
 
+.profile-page .page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.profile-page .page-header .header-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .profile-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -50,6 +63,46 @@
   background: var(--surface);
   color: var(--text);
   padding: 10px 12px;
+}
+
+.profile-form input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 6px;
+}
+
+.inline-toggle {
+  display: grid;
+  gap: 6px;
+}
+
+.inline-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.profile-form select {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 10px 12px;
+}
+
+.profile-help {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .notification-toggles {

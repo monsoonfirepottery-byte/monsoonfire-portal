@@ -740,6 +740,36 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /communityReports/{reportId} {
+      allow read: if isStaff()
+        || (isSignedIn() && resource.data.reporterUid == request.auth.uid);
+      allow create, update, delete: if false;
+
+      match /internalNotes/{noteId} {
+        allow read: if isStaff();
+        allow create, update, delete: if false;
+      }
+
+      match /actions/{actionId} {
+        allow read: if isStaff();
+        allow create, update, delete: if false;
+      }
+    }
+
+    match /communityReportAuditLogs/{auditId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /communityReportDedupe/{dedupeId} {
+      allow read, write: if false;
+    }
+
+    match /communityFeedOverrides/{overrideId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
     match /studioJukebox/tracks/items/{trackId} {
       allow read: if isStaff();
       allow write: if isStaff();

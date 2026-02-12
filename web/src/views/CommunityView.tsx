@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import type { User } from "firebase/auth";
+import { createFunctionsClient } from "../api/functionsClient";
 import "./CommunityView.css";
 
 type ValueChip = {
   title: string;
   detail: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
 };
 
 type CommunityEvent = {
@@ -203,12 +205,70 @@ const SUGGESTED_VIDEOS: VideoLink[] = [
 ];
 
 type Props = {
+  user: User;
   onOpenLendingLibrary: () => void;
   onOpenWorkshops: () => void;
 };
 
-export default function CommunityView({ onOpenLendingLibrary, onOpenWorkshops }: Props) {
+type ReportCategory = "broken_link" | "incorrect_info" | "spam" | "safety" | "harassment_hate" | "copyright" | "other";
+type ReportSeverity = "low" | "medium" | "high";
+type ReportTargetType = "youtube_video" | "blog_post" | "studio_update" | "event";
+
+type ReportTarget = {
+  targetType: ReportTargetType;
+  targetRef: { id: string; url?: string | null; videoId?: string | null; slug?: string | null };
+  targetSnapshot: { title: string; url?: string | null; source?: string | null; author?: string | null; publishedAtMs?: number | null };
+};
+
+const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
+type ImportMetaEnvShape = { VITE_FUNCTIONS_BASE_URL?: string };
+const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
+const FUNCTIONS_BASE_URL = ENV.VITE_FUNCTIONS_BASE_URL ? String(ENV.VITE_FUNCTIONS_BASE_URL) : DEFAULT_FUNCTIONS_BASE_URL;
+const HIDDEN_CARDS_KEY = "mf_community_hidden_cards_v1";
+
+const REPORT_CATEGORIES: Array<{ value: ReportCategory; label: string }> = [
+  { value: "broken_link", label: "Broken link" },
+  { value: "incorrect_info", label: "Incorrect information" },
+  { value: "spam", label: "Spam" },
+  { value: "safety", label: "Safety concern" },
+  { value: "harassment_hate", label: "Harassment / hate" },
+  { value: "copyright", label: "Copyright issue" },
+  { value: "other", label: "Other" },
+];
+
+export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorkshops }: Props) {
   const [quoteIndex, setQuoteIndex] = useState(0);
+  const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
+  const [reportCategory, setReportCategory] = useState<ReportCategory>("broken_link");
+  const [reportSeverity, setReportSeverity] = useState<ReportSeverity>("low");
+  const [reportNote, setReportNote] = useState("");
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportStatus, setReportStatus] = useState("");
+  const [hiddenCards, setHiddenCards] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem(HIDDEN_CARDS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const functionsClient = useMemo(
+    () =>
+      createFunctionsClient({
+        baseUrl: FUNCTIONS_BASE_URL,
+        getIdToken: async () => {
+          const token = await user.getIdToken();
+          return token;
+        },
+        getAdminToken: () => "",
+      }),
+    [user]
+  );
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -218,6 +278,82 @@ export default function CommunityView({ onOpenLendingLibrary, onOpenWorkshops }:
   }, []);
 
   const activeQuote = MEMBER_QUOTES[quoteIndex];
+
+  const isHidden = (cardKey: string) => hiddenCards.includes(cardKey);
+  const persistHidden = (next: string[]) => {
+    setHiddenCards(next);
+    try {
+      window.localStorage.setItem(HIDDEN_CARDS_KEY, JSON.stringify(next));
+    } catch {
+      // ignore local storage failures
+    }
+  };
+
+  const hideCard = (cardKey: string) => {
+    if (isHidden(cardKey)) return;
+    persistHidden([...hiddenCards, cardKey]);
+    setOpenMenuKey(null);
+  };
+
+  const openReport = (target: ReportTarget) => {
+    setReportTarget(target);
+    setReportCategory("broken_link");
+    setReportSeverity("low");
+    setReportNote("");
+    setReportStatus("");
+    setOpenMenuKey(null);
+  };
+
+  const submitReport = async () => {
+    if (!reportTarget || reportBusy) return;
+    setReportBusy(true);
+    setReportStatus("");
+    try {
+      const finalSeverity: ReportSeverity =
+        reportCategory === "safety" ? "high" : reportSeverity;
+      const resp = await functionsClient.postJson<{ ok: boolean; reportId?: string; message?: string }>(
+        "createReport",
+        {
+          ...reportTarget,
+          category: reportCategory,
+          severity: finalSeverity,
+          note: reportNote.trim() || null,
+        }
+      );
+      if (!resp.ok) {
+        setReportStatus(resp.message ?? "Could not submit report.");
+        return;
+      }
+      setReportStatus(`Report submitted. Reference: ${resp.reportId ?? "pending"}`);
+      setTimeout(() => {
+        setReportTarget(null);
+        setReportStatus("");
+      }, 1200);
+    } catch (error: unknown) {
+      setReportStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setReportBusy(false);
+    }
+  };
+
+  const reportMenu = (cardKey: string, target: ReportTarget) => (
+    <div className="community-card-menu-wrap">
+      <button
+        type="button"
+        className="community-card-menu-btn"
+        onClick={() => setOpenMenuKey((prev) => (prev === cardKey ? null : cardKey))}
+        aria-label="Open card actions"
+      >
+        ⋯
+      </button>
+      {openMenuKey === cardKey ? (
+        <div className="community-card-menu">
+          <button type="button" onClick={() => openReport(target)}>Report</button>
+          <button type="button" onClick={() => hideCard(cardKey)}>Not interested / Hide this card</button>
+        </div>
+      ) : null}
+    </div>
+  );
 
   return (
     <div className="page community-page">
@@ -257,11 +393,21 @@ export default function CommunityView({ onOpenLendingLibrary, onOpenWorkshops }:
               produce consistently, sell confidently, and make income on their own terms.
             </p>
             <div className="community-proof-grid">
-              {WORKFLOW_PROOFS.map((proof) => (
+              {WORKFLOW_PROOFS.map((proof, index) => {
+                const cardKey = `proof:${proof.title}`;
+                if (isHidden(cardKey)) return null;
+                return (
                 <details className="community-proof" key={proof.title}>
                   <summary>
                     <span className="community-proof-title">{proof.title}</span>
-                    <span className="community-proof-hint">Open proof</span>
+                    <span className="community-proof-summary-right">
+                      <span className="community-proof-hint">Open proof</span>
+                      {reportMenu(cardKey, {
+                        targetType: "blog_post",
+                        targetRef: { id: `workflow-proof-${index + 1}`, slug: `workflow-proof-${index + 1}` },
+                        targetSnapshot: { title: proof.title, source: "Monsoon Fire", author: "Studio staff" },
+                      })}
+                    </span>
                   </summary>
                   <div className="community-proof-body">
                     <p className="community-proof-value">{proof.valueStatement}</p>
@@ -270,7 +416,7 @@ export default function CommunityView({ onOpenLendingLibrary, onOpenWorkshops }:
                     <div className="community-proof-impact">{proof.impact}</div>
                   </div>
                 </details>
-              ))}
+              )})}
             </div>
           </section>
 
@@ -290,13 +436,23 @@ export default function CommunityView({ onOpenLendingLibrary, onOpenWorkshops }:
               </button>
             </div>
             <div className="community-events">
-              {COMMUNITY_EVENTS.map((event) => (
+              {COMMUNITY_EVENTS.map((event, index) => {
+                const cardKey = `event:${event.title}`;
+                if (isHidden(cardKey)) return null;
+                return (
                 <article className="community-event" key={event.title}>
+                  <div className="community-card-head">
                   <h3 className="community-event-title">{event.title}</h3>
+                    {reportMenu(cardKey, {
+                      targetType: "event",
+                      targetRef: { id: `community-event-${index + 1}` },
+                      targetSnapshot: { title: event.title, source: "Monsoon Fire", author: "Studio staff" },
+                    })}
+                  </div>
                   <p className="community-event-detail">{event.detail}</p>
                   <div className="community-event-outcome">{event.outcome}</div>
                 </article>
-              ))}
+              )})}
             </div>
           </section>
 
@@ -314,7 +470,14 @@ export default function CommunityView({ onOpenLendingLibrary, onOpenWorkshops }:
 
         <aside className="community-sidebar">
           <section className="card card-3d community-quote" key={activeQuote.quote}>
+            <div className="community-card-head">
             <h2 className="card-title">Member note</h2>
+              {reportMenu("studio-update:member-note", {
+                targetType: "studio_update",
+                targetRef: { id: "member-note-rotation" },
+                targetSnapshot: { title: "Member note", source: "Monsoon Fire", author: "Studio updates" },
+              })}
+            </div>
             <p className="community-quote-text">“{activeQuote.quote}”</p>
             <div className="community-quote-author">{activeQuote.author}</div>
           </section>
@@ -325,15 +488,11 @@ export default function CommunityView({ onOpenLendingLibrary, onOpenWorkshops }:
               Picked for what we’re doing this month. Swap these links anytime.
             </p>
             <div className="video-list">
-              {SUGGESTED_VIDEOS.map((video, index) => (
-                <a
-                  className="video-row"
-                  key={video.title}
-                  href={video.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label={`Open video: ${video.title}`}
-                >
+              {SUGGESTED_VIDEOS.map((video, index) => {
+                const cardKey = `video:${video.title}`;
+                if (isHidden(cardKey)) return null;
+                return (
+                <article className="video-row" key={video.title}>
                   <div>
                     <div className="video-title">
                       {video.title}
@@ -343,13 +502,85 @@ export default function CommunityView({ onOpenLendingLibrary, onOpenWorkshops }:
                     </div>
                     <div className="video-skill">{video.reason}</div>
                   </div>
-                  <span className="video-link">Open</span>
-                </a>
-              ))}
+                  <div className="video-actions">
+                    <a
+                      className="video-link"
+                      href={video.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={`Open video: ${video.title}`}
+                    >
+                      Open
+                    </a>
+                    {reportMenu(cardKey, {
+                      targetType: "youtube_video",
+                      targetRef: { id: `video-${index + 1}`, url: video.url, videoId: `video-${index + 1}` },
+                      targetSnapshot: { title: video.title, url: video.url, source: "YouTube", author: "External creator" },
+                    })}
+                  </div>
+                </article>
+              )})}
             </div>
           </section>
         </aside>
       </div>
+
+      {reportTarget ? (
+        <div className="community-report-modal-backdrop" role="dialog" aria-modal="true" aria-label="Report content">
+          <div className="community-report-modal card card-3d">
+            <div className="community-card-head">
+              <h2 className="card-title">Report this content</h2>
+              <button type="button" className="btn btn-ghost btn-small" onClick={() => setReportTarget(null)}>
+                Close
+              </button>
+            </div>
+            <div className="community-copy">
+              {reportTarget.targetSnapshot.title} · {reportTarget.targetType}
+            </div>
+            <label className="staff-field">
+              Category
+              <select
+                value={reportCategory}
+                onChange={(event) => {
+                  const next = event.target.value as ReportCategory;
+                  setReportCategory(next);
+                  if (next === "safety") setReportSeverity("high");
+                }}
+              >
+                {REPORT_CATEGORIES.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="staff-field">
+              Severity
+              <select value={reportSeverity} onChange={(event) => setReportSeverity(event.target.value as ReportSeverity)}>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+            <label className="staff-field">
+              Note (optional)
+              <textarea
+                value={reportNote}
+                maxLength={1200}
+                onChange={(event) => setReportNote(event.target.value)}
+                placeholder="Add context for staff triage (optional)."
+              />
+            </label>
+            <div className="staff-actions-row">
+              <button type="button" className="btn btn-primary" onClick={() => void submitReport()} disabled={reportBusy}>
+                {reportBusy ? "Submitting..." : "Submit report"}
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={() => setReportTarget(null)} disabled={reportBusy}>
+                Cancel
+              </button>
+            </div>
+            {reportStatus ? <div className="staff-note">{reportStatus}</div> : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

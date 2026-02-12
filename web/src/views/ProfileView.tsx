@@ -3,6 +3,10 @@ import type { User } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useBatches } from "../hooks/useBatches";
+import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
+import { isPortalThemeName, type PortalThemeName } from "../theme/themes";
+import { writeStoredEnhancedMotion } from "../theme/motionStorage";
+import { writeStoredPortalTheme } from "../theme/themeStorage";
 import { formatDateTime } from "../utils/format";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./ProfileView.css";
@@ -17,6 +21,8 @@ type ProfileDoc = {
   notifyClasses?: boolean;
   notifyPieces?: boolean;
   studioNotes?: string | null;
+  uiTheme?: PortalThemeName | null;
+  uiEnhancedMotion?: boolean | null;
 };
 
 type NotificationPrefsDoc = {
@@ -111,10 +117,25 @@ const NOTIFICATION_PREFS = [
 
 type PrefKey = (typeof NOTIFICATION_PREFS)[number]["key"];
 
-export default function ProfileView({ user }: { user: User }) {
+export default function ProfileView({
+  user,
+  themeName,
+  onThemeChange,
+  enhancedMotion,
+  onEnhancedMotionChange,
+  onOpenIntegrations,
+}: {
+  user: User;
+  themeName: PortalThemeName;
+  onThemeChange: (next: PortalThemeName) => void;
+  enhancedMotion: boolean;
+  onEnhancedMotionChange: (next: boolean) => void;
+  onOpenIntegrations: () => void;
+}) {
   const { active, history } = useBatches(user);
   const [profileDoc, setProfileDoc] = useState<ProfileDoc | null>(null);
   const [profileError, setProfileError] = useState("");
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   const [displayNameInput, setDisplayNameInput] = useState("");
   const [preferredKilnsInput, setPreferredKilnsInput] = useState("");
@@ -132,6 +153,12 @@ export default function ProfileView({ user }: { user: User }) {
   const [notificationStatus, setNotificationStatus] = useState("");
   const [notificationError, setNotificationError] = useState("");
   const [notificationSaving, setNotificationSaving] = useState(false);
+  const [themeStatus, setThemeStatus] = useState("");
+  const [themeError, setThemeError] = useState("");
+  const [themeSaving, setThemeSaving] = useState(false);
+  const [motionStatus, setMotionStatus] = useState("");
+  const [motionError, setMotionError] = useState("");
+  const [motionSaving, setMotionSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,6 +195,66 @@ export default function ProfileView({ user }: { user: User }) {
       cancelled = true;
     };
   }, [user]);
+
+  const handleThemeSelect = async (nextRaw: string) => {
+    if (!user || themeSaving) return;
+    if (!isPortalThemeName(nextRaw)) return;
+    const next = nextRaw as PortalThemeName;
+    setThemeError("");
+    setThemeStatus("");
+
+    onThemeChange(next);
+    writeStoredPortalTheme(next);
+
+    setThemeSaving(true);
+    try {
+      const ref = doc(db, "profiles", user.uid);
+      await setDoc(
+        ref,
+        {
+          uiTheme: next,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      setProfileDoc((prev) => (prev ? { ...prev, uiTheme: next } : { uiTheme: next }));
+      setThemeStatus("Theme saved.");
+    } catch (error: unknown) {
+      setThemeError(getErrorMessage(error) || "Failed to save theme.");
+    } finally {
+      setThemeSaving(false);
+    }
+  };
+
+  const handleEnhancedMotionToggle = async (next: boolean) => {
+    if (!user || motionSaving) return;
+    setMotionError("");
+    setMotionStatus("");
+
+    onEnhancedMotionChange(next);
+    writeStoredEnhancedMotion(next);
+
+    setMotionSaving(true);
+    try {
+      const ref = doc(db, "profiles", user.uid);
+      await setDoc(
+        ref,
+        {
+          uiEnhancedMotion: next,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      setProfileDoc((prev) =>
+        prev ? { ...prev, uiEnhancedMotion: next } : { uiEnhancedMotion: next }
+      );
+      setMotionStatus("Motion setting saved.");
+    } catch (error: unknown) {
+      setMotionError(getErrorMessage(error) || "Failed to save motion setting.");
+    } finally {
+      setMotionSaving(false);
+    }
+  };
 
   const totalPieces = active.length + history.length;
   const successCount = history.filter(
@@ -211,6 +298,9 @@ export default function ProfileView({ user }: { user: User }) {
           notifyClasses: prefs.notifyClasses,
           notifyPieces: prefs.notifyPieces,
           preferredKilns: sanitizedKilns,
+          // If the user hasn't visited Profile recently, theme may still be unset in their profile doc.
+          uiTheme: themeName,
+          uiEnhancedMotion: enhancedMotion,
           updatedAt: serverTimestamp(),
         },
         { merge: true }
@@ -262,6 +352,11 @@ export default function ProfileView({ user }: { user: User }) {
         <div>
           <h1>Your profile</h1>
           <p className="page-subtitle">See what we know about your journey at Monsoon Fire.</p>
+        </div>
+        <div className="header-actions">
+          <button type="button" className="btn" onClick={onOpenIntegrations}>
+            Integrations
+          </button>
         </div>
       </div>
 
@@ -325,6 +420,35 @@ export default function ProfileView({ user }: { user: User }) {
                 placeholder="Kiln 1, Kiln 2"
               />
             </label>
+            <label>
+              Theme
+              <select
+                value={themeName}
+                onChange={(event) => void handleThemeSelect(event.target.value)}
+                disabled={themeSaving}
+              >
+                <option value="portal">Monsoon Fire (default)</option>
+                <option value="memoria">Memoria design system</option>
+              </select>
+              <span className="profile-help">
+                Changes apply instantly and sync to your account.
+                {prefersReducedMotion ? " Reduced motion is enabled, so animations are minimized." : ""}
+              </span>
+            </label>
+            <div className="inline-toggle">
+              <label className="inline-toggle-row">
+                <span>Enhanced motion</span>
+                <input
+                  type="checkbox"
+                  checked={enhancedMotion}
+                  onChange={(event) => void handleEnhancedMotionToggle(Boolean(event.target.checked))}
+                  disabled={motionSaving}
+                />
+              </label>
+              <span className="profile-help">
+                Turn this off if the portal feels heavy on your device.
+              </span>
+            </div>
             <div className="notification-toggles">
               <span className="summary-label">Notification preferences</span>
               {NOTIFICATION_PREFS.map((pref) => (
@@ -338,6 +462,10 @@ export default function ProfileView({ user }: { user: User }) {
                 </label>
               ))}
             </div>
+            {themeError ? <div className="alert form-alert">{themeError}</div> : null}
+            {themeStatus ? <div className="notice form-alert">{themeStatus}</div> : null}
+            {motionError ? <div className="alert form-alert">{motionError}</div> : null}
+            {motionStatus ? <div className="notice form-alert">{motionStatus}</div> : null}
             {formError ? <div className="alert form-alert">{formError}</div> : null}
             {formStatus ? <div className="notice form-alert">{formStatus}</div> : null}
             <button type="submit" className="btn btn-primary" disabled={isSaving}>

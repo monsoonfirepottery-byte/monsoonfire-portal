@@ -23,6 +23,8 @@ import {
 } from "../lib/normalizers/reservations";
 import { formatDateTime } from "../utils/format";
 import { toVoidHandler } from "../utils/toVoidHandler";
+import RevealCard from "../components/RevealCard";
+import { useUiSettings } from "../context/UiSettingsContext";
 import "./ReservationsView.css";
 
 type StaffUserOption = {
@@ -180,6 +182,8 @@ type KilnOption = (typeof KILN_OPTIONS)[number] & {
 };
 
 export default function ReservationsView({ user, isStaff, adminToken }: Props) {
+  const { themeName, portalMotion } = useUiSettings();
+  const motionEnabled = themeName === "memoria" && portalMotion === "enhanced";
   const [reservations, setReservations] = useState<ReservationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
@@ -928,7 +932,12 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
       </div>
 
       {showStaffTools ? (
-        <section className="card card-3d staff-checkin-card">
+        <RevealCard
+          as="section"
+          className="card card-3d staff-checkin-card"
+          index={0}
+          enabled={motionEnabled}
+        >
           <div className="card-title">Staff check-in tool</div>
           <p className="form-helper">
             Use this when a client is not on the portal. Select a client, then complete the same
@@ -975,11 +984,16 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
               Cloud Functions.
             </div>
           ) : null}
-        </section>
+        </RevealCard>
       ) : null}
 
       {recentBisqueReservation ? (
-        <section className="card card-3d recent-checkin-card">
+        <RevealCard
+          as="section"
+          className="card card-3d recent-checkin-card"
+          index={1}
+          enabled={motionEnabled}
+        >
           <div className="card-title">Recently bisqued? Send it to glaze</div>
           <p className="form-helper">
             We found a recent bisque check-in. Reuse it as a glaze submission with one tap.
@@ -1000,10 +1014,10 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
               Re-submit this bisque to glaze
             </button>
           </div>
-        </section>
+        </RevealCard>
       ) : null}
 
-      <section className="card card-3d reservation-form">
+      <RevealCard as="section" className="card card-3d reservation-form" index={2} enabled={motionEnabled}>
         <div className="card-title">
           {mode === "staff" ? "Staff check-in workflow" : "Self check-in workflow"}
         </div>
@@ -1673,14 +1687,21 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
             {formStatus ? <div className="notice card card-3d form-status">{formStatus}</div> : null}
 
             <div className="submit-note">We&apos;ll confirm space + pricing together at drop-off.</div>
-            <button type="submit" className="btn btn-primary" disabled={isSaving}>
-              {isSaving ? "Submitting..." : "Submit check-in"}
+            <button type="submit" className="btn btn-primary checkin-submit-btn" disabled={isSaving}>
+              {isSaving ? (
+                "Submitting..."
+              ) : (
+                <>
+                  <span className="checkin-submit-title">Submit check-in</span>
+                  <span className="checkin-submit-sub">Billing starts after your firing is complete</span>
+                </>
+              )}
             </button>
           </form>
         )}
-      </section>
+      </RevealCard>
 
-      <section className="card card-3d reservation-list">
+      <RevealCard as="section" className="card card-3d reservation-list" index={3} enabled={motionEnabled}>
         <div className="card-title">Your check-ins</div>
         {listError ? <div className="alert">{listError}</div> : null}
         {loading ? (
@@ -1736,7 +1757,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
             ))}
           </div>
         )}
-      </section>
+      </RevealCard>
 
       {DEV_MODE ? (
         <details className="card card-3d debug-panel">

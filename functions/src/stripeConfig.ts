@@ -1044,6 +1044,41 @@ async function applyPaymentUpdate(params: {
     });
   }
   await batch.commit();
+
+  for (const orderId of candidateOrderIds) {
+    const linkedRequests = await db
+      .collection("agentRequests")
+      .where("commissionOrderId", "==", orderId)
+      .limit(20)
+      .get();
+    if (linkedRequests.empty) continue;
+    const requestBatch = db.batch();
+    for (const reqDoc of linkedRequests.docs) {
+      const nextRequestStatus = orderStatus === "paid" ? "in_progress" : "accepted";
+      requestBatch.set(
+        reqDoc.ref,
+        {
+          commissionPaymentStatus: orderStatus,
+          updatedAt: now,
+          status: nextRequestStatus,
+        },
+        { merge: true }
+      );
+      requestBatch.set(reqDoc.ref.collection("audit").doc(), {
+        at: now,
+        type: "commission_payment_status_updated",
+        actorUid: null,
+        actorMode: "system",
+        details: {
+          orderId,
+          paymentStatus: orderStatus,
+          sourceEventType: eventType,
+          eventId,
+        },
+      });
+    }
+    await requestBatch.commit();
+  }
 }
 
 export const stripePortalWebhook = onRequest(

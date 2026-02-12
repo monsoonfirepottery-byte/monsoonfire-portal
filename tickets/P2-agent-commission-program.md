@@ -1,6 +1,6 @@
 # P2 — “Agent Commission” Program: Safe Intake + Manual Fulfillment (No Backdoors)
 
-Status: Open
+Status: Completed
 
 ## Problem
 - You want a way for future “agentic clients” to:
@@ -95,3 +95,12 @@ Recommended for v1: Option A.
 - Staff can accept + generate a Stripe checkout link.
 - On payment success, request becomes “paid” and can proceed to fulfillment.
 - No unauthenticated or obscurity-based access paths exist.
+
+## Progress updates
+- Added staff-only endpoint `v1/agent.requests.createCommissionOrder` in `functions/src/apiV1.ts` to create idempotent commission payment orders tied to accepted commission requests.
+- Added staff UI actions in `web/src/views/staff/AgentOpsModule.tsx`:
+  - create commission order
+  - generate/copy Stripe checkout link (via `createAgentCheckoutSession`).
+- Added member self-serve commission checkout action in `web/src/views/AgentRequestsView.tsx` once staff has created the commission order.
+- Added Stripe webhook back-propagation in `functions/src/stripeConfig.ts` so payment updates also sync `commissionPaymentStatus` on linked `agentRequests`.
+- Updated API docs in `docs/API_CONTRACTS.md`.

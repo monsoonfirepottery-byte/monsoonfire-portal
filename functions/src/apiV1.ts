@@ -401,6 +401,11 @@ const agentRequestLinkBatchSchema = z.object({
   requestId: z.string().min(1),
   batchId: z.string().min(1),
 });
+const agentRequestCreateCommissionOrderSchema = z.object({
+  requestId: z.string().min(1),
+  priceId: z.string().min(1).max(120).optional().nullable(),
+  quantity: z.number().int().min(1).max(100).optional(),
+});
 const agentTermsAcceptSchema = z.object({
   version: z.string().min(1).max(120).optional().nullable(),
   source: z.string().max(120).optional().nullable(),
@@ -2402,6 +2407,144 @@ export async function handleApiV1(req: any, res: any) {
         createdAt: nowTs(),
       });
       jsonOk(res, requestId, { agentRequestId: ref.id, linkedBatchId: parsed.data.batchId });
+      return;
+    }
+
+    if (route === "/v1/agent.requests.createCommissionOrder") {
+      const scopeCheck = requireScopes(ctx, ["requests:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        return;
+      }
+      if (!isStaff) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+        return;
+      }
+      const parsed = parseBody(agentRequestCreateCommissionOrderSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+      const requestRef = db.collection(AGENT_REQUESTS_COL).doc(parsed.data.requestId);
+      const requestSnap = await requestRef.get();
+      if (!requestSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Request not found");
+        return;
+      }
+      const requestRow = requestSnap.data() as Record<string, unknown>;
+      if (String(requestRow.kind ?? "") !== "commission") {
+        jsonError(res, requestId, 400, "FAILED_PRECONDITION", "Only commission requests can create commission orders.");
+        return;
+      }
+      const statusValue = String(requestRow.status ?? "new");
+      if (statusValue !== "accepted" && statusValue !== "in_progress" && statusValue !== "ready") {
+        jsonError(
+          res,
+          requestId,
+          400,
+          "FAILED_PRECONDITION",
+          "Commission request must be accepted, in_progress, or ready before payment order creation."
+        );
+        return;
+      }
+      const ownerUid = typeof requestRow.createdByUid === "string" ? requestRow.createdByUid : "";
+      if (!ownerUid) {
+        jsonError(res, requestId, 500, "INTERNAL", "Request missing owner uid.");
+        return;
+      }
+      const orderId = makeIdempotencyId("agent-commission-order", ownerUid, parsed.data.requestId);
+      const orderRef = db.collection("agentOrders").doc(orderId);
+      const orderSnap = await orderRef.get();
+      const now = nowTs();
+      if (!orderSnap.exists) {
+        const metadata =
+          requestRow.metadata && typeof requestRow.metadata === "object"
+            ? (requestRow.metadata as Record<string, unknown>)
+            : {};
+        const stripeConfigSnap = await db.doc("config/stripe").get();
+        const stripeConfig = (stripeConfigSnap.data() ?? {}) as Record<string, unknown>;
+        const stripeMode = typeof stripeConfig.mode === "string" ? stripeConfig.mode : "test";
+        const priceIds =
+          stripeConfig.priceIds && typeof stripeConfig.priceIds === "object"
+            ? (stripeConfig.priceIds as Record<string, unknown>)
+            : {};
+        const selectedPriceId =
+          trimOrNull(parsed.data.priceId) ||
+          trimOrNull(metadata.commissionPriceId) ||
+          trimOrNull(priceIds.agent_commission) ||
+          trimOrNull(priceIds.commission) ||
+          trimOrNull(priceIds.agent_default);
+        if (!selectedPriceId) {
+          jsonError(
+            res,
+            requestId,
+            412,
+            "FAILED_PRECONDITION",
+            "No commission Stripe priceId configured. Set config/stripe.priceIds.agent_commission (or commission)."
+          );
+          return;
+        }
+        const quantity = parsed.data.quantity ?? 1;
+        await orderRef.set({
+          orderId,
+          uid: ownerUid,
+          reservationId: null,
+          quoteId: null,
+          agentRequestId: parsed.data.requestId,
+          agentClientId: typeof requestRow.createdByTokenId === "string" ? requestRow.createdByTokenId : null,
+          status: "payment_required",
+          paymentStatus: "checkout_pending",
+          fulfillmentStatus: "queued",
+          paymentProvider: "stripe",
+          stripeCheckoutSessionId: null,
+          stripePaymentIntentId: null,
+          amountCents: 0,
+          currency: "USD",
+          quantity,
+          priceId: selectedPriceId,
+          mode: stripeMode,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+
+      await requestRef.set(
+        {
+          commissionOrderId: orderId,
+          commissionPaymentStatus: "checkout_pending",
+          updatedAt: now,
+          staff: {
+            assignedToUid: ctx.uid,
+            triagedAt: now,
+          },
+        },
+        { merge: true }
+      );
+      await requestRef.collection("audit").add({
+        at: now,
+        type: "commission_order_created",
+        actorUid: ctx.uid,
+        actorMode: ctx.mode,
+        details: {
+          orderId,
+          idempotentReplay: orderSnap.exists,
+        },
+      });
+      await db.collection("agentAuditLogs").add({
+        actorUid: ctx.uid,
+        actorMode: ctx.mode,
+        action: "agent_commission_order_created",
+        requestId,
+        agentRequestId: requestRef.id,
+        orderId,
+        idempotentReplay: orderSnap.exists,
+        createdAt: now,
+      });
+      jsonOk(res, requestId, {
+        agentRequestId: requestRef.id,
+        orderId,
+        idempotentReplay: orderSnap.exists,
+      });
       return;
     }
 

@@ -97,6 +97,8 @@ type AgentRequest = {
   internalNotes: string | null;
   constraints: Record<string, unknown>;
   metadata: Record<string, unknown>;
+  commissionOrderId: string | null;
+  commissionPaymentStatus: string | null;
 };
 
 type Props = {
@@ -164,12 +166,23 @@ type AgentRequestLinkBatchResponse = ApiV1Envelope<{
   agentRequestId?: string;
   linkedBatchId?: string;
 }>;
+type AgentRequestCreateCommissionOrderResponse = ApiV1Envelope<{
+  agentRequestId?: string;
+  orderId?: string;
+  idempotentReplay?: boolean;
+}>;
 type AgentAccountGetResponse = ApiV1Envelope<{
   account?: Record<string, unknown>;
 }>;
 type AgentAccountUpdateResponse = ApiV1Envelope<{
   account?: Record<string, unknown>;
 }>;
+type AgentCheckoutResponse = {
+  ok: boolean;
+  message?: string;
+  checkoutUrl?: string | null;
+  sessionId?: string | null;
+};
 
 function str(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
@@ -323,6 +336,8 @@ function toAgentRequest(row: Record<string, unknown>): AgentRequest {
     internalNotes: typeof staff.internalNotes === "string" ? staff.internalNotes : null,
     constraints: row.constraints && typeof row.constraints === "object" ? (row.constraints as Record<string, unknown>) : {},
     metadata: row.metadata && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : {},
+    commissionOrderId: typeof row.commissionOrderId === "string" ? row.commissionOrderId : null,
+    commissionPaymentStatus: typeof row.commissionPaymentStatus === "string" ? row.commissionPaymentStatus : null,
   };
 }
 
@@ -924,6 +939,34 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     if (!resp.ok) throw new Error(resp.message ?? "Failed to link batch.");
     await refreshAgentRequests();
     setStatus(`Linked request ${selectedAgentRequest.id} to batch ${agentRequestBatchDraft.trim()}.`);
+  };
+  const createCommissionOrder = async () => {
+    if (!selectedAgentRequest) throw new Error("Select a request first.");
+    if (selectedAgentRequest.kind !== "commission") throw new Error("Selected request is not a commission request.");
+    const resp = await client.postJson<AgentRequestCreateCommissionOrderResponse>("apiV1/v1/agent.requests.createCommissionOrder", {
+      requestId: selectedAgentRequest.id,
+    });
+    if (!resp.ok) throw new Error(resp.message ?? "Failed to create commission order.");
+    await refreshAgentRequests();
+    setStatus(`Commission order ready (${resp.data?.orderId ?? "unknown"}).`);
+  };
+  const generateCommissionCheckoutLink = async () => {
+    if (!selectedAgentRequest?.commissionOrderId) throw new Error("Create a commission order first.");
+    const resp = await client.postJson<AgentCheckoutResponse>("createAgentCheckoutSession", {
+      orderId: selectedAgentRequest.commissionOrderId,
+    });
+    if (!resp.ok) throw new Error(resp.message ?? "Failed to generate checkout link.");
+    const checkoutUrl = typeof resp.checkoutUrl === "string" ? resp.checkoutUrl : "";
+    if (checkoutUrl) {
+      try {
+        await navigator.clipboard.writeText(checkoutUrl);
+        setStatus(`Commission checkout link copied for order ${selectedAgentRequest.commissionOrderId}.`);
+      } catch {
+        setStatus(`Commission checkout ready for order ${selectedAgentRequest.commissionOrderId}: ${checkoutUrl}`);
+      }
+      return;
+    }
+    setStatus(`Checkout session created (${resp.sessionId ?? "unknown"}).`);
   };
   const saveSelectedAgentAccount = async () => {
     if (!selected) throw new Error("Select a client first.");
@@ -1696,7 +1739,8 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 <span>Requester: <code>{selectedAgentRequest.createdByUid || "-"}</code> ({selectedAgentRequest.createdByMode})</span><br />
                 <span>Created: {when(selectedAgentRequest.createdAtMs)} · Updated: {when(selectedAgentRequest.updatedAtMs)}</span><br />
                 <span>Assigned: <code>{selectedAgentRequest.assignedToUid || "-"}</code> · Triaged: {when(selectedAgentRequest.triagedAtMs)}</span><br />
-                <span>Linked batch: <code>{selectedAgentRequest.linkedBatchId || "-"}</code></span>
+                <span>Linked batch: <code>{selectedAgentRequest.linkedBatchId || "-"}</code></span><br />
+                <span>Commission order: <code>{selectedAgentRequest.commissionOrderId || "-"}</code> · Payment: {selectedAgentRequest.commissionPaymentStatus || "-"}</span>
               </div>
               <div className="staff-actions-row">
                 <label className="staff-field" style={{ flex: 1 }}>
@@ -1764,6 +1808,28 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                   Link batch
                 </button>
               </div>
+              {selectedAgentRequest.kind === "commission" ? (
+                <div className="staff-actions-row">
+                  <button
+                    className="btn btn-secondary"
+                    disabled={
+                      Boolean(busy) ||
+                      disabled ||
+                      !["accepted", "in_progress", "ready"].includes(selectedAgentRequest.status)
+                    }
+                    onClick={() => void run("createCommissionOrder", createCommissionOrder)}
+                  >
+                    Create commission order
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={Boolean(busy) || disabled || !selectedAgentRequest.commissionOrderId}
+                    onClick={() => void run("generateCommissionCheckoutLink", generateCommissionCheckoutLink)}
+                  >
+                    Generate checkout link
+                  </button>
+                </div>
+              ) : null}
               <details className="staff-troubleshooting">
                 <summary>Request payload details</summary>
                 <pre>{JSON.stringify({ constraints: selectedAgentRequest.constraints, metadata: selectedAgentRequest.metadata, notes: selectedAgentRequest.notes, logisticsMode: selectedAgentRequest.logisticsMode }, null, 2)}</pre>

@@ -40,8 +40,21 @@ These must be deployed on the same origin as the portal:
 ## Client routing requirements
 
 - iOS: `ios/DeepLinkRouter.swift` parses the URL and chooses a target tab/screen.
-- Android: a central deep link parser does the same.
+- Android: `android/app/src/main/java/com/monsoonfire/portal/reference/DeepLinkRouter.kt` parses the URL and `MainActivity` handles VIEW intents.
 - Web: `web/src/App.tsx` should continue to read `window.location` for:
   - `status=success|cancel` messaging
   - initial route selection (glazes/materials/events)
 
+## QA trigger commands
+
+iOS simulator (Safari):
+- `xcrun simctl openurl booted "https://portal.monsoonfire.com/materials?status=success"`
+- `xcrun simctl openurl booted "https://portal.monsoonfire.com/events?status=cancel&eventId=evt_123"`
+
+Android emulator:
+- `adb shell am start -a android.intent.action.VIEW -d "https://portal.monsoonfire.com/materials?status=success" com.monsoonfire.portal.reference`
+- `adb shell am start -a android.intent.action.VIEW -d "https://portal.monsoonfire.com/kiln?firingId=firing_123" com.monsoonfire.portal.reference`
+
+Expected:
+- known links route without crash and show status feedback
+- unknown links fail safely with fallback messaging

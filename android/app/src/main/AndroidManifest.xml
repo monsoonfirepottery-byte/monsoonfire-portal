@@ -12,6 +12,21 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="portal.monsoonfire.com" android:pathPrefix="/materials" />
+                <data android:scheme="https" android:host="portal.monsoonfire.com" android:pathPrefix="/events" />
+                <data android:scheme="https" android:host="portal.monsoonfire.com" android:pathPrefix="/kiln" />
+                <data android:scheme="https" android:host="portal.monsoonfire.com" android:pathPrefix="/pieces" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="auth.monsoonfire.com" android:pathPrefix="/__/auth/handler" />
+            </intent-filter>
         </activity>
 
     </application>

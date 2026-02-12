@@ -224,6 +224,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [opsQuotes, setOpsQuotes] = useState<Array<Record<string, unknown>>>([]);
   const [opsReservations, setOpsReservations] = useState<Array<Record<string, unknown>>>([]);
   const [opsOrders, setOpsOrders] = useState<Array<Record<string, unknown>>>([]);
+  const [orderNextStatus, setOrderNextStatus] = useState<Record<string, string>>({});
   const [agentApiEnabled, setAgentApiEnabled] = useState(true);
   const [agentPaymentsEnabled, setAgentPaymentsEnabled] = useState(true);
 
@@ -419,6 +420,17 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     });
     await load();
     setStatus("Agent ops controls updated.");
+  };
+
+  const updateOrderFulfillment = async (orderId: string) => {
+    const toStatus = (orderNextStatus[orderId] ?? "").trim();
+    if (!toStatus) throw new Error("Select a fulfillment status first.");
+    await client.postJson("staffUpdateAgentOrderFulfillment", {
+      orderId,
+      toStatus,
+    });
+    await load();
+    setStatus(`Order ${orderId} moved to ${toStatus}.`);
   };
 
   const copyDelegatedToken = async () => {
@@ -865,6 +877,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                   <th>Payment</th>
                   <th>Fulfillment</th>
                   <th>Updated</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -874,10 +887,45 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                     <td>{str(row.paymentStatus, "-")}</td>
                     <td>{str(row.fulfillmentStatus, "-")}</td>
                     <td>{when(tsMs(row.updatedAt))}</td>
+                    <td>
+                      <div className="staff-actions-row">
+                        <select
+                          value={orderNextStatus[str(row.id)] ?? ""}
+                          onChange={(event) =>
+                            setOrderNextStatus((prev) => ({
+                              ...prev,
+                              [str(row.id)]: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Set status…</option>
+                          <option value="queued">queued</option>
+                          <option value="scheduled">scheduled</option>
+                          <option value="loaded">loaded</option>
+                          <option value="firing">firing</option>
+                          <option value="cooling">cooling</option>
+                          <option value="ready">ready</option>
+                          <option value="picked_up">picked_up</option>
+                          <option value="shipped">shipped</option>
+                          <option value="exception">exception</option>
+                        </select>
+                        <button
+                          className="btn btn-secondary"
+                          disabled={Boolean(busy) || disabled || !(orderNextStatus[str(row.id)] ?? "").trim()}
+                          onClick={() =>
+                            void run(`updateFulfillment:${str(row.id)}`, () =>
+                              updateOrderFulfillment(str(row.id))
+                            )
+                          }
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
                 {opsOrders.length === 0 ? (
-                  <tr><td colSpan={4}>No orders yet.</td></tr>
+                  <tr><td colSpan={5}>No orders yet.</td></tr>
                 ) : null}
               </tbody>
             </table>

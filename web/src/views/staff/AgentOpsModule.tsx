@@ -486,6 +486,9 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [auditSourceFilter, setAuditSourceFilter] = useState<"all" | "client" | "security">("all");
   const [auditOutcomeFilter, setAuditOutcomeFilter] = useState<"all" | "ok" | "deny" | "error">("all");
   const [securityResultFilter, setSecurityResultFilter] = useState<"all" | "allow" | "deny" | "error">("all");
+  const [securityOwnerFilter, setSecurityOwnerFilter] = useState("");
+  const [securityActorFilter, setSecurityActorFilter] = useState("");
+  const [securityActionFilter, setSecurityActionFilter] = useState("");
   const [orderNextStatus, setOrderNextStatus] = useState<Record<string, string>>({});
   const [agentApiEnabled, setAgentApiEnabled] = useState(true);
   const [agentPaymentsEnabled, setAgentPaymentsEnabled] = useState(true);
@@ -1024,6 +1027,30 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     if (selectedAgentRequestId && !requestRows.some((row) => row.id === selectedAgentRequestId)) {
       setSelectedAgentRequestId(requestRows[0]?.id ?? "");
     }
+  };
+  const refreshSecurityAudit = async () => {
+    const payload: {
+      limit: number;
+      ownerUid?: string;
+      actorUid?: string;
+      action?: string;
+      result?: "allow" | "deny" | "error";
+    } = {
+      limit: 120,
+    };
+    if (securityOwnerFilter.trim()) payload.ownerUid = securityOwnerFilter.trim();
+    if (securityActorFilter.trim()) payload.actorUid = securityActorFilter.trim();
+    if (securityActionFilter.trim()) payload.action = securityActionFilter.trim();
+    if (securityResultFilter !== "all") payload.result = securityResultFilter;
+    const resp = await client.postJson<ListSecurityAuditEventsResponse>("listSecurityAuditEvents", payload);
+    const securityRows = Array.isArray(resp.rows)
+      ? resp.rows
+          .filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object")
+          .map((row) => normalizeSecurityAuditEvent(row))
+      : [];
+    securityRows.sort((a, b) => b.atMs - a.atMs);
+    setSecurityAuditEvents(securityRows);
+    setStatus(`Loaded ${securityRows.length} security audit events.`);
   };
   const refreshSelectedAgentAccount = async () => {
     if (!selected) {
@@ -2033,7 +2060,31 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             <option value="error">error</option>
           </select>
         </label>
-        <button className="btn btn-secondary" disabled={Boolean(busy) || disabled} onClick={() => void run("refreshSecurityAudit", load)}>
+        <label className="staff-field" style={{ flex: 1 }}>
+          Owner UID
+          <input
+            value={securityOwnerFilter}
+            onChange={(event) => setSecurityOwnerFilter(event.target.value)}
+            placeholder="optional owner uid"
+          />
+        </label>
+        <label className="staff-field" style={{ flex: 1 }}>
+          Actor UID
+          <input
+            value={securityActorFilter}
+            onChange={(event) => setSecurityActorFilter(event.target.value)}
+            placeholder="optional actor uid"
+          />
+        </label>
+        <label className="staff-field" style={{ flex: 1 }}>
+          Action
+          <input
+            value={securityActionFilter}
+            onChange={(event) => setSecurityActionFilter(event.target.value)}
+            placeholder="optional action key"
+          />
+        </label>
+        <button className="btn btn-secondary" disabled={Boolean(busy) || disabled} onClick={() => void run("refreshSecurityAudit", refreshSecurityAudit)}>
           Refresh security audit
         </button>
       </div>

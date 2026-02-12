@@ -1,6 +1,6 @@
 # P1 — Staff Content Actions for Reported Community Items
 
-Status: Planned
+Status: In Progress
 
 ## Context / user story
 - As staff, I need targeted actions based on content type:
@@ -34,3 +34,8 @@ Status: Planned
 
 ## Estimate
 - M
+
+## Progress notes
+- Staff report detail now supports policy-linked content actions with reason codes and action notes.
+- Action options are target-aware in UI (`disable_from_feed` for YouTube, `unpublish` for internal items).
+- Action execution is wired through `takeContentAction` and reflected in triage outcomes.

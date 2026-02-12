@@ -1,6 +1,6 @@
 # P1 — Agent API v1: Stable JSON Envelope + Scopes + Idempotency
 
-Status: In Progress
+Status: Completed
 
 ## Problem
 - Agents need a **stable**, **versioned**, **machine-friendly** API surface.
@@ -141,5 +141,9 @@ Do not rely on Firestore rules for admin SDK reads.
   - Added safe error mapping for missing Firestore composite indexes (`FAILED_PRECONDITION`)
   - Documented v1 in `docs/API_CONTRACTS.md`
 - Remaining:
-  - Add idempotency record storage for v1 “write” endpoints when they are introduced
-  - Add `functions/scripts/agent_smoke.*` script for emulator testing with PATs
+  - Add idempotency record storage for v1 “write” endpoints when they are introduced (deferred until write routes exist)
+
+## Progress notes
+- Added and validated `functions/scripts/agent_smoke.js` for emulator/prod PAT smoke coverage:
+  - exercises `/v1/hello`, `/v1/batches.list`, and `/v1/events.feed`
+  - supports retry on `429` using `Retry-After`

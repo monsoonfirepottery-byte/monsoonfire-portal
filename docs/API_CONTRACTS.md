@@ -324,6 +324,98 @@ Request:
 { "limit": 200 }
 ```
 
+### v1/agent.requests.create
+
+POST `${BASE_URL}/apiV1/v1/agent.requests.create`
+
+Auth:
+- Firebase ID token OR PAT with scope `requests:write`
+
+Request:
+```json
+{
+  "kind": "firing",
+  "title": "Need bisque firing for cone 06 pieces",
+  "summary": "Drop-off this week, 2 half shelves.",
+  "notes": "Please keep pieces from this request together.",
+  "logisticsMode": "dropoff",
+  "constraints": {
+    "targetCone": "06",
+    "estimatedPieces": 18
+  },
+  "metadata": {
+    "source": "agent"
+  }
+}
+```
+
+Optional idempotency header:
+- `x-idempotency-key: <client-generated-key>`
+
+### v1/agent.requests.listMine
+
+POST `${BASE_URL}/apiV1/v1/agent.requests.listMine`
+
+Auth:
+- Firebase ID token OR PAT with scope `requests:read`
+
+Request:
+```json
+{
+  "limit": 50,
+  "includeClosed": true
+}
+```
+
+### v1/agent.requests.listStaff
+
+POST `${BASE_URL}/apiV1/v1/agent.requests.listStaff`
+
+Auth:
+- Staff Firebase user (PATs are not allowed for staff triage)
+- Scope check: `requests:read`
+
+Request:
+```json
+{
+  "status": "all",
+  "kind": "all",
+  "limit": 120
+}
+```
+
+### v1/agent.requests.updateStatus
+
+POST `${BASE_URL}/apiV1/v1/agent.requests.updateStatus`
+
+Auth:
+- Staff Firebase user with `requests:write`
+- Owner may only set `status: "cancelled"` on own request
+
+Request:
+```json
+{
+  "requestId": "agentRequest_123",
+  "status": "triaged",
+  "reason": "Queued for next bisque load"
+}
+```
+
+### v1/agent.requests.linkBatch
+
+POST `${BASE_URL}/apiV1/v1/agent.requests.linkBatch`
+
+Auth:
+- Staff Firebase user with `requests:write`
+
+Request:
+```json
+{
+  "requestId": "agentRequest_123",
+  "batchId": "batch_456"
+}
+```
+
 ---
 
 ## Emulator admin token requirement

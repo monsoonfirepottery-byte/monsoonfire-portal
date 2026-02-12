@@ -354,6 +354,56 @@ const agentOrdersListSchema = z.object({
   limit: z.number().int().min(1).max(200).optional(),
 });
 
+const agentRequestCreateSchema = z.object({
+  kind: z.enum(["firing", "pickup", "delivery", "shipping", "commission", "other"]),
+  title: z.string().min(1).max(160),
+  summary: z.string().max(500).optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+  logisticsMode: z.enum(["dropoff", "pickup", "ship_in", "ship_out", "local_delivery"]).optional().nullable(),
+  constraints: z.record(z.string(), z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+const agentRequestListMineSchema = z.object({
+  limit: z.number().int().min(1).max(200).optional(),
+  includeClosed: z.boolean().optional(),
+});
+
+const agentRequestListStaffSchema = z.object({
+  status: z
+    .enum(["all", "new", "triaged", "accepted", "in_progress", "ready", "fulfilled", "rejected", "cancelled"])
+    .optional(),
+  kind: z.enum(["all", "firing", "pickup", "delivery", "shipping", "commission", "other"]).optional(),
+  limit: z.number().int().min(1).max(500).optional(),
+});
+
+const agentRequestUpdateStatusSchema = z.object({
+  requestId: z.string().min(1),
+  status: z.enum(["new", "triaged", "accepted", "in_progress", "ready", "fulfilled", "rejected", "cancelled"]),
+  reason: z.string().max(500).optional().nullable(),
+});
+
+const agentRequestLinkBatchSchema = z.object({
+  requestId: z.string().min(1),
+  batchId: z.string().min(1),
+});
+
+const AGENT_REQUESTS_COL = "agentRequests";
+
+const CLOSED_AGENT_REQUEST_STATUSES = new Set<string>(["fulfilled", "rejected", "cancelled"]);
+
+function trimOrNull(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const next = value.trim();
+  return next.length ? next : null;
+}
+
+function readTimestampSeconds(value: unknown): number {
+  return typeof (value as { seconds?: unknown } | undefined)?.seconds === "number"
+    ? Number((value as { seconds: number }).seconds)
+    : 0;
+}
+
 export async function handleApiV1(req: any, res: any) {
   if (applyCors(req, res)) return;
 
@@ -1399,6 +1449,274 @@ export async function handleApiV1(req: any, res: any) {
       });
 
       jsonOk(res, requestId, { uid: targetUid, orders: rows });
+      return;
+    }
+
+    if (route === "/v1/agent.requests.create") {
+      const scopeCheck = requireScopes(ctx, ["requests:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(agentRequestCreateSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const nowValue = nowTs();
+      const idempotencyKey = readHeaderFirst(req, "x-idempotency-key");
+      const requestRef = idempotencyKey
+        ? db.collection(AGENT_REQUESTS_COL).doc(makeIdempotencyId("agent-request", ctx.uid, idempotencyKey))
+        : db.collection(AGENT_REQUESTS_COL).doc();
+      const requesterMode = ctx.mode === "pat" || ctx.mode === "delegated" ? "pat" : "firebase";
+      const requesterTokenId = ctx.mode === "pat" ? ctx.tokenId : ctx.mode === "delegated" ? ctx.delegated.tokenId : null;
+
+      const payload = {
+        createdAt: nowValue,
+        updatedAt: nowValue,
+        createdByUid: ctx.uid,
+        createdByMode: requesterMode,
+        createdByTokenId: requesterTokenId,
+        status: "new",
+        kind: parsed.data.kind,
+        title: parsed.data.title.trim(),
+        summary: trimOrNull(parsed.data.summary),
+        notes: trimOrNull(parsed.data.notes),
+        constraints: parsed.data.constraints ?? {},
+        logistics: {
+          mode: trimOrNull(parsed.data.logisticsMode),
+        },
+        metadata: parsed.data.metadata ?? {},
+        linkedBatchId: null,
+        staff: {
+          assignedToUid: null,
+          triagedAt: null,
+          internalNotes: null,
+        },
+      };
+      await requestRef.set(payload, { merge: Boolean(idempotencyKey) });
+      await requestRef.collection("audit").add({
+        at: nowValue,
+        type: "created",
+        actorUid: ctx.uid,
+        actorMode: ctx.mode,
+        details: {
+          requestId: requestRef.id,
+          kind: parsed.data.kind,
+          idempotencyKey: idempotencyKey || null,
+        },
+      });
+      await db.collection("agentAuditLogs").add({
+        actorUid: ctx.uid,
+        actorMode: ctx.mode,
+        action: "agent_request_created",
+        requestId,
+        agentRequestId: requestRef.id,
+        kind: parsed.data.kind,
+        createdAt: nowValue,
+      });
+
+      jsonOk(res, requestId, {
+        agentRequestId: requestRef.id,
+        status: "new",
+        idempotencyReplay: false,
+      });
+      return;
+    }
+
+    if (route === "/v1/agent.requests.listMine") {
+      const scopeCheck = requireScopes(ctx, ["requests:read"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        return;
+      }
+      const parsed = parseBody(agentRequestListMineSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+      const limit = parsed.data.limit ?? 50;
+      const includeClosed = parsed.data.includeClosed ?? true;
+      const snap = await db.collection(AGENT_REQUESTS_COL).where("createdByUid", "==", ctx.uid).limit(300).get();
+      const rows = snap.docs
+        .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Record<string, unknown>) }))
+        .filter((row) => includeClosed || !CLOSED_AGENT_REQUEST_STATUSES.has(String(row.status ?? "")))
+        .sort((a, b) => readTimestampSeconds(b.updatedAt) - readTimestampSeconds(a.updatedAt))
+        .slice(0, limit);
+
+      await db.collection("agentAuditLogs").add({
+        actorUid: ctx.uid,
+        actorMode: ctx.mode,
+        action: "agent_requests_list_mine",
+        requestId,
+        returned: rows.length,
+        createdAt: nowTs(),
+      });
+
+      jsonOk(res, requestId, { requests: rows });
+      return;
+    }
+
+    if (route === "/v1/agent.requests.listStaff") {
+      const scopeCheck = requireScopes(ctx, ["requests:read"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        return;
+      }
+      if (!isStaff) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+        return;
+      }
+      const parsed = parseBody(agentRequestListStaffSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+      const statusFilter = parsed.data.status ?? "all";
+      const kindFilter = parsed.data.kind ?? "all";
+      const limit = parsed.data.limit ?? 120;
+      const snap = await db.collection(AGENT_REQUESTS_COL).limit(500).get();
+      const rows = snap.docs
+        .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Record<string, unknown>) }))
+        .filter((row) => (statusFilter === "all" ? true : String(row.status ?? "") === statusFilter))
+        .filter((row) => (kindFilter === "all" ? true : String(row.kind ?? "") === kindFilter))
+        .sort((a, b) => readTimestampSeconds(b.updatedAt) - readTimestampSeconds(a.updatedAt))
+        .slice(0, limit);
+
+      await db.collection("agentAuditLogs").add({
+        actorUid: ctx.uid,
+        actorMode: ctx.mode,
+        action: "agent_requests_list_staff",
+        requestId,
+        statusFilter,
+        kindFilter,
+        returned: rows.length,
+        createdAt: nowTs(),
+      });
+
+      jsonOk(res, requestId, { requests: rows });
+      return;
+    }
+
+    if (route === "/v1/agent.requests.updateStatus") {
+      const scopeCheck = requireScopes(ctx, ["requests:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        return;
+      }
+      const parsed = parseBody(agentRequestUpdateStatusSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+      const ref = db.collection(AGENT_REQUESTS_COL).doc(parsed.data.requestId);
+      const snap = await ref.get();
+      if (!snap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Request not found");
+        return;
+      }
+      const row = snap.data() as Record<string, unknown>;
+      const ownerUid = typeof row.createdByUid === "string" ? row.createdByUid : "";
+      const toStatus = parsed.data.status;
+      const reason = trimOrNull(parsed.data.reason);
+
+      const ownerCanCancel = ownerUid === ctx.uid && toStatus === "cancelled";
+      if (!isStaff && !ownerCanCancel) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+        return;
+      }
+
+      const patch: Record<string, unknown> = {
+        status: toStatus,
+        updatedAt: nowTs(),
+      };
+      if (isStaff) {
+        patch.staff = {
+          assignedToUid: ctx.uid,
+          triagedAt: nowTs(),
+          internalNotes: reason,
+        };
+      }
+      await ref.set(patch, { merge: true });
+      await ref.collection("audit").add({
+        at: nowTs(),
+        type: "status_changed",
+        actorUid: ctx.uid,
+        actorMode: ctx.mode,
+        details: {
+          from: typeof row.status === "string" ? row.status : "new",
+          to: toStatus,
+          reason,
+        },
+      });
+      await db.collection("agentAuditLogs").add({
+        actorUid: ctx.uid,
+        actorMode: ctx.mode,
+        action: "agent_request_status_updated",
+        requestId,
+        agentRequestId: ref.id,
+        status: toStatus,
+        reason,
+        createdAt: nowTs(),
+      });
+      jsonOk(res, requestId, { agentRequestId: ref.id, status: toStatus });
+      return;
+    }
+
+    if (route === "/v1/agent.requests.linkBatch") {
+      const scopeCheck = requireScopes(ctx, ["requests:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        return;
+      }
+      if (!isStaff) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+        return;
+      }
+      const parsed = parseBody(agentRequestLinkBatchSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+      const ref = db.collection(AGENT_REQUESTS_COL).doc(parsed.data.requestId);
+      const snap = await ref.get();
+      if (!snap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Request not found");
+        return;
+      }
+
+      await ref.set(
+        {
+          linkedBatchId: parsed.data.batchId,
+          updatedAt: nowTs(),
+          staff: {
+            assignedToUid: ctx.uid,
+            triagedAt: nowTs(),
+          },
+        },
+        { merge: true }
+      );
+      await ref.collection("audit").add({
+        at: nowTs(),
+        type: "batch_linked",
+        actorUid: ctx.uid,
+        actorMode: ctx.mode,
+        details: {
+          batchId: parsed.data.batchId,
+        },
+      });
+      await db.collection("agentAuditLogs").add({
+        actorUid: ctx.uid,
+        actorMode: ctx.mode,
+        action: "agent_request_batch_linked",
+        requestId,
+        agentRequestId: ref.id,
+        batchId: parsed.data.batchId,
+        createdAt: nowTs(),
+      });
+      jsonOk(res, requestId, { agentRequestId: ref.id, linkedBatchId: parsed.data.batchId });
       return;
     }
 

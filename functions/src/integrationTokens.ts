@@ -12,6 +12,11 @@ export const INTEGRATION_TOKEN_SCOPES = [
   "events:read",
   "requests:read",
   "requests:write",
+  "catalog:read",
+  "quote:write",
+  "reserve:write",
+  "pay:write",
+  "status:read",
 ] as const;
 
 export type IntegrationTokenScope = (typeof INTEGRATION_TOKEN_SCOPES)[number];
@@ -175,4 +180,3 @@ export async function revokeIntegrationTokenForOwner(params: {
   await ref.set({ revokedAt: t, updatedAt: t }, { merge: true });
   return { ok: true };
 }
-

@@ -28,6 +28,34 @@ type AgentAudit = {
   metadata: Record<string, unknown> | null;
 };
 
+type AgentCatalogService = {
+  id: string;
+  title: string;
+  category: "kiln" | "consult" | "x1c" | "other";
+  enabled: boolean;
+  basePriceCents: number;
+  currency: string;
+  priceId: string | null;
+  productId: string | null;
+  leadTimeDays: number;
+  maxQuantity: number;
+  riskLevel: "low" | "medium" | "high";
+  requiresManualReview: boolean;
+  notes: string | null;
+};
+
+type AgentCatalogConfig = {
+  pricingMode: "test" | "live";
+  defaultCurrency: string;
+  featureFlags: {
+    quoteEnabled: boolean;
+    reserveEnabled: boolean;
+    payEnabled: boolean;
+    statusEnabled: boolean;
+  };
+  services: AgentCatalogService[];
+};
+
 type Props = {
   client: FunctionsClient;
   active: boolean;
@@ -37,6 +65,11 @@ type Props = {
 type ListClientsResponse = { ok: boolean; clients?: Array<Record<string, unknown>> };
 type ListLogsResponse = { ok: boolean; logs?: Array<Record<string, unknown>> };
 type UpsertClientResponse = { ok: boolean; client?: Record<string, unknown>; apiKey?: string; warning?: string; message?: string };
+type CatalogResponse = {
+  ok: boolean;
+  config?: Record<string, unknown>;
+  audit?: Array<Record<string, unknown>>;
+};
 
 function str(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
@@ -98,6 +131,48 @@ function normalizeAudit(row: Record<string, unknown>): AgentAudit {
   };
 }
 
+function toCatalogService(row: Record<string, unknown>): AgentCatalogService {
+  const category = str(row.category, "other");
+  const risk = str(row.riskLevel, "medium");
+  return {
+    id: str(row.id),
+    title: str(row.title),
+    category:
+      category === "kiln" || category === "consult" || category === "x1c" || category === "other"
+        ? category
+        : "other",
+    enabled: row.enabled === true,
+    basePriceCents: num(row.basePriceCents, 0),
+    currency: str(row.currency, "USD") || "USD",
+    priceId: typeof row.priceId === "string" ? row.priceId : null,
+    productId: typeof row.productId === "string" ? row.productId : null,
+    leadTimeDays: num(row.leadTimeDays, 0),
+    maxQuantity: num(row.maxQuantity, 1),
+    riskLevel: risk === "low" || risk === "medium" || risk === "high" ? risk : "medium",
+    requiresManualReview: row.requiresManualReview === true,
+    notes: typeof row.notes === "string" ? row.notes : null,
+  };
+}
+
+function toCatalogConfig(row: Record<string, unknown>): AgentCatalogConfig {
+  const featureFlagsRaw = row.featureFlags as Record<string, unknown> | undefined;
+  const pricingModeRaw = str(row.pricingMode, "test");
+  const servicesRaw = Array.isArray(row.services) ? row.services : [];
+  return {
+    pricingMode: pricingModeRaw === "live" ? "live" : "test",
+    defaultCurrency: str(row.defaultCurrency, "USD") || "USD",
+    featureFlags: {
+      quoteEnabled: featureFlagsRaw?.quoteEnabled !== false,
+      reserveEnabled: featureFlagsRaw?.reserveEnabled !== false,
+      payEnabled: featureFlagsRaw?.payEnabled !== false,
+      statusEnabled: featureFlagsRaw?.statusEnabled !== false,
+    },
+    services: servicesRaw
+      .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object")
+      .map((entry) => toCatalogService(entry)),
+  };
+}
+
 export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
@@ -107,7 +182,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [selectedId, setSelectedId] = useState("");
 
   const [nameDraft, setNameDraft] = useState("");
-  const [scopesDraft, setScopesDraft] = useState("quote:write,reserve:write,pay:write,status:read");
+  const [scopesDraft, setScopesDraft] = useState("catalog:read,quote:write,reserve:write,pay:write,status:read");
   const [trustTierDraft, setTrustTierDraft] = useState<"low" | "medium" | "high">("medium");
   const [notesDraft, setNotesDraft] = useState("");
   const [perMinuteDraft, setPerMinuteDraft] = useState("60");
@@ -120,11 +195,16 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [profileNotes, setProfileNotes] = useState("");
   const [profilePerMinute, setProfilePerMinute] = useState("60");
   const [profilePerHour, setProfilePerHour] = useState("600");
-  const [delegatedScopesDraft, setDelegatedScopesDraft] = useState("quote:write,reserve:write,pay:write,status:read");
+  const [delegatedScopesDraft, setDelegatedScopesDraft] = useState(
+    "catalog:read,quote:write,reserve:write,pay:write,status:read"
+  );
   const [delegatedTtlDraft, setDelegatedTtlDraft] = useState("300");
   const [delegatedAudienceDraft, setDelegatedAudienceDraft] = useState("monsoonfire-agent-v1");
   const [delegatedPrincipalDraft, setDelegatedPrincipalDraft] = useState("");
   const [latestDelegatedToken, setLatestDelegatedToken] = useState("");
+  const [catalogConfig, setCatalogConfig] = useState<AgentCatalogConfig | null>(null);
+  const [catalogAudit, setCatalogAudit] = useState<Array<Record<string, unknown>>>([]);
+  const [catalogJsonDraft, setCatalogJsonDraft] = useState("");
 
   const selected = useMemo(() => clients.find((row) => row.id === selectedId) ?? null, [clients, selectedId]);
 
@@ -143,9 +223,10 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   };
 
   const load = useCallback(async () => {
-    const [clientsResp, logsResp] = await Promise.all([
+    const [clientsResp, logsResp, catalogResp] = await Promise.all([
       client.postJson<ListClientsResponse>("staffListAgentClients", { includeRevoked: true, limit: 200 }),
       client.postJson<ListLogsResponse>("staffListAgentClientAuditLogs", { limit: 80 }),
+      client.postJson<CatalogResponse>("staffGetAgentServiceCatalog", {}),
     ]);
 
     const rows = Array.isArray(clientsResp.clients) ? clientsResp.clients.map((row) => normalizeClient(row)) : [];
@@ -155,6 +236,12 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     const logs = Array.isArray(logsResp.logs) ? logsResp.logs.map((row) => normalizeAudit(row)) : [];
     logs.sort((a, b) => b.createdAtMs - a.createdAtMs);
     setAudit(logs);
+
+    const rawConfig = catalogResp.config && typeof catalogResp.config === "object" ? catalogResp.config : null;
+    const nextCatalog = rawConfig ? toCatalogConfig(rawConfig) : null;
+    setCatalogConfig(nextCatalog);
+    setCatalogJsonDraft(nextCatalog ? JSON.stringify(nextCatalog, null, 2) : "");
+    setCatalogAudit(Array.isArray(catalogResp.audit) ? catalogResp.audit : []);
 
     if (!selectedId && rows.length > 0) setSelectedId(rows[0].id);
     if (selectedId && !rows.some((row) => row.id === selectedId)) {
@@ -176,7 +263,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     setProfileNotes(selected.notes ?? "");
     setProfilePerMinute(String(selected.rateLimits.perMinute || 60));
     setProfilePerHour(String(selected.rateLimits.perHour || 600));
-    setDelegatedScopesDraft(selected.scopes.join(","));
+    setDelegatedScopesDraft(selected.scopes.length ? selected.scopes.join(",") : "catalog:read,quote:write,status:read");
   }, [selected]);
 
   const parseScopes = (text: string): string[] =>
@@ -265,6 +352,23 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     }
     setLatestDelegatedToken(resp.delegatedToken);
     setStatus("Delegated token issued.");
+  };
+
+  const saveCatalogConfig = async () => {
+    const parsed = JSON.parse(catalogJsonDraft) as Record<string, unknown>;
+    const body: Record<string, unknown> = {};
+    if (typeof parsed.pricingMode === "string") body.pricingMode = parsed.pricingMode;
+    if (typeof parsed.defaultCurrency === "string") body.defaultCurrency = parsed.defaultCurrency;
+    if (parsed.featureFlags && typeof parsed.featureFlags === "object") {
+      body.featureFlags = parsed.featureFlags;
+    }
+    if (Array.isArray(parsed.services)) {
+      body.services = parsed.services;
+    }
+
+    await client.postJson("staffUpdateAgentServiceCatalog", body);
+    await load();
+    setStatus("Agent service catalog updated.");
   };
 
   const copyDelegatedToken = async () => {
@@ -489,6 +593,96 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             <div className="staff-note">Select a client to inspect and update.</div>
           )}
         </div>
+      </div>
+
+      <div className="staff-subtitle">Agent service catalog</div>
+      <div className="staff-note">
+        This controls what agents can quote/reserve/pay against. Keep `pricingMode` in `test` until Stripe test flows pass.
+      </div>
+      <label className="staff-field">
+        Catalog JSON
+        <textarea
+          value={catalogJsonDraft}
+          onChange={(event) => setCatalogJsonDraft(event.target.value)}
+          rows={14}
+          placeholder="Catalog configuration JSON"
+          style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
+        />
+      </label>
+      <div className="staff-actions-row">
+        <button
+          className="btn btn-primary"
+          disabled={Boolean(busy) || disabled || !catalogJsonDraft.trim()}
+          onClick={() => void run("saveAgentCatalog", saveCatalogConfig)}
+        >
+          Save catalog config
+        </button>
+      </div>
+      {catalogConfig ? (
+        <div className="staff-table-wrap">
+          <table className="staff-table">
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>Category</th>
+                <th>Price</th>
+                <th>Risk</th>
+                <th>Review</th>
+                <th>Enabled</th>
+              </tr>
+            </thead>
+            <tbody>
+              {catalogConfig.services.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>No catalog services configured.</td>
+                </tr>
+              ) : (
+                catalogConfig.services.map((service) => (
+                  <tr key={service.id}>
+                    <td>
+                      <div>{service.title}</div>
+                      <div className="staff-mini">
+                        <code>{service.id}</code>
+                      </div>
+                    </td>
+                    <td>{service.category}</td>
+                    <td>
+                      {(service.basePriceCents / 100).toLocaleString(undefined, {
+                        style: "currency",
+                        currency: service.currency || catalogConfig.defaultCurrency || "USD",
+                      })}
+                    </td>
+                    <td><span className="pill">{service.riskLevel}</span></td>
+                    <td>{service.requiresManualReview ? "Required" : "Auto"}</td>
+                    <td>{service.enabled ? "Yes" : "No"}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="staff-note">Catalog not loaded yet.</div>
+      )}
+
+      <div className="staff-subtitle">Catalog audit log</div>
+      <div className="staff-log-list">
+        {catalogAudit.length === 0 ? (
+          <div className="staff-note">No catalog audit events yet.</div>
+        ) : (
+          catalogAudit.slice(0, 20).map((entry, idx) => (
+            <div key={`${str(entry.id, `catalog-audit-${idx}`)}-${idx}`} className="staff-log-entry">
+              <div className="staff-log-meta">
+                <span className="staff-log-label">{str(entry.action, "catalog_event")}</span>
+                <span>{when(tsMs(entry.createdAt))}</span>
+              </div>
+              <div className="staff-log-message">
+                <code>{str(entry.actorUid, "-")}</code>
+                {entry.metadata ? <pre>{JSON.stringify(entry.metadata, null, 2)}</pre> : null}
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       <div className="staff-subtitle">Audit log</div>

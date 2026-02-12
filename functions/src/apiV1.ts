@@ -13,6 +13,7 @@ import {
   type AuthContext,
 } from "./shared";
 import { listIntegrationEvents } from "./integrationEvents";
+import { getAgentServiceCatalogConfig } from "./agentCatalog";
 
 function readHeaderFirst(req: any, name: string): string {
   const key = name.toLowerCase();
@@ -137,6 +138,10 @@ const eventsFeedSchema = z.object({
   uid: z.string().min(1).optional().nullable(),
   cursor: z.number().int().min(0).optional(),
   limit: z.number().int().min(1).max(500).optional(),
+});
+
+const agentCatalogSchema = z.object({
+  includeDisabled: z.boolean().optional(),
 });
 
 export async function handleApiV1(req: any, res: any) {
@@ -372,6 +377,35 @@ export async function handleApiV1(req: any, res: any) {
       }
 
       jsonOk(res, requestId, { uid: targetUid, events: out.events, nextCursor: out.nextCursor });
+      return;
+    }
+
+    if (route === "/v1/agent.catalog") {
+      const scopeCheck = requireScopes(ctx, ["catalog:read"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(agentCatalogSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const includeDisabled = parsed.data.includeDisabled === true;
+      const config = await getAgentServiceCatalogConfig();
+      const services = includeDisabled
+        ? config.services
+        : config.services.filter((entry) => entry.enabled);
+
+      jsonOk(res, requestId, {
+        pricingMode: config.pricingMode,
+        defaultCurrency: config.defaultCurrency,
+        featureFlags: config.featureFlags,
+        services,
+        updatedAt: config.updatedAt,
+      });
       return;
     }
 

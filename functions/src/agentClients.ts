@@ -100,6 +100,7 @@ function makeApiKey(clientId: string, secret: string): string {
 function summarizeClient(row: Record<string, unknown>): Record<string, unknown> {
   return {
     id: safeString(row.id),
+    ownerUid: safeString(row.ownerUid),
     name: safeString(row.name),
     status: safeString(row.status),
     trustTier: safeString(row.trustTier),
@@ -210,6 +211,7 @@ export const staffCreateAgentClient = onRequest({ region: REGION, timeoutSeconds
     };
 
     const payload = {
+      ownerUid: auth.uid,
       name: parsed.data.name.trim(),
       status: "active" as ClientStatus,
       trustTier: parsed.data.trustTier ?? ("medium" as TrustTier),

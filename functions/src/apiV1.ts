@@ -159,6 +159,12 @@ const agentReserveSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
+const agentStatusSchema = z.object({
+  quoteId: z.string().min(1).optional(),
+  reservationId: z.string().min(1).optional(),
+  orderId: z.string().min(1).optional(),
+});
+
 export async function handleApiV1(req: any, res: any) {
   if (applyCors(req, res)) return;
 
@@ -671,6 +677,127 @@ export async function handleApiV1(req: any, res: any) {
               ? txResult.reservation.currency
               : config.defaultCurrency,
         },
+      });
+      return;
+    }
+
+    if (route === "/v1/agent.status") {
+      const scopeCheck = requireScopes(ctx, ["status:read"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(agentStatusSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const quoteId = parsed.data.quoteId ? String(parsed.data.quoteId).trim() : "";
+      const reservationId = parsed.data.reservationId ? String(parsed.data.reservationId).trim() : "";
+      const orderId = parsed.data.orderId ? String(parsed.data.orderId).trim() : "";
+
+      if (!quoteId && !reservationId && !orderId) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Provide quoteId, reservationId, or orderId");
+        return;
+      }
+
+      const quoteRef = quoteId ? db.collection("agentQuotes").doc(quoteId) : null;
+      const reservationRef = reservationId ? db.collection("agentReservations").doc(reservationId) : null;
+      const orderRef = orderId ? db.collection("agentOrders").doc(orderId) : null;
+
+      const [quoteSnap, reservationSnap, orderSnap] = await Promise.all([
+        quoteRef ? quoteRef.get() : Promise.resolve(null),
+        reservationRef ? reservationRef.get() : Promise.resolve(null),
+        orderRef ? orderRef.get() : Promise.resolve(null),
+      ]);
+
+      const quote = quoteSnap?.exists ? (quoteSnap.data() as Record<string, unknown>) : null;
+      const reservation = reservationSnap?.exists
+        ? (reservationSnap.data() as Record<string, unknown>)
+        : null;
+      const order = orderSnap?.exists ? (orderSnap.data() as Record<string, unknown>) : null;
+
+      const ownerUid =
+        (typeof quote?.uid === "string" ? quote.uid : "") ||
+        (typeof reservation?.uid === "string" ? reservation.uid : "") ||
+        (typeof order?.uid === "string" ? order.uid : "");
+      if (!ownerUid) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "No matching status resource found");
+        return;
+      }
+      if (ownerUid !== ctx.uid && !isStaff) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+        return;
+      }
+
+      const responseQuoteId =
+        quoteId ||
+        (typeof reservation?.quoteId === "string" ? reservation.quoteId : "") ||
+        (typeof order?.quoteId === "string" ? order.quoteId : "") ||
+        null;
+      const responseReservationId =
+        reservationId ||
+        (typeof quote?.reservationId === "string" ? quote.reservationId : "") ||
+        (typeof order?.reservationId === "string" ? order.reservationId : "") ||
+        null;
+
+      const paymentStatus =
+        (typeof order?.paymentStatus === "string" ? order.paymentStatus : "") ||
+        (typeof order?.status === "string" ? order.status : "") ||
+        "unpaid";
+      const fulfillmentStatus =
+        (typeof order?.fulfillmentStatus === "string" ? order.fulfillmentStatus : "") ||
+        "queued";
+      const lifecycleStatus =
+        (typeof order?.status === "string" ? order.status : "") ||
+        (typeof reservation?.status === "string" ? reservation.status : "") ||
+        (typeof quote?.status === "string" ? quote.status : "") ||
+        "unknown";
+
+      await db.collection("agentAuditLogs").add({
+        actorUid: ctx.uid,
+        actorMode: ctx.mode,
+        action: "agent_status_read",
+        requestId,
+        quoteId: responseQuoteId,
+        reservationId: responseReservationId,
+        orderId: orderId || null,
+        createdAt: nowTs(),
+      });
+
+      jsonOk(res, requestId, {
+        uid: ownerUid,
+        quoteId: responseQuoteId,
+        reservationId: responseReservationId,
+        orderId: orderId || null,
+        lifecycleStatus,
+        paymentStatus,
+        fulfillmentStatus,
+        quote: quote
+          ? {
+              status: typeof quote.status === "string" ? quote.status : "unknown",
+              subtotalCents: typeof quote.subtotalCents === "number" ? quote.subtotalCents : 0,
+              currency: typeof quote.currency === "string" ? quote.currency : "USD",
+              expiresAt: quote.expiresAt ?? null,
+            }
+          : null,
+        reservation: reservation
+          ? {
+              status: typeof reservation.status === "string" ? reservation.status : "unknown",
+              holdExpiresAt: reservation.holdExpiresAt ?? null,
+              requiresManualReview: reservation.requiresManualReview === true,
+            }
+          : null,
+        order: order
+          ? {
+              status: typeof order.status === "string" ? order.status : "unknown",
+              paymentStatus,
+              fulfillmentStatus,
+              updatedAt: order.updatedAt ?? null,
+            }
+          : null,
       });
       return;
     }

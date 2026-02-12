@@ -13,6 +13,7 @@
 - [x] Web tests pass (`npm --prefix web run test:run`)
 - [x] Web build pass (`npm --prefix web run build`)
 - [x] Web chunk budgets pass (`npm --prefix web run perf:chunks`)
+- [x] Alpha preflight script run (`pwsh scripts/alpha-preflight.ps1`) on head `62eba15dc593cb1c1422183e4d314238859dca51`
 
 ## Notification Reliability Evidence
 - [ ] Retry/backoff verified for retryable classes (`provider_5xx`, `network`, `unknown`)
@@ -49,13 +50,23 @@ rollbackNeeded: yes/no
 ```
 
 ## Risk Register (alpha -> beta gate)
-- [ ] Risk ID, owner, mitigation, and rollback path recorded for each open risk
+- [x] Risk ID, owner, mitigation, and rollback path recorded for each open risk
 
 ```txt
-RISK-001:
-owner:
-mitigation:
-rollback:
+RISK-001: Production notification drill requires real staff token + runtime config.
+owner: Micah (owner/operator)
+mitigation: Execute `scripts/run-notification-drills.ps1` using real staff token; capture evidence in `docs/DRILL_EXECUTION_LOG.md`.
+rollback: Keep notification drill ticket open (`tickets/P0-alpha-drills-real-auth.md`) and do not promote alpha->beta without drill evidence.
+
+RISK-002: portal.monsoonfire.com cutover depends on external DNS/hosting console actions.
+owner: Micah (owner/operator)
+mitigation: Follow `web/deploy/namecheap/README.md` and run `web/deploy/namecheap/verify-cutover.ps1` after deployment.
+rollback: Keep current known-good hosting path and do not switch traffic until cutover verification passes.
+
+RISK-003: OAuth provider credentials (Apple/Facebook/Microsoft) are external-console managed.
+owner: Micah (owner/operator)
+mitigation: Execute `docs/PROD_AUTH_PROVIDER_EXECUTION.md` and verify provider sign-in on portal domain.
+rollback: Disable any failing provider in Firebase Auth and retain Google/email sign-in availability.
 ```
 
 ## Sign-off

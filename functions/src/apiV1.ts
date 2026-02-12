@@ -840,15 +840,14 @@ export async function handleApiV1(req: any, res: any) {
           provider: "stripe",
           ready: priceConfigured,
           requiresUserFirebaseAuth: true,
-          checkoutEndpoint: "createCheckoutSession",
+          checkoutEndpoint: "createAgentCheckoutSession",
           payloadHint: priceConfigured
             ? {
-                priceId: order.priceId,
-                quantity: typeof order.quantity === "number" ? order.quantity : quantity,
+                orderId,
               }
             : null,
           message: priceConfigured
-            ? "Call createCheckoutSession with a Firebase user token to complete payment."
+            ? "Call createAgentCheckoutSession to complete payment."
             : "No Stripe priceId is configured for this service. Staff must update Agent service catalog.",
         },
       });

@@ -7,12 +7,14 @@ import { z } from "zod";
 import {
   FieldValue,
   Timestamp,
-  adminAuth,
   asInt,
   db,
   enforceRateLimit,
+  isStaffFromDecoded,
+  makeIdempotencyId,
   nowTs,
   parseBody,
+  requireAuthContext,
   requireAuthUid,
   safeString,
 } from "./shared";
@@ -48,6 +50,10 @@ const checkoutSchema = z.object({
   priceId: z.string().trim().optional(),
   priceKey: z.string().trim().optional(),
   quantity: z.number().int().min(1).max(50).optional(),
+});
+
+const agentCheckoutSchema = z.object({
+  orderId: z.string().trim().min(1),
 });
 
 type StripeConfigInput = z.infer<typeof stripeConfigSchema>;
@@ -323,6 +329,16 @@ function getPaymentUpdateFromEvent(event: Stripe.Event): PaymentUpdate | null {
     return parseInvoicePayload(event.data.object as Stripe.Invoice);
   }
   return null;
+}
+
+function requirePayScopeForContext(
+  ctx: { mode: "firebase" | "pat" | "delegated"; scopes: string[] | null }
+): { ok: true } | { ok: false; message: string } {
+  if (ctx.mode === "firebase") return { ok: true };
+  const scopes = ctx.scopes ?? [];
+  return scopes.includes("pay:write")
+    ? { ok: true }
+    : { ok: false, message: "Missing scope(s): pay:write" };
 }
 
 type ConstructEventFn = (rawBody: Buffer, signature: string, secret: string) => Stripe.Event;
@@ -651,6 +667,219 @@ export const createCheckoutSession = onRequest(
   }
 );
 
+export const createAgentCheckoutSession = onRequest(
+  { region: REGION, cors: true, secrets: STRIPE_SECRET_PARAMS },
+  async (req, res) => {
+    if (req.method === "OPTIONS") {
+      res.status(204).send("");
+      return;
+    }
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const auth = await requireAuthContext(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+    const scopeCheck = requirePayScopeForContext(auth.ctx);
+    if (!scopeCheck.ok) {
+      res.status(403).json({ ok: false, message: scopeCheck.message });
+      return;
+    }
+
+    const parsed = parseBody(agentCheckoutSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const isStaff = auth.ctx.mode === "firebase" && isStaffFromDecoded(auth.ctx.decoded);
+    const orderId = safeString(parsed.data.orderId).trim();
+    const orderRef = db.collection("agentOrders").doc(orderId);
+    const orderSnap = await orderRef.get();
+    if (!orderSnap.exists) {
+      res.status(404).json({ ok: false, message: "Order not found" });
+      return;
+    }
+    const order = orderSnap.data() as Record<string, unknown>;
+    const orderUid = safeString(order.uid).trim();
+    if (!orderUid) {
+      res.status(500).json({ ok: false, message: "Order missing uid" });
+      return;
+    }
+    if (orderUid !== auth.ctx.uid && !isStaff) {
+      res.status(403).json({ ok: false, message: "Forbidden" });
+      return;
+    }
+
+    const currentPaymentStatus = safeString(order.paymentStatus).trim();
+    if (currentPaymentStatus === "paid" || currentPaymentStatus === "payment_succeeded") {
+      res.status(200).json({
+        ok: true,
+        replay: true,
+        orderId,
+        paymentStatus: currentPaymentStatus,
+        checkoutUrl: safeString(order.checkoutUrl) || null,
+        sessionId: safeString(order.stripeCheckoutSessionId) || null,
+      });
+      return;
+    }
+
+    const rate = await enforceRateLimit({
+      req,
+      key: "createAgentCheckoutSession",
+      max: 30,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    try {
+      const configSnap = await db.doc(CONFIG_DOC_PATH).get();
+      const configData = (configSnap.data() ?? {}) as Record<string, unknown>;
+      const config = normalizeStripeConfig(configData);
+      if (!config.enabledFeatures.checkout) {
+        res.status(403).json({ ok: false, message: "Checkout is currently disabled by staff" });
+        return;
+      }
+
+      validateUrlField("successUrl", config.successUrl);
+      validateUrlField("cancelUrl", config.cancelUrl);
+
+      let selectedPriceId = safeString(order.priceId).trim();
+      if (!selectedPriceId) {
+        selectedPriceId = safeString(config.priceIds["agent_default"]).trim();
+      }
+      if (!selectedPriceId) {
+        res.status(400).json({ ok: false, message: "No Stripe priceId configured for this order" });
+        return;
+      }
+      const allowedPriceIds = new Set(
+        Object.values(config.priceIds)
+          .map((entry) => safeString(entry).trim())
+          .filter(Boolean)
+      );
+      if (allowedPriceIds.size > 0 && !allowedPriceIds.has(selectedPriceId)) {
+        res.status(400).json({ ok: false, message: "Price is not enabled in Stripe settings" });
+        return;
+      }
+
+      const mode: StripeMode = config.mode;
+      const stripe = getStripeClient(mode);
+      const quantity = Math.max(1, asInt(order.quantity, 1));
+      const idempotencyHeader = req.headers["idempotency-key"];
+      const explicitIdempotencyKey =
+        typeof idempotencyHeader === "string"
+          ? idempotencyHeader.trim()
+          : Array.isArray(idempotencyHeader)
+            ? String(idempotencyHeader[0]).trim()
+            : "";
+      const idempotencyKey =
+        explicitIdempotencyKey || makeIdempotencyId("agent-checkout", orderUid, orderId);
+
+      const session = await stripe.checkout.sessions.create(
+        {
+          mode: "payment",
+          line_items: [{ price: selectedPriceId, quantity }],
+          success_url: config.successUrl,
+          cancel_url: config.cancelUrl,
+          client_reference_id: orderUid,
+          metadata: {
+            uid: orderUid,
+            mode,
+            source: "agent",
+            agentOrderId: orderId,
+            agentReservationId: safeString(order.reservationId) || "",
+            agentQuoteId: safeString(order.quoteId) || "",
+          },
+        },
+        { idempotencyKey }
+      );
+
+      const ts = nowTs();
+      const paymentRef = db.collection("payments").doc(session.id);
+      const userPaymentRef = db
+        .collection("users")
+        .doc(orderUid)
+        .collection("payments")
+        .doc(session.id);
+      const basePayment = {
+        uid: orderUid,
+        mode,
+        status: "checkout_created",
+        source: "agent_checkout",
+        orderId,
+        reservationId: safeString(order.reservationId) || null,
+        quoteId: safeString(order.quoteId) || null,
+        priceId: selectedPriceId,
+        checkoutSessionId: session.id,
+        stripePaymentIntentId:
+          typeof session.payment_intent === "string" ? session.payment_intent : null,
+        amountTotal:
+          typeof session.amount_total === "number" ? session.amount_total : null,
+        currency: typeof session.currency === "string" ? session.currency : null,
+        updatedAt: ts,
+      };
+
+      await Promise.all([
+        paymentRef.set({ ...basePayment, createdAt: ts }, { merge: true }),
+        userPaymentRef.set({ ...basePayment, createdAt: ts }, { merge: true }),
+        orderRef.set(
+          {
+            status: "payment_pending",
+            paymentStatus: "checkout_created",
+            stripeCheckoutSessionId: session.id,
+            stripePaymentIntentId:
+              typeof session.payment_intent === "string"
+                ? session.payment_intent
+                : null,
+            checkoutUrl: typeof session.url === "string" ? session.url : null,
+            mode,
+            updatedAt: ts,
+          },
+          { merge: true }
+        ),
+        db.collection("agentAuditLogs").add({
+          actorUid: auth.ctx.uid,
+          actorMode: auth.ctx.mode,
+          action: "agent_checkout_created",
+          orderId,
+          sessionId: session.id,
+          requestId: safeString(req.headers["x-request-id"]) || null,
+          createdAt: ts,
+        }),
+      ]);
+
+      logger.info("createAgentCheckoutSession success", {
+        uid: orderUid,
+        requesterUid: auth.ctx.uid,
+        requesterMode: auth.ctx.mode,
+        mode,
+        orderId,
+        checkoutSessionId: session.id,
+      });
+
+      res.status(200).json({
+        ok: true,
+        orderId,
+        checkoutUrl: session.url,
+        sessionId: session.id,
+        mode,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("createAgentCheckoutSession failed", { message, orderId });
+      res.status(500).json({ ok: false, message: "Unable to create agent checkout session" });
+    }
+  }
+);
+
 async function applyPaymentUpdate(params: {
   update: PaymentUpdate;
   mode: StripeMode;
@@ -705,6 +934,56 @@ async function applyPaymentUpdate(params: {
       tx.set(userPaymentRef, userPayload, { merge: true });
     }
   });
+
+  const checkoutSessionId = safeString(update.sessionId).trim();
+  if (checkoutSessionId) {
+    const orderMatches = await db
+      .collection("agentOrders")
+      .where("stripeCheckoutSessionId", "==", checkoutSessionId)
+      .limit(5)
+      .get();
+    if (orderMatches.empty) return;
+
+    const orderStatus =
+      update.status === "payment_succeeded" || update.status === "invoice_paid"
+        ? "paid"
+        : update.status === "checkout_completed"
+          ? "payment_pending"
+          : "payment_pending";
+    const fulfillmentStatus =
+      update.status === "payment_succeeded" || update.status === "invoice_paid"
+        ? "scheduled"
+        : "queued";
+    const batch = db.batch();
+    for (const docSnap of orderMatches.docs) {
+      batch.set(
+        docSnap.ref,
+        {
+          paymentStatus: orderStatus,
+          status: orderStatus === "paid" ? "paid" : "payment_pending",
+          fulfillmentStatus,
+          stripeCheckoutSessionId: checkoutSessionId,
+          stripePaymentIntentId: update.paymentIntentId ?? null,
+          updatedAt: now,
+          lastEventId: eventId,
+          lastEventType: eventType,
+        },
+        { merge: true }
+      );
+      batch.set(db.collection("agentAuditLogs").doc(), {
+        actorUid: null,
+        actorMode: "system",
+        action: "agent_order_payment_updated",
+        orderId: docSnap.id,
+        paymentId: update.paymentId,
+        status: orderStatus,
+        sourceEventType: eventType,
+        eventId,
+        createdAt: now,
+      });
+    }
+    await batch.commit();
+  }
 }
 
 export const stripePortalWebhook = onRequest(

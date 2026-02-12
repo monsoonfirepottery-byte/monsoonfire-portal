@@ -1,4 +1,4 @@
-Status: Open
+Status: Completed
 Priority: P2
 Labels: auth, security, functions, v2-agentic
 

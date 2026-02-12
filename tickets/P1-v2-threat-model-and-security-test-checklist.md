@@ -1,4 +1,4 @@
-Status: Open
+Status: Completed
 Priority: P1
 Labels: security, auth, v2-agentic, firestore-rules, functions, web
 

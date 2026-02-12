@@ -34,8 +34,14 @@ type ReportRow = {
   targetType: ReportTargetType;
   note: string;
   reporterUid: string;
+  assigneeUid: string;
   createdAtMs: number;
   updatedAtMs: number;
+  resolvedAtMs: number;
+  lastPolicyVersion: string;
+  lastRuleId: string;
+  lastReasonCode: string;
+  resolutionCode: string;
   coordinationSignal: boolean;
   coordinationReportCount: number;
   coordinationUniqueReporterCount: number;
@@ -76,6 +82,57 @@ type ListReportAppealsResponse = { ok: boolean; appeals?: Array<Record<string, u
 type CurrentPolicyResponse = { ok: boolean; policy?: Record<string, unknown> | null };
 type BasicResponse = { ok: boolean; message?: string };
 
+const DEFAULT_REASON_TEMPLATES = [
+  "policy_violation_confirmed",
+  "insufficient_context",
+  "false_positive",
+  "duplicate_report",
+  "resolved_via_update",
+];
+
+const RULE_TEMPLATE_MATCHERS: Array<{ matcher: RegExp; reasons: string[] }> = [
+  {
+    matcher: /(safety|threat|self[-_]?harm|danger)/i,
+    reasons: ["safety_escalated", "credible_risk", "needs_immediate_review"],
+  },
+  {
+    matcher: /(harass|hate|abuse|discrimination)/i,
+    reasons: ["harassment_confirmed", "hate_content_confirmed", "harassment_unsubstantiated"],
+  },
+  {
+    matcher: /(copyright|ip|dmca|license)/i,
+    reasons: ["copyright_claim_received", "copyright_violation_confirmed", "copyright_claim_rejected"],
+  },
+  {
+    matcher: /(spam|scam|promo)/i,
+    reasons: ["spam_confirmed", "coordinated_spam", "no_spam_detected"],
+  },
+  {
+    matcher: /(broken|link|url)/i,
+    reasons: ["broken_link_confirmed", "link_replaced", "link_valid_on_check"],
+  },
+  {
+    matcher: /(incorrect|misinfo|accuracy|info)/i,
+    reasons: ["incorrect_info_confirmed", "editorial_correction_requested", "information_verified"],
+  },
+];
+
+const RESOLUTION_TEMPLATES = [
+  "action_complete",
+  "resolved_without_action",
+  "dismissed_non_violation",
+  "dismissed_duplicate",
+  "moved_to_manual_review",
+];
+
+const APPEAL_REASON_TEMPLATES = [
+  "new_evidence_received",
+  "insufficient_initial_review",
+  "policy_misapplied",
+  "decision_upheld",
+  "no_new_evidence",
+];
+
 function str(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
 }
@@ -101,6 +158,26 @@ function when(ms: number): string {
   return new Date(ms).toLocaleString();
 }
 
+function median(values: number[]): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+  return sorted[mid];
+}
+
+function reasonTemplatesForRule(ruleId: string): string[] {
+  const templates = [...DEFAULT_REASON_TEMPLATES];
+  for (const entry of RULE_TEMPLATE_MATCHERS) {
+    if (entry.matcher.test(ruleId)) {
+      templates.push(...entry.reasons);
+    }
+  }
+  return Array.from(new Set(templates));
+}
+
 function normalizeReport(row: Record<string, unknown>): ReportRow {
   const targetRef = (row.targetRef ?? {}) as Record<string, unknown>;
   const targetSnapshot = (row.targetSnapshot ?? {}) as Record<string, unknown>;
@@ -112,8 +189,14 @@ function normalizeReport(row: Record<string, unknown>): ReportRow {
     targetType: (str(row.targetType, "blog_post") as ReportTargetType),
     note: str(row.note),
     reporterUid: str(row.reporterUid),
+    assigneeUid: str(row.assigneeUid),
     createdAtMs: toMs(row.createdAt),
     updatedAtMs: toMs(row.updatedAt),
+    resolvedAtMs: toMs(row.resolvedAt),
+    lastPolicyVersion: str(row.lastPolicyVersion),
+    lastRuleId: str(row.lastRuleId),
+    lastReasonCode: str(row.lastReasonCode),
+    resolutionCode: str(row.resolutionCode),
     coordinationSignal: bool(row.coordinationSignal),
     coordinationReportCount: Number(row.coordinationReportCount ?? 0) || 0,
     coordinationUniqueReporterCount: Number(row.coordinationUniqueReporterCount ?? 0) || 0,
@@ -336,6 +419,70 @@ export default function ReportsModule({ client, active, disabled }: Props) {
     };
   }, [reports]);
 
+  const selectedRule = useMemo(
+    () => (activePolicy?.rules ?? []).find((rule) => rule.id === selectedRuleId) ?? null,
+    [activePolicy, selectedRuleId]
+  );
+
+  const reasonTemplates = useMemo(() => reasonTemplatesForRule(selectedRuleId), [selectedRuleId]);
+
+  const consistency = useMemo(() => {
+    const reviewed = reports.filter((report) =>
+      report.status === "triaged" ||
+      report.status === "actioned" ||
+      report.status === "resolved" ||
+      report.status === "dismissed"
+    );
+    const policyLinked = reviewed.filter(
+      (report) => report.lastPolicyVersion.trim() && report.lastRuleId.trim() && report.lastReasonCode.trim()
+    );
+    const coveragePct = reviewed.length ? Math.round((policyLinked.length / reviewed.length) * 100) : 0;
+    const reasonCounts = new Map<string, number>();
+    for (const report of policyLinked) {
+      const key = report.lastReasonCode.trim();
+      reasonCounts.set(key, (reasonCounts.get(key) ?? 0) + 1);
+    }
+    let topReason = "-";
+    let topReasonCount = 0;
+    for (const [reason, count] of reasonCounts.entries()) {
+      if (count > topReasonCount) {
+        topReason = reason;
+        topReasonCount = count;
+      }
+    }
+
+    const resolutionDurationsHours = reports
+      .filter((report) => (report.status === "resolved" || report.status === "dismissed") && report.resolvedAtMs > 0 && report.createdAtMs > 0)
+      .map((report) => (report.resolvedAtMs - report.createdAtMs) / 3_600_000)
+      .filter((hours) => Number.isFinite(hours) && hours >= 0);
+    const medianResolutionHours = median(resolutionDurationsHours);
+
+    const now = Date.now();
+    const openOver48h = reports.filter((report) =>
+      report.status === "open" &&
+      report.createdAtMs > 0 &&
+      now - report.createdAtMs > 48 * 60 * 60 * 1000
+    ).length;
+    const highSeverityOver24h = reports.filter((report) =>
+      report.status === "open" &&
+      report.severity === "high" &&
+      report.createdAtMs > 0 &&
+      now - report.createdAtMs > 24 * 60 * 60 * 1000
+    ).length;
+
+    return {
+      reviewedCount: reviewed.length,
+      policyLinkedCount: policyLinked.length,
+      coveragePct,
+      topReason,
+      topReasonCount,
+      uniqueReasonCount: reasonCounts.size,
+      medianResolutionHours,
+      openOver48h,
+      highSeverityOver24h,
+    };
+  }, [reports]);
+
   return (
     <section className="card staff-console-card">
       <div className="card-title-row">
@@ -371,6 +518,38 @@ export default function ReportsModule({ client, active, disabled }: Props) {
         <div className="staff-kpi"><span>Triaged</span><strong>{statusCounts.triaged}</strong></div>
         <div className="staff-kpi"><span>Actioned</span><strong>{statusCounts.actioned}</strong></div>
         <div className="staff-kpi"><span>Resolved</span><strong>{statusCounts.resolved}</strong></div>
+      </div>
+
+      <div className="staff-note">
+        Decision consistency: {consistency.coveragePct}% of reviewed reports include policy + rule + reason linkage.
+      </div>
+
+      <div className="staff-kpi-grid">
+        <div className="staff-kpi">
+          <span>Policy-linked reviews</span>
+          <strong>{consistency.policyLinkedCount}/{consistency.reviewedCount}</strong>
+        </div>
+        <div className="staff-kpi">
+          <span>Top reason code</span>
+          <strong>{consistency.topReason}</strong>
+          <small className="staff-kpi-subtle">{consistency.topReasonCount} uses</small>
+        </div>
+        <div className="staff-kpi">
+          <span>Unique reason codes</span>
+          <strong>{consistency.uniqueReasonCount}</strong>
+        </div>
+        <div className="staff-kpi">
+          <span>Median resolution</span>
+          <strong>{consistency.medianResolutionHours ? `${consistency.medianResolutionHours.toFixed(1)}h` : "-"}</strong>
+        </div>
+        <div className="staff-kpi">
+          <span>Open over 48h</span>
+          <strong>{consistency.openOver48h}</strong>
+        </div>
+        <div className="staff-kpi">
+          <span>High severity over 24h</span>
+          <strong>{consistency.highSeverityOver24h}</strong>
+        </div>
       </div>
 
       <div className="staff-actions-row">
@@ -448,7 +627,17 @@ export default function ReportsModule({ client, active, disabled }: Props) {
                 <strong>{selected.targetSnapshot.title || selected.targetRef.id || selected.id}</strong><br />
                 <span>{selected.targetType} · status {selected.status}</span><br />
                 <span>Reporter: <code>{selected.reporterUid}</code></span><br />
+                {selected.assigneeUid ? (
+                  <>
+                    <span>Assigned: <code>{selected.assigneeUid}</code></span><br />
+                  </>
+                ) : null}
                 <span>Created: {when(selected.createdAtMs)} · Updated: {when(selected.updatedAtMs)}</span><br />
+                {selected.lastReasonCode ? (
+                  <>
+                    <span>Last reason: <code>{selected.lastReasonCode}</code></span><br />
+                  </>
+                ) : null}
                 {selected.coordinationSignal ? (
                   <>
                     <span>
@@ -461,6 +650,13 @@ export default function ReportsModule({ client, active, disabled }: Props) {
                   <a href={selected.targetSnapshot.url} target="_blank" rel="noreferrer">Open target</a>
                 ) : null}
               </div>
+
+              {selectedRule ? (
+                <div className="staff-note">
+                  Policy guidance: <strong>{selectedRule.id}</strong> · {selectedRule.title}
+                  {selectedRule.description ? <><br />{selectedRule.description}</> : null}
+                </div>
+              ) : null}
 
               <label className="staff-field">
                 Set status
@@ -511,6 +707,32 @@ export default function ReportsModule({ client, active, disabled }: Props) {
                     Save status
                   </button>
                 </div>
+                <div className="staff-template-list">
+                  {reasonTemplates.map((template) => (
+                    <button
+                      key={`status-reason-${template}`}
+                      type="button"
+                      className={`staff-template-chip ${reasonCode === template ? "active" : ""}`}
+                      onClick={() => setReasonCode(template)}
+                    >
+                      {template}
+                    </button>
+                  ))}
+                </div>
+                {(nextStatus === "resolved" || nextStatus === "dismissed") ? (
+                  <div className="staff-template-list">
+                    {RESOLUTION_TEMPLATES.map((template) => (
+                      <button
+                        key={`resolution-${template}`}
+                        type="button"
+                        className={`staff-template-chip ${resolutionCode === template ? "active" : ""}`}
+                        onClick={() => setResolutionCode(template)}
+                      >
+                        {template}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </label>
 
               <label className="staff-field">
@@ -603,6 +825,18 @@ export default function ReportsModule({ client, active, disabled }: Props) {
                     Apply action
                   </button>
                 </div>
+                <div className="staff-template-list">
+                  {reasonTemplates.map((template) => (
+                    <button
+                      key={`action-reason-${template}`}
+                      type="button"
+                      className={`staff-template-chip ${reasonCode === template ? "active" : ""}`}
+                      onClick={() => setReasonCode(template)}
+                    >
+                      {template}
+                    </button>
+                  ))}
+                </div>
               </label>
 
               <div className="staff-subtitle">Internal notes</div>
@@ -684,6 +918,18 @@ export default function ReportsModule({ client, active, disabled }: Props) {
                     >
                       Save appeal decision
                     </button>
+                  </div>
+                  <div className="staff-template-list">
+                    {APPEAL_REASON_TEMPLATES.map((template) => (
+                      <button
+                        key={`appeal-reason-${template}`}
+                        type="button"
+                        className={`staff-template-chip ${appealDecisionReasonCode === template ? "active" : ""}`}
+                        onClick={() => setAppealDecisionReasonCode(template)}
+                      >
+                        {template}
+                      </button>
+                    ))}
                   </div>
                 </label>
               ) : null}

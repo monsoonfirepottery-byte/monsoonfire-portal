@@ -78,6 +78,15 @@ type OpsResponse = {
   reservations?: Array<Record<string, unknown>>;
   orders?: Array<Record<string, unknown>>;
   audit?: Array<Record<string, unknown>>;
+  riskByClient?: Record<
+    string,
+    {
+      total?: number;
+      quoteLimit?: number;
+      payLimit?: number;
+      velocity?: number;
+    }
+  >;
 };
 type AgentOpsConfigResponse = {
   ok: boolean;
@@ -234,6 +243,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [opsQuotes, setOpsQuotes] = useState<Array<Record<string, unknown>>>([]);
   const [opsReservations, setOpsReservations] = useState<Array<Record<string, unknown>>>([]);
   const [opsOrders, setOpsOrders] = useState<Array<Record<string, unknown>>>([]);
+  const [riskByClient, setRiskByClient] = useState<Record<string, { total: number; quoteLimit: number; payLimit: number; velocity: number }>>({});
   const [orderNextStatus, setOrderNextStatus] = useState<Record<string, string>>({});
   const [agentApiEnabled, setAgentApiEnabled] = useState(true);
   const [agentPaymentsEnabled, setAgentPaymentsEnabled] = useState(true);
@@ -281,6 +291,20 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     setOpsQuotes(Array.isArray(opsResp.quotes) ? opsResp.quotes : []);
     setOpsReservations(Array.isArray(opsResp.reservations) ? opsResp.reservations : []);
     setOpsOrders(Array.isArray(opsResp.orders) ? opsResp.orders : []);
+    if (opsResp.riskByClient && typeof opsResp.riskByClient === "object") {
+      const next: Record<string, { total: number; quoteLimit: number; payLimit: number; velocity: number }> = {};
+      for (const [clientId, value] of Object.entries(opsResp.riskByClient)) {
+        next[clientId] = {
+          total: num(value?.total, 0),
+          quoteLimit: num(value?.quoteLimit, 0),
+          payLimit: num(value?.payLimit, 0),
+          velocity: num(value?.velocity, 0),
+        };
+      }
+      setRiskByClient(next);
+    } else {
+      setRiskByClient({});
+    }
 
     setAgentApiEnabled(opsConfigResp.config?.enabled !== false);
     setAgentPaymentsEnabled(opsConfigResp.config?.allowPayments !== false);
@@ -584,13 +608,14 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                   <th>Name</th>
                   <th>Status</th>
                   <th>Trust</th>
+                  <th>Risk hits</th>
                   <th>Updated</th>
                 </tr>
               </thead>
               <tbody>
                 {clients.length === 0 ? (
                   <tr>
-                    <td colSpan={4}>No agent clients yet.</td>
+                    <td colSpan={5}>No agent clients yet.</td>
                   </tr>
                 ) : (
                   clients.map((row) => (
@@ -607,6 +632,15 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                       </td>
                       <td><span className="pill">{row.status}</span></td>
                       <td>{row.trustTier}</td>
+                      <td>
+                        {riskByClient[row.id]?.total ? (
+                          <span className="pill">
+                            {riskByClient[row.id].total} ({riskByClient[row.id].quoteLimit}Q/{riskByClient[row.id].payLimit}P/{riskByClient[row.id].velocity}V)
+                          </span>
+                        ) : (
+                          <span className="staff-mini">0</span>
+                        )}
+                      </td>
                       <td>{when(row.updatedAtMs)}</td>
                     </tr>
                   ))
@@ -823,6 +857,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
           <div className="pill">Reservations: {num(opsSnapshot.reservations, 0)}</div>
           <div className="pill">Orders: {num(opsSnapshot.orders, 0)}</div>
           <div className="pill">Audit: {num(opsSnapshot.auditEvents, 0)}</div>
+          <div className="pill">Risk denials: {num(opsSnapshot.riskDeniedEvents, 0)}</div>
         </div>
       ) : null}
 

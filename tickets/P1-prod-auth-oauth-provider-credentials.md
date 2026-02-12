@@ -64,4 +64,5 @@ Redirect URI note:
   - provider-specific setup sequence
   - evidence capture table
   - rollback steps
+- Added run-log helper: `scripts/new-auth-provider-run-entry.ps1` to append a standardized execution/evidence template.
 - Remaining work is provider-console and Firebase-console execution with real credentials.

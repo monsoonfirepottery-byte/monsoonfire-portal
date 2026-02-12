@@ -107,6 +107,7 @@ type ImportMetaEnvShape = {
   DEV?: boolean;
   VITE_FUNCTIONS_BASE_URL?: string;
   VITE_ENABLE_DEV_ADMIN_TOKEN?: string;
+  VITE_PERSIST_DEV_ADMIN_TOKEN?: string;
   VITE_USE_EMULATORS?: string;
   VITE_USE_AUTH_EMULATOR?: string;
 };
@@ -328,6 +329,8 @@ const DEV_ADMIN_TOKEN_ENABLED =
   ENV.DEV === true &&
   ENV.VITE_ENABLE_DEV_ADMIN_TOKEN === "true" &&
   (FUNCTIONS_BASE_URL.includes("localhost") || FUNCTIONS_BASE_URL.includes("127.0.0.1"));
+const DEV_ADMIN_TOKEN_PERSIST_ENABLED =
+  DEV_ADMIN_TOKEN_ENABLED && ENV.VITE_PERSIST_DEV_ADMIN_TOKEN === "true";
 
 const NAV_SECTION_KEYS: NavSectionKey[] = ["kilnRentals", "studioResources", "community"];
 
@@ -746,7 +749,10 @@ export default function App() {
   }, [user?.uid]);
 
   useEffect(() => {
-    if (!DEV_ADMIN_TOKEN_ENABLED) return;
+    if (!DEV_ADMIN_TOKEN_ENABLED || !DEV_ADMIN_TOKEN_PERSIST_ENABLED) {
+      sessionStorage.removeItem(SESSION_ADMIN_TOKEN_KEY);
+      return;
+    }
     const saved = sessionStorage.getItem(SESSION_ADMIN_TOKEN_KEY);
     if (saved) {
       setDevAdminToken(saved);
@@ -776,7 +782,10 @@ export default function App() {
   }, [openSection]);
 
   useEffect(() => {
-    if (!DEV_ADMIN_TOKEN_ENABLED) return;
+    if (!DEV_ADMIN_TOKEN_ENABLED || !DEV_ADMIN_TOKEN_PERSIST_ENABLED) {
+      sessionStorage.removeItem(SESSION_ADMIN_TOKEN_KEY);
+      return;
+    }
     if (devAdminToken) {
       sessionStorage.setItem(SESSION_ADMIN_TOKEN_KEY, devAdminToken);
     } else {

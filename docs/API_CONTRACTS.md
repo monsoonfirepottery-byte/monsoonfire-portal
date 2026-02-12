@@ -123,7 +123,8 @@ Dev-only admin header (required for admin-gated endpoints):
 
 Notes:
 - Never paste real `Authorization` tokens into chat/logs. Treat them as credentials.
-- The web UI only shows the dev admin token input when `VITE_ENABLE_DEV_ADMIN_TOKEN=true` and the functions base URL is localhost; it stores the token in sessionStorage for that browser session only.
+- The web UI only shows the dev admin token input when `VITE_ENABLE_DEV_ADMIN_TOKEN=true` and the functions base URL is localhost.
+- Session persistence is opt-in (`VITE_PERSIST_DEV_ADMIN_TOKEN=true`); otherwise the token stays in-memory only.
 - Stripe webhook endpoints are verified via Stripe signature headers and **do not** use Firebase ID tokens.
 
 ---

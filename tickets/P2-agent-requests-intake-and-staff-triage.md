@@ -144,5 +144,13 @@ Recommended: option (2) if we expect real shipping usage.
 - Added API contract documentation for new endpoints:
   - `docs/API_CONTRACTS.md`
 - Remaining:
-  - StaffView module UX for request queue/details.
   - Dedicated user-facing Requests view in portal nav.
+  - Optional: richer audit timeline rendering from `agentRequests/{id}/audit`.
+- Completed staff triage UX in `web/src/views/staff/AgentOpsModule.tsx`:
+  - Agent request queue table with status/kind/search filters and KPI pills.
+  - Request detail pane with requester context, payload details, and linked batch visibility.
+  - Staff actions wired to v1 endpoints:
+    - `apiV1/v1/agent.requests.updateStatus`
+    - `apiV1/v1/agent.requests.linkBatch`
+    - `apiV1/v1/agent.requests.listStaff` (refresh)
+  - In-flight guardrails + explicit status/error banners retained.

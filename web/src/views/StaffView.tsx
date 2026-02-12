@@ -379,6 +379,7 @@ export default function StaffView({
   const [firingSearch, setFiringSearch] = useState("");
   const [firingStatusFilter, setFiringStatusFilter] = useState("all");
   const [firingKilnFilter, setFiringKilnFilter] = useState("all");
+  const [firingFocusFilter, setFiringFocusFilter] = useState<"all" | "active" | "attention" | "done">("all");
   const [selectedEventId, setSelectedEventId] = useState("");
   const [eventSearch, setEventSearch] = useState("");
   const [eventStatusFilter, setEventStatusFilter] = useState("all");
@@ -482,6 +483,34 @@ export default function StaffView({
       })
       .sort((a, b) => b.updatedAtMs - a.updatedAtMs);
   }, [firingKilnFilter, firingSearch, firingStatusFilter, firings]);
+  const firingTriage = useMemo(() => {
+    const now = Date.now();
+    const activeStatuses = new Set(["loading", "firing", "cooling", "unloading", "loaded"]);
+    const doneStatuses = new Set(["completed", "done", "closed"]);
+    const active = filteredFirings.filter((firing) => activeStatuses.has(firing.status.toLowerCase()));
+    const done = filteredFirings.filter((firing) => doneStatuses.has(firing.status.toLowerCase()));
+    const attention = filteredFirings.filter((firing) => {
+      const statusLower = firing.status.toLowerCase();
+      const isActive = activeStatuses.has(statusLower);
+      const staleActive = isActive && firing.updatedAtMs > 0 && now - firing.updatedAtMs > 12 * 60 * 60 * 1000;
+      const missingWindow = firing.startAtMs > 0 && firing.endAtMs === 0;
+      const lowConfidence = firing.confidence.toLowerCase() === "low";
+      return staleActive || missingWindow || lowConfidence;
+    });
+    return {
+      active,
+      attention,
+      done,
+      view:
+        firingFocusFilter === "active"
+          ? active
+          : firingFocusFilter === "attention"
+            ? attention
+            : firingFocusFilter === "done"
+              ? done
+              : filteredFirings,
+    };
+  }, [filteredFirings, firingFocusFilter]);
   const eventStatusOptions = useMemo(() => {
     const next = new Set<string>();
     events.forEach((event) => {
@@ -1861,10 +1890,11 @@ const loadEvents = useCallback(async () => {
       </div>
       <div className="staff-kpi-grid">
         <div className="staff-kpi"><span>Total firings</span><strong>{firings.length}</strong></div>
-        <div className="staff-kpi"><span>Active now</span><strong>{firings.filter((firing) => ["loading", "firing", "cooling", "unloading"].includes(firing.status)).length}</strong></div>
+        <div className="staff-kpi"><span>Active now</span><strong>{firingTriage.active.length}</strong></div>
+        <div className="staff-kpi"><span>Needs attention</span><strong>{firingTriage.attention.length}</strong></div>
         <div className="staff-kpi"><span>Scheduled</span><strong>{firings.filter((firing) => firing.status === "scheduled").length}</strong></div>
-        <div className="staff-kpi"><span>Completed</span><strong>{firings.filter((firing) => firing.status === "completed").length}</strong></div>
-        <div className="staff-kpi"><span>In current filter</span><strong>{filteredFirings.length}</strong></div>
+        <div className="staff-kpi"><span>Completed</span><strong>{firingTriage.done.length}</strong></div>
+        <div className="staff-kpi"><span>In current filter</span><strong>{firingTriage.view.length}</strong></div>
       </div>
       <div className="staff-module-grid">
         <div className="staff-column">
@@ -1895,6 +1925,25 @@ const loadEvents = useCallback(async () => {
                 <option key={kilnName} value={kilnName}>{kilnName}</option>
               ))}
             </select>
+            <select
+              className="staff-member-role-filter"
+              value={firingFocusFilter}
+              onChange={(event) =>
+                setFiringFocusFilter(event.target.value as "all" | "active" | "attention" | "done")
+              }
+            >
+              <option value="all">All focus</option>
+              <option value="active">Active only</option>
+              <option value="attention">Needs attention</option>
+              <option value="done">Done only</option>
+            </select>
+            <button
+              className="btn btn-ghost"
+              disabled={Boolean(busy) || firingTriage.active.length === 0}
+              onClick={() => setSelectedFiringId(firingTriage.active[0].id)}
+            >
+              Jump to next active
+            </button>
           </div>
           <div className="staff-table-wrap">
             <table className="staff-table">
@@ -1908,12 +1957,12 @@ const loadEvents = useCallback(async () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredFirings.length === 0 ? (
+                {firingTriage.view.length === 0 ? (
                   <tr>
                     <td colSpan={5}>No firings match current filters.</td>
                   </tr>
                 ) : (
-                  filteredFirings.map((firing) => (
+                  firingTriage.view.map((firing) => (
                     <tr
                       key={firing.id}
                       className={`staff-click-row ${selectedFiringId === firing.id ? "active" : ""}`}
@@ -1954,6 +2003,19 @@ const loadEvents = useCallback(async () => {
               <div className="staff-kpi"><span>End</span><strong>{when(selectedFiring.endAtMs)}</strong></div>
               <div className="staff-kpi"><span>Unloaded</span><strong>{when(selectedFiring.unloadedAtMs)}</strong></div>
               <div className="staff-kpi"><span>Updated</span><strong>{when(selectedFiring.updatedAtMs)}</strong></div>
+            </div>
+          ) : null}
+          {selectedFiring ? (
+            <div className="staff-note">
+              Flags:{" "}
+              {selectedFiring.confidence.toLowerCase() === "low" ? <span className="pill" style={{ marginRight: 6 }}>low confidence</span> : null}
+              {selectedFiring.startAtMs > 0 && selectedFiring.endAtMs === 0 ? <span className="pill" style={{ marginRight: 6 }}>missing end window</span> : null}
+              {selectedFiring.updatedAtMs > 0 && Date.now() - selectedFiring.updatedAtMs > 12 * 60 * 60 * 1000 && ["loading", "firing", "cooling", "unloading", "loaded"].includes(selectedFiring.status.toLowerCase()) ? (
+                <span className="pill" style={{ marginRight: 6 }}>stale active</span>
+              ) : null}
+              {selectedFiring.confidence.toLowerCase() !== "low" && !(selectedFiring.startAtMs > 0 && selectedFiring.endAtMs === 0) && !(selectedFiring.updatedAtMs > 0 && Date.now() - selectedFiring.updatedAtMs > 12 * 60 * 60 * 1000 && ["loading", "firing", "cooling", "unloading", "loaded"].includes(selectedFiring.status.toLowerCase())) ? (
+                <span className="staff-mini">No triage flags.</span>
+              ) : null}
             </div>
           ) : null}
           {selectedFiring?.notes ? <div className="staff-note">{selectedFiring.notes}</div> : null}

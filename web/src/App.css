@@ -3113,7 +3113,8 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   transition: opacity 0.15s ease;
 }
 
-.sidebar.collapsed nav button:hover::after {
+.sidebar.collapsed nav button:hover::after,
+.sidebar.collapsed nav button:focus-visible::after {
   opacity: 1;
 }
 

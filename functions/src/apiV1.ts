@@ -215,6 +215,26 @@ export async function handleApiV1(req: any, res: any) {
     return;
   }
 
+  if (route.startsWith("/v1/agent.")) {
+    const actorKey =
+      ctx.mode === "delegated"
+        ? `agent:${ctx.delegated.agentClientId}:${ctx.uid}`
+        : `actor:${ctx.uid}`;
+    const agentRate = await enforceRateLimit({
+      req,
+      key: `apiV1:${route}:${actorKey}`,
+      max: 90,
+      windowMs: 60_000,
+    });
+    if (!agentRate.ok) {
+      res.set("Retry-After", String(Math.ceil(agentRate.retryAfterMs / 1000)));
+      jsonError(res, requestId, 429, "RATE_LIMITED", "Agent route rate limit exceeded", {
+        retryAfterMs: agentRate.retryAfterMs,
+      });
+      return;
+    }
+  }
+
   try {
     if (route === "/v1/hello") {
       jsonOk(res, requestId, {

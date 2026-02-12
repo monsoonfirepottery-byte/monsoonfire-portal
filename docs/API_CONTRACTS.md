@@ -488,6 +488,47 @@ Notes:
   - `/v1/agent.terms.get`
   - `/v1/agent.terms.accept`
 
+### v1/agent.account.get
+
+POST `${BASE_URL}/apiV1/v1/agent.account.get`
+
+Auth:
+- Staff Firebase user, or delegated agent token for its own `agentClientId`
+
+Request:
+```json
+{
+  "agentClientId": "optional-for-delegated"
+}
+```
+
+### v1/agent.account.update
+
+POST `${BASE_URL}/apiV1/v1/agent.account.update`
+
+Auth:
+- Staff Firebase user only
+
+Request:
+```json
+{
+  "agentClientId": "client_123",
+  "status": "on_hold",
+  "independentEnabled": true,
+  "prepayRequired": true,
+  "dailySpendCapCents": 200000,
+  "prepaidBalanceDeltaCents": 50000,
+  "reason": "Initial funding and hold for verification"
+}
+```
+
+Notes:
+- Independent-mode reserve/pay enforces:
+  - account active state
+  - prepaid balance (when `prepayRequired=true`)
+  - daily and category caps
+- Internal prepay debits are logged to `agentAccounts/{id}/ledger`.
+
 ---
 
 ## Emulator admin token requirement

@@ -405,6 +405,19 @@ const agentTermsAcceptSchema = z.object({
   version: z.string().min(1).max(120).optional().nullable(),
   source: z.string().max(120).optional().nullable(),
 });
+const agentAccountGetSchema = z.object({
+  agentClientId: z.string().min(1).max(120).optional().nullable(),
+});
+const agentAccountUpdateSchema = z.object({
+  agentClientId: z.string().min(1).max(120),
+  status: z.enum(["active", "on_hold"]).optional(),
+  independentEnabled: z.boolean().optional(),
+  prepayRequired: z.boolean().optional(),
+  prepaidBalanceDeltaCents: z.number().int().min(-5_000_000).max(5_000_000).optional(),
+  dailySpendCapCents: z.number().int().min(0).max(10_000_000).optional(),
+  categoryCapsCents: z.record(z.string(), z.number().int().min(0).max(10_000_000)).optional(),
+  reason: z.string().max(400).optional().nullable(),
+});
 
 const AGENT_REQUESTS_COL = "agentRequests";
 
@@ -432,6 +445,17 @@ const AGENT_TERMS_EXEMPT_ROUTES = new Set<string>([
   "/v1/agent.terms.accept",
 ]);
 const X1C_VALIDATION_VERSION = "2026-02-12.v1";
+const AGENT_ACCOUNT_DEFAULT_DAILY_SPEND_CAP_CENTS = 200_000;
+const AGENT_ACCOUNT_DEFAULTS = {
+  status: "active" as const,
+  independentEnabled: false,
+  prepayRequired: true,
+  prepaidBalanceCents: 0,
+  dailySpendCapCents: AGENT_ACCOUNT_DEFAULT_DAILY_SPEND_CAP_CENTS,
+  spendDayKey: "",
+  spentTodayCents: 0,
+  spentByCategoryCents: {} as Record<string, number>,
+};
 
 function trimOrNull(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -501,6 +525,114 @@ function evaluateX1cPolicy(payload: {
 
 function acceptanceKeyPart(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
+}
+
+function utcDayKey(ms = Date.now()): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+type AgentAccountRow = {
+  id: string;
+  status: "active" | "on_hold";
+  independentEnabled: boolean;
+  prepayRequired: boolean;
+  prepaidBalanceCents: number;
+  dailySpendCapCents: number;
+  spendDayKey: string;
+  spentTodayCents: number;
+  spentByCategoryCents: Record<string, number>;
+  updatedAt: unknown;
+};
+
+function normalizeAgentAccountRow(agentClientId: string, row: Record<string, unknown> | null): AgentAccountRow {
+  const source = row ?? {};
+  const spentByCategoryRaw =
+    source.spentByCategoryCents && typeof source.spentByCategoryCents === "object"
+      ? (source.spentByCategoryCents as Record<string, unknown>)
+      : {};
+  const spentByCategoryCents: Record<string, number> = {};
+  for (const [key, value] of Object.entries(spentByCategoryRaw)) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      spentByCategoryCents[key] = Math.max(0, Math.trunc(value));
+    }
+  }
+
+  return {
+    id: agentClientId,
+    status: source.status === "on_hold" ? "on_hold" : "active",
+    independentEnabled: source.independentEnabled === true,
+    prepayRequired: source.prepayRequired !== false,
+    prepaidBalanceCents:
+      typeof source.prepaidBalanceCents === "number"
+        ? Math.max(0, Math.trunc(source.prepaidBalanceCents))
+        : AGENT_ACCOUNT_DEFAULTS.prepaidBalanceCents,
+    dailySpendCapCents:
+      typeof source.dailySpendCapCents === "number"
+        ? Math.max(0, Math.trunc(source.dailySpendCapCents))
+        : AGENT_ACCOUNT_DEFAULTS.dailySpendCapCents,
+    spendDayKey: typeof source.spendDayKey === "string" ? source.spendDayKey : AGENT_ACCOUNT_DEFAULTS.spendDayKey,
+    spentTodayCents:
+      typeof source.spentTodayCents === "number"
+        ? Math.max(0, Math.trunc(source.spentTodayCents))
+        : AGENT_ACCOUNT_DEFAULTS.spentTodayCents,
+    spentByCategoryCents,
+    updatedAt: source.updatedAt ?? null,
+  };
+}
+
+async function getOrInitAgentAccount(agentClientId: string): Promise<AgentAccountRow> {
+  const ref = db.collection("agentAccounts").doc(agentClientId);
+  const snap = await ref.get();
+  if (snap.exists) {
+    return normalizeAgentAccountRow(agentClientId, snap.data() as Record<string, unknown>);
+  }
+
+  const now = nowTs();
+  await ref.set(
+    {
+      ...AGENT_ACCOUNT_DEFAULTS,
+      createdAt: now,
+      updatedAt: now,
+      updatedByUid: "system:init",
+    },
+    { merge: false }
+  );
+  return normalizeAgentAccountRow(agentClientId, AGENT_ACCOUNT_DEFAULTS as unknown as Record<string, unknown>);
+}
+
+function withDailySpendWindow(account: AgentAccountRow): AgentAccountRow {
+  const today = utcDayKey();
+  if (account.spendDayKey === today) return account;
+  return {
+    ...account,
+    spendDayKey: today,
+    spentTodayCents: 0,
+    spentByCategoryCents: {},
+  };
+}
+
+function evaluateIndependentAccountLimits(params: {
+  account: AgentAccountRow;
+  subtotalCents: number;
+  category: string;
+}): { ok: true } | { ok: false; code: string; message: string } {
+  const account = withDailySpendWindow(params.account);
+  if (account.status !== "active") {
+    return { ok: false, code: "ACCOUNT_ON_HOLD", message: "Independent agent account is on hold." };
+  }
+  const subtotal = Math.max(0, Math.trunc(params.subtotalCents));
+  if (account.prepayRequired && account.prepaidBalanceCents < subtotal) {
+    return { ok: false, code: "PREPAY_REQUIRED", message: "Prepaid balance is insufficient for this operation." };
+  }
+  if (account.dailySpendCapCents > 0 && account.spentTodayCents + subtotal > account.dailySpendCapCents) {
+    return { ok: false, code: "DAILY_CAP_EXCEEDED", message: "Daily independent-agent spending cap exceeded." };
+  }
+  const categoryCap = account.spentByCategoryCents[`cap:${params.category}`];
+  const categorySpent = account.spentByCategoryCents[params.category] ?? 0;
+  if (typeof categoryCap === "number" && categoryCap > 0 && categorySpent + subtotal > categoryCap) {
+    return { ok: false, code: "CATEGORY_CAP_EXCEEDED", message: "Category spending cap exceeded." };
+  }
+  return { ok: true };
 }
 
 async function getAgentTermsConfig(): Promise<{
@@ -705,6 +837,108 @@ export async function handleApiV1(req: any, res: any) {
         createdAt: nowTs(),
       });
       jsonOk(res, requestId, { accepted: true, version: requestedVersion });
+      return;
+    }
+
+    if (route === "/v1/agent.account.get") {
+      const scopeCheck = requireScopes(ctx, ["status:read"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        return;
+      }
+      const parsed = parseBody(agentAccountGetSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+      const requestedClientId = trimOrNull(parsed.data.agentClientId);
+      const targetClientId =
+        requestedClientId ??
+        (ctx.mode === "delegated" ? ctx.delegated.agentClientId : null);
+      if (!targetClientId) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", "agentClientId is required for this caller.");
+        return;
+      }
+      if (ctx.mode !== "firebase") {
+        if (ctx.mode === "delegated" && targetClientId !== ctx.delegated.agentClientId) {
+          jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+          return;
+        }
+      } else if (!isStaff) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+        return;
+      }
+
+      const account = withDailySpendWindow(await getOrInitAgentAccount(targetClientId));
+      jsonOk(res, requestId, { account });
+      return;
+    }
+
+    if (route === "/v1/agent.account.update") {
+      if (!(ctx.mode === "firebase" && isStaff)) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+        return;
+      }
+      const parsed = parseBody(agentAccountUpdateSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+      const agentClientId = parsed.data.agentClientId.trim();
+      const accountRef = db.collection("agentAccounts").doc(agentClientId);
+      const account = withDailySpendWindow(await getOrInitAgentAccount(agentClientId));
+      const nextStatus = parsed.data.status ?? account.status;
+      const nextIndependentEnabled =
+        parsed.data.independentEnabled === undefined ? account.independentEnabled : parsed.data.independentEnabled;
+      const nextPrepayRequired =
+        parsed.data.prepayRequired === undefined ? account.prepayRequired : parsed.data.prepayRequired;
+      const nextDailyCap =
+        parsed.data.dailySpendCapCents === undefined ? account.dailySpendCapCents : parsed.data.dailySpendCapCents;
+      const nextBalance =
+        parsed.data.prepaidBalanceDeltaCents === undefined
+          ? account.prepaidBalanceCents
+          : Math.max(0, account.prepaidBalanceCents + parsed.data.prepaidBalanceDeltaCents);
+      const reason = trimOrNull(parsed.data.reason);
+
+      const patch: Record<string, unknown> = {
+        status: nextStatus,
+        independentEnabled: nextIndependentEnabled,
+        prepayRequired: nextPrepayRequired,
+        prepaidBalanceCents: nextBalance,
+        dailySpendCapCents: nextDailyCap,
+        updatedAt: nowTs(),
+        updatedByUid: ctx.uid,
+      };
+      if (parsed.data.categoryCapsCents) {
+        const nextCategoryMap: Record<string, number> = {};
+        for (const [key, value] of Object.entries(parsed.data.categoryCapsCents)) {
+          nextCategoryMap[`cap:${key}`] = Math.max(0, Math.trunc(value));
+        }
+        patch.spentByCategoryCents = {
+          ...account.spentByCategoryCents,
+          ...nextCategoryMap,
+        };
+      }
+      await accountRef.set(patch, { merge: true });
+      await db.collection("agentAuditLogs").add({
+        actorUid: ctx.uid,
+        actorMode: ctx.mode,
+        action: "agent_account_updated",
+        requestId,
+        agentClientId,
+        reason,
+        status: nextStatus,
+        independentEnabled: nextIndependentEnabled,
+        prepayRequired: nextPrepayRequired,
+        prepaidBalanceCents: nextBalance,
+        dailySpendCapCents: nextDailyCap,
+        balanceDeltaCents: parsed.data.prepaidBalanceDeltaCents ?? 0,
+        createdAt: nowTs(),
+      });
+      const fresh = await accountRef.get();
+      jsonOk(res, requestId, {
+        account: normalizeAgentAccountRow(agentClientId, fresh.exists ? (fresh.data() as Record<string, unknown>) : null),
+      });
       return;
     }
 
@@ -1071,6 +1305,11 @@ export async function handleApiV1(req: any, res: any) {
         jsonError(res, requestId, 503, "UNAVAILABLE", "Agent reservation capability is disabled");
         return;
       }
+      const delegatedPolicy = await loadDelegatedRiskPolicy(ctx);
+      const independentAccount =
+        delegatedPolicy && ctx.mode === "delegated"
+          ? await getOrInitAgentAccount(delegatedPolicy.agentClientId)
+          : null;
 
       const quoteId = String(parsed.data.quoteId).trim();
       const quoteRef = db.collection("agentQuotes").doc(quoteId);
@@ -1108,6 +1347,18 @@ export async function handleApiV1(req: any, res: any) {
             : 0;
         if (!expiresAtSeconds || Date.now() > expiresAtSeconds * 1000) {
           throw new Error("QUOTE_EXPIRED");
+        }
+        if (independentAccount?.independentEnabled) {
+          const subtotalCents = typeof quote.subtotalCents === "number" ? quote.subtotalCents : 0;
+          const category = typeof quote.category === "string" ? quote.category : "other";
+          const limitCheck = evaluateIndependentAccountLimits({
+            account: independentAccount,
+            subtotalCents,
+            category,
+          });
+          if (!limitCheck.ok) {
+            throw new Error(limitCheck.code);
+          }
         }
 
         if (existingReservationSnap.exists) {
@@ -1250,6 +1501,10 @@ export async function handleApiV1(req: any, res: any) {
       const orderRef = db.collection("agentOrders").doc(orderId);
       const now = nowTs();
       const delegatedPolicy = await loadDelegatedRiskPolicy(ctx);
+      const independentAccount =
+        delegatedPolicy && ctx.mode === "delegated"
+          ? await getOrInitAgentAccount(delegatedPolicy.agentClientId)
+          : null;
       const reservationSubtotal =
         typeof reservation.subtotalCents === "number" ? reservation.subtotalCents : 0;
       if (delegatedPolicy) {
@@ -1311,6 +1566,33 @@ export async function handleApiV1(req: any, res: any) {
           return;
         }
       }
+      if (independentAccount?.independentEnabled) {
+        const reservationCategory =
+          typeof reservation.category === "string" ? reservation.category : "other";
+        const limitCheck = evaluateIndependentAccountLimits({
+          account: independentAccount,
+          subtotalCents: reservationSubtotal,
+          category: reservationCategory,
+        });
+        if (!limitCheck.ok) {
+          await db.collection("agentAuditLogs").add({
+            actorUid: ctx.uid,
+            actorMode: ctx.mode,
+            action: "agent_pay_denied_independent_account",
+            requestId,
+            reservationId,
+            agentClientId: delegatedPolicy?.agentClientId ?? null,
+            code: limitCheck.code,
+            message: limitCheck.message,
+            subtotalCents: reservationSubtotal,
+            createdAt: now,
+          });
+          jsonError(res, requestId, 403, "FAILED_PRECONDITION", limitCheck.message, {
+            code: limitCheck.code,
+          });
+          return;
+        }
+      }
 
       const checkoutPriceId =
         typeof reservation.priceId === "string" && reservation.priceId.trim()
@@ -1327,6 +1609,15 @@ export async function handleApiV1(req: any, res: any) {
             order: existing,
           };
         }
+        const accountRef =
+          independentAccount && delegatedPolicy
+            ? db.collection("agentAccounts").doc(delegatedPolicy.agentClientId)
+            : null;
+        const accountSnap = accountRef ? await tx.get(accountRef) : null;
+        const accountRow = accountSnap
+          ? normalizeAgentAccountRow(delegatedPolicy!.agentClientId, accountSnap.exists ? (accountSnap.data() as Record<string, unknown>) : null)
+          : null;
+        const accountActive = accountRow ? withDailySpendWindow(accountRow) : null;
 
         const order = {
           orderId,
@@ -1337,10 +1628,10 @@ export async function handleApiV1(req: any, res: any) {
             ctx.mode === "delegated"
               ? ctx.delegated.agentClientId
               : (typeof reservation.agentClientId === "string" ? reservation.agentClientId : null),
-          status: "payment_required",
-          paymentStatus: "checkout_pending",
+          status: accountActive?.independentEnabled ? "paid" : "payment_required",
+          paymentStatus: accountActive?.independentEnabled ? "paid_prepay" : "checkout_pending",
           fulfillmentStatus: "queued",
-          paymentProvider: "stripe",
+          paymentProvider: accountActive?.independentEnabled ? "internal_prepay" : "stripe",
           stripeCheckoutSessionId: null,
           stripePaymentIntentId: null,
           amountCents: typeof reservation.subtotalCents === "number" ? reservation.subtotalCents : 0,
@@ -1356,10 +1647,35 @@ export async function handleApiV1(req: any, res: any) {
         };
 
         tx.set(orderRef, order);
+        if (accountRef && accountActive?.independentEnabled) {
+          const subtotal = Math.max(0, Math.trunc(order.amountCents as number));
+          const category = typeof reservation.category === "string" ? reservation.category : "other";
+          const categorySpent = accountActive.spentByCategoryCents[category] ?? 0;
+          const accountPatch: Record<string, unknown> = {
+            prepaidBalanceCents: Math.max(0, accountActive.prepaidBalanceCents - subtotal),
+            spendDayKey: accountActive.spendDayKey,
+            spentTodayCents: accountActive.spentTodayCents + subtotal,
+            updatedAt: now,
+            updatedByUid: ctx.uid,
+            [`spentByCategoryCents.${category}`]: categorySpent + subtotal,
+          };
+          tx.set(accountRef, accountPatch, { merge: true });
+          const ledgerRef = accountRef.collection("ledger").doc(orderId);
+          tx.set(ledgerRef, {
+            type: "debit_order",
+            orderId,
+            reservationId,
+            amountCents: -subtotal,
+            category,
+            actorUid: ctx.uid,
+            actorMode: ctx.mode,
+            createdAt: now,
+          });
+        }
         tx.set(
           reservationRef,
           {
-            status: "payment_required",
+            status: accountActive?.independentEnabled ? "paid" : "payment_required",
             orderId,
             updatedAt: now,
           },
@@ -1373,6 +1689,7 @@ export async function handleApiV1(req: any, res: any) {
           requestId,
           reservationId,
           orderId,
+          paidFromPrepay: accountActive?.independentEnabled === true,
           createdAt: now,
         });
         return { idempotentReplay: false, order };
@@ -1389,16 +1706,19 @@ export async function handleApiV1(req: any, res: any) {
         fulfillmentStatus:
           typeof order.fulfillmentStatus === "string" ? order.fulfillmentStatus : "queued",
         checkout: {
-          provider: "stripe",
-          ready: priceConfigured,
-          requiresUserFirebaseAuth: true,
-          checkoutEndpoint: "createAgentCheckoutSession",
+          provider: order.paymentProvider === "internal_prepay" ? "internal_prepay" : "stripe",
+          ready: order.paymentProvider === "internal_prepay" ? true : priceConfigured,
+          requiresUserFirebaseAuth: order.paymentProvider === "internal_prepay" ? false : true,
+          checkoutEndpoint: order.paymentProvider === "internal_prepay" ? null : "createAgentCheckoutSession",
           payloadHint: priceConfigured
+            && order.paymentProvider !== "internal_prepay"
             ? {
                 orderId,
               }
             : null,
-          message: priceConfigured
+          message: order.paymentProvider === "internal_prepay"
+            ? "Order paid from independent-agent prepaid balance."
+            : priceConfigured
             ? "Call createAgentCheckoutSession to complete payment."
             : "No Stripe priceId is configured for this service. Staff must update Agent service catalog.",
         },
@@ -2114,6 +2434,22 @@ export async function handleApiV1(req: any, res: any) {
     }
     if (msg === "DELEGATED_CLIENT_COOLDOWN") {
       jsonError(res, requestId, 429, "RATE_LIMITED", "Delegated client is in cooldown");
+      return;
+    }
+    if (msg === "ACCOUNT_ON_HOLD") {
+      jsonError(res, requestId, 403, "FAILED_PRECONDITION", "Independent agent account is on hold");
+      return;
+    }
+    if (msg === "PREPAY_REQUIRED") {
+      jsonError(res, requestId, 402, "FAILED_PRECONDITION", "Insufficient prepaid balance");
+      return;
+    }
+    if (msg === "DAILY_CAP_EXCEEDED") {
+      jsonError(res, requestId, 403, "FAILED_PRECONDITION", "Daily spend cap exceeded");
+      return;
+    }
+    if (msg === "CATEGORY_CAP_EXCEEDED") {
+      jsonError(res, requestId, 403, "FAILED_PRECONDITION", "Category spend cap exceeded");
       return;
     }
 

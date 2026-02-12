@@ -63,6 +63,17 @@ type AgentCatalogConfig = {
   };
   services: AgentCatalogService[];
 };
+type AgentAccount = {
+  id: string;
+  status: "active" | "on_hold";
+  independentEnabled: boolean;
+  prepayRequired: boolean;
+  prepaidBalanceCents: number;
+  dailySpendCapCents: number;
+  spendDayKey: string;
+  spentTodayCents: number;
+  spentByCategoryCents: Record<string, number>;
+};
 
 type AgentRequestStatus = "new" | "triaged" | "accepted" | "in_progress" | "ready" | "fulfilled" | "rejected" | "cancelled";
 type AgentRequestKind = "firing" | "pickup" | "delivery" | "shipping" | "commission" | "x1c_print" | "other";
@@ -152,6 +163,12 @@ type AgentRequestStatusUpdateResponse = ApiV1Envelope<{
 type AgentRequestLinkBatchResponse = ApiV1Envelope<{
   agentRequestId?: string;
   linkedBatchId?: string;
+}>;
+type AgentAccountGetResponse = ApiV1Envelope<{
+  account?: Record<string, unknown>;
+}>;
+type AgentAccountUpdateResponse = ApiV1Envelope<{
+  account?: Record<string, unknown>;
 }>;
 
 function str(v: unknown, fallback = ""): string {
@@ -309,6 +326,30 @@ function toAgentRequest(row: Record<string, unknown>): AgentRequest {
   };
 }
 
+function toAgentAccount(row: Record<string, unknown> | null, clientId: string): AgentAccount {
+  const spentByCategoryRaw =
+    row?.spentByCategoryCents && typeof row.spentByCategoryCents === "object"
+      ? (row.spentByCategoryCents as Record<string, unknown>)
+      : {};
+  const spentByCategoryCents: Record<string, number> = {};
+  for (const [key, value] of Object.entries(spentByCategoryRaw)) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      spentByCategoryCents[key] = Math.max(0, Math.trunc(value));
+    }
+  }
+  return {
+    id: clientId,
+    status: row?.status === "on_hold" ? "on_hold" : "active",
+    independentEnabled: row?.independentEnabled === true,
+    prepayRequired: row?.prepayRequired !== false,
+    prepaidBalanceCents: num(row?.prepaidBalanceCents, 0),
+    dailySpendCapCents: num(row?.dailySpendCapCents, 200_000),
+    spendDayKey: str(row?.spendDayKey, ""),
+    spentTodayCents: num(row?.spentTodayCents, 0),
+    spentByCategoryCents,
+  };
+}
+
 export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
@@ -379,6 +420,13 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [agentRequestReasonDraft, setAgentRequestReasonDraft] = useState("");
   const [agentRequestReasonCodeDraft, setAgentRequestReasonCodeDraft] = useState("");
   const [agentRequestBatchDraft, setAgentRequestBatchDraft] = useState("");
+  const [selectedAccount, setSelectedAccount] = useState<AgentAccount | null>(null);
+  const [accountStatusDraft, setAccountStatusDraft] = useState<"active" | "on_hold">("active");
+  const [accountIndependentDraft, setAccountIndependentDraft] = useState(false);
+  const [accountPrepayDraft, setAccountPrepayDraft] = useState(true);
+  const [accountDailyCapDraft, setAccountDailyCapDraft] = useState("200000");
+  const [accountBalanceDeltaDraft, setAccountBalanceDeltaDraft] = useState("0");
+  const [accountReasonDraft, setAccountReasonDraft] = useState("");
 
   const selected = useMemo(() => clients.find((row) => row.id === selectedId) ?? null, [clients, selectedId]);
   const selectedAgentRequest = useMemo(
@@ -586,6 +634,14 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     setAgentRequestReasonDraft(selectedAgentRequest.internalNotes ?? "");
     setAgentRequestReasonCodeDraft("");
   }, [selectedAgentRequest]);
+  useEffect(() => {
+    if (!selectedAccount) return;
+    setAccountStatusDraft(selectedAccount.status);
+    setAccountIndependentDraft(selectedAccount.independentEnabled);
+    setAccountPrepayDraft(selectedAccount.prepayRequired);
+    setAccountDailyCapDraft(String(selectedAccount.dailySpendCapCents));
+    setAccountBalanceDeltaDraft("0");
+  }, [selectedAccount]);
 
   const parseScopes = (text: string): string[] =>
     text
@@ -830,6 +886,20 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
       setSelectedAgentRequestId(requestRows[0]?.id ?? "");
     }
   };
+  const refreshSelectedAgentAccount = async () => {
+    if (!selected) {
+      setSelectedAccount(null);
+      return;
+    }
+    const resp = await client.postJson<AgentAccountGetResponse>("apiV1/v1/agent.account.get", {
+      agentClientId: selected.id,
+    });
+    const accountRow =
+      resp.data?.account && typeof resp.data.account === "object"
+        ? (resp.data.account as Record<string, unknown>)
+        : null;
+    setSelectedAccount(toAgentAccount(accountRow, selected.id));
+  };
 
   const updateAgentRequestStatus = async () => {
     if (!selectedAgentRequest) throw new Error("Select a request first.");
@@ -855,6 +925,29 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     await refreshAgentRequests();
     setStatus(`Linked request ${selectedAgentRequest.id} to batch ${agentRequestBatchDraft.trim()}.`);
   };
+  const saveSelectedAgentAccount = async () => {
+    if (!selected) throw new Error("Select a client first.");
+    const delta = Number(accountBalanceDeltaDraft) || 0;
+    const dailyCap = Math.max(0, Number(accountDailyCapDraft) || 0);
+    const resp = await client.postJson<AgentAccountUpdateResponse>("apiV1/v1/agent.account.update", {
+      agentClientId: selected.id,
+      status: accountStatusDraft,
+      independentEnabled: accountIndependentDraft,
+      prepayRequired: accountPrepayDraft,
+      dailySpendCapCents: dailyCap,
+      prepaidBalanceDeltaCents: delta,
+      reason: accountReasonDraft.trim() || null,
+    });
+    if (!resp.ok) throw new Error(resp.message ?? "Failed to update agent account.");
+    await refreshSelectedAgentAccount();
+    setAccountBalanceDeltaDraft("0");
+    setStatus(`Updated independent account controls for ${selected.name}.`);
+  };
+  useEffect(() => {
+    if (!active || disabled || !selected) return;
+    void run("loadSelectedAgentAccount", refreshSelectedAgentAccount);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, disabled, selected?.id]);
 
   return (
     <section className="card staff-console-card">
@@ -1172,6 +1265,53 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
               >
                 Issue delegated token
               </button>
+
+              <div className="staff-subtitle">Independent account controls</div>
+              {selectedAccount ? (
+                <>
+                  <div className="staff-actions-row">
+                    <div className="pill">Balance: ${(selectedAccount.prepaidBalanceCents / 100).toFixed(2)}</div>
+                    <div className="pill">Spent today: ${(selectedAccount.spentTodayCents / 100).toFixed(2)}</div>
+                    <div className="pill">Spend day: {selectedAccount.spendDayKey || "-"}</div>
+                  </div>
+                  <div className="staff-actions-row">
+                    <label className="staff-field" style={{ flex: 1 }}>
+                      Account status
+                      <select value={accountStatusDraft} onChange={(event) => setAccountStatusDraft(event.target.value as "active" | "on_hold")}>
+                        <option value="active">active</option>
+                        <option value="on_hold">on_hold</option>
+                      </select>
+                    </label>
+                    <label className="staff-field" style={{ flex: 1 }}>
+                      Independent mode enabled
+                      <input type="checkbox" checked={accountIndependentDraft} onChange={(event) => setAccountIndependentDraft(event.target.checked)} />
+                    </label>
+                    <label className="staff-field" style={{ flex: 1 }}>
+                      Prepay required
+                      <input type="checkbox" checked={accountPrepayDraft} onChange={(event) => setAccountPrepayDraft(event.target.checked)} />
+                    </label>
+                  </div>
+                  <div className="staff-actions-row">
+                    <label className="staff-field" style={{ flex: 1 }}>
+                      Daily spend cap (cents)
+                      <input value={accountDailyCapDraft} onChange={(event) => setAccountDailyCapDraft(event.target.value)} />
+                    </label>
+                    <label className="staff-field" style={{ flex: 1 }}>
+                      Balance delta cents (+/-)
+                      <input value={accountBalanceDeltaDraft} onChange={(event) => setAccountBalanceDeltaDraft(event.target.value)} />
+                    </label>
+                    <label className="staff-field" style={{ flex: 2 }}>
+                      Reason
+                      <input value={accountReasonDraft} onChange={(event) => setAccountReasonDraft(event.target.value)} placeholder="Hold account pending fraud review" />
+                    </label>
+                    <button className="btn btn-secondary" disabled={Boolean(busy) || disabled} onClick={() => void run("saveSelectedAgentAccount", saveSelectedAgentAccount)}>
+                      Save account
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="staff-note">Account controls unavailable until a client is selected.</div>
+              )}
             </>
           ) : (
             <div className="staff-note">Select a client to inspect and update.</div>

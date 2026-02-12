@@ -398,6 +398,7 @@ export default function StaffView({
   const [isbnInput, setIsbnInput] = useState("");
   const [lendingSearch, setLendingSearch] = useState("");
   const [lendingStatusFilter, setLendingStatusFilter] = useState("all");
+  const [lendingFocusFilter, setLendingFocusFilter] = useState<"all" | "requests" | "active" | "overdue" | "returned">("all");
   const [selectedRequestId, setSelectedRequestId] = useState("");
   const [selectedLoanId, setSelectedLoanId] = useState("");
   const [systemChecks, setSystemChecks] = useState<SystemCheckRecord[]>([]);
@@ -592,6 +593,36 @@ export default function StaffView({
       })
       .sort((a, b) => b.createdAtMs - a.createdAtMs);
   }, [lendingSearch, lendingStatusFilter, libraryLoans]);
+  const lendingTriage = useMemo(() => {
+    const now = Date.now();
+    const activeLoans = filteredLoans.filter((loan) => {
+      const status = loan.status.toLowerCase();
+      return status === "active" || status === "checked_out" || status === "borrowed";
+    });
+    const overdueLoans = activeLoans.filter((loan) => loan.dueAtMs > 0 && loan.dueAtMs < now && loan.returnedAtMs === 0);
+    const returnedLoans = filteredLoans.filter((loan) => {
+      const status = loan.status.toLowerCase();
+      return status === "returned" || loan.returnedAtMs > 0;
+    });
+    const openRequests = filteredRequests.filter((request) => request.status.toLowerCase() === "open");
+    const requestView = lendingFocusFilter === "requests" ? openRequests : filteredRequests;
+    const loanView =
+      lendingFocusFilter === "active"
+        ? activeLoans
+        : lendingFocusFilter === "overdue"
+          ? overdueLoans
+          : lendingFocusFilter === "returned"
+            ? returnedLoans
+            : filteredLoans;
+    return {
+      openRequests,
+      activeLoans,
+      overdueLoans,
+      returnedLoans,
+      requestView,
+      loanView,
+    };
+  }, [filteredLoans, filteredRequests, lendingFocusFilter]);
   const batchStatusOptions = useMemo(() => {
     const next = new Set<string>();
     batches.forEach((batch) => {
@@ -2645,10 +2676,12 @@ const lendingContent = (
       <div className="staff-kpi-grid">
         <div className="staff-kpi"><span>Requests</span><strong>{libraryRequests.length}</strong></div>
         <div className="staff-kpi"><span>Loans</span><strong>{libraryLoans.length}</strong></div>
-        <div className="staff-kpi"><span>Filtered requests</span><strong>{filteredRequests.length}</strong></div>
-        <div className="staff-kpi"><span>Filtered loans</span><strong>{filteredLoans.length}</strong></div>
-        <div className="staff-kpi"><span>Open requests</span><strong>{libraryRequests.filter((request) => request.status === "open").length}</strong></div>
-        <div className="staff-kpi"><span>Active loans</span><strong>{libraryLoans.filter((loan) => loan.status === "active").length}</strong></div>
+        <div className="staff-kpi"><span>Filtered requests</span><strong>{lendingTriage.requestView.length}</strong></div>
+        <div className="staff-kpi"><span>Filtered loans</span><strong>{lendingTriage.loanView.length}</strong></div>
+        <div className="staff-kpi"><span>Open requests</span><strong>{lendingTriage.openRequests.length}</strong></div>
+        <div className="staff-kpi"><span>Active loans</span><strong>{lendingTriage.activeLoans.length}</strong></div>
+        <div className="staff-kpi"><span>Overdue loans</span><strong>{lendingTriage.overdueLoans.length}</strong></div>
+        <div className="staff-kpi"><span>Returned loans</span><strong>{lendingTriage.returnedLoans.length}</strong></div>
       </div>
       <div className="staff-actions-row">
         <input
@@ -2667,6 +2700,21 @@ const lendingContent = (
             <option key={statusName} value={statusName}>{statusName}</option>
           ))}
         </select>
+        <select
+          className="staff-member-role-filter"
+          value={lendingFocusFilter}
+          onChange={(event) =>
+            setLendingFocusFilter(
+              event.target.value as "all" | "requests" | "active" | "overdue" | "returned"
+            )
+          }
+        >
+          <option value="all">All focus</option>
+          <option value="requests">Open requests</option>
+          <option value="active">Active loans</option>
+          <option value="overdue">Overdue loans</option>
+          <option value="returned">Returned loans</option>
+        </select>
       </div>
       <div className="staff-module-grid">
         <div className="staff-column">
@@ -2675,10 +2723,10 @@ const lendingContent = (
             <table className="staff-table">
               <thead><tr><th>Title</th><th>Status</th><th>Requester</th><th>Created</th></tr></thead>
               <tbody>
-                {filteredRequests.length === 0 ? (
+                {lendingTriage.requestView.length === 0 ? (
                   <tr><td colSpan={4}>No requests match current filters.</td></tr>
                 ) : (
-                  filteredRequests.map((request) => (
+                  lendingTriage.requestView.map((request) => (
                     <tr
                       key={request.id}
                       className={`staff-click-row ${selectedRequestId === request.id ? "active" : ""}`}
@@ -2704,10 +2752,10 @@ const lendingContent = (
             <table className="staff-table">
               <thead><tr><th>Title</th><th>Status</th><th>Borrower</th><th>Created</th></tr></thead>
               <tbody>
-                {filteredLoans.length === 0 ? (
+                {lendingTriage.loanView.length === 0 ? (
                   <tr><td colSpan={4}>No loans match current filters.</td></tr>
                 ) : (
-                  filteredLoans.map((loan) => (
+                  lendingTriage.loanView.map((loan) => (
                     <tr
                       key={loan.id}
                       className={`staff-click-row ${selectedLoanId === loan.id ? "active" : ""}`}
@@ -2717,7 +2765,12 @@ const lendingContent = (
                         <div>{loan.title}</div>
                         <div className="staff-mini"><code>{loan.id}</code></div>
                       </td>
-                      <td><span className="pill">{loan.status}</span></td>
+                      <td>
+                        <span className="pill">{loan.status}</span>
+                        {loan.dueAtMs > 0 && loan.dueAtMs < Date.now() && loan.returnedAtMs === 0 ? (
+                          <span className="pill" style={{ marginLeft: 6 }}>overdue</span>
+                        ) : null}
+                      </td>
                       <td>{loan.borrowerName}</td>
                       <td>{when(loan.createdAtMs)}</td>
                     </tr>
@@ -2745,6 +2798,27 @@ const lendingContent = (
             )}
           </div>
           {selectedRequest ? (
+            <div className="staff-actions-row">
+              <button type="button" className="btn btn-ghost btn-small" onClick={() => void copy(selectedRequest.requesterEmail || "")}>
+                Copy email
+              </button>
+              <button type="button" className="btn btn-ghost btn-small" onClick={() => void copy(selectedRequest.requesterUid || selectedRequest.id)}>
+                Copy UID
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={() =>
+                  void copy(
+                    `Hi ${selectedRequest.requesterName || "there"} — your lending request for "${selectedRequest.title}" is in review. We'll update you with pickup timing soon.`
+                  )
+                }
+              >
+                Copy reply template
+              </button>
+            </div>
+          ) : null}
+          {selectedRequest ? (
             <details className="staff-troubleshooting">
               <summary>Raw request document</summary>
               <pre>{safeJsonStringify(selectedRequest.rawDoc)}</pre>
@@ -2767,6 +2841,27 @@ const lendingContent = (
               "Select a loan to inspect details."
             )}
           </div>
+          {selectedLoan ? (
+            <div className="staff-actions-row">
+              <button type="button" className="btn btn-ghost btn-small" onClick={() => void copy(selectedLoan.borrowerEmail || "")}>
+                Copy borrower email
+              </button>
+              <button type="button" className="btn btn-ghost btn-small" onClick={() => void copy(selectedLoan.borrowerUid || selectedLoan.id)}>
+                Copy borrower UID
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={() =>
+                  void copy(
+                    `Hi ${selectedLoan.borrowerName || "there"} — reminder that "${selectedLoan.title}" is due ${when(selectedLoan.dueAtMs)}. Reply if you need an extension.`
+                  )
+                }
+              >
+                Copy due reminder
+              </button>
+            </div>
+          ) : null}
           {selectedLoan ? (
             <details className="staff-troubleshooting">
               <summary>Raw loan document</summary>

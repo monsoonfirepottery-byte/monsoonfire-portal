@@ -32,6 +32,7 @@ import {
 import { auth, db } from "./firebase";
 import type { Announcement, DirectMessageThread, LiveUser } from "./types/messaging";
 import { toVoidHandler } from "./utils/toVoidHandler";
+import { identify, shortId, track } from "./lib/analytics";
 import type { SupportRequestInput } from "./views/SupportView";
 import { DEFAULT_PORTAL_THEME, isPortalThemeName, PORTAL_THEMES, type PortalThemeName } from "./theme/themes";
 import { readStoredPortalTheme, writeStoredPortalTheme } from "./theme/themeStorage";
@@ -811,6 +812,11 @@ export default function App() {
       try {
         const result = await getRedirectResult(authClient);
         if (!cancelled && result?.user) {
+          track("auth_sign_in_success", {
+            method: "redirect",
+            uid: shortId(result.user.uid),
+          });
+          identify(result.user);
           setUser(result.user);
           setAuthReady(true);
         }
@@ -819,6 +825,9 @@ export default function App() {
       }
       if (cancelled) return;
       unsub = onIdTokenChanged(authClient, (nextUser) => {
+        if (nextUser) {
+          identify(nextUser);
+        }
         setUser(nextUser);
         setAuthReady(true);
         if (typeof window !== "undefined" && import.meta.env?.DEV) {
@@ -941,6 +950,9 @@ export default function App() {
   ) => {
     setAuthStatus("");
     setAuthBusy(true);
+    track("auth_sign_in_start", {
+      method: providerId,
+    });
     try {
       let provider;
       switch (providerId) {
@@ -971,6 +983,11 @@ export default function App() {
       try {
         const result = await signInWithPopup(authClient, provider);
         if (result?.user) {
+          track("auth_sign_in_success", {
+            method: providerId,
+            uid: shortId(result.user.uid),
+          });
+          identify(result.user);
           setUser(result.user);
           setAuthReady(true);
         }
@@ -1006,16 +1023,30 @@ export default function App() {
     }
     setAuthStatus("");
     setAuthBusy(true);
+    track("auth_sign_in_start", {
+      method: "email_password",
+      mode,
+    });
     try {
       if (mode === "create") {
         const result = await createUserWithEmailAndPassword(authClient, trimmedEmail, password);
         if (result?.user) {
+          track("auth_sign_in_success", {
+            method: "email_password_create",
+            uid: shortId(result.user.uid),
+          });
+          identify(result.user);
           setUser(result.user);
           setAuthReady(true);
         }
       } else {
         const result = await signInWithEmailAndPassword(authClient, trimmedEmail, password);
         if (result?.user) {
+          track("auth_sign_in_success", {
+            method: "email_password_signin",
+            uid: shortId(result.user.uid),
+          });
+          identify(result.user);
           setUser(result.user);
           setAuthReady(true);
         }
@@ -1058,11 +1089,19 @@ export default function App() {
     }
     setAuthStatus("");
     setAuthBusy(true);
+    track("auth_sign_in_start", {
+      method: "email_link",
+    });
     try {
       const result = await signInWithEmailLink(authClient, trimmedEmail, window.location.href);
       localStorage.removeItem(EMAIL_LINK_KEY);
       setEmailLinkPending(false);
       if (result?.user) {
+        track("auth_sign_in_success", {
+          method: "email_link",
+          uid: shortId(result.user.uid),
+        });
+        identify(result.user);
         setUser(result.user);
         setAuthReady(true);
       }
@@ -1075,14 +1114,25 @@ export default function App() {
 
   const handleEmulatorSignIn = async () => {
     if (!isAuthEmulator) return;
+    track("auth_sign_in_start", {
+      method: "auth_emulator_anonymous",
+    });
     const result = await signInAnonymously(authClient);
     if (result?.user) {
+      track("auth_sign_in_success", {
+        method: "auth_emulator_anonymous",
+        uid: shortId(result.user.uid),
+      });
+      identify(result.user);
       setUser(result.user);
       setAuthReady(true);
     }
   };
 
   const handleSignOut = async () => {
+    track("auth_sign_out", {
+      uid: user?.uid ? shortId(user.uid) : "unknown",
+    });
     await signOut(authClient);
     setNav("dashboard");
   };

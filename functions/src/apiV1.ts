@@ -16,6 +16,7 @@ import {
 } from "./shared";
 import { listIntegrationEvents } from "./integrationEvents";
 import { getAgentServiceCatalogConfig } from "./agentCatalog";
+import { getAgentOpsConfig } from "./agentCommerce";
 
 function readHeaderFirst(req: any, name: string): string {
   const key = name.toLowerCase();
@@ -240,6 +241,12 @@ export async function handleApiV1(req: any, res: any) {
       jsonError(res, requestId, 429, "RATE_LIMITED", "Agent route rate limit exceeded", {
         retryAfterMs: agentRate.retryAfterMs,
       });
+      return;
+    }
+
+    const opsConfig = await getAgentOpsConfig();
+    if (!opsConfig.enabled) {
+      jsonError(res, requestId, 503, "UNAVAILABLE", "Agent API is temporarily disabled by staff");
       return;
     }
   }

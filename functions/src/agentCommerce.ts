@@ -10,6 +10,7 @@ import {
 } from "./shared";
 
 const REGION = "us-central1";
+const AGENT_OPS_CONFIG_PATH = "config/agentOps";
 
 const listOpsSchema = z.object({
   limit: z.number().int().min(1).max(200).optional(),
@@ -20,6 +21,20 @@ const reviewReservationSchema = z.object({
   decision: z.enum(["approve", "reject"]),
   reason: z.string().max(500).optional().nullable(),
 });
+
+const updateAgentOpsConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  allowPayments: z.boolean().optional(),
+});
+
+export async function getAgentOpsConfig(): Promise<{ enabled: boolean; allowPayments: boolean }> {
+  const snap = await db.doc(AGENT_OPS_CONFIG_PATH).get();
+  const row = (snap.data() ?? {}) as Record<string, unknown>;
+  return {
+    enabled: row.enabled !== false,
+    allowPayments: row.allowPayments !== false,
+  };
+}
 
 async function readCollection(
   collection: string,
@@ -173,5 +188,79 @@ export const staffReviewAgentReservation = onRequest(
       decision,
       orderId: orderId || null,
     });
+  }
+);
+
+export const staffGetAgentOpsConfig = onRequest(
+  { region: REGION, timeoutSeconds: 60 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+    const admin = await requireAdmin(req);
+    if (!admin.ok) {
+      res.status(403).json({ ok: false, message: admin.message });
+      return;
+    }
+
+    const config = await getAgentOpsConfig();
+    res.status(200).json({ ok: true, config });
+  }
+);
+
+export const staffUpdateAgentOpsConfig = onRequest(
+  { region: REGION, timeoutSeconds: 60 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+    const admin = await requireAdmin(req);
+    if (!admin.ok) {
+      res.status(403).json({ ok: false, message: admin.message });
+      return;
+    }
+
+    const parsed = parseBody(updateAgentOpsConfigSchema, req.body ?? {});
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const patch: Record<string, unknown> = {
+      updatedAt: nowTs(),
+      updatedByUid: auth.uid,
+    };
+    if (typeof parsed.data.enabled === "boolean") patch.enabled = parsed.data.enabled;
+    if (typeof parsed.data.allowPayments === "boolean") {
+      patch.allowPayments = parsed.data.allowPayments;
+    }
+
+    await db.doc(AGENT_OPS_CONFIG_PATH).set(patch, { merge: true });
+    await db.collection("agentAuditLogs").add({
+      actorUid: auth.uid,
+      actorMode: "firebase",
+      action: "agent_ops_config_updated",
+      patch,
+      createdAt: nowTs(),
+    });
+
+    const config = await getAgentOpsConfig();
+    res.status(200).json({ ok: true, config });
   }
 );

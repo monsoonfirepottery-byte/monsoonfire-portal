@@ -1,6 +1,6 @@
 # P1 — Agent Service Catalog and Pricing Controls
 
-**Status:** Open
+Status: Open
 
 ## Problem
 - Agent orders need deterministic SKUs and pricing rules.

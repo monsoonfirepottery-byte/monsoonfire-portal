@@ -1,6 +1,6 @@
 # P1 — Community Reporting `createReport()` Endpoint
 
-**Status:** Planned
+Status: Planned
 
 ## Context / user story
 - As a signed-in user, when I report a card, backend must validate and persist report/audit records.

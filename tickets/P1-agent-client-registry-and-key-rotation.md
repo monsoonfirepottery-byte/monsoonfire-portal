@@ -1,6 +1,6 @@
 # P1 — Agent Client Registry and Key Rotation
 
-**Status:** Open
+Status: Open
 
 ## Problem
 - Agent integrations need a first-class identity model.

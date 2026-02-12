@@ -1,6 +1,6 @@
 # P1 — Agent Audit Ledger and Observability
 
-**Status:** Open
+Status: Open
 
 ## Problem
 - Payments and physical fulfillment require forensics-grade traceability.

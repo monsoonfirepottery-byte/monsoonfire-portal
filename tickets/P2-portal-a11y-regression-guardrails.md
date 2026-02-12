@@ -1,6 +1,6 @@
 # P2 — Portal A11y: Regression Guardrails and QA Cadence
 
-**Status:** Planned
+Status: Planned
 
 ## Problem
 - Accessibility fixes can regress quickly across active portal UI work.

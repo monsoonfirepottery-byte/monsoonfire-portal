@@ -1,6 +1,6 @@
 # P1 — Security: Fix Root `npm audit` (fast-xml-parser DoS via @google-cloud/storage)
 
-**Status:** Done
+Status: Completed
 
 **Problem**
 - Running `npm audit --omit=dev` at repo root reports **2 high severity vulnerabilities**:

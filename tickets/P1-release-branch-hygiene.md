@@ -1,4 +1,4 @@
-Status: Open (2026-02-05)
+Status: Open
 
 # P1 - Release branch hygiene (reduce accidental scope)
 

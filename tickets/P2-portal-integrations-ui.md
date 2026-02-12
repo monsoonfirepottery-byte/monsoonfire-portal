@@ -1,6 +1,6 @@
 # P2 — Portal UI: Integrations (Tokens + Events Feed + Webhooks)
 
-**Status:** Done
+Status: Completed
 
 ## Problem
 - Even if backend supports PATs / events, clients need a first-class way to:

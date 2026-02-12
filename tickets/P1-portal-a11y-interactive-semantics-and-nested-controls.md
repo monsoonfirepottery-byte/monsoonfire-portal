@@ -1,6 +1,6 @@
 # P1 — Portal A11y: Interactive Semantics and Nested Controls
 
-**Status:** Planned
+Status: Planned
 
 ## Problem
 - Some interactive areas are implemented as non-semantic containers with `role="button"`.

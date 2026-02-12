@@ -1,4 +1,4 @@
-Status: Open (2026-02-10)
+Status: Open
 
 # P1 - Adopt `RevealCard` for Memoria Across Key Views (Event-Driven Only)
 
@@ -27,4 +27,3 @@ We want:
 - With Enhanced motion OFF (or reduced-motion):
   - No reveal animations; UI is stable and responsive.
 - No regression in Portal default theme visuals.
-

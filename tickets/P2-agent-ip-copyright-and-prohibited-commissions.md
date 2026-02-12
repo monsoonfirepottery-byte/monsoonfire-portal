@@ -1,6 +1,6 @@
 # P2 — Agent IP/Copyright and Prohibited Commissions Gate
 
-**Status:** Open
+Status: Open
 
 ## Problem
 - Agent-generated commissions can include illegal, infringing, or prohibited requests.

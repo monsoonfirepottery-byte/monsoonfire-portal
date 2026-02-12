@@ -30,4 +30,3 @@ We also need to define how token refresh and staff claim changes propagate to UI
 
 - Tokens are never persisted in plaintext.
 - Staff claim changes become visible without requiring app reinstall.
-

@@ -1,6 +1,6 @@
 # P2 — Website A11y: Ongoing QA + Regression Guardrails
 
-**Status:** Planned
+Status: Planned
 
 ## Problem
 - Accessibility improvements regress quickly without recurring checks and ownership.
@@ -39,4 +39,3 @@
 - `tickets/P1-website-a11y-blind-low-vision-and-screenreader.md`
 - `tickets/P1-website-a11y-deaf-hard-of-hearing.md`
 - `tickets/P1-website-a11y-motor-cognitive-and-neurodiverse.md`
-

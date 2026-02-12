@@ -1,6 +1,6 @@
 # P1 — Portal Accessibility Baseline + Policy (WCAG 2.2 AA)
 
-**Status:** Planned
+Status: Planned
 
 ## Problem
 - Portal accessibility has meaningful improvements but no explicit portal-specific baseline, release gate, or ownership.

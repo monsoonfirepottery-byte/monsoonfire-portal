@@ -1,4 +1,4 @@
-Status: Open (2026-02-10)
+Status: Open
 
 # P2 - Motion Performance Guardrails (Auto-Downgrade)
 
@@ -16,4 +16,3 @@ Even event-driven motion can feel “heavy” on some devices. We want a safety 
 - On a stressed laptop, the portal self-downgrades motion without breaking navigation.
 - No continuous background work once downgraded.
 - No new dependencies.
-

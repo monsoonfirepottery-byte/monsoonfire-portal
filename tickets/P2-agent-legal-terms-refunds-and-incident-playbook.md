@@ -1,6 +1,6 @@
 # P2 — Agent Legal Terms, Refund Rules, and Incident Playbook
 
-**Status:** Open
+Status: Open
 
 ## Problem
 - Agent-only commerce requires explicit legal terms and operational response procedures.

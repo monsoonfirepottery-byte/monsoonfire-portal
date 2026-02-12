@@ -1,4 +1,4 @@
-Status: Open (2026-02-10)
+Status: Open
 
 # P2 - Document Theme + Motion System (Portal)
 
@@ -17,4 +17,3 @@ We now have multiple UI modes (Portal default + Memoria) and a motion setting. W
 ## Acceptance
 - A new contributor can add a themed component without reading the entire CSS file.
 - No secrets included.
-

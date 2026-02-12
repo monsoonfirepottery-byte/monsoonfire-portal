@@ -1,6 +1,6 @@
 # P2 — Agent X1C Print Intake Validation and Safety
 
-**Status:** Open
+Status: Open
 
 ## Problem
 - 3D print jobs from agents can contain unsafe, unprintable, or policy-violating requests.

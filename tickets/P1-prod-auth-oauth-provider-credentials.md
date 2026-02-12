@@ -1,5 +1,7 @@
 # P1 - Production Auth: Create OAuth Apps + Configure Provider Secrets
 
+Status: Planned
+
 Created: 2026-02-10
 
 ## Why

@@ -1,6 +1,6 @@
 # P1 — Delegated Agent AuthZ and Scoped Actions
 
-**Status:** Open
+Status: Open
 
 ## Problem
 - Agents acting for humans/entities can become confused deputies.

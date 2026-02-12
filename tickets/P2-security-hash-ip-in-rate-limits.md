@@ -1,6 +1,6 @@
 # P2 — Privacy/Security: Hash IP in Rate Limit Keys (Avoid Storing Raw IPs)
 
-**Status:** Done (2026-02-11)
+Status: Completed
 
 ## Problem
 - `functions/src/shared.ts` durable rate limiting stores state in Firestore:
@@ -20,4 +20,3 @@
 
 ## Notes
 - Ensure Firestore TTL is enabled on `rateLimits.expiresAt` (see `tickets/P2-ratelimits-ttl.md`).
-

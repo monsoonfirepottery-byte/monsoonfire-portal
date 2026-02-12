@@ -35,4 +35,3 @@ This avoids ad-hoc behavior differences between web/iOS/Android.
 
 - In airplane mode, the app communicates what will happen and never silently drops writes.
 - When coming back online, queued actions retry and converge without duplicates.
-

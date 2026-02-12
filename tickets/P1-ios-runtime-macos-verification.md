@@ -1,4 +1,4 @@
-Status: Open (2026-02-05)
+Status: Open
 
 # P1 - iOS runtime verification on macOS (Xcode)
 

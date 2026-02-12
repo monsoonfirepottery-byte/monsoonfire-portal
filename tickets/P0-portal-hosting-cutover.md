@@ -1,5 +1,7 @@
 # P0 - Portal Hosting Cutover (portal.monsoonfire.com)
 
+Status: Planned
+
 Goal: ship the portal at `https://portal.monsoonfire.com` on Namecheap hosting, with working Firebase Auth + Cloud Functions calls, and the correct static hosting behavior for a SPA.
 
 ## Problem

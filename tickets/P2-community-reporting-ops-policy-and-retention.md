@@ -1,6 +1,6 @@
 # P2 — Reporting Ops Policy, Abuse Playbook, and Retention
 
-**Status:** Planned
+Status: Planned
 
 ## Context / user story
 - As operators, we need clear policy + retention + incident response for report abuse and escalations.

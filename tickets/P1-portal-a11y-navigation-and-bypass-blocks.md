@@ -1,6 +1,6 @@
 # P1 — Portal A11y: Navigation + Bypass Blocks
 
-**Status:** Planned
+Status: Planned
 
 ## Problem
 - App shell lacks a skip-link pattern and puts dense navigation before content.

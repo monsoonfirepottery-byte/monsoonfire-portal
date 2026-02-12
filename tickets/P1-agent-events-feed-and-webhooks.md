@@ -1,6 +1,6 @@
 # P1 — Agent Integrations: Events Feed (Pull) + Optional Webhooks (Push)
 
-**Status:** In Progress
+Status: In Progress
 
 ## Problem
 - Agents need to react to changes (piece stage updates, batch closed, firing scheduled, etc.).

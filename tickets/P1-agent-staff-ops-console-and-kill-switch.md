@@ -1,6 +1,6 @@
 # P1 — Agent Staff Ops Console and Kill Switch
 
-**Status:** Open
+Status: Open
 
 ## Problem
 - Staff need operational control of agent traffic without engineering intervention.

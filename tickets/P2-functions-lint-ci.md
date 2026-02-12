@@ -1,4 +1,4 @@
-Status: Completed (2026-02-05)
+Status: Completed
 
 # P2 - Add Functions lint to CI (or explicitly waive)
 

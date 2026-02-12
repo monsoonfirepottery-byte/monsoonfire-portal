@@ -1,6 +1,6 @@
 # P2 — Agent/Human Request Intake: “Do This For Me” Queue (Staff Triage)
 
-**Status:** Open
+Status: Open
 
 ## Problem
 - If we want to support agents (and humans) delegating work to the studio, we need a safe, auditable intake funnel.
@@ -126,4 +126,3 @@ Recommended: option (2) if we expect real shipping usage.
 - Staff can triage, assign, and link to a batch.
 - Requests are authenticated, rate-limited, and audited.
 - No PII is logged; PII access is restricted to owner+staff.
-

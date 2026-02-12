@@ -1,6 +1,6 @@
 # P1 — Community Card Reporting UI + Modal
 
-**Status:** Planned
+Status: Planned
 
 ## Context / user story
 - As a user, I can open an overflow menu on each community card and choose `Report`.

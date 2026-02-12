@@ -1,6 +1,6 @@
 # P1 — Agent Quote/Reserve/Pay/Status v1
 
-**Status:** Open
+Status: Open
 
 ## Problem
 - Agent commerce needs deterministic transaction endpoints, not chat-only flows.

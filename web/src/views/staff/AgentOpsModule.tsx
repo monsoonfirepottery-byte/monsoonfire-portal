@@ -100,6 +100,9 @@ type AgentOpsConfigResponse = {
   config?: {
     enabled?: boolean;
     allowPayments?: boolean;
+    lastControlReason?: string | null;
+    updatedByUid?: string | null;
+    updatedAtMs?: number;
   };
 };
 type ExportDeniedEventsCsvResponse = {
@@ -270,6 +273,15 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [agentApiEnabled, setAgentApiEnabled] = useState(true);
   const [agentPaymentsEnabled, setAgentPaymentsEnabled] = useState(true);
   const [agentControlsReason, setAgentControlsReason] = useState("");
+  const [agentControlsMeta, setAgentControlsMeta] = useState<{
+    lastControlReason: string;
+    updatedByUid: string;
+    updatedAtMs: number;
+  }>({
+    lastControlReason: "",
+    updatedByUid: "",
+    updatedAtMs: 0,
+  });
 
   const selected = useMemo(() => clients.find((row) => row.id === selectedId) ?? null, [clients, selectedId]);
   const deniedEvents = useMemo(() => {
@@ -388,6 +400,11 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
 
     setAgentApiEnabled(opsConfigResp.config?.enabled !== false);
     setAgentPaymentsEnabled(opsConfigResp.config?.allowPayments !== false);
+    setAgentControlsMeta({
+      lastControlReason: str(opsConfigResp.config?.lastControlReason, ""),
+      updatedByUid: str(opsConfigResp.config?.updatedByUid, ""),
+      updatedAtMs: num(opsConfigResp.config?.updatedAtMs, 0),
+    });
 
     if (!selectedId && rows.length > 0) setSelectedId(rows[0].id);
     if (selectedId && !rows.some((row) => row.id === selectedId)) {
@@ -687,6 +704,13 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
           Save controls
         </button>
       </div>
+      {agentControlsMeta.updatedAtMs > 0 ? (
+        <div className="staff-note">
+          Last control update: {when(agentControlsMeta.updatedAtMs)}
+          {agentControlsMeta.updatedByUid ? ` by ${agentControlsMeta.updatedByUid}` : ""}
+          {agentControlsMeta.lastControlReason ? ` · reason: ${agentControlsMeta.lastControlReason}` : ""}
+        </div>
+      ) : null}
       {status ? <div className="staff-note">{status}</div> : null}
       {error ? <div className="staff-note staff-note-error">{error}</div> : null}
 

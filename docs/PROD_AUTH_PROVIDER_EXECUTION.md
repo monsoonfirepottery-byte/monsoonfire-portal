@@ -74,6 +74,10 @@ Suggested table:
 | Facebook |  |  |  |  |
 | Microsoft |  |  |  |  |
 
+Helper:
+- `pwsh scripts/new-auth-provider-run-entry.ps1`
+- Optional: `-OutFile docs/PROD_AUTH_PROVIDER_RUN_LOG.md`
+
 ## 6) Rollback
 If a provider breaks sign-in:
 1. Disable the provider in Firebase Auth temporarily.

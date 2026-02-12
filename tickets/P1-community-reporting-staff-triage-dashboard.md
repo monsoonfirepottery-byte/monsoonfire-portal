@@ -1,6 +1,6 @@
 # P1 — Staff Reports Queue + Triage Workflow
 
-Status: Planned
+Status: In Progress
 
 ## Context / user story
 - As staff, I need a reports queue with filters, details, and resolution actions.
@@ -37,3 +37,8 @@ Status: Planned
 
 ## Estimate
 - M
+
+## Progress notes
+- Implemented `Reports` staff module with filterable queue, detail panel, bulk status updates, and internal notes/actions wiring.
+- Added SLA-focused triage mode and keyboard-accessible table row selection.
+- Added date-window filtering (`24h`, `7d`, `30d`, `90d`, `all`) across staff report listing.

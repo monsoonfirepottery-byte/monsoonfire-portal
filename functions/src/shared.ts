@@ -157,6 +157,44 @@ export type AuthContext =
       };
     };
 
+type SecurityAuditMode = "firebase" | "pat" | "delegated" | "unknown";
+type SecurityAuditOutcome = "ok" | "deny" | "error";
+
+export async function logSecurityEvent(params: {
+  req: any;
+  type: string;
+  outcome: SecurityAuditOutcome;
+  code?: string;
+  uid?: string | null;
+  mode?: SecurityAuditMode;
+  tokenId?: string | null;
+  requestId?: string | null;
+  metadata?: Record<string, unknown> | null;
+}) {
+  try {
+    const ipHash = hashClientIp(getClientIp(params.req));
+    const uaHeader = params.req?.headers?.["user-agent"];
+    const ua = typeof uaHeader === "string" ? uaHeader.slice(0, 200) : "";
+    const path = typeof params.req?.path === "string" ? params.req.path : "";
+    await db.collection("securityAudit").add({
+      at: nowTs(),
+      type: params.type,
+      outcome: params.outcome,
+      code: (params.code ?? "").trim() || null,
+      uid: (params.uid ?? "").trim() || null,
+      mode: (params.mode ?? "unknown").trim(),
+      tokenId: (params.tokenId ?? "").trim() || null,
+      ipHash,
+      ua: ua || null,
+      requestId: (params.requestId ?? "").trim() || null,
+      path: path || null,
+      metadata: params.metadata ?? null,
+    });
+  } catch {
+    // Best-effort security logging should never block request handling.
+  }
+}
+
 function readIntegrationTokenPepper(): string | null {
   const raw = (process.env.INTEGRATION_TOKEN_PEPPER ?? "").trim();
   return raw.length ? raw : null;
@@ -317,42 +355,70 @@ export async function requireAuthContext(
   if (cached && typeof cached.uid === "string" && cached.uid) return { ok: true, ctx: cached };
 
   const token = parseAuthToken(req);
-  if (!token) return { ok: false, code: "UNAUTHENTICATED", message: "Missing Authorization header" };
+  if (!token) {
+    void logSecurityEvent({
+      req,
+      type: "auth_missing_authorization",
+      outcome: "deny",
+      code: "MISSING_AUTH_HEADER",
+      mode: "unknown",
+    });
+    return { ok: false, code: "UNAUTHENTICATED", message: "Missing Authorization header" };
+  }
 
   // Delegated auth token
   if (token.startsWith(`${DELEGATED_TOKEN_PREFIX}.`)) {
     const parsed = parseDelegatedToken(token);
-    if (!parsed.ok) return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    if (!parsed.ok) {
+      void logSecurityEvent({ req, type: "auth_delegated_denied", outcome: "deny", code: "DELEGATED_PARSE_FAILED", mode: "delegated" });
+      return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    }
 
     const expectedSignature = signDelegatedPayload(parsed.payloadEncoded);
     if (!expectedSignature || !constantTimeCompareStrings(expectedSignature, parsed.signature)) {
+      void logSecurityEvent({ req, type: "auth_delegated_denied", outcome: "deny", code: "DELEGATED_SIGNATURE_INVALID", mode: "delegated" });
       return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
     }
 
     const payload = decodeDelegatedPayload(parsed.payloadEncoded);
-    if (!payload) return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    if (!payload) {
+      void logSecurityEvent({ req, type: "auth_delegated_denied", outcome: "deny", code: "DELEGATED_PAYLOAD_INVALID", mode: "delegated" });
+      return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    }
     if (payload.aud !== delegatedAudience()) {
+      void logSecurityEvent({ req, type: "auth_delegated_denied", outcome: "deny", code: "DELEGATED_AUDIENCE_MISMATCH", mode: "delegated", tokenId: payload.agentClientId });
       return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
     }
     if (payload.exp <= Date.now()) {
+      void logSecurityEvent({ req, type: "auth_delegated_denied", outcome: "deny", code: "DELEGATED_EXPIRED", mode: "delegated", tokenId: payload.agentClientId, uid: payload.principalUid });
       return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
     }
 
     const clientRef = db.collection("agentClients").doc(payload.agentClientId);
     const clientSnap = await clientRef.get();
-    if (!clientSnap.exists) return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    if (!clientSnap.exists) {
+      void logSecurityEvent({ req, type: "auth_delegated_denied", outcome: "deny", code: "DELEGATED_CLIENT_NOT_FOUND", mode: "delegated", tokenId: payload.agentClientId, uid: payload.principalUid });
+      return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    }
     const clientData = clientSnap.data() as Record<string, unknown>;
     const status = typeof clientData.status === "string" ? clientData.status : "active";
-    if (status !== "active") return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    if (status !== "active") {
+      void logSecurityEvent({ req, type: "auth_delegated_denied", outcome: "deny", code: "DELEGATED_CLIENT_INACTIVE", mode: "delegated", tokenId: payload.agentClientId, uid: payload.principalUid });
+      return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    }
     const allowedScopes = Array.isArray(clientData.scopes)
       ? clientData.scopes.filter((entry): entry is string => typeof entry === "string")
       : [];
     if (payload.scopes.some((scope) => !allowedScopes.includes(scope))) {
+      void logSecurityEvent({ req, type: "auth_delegated_denied", outcome: "deny", code: "DELEGATED_SCOPE_INVALID", mode: "delegated", tokenId: payload.agentClientId, uid: payload.principalUid });
       return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
     }
 
     const nonceOk = await claimDelegatedNonce(payload);
-    if (!nonceOk) return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    if (!nonceOk) {
+      void logSecurityEvent({ req, type: "auth_delegated_denied", outcome: "deny", code: "DELEGATED_NONCE_REPLAY", mode: "delegated", tokenId: payload.agentClientId, uid: payload.principalUid });
+      return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    }
 
     const ctx: AuthContext = {
       mode: "delegated",
@@ -375,6 +441,16 @@ export async function requireAuthContext(
     } catch {
       // ignore
     }
+    void logSecurityEvent({
+      req,
+      type: "auth_delegated_ok",
+      outcome: "ok",
+      code: "DELEGATED_AUTH_OK",
+      mode: "delegated",
+      uid: payload.principalUid,
+      tokenId: payload.agentClientId,
+      metadata: { scopeCount: payload.scopes.length, audience: payload.aud },
+    });
 
     return { ok: true, ctx };
   }
@@ -382,14 +458,23 @@ export async function requireAuthContext(
   // PAT auth
   if (token.startsWith("mf_pat_v1.")) {
     const parsed = parsePatToken(token);
-    if (!parsed.ok) return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    if (!parsed.ok) {
+      void logSecurityEvent({ req, type: "auth_pat_denied", outcome: "deny", code: "PAT_PARSE_FAILED", mode: "pat" });
+      return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    }
 
     const gotHash = hashIntegrationTokenSecret(parsed.secret);
-    if (!gotHash) return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    if (!gotHash) {
+      void logSecurityEvent({ req, type: "auth_pat_denied", outcome: "deny", code: "PAT_HASH_UNAVAILABLE", mode: "pat", tokenId: parsed.tokenId });
+      return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    }
 
     const ref = db.collection("integrationTokens").doc(parsed.tokenId);
     const snap = await ref.get();
-    if (!snap.exists) return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    if (!snap.exists) {
+      void logSecurityEvent({ req, type: "auth_pat_denied", outcome: "deny", code: "PAT_TOKEN_NOT_FOUND", mode: "pat", tokenId: parsed.tokenId });
+      return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    }
 
     const data = snap.data() as any;
     const expectedHash = typeof data?.secretHash === "string" ? data.secretHash : "";
@@ -399,15 +484,18 @@ export async function requireAuthContext(
 
     // Revoked or malformed records are treated as unauthorized.
     if (!expectedHash || !ownerUid || revokedAt) {
+      void logSecurityEvent({ req, type: "auth_pat_denied", outcome: "deny", code: "PAT_REVOKED_OR_INVALID", mode: "pat", tokenId: parsed.tokenId, uid: ownerUid || null });
       return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
     }
 
     const expectedBuf = Buffer.from(expectedHash, "hex");
     const gotBuf = Buffer.from(gotHash, "hex");
     if (expectedBuf.length !== gotBuf.length) {
+      void logSecurityEvent({ req, type: "auth_pat_denied", outcome: "deny", code: "PAT_HASH_LENGTH_MISMATCH", mode: "pat", tokenId: parsed.tokenId, uid: ownerUid });
       return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
     }
     if (!timingSafeEqual(expectedBuf, gotBuf)) {
+      void logSecurityEvent({ req, type: "auth_pat_denied", outcome: "deny", code: "PAT_HASH_MISMATCH", mode: "pat", tokenId: parsed.tokenId, uid: ownerUid });
       return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
     }
 
@@ -428,6 +516,16 @@ export async function requireAuthContext(
     } catch {
       // ignore
     }
+    void logSecurityEvent({
+      req,
+      type: "auth_pat_ok",
+      outcome: "ok",
+      code: "PAT_AUTH_OK",
+      mode: "pat",
+      uid: ownerUid,
+      tokenId: parsed.tokenId,
+      metadata: { scopeCount: scopes.length },
+    });
 
     return { ok: true, ctx };
   }

@@ -655,6 +655,45 @@ type RateLimitState = {
 
 const RATE_LIMIT_BUCKETS = new Map<string, RateLimitState>();
 
+export function evaluateRateLimitWindow(params: {
+  state: Pick<RateLimitState, "count" | "resetAt"> | null;
+  nowMs: number;
+  max: number;
+  windowMs: number;
+}): {
+  ok: boolean;
+  retryAfterMs: number;
+  nextState: RateLimitState;
+} {
+  const normalizedMax = Number.isFinite(params.max) ? Math.max(1, Math.trunc(params.max)) : 1;
+  const normalizedWindowMs = Number.isFinite(params.windowMs) ? Math.max(1, Math.trunc(params.windowMs)) : 1;
+  const nowMs = Number.isFinite(params.nowMs) ? Math.trunc(params.nowMs) : Date.now();
+  const existing = params.state;
+
+  if (!existing || existing.resetAt <= nowMs) {
+    return {
+      ok: true,
+      retryAfterMs: 0,
+      nextState: { count: 1, resetAt: nowMs + normalizedWindowMs },
+    };
+  }
+
+  const nextCount = existing.count + 1;
+  if (nextCount > normalizedMax) {
+    return {
+      ok: false,
+      retryAfterMs: Math.max(1, existing.resetAt - nowMs),
+      nextState: { count: nextCount, resetAt: existing.resetAt },
+    };
+  }
+
+  return {
+    ok: true,
+    retryAfterMs: 0,
+    nextState: { count: nextCount, resetAt: existing.resetAt },
+  };
+}
+
 function getClientIp(req: any): string {
   const header = req.headers["x-forwarded-for"];
   if (typeof header === "string" && header.trim()) {
@@ -683,12 +722,13 @@ export async function enforceRateLimit(params: {
   const now = Date.now();
 
   const local = RATE_LIMIT_BUCKETS.get(bucketKey);
-  if (!local || local.resetAt <= now) {
-    RATE_LIMIT_BUCKETS.set(bucketKey, { count: 1, resetAt: now + windowMs });
-  } else {
-    local.count += 1;
-    RATE_LIMIT_BUCKETS.set(bucketKey, local);
-  }
+  const localDecision = evaluateRateLimitWindow({
+    state: local ? { count: local.count, resetAt: local.resetAt } : null,
+    nowMs: now,
+    max,
+    windowMs,
+  });
+  RATE_LIMIT_BUCKETS.set(bucketKey, localDecision.nextState);
 
   const docRef = db.collection("rateLimits").doc(bucketKey);
   try {
@@ -709,9 +749,12 @@ export async function enforceRateLimit(params: {
     }
     return { ok: true };
   } catch {
+    if (!localDecision.ok) {
+      return { ok: false, retryAfterMs: localDecision.retryAfterMs };
+    }
     const fallback = RATE_LIMIT_BUCKETS.get(bucketKey);
     if (fallback && fallback.count > max) {
-      return { ok: false, retryAfterMs: Math.max(fallback.resetAt - now, 0) };
+      return { ok: false, retryAfterMs: Math.max(fallback.resetAt - now, 1) };
     }
     return { ok: true };
   }

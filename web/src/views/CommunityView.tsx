@@ -312,6 +312,10 @@ function isErrorMessage(value: string): boolean {
   return /could|failed|error|invalid|limit|already|please include/i.test(value);
 }
 
+function toDomId(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "-");
+}
+
 function normalizeAppeal(row: Record<string, unknown>): ReportAppeal {
   const statusRaw = typeof row.status === "string" ? row.status : "open";
   return {
@@ -371,6 +375,17 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
     }, 7000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!openMenuKey) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenMenuKey(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [openMenuKey]);
 
   const loadReportHistory = async () => {
     setReportHistoryBusy(true);
@@ -538,24 +553,30 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
     }
   };
 
-  const reportMenu = (cardKey: string, target: ReportTarget) => (
-    <div className="community-card-menu-wrap">
+  const reportMenu = (cardKey: string, target: ReportTarget) => {
+    const menuId = `community-card-menu-${toDomId(cardKey)}`;
+    return (
+      <div className="community-card-menu-wrap">
       <button
         type="button"
         className="community-card-menu-btn"
         onClick={() => setOpenMenuKey((prev) => (prev === cardKey ? null : cardKey))}
         aria-label="Open card actions"
+        aria-haspopup="menu"
+        aria-expanded={openMenuKey === cardKey}
+        aria-controls={menuId}
       >
         ⋯
       </button>
       {openMenuKey === cardKey ? (
-        <div className="community-card-menu">
-          <button type="button" onClick={() => openReport(target)}>Report</button>
-          <button type="button" onClick={() => hideCard(cardKey)}>Not interested / Hide this card</button>
+        <div className="community-card-menu" role="menu" id={menuId} aria-label="Card actions">
+          <button type="button" role="menuitem" onClick={() => openReport(target)}>Report</button>
+          <button type="button" role="menuitem" onClick={() => hideCard(cardKey)}>Not interested / Hide this card</button>
         </div>
       ) : null}
-    </div>
-  );
+      </div>
+    );
+  };
 
   return (
     <div className="page community-page">

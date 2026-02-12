@@ -43,3 +43,7 @@ Status: In Progress
   - removed clickable `<tr>` keyboard handlers
   - added explicit first-column `View/Selected` buttons for row selection
   - preserved visual selected state via `.staff-selected-row` without relying on row interactivity
+- Improved Community card overflow menu semantics:
+  - menu trigger now exposes `aria-haspopup`, `aria-expanded`, and `aria-controls`
+  - menu container uses `role="menu"` with `role="menuitem"` actions
+  - Escape key closes open menu for keyboard users

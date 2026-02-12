@@ -28,4 +28,3 @@ Security operations need one append-only audit stream across auth, token, and de
 ## Security notes
 - Hash IP; do not store raw IP.
 - Avoid logging secrets/token plaintext.
-

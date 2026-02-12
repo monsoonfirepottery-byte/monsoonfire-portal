@@ -27,4 +27,3 @@ Sign-in risk hooks are not yet used to enforce additional controls on suspicious
 ## Security notes
 - Avoid false-positive lockouts.
 - Include safe manual override process.
-

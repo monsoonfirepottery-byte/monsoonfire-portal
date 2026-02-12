@@ -28,4 +28,3 @@ Staff and owners need immediate controls to revoke suspicious delegations.
 ## Security notes
 - No delegated token values displayed in staff UI.
 - Revoke is server-enforced only.
-

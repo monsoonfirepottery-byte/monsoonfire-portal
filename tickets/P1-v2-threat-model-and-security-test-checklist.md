@@ -28,4 +28,3 @@ Without a living threat model and reproducible tests, auth hardening can regress
 ## Security notes
 - Every privileged action must have audit evidence.
 - Include incident response linkage for failed controls.
-

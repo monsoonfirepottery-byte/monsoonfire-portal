@@ -27,4 +27,3 @@ New authz entities need explicit rules to avoid accidental client writes and ove
 ## Security notes
 - Least privilege only.
 - Avoid exposing audit metadata to non-staff users.
-

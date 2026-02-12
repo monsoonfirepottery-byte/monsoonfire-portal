@@ -2281,6 +2281,55 @@ const loadEvents = useCallback(async () => {
     setStatus(`Event ${selectedEvent.id} published.`);
   };
 
+  const checkInSignupFallback = async (signup: SignupRecord) => {
+    if (!selectedEventId) throw new Error("Select an event first.");
+    if (signup.status === "checked_in") return;
+
+    const now = new Date();
+    await setDoc(
+      doc(db, "eventSignups", signup.id),
+      {
+        status: "checked_in",
+        checkedInAt: now,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+
+    qTrace("eventSignups", { eventId: selectedEventId, limit: 500, fallback: "recount" });
+    const signupsSnap = await getDocs(
+      query(collection(db, "eventSignups"), where("eventId", "==", selectedEventId), limit(500))
+    );
+
+    let ticketedCount = 0;
+    let offeredCount = 0;
+    let checkedInCount = 0;
+    let waitlistCount = 0;
+
+    for (const row of signupsSnap.docs) {
+      const data = row.data();
+      const status = str(data.status, "").toLowerCase();
+      if (status === "ticketed" || status === "checked_in") ticketedCount += 1;
+      if (status === "offered") offeredCount += 1;
+      if (status === "checked_in") checkedInCount += 1;
+      if (status === "waitlisted") waitlistCount += 1;
+    }
+
+    const eventRow = events.find((row) => row.id === selectedEventId);
+    const payload: Record<string, unknown> = {
+      ticketedCount,
+      offeredCount,
+      checkedInCount,
+      waitlistCount,
+      updatedAt: now,
+    };
+    if (eventRow) {
+      payload.remainingCapacity = Math.max(eventRow.capacity - ticketedCount, 0);
+    }
+
+    await setDoc(doc(db, "events", selectedEventId), payload, { merge: true });
+  };
+
   const eventsContent = (
     <section className="card staff-console-card">
       <div className="card-title-row">
@@ -2480,11 +2529,16 @@ const loadEvents = useCallback(async () => {
                           <td>
                             <button
                               className="btn btn-ghost btn-small"
-                              disabled={!!busy || signup.status === "checked_in" || !selectedEventId || hasFunctionsAuthMismatch}
+                              disabled={!!busy || signup.status === "checked_in" || !selectedEventId}
                               onClick={() =>
                                 void run(`checkin-${signup.id}`, async () => {
-                                  await client.postJson("checkInEvent", { signupId: signup.id, method: "staff" });
+                                  if (hasFunctionsAuthMismatch) {
+                                    await checkInSignupFallback(signup);
+                                  } else {
+                                    await client.postJson("checkInEvent", { signupId: signup.id, method: "staff" });
+                                  }
                                   await loadSignups(selectedEventId);
+                                  await loadEvents();
                                   setStatus("Signup checked in");
                                 })
                               }

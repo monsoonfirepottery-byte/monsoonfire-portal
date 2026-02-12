@@ -64,6 +64,8 @@ const listReportsSchema = z.object({
   category: reportCategorySchema.or(z.literal("all")).optional(),
   severity: reportSeveritySchema.or(z.literal("all")).optional(),
   targetType: reportTargetTypeSchema.or(z.literal("all")).optional(),
+  createdAfterMs: z.number().int().nonnegative().optional(),
+  createdBeforeMs: z.number().int().nonnegative().optional(),
   limit: z.number().int().min(1).max(200).optional(),
 });
 
@@ -414,7 +416,15 @@ export const listReports = onRequest({ region: REGION, timeoutSeconds: 60 }, asy
     return;
   }
 
-  const { status = "all", category = "all", severity = "all", targetType = "all", limit = 80 } = parsed.data;
+  const {
+    status = "all",
+    category = "all",
+    severity = "all",
+    targetType = "all",
+    createdAfterMs,
+    createdBeforeMs,
+    limit = 80,
+  } = parsed.data;
   const snap = await db.collection(REPORTS_COL).orderBy("createdAt", "desc").limit(limit).get();
   let reports: Array<Record<string, unknown>> = snap.docs.map((docSnap) => ({
     id: docSnap.id,
@@ -425,6 +435,15 @@ export const listReports = onRequest({ region: REGION, timeoutSeconds: 60 }, asy
     if (category !== "all" && safeString(row.category) !== category) return false;
     if (severity !== "all" && safeString(row.severity) !== severity) return false;
     if (targetType !== "all" && safeString(row.targetType) !== targetType) return false;
+    const createdAtRaw = row.createdAt as { toMillis?: () => number; seconds?: unknown } | undefined;
+    let createdAtMs = 0;
+    if (createdAtRaw && typeof createdAtRaw.toMillis === "function") {
+      createdAtMs = Number(createdAtRaw.toMillis() || 0);
+    } else if (createdAtRaw) {
+      createdAtMs = Number(createdAtRaw.seconds ?? 0) * 1000;
+    }
+    if (typeof createdAfterMs === "number" && createdAfterMs > 0 && createdAtMs > 0 && createdAtMs < createdAfterMs) return false;
+    if (typeof createdBeforeMs === "number" && createdBeforeMs > 0 && createdAtMs > createdBeforeMs) return false;
     return true;
   });
 
@@ -432,7 +451,7 @@ export const listReports = onRequest({ region: REGION, timeoutSeconds: 60 }, asy
     actorUid: auth.uid,
     actorRole: "staff",
     action: "list_reports",
-    metadata: { status, category, severity, targetType, limit },
+    metadata: { status, category, severity, targetType, createdAfterMs, createdBeforeMs, limit },
   });
   res.status(200).json({ ok: true, reports });
 });

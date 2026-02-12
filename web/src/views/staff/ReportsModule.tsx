@@ -15,6 +15,7 @@ type ReportCategory =
   | "other";
 type ReportTargetType = "youtube_video" | "blog_post" | "studio_update" | "event";
 type ContentActionType = "unpublish" | "replace_link" | "flag_for_review" | "disable_from_feed";
+type ReportDateRange = "all" | "24h" | "7d" | "30d" | "90d";
 type SlaBreachType = "none" | "high_over24" | "open_over48";
 type PolicyRule = {
   id: string;
@@ -262,6 +263,7 @@ export default function ReportsModule({ client, active, disabled }: Props) {
   const [filterSeverity, setFilterSeverity] = useState<"all" | ReportSeverity>("all");
   const [filterCategory, setFilterCategory] = useState<"all" | ReportCategory>("all");
   const [filterType, setFilterType] = useState<"all" | ReportTargetType>("all");
+  const [filterDateRange, setFilterDateRange] = useState<ReportDateRange>("30d");
   const [showSlaOnly, setShowSlaOnly] = useState(false);
   const [internalNotes, setInternalNotes] = useState<InternalNote[]>([]);
   const [newInternalNote, setNewInternalNote] = useState("");
@@ -312,13 +314,28 @@ export default function ReportsModule({ client, active, disabled }: Props) {
   };
 
   const loadReports = async () => {
-    const resp = await client.postJson<ListReportsResponse>("listReports", {
+    const now = Date.now();
+    const dateRangeToMs: Record<Exclude<ReportDateRange, "all">, number> = {
+      "24h": 24 * 60 * 60 * 1000,
+      "7d": 7 * 24 * 60 * 60 * 1000,
+      "30d": 30 * 24 * 60 * 60 * 1000,
+      "90d": 90 * 24 * 60 * 60 * 1000,
+    };
+    const createdAfterMs =
+      filterDateRange === "all" ? undefined : now - dateRangeToMs[filterDateRange];
+
+    const payload: Record<string, unknown> = {
       status: filterStatus,
       severity: filterSeverity,
       category: filterCategory,
       targetType: filterType,
       limit: 120,
-    });
+    };
+    if (typeof createdAfterMs === "number" && createdAfterMs > 0) {
+      payload.createdAfterMs = createdAfterMs;
+    }
+
+    const resp = await client.postJson<ListReportsResponse>("listReports", payload);
     const rows = Array.isArray(resp.reports)
       ? resp.reports.map((row) => normalizeReport(row))
       : [];
@@ -404,7 +421,7 @@ export default function ReportsModule({ client, active, disabled }: Props) {
       await Promise.all([loadReports(), loadAppeals(), loadActivePolicy()]);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, disabled, filterStatus, filterSeverity, filterCategory, filterType]);
+  }, [active, disabled, filterStatus, filterSeverity, filterCategory, filterType, filterDateRange]);
 
   useEffect(() => {
     if (!active || disabled) return;
@@ -794,6 +811,13 @@ export default function ReportsModule({ client, active, disabled }: Props) {
           <option value="blog_post">Blog post</option>
           <option value="studio_update">Studio update</option>
           <option value="event">Event</option>
+        </select>
+        <select className="staff-member-role-filter" value={filterDateRange} onChange={(event) => setFilterDateRange(event.target.value as ReportDateRange)}>
+          <option value="24h">Last 24 hours</option>
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+          <option value="90d">Last 90 days</option>
+          <option value="all">All time</option>
         </select>
         <button
           className="btn btn-secondary"

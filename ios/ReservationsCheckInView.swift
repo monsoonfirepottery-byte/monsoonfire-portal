@@ -44,8 +44,7 @@ struct ReservationsCheckInView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
 
-                TextField("Notes (optional)", text: $notes, axis: .vertical)
-                    .lineLimit(2...4)
+                TextField("Notes (optional)", text: $notes)
 
                 Button(selectedPhotoName.isEmpty ? "Select photo (optional)" : "Photo: \(selectedPhotoName)") {
                     showFileImporter = true

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FunctionsClient } from "../../api/functionsClient";
-import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
+import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
 import { db } from "../../firebase";
 
 type ReportStatus = "open" | "triaged" | "actioned" | "resolved" | "dismissed";
@@ -56,6 +56,17 @@ type InternalNote = {
   note: string;
   authorUid: string;
   createdAtMs: number;
+};
+
+type ReportAuditEntry = {
+  id: string;
+  action: string;
+  actorUid: string;
+  actorRole: string;
+  createdAtMs: number;
+  reasonCode: string;
+  policyVersion: string;
+  metadataJson: string;
 };
 
 type AppealStatus = "open" | "in_review" | "upheld" | "reversed" | "rejected";
@@ -266,6 +277,7 @@ export default function ReportsModule({ client, active, disabled }: Props) {
   const [filterDateRange, setFilterDateRange] = useState<ReportDateRange>("30d");
   const [showSlaOnly, setShowSlaOnly] = useState(false);
   const [internalNotes, setInternalNotes] = useState<InternalNote[]>([]);
+  const [reportAuditEntries, setReportAuditEntries] = useState<ReportAuditEntry[]>([]);
   const [newInternalNote, setNewInternalNote] = useState("");
   const [nextStatus, setNextStatus] = useState<ReportStatus>("triaged");
   const [resolutionCode, setResolutionCode] = useState("");
@@ -415,6 +427,37 @@ export default function ReportsModule({ client, active, disabled }: Props) {
     setInternalNotes(rows);
   };
 
+  const loadReportAuditEntries = async (reportId: string) => {
+    if (!reportId) {
+      setReportAuditEntries([]);
+      return;
+    }
+    const snap = await getDocs(
+      query(
+        collection(db, "communityReportAuditLogs"),
+        where("reportId", "==", reportId),
+        limit(40)
+      )
+    );
+    const rows: ReportAuditEntry[] = snap.docs
+      .map((docSnap) => {
+        const row = docSnap.data() as Record<string, unknown>;
+        const metadata = row.metadata as Record<string, unknown> | undefined;
+        return {
+          id: docSnap.id,
+          action: str(row.action),
+          actorUid: str(row.actorUid),
+          actorRole: str(row.actorRole),
+          createdAtMs: toMs(row.createdAt),
+          reasonCode: str(row.reasonCode),
+          policyVersion: str(row.policyVersion),
+          metadataJson: metadata ? JSON.stringify(metadata) : "",
+        };
+      })
+      .sort((a, b) => b.createdAtMs - a.createdAtMs);
+    setReportAuditEntries(rows);
+  };
+
   useEffect(() => {
     if (!active || disabled) return;
     void run("loadReports", async () => {
@@ -426,7 +469,7 @@ export default function ReportsModule({ client, active, disabled }: Props) {
   useEffect(() => {
     if (!active || disabled) return;
     void run("loadNotes", async () => {
-      await loadInternalNotes(selectedReportId);
+      await Promise.all([loadInternalNotes(selectedReportId), loadReportAuditEntries(selectedReportId)]);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, disabled, selectedReportId]);
@@ -1225,6 +1268,43 @@ export default function ReportsModule({ client, active, disabled }: Props) {
                         <span>{when(note.createdAtMs)}</span>
                       </div>
                       <div className="staff-log-message">{note.note}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="staff-subtitle">Report timeline</div>
+              <div className="staff-log-list">
+                {reportAuditEntries.length === 0 ? (
+                  <div className="staff-note">No audit timeline entries yet.</div>
+                ) : (
+                  reportAuditEntries.map((entry) => (
+                    <div key={entry.id} className="staff-log-entry">
+                      <div className="staff-log-meta">
+                        <span className="staff-log-label">{entry.action || "audit_event"}</span>
+                        <span>{when(entry.createdAtMs)}</span>
+                      </div>
+                      <div className="staff-log-message">
+                        <strong>Actor:</strong> <code>{entry.actorUid || "-"}</code> ({entry.actorRole || "unknown"})
+                        {entry.reasonCode ? (
+                          <>
+                            <br />
+                            <strong>Reason code:</strong> <code>{entry.reasonCode}</code>
+                          </>
+                        ) : null}
+                        {entry.policyVersion ? (
+                          <>
+                            <br />
+                            <strong>Policy version:</strong> <code>{entry.policyVersion}</code>
+                          </>
+                        ) : null}
+                        {entry.metadataJson ? (
+                          <>
+                            <br />
+                            <strong>Metadata:</strong> <code>{entry.metadataJson}</code>
+                          </>
+                        ) : null}
+                      </div>
                     </div>
                   ))
                 )}

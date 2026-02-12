@@ -17,6 +17,8 @@ Goals:
    - Ensure `/.well-known/` exists under the portal origin and contains the real AASA/assetlinks files.
 5. Run the preflight verifier:
    - `pwsh web/deploy/namecheap/verify-cutover.ps1 -PortalUrl https://portal.monsoonfire.com`
+   - Optional structured report:
+     - `pwsh web/deploy/namecheap/verify-cutover.ps1 -PortalUrl https://portal.monsoonfire.com -ReportPath docs/cutover-verify.json`
 
 ## Notes
 
@@ -26,4 +28,5 @@ Goals:
   - root route is reachable
   - deep link route returns HTML instead of 404
   - `/.well-known/*` can be read without SPA rewrite
-  - cache headers on `index.html` and `/assets/*`
+  - cache headers on `index.html`
+  - sample `/assets/*` files for long-lived cache hints (`immutable` or high `max-age`)

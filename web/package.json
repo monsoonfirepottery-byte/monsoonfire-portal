@@ -7,6 +7,7 @@
     "dev": "node ./scripts/dev.mjs",
     "build": "tsc -b && vite build",
     "perf:chunks": "node ./scripts/check-chunk-budgets.mjs",
+    "a11y:smoke": "node ./scripts/a11y-smoke.mjs",
     "lint": "eslint . --max-warnings=0",
     "test": "node ./node_modules/vitest/vitest.mjs --configLoader runner",
     "dev:all": "node ./scripts/dev.mjs",

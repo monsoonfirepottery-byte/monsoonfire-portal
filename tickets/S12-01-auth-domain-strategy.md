@@ -2,7 +2,7 @@
 
 Created: 2026-02-10
 Sprint: 12
-Status: Open
+Status: Completed
 Swarm: A (Auth + Security)
 
 ## Problem
@@ -15,12 +15,10 @@ Unknown: whether Apple sign-in can remain stable using `*.firebaseapp.com/__/aut
 
 ## Decision
 
-Choose one:
-
-1. Keep Firebase auth handler domain (`monsoonfire-portal.firebaseapp.com`) for alpha.
-2. Introduce a dedicated auth handler domain:
-   - `auth.monsoonfire.com` mapped to Firebase Hosting
-   - `authDomain` updated via `VITE_AUTH_DOMAIN` (see `docs/AUTH_DOMAIN_SETUP.md`)
+Adopt option (2) for alpha and beyond:
+- Dedicated auth handler domain `auth.monsoonfire.com` on Firebase Hosting
+- Portal runtime uses `VITE_AUTH_DOMAIN=auth.monsoonfire.com`
+- Redirect handler target is `https://auth.monsoonfire.com/__/auth/handler`
 
 ## Tasks
 
@@ -47,3 +45,10 @@ Choose one:
 ## Execution notes
 
 - Step-by-step: `docs/AUTH_DOMAIN_SETUP.md`
+
+## Progress updates
+
+- `web/src/firebase.ts` supports override via `VITE_AUTH_DOMAIN`.
+- End-to-end DNS + Firebase + provider setup process documented in `docs/AUTH_DOMAIN_SETUP.md`.
+- Provider credential ticket already references this decision path:
+  - `tickets/P1-prod-auth-oauth-provider-credentials.md`

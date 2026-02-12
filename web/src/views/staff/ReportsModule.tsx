@@ -262,6 +262,7 @@ export default function ReportsModule({ client, active, disabled }: Props) {
   const [filterSeverity, setFilterSeverity] = useState<"all" | ReportSeverity>("all");
   const [filterCategory, setFilterCategory] = useState<"all" | ReportCategory>("all");
   const [filterType, setFilterType] = useState<"all" | ReportTargetType>("all");
+  const [showSlaOnly, setShowSlaOnly] = useState(false);
   const [internalNotes, setInternalNotes] = useState<InternalNote[]>([]);
   const [newInternalNote, setNewInternalNote] = useState("");
   const [nextStatus, setNextStatus] = useState<ReportStatus>("triaged");
@@ -523,8 +524,14 @@ export default function ReportsModule({ client, active, disabled }: Props) {
     };
   }, [reports]);
 
+  const visibleReports = useMemo(() => {
+    if (!showSlaOnly) return reports;
+    const now = Date.now();
+    return reports.filter((report) => getReportSlaBreach(report, now) !== "none");
+  }, [reports, showSlaOnly]);
+
   const selectedCount = selectedReportIds.length;
-  const allSelected = reports.length > 0 && selectedCount === reports.length;
+  const allSelected = visibleReports.length > 0 && visibleReports.every((report) => selectedReportIds.includes(report.id));
 
   const toggleReportSelected = (reportId: string, checked: boolean) => {
     setSelectedReportIds((prev) => {
@@ -584,7 +591,7 @@ export default function ReportsModule({ client, active, disabled }: Props) {
   };
 
   const exportReportsJson = async () => {
-    const payload = reports.map((report) => ({
+    const payload = visibleReports.map((report) => ({
       id: report.id,
       status: report.status,
       severity: report.severity,
@@ -630,7 +637,7 @@ export default function ReportsModule({ client, active, disabled }: Props) {
       "note",
     ];
     const lines = [csvLine(header)];
-    for (const report of reports) {
+    for (const report of visibleReports) {
       lines.push(
         csvLine([
           report.id,
@@ -664,7 +671,7 @@ export default function ReportsModule({ client, active, disabled }: Props) {
     anchor.click();
     document.body.removeChild(anchor);
     URL.revokeObjectURL(objectUrl);
-    setStatus(`Downloaded CSV (${reports.length} rows).`);
+    setStatus(`Downloaded CSV (${visibleReports.length} rows).`);
   };
 
   return (
@@ -710,6 +717,9 @@ export default function ReportsModule({ client, active, disabled }: Props) {
       <div className={`staff-note ${slaCounts.totalBreached > 0 ? "staff-note-error" : ""}`}>
         SLA watch: {slaCounts.highOver24h} high-severity open &gt;24h, {slaCounts.openOver48h} open &gt;48h.
       </div>
+      {showSlaOnly ? (
+        <div className="staff-note">SLA-only mode is on. Showing overdue moderation items only.</div>
+      ) : null}
 
       <div className="staff-kpi-grid">
         <div className="staff-kpi">
@@ -773,14 +783,21 @@ export default function ReportsModule({ client, active, disabled }: Props) {
         </select>
         <button
           className="btn btn-secondary"
-          disabled={Boolean(busy) || reports.length === 0}
+          disabled={Boolean(busy)}
+          onClick={() => setShowSlaOnly((prev) => !prev)}
+        >
+          {showSlaOnly ? "Show all reports" : "Show SLA only"}
+        </button>
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy) || visibleReports.length === 0}
           onClick={() => void run("exportReportsJson", exportReportsJson)}
         >
           Copy JSON
         </button>
         <button
           className="btn btn-secondary"
-          disabled={Boolean(busy) || reports.length === 0}
+          disabled={Boolean(busy) || visibleReports.length === 0}
           onClick={() => void run("exportReportsCsv", exportReportsCsv)}
         >
           Download CSV
@@ -790,17 +807,17 @@ export default function ReportsModule({ client, active, disabled }: Props) {
       <div className="staff-actions-row">
         <button
           className="btn btn-secondary"
-          disabled={Boolean(busy) || reports.length === 0}
-          onClick={() => setSelectedReportIds(reports.map((report) => report.id))}
+          disabled={Boolean(busy) || visibleReports.length === 0}
+          onClick={() => setSelectedReportIds(visibleReports.map((report) => report.id))}
         >
           Select all
         </button>
         <button
           className="btn btn-secondary"
-          disabled={Boolean(busy) || reports.length === 0}
+          disabled={Boolean(busy) || visibleReports.length === 0}
           onClick={() =>
             setSelectedReportIds(
-              reports
+              visibleReports
                 .filter((report) => getReportSlaBreach(report, Date.now()) !== "none")
                 .map((report) => report.id)
             )
@@ -847,13 +864,13 @@ export default function ReportsModule({ client, active, disabled }: Props) {
           <div className="staff-table-wrap">
             <table className="staff-table">
               <thead>
-                <tr><th><input type="checkbox" aria-label="Select all reports" checked={allSelected} onChange={(event) => setSelectedReportIds(event.target.checked ? reports.map((report) => report.id) : [])} /></th><th>Target</th><th>Status</th><th>Severity</th><th>Category</th><th>Created</th></tr>
+                <tr><th><input type="checkbox" aria-label="Select all reports" checked={allSelected} onChange={(event) => setSelectedReportIds(event.target.checked ? visibleReports.map((report) => report.id) : [])} /></th><th>Target</th><th>Status</th><th>Severity</th><th>Category</th><th>Created</th></tr>
               </thead>
               <tbody>
-                {reports.length === 0 ? (
+                {visibleReports.length === 0 ? (
                   <tr><td colSpan={6}>No reports found with current filters.</td></tr>
                 ) : (
-                  reports.map((report) => {
+                  visibleReports.map((report) => {
                     const slaBreach = getReportSlaBreach(report, Date.now());
                     return (
                     <tr

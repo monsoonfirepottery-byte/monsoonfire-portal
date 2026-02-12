@@ -45,3 +45,7 @@ Status: In Progress
 - Applied to token create/revoke flows and events-feed smoke test feedback.
 - Added explicit search input naming + `aria-pressed` filter-chip states in Support FAQ.
 - Added live-region semantics for Support FAQ/form updates and SignedOut auth status feedback.
+- Added Community report + appeal modal semantics:
+  - explicit `htmlFor`/`id` label bindings for form controls
+  - helper text + character counts wired through `aria-describedby`
+  - submission result/error feedback now announced with `role="status"` or `role="alert"` live regions

@@ -1,6 +1,6 @@
 # P1 — Reporting Rules, Validation, and Security Test Pack
 
-Status: Planned
+Status: In Progress
 
 ## Context / user story
 - As platform/security owners, we need hard guarantees that users cannot tamper with report workflow fields and cannot abuse endpoints.
@@ -35,3 +35,10 @@ Status: Planned
 
 ## Estimate
 - M
+
+## Progress notes
+- Added deterministic unit-test coverage in `functions/src/reports.test.ts` for:
+  - severity normalization (`safety` -> `high`)
+  - dedupe window evaluation
+  - coordination signal threshold logic
+- Refactored report logic in `functions/src/reports.ts` to expose testable helpers without changing endpoint contracts.

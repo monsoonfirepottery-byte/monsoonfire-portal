@@ -24,6 +24,10 @@ const POLICY_VERSIONS_COL = "moderationPolicyVersions";
 const REPORT_DEDUPE_COL = "communityReportDedupe";
 const REPORT_SIGNALS_COL = "communityReportTargetSignals";
 const REPORTS_HOUSEKEEPING_COL = "communityReportHousekeeping";
+const REPORT_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
+const COORDINATION_SIGNAL_WINDOW_MS = 60 * 60 * 1000;
+const COORDINATION_SIGNAL_REPORT_THRESHOLD = 6;
+const COORDINATION_SIGNAL_UNIQUE_REPORTER_THRESHOLD = 4;
 
 const reportCategorySchema = z.enum([
   "broken_link",
@@ -143,6 +147,45 @@ function targetSignalKey(targetType: string, targetId: string) {
     .slice(0, 40);
 }
 
+export function normalizeReportSeverity(
+  category: z.infer<typeof reportCategorySchema>,
+  requestedSeverity?: z.infer<typeof reportSeveritySchema>
+): z.infer<typeof reportSeveritySchema> {
+  return category === "safety" ? "high" : (requestedSeverity ?? "low");
+}
+
+export function isDuplicateReportWithinWindow(params: {
+  existingCreatedAtMs?: number;
+  nowMs: number;
+  windowMs?: number;
+}): boolean {
+  const createdAtMs =
+    typeof params.existingCreatedAtMs === "number" && Number.isFinite(params.existingCreatedAtMs)
+      ? params.existingCreatedAtMs
+      : 0;
+  if (createdAtMs <= 0) return false;
+  const windowMs =
+    typeof params.windowMs === "number" && Number.isFinite(params.windowMs) && params.windowMs > 0
+      ? params.windowMs
+      : REPORT_DEDUPE_WINDOW_MS;
+  return params.nowMs - createdAtMs < windowMs;
+}
+
+export function shouldRaiseCoordinationSignal(params: {
+  windowStartMs: number;
+  nowMs: number;
+  reportCount: number;
+  uniqueReporterCount: number;
+}): boolean {
+  const inWindow =
+    params.windowStartMs > 0 && params.nowMs - params.windowStartMs < COORDINATION_SIGNAL_WINDOW_MS;
+  return (
+    inWindow &&
+    params.reportCount >= COORDINATION_SIGNAL_REPORT_THRESHOLD &&
+    params.uniqueReporterCount >= COORDINATION_SIGNAL_UNIQUE_REPORTER_THRESHOLD
+  );
+}
+
 type ActivePolicy = {
   version: string;
   rules: Array<{ id: string }>;
@@ -216,7 +259,7 @@ export const createReport = onRequest({ region: REGION, timeoutSeconds: 60 }, as
   const targetId = safeString(payload.targetRef.id);
   const targetType = payload.targetType;
   const category = payload.category;
-  const severity = payload.severity ?? (category === "safety" ? "high" : "low");
+  const severity = normalizeReportSeverity(category, payload.severity);
 
   const limitResult = await enforceRateLimit({
     req,
@@ -256,7 +299,13 @@ export const createReport = onRequest({ region: REGION, timeoutSeconds: 60 }, as
       if (dedupeSnap.exists) {
         const existing = dedupeSnap.data() as { createdAtMs?: number; reportId?: string } | undefined;
         const createdAtMs = typeof existing?.createdAtMs === "number" ? existing.createdAtMs : 0;
-        if (createdAtMs > 0 && nowMs - createdAtMs < 24 * 60 * 60 * 1000) {
+        if (
+          isDuplicateReportWithinWindow({
+            existingCreatedAtMs: createdAtMs,
+            nowMs,
+            windowMs: REPORT_DEDUPE_WINDOW_MS,
+          })
+        ) {
           const err = new Error("duplicate_report");
           (err as Error & { code?: string }).code = "duplicate_report";
           throw err;
@@ -268,7 +317,7 @@ export const createReport = onRequest({ region: REGION, timeoutSeconds: 60 }, as
         | { windowStartMs?: unknown; reportCount?: unknown; reporterUids?: unknown[] }
         | undefined;
       const currentWindowStartMsRaw = typeof signalData?.windowStartMs === "number" ? signalData.windowStartMs : 0;
-      const withinWindow = currentWindowStartMsRaw > 0 && nowMs - currentWindowStartMsRaw < 60 * 60 * 1000;
+      const withinWindow = currentWindowStartMsRaw > 0 && nowMs - currentWindowStartMsRaw < COORDINATION_SIGNAL_WINDOW_MS;
       const windowStartMs = withinWindow ? currentWindowStartMsRaw : nowMs;
       const existingReportCountRaw = typeof signalData?.reportCount === "number" ? signalData.reportCount : 0;
       const existingReportCount = withinWindow ? existingReportCountRaw : 0;
@@ -284,7 +333,12 @@ export const createReport = onRequest({ region: REGION, timeoutSeconds: 60 }, as
       coordinationReportCount = existingReportCount + 1;
       coordinationUniqueReporterCount = reporterUids.length;
       coordinationWindowStartMs = windowStartMs;
-      coordinationSignal = coordinationUniqueReporterCount >= 4 && coordinationReportCount >= 6;
+      coordinationSignal = shouldRaiseCoordinationSignal({
+        windowStartMs,
+        nowMs,
+        reportCount: coordinationReportCount,
+        uniqueReporterCount: coordinationUniqueReporterCount,
+      });
 
       tx.set(
         signalRef,
@@ -328,7 +382,7 @@ export const createReport = onRequest({ region: REGION, timeoutSeconds: 60 }, as
         targetId,
         reportId: reportRef.id,
         createdAtMs: nowMs,
-        expiresAtMs: nowMs + 24 * 60 * 60 * 1000,
+        expiresAtMs: nowMs + REPORT_DEDUPE_WINDOW_MS,
         updatedAt: nowTs(),
       });
     });

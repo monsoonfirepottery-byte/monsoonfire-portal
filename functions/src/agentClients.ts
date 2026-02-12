@@ -82,6 +82,11 @@ const listAgentClientAuditSchema = z.object({
   limit: z.number().int().min(1).max(200).optional(),
 });
 
+const clearAgentClientCooldownSchema = z.object({
+  clientId: z.string().min(1).max(120),
+  reason: z.string().max(400).optional().nullable(),
+});
+
 function readPepper(): string {
   const raw = (process.env.AGENT_CLIENT_KEY_PEPPER ?? "").trim();
   if (!raw) throw new Error("AGENT_CLIENT_KEY_PEPPER not configured");
@@ -128,6 +133,8 @@ function summarizeClient(row: Record<string, unknown>): Record<string, unknown> 
     revokedAt: row.revokedAt ?? null,
     createdByUid: typeof row.createdByUid === "string" ? row.createdByUid : null,
     updatedByUid: typeof row.updatedByUid === "string" ? row.updatedByUid : null,
+    cooldownUntil: row.cooldownUntil ?? null,
+    cooldownReason: typeof row.cooldownReason === "string" ? row.cooldownReason : null,
     rateLimits:
       row.rateLimits && typeof row.rateLimits === "object"
         ? {
@@ -597,4 +604,64 @@ export const staffListAgentClientAuditLogs = onRequest({ region: REGION, timeout
   });
 
   res.status(200).json({ ok: true, logs: logs.slice(0, limit) });
+});
+
+export const staffClearAgentClientCooldown = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+  const admin = await requireAdmin(req);
+  if (!admin.ok) {
+    res.status(403).json({ ok: false, message: admin.message });
+    return;
+  }
+
+  const parsed = parseBody(clearAgentClientCooldownSchema, req.body ?? {});
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const clientId = parsed.data.clientId.trim();
+  const ref = db.collection(AGENT_CLIENTS_COL).doc(clientId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    res.status(404).json({ ok: false, message: "Agent client not found." });
+    return;
+  }
+
+  const now = nowTs();
+  await ref.set(
+    {
+      status: "active",
+      cooldownUntil: null,
+      cooldownReason: null,
+      updatedAt: now,
+      updatedByUid: auth.uid,
+    },
+    { merge: true }
+  );
+
+  await writeAudit({
+    actorUid: auth.uid,
+    action: "clear_agent_client_cooldown",
+    clientId,
+    metadata: {
+      reason: parsed.data.reason?.trim() || null,
+    },
+  });
+
+  const fresh = await ref.get();
+  res.status(200).json({
+    ok: true,
+    client: summarizeClient({ id: fresh.id, ...(fresh.data() as Record<string, unknown>) }),
+  });
 });

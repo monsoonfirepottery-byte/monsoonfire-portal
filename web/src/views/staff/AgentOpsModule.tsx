@@ -16,6 +16,8 @@ type AgentClient = {
   lastUsedAtMs: number;
   rotatedAtMs: number;
   revokedAtMs: number;
+  cooldownUntilMs: number;
+  cooldownReason: string | null;
   rateLimits: { perMinute: number; perHour: number };
   spendingLimits: { orderMaxCents: number; maxOrdersPerHour: number };
 };
@@ -139,6 +141,8 @@ function normalizeClient(row: Record<string, unknown>): AgentClient {
     lastUsedAtMs: tsMs(row.lastUsedAt),
     rotatedAtMs: tsMs(row.rotatedAt),
     revokedAtMs: tsMs(row.revokedAt),
+    cooldownUntilMs: tsMs(row.cooldownUntil),
+    cooldownReason: typeof row.cooldownReason === "string" ? row.cooldownReason : null,
     rateLimits: {
       perMinute: num(rawRateLimits?.perMinute, 60),
       perHour: num(rawRateLimits?.perHour, 600),
@@ -381,6 +385,16 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     });
     await load();
     setStatus(`Client status set to ${nextStatus}.`);
+  };
+
+  const clearCooldown = async () => {
+    if (!selected) return;
+    await client.postJson("staffClearAgentClientCooldown", {
+      clientId: selected.id,
+      reason: "manual_staff_override",
+    });
+    await load();
+    setStatus("Client cooldown cleared.");
   };
 
   const saveProfile = async () => {
@@ -663,6 +677,11 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 <span>
                   Spending: max {selected.spendingLimits.orderMaxCents} cents · {selected.spendingLimits.maxOrdersPerHour}/hr
                 </span>
+                <br />
+                <span>
+                  Cooldown: {selected.cooldownUntilMs ? when(selected.cooldownUntilMs) : "none"}
+                  {selected.cooldownReason ? ` (${selected.cooldownReason})` : ""}
+                </span>
               </div>
               <div className="staff-actions-row">
                 <button className="btn btn-secondary" disabled={Boolean(busy) || disabled || selected.status === "revoked"} onClick={() => void run("rotateAgentKey", rotateKey)}>
@@ -676,6 +695,13 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 </button>
                 <button className="btn btn-secondary" disabled={Boolean(busy) || disabled || selected.status === "revoked"} onClick={() => void run("revokeAgent", async () => setClientStatus("revoked"))}>
                   Revoke
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  disabled={Boolean(busy) || disabled || !selected.cooldownUntilMs}
+                  onClick={() => void run("clearCooldown", clearCooldown)}
+                >
+                  Clear cooldown
                 </button>
               </div>
 

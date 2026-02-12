@@ -19,6 +19,7 @@ import type { PortalApiMeta } from "../api/portalContracts";
 import { getResultBatchId } from "../api/portalContracts";
 import { formatMaybeTimestamp } from "../utils/format";
 import { toVoidHandler } from "../utils/toVoidHandler";
+import { shortId, track } from "../lib/analytics";
 import RevealCard from "../components/RevealCard";
 import { useUiSettings } from "../context/UiSettingsContext";
 
@@ -260,6 +261,32 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
   const canContinue = active.length === 0;
   const historyBatchIds = useMemo(() => new Set(history.map((batch) => batch.id)), [history]);
   const totalPieceCount = pieces.length;
+  const activePieceCount = useMemo(
+    () => pieces.filter((piece) => !piece.batchIsHistory).length,
+    [pieces]
+  );
+  const historyPieceCount = useMemo(
+    () => pieces.filter((piece) => piece.batchIsHistory).length,
+    [pieces]
+  );
+
+  useEffect(() => {
+    if (piecesFilter === "active") {
+      track("portal_view_active", {
+        uid: shortId(user.uid),
+        activeCount: activePieceCount,
+        historyCount: historyPieceCount,
+      });
+      return;
+    }
+    if (piecesFilter === "history") {
+      track("portal_view_history", {
+        uid: shortId(user.uid),
+        activeCount: activePieceCount,
+        historyCount: historyPieceCount,
+      });
+    }
+  }, [activePieceCount, historyPieceCount, piecesFilter, user.uid]);
 
   useEffect(() => {
     if (!user) {
@@ -404,8 +431,18 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
             normalizeMediaDoc(docSnap.id, docSnap.data() as Partial<PieceMedia>)
           )
         );
+        track("timeline_load_success", {
+          uid: shortId(user.uid),
+          batchId: shortId(selectedPiece.batchId),
+          eventCount: auditSnap.size,
+        });
       } catch (error: unknown) {
         setPieceDetailError(`Piece detail failed: ${getErrorMessage(error)}`);
+        track("timeline_load_error", {
+          uid: shortId(user.uid),
+          batchId: shortId(selectedPiece.batchId),
+          message: getErrorMessage(error).slice(0, 160),
+        });
       } finally {
         setPieceDetailLoading(false);
         setBusy(busyKey, false);
@@ -413,7 +450,7 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
     };
 
     void loadPieceDetails();
-  }, [selectedPiece, detailRefreshKey, isBusy, setBusy]);
+  }, [detailRefreshKey, isBusy, selectedPiece, setBusy, user.uid]);
 
   const filteredPieces = useMemo(() => {
     let list = pieces;
@@ -470,15 +507,27 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
       setPieces((prev) =>
         prev.map((row) => (row.key === piece.key ? { ...row, ...payload } : row))
       );
+      return true;
     } catch (error: unknown) {
       setStatus(`Update failed: ${getErrorMessage(error)}`);
+      return false;
     } finally {
       setBusy(busyKey, false);
     }
   };
 
   const handleArchivePiece = async (piece: PieceDoc, archived: boolean) => {
-    await handleUpdatePiece(piece, { isArchived: archived });
+    track("batch_close_clicked", {
+      uid: shortId(user.uid),
+      batchId: shortId(piece.batchId),
+      archived,
+    });
+    const ok = await handleUpdatePiece(piece, { isArchived: archived });
+    track(ok ? "batch_close_success" : "batch_close_error", {
+      uid: shortId(user.uid),
+      batchId: shortId(piece.batchId),
+      archived,
+    });
   };
 
   const handleRating = async (piece: PieceDoc, rating: number) => {
@@ -629,6 +678,10 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
     const busyKey = `continue:${batchId}`;
     if (isBusy(busyKey)) return null;
 
+    track("continue_journey_clicked", {
+      uid: shortId(user.uid),
+      batchId: shortId(batchId),
+    });
     setBusy(busyKey, true);
     setStatus("Continuing journey...");
     setMeta(null);
@@ -644,13 +697,27 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
       setMeta(response.meta);
       const newId = getResultBatchId(response.data);
       setStatus(newId ? `Journey continued. New batch id: ${newId}` : "Journey continued.");
+      track("continue_journey_success", {
+        uid: shortId(user.uid),
+        batchId: shortId(newId ?? batchId),
+      });
       return newId ?? batchId;
     } catch (error: unknown) {
       if (error instanceof PortalApiError) {
         setMeta(error.meta);
         setStatus(`Continue journey failed: ${error.message}`);
+        track("continue_journey_error", {
+          uid: shortId(user.uid),
+          batchId: shortId(batchId),
+          message: error.message.slice(0, 160),
+        });
       } else {
         setStatus(`Continue journey failed: ${getErrorMessage(error)}`);
+        track("continue_journey_error", {
+          uid: shortId(user.uid),
+          batchId: shortId(batchId),
+          message: getErrorMessage(error).slice(0, 160),
+        });
       }
       return null;
     } finally {
@@ -683,6 +750,50 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
 
     onOpenCheckin();
   }
+
+  const renderPiecesEmptyState = () => {
+    if (piecesFilter === "history" && historyPieceCount === 0) {
+      return (
+        <div className="empty-state">
+          <div>Your first firing journey starts when staff creates your first batch.</div>
+          {onOpenCheckin ? (
+            <button className="btn btn-primary" type="button" onClick={() => onOpenCheckin()}>
+              Open Ware Check-in
+            </button>
+          ) : null}
+        </div>
+      );
+    }
+
+    if (piecesFilter === "active" && activePieceCount === 0) {
+      return (
+        <div className="empty-state">
+          <div>Nothing currently in flight.</div>
+          <div className="piece-meta">Start with Ware Check-in and we&apos;ll guide the next steps from drop-off.</div>
+          {onOpenCheckin ? (
+            <button className="btn btn-primary" type="button" onClick={() => onOpenCheckin()}>
+              Start check-in
+            </button>
+          ) : null}
+        </div>
+      );
+    }
+
+    if (searchQuery.trim()) {
+      return <div className="empty-state">No pieces match this search. Try a broader term.</div>;
+    }
+
+    return (
+      <div className="empty-state">
+        <div>No pieces yet.</div>
+        {onOpenCheckin ? (
+          <button className="btn btn-primary" type="button" onClick={() => onOpenCheckin()}>
+            Open Ware Check-in
+          </button>
+        ) : null}
+      </div>
+    );
+  };
 
   return (
     <div className="page">
@@ -752,7 +863,7 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
             ) : piecesError ? (
               <div className="alert inline-alert">{piecesError}</div>
             ) : visiblePieces.length === 0 ? (
-              <div className="empty-state">No pieces yet.</div>
+              renderPiecesEmptyState()
             ) : (
               <div className="pieces-list">
                 {visiblePieces.map((piece) => (
@@ -939,7 +1050,13 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
                   </button>
                   <button
                     className={`chip ${selectedPieceTab === "audit" ? "active" : ""}`}
-                    onClick={() => setSelectedPieceTab("audit")}
+                    onClick={() => {
+                      setSelectedPieceTab("audit");
+                      track("timeline_open", {
+                        uid: shortId(user.uid),
+                        batchId: shortId(selectedPiece.batchId),
+                      });
+                    }}
                   >
                     Audit
                   </button>

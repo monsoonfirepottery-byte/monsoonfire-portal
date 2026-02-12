@@ -23,6 +23,7 @@ import {
 } from "../lib/normalizers/reservations";
 import { formatDateTime } from "../utils/format";
 import { toVoidHandler } from "../utils/toVoidHandler";
+import { shortId, track } from "../lib/analytics";
 import RevealCard from "../components/RevealCard";
 import { useUiSettings } from "../context/UiSettingsContext";
 import "./ReservationsView.css";
@@ -853,6 +854,13 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     if (!submitRequestId) {
       setSubmitRequestId(requestId);
     }
+    track("batch_create_test_clicked", {
+      uid: shortId(user.uid),
+      batchId: shortId(linkedBatchId || requestId),
+      mode,
+      firingType,
+      kilnId,
+    });
 
     setIsSaving(true);
     try {
@@ -906,11 +914,26 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
       };
 
       await client.postJson("createReservation", payload);
+      track("batch_create_test_success", {
+        uid: shortId(user.uid),
+        batchId: shortId(linkedBatchId || requestId),
+        mode,
+        firingType,
+        kilnId,
+      });
       setFormStatus(mode === "staff" ? "Staff check-in saved." : "Check-in sent.");
       resetForm();
     } catch (error: unknown) {
       const recentReq = client.getLastRequest();
       captureDevError("submit", error, recentReq?.url || "functions/createReservation");
+      track("batch_create_test_error", {
+        uid: shortId(user.uid),
+        batchId: shortId(linkedBatchId || requestId),
+        mode,
+        firingType,
+        kilnId,
+        message: getErrorMessage(error).slice(0, 160),
+      });
       setFormError(getErrorMessage(error) || "Submission failed.");
     } finally {
       setIsSaving(false);

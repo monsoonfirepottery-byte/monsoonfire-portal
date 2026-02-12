@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { GoogleAuthProvider, onIdTokenChanged, signInAnonymously, signInWithPopup, signOut, type User } from "firebase/auth";
 import { auth } from "../firebase";
 import { createFunctionsClient } from "../api/functionsClient";
@@ -545,7 +545,7 @@ function TrackerAppInner() {
       .slice(0, 8);
   }, [tickets]);
 
-  const fetchAllData = async (uid: string) => {
+  const fetchAllData = useCallback(async (uid: string) => {
     setLoading(true);
     setLoadingError("");
     try {
@@ -566,12 +566,12 @@ function TrackerAppInner() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [diagnosticsCallbacks]);
 
   useEffect(() => {
     if (!user) return;
     void fetchAllData(user.uid);
-  }, [user, diagnosticsCallbacks]);
+  }, [user, fetchAllData]);
 
   const navigate = (nextView: TrackerView) => {
     const pathname = nextView === "dashboard" ? "/tracker" : "/tracker/board";

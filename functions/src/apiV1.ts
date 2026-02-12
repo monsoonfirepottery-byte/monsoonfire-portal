@@ -68,6 +68,83 @@ function safeErrorMessage(error: unknown): string {
   }
 }
 
+type DelegatedRiskPolicy = {
+  agentClientId: string;
+  trustTier: "low" | "medium" | "high";
+  orderMaxCents: number;
+  maxOrdersPerHour: number;
+};
+
+function defaultPolicyForTrustTier(tier: string): {
+  trustTier: "low" | "medium" | "high";
+  orderMaxCents: number;
+  maxOrdersPerHour: number;
+} {
+  if (tier === "high") {
+    return { trustTier: "high", orderMaxCents: 200_000, maxOrdersPerHour: 80 };
+  }
+  if (tier === "medium") {
+    return { trustTier: "medium", orderMaxCents: 75_000, maxOrdersPerHour: 30 };
+  }
+  return { trustTier: "low", orderMaxCents: 25_000, maxOrdersPerHour: 10 };
+}
+
+async function loadDelegatedRiskPolicy(ctx: AuthContext): Promise<DelegatedRiskPolicy | null> {
+  if (ctx.mode !== "delegated") return null;
+  const clientId = ctx.delegated.agentClientId;
+  const snap = await db.collection("agentClients").doc(clientId).get();
+  if (!snap.exists) {
+    throw new Error("DELEGATED_CLIENT_NOT_FOUND");
+  }
+  const row = snap.data() as Record<string, unknown>;
+  const status = typeof row.status === "string" ? row.status : "active";
+  if (status !== "active") {
+    throw new Error("DELEGATED_CLIENT_INACTIVE");
+  }
+  const trustTier = typeof row.trustTier === "string" ? row.trustTier : "low";
+  const defaults = defaultPolicyForTrustTier(trustTier);
+  const spendingLimits =
+    row.spendingLimits && typeof row.spendingLimits === "object"
+      ? (row.spendingLimits as Record<string, unknown>)
+      : null;
+  const orderMaxCents =
+    typeof spendingLimits?.orderMaxCents === "number"
+      ? Math.max(100, Math.trunc(spendingLimits.orderMaxCents))
+      : defaults.orderMaxCents;
+  const maxOrdersPerHour =
+    typeof spendingLimits?.maxOrdersPerHour === "number"
+      ? Math.max(1, Math.trunc(spendingLimits.maxOrdersPerHour))
+      : defaults.maxOrdersPerHour;
+
+  return {
+    agentClientId: clientId,
+    trustTier: defaults.trustTier,
+    orderMaxCents,
+    maxOrdersPerHour,
+  };
+}
+
+async function countRecentOrdersForClient(agentClientId: string): Promise<number> {
+  const snap = await db
+    .collection("agentOrders")
+    .where("agentClientId", "==", agentClientId)
+    .limit(300)
+    .get();
+  const cutoffMs = Date.now() - 60 * 60 * 1000;
+  let count = 0;
+  for (const docSnap of snap.docs) {
+    const row = docSnap.data() as Record<string, unknown>;
+    const seconds =
+      typeof (row.createdAt as { seconds?: unknown } | undefined)?.seconds === "number"
+        ? Number((row.createdAt as { seconds?: unknown }).seconds)
+        : 0;
+    if (seconds > 0 && seconds * 1000 >= cutoffMs) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 function isMissingIndexError(error: unknown): boolean {
   const msg = safeErrorMessage(error).toLowerCase();
   return msg.includes("requires an index") || (msg.includes("failed_precondition") && msg.includes("index"));
@@ -489,6 +566,7 @@ export async function handleApiV1(req: any, res: any) {
         jsonError(res, requestId, 503, "UNAVAILABLE", "Agent quote capability is disabled");
         return;
       }
+      const delegatedPolicy = await loadDelegatedRiskPolicy(ctx);
 
       const serviceId = String(parsed.data.serviceId).trim();
       const service = config.services.find((entry) => entry.id === serviceId && entry.enabled);
@@ -512,6 +590,27 @@ export async function handleApiV1(req: any, res: any) {
       const currency = (parsed.data.currency ?? service.currency ?? config.defaultCurrency).toUpperCase();
       const unitPriceCents = Math.max(0, Math.trunc(service.basePriceCents));
       const subtotalCents = unitPriceCents * quantity;
+      if (delegatedPolicy && subtotalCents > delegatedPolicy.orderMaxCents) {
+        await db.collection("agentAuditLogs").add({
+          actorUid: ctx.uid,
+          actorMode: ctx.mode,
+          action: "agent_quote_denied_risk_limit",
+          requestId,
+          agentClientId: delegatedPolicy.agentClientId,
+          trustTier: delegatedPolicy.trustTier,
+          subtotalCents,
+          limitCents: delegatedPolicy.orderMaxCents,
+          createdAt: nowTs(),
+        });
+        jsonError(
+          res,
+          requestId,
+          403,
+          "FAILED_PRECONDITION",
+          `Quote exceeds trust-tier max (${delegatedPolicy.orderMaxCents} cents)`
+        );
+        return;
+      }
       const quoteExpiresAt = Timestamp.fromMillis(Date.now() + 15 * 60 * 1000);
       const metadata = parsed.data.metadata ?? {};
 
@@ -775,6 +874,56 @@ export async function handleApiV1(req: any, res: any) {
         : makeIdempotencyId("agent-order", reservationUid, reservationId);
       const orderRef = db.collection("agentOrders").doc(orderId);
       const now = nowTs();
+      const delegatedPolicy = await loadDelegatedRiskPolicy(ctx);
+      const reservationSubtotal =
+        typeof reservation.subtotalCents === "number" ? reservation.subtotalCents : 0;
+      if (delegatedPolicy) {
+        if (reservationSubtotal > delegatedPolicy.orderMaxCents) {
+          await db.collection("agentAuditLogs").add({
+            actorUid: ctx.uid,
+            actorMode: ctx.mode,
+            action: "agent_pay_denied_risk_limit",
+            requestId,
+            reservationId,
+            agentClientId: delegatedPolicy.agentClientId,
+            trustTier: delegatedPolicy.trustTier,
+            subtotalCents: reservationSubtotal,
+            limitCents: delegatedPolicy.orderMaxCents,
+            createdAt: now,
+          });
+          jsonError(
+            res,
+            requestId,
+            403,
+            "FAILED_PRECONDITION",
+            `Order exceeds trust-tier max (${delegatedPolicy.orderMaxCents} cents)`
+          );
+          return;
+        }
+        const recentCount = await countRecentOrdersForClient(delegatedPolicy.agentClientId);
+        if (recentCount >= delegatedPolicy.maxOrdersPerHour) {
+          await db.collection("agentAuditLogs").add({
+            actorUid: ctx.uid,
+            actorMode: ctx.mode,
+            action: "agent_pay_denied_velocity",
+            requestId,
+            reservationId,
+            agentClientId: delegatedPolicy.agentClientId,
+            trustTier: delegatedPolicy.trustTier,
+            recentOrders: recentCount,
+            maxOrdersPerHour: delegatedPolicy.maxOrdersPerHour,
+            createdAt: now,
+          });
+          jsonError(
+            res,
+            requestId,
+            429,
+            "RATE_LIMITED",
+            `Agent velocity limit reached (${delegatedPolicy.maxOrdersPerHour}/hour)`
+          );
+          return;
+        }
+      }
 
       const checkoutPriceId =
         typeof reservation.priceId === "string" && reservation.priceId.trim()
@@ -1155,6 +1304,14 @@ export async function handleApiV1(req: any, res: any) {
     }
     if (msg === "QUOTE_EXPIRED") {
       jsonError(res, requestId, 410, "FAILED_PRECONDITION", "Quote has expired");
+      return;
+    }
+    if (msg === "DELEGATED_CLIENT_NOT_FOUND") {
+      jsonError(res, requestId, 403, "UNAUTHORIZED", "Delegated client not found");
+      return;
+    }
+    if (msg === "DELEGATED_CLIENT_INACTIVE") {
+      jsonError(res, requestId, 403, "UNAUTHORIZED", "Delegated client is not active");
       return;
     }
 

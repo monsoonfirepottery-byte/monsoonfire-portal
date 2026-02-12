@@ -1,6 +1,6 @@
 # P1 — Delegated Agent AuthZ and Scoped Actions
 
-Status: Open
+Status: Completed
 
 ## Problem
 - Agents acting for humans/entities can become confused deputies.
@@ -24,3 +24,12 @@ Status: Open
 - Delegated flow works for allowed scopes only.
 - Replay attempts are rejected.
 - Every successful action records both agent and principal identity.
+
+## Progress notes
+- Delegated token issuance endpoint implemented in `functions/src/index.ts` (`createDelegatedAgentToken`).
+- Delegated token validation middleware implemented in `functions/src/shared.ts`:
+  - scope enforcement
+  - audience checks
+  - expiry checks
+  - nonce replay protection via `delegatedTokenNonces`
+- Agent API routes enforce delegated scopes and principal attribution in `functions/src/apiV1.ts`.

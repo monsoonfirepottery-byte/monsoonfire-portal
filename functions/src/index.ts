@@ -67,6 +67,7 @@ import {
   staffUpdateAgentServiceCatalog,
 } from "./agentCatalog";
 import {
+  staffExportAgentDeniedEventsCsv,
   staffListAgentOperations,
   staffGetAgentOpsConfig,
   staffUpdateAgentOrderFulfillment,
@@ -130,6 +131,7 @@ export {
   staffUpdateAgentServiceCatalog,
 };
 export {
+  staffExportAgentDeniedEventsCsv,
   staffGetAgentOpsConfig,
   staffListAgentOperations,
   staffUpdateAgentOrderFulfillment,

@@ -399,7 +399,7 @@ export function constructWebhookEventWithMode(params: {
 }
 
 export const staffGetStripeConfig = onRequest(
-  { region: REGION, cors: true, secrets: STRIPE_SECRET_PARAMS },
+  { region: REGION, cors: true, secrets: [...STRIPE_SECRET_PARAMS] },
   async (req, res) => {
     if (req.method === "OPTIONS") {
       res.status(204).send("");
@@ -445,7 +445,7 @@ export const staffGetStripeConfig = onRequest(
 );
 
 export const staffUpdateStripeConfig = onRequest(
-  { region: REGION, cors: true, secrets: STRIPE_SECRET_PARAMS },
+  { region: REGION, cors: true, secrets: [...STRIPE_SECRET_PARAMS] },
   async (req, res) => {
     if (req.method === "OPTIONS") {
       res.status(204).send("");
@@ -510,7 +510,7 @@ export const staffUpdateStripeConfig = onRequest(
 );
 
 export const staffValidateStripeConfig = onRequest(
-  { region: REGION, cors: true, secrets: STRIPE_SECRET_PARAMS },
+  { region: REGION, cors: true, secrets: [...STRIPE_SECRET_PARAMS] },
   async (req, res) => {
     if (req.method === "OPTIONS") {
       res.status(204).send("");
@@ -578,7 +578,7 @@ export const staffValidateStripeConfig = onRequest(
 );
 
 export const createCheckoutSession = onRequest(
-  { region: REGION, cors: true, secrets: STRIPE_SECRET_PARAMS },
+  { region: REGION, cors: true, secrets: [...STRIPE_SECRET_PARAMS] },
   async (req, res) => {
     if (req.method === "OPTIONS") {
       res.status(204).send("");
@@ -710,7 +710,7 @@ export const createCheckoutSession = onRequest(
 );
 
 export const createAgentCheckoutSession = onRequest(
-  { region: REGION, cors: true, secrets: STRIPE_SECRET_PARAMS },
+  { region: REGION, cors: true, secrets: [...STRIPE_SECRET_PARAMS] },
   async (req, res) => {
     if (req.method === "OPTIONS") {
       res.status(204).send("");
@@ -939,15 +939,16 @@ async function applyPaymentUpdate(params: {
     const current = paymentSnap.exists ? (paymentSnap.data() as Record<string, unknown>) : null;
     const mergedStatus = mergePaymentStatus(safeString(current?.status) || null, update.status);
     const nextPayload: Record<string, unknown> = {
-      uid: update.uid ?? safeString(current?.uid) || null,
+      uid: (update.uid ?? safeString(current?.uid)) || null,
       mode,
       status: mergedStatus,
       source: "stripe_webhook",
-      checkoutSessionId: update.sessionId ?? safeString(current?.checkoutSessionId) || null,
-      stripePaymentIntentId: update.paymentIntentId ?? safeString(current?.stripePaymentIntentId) || null,
-      stripeInvoiceId: update.invoiceId ?? safeString(current?.stripeInvoiceId) || null,
+      checkoutSessionId: (update.sessionId ?? safeString(current?.checkoutSessionId)) || null,
+      stripePaymentIntentId:
+        (update.paymentIntentId ?? safeString(current?.stripePaymentIntentId)) || null,
+      stripeInvoiceId: (update.invoiceId ?? safeString(current?.stripeInvoiceId)) || null,
       amountTotal: typeof update.amountTotal === "number" ? update.amountTotal : (typeof current?.amountTotal === "number" ? current.amountTotal : null),
-      currency: update.currency ?? safeString(current?.currency) || null,
+      currency: (update.currency ?? safeString(current?.currency)) || null,
       lastEventId: eventId,
       lastEventType: eventType,
       eventIds: FieldValue.arrayUnion(eventId),
@@ -1082,7 +1083,7 @@ async function applyPaymentUpdate(params: {
 }
 
 export const stripePortalWebhook = onRequest(
-  { region: REGION, timeoutSeconds: 60, secrets: STRIPE_SECRET_PARAMS },
+  { region: REGION, timeoutSeconds: 60, secrets: [...STRIPE_SECRET_PARAMS] },
   async (req, res) => {
     if (req.method !== "POST") {
       res.status(405).send("Use POST");

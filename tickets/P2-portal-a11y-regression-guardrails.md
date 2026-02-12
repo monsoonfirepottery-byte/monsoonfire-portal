@@ -1,6 +1,6 @@
 # P2 — Portal A11y: Regression Guardrails and QA Cadence
 
-Status: Planned
+Status: Completed
 
 ## Problem
 - Accessibility fixes can regress quickly across active portal UI work.
@@ -39,3 +39,14 @@ Status: Planned
 - `tickets/P1-portal-a11y-forms-and-status-semantics.md`
 - `tickets/P1-portal-a11y-interactive-semantics-and-nested-controls.md`
 - `tickets/P1-portal-a11y-target-size-and-operability.md`
+
+## Progress notes
+- Added recurring cadence for portal smoke checks:
+  - `.github/workflows/ci-smoke.yml` now runs on PR/push + weekly schedule.
+- Expanded portal a11y smoke coverage for critical routes in:
+  - `web/scripts/a11y-smoke.mjs`
+  - includes signed-out auth, dashboard, ware check-in, firings, support, and staff route presence checks.
+- Added regression guardrails runbook with monthly QA cadence + owner/SLA:
+  - `docs/PORTAL_A11Y_REGRESSION_GUARDRAILS.md`
+- Added release-note accessibility changelog section:
+  - `docs/RELEASE_CANDIDATE_EVIDENCE.md`

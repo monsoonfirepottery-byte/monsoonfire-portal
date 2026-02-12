@@ -60,3 +60,9 @@ rollback:
 - Mobile lead:
 - Release manager:
 - Date:
+
+## Accessibility Changelog (Portal)
+- Accessibility fixes included in this release:
+- Known gaps accepted for release:
+- Owner for follow-up:
+- Due date:

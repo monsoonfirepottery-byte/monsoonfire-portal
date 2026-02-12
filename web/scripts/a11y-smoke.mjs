@@ -21,6 +21,12 @@ function run() {
   assertIncludes(appTsx, '<main id="main-content"', "Main landmark id is missing.");
   assertIncludes(appTsx, 'aria-controls="portal-sidebar-nav"', "Mobile nav missing aria-controls.");
   assertIncludes(appTsx, "aria-expanded={mobileNavOpen}", "Mobile nav missing aria-expanded binding.");
+  assertIncludes(appTsx, 'case "dashboard"', "Dashboard route mapping missing.");
+  assertIncludes(appTsx, 'case "kilnLaunch"', "Ware check-in route mapping missing.");
+  assertIncludes(appTsx, 'case "kiln"', "Firings route mapping missing.");
+  assertIncludes(appTsx, 'case "support"', "Support route mapping missing.");
+  assertIncludes(appTsx, 'case "staff"', "Staff route mapping missing.");
+  assertIncludes(appTsx, "<SignedOutView", "Signed-out auth flow mapping missing.");
 
   // Community reporting modal status semantics
   assertIncludes(

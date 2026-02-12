@@ -2,7 +2,7 @@
 
 Created: 2026-02-10
 Sprint: 12
-Status: Open
+Status: Completed
 Swarm: A (Auth + Security)
 
 ## Problem
@@ -30,3 +30,11 @@ We also need to define how token refresh and staff claim changes propagate to UI
 
 - Tokens are never persisted in plaintext.
 - Staff claim changes become visible without requiring app reinstall.
+
+## Progress updates
+- Added secure storage/session reference model with token redaction rules and claim-refresh contract:
+  - `docs/MOBILE_SESSION_SECURITY_MODEL.md`
+- Linked model into iOS runbook:
+  - `docs/IOS_RUNBOOK.md`
+- Added parity tracking completion item:
+  - `docs/MOBILE_PARITY_TODOS.md`

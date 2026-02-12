@@ -21,6 +21,9 @@ Status: In progress
 - [x] Add a migration plan for legacy timeline events already stored in Firestore.
 - [x] Mirror Events contracts in iOS and Android (list/get/signup/cancel/check-in/checkout session).
 - [x] Mirror materials + events contract shapes from `web/src/api/portalContracts.ts` into `ios/PortalContracts.swift` and `android/.../PortalContracts.kt` so native clients share the same request/response types.
+- [x] Define push lifecycle + telemetry contract in `docs/MOBILE_PUSH_LIFECYCLE_AND_TELEMETRY.md`.
+- [x] Define offline write retry contract in `docs/MOBILE_WRITE_RETRY_POLICY.md`.
+- [x] Define secure storage + session model in `docs/MOBILE_SESSION_SECURITY_MODEL.md`.
 
 ## Next up
 - [ ] Implement Events UI parity (attendee + staff roster) in iOS and Android.

@@ -111,6 +111,10 @@ Status: Active
 ## Notes
 - This shell is intentionally minimal and acts as a migration scaffold.
 - Keep contracts synced from `web/src/api/portalContracts.ts`.
+- Mobile policy references:
+  - `docs/MOBILE_PUSH_LIFECYCLE_AND_TELEMETRY.md`
+  - `docs/MOBILE_WRITE_RETRY_POLICY.md`
+  - `docs/MOBILE_SESSION_SECURITY_MODEL.md`
 
 ## Auth Troubleshooting
 - If FirebaseAuth SDK is not linked, shell will remain in manual token mode.

@@ -2,6 +2,7 @@
 
 ## Scope
 Use this runbook when notification delivery shows elevated failures, delayed sends, or token invalidation spikes.
+Mobile lifecycle assumptions are defined in `docs/MOBILE_PUSH_LIFECYCLE_AND_TELEMETRY.md` and should be treated as incident-time source of truth.
 
 ## Primary data sources
 - Dead letters: `notificationJobDeadLetters`
@@ -67,3 +68,6 @@ Drill runner script:
 1. Confirm `notificationMetrics/delivery_24h` has recovered below threshold.
 2. Review `notificationJobDeadLetters` tail to ensure no fresh systemic failure pattern.
 3. Record incident summary and mitigation in release evidence pack.
+4. If mobile client behavior diverged from expected lifecycle/retry contract, update:
+   - `docs/MOBILE_PUSH_LIFECYCLE_AND_TELEMETRY.md`
+   - `docs/MOBILE_WRITE_RETRY_POLICY.md`

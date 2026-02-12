@@ -215,6 +215,13 @@ type SystemCheckRecord = {
   atMs: number;
   details: string;
 };
+type BatchActionName =
+  | "shelveBatch"
+  | "kilnLoad"
+  | "kilnUnload"
+  | "readyForPickup"
+  | "pickedUpAndClose"
+  | "continueJourney";
 
 const MODULES: Array<{ key: ModuleKey; label: string }> = [
   { key: "overview", label: "Overview" },
@@ -279,6 +286,10 @@ function parseList(input: string): string[] {
     .split(/[\n,]/g)
     .map((v) => v.trim())
     .filter(Boolean);
+}
+
+function normalizeBatchState(status: string): string {
+  return status.trim().toUpperCase().replace(/\s+/g, "_");
 }
 
 function memberRole(data: Record<string, unknown>): string {
@@ -579,6 +590,48 @@ export default function StaffView({
       })
       .sort((a, b) => b.updatedAtMs - a.updatedAtMs);
   }, [batchSearch, batchStatusFilter, batches]);
+  const selectedBatchState = useMemo(
+    () => normalizeBatchState(selectedBatch?.status ?? ""),
+    [selectedBatch?.status]
+  );
+  const batchActionAvailability = useMemo(() => {
+    const closed = selectedBatch?.isClosed === true || selectedBatchState.startsWith("CLOSED");
+    const canShelve = !closed && selectedBatchState !== "READY_FOR_PICKUP";
+    const canKilnLoad =
+      !closed &&
+      (selectedBatchState === "SHELVED" ||
+        selectedBatchState === "SUBMITTED" ||
+        selectedBatchState === "DRAFT" ||
+        selectedBatchState === "UNKNOWN");
+    const canKilnUnload = !closed && selectedBatchState === "LOADED";
+    const canReady = !closed && (selectedBatchState === "LOADED" || selectedBatchState === "FIRED");
+    const canClose = !closed && selectedBatchState === "READY_FOR_PICKUP";
+    const canContinue =
+      selectedBatchState === "READY_FOR_PICKUP" ||
+      selectedBatchState.startsWith("CLOSED");
+
+    const out: Record<BatchActionName, boolean> = {
+      shelveBatch: canShelve,
+      kilnLoad: canKilnLoad,
+      kilnUnload: canKilnUnload,
+      readyForPickup: canReady,
+      pickedUpAndClose: canClose,
+      continueJourney: canContinue,
+    };
+    return out;
+  }, [selectedBatch?.isClosed, selectedBatchState]);
+  const recommendedBatchActions = useMemo(() => {
+    if (!selectedBatch) return [] as Array<{ action: BatchActionName; label: string }>;
+    const options: Array<{ action: BatchActionName; label: string }> = [
+      { action: "shelveBatch", label: "Shelve" },
+      { action: "kilnLoad", label: "Kiln load" },
+      { action: "kilnUnload", label: "Kiln unload" },
+      { action: "readyForPickup", label: "Ready for pickup" },
+      { action: "pickedUpAndClose", label: "Close picked up" },
+      { action: "continueJourney", label: "Continue journey" },
+    ];
+    return options.filter((entry) => batchActionAvailability[entry.action]);
+  }, [batchActionAvailability, selectedBatch]);
   const commerceStatusOptions = useMemo(() => {
     const next = new Set<string>();
     orders.forEach((order) => {
@@ -1330,10 +1383,22 @@ const loadEvents = useCallback(async () => {
     });
   };
 
-  const batchAction = (
-    name: "shelveBatch" | "kilnLoad" | "kilnUnload" | "readyForPickup" | "pickedUpAndClose" | "continueJourney"
-  ) => {
+  const batchAction = (name: BatchActionName) => {
     if (!selectedBatchId) return;
+    if (!batchActionAvailability[name]) {
+      setError(`Action ${name} is not valid for current batch status (${selectedBatch?.status || "-"})`);
+      return;
+    }
+    if (name === "pickedUpAndClose") {
+      const ok = window.confirm("Close this batch as picked up? This is typically a terminal action.");
+      if (!ok) return;
+    }
+    if (name === "continueJourney") {
+      const ok = window.confirm(
+        "Create a follow-up batch and continue this journey? This should be used after pickup/closure."
+      );
+      if (!ok) return;
+    }
     void run(name, async () => {
       if (name === "continueJourney") {
         const resp = await client.postJson<{ batchId?: string; newBatchId?: string; existingBatchId?: string }>(name, {
@@ -1682,6 +1747,20 @@ const loadEvents = useCallback(async () => {
               "Select a batch to inspect and run actions."
             )}
           </div>
+          {selectedBatch ? (
+            <div className="staff-note">
+              Recommended next actions:{" "}
+              {recommendedBatchActions.length ? (
+                recommendedBatchActions.map((entry) => (
+                  <span key={entry.action} className="pill" style={{ marginRight: 6 }}>
+                    {entry.label}
+                  </span>
+                ))
+              ) : (
+                <span className="staff-mini">No lifecycle actions available for this status.</span>
+              )}
+            </div>
+          ) : null}
           <label className="staff-field">
             Notes
             <textarea
@@ -1695,12 +1774,12 @@ const loadEvents = useCallback(async () => {
             <input value={kilnId} onChange={(event) => setKilnId(event.target.value)} placeholder="studio-electric" />
           </label>
           <div className="staff-actions-row">
-            <button className="btn btn-secondary" disabled={!selectedBatchId || !!busy} onClick={() => batchAction("shelveBatch")}>Shelve</button>
-            <button className="btn btn-secondary" disabled={!selectedBatchId || !!busy} onClick={() => batchAction("kilnLoad")}>Kiln load</button>
-            <button className="btn btn-secondary" disabled={!selectedBatchId || !!busy} onClick={() => batchAction("kilnUnload")}>Kiln unload</button>
-            <button className="btn btn-secondary" disabled={!selectedBatchId || !!busy} onClick={() => batchAction("readyForPickup")}>Ready for pickup</button>
-            <button className="btn btn-secondary" disabled={!selectedBatchId || !!busy} onClick={() => batchAction("pickedUpAndClose")}>Close picked up</button>
-            <button className="btn btn-primary" disabled={!selectedBatchId || !!busy} onClick={() => batchAction("continueJourney")}>Continue journey</button>
+            <button className="btn btn-secondary" disabled={!selectedBatchId || !!busy || !batchActionAvailability.shelveBatch} onClick={() => batchAction("shelveBatch")}>Shelve</button>
+            <button className="btn btn-secondary" disabled={!selectedBatchId || !!busy || !batchActionAvailability.kilnLoad} onClick={() => batchAction("kilnLoad")}>Kiln load</button>
+            <button className="btn btn-secondary" disabled={!selectedBatchId || !!busy || !batchActionAvailability.kilnUnload} onClick={() => batchAction("kilnUnload")}>Kiln unload</button>
+            <button className="btn btn-secondary" disabled={!selectedBatchId || !!busy || !batchActionAvailability.readyForPickup} onClick={() => batchAction("readyForPickup")}>Ready for pickup</button>
+            <button className="btn btn-secondary" disabled={!selectedBatchId || !!busy || !batchActionAvailability.pickedUpAndClose} onClick={() => batchAction("pickedUpAndClose")}>Close picked up</button>
+            <button className="btn btn-primary" disabled={!selectedBatchId || !!busy || !batchActionAvailability.continueJourney} onClick={() => batchAction("continueJourney")}>Continue journey</button>
           </div>
           {batchDetailBusy ? <div className="staff-note">Loading selected batch details...</div> : null}
           {batchDetailError ? <div className="staff-note staff-note-error">{batchDetailError}</div> : null}

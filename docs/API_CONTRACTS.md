@@ -274,7 +274,7 @@ Auth:
 
 Request:
 ```json
-{ "ownerUid": "uid_123", "includeRevoked": false, "limit": 100 }
+{ "ownerUid": "uid_123", "agentClientId": "client_123", "includeRevoked": false, "limit": 100 }
 ```
 
 #### revokeDelegation
@@ -287,6 +287,42 @@ Auth:
 Request:
 ```json
 { "delegationId": "delegation_doc_id", "reason": "suspicious behavior" }
+```
+
+#### listSecurityAuditEvents
+
+POST `${BASE_URL}/listSecurityAuditEvents`
+
+Auth:
+- Firebase ID token (staff only)
+
+Request:
+```json
+{
+  "ownerUid": "uid_123",
+  "actorUid": "uid_actor",
+  "action": "agent_batches_list",
+  "result": "deny",
+  "limit": 80
+}
+```
+
+Response:
+```json
+{
+  "ok": true,
+  "requestId": "req_...",
+  "rows": [
+    {
+      "id": "audit_1",
+      "action": "agent_batches_list",
+      "result": "deny",
+      "actorUid": "uid_actor",
+      "ownerUid": "uid_123",
+      "requestId": "req_..."
+    }
+  ]
+}
 ```
 
 ---

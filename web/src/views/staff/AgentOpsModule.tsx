@@ -31,6 +31,35 @@ type AgentAudit = {
   metadata: Record<string, unknown> | null;
 };
 
+type DelegationGrant = {
+  id: string;
+  ownerUid: string;
+  agentClientId: string;
+  status: "active" | "revoked" | "suspended";
+  scopes: string[];
+  resources: string[];
+  note: string | null;
+  createdAtMs: number;
+  expiresAtMs: number;
+  revokedAtMs: number;
+  revokedByUid: string | null;
+};
+
+type SecurityAuditEvent = {
+  id: string;
+  actorUid: string;
+  actorType: string;
+  ownerUid: string;
+  action: string;
+  result: "allow" | "deny" | "error";
+  reasonCode: string | null;
+  resourceType: string;
+  resourceId: string;
+  requestId: string;
+  atMs: number;
+  metadata: Record<string, unknown> | null;
+};
+
 type DeniedAction =
   | "agent_quote_denied_risk_limit"
   | "agent_pay_denied_risk_limit"
@@ -109,6 +138,9 @@ type Props = {
 
 type ListClientsResponse = { ok: boolean; clients?: Array<Record<string, unknown>> };
 type ListLogsResponse = { ok: boolean; logs?: Array<Record<string, unknown>> };
+type ListDelegationsResponse = { ok: boolean; rows?: Array<Record<string, unknown>>; message?: string };
+type RevokeDelegationResponse = { ok: boolean; delegationId?: string; message?: string };
+type ListSecurityAuditEventsResponse = { ok: boolean; rows?: Array<Record<string, unknown>>; message?: string };
 type UpsertClientResponse = { ok: boolean; client?: Record<string, unknown>; apiKey?: string; warning?: string; message?: string };
 type CatalogResponse = {
   ok: boolean;
@@ -247,6 +279,44 @@ function normalizeAudit(row: Record<string, unknown>): AgentAudit {
     action: str(row.action),
     clientId: typeof row.clientId === "string" ? row.clientId : null,
     createdAtMs: tsMs(row.createdAt),
+    metadata: row.metadata && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : null,
+  };
+}
+
+function normalizeDelegation(row: Record<string, unknown>): DelegationGrant {
+  const rawStatus = str(row.status, "active");
+  return {
+    id: str(row.id),
+    ownerUid: str(row.ownerUid),
+    agentClientId: str(row.agentClientId),
+    status:
+      rawStatus === "active" || rawStatus === "revoked" || rawStatus === "suspended"
+        ? rawStatus
+        : "active",
+    scopes: Array.isArray(row.scopes) ? row.scopes.filter((entry): entry is string => typeof entry === "string") : [],
+    resources: Array.isArray(row.resources) ? row.resources.filter((entry): entry is string => typeof entry === "string") : [],
+    note: typeof row.note === "string" ? row.note : null,
+    createdAtMs: tsMs(row.createdAt),
+    expiresAtMs: tsMs(row.expiresAt),
+    revokedAtMs: tsMs(row.revokedAt),
+    revokedByUid: typeof row.revokedByUid === "string" ? row.revokedByUid : null,
+  };
+}
+
+function normalizeSecurityAuditEvent(row: Record<string, unknown>): SecurityAuditEvent {
+  const rawResult = str(row.result, "allow");
+  return {
+    id: str(row.id),
+    actorUid: str(row.actorUid),
+    actorType: str(row.actorType, "unknown"),
+    ownerUid: str(row.ownerUid),
+    action: str(row.action),
+    result: rawResult === "allow" || rawResult === "deny" || rawResult === "error" ? rawResult : "allow",
+    reasonCode: typeof row.reasonCode === "string" ? row.reasonCode : null,
+    resourceType: str(row.resourceType),
+    resourceId: str(row.resourceId),
+    requestId: str(row.requestId),
+    atMs: tsMs(row.at),
     metadata: row.metadata && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : null,
   };
 }
@@ -406,6 +476,8 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [opsQuotes, setOpsQuotes] = useState<Array<Record<string, unknown>>>([]);
   const [opsReservations, setOpsReservations] = useState<Array<Record<string, unknown>>>([]);
   const [opsOrders, setOpsOrders] = useState<Array<Record<string, unknown>>>([]);
+  const [delegations, setDelegations] = useState<DelegationGrant[]>([]);
+  const [securityAuditEvents, setSecurityAuditEvents] = useState<SecurityAuditEvent[]>([]);
   const [riskByClient, setRiskByClient] = useState<Record<string, { total: number; quoteLimit: number; payLimit: number; velocity: number }>>({});
   const [deniedClientFilter, setDeniedClientFilter] = useState("all");
   const [deniedActionFilter, setDeniedActionFilter] = useState<"all" | DeniedAction>("all");
@@ -413,6 +485,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [deniedToDate, setDeniedToDate] = useState("");
   const [auditSourceFilter, setAuditSourceFilter] = useState<"all" | "client" | "security">("all");
   const [auditOutcomeFilter, setAuditOutcomeFilter] = useState<"all" | "ok" | "deny" | "error">("all");
+  const [securityResultFilter, setSecurityResultFilter] = useState<"all" | "allow" | "deny" | "error">("all");
   const [orderNextStatus, setOrderNextStatus] = useState<Record<string, string>>({});
   const [agentApiEnabled, setAgentApiEnabled] = useState(true);
   const [agentPaymentsEnabled, setAgentPaymentsEnabled] = useState(true);
@@ -505,6 +578,18 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
       errored,
     };
   }, [audit]);
+  const selectedDelegations = useMemo(() => {
+    if (!selected) return [];
+    return delegations
+      .filter((row) => row.agentClientId === selected.id)
+      .sort((a, b) => b.createdAtMs - a.createdAtMs);
+  }, [delegations, selected]);
+  const filteredSecurityAuditEvents = useMemo(() => {
+    return securityAuditEvents.filter((row) => {
+      if (securityResultFilter === "all") return true;
+      return row.result === securityResultFilter;
+    });
+  }, [securityAuditEvents, securityResultFilter]);
   const filteredAgentRequests = useMemo(() => {
     const search = agentRequestSearch.trim().toLowerCase();
     return agentRequests
@@ -551,7 +636,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   };
 
   const load = useCallback(async () => {
-    const [clientsResp, logsResp, catalogResp, opsResp, opsConfigResp, requestsResp] = await Promise.all([
+    const [clientsResp, logsResp, catalogResp, opsResp, opsConfigResp, requestsResp, delegationsResp, securityAuditResp] = await Promise.all([
       client.postJson<ListClientsResponse>("staffListAgentClients", { includeRevoked: true, limit: 200 }),
       client.postJson<ListLogsResponse>("staffListAgentClientAuditLogs", { limit: 80 }),
       client.postJson<CatalogResponse>("staffGetAgentServiceCatalog", {}),
@@ -561,6 +646,13 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
         status: "all",
         kind: "all",
         limit: 240,
+      }),
+      client.postJson<ListDelegationsResponse>("listDelegations", {
+        includeRevoked: true,
+        limit: 200,
+      }),
+      client.postJson<ListSecurityAuditEventsResponse>("listSecurityAuditEvents", {
+        limit: 120,
       }),
     ]);
 
@@ -611,6 +703,22 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
       : [];
     requestRows.sort((a, b) => b.updatedAtMs - a.updatedAtMs);
     setAgentRequests(requestRows);
+
+    const delegationRows = Array.isArray(delegationsResp.rows)
+      ? delegationsResp.rows
+          .filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object")
+          .map((row) => normalizeDelegation(row))
+      : [];
+    delegationRows.sort((a, b) => b.createdAtMs - a.createdAtMs);
+    setDelegations(delegationRows);
+
+    const securityRows = Array.isArray(securityAuditResp.rows)
+      ? securityAuditResp.rows
+          .filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object")
+          .map((row) => normalizeSecurityAuditEvent(row))
+      : [];
+    securityRows.sort((a, b) => b.atMs - a.atMs);
+    setSecurityAuditEvents(securityRows);
 
     if (!selectedId && rows.length > 0) setSelectedId(rows[0].id);
     if (selectedId && !rows.some((row) => row.id === selectedId)) {
@@ -773,6 +881,22 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     }
     setLatestDelegatedToken(resp.delegatedToken);
     setStatus("Delegated token issued.");
+    await load();
+  };
+
+  const revokeDelegation = async (delegation: DelegationGrant) => {
+    if (!window.confirm(`Revoke delegation ${delegation.id}? Agent access will fail immediately in strict mode.`)) {
+      return;
+    }
+    const resp = await client.postJson<RevokeDelegationResponse>("revokeDelegation", {
+      delegationId: delegation.id,
+      reason: statusReasonDraft.trim() || "staff_revoked_delegation",
+    });
+    if (!resp.ok) {
+      throw new Error(resp.message ?? "Failed to revoke delegation.");
+    }
+    await load();
+    setStatus(`Delegation ${delegation.id} revoked.`);
   };
 
   const saveCatalogConfig = async () => {
@@ -1309,6 +1433,57 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 Issue delegated token
               </button>
 
+              <div className="staff-subtitle">Delegation grants</div>
+              <div className="staff-note">
+                Delegations bind owner + client + scopes. Revoke grants immediately if abuse is suspected.
+              </div>
+              <div className="staff-table-wrap">
+                <table className="staff-table">
+                  <thead>
+                    <tr>
+                      <th>Delegation</th>
+                      <th>Owner</th>
+                      <th>Status</th>
+                      <th>Scopes</th>
+                      <th>Expires</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedDelegations.length === 0 ? (
+                      <tr>
+                        <td colSpan={6}>No delegation grants for this client.</td>
+                      </tr>
+                    ) : (
+                      selectedDelegations.slice(0, 12).map((row) => (
+                        <tr key={row.id}>
+                          <td>
+                            <code>{row.id}</code>
+                          </td>
+                          <td>
+                            <code>{row.ownerUid || "-"}</code>
+                          </td>
+                          <td>
+                            <span className="pill">{row.status}</span>
+                          </td>
+                          <td>{row.scopes.slice(0, 3).join(", ") || "-"}</td>
+                          <td>{row.expiresAtMs ? when(row.expiresAtMs) : "-"}</td>
+                          <td>
+                            <button
+                              className="btn btn-secondary"
+                              disabled={Boolean(busy) || disabled || row.status !== "active"}
+                              onClick={() => void run(`revokeDelegation:${row.id}`, () => revokeDelegation(row))}
+                            >
+                              Revoke
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
               <div className="staff-subtitle">Independent account controls</div>
               {selectedAccount ? (
                 <>
@@ -1839,6 +2014,65 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             <div className="staff-note">Select a request to inspect and triage.</div>
           )}
         </div>
+      </div>
+
+      <div className="staff-subtitle">Security audit events</div>
+      <div className="staff-note">
+        Canonical security logs from privileged authz checks. Use request ID + reason code for incident review.
+      </div>
+      <div className="staff-actions-row">
+        <label className="staff-field">
+          Result
+          <select
+            value={securityResultFilter}
+            onChange={(event) => setSecurityResultFilter(event.target.value as "all" | "allow" | "deny" | "error")}
+          >
+            <option value="all">All results</option>
+            <option value="allow">allow</option>
+            <option value="deny">deny</option>
+            <option value="error">error</option>
+          </select>
+        </label>
+        <button className="btn btn-secondary" disabled={Boolean(busy) || disabled} onClick={() => void run("refreshSecurityAudit", load)}>
+          Refresh security audit
+        </button>
+      </div>
+      <div className="staff-table-wrap">
+        <table className="staff-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Result</th>
+              <th>Action</th>
+              <th>Actor</th>
+              <th>Owner</th>
+              <th>Request</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredSecurityAuditEvents.length === 0 ? (
+              <tr>
+                <td colSpan={7}>No security audit events loaded.</td>
+              </tr>
+            ) : (
+              filteredSecurityAuditEvents.slice(0, 40).map((row) => (
+                <tr key={row.id}>
+                  <td>{when(row.atMs)}</td>
+                  <td><span className="pill">{row.result}</span></td>
+                  <td>{row.action || "-"}</td>
+                  <td>
+                    <code>{row.actorUid || "-"}</code>
+                    <div className="staff-mini">{row.actorType || "-"}</div>
+                  </td>
+                  <td><code>{row.ownerUid || "-"}</code></td>
+                  <td><code>{row.requestId || "-"}</code></td>
+                  <td>{row.reasonCode || "-"}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
 
       <div className="staff-subtitle">Audit log</div>

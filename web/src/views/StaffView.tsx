@@ -16,6 +16,7 @@ import { clearHandlerErrorLog, getHandlerErrorLog } from "../utils/handlerLog";
 import PolicyModule from "./staff/PolicyModule";
 import StripeSettingsModule from "./staff/StripeSettingsModule";
 import ReportsModule from "./staff/ReportsModule";
+import AgentOpsModule from "./staff/AgentOpsModule";
 
 type Props = {
   user: User;
@@ -34,6 +35,7 @@ type ModuleKey =
   | "events"
   | "reports"
   | "governance"
+  | "agentOps"
   | "stripe"
   | "commerce"
   | "lending"
@@ -177,6 +179,7 @@ const MODULES: Array<{ key: ModuleKey; label: string }> = [
   { key: "events", label: "Events" },
   { key: "reports", label: "Reports" },
   { key: "governance", label: "Governance" },
+  { key: "agentOps", label: "Agent ops" },
   { key: "stripe", label: "Stripe settings" },
   { key: "commerce", label: "Store & billing" },
   { key: "lending", label: "Lending" },
@@ -1907,6 +1910,9 @@ const loadEvents = useCallback(async () => {
   const governanceContent = (
     <PolicyModule client={client} active={moduleKey === "governance"} disabled={hasFunctionsAuthMismatch} />
   );
+  const agentOpsContent = (
+    <AgentOpsModule client={client} active={moduleKey === "agentOps"} disabled={hasFunctionsAuthMismatch} />
+  );
 
 const lendingContent = (
     <section className="card staff-console-card">
@@ -2135,6 +2141,7 @@ const lendingContent = (
     events: eventsContent,
     reports: reportsContent,
     governance: governanceContent,
+    agentOps: agentOpsContent,
     stripe: stripeContent,
     commerce: commerceContent,
     lending: lendingContent,

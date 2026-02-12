@@ -806,6 +806,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /agentClients/{clientId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /agentClientAuditLogs/{logId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
     match /communityFeedOverrides/{overrideId} {
       allow read: if isSignedIn();
       allow write: if false;

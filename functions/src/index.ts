@@ -52,6 +52,14 @@ import {
   normalizeAndValidateScopes,
   revokeIntegrationTokenForOwner,
 } from "./integrationTokens";
+import {
+  staffCreateAgentClient,
+  staffListAgentClientAuditLogs,
+  staffListAgentClients,
+  staffRotateAgentClientKey,
+  staffUpdateAgentClientProfile,
+  staffUpdateAgentClientStatus,
+} from "./agentClients";
 import { emitIntegrationEvent } from "./integrationEvents";
 export {
   registerDeviceToken,
@@ -94,6 +102,14 @@ export {
   staffGetCommunitySafetyConfig,
   staffUpdateCommunitySafetyConfig,
   staffScanCommunityDraft,
+};
+export {
+  staffCreateAgentClient,
+  staffListAgentClients,
+  staffRotateAgentClientKey,
+  staffUpdateAgentClientStatus,
+  staffUpdateAgentClientProfile,
+  staffListAgentClientAuditLogs,
 };
 
 /**

@@ -283,6 +283,7 @@ const createDelegatedAgentTokenSchema = z.object({
 
 const listDelegationsSchema = z.object({
   ownerUid: z.string().min(1).max(128).optional().nullable(),
+  agentClientId: z.string().min(1).max(120).optional().nullable(),
   includeRevoked: z.boolean().optional(),
   limit: z.number().int().min(1).max(200).optional(),
 });
@@ -291,6 +292,14 @@ const revokeDelegationSchema = z.object({
   delegationId: z.string().min(1).max(200),
   ownerUid: z.string().min(1).max(128).optional().nullable(),
   reason: z.string().max(240).optional().nullable(),
+});
+
+const listSecurityAuditEventsSchema = z.object({
+  ownerUid: z.string().min(1).max(128).optional().nullable(),
+  actorUid: z.string().min(1).max(128).optional().nullable(),
+  action: z.string().min(1).max(120).optional().nullable(),
+  result: z.enum(["allow", "deny", "error"]).optional().nullable(),
+  limit: z.number().int().min(1).max(300).optional(),
 });
 
 const githubLookupSchema = z.object({
@@ -1168,15 +1177,34 @@ export const listDelegations = onRequest({ region: REGION, timeoutSeconds: 60 },
     res.status(403).json({ ok: false, message: "Forbidden" });
     return;
   }
+  const listLimit = await enforceRateLimit({
+    req,
+    key: `staff:listDelegations:${auth.uid}`,
+    max: 90,
+    windowMs: 60_000,
+  });
+  if (!listLimit.ok) {
+    res.status(429).json({
+      ok: false,
+      message: "Rate limit exceeded",
+      retryAfterSec: Math.max(1, Math.ceil(listLimit.retryAfterMs / 1000)),
+    });
+    return;
+  }
   const includeRevoked = parsed.data.includeRevoked === true;
   const limitValue = parsed.data.limit ?? 100;
-  const snap = await db
-    .collection("delegations")
-    .where("ownerUid", "==", ownerUid)
-    .limit(limitValue)
-    .get();
+  const agentClientIdFilter = safeString(parsed.data.agentClientId);
+
+  let queryRef: FirebaseFirestore.Query<FirebaseFirestore.DocumentData> = db.collection("delegations");
+  if (ownerUid) {
+    queryRef = queryRef.where("ownerUid", "==", ownerUid);
+  }
+  const scanLimit = Math.min(300, Math.max(limitValue, 120));
+  const snap = await queryRef.limit(scanLimit).get();
   type DelegationRow = {
     id: string;
+    ownerUid?: unknown;
+    agentClientId?: unknown;
     revokedAt?: unknown;
     createdAt?: { seconds?: number } | null;
     [key: string]: unknown;
@@ -1184,11 +1212,13 @@ export const listDelegations = onRequest({ region: REGION, timeoutSeconds: 60 },
   const rows = snap.docs
     .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Record<string, unknown>) }) as DelegationRow)
     .filter((row) => includeRevoked || !row.revokedAt)
+    .filter((row) => !agentClientIdFilter || safeString(row.agentClientId) === agentClientIdFilter)
     .sort((a, b) => {
       const aMs = Number((a.createdAt?.seconds ?? 0));
       const bMs = Number((b.createdAt?.seconds ?? 0));
       return bMs - aMs;
-    });
+    })
+    .slice(0, limitValue);
   await logAuditEvent({
     req,
     requestId,
@@ -1204,7 +1234,7 @@ export const listDelegations = onRequest({ region: REGION, timeoutSeconds: 60 },
       tokenId: null,
       delegated: null,
     },
-    metadata: { count: rows.length, includeRevoked },
+    metadata: { count: rows.length, includeRevoked, ownerUid, agentClientId: agentClientIdFilter || null },
   });
   res.status(200).json({ ok: true, ownerUid, rows });
 });
@@ -1224,6 +1254,20 @@ export const revokeDelegation = onRequest({ region: REGION, timeoutSeconds: 60 }
   const parsed = parseBody(revokeDelegationSchema, req.body ?? {});
   if (!parsed.ok) {
     res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+  const revokeLimit = await enforceRateLimit({
+    req,
+    key: `staff:revokeDelegation:${auth.uid}`,
+    max: 30,
+    windowMs: 60_000,
+  });
+  if (!revokeLimit.ok) {
+    res.status(429).json({
+      ok: false,
+      message: "Rate limit exceeded",
+      retryAfterSec: Math.max(1, Math.ceil(revokeLimit.retryAfterMs / 1000)),
+    });
     return;
   }
   const ref = db.collection("delegations").doc(parsed.data.delegationId.trim());
@@ -1272,6 +1316,100 @@ export const revokeDelegation = onRequest({ region: REGION, timeoutSeconds: 60 }
     },
   });
   res.status(200).json({ ok: true, delegationId: ref.id });
+});
+
+export const listSecurityAuditEvents = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  const requestId = requestIdFromReq(req);
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+  const admin = await requireAdmin(req);
+  if (!admin.ok) {
+    res.status(403).json({ ok: false, message: "Forbidden" });
+    return;
+  }
+  const parsed = parseBody(listSecurityAuditEventsSchema, req.body ?? {});
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+  const auditLimit = await enforceRateLimit({
+    req,
+    key: `staff:listSecurityAuditEvents:${auth.uid}`,
+    max: 60,
+    windowMs: 60_000,
+  });
+  if (!auditLimit.ok) {
+    res.status(429).json({
+      ok: false,
+      message: "Rate limit exceeded",
+      retryAfterSec: Math.max(1, Math.ceil(auditLimit.retryAfterMs / 1000)),
+    });
+    return;
+  }
+
+  const ownerUidFilter = safeString(parsed.data.ownerUid);
+  const actorUidFilter = safeString(parsed.data.actorUid);
+  const actionFilter = safeString(parsed.data.action);
+  const resultFilter = safeString(parsed.data.result);
+  const limitValue = parsed.data.limit ?? 80;
+  const scanLimit = Math.min(500, Math.max(limitValue, 180));
+
+  const snap = await db.collection("auditEvents").orderBy("at", "desc").limit(scanLimit).get();
+  type AuditEventRow = {
+    id: string;
+    ownerUid?: unknown;
+    actorUid?: unknown;
+    action?: unknown;
+    result?: unknown;
+    [key: string]: unknown;
+  };
+  const rows = snap.docs
+    .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Record<string, unknown>) }) as AuditEventRow)
+    .filter((row) => !ownerUidFilter || safeString(row.ownerUid) === ownerUidFilter)
+    .filter((row) => !actorUidFilter || safeString(row.actorUid) === actorUidFilter)
+    .filter((row) => !actionFilter || safeString(row.action) === actionFilter)
+    .filter((row) => !resultFilter || safeString(row.result) === resultFilter)
+    .slice(0, limitValue);
+
+  await logAuditEvent({
+    req,
+    requestId,
+    action: "list_security_audit_events",
+    resourceType: "audit_event",
+    ownerUid: ownerUidFilter || null,
+    result: "allow",
+    ctx: {
+      mode: "firebase",
+      uid: auth.uid,
+      decoded: auth.decoded,
+      scopes: null,
+      tokenId: null,
+      delegated: null,
+    },
+    metadata: {
+      count: rows.length,
+      filters: {
+        ownerUid: ownerUidFilter || null,
+        actorUid: actorUidFilter || null,
+        action: actionFilter || null,
+        result: resultFilter || null,
+      },
+    },
+  });
+
+  res.status(200).json({
+    ok: true,
+    rows,
+    requestId,
+  });
 });
 
 export const helloPat = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {

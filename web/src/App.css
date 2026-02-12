@@ -3752,9 +3752,9 @@ html[data-portal-theme="memoria"] .sidebar nav button.active {
 html[data-portal-theme="memoria"] .sidebar:not(.collapsed) nav button.active::before {
   content: "";
   position: absolute;
-  left: 8px;
-  top: 10px;
-  bottom: 10px;
+  left: 9px;
+  top: 11px;
+  bottom: 11px;
   width: 2px;
   border-radius: 2px;
   background: rgba(255, 255, 255, 0.55);
@@ -3764,6 +3764,10 @@ html[data-portal-theme="memoria"] .sidebar:not(.collapsed) nav button.active::be
 html[data-portal-theme="memoria"] .nav-icon {
   color: currentColor;
   opacity: 0.92;
+}
+
+html[data-portal-theme="memoria"] .nav-icon svg {
+  stroke-width: 1.9;
 }
 
 html[data-portal-theme="memoria"] .nav-subitem {
@@ -3782,6 +3786,22 @@ html[data-portal-theme="memoria"] .sidebar.collapsed nav button::after {
   background: var(--surface-2);
   color: var(--text);
   border: 1px solid var(--border);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.42);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 8px 12px;
+}
+
+html[data-portal-theme="memoria"] .sidebar .nav-primary > .nav-section + .nav-section {
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+html[data-portal-theme="memoria"] .sidebar.collapsed .nav-primary > .nav-section + .nav-section {
+  margin-top: 10px;
+  padding-top: 12px;
 }
 
 html[data-portal-theme="memoria"] .card {

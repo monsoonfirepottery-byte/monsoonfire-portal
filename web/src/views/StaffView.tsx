@@ -2597,24 +2597,26 @@ const loadEvents = useCallback(async () => {
               </div>
               <div className="staff-table-wrap">
                 <table className="staff-table">
-                  <thead><tr><th>Event</th><th>Status</th><th>Starts</th><th>Seats</th><th>Waitlist</th></tr></thead>
+                  <thead><tr><th>Select</th><th>Event</th><th>Status</th><th>Starts</th><th>Seats</th><th>Waitlist</th></tr></thead>
                   <tbody>
                     {filteredEvents.length === 0 ? (
-                      <tr><td colSpan={5}>No events match current filters.</td></tr>
+                      <tr><td colSpan={6}>No events match current filters.</td></tr>
                     ) : (
                       filteredEvents.map((eventRow) => (
                         <tr
                           key={eventRow.id}
-                          className={`staff-click-row ${selectedEventId === eventRow.id ? "active" : ""}`}
-                          onClick={() => setSelectedEventId(eventRow.id)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              setSelectedEventId(eventRow.id);
-                            }
-                          }}
-                          tabIndex={0}
+                          className={selectedEventId === eventRow.id ? "staff-selected-row" : undefined}
                         >
+                          <td>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-small"
+                              aria-pressed={selectedEventId === eventRow.id}
+                              onClick={() => setSelectedEventId(eventRow.id)}
+                            >
+                              {selectedEventId === eventRow.id ? "Selected" : "View"}
+                            </button>
+                          </td>
                           <td>
                             <div>{eventRow.title}</div>
                             <div className="staff-mini"><code>{eventRow.id}</code></div>
@@ -2671,24 +2673,26 @@ const loadEvents = useCallback(async () => {
               </div>
               <div className="staff-table-wrap">
                 <table className="staff-table">
-                  <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Payment</th><th>Action</th></tr></thead>
+                  <thead><tr><th>Select</th><th>Name</th><th>Email</th><th>Status</th><th>Payment</th><th>Action</th></tr></thead>
                   <tbody>
                     {filteredSignups.length === 0 ? (
-                      <tr><td colSpan={5}>No signups match current filters.</td></tr>
+                      <tr><td colSpan={6}>No signups match current filters.</td></tr>
                     ) : (
                       filteredSignups.map((signup) => (
                         <tr
                           key={signup.id}
-                          className={`staff-click-row ${selectedSignupId === signup.id ? "active" : ""}`}
-                          onClick={() => setSelectedSignupId(signup.id)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              setSelectedSignupId(signup.id);
-                            }
-                          }}
-                          tabIndex={0}
+                          className={selectedSignupId === signup.id ? "staff-selected-row" : undefined}
                         >
+                          <td>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-small"
+                              aria-pressed={selectedSignupId === signup.id}
+                              onClick={() => setSelectedSignupId(signup.id)}
+                            >
+                              {selectedSignupId === signup.id ? "Selected" : "View"}
+                            </button>
+                          </td>
                           <td>{signup.displayName}</td>
                           <td>{signup.email}</td>
                           <td><span className="pill">{signup.status}</span></td>

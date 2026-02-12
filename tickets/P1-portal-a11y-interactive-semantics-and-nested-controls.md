@@ -39,3 +39,7 @@ Status: In Progress
   - removed row-level `role="button"`/keyboard handler wrapping nested buttons
   - added explicit per-row action controls (`View details`, `Add to my calendar`)
 - This resolves one concrete nested-interactive pattern while preserving keyboard access.
+- Refactored Staff Console Events + Signups tables to remove row-level click handlers and nested interactive conflicts:
+  - removed clickable `<tr>` keyboard handlers
+  - added explicit first-column `View/Selected` buttons for row selection
+  - preserved visual selected state via `.staff-selected-row` without relying on row interactivity

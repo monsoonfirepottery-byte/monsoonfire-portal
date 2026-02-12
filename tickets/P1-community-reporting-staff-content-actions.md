@@ -1,6 +1,6 @@
 # P1 — Staff Content Actions for Reported Community Items
 
-Status: In Progress
+Status: Completed
 
 ## Context / user story
 - As staff, I need targeted actions based on content type:

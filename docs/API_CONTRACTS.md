@@ -336,6 +336,8 @@ Base URL:
 All v1 responses use:
 - Success: `{ ok: true, requestId, data }`
 - Error: `{ ok: false, requestId, code, message, details }`
+- Rate limiting: HTTP `429` with `code=RATE_LIMITED`, `details.retryAfterMs`, and `Retry-After` header.
+- Delegated agent requests write security audit rows on route-level denials; optional auto-cooldown is controlled by `AUTO_COOLDOWN_ON_RATE_LIMIT`.
 
 If calling with a PAT, required scopes are enforced per endpoint.
 

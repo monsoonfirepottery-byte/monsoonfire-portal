@@ -2,7 +2,7 @@
 
 Created: 2026-02-10
 Sprint: 12
-Status: Open
+Status: Completed
 Swarm: D (QA + CI)
 
 ## Problem
@@ -35,3 +35,11 @@ This avoids ad-hoc behavior differences between web/iOS/Android.
 
 - In airplane mode, the app communicates what will happen and never silently drops writes.
 - When coming back online, queued actions retry and converge without duplicates.
+
+## Progress updates
+- Added offline write policy doc with endpoint classification, queue contract, backoff, and idempotency guidance:
+  - `docs/MOBILE_WRITE_RETRY_POLICY.md`
+- Linked policy into iOS operational runbook:
+  - `docs/IOS_RUNBOOK.md`
+- Added parity tracking completion item:
+  - `docs/MOBILE_PARITY_TODOS.md`

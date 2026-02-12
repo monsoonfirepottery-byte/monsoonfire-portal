@@ -2,7 +2,7 @@
 
 Created: 2026-02-10
 Sprint: 12
-Status: Open
+Status: Completed
 Swarm: C (Push + Telemetry)
 
 ## Problem
@@ -32,3 +32,9 @@ We need a written spec so iOS/Android client behavior matches backend expectatio
 
 - iOS and Android implement identical token registration/unregistration semantics.
 - Telemetry is consistent enough to support alerting without false positives.
+
+## Progress updates
+- Added lifecycle + telemetry contract doc: `docs/MOBILE_PUSH_LIFECYCLE_AND_TELEMETRY.md`.
+- Updated on-call runbook to reference lifecycle/retry source-of-truth docs:
+  - `docs/NOTIFICATION_ONCALL_RUNBOOK.md`
+- Added parity tracking completion item in `docs/MOBILE_PARITY_TODOS.md`.

@@ -34,6 +34,25 @@ type RevokeIntegrationTokenResponse = {
   ok: true;
 };
 
+type EventsFeedEvent = {
+  id: string;
+  type: string;
+  at: string | null;
+  cursor: number;
+  payload: Record<string, unknown> | null;
+};
+
+type EventsFeedResponse = {
+  ok: boolean;
+  requestId?: string;
+  code?: string;
+  message?: string;
+  data?: {
+    events?: Array<Record<string, unknown>>;
+    nextCursor?: number;
+  };
+};
+
 type ScopeOption = { key: string; label: string; description: string };
 
 const SCOPE_OPTIONS: ScopeOption[] = [
@@ -101,6 +120,13 @@ export default function IntegrationsView({
 
   const [revokeBusy, setRevokeBusy] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState("");
+  const [eventsFeedToken, setEventsFeedToken] = useState("");
+  const [eventsFeedCursor, setEventsFeedCursor] = useState("0");
+  const [eventsFeedLimit, setEventsFeedLimit] = useState("10");
+  const [eventsFeedBusy, setEventsFeedBusy] = useState(false);
+  const [eventsFeedError, setEventsFeedError] = useState("");
+  const [eventsFeedRows, setEventsFeedRows] = useState<EventsFeedEvent[]>([]);
+  const [eventsFeedNextCursor, setEventsFeedNextCursor] = useState<number | null>(null);
 
   const refresh = async () => {
     setLoadError("");
@@ -184,6 +210,61 @@ export default function IntegrationsView({
     } finally {
       setRevokeBusy(null);
     }
+  };
+
+  const handleFetchEventsFeed = async () => {
+    if (eventsFeedBusy) return;
+    const token = eventsFeedToken.trim();
+    if (!token) {
+      setEventsFeedError("Enter a PAT token to fetch the events feed.");
+      return;
+    }
+    const cursorNum = Math.max(Number(eventsFeedCursor) || 0, 0);
+    const limitNum = Math.min(Math.max(Number(eventsFeedLimit) || 10, 1), 100);
+    const url = `${functionsBaseUrl.replace(/\/+$/, "")}/apiV1/v1/events.feed`;
+
+    setEventsFeedBusy(true);
+    setEventsFeedError("");
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          uid: user.uid,
+          cursor: cursorNum,
+          limit: limitNum,
+        }),
+      });
+      const body = (await resp.json()) as EventsFeedResponse;
+      if (!resp.ok || body.ok !== true) {
+        throw new Error(body.message || body.code || `Events feed failed (${resp.status})`);
+      }
+      const rawRows = Array.isArray(body.data?.events) ? body.data?.events : [];
+      const rows: EventsFeedEvent[] = rawRows.map((row) => ({
+        id: typeof row.id === "string" ? row.id : "",
+        type: typeof row.type === "string" ? row.type : "event",
+        at: typeof row.at === "string" ? row.at : null,
+        cursor: typeof row.cursor === "number" ? row.cursor : 0,
+        payload: row.payload && typeof row.payload === "object" ? (row.payload as Record<string, unknown>) : null,
+      }));
+      setEventsFeedRows(rows);
+      setEventsFeedNextCursor(typeof body.data?.nextCursor === "number" ? body.data.nextCursor : null);
+      setEventsFeedCursor(String(cursorNum));
+    } catch (err: unknown) {
+      setEventsFeedRows([]);
+      setEventsFeedNextCursor(null);
+      setEventsFeedError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEventsFeedBusy(false);
+    }
+  };
+
+  const useNextCursor = () => {
+    if (eventsFeedNextCursor == null) return;
+    setEventsFeedCursor(String(eventsFeedNextCursor));
   };
 
   const curlEventsFeed = useMemo(() => {
@@ -335,6 +416,65 @@ export default function IntegrationsView({
         <div className="curl-block">
           <div className="summary-label">Batches list</div>
           <pre><code>{curlBatchesList}</code></pre>
+        </div>
+      </section>
+
+      <section className="card card-3d integrations-card">
+        <div className="card-title">Events feed smoke test</div>
+        <p className="integration-copy">
+          Paste a PAT with <code>events:read</code> and fetch recent feed rows. Token is only held in memory.
+        </p>
+        <label className="integration-field">
+          PAT token (mf_pat_v1...)
+          <input
+            value={eventsFeedToken}
+            onChange={(e) => setEventsFeedToken(e.target.value)}
+            placeholder="Paste token for one-time smoke test"
+            type="password"
+            autoComplete="off"
+          />
+        </label>
+        <div className="integration-actions">
+          <label className="integration-field">
+            Cursor
+            <input value={eventsFeedCursor} onChange={(e) => setEventsFeedCursor(e.target.value)} />
+          </label>
+          <label className="integration-field">
+            Limit (1-100)
+            <input value={eventsFeedLimit} onChange={(e) => setEventsFeedLimit(e.target.value)} />
+          </label>
+          <button className="btn" onClick={toVoidHandler(handleFetchEventsFeed)} disabled={eventsFeedBusy}>
+            {eventsFeedBusy ? "Fetching…" : "Fetch events"}
+          </button>
+          <button className="btn" onClick={useNextCursor} disabled={eventsFeedNextCursor == null}>
+            Use next cursor
+          </button>
+        </div>
+        {eventsFeedError ? <div className="alert">{eventsFeedError}</div> : null}
+        {eventsFeedRows.length === 0 ? (
+          <div className="empty-state">No events loaded yet.</div>
+        ) : (
+          <div className="token-table">
+            {eventsFeedRows.map((row) => (
+              <div key={`${row.id}-${row.cursor}`} className="token-row-item">
+                <div className="token-main">
+                  <div className="token-title">
+                    <strong>{row.type}</strong>
+                    <span className="chip subtle">cursor {row.cursor}</span>
+                  </div>
+                  <div className="token-subtle">
+                    id: <code>{row.id || "-"}</code> · at: {row.at || "—"}
+                  </div>
+                  {row.payload ? (
+                    <pre className="debug-pre"><code>{JSON.stringify(row.payload, null, 2)}</code></pre>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="token-subtle">
+          nextCursor: <code>{eventsFeedNextCursor == null ? "—" : String(eventsFeedNextCursor)}</code>
         </div>
       </section>
 

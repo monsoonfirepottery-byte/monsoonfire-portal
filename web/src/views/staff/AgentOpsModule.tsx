@@ -64,6 +64,30 @@ type AgentCatalogConfig = {
   services: AgentCatalogService[];
 };
 
+type AgentRequestStatus = "new" | "triaged" | "accepted" | "in_progress" | "ready" | "fulfilled" | "rejected" | "cancelled";
+type AgentRequestKind = "firing" | "pickup" | "delivery" | "shipping" | "commission" | "other";
+
+type AgentRequest = {
+  id: string;
+  createdByUid: string;
+  createdByMode: "firebase" | "pat";
+  createdByTokenId: string | null;
+  status: AgentRequestStatus;
+  kind: AgentRequestKind;
+  title: string;
+  summary: string | null;
+  notes: string | null;
+  logisticsMode: string | null;
+  linkedBatchId: string | null;
+  updatedAtMs: number;
+  createdAtMs: number;
+  assignedToUid: string | null;
+  triagedAtMs: number;
+  internalNotes: string | null;
+  constraints: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+};
+
 type Props = {
   client: FunctionsClient;
   active: boolean;
@@ -111,6 +135,24 @@ type ExportDeniedEventsCsvResponse = {
   filename?: string;
   csv?: string;
 };
+type ApiV1Envelope<TData> = {
+  ok: boolean;
+  requestId?: string;
+  message?: string;
+  code?: string;
+  data?: TData;
+};
+type AgentRequestsListStaffResponse = ApiV1Envelope<{
+  requests?: Array<Record<string, unknown>>;
+}>;
+type AgentRequestStatusUpdateResponse = ApiV1Envelope<{
+  agentRequestId?: string;
+  status?: AgentRequestStatus;
+}>;
+type AgentRequestLinkBatchResponse = ApiV1Envelope<{
+  agentRequestId?: string;
+  linkedBatchId?: string;
+}>;
 
 function str(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
@@ -221,6 +263,51 @@ function toCatalogConfig(row: Record<string, unknown>): AgentCatalogConfig {
   };
 }
 
+function toAgentRequest(row: Record<string, unknown>): AgentRequest {
+  const rawStatus = str(row.status, "new");
+  const rawKind = str(row.kind, "other");
+  const logistics = row.logistics && typeof row.logistics === "object" ? (row.logistics as Record<string, unknown>) : {};
+  const staff = row.staff && typeof row.staff === "object" ? (row.staff as Record<string, unknown>) : {};
+  return {
+    id: str(row.id),
+    createdByUid: str(row.createdByUid),
+    createdByMode: str(row.createdByMode, "firebase") === "pat" ? "pat" : "firebase",
+    createdByTokenId: typeof row.createdByTokenId === "string" ? row.createdByTokenId : null,
+    status:
+      rawStatus === "new" ||
+      rawStatus === "triaged" ||
+      rawStatus === "accepted" ||
+      rawStatus === "in_progress" ||
+      rawStatus === "ready" ||
+      rawStatus === "fulfilled" ||
+      rawStatus === "rejected" ||
+      rawStatus === "cancelled"
+        ? rawStatus
+        : "new",
+    kind:
+      rawKind === "firing" ||
+      rawKind === "pickup" ||
+      rawKind === "delivery" ||
+      rawKind === "shipping" ||
+      rawKind === "commission" ||
+      rawKind === "other"
+        ? rawKind
+        : "other",
+    title: str(row.title),
+    summary: typeof row.summary === "string" ? row.summary : null,
+    notes: typeof row.notes === "string" ? row.notes : null,
+    logisticsMode: typeof logistics.mode === "string" ? logistics.mode : null,
+    linkedBatchId: typeof row.linkedBatchId === "string" ? row.linkedBatchId : null,
+    updatedAtMs: tsMs(row.updatedAt),
+    createdAtMs: tsMs(row.createdAt),
+    assignedToUid: typeof staff.assignedToUid === "string" ? staff.assignedToUid : null,
+    triagedAtMs: tsMs(staff.triagedAt),
+    internalNotes: typeof staff.internalNotes === "string" ? staff.internalNotes : null,
+    constraints: row.constraints && typeof row.constraints === "object" ? (row.constraints as Record<string, unknown>) : {},
+    metadata: row.metadata && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : {},
+  };
+}
+
 export default function AgentOpsModule({ client, active, disabled }: Props) {
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
@@ -282,8 +369,20 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     updatedByUid: "",
     updatedAtMs: 0,
   });
+  const [agentRequests, setAgentRequests] = useState<AgentRequest[]>([]);
+  const [agentRequestSearch, setAgentRequestSearch] = useState("");
+  const [agentRequestStatusFilter, setAgentRequestStatusFilter] = useState<"all" | AgentRequestStatus>("all");
+  const [agentRequestKindFilter, setAgentRequestKindFilter] = useState<"all" | AgentRequestKind>("all");
+  const [selectedAgentRequestId, setSelectedAgentRequestId] = useState("");
+  const [agentRequestNextStatus, setAgentRequestNextStatus] = useState<AgentRequestStatus>("triaged");
+  const [agentRequestReasonDraft, setAgentRequestReasonDraft] = useState("");
+  const [agentRequestBatchDraft, setAgentRequestBatchDraft] = useState("");
 
   const selected = useMemo(() => clients.find((row) => row.id === selectedId) ?? null, [clients, selectedId]);
+  const selectedAgentRequest = useMemo(
+    () => agentRequests.find((row) => row.id === selectedAgentRequestId) ?? null,
+    [agentRequests, selectedAgentRequestId]
+  );
   const deniedEvents = useMemo(() => {
     const deniedSet = new Set<string>([
       "agent_quote_denied_risk_limit",
@@ -341,6 +440,36 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
       errored,
     };
   }, [audit]);
+  const filteredAgentRequests = useMemo(() => {
+    const search = agentRequestSearch.trim().toLowerCase();
+    return agentRequests
+      .filter((row) => (agentRequestStatusFilter === "all" ? true : row.status === agentRequestStatusFilter))
+      .filter((row) => (agentRequestKindFilter === "all" ? true : row.kind === agentRequestKindFilter))
+      .filter((row) => {
+        if (!search) return true;
+        const haystack = `${row.id} ${row.title} ${row.summary ?? ""} ${row.createdByUid} ${row.kind} ${row.status}`.toLowerCase();
+        return haystack.includes(search);
+      })
+      .sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+  }, [agentRequestKindFilter, agentRequestSearch, agentRequestStatusFilter, agentRequests]);
+  const agentRequestKpis = useMemo(() => {
+    const counts = {
+      total: agentRequests.length,
+      new: 0,
+      triaged: 0,
+      inProgress: 0,
+      fulfilled: 0,
+      blocked: 0,
+    };
+    for (const row of agentRequests) {
+      if (row.status === "new") counts.new += 1;
+      if (row.status === "triaged") counts.triaged += 1;
+      if (row.status === "in_progress" || row.status === "accepted" || row.status === "ready") counts.inProgress += 1;
+      if (row.status === "fulfilled") counts.fulfilled += 1;
+      if (row.status === "rejected" || row.status === "cancelled") counts.blocked += 1;
+    }
+    return counts;
+  }, [agentRequests]);
 
   const run = async (key: string, fn: () => Promise<void>) => {
     if (busy || disabled) return;
@@ -357,12 +486,17 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
   };
 
   const load = useCallback(async () => {
-    const [clientsResp, logsResp, catalogResp, opsResp, opsConfigResp] = await Promise.all([
+    const [clientsResp, logsResp, catalogResp, opsResp, opsConfigResp, requestsResp] = await Promise.all([
       client.postJson<ListClientsResponse>("staffListAgentClients", { includeRevoked: true, limit: 200 }),
       client.postJson<ListLogsResponse>("staffListAgentClientAuditLogs", { limit: 80 }),
       client.postJson<CatalogResponse>("staffGetAgentServiceCatalog", {}),
       client.postJson<OpsResponse>("staffListAgentOperations", { limit: 60 }),
       client.postJson<AgentOpsConfigResponse>("staffGetAgentOpsConfig", {}),
+      client.postJson<AgentRequestsListStaffResponse>("apiV1/v1/agent.requests.listStaff", {
+        status: "all",
+        kind: "all",
+        limit: 240,
+      }),
     ]);
 
     const rows = Array.isArray(clientsResp.clients) ? clientsResp.clients.map((row) => normalizeClient(row)) : [];
@@ -405,12 +539,25 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
       updatedByUid: str(opsConfigResp.config?.updatedByUid, ""),
       updatedAtMs: num(opsConfigResp.config?.updatedAtMs, 0),
     });
+    const requestRows = Array.isArray(requestsResp.data?.requests)
+      ? requestsResp.data.requests
+          .filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object")
+          .map((row) => toAgentRequest(row))
+      : [];
+    requestRows.sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+    setAgentRequests(requestRows);
 
     if (!selectedId && rows.length > 0) setSelectedId(rows[0].id);
     if (selectedId && !rows.some((row) => row.id === selectedId)) {
       setSelectedId(rows[0]?.id ?? "");
     }
-  }, [client, selectedId]);
+    if (!selectedAgentRequestId && requestRows.length > 0) {
+      setSelectedAgentRequestId(requestRows[0].id);
+    }
+    if (selectedAgentRequestId && !requestRows.some((row) => row.id === selectedAgentRequestId)) {
+      setSelectedAgentRequestId(requestRows[0]?.id ?? "");
+    }
+  }, [client, selectedAgentRequestId, selectedId]);
 
   useEffect(() => {
     if (!active || disabled) return;
@@ -430,6 +577,12 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     setProfileMaxOrdersPerHour(String(selected.spendingLimits.maxOrdersPerHour || 30));
     setDelegatedScopesDraft(selected.scopes.length ? selected.scopes.join(",") : "catalog:read,quote:write,status:read");
   }, [selected]);
+  useEffect(() => {
+    if (!selectedAgentRequest) return;
+    setAgentRequestNextStatus(selectedAgentRequest.status === "new" ? "triaged" : selectedAgentRequest.status);
+    setAgentRequestBatchDraft(selectedAgentRequest.linkedBatchId ?? "");
+    setAgentRequestReasonDraft(selectedAgentRequest.internalNotes ?? "");
+  }, [selectedAgentRequest]);
 
   const parseScopes = (text: string): string[] =>
     text
@@ -655,6 +808,48 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     document.body.removeChild(anchor);
     URL.revokeObjectURL(objectUrl);
     setStatus(`Downloaded CSV (${num(resp.rowCount, 0)} rows).`);
+  };
+  const refreshAgentRequests = async () => {
+    const resp = await client.postJson<AgentRequestsListStaffResponse>("apiV1/v1/agent.requests.listStaff", {
+      status: "all",
+      kind: "all",
+      limit: 240,
+    });
+    const requestRows = Array.isArray(resp.data?.requests)
+      ? resp.data.requests
+          .filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object")
+          .map((row) => toAgentRequest(row))
+      : [];
+    requestRows.sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+    setAgentRequests(requestRows);
+    if (!selectedAgentRequestId && requestRows.length > 0) setSelectedAgentRequestId(requestRows[0].id);
+    if (selectedAgentRequestId && !requestRows.some((row) => row.id === selectedAgentRequestId)) {
+      setSelectedAgentRequestId(requestRows[0]?.id ?? "");
+    }
+  };
+
+  const updateAgentRequestStatus = async () => {
+    if (!selectedAgentRequest) throw new Error("Select a request first.");
+    const resp = await client.postJson<AgentRequestStatusUpdateResponse>("apiV1/v1/agent.requests.updateStatus", {
+      requestId: selectedAgentRequest.id,
+      status: agentRequestNextStatus,
+      reason: agentRequestReasonDraft.trim() || null,
+    });
+    if (!resp.ok) throw new Error(resp.message ?? "Failed to update request status.");
+    await refreshAgentRequests();
+    setStatus(`Request ${selectedAgentRequest.id} moved to ${agentRequestNextStatus}.`);
+  };
+
+  const linkAgentRequestBatch = async () => {
+    if (!selectedAgentRequest) throw new Error("Select a request first.");
+    if (!agentRequestBatchDraft.trim()) throw new Error("Enter a batch id first.");
+    const resp = await client.postJson<AgentRequestLinkBatchResponse>("apiV1/v1/agent.requests.linkBatch", {
+      requestId: selectedAgentRequest.id,
+      batchId: agentRequestBatchDraft.trim(),
+    });
+    if (!resp.ok) throw new Error(resp.message ?? "Failed to link batch.");
+    await refreshAgentRequests();
+    setStatus(`Linked request ${selectedAgentRequest.id} to batch ${agentRequestBatchDraft.trim()}.`);
   };
 
   return (
@@ -1229,6 +1424,193 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <div className="staff-subtitle">Agent request intake queue</div>
+      <div className="staff-note">
+        Structured requests from agents and users are triaged here. Link accepted requests to a portal batch for fulfillment tracking.
+      </div>
+      <div className="staff-actions-row">
+        <div className="pill">Total: {agentRequestKpis.total}</div>
+        <div className="pill">New: {agentRequestKpis.new}</div>
+        <div className="pill">Triaged: {agentRequestKpis.triaged}</div>
+        <div className="pill">Active: {agentRequestKpis.inProgress}</div>
+        <div className="pill">Fulfilled: {agentRequestKpis.fulfilled}</div>
+        <div className="pill">Rejected/Cancelled: {agentRequestKpis.blocked}</div>
+      </div>
+      <div className="staff-actions-row">
+        <label className="staff-field" style={{ flex: 2 }}>
+          Search
+          <input
+            value={agentRequestSearch}
+            onChange={(event) => setAgentRequestSearch(event.target.value)}
+            placeholder="id, title, uid, kind"
+          />
+        </label>
+        <label className="staff-field">
+          Status
+          <select
+            value={agentRequestStatusFilter}
+            onChange={(event) => setAgentRequestStatusFilter(event.target.value as "all" | AgentRequestStatus)}
+          >
+            <option value="all">All</option>
+            <option value="new">new</option>
+            <option value="triaged">triaged</option>
+            <option value="accepted">accepted</option>
+            <option value="in_progress">in_progress</option>
+            <option value="ready">ready</option>
+            <option value="fulfilled">fulfilled</option>
+            <option value="rejected">rejected</option>
+            <option value="cancelled">cancelled</option>
+          </select>
+        </label>
+        <label className="staff-field">
+          Kind
+          <select
+            value={agentRequestKindFilter}
+            onChange={(event) => setAgentRequestKindFilter(event.target.value as "all" | AgentRequestKind)}
+          >
+            <option value="all">All</option>
+            <option value="firing">firing</option>
+            <option value="pickup">pickup</option>
+            <option value="delivery">delivery</option>
+            <option value="shipping">shipping</option>
+            <option value="commission">commission</option>
+            <option value="other">other</option>
+          </select>
+        </label>
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy) || disabled}
+          onClick={() => void run("refreshAgentRequestsOnly", refreshAgentRequests)}
+        >
+          Refresh requests
+        </button>
+      </div>
+      <div className="staff-module-grid">
+        <div className="staff-column">
+          <div className="staff-table-wrap">
+            <table className="staff-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Status</th>
+                  <th>Kind</th>
+                  <th>Requester</th>
+                  <th>Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAgentRequests.length === 0 ? (
+                  <tr>
+                    <td colSpan={5}>No requests match current filters.</td>
+                  </tr>
+                ) : (
+                  filteredAgentRequests.map((row) => (
+                    <tr
+                      key={row.id}
+                      className={`staff-click-row ${selectedAgentRequestId === row.id ? "active" : ""}`}
+                      onClick={() => setSelectedAgentRequestId(row.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedAgentRequestId(row.id);
+                        }
+                      }}
+                      tabIndex={0}
+                    >
+                      <td>
+                        <div>{row.title || "(untitled request)"}</div>
+                        <div className="staff-mini">
+                          <code>{row.id}</code>
+                        </div>
+                      </td>
+                      <td><span className="pill">{row.status}</span></td>
+                      <td>{row.kind}</td>
+                      <td>
+                        <code>{row.createdByUid || "-"}</code>
+                        <div className="staff-mini">{row.createdByMode}</div>
+                      </td>
+                      <td>{when(row.updatedAtMs)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div className="staff-column">
+          <div className="staff-subtitle">Request detail</div>
+          {selectedAgentRequest ? (
+            <>
+              <div className="staff-note">
+                <strong>{selectedAgentRequest.title}</strong><br />
+                <span>{selectedAgentRequest.summary || "No summary"}</span><br />
+                <span>Kind: {selectedAgentRequest.kind} · Status: {selectedAgentRequest.status}</span><br />
+                <span>Requester: <code>{selectedAgentRequest.createdByUid || "-"}</code> ({selectedAgentRequest.createdByMode})</span><br />
+                <span>Created: {when(selectedAgentRequest.createdAtMs)} · Updated: {when(selectedAgentRequest.updatedAtMs)}</span><br />
+                <span>Assigned: <code>{selectedAgentRequest.assignedToUid || "-"}</code> · Triaged: {when(selectedAgentRequest.triagedAtMs)}</span><br />
+                <span>Linked batch: <code>{selectedAgentRequest.linkedBatchId || "-"}</code></span>
+              </div>
+              <div className="staff-actions-row">
+                <label className="staff-field" style={{ flex: 1 }}>
+                  Next status
+                  <select
+                    value={agentRequestNextStatus}
+                    onChange={(event) => setAgentRequestNextStatus(event.target.value as AgentRequestStatus)}
+                  >
+                    <option value="new">new</option>
+                    <option value="triaged">triaged</option>
+                    <option value="accepted">accepted</option>
+                    <option value="in_progress">in_progress</option>
+                    <option value="ready">ready</option>
+                    <option value="fulfilled">fulfilled</option>
+                    <option value="rejected">rejected</option>
+                    <option value="cancelled">cancelled</option>
+                  </select>
+                </label>
+                <label className="staff-field" style={{ flex: 2 }}>
+                  Reason / internal note
+                  <input
+                    value={agentRequestReasonDraft}
+                    onChange={(event) => setAgentRequestReasonDraft(event.target.value)}
+                    placeholder="Queued for next bisque cycle"
+                  />
+                </label>
+                <button
+                  className="btn btn-secondary"
+                  disabled={Boolean(busy) || disabled}
+                  onClick={() => void run("updateAgentRequestStatus", updateAgentRequestStatus)}
+                >
+                  Update status
+                </button>
+              </div>
+              <div className="staff-actions-row">
+                <label className="staff-field" style={{ flex: 2 }}>
+                  Link batch ID
+                  <input
+                    value={agentRequestBatchDraft}
+                    onChange={(event) => setAgentRequestBatchDraft(event.target.value)}
+                    placeholder="batch_123"
+                  />
+                </label>
+                <button
+                  className="btn btn-secondary"
+                  disabled={Boolean(busy) || disabled || !agentRequestBatchDraft.trim()}
+                  onClick={() => void run("linkAgentRequestBatch", linkAgentRequestBatch)}
+                >
+                  Link batch
+                </button>
+              </div>
+              <details className="staff-troubleshooting">
+                <summary>Request payload details</summary>
+                <pre>{JSON.stringify({ constraints: selectedAgentRequest.constraints, metadata: selectedAgentRequest.metadata, notes: selectedAgentRequest.notes, logisticsMode: selectedAgentRequest.logisticsMode }, null, 2)}</pre>
+              </details>
+            </>
+          ) : (
+            <div className="staff-note">Select a request to inspect and triage.</div>
+          )}
         </div>
       </div>
 

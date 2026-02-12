@@ -67,3 +67,4 @@ All reports include:
 - All notes/messages are rendered as plain text in UI.
 - No Stripe/secret keys are stored in report documents.
 - Existing troubleshooting panels can show latest request/error traces for staff.
+- Operational policy + retention details: `docs/COMMUNITY_REPORTING_OPS_POLICY.md`.

@@ -8,6 +8,7 @@ import {
   isStaffFromDecoded,
   db,
   nowTs,
+  Timestamp,
   parseBody,
   enforceRateLimit,
   type AuthContext,
@@ -142,6 +143,13 @@ const eventsFeedSchema = z.object({
 
 const agentCatalogSchema = z.object({
   includeDisabled: z.boolean().optional(),
+});
+
+const agentQuoteSchema = z.object({
+  serviceId: z.string().min(1),
+  quantity: z.number().int().min(1).max(10_000).optional(),
+  currency: z.string().min(3).max(8).optional().nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export async function handleApiV1(req: any, res: any) {
@@ -405,6 +413,112 @@ export async function handleApiV1(req: any, res: any) {
         featureFlags: config.featureFlags,
         services,
         updatedAt: config.updatedAt,
+      });
+      return;
+    }
+
+    if (route === "/v1/agent.quote") {
+      const scopeCheck = requireScopes(ctx, ["quote:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(agentQuoteSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const config = await getAgentServiceCatalogConfig();
+      if (!config.featureFlags.quoteEnabled) {
+        jsonError(res, requestId, 503, "UNAVAILABLE", "Agent quote capability is disabled");
+        return;
+      }
+
+      const serviceId = String(parsed.data.serviceId).trim();
+      const service = config.services.find((entry) => entry.id === serviceId && entry.enabled);
+      if (!service) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Service not found or not enabled");
+        return;
+      }
+
+      const quantity = parsed.data.quantity ?? 1;
+      if (quantity > service.maxQuantity) {
+        jsonError(
+          res,
+          requestId,
+          400,
+          "INVALID_ARGUMENT",
+          `Quantity exceeds max for service (${service.maxQuantity})`
+        );
+        return;
+      }
+
+      const currency = (parsed.data.currency ?? service.currency ?? config.defaultCurrency).toUpperCase();
+      const unitPriceCents = Math.max(0, Math.trunc(service.basePriceCents));
+      const subtotalCents = unitPriceCents * quantity;
+      const quoteExpiresAt = Timestamp.fromMillis(Date.now() + 15 * 60 * 1000);
+      const metadata = parsed.data.metadata ?? {};
+
+      const quoteRef = db.collection("agentQuotes").doc();
+      const quoteRow = {
+        quoteId: quoteRef.id,
+        serviceId: service.id,
+        serviceTitle: service.title,
+        category: service.category,
+        uid: ctx.uid,
+        authMode: ctx.mode,
+        scopes: ctx.mode === "firebase" ? null : ctx.scopes,
+        agentClientId: ctx.mode === "delegated" ? ctx.delegated.agentClientId : null,
+        delegatedTokenId: ctx.mode === "delegated" ? ctx.tokenId : null,
+        quantity,
+        unitPriceCents,
+        subtotalCents,
+        currency,
+        riskLevel: service.riskLevel,
+        requiresManualReview: service.requiresManualReview,
+        leadTimeDays: service.leadTimeDays,
+        status: "quoted",
+        mode: config.pricingMode,
+        metadata,
+        createdAt: nowTs(),
+        expiresAt: quoteExpiresAt,
+      };
+
+      await quoteRef.set(quoteRow);
+      await db.collection("agentAuditLogs").add({
+        actorUid: ctx.uid,
+        actorMode: ctx.mode,
+        action: "agent_quote_created",
+        requestId,
+        quoteId: quoteRef.id,
+        serviceId: service.id,
+        quantity,
+        subtotalCents,
+        currency,
+        createdAt: nowTs(),
+      });
+
+      jsonOk(res, requestId, {
+        quoteId: quoteRef.id,
+        status: "quoted",
+        pricingMode: config.pricingMode,
+        service: {
+          id: service.id,
+          title: service.title,
+          category: service.category,
+          riskLevel: service.riskLevel,
+          requiresManualReview: service.requiresManualReview,
+          leadTimeDays: service.leadTimeDays,
+        },
+        pricing: {
+          unitPriceCents,
+          quantity,
+          subtotalCents,
+          currency,
+        },
+        expiresAt: quoteExpiresAt,
       });
       return;
     }

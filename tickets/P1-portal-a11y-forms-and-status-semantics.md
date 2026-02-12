@@ -1,6 +1,6 @@
 # P1 — Portal A11y: Forms, Filters, and Status Semantics
 
-Status: Planned
+Status: In Progress
 
 ## Problem
 - Some form/search controls rely on placeholder text instead of explicit labels.
@@ -37,3 +37,9 @@ Status: Planned
 - `web/src/views/SupportView.tsx:277`
 - `web/src/views/SupportView.tsx:287`
 - `web/src/views/SignedOutView.tsx:214`
+
+## Progress notes
+- Added live-region semantics for Integrations async feedback:
+  - blocking errors use `role="alert"` + `aria-live="assertive"`
+  - non-blocking status notices use `role="status"` + `aria-live="polite"`
+- Applied to token create/revoke flows and events-feed smoke test feedback.

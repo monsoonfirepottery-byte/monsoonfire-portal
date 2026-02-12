@@ -53,6 +53,9 @@ Drill runner script:
   - `pwsh -File scripts/run-notification-drills.ps1 -BaseUrl "https://us-central1-monsoonfire-portal.cloudfunctions.net" -IdToken "<REAL_ID_TOKEN>" -Uid "<REAL_UID>"`
 - Emulator example (dev-only):
   - `pwsh -File scripts/run-notification-drills.ps1 -BaseUrl "http://127.0.0.1:5001/monsoonfire-portal/us-central1" -IdToken "<REAL_ID_TOKEN>" -Uid "<REAL_UID>" -AdminToken "<DEV_ADMIN_TOKEN>"`
+- Structured evidence output options:
+  - `-OutputJson` prints a machine-readable run summary.
+  - `-LogFile "docs/drill-runs.jsonl"` appends a compact JSON line per run for easy audit/history.
 
 ## Immediate mitigations
 - Keep queue processing enabled; retry/backoff is automatic up to max attempts.

@@ -16,6 +16,8 @@ import {
 import { db } from "../firebase";
 import type { Announcement, DirectMessage, DirectMessageThread, LiveUser } from "../types/messaging";
 import { toVoidHandler } from "../utils/toVoidHandler";
+import RevealCard from "../components/RevealCard";
+import { useUiSettings } from "../context/UiSettingsContext";
 
 const SUPPORT_THREAD_PREFIX = "support_";
 
@@ -148,6 +150,8 @@ export default function MessagesView({
   announcementsError,
   unreadAnnouncements,
 }: Props) {
+  const { themeName, portalMotion } = useUiSettings();
+  const motionEnabled = themeName === "memoria" && portalMotion === "enhanced";
   const [messagesTab, setMessagesTab] = useState<MessagesTab>("inbox");
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(threads[0]?.id || null);
   const [composerText, setComposerText] = useState("");
@@ -442,7 +446,7 @@ export default function MessagesView({
       {announcementsError ? <div className="card card-3d alert">{announcementsError}</div> : null}
 
       <div className="messages-layout">
-        <div className="card card-3d thread-pane">
+        <RevealCard className="card card-3d thread-pane" index={0} enabled={motionEnabled}>
           <div className="card-title-row">
             <div className="card-title">Direct messages</div>
             <button className="btn btn-ghost" onClick={() => setNewThreadOpen((prev) => !prev)}>
@@ -553,9 +557,9 @@ export default function MessagesView({
               })}
             </div>
           )}
-        </div>
+        </RevealCard>
 
-        <div className="card card-3d conversation-pane">
+        <RevealCard className="card card-3d conversation-pane" index={1} enabled={motionEnabled}>
           <div className="card-title">
             {selectedThread ? selectedThread.subject || "(no subject)" : "Select a direct message"}
           </div>
@@ -609,10 +613,14 @@ export default function MessagesView({
           ) : (
             <div className="empty-state">Choose a direct message to read and reply.</div>
           )}
-        </div>
+        </RevealCard>
       </div>
 
-      <div className={`card card-3d announcements-strip ${shouldExpandAnnouncements ? "expanded" : ""}`}>
+      <RevealCard
+        className={`card card-3d announcements-strip ${shouldExpandAnnouncements ? "expanded" : ""}`}
+        index={2}
+        enabled={motionEnabled}
+      >
         <div className="card-title">Studio announcements</div>
         {announcementsLoading ? (
           <div className="empty-state">Loading announcements...</div>
@@ -649,7 +657,7 @@ export default function MessagesView({
             })}
           </div>
         )}
-      </div>
+      </RevealCard>
     </div>
   );
 }

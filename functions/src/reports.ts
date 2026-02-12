@@ -1,0 +1,493 @@
+import { onRequest } from "firebase-functions/v2/https";
+import * as logger from "firebase-functions/logger";
+import { createHash } from "crypto";
+import { z } from "zod";
+import {
+  applyCors,
+  db,
+  enforceRateLimit,
+  nowTs,
+  parseBody,
+  requireAdmin,
+  requireAuthUid,
+} from "./shared";
+
+const REGION = "us-central1";
+
+const REPORTS_COL = "communityReports";
+const REPORT_AUDIT_COL = "communityReportAuditLogs";
+const FEED_OVERRIDES_COL = "communityFeedOverrides";
+
+const reportCategorySchema = z.enum([
+  "broken_link",
+  "incorrect_info",
+  "spam",
+  "safety",
+  "harassment_hate",
+  "copyright",
+  "other",
+]);
+const reportSeveritySchema = z.enum(["low", "medium", "high"]);
+const reportTargetTypeSchema = z.enum(["youtube_video", "blog_post", "studio_update", "event"]);
+
+const reportSnapshotSchema = z.object({
+  title: z.string().min(1).max(200),
+  url: z.string().url().optional().nullable(),
+  source: z.string().max(80).optional().nullable(),
+  author: z.string().max(120).optional().nullable(),
+  publishedAtMs: z.number().int().nonnegative().optional().nullable(),
+});
+
+const createReportSchema = z.object({
+  targetType: reportTargetTypeSchema,
+  targetRef: z.object({
+    id: z.string().min(1).max(180),
+    url: z.string().url().optional().nullable(),
+    videoId: z.string().max(120).optional().nullable(),
+    slug: z.string().max(180).optional().nullable(),
+  }),
+  category: reportCategorySchema,
+  severity: reportSeveritySchema.optional(),
+  note: z.string().max(1200).optional().nullable(),
+  targetSnapshot: reportSnapshotSchema,
+});
+
+const listReportsSchema = z.object({
+  status: z.enum(["all", "open", "triaged", "actioned", "resolved", "dismissed"]).optional(),
+  category: reportCategorySchema.or(z.literal("all")).optional(),
+  severity: reportSeveritySchema.or(z.literal("all")).optional(),
+  targetType: reportTargetTypeSchema.or(z.literal("all")).optional(),
+  limit: z.number().int().min(1).max(200).optional(),
+});
+
+const updateReportStatusSchema = z.object({
+  reportId: z.string().min(1),
+  status: z.enum(["open", "triaged", "actioned", "resolved", "dismissed"]),
+  resolutionCode: z.string().max(120).optional().nullable(),
+});
+
+const addInternalNoteSchema = z.object({
+  reportId: z.string().min(1),
+  note: z.string().min(1).max(2400),
+});
+
+const takeContentActionSchema = z.object({
+  reportId: z.string().min(1),
+  actionType: z.enum(["unpublish", "replace_link", "flag_for_review", "disable_from_feed"]),
+  reason: z.string().max(400).optional().nullable(),
+  replacementUrl: z.string().url().optional().nullable(),
+});
+
+function safeString(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+function normalizeNullableString(v: string | null | undefined): string | null {
+  const value = safeString(v);
+  return value.length ? value : null;
+}
+
+function dedupeKey(uid: string, targetType: string, targetId: string) {
+  return createHash("sha256")
+    .update(`${uid}::${targetType}::${targetId}`)
+    .digest("hex")
+    .slice(0, 40);
+}
+
+async function writeAudit(params: {
+  actorUid: string;
+  actorRole: "user" | "staff";
+  action: string;
+  reportId?: string | null;
+  targetType?: string | null;
+  targetId?: string | null;
+  category?: string | null;
+  severity?: string | null;
+  metadata?: Record<string, unknown>;
+}) {
+  const payload = {
+    actorUid: params.actorUid,
+    actorRole: params.actorRole,
+    action: params.action,
+    reportId: params.reportId ?? null,
+    targetType: params.targetType ?? null,
+    targetId: params.targetId ?? null,
+    category: params.category ?? null,
+    severity: params.severity ?? null,
+    metadata: params.metadata ?? null,
+    createdAt: nowTs(),
+  };
+  await db.collection(REPORT_AUDIT_COL).add(payload);
+}
+
+export const createReport = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Method not allowed" });
+    return;
+  }
+
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+
+  const parsed = parseBody(createReportSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const uid = auth.uid;
+  const payload = parsed.data;
+  const targetId = safeString(payload.targetRef.id);
+  const targetType = payload.targetType;
+  const category = payload.category;
+  const severity = payload.severity ?? (category === "safety" ? "high" : "low");
+
+  const limitResult = await enforceRateLimit({
+    req,
+    key: "community_reports_create_per_uid",
+    max: 5,
+    windowMs: 24 * 60 * 60 * 1000,
+  });
+  if (!limitResult.ok) {
+    await writeAudit({
+      actorUid: uid,
+      actorRole: "user",
+      action: "create_report_denied",
+      targetType,
+      targetId,
+      category,
+      severity,
+      metadata: { reason: "rate_limited", retryAfterMs: limitResult.retryAfterMs },
+    });
+    res.status(429).json({ ok: false, message: "Rate limit exceeded. Try again later." });
+    return;
+  }
+
+  const dedupeId = dedupeKey(uid, targetType, targetId);
+  const dedupeRef = db.collection("communityReportDedupe").doc(dedupeId);
+  const reportRef = db.collection(REPORTS_COL).doc();
+  const nowMs = Date.now();
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const dedupeSnap = await tx.get(dedupeRef);
+      if (dedupeSnap.exists) {
+        const existing = dedupeSnap.data() as { createdAtMs?: number; reportId?: string } | undefined;
+        const createdAtMs = typeof existing?.createdAtMs === "number" ? existing.createdAtMs : 0;
+        if (createdAtMs > 0 && nowMs - createdAtMs < 24 * 60 * 60 * 1000) {
+          const err = new Error("duplicate_report");
+          (err as Error & { code?: string }).code = "duplicate_report";
+          throw err;
+        }
+      }
+
+      tx.set(reportRef, {
+        reporterUid: uid,
+        status: "open",
+        assigneeUid: null,
+        resolutionCode: null,
+        resolvedAt: null,
+        category,
+        severity,
+        note: normalizeNullableString(payload.note),
+        targetType,
+        targetRef: payload.targetRef,
+        targetSnapshot: payload.targetSnapshot,
+        dedupeKey: dedupeId,
+        createdAt: nowTs(),
+        updatedAt: nowTs(),
+      });
+      tx.set(dedupeRef, {
+        reporterUid: uid,
+        targetType,
+        targetId,
+        reportId: reportRef.id,
+        createdAtMs: nowMs,
+        expiresAtMs: nowMs + 24 * 60 * 60 * 1000,
+        updatedAt: nowTs(),
+      });
+    });
+  } catch (error: unknown) {
+    const code =
+      error instanceof Error && "code" in error && typeof (error as { code?: unknown }).code === "string"
+        ? (error as { code: string }).code
+        : "";
+    if (code === "duplicate_report") {
+      await writeAudit({
+        actorUid: uid,
+        actorRole: "user",
+        action: "create_report_denied",
+        targetType,
+        targetId,
+        category,
+        severity,
+        metadata: { reason: "duplicate_report" },
+      });
+      res.status(409).json({ ok: false, message: "You already reported this item in the last 24 hours." });
+      return;
+    }
+    logger.error("createReport failed", error);
+    res.status(500).json({ ok: false, message: "Failed to create report" });
+    return;
+  }
+
+  await writeAudit({
+    actorUid: uid,
+    actorRole: "user",
+    action: "create_report",
+    reportId: reportRef.id,
+    targetType,
+    targetId,
+    category,
+    severity,
+  });
+
+  res.status(200).json({ ok: true, reportId: reportRef.id, status: "open" });
+});
+
+export const listReports = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Method not allowed" });
+    return;
+  }
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+  const admin = await requireAdmin(req);
+  if (!admin.ok) {
+    res.status(403).json({ ok: false, message: admin.message });
+    return;
+  }
+
+  const parsed = parseBody(listReportsSchema, req.body ?? {});
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const { status = "all", category = "all", severity = "all", targetType = "all", limit = 80 } = parsed.data;
+  const snap = await db.collection(REPORTS_COL).orderBy("createdAt", "desc").limit(limit).get();
+  let reports: Array<Record<string, unknown>> = snap.docs.map((docSnap) => ({
+    id: docSnap.id,
+    ...(docSnap.data() as Record<string, unknown>),
+  }));
+  reports = reports.filter((row) => {
+    if (status !== "all" && safeString(row.status) !== status) return false;
+    if (category !== "all" && safeString(row.category) !== category) return false;
+    if (severity !== "all" && safeString(row.severity) !== severity) return false;
+    if (targetType !== "all" && safeString(row.targetType) !== targetType) return false;
+    return true;
+  });
+
+  await writeAudit({
+    actorUid: auth.uid,
+    actorRole: "staff",
+    action: "list_reports",
+    metadata: { status, category, severity, targetType, limit },
+  });
+  res.status(200).json({ ok: true, reports });
+});
+
+export const updateReportStatus = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Method not allowed" });
+    return;
+  }
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+  const admin = await requireAdmin(req);
+  if (!admin.ok) {
+    res.status(403).json({ ok: false, message: admin.message });
+    return;
+  }
+
+  const parsed = parseBody(updateReportStatusSchema, req.body ?? {});
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+  const { reportId, status, resolutionCode } = parsed.data;
+  const ref = db.collection(REPORTS_COL).doc(reportId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    res.status(404).json({ ok: false, message: "Report not found" });
+    return;
+  }
+  const row = snap.data() as Record<string, unknown>;
+  await ref.set(
+    {
+      status,
+      resolutionCode: normalizeNullableString(resolutionCode),
+      assigneeUid: auth.uid,
+      resolvedAt: status === "resolved" || status === "dismissed" ? nowTs() : null,
+      updatedAt: nowTs(),
+    },
+    { merge: true }
+  );
+  await writeAudit({
+    actorUid: auth.uid,
+    actorRole: "staff",
+    action: "update_report_status",
+    reportId,
+    targetType: safeString(row.targetType),
+    targetId: safeString((row.targetRef as { id?: unknown } | undefined)?.id),
+    category: safeString(row.category),
+    severity: safeString(row.severity),
+    metadata: { status, resolutionCode: normalizeNullableString(resolutionCode) },
+  });
+  res.status(200).json({ ok: true });
+});
+
+export const addInternalNote = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Method not allowed" });
+    return;
+  }
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+  const admin = await requireAdmin(req);
+  if (!admin.ok) {
+    res.status(403).json({ ok: false, message: admin.message });
+    return;
+  }
+
+  const parsed = parseBody(addInternalNoteSchema, req.body ?? {});
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+  const { reportId, note } = parsed.data;
+  const reportRef = db.collection(REPORTS_COL).doc(reportId);
+  const reportSnap = await reportRef.get();
+  if (!reportSnap.exists) {
+    res.status(404).json({ ok: false, message: "Report not found" });
+    return;
+  }
+  const noteRef = reportRef.collection("internalNotes").doc();
+  await noteRef.set({
+    authorUid: auth.uid,
+    note: safeString(note),
+    createdAt: nowTs(),
+  });
+  await reportRef.set({ updatedAt: nowTs() }, { merge: true });
+  await writeAudit({
+    actorUid: auth.uid,
+    actorRole: "staff",
+    action: "add_internal_note",
+    reportId,
+    metadata: { noteId: noteRef.id },
+  });
+  res.status(200).json({ ok: true, noteId: noteRef.id });
+});
+
+export const takeContentAction = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Method not allowed" });
+    return;
+  }
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+  const admin = await requireAdmin(req);
+  if (!admin.ok) {
+    res.status(403).json({ ok: false, message: admin.message });
+    return;
+  }
+
+  const parsed = parseBody(takeContentActionSchema, req.body ?? {});
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+  const { reportId, actionType, reason, replacementUrl } = parsed.data;
+  const reportRef = db.collection(REPORTS_COL).doc(reportId);
+  const reportSnap = await reportRef.get();
+  if (!reportSnap.exists) {
+    res.status(404).json({ ok: false, message: "Report not found" });
+    return;
+  }
+  const report = reportSnap.data() as Record<string, unknown>;
+  const targetType = safeString(report.targetType);
+  const targetRef = (report.targetRef as { id?: unknown; url?: unknown; videoId?: unknown } | undefined) ?? {};
+  const targetId = safeString(targetRef.id);
+
+  if (targetType === "youtube_video" && !["disable_from_feed", "replace_link", "flag_for_review"].includes(actionType)) {
+    res.status(400).json({ ok: false, message: "Action not supported for youtube_video" });
+    return;
+  }
+  if (targetType !== "youtube_video" && !["unpublish", "replace_link", "flag_for_review"].includes(actionType)) {
+    res.status(400).json({ ok: false, message: "Action not supported for internal content" });
+    return;
+  }
+
+  const actionRef = reportRef.collection("actions").doc();
+  await actionRef.set({
+    actorUid: auth.uid,
+    actionType,
+    reason: normalizeNullableString(reason),
+    replacementUrl: normalizeNullableString(replacementUrl),
+    createdAt: nowTs(),
+  });
+
+  if (targetType === "youtube_video") {
+    const feedId = safeString(targetRef.videoId) || targetId;
+    await db.collection(FEED_OVERRIDES_COL).doc(`youtube_video:${feedId}`).set(
+      {
+        targetType: "youtube_video",
+        targetId: feedId,
+        disabled: actionType === "disable_from_feed",
+        replacementUrl: normalizeNullableString(replacementUrl),
+        flaggedForReview: actionType === "flag_for_review",
+        reason: normalizeNullableString(reason),
+        updatedBy: auth.uid,
+        updatedAt: nowTs(),
+      },
+      { merge: true }
+    );
+  }
+
+  await reportRef.set(
+    {
+      status: "actioned",
+      lastActionType: actionType,
+      assigneeUid: auth.uid,
+      updatedAt: nowTs(),
+    },
+    { merge: true }
+  );
+
+  await writeAudit({
+    actorUid: auth.uid,
+    actorRole: "staff",
+    action: "take_content_action",
+    reportId,
+    targetType,
+    targetId,
+    category: safeString(report.category),
+    severity: safeString(report.severity),
+    metadata: {
+      actionType,
+      reason: normalizeNullableString(reason),
+      replacementUrl: normalizeNullableString(replacementUrl),
+    },
+  });
+  res.status(200).json({ ok: true, actionId: actionRef.id });
+});

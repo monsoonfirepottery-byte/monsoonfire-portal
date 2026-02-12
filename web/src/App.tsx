@@ -1254,6 +1254,7 @@ export default function App() {
       case "community":
         return (
           <CommunityView
+            user={user}
             onOpenLendingLibrary={() => setNav("lendingLibrary")}
             onOpenWorkshops={() => setNav("events")}
           />

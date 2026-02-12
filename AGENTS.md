@@ -111,3 +111,8 @@ Known fixed issues + patterns:
 cd web
 npm install
 npm run dev
+```
+
+### Theme + Motion
+
+- `docs/PORTAL_THEME_AND_MOTION.md`

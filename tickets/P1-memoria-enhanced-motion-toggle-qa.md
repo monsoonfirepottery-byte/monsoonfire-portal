@@ -1,0 +1,28 @@
+Status: Open (2026-02-10)
+
+# P1 - QA: Enhanced Motion Toggle (Memoria)
+
+## Problem
+We introduced an Enhanced motion user setting (`profiles.uiEnhancedMotion` + `localStorage mf:enhancedMotion`) and device heuristics. We need confidence it behaves predictably across devices/browsers and doesn’t accidentally re-enable heavy motion.
+
+## Tasks
+- Verify precedence rules:
+  - First run: device heuristic default applies.
+  - User change persists to localStorage.
+  - Signed-in users load `profiles.uiEnhancedMotion` and override localStorage.
+- Validate computed DOM state:
+  - `html[data-portal-motion="enhanced|reduced"]` matches expectations.
+  - `html[data-portal-theme="portal|memoria"]` still correct.
+- Manual QA matrix (at least):
+  - Desktop Chrome (Windows)
+  - Mobile Safari (iOS) or iOS simulator
+  - `prefers-reduced-motion: reduce` enabled/disabled
+  - Narrow viewport (<=720px) default behavior
+- Confirm Firestore rules allow writing `uiEnhancedMotion`.
+- Ensure Profile UI copy is clear and doesn’t fight `prefers-reduced-motion`.
+
+## Acceptance
+- No white screens, no console errors.
+- Toggle updates motion behavior immediately (no refresh needed).
+- Setting persists across reload and (when signed in) across devices via Firestore.
+

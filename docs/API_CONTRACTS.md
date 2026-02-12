@@ -128,6 +128,204 @@ Notes:
 
 ---
 
+## Integration tokens (PATs) for agents
+
+Portal UI and native clients should keep using Firebase ID tokens.
+
+For agentic / non-interactive workflows, the backend supports **Integration Tokens** (personal access tokens, PATs).
+
+Token format:
+- `mf_pat_v1.<tokenId>.<secret>`
+
+Usage:
+- Send as `Authorization: Bearer <PAT>`
+
+Security properties:
+- The token `secret` is only shown once on creation.
+- The server stores only a hash (`secretHash`), never the plaintext secret.
+- Tokens are scoped and revocable.
+
+Required Functions runtime config:
+- `INTEGRATION_TOKEN_PEPPER` (a long random secret used to hash PAT secrets; configure via Firebase Secrets in prod, and via `functions/.env.local` in the emulator)
+
+### createIntegrationToken
+
+POST `${BASE_URL}/createIntegrationToken`
+
+Auth:
+- Firebase ID token (interactive)
+
+Request:
+```json
+{
+  "label": "My assistant (optional)",
+  "scopes": ["batches:read", "timeline:read", "firings:read", "events:read"]
+}
+```
+
+Response:
+```json
+{
+  "ok": true,
+  "tokenId": "base64url...",
+  "token": "mf_pat_v1.<tokenId>.<secret>",
+  "record": { "tokenId": "...", "label": "...", "scopes": ["..."] }
+}
+```
+
+### listIntegrationTokens
+
+POST `${BASE_URL}/listIntegrationTokens`
+
+Auth:
+- Firebase ID token
+
+Response:
+```json
+{
+  "ok": true,
+  "tokens": [
+    {
+      "tokenId": "base64url...",
+      "label": "My assistant",
+      "scopes": ["events:read"],
+      "createdAt": "...",
+      "lastUsedAt": null,
+      "revokedAt": null
+    }
+  ]
+}
+```
+
+### revokeIntegrationToken
+
+POST `${BASE_URL}/revokeIntegrationToken`
+
+Auth:
+- Firebase ID token
+
+Request:
+```json
+{ "tokenId": "base64url..." }
+```
+
+Response:
+```json
+{ "ok": true }
+```
+
+### helloPat (debug)
+
+POST `${BASE_URL}/helloPat`
+
+Auth:
+- Firebase ID token OR PAT
+
+Response:
+```json
+{ "ok": true, "uid": "uid_123", "mode": "firebase|pat", "scopes": ["..."] }
+```
+
+---
+
+## Agent API v1 (JSON envelope + scopes)
+
+Base URL:
+- `${BASE_URL}/apiV1`
+
+All v1 responses use:
+- Success: `{ ok: true, requestId, data }`
+- Error: `{ ok: false, requestId, code, message, details }`
+
+If calling with a PAT, required scopes are enforced per endpoint.
+
+### v1/hello
+
+POST `${BASE_URL}/apiV1/v1/hello`
+
+Auth:
+- Firebase ID token OR PAT
+
+Response:
+```json
+{ "ok": true, "requestId": "req_...", "data": { "uid": "uid_123", "mode": "pat", "scopes": ["..."] } }
+```
+
+### v1/events.feed
+
+POST `${BASE_URL}/apiV1/v1/events.feed`
+
+Auth:
+- Firebase ID token OR PAT with scope `events:read`
+
+Request:
+```json
+{ "uid": "uid_123 (optional, defaults to caller uid)", "cursor": 0, "limit": 100 }
+```
+
+Response:
+```json
+{
+  "ok": true,
+  "requestId": "req_...",
+  "data": {
+    "uid": "uid_123",
+    "events": [{ "id": "evt", "cursor": 1, "type": "batch.updated", "subject": { "batchId": "..." } }],
+    "nextCursor": 1
+  }
+}
+```
+
+### v1/batches.list
+
+POST `${BASE_URL}/apiV1/v1/batches.list`
+
+Auth:
+- Firebase ID token OR PAT with scope `batches:read`
+
+Request:
+```json
+{ "ownerUid": "uid_123 (optional)", "limit": 50, "includeClosed": true }
+```
+
+### v1/batches.get
+
+POST `${BASE_URL}/apiV1/v1/batches.get`
+
+Auth:
+- Firebase ID token OR PAT with scope `batches:read`
+
+Request:
+```json
+{ "batchId": "batch_123" }
+```
+
+### v1/batches.timeline.list
+
+POST `${BASE_URL}/apiV1/v1/batches.timeline.list`
+
+Auth:
+- Firebase ID token OR PAT with scope `timeline:read`
+
+Request:
+```json
+{ "batchId": "batch_123", "limit": 200 }
+```
+
+### v1/firings.listUpcoming
+
+POST `${BASE_URL}/apiV1/v1/firings.listUpcoming`
+
+Auth:
+- Firebase ID token OR PAT with scope `firings:read`
+
+Request:
+```json
+{ "limit": 200 }
+```
+
+---
+
 ## Emulator admin token requirement
 
 When using the Functions emulator, admin-gated endpoints also require the emulator to have a configured token to compare against.

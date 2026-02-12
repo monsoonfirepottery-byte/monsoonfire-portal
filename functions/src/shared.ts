@@ -1,7 +1,7 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAuth, type DecodedIdToken } from "firebase-admin/auth";
-import { createHash } from "crypto";
+import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { z } from "zod";
 
 initializeApp();
@@ -68,7 +68,7 @@ export function applyCors(req: any, res: any): boolean {
   res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   res.set(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, x-admin-token"
+    "Content-Type, Authorization, x-admin-token, x-request-id, idempotency-key"
   );
   res.set("Access-Control-Max-Age", "3600");
 
@@ -90,7 +90,8 @@ export function readAdminTokenFromReq(req: any): string {
   return "";
 }
 
-function isStaffClaim(decoded: DecodedIdToken): boolean {
+export function isStaffFromDecoded(decoded: DecodedIdToken | null | undefined): boolean {
+  if (!decoded) return false;
   if ((decoded as any).staff === true) return true;
   const roles = (decoded as any).roles;
   return Array.isArray(roles) && roles.includes("staff");
@@ -125,6 +126,119 @@ export async function requireAuthUid(
   }
 }
 
+export type AuthContext =
+  | {
+      mode: "firebase";
+      uid: string;
+      decoded: DecodedIdToken;
+      scopes: null;
+      tokenId: null;
+    }
+  | {
+      mode: "pat";
+      uid: string;
+      decoded: null;
+      scopes: string[];
+      tokenId: string;
+    };
+
+function readIntegrationTokenPepper(): string | null {
+  const raw = (process.env.INTEGRATION_TOKEN_PEPPER ?? "").trim();
+  return raw.length ? raw : null;
+}
+
+function hashIntegrationTokenSecret(secret: string): string | null {
+  const pepper = readIntegrationTokenPepper();
+  if (!pepper) return null;
+  return createHmac("sha256", pepper).update(secret).digest("hex");
+}
+
+function parsePatToken(raw: string): { ok: true; tokenId: string; secret: string } | { ok: false } {
+  const parts = raw.split(".");
+  if (parts.length !== 3) return { ok: false };
+  if (parts[0] !== "mf_pat_v1") return { ok: false };
+  const tokenId = parts[1] ?? "";
+  const secret = parts[2] ?? "";
+  if (!tokenId || !secret) return { ok: false };
+  return { ok: true, tokenId, secret };
+}
+
+export async function requireAuthContext(
+  req: any
+): Promise<{ ok: true; ctx: AuthContext } | { ok: false; code: "UNAUTHENTICATED"; message: string }> {
+  const cached = (req as any).__mfAuthContext as AuthContext | undefined;
+  if (cached && typeof cached.uid === "string" && cached.uid) return { ok: true, ctx: cached };
+
+  const token = parseAuthToken(req);
+  if (!token) return { ok: false, code: "UNAUTHENTICATED", message: "Missing Authorization header" };
+
+  // PAT auth
+  if (token.startsWith("mf_pat_v1.")) {
+    const parsed = parsePatToken(token);
+    if (!parsed.ok) return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+
+    const gotHash = hashIntegrationTokenSecret(parsed.secret);
+    if (!gotHash) return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+
+    const ref = db.collection("integrationTokens").doc(parsed.tokenId);
+    const snap = await ref.get();
+    if (!snap.exists) return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+
+    const data = snap.data() as any;
+    const expectedHash = typeof data?.secretHash === "string" ? data.secretHash : "";
+    const ownerUid = typeof data?.ownerUid === "string" ? data.ownerUid : "";
+    const revokedAt = data?.revokedAt ?? null;
+    const scopes = Array.isArray(data?.scopes) ? data.scopes.filter((s: any) => typeof s === "string") : [];
+
+    // Revoked or malformed records are treated as unauthorized.
+    if (!expectedHash || !ownerUid || revokedAt) {
+      return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    }
+
+    const expectedBuf = Buffer.from(expectedHash, "hex");
+    const gotBuf = Buffer.from(gotHash, "hex");
+    if (expectedBuf.length !== gotBuf.length) {
+      return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    }
+    if (!timingSafeEqual(expectedBuf, gotBuf)) {
+      return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
+    }
+
+    const ctx: AuthContext = {
+      mode: "pat",
+      uid: ownerUid,
+      decoded: null,
+      scopes,
+      tokenId: parsed.tokenId,
+    };
+    (req as any).__mfAuthContext = ctx;
+
+    // Best-effort usage marker (never block auth if this fails).
+    try {
+      const t = nowTs();
+      await ref.set({ lastUsedAt: t, updatedAt: t }, { merge: true });
+    } catch {
+      // ignore
+    }
+
+    return { ok: true, ctx };
+  }
+
+  // Firebase ID token auth
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) return { ok: false, code: "UNAUTHENTICATED", message: auth.message };
+
+  const ctx: AuthContext = {
+    mode: "firebase",
+    uid: auth.uid,
+    decoded: auth.decoded,
+    scopes: null,
+    tokenId: null,
+  };
+  (req as any).__mfAuthContext = ctx;
+  return { ok: true, ctx };
+}
+
 async function getAuthDecoded(req: any): Promise<DecodedIdToken | null> {
   const cached = (req as any).__mfAuth as DecodedIdToken | undefined;
   if (cached) return cached;
@@ -145,7 +259,7 @@ export async function requireAdmin(
   const decoded = await getAuthDecoded(req);
   if (!decoded) return { ok: false, message: "Unauthorized" };
 
-  if (isStaffClaim(decoded)) {
+  if (isStaffFromDecoded(decoded)) {
     return { ok: true, mode: "staff" };
   }
 
@@ -177,6 +291,11 @@ function getClientIp(req: any): string {
   return typeof req.ip === "string" ? req.ip : "unknown";
 }
 
+function hashClientIp(ip: string): string {
+  // Avoid storing raw IPs in Firestore while still keeping rate limits stable per client.
+  return createHash("sha256").update(ip).digest("hex").slice(0, 16);
+}
+
 export async function enforceRateLimit(params: {
   req: any;
   key: string;
@@ -184,9 +303,10 @@ export async function enforceRateLimit(params: {
   windowMs: number;
 }): Promise<{ ok: true } | { ok: false; retryAfterMs: number }> {
   const { req, key, max, windowMs } = params;
-  const uid = (req as any).__mfAuth?.uid ?? "anon";
-  const ip = getClientIp(req);
-  const bucketKey = `${key}:${uid}:${ip}`;
+  const cachedCtx = (req as any).__mfAuthContext as AuthContext | undefined;
+  const uid = cachedCtx?.uid ?? (req as any).__mfAuth?.uid ?? "anon";
+  const ipHash = hashClientIp(getClientIp(req));
+  const bucketKey = `${key}:${uid}:${ipHash}`;
   const now = Date.now();
 
   const local = RATE_LIMIT_BUCKETS.get(bucketKey);

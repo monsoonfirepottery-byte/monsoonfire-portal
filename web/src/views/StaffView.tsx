@@ -3101,7 +3101,11 @@ const lendingContent = (
             <pre>{safeJsonStringify(lastErr)}</pre>
           </div>
         </div>
-        {copyStatus ? <div className="staff-note">{copyStatus}</div> : null}
+        {copyStatus ? (
+          <div className="staff-note" role="status" aria-live="polite">
+            {copyStatus}
+          </div>
+        ) : null}
       </details>
     </section>
   );
@@ -3142,8 +3146,16 @@ const lendingContent = (
           <div><span className="label">UID</span><strong>{user.uid}</strong></div>
         </div>
         {hasFunctionsAuthMismatch ? <div className="staff-note">Functions emulator is local, but Auth emulator is off. StaffView is running in Firestore-only safe mode for function-backed modules.</div> : null}
-        {status ? <div className="staff-note">{status}</div> : null}
-        {error ? <div className="staff-note staff-note-error">{error}</div> : null}
+        {status ? (
+          <div className="staff-note" role="status" aria-live="polite">
+            {status}
+          </div>
+        ) : null}
+        {error ? (
+          <div className="staff-note staff-note-error" role="alert" aria-live="assertive">
+            {error}
+          </div>
+        ) : null}
       </div>
 
       <div className="staff-console-layout">

@@ -60,4 +60,5 @@ If any of these are off, we get login loops, broken routes, or silent failures t
 - Updated deploy guide with verification step + expected checks in `web/deploy/namecheap/README.md`.
 - Expanded verifier to sample built `/assets/*` cache headers and optional JSON report output via `-ReportPath`.
 - Attempted verifier run from dev environment and received `No such host is known` for `portal.monsoonfire.com`; indicates DNS/cutover not active yet (external blocker).
+- Added orchestration helper: `scripts/run-external-cutover-checklist.ps1` to generate a one-command execution checklist and run verifier automatically when DNS resolves.
 - Remaining work is external-console execution (DNS/HTTPS/Auth domain checks/evidence capture).

@@ -2,6 +2,10 @@
 
 This checklist is the execution companion for `tickets/P1-prod-auth-oauth-provider-credentials.md`.
 
+One-command planner:
+- `pwsh scripts/run-external-cutover-checklist.ps1 -PortalUrl https://portal.monsoonfire.com`
+- Generates `docs/EXTERNAL_CUTOVER_EXECUTION.md` and runs cutover verifier when DNS resolves.
+
 ## Scope
 - Firebase project: `monsoonfire-portal`
 - Primary portal domain: `portal.monsoonfire.com`

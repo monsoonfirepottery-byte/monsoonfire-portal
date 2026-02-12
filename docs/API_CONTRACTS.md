@@ -423,6 +423,61 @@ Request:
 }
 ```
 
+### v1/agent.terms.get
+
+POST `${BASE_URL}/apiV1/v1/agent.terms.get`
+
+Auth:
+- Firebase ID token OR PAT
+
+Response:
+```json
+{
+  "ok": true,
+  "requestId": "req_...",
+  "data": {
+    "version": "2026-02-12.v1",
+    "accepted": false,
+    "termsUrl": "https://...",
+    "refundPolicyUrl": "https://...",
+    "incidentPolicyUrl": "https://..."
+  }
+}
+```
+
+### v1/agent.terms.accept
+
+POST `${BASE_URL}/apiV1/v1/agent.terms.accept`
+
+Auth:
+- Firebase ID token OR PAT
+
+Request:
+```json
+{
+  "version": "2026-02-12.v1",
+  "source": "portal_staff"
+}
+```
+
+Response:
+```json
+{
+  "ok": true,
+  "requestId": "req_...",
+  "data": {
+    "accepted": true,
+    "version": "2026-02-12.v1"
+  }
+}
+```
+
+Notes:
+- PAT/delegated calls to `v1/agent.*` routes require current terms acceptance, except:
+  - `/v1/hello`
+  - `/v1/agent.terms.get`
+  - `/v1/agent.terms.accept`
+
 ---
 
 ## Emulator admin token requirement

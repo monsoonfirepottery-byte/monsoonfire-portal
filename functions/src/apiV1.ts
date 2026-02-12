@@ -390,6 +390,10 @@ const agentRequestLinkBatchSchema = z.object({
   requestId: z.string().min(1),
   batchId: z.string().min(1),
 });
+const agentTermsAcceptSchema = z.object({
+  version: z.string().min(1).max(120).optional().nullable(),
+  source: z.string().max(120).optional().nullable(),
+});
 
 const AGENT_REQUESTS_COL = "agentRequests";
 
@@ -410,6 +414,12 @@ const PROHIBITED_COMMISSION_PATTERNS: Array<{ code: string; pattern: RegExp }> =
   { code: "copyright_bypass", pattern: /\b(copyright bypass|pirated|stolen design|ripoff)\b/i },
   { code: "hate_or_harassment", pattern: /\b(hate symbol|harassment|targeted abuse)\b/i },
 ];
+const AGENT_TERMS_DEFAULT_VERSION = "2026-02-12.v1";
+const AGENT_TERMS_EXEMPT_ROUTES = new Set<string>([
+  "/v1/hello",
+  "/v1/agent.terms.get",
+  "/v1/agent.terms.accept",
+]);
 
 function trimOrNull(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -437,6 +447,40 @@ function evaluateCommissionPolicy(payload: {
     return { disposition: "reject", reasonCodes };
   }
   return { disposition: "review", reasonCodes: ["manual_ip_review_required"] };
+}
+
+function acceptanceKeyPart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
+}
+
+async function getAgentTermsConfig(): Promise<{
+  version: string;
+  termsUrl: string | null;
+  refundPolicyUrl: string | null;
+  incidentPolicyUrl: string | null;
+}> {
+  const snap = await db.collection("config").doc("agentTerms").get();
+  const row = snap.exists ? (snap.data() as Record<string, unknown>) : {};
+  const versionRaw = typeof row.currentVersion === "string" ? row.currentVersion.trim() : "";
+  return {
+    version: versionRaw || AGENT_TERMS_DEFAULT_VERSION,
+    termsUrl: typeof row.termsUrl === "string" ? row.termsUrl : null,
+    refundPolicyUrl: typeof row.refundPolicyUrl === "string" ? row.refundPolicyUrl : null,
+    incidentPolicyUrl: typeof row.incidentPolicyUrl === "string" ? row.incidentPolicyUrl : null,
+  };
+}
+
+async function hasAcceptedAgentTerms(ctx: AuthContext, version: string): Promise<boolean> {
+  if (ctx.mode !== "pat" && ctx.mode !== "delegated") return true;
+  const queryBase = db.collection("agentTermsAcceptances");
+  let q = queryBase.where("uid", "==", ctx.uid).where("version", "==", version).where("status", "==", "accepted");
+  if (ctx.mode === "pat") {
+    q = q.where("tokenId", "==", ctx.tokenId);
+  } else {
+    q = q.where("agentClientId", "==", ctx.delegated.agentClientId);
+  }
+  const snap = await q.limit(1).get();
+  return !snap.empty;
 }
 
 export async function handleApiV1(req: any, res: any) {
@@ -508,6 +552,36 @@ export async function handleApiV1(req: any, res: any) {
       jsonError(res, requestId, 503, "UNAVAILABLE", "Agent API is temporarily disabled by staff");
       return;
     }
+
+    if (!AGENT_TERMS_EXEMPT_ROUTES.has(route) && (ctx.mode === "pat" || ctx.mode === "delegated")) {
+      const termsConfig = await getAgentTermsConfig();
+      const accepted = await hasAcceptedAgentTerms(ctx, termsConfig.version);
+      if (!accepted) {
+        await db.collection("agentAuditLogs").add({
+          actorUid: ctx.uid,
+          actorMode: ctx.mode,
+          action: "agent_terms_required_block",
+          requestId,
+          route,
+          requiredVersion: termsConfig.version,
+          tokenId: ctx.mode === "pat" ? ctx.tokenId : null,
+          agentClientId: ctx.mode === "delegated" ? ctx.delegated.agentClientId : null,
+          createdAt: nowTs(),
+        });
+        jsonError(
+          res,
+          requestId,
+          428,
+          "FAILED_PRECONDITION",
+          "Current agent terms must be accepted before using this endpoint.",
+          {
+            requiredVersion: termsConfig.version,
+            acceptRoute: "/v1/agent.terms.accept",
+          }
+        );
+        return;
+      }
+    }
   }
 
   try {
@@ -518,6 +592,69 @@ export async function handleApiV1(req: any, res: any) {
         scopes: ctx.mode === "pat" ? ctx.scopes : null,
         isStaff,
       });
+      return;
+    }
+
+    if (route === "/v1/agent.terms.get") {
+      const termsConfig = await getAgentTermsConfig();
+      const accepted = await hasAcceptedAgentTerms(ctx, termsConfig.version);
+      jsonOk(res, requestId, {
+        version: termsConfig.version,
+        accepted,
+        termsUrl: termsConfig.termsUrl,
+        refundPolicyUrl: termsConfig.refundPolicyUrl,
+        incidentPolicyUrl: termsConfig.incidentPolicyUrl,
+      });
+      return;
+    }
+
+    if (route === "/v1/agent.terms.accept") {
+      const parsed = parseBody(agentTermsAcceptSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+      const termsConfig = await getAgentTermsConfig();
+      const requestedVersion = trimOrNull(parsed.data.version) ?? termsConfig.version;
+      if (requestedVersion !== termsConfig.version) {
+        jsonError(res, requestId, 400, "FAILED_PRECONDITION", "Requested terms version is not current.", {
+          currentVersion: termsConfig.version,
+        });
+        return;
+      }
+      const modeKey = ctx.mode === "pat" || ctx.mode === "delegated" ? ctx.mode : "firebase";
+      const actorKey =
+        ctx.mode === "pat"
+          ? acceptanceKeyPart(ctx.tokenId)
+          : ctx.mode === "delegated"
+            ? acceptanceKeyPart(ctx.delegated.agentClientId)
+            : acceptanceKeyPart(ctx.uid);
+      const acceptanceId = `${acceptanceKeyPart(ctx.uid)}_${modeKey}_${actorKey}_${acceptanceKeyPart(requestedVersion)}`;
+      await db.collection("agentTermsAcceptances").doc(acceptanceId).set(
+        {
+          uid: ctx.uid,
+          mode: modeKey,
+          tokenId: ctx.mode === "pat" ? ctx.tokenId : null,
+          agentClientId: ctx.mode === "delegated" ? ctx.delegated.agentClientId : null,
+          version: requestedVersion,
+          source: trimOrNull(parsed.data.source),
+          status: "accepted",
+          acceptedAt: nowTs(),
+          updatedAt: nowTs(),
+        },
+        { merge: true }
+      );
+      await db.collection("agentAuditLogs").add({
+        actorUid: ctx.uid,
+        actorMode: ctx.mode,
+        action: "agent_terms_accepted",
+        requestId,
+        version: requestedVersion,
+        tokenId: ctx.mode === "pat" ? ctx.tokenId : null,
+        agentClientId: ctx.mode === "delegated" ? ctx.delegated.agentClientId : null,
+        createdAt: nowTs(),
+      });
+      jsonOk(res, requestId, { accepted: true, version: requestedVersion });
       return;
     }
 

@@ -27,6 +27,7 @@ jobs:
           cache-dependency-path: |
             web/package-lock.json
             functions/package-lock.json
+            studio-brain/package-lock.json
 
       - name: Install web deps
         run: npm ci --prefix web
@@ -34,8 +35,14 @@ jobs:
       - name: Install functions deps
         run: npm ci --prefix functions
 
+      - name: Install studio-brain deps
+        run: npm ci --prefix studio-brain
+
       - name: Functions lint
         run: npm --prefix functions run lint
+
+      - name: Studio Brain policy lint
+        run: npm --prefix studio-brain run lint:policy
 
       - name: Web lint
         run: npm --prefix web run lint

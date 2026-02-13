@@ -30,6 +30,7 @@ tmp-firebase.json
 .env.*.local
 extensions/*.env
 extensions/*.secret.local
+secrets/
 
 # OS
 .DS_Store

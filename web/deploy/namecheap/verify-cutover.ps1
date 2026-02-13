@@ -1,3 +1,10 @@
+<#
+Works in both pwsh (PowerShell 7+) and Windows PowerShell 5.1.
+Run:
+  pwsh .\web\deploy\namecheap\verify-cutover.ps1 -PortalUrl "https://portal.monsoonfire.com" -ReportPath "docs/cutover-verify.json"
+  powershell .\web\deploy\namecheap\verify-cutover.ps1 -PortalUrl "https://portal.monsoonfire.com" -ReportPath "docs/cutover-verify.json"
+#>
+
 param(
   [string]$PortalUrl = "https://portal.monsoonfire.com",
   [string]$DeepPath = "/reservations",
@@ -7,18 +14,99 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-function Assert-Ok {
+function Invoke-HttpGet {
+  param(
+    [string]$Uri,
+    [int]$TimeoutSec = 30
+  )
+
+  $invokeArgs = @{
+    Uri = $Uri
+    Method = "Get"
+    MaximumRedirection = 5
+    TimeoutSec = $TimeoutSec
+  }
+
+  if (Get-Command Invoke-WebRequest -ParameterName SkipHttpErrorCheck -ErrorAction SilentlyContinue) {
+    $invokeArgs.SkipHttpErrorCheck = $true
+  }
+  if ($PSVersionTable.PSEdition -eq "Desktop") {
+    $invokeArgs.UseBasicParsing = $true
+  }
+
+  try {
+    $response = Invoke-WebRequest @invokeArgs
+    return [ordered]@{
+      ok = $true
+      statusCode = [int]$response.StatusCode
+      content = [string]$response.Content
+      headers = $response.Headers
+      error = $null
+    }
+  } catch {
+    $statusCode = 0
+    $content = ""
+    $headers = @{}
+    $resp = $_.Exception.Response
+    if ($resp) {
+      try {
+        if ($resp.StatusCode) { $statusCode = [int]$resp.StatusCode }
+      } catch {}
+      try {
+        $headers = $resp.Headers
+      } catch {}
+      try {
+        $stream = $resp.GetResponseStream()
+        if ($stream) {
+          $reader = New-Object System.IO.StreamReader($stream)
+          $content = $reader.ReadToEnd()
+          $reader.Dispose()
+        }
+      } catch {}
+    }
+    return [ordered]@{
+      ok = $false
+      statusCode = $statusCode
+      content = [string]$content
+      headers = $headers
+      error = $_.Exception.Message
+    }
+  }
+}
+
+function Get-HeaderValue {
+  param(
+    [object]$Headers,
+    [string]$HeaderName
+  )
+
+  if (-not $Headers) { return "" }
+  try {
+    $value = $Headers[$HeaderName]
+    if (-not [string]::IsNullOrWhiteSpace([string]$value)) { return [string]$value }
+  } catch {}
+  try {
+    foreach ($key in $Headers.Keys) {
+      if ([string]::Equals([string]$key, $HeaderName, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [string]$Headers[$key]
+      }
+    }
+  } catch {}
+  return ""
+}
+
+function Assert-Status {
   param(
     [string]$Label,
-    [Microsoft.PowerShell.Commands.HtmlWebResponseObject]$Response,
+    [hashtable]$Response,
     [int[]]$AllowedStatus = @(200)
   )
 
-  if ($AllowedStatus -notcontains [int]$Response.StatusCode) {
-    throw "$Label failed. Expected status $($AllowedStatus -join ',') but got $($Response.StatusCode)."
+  if ($AllowedStatus -notcontains [int]$Response.statusCode) {
+    $msg = if ($Response.error) { " Error: $($Response.error)" } else { "" }
+    throw "$Label failed. Expected status $($AllowedStatus -join ',') but got $($Response.statusCode).$msg"
   }
-
-  Write-Host "[ok] $Label - $($Response.StatusCode)"
+  Write-Host ("[ok] {0} - {1}" -f $Label, $Response.statusCode)
 }
 
 function Assert-Contains {
@@ -27,27 +115,23 @@ function Assert-Contains {
     [string]$Body,
     [string]$Needle
   )
-
   if (-not $Body.Contains($Needle)) {
     throw "$Label failed. Missing expected text: $Needle"
   }
-
   Write-Host "[ok] $Label"
 }
 
 function Show-Header {
   param(
     [string]$Label,
-    [Microsoft.PowerShell.Commands.HtmlWebResponseObject]$Response,
+    [hashtable]$Response,
     [string]$HeaderName
   )
-
-  $value = $Response.Headers[$HeaderName]
+  $value = Get-HeaderValue -Headers $Response.headers -HeaderName $HeaderName
   if ([string]::IsNullOrWhiteSpace($value)) {
     Write-Warning "$Label missing header: $HeaderName"
     return
   }
-
   Write-Host ("[info] {0} {1}: {2}" -f $Label, $HeaderName, $value)
 }
 
@@ -71,7 +155,13 @@ function Resolve-AssetPathsFromHtml {
       }
     }
   }
-  return $paths | Select-Object -Unique
+
+  $unique = $paths | Select-Object -Unique
+  $jsAssets = @($unique | Where-Object { $_ -match '^/assets/.*\.js($|\?)' } | Select-Object -First 3)
+  if ($jsAssets.Count -gt 0) {
+    return $jsAssets
+  }
+  return @($unique | Select-Object -First 3)
 }
 
 function Check-AssetCacheHeaders {
@@ -83,70 +173,61 @@ function Check-AssetCacheHeaders {
   $results = @()
   foreach ($assetPath in $AssetPaths) {
     $assetUrl = "$PortalBase$assetPath"
-    try {
-      $assetResp = Invoke-WebRequest -Uri $assetUrl -MaximumRedirection 5
-      $cache = [string]$assetResp.Headers["Cache-Control"]
-      $immutable = $cache -match "immutable"
-      $hasLongMaxAge = $cache -match "max-age=(\d{5,})"
-      $ok = $immutable -or $hasLongMaxAge
-      if ($ok) {
-        Write-Host "[ok] Asset cache header for $assetPath -> $cache"
-      } else {
-        Write-Warning "Asset cache header may be too weak for $assetPath -> $cache"
-      }
-      $results += [ordered]@{
-        path = $assetPath
-        status = [int]$assetResp.StatusCode
-        cacheControl = $cache
-        cacheLooksLongLived = [bool]$ok
-      }
-    } catch {
-      Write-Warning "Failed to fetch asset $assetPath : $($_.Exception.Message)"
-      $results += [ordered]@{
-        path = $assetPath
-        status = 0
-        cacheControl = ""
-        cacheLooksLongLived = $false
-        error = $_.Exception.Message
-      }
+    $assetResp = Invoke-HttpGet -Uri $assetUrl
+    $cache = Get-HeaderValue -Headers $assetResp.headers -HeaderName "Cache-Control"
+    $immutable = $cache -match "immutable"
+    $hasLongMaxAge = $cache -match "max-age=(\d{5,})"
+    $ok = ($assetResp.statusCode -eq 200) -and ($immutable -or $hasLongMaxAge)
+    if ($ok) {
+      Write-Host "[ok] Asset cache header for $assetPath -> $cache"
+    } else {
+      Write-Warning "Asset cache header may be too weak for $assetPath -> status=$($assetResp.statusCode) cache=$cache"
+    }
+    $results += [ordered]@{
+      path = $assetPath
+      status = [int]$assetResp.statusCode
+      cacheControl = $cache
+      cacheLooksLongLived = [bool]$ok
+      error = $assetResp.error
     }
   }
   return $results
 }
 
-$portal = $PortalUrl.TrimEnd('/')
+$portal = $PortalUrl.TrimEnd("/")
 $rootUrl = "$portal/"
 $deepUrl = "$portal$DeepPath"
 $wellKnownUrl = "$portal$WellKnownPath"
 
 Write-Host "Verifying portal cutover for $portal"
 
-$root = Invoke-WebRequest -Uri $rootUrl -MaximumRedirection 5
-Assert-Ok -Label "Root route" -Response $root
-Assert-Contains -Label "Root contains app shell" -Body $root.Content -Needle "<html"
+$root = Invoke-HttpGet -Uri $rootUrl
+Assert-Status -Label "Root route" -Response $root
+Assert-Contains -Label "Root contains app shell" -Body $root.content -Needle "<html"
 Show-Header -Label "Root" -Response $root -HeaderName "Cache-Control"
 
-$deep = Invoke-WebRequest -Uri $deepUrl -MaximumRedirection 5
-Assert-Ok -Label "Deep route ($DeepPath)" -Response $deep
-Assert-Contains -Label "Deep route served HTML" -Body $deep.Content -Needle "<html"
+$deep = Invoke-HttpGet -Uri $deepUrl
+Assert-Status -Label "Deep route ($DeepPath)" -Response $deep
+Assert-Contains -Label "Deep route served HTML" -Body $deep.content -Needle "<html"
 Show-Header -Label "Deep route" -Response $deep -HeaderName "Cache-Control"
 
-$assetPaths = Resolve-AssetPathsFromHtml -Html $root.Content
-$sampleAssets = @($assetPaths | Select-Object -First 3)
+$assetPaths = Resolve-AssetPathsFromHtml -Html $root.content
+$sampleAssets = @($assetPaths)
 if ($sampleAssets.Count -eq 0) {
   Write-Warning "No /assets/* paths were found in root HTML. Verify build output and upload integrity."
 }
 $assetChecks = Check-AssetCacheHeaders -PortalBase $portal -AssetPaths $sampleAssets
 
-try {
-  $wellKnown = Invoke-WebRequest -Uri $wellKnownUrl -MaximumRedirection 5
-  Assert-Ok -Label "Well-known route ($WellKnownPath)" -Response $wellKnown -AllowedStatus @(200)
-  if ($wellKnown.Content -match "<html") {
-    throw "Well-known route appears rewritten to HTML. Check .htaccess rewrite bypass for /.well-known/."
+$wellKnown = Invoke-HttpGet -Uri $wellKnownUrl
+if ($wellKnown.statusCode -eq 200) {
+  $wellKnownContent = if ($null -eq $wellKnown.content) { "" } else { [string]$wellKnown.content }
+  if ($wellKnownContent -match "<html") {
+    Write-Warning "Well-known route appears rewritten to HTML. Check .htaccess rewrite bypass for /.well-known/."
+  } else {
+    Write-Host "[ok] Well-known route not rewritten to SPA"
   }
-  Write-Host "[ok] Well-known route not rewritten to SPA"
-} catch {
-  Write-Warning "Well-known check warning: $($_.Exception.Message)"
+} else {
+  Write-Warning "Well-known check warning: status=$($wellKnown.statusCode) error=$($wellKnown.error)"
   Write-Warning "If this file is not deployed yet, this warning can be ignored until AASA/assetlinks are uploaded."
 }
 
@@ -157,10 +238,10 @@ if ($ReportPath) {
     rootUrl = $rootUrl
     deepUrl = $deepUrl
     wellKnownUrl = $wellKnownUrl
-    rootStatus = [int]$root.StatusCode
-    deepStatus = [int]$deep.StatusCode
-    rootCacheControl = [string]$root.Headers["Cache-Control"]
-    deepCacheControl = [string]$deep.Headers["Cache-Control"]
+    rootStatus = [int]$root.statusCode
+    deepStatus = [int]$deep.statusCode
+    rootCacheControl = (Get-HeaderValue -Headers $root.headers -HeaderName "Cache-Control")
+    deepCacheControl = (Get-HeaderValue -Headers $deep.headers -HeaderName "Cache-Control")
     sampledAssets = $sampleAssets
     assetChecks = $assetChecks
   }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
 import {
   addDoc,
@@ -16,10 +16,12 @@ import {
 import { createFunctionsClient, safeJsonStringify, type LastRequest } from "../api/functionsClient";
 import { db } from "../firebase";
 import { clearHandlerErrorLog, getHandlerErrorLog } from "../utils/handlerLog";
+import { isStudioBrainDegradedMode } from "../utils/studioBrainHealth";
 import PolicyModule from "./staff/PolicyModule";
 import StripeSettingsModule from "./staff/StripeSettingsModule";
 import ReportsModule from "./staff/ReportsModule";
 import AgentOpsModule from "./staff/AgentOpsModule";
+import StudioBrainModule from "./staff/StudioBrainModule";
 
 type Props = {
   user: User;
@@ -31,6 +33,7 @@ type Props = {
 };
 
 type ModuleKey =
+  | "cockpit"
   | "overview"
   | "members"
   | "pieces"
@@ -39,6 +42,7 @@ type ModuleKey =
   | "reports"
   | "governance"
   | "agentOps"
+  | "studioBrain"
   | "stripe"
   | "commerce"
   | "lending"
@@ -217,6 +221,14 @@ type SystemCheckRecord = {
   atMs: number;
   details: string;
 };
+type StudioBrainStatus = {
+  checkedAt: string;
+  mode: "ok" | "degraded" | "offline";
+  healthOk: boolean;
+  readyOk: boolean;
+  snapshotAgeMinutes: number | null;
+  reason: string;
+};
 type BatchActionName =
   | "shelveBatch"
   | "kilnLoad"
@@ -226,6 +238,7 @@ type BatchActionName =
   | "continueJourney";
 
 const MODULES: Array<{ key: ModuleKey; label: string }> = [
+  { key: "cockpit", label: "Cockpit" },
   { key: "overview", label: "Overview" },
   { key: "members", label: "Members" },
   { key: "pieces", label: "Pieces & batches" },
@@ -234,6 +247,7 @@ const MODULES: Array<{ key: ModuleKey; label: string }> = [
   { key: "reports", label: "Reports" },
   { key: "governance", label: "Governance" },
   { key: "agentOps", label: "Agent ops" },
+  { key: "studioBrain", label: "Studio Brain" },
   { key: "stripe", label: "Stripe settings" },
   { key: "commerce", label: "Store & billing" },
   { key: "lending", label: "Lending" },
@@ -248,6 +262,16 @@ function functionsBaseUrl() {
   return typeof import.meta !== "undefined" && ENV.VITE_FUNCTIONS_BASE_URL
     ? String(ENV.VITE_FUNCTIONS_BASE_URL)
     : DEFAULT_FUNCTIONS_BASE_URL;
+}
+
+const DEFAULT_STUDIO_BRAIN_BASE_URL = "http://127.0.0.1:8787";
+type ImportMetaStudioBrainEnv = { VITE_STUDIO_BRAIN_BASE_URL?: string };
+const STUDIO_BRAIN_ENV = (import.meta.env ?? {}) as ImportMetaStudioBrainEnv;
+
+function studioBrainBaseUrl() {
+  return typeof import.meta !== "undefined" && STUDIO_BRAIN_ENV.VITE_STUDIO_BRAIN_BASE_URL
+    ? String(STUDIO_BRAIN_ENV.VITE_STUDIO_BRAIN_BASE_URL).replace(/\/+$/, "")
+    : DEFAULT_STUDIO_BRAIN_BASE_URL;
 }
 
 function str(value: unknown, fallback = ""): string {
@@ -317,6 +341,7 @@ export default function StaffView({
   showEmulatorTools,
 }: Props) {
   const [moduleKey, setModuleKey] = useState<ModuleKey>("overview");
+  const isCockpitModule = moduleKey === "cockpit";
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -406,6 +431,8 @@ export default function StaffView({
   const [selectedRequestId, setSelectedRequestId] = useState("");
   const [selectedLoanId, setSelectedLoanId] = useState("");
   const [systemChecks, setSystemChecks] = useState<SystemCheckRecord[]>([]);
+  const [studioBrainStatus, setStudioBrainStatus] = useState<StudioBrainStatus | null>(null);
+  const lastStudioBrainModeRef = useRef<StudioBrainStatus["mode"] | null>(null);
   const [integrationTokenCount, setIntegrationTokenCount] = useState<number | null>(null);
   const [notificationMetricsSummary, setNotificationMetricsSummary] = useState<{
     totalSent?: number;
@@ -414,6 +441,7 @@ export default function StaffView({
   } | null>(null);
 
   const fBaseUrl = useMemo(() => functionsBaseUrl(), []);
+  const sbBaseUrl = useMemo(() => studioBrainBaseUrl(), []);
   const usingLocalFunctions = useMemo(
     () => fBaseUrl.includes("localhost") || fBaseUrl.includes("127.0.0.1"),
     [fBaseUrl]
@@ -831,6 +859,20 @@ export default function StaffView({
     }
     return alerts;
   }, [batches, events, firings, orders, reportOps.highOpen, reportOps.open, reportOps.slaBreaches, unpaidCheckIns.length]);
+  const cockpitKpis = useMemo(() => {
+    const highAlerts = overviewAlerts.filter((alert) => alert.severity === "high").length;
+    const mediumAlerts = overviewAlerts.filter((alert) => alert.severity === "medium").length;
+    const failedChecks = systemChecks.filter((check) => !check.ok).length;
+    return {
+      highAlerts,
+      mediumAlerts,
+      openReports: reportOps.open,
+      failedChecks,
+      totalChecks: systemChecks.length,
+      recentErrors: latestErrors.length,
+      authMismatch: hasFunctionsAuthMismatch,
+    };
+  }, [hasFunctionsAuthMismatch, latestErrors.length, overviewAlerts, reportOps.open, systemChecks]);
 
   const memberRoleCounts = useMemo(() => {
     const staffCount = users.filter((u) => u.role === "staff").length;
@@ -907,6 +949,85 @@ export default function StaffView({
       return next.slice(0, 16);
     });
   }, []);
+
+  const postStudioBrainDegradedEvent = useCallback(
+    async (status: "entered" | "exited", mode: "degraded" | "offline", reason: string) => {
+      try {
+        const idToken = await user.getIdToken();
+        const headers: Record<string, string> = {
+          "content-type": "application/json",
+          authorization: `Bearer ${idToken}`,
+        };
+        if (devAdminEnabled && devAdminToken.trim()) {
+          headers["x-studio-brain-admin-token"] = devAdminToken.trim();
+        }
+        await fetch(`${sbBaseUrl}/api/ops/degraded`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            status,
+            mode,
+            reason,
+            rationale: "Staff console detected Studio Brain degraded state.",
+          }),
+        });
+      } catch {
+        // Silent: degraded logging should not block staff console operations.
+      }
+    },
+    [devAdminEnabled, devAdminToken, sbBaseUrl, user]
+  );
+
+  const loadStudioBrainStatus = useCallback(async () => {
+    const checkedAt = new Date().toISOString();
+    try {
+      const readyResp = await fetch(`${sbBaseUrl}/readyz`, { method: "GET" });
+      const payload = (await readyResp.json()) as {
+        ok?: boolean;
+        checks?: { snapshot?: { ageMinutes?: number | null } };
+      };
+      const readyOk = readyResp.ok && payload.ok === true;
+      const snapshotAgeMinutes =
+        typeof payload.checks?.snapshot?.ageMinutes === "number" ? payload.checks.snapshot.ageMinutes : null;
+      const mode = readyOk ? "ok" : "degraded";
+      const reason = readyOk
+        ? "Studio Brain ready."
+        : `Ready check failed${snapshotAgeMinutes !== null ? ` (snapshot age ${snapshotAgeMinutes}m).` : "."}`;
+
+      setStudioBrainStatus({
+        checkedAt,
+        mode,
+        healthOk: readyResp.ok,
+        readyOk,
+        snapshotAgeMinutes,
+        reason,
+      });
+      upsertSystemCheck({
+        key: "studio_brain_ready",
+        label: "Studio Brain ready",
+        ok: readyOk,
+        atMs: Date.now(),
+        details: reason,
+      });
+    } catch (err: unknown) {
+      const details = err instanceof Error ? err.message : String(err);
+      setStudioBrainStatus({
+        checkedAt,
+        mode: "offline",
+        healthOk: false,
+        readyOk: false,
+        snapshotAgeMinutes: null,
+        reason: details || "Studio Brain unreachable.",
+      });
+      upsertSystemCheck({
+        key: "studio_brain_ready",
+        label: "Studio Brain ready",
+        ok: false,
+        atMs: Date.now(),
+        details: details || "Studio Brain unreachable.",
+      });
+    }
+  }, [sbBaseUrl, upsertSystemCheck]);
 
   const loadUsers = useCallback(async () => {
     qTrace("users", { limit: 240 });
@@ -1461,7 +1582,7 @@ const loadEvents = useCallback(async () => {
   }, [qTrace]);
 
   const loadAll = useCallback(async () => {
-    const tasks: Array<Promise<unknown>> = [loadUsers(), loadBatches(), loadFirings(), loadLending(), loadEvents(), loadReportOps()];
+    const tasks: Array<Promise<unknown>> = [loadUsers(), loadBatches(), loadFirings(), loadLending(), loadEvents(), loadReportOps(), loadStudioBrainStatus()];
     if (!hasFunctionsAuthMismatch) {
       tasks.push(loadCommerce(), loadSystemStats());
     } else {
@@ -1473,7 +1594,7 @@ const loadEvents = useCallback(async () => {
     }
     await Promise.allSettled(tasks);
     if (selectedEventId) await loadSignups(selectedEventId);
-  }, [hasFunctionsAuthMismatch, loadBatches, loadCommerce, loadEvents, loadFirings, loadLending, loadReportOps, loadSignups, loadSystemStats, loadUsers, selectedEventId]);
+  }, [hasFunctionsAuthMismatch, loadBatches, loadCommerce, loadEvents, loadFirings, loadLending, loadReportOps, loadSignups, loadStudioBrainStatus, loadSystemStats, loadUsers, selectedEventId]);
 
   useEffect(() => {
     void run("bootstrap", async () => {
@@ -1487,6 +1608,20 @@ const loadEvents = useCallback(async () => {
     if (!selectedEventId) return;
     void run("signups", async () => await loadSignups(selectedEventId));
   }, [loadSignups, selectedEventId, run]);
+
+  useEffect(() => {
+    if (!studioBrainStatus) return;
+    const previous = lastStudioBrainModeRef.current;
+    const current = studioBrainStatus.mode;
+    if (previous && previous !== current) {
+      if (current === "ok") {
+        void postStudioBrainDegradedEvent("exited", "degraded", "Studio Brain recovered.");
+      } else {
+        void postStudioBrainDegradedEvent("entered", current === "offline" ? "offline" : "degraded", studioBrainStatus.reason);
+      }
+    }
+    lastStudioBrainModeRef.current = current;
+  }, [postStudioBrainDegradedEvent, studioBrainStatus]);
 
   useEffect(() => {
     if (!filteredEvents.length) {
@@ -2862,13 +2997,71 @@ const loadEvents = useCallback(async () => {
 
   const stripeContent = <StripeSettingsModule client={client} isStaff={isStaff} />;
   const reportsContent = (
-    <ReportsModule client={client} active={moduleKey === "reports"} disabled={hasFunctionsAuthMismatch} />
+    <ReportsModule
+      client={client}
+      active={moduleKey === "reports" || isCockpitModule}
+      disabled={hasFunctionsAuthMismatch}
+      user={user}
+      studioBrainAdminToken={devAdminToken}
+    />
   );
   const governanceContent = (
-    <PolicyModule client={client} active={moduleKey === "governance"} disabled={hasFunctionsAuthMismatch} />
+    <PolicyModule client={client} active={moduleKey === "governance" || isCockpitModule} disabled={hasFunctionsAuthMismatch} />
   );
   const agentOpsContent = (
-    <AgentOpsModule client={client} active={moduleKey === "agentOps"} disabled={hasFunctionsAuthMismatch} />
+    <AgentOpsModule client={client} active={moduleKey === "agentOps" || isCockpitModule} disabled={hasFunctionsAuthMismatch} />
+  );
+  const studioBrainContent = (
+    <StudioBrainModule
+      user={user}
+      active={moduleKey === "studioBrain" || isCockpitModule}
+      disabled={false}
+      adminToken={devAdminToken}
+    />
+  );
+  const cockpitContent = (
+    <section className="staff-module-grid">
+      <section className="card staff-console-card">
+        <div className="card-title-row">
+          <div className="card-title">Ops Cockpit</div>
+          <button
+            className="btn btn-secondary"
+            disabled={Boolean(busy)}
+            onClick={() =>
+              void run("refreshCockpit", async () => {
+                await Promise.all([loadReportOps(), loadSystemStats()]);
+                setStatus("Refreshed cockpit telemetry");
+              })
+            }
+          >
+            Refresh cockpit
+          </button>
+        </div>
+        <div className="staff-kpi-grid">
+          <div className="staff-kpi"><span>High alerts</span><strong>{cockpitKpis.highAlerts}</strong></div>
+          <div className="staff-kpi"><span>Medium alerts</span><strong>{cockpitKpis.mediumAlerts}</strong></div>
+          <div className="staff-kpi"><span>Open reports</span><strong>{cockpitKpis.openReports}</strong></div>
+          <div className="staff-kpi"><span>Failed checks</span><strong>{cockpitKpis.failedChecks}</strong></div>
+          <div className="staff-kpi"><span>Checks loaded</span><strong>{cockpitKpis.totalChecks}</strong></div>
+          <div className="staff-kpi"><span>Recent handler errors</span><strong>{cockpitKpis.recentErrors}</strong></div>
+        </div>
+        {cockpitKpis.authMismatch ? (
+          <div className="staff-note">
+            Local Functions is active while Auth emulator is disabled. Cockpit data may be partial for function-backed operations.
+          </div>
+        ) : null}
+        <div className="staff-actions-row">
+          <button className="btn btn-ghost btn-small" onClick={() => setModuleKey("studioBrain")}>Open Studio Brain module</button>
+          <button className="btn btn-ghost btn-small" onClick={() => setModuleKey("agentOps")}>Open Agent ops module</button>
+          <button className="btn btn-ghost btn-small" onClick={() => setModuleKey("governance")}>Open Governance module</button>
+          <button className="btn btn-ghost btn-small" onClick={() => setModuleKey("reports")}>Open Reports module</button>
+        </div>
+      </section>
+      <div className="card staff-console-card">{studioBrainContent}</div>
+      <div className="card staff-console-card">{agentOpsContent}</div>
+      <div className="card staff-console-card">{governanceContent}</div>
+      <div className="card staff-console-card">{reportsContent}</div>
+    </section>
   );
 
 const lendingContent = (
@@ -3229,6 +3422,8 @@ const lendingContent = (
         <div className="staff-kpi"><span>Functions base</span><strong>{usingLocalFunctions ? "Local" : "Remote"}</strong></div>
         <div className="staff-kpi"><span>Auth mode</span><strong>{showEmulatorTools ? "Emulator" : "Production"}</strong></div>
         <div className="staff-kpi"><span>Integration tokens</span><strong>{integrationTokenCount ?? 0}</strong></div>
+        <div className="staff-kpi"><span>Studio Brain</span><strong>{studioBrainStatus ? studioBrainStatus.mode : "-"}</strong></div>
+        <div className="staff-kpi"><span>Snapshot age</span><strong>{studioBrainStatus?.snapshotAgeMinutes ?? "-"}</strong></div>
         <div className="staff-kpi"><span>System checks</span><strong>{systemChecks.length}</strong></div>
         <div className="staff-kpi"><span>Notif success</span><strong>{notificationMetricsSummary ? `${num(notificationMetricsSummary.successRate, 0)}%` : "-"}</strong></div>
         <div className="staff-kpi"><span>Notif failed</span><strong>{notificationMetricsSummary ? num(notificationMetricsSummary.totalFailed, 0) : "-"}</strong></div>
@@ -3268,6 +3463,13 @@ const lendingContent = (
           onClick={() => void run("refreshSystemStats", loadSystemStats)}
         >
           Refresh token stats
+        </button>
+        <button
+          className="btn btn-secondary"
+          disabled={Boolean(busy)}
+          onClick={() => void run("refreshStudioBrainStatus", loadStudioBrainStatus)}
+        >
+          Check Studio Brain
         </button>
       </div>
       {hasFunctionsAuthMismatch ? (
@@ -3350,6 +3552,7 @@ const lendingContent = (
   );
 
   const moduleContent = {
+    cockpit: cockpitContent,
     overview: overviewContent,
     members: membersContent,
     pieces: piecesContent,
@@ -3358,6 +3561,7 @@ const lendingContent = (
     reports: reportsContent,
     governance: governanceContent,
     agentOps: agentOpsContent,
+    studioBrain: studioBrainContent,
     stripe: stripeContent,
     commerce: commerceContent,
     lending: lendingContent,
@@ -3385,6 +3589,11 @@ const lendingContent = (
           <div><span className="label">UID</span><strong>{user.uid}</strong></div>
         </div>
         {hasFunctionsAuthMismatch ? <div className="staff-note">Functions emulator is local, but Auth emulator is off. StaffView is running in Firestore-only safe mode for function-backed modules.</div> : null}
+        {isStudioBrainDegradedMode(studioBrainStatus?.mode) ? (
+          <div className="staff-note staff-note-error" role="alert">
+            Studio Brain is {studioBrainStatus?.mode}. Staff console is in degraded/local-offline mode. {studioBrainStatus?.reason}
+          </div>
+        ) : null}
         {status ? (
           <div className="staff-note" role="status" aria-live="polite">
             {status}

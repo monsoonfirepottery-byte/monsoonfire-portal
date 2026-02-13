@@ -62,12 +62,12 @@ function Test-FirebaseIdToken([string] $jwt) {
 
 if (Test-Placeholder $IdToken) {
   Write-Error "IdToken is a placeholder. Use a real Firebase ID token (JWT)."
-  Write-Error "Hint: In the portal web app, sign in then open DevTools -> Network, click any Cloud Functions request, and copy the Authorization header value (strip 'Bearer ')."
+  Write-Error "Hint: In portal dev, sign in then run `await window.mfDebug.getIdToken()` in DevTools Console, or copy a real Authorization bearer token from Network."
   exit 1
 }
 if (-not (Test-FirebaseIdToken $IdToken)) {
   Write-Error "IdToken does not look like a Firebase ID token. Do not use the dev admin token here."
-  Write-Error "Hint: In the portal web app, sign in then open DevTools -> Network, click any Cloud Functions request, and copy the Authorization header value (strip 'Bearer ')."
+  Write-Error "Hint: In portal dev, sign in then run `await window.mfDebug.getIdToken()` in DevTools Console, or copy a real Authorization bearer token from Network."
   exit 1
 }
 if (Test-Placeholder $Uid) {

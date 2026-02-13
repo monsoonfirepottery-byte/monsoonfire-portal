@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FunctionsClient } from "../../api/functionsClient";
+import type { User } from "firebase/auth";
 import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
 import { db } from "../../firebase";
 
@@ -88,12 +89,36 @@ type Props = {
   client: FunctionsClient;
   active: boolean;
   disabled: boolean;
+  user: User;
+  studioBrainAdminToken: string;
 };
 
 type ListReportsResponse = { ok: boolean; reports?: Array<Record<string, unknown>> };
 type ListReportAppealsResponse = { ok: boolean; appeals?: Array<Record<string, unknown>> };
 type CurrentPolicyResponse = { ok: boolean; policy?: Record<string, unknown> | null };
 type BasicResponse = { ok: boolean; message?: string };
+type TriageSuggestion = {
+  severity: ReportSeverity;
+  category: ReportCategory;
+  reasonCode: string;
+  confidence: number;
+  provenance: string[];
+  model: { provider: string; version: string };
+  suggestionOnly: boolean;
+};
+type TriageStats = {
+  accepted: number;
+  rejected: number;
+  mismatchRatePct: number;
+};
+
+const DEFAULT_STUDIO_BRAIN_BASE_URL = "http://127.0.0.1:8787";
+type ImportMetaEnvShape = { VITE_STUDIO_BRAIN_BASE_URL?: string };
+const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
+const STUDIO_BRAIN_BASE_URL =
+  typeof import.meta !== "undefined" && ENV.VITE_STUDIO_BRAIN_BASE_URL
+    ? String(ENV.VITE_STUDIO_BRAIN_BASE_URL).replace(/\/+$/, "")
+    : DEFAULT_STUDIO_BRAIN_BASE_URL;
 
 const DEFAULT_REASON_TEMPLATES = [
   "policy_violation_confirmed",
@@ -262,7 +287,7 @@ function normalizeAppeal(row: Record<string, unknown>): AppealRow {
   };
 }
 
-export default function ReportsModule({ client, active, disabled }: Props) {
+export default function ReportsModule({ client, active, disabled, user, studioBrainAdminToken }: Props) {
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -294,6 +319,8 @@ export default function ReportsModule({ client, active, disabled }: Props) {
   const [bulkStatus, setBulkStatus] = useState<ReportStatus>("triaged");
   const [bulkReasonCode, setBulkReasonCode] = useState("");
   const [bulkResolutionCode, setBulkResolutionCode] = useState("");
+  const [triageSuggestion, setTriageSuggestion] = useState<TriageSuggestion | null>(null);
+  const [triageStats, setTriageStats] = useState<TriageStats | null>(null);
 
   const selected = useMemo(
     () => reports.find((report) => report.id === selectedReportId) ?? null,
@@ -323,6 +350,22 @@ export default function ReportsModule({ client, active, disabled }: Props) {
     } finally {
       setBusy("");
     }
+  };
+
+  const fetchStudioBrain = async <T,>(path: string, init?: RequestInit): Promise<T> => {
+    const idToken = await user.getIdToken();
+    const headers = {
+      "content-type": "application/json",
+      authorization: `Bearer ${idToken}`,
+      "x-studio-brain-admin-token": studioBrainAdminToken.trim(),
+      ...(init?.headers ?? {}),
+    };
+    const resp = await fetch(`${STUDIO_BRAIN_BASE_URL}${path}`, { ...init, headers });
+    const payload = (await resp.json()) as T & { message?: string };
+    if (!resp.ok) {
+      throw new Error(payload.message || `Studio Brain request failed (${resp.status})`);
+    }
+    return payload;
   };
 
   const loadReports = async () => {
@@ -403,6 +446,15 @@ export default function ReportsModule({ client, active, disabled }: Props) {
     }
   };
 
+  const loadTriageStats = async () => {
+    if (!studioBrainAdminToken.trim()) {
+      setTriageStats(null);
+      return;
+    }
+    const payload = await fetchStudioBrain<{ stats?: TriageStats }>("/api/trust-safety/triage/stats?limit=300", { method: "GET" });
+    setTriageStats(payload.stats ?? null);
+  };
+
   const loadInternalNotes = async (reportId: string) => {
     if (!reportId) {
       setInternalNotes([]);
@@ -461,10 +513,10 @@ export default function ReportsModule({ client, active, disabled }: Props) {
   useEffect(() => {
     if (!active || disabled) return;
     void run("loadReports", async () => {
-      await Promise.all([loadReports(), loadAppeals(), loadActivePolicy()]);
+      await Promise.all([loadReports(), loadAppeals(), loadActivePolicy(), loadTriageStats()]);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, disabled, filterStatus, filterSeverity, filterCategory, filterType, filterDateRange]);
+  }, [active, disabled, filterStatus, filterSeverity, filterCategory, filterType, filterDateRange, studioBrainAdminToken]);
 
   useEffect(() => {
     if (!active || disabled) return;
@@ -478,6 +530,7 @@ export default function ReportsModule({ client, active, disabled }: Props) {
     if (!selected) return;
     setNextStatus(selected.status === "open" ? "triaged" : selected.status);
     setContentActionType(selected.targetType === "youtube_video" ? "disable_from_feed" : "unpublish");
+    setTriageSuggestion(null);
   }, [selected]);
 
   useEffect(() => {
@@ -798,6 +851,9 @@ export default function ReportsModule({ client, active, disabled }: Props) {
         <div className="staff-kpi"><span>Triaged</span><strong>{statusCounts.triaged}</strong></div>
         <div className="staff-kpi"><span>Actioned</span><strong>{statusCounts.actioned}</strong></div>
         <div className="staff-kpi"><span>Resolved</span><strong>{statusCounts.resolved}</strong></div>
+        <div className="staff-kpi"><span>Suggestion accepts</span><strong>{triageStats?.accepted ?? 0}</strong></div>
+        <div className="staff-kpi"><span>Suggestion rejects</span><strong>{triageStats?.rejected ?? 0}</strong></div>
+        <div className="staff-kpi"><span>Mismatch rate</span><strong>{triageStats ? `${triageStats.mismatchRatePct}%` : "-"}</strong></div>
       </div>
 
       <div className="staff-note">
@@ -1072,6 +1128,110 @@ export default function ReportsModule({ client, active, disabled }: Props) {
                 <div className="staff-note">
                   Policy guidance: <strong>{selectedRule.id}</strong> · {selectedRule.title}
                   {selectedRule.description ? <><br />{selectedRule.description}</> : null}
+                </div>
+              ) : null}
+              <div className="staff-subtitle">Assistive triage</div>
+              <div className="staff-actions-row">
+                <button
+                  className="btn btn-secondary"
+                  disabled={Boolean(busy) || !studioBrainAdminToken.trim()}
+                  onClick={() =>
+                    void run("generateTriageSuggestion", async () => {
+                      const payload = await fetchStudioBrain<{ suggestion?: TriageSuggestion }>("/api/trust-safety/triage/suggest", {
+                        method: "POST",
+                        body: JSON.stringify({
+                          reportId: selected.id,
+                          targetType: selected.targetType,
+                          targetTitle: selected.targetSnapshot.title || selected.targetRef.id || "",
+                          note: selected.note,
+                        }),
+                      });
+                      if (!payload.suggestion) throw new Error("No suggestion returned.");
+                      setTriageSuggestion(payload.suggestion);
+                      setStatus("Assistive triage suggestion generated.");
+                    })
+                  }
+                >
+                  Generate suggestion
+                </button>
+                {!studioBrainAdminToken.trim() ? <span className="staff-mini">Set Studio Brain admin token in System module.</span> : null}
+              </div>
+              {triageSuggestion ? (
+                <div className="staff-note">
+                  Suggestion: <strong>{triageSuggestion.severity}</strong> / <strong>{triageSuggestion.category}</strong> / <code>{triageSuggestion.reasonCode}</code><br />
+                  Confidence: {Math.round(triageSuggestion.confidence * 100)}% · model {triageSuggestion.model.provider}:{triageSuggestion.model.version}<br />
+                  Provenance: {triageSuggestion.provenance.join(", ")}<br />
+                  Suggestion-only mode: <strong>{triageSuggestion.suggestionOnly ? "enabled" : "invalid"}</strong>
+                </div>
+              ) : null}
+              {triageSuggestion ? (
+                <div className="staff-actions-row">
+                  <button
+                    className="btn btn-secondary"
+                    disabled={Boolean(busy)}
+                    onClick={() => {
+                      setReasonCode(triageSuggestion.reasonCode);
+                      setFilterSeverity("all");
+                      setStatus("Applied suggestion fields. Review before saving.");
+                    }}
+                  >
+                    Apply suggested reason
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-small"
+                    disabled={Boolean(busy) || !selected}
+                    onClick={() =>
+                      void run("feedbackSuggestionAccepted", async () => {
+                        await fetchStudioBrain("/api/trust-safety/triage/feedback", {
+                          method: "POST",
+                          body: JSON.stringify({
+                            reportId: selected.id,
+                            decision: "accepted",
+                            mismatch:
+                              triageSuggestion.severity !== selected.severity ||
+                              triageSuggestion.category !== selected.category ||
+                              triageSuggestion.reasonCode !== reasonCode,
+                            suggestedSeverity: triageSuggestion.severity,
+                            suggestedCategory: triageSuggestion.category,
+                            suggestedReasonCode: triageSuggestion.reasonCode,
+                            finalSeverity: selected.severity,
+                            finalCategory: selected.category,
+                            finalReasonCode: reasonCode,
+                          }),
+                        });
+                        await loadTriageStats();
+                        setStatus("Suggestion acceptance logged.");
+                      })
+                    }
+                  >
+                    Log accepted
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-small"
+                    disabled={Boolean(busy) || !selected}
+                    onClick={() =>
+                      void run("feedbackSuggestionRejected", async () => {
+                        await fetchStudioBrain("/api/trust-safety/triage/feedback", {
+                          method: "POST",
+                          body: JSON.stringify({
+                            reportId: selected.id,
+                            decision: "rejected",
+                            mismatch: true,
+                            suggestedSeverity: triageSuggestion.severity,
+                            suggestedCategory: triageSuggestion.category,
+                            suggestedReasonCode: triageSuggestion.reasonCode,
+                            finalSeverity: selected.severity,
+                            finalCategory: selected.category,
+                            finalReasonCode: reasonCode,
+                          }),
+                        });
+                        await loadTriageStats();
+                        setStatus("Suggestion rejection logged.");
+                      })
+                    }
+                  >
+                    Log rejected
+                  </button>
                 </div>
               ) : null}
 

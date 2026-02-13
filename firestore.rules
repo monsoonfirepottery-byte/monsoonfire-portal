@@ -400,7 +400,8 @@ service cloud.firestore {
     }
 
     match /kilnLaunchRequests/{requestId} {
-      allow read: if isSignedIn();
+      allow read: if isStaff()
+        || (isSignedIn() && resource.data.uid == request.auth.uid);
       allow create: if isSignedIn()
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.status == "queued"
@@ -459,6 +460,17 @@ service cloud.firestore {
             || request.resource.data.readBy.hasAll(resource.data.readBy)
           )
           && request.resource.data.readBy.hasAny([request.auth.uid])
+          && (
+            !(resource.data.readBy is list)
+            || (
+              resource.data.readBy.hasAny([request.auth.uid])
+              && request.resource.data.readBy.size() == resource.data.readBy.size()
+            )
+            || (
+              !resource.data.readBy.hasAny([request.auth.uid])
+              && request.resource.data.readBy.size() == resource.data.readBy.size() + 1
+            )
+          )
         );
       allow delete: if false;
     }
@@ -842,7 +854,7 @@ service cloud.firestore {
     }
 
     match /communityFeedOverrides/{overrideId} {
-      allow read: if isSignedIn();
+      allow read: if isStaff();
       allow write: if false;
     }
 

@@ -1,0 +1,26 @@
+{
+  "generatedAt": "2026-02-13T20:23:24.627Z",
+  "allPassed": true,
+  "rows": [
+    {
+      "connectorId": "hubitat",
+      "passed": true,
+      "checks": [
+        "contract_read_only",
+        "negative_auth",
+        "negative_timeout",
+        "negative_malformed"
+      ]
+    },
+    {
+      "connectorId": "roborock",
+      "passed": true,
+      "checks": [
+        "contract_read_only",
+        "negative_auth",
+        "negative_timeout",
+        "negative_malformed"
+      ]
+    }
+  ]
+}

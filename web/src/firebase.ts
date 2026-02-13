@@ -3,7 +3,9 @@ import { connectAuthEmulator, getAuth, GoogleAuthProvider } from "firebase/auth"
 import { connectFirestoreEmulator, initializeFirestore } from "firebase/firestore";
 
 type ImportMetaEnvShape = {
+  DEV?: boolean;
   VITE_AUTH_DOMAIN?: string;
+  VITE_DEBUG_TOOLS?: string;
   VITE_USE_EMULATORS?: string;
   VITE_USE_AUTH_EMULATOR?: string;
   VITE_USE_FIRESTORE_EMULATOR?: string;
@@ -46,6 +48,37 @@ const USE_AUTH_EMULATOR =
 const USE_FIRESTORE_EMULATOR =
   typeof import.meta !== "undefined" &&
   (ENV.VITE_USE_FIRESTORE_EMULATOR ?? ENV.VITE_USE_EMULATORS) === "true";
+const ENABLE_DEBUG_TOOLS =
+  typeof import.meta !== "undefined" &&
+  (ENV.DEV === true || ENV.VITE_DEBUG_TOOLS === "true");
+
+function attachDebugTools() {
+  if (typeof window === "undefined") return;
+  const runtimeWindow = window as Window & {
+    mfDebug?: {
+      getIdToken: () => Promise<string>;
+      getUid: () => string;
+      isSignedIn: () => boolean;
+    };
+  };
+
+  if (!ENABLE_DEBUG_TOOLS) {
+    delete runtimeWindow.mfDebug;
+    return;
+  }
+
+  runtimeWindow.mfDebug = {
+    getIdToken: async () => {
+      const user = auth.currentUser;
+      if (!user) {
+        return "No authenticated Firebase user. Sign in to the portal first.";
+      }
+      return user.getIdToken();
+    },
+    getUid: () => auth.currentUser?.uid ?? "No authenticated Firebase user.",
+    isSignedIn: () => Boolean(auth.currentUser),
+  };
+}
 
 if (USE_AUTH_EMULATOR) {
   const authHost = String(ENV.VITE_AUTH_EMULATOR_HOST || "127.0.0.1");
@@ -58,3 +91,5 @@ if (USE_FIRESTORE_EMULATOR) {
   const port = Number(ENV.VITE_FIRESTORE_EMULATOR_PORT || 8080);
   connectFirestoreEmulator(db, host, port);
 }
+
+attachDebugTools();

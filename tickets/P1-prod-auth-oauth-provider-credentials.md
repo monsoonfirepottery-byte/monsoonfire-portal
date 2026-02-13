@@ -1,6 +1,6 @@
 # P1 - Production Auth: Create OAuth Apps + Configure Provider Secrets
 
-Status: Open
+Status: Blocked
 
 Created: 2026-02-10
 
@@ -67,3 +67,7 @@ Redirect URI note:
 - Added run-log helper: `scripts/new-auth-provider-run-entry.ps1` to append a standardized execution/evidence template.
 - Added one-command external checklist runner: `scripts/run-external-cutover-checklist.ps1` (generates consolidated cutover/auth/drill checklist).
 - Remaining work is provider-console and Firebase-console execution with real credentials.
+
+## Blocker (2026-02-13)
+- Requires interactive access to Microsoft/Apple/Facebook provider consoles plus Firebase Auth console in production project.
+- Cannot complete from local repo-only environment.

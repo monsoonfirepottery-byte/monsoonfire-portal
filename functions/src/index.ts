@@ -81,6 +81,7 @@ import {
   staffUpdateAgentOpsConfig,
 } from "./agentCommerce";
 import { emitIntegrationEvent } from "./integrationEvents";
+import { executeStudioBrainPilotAction, rollbackStudioBrainPilotAction } from "./v3Execution/pilotFirestoreAction";
 export {
   registerDeviceToken,
   unregisterDeviceToken,
@@ -180,6 +181,7 @@ export {
   staffReviewAgentReservation,
   staffUpdateAgentOpsConfig,
 };
+export { executeStudioBrainPilotAction, rollbackStudioBrainPilotAction };
 
 /**
  * IMPORTANT:

@@ -12,6 +12,7 @@ import {
   requireAdmin,
   requireAuthUid,
 } from "./shared";
+import { enforceAppCheckIfEnabled } from "./authz";
 
 const REGION = "us-central1";
 
@@ -147,6 +148,15 @@ function targetSignalKey(targetType: string, targetId: string) {
     .slice(0, 40);
 }
 
+async function enforceReportAppCheck(req: any, res: any): Promise<boolean> {
+  const appCheck = await enforceAppCheckIfEnabled(req);
+  if (!appCheck.ok) {
+    res.status(appCheck.httpStatus).json({ ok: false, message: appCheck.message, code: appCheck.code });
+    return false;
+  }
+  return true;
+}
+
 export function normalizeReportSeverity(
   category: z.infer<typeof reportCategorySchema>,
   requestedSeverity?: z.infer<typeof reportSeveritySchema>
@@ -241,6 +251,7 @@ export const createReport = onRequest({ region: REGION, timeoutSeconds: 60 }, as
     res.status(405).json({ ok: false, message: "Method not allowed" });
     return;
   }
+  if (!(await enforceReportAppCheck(req, res))) return;
 
   const auth = await requireAuthUid(req);
   if (!auth.ok) {
@@ -453,6 +464,7 @@ export const listReports = onRequest({ region: REGION, timeoutSeconds: 60 }, asy
     res.status(405).json({ ok: false, message: "Method not allowed" });
     return;
   }
+  if (!(await enforceReportAppCheck(req, res))) return;
   const auth = await requireAuthUid(req);
   if (!auth.ok) {
     res.status(401).json({ ok: false, message: auth.message });
@@ -516,6 +528,7 @@ export const listMyReports = onRequest({ region: REGION, timeoutSeconds: 60 }, a
     res.status(405).json({ ok: false, message: "Method not allowed" });
     return;
   }
+  if (!(await enforceReportAppCheck(req, res))) return;
   const auth = await requireAuthUid(req);
   if (!auth.ok) {
     res.status(401).json({ ok: false, message: auth.message });
@@ -566,6 +579,7 @@ export const updateReportStatus = onRequest({ region: REGION, timeoutSeconds: 60
     res.status(405).json({ ok: false, message: "Method not allowed" });
     return;
   }
+  if (!(await enforceReportAppCheck(req, res))) return;
   const auth = await requireAuthUid(req);
   if (!auth.ok) {
     res.status(401).json({ ok: false, message: auth.message });
@@ -650,6 +664,7 @@ export const addInternalNote = onRequest({ region: REGION, timeoutSeconds: 60 },
     res.status(405).json({ ok: false, message: "Method not allowed" });
     return;
   }
+  if (!(await enforceReportAppCheck(req, res))) return;
   const auth = await requireAuthUid(req);
   if (!auth.ok) {
     res.status(401).json({ ok: false, message: auth.message });
@@ -696,6 +711,7 @@ export const takeContentAction = onRequest({ region: REGION, timeoutSeconds: 60 
     res.status(405).json({ ok: false, message: "Method not allowed" });
     return;
   }
+  if (!(await enforceReportAppCheck(req, res))) return;
   const auth = await requireAuthUid(req);
   if (!auth.ok) {
     res.status(401).json({ ok: false, message: auth.message });
@@ -868,6 +884,7 @@ export const createReportAppeal = onRequest({ region: REGION, timeoutSeconds: 60
     res.status(405).json({ ok: false, message: "Method not allowed" });
     return;
   }
+  if (!(await enforceReportAppCheck(req, res))) return;
   const auth = await requireAuthUid(req);
   if (!auth.ok) {
     res.status(401).json({ ok: false, message: auth.message });
@@ -957,6 +974,7 @@ export const listReportAppeals = onRequest({ region: REGION, timeoutSeconds: 60 
     res.status(405).json({ ok: false, message: "Method not allowed" });
     return;
   }
+  if (!(await enforceReportAppCheck(req, res))) return;
   const auth = await requireAuthUid(req);
   if (!auth.ok) {
     res.status(401).json({ ok: false, message: auth.message });
@@ -1000,6 +1018,7 @@ export const listMyReportAppeals = onRequest({ region: REGION, timeoutSeconds: 6
     res.status(405).json({ ok: false, message: "Method not allowed" });
     return;
   }
+  if (!(await enforceReportAppCheck(req, res))) return;
   const auth = await requireAuthUid(req);
   if (!auth.ok) {
     res.status(401).json({ ok: false, message: auth.message });
@@ -1047,6 +1066,7 @@ export const updateReportAppeal = onRequest({ region: REGION, timeoutSeconds: 60
     res.status(405).json({ ok: false, message: "Method not allowed" });
     return;
   }
+  if (!(await enforceReportAppCheck(req, res))) return;
   const auth = await requireAuthUid(req);
   if (!auth.ok) {
     res.status(401).json({ ok: false, message: auth.message });

@@ -2,16 +2,14 @@
   RewriteEngine On
 
   # Never rewrite well-known association files (universal links, etc).
-  RewriteRule ^\\.well-known/ - [L]
+  RewriteRule ^\.well-known/ - [L]
 
-  # If the path is an actual file or directory, serve it directly.
-  RewriteCond %{REQUEST_FILENAME} -f [OR]
-  RewriteCond %{REQUEST_FILENAME} -d
-  RewriteRule ^ - [L]
-
-  # SPA fallback: deep links should load the app.
+  # SPA fallback: if it's not a real file or directory, serve index.html
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule ^ index.html [L]
 </IfModule>
+
 
 <IfModule mod_headers.c>
   # Vite build output is content-hashed under /assets. Cache aggressively.

@@ -71,3 +71,8 @@ Redirect URI note:
 ## Blocker (2026-02-13)
 - Requires interactive access to Microsoft/Apple/Facebook provider consoles plus Firebase Auth console in production project.
 - Cannot complete from local repo-only environment.
+
+## Update (2026-02-13)
+- Portal hosting + SSL for `https://portal.monsoonfire.com` are now verified live, so cutover-domain readiness is no longer the blocker.
+- Remaining blocker is provider-console/Firebase-console execution and evidence capture for Apple/Facebook/Microsoft sign-in flows.
+- Keep this ticket in `Blocked` until all provider credentials are configured and sign-in is verified from hosted portal.

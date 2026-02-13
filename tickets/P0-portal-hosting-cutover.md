@@ -1,6 +1,6 @@
 # P0 - Portal Hosting Cutover (portal.monsoonfire.com)
 
-Status: Blocked
+Status: Ready for close (pending final auth/function-call evidence)
 
 Goal: ship the portal at `https://portal.monsoonfire.com` on Namecheap hosting, with working Firebase Auth + Cloud Functions calls, and the correct static hosting behavior for a SPA.
 
@@ -63,6 +63,18 @@ If any of these are off, we get login loops, broken routes, or silent failures t
 - Added orchestration helper: `scripts/run-external-cutover-checklist.ps1` to generate a one-command execution checklist and run verifier automatically when DNS resolves.
 - Remaining work is external-console execution (DNS/HTTPS/Auth domain checks/evidence capture).
 
-## Blocker (2026-02-13)
+## Prior Blocker (Cleared 2026-02-13)
 - Requires DNS/hosting-panel changes and HTTPS certificate provisioning for `portal.monsoonfire.com`.
 - Current environment cannot perform Namecheap hosting control-panel actions.
+
+## Update (2026-02-13)
+- Hosting + SSL are now live for `https://portal.monsoonfire.com`.
+- Verification run succeeded:
+  - Root route: `200`
+  - Deep link `/reservations`: `200` with HTML app shell
+  - Sample `/assets/*.js` responses: `200` with long-lived cache headers (`max-age=691200`)
+- Evidence written to `docs/cutover-verify.json`.
+- Remaining close-out items:
+  - Confirm hosted Google sign-in end-to-end.
+  - Capture one successful protected Cloud Function call from hosted portal.
+- `/.well-known/apple-app-site-association` currently returns `404` (warning only unless universal links are required in this phase).

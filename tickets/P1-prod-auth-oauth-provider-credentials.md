@@ -76,3 +76,7 @@ Redirect URI note:
 - Portal hosting + SSL for `https://portal.monsoonfire.com` are now verified live, so cutover-domain readiness is no longer the blocker.
 - Remaining blocker is provider-console/Firebase-console execution and evidence capture for Apple/Facebook/Microsoft sign-in flows.
 - Keep this ticket in `Blocked` until all provider credentials are configured and sign-in is verified from hosted portal.
+
+## Update (2026-02-13 - operator progress)
+- Microsoft provider authentication has been configured and tested successfully on hosted portal.
+- Remaining provider-console work: Apple and Facebook credential setup + hosted sign-in verification evidence.

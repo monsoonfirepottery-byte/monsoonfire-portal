@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
 import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 import RevealCard from "../components/RevealCard";
@@ -110,36 +110,61 @@ function useKilnDashboardRows() {
   const [firings, setFirings] = useState<KilnFiring[]>([]);
   const [loading, setLoading] = useState(true);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const isMountedRef = useRef(true);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const kilnsQuery = query(collection(db, "kilns"), orderBy("name", "asc"), limit(25));
-        const firingsQuery = query(collection(db, "kilnFirings"), orderBy("startAt", "asc"), limit(200));
-        const [kilnSnap, firingSnap] = await Promise.all([getDocs(kilnsQuery), getDocs(firingsQuery)]);
-        setKilns(
-          kilnSnap.docs.map((docSnap) => ({
-            ...normalizeKilnRow(docSnap.id, docSnap.data() as Partial<Kiln>),
-          }))
-        );
-        setFirings(
-          firingSnap.docs.map((docSnap) => ({
-            ...normalizeFiringRow(docSnap.id, docSnap.data() as Partial<KilnFiring>),
-          }))
-        );
-      } catch (err) {
-        if (isPermissionDenied(err)) setPermissionDenied(true);
-      } finally {
-        setLoading(false);
+  const reload = useCallback(async () => {
+    if (!isMountedRef.current) return;
+
+    setPermissionDenied(false);
+    setLoading(true);
+
+    try {
+      const kilnsQuery = query(collection(db, "kilns"), orderBy("name", "asc"), limit(25));
+      const firingsQuery = query(collection(db, "kilnFirings"), orderBy("startAt", "asc"), limit(200));
+      const [kilnSnap, firingSnap] = await Promise.all([getDocs(kilnsQuery), getDocs(firingsQuery)]);
+      if (!isMountedRef.current) return;
+      setKilns(
+        kilnSnap.docs.map((docSnap) => ({
+          ...normalizeKilnRow(docSnap.id, docSnap.data() as Partial<Kiln>),
+        }))
+      );
+      setFirings(
+        firingSnap.docs.map((docSnap) => ({
+          ...normalizeFiringRow(docSnap.id, docSnap.data() as Partial<KilnFiring>),
+        }))
+      );
+    } catch (err) {
+      if (!isMountedRef.current) return;
+      if (isPermissionDenied(err)) {
+        setPermissionDenied(true);
+        setKilns([]);
+        setFirings([]);
       }
-    };
-
-    void load();
+    } finally {
+      if (isMountedRef.current) setLoading(false);
+    }
   }, []);
 
-  const useMock = permissionDenied || (!loading && kilns.length === 0 && firings.length === 0);
+  useEffect(() => {
+    isMountedRef.current = true;
+    void reload();
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [reload]);
+
+  const useMock = import.meta.env.DEV && (permissionDenied || (!loading && kilns.length === 0 && firings.length === 0));
   const rawKilns = useMock ? mockKilns : kilns;
   const rawFirings = useMock ? mockFirings : firings;
+  const noData = !loading && !permissionDenied && kilns.length === 0 && firings.length === 0;
+  const showRetry = permissionDenied || noData;
+  const statusNotice = permissionDenied
+    ? "Unable to load kiln schedules. Permissions may not be configured yet."
+    : noData
+      ? "No kiln status available yet."
+      : loading
+        ? "Loading kiln status..."
+        : "";
 
   const primaryKiln =
     rawKilns.find((kiln) => kiln.name === PRIMARY_KILN_NAME) ??
@@ -253,9 +278,11 @@ function useKilnDashboardRows() {
 
   const nextFiringLabel = nextFiring
     ? `${formatShortDate(nextFiring.startDate)} · ${nextFiring.title || nextFiring.cycleType || "Firing"}`
-    : "No firings scheduled yet";
+    : permissionDenied
+      ? "Firing schedule unavailable."
+      : "No firings scheduled yet";
 
-  return { rows, nextFiringLabel };
+  return { rows, nextFiringLabel, statusNotice, useMock, permissionDenied, loading, reload, showRetry };
 }
 
 type Props = {
@@ -296,7 +323,16 @@ export default function DashboardView({
   const archivedCount = history.length;
   const messagePreview = threads.slice(0, 3);
   const announcementPreview = announcements.slice(0, 3);
-  const { rows: kilnRows, nextFiringLabel } = useKilnDashboardRows();
+  const {
+    rows: kilnRows,
+    nextFiringLabel,
+    statusNotice,
+    useMock,
+    permissionDenied,
+    showRetry,
+    loading: kilnLoading,
+    reload: reloadKilns,
+  } = useKilnDashboardRows();
   const queueFillCount = Math.min(8, Math.max(active.length, 0));
   const queueFillRatio = Math.min(1, queueFillCount / 8);
   const averageTurnaroundDays = useMemo(() => {
@@ -319,6 +355,7 @@ export default function DashboardView({
   const nextPieceEta = nextPiece?.updatedAt
     ? formatMaybeTimestamp(nextPiece.updatedAt)
     : "Check back soon";
+  const kilnEmptyStateLabel = statusNotice || "No kiln status available yet.";
 
   return (
     <div className="dashboard">
@@ -459,9 +496,17 @@ export default function DashboardView({
 
         <RevealCard className="card card-3d" index={4} enabled={motionEnabled}>
           <div className="card-title">Kilns firing now</div>
+          {useMock ? <div className="notice">Using sample kiln data for development.</div> : null}
+          {useMock && permissionDenied ? (
+            <div className="notice" role="status" aria-live="polite">
+              {statusNotice}
+            </div>
+          ) : null}
           <div className="list">
             {kilnRows.length === 0 ? (
-              <div className="empty-state">No kiln status available yet.</div>
+              <div className="empty-state" role="status" aria-live="polite">
+                {kilnEmptyStateLabel}
+              </div>
             ) : (
               kilnRows.map((kiln) => (
                 <div className={`list-row kiln-row ${kiln.isOffline ? "kiln-offline" : ""}`} key={kiln.id}>
@@ -483,6 +528,11 @@ export default function DashboardView({
               ))
             )}
           </div>
+          {showRetry && !kilnLoading ? (
+            <button className="btn btn-secondary" onClick={() => void reloadKilns()} disabled={kilnLoading}>
+              Retry loading kiln status
+            </button>
+          ) : null}
         </RevealCard>
 
         <RevealCard className="card card-3d" index={5} enabled={motionEnabled}>

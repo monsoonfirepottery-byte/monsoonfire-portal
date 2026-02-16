@@ -448,6 +448,8 @@ function useDirectMessages(user: User | null) {
     let canceled = false;
     if (!user) {
       setThreads([]);
+      setLoading(false);
+      setError("");
       return;
     }
 
@@ -494,6 +496,8 @@ function useAnnouncements(user: User | null) {
     let canceled = false;
     if (!user) {
       setAnnouncements([]);
+      setLoading(false);
+      setError("");
       return;
     }
 

@@ -1,0 +1,39 @@
+{
+  "atUtc": "2026-02-13T21:40:11.5035146Z",
+  "portalUrl": "https://portal.monsoonfire.com",
+  "rootUrl": "https://portal.monsoonfire.com/",
+  "deepUrl": "https://portal.monsoonfire.com/reservations",
+  "wellKnownUrl": "https://portal.monsoonfire.com/.well-known/apple-app-site-association",
+  "rootStatus": 200,
+  "deepStatus": 200,
+  "rootCacheControl": "public, max-age=0",
+  "deepCacheControl": "public, max-age=0",
+  "sampledAssets": [
+    "/assets/index-2XiHMuPI.js",
+    "/assets/vendor-DuPUYBON.js",
+    "/assets/vendor-react-DPkGgiPW.js"
+  ],
+  "assetChecks": [
+    {
+      "path": "/assets/index-2XiHMuPI.js",
+      "status": 200,
+      "cacheControl": "public, max-age=691200",
+      "cacheLooksLongLived": true,
+      "error": null
+    },
+    {
+      "path": "/assets/vendor-DuPUYBON.js",
+      "status": 200,
+      "cacheControl": "public, max-age=691200",
+      "cacheLooksLongLived": true,
+      "error": null
+    },
+    {
+      "path": "/assets/vendor-react-DPkGgiPW.js",
+      "status": 200,
+      "cacheControl": "public, max-age=691200",
+      "cacheLooksLongLived": true,
+      "error": null
+    }
+  ]
+}

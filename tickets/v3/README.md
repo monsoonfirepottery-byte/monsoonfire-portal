@@ -78,3 +78,5 @@ Cloud remains authoritative; local computes and proposes; irreversible actions r
 - `tickets/v3/DEFINITION_OF_DONE.md`
 - `tickets/v3/RISK_REGISTER.md`
 - `tickets/v3/EPIC_SCORECARD.md`
+- `tickets/v3/STATUS.md`
+- `tickets/v3/RELEASE_READINESS_CHECKLIST.md`

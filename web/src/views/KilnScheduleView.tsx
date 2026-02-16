@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
 import {
   collection,
+  addDoc,
   getDocs,
   limit,
   orderBy,
   query,
   doc,
+  Timestamp,
   updateDoc,
   serverTimestamp,
 } from "firebase/firestore";
@@ -27,6 +29,7 @@ type ScheduleState = {
   error: string;
   errorDetails: { code?: string; message?: string } | null;
   permissionDenied: boolean;
+  reload: () => Promise<void>;
 };
 
 const STATUS_LABELS: Record<KilnStatus, string> = {
@@ -137,43 +140,60 @@ function useKilnSchedule(): ScheduleState {
   const [firingsError, setFiringsError] = useState("");
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [errorDetails, setErrorDetails] = useState<{ code?: string; message?: string } | null>(null);
+  const isMountedRef = useRef(true);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const kilnsQuery = query(collection(db, "kilns"), orderBy("name", "asc"), limit(25));
-        const firingsQuery = query(collection(db, "kilnFirings"), orderBy("startAt", "asc"), limit(200));
-        const [kilnSnap, firingSnap] = await Promise.all([getDocs(kilnsQuery), getDocs(firingsQuery)]);
-        setKilns(
-          kilnSnap.docs.map((docSnap) =>
-            normalizeKilnDoc(docSnap.id, docSnap.data() as Partial<Kiln>)
-          )
-        );
-        setFirings(
-          firingSnap.docs.map((docSnap) =>
-            normalizeFiringDoc(docSnap.id, docSnap.data() as Partial<KilnFiring>)
-          )
-        );
-      } catch (error: unknown) {
-        const msg = getErrorMessage(error);
-        setKilnsError(`Kilns failed: ${msg}`);
-        setFiringsError(`Kiln schedule failed: ${msg}`);
-        setErrorDetails({
-          code:
-            typeof (error as { code?: unknown })?.code === "string"
-              ? ((error as { code?: string }).code)
-              : undefined,
-          message: msg,
-        });
-        if (isPermissionDenied(error)) setPermissionDenied(true);
-      } finally {
+  const reload = useCallback(async () => {
+    if (!isMountedRef.current) return;
+
+    setPermissionDenied(false);
+    setErrorDetails(null);
+    setKilnsLoading(true);
+    setFiringsLoading(true);
+    setKilnsError("");
+    setFiringsError("");
+
+    try {
+      const kilnsQuery = query(collection(db, "kilns"), orderBy("name", "asc"), limit(25));
+      const firingsQuery = query(collection(db, "kilnFirings"), orderBy("startAt", "asc"), limit(200));
+      const [kilnSnap, firingSnap] = await Promise.all([getDocs(kilnsQuery), getDocs(firingsQuery)]);
+      if (!isMountedRef.current) return;
+      setKilns(
+        kilnSnap.docs.map((docSnap) => normalizeKilnDoc(docSnap.id, docSnap.data() as Partial<Kiln>)
+        )
+      );
+      setFirings(
+        firingSnap.docs.map((docSnap) =>
+          normalizeFiringDoc(docSnap.id, docSnap.data() as Partial<KilnFiring>)
+        )
+      );
+    } catch (error: unknown) {
+      if (!isMountedRef.current) return;
+      const msg = getErrorMessage(error);
+      setKilnsError(`Kilns failed: ${msg}`);
+      setFiringsError(`Kiln schedule failed: ${msg}`);
+      setErrorDetails({
+        code:
+          typeof (error as { code?: unknown })?.code === "string"
+            ? ((error as { code?: string }).code)
+            : undefined,
+        message: msg,
+      });
+      if (isPermissionDenied(error)) setPermissionDenied(true);
+    } finally {
+      if (isMountedRef.current) {
         setKilnsLoading(false);
         setFiringsLoading(false);
       }
-    };
-
-    void load();
+    }
   }, []);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    void reload();
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [reload]);
 
   return {
     kilns,
@@ -182,6 +202,7 @@ function useKilnSchedule(): ScheduleState {
     error: [kilnsError, firingsError].filter(Boolean).join(" "),
     errorDetails,
     permissionDenied,
+    reload,
   };
 }
 
@@ -189,14 +210,31 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function parseHoursInput(value: string, fallback: number, min = 0.5, max = 720): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(parsed, min), max);
+}
+
+function formatFiringLabel(firing: NormalizedFiring | null): string {
+  if (!firing) return "No firing selected";
+  return `${firing.title} (${formatDateTime(firing.startDate)})`;
+}
+
 export default function KilnScheduleView({ user, isStaff }: { user?: User | null; isStaff?: boolean }) {
   const { themeName, portalMotion } = useUiSettings();
   const motionEnabled = themeName === "memoria" && portalMotion === "enhanced";
-  const { kilns, firings, loading, error, errorDetails } = useKilnSchedule();
+  const { kilns, firings, loading, error, errorDetails, permissionDenied, reload } = useKilnSchedule();
   const [selectedFiringId, setSelectedFiringId] = useState<string | null>(null);
   const [unloadStatus, setUnloadStatus] = useState("");
   const [unloadBusy, setUnloadBusy] = useState(false);
   const [unloadError, setUnloadError] = useState("");
+  const [staffBusy, setStaffBusy] = useState(false);
+  const [staffError, setStaffError] = useState("");
+  const [staffStatus, setStaffStatus] = useState("");
+  const [followUpLeadHours, setFollowUpLeadHours] = useState("6");
+  const [followUpDurationHours, setFollowUpDurationHours] = useState("8");
+  const [delayHours, setDelayHours] = useState("24");
 
   const primaryKiln =
     kilns.find((kiln) => kiln.name === PRIMARY_KILN_NAME) ??
@@ -266,6 +304,73 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
     : null;
   const unloadedAt = selectedFiring ? coerceDate(selectedFiring.unloadedAt) : null;
 
+  const runStaffAction = async (actionLabel: string, action: () => Promise<void>) => {
+    if (!isStaff || !user || staffBusy) return;
+
+    setStaffBusy(true);
+    setStaffError("");
+    setStaffStatus("");
+
+    try {
+      await action();
+      setStaffStatus(`${actionLabel} complete.`);
+      await reload();
+    } catch (error: unknown) {
+      setStaffError(getErrorMessage(error) || `${actionLabel} failed.`);
+    } finally {
+      setStaffBusy(false);
+    }
+  };
+
+  const createFollowUpFiring = async () => {
+    if (!selectedFiring || !user) {
+      throw new Error("Select a firing and sign in as staff first.");
+    }
+
+    const leadHours = parseHoursInput(followUpLeadHours, 6);
+    const durationHours = parseHoursInput(followUpDurationHours, 8, 1);
+    const kiln = kilnById.get(selectedFiring.kilnId);
+    const baseStart = coerceDate(selectedFiring.endAt) ?? new Date();
+    const startAt = new Date(baseStart.getTime() + leadHours * 60 * 60 * 1000);
+    const endAt = new Date(startAt.getTime() + durationHours * 60 * 60 * 1000);
+
+    await addDoc(collection(db, "kilnFirings"), {
+      kilnId: selectedFiring.kilnId,
+      kilnName: kiln?.name ?? null,
+      title: `${selectedFiring.title} (staff follow-up)`,
+      cycleType: selectedFiring.cycleType,
+      startAt: Timestamp.fromDate(startAt),
+      endAt: Timestamp.fromDate(endAt),
+      status: "scheduled",
+      confidence: "scheduled",
+      notes: `Scheduled by staff ${user.uid}`,
+      createdAt: serverTimestamp(),
+      createdByUid: user.uid,
+      updatedByUid: user.uid,
+      updatedAt: serverTimestamp(),
+    });
+  };
+
+  const delaySelectedFiringByHours = async () => {
+    if (!selectedFiring || !user) {
+      throw new Error("Select a firing and sign in as staff first.");
+    }
+    const delayAmount = parseHoursInput(delayHours, 24, 1);
+    const startDate = coerceDate(selectedFiring.startAt);
+    const endDate = coerceDate(selectedFiring.endAt);
+    if (!startDate || !endDate) {
+      throw new Error("Selected firing is missing start or end time.");
+    }
+
+    const shiftMs = delayAmount * 60 * 60 * 1000;
+    await updateDoc(doc(db, "kilnFirings", selectedFiring.id), {
+      startAt: Timestamp.fromDate(new Date(startDate.getTime() + shiftMs)),
+      endAt: Timestamp.fromDate(new Date(endDate.getTime() + shiftMs)),
+      updatedByUid: user.uid,
+      updatedAt: serverTimestamp(),
+    });
+  };
+
   return (
     <div className="page kiln-page">
       <div className="page-header">
@@ -315,13 +420,29 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
       </section>
 
       {loading ? (
-        <div className="loading">
+        <div className="loading" role="status" aria-live="polite">
           <span />
           Loading kiln schedule
         </div>
       ) : null}
 
-      {error ? <div className="card card-3d alert">{error}</div> : null}
+      {error ? (
+        <div className="card card-3d alert" role="status" aria-live="polite">
+          {error}
+        </div>
+      ) : null}
+      {permissionDenied ? (
+        <div className="card card-3d notice" role="status" aria-live="polite">
+          You do not have sufficient Firestore permissions to read kiln schedule data.
+        </div>
+      ) : null}
+      {(error || permissionDenied) && !loading ? (
+        <div className="card card-3d">
+          <button className="btn btn-secondary" disabled={loading} onClick={() => void reload()}>
+            Retry loading kiln schedule
+          </button>
+        </div>
+      ) : null}
 
       {import.meta.env.DEV && errorDetails ? (
         <div className="card card-3d notice">
@@ -491,6 +612,61 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
                   </button>
                 ) : null}
               </div>
+              {isStaff && user ? (
+                <div className="details-actions">
+                  <div className="details-subtitle">Staff actions</div>
+                  <label className="form-row">
+                    <span>Lead time from selected end (hrs)</span>
+                    <input
+                      type="number"
+                      min="0.5"
+                      max="720"
+                      step="0.5"
+                      value={followUpLeadHours}
+                      onChange={(event) => setFollowUpLeadHours(event.target.value)}
+                    />
+                  </label>
+                  <label className="form-row">
+                    <span>New firing duration (hrs)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="240"
+                      step="0.5"
+                      value={followUpDurationHours}
+                      onChange={(event) => setFollowUpDurationHours(event.target.value)}
+                    />
+                  </label>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={staffBusy}
+                    onClick={() => void runStaffAction("Create follow-up firing", createFollowUpFiring)}
+                  >
+                    {staffBusy ? "Creating..." : "Kick off follow-up firing"}
+                  </button>
+                  <label className="form-row">
+                    <span>Delay selected firing by (hrs)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="720"
+                      step="0.5"
+                      value={delayHours}
+                      onChange={(event) => setDelayHours(event.target.value)}
+                    />
+                  </label>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={staffBusy}
+                    onClick={() => void runStaffAction("Delay selected firing", delaySelectedFiringByHours)}
+                  >
+                    {staffBusy ? "Rescheduling..." : "Delay selected firing"}
+                  </button>
+                  <div className="muted">Selected: {formatFiringLabel(selectedFiring)}</div>
+                  {staffError ? <div className="alert">{staffError}</div> : null}
+                  {staffStatus ? <div className="notice">{staffStatus}</div> : null}
+                </div>
+              ) : null}
               <p className="muted">Includes a 1‑day reminder.</p>
               {unloadError ? <div className="alert">{unloadError}</div> : null}
               {unloadStatus ? <div className="notice">{unloadStatus}</div> : null}
@@ -498,7 +674,6 @@ export default function KilnScheduleView({ user, isStaff }: { user?: User | null
           ) : (
             <div className="empty-state">Select a firing from the list to see details.</div>
           )}
-          {/* TODO: Staff role can kick off new firings and adjust schedules here. */}
         </RevealCard>
       </section>
     </div>

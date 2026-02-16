@@ -1,6 +1,6 @@
 # External Cutover Execution Checklist
 
-Generated at: 2026-02-13T05:34:22Z  
+Generated at: 2026-02-13T21:40:10Z  
 Operator: micah  
 Portal URL: https://portal.monsoonfire.com  
 Firebase project: monsoonfire-portal
@@ -9,8 +9,6 @@ Firebase project: monsoonfire-portal
 - [ ] DNS A/CNAME for portal host points to target hosting
 - [ ] TLS/HTTPS valid and HTTP -> HTTPS redirect active
 - [ ] Upload latest `web/dist` build + Namecheap `.htaccess`
-- [ ] Manual deploy reminder: rebuild with `npm --prefix web run build`, then upload `web/dist/*` plus `web/deploy/namecheap/.htaccess` to `/public_html/portal`
-- [ ] Host path is case-sensitive for static chunks: assets must be under lowercase `/assets/*`
 - [ ] Confirm `.well-known` files exist when needed
 
 Run verifier:

@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
+import {
+  buildPilotExecutePayload,
+  buildPilotRollbackPayload,
+  buildProposalIdempotencyKey,
+  canApproveProposalAction,
+  canExecuteProposalAction,
+  canRollbackProposalAction,
+} from "./studioBrainGuards";
 
 type Props = {
   user: User;
@@ -727,7 +735,13 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
                 <td className="staff-actions-row">
                   <button
                     className="btn btn-ghost btn-small"
-                    disabled={Boolean(busy) || disabledByToken || !approvalRationale.trim()}
+                    disabled={
+                      !canApproveProposalAction({
+                        busy: Boolean(busy),
+                        disabledByToken,
+                        approvalRationale,
+                      })
+                    }
                     onClick={() =>
                       void run(`approve-${row.id}`, async () => {
                         await fetchJson(`/api/capabilities/proposals/${row.id}/approve`, {
@@ -757,20 +771,28 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
                   </button>
                   <button
                     className="btn btn-ghost btn-small"
-                    disabled={Boolean(busy) || disabledByToken}
+                    disabled={
+                      !canExecuteProposalAction({
+                        busy: Boolean(busy),
+                        disabledByToken,
+                      })
+                    }
                     onClick={() =>
                       void run(`execute-${row.id}`, async () => {
-                        const idempotencyKey = pilotIdempotencyKey.trim() || `pilot-${row.id.slice(0, 8)}-${Date.now()}`;
+                        const idempotencyKey = buildProposalIdempotencyKey({
+                          manualKey: pilotIdempotencyKey,
+                          proposalId: row.id,
+                          nowMs: Date.now(),
+                        });
                         await fetchJson(`/api/capabilities/proposals/${row.id}/execute`, {
                           method: "POST",
-                          body: JSON.stringify({
-                            actorType: "staff",
-                            actorId: user.uid,
-                            ownerUid: user.uid,
-                            tenantId: tenantContext.trim() || user.uid,
-                            idempotencyKey,
-                            output: { executedFrom: "staff-console" },
-                          }),
+                          body: JSON.stringify(
+                            buildPilotExecutePayload({
+                              userUid: user.uid,
+                              tenantContext,
+                              idempotencyKey,
+                            })
+                          ),
                         });
                         setPilotIdempotencyKey(idempotencyKey);
                         await loadAll();
@@ -782,15 +804,25 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
                   </button>
                   <button
                     className="btn btn-ghost btn-small"
-                    disabled={Boolean(busy) || disabledByToken || row.status !== "executed" || pilotRollbackReason.trim().length < 10 || pilotIdempotencyKey.trim().length < 8}
+                    disabled={
+                      !canRollbackProposalAction({
+                        busy: Boolean(busy),
+                        disabledByToken,
+                        proposalStatus: row.status,
+                        rollbackReason: pilotRollbackReason,
+                        idempotencyKey: pilotIdempotencyKey,
+                      })
+                    }
                     onClick={() =>
                       void run(`rollback-${row.id}`, async () => {
                         await fetchJson(`/api/capabilities/proposals/${row.id}/rollback`, {
                           method: "POST",
-                          body: JSON.stringify({
-                            idempotencyKey: pilotIdempotencyKey.trim(),
-                            reason: pilotRollbackReason.trim(),
-                          }),
+                          body: JSON.stringify(
+                            buildPilotRollbackPayload({
+                              idempotencyKey: pilotIdempotencyKey,
+                              reason: pilotRollbackReason,
+                            })
+                          ),
                         });
                         await loadAll();
                         setStatus(`Rollback requested for ${row.id}.`);

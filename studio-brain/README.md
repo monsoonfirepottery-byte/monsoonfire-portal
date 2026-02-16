@@ -23,13 +23,39 @@ Local-first orchestration runtime for Monsoon Fire Studio OS v3.
 - `GET /api/status`
 - `GET /api/metrics`
 - `GET /api/capabilities`
+- `GET /api/connectors/health`
+- `GET /api/capabilities/policy`
+- `GET /api/capabilities/policy-lint`
+- `GET /api/capabilities/quotas`
+- `GET /api/capabilities/audit`
+- `GET /api/capabilities/audit/export`
+- `GET /api/capabilities/delegation/traces`
+- `GET /api/capabilities/rate-limits/events`
 - `POST /api/capabilities/proposals`
 - `POST /api/capabilities/proposals/:id/approve`
 - `POST /api/capabilities/proposals/:id/reject`
+- `POST /api/capabilities/proposals/:id/reopen`
+- `POST /api/capabilities/proposals/:id/dry-run`
 - `POST /api/capabilities/proposals/:id/execute`
-- `GET /api/capabilities/quotas`
+- `POST /api/capabilities/proposals/:id/rollback`
+- `POST /api/capabilities/policy/kill-switch`
+- `POST /api/capabilities/policy/exemptions`
+- `POST /api/capabilities/policy/exemptions/:id/revoke`
 - `POST /api/capabilities/quotas/:bucket/reset`
-- `GET /api/capabilities/audit`
+- `GET /api/ops/scorecard`
+- `GET /api/ops/recommendations/drafts`
+- `GET /api/ops/audit`
+- `GET /api/ops/drills`
+- `POST /api/ops/drills`
+- `POST /api/ops/degraded`
+- `GET /api/finance/reconciliation/drafts`
+- `GET /api/marketing/drafts`
+- `POST /api/marketing/drafts/:draftId/review`
+- `GET /api/intake/review-queue`
+- `POST /api/intake/review-queue/:intakeId/override`
+- `POST /api/trust-safety/triage/suggest`
+- `POST /api/trust-safety/triage/feedback`
+- `GET /api/trust-safety/triage/stats`
 
 ## Config
 See `src/config/env.ts` for required and optional env vars.

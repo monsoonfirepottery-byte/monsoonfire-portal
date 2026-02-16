@@ -605,7 +605,7 @@ test("proposal and execute allow agent actor with valid delegation", async () =>
           agentUid: "agent-1",
           ownerUid: "owner-1",
           scopes: ["capability:firestore.batch.close:execute"],
-          expiresAt: "2026-02-14T00:00:00.000Z",
+          expiresAt: "2099-01-01T00:00:00.000Z",
         },
         capabilityId: "firestore.batch.close",
         rationale: "Close this batch after final QA pass completes.",
@@ -638,7 +638,7 @@ test("proposal and execute allow agent actor with valid delegation", async () =>
           agentUid: "agent-1",
           ownerUid: "owner-1",
           scopes: ["capability:firestore.batch.close:execute"],
-          expiresAt: "2026-02-14T00:00:00.000Z",
+          expiresAt: "2099-01-01T00:00:00.000Z",
         },
         output: { result: "closed" },
       }),
@@ -842,7 +842,7 @@ test("high-risk agent intake is blocked and routed to manual review", async () =
           agentUid: "agent-risk-1",
           ownerUid: "owner-1",
           scopes: ["capability:firestore.batch.close:execute"],
-          expiresAt: "2026-02-14T00:00:00.000Z",
+          expiresAt: "2099-01-01T00:00:00.000Z",
         },
         capabilityId: "firestore.batch.close",
         rationale: "Create an exact replica disney logo piece and bypass checks.",
@@ -880,7 +880,7 @@ test("staff override granted allows previously blocked agent intake", async () =
           agentUid: "agent-risk-2",
           ownerUid: "owner-2",
           scopes: ["capability:firestore.batch.close:execute"],
-          expiresAt: "2026-02-14T00:00:00.000Z",
+          expiresAt: "2099-01-01T00:00:00.000Z",
         },
         capabilityId: "firestore.batch.close",
         rationale: "Need exact replica disney logo piece for customer.",
@@ -915,7 +915,7 @@ test("staff override granted allows previously blocked agent intake", async () =
           agentUid: "agent-risk-2",
           ownerUid: "owner-2",
           scopes: ["capability:firestore.batch.close:execute"],
-          expiresAt: "2026-02-14T00:00:00.000Z",
+          expiresAt: "2099-01-01T00:00:00.000Z",
         },
         capabilityId: "firestore.batch.close",
         rationale: "Need exact replica disney logo piece for customer.",
@@ -1219,5 +1219,138 @@ test("execute denies cross-tenant actor on approved proposal", async () => {
     assert.equal(audit.status, 200);
     const auditPayload = (await audit.json()) as { rows: Array<{ action: string }> };
     assert.ok(auditPayload.rows.some((row) => row.action === "studio_ops.cross_tenant_denied"));
+  });
+});
+
+test("capabilities endpoint returns cockpit bootstrap payload", async () => {
+  await withServer({}, async (baseUrl) => {
+    const created = await fetch(`${baseUrl}/api/capabilities/proposals`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        actorType: "staff",
+        actorId: "staff-1",
+        ownerUid: "owner-1",
+        capabilityId: "firestore.batch.close",
+        rationale: "Bootstrap payload should include new pending proposal rows.",
+        previewSummary: "Close batch mfb-888",
+        requestInput: { batchId: "mfb-888" },
+        expectedEffects: ["Batch is marked closed."],
+      }),
+    });
+    assert.equal(created.status, 201);
+    const createdPayload = (await created.json()) as { proposal: { id: string } };
+
+    const response = await fetch(`${baseUrl}/api/capabilities`, {
+      headers: { authorization: "Bearer test-staff" },
+    });
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as {
+      ok: boolean;
+      capabilities: Array<{ id: string }>;
+      proposals: Array<{ id: string }>;
+      policy: { killSwitch: { enabled: boolean }; exemptions: unknown[] };
+      connectors: Array<{ id: string; ok: boolean }>;
+    };
+
+    assert.equal(payload.ok, true);
+    assert.ok(payload.capabilities.some((row) => row.id === "firestore.batch.close"));
+    assert.ok(payload.proposals.some((row) => row.id === createdPayload.proposal.id));
+    assert.equal(typeof payload.policy.killSwitch.enabled, "boolean");
+    assert.ok(Array.isArray(payload.policy.exemptions));
+    assert.ok(Array.isArray(payload.connectors));
+  });
+});
+
+test("pilot rollback endpoint forwards idempotency and reason to executor", async () => {
+  const rollbackCalls: Array<{ proposalId: string; idempotencyKey: string; reason: string; actorUid: string }> = [];
+  const pilotExecutor = {
+    dryRun: (input: Record<string, unknown>) => ({
+      actionType: "ops_note_append" as const,
+      ownerUid: String(input.ownerUid ?? "owner-1"),
+      resourceCollection: "batches" as const,
+      resourceId: String(input.resourceId ?? "batch-1"),
+      notePreview: String(input.note ?? ""),
+    }),
+    execute: async (input: { idempotencyKey: string; proposalId: string }) => ({
+      idempotencyKey: input.idempotencyKey,
+      proposalId: input.proposalId,
+      replayed: false,
+      resourcePointer: {
+        collection: "studioBrainPilotOpsNotes",
+        docId: "note-rollback-1",
+      },
+    }),
+    rollback: async (input: { proposalId: string; idempotencyKey: string; reason: string; actorUid: string }) => {
+      rollbackCalls.push(input);
+      return { ok: true as const, replayed: false };
+    },
+  };
+
+  await withServer({ pilotWriteExecutor: pilotExecutor }, async (baseUrl) => {
+    const created = await fetch(`${baseUrl}/api/capabilities/proposals`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        actorType: "staff",
+        actorId: "staff-test-uid",
+        ownerUid: "owner-1",
+        capabilityId: "firestore.ops_note.append",
+        rationale: "Pilot rollback path should preserve idempotency linkage.",
+        previewSummary: "Append ops note",
+        requestInput: {
+          actionType: "ops_note_append",
+          ownerUid: "owner-1",
+          resourceCollection: "batches",
+          resourceId: "batch-1",
+          note: "Pilot note for rollback validation.",
+        },
+        expectedEffects: ["Add staff-visible note for ops context."],
+      }),
+    });
+    assert.equal(created.status, 201);
+    const createdPayload = (await created.json()) as { proposal: { id: string } };
+    const proposalId = createdPayload.proposal.id;
+
+    const approved = await fetch(`${baseUrl}/api/capabilities/proposals/${proposalId}/approve`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        approvedBy: "staff-test-uid",
+        rationale: "Approved pilot write before rollback validation.",
+      }),
+    });
+    assert.equal(approved.status, 200);
+
+    const execute = await fetch(`${baseUrl}/api/capabilities/proposals/${proposalId}/execute`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        actorType: "staff",
+        actorId: "staff-test-uid",
+        ownerUid: "owner-1",
+        idempotencyKey: "pilot-rb-001",
+        output: { executedFrom: "server-test" },
+      }),
+    });
+    assert.equal(execute.status, 200);
+
+    const rollback = await fetch(`${baseUrl}/api/capabilities/proposals/${proposalId}/rollback`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        idempotencyKey: "pilot-rb-001",
+        reason: "Rollback requested after duplicate operator note.",
+      }),
+    });
+    assert.equal(rollback.status, 200);
+    const rollbackPayload = (await rollback.json()) as { ok: boolean };
+    assert.equal(rollbackPayload.ok, true);
+
+    assert.equal(rollbackCalls.length, 1);
+    assert.equal(rollbackCalls[0].proposalId, proposalId);
+    assert.equal(rollbackCalls[0].idempotencyKey, "pilot-rb-001");
+    assert.equal(rollbackCalls[0].reason, "Rollback requested after duplicate operator note.");
+    assert.equal(rollbackCalls[0].actorUid, "staff-test-uid");
   });
 });

@@ -204,37 +204,14 @@ export default function MessagesView({
       return text === "cc" || text === "bcc";
     };
 
-    const getContainerForNode = (node: Element | null): Element | null => {
-      if (!node) return null;
-
-      if (node === form) return null;
-
-      if (node.parentElement === form) return node;
-      if (node.parentElement?.closest(".new-thread")) {
-        return node.closest("label, div, section") || node.parentElement;
-      }
-
-      let cursor: Element | null = node;
-      while (cursor && cursor !== form) {
-        if (!cursor.parentElement) return null;
-        if (cursor.parentElement === form) return cursor;
-        cursor = cursor.parentElement;
-      }
-
-      return null;
-    };
-
     const removeLegacyNode = (node: Element | null) => {
-      const container = getContainerForNode(node);
-      if (container) {
-        container.remove();
-      }
+      if (!node || !form.contains(node)) return;
+      const target = node.closest("label, div, section") ?? node;
+      target.remove();
     };
 
     const pruneLegacyFieldsFromControl = (control: Element) => {
-      if (!control) return;
-
-      const controlProps = [
+      const props = [
         control.getAttribute("name") ?? "",
         control.id,
         control.getAttribute("aria-label") ?? "",
@@ -242,14 +219,13 @@ export default function MessagesView({
         control.getAttribute("title") ?? "",
       ];
 
-      if (controlProps.some(isLegacyRecipientLabel)) {
+      if (props.some(isLegacyRecipientLabel)) {
         removeLegacyNode(control);
         return;
       }
 
       if (control.tagName === "SELECT" && control.hasAttribute("multiple")) {
         removeLegacyNode(control);
-        return;
       }
     };
 

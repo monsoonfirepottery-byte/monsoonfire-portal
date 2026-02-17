@@ -26,6 +26,7 @@ import { buildAuditExportBundle } from "../observability/auditExport";
 import { lintCapabilityPolicy } from "../observability/policyLint";
 import { capabilityPolicyMetadata } from "../capabilities/policyMetadata";
 import type { PilotWriteExecutor } from "../capabilities/pilotWrite";
+import type { BackendHealthReport } from "../connectivity/healthcheck";
 
 function withSecurityHeaders(headers: Record<string, string>): Record<string, string> {
   return {
@@ -94,6 +95,12 @@ function firstHeader(value: string | string[] | undefined): string | undefined {
   return undefined;
 }
 
+function parseTraceId(traceparent: string | undefined): string | null {
+  if (!traceparent) return null;
+  const parts = traceparent.split("-");
+  return parts.length >= 2 ? parts[1] ?? null : null;
+}
+
 type AuthPrincipal = {
   uid: string;
   isStaff: boolean;
@@ -139,6 +146,7 @@ export function startHttpServer(params: {
   allowedOrigins?: string[];
   adminToken?: string;
   verifyFirebaseAuth?: (authorizationHeader: string | undefined) => Promise<AuthPrincipal>;
+  backendHealth?: () => Promise<BackendHealthReport>;
   endpointRateLimits?: Partial<EndpointRateLimitConfig>;
   abuseQuotaStore?: QuotaStore;
   pilotWriteExecutor?: PilotWriteExecutor | null;
@@ -158,6 +166,7 @@ export function startHttpServer(params: {
     allowedOrigins = [],
     adminToken,
     verifyFirebaseAuth = verifyFirebaseAuthHeader,
+    backendHealth,
     endpointRateLimits,
     abuseQuotaStore = new InMemoryQuotaStore(),
     pilotWriteExecutor = null,
@@ -211,13 +220,32 @@ export function startHttpServer(params: {
   };
 
   const server = http.createServer(async (req, res) => {
-    const requestId = crypto.randomUUID();
+    const requestId =
+      firstHeader(req.headers["x-request-id"]) ??
+      firstHeader(req.headers["x-trace-id"]) ??
+      firstHeader(req.headers["traceparent"]) ??
+      crypto.randomUUID();
     const startedAt = Date.now();
+    const traceParent = firstHeader(req.headers["traceparent"]);
+    const traceId = parseTraceId(traceParent);
     const method = req.method ?? "GET";
     const url = new URL(req.url ?? "/", `http://${host}:${port}`);
     const originHeader = req.headers.origin ?? null;
     const corsHeaders = corsHeadersFor(originHeader);
     let statusCode = 500;
+    const requestMeta = {
+      requestId,
+      method,
+      path: url.pathname,
+      traceId: traceId ?? requestId,
+      traceParent,
+    };
+    res.setHeader("x-request-id", requestId);
+    res.setHeader("x-trace-id", requestMeta.traceId);
+    if (traceParent) {
+      res.setHeader("traceparent", traceParent);
+    }
+    logger.debug("studio_brain_http_request_start", requestMeta);
 
     try {
       const enforceRateLimit = async (
@@ -263,6 +291,14 @@ export function startHttpServer(params: {
         statusCode = 200;
         res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
         res.end(JSON.stringify({ ok: true, service: "studio-brain", at: new Date().toISOString() }));
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/health/dependencies") {
+        const dependencyHealth = backendHealth ? await backendHealth() : { at: new Date().toISOString(), ok: true, checks: [] };
+        statusCode = dependencyHealth.ok ? 200 : 503;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(JSON.stringify(dependencyHealth));
         return;
       }
 
@@ -1829,18 +1865,14 @@ export function startHttpServer(params: {
     } catch (error) {
       statusCode = 500;
       logger.error("studio_brain_http_handler_error", {
-        requestId,
-        method,
-        path: url.pathname,
+        ...requestMeta,
         message: error instanceof Error ? error.message : String(error),
       });
       res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
       res.end(JSON.stringify({ ok: false, message: "Internal server error" }));
     } finally {
       logger.info("studio_brain_http_request", {
-        requestId,
-        method,
-        path: url.pathname,
+        ...requestMeta,
         statusCode,
         durationMs: Date.now() - startedAt,
       });

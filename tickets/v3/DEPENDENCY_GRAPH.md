@@ -25,6 +25,7 @@ Cloud remains authoritative; local computes and proposes; irreversible actions r
 - `P2-v3-trust-safety-assistive-triage.md`
 - `P2-v3-write-path-pilot-firestore-approved-actions.md`
 - `P2-v3-dr-recovery-and-rebuild-playbook.md`
+- `P3-v3-physical-connector-write-pilot.md`
 - `P2-v3-kpi-scorecard-and-slo-alerting.md`
 - `P2-v3-data-retention-portability-and-audit-export.md`
 - `P2-v3-multi-studio-boundaries-readiness.md`
@@ -50,7 +51,12 @@ Cloud remains authoritative; local computes and proposes; irreversible actions r
 - `P1-v3-capability-registry-proposal-approval-audit.md` -> `P1-v3-ops-anomaly-detector-draft-recommendations.md`
 - `P1-v3-capability-registry-proposal-approval-audit.md` -> `P1-v3-marketing-swarm-draft-only.md`
 - `P1-v3-capability-registry-proposal-approval-audit.md` -> `P2-v3-write-path-pilot-firestore-approved-actions.md`
+- `P1-v3-capability-registry-proposal-approval-audit.md` -> `P3-v3-physical-connector-write-pilot.md`
 - `P1-v3-policy-exemptions-and-kill-switch.md` -> `P2-v3-write-path-pilot-firestore-approved-actions.md`
+- `P1-v3-policy-exemptions-and-kill-switch.md` -> `P3-v3-physical-connector-write-pilot.md`
+- `P1-v3-approval-ui-in-staff-console.md` -> `P3-v3-physical-connector-write-pilot.md`
+- `P2-v3-write-path-pilot-firestore-approved-actions.md` -> `P3-v3-physical-connector-write-pilot.md`
+- `P1-v3-connector-framework-hubitat-readonly.md` -> `P3-v3-physical-connector-write-pilot.md`
 - `P2-v3-os-cockpit-consolidation.md` -> `P2-v3-kpi-scorecard-and-slo-alerting.md`
 - `P0-v3-observability-baseline.md` -> `P2-v3-kpi-scorecard-and-slo-alerting.md`
 - `P0-v3-studio-brain-scaffold.md` -> `P2-v3-data-retention-portability-and-audit-export.md`
@@ -60,6 +66,7 @@ Cloud remains authoritative; local computes and proposes; irreversible actions r
 - `P0-v3-studio-state-readonly-computation.md` -> `P2-v3-dr-recovery-and-rebuild-playbook.md`
 - `P1-v3-policy-exemptions-and-kill-switch.md` -> `P2-v3-security-chaos-and-tabletop-exercises.md`
 - `P2-v3-dr-recovery-and-rebuild-playbook.md` -> `P2-v3-security-chaos-and-tabletop-exercises.md`
+- `P3-v3-physical-connector-write-pilot.md` -> `P2-v3-security-chaos-and-tabletop-exercises.md`
 
 ## Critical Path
 1. `P0-v3-studio-brain-scaffold.md`
@@ -71,6 +78,7 @@ Cloud remains authoritative; local computes and proposes; irreversible actions r
 7. `P1-v3-approval-ui-in-staff-console.md`
 8. `P1-v3-policy-exemptions-and-kill-switch.md`
 9. `P2-v3-write-path-pilot-firestore-approved-actions.md`
+10. `P3-v3-physical-connector-write-pilot.md`
 
 ## Parallelizable Clusters
 - Cluster A: `P0-v3-config-and-secrets-contract.md` + `P0-v3-observability-baseline.md`
@@ -78,3 +86,4 @@ Cloud remains authoritative; local computes and proposes; irreversible actions r
 - Cluster C: Ops anomaly + Marketing draft swarm
 - Cluster D: Finance + Trust/Safety assistive modules
 - Cluster E: retention/export + multi-studio readiness
+- Cluster F: Firestore write pilot + physical connector write pilot

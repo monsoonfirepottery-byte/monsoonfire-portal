@@ -1,48 +1,55 @@
 import { readEnv, redactEnvForLogs } from "./config/env";
 import { createLogger } from "./config/logger";
-import { runMigrations } from "./db/migrate";
+import { collectBackendHealth, type BackendHealthReport } from "./connectivity/healthcheck";
+import { createDatabaseConnection } from "./connectivity/database";
+import { createArtifactStore, type ArtifactStore } from "./connectivity/artifactStore";
+import { createRedisStreamEventBus, type SwarmEventBus } from "./swarm/bus/eventBus";
+import { buildRedisClient, type RedisConnection } from "./connectivity/redis";
+import { createVectorStore, type VectorStore } from "./connectivity/vectorStore";
+import { PruneResult, pruneOldRows } from "./db/maintenance";
 import { PostgresEventStore } from "./stores/postgresEventStore";
 import { PostgresStateStore } from "./stores/postgresStateStore";
 import { JobRunner } from "./jobs/runner";
 import { computeStudioStateJob } from "./jobs/studioStateJob";
 import { startHttpServer } from "./http/server";
-import { closePgPool } from "./db/postgres";
-import { pruneOldRows } from "./db/maintenance";
 import { CapabilityRuntime, defaultCapabilities } from "./capabilities/runtime";
+import { InMemoryQuotaStore } from "./capabilities/policy";
 import { PostgresPolicyStore, PostgresProposalStore, PostgresQuotaStore } from "./capabilities/postgresStores";
 import { HubitatConnector } from "./connectors/hubitatConnector";
 import { RoborockConnector } from "./connectors/roborockConnector";
 import { ConnectorRegistry } from "./connectors/registry";
 import { createPilotWriteExecutor } from "./capabilities/pilotWriteExecutor";
+import { SwarmOrchestrator, deriveSwarmRunId } from "./swarm/orchestrator";
+import { createLocalRegistryClient, createRemoteRegistryClient, type SkillRegistryClient } from "./skills/registry";
+import { createSkillSandbox, type SkillSandboxClient } from "./skills/sandbox";
+
+function parseArtifactPort(endpoint: string, fallback: number): number {
+  try {
+    const parsed = new URL(endpoint);
+    const port = Number(parsed.port);
+    return Number.isFinite(port) && port > 0 ? port : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 async function main(): Promise<void> {
   const env = readEnv();
   const logger = createLogger(env.STUDIO_BRAIN_LOG_LEVEL);
   const runtimeStartedAt = new Date().toISOString();
-  const schedulerState: {
-    intervalMs: number;
-    jitterMs: number;
-    initialDelayMs: number;
-    nextRunAt: string | null;
-    lastRunStartedAt: string | null;
-    lastRunCompletedAt: string | null;
-    lastRunDurationMs: number | null;
-    totalRuns: number;
-    totalFailures: number;
-    consecutiveFailures: number;
-    lastFailureMessage: string | null;
-  } = {
+
+  const schedulerState = {
     intervalMs: env.STUDIO_BRAIN_JOB_INTERVAL_MS,
     jitterMs: env.STUDIO_BRAIN_JOB_JITTER_MS,
     initialDelayMs: env.STUDIO_BRAIN_JOB_INITIAL_DELAY_MS,
-    nextRunAt: null,
-    lastRunStartedAt: null,
-    lastRunCompletedAt: null,
-    lastRunDurationMs: null,
+    nextRunAt: null as string | null,
+    lastRunStartedAt: null as string | null,
+    lastRunCompletedAt: null as string | null,
+    lastRunDurationMs: null as number | null,
     totalRuns: 0,
     totalFailures: 0,
     consecutiveFailures: 0,
-    lastFailureMessage: null,
+    lastFailureMessage: null as string | null,
   };
 
   logger.info("studio_brain_boot", {
@@ -53,12 +60,109 @@ async function main(): Promise<void> {
     env: redactEnvForLogs(env),
   });
 
-  logger.info("studio_brain_migrations_start", {});
-  const migrationResult = await runMigrations();
-  logger.info("studio_brain_migrations_complete", {
-    appliedCount: migrationResult.applied.length,
-    applied: migrationResult.applied,
-  });
+  logger.info("studio_brain_connectivity_boot", {});
+  const dbConnection = await createDatabaseConnection(logger);
+
+  const skillRegistry: SkillRegistryClient = env.STUDIO_BRAIN_SKILL_REGISTRY_REMOTE_BASE_URL
+    ? createRemoteRegistryClient({
+        baseUrl: env.STUDIO_BRAIN_SKILL_REGISTRY_REMOTE_BASE_URL,
+      })
+    : createLocalRegistryClient({
+        rootPath: env.STUDIO_BRAIN_SKILL_REGISTRY_LOCAL_PATH,
+      });
+
+  const artifactStore: ArtifactStore = await createArtifactStore(
+    {
+      endpoint: env.STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT,
+      port: parseArtifactPort(env.STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT, 9000),
+      useSSL: env.STUDIO_BRAIN_ARTIFACT_STORE_USE_SSL,
+      accessKey: env.STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY,
+      secretKey: env.STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY,
+      bucket: env.STUDIO_BRAIN_ARTIFACT_STORE_BUCKET,
+      timeoutMs: env.STUDIO_BRAIN_ARTIFACT_STORE_TIMEOUT_MS,
+    },
+    logger
+  );
+
+  const vectorStore: VectorStore | null = env.STUDIO_BRAIN_VECTOR_STORE_ENABLED
+    ? await createVectorStore(logger)
+    : null;
+
+  let redisConnection: RedisConnection | null = null;
+  let eventBus: SwarmEventBus | null = null;
+  let orchestrator: SwarmOrchestrator | null = null;
+  let swarmRunId = "";
+
+  if (env.STUDIO_BRAIN_SWARM_ORCHESTRATOR_ENABLED) {
+    redisConnection = buildRedisClient(
+      {
+        host: env.REDIS_HOST,
+        port: env.REDIS_PORT,
+        username: env.REDIS_USERNAME,
+        password: env.REDIS_PASSWORD,
+        connectTimeoutMs: env.REDIS_CONNECT_TIMEOUT_MS,
+        commandTimeoutMs: env.REDIS_COMMAND_TIMEOUT_MS,
+      },
+      logger
+    );
+
+    eventBus = await createRedisStreamEventBus(
+      redisConnection,
+      env.STUDIO_BRAIN_REDIS_STREAM_NAME,
+      logger,
+      {
+        startId: env.STUDIO_BRAIN_EVENT_BUS_START_ID,
+        pollIntervalMs: env.STUDIO_BRAIN_EVENT_BUS_POLL_INTERVAL_MS,
+        maxBatchSize: env.STUDIO_BRAIN_EVENT_BUS_BATCH_SIZE,
+        commandTimeoutMs: env.REDIS_COMMAND_TIMEOUT_MS,
+      }
+    );
+
+    swarmRunId = env.STUDIO_BRAIN_SWARM_RUN_ID || deriveSwarmRunId(env.STUDIO_BRAIN_SWARM_ID);
+
+    orchestrator = new SwarmOrchestrator({
+      bus: eventBus,
+      logger,
+      config: {
+        swarmId: env.STUDIO_BRAIN_SWARM_ID,
+        runId: swarmRunId,
+      },
+    });
+    await orchestrator.start();
+
+    await eventBus.publish({
+      type: "run.started",
+      swarmId: env.STUDIO_BRAIN_SWARM_ID,
+      runId: swarmRunId,
+      actorId: "studio-brain",
+      payload: {
+        reason: "service_start",
+        role: "coordinator",
+      },
+    });
+  }
+
+  const skillSandbox = await (async () => {
+    if (!env.STUDIO_BRAIN_SKILL_SANDBOX_ENABLED) {
+      return null;
+    }
+
+    try {
+      return await createSkillSandbox({
+        enabled: env.STUDIO_BRAIN_SKILL_SANDBOX_ENABLED,
+        egressDeny: env.STUDIO_BRAIN_SKILL_SANDBOX_EGRESS_DENY,
+        egressAllowlist: env.STUDIO_BRAIN_SKILL_SANDBOX_EGRESS_ALLOWLIST,
+        entryTimeoutMs: env.STUDIO_BRAIN_SKILL_SANDBOX_ENTRY_TIMEOUT_MS,
+        runtimeAllowlist: env.STUDIO_BRAIN_SKILL_RUNTIME_ALLOWLIST,
+        logger,
+      });
+    } catch (error) {
+      logger.warn("studio_brain_skill_sandbox_init_failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  })();
 
   const stateStore = new PostgresStateStore();
   const eventStore = new PostgresEventStore();
@@ -121,6 +225,87 @@ async function main(): Promise<void> {
     await runCompute("startup");
   }
 
+  const runPrune = async (trigger: "startup" | "scheduled"): Promise<void> => {
+    if (!env.STUDIO_BRAIN_ENABLE_RETENTION_PRUNE) return;
+    try {
+      const result: PruneResult = await pruneOldRows(env.STUDIO_BRAIN_RETENTION_DAYS);
+      logger.info("studio_brain_retention_prune_completed", {
+        trigger,
+        ...result,
+      });
+    } catch (error) {
+      logger.error("studio_brain_retention_prune_failed", {
+        trigger,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
+  let timer: NodeJS.Timeout | null = null;
+  let pruneInterval: NodeJS.Timeout | null = null;
+  let shuttingDown = false;
+
+  const backendHealth = async (): Promise<BackendHealthReport> => {
+    const checks = [
+      {
+        label: "postgres",
+        enabled: true,
+        run: async () => dbConnection.healthcheck(),
+      },
+      {
+        label: "redis",
+        enabled: env.STUDIO_BRAIN_SWARM_ORCHESTRATOR_ENABLED,
+        run: async () =>
+          redisConnection
+            ? redisConnection.healthcheck()
+            : { ok: false, latencyMs: 0, error: "redis disabled" },
+      },
+      {
+        label: "event_bus",
+        enabled: env.STUDIO_BRAIN_SWARM_ORCHESTRATOR_ENABLED && Boolean(eventBus),
+        run: async () =>
+          eventBus ? eventBus.healthcheck() : { ok: false, latencyMs: 0, error: "event bus disabled" },
+      },
+      {
+        label: "artifact_store",
+        enabled: true,
+        run: async () => artifactStore.healthcheck(),
+      },
+      {
+        label: "vector_store",
+        enabled: env.STUDIO_BRAIN_VECTOR_STORE_ENABLED,
+        run: async () => {
+          if (!vectorStore) return { ok: false, latencyMs: 0, error: "vector store disabled" };
+          return vectorStore.healthcheck();
+        },
+      },
+      {
+        label: "skill_registry",
+        enabled: true,
+        run: async () => skillRegistry.healthcheck(),
+      },
+      {
+        label: "skill_sandbox",
+        enabled: env.STUDIO_BRAIN_SKILL_SANDBOX_ENABLED,
+        run: async () => {
+          if (!skillSandbox) return { ok: false, latencyMs: 0, error: "skill sandbox disabled" };
+          const startedAt = Date.now();
+          const ok = await skillSandbox.healthcheck();
+          return { ok, latencyMs: Date.now() - startedAt };
+        },
+      },
+    ];
+
+    return collectBackendHealth(
+      checks.map((check) => ({
+        label: check.label,
+        enabled: check.enabled,
+        run: check.run,
+      })),
+      logger
+    );
+  };
+
   const server = startHttpServer({
     host: env.STUDIO_BRAIN_HOST,
     port: env.STUDIO_BRAIN_PORT,
@@ -152,14 +337,11 @@ async function main(): Promise<void> {
       .map((entry) => entry.trim())
       .filter(Boolean),
     adminToken: env.STUDIO_BRAIN_ADMIN_TOKEN,
+    backendHealth,
     pilotWriteExecutor: env.STUDIO_BRAIN_ENABLE_WRITE_EXECUTION
       ? createPilotWriteExecutor({ functionsBaseUrl: env.STUDIO_BRAIN_FUNCTIONS_BASE_URL })
       : null,
   });
-
-  let timer: NodeJS.Timeout | null = null;
-  let pruneInterval: NodeJS.Timeout | null = null;
-  let shuttingDown = false;
 
   const scheduleNext = (delayMs: number): void => {
     if (shuttingDown) return;
@@ -183,23 +365,8 @@ async function main(): Promise<void> {
       : env.STUDIO_BRAIN_ENABLE_STARTUP_COMPUTE
         ? env.STUDIO_BRAIN_JOB_INTERVAL_MS
         : 0;
-  scheduleNext(firstDelayMs);
 
-  const runPrune = async (trigger: "startup" | "scheduled"): Promise<void> => {
-    if (!env.STUDIO_BRAIN_ENABLE_RETENTION_PRUNE) return;
-    try {
-      const result = await pruneOldRows(env.STUDIO_BRAIN_RETENTION_DAYS);
-      logger.info("studio_brain_retention_prune_completed", {
-        trigger,
-        ...result,
-      });
-    } catch (error) {
-      logger.error("studio_brain_retention_prune_failed", {
-        trigger,
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  };
+  scheduleNext(firstDelayMs);
 
   if (env.STUDIO_BRAIN_ENABLE_RETENTION_PRUNE) {
     await runPrune("startup");
@@ -214,6 +381,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string, exitCode = 0): Promise<void> => {
     if (shuttingDown) return;
     shuttingDown = true;
+
     logger.info("studio_brain_shutdown_start", { signal });
 
     if (timer) {
@@ -231,7 +399,28 @@ async function main(): Promise<void> {
         else resolve();
       });
     });
-    await closePgPool();
+
+    if (orchestrator) {
+      await orchestrator.stop();
+      orchestrator = null;
+    }
+
+    if (eventBus) {
+      await eventBus.close();
+      eventBus = null;
+    }
+
+    if (redisConnection) {
+      await redisConnection.close();
+      redisConnection = null;
+    }
+
+    if (skillSandbox) {
+      await skillSandbox.close();
+    }
+
+    await dbConnection.close();
+
     logger.info("studio_brain_shutdown_complete", {});
     process.exitCode = exitCode;
   };

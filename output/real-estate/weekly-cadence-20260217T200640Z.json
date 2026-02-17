@@ -1,0 +1,61 @@
+{
+  "runId": "20260217T200640Z",
+  "startedAtUtc": "2026-02-17T20:06:40.2738741Z",
+  "finishedAtUtc": "2026-02-17T20:07:36.6583989Z",
+  "status": "ok",
+  "outputDir": "output/real-estate",
+  "publicDataDir": "output/real-estate/public-data",
+  "stagingDir": "output/real-estate/staging/public-signals",
+  "manualDropDir": "output/real-estate/manual-drops",
+  "steps": [
+    {
+      "name": "fetch_public_data",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:06:40.2744906Z",
+      "durationSec": 25.89,
+      "error": ""
+    },
+    {
+      "name": "seed_manual_drops",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:07:06.1764257Z",
+      "durationSec": 0.39,
+      "error": ""
+    },
+    {
+      "name": "build_staging",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:07:06.5666929Z",
+      "durationSec": 0.81,
+      "error": ""
+    },
+    {
+      "name": "run_public_signals",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:07:07.3760044Z",
+      "durationSec": 1.12,
+      "error": ""
+    },
+    {
+      "name": "build_macro_context",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:07:08.5007692Z",
+      "durationSec": 0.34,
+      "error": ""
+    },
+    {
+      "name": "build_parcel_graph",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:07:08.8399929Z",
+      "durationSec": 0.96,
+      "error": ""
+    },
+    {
+      "name": "run_agentic_research",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:07:09.7996130Z",
+      "durationSec": 26.86,
+      "error": ""
+    }
+  ]
+}

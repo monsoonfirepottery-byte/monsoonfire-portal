@@ -1,0 +1,170 @@
+{
+  "generatedAtUtc": "2026-02-17T21:21:23.8353902Z",
+  "runId": "20260217T212123Z",
+  "summary": {
+    "activeProfileId": "current_home_2026",
+    "recommendedProfileId": "current_home_2026",
+    "nextProfileId": "growth_12m",
+    "demandPressureScore": 0,
+    "marketOpportunityScore": 5,
+    "escalationRecommended": false
+  },
+  "needsProfilePath": "D:\\monsoonfire-portal\\docs\\real-estate\\studio-needs-profile.json",
+  "sourceInputs": {
+    "agenticResearchPath": "D:\\monsoonfire-portal\\output\\real-estate\\agentic-research-20260217T212122Z.json",
+    "publicSignalsPath": "D:\\monsoonfire-portal\\output\\real-estate\\public-signals-latest.json"
+  },
+  "operationalSignals": {
+    "weeklyKilnLoads": 8,
+    "waitlistDays": 12,
+    "outsourceSpendMonthlyUsd": 600,
+    "membershipDemandUtilizationPct": 78,
+    "powerConstraintIncidentsMonthly": 1
+  },
+  "policyThresholds": {
+    "waitlistDaysHigh": 14,
+    "weeklyKilnLoadsHigh": 10,
+    "utilizationPctHigh": 85,
+    "outsourceSpendHighUsd": 1200,
+    "powerConstraintIncidentsHigh": 2
+  },
+  "demandTriggers": [],
+  "activeProfile": {
+    "id": "current_home_2026",
+    "label": "Current home studio baseline",
+    "effectiveFrom": "2026-01-01T00:00:00Z",
+    "effectiveTo": "2026-12-31T23:59:59Z",
+    "hardRequirements": {
+      "propertyTypes": [
+        "warehouse",
+        "light_industrial",
+        "flex_industrial"
+      ],
+      "zoningAllowlist": [
+        "industrial",
+        "i-1",
+        "i-2",
+        "m-1"
+      ],
+      "minSqFt": 1200,
+      "maxSqFt": 5000,
+      "electricServiceAmpsMin": 200,
+      "threePhaseRequired": false,
+      "clearHeightFtMin": 12,
+      "gradeDoorsMin": 1,
+      "maxMonthlyOccupancyUsd": 6500
+    },
+    "preferences": {
+      "propaneTankGallonsMin": 500,
+      "naturalGasPreferred": true,
+      "distanceFromHomeMilesMax": 20,
+      "parkingStallsMin": 6,
+      "yardOrOutdoorStoragePreferred": true
+    },
+    "notes": "Home studio remains default. Expansion only if fit, timing, and economics align."
+  },
+  "recommendedProfile": {
+    "id": "current_home_2026",
+    "label": "Current home studio baseline",
+    "effectiveFrom": "2026-01-01T00:00:00Z",
+    "effectiveTo": "2026-12-31T23:59:59Z",
+    "hardRequirements": {
+      "propertyTypes": [
+        "warehouse",
+        "light_industrial",
+        "flex_industrial"
+      ],
+      "zoningAllowlist": [
+        "industrial",
+        "i-1",
+        "i-2",
+        "m-1"
+      ],
+      "minSqFt": 1200,
+      "maxSqFt": 5000,
+      "electricServiceAmpsMin": 200,
+      "threePhaseRequired": false,
+      "clearHeightFtMin": 12,
+      "gradeDoorsMin": 1,
+      "maxMonthlyOccupancyUsd": 6500
+    },
+    "preferences": {
+      "propaneTankGallonsMin": 500,
+      "naturalGasPreferred": true,
+      "distanceFromHomeMilesMax": 20,
+      "parkingStallsMin": 6,
+      "yardOrOutdoorStoragePreferred": true
+    },
+    "notes": "Home studio remains default. Expansion only if fit, timing, and economics align."
+  },
+  "nextProfile": {
+    "id": "growth_12m",
+    "label": "Growth target 12 months",
+    "effectiveFrom": "2027-01-01T00:00:00Z",
+    "effectiveTo": "",
+    "hardRequirements": {
+      "propertyTypes": [
+        "warehouse",
+        "light_industrial"
+      ],
+      "zoningAllowlist": [
+        "industrial",
+        "i-1",
+        "i-2",
+        "m-1"
+      ],
+      "minSqFt": 2000,
+      "maxSqFt": 8000,
+      "electricServiceAmpsMin": 400,
+      "threePhaseRequired": true,
+      "clearHeightFtMin": 14,
+      "gradeDoorsMin": 1,
+      "maxMonthlyOccupancyUsd": 9000
+    },
+    "preferences": {
+      "propaneTankGallonsMin": 1000,
+      "naturalGasPreferred": true,
+      "distanceFromHomeMilesMax": 25,
+      "parkingStallsMin": 10,
+      "yardOrOutdoorStoragePreferred": true
+    },
+    "notes": "Target profile if throughput pressure and membership demand trend upward."
+  },
+  "nextProfileDelta": [
+    {
+      "field": "propertyTypes",
+      "current": "warehouse,light_industrial,flex_industrial",
+      "next": "warehouse,light_industrial"
+    },
+    {
+      "field": "minSqFt",
+      "current": "1200",
+      "next": "2000"
+    },
+    {
+      "field": "maxSqFt",
+      "current": "5000",
+      "next": "8000"
+    },
+    {
+      "field": "electricServiceAmpsMin",
+      "current": "200",
+      "next": "400"
+    },
+    {
+      "field": "threePhaseRequired",
+      "current": "False",
+      "next": "True"
+    },
+    {
+      "field": "clearHeightFtMin",
+      "current": "12",
+      "next": "14"
+    },
+    {
+      "field": "maxMonthlyOccupancyUsd",
+      "current": "6500",
+      "next": "9000"
+    }
+  ]
+}

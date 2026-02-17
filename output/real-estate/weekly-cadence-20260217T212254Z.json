@@ -1,0 +1,103 @@
+{
+  "runId": "20260217T212254Z",
+  "startedAtUtc": "2026-02-17T21:22:54.6637119Z",
+  "finishedAtUtc": "2026-02-17T21:25:02.4495449Z",
+  "status": "ok",
+  "outputDir": "output/real-estate",
+  "publicDataDir": "output/real-estate/public-data",
+  "stagingDir": "output/real-estate/staging/public-signals",
+  "manualDropDir": "output/real-estate/manual-drops",
+  "steps": [
+    {
+      "name": "fetch_public_data",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:22:54.6643678Z",
+      "durationSec": 27.12,
+      "error": ""
+    },
+    {
+      "name": "seed_manual_drops",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:23:21.7945927Z",
+      "durationSec": 0.35,
+      "error": ""
+    },
+    {
+      "name": "build_staging",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:23:22.1431363Z",
+      "durationSec": 0.8,
+      "error": ""
+    },
+    {
+      "name": "run_public_signals",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:23:22.9431837Z",
+      "durationSec": 1.4,
+      "error": ""
+    },
+    {
+      "name": "build_macro_context",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:23:24.3387840Z",
+      "durationSec": 0.35,
+      "error": ""
+    },
+    {
+      "name": "build_parcel_graph",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:23:24.6926345Z",
+      "durationSec": 0.94,
+      "error": ""
+    },
+    {
+      "name": "run_agentic_research",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:23:25.6360109Z",
+      "durationSec": 24.9,
+      "error": ""
+    },
+    {
+      "name": "seed_studio_asset_manual_drops",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:23:50.5320879Z",
+      "durationSec": 0.35,
+      "error": ""
+    },
+    {
+      "name": "fetch_studio_asset_community_data",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:23:50.8825898Z",
+      "durationSec": 0.36,
+      "error": ""
+    },
+    {
+      "name": "run_studio_asset_intelligence",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:23:51.2461069Z",
+      "durationSec": 69.42,
+      "error": ""
+    },
+    {
+      "name": "build_needs_context",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:25:00.6643912Z",
+      "durationSec": 0.43,
+      "error": ""
+    },
+    {
+      "name": "run_intelligence_analysis",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:25:01.0964783Z",
+      "durationSec": 0.98,
+      "error": ""
+    },
+    {
+      "name": "build_review_packet",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:25:02.0738952Z",
+      "durationSec": 0.38,
+      "error": ""
+    }
+  ]
+}

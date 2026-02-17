@@ -1,0 +1,203 @@
+{
+  "generatedAtUtc": "2026-02-17T21:35:06.4134830Z",
+  "runId": "20260217T213506Z",
+  "configPath": "D:\\monsoonfire-portal\\docs\\real-estate\\studio-asset-intel-config.json",
+  "outputDir": "D:\\monsoonfire-portal\\output\\real-estate\\asset-community-data\\20260217T213506Z",
+  "stagingDir": "D:\\monsoonfire-portal\\output\\real-estate\\staging\\studio-assets",
+  "summary": {
+    "configuredSources": 9,
+    "sourcesWithRows": 0,
+    "totalRows": 0.0
+  },
+  "sourceStatus": [
+    {
+      "sourceKey": "localauctions_az",
+      "sourceName": "LocalAuctions Arizona",
+      "status": "no_rows",
+      "feedCount": 1,
+      "rows": 0,
+      "stagingPath": "output\\real-estate\\staging\\studio-assets\\localauctions_az.csv",
+      "feeds": [
+        {
+          "feedName": "",
+          "status": "skipped_missing_url",
+          "rows": 0,
+          "authMode": "none",
+          "authRef": "",
+          "attempts": 0,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "sourceKey": "sierraauctions_az",
+      "sourceName": "Sierra Auctions Arizona",
+      "status": "no_rows",
+      "feedCount": 1,
+      "rows": 0,
+      "stagingPath": "output\\real-estate\\staging\\studio-assets\\sierraauctions_az.csv",
+      "feeds": [
+        {
+          "feedName": "",
+          "status": "skipped_missing_url",
+          "rows": 0,
+          "authMode": "none",
+          "authRef": "",
+          "attempts": 0,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "sourceKey": "craigslist_phoenix",
+      "sourceName": "Craigslist Phoenix",
+      "status": "no_rows",
+      "feedCount": 1,
+      "rows": 0,
+      "stagingPath": "output\\real-estate\\staging\\studio-assets\\craigslist_phoenix.csv",
+      "feeds": [
+        {
+          "feedName": "",
+          "status": "skipped_missing_url",
+          "rows": 0,
+          "authMode": "none",
+          "authRef": "",
+          "attempts": 0,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "sourceKey": "facebook_marketplace",
+      "sourceName": "Facebook Marketplace",
+      "status": "no_rows",
+      "feedCount": 1,
+      "rows": 0,
+      "stagingPath": "output\\real-estate\\staging\\studio-assets\\facebook_marketplace.csv",
+      "feeds": [
+        {
+          "feedName": "Meta marketplace export feed",
+          "status": "skipped_missing_url",
+          "rows": 0,
+          "authMode": "none",
+          "authRef": "",
+          "attempts": 0,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "sourceKey": "offerup_local",
+      "sourceName": "OfferUp Local",
+      "status": "no_rows",
+      "feedCount": 1,
+      "rows": 0,
+      "stagingPath": "output\\real-estate\\staging\\studio-assets\\offerup_local.csv",
+      "feeds": [
+        {
+          "feedName": "",
+          "status": "skipped_missing_url",
+          "rows": 0,
+          "authMode": "none",
+          "authRef": "",
+          "attempts": 0,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "sourceKey": "reddit_local_sell",
+      "sourceName": "Reddit Local Sell Signals",
+      "status": "no_rows",
+      "feedCount": 1,
+      "rows": 0,
+      "stagingPath": "output\\real-estate\\staging\\studio-assets\\reddit_local_sell.csv",
+      "feeds": [
+        {
+          "feedName": "Reddit community feed",
+          "status": "skipped_missing_url",
+          "rows": 0,
+          "authMode": "none",
+          "authRef": "",
+          "attempts": 0,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "sourceKey": "local_ceramic_org_newsletters",
+      "sourceName": "Local Ceramic Org Newsletters and Feeds",
+      "status": "no_rows",
+      "feedCount": 3,
+      "rows": 0,
+      "stagingPath": "output\\real-estate\\staging\\studio-assets\\local_ceramic_org_newsletters.csv",
+      "feeds": [
+        {
+          "feedName": "Arizona ceramic org feed #1",
+          "status": "skipped_missing_url",
+          "rows": 0,
+          "authMode": "none",
+          "authRef": "",
+          "attempts": 0,
+          "error": ""
+        },
+        {
+          "feedName": "Arizona ceramic org feed #2",
+          "status": "skipped_missing_url",
+          "rows": 0,
+          "authMode": "none",
+          "authRef": "",
+          "attempts": 0,
+          "error": ""
+        },
+        {
+          "feedName": "Arizona ceramic org feed #3",
+          "status": "skipped_missing_url",
+          "rows": 0,
+          "authMode": "none",
+          "authRef": "",
+          "attempts": 0,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "sourceKey": "school_university_surplus",
+      "sourceName": "School and University Surplus",
+      "status": "no_rows",
+      "feedCount": 1,
+      "rows": 0,
+      "stagingPath": "output\\real-estate\\staging\\studio-assets\\school_university_surplus.csv",
+      "feeds": [
+        {
+          "feedName": "",
+          "status": "skipped_missing_url",
+          "rows": 0,
+          "authMode": "none",
+          "authRef": "",
+          "attempts": 0,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "sourceKey": "manufacturer_demo_and_test",
+      "sourceName": "Manufacturer Demo and Test Gear",
+      "status": "no_rows",
+      "feedCount": 1,
+      "rows": 0,
+      "stagingPath": "output\\real-estate\\staging\\studio-assets\\manufacturer_demo_and_test.csv",
+      "feeds": [
+        {
+          "feedName": "",
+          "status": "skipped_missing_url",
+          "rows": 0,
+          "authMode": "none",
+          "authRef": "",
+          "attempts": 0,
+          "error": ""
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,292 @@
+{
+  "generatedAtUtc": "2026-02-17T19:49:15.6220736Z",
+  "runId": "20260217T194851Z",
+  "outputDir": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z",
+  "summary": {
+    "totalSources": 28,
+    "ok": 24,
+    "errors": 4
+  },
+  "results": [
+    {
+      "key": "grants_gov_opportunities",
+      "name": "Grants.gov Opportunities",
+      "url": "https://www.grants.gov/search-grants",
+      "mode": "text",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\grants-gov-opportunities.html",
+      "bytes": 41918,
+      "error": ""
+    },
+    {
+      "key": "az_commerce_grants_incentives",
+      "name": "Arizona Commerce Grants and Incentives",
+      "url": "https://www.azcommerce.com/small-business/financing/",
+      "mode": "text",
+      "status": "error",
+      "outputFile": "",
+      "bytes": 0,
+      "error": "Response status code does not indicate success: 403 (Forbidden)."
+    },
+    {
+      "key": "city_phoenix_business_grants_programs",
+      "name": "City of Phoenix Business Programs",
+      "url": "https://www.phoenix.gov/eed/programs-and-resources",
+      "mode": "text",
+      "status": "error",
+      "outputFile": "",
+      "bytes": 0,
+      "error": "Response status code does not indicate success: 404 (Not Found)."
+    },
+    {
+      "key": "sba_grants_and_funding_programs",
+      "name": "SBA Grants and Funding Programs",
+      "url": "https://www.sba.gov/funding-programs/grants",
+      "mode": "text",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\sba-grants-and-funding-programs.html",
+      "bytes": 108197,
+      "error": ""
+    },
+    {
+      "key": "az_state_surplus_property_auctions",
+      "name": "Arizona State Surplus Property",
+      "url": "https://doa.az.gov/surplus-property",
+      "mode": "text",
+      "status": "error",
+      "outputFile": "",
+      "bytes": 0,
+      "error": "Response status code does not indicate success: 403 (Forbidden)."
+    },
+    {
+      "key": "maricopa_local_surplus_property_auctions",
+      "name": "Maricopa Local Surplus Property",
+      "url": "https://www.maricopa.gov/5268/Surplus-Properties",
+      "mode": "text",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\maricopa-local-surplus-properties.html",
+      "bytes": 172071,
+      "error": ""
+    },
+    {
+      "key": "federal_real_property_disposals",
+      "name": "Federal Real Property Disposals",
+      "url": "https://realestatesales.gov/",
+      "mode": "text",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\federal-real-estate-sales.html",
+      "bytes": 56920,
+      "error": ""
+    },
+    {
+      "key": "gsa_auctions_property",
+      "name": "GSA Auctions Property",
+      "url": "https://gsaauctions.gov/auctions/home",
+      "mode": "text",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\gsa-auctions-home.html",
+      "bytes": 2887,
+      "error": ""
+    },
+    {
+      "key": "maricopa_assessor_services",
+      "name": "Maricopa Assessor ArcGIS Services Directory",
+      "url": "https://gis.mcassessor.maricopa.gov/arcgis/rest/services?f=pjson",
+      "mode": "json",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\maricopa-assessor-services.json",
+      "bytes": 1671,
+      "error": ""
+    },
+    {
+      "key": "maricopa_parcels_layer_meta",
+      "name": "Maricopa Parcels Layer Metadata",
+      "url": "https://gis.mcassessor.maricopa.gov/arcgis/rest/services/Parcels/MapServer/0?f=pjson",
+      "mode": "json",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\maricopa-parcels-layer-meta.json",
+      "bytes": 14165,
+      "error": ""
+    },
+    {
+      "key": "maricopa_parcels_sample",
+      "name": "Maricopa Parcels Sample Query",
+      "url": "https://gis.mcassessor.maricopa.gov/arcgis/rest/services/Parcels/MapServer/0/query?where=1%3D1&outFields=*&resultRecordCount=500&f=pjson",
+      "mode": "json",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\maricopa-parcels-sample.json",
+      "bytes": 1504349,
+      "error": ""
+    },
+    {
+      "key": "maricopa_dynamic_query_service_meta",
+      "name": "Maricopa Dynamic Query Service Metadata",
+      "url": "https://gis.mcassessor.maricopa.gov/arcgis/rest/services/MaricopaDynamicQueryService/MapServer?f=pjson",
+      "mode": "json",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\maricopa-dynamic-query-service-meta.json",
+      "bytes": 4768,
+      "error": ""
+    },
+    {
+      "key": "maricopa_open_data_search",
+      "name": "Maricopa Open Data Dataset Search",
+      "url": "https://data-maricopa.opendata.arcgis.com/api/search/v1/collections/dataset/items?limit=500",
+      "mode": "json",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\maricopa-open-data-search.json",
+      "bytes": 324485,
+      "error": ""
+    },
+    {
+      "key": "maricopa_treasurer_tax_lien_info",
+      "name": "Maricopa Treasurer Tax Lien Information",
+      "url": "https://treasurer.maricopa.gov/TaxLienInformation/",
+      "mode": "text",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\maricopa-treasurer-tax-lien-information.html",
+      "bytes": 41472,
+      "error": ""
+    },
+    {
+      "key": "maricopa_treasurer_reports_page",
+      "name": "Maricopa Treasurer Reports",
+      "url": "https://treasurer.maricopa.gov/Reports",
+      "mode": "text",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\maricopa-treasurer-reports.html",
+      "bytes": 37191,
+      "error": ""
+    },
+    {
+      "key": "maricopa_arizona_tax_sale_portal",
+      "name": "Maricopa Arizona Tax Sale Portal",
+      "url": "https://maricopa.arizonataxsale.com/",
+      "mode": "text",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\maricopa-arizona-tax-sale-portal.html",
+      "bytes": 20819,
+      "error": ""
+    },
+    {
+      "key": "maricopa_treasurer_tax_lien_portal",
+      "name": "Maricopa Treasurer Tax Lien Portal",
+      "url": "https://treasurer.maricopa.gov/TaxLienWeb/",
+      "mode": "text",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\maricopa-treasurer-tax-lien-portal.html",
+      "bytes": 30972,
+      "error": ""
+    },
+    {
+      "key": "maricopa_tax_deeded_sales_portal",
+      "name": "Maricopa Tax Deeded Land Sales Portal",
+      "url": "https://mcid.maricopa.gov/780/Tax-Deeded-Land-Sales",
+      "mode": "text",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\maricopa-tax-deeded-land-sales.html",
+      "bytes": 128654,
+      "error": ""
+    },
+    {
+      "key": "maricopa_recorder_document_search",
+      "name": "Maricopa Recorder Document Search",
+      "url": "https://recorder.maricopa.gov/recording/document-search.html",
+      "mode": "text",
+      "status": "error",
+      "outputFile": "",
+      "bytes": 0,
+      "error": "Response status code does not indicate success: 403 (Forbidden)."
+    },
+    {
+      "key": "mcso_tax_unit",
+      "name": "MCSO Tax Unit",
+      "url": "https://www.mcso.org/about-us/judicial-enforcement/tax-unit",
+      "mode": "text",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\mcso-tax-unit.html",
+      "bytes": 601,
+      "error": ""
+    },
+    {
+      "key": "arizona_public_access",
+      "name": "Arizona Courts Public Access",
+      "url": "https://apps.azcourts.gov/publicaccess/",
+      "mode": "text",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\arizona-courts-public-access.html",
+      "bytes": 39450,
+      "error": ""
+    },
+    {
+      "key": "phoenix_open_data",
+      "name": "Phoenix Open Data Portal",
+      "url": "https://www.phoenixopendata.com/",
+      "mode": "text",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\phoenix-open-data.html",
+      "bytes": 54458,
+      "error": ""
+    },
+    {
+      "key": "census_acs_maricopa",
+      "name": "Census ACS Maricopa Snapshot",
+      "url": "https://api.census.gov/data/2023/acs/acs5?get=NAME,B01003_001E,B25064_001E,B25077_001E&for=county:013&in=state:04",
+      "mode": "json",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\census-acs-maricopa.json",
+      "bytes": 227,
+      "error": ""
+    },
+    {
+      "key": "fred_commercial_real_estate_price_index",
+      "name": "FRED Commercial Real Estate Price Index",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=COMREPUSQ159N",
+      "mode": "text",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\fred-comrepusq159n.csv",
+      "bytes": 7642,
+      "error": ""
+    },
+    {
+      "key": "fred_fed_funds_rate",
+      "name": "FRED Effective Federal Funds Rate",
+      "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=FEDFUNDS",
+      "mode": "text",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\fred-fedfunds.csv",
+      "bytes": 41506,
+      "error": ""
+    },
+    {
+      "key": "epa_echo_facility_search_maricopa",
+      "name": "EPA ECHO Facility Search Maricopa",
+      "url": "https://echodata.epa.gov/echo/cwa_rest_services.get_facilities?output=JSON&p_st=AZ&p_cnty=Maricopa&responseset=100",
+      "mode": "json",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\epa-echo-facility-search-maricopa.json",
+      "bytes": 446,
+      "error": ""
+    },
+    {
+      "key": "fema_nfhl_service_meta",
+      "name": "FEMA NFHL Service Metadata",
+      "url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer?f=pjson",
+      "mode": "json",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\fema-nfhl-mapserver-meta.json",
+      "bytes": 13701,
+      "error": ""
+    },
+    {
+      "key": "usgs_tnm_products_maricopa_bbox",
+      "name": "USGS TNM Products (Maricopa BBox)",
+      "url": "https://tnmaccess.nationalmap.gov/api/v1/products?bbox=-113.0,32.5,-111.0,34.0&max=100",
+      "mode": "json",
+      "status": "ok",
+      "outputFile": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\20260217T194851Z\\usgs-tnm-products-maricopa.json",
+      "bytes": 248205,
+      "error": ""
+    }
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "links": [
+    {
+      "rel": "self",
+      "type": "application/json",
+      "title": "This document as JSON",
+      "href": "https://data-maricopa.opendata.arcgis.com/api/search/v1"
+    },
+    {
+      "rel": "data",
+      "type": "application/json",
+      "title": "Collections",
+      "href": "https://data-maricopa.opendata.arcgis.com/api/search/v1/collections"
+    },
+    {
+      "rel": "service-desc",
+      "type": "application/vnd.oai.openapi+json;version=3.0",
+      "title": "The OpenAPI definition as JSON",
+      "href": "https://data-maricopa.opendata.arcgis.com/api/search/definition/?f=json"
+    },
+    {
+      "rel": "service-desc",
+      "type": "text/html",
+      "title": "The OpenAPI definition as HTML",
+      "href": "https://data-maricopa.opendata.arcgis.com/api/search/definition/",
+      "hreflang": "en-US"
+    },
+    {
+      "rel": "conformance",
+      "type": "application/json",
+      "title": "Conformance",
+      "href": "https://data-maricopa.opendata.arcgis.com/api/search/v1/conformance"
+    }
+  ],
+  "title": "GIS Open Data ",
+  "description": "DO NOT DELETE OR MODIFY THIS ITEM. This item is managed by the ArcGIS Hub application. To make changes to this site, please visit https://hub.arcgis.com/admin/",
+  "item": {
+    "id": "99e683720a984c64b99ff5b6db48b06c",
+    "type": "Feature",
+    "geometry": null,
+    "properties": {
+      "id": "99e683720a984c64b99ff5b6db48b06c",
+      "owner": "MaricopaCountyGIS",
+      "orgId": "ykpntM6e3tHvzKRJ",
+      "created": 1546637991000,
+      "modified": 1723057937000,
+      "guid": null,
+      "name": null,
+      "title": "GIS Open Data ",
+      "type": "Hub Site Application",
+      "typeKeywords": [
+        "Hub",
+        "hubSite",
+        "hubSolution",
+        "JavaScript",
+        "Map",
+        "Mapping Site",
+        "Online Map",
+        "OpenData",
+        "Ready To Use",
+        "selfConfigured",
+        "Web Map",
+        "Registered App"
+      ],
+      "description": "DO NOT DELETE OR MODIFY THIS ITEM. This item is managed by the ArcGIS Hub application. To make changes to this site, please visit https://hub.arcgis.com/admin/",
+      "tags": [
+        "Hub Site"
+      ],
+      "snippet": "This portal lets you find GIS data from the Recorder's and Assessor's Office. Many of the datasets are updated at least once a day, while others are updated on a weekly or monthly schedule. ",
+      "thumbnail": "thumbnail/thumbnail1673545642408.png",
+      "documentation": null,
+      "extent": [
+        [
+          -112.36827407892706,
+          33.35632254020445
+        ],
+        [
+          -111.80522476252106,
+          33.66319225278317
+        ]
+      ],
+      "categories": [],
+      "spatialReference": null,
+      "accessInformation": "Maricopa County OET GIS",
+      "classification": null,
+      "licenseInfo": "<span style='color: rgb(0, 0, 0); font-family: &quot;Avenir Next&quot;, &quot;Avenir Next&quot;; font-size: 14px; background-color: rgb(243, 242, 235);'>Maricopa County maps and data are designed for general reference purposes only. Viewer/User agrees to indemnify, defend and hold harmless Maricopa County, its officers, departments, employees and agents from and against any and all suits, actions, legal or administrative proceedings, claims, demands or damages of any kind or nature arising out of the use of the maps, or the data contained herein, in its actual or altered form. Users should independently research, investigate, and verify all information before relying on it or using it in the preparation of legal documents.</span>",
+      "culture": "en-us",
+      "properties": {
+        "createdFrom": "defaultSiteTemplate",
+        "schemaVersion": 1.9,
+        "collaborationGroupId": "63fbaefa32d244dbbb32fce3cb4cc4e2",
+        "globalNavViewCount": 1,
+        "hasSeenGlobalNav": true,
+        "contentGroupId": "73247f761afe455181c192c60ed60377"
+      },
+      "advancedSettings": null,
+      "url": "https://data-Maricopa.opendata.arcgis.com",
+      "proxyFilter": null,
+      "access": "public",
+      "size": 18431685,
+      "subInfo": 0,
+      "appCategories": [],
+      "industries": [],
+      "languages": [],
+      "largeThumbnail": null,
+      "banner": null,
+      "screenshots": [],
+      "listed": false,
+      "commentsEnabled": false,
+      "numComments": 0,
+      "numRatings": 0,
+      "avgRating": 0,
+      "numViews": 681119,
+      "scoreCompleteness": 76,
+      "groupDesignations": null,
+      "apiToken1ExpirationDate": -1,
+      "apiToken2ExpirationDate": -1,
+      "lastViewed": 1771354800000
+    },
+    "time": null
+  }
+}

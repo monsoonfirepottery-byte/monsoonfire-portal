@@ -1,0 +1,59 @@
+{
+  "generatedAtUtc": "2026-02-17T20:08:16.4214160Z",
+  "runId": "20260217T200816Z",
+  "manualDropDir": "D:\\monsoonfire-portal\\output\\real-estate\\manual-drops",
+  "seeded": 2,
+  "skippedExisting": 8,
+  "files": [
+    {
+      "file": "reddit_local_commercial_signals.csv",
+      "status": "seeded",
+      "path": "output\\real-estate\\manual-drops\\reddit_local_commercial_signals.csv"
+    },
+    {
+      "file": "meta_marketplace_community_signals.csv",
+      "status": "seeded",
+      "path": "output\\real-estate\\manual-drops\\meta_marketplace_community_signals.csv"
+    },
+    {
+      "file": "az_state_surplus_property_auctions.csv",
+      "status": "skipped_existing",
+      "path": "output\\real-estate\\manual-drops\\az_state_surplus_property_auctions.csv"
+    },
+    {
+      "file": "maricopa_local_surplus_property_auctions.csv",
+      "status": "skipped_existing",
+      "path": "output\\real-estate\\manual-drops\\maricopa_local_surplus_property_auctions.csv"
+    },
+    {
+      "file": "federal_real_property_disposals.csv",
+      "status": "skipped_existing",
+      "path": "output\\real-estate\\manual-drops\\federal_real_property_disposals.csv"
+    },
+    {
+      "file": "grants_gov_opportunities.csv",
+      "status": "skipped_existing",
+      "path": "output\\real-estate\\manual-drops\\grants_gov_opportunities.csv"
+    },
+    {
+      "file": "az_commerce_grants_incentives.csv",
+      "status": "skipped_existing",
+      "path": "output\\real-estate\\manual-drops\\az_commerce_grants_incentives.csv"
+    },
+    {
+      "file": "city_phoenix_business_grants_programs.csv",
+      "status": "skipped_existing",
+      "path": "output\\real-estate\\manual-drops\\city_phoenix_business_grants_programs.csv"
+    },
+    {
+      "file": "sba_grants_and_funding_programs.csv",
+      "status": "skipped_existing",
+      "path": "output\\real-estate\\manual-drops\\sba_grants_and_funding_programs.csv"
+    },
+    {
+      "file": "maricopa_recorder_document_feed.csv",
+      "status": "skipped_existing",
+      "path": "output\\real-estate\\manual-drops\\maricopa_recorder_document_feed.csv"
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "generatedAtUtc": "2026-02-17T19:49:17.3919582Z",
+  "runId": "20260217T194917Z",
+  "inputs": {
+    "publicSignalsPath": "D:\\monsoonfire-portal\\output\\real-estate\\public-signals-latest.json"
+  },
+  "summary": {
+    "parcelCount": 1,
+    "ownerCount": 1,
+    "signalCount": 8,
+    "highPriorityParcelCount": 0,
+    "mediumPriorityParcelCount": 0,
+    "lowPriorityParcelCount": 1
+  },
+  "topParcels": [
+    {
+      "parcelKey": "10101001C",
+      "parcelId": "101-01-001C",
+      "city": "",
+      "state": "AZ",
+      "postalCode": "",
+      "addresses": [],
+      "owners": [
+        "EL PASO NATURAL GAS COMPANY"
+      ],
+      "distressTypes": [
+        "ownership_transfer"
+      ],
+      "sourceKeys": [
+        "maricopa_assessor_ownership_history"
+      ],
+      "ownerCount": 1,
+      "signalCount": 1,
+      "maxSignalScore": 32,
+      "avgSignalScore": 32.0,
+      "parcelOpportunityScore": 32,
+      "priority": "low",
+      "lastEventDate": ""
+    }
+  ],
+  "parcels": [
+    {
+      "parcelKey": "10101001C",
+      "parcelId": "101-01-001C",
+      "city": "",
+      "state": "AZ",
+      "postalCode": "",
+      "addresses": [],
+      "owners": [
+        "EL PASO NATURAL GAS COMPANY"
+      ],
+      "distressTypes": [
+        "ownership_transfer"
+      ],
+      "sourceKeys": [
+        "maricopa_assessor_ownership_history"
+      ],
+      "ownerCount": 1,
+      "signalCount": 1,
+      "maxSignalScore": 32,
+      "avgSignalScore": 32.0,
+      "parcelOpportunityScore": 32,
+      "priority": "low",
+      "lastEventDate": ""
+    }
+  ],
+  "owners": [
+    {
+      "ownerKey": "elpasonaturalgascompany",
+      "ownerName": "EL PASO NATURAL GAS COMPANY",
+      "parcelKeys": [
+        "10101001C"
+      ],
+      "parcelCount": 1,
+      "signalCount": 1,
+      "avgSignalScore": 32.0
+    }
+  ],
+  "nextActions": [
+    "Enrich top parcels with assessor timeline and ownership transfer history.",
+    "Run title/encumbrance checks on high-priority parcels before broker outreach.",
+    "Overlay utility capacity and permitting constraints for buildout viability.",
+    "Publish parcel IDs + owner entities into swarm context for targeted outreach sequencing."
+  ]
+}

@@ -1,0 +1,156 @@
+{
+  "generatedAtUtc": "2026-02-17T21:25:02.0014095Z",
+  "runId": "20260217T212502Z",
+  "summary": {
+    "marketRegime": "normal",
+    "totalOpportunities": 1,
+    "pursueCount": 0,
+    "investigateNowCount": 0,
+    "watchCount": 1,
+    "taskCount": 2
+  },
+  "inputs": {
+    "agenticResearchPath": "D:\\monsoonfire-portal\\output\\real-estate\\agentic-research-20260217T212350Z.json",
+    "publicSignalsPath": "D:\\monsoonfire-portal\\output\\real-estate\\public-signals-latest.json",
+    "parcelGraphPath": "D:\\monsoonfire-portal\\output\\real-estate\\parcel-graph-latest.json",
+    "needsContextPath": "D:\\monsoonfire-portal\\output\\real-estate\\needs-context-latest.json",
+    "macroContextPath": "D:\\monsoonfire-portal\\output\\real-estate\\macro-context-latest.json",
+    "weightsPath": "D:\\monsoonfire-portal\\docs\\real-estate\\intelligence-weights.json"
+  },
+  "needsProfile": {
+    "id": "current_home_2026",
+    "label": "Current home studio baseline",
+    "effectiveFrom": "2026-01-01T00:00:00Z",
+    "effectiveTo": "2026-12-31T23:59:59Z",
+    "hardRequirements": {
+      "propertyTypes": [
+        "warehouse",
+        "light_industrial",
+        "flex_industrial"
+      ],
+      "zoningAllowlist": [
+        "industrial",
+        "i-1",
+        "i-2",
+        "m-1"
+      ],
+      "minSqFt": 1200,
+      "maxSqFt": 5000,
+      "electricServiceAmpsMin": 200,
+      "threePhaseRequired": false,
+      "clearHeightFtMin": 12,
+      "gradeDoorsMin": 1,
+      "maxMonthlyOccupancyUsd": 6500
+    },
+    "preferences": {
+      "propaneTankGallonsMin": 500,
+      "naturalGasPreferred": true,
+      "distanceFromHomeMilesMax": 20,
+      "parkingStallsMin": 6,
+      "yardOrOutdoorStoragePreferred": true
+    },
+    "notes": "Home studio remains default. Expansion only if fit, timing, and economics align."
+  },
+  "topOpportunities": [
+    {
+      "opportunityId": "opp-signal-federal-real-property-disposals-20260217",
+      "entityKey": "signal:federal-real-property-disposals",
+      "cityHint": "",
+      "classification": "watch",
+      "opportunityScore": 49,
+      "confidenceScore": 35,
+      "urgencyScore": 100,
+      "distressScore": 100,
+      "mispricingScore": 96,
+      "strategicFitScore": 0,
+      "liquidityScore": 4,
+      "executionRiskScore": 52,
+      "evidenceCounts": {
+        "leadCount": 0,
+        "signalCount": 16,
+        "sourceCount": 1
+      },
+      "scoreBreakdown": {
+        "distress": 100,
+        "mispricing": 96,
+        "strategicFit": 0,
+        "liquidity": 4,
+        "executionRisk": 52
+      },
+      "requiredNextEvidence": [
+        "verify_electric_service_amps",
+        "verify_sqft",
+        "verify_clear_height",
+        "verify_propane_capacity"
+      ],
+      "whyNow": [
+        "High distress and legal/tax pressure signals are active.",
+        "Pricing language implies potential discount or motivated disposition.",
+        "Fresh signals and near-term events increase timing urgency."
+      ],
+      "riskNotes": [
+        "Key facility specs are not fully verified."
+      ]
+    }
+  ],
+  "taskQueue": [
+    {
+      "taskId": "task-0002",
+      "opportunityId": "opp-signal-federal-real-property-disposals-20260217",
+      "priority": "low",
+      "agentRole": "distress_verifier_agent",
+      "objective": "Corroborate distress posture and ownership/legal status across independent sources.",
+      "requiredInputs": [
+        "recorder_notice_check",
+        "treasurer_delinquency_check",
+        "assessor_owner_check"
+      ],
+      "acceptanceCriteria": [
+        "At least 2 independent source systems corroborate current distress status.",
+        "Owner and parcel identifiers resolve with confidence."
+      ],
+      "dueWithinDays": 5
+    },
+    {
+      "taskId": "task-0001",
+      "opportunityId": "opp-signal-federal-real-property-disposals-20260217",
+      "priority": "low",
+      "agentRole": "scout_verifier_agent",
+      "objective": "Verify utility and facility capability requirements for expansion fit.",
+      "requiredInputs": [
+        "verify_electric_service_amps",
+        "verify_sqft",
+        "verify_clear_height",
+        "verify_propane_capacity"
+      ],
+      "acceptanceCriteria": [
+        "Utility and facility specs confirmed with source links or broker confirmation.",
+        "Each missing capability is marked pass/fail for current and next profile."
+      ],
+      "dueWithinDays": 7
+    }
+  ],
+  "entityStates": [
+    {
+      "entityKey": "signal:federal-real-property-disposals",
+      "cityHint": "",
+      "latestClassification": "watch",
+      "latestOpportunityScore": 49,
+      "latestConfidenceScore": 35,
+      "requiredNextEvidence": [
+        "verify_electric_service_amps",
+        "verify_sqft",
+        "verify_clear_height",
+        "verify_propane_capacity"
+      ]
+    }
+  ],
+  "parcelGraphSummary": {
+    "parcelCount": 500,
+    "ownerCount": 472,
+    "signalCount": 620,
+    "highPriorityParcelCount": 0,
+    "mediumPriorityParcelCount": 303,
+    "lowPriorityParcelCount": 197
+  }
+}

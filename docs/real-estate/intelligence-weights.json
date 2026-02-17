@@ -1,0 +1,25 @@
+{
+  "weights": {
+    "distress": 0.35,
+    "mispricing": 0.2,
+    "strategicFit": 0.25,
+    "liquidity": 0.1,
+    "executionRisk": 0.1
+  },
+  "confidenceWeights": {
+    "corroboration": 0.4,
+    "dataQuality": 0.3,
+    "freshness": 0.2,
+    "sourceTrust": 0.1
+  },
+  "thresholds": {
+    "pursue": 75,
+    "investigateNow": 55,
+    "watch": 35
+  },
+  "taskThresholds": {
+    "highPriorityOpportunity": 70,
+    "confidenceForNegotiation": 65
+  }
+}
+

@@ -1,0 +1,94 @@
+{
+  "currentVersion": 11.5,
+  "folders": [
+    "GeoSketch",
+    "Imagery",
+    "Utilities"
+  ],
+  "services": [
+    {
+      "name": "Aerials2019",
+      "type": "MapServer"
+    },
+    {
+      "name": "Aerials2020",
+      "type": "MapServer"
+    },
+    {
+      "name": "Aerials2021",
+      "type": "MapServer"
+    },
+    {
+      "name": "Aerials2022",
+      "type": "MapServer"
+    },
+    {
+      "name": "Aerials2023",
+      "type": "MapServer"
+    },
+    {
+      "name": "Aerials2024",
+      "type": "MapServer"
+    },
+    {
+      "name": "Aerials2025",
+      "type": "MapServer"
+    },
+    {
+      "name": "AssessorCompositeLocator",
+      "type": "GeocodeServer"
+    },
+    {
+      "name": "Basemap",
+      "type": "MapServer"
+    },
+    {
+      "name": "Flood",
+      "type": "MapServer"
+    },
+    {
+      "name": "MapIDs",
+      "type": "MapServer"
+    },
+    {
+      "name": "MaricopaDynamicQueryService",
+      "type": "MapServer"
+    },
+    {
+      "name": "MineralRightsParcels",
+      "type": "MapServer"
+    },
+    {
+      "name": "ParcelLabel",
+      "type": "MapServer"
+    },
+    {
+      "name": "ParcelOutline",
+      "type": "MapServer"
+    },
+    {
+      "name": "Parcels",
+      "type": "MapServer"
+    },
+    {
+      "name": "SampleWorldCities",
+      "type": "MapServer"
+    },
+    {
+      "name": "Sections",
+      "type": "MapServer"
+    },
+    {
+      "name": "Streets",
+      "type": "MapServer"
+    },
+    {
+      "name": "SubdivisionOutline",
+      "type": "MapServer"
+    },
+    {
+      "name": "Subdivisions",
+      "type": "MapServer"
+    }
+  ]
+}

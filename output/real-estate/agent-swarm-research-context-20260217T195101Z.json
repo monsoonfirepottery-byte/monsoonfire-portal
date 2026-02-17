@@ -1,0 +1,1252 @@
+{
+  "objective": "Proactively identify local industrial expansion opportunities and distressed-market conditions.",
+  "marketArea": "West Valley and Phoenix, Arizona",
+  "latestQuarterContext": {
+    "file": "D:\\monsoonfire-portal\\output\\real-estate\\agent-swarm-context-2026-Q1.json",
+    "quarter": "2026-Q1"
+  },
+  "latestMacroContext": {
+    "file": "D:\\monsoonfire-portal\\output\\real-estate\\macro-context-latest.json",
+    "generatedAtUtc": "02/17/2026 19:49:16",
+    "creIndexLatest": {
+      "date": "",
+      "value": null
+    },
+    "creIndexYoYPct": null,
+    "fedFundsLatest": {
+      "date": "",
+      "value": null
+    }
+  },
+  "publicSignalsPath": "D:\\monsoonfire-portal\\output\\real-estate\\public-signals-latest.json",
+  "sourceCoverage": [
+    {
+      "sourceKey": "maricopa_assessor_ownership_history",
+      "sourceName": "maricopa_assessor_ownership_history",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 500,
+      "uniqueLeads": 500,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "maricopa_treasurer_delinquent_roll",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 31,
+      "uniqueLeads": 31,
+      "rankedLeads": 13
+    },
+    {
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "federal_real_property_disposals",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 17,
+      "uniqueLeads": 17,
+      "rankedLeads": 17
+    },
+    {
+      "sourceKey": "grants_gov_opportunities",
+      "sourceName": "grants_gov_opportunities",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 14,
+      "uniqueLeads": 14,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "sba_grants_and_funding_programs",
+      "sourceName": "sba_grants_and_funding_programs",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 2,
+      "uniqueLeads": 2,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_recorder_document_feed",
+      "sourceName": "maricopa_recorder_document_feed",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 1,
+      "uniqueLeads": 1,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_civil_court",
+      "sourceName": "maricopa_civil_court",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 1,
+      "uniqueLeads": 1,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "environmental_land_use_constraints",
+      "sourceName": "environmental_land_use_constraints",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 1,
+      "uniqueLeads": 1,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "lease_comps_vacancy_feeds",
+      "sourceName": "lease_comps_vacancy_feeds",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 1,
+      "uniqueLeads": 1,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "aps_srp_utility_constraints",
+      "sourceName": "aps_srp_utility_constraints",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 1,
+      "uniqueLeads": 1,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "arizona_bankruptcy_filings",
+      "sourceName": "arizona_bankruptcy_filings",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 1,
+      "uniqueLeads": 1,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "cmbs_distress_signals",
+      "sourceName": "cmbs_distress_signals",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 1,
+      "uniqueLeads": 1,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "arizona_ucc_filings",
+      "sourceName": "arizona_ucc_filings",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 1,
+      "uniqueLeads": 1,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "queryCount": 38,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "queryCount": 16,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "queryCount": 16,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_assessor_parcel_signals",
+      "sourceName": "Maricopa Assessor Parcel Signals",
+      "sourceType": "government_data",
+      "queryCount": 11,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "auctioncom_distress",
+      "sourceName": "Auction.com Distressed Inventory",
+      "sourceType": "auction_marketplace",
+      "queryCount": 11,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "commercialcafe_listings",
+      "sourceName": "CommercialCafe Listings",
+      "sourceType": "listing_marketplace",
+      "queryCount": 11,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_recorder_trustee_sales",
+      "sourceName": "Maricopa Recorder Trustee Notices",
+      "sourceType": "government_legal",
+      "queryCount": 3,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_treasurer_tax_lien",
+      "sourceName": "Maricopa Treasurer Tax Lien",
+      "sourceType": "government_tax",
+      "queryCount": 3,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_county_auctions_leases",
+      "sourceName": "Maricopa County Auctions and Leases",
+      "sourceType": "government_auction",
+      "queryCount": 3,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "avison_young_market_reports",
+      "sourceName": "Avison Young Market Reports",
+      "sourceType": "broker_research",
+      "queryCount": 2,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "cbre_market_reports",
+      "sourceName": "CBRE Market Reports",
+      "sourceType": "broker_research",
+      "queryCount": 2,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_tax_deeded_land_sales",
+      "sourceName": "Maricopa Tax Deeded Land Sales",
+      "sourceType": "government_tax",
+      "queryCount": 2,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "colliers_market_reports",
+      "sourceName": "Colliers Market Reports",
+      "sourceType": "broker_research",
+      "queryCount": 2,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "mcso_tax_and_sheriff_sales",
+      "sourceName": "MCSO Sheriff Sales",
+      "sourceType": "government_auction",
+      "queryCount": 2,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "naiop_market_reports",
+      "sourceName": "NAIOP Market Reports",
+      "sourceType": "industry_research",
+      "queryCount": 2,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    }
+  ],
+  "leadSelectionRules": {
+    "minLeadScore": 30,
+    "top": 30,
+    "prioritizeDistress": true
+  },
+  "nextActions": [
+    "Validate listing status and current ask against broker or listing portal.",
+    "Prioritize leads with classification=distress_opportunity for immediate outreach.",
+    "Cross-check top leads against Maricopa Treasurer tax-lien and tax-deed sources before outreach.",
+    "Use parcel-centric public signal context (tax, legal, code, utility, permit, CMBS) to prioritize negotiation order.",
+    "Pull recorder notice + MCSO auction context for leads carrying foreclosure or trustee-sale signals.",
+    "Pull assessor parcel-level history for leads carrying governmentDistressScore > 0.",
+    "Review Phoenix and West Valley permitting/planning feeds for zoning or code signals near shortlisted assets.",
+    "Request rent roll and concessions where price-reduced or vacancy language appears.",
+    "Compare each shortlisted lead against latest quarterly medians before LOI strategy.",
+    "Use macro context (rates + CRE index trend) to bias outreach timing and offer aggressiveness.",
+    "Refresh broker and NAIOP reports monthly to detect vacancy/rent inflections before they hit listing portals."
+  ],
+  "promptSeed": "Use topLeads plus latestQuarterContext to produce a broker outreach plan, negotiation posture, and 30-day opportunity watchlist.",
+  "topLeads": [
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://www.twitter.com/GSA_RPdisposal",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:17",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.twitter.com"
+      ],
+      "domain": "www.twitter.com",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://www.gsa.gov/reference/reports/budget-and-performance?_gl=1%2Acz8qoc%2A_ga%2ANzk5OTM3NTU5LjE3MjY1MTU2MTQ.%2A_ga_HBYXWFP794%2AMTczMjYzMjk3MS4xMC4wLjE3MzI2MzI5NzEuMC4wLjA.",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:13",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.gsa.gov"
+      ],
+      "domain": "www.gsa.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://d2m3yrz4x1yefr.cloudfront.net/property_image/1706846114.515992_resauclogo.png",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:1",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "d2m3yrz4x1yefr.cloudfront.net"
+      ],
+      "domain": "d2m3yrz4x1yefr.cloudfront.net",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://www.facebook.com/GSARealProperty",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:8",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.facebook.com"
+      ],
+      "domain": "www.facebook.com",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://www.gsa.gov/about-us?topnav=about-us",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:10",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.gsa.gov"
+      ],
+      "domain": "www.gsa.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://www.gsaig.gov/",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:16",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.gsaig.gov"
+      ],
+      "domain": "www.gsaig.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://www.gsa.gov/reference/civil-rights-programs/the-no-fear-act",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:11",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.gsa.gov"
+      ],
+      "domain": "www.gsa.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://d2m3yrz4x1yefr.cloudfront.net/property_image/1764008220.3193836_Picture2.jpg",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:3",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "d2m3yrz4x1yefr.cloudfront.net"
+      ],
+      "domain": "d2m3yrz4x1yefr.cloudfront.net",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://www.gsa.gov/",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:9",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.gsa.gov"
+      ],
+      "domain": "www.gsa.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://www.gsa.gov/website-information/website-policies#privacy",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:15",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.gsa.gov"
+      ],
+      "domain": "www.gsa.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://d2w9j5i7epyyai.cloudfront.net/static/theme-4/images/property-value.png",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:5",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "d2w9j5i7epyyai.cloudfront.net"
+      ],
+      "domain": "d2w9j5i7epyyai.cloudfront.net",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://d2m3yrz4x1yefr.cloudfront.net/property_image/1706846164.7074475_resauclogo.png",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:2",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "d2m3yrz4x1yefr.cloudfront.net"
+      ],
+      "domain": "d2m3yrz4x1yefr.cloudfront.net",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://www.gsa.gov/reference/freedom-of-information-act-foia",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:12",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.gsa.gov"
+      ],
+      "domain": "www.gsa.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://realestatesales.gov",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:7",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "realestatesales.gov"
+      ],
+      "domain": "realestatesales.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://d2m3yrz4x1yefr.cloudfront.net/property_image/1764788498.3673975_20250520_155612.jpg",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:4",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "d2m3yrz4x1yefr.cloudfront.net"
+      ],
+      "domain": "d2m3yrz4x1yefr.cloudfront.net",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://www.gsa.gov/website-information/accessibility-statement",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:14",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.gsa.gov"
+      ],
+      "domain": "www.gsa.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://dap.digitalgov.gov/Universal-Federated-Analytics-Min.js?agency=GSA",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:6",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "dap.digitalgov.gov"
+      ],
+      "domain": "dap.digitalgov.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/qasimyarInquiry",
+      "summary": "stage=monitoring ; case=watch-link-19 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:19",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/FAQ",
+      "summary": "stage=monitoring ; case=watch-link-8 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:8",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://www.mcso.org/Home/TaxUnit",
+      "summary": "stage=monitoring ; case=watch-link-30 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:30",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.mcso.org"
+      ],
+      "domain": "www.mcso.org",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/WhatsNew",
+      "summary": "stage=monitoring ; case=watch-link-27 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:27",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/FeeSchedule",
+      "summary": "stage=monitoring ; case=watch-link-9 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:9",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/FormLibrary",
+      "summary": "stage=monitoring ; case=watch-link-10 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:10",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/PropertyTaxInformation/PaymentOptions",
+      "summary": "stage=monitoring ; case=watch-link-17 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:17",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/AgencyWeb",
+      "summary": "stage=monitoring ; case=watch-link-5 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:5",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/ContactUs",
+      "summary": "stage=monitoring ; case=watch-link-6 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:6",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/payment/",
+      "summary": "stage=monitoring ; case=watch-link-14 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:14",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/TaxBill",
+      "summary": "stage=monitoring ; case=watch-link-24 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:24",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/Reports",
+      "summary": "stage=monitoring ; case=watch-link-21 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:21",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/",
+      "summary": "stage=monitoring ; case=watch-link-3 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 19:49:16",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:3",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    }
+  ]
+}

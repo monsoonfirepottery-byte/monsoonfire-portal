@@ -1,0 +1,1151 @@
+{
+  "generatedAtUtc": "2026-02-17T18:56:29.6673660Z",
+  "runId": "20260217T185629Z",
+  "summary": {
+    "totalQueries": 59,
+    "rawItems": 59,
+    "uniqueLeads": 59,
+    "leadsAboveThreshold": 30,
+    "distressOpportunities": 5,
+    "governmentDistressSignals": 10
+  },
+  "queries": [
+    "Avondale AZ industrial foreclosure auction",
+    "Avondale AZ industrial property price reduced",
+    "Avondale AZ industrial property tax lien",
+    "Avondale AZ industrial sheriff sale",
+    "Avondale AZ industrial sublease vacant warehouse",
+    "Avondale AZ industrial warehouse for lease",
+    "Avondale AZ industrial warehouse for sale",
+    "Avondale AZ light industrial flex space available",
+    "Avondale AZ trustee sale industrial property",
+    "Avondale AZ warehouse delinquent taxes",
+    "Avondale AZ warehouse motivated seller",
+    "Glendale AZ industrial foreclosure auction",
+    "Glendale AZ industrial property price reduced",
+    "Glendale AZ industrial property tax lien",
+    "Glendale AZ industrial sheriff sale",
+    "Glendale AZ industrial sublease vacant warehouse",
+    "Glendale AZ industrial warehouse for lease",
+    "Glendale AZ industrial warehouse for sale",
+    "Glendale AZ light industrial flex space available",
+    "Glendale AZ trustee sale industrial property",
+    "Glendale AZ warehouse delinquent taxes",
+    "Glendale AZ warehouse motivated seller",
+    "Goodyear AZ industrial foreclosure auction",
+    "Goodyear AZ industrial property price reduced",
+    "Goodyear AZ industrial property tax lien",
+    "Goodyear AZ industrial sheriff sale",
+    "Goodyear AZ industrial sublease vacant warehouse",
+    "Goodyear AZ industrial warehouse for lease",
+    "Goodyear AZ industrial warehouse for sale",
+    "Goodyear AZ light industrial flex space available",
+    "Goodyear AZ trustee sale industrial property",
+    "Goodyear AZ warehouse delinquent taxes",
+    "Goodyear AZ warehouse motivated seller",
+    "Maricopa County code enforcement vacant industrial property",
+    "Maricopa County delinquent property taxes warehouse",
+    "Maricopa County industrial property tax liens",
+    "Maricopa County treasurer tax sale industrial",
+    "Phoenix AZ industrial foreclosure auction",
+    "Phoenix AZ industrial property price reduced",
+    "Phoenix AZ industrial property tax lien",
+    "Phoenix AZ industrial sheriff sale",
+    "Phoenix AZ industrial sublease vacant warehouse",
+    "Phoenix AZ industrial warehouse for lease",
+    "Phoenix AZ industrial warehouse for sale",
+    "Phoenix AZ light industrial flex space available",
+    "Phoenix AZ trustee sale industrial property",
+    "Phoenix AZ warehouse delinquent taxes",
+    "Phoenix AZ warehouse motivated seller",
+    "Tolleson AZ industrial foreclosure auction",
+    "Tolleson AZ industrial property price reduced",
+    "Tolleson AZ industrial property tax lien",
+    "Tolleson AZ industrial sheriff sale",
+    "Tolleson AZ industrial sublease vacant warehouse",
+    "Tolleson AZ industrial warehouse for lease",
+    "Tolleson AZ industrial warehouse for sale",
+    "Tolleson AZ light industrial flex space available",
+    "Tolleson AZ trustee sale industrial property",
+    "Tolleson AZ warehouse delinquent taxes",
+    "Tolleson AZ warehouse motivated seller"
+  ],
+  "topLeads": [
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Glendale AZ industrial foreclosure auction",
+      "domain": "",
+      "cityHint": "Glendale",
+      "fitScore": 10,
+      "distressScore": 38,
+      "governmentDistressScore": 14,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 70,
+      "classification": "distress_opportunity",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "foreclosure",
+          "weight": 20
+        },
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": [
+        {
+          "keyword": "foreclosure auction",
+          "weight": 14
+        }
+      ]
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Avondale AZ industrial foreclosure auction",
+      "domain": "",
+      "cityHint": "Avondale",
+      "fitScore": 10,
+      "distressScore": 38,
+      "governmentDistressScore": 14,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 70,
+      "classification": "distress_opportunity",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "foreclosure",
+          "weight": 20
+        },
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": [
+        {
+          "keyword": "foreclosure auction",
+          "weight": 14
+        }
+      ]
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Phoenix AZ industrial foreclosure auction",
+      "domain": "",
+      "cityHint": "Phoenix",
+      "fitScore": 10,
+      "distressScore": 38,
+      "governmentDistressScore": 14,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 70,
+      "classification": "distress_opportunity",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "foreclosure",
+          "weight": 20
+        },
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": [
+        {
+          "keyword": "foreclosure auction",
+          "weight": 14
+        }
+      ]
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Goodyear AZ industrial foreclosure auction",
+      "domain": "",
+      "cityHint": "Goodyear",
+      "fitScore": 10,
+      "distressScore": 38,
+      "governmentDistressScore": 14,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 70,
+      "classification": "distress_opportunity",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "foreclosure",
+          "weight": 20
+        },
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": [
+        {
+          "keyword": "foreclosure auction",
+          "weight": 14
+        }
+      ]
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Tolleson AZ industrial foreclosure auction",
+      "domain": "",
+      "cityHint": "Tolleson",
+      "fitScore": 10,
+      "distressScore": 38,
+      "governmentDistressScore": 14,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 70,
+      "classification": "distress_opportunity",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "foreclosure",
+          "weight": 20
+        },
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": [
+        {
+          "keyword": "foreclosure auction",
+          "weight": 14
+        }
+      ]
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Tolleson AZ warehouse delinquent taxes",
+      "domain": "",
+      "cityHint": "Tolleson",
+      "fitScore": 10,
+      "distressScore": 36,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 54,
+      "classification": "medium_priority",
+      "fitMatches": [
+        {
+          "keyword": "warehouse",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "delinquent taxes",
+          "weight": 18
+        },
+        {
+          "keyword": "delinquent tax",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Avondale AZ warehouse delinquent taxes",
+      "domain": "",
+      "cityHint": "Avondale",
+      "fitScore": 10,
+      "distressScore": 36,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 54,
+      "classification": "medium_priority",
+      "fitMatches": [
+        {
+          "keyword": "warehouse",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "delinquent taxes",
+          "weight": 18
+        },
+        {
+          "keyword": "delinquent tax",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Phoenix AZ warehouse delinquent taxes",
+      "domain": "",
+      "cityHint": "Phoenix",
+      "fitScore": 10,
+      "distressScore": 36,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 54,
+      "classification": "medium_priority",
+      "fitMatches": [
+        {
+          "keyword": "warehouse",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "delinquent taxes",
+          "weight": 18
+        },
+        {
+          "keyword": "delinquent tax",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Glendale AZ warehouse delinquent taxes",
+      "domain": "",
+      "cityHint": "Glendale",
+      "fitScore": 10,
+      "distressScore": 36,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 54,
+      "classification": "medium_priority",
+      "fitMatches": [
+        {
+          "keyword": "warehouse",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "delinquent taxes",
+          "weight": 18
+        },
+        {
+          "keyword": "delinquent tax",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Goodyear AZ warehouse delinquent taxes",
+      "domain": "",
+      "cityHint": "Goodyear",
+      "fitScore": 10,
+      "distressScore": 36,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 54,
+      "classification": "medium_priority",
+      "fitMatches": [
+        {
+          "keyword": "warehouse",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "delinquent taxes",
+          "weight": 18
+        },
+        {
+          "keyword": "delinquent tax",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Maricopa County industrial property tax liens",
+      "domain": "",
+      "cityHint": "",
+      "fitScore": 10,
+      "distressScore": 40,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 50,
+      "classification": "medium_priority",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "tax liens",
+          "weight": 20
+        },
+        {
+          "keyword": "tax lien",
+          "weight": 20
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Tolleson AZ industrial sheriff sale",
+      "domain": "",
+      "cityHint": "Tolleson",
+      "fitScore": 10,
+      "distressScore": 18,
+      "governmentDistressScore": 14,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 50,
+      "classification": "medium_priority",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "sheriff sale",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": [
+        {
+          "keyword": "sheriff sale",
+          "weight": 14
+        }
+      ]
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Avondale AZ industrial sheriff sale",
+      "domain": "",
+      "cityHint": "Avondale",
+      "fitScore": 10,
+      "distressScore": 18,
+      "governmentDistressScore": 14,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 50,
+      "classification": "medium_priority",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "sheriff sale",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": [
+        {
+          "keyword": "sheriff sale",
+          "weight": 14
+        }
+      ]
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Glendale AZ industrial sheriff sale",
+      "domain": "",
+      "cityHint": "Glendale",
+      "fitScore": 10,
+      "distressScore": 18,
+      "governmentDistressScore": 14,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 50,
+      "classification": "medium_priority",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "sheriff sale",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": [
+        {
+          "keyword": "sheriff sale",
+          "weight": 14
+        }
+      ]
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Phoenix AZ industrial sheriff sale",
+      "domain": "",
+      "cityHint": "Phoenix",
+      "fitScore": 10,
+      "distressScore": 18,
+      "governmentDistressScore": 14,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 50,
+      "classification": "medium_priority",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "sheriff sale",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": [
+        {
+          "keyword": "sheriff sale",
+          "weight": 14
+        }
+      ]
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Goodyear AZ industrial sheriff sale",
+      "domain": "",
+      "cityHint": "Goodyear",
+      "fitScore": 10,
+      "distressScore": 18,
+      "governmentDistressScore": 14,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 50,
+      "classification": "medium_priority",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "sheriff sale",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": [
+        {
+          "keyword": "sheriff sale",
+          "weight": 14
+        }
+      ]
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Tolleson AZ industrial sublease vacant warehouse",
+      "domain": "",
+      "cityHint": "Tolleson",
+      "fitScore": 20,
+      "distressScore": 17,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 45,
+      "classification": "low_priority",
+      "fitMatches": [
+        {
+          "keyword": "warehouse",
+          "weight": 10
+        },
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "vacant",
+          "weight": 8
+        },
+        {
+          "keyword": "sublease",
+          "weight": 9
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Phoenix AZ industrial sublease vacant warehouse",
+      "domain": "",
+      "cityHint": "Phoenix",
+      "fitScore": 20,
+      "distressScore": 17,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 45,
+      "classification": "low_priority",
+      "fitMatches": [
+        {
+          "keyword": "warehouse",
+          "weight": 10
+        },
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "vacant",
+          "weight": 8
+        },
+        {
+          "keyword": "sublease",
+          "weight": 9
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Glendale AZ industrial sublease vacant warehouse",
+      "domain": "",
+      "cityHint": "Glendale",
+      "fitScore": 20,
+      "distressScore": 17,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 45,
+      "classification": "low_priority",
+      "fitMatches": [
+        {
+          "keyword": "warehouse",
+          "weight": 10
+        },
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "vacant",
+          "weight": 8
+        },
+        {
+          "keyword": "sublease",
+          "weight": 9
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Goodyear AZ industrial sublease vacant warehouse",
+      "domain": "",
+      "cityHint": "Goodyear",
+      "fitScore": 20,
+      "distressScore": 17,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 45,
+      "classification": "low_priority",
+      "fitMatches": [
+        {
+          "keyword": "warehouse",
+          "weight": 10
+        },
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "vacant",
+          "weight": 8
+        },
+        {
+          "keyword": "sublease",
+          "weight": 9
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Avondale AZ industrial sublease vacant warehouse",
+      "domain": "",
+      "cityHint": "Avondale",
+      "fitScore": 20,
+      "distressScore": 17,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 45,
+      "classification": "low_priority",
+      "fitMatches": [
+        {
+          "keyword": "warehouse",
+          "weight": 10
+        },
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "vacant",
+          "weight": 8
+        },
+        {
+          "keyword": "sublease",
+          "weight": 9
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Goodyear AZ industrial property tax lien",
+      "domain": "",
+      "cityHint": "Goodyear",
+      "fitScore": 10,
+      "distressScore": 20,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 38,
+      "classification": "low_priority",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "tax lien",
+          "weight": 20
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Phoenix AZ industrial property price reduced",
+      "domain": "",
+      "cityHint": "Phoenix",
+      "fitScore": 10,
+      "distressScore": 20,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 38,
+      "classification": "low_priority",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "price reduced",
+          "weight": 14
+        },
+        {
+          "keyword": "reduced",
+          "weight": 6
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Tolleson AZ industrial property tax lien",
+      "domain": "",
+      "cityHint": "Tolleson",
+      "fitScore": 10,
+      "distressScore": 20,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 38,
+      "classification": "low_priority",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "tax lien",
+          "weight": 20
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Goodyear AZ industrial property price reduced",
+      "domain": "",
+      "cityHint": "Goodyear",
+      "fitScore": 10,
+      "distressScore": 20,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 38,
+      "classification": "low_priority",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "price reduced",
+          "weight": 14
+        },
+        {
+          "keyword": "reduced",
+          "weight": 6
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Avondale AZ industrial property price reduced",
+      "domain": "",
+      "cityHint": "Avondale",
+      "fitScore": 10,
+      "distressScore": 20,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 38,
+      "classification": "low_priority",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "price reduced",
+          "weight": 14
+        },
+        {
+          "keyword": "reduced",
+          "weight": 6
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Phoenix AZ industrial property tax lien",
+      "domain": "",
+      "cityHint": "Phoenix",
+      "fitScore": 10,
+      "distressScore": 20,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 38,
+      "classification": "low_priority",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "tax lien",
+          "weight": 20
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Tolleson AZ industrial property price reduced",
+      "domain": "",
+      "cityHint": "Tolleson",
+      "fitScore": 10,
+      "distressScore": 20,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 38,
+      "classification": "low_priority",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "price reduced",
+          "weight": 14
+        },
+        {
+          "keyword": "reduced",
+          "weight": 6
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Glendale AZ industrial property price reduced",
+      "domain": "",
+      "cityHint": "Glendale",
+      "fitScore": 10,
+      "distressScore": 20,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 38,
+      "classification": "low_priority",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "price reduced",
+          "weight": 14
+        },
+        {
+          "keyword": "reduced",
+          "weight": 6
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "",
+      "url": "",
+      "summary": "",
+      "publishedAt": "",
+      "sourceQuery": "Avondale AZ industrial property tax lien",
+      "domain": "",
+      "cityHint": "Avondale",
+      "fitScore": 10,
+      "distressScore": 20,
+      "governmentDistressScore": 0,
+      "domainScore": 0,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 38,
+      "classification": "low_priority",
+      "fitMatches": [
+        {
+          "keyword": "industrial",
+          "weight": 10
+        }
+      ],
+      "distressMatches": [
+        {
+          "keyword": "tax lien",
+          "weight": 20
+        }
+      ],
+      "governmentMatches": []
+    }
+  ],
+  "swarmContext": {
+    "objective": "Proactively identify local industrial expansion opportunities and distressed-market conditions.",
+    "marketArea": "West Valley and Phoenix, Arizona",
+    "latestQuarterContext": {
+      "file": "D:\\monsoonfire-portal\\output\\real-estate\\agent-swarm-context-2026-Q1.json",
+      "quarter": "2026-Q1"
+    },
+    "leadSelectionRules": {
+      "minLeadScore": 30,
+      "top": 30,
+      "prioritizeDistress": true
+    },
+    "nextActions": [
+      "Validate listing status and current ask against broker or listing portal.",
+      "Prioritize leads with classification=distress_opportunity for immediate outreach.",
+      "Cross-check top leads against county tax-lien, delinquent-tax, and trustee-sale sources before outreach.",
+      "Pull assessor/treasurer parcel-level history for leads carrying governmentDistressScore > 0.",
+      "Request rent roll and concessions where price-reduced or vacancy language appears.",
+      "Compare each shortlisted lead against latest quarterly medians before LOI strategy."
+    ],
+    "promptSeed": "Use topLeads plus latestQuarterContext to produce a broker outreach plan, negotiation posture, and 30-day opportunity watchlist."
+  }
+}

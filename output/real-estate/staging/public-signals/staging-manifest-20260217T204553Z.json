@@ -1,0 +1,235 @@
+{
+  "generatedAtUtc": "2026-02-17T20:45:53.4013717Z",
+  "runId": "20260217T204553Z",
+  "inputs": {
+    "publicDataManifestPath": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\latest-manifest.json"
+  },
+  "outputs": {
+    "stagingDir": "D:\\monsoonfire-portal\\output\\real-estate\\staging\\public-signals",
+    "manualDropDir": "D:\\monsoonfire-portal\\output\\real-estate\\manual-drops"
+  },
+  "summary": {
+    "rows": 31,
+    "stagedSources": 15,
+    "templateSources": 16
+  },
+  "items": [
+    {
+      "sourceKey": "maricopa_assessor_ownership_history",
+      "mode": "staged",
+      "rowCount": 500,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\maricopa_assessor_ownership_history.csv",
+      "notes": "Derived from assessor parcel sample JSON."
+    },
+    {
+      "sourceKey": "phoenix_west_valley_permitting_pipeline",
+      "mode": "staged",
+      "rowCount": 0,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\phoenix_west_valley_permitting_pipeline.csv",
+      "notes": "Derived from Maricopa Open Data dataset catalog."
+    },
+    {
+      "sourceKey": "west_valley_code_enforcement",
+      "mode": "staged",
+      "rowCount": 0,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\west_valley_code_enforcement.csv",
+      "notes": "Derived from Maricopa Open Data dataset catalog."
+    },
+    {
+      "sourceKey": "environmental_land_use_constraints",
+      "mode": "staged",
+      "rowCount": 1,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\environmental_land_use_constraints.csv",
+      "notes": "Derived from Maricopa Open Data dataset catalog."
+    },
+    {
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "mode": "staged",
+      "rowCount": 31,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\maricopa_treasurer_delinquent_roll.csv",
+      "notes": "Derived from treasurer/tax-deed/tax-sale portal links."
+    },
+    {
+      "sourceKey": "reddit_local_commercial_signals",
+      "mode": "staged",
+      "rowCount": 44,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\reddit_local_commercial_signals.csv",
+      "notes": "Derived from Reddit search JSON feed."
+    },
+    {
+      "sourceKey": "meta_marketplace_community_signals",
+      "mode": "staged",
+      "rowCount": 0,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\meta_marketplace_community_signals.csv",
+      "notes": "Derived from Meta Marketplace page links when accessible."
+    },
+    {
+      "sourceKey": "macro_context",
+      "mode": "staged",
+      "rowCount": 3,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\macro-context.csv",
+      "notes": "Derived from FRED + Census free public data."
+    },
+    {
+      "sourceKey": "maricopa_local_surplus_property_auctions",
+      "mode": "staged",
+      "rowCount": 0,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\maricopa_local_surplus_property_auctions.csv",
+      "notes": "Derived from free/public government auction pages."
+    },
+    {
+      "sourceKey": "az_state_surplus_property_auctions",
+      "mode": "staged",
+      "rowCount": 0,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\az_state_surplus_property_auctions.csv",
+      "notes": "Derived from free/public government auction pages."
+    },
+    {
+      "sourceKey": "federal_real_property_disposals",
+      "mode": "staged",
+      "rowCount": 16,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\federal_real_property_disposals.csv",
+      "notes": "Derived from free/public government auction pages."
+    },
+    {
+      "sourceKey": "city_phoenix_business_grants_programs",
+      "mode": "staged",
+      "rowCount": 0,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\city_phoenix_business_grants_programs.csv",
+      "notes": "Derived from free/public grants and funding pages."
+    },
+    {
+      "sourceKey": "sba_grants_and_funding_programs",
+      "mode": "staged",
+      "rowCount": 2,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\sba_grants_and_funding_programs.csv",
+      "notes": "Derived from free/public grants and funding pages."
+    },
+    {
+      "sourceKey": "az_commerce_grants_incentives",
+      "mode": "staged",
+      "rowCount": 0,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\az_commerce_grants_incentives.csv",
+      "notes": "Derived from free/public grants and funding pages."
+    },
+    {
+      "sourceKey": "grants_gov_opportunities",
+      "mode": "staged",
+      "rowCount": 12,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\grants_gov_opportunities.csv",
+      "notes": "Derived from free/public grants and funding pages."
+    },
+    {
+      "sourceKey": "reddit_local_commercial_signals",
+      "mode": "template",
+      "rowCount": 1,
+      "outputPath": "output\\real-estate\\manual-drops\\reddit_local_commercial_signals.csv",
+      "notes": "Manual drop template ensured."
+    },
+    {
+      "sourceKey": "meta_marketplace_community_signals",
+      "mode": "template",
+      "rowCount": 1,
+      "outputPath": "output\\real-estate\\manual-drops\\meta_marketplace_community_signals.csv",
+      "notes": "Manual drop template ensured."
+    },
+    {
+      "sourceKey": "az_state_surplus_property_auctions",
+      "mode": "template",
+      "rowCount": 1,
+      "outputPath": "output\\real-estate\\manual-drops\\az_state_surplus_property_auctions.csv",
+      "notes": "Manual drop template ensured."
+    },
+    {
+      "sourceKey": "maricopa_local_surplus_property_auctions",
+      "mode": "template",
+      "rowCount": 1,
+      "outputPath": "output\\real-estate\\manual-drops\\maricopa_local_surplus_property_auctions.csv",
+      "notes": "Manual drop template ensured."
+    },
+    {
+      "sourceKey": "federal_real_property_disposals",
+      "mode": "template",
+      "rowCount": 1,
+      "outputPath": "output\\real-estate\\manual-drops\\federal_real_property_disposals.csv",
+      "notes": "Manual drop template ensured."
+    },
+    {
+      "sourceKey": "grants_gov_opportunities",
+      "mode": "template",
+      "rowCount": 1,
+      "outputPath": "output\\real-estate\\manual-drops\\grants_gov_opportunities.csv",
+      "notes": "Manual drop template ensured."
+    },
+    {
+      "sourceKey": "az_commerce_grants_incentives",
+      "mode": "template",
+      "rowCount": 1,
+      "outputPath": "output\\real-estate\\manual-drops\\az_commerce_grants_incentives.csv",
+      "notes": "Manual drop template ensured."
+    },
+    {
+      "sourceKey": "city_phoenix_business_grants_programs",
+      "mode": "template",
+      "rowCount": 1,
+      "outputPath": "output\\real-estate\\manual-drops\\city_phoenix_business_grants_programs.csv",
+      "notes": "Manual drop template ensured."
+    },
+    {
+      "sourceKey": "sba_grants_and_funding_programs",
+      "mode": "template",
+      "rowCount": 1,
+      "outputPath": "output\\real-estate\\manual-drops\\sba_grants_and_funding_programs.csv",
+      "notes": "Manual drop template ensured."
+    },
+    {
+      "sourceKey": "maricopa_recorder_document_feed",
+      "mode": "template",
+      "rowCount": 1,
+      "outputPath": "output\\real-estate\\manual-drops\\maricopa_recorder_document_feed.csv",
+      "notes": "Manual drop template ensured."
+    },
+    {
+      "sourceKey": "arizona_ucc_filings",
+      "mode": "template",
+      "rowCount": 1,
+      "outputPath": "output\\real-estate\\manual-drops\\arizona_ucc_filings.csv",
+      "notes": "Manual drop template ensured."
+    },
+    {
+      "sourceKey": "arizona_bankruptcy_filings",
+      "mode": "template",
+      "rowCount": 1,
+      "outputPath": "output\\real-estate\\manual-drops\\arizona_bankruptcy_filings.csv",
+      "notes": "Manual drop template ensured."
+    },
+    {
+      "sourceKey": "maricopa_civil_court",
+      "mode": "template",
+      "rowCount": 1,
+      "outputPath": "output\\real-estate\\manual-drops\\maricopa_civil_court.csv",
+      "notes": "Manual drop template ensured."
+    },
+    {
+      "sourceKey": "aps_srp_utility_constraints",
+      "mode": "template",
+      "rowCount": 1,
+      "outputPath": "output\\real-estate\\manual-drops\\aps_srp_utility_constraints.csv",
+      "notes": "Manual drop template ensured."
+    },
+    {
+      "sourceKey": "lease_comps_vacancy_feeds",
+      "mode": "template",
+      "rowCount": 1,
+      "outputPath": "output\\real-estate\\manual-drops\\lease_comps_vacancy_feeds.csv",
+      "notes": "Manual drop template ensured."
+    },
+    {
+      "sourceKey": "cmbs_distress_signals",
+      "mode": "template",
+      "rowCount": 1,
+      "outputPath": "output\\real-estate\\manual-drops\\cmbs_distress_signals.csv",
+      "notes": "Manual drop template ensured."
+    }
+  ]
+}

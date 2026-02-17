@@ -1,0 +1,23 @@
+{
+  "objective": "Proactively identify local industrial expansion opportunities and distressed-market conditions.",
+  "marketArea": "West Valley and Phoenix, Arizona",
+  "latestQuarterContext": {
+    "file": "D:\\monsoonfire-portal\\output\\real-estate\\agent-swarm-context-2026-Q1.json",
+    "quarter": "2026-Q1"
+  },
+  "leadSelectionRules": {
+    "minLeadScore": 30,
+    "top": 30,
+    "prioritizeDistress": true
+  },
+  "nextActions": [
+    "Validate listing status and current ask against broker or listing portal.",
+    "Prioritize leads with classification=distress_opportunity for immediate outreach.",
+    "Cross-check top leads against county tax-lien, delinquent-tax, and trustee-sale sources before outreach.",
+    "Pull assessor/treasurer parcel-level history for leads carrying governmentDistressScore > 0.",
+    "Request rent roll and concessions where price-reduced or vacancy language appears.",
+    "Compare each shortlisted lead against latest quarterly medians before LOI strategy."
+  ],
+  "promptSeed": "Use topLeads plus latestQuarterContext to produce a broker outreach plan, negotiation posture, and 30-day opportunity watchlist.",
+  "topLeads": []
+}

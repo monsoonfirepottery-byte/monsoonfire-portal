@@ -1,0 +1,24 @@
+{
+  "generatedAtUtc": "2026-02-17T21:18:50.6446194Z",
+  "runId": "20260217T211850Z",
+  "configPath": "D:\\monsoonfire-portal\\docs\\real-estate\\studio-asset-intel-config.json",
+  "manualDropDir": "D:\\monsoonfire-portal\\output\\real-estate\\manual-drops\\studio-assets",
+  "summary": {
+    "configuredSources": 9,
+    "seeded": 10,
+    "skipped": 0
+  },
+  "seededFiles": [
+    "output\\real-estate\\manual-drops\\studio-assets\\localauctions_az.csv",
+    "output\\real-estate\\manual-drops\\studio-assets\\sierraauctions_az.csv",
+    "output\\real-estate\\manual-drops\\studio-assets\\craigslist_phoenix.csv",
+    "output\\real-estate\\manual-drops\\studio-assets\\facebook_marketplace.csv",
+    "output\\real-estate\\manual-drops\\studio-assets\\offerup_local.csv",
+    "output\\real-estate\\manual-drops\\studio-assets\\reddit_local_sell.csv",
+    "output\\real-estate\\manual-drops\\studio-assets\\local_ceramic_org_newsletters.csv",
+    "output\\real-estate\\manual-drops\\studio-assets\\school_university_surplus.csv",
+    "output\\real-estate\\manual-drops\\studio-assets\\manufacturer_demo_and_test.csv",
+    "output\\real-estate\\manual-drops\\studio-assets\\_all-sources.csv"
+  ],
+  "skippedFiles": []
+}

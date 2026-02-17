@@ -1,0 +1,216 @@
+{
+  "objective": "Proactively identify local industrial expansion opportunities and distressed-market conditions.",
+  "marketArea": "West Valley and Phoenix, Arizona",
+  "latestQuarterContext": {
+    "file": "D:\\monsoonfire-portal\\output\\real-estate\\agent-swarm-context-2026-Q1.json",
+    "quarter": "2026-Q1"
+  },
+  "latestMacroContext": {
+    "file": "D:\\monsoonfire-portal\\output\\real-estate\\macro-context-latest.json",
+    "generatedAtUtc": "02/17/2026 19:47:34",
+    "creIndexLatest": {
+      "date": "",
+      "value": null
+    },
+    "creIndexYoYPct": null,
+    "fedFundsLatest": {
+      "date": "",
+      "value": null
+    }
+  },
+  "publicSignalsPath": "D:\\monsoonfire-portal\\output\\real-estate\\public-signals-latest.json",
+  "sourceCoverage": [
+    {
+      "sourceKey": "maricopa_assessor_ownership_history",
+      "sourceName": "maricopa_assessor_ownership_history",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 1,
+      "uniqueLeads": 1,
+      "rankedLeads": 1
+    },
+    {
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "queryCount": 38,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "queryCount": 16,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "queryCount": 16,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "auctioncom_distress",
+      "sourceName": "Auction.com Distressed Inventory",
+      "sourceType": "auction_marketplace",
+      "queryCount": 11,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "commercialcafe_listings",
+      "sourceName": "CommercialCafe Listings",
+      "sourceType": "listing_marketplace",
+      "queryCount": 11,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_assessor_parcel_signals",
+      "sourceName": "Maricopa Assessor Parcel Signals",
+      "sourceType": "government_data",
+      "queryCount": 11,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_county_auctions_leases",
+      "sourceName": "Maricopa County Auctions and Leases",
+      "sourceType": "government_auction",
+      "queryCount": 3,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_recorder_trustee_sales",
+      "sourceName": "Maricopa Recorder Trustee Notices",
+      "sourceType": "government_legal",
+      "queryCount": 3,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_treasurer_tax_lien",
+      "sourceName": "Maricopa Treasurer Tax Lien",
+      "sourceType": "government_tax",
+      "queryCount": 3,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "avison_young_market_reports",
+      "sourceName": "Avison Young Market Reports",
+      "sourceType": "broker_research",
+      "queryCount": 2,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "cbre_market_reports",
+      "sourceName": "CBRE Market Reports",
+      "sourceType": "broker_research",
+      "queryCount": 2,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "colliers_market_reports",
+      "sourceName": "Colliers Market Reports",
+      "sourceType": "broker_research",
+      "queryCount": 2,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_tax_deeded_land_sales",
+      "sourceName": "Maricopa Tax Deeded Land Sales",
+      "sourceType": "government_tax",
+      "queryCount": 2,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "mcso_tax_and_sheriff_sales",
+      "sourceName": "MCSO Sheriff Sales",
+      "sourceType": "government_auction",
+      "queryCount": 2,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "naiop_market_reports",
+      "sourceName": "NAIOP Market Reports",
+      "sourceType": "industry_research",
+      "queryCount": 2,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    }
+  ],
+  "leadSelectionRules": {
+    "minLeadScore": 30,
+    "top": 30,
+    "prioritizeDistress": true
+  },
+  "nextActions": [
+    "Validate listing status and current ask against broker or listing portal.",
+    "Prioritize leads with classification=distress_opportunity for immediate outreach.",
+    "Cross-check top leads against Maricopa Treasurer tax-lien and tax-deed sources before outreach.",
+    "Use parcel-centric public signal context (tax, legal, code, utility, permit, CMBS) to prioritize negotiation order.",
+    "Pull recorder notice + MCSO auction context for leads carrying foreclosure or trustee-sale signals.",
+    "Pull assessor parcel-level history for leads carrying governmentDistressScore > 0.",
+    "Review Phoenix and West Valley permitting/planning feeds for zoning or code signals near shortlisted assets.",
+    "Request rent roll and concessions where price-reduced or vacancy language appears.",
+    "Compare each shortlisted lead against latest quarterly medians before LOI strategy.",
+    "Use macro context (rates + CRE index trend) to bias outreach timing and offer aggressiveness.",
+    "Refresh broker and NAIOP reports monthly to detect vacancy/rent inflections before they hit listing portals."
+  ],
+  "promptSeed": "Use topLeads plus latestQuarterContext to produce a broker outreach plan, negotiation posture, and 30-day opportunity watchlist.",
+  "topLeads": [
+    {
+      "title": "ownership_transfer | parcel 101-01-001C",
+      "url": "",
+      "summary": "stage=monitoring ; owner=EL PASO NATURAL GAS COMPANY ; assessor parcel sample",
+      "publishedAt": "",
+      "sourceQuery": "public-signals:maricopa_assessor_ownership_history:maricopa_assessor_ownership_history:1",
+      "sourceKey": "maricopa_assessor_ownership_history",
+      "sourceName": "Maricopa Assessor Ownership History",
+      "sourceType": "public_signal",
+      "sourceDomains": [],
+      "domain": "",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 32,
+      "domainScore": 0,
+      "sourceDomainScore": 0,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 52,
+      "classification": "medium_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    }
+  ]
+}

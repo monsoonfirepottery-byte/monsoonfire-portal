@@ -1,0 +1,550 @@
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<!-- Setting this as a variable as we use this in multiple areas, making it easier if it needs to be changed.-->
+<!-- This will invalidate the CFID and CFToken so the user gets assigned new ones upon logout. -->
+<!--[if IE]>
+<![endif]-->
+<html lang="en">
+<head>
+<title>Maricopa - RealTaxLien - Home</title>
+<meta name="description" content="Realauction Online Taxliens" />
+<meta name="keywords" content="realauction online taxlien sites" />
+<meta name="robots" content="noindex,nofollow" />
+<meta name="info" content="ip-10-5-133-77.east-1.realauction.com">
+<link rel="stylesheet" type="text/css" href="/common/css/styles.css?v=1.003">
+<link rel="stylesheet" type="text/css" href="/common/css/userRefunds.css">
+<link rel="stylesheet" href="/common/css/popup.css" />
+<!--[if IE]>
+<link rel="stylesheet" type="text/css" href="/common/css/styles-IE.css" />
+<link rel="stylesheet" type="text/css" href="/common/css/userRefunds-IE.css">
+<![endif]-->
+<link rel="stylesheet" type="text/css" href="//prod25-taxlien.s3.amazonaws.com/css/login.css" />
+<!--[if IE]>
+<link rel="stylesheet" type="text/css" href="//prod25-taxlien.s3.amazonaws.com/css/home-IE.css" />
+<![endif]-->
+<link rel="stylesheet" type="text/css" href="//prod25-taxlien.s3.amazonaws.com/css/states/AZ/Maricopa/styles.css" />
+<!--[if IE]>
+<link rel="stylesheet" type="text/css" href="//prod25-taxlien.s3.amazonaws.com/css/states/AZ/Maricopa/styles-IE.css" />
+<![endif]-->
+<link rel="stylesheet" type="text/css" href="//prod25-taxlien.s3.amazonaws.com/css/contentBar.css" />
+<link rel="stylesheet" type="text/css" href="//prod25-taxlien.s3.amazonaws.com/css/facebox.css" />
+<link rel="stylesheet" type="text/css" href="/common/css/jquery.qtip.css">
+<script type="text/JavaScript" src="common/js/util.js"></script>
+<script type="text/javascript" src="common/js/jquery-1.12.4.min.js"></script>
+<script type="text/javascript" src="common/js/jquery-migrate-1.4.1.js"></script>
+<script type="text/javascript" src="common/js/jquery-custom.js"></script>
+<script type="text/javascript" src="common/js/main.js"></script>
+<script type="text/javascript" src="common/js/popup.js"></script>
+<script type="text/javascript" src="common/js/webserviceMessaging.js?v=1000"></script>
+<script type="text/javascript" src="common/js/jquery-ui-1.10.2.custom.min.js"></script>
+<script type="text/javascript" src="common/js/jquery.qtip.js"></script>
+<script type="text/javascript" src="common/js/global-qtip-config.js"></script>
+<script type="text/javascript" src="common/js/facebox.js"></script>
+<script language="javascript">
+$(document).ready(function() { // Runs any function that needs to be called right after the page loads.
+// $(".tabs").corner("top");	This command will replace rounded_corners_caller.cfm when jquery.curvycorners.packed.js gets to work.
+});
+function resizeFunctions() { // Runs any function that needs to be called after the window resizes (IE resistant)
+}
+var resizeTimer = null;
+$(window).bind('resize', function() { if (resizeTimer) clearTimeout(resizeTimer); resizeTimer = setTimeout('resizeFunctions();', 10);});
+</script>
+<script>
+function getUrlParam( name ){
+name = name.replace(/[\[]/,"\\\[").replace(/[\]]/,"\\\]");
+var regexS = "[\\?&]"+name+"=([^&#]*)";
+var regex = new RegExp( regexS );
+var results = regex.exec( window.location.href );
+if( results == null ) return "";
+else return results[1];
+}
+// Added by Rick Mayne to correct the issue on the homepage in IE browsers where the splash page would go under the left nav.
+$(document).ready(function(){
+if ($.browser.msie && $.browser.version < 10) { // only executes this function for IE browsers
+if('YES' == 'YES'){
+$( '.leftmenu .col1wrap' ).css( "right","0" ); // sets the element
+}
+$(window).resize(function() {
+$( '.leftmenu .col1wrap' ).css( "right","200px" );
+});
+}
+});
+</script>
+<script language="javascript">
+var setBrowserAlreadyCalled = false;
+var timeoutWarning = new Date();
+timeoutWarning.setMinutes(timeoutWarning.getMinutes() + 115);
+var timeout = new Date();
+timeout.setMinutes(timeout.getMinutes() + 120);
+var displayTimeoutWarning;
+function setBrowser(browser){
+if (browser == 'IE') {
+setIE = true;
+} else {
+// Instead of reloading the whole page, we now set session.browser using an ajax call.
+var stm = "$('ajaxCallAuxDiv').load('common/setSessionVar.cfm?Browser=" + browser + "');";
+setTimeout(stm, 500); // setTimeout ensures the ajaxCallAuxDiv to be defined already.
+}
+setBrowserAlreadyCalled = true;
+}
+function accomodateMainDivArea () {
+var maxWidht = 1900; // Max expected widht in pixels.
+var highOffsetPrc = 6; // High percentage offset to make header and footer images visible.
+var container = document.getElementById("mainDiv");
+container.style.height = 860;
+}
+function hideShow(id, toggle) {
+if (toggle == "hide") {
+document.getElementById(id).style.display = "none";
+} else {
+if (document.getElementById(id).tagName.toUpperCase() == 'TR') document.getElementById(id).style.display = "table-row";
+else document.getElementById(id).style.display = "block";
+}
+}
+function showHelp(helpText) {
+document.getElementById("helpText").innerHTML = helpText;
+$('#helpContent').show('slow');
+}
+</script>
+<!--[if IE]>
+<script language="javascript">
+setBrowser('IE');
+</script>
+<![endif]-->
+<script language="javascript">
+if (setBrowserAlreadyCalled==false) setBrowser('noIE');
+</script>
+<script language="javascript">
+var idleTime = 0;
+var timeIncrement = 60000; // Time increment in miliseconds, currently 1 minute
+var maxTime = 5; // Max amount of times before we stop polling the system messenger (in timeIncrement, so if the time increment is 1 minute and the max time is 5, the max time is 5 minutes)
+var doIncrement = true;
+var doPulling = 1;
+$(document).ready(function(){
+polling();
+$('a[rel*=facebox]').facebox();
+$.facebox.settings.opacity = 0.85;
+$('#helpContent').hide();
+$("#helpSlideDown").click(function () {
+$('#helpContent').slideToggle('slow',function(){
+if ($('#helpContent').is(":hidden")){
+$("#searchHelpText").html("Click for SEARCH CRITERIA");
+}
+else{
+$("#searchHelpText").html("Click to Close SEARCH CRITERIA");
+}
+});
+});
+$("#closeHelp").click(function () {
+$('#helpContent').slideToggle('fast',function(){
+if ($('#helpContent').is(":hidden")){
+$("#searchHelpText").html("Open Quick Search");
+}
+else{
+$("#searchHelpText").html("Close Quick Search");
+}
+});
+});
+$("#tooltipCheckbox").click(function(){
+if ($(this).attr("checked")) {
+$("#tooltipStatus").html("On").removeClass('tooltipOff').addClass('tooltipOn');
+//disableTooltips(0);
+}
+else {
+$("#tooltipStatus").html("Off").removeClass('tooltipOn').addClass('tooltipOff');
+$(".qtip").hide();
+$(".qtip").css({visibility: 'hidden', display:'none'});
+//disableTooltips(1);
+}
+});
+});
+// string trim functions
+function trim(stringToTrim) {
+return stringToTrim.replace(/^\s+|\s+$/g,"");
+}
+function ltrim(stringToTrim) {
+return stringToTrim.replace(/^\s+/,"");
+}
+function rtrim(stringToTrim) {
+return stringToTrim.replace(/\s+$/,"");
+}
+var pollingTimer;
+var ItemStatusCount = 0;
+var nPing = 29000;
+function polling (){
+var url = '';
+var data = '';
+clearTimeout (pollingTimer);
+if(doPulling){pollingTimer = setTimeout('polling()',nPing);}
+}
+function pollMessages(){
+var message = '';
+var d = new Date();
+var jsonData = '{';
+jsonData += '"uid":0,';
+jsonData += '"vid":4013';
+jsonData += '}';
+$.getJSON("common/services/MessengerService.cfm",{
+"action":"Read",
+"json":jsonData,
+"ts":d.getTime()
+},function(response){
+if(response.ret == 'true'){
+processMessageType(response);
+}else{
+doPulling = false;
+}
+});
+}
+function processMessageType(data){
+if(data.data.rc > 0) {
+$.each(data.data.m,function(i){
+moveToProcessed(data.data.m[i].ID, data.data.m[i].Data.location);
+});
+setNotification(data.data.rc);
+$.getJSON(
+"common/ajaxgateway.cfm", {
+"method":"ProcessedNotifications",
+"msgCount": data.data.rc
+},function(data) {});
+}
+}
+function processItems(){
+var debug = 0;
+if((i.rc > 0 || debug == 1 )&& ItemStatusCount == 0){
+msg = '<div class="">You have been out bid on ' + i.rc + ' items</div><div class=""><a href="index.cfm?folder=searchCert&loginID=0&justMyBids=1">View your bids</div>';
+$.facebox(msg);
+ItemStatusCount++;
+}
+}
+function updateBidDisplay(bidID){
+var wbid = bidID.replace("winningBid",'Dollar&itemID=');
+wbid = wbid.replace("percentWinningBid",'Percent&itemID=');
+d = new Date().getTime();
+$('#'+bidID).load("searchCert/remote.cfm?type=updateBidDisplay"+wbid+"&_"+d);
+}
+//This increments the idle Timer and stops the System Messenger Polling when it reaches the max time
+function timerIncrement(localIdleInterval) {
+if (doIncrement) {
+idleTime = idleTime + 1;
+if (idleTime >= maxTime) { // 20 minutes
+clearTimeout (pollingTimer);
+doPulling = 0;
+doIncrement = false;
+}
+}
+}
+function stopCheckingTimeout() {
+clearInterval(displayTimeoutWarning);
+}
+function resetTimers() {
+timeoutWarning = new Date();
+timeoutWarning.setMinutes(timeoutWarning.getMinutes() + 115);
+timeout = new Date();
+timeout.setMinutes(timeout.getMinutes() + 120);
+}
+</script>
+<script language="javascript">
+$(document).ready(function(){
+$("#loginLeftNav #loginName, #loginLeftNav #password").on("keypress",function(event) {
+if (event.which == 13) {
+if(validatePassword($("#password").val(),true) && validateLoginName($("#loginName").val())){
+$("form").submit();
+}
+}
+});
+});
+function validateLoginName (inputObj) {
+// Validates the login name (username)
+if (inputObj == '') {
+alert('Username can not be empty');
+return false;
+} else {
+return true;
+}
+}
+function validatePassword(inputObj,displayAlert) {
+// Validates the password. displayAlert = false allows validation without the alert message.
+if ( inputObj == '') {
+if (displayAlert) alert('Password can not be empty');
+return false;
+} else {
+return true;
+}
+}
+function submitLoginAction(theAction) {
+// Submit a login action
+// If the user press cancel, we don't want to keep returning to login.
+if (theAction == 'cancel') document.loginFrm.action = 'index.cfm?folder=home&loginAction=nothing'; // In this case loginAction must be in the URL. For some unknown reason document.loginFrm.loginAction.value = theAction have not effect here.
+if (theAction == 'nothing') document.loginFrm.action = 'index.cfm?folder=home';
+if (theAction == 'logout' || (theAction == 'agreement' && document.loginFrm.response.value == 'NO') ) {
+document.loginFrm.action = 'index.cfm?folder=home&loginAction=logout';
+// In this case loginAction must be in the URL. For some unknown reason document.loginFrm.loginAction.value = theAction have not effect here.
+}
+//validate the login form before the submit. Password may not exists when the form is requesting just the loginName before presenting the security question for a password reset.
+if ((theAction == "agreement") || validateLoginName(document.loginFrm.loginName)
+&&
+(document.loginFrm.password == null || validatePassword(document.loginFrm.password, true))) {
+document.loginFrm.loginAction.value = theAction;
+document.loginFrm.submit();
+}else{
+return false;
+}
+}
+function submitLoginActionForm(theAction) {
+// Submit a login action
+// If the user press cancel, we don't want to keep returning to login.
+if (theAction == 'cancel') document.loginFrm1.action = 'index.cfm?folder=home&loginAction=nothing'; // In this case loginAction must be in the URL. For some unknown reason document.loginFrm.loginAction.value = theAction have not effect here.
+if (theAction == 'nothing') document.loginFrm1.action = 'index.cfm?folder=home';
+if (theAction == 'logout' || (theAction == 'agreement' && document.loginFrm1.response.value == 'NO') ) document.loginFrm1.action = 'index.cfm?folder=home&loginAction=logout'; // In this case loginAction must be in the URL. For some unknown reason document.loginFrm.loginAction.value = theAction have not effect here.
+//validate the login form before the submit. Password may not exists when the form is requesting just the loginName before presenting the security question for a password reset.
+if ((theAction == "agreement") || validateLoginName(document.loginFrm1.loginName) && (document.loginFrm1.password == null || validatePassword(document.loginFrm1.password, true))) {
+document.loginFrm1.loginAction.value = theAction;
+document.loginFrm1.submit();
+}else{return false;}
+}
+</script>
+</head>
+<body >
+<div id="mainLayer" class="normal">
+<link rel="stylesheet" href="//prod25-taxlien.s3.amazonaws.com/css/pagination.css" />
+<div id="popMask">
+<div id="popSpinner">
+<img src="//prod25-taxlien.s3.amazonaws.com/images/loading-spinner.png" alt="Page loading" id="loading-spinner">
+</div>
+<div class="popup-box"></div>
+</div>
+<header>
+<div id="header" class="headerContent">
+<h1 id="logo" aria-label="Header" class="auction"><div style="visibility: hidden">Maricopa AZ - RealTaxLien</div></h1>
+<nav aria-label="Top Nav">
+<div id="topMenu" class="menuWrapper">
+<span>
+<a tabindex="0" href="index.cfm?folder=home">home</a> |
+<a tabindex="0" href="index.cfm?folder=showDocument&documentName=training">Training</a> |
+<a tabindex="0" href="index.cfm?folder=showDocument&documentName=FAQ">FAQ</a> |
+<a tabindex="0" href="index.cfm?folder=contactUs">contact us</a>
+</span>
+</div>
+</nav>
+</div>
+</header>
+<div id="mainLayoutContainer" class="colmask">
+<div class="clear-fix">
+<div style="float:left;width:100%" class="left-nav-bg">
+<div class="bglight marginForNav">
+<main>
+<div class="colright">
+<div id="splashOver"></div>
+<div id="splashWrapper" class="auction">
+<div id="splashBody" class="auction">
+<div id="splashLeft" class="auction">
+<div id="splashRight">
+<nav>
+<a href="index.cfm?folder=showDocument&documentName=FAQ" aria-label="Start Here" tabindex="0"><div id="startHere" alt="Frequently Asked Questions"></div></a>
+<a href="index.cfm?folder=register" aria-label="Registration" tabindex="0"><div id="register" alt="Registration"></div></a>
+<a href="index.cfm?folder=previewitems" aria-label="Preview Items for Sale" tabindex="0"><div id="previewItems" alt="Preview Items for Sale"></div></a>
+<a href="index.cfm?folder=showDocument&documentName=purchaseCH" aria-label="Purchase County Held Certificates" class="auction"><div id="purchaseCH" alt="Purchase County Held Certificates"></div></a>
+</nav>
+<div id="splashBottom" class="auction"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</div>
+<nav aria-label="Left Nav">
+<div class="col2 leftmenu clear-fix " style="margin-left:-100%;">
+<div id="loginLeftNav" class="menuBox1">
+<form role="form" name="loginFrm1" onSubmit="validatePassword(this,true);" action="index.cfm?folder=home" method="post">
+<table>
+<tbody>
+<tr>
+<td class="loginMessage" colspan="2">&nbsp;</td>
+</tr>
+<tr>
+<td class="loginLabelText" width="33%"><label for="loginName">Username:</label></td>
+<td class="inputText">
+<input id="loginName"
+name="loginName"
+type="text"
+style="width:130px;"
+value=""
+onChange="validateLoginName(this);" />
+</td>
+</tr>
+<tr>
+<td class="loginLabelText"><label for="password">Password: </label></td>
+<td class="inputText">
+<input id="password"
+type="password"
+name="password"
+style="width:130px;" />
+</td>
+</tr>
+<tr>
+<td class="labelText">&nbsp;</td>
+<td class="inputText">
+<a href="javascript:goToLink('index.cfm?folder=forgotPassword');" class="forgotPassword">Forgot&nbsp;your&nbsp;password?</a>
+</td>
+</tr>
+<tr><td colspan="2"></td></tr>
+<tr>
+<td width="60px">&nbsp;</td>
+<td align="left">
+<input type="hidden" name="vendorID" value="4013">
+<input type="hidden" name="loginFormAction" value="index.cfm?folder=home" >
+<input type="hidden" name="loginAction" value="login">
+<input type="hidden" name="folder" value="login">
+<input type="button" value="&nbsp;&nbsp;Login&nbsp;&nbsp;" onClick="submitLoginActionForm('login',document.loginFrm1.password.value,document.loginFrm1.loginName.value);">
+</td>
+</tr>
+</tbody>
+</table>
+</form>
+</div>
+<nav role="navigation" aria-label="Left Nav">
+<div id="cat1" class="menuBox">
+<div class="menuCat">General</div>
+<ul>
+<li class="leftMenuLinks">
+<a href="index.cfm?folder=showDocument&documentName=biddingRules" tabindex="0" >Bidding Rules</a>
+</li>
+<li class="leftMenuLinks">
+<a href="index.cfm?folder=auctionResults&mode=preview" tabindex="0" >Results</a>
+</li>
+</ul>
+</div>
+<div id="cat2" class="menuBox">
+<div class="menuCat">Training</div>
+<ul>
+<li class="leftMenuLinks">
+<a href="index.cfm?folder=showDocument&documentName=training" tabindex="0" >Training General Information</a>
+</li>
+<li class="leftMenuLinks">
+<a href="index.cfm?folder=showDocument&documentName=taxCertificateProcess" tabindex="0" >Tax Certificate Process</a>
+</li>
+</ul>
+</div>
+<div id="cat3" class="menuBox">
+<div class="menuCat">External Links</div>
+<ul>
+<li class="leftMenuLinks">
+<a href="https://treasurer.maricopa.gov/" tabindex="0" target="_blank">County Treasurer</a>
+</li>
+<li class="leftMenuLinks">
+<a href="https://mcassessor.maricopa.gov/" tabindex="0" target="_blank">Property Assessor</a>
+</li>
+<li class="leftMenuLinks">
+<a href="https://www.maricopa.gov/" tabindex="0" target="_blank">My County</a>
+</li>
+<li class="leftMenuLinks">
+<a href="https://www.realauction.com/clients/index" tabindex="0" target="_blank">Other Realauctions</a>
+</li>
+</ul>
+</div>
+</nav>
+<link rel="stylesheet" href="/common/css/jumpmenu.css" />
+<style>
+</style>
+<div id="jumpMenuBox" class="leftMenuFlyout jumpmenu-box hide">
+</div>
+<div class="menuBox jumpto">
+<div class="menuCat">Jump To</div>
+<ul>
+<li class="leftMenuLinks" data-state="AZ">
+<img alt="" width="7" height="11" src="images/nav_arrow.png"/>
+<a href="javascript:void(0)" aria-label="View counties in Arizona">Arizona</a>
+</li>
+<li class="leftMenuLinks" data-state="CO">
+<img alt="" width="7" height="11" src="images/nav_arrow.png"/>
+<a href="javascript:void(0)" aria-label="View counties in Colorado">Colorado</a>
+</li>
+<li class="leftMenuLinks" data-state="MD">
+<img alt="" width="7" height="11" src="images/nav_arrow.png"/>
+<a href="javascript:void(0)" aria-label="View counties in Maryland">Maryland</a>
+</li>
+<li class="leftMenuLinks" data-state="NE">
+<img alt="" width="7" height="11" src="images/nav_arrow.png"/>
+<a href="javascript:void(0)" aria-label="View counties in Nebraska">Nebraska</a>
+</li>
+<li class="leftMenuLinks" data-state="NJ">
+<img alt="" width="7" height="11" src="images/nav_arrow.png"/>
+<a href="javascript:void(0)" aria-label="View counties in New Jersey">New Jersey</a>
+</li>
+<li class="leftMenuLinks" data-state="NY">
+<img alt="" width="7" height="11" src="images/nav_arrow.png"/>
+<a href="javascript:void(0)" aria-label="View counties in New York">New York</a>
+</li>
+</ul>
+</div>
+<script language="javascript" type="text/javascript">
+$(document).ready(function(){
+$(document).on( 'change' , '#jump_menu' , function(e) {
+jumpMenu($(this));
+}).on( "click" , ".jumpto li" , function(){
+jumpMenu($(this));
+}).on( "click" , ".leftMenuFlyout .close" , function(){
+$('.leftMenuFlyout').addClass("hide");
+});
+})
+function jumpMenu(obj) {
+var shell	= $('#jumpMenuBox'),
+inner	= $('.flyout-table'),
+row	= obj,
+shellH	= 100,
+top	= (row.position().top + row.outerHeight()) - shellH,
+state	= obj.attr("data-state");
+shell.html('<div class="flyout-loading"><div class="arrow"></div><span class="flyout-loading-spinner"></span>Loading State Data<div class="small">Please wait a moment...</div></div>');
+shellH	= 100,
+top	= (row.position().top + row.outerHeight()) - shellH,
+shell.removeClass('hide').css("top",top+'px');
+shell.load(
+'jumpMenu/flyoutmenu.cfm',
+{ 'state' : state },
+function(){
+shellH	= 100,
+top	= (row.position().top + row.outerHeight()) - shellH;
+if ( top < 20 ) {
+shell.css({"top":"20px"})
+//inner.css({"max-height":"200px"})
+} else {
+shell.css({"top":top + "px"})
+}
+shell.removeClass('hide');
+jumpMenuModal = document.querySelector('.jumpmenu-header');
+jumpMenuModal.focus();
+});
+}
+</script>
+<br /><br />
+</div>
+</nav>
+</div>
+</div>
+<footer>
+<div id="footer" style="text-align:center;">
+<span style="float:left;padding-left:10px">&copy; Copyright 2026 Realauction.com</span>
+<a href="javascript:goToLink('index.cfm?folder=showDocument&documentName=userLicenseAgreement');" class="footerLink">Terms&nbsp;and&nbsp;Conditions</a>
+&nbsp;&nbsp;&nbsp;&nbsp;
+<a href="javascript:goToLink('index.cfm?folder=showDocument&documentName=privacyPolicy');" class="footerLink">Privacy&nbsp;Policy</a>
+</div>
+</footer>
+</div>
+<div id="ajaxCallAuxDiv" style="visibility:hidden; height:0;"></div>
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-31544955-1']);
+_gaq.push(['_setDomainName', 'realtaxlien.com']);
+_gaq.push(['_trackPageview']);
+(function() {
+var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</body>
+</html>
+

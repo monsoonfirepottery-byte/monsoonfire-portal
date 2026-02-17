@@ -1,0 +1,4 @@
+"source","metric","asOfDate","value","notes"
+"census_acs","maricopa_population","2023","4491987","Maricopa County, Arizona"
+"census_acs","maricopa_median_gross_rent","2023","1587","Maricopa County, Arizona"
+"census_acs","maricopa_median_home_value","2023","414700","Maricopa County, Arizona"

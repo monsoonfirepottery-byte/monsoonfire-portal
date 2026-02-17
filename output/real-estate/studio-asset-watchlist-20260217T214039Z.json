@@ -1,0 +1,113 @@
+{
+  "generatedAtUtc": "2026-02-17T21:40:39.9721758Z",
+  "runId": "20260217T214039Z",
+  "assetCount": 7,
+  "taskQueue": [
+    {
+      "taskId": "asset-task-0001",
+      "assetId": "asset:579194501",
+      "priority": "high",
+      "agentRole": "asset_scout_agent",
+      "objective": "Verify availability, condition, and local pickup feasibility for studio use.",
+      "requiredChecks": [
+        "confirm_current_availability",
+        "request_working_demo_or_test_video",
+        "confirm_power_or_fuel_requirements",
+        "confirm_pickup_location_and_loading_constraints"
+      ],
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "asset-task-0002",
+      "assetId": "asset:1315849405",
+      "priority": "high",
+      "agentRole": "asset_scout_agent",
+      "objective": "Verify availability, condition, and local pickup feasibility for studio use.",
+      "requiredChecks": [
+        "confirm_current_availability",
+        "request_working_demo_or_test_video",
+        "confirm_power_or_fuel_requirements",
+        "confirm_pickup_location_and_loading_constraints"
+      ],
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "asset-task-0003",
+      "assetId": "asset:16137548",
+      "priority": "high",
+      "agentRole": "asset_scout_agent",
+      "objective": "Verify availability, condition, and local pickup feasibility for studio use.",
+      "requiredChecks": [
+        "confirm_current_availability",
+        "request_working_demo_or_test_video",
+        "confirm_power_or_fuel_requirements",
+        "confirm_pickup_location_and_loading_constraints"
+      ],
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "asset-task-0004",
+      "assetId": "asset:1873113040",
+      "priority": "high",
+      "agentRole": "asset_scout_agent",
+      "objective": "Verify availability, condition, and local pickup feasibility for studio use.",
+      "requiredChecks": [
+        "confirm_current_availability",
+        "request_working_demo_or_test_video",
+        "confirm_power_or_fuel_requirements",
+        "confirm_pickup_location_and_loading_constraints"
+      ],
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "asset-task-0005",
+      "assetId": "asset:2098865022",
+      "priority": "high",
+      "agentRole": "asset_scout_agent",
+      "objective": "Verify availability, condition, and local pickup feasibility for studio use.",
+      "requiredChecks": [
+        "confirm_current_availability",
+        "request_working_demo_or_test_video",
+        "confirm_power_or_fuel_requirements",
+        "confirm_pickup_location_and_loading_constraints"
+      ],
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "asset-task-0006",
+      "assetId": "asset:1016809334",
+      "priority": "high",
+      "agentRole": "asset_scout_agent",
+      "objective": "Verify availability, condition, and local pickup feasibility for studio use.",
+      "requiredChecks": [
+        "confirm_current_availability",
+        "request_working_demo_or_test_video",
+        "confirm_power_or_fuel_requirements",
+        "confirm_pickup_location_and_loading_constraints"
+      ],
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "asset-task-0007",
+      "assetId": "asset:201711444",
+      "priority": "high",
+      "agentRole": "asset_scout_agent",
+      "objective": "Verify availability, condition, and local pickup feasibility for studio use.",
+      "requiredChecks": [
+        "confirm_current_availability",
+        "request_working_demo_or_test_video",
+        "confirm_power_or_fuel_requirements",
+        "confirm_pickup_location_and_loading_constraints"
+      ],
+      "dueWithinDays": 2
+    }
+  ],
+  "nextActions": [
+    "Prioritize high-score local kiln and wheel opportunities for same-week outreach.",
+    "Prioritize assets matching needed/wanted list boosts before lower-priority gear.",
+    "Request condition proof (video under power/load) before scheduling pickup.",
+    "Validate utility and fuel requirements against studio-needs profile before committing.",
+    "Batch nearby pickups to reduce hauling cost and downtime.",
+    "Review consumables status and align procurement with equipment opportunities (bulk/local pickup)."
+  ]
+}

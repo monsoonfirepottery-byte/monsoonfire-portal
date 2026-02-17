@@ -1,0 +1,81 @@
+{
+  "generatedAtUtc": "2026-02-17T21:36:09.4469376Z",
+  "runId": "20260217T213609Z",
+  "summary": {
+    "opportunities": 1,
+    "realEstateTasks": 2,
+    "assetTasks": 0,
+    "executionQueue": 2
+  },
+  "inputs": {
+    "reviewPacketPath": "D:\\monsoonfire-portal\\output\\real-estate\\intelligence-review-packet-latest.json",
+    "intelligencePath": "D:\\monsoonfire-portal\\output\\real-estate\\intelligence-analysis-latest.json",
+    "assetWatchlistPath": "D:\\monsoonfire-portal\\output\\real-estate\\studio-asset-watchlist-latest.json"
+  },
+  "commandContracts": {
+    "discord": [
+      {
+        "command": "/intel review",
+        "description": "Show latest review packet summary."
+      },
+      {
+        "command": "/intel opportunity <id>",
+        "description": "Show one opportunity decision card."
+      },
+      {
+        "command": "/intel steer <id> <action> <reasonCode>",
+        "description": "Append steering decision."
+      },
+      {
+        "command": "/assets watchlist",
+        "description": "Show latest studio asset watchlist."
+      }
+    ],
+    "cli": [
+      {
+        "command": "pwsh -File scripts/run-real-estate-weekly-cadence.ps1",
+        "description": "Run full weekly intelligence cadence."
+      },
+      {
+        "command": "pwsh -File scripts/run-real-estate-test-suite.ps1",
+        "description": "Run test suite checks."
+      },
+      {
+        "command": "pwsh -File scripts/add-intelligence-steering-entry.ps1 -OpportunityId <id> -Action <action> -ReasonCode <code>",
+        "description": "Log steering action."
+      }
+    ],
+    "portal": [
+      {
+        "action": "open_review_packet",
+        "description": "Render latest review cards."
+      },
+      {
+        "action": "submit_steering_action",
+        "description": "Persist steering decision contract."
+      },
+      {
+        "action": "open_asset_watchlist",
+        "description": "Render local equipment opportunities."
+      }
+    ]
+  },
+  "executionQueue": [
+    {
+      "queueType": "real_estate",
+      "taskId": "task-0002",
+      "priority": "low",
+      "agentRole": "distress_verifier_agent",
+      "objective": "Corroborate distress posture and ownership/legal status across independent sources.",
+      "opportunityId": "opp-signal-federal-real-property-disposals-20260217"
+    },
+    {
+      "queueType": "real_estate",
+      "taskId": "task-0001",
+      "priority": "low",
+      "agentRole": "scout_verifier_agent",
+      "objective": "Verify utility and facility capability requirements for expansion fit.",
+      "opportunityId": "opp-signal-federal-real-property-disposals-20260217"
+    }
+  ]
+}

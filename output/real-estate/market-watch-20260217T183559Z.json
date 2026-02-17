@@ -1,0 +1,365 @@
+{
+  "generatedAtUtc": "2026-02-17T18:35:59.2964993Z",
+  "inputCsv": "D:\\monsoonfire-portal\\output\\real-estate\\live-listings-20260217.csv",
+  "listingCount": 11,
+  "targets": {
+    "minSqFt": 1500,
+    "maxSqFt": 7000,
+    "maxMonthlyRent": 7000,
+    "preferredCities": [
+      "Goodyear",
+      "Avondale",
+      "Tolleson",
+      "Glendale",
+      "Phoenix"
+    ]
+  },
+  "medians": {
+    "sqft": 24000.0,
+    "askingRentMonthly": 5508.0,
+    "askingRentPsfNnn": 0.97
+  },
+  "fitTierCounts": {
+    "strong_fit": 0,
+    "viable": 5,
+    "stretch": 2,
+    "weak": 4
+  },
+  "topCandidates": [
+    {
+      "snapshotDate": "2026-02-17",
+      "source": "commercialcafe",
+      "listingId": "5021-n-55th",
+      "title": "5021 N 55th Ave",
+      "address": "5021 N 55th Ave, Glendale, AZ",
+      "city": "Glendale",
+      "submarket": "Bethany Heights",
+      "propertyType": "Industrial",
+      "zoning": "",
+      "clearHeightFt": null,
+      "powerAmps": null,
+      "gradeDoors": null,
+      "dockDoors": null,
+      "parkingRatio": null,
+      "url": "CommercialCafe listing reports 0.99 per SF per month",
+      "notes": "",
+      "fit": {
+        "score": 65,
+        "tier": "viable",
+        "sqft": 2070.0,
+        "askingRentMonthly": 2049.3,
+        "askingRentPsfNnn": 0.99,
+        "reasons": [
+          "Preferred city",
+          "Property type fit",
+          "SqFt in target range",
+          "Monthly rent in target range"
+        ]
+      }
+    },
+    {
+      "snapshotDate": "2026-02-17",
+      "source": "commercialcafe",
+      "listingId": "961-n-eliseo",
+      "title": "961 N Eliseo Felix Jr Way",
+      "address": "961 N Eliseo Felix Jr Way, Avondale, AZ",
+      "city": "Avondale",
+      "submarket": "Coldwater Springs",
+      "propertyType": "Industrial",
+      "zoning": "",
+      "clearHeightFt": null,
+      "powerAmps": null,
+      "gradeDoors": null,
+      "dockDoors": null,
+      "parkingRatio": null,
+      "url": "CommercialCafe listing reports 1.15 per SF per month",
+      "notes": "",
+      "fit": {
+        "score": 65,
+        "tier": "viable",
+        "sqft": 1920.0,
+        "askingRentMonthly": 2208.0,
+        "askingRentPsfNnn": 1.15,
+        "reasons": [
+          "Preferred city",
+          "Property type fit",
+          "SqFt in target range",
+          "Monthly rent in target range"
+        ]
+      }
+    },
+    {
+      "snapshotDate": "2026-02-17",
+      "source": "commercialcafe",
+      "listingId": "7150-w-roosevelt",
+      "title": "7150 W Roosevelt Street",
+      "address": "7150 W Roosevelt Street, Phoenix, AZ",
+      "city": "Phoenix",
+      "submarket": "Estrella Village",
+      "propertyType": "Industrial",
+      "zoning": "",
+      "clearHeightFt": null,
+      "powerAmps": null,
+      "gradeDoors": null,
+      "dockDoors": null,
+      "parkingRatio": null,
+      "url": "CommercialCafe listing reports 14.40 per SF per year converted to monthly",
+      "notes": "",
+      "fit": {
+        "score": 65,
+        "tier": "viable",
+        "sqft": 3805.0,
+        "askingRentMonthly": 4566.0,
+        "askingRentPsfNnn": 14.4,
+        "reasons": [
+          "Preferred city",
+          "Property type fit",
+          "SqFt in target range",
+          "Monthly rent in target range"
+        ]
+      }
+    },
+    {
+      "snapshotDate": "2026-02-17",
+      "source": "commercialcafe",
+      "listingId": "i10-west-business-park",
+      "title": "I-10 West Business Park",
+      "address": "5127 West Latham Street, Phoenix, AZ",
+      "city": "Phoenix",
+      "submarket": "Estrella Village",
+      "propertyType": "Industrial",
+      "zoning": "",
+      "clearHeightFt": null,
+      "powerAmps": null,
+      "gradeDoors": null,
+      "dockDoors": null,
+      "parkingRatio": null,
+      "url": "CommercialCafe listing reports 0.95 per SF per month",
+      "notes": "",
+      "fit": {
+        "score": 65,
+        "tier": "viable",
+        "sqft": 5400.0,
+        "askingRentMonthly": 5130.0,
+        "askingRentPsfNnn": 0.95,
+        "reasons": [
+          "Preferred city",
+          "Property type fit",
+          "SqFt in target range",
+          "Monthly rent in target range"
+        ]
+      }
+    },
+    {
+      "snapshotDate": "2026-02-17",
+      "source": "commercialcafe",
+      "listingId": "5355-n-51st",
+      "title": "5355 N 51st Avenue",
+      "address": "5355 N 51st Avenue, Glendale, AZ",
+      "city": "Glendale",
+      "submarket": "Bethany Heights",
+      "propertyType": "Industrial",
+      "zoning": "",
+      "clearHeightFt": null,
+      "powerAmps": null,
+      "gradeDoors": null,
+      "dockDoors": null,
+      "parkingRatio": null,
+      "url": "CommercialCafe listing reports 0.85 per SF per month",
+      "notes": "",
+      "fit": {
+        "score": 65,
+        "tier": "viable",
+        "sqft": 6480.0,
+        "askingRentMonthly": 5508.0,
+        "askingRentPsfNnn": 0.85,
+        "reasons": [
+          "Preferred city",
+          "Property type fit",
+          "SqFt in target range",
+          "Monthly rent in target range"
+        ]
+      }
+    },
+    {
+      "snapshotDate": "2026-02-17",
+      "source": "moodyscre",
+      "listingId": "42530801",
+      "title": "Tex Industrial North",
+      "address": "N 169th Dr and W Indian School Rd, Goodyear, AZ 85395",
+      "city": "Goodyear",
+      "submarket": "West Valley",
+      "propertyType": "Industrial",
+      "zoning": "",
+      "clearHeightFt": 36.0,
+      "powerAmps": 3000.0,
+      "gradeDoors": 5.0,
+      "dockDoors": 18.0,
+      "parkingRatio": 1.23,
+      "url": "https://www.moodyscre.com/marketplace/listing/42530801/N-169th-Dr-W-Indian-School-Rd-Goodyear-AZ-85395",
+      "notes": "Negotiable rate with strong physical specs",
+      "fit": {
+        "score": 50,
+        "tier": "stretch",
+        "sqft": 100737.0,
+        "askingRentMonthly": null,
+        "askingRentPsfNnn": null,
+        "reasons": [
+          "Preferred city",
+          "Property type fit",
+          "Power capacity >= 200A",
+          "Clear height >= 14ft",
+          "Grade-door access"
+        ]
+      }
+    },
+    {
+      "snapshotDate": "2026-02-17",
+      "source": "moodyscre",
+      "listingId": "40334303",
+      "title": "1466 N Eliseo Felix Jr Way",
+      "address": "1466 N Eliseo Felix Jr Way, Avondale, AZ 85323",
+      "city": "Avondale",
+      "submarket": "South West Phoenix",
+      "propertyType": "Industrial",
+      "zoning": "A-1",
+      "clearHeightFt": 30.0,
+      "powerAmps": 2000.0,
+      "gradeDoors": 3.0,
+      "dockDoors": 6.0,
+      "parkingRatio": null,
+      "url": "https://www.moodyscre.com/marketplace/listing/40334303/1466-N-Eliseo-Felix-Jr-Way-Avondale-AZ-85323",
+      "notes": "Rate sourced from Moodys listing",
+      "fit": {
+        "score": 50,
+        "tier": "stretch",
+        "sqft": 45200.0,
+        "askingRentMonthly": 49720.0,
+        "askingRentPsfNnn": 1.1,
+        "reasons": [
+          "Preferred city",
+          "Property type fit",
+          "Power capacity >= 200A",
+          "Clear height >= 14ft",
+          "Grade-door access"
+        ]
+      }
+    },
+    {
+      "snapshotDate": "2026-02-17",
+      "source": "crexi",
+      "listingId": "avondale-11328-buckeye",
+      "title": "11328 W Buckeye Rd",
+      "address": "11328 W Buckeye Rd, Avondale, AZ 85323",
+      "city": "Avondale",
+      "submarket": "West Valley",
+      "propertyType": "Industrial",
+      "zoning": "",
+      "clearHeightFt": null,
+      "powerAmps": null,
+      "gradeDoors": null,
+      "dockDoors": null,
+      "parkingRatio": null,
+      "url": "Undisclosed pricing from city listing view",
+      "notes": "",
+      "fit": {
+        "score": 25,
+        "tier": "weak",
+        "sqft": 30352.0,
+        "askingRentMonthly": null,
+        "askingRentPsfNnn": null,
+        "reasons": [
+          "Preferred city",
+          "Property type fit"
+        ]
+      }
+    },
+    {
+      "snapshotDate": "2026-02-17",
+      "source": "commercialcafe",
+      "listingId": "avondale-business-center-11054",
+      "title": "11054 W Buckeye Rd",
+      "address": "11054 W Buckeye Rd, Avondale, AZ",
+      "city": "Avondale",
+      "submarket": "Coldwater Springs",
+      "propertyType": "Industrial",
+      "zoning": "",
+      "clearHeightFt": null,
+      "powerAmps": null,
+      "gradeDoors": null,
+      "dockDoors": null,
+      "parkingRatio": null,
+      "url": "CommercialCafe listing reports 25000 per month",
+      "notes": "",
+      "fit": {
+        "score": 25,
+        "tier": "weak",
+        "sqft": 24000.0,
+        "askingRentMonthly": 25000.0,
+        "askingRentPsfNnn": null,
+        "reasons": [
+          "Preferred city",
+          "Property type fit"
+        ]
+      }
+    },
+    {
+      "snapshotDate": "2026-02-17",
+      "source": "commercialcafe",
+      "listingId": "2429-s-51st",
+      "title": "2429 South 51st Avenue",
+      "address": "2429 South 51st Avenue, Phoenix, AZ",
+      "city": "Phoenix",
+      "submarket": "Estrella Village",
+      "propertyType": "Industrial",
+      "zoning": "",
+      "clearHeightFt": null,
+      "powerAmps": null,
+      "gradeDoors": null,
+      "dockDoors": null,
+      "parkingRatio": null,
+      "url": "CommercialCafe listing reports 0.81 per SF per month",
+      "notes": "",
+      "fit": {
+        "score": 25,
+        "tier": "weak",
+        "sqft": 33919.0,
+        "askingRentMonthly": 27474.39,
+        "askingRentPsfNnn": 0.81,
+        "reasons": [
+          "Preferred city",
+          "Property type fit"
+        ]
+      }
+    },
+    {
+      "snapshotDate": "2026-02-17",
+      "source": "commercialcafe",
+      "listingId": "west-94-commerce-park",
+      "title": "West 94 Commerce Park",
+      "address": "700 S 94th Ave, Tolleson, AZ 85353",
+      "city": "Tolleson",
+      "submarket": "West Valley",
+      "propertyType": "Industrial",
+      "zoning": "",
+      "clearHeightFt": null,
+      "powerAmps": null,
+      "gradeDoors": null,
+      "dockDoors": null,
+      "parkingRatio": null,
+      "url": "Lease note indicates 0.85 NNN",
+      "notes": "",
+      "fit": {
+        "score": 25,
+        "tier": "weak",
+        "sqft": 85000.0,
+        "askingRentMonthly": 72250.0,
+        "askingRentPsfNnn": 0.85,
+        "reasons": [
+          "Preferred city",
+          "Property type fit"
+        ]
+      }
+    }
+  ]
+}

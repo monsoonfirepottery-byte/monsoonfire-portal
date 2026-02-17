@@ -185,7 +185,7 @@ const DEFAULT_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.
 const RESERVATION_CREATE_FN = V1_RESERVATION_CREATE_FN;
 const RESERVATION_UPDATE_FN = V1_RESERVATION_UPDATE_FN;
 const RESERVATION_ASSIGN_STATION_FN = V1_RESERVATION_ASSIGN_STATION_FN;
-const LEGACY_RESERVATION_FN_PATHS: Record<string, string> = {
+const LEGACY_RESERVATION_FN_PATHS: Partial<Record<PortalFnName, string>> = {
   createReservation: RESERVATION_CREATE_FN,
   updateReservation: RESERVATION_UPDATE_FN,
   assignReservationStation: RESERVATION_ASSIGN_STATION_FN,

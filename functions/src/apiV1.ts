@@ -769,33 +769,33 @@ function toReservationRow(id: string, row: Record<string, unknown>) {
       earliestDate: preferredWindow.earliestDate ?? null,
       latestDate: preferredWindow.latestDate ?? null,
     },
-    linkedBatchId: safeString(row.linkedBatchId, null),
-    wareType: safeString(row.wareType, null),
-    kilnId: safeString(row.kilnId, null),
-    kilnLabel: safeString(row.kilnLabel, null),
-    quantityTier: safeString(row.quantityTier, null),
-    quantityLabel: safeString(row.quantityLabel, null),
+    linkedBatchId: safeString(row.linkedBatchId) || null,
+    wareType: safeString(row.wareType) || null,
+    kilnId: safeString(row.kilnId) || null,
+    kilnLabel: safeString(row.kilnLabel) || null,
+    quantityTier: safeString(row.quantityTier) || null,
+    quantityLabel: safeString(row.quantityLabel) || null,
     dropOffQuantity: row.dropOffQuantity ? (row.dropOffQuantity as Record<string, unknown>) : null,
     dropOffProfile: row.dropOffProfile ? (row.dropOffProfile as Record<string, unknown>) : null,
-    photoUrl: safeString(row.photoUrl, null),
-    photoPath: safeString(row.photoPath, null),
+    photoUrl: safeString(row.photoUrl) || null,
+    photoPath: safeString(row.photoPath) || null,
     notes: row.notes ? (row.notes as Record<string, unknown>) : null,
     notesHistory: Array.isArray(row.notesHistory) ? row.notesHistory : null,
     addOns: row.addOns ? (row.addOns as Record<string, unknown>) : null,
     loadStatus,
     queuePositionHint: normalizeNumber(row.queuePositionHint),
-    queueClass: safeString(row.queueClass, null),
-    queueLaneHint: safeString(row.queueLaneHint, null),
-    assignedStationId: safeString(row.assignedStationId, null),
+    queueClass: safeString(row.queueClass) || null,
+    queueLaneHint: safeString(row.queueLaneHint) || null,
+    assignedStationId: safeString(row.assignedStationId) || null,
     requiredResources: requiredResources ? normalizeRequiredResources(requiredResources) : null,
     stageStatus: stageStatus ?
       {
         stage: safeString(stageStatus.stage, "intake"),
         at: stageStatus.at ?? null,
         source: safeString(stageStatus.source, "client"),
-        reason: safeString(stageStatus.reason, null),
-        notes: safeString(stageStatus.notes, null),
-        actorUid: safeString(stageStatus.actorUid, null),
+        reason: safeString(stageStatus.reason) || null,
+        notes: safeString(stageStatus.notes) || null,
+        actorUid: safeString(stageStatus.actorUid) || null,
         actorRole: safeString(stageStatus.actorRole, "client"),
       }
       : null,
@@ -804,28 +804,28 @@ function toReservationRow(id: string, row: Record<string, unknown>) {
       currentStart: parseReservationIsoDate(estimatedWindow.currentStart),
       currentEnd: parseReservationIsoDate(estimatedWindow.currentEnd),
       updatedAt: parseReservationIsoDate(estimatedWindow.updatedAt),
-      slaState: safeString(estimatedWindow.slaState, null),
+      slaState: safeString(estimatedWindow.slaState) || null,
     },
     pickupWindow: {
       requestedStart: parseReservationIsoDate(pickupWindow.requestedStart),
       requestedEnd: parseReservationIsoDate(pickupWindow.requestedEnd),
       confirmedStart: parseReservationIsoDate(pickupWindow.confirmedStart),
       confirmedEnd: parseReservationIsoDate(pickupWindow.confirmedEnd),
-      status: safeString(pickupWindow.status, null),
+      status: safeString(pickupWindow.status) || null,
     },
-    storageStatus: safeString(row.storageStatus, null),
+    storageStatus: safeString(row.storageStatus) || null,
     readyForPickupAt: parseReservationIsoDate(row.readyForPickupAt),
     pickupReminderCount: normalizeNumber(row.pickupReminderCount),
     lastReminderAt: parseReservationIsoDate(row.lastReminderAt),
-    arrivalStatus: safeString(row.arrivalStatus, null),
+    arrivalStatus: safeString(row.arrivalStatus) || null,
     arrivedAt: parseReservationIsoDate(row.arrivedAt),
-    arrivalToken: safeString(row.arrivalToken, null),
+    arrivalToken: safeString(row.arrivalToken) || null,
     arrivalTokenIssuedAt: parseReservationIsoDate(row.arrivalTokenIssuedAt),
     arrivalTokenExpiresAt: parseReservationIsoDate(row.arrivalTokenExpiresAt),
     arrivalTokenVersion: normalizeNumber(row.arrivalTokenVersion),
-    staffNotes: safeString(row.staffNotes, null),
-    createdByUid: safeString(row.createdByUid, null),
-    createdByRole: safeString(row.createdByRole, null),
+    staffNotes: safeString(row.staffNotes) || null,
+    createdByUid: safeString(row.createdByUid) || null,
+    createdByRole: safeString(row.createdByRole) || null,
     createdAt: row.createdAt ?? null,
     updatedAt: row.updatedAt ?? null,
   };
@@ -872,6 +872,11 @@ const agentOrderGetSchema = z.object({
 const agentOrdersListSchema = z.object({
   uid: z.string().min(1).optional().nullable(),
   limit: z.number().int().min(1).max(200).optional(),
+});
+
+const agentRevenueSummarySchema = z.object({
+  uid: z.string().min(1).optional().nullable(),
+  limit: z.number().int().min(1).max(500).optional(),
 });
 
 const agentRequestCreateSchema = z.object({
@@ -977,6 +982,7 @@ const ROUTE_SCOPE_HINTS: Record<string, string | null> = {
   "/v1/agent.status": "status:read",
   "/v1/agent.order.get": "status:read",
   "/v1/agent.orders.list": "status:read",
+  "/v1/agent.revenue.summary": "status:read",
   "/v1/agent.requests.create": "requests:write",
   "/v1/agent.requests.listMine": "requests:read",
   "/v1/agent.requests.listStaff": "requests:read",
@@ -996,6 +1002,7 @@ const ALLOWED_API_V1_ROUTES = new Set<string>([
   "/v1/agent.catalog",
   "/v1/agent.order.get",
   "/v1/agent.orders.list",
+  "/v1/agent.revenue.summary",
   "/v1/agent.pay",
   "/v1/agent.quote",
   "/v1/agent.requests.create",
@@ -1028,6 +1035,10 @@ const API_V1_ROUTE_AUTHZ_EVENTS: Record<string, { action: string; resourceType: 
   "/v1/agent.orders.list": {
     action: "agent_orders_list_authz",
     resourceType: "agent_orders",
+  },
+  "/v1/agent.revenue.summary": {
+    action: "agent_revenue_summary_authz",
+    resourceType: "agent_revenue",
   },
   "/v1/agent.requests.updateStatus": {
     action: "agent_request_status_update_authz",
@@ -2785,25 +2796,36 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
 
           const currentAssignedStation = normalizeStationId(row.assignedStationId);
           const currentQueueClass = normalizeQueueClass(row.queueClass);
-          const currentRequiredResources = normalizeRequiredResources(row.requiredResources);
+          const currentRequiredResources = normalizeRequiredResources(row.requiredResources) ?? {
+            kilnProfile: null,
+            rackCount: null,
+            specialHandling: [] as string[],
+          };
           const requestedQueueClass = normalizeQueueClass(parsed.data.queueClass);
           const requestedRequiredResources =
             parsed.data.requiredResources === undefined
               ? undefined
               : parsed.data.requiredResources === null
                 ? null
-                : normalizeRequiredResources(parsed.data.requiredResources);
+                : (normalizeRequiredResources(parsed.data.requiredResources) ?? {
+                  kilnProfile: null,
+                  rackCount: null,
+                  specialHandling: [] as string[],
+                });
           const requiredResources =
             requestedRequiredResources === undefined ? currentRequiredResources : requestedRequiredResources;
 
           const queueClassChanged =
             parsed.data.queueClass !== undefined && requestedQueueClass !== currentQueueClass;
-          const resourcesChanged =
-            parsed.data.requiredResources !== undefined
-              ? requestedRequiredResources === null
-                ? row.requiredResources != null
-                : !isSameRequiredResources(currentRequiredResources, requestedRequiredResources)
-              : false;
+          let resourcesChanged = false;
+          if (parsed.data.requiredResources !== undefined) {
+            if (requestedRequiredResources === null) {
+              resourcesChanged = row.requiredResources != null;
+            } else {
+              const requestedNormalized = requestedRequiredResources ?? currentRequiredResources;
+              resourcesChanged = !isSameRequiredResources(currentRequiredResources, requestedNormalized);
+            }
+          }
           const stationChanged = currentAssignedStation !== assignedStationId;
 
           const requestedNoop =
@@ -4017,6 +4039,127 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       });
 
       jsonOk(res, requestId, { uid: targetUid, orders: rows });
+      return;
+    }
+
+    if (route === "/v1/agent.revenue.summary") {
+      const scopeCheck = requireScopes(ctx, ["status:read"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(agentRevenueSummarySchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const targetUid = parsed.data.uid ? String(parsed.data.uid) : ctx.uid;
+      const summaryAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid: targetUid,
+        scope: "status:read",
+        resource: `owner:${targetUid}`,
+        allowStaff: true,
+      });
+      if (!summaryAuthz.ok) {
+        await logAuditEvent({
+          req,
+          requestId,
+          action: "agent_revenue_summary_authz",
+          resourceType: "agent_revenue",
+          resourceId: targetUid,
+          ownerUid: targetUid,
+          result: "deny",
+          reasonCode: summaryAuthz.code,
+          ctx,
+        });
+        jsonError(res, requestId, summaryAuthz.httpStatus, summaryAuthz.code, summaryAuthz.message);
+        return;
+      }
+
+      const limit = parsed.data.limit ?? 200;
+      const orderSnap = await db.collection("agentOrders").where("uid", "==", targetUid).limit(limit).get();
+      const orderCount = orderSnap.docs.length;
+
+      let grossCents = 0;
+      let paidCents = 0;
+      let unpaidCents = 0;
+      let refundedCents = 0;
+      const orderRevenue = new Map<string, { amountCents: number; paymentStatus: string }>();
+      for (const docSnap of orderSnap.docs) {
+        const row = docSnap.data() as Record<string, unknown>;
+        const amountCents = typeof row.amountCents === "number" ? Math.max(0, Math.trunc(row.amountCents)) : 0;
+        const paymentStatus = typeof row.paymentStatus === "string" ? row.paymentStatus : "unknown";
+        grossCents += amountCents;
+        if (paymentStatus === "paid") {
+          paidCents += amountCents;
+        } else if (paymentStatus === "refunded") {
+          refundedCents += amountCents;
+        } else {
+          unpaidCents += amountCents;
+        }
+        orderRevenue.set(docSnap.id, { amountCents, paymentStatus });
+      }
+
+      const commissionSnap = await db.collection(AGENT_REQUESTS_COL).where("createdByUid", "==", targetUid).limit(500).get();
+      const commissionOrderIds = new Set<string>();
+      for (const docSnap of commissionSnap.docs) {
+        const row = docSnap.data() as Record<string, unknown>;
+        if (String(row.kind ?? "") !== "commission") {
+          continue;
+        }
+        const commissionOrderId = typeof row.commissionOrderId === "string" ? row.commissionOrderId.trim() : "";
+        if (commissionOrderId) {
+          commissionOrderIds.add(commissionOrderId);
+        }
+      }
+
+      let commissionLinkedCount = 0;
+      let commissionLinkedGrossCents = 0;
+      let commissionLinkedPaidCents = 0;
+      let commissionLinkedUnpaidCents = 0;
+      for (const orderId of commissionOrderIds.values()) {
+        const revenue = orderRevenue.get(orderId);
+        if (!revenue) {
+          continue;
+        }
+        commissionLinkedCount += 1;
+        commissionLinkedGrossCents += revenue.amountCents;
+        if (revenue.paymentStatus === "paid") {
+          commissionLinkedPaidCents += revenue.amountCents;
+        } else if (revenue.paymentStatus !== "refunded") {
+          commissionLinkedUnpaidCents += revenue.amountCents;
+        }
+      }
+
+      await db.collection("agentAuditLogs").add({
+        actorUid: ctx.uid,
+        actorMode: ctx.mode,
+        action: "agent_revenue_summary_read",
+        requestId,
+        uid: targetUid,
+        returnedOrders: orderCount,
+        commissionLinkedCount,
+        createdAt: nowTs(),
+      });
+
+      jsonOk(res, requestId, {
+        uid: targetUid,
+        summary: {
+          orderCount,
+          grossCents,
+          paidCents,
+          unpaidCents,
+          refundedCents,
+          commissionLinkedCount,
+          commissionLinkedGrossCents,
+          commissionLinkedPaidCents,
+          commissionLinkedUnpaidCents,
+        },
+      });
       return;
     }
 

@@ -679,6 +679,14 @@ const ownerMismatchScenarios: OwnerMismatchCase[] = [
     expectedCode: "OWNER_MISMATCH",
   },
   {
+    label: "agent.revenue.summary",
+    route: "/v1/agent.revenue.summary",
+    body: { uid: "owner-2" },
+    scopes: ["status:read"],
+    state: {} as MockDbState,
+    expectedCode: "OWNER_MISMATCH",
+  },
+  {
     label: "agent.requests.updateStatus",
     route: "/v1/agent.requests.updateStatus",
     body: { requestId: "request-owner-mismatch", status: "cancelled" },
@@ -770,6 +778,16 @@ const delegatedOwnerMismatchScenarios: OwnerMismatchCase[] = [
     expectedCode: "OWNER_MISMATCH",
     auditAction: "agent_orders_list_authz",
     expectedResourceType: "agent_orders",
+  },
+  {
+    label: "agent.revenue.summary",
+    route: "/v1/agent.revenue.summary",
+    body: { uid: "owner-2" },
+    scopes: ["status:read"],
+    state: {} as MockDbState,
+    expectedCode: "OWNER_MISMATCH",
+    auditAction: "agent_revenue_summary_authz",
+    expectedResourceType: "agent_revenue",
   },
   {
     label: "agent.requests.updateStatus",
@@ -892,6 +910,14 @@ const staffBypassScenarios: OwnerMismatchCase[] = [
     body: { uid: "owner-2" },
     scopes: [],
     state: { agentOrders: { "order-list-bypass": { uid: "owner-2", status: "payment_required" } } },
+    expectedCode: "200",
+  },
+  {
+    label: "agent.revenue.summary",
+    route: "/v1/agent.revenue.summary",
+    body: { uid: "owner-2" },
+    scopes: [],
+    state: { agentOrders: { "order-revenue-bypass": { uid: "owner-2", status: "payment_required", amountCents: 1500 } } },
     expectedCode: "200",
   },
   {
@@ -1128,7 +1154,7 @@ test("delegated actor denied for status read when delegation resource is missing
   );
 });
 
-test("delegated actor denied for agent.orders.list and agent.requests.updateStatus when delegation scope is missing", async () => {
+test("delegated actor denied for agent.orders.list, agent.revenue.summary, and agent.requests.updateStatus when delegation scope is missing", async () => {
   const state = withDelegatedTermsAcceptance({
     delegations: {
       "delegation-1": {
@@ -1170,6 +1196,13 @@ test("delegated actor denied for agent.orders.list and agent.requests.updateStat
               scopes: [],
               resourceType: "agent_orders",
             },
+            "/v1/agent.revenue.summary": {
+              action: "agent_revenue_summary_authz",
+              code: "MISSING_SCOPE",
+              body: { uid: "owner-1" },
+              scopes: [],
+              resourceType: "agent_revenue",
+            },
             "/v1/agent.requests.updateStatus": {
               action: "agent_request_status_update_authz",
               code: "MISSING_SCOPE",
@@ -1181,7 +1214,7 @@ test("delegated actor denied for agent.orders.list and agent.requests.updateStat
 
           for (const [route, expectation] of Object.entries(missingScopeStatus)) {
             const request = makeRequest(
-              route as "/v1/agent.orders.list" | "/v1/agent.requests.updateStatus",
+              route as "/v1/agent.orders.list" | "/v1/agent.revenue.summary" | "/v1/agent.requests.updateStatus",
               expectation.body,
               delegatedContext({ uid: "owner-1", scopes: expectation.scopes }),
             );
@@ -1205,7 +1238,7 @@ test("delegated actor denied for agent.orders.list and agent.requests.updateStat
   );
 });
 
-test("delegated actor denied for agent.orders.list and agent.requests.updateStatus when delegation resource is missing", async () => {
+test("delegated actor denied for agent.orders.list, agent.revenue.summary, and agent.requests.updateStatus when delegation resource is missing", async () => {
   const state = withDelegatedTermsAcceptance({
     delegations: {
       "delegation-1": {
@@ -1247,6 +1280,13 @@ test("delegated actor denied for agent.orders.list and agent.requests.updateStat
               scopes: ["status:read"],
               resourceType: "agent_orders",
             },
+            "/v1/agent.revenue.summary": {
+              action: "agent_revenue_summary_authz",
+              code: "DELEGATION_RESOURCE_MISSING",
+              body: { uid: "owner-1" },
+              scopes: ["status:read"],
+              resourceType: "agent_revenue",
+            },
             "/v1/agent.requests.updateStatus": {
               action: "agent_request_status_update_authz",
               code: "DELEGATION_RESOURCE_MISSING",
@@ -1258,7 +1298,7 @@ test("delegated actor denied for agent.orders.list and agent.requests.updateStat
 
           for (const [route, expectation] of Object.entries(missingResource)) {
             const request = makeRequest(
-              route as "/v1/agent.orders.list" | "/v1/agent.requests.updateStatus",
+              route as "/v1/agent.orders.list" | "/v1/agent.revenue.summary" | "/v1/agent.requests.updateStatus",
               expectation.body,
               delegatedContext({ uid: "owner-1", scopes: expectation.scopes }),
             );
@@ -1284,7 +1324,15 @@ test("delegated actor denied for agent.orders.list and agent.requests.updateStat
 
 type DelegatedStrictFailureCase = {
   label: string;
-  route: "/v1/events.feed" | "/v1/agent.reserve" | "/v1/agent.pay" | "/v1/agent.status" | "/v1/agent.order.get" | "/v1/agent.orders.list" | "/v1/agent.requests.updateStatus";
+  route:
+    | "/v1/events.feed"
+    | "/v1/agent.reserve"
+    | "/v1/agent.pay"
+    | "/v1/agent.status"
+    | "/v1/agent.order.get"
+    | "/v1/agent.orders.list"
+    | "/v1/agent.revenue.summary"
+    | "/v1/agent.requests.updateStatus";
   body: Record<string, unknown>;
   scope: string;
   ownerUid: string;
@@ -1413,6 +1461,25 @@ const delegatedStrictFixtures: DelegatedStrictFailureCase[] = [
         "order-strict-list": {
           uid: "owner-1",
           status: "payment_required",
+        },
+      },
+    },
+  },
+  {
+    label: "agent.revenue.summary",
+    route: "/v1/agent.revenue.summary",
+    body: { uid: "owner-1" },
+    scope: "status:read",
+    ownerUid: "owner-1",
+    delegationResource: "route:/v1/agent.revenue.summary",
+    auditAction: "agent_revenue_summary_authz",
+    expectedResourceType: "agent_revenue",
+    state: {
+      agentOrders: {
+        "order-strict-revenue": {
+          uid: "owner-1",
+          status: "payment_required",
+          amountCents: 500,
         },
       },
     },

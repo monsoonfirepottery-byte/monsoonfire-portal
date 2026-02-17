@@ -63,6 +63,20 @@ Default local Docker setup in this repo uses `PGPORT=5433` to avoid collision wi
 For direct browser access from Portal dev server, set:
 - `STUDIO_BRAIN_ALLOWED_ORIGINS=http://127.0.0.1:5173,http://localhost:5173`
 - `STUDIO_BRAIN_ADMIN_TOKEN=<shared-dev-token>` (optional but recommended)
+For swarm backend scaffolding, use:
+- `STUDIO_BRAIN_SWARM_ORCHESTRATOR_ENABLED=true`
+- `STUDIO_BRAIN_VECTOR_STORE_ENABLED=true` (optional)
+- `STUDIO_BRAIN_SKILL_SANDBOX_ENABLED=true` (recommended for skill execution)
+
+## Swarm backend docs
+
+1. `docs/SWARM_BACKEND_ARCHITECTURE.md` - component map and handoff notes.
+1. `docs/SWARM_BACKEND_SETUP.md` - local compose startup and diagnostics.
+1. `docs/SKILL_SECURITY_MODEL.md` - installation, sandbox, and supply-chain controls.
+1. `docs/ENVIRONMENT_REFERENCE.md` - backend env reference and defaults.
+1. `docs/SWARM_BACKEND_EXTEND_GUIDE.md` - extension patterns for adding checks, events, skills, and policies.
+1. `docs/SWARM_BACKEND_DECISIONS.md` - why these design choices were made and what to evolve first.
+1. `docs/INDEX.md` - quick documentation routing for next contributors.
 
 Capability endpoints require header:
 - `Authorization: Bearer <firebase-id-token>` (must resolve to staff/admin claim)

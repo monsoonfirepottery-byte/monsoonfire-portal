@@ -1,17 +1,15 @@
 import {
   collection,
-  doc,
   getDocs,
   limit,
   orderBy,
   query,
-  serverTimestamp,
-  updateDoc,
   where,
 } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { db } from "../firebase";
+import { createPortalApi } from "../api/portalApi";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./KilnLaunchView.css";
 
@@ -162,6 +160,7 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState("");
+  const portalApi = useMemo(() => createPortalApi(), []);
 
   const loadReservations = useCallback(async () => {
     setLoading(true);
@@ -363,9 +362,13 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
     setActionBusyId(reservationId);
     setActionStatus("");
     try {
-      await updateDoc(doc(db, "reservations", reservationId), {
-        loadStatus: nextStatus,
-        updatedAt: serverTimestamp(),
+      const idToken = await user.getIdToken();
+      await portalApi.updateReservation({
+        idToken,
+        payload: {
+          reservationId,
+          loadStatus: nextStatus,
+        },
       });
       setActionStatus("Load status updated.");
       await loadReservations();

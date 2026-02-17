@@ -9,6 +9,10 @@ import type {
   CreateBatchResponse as ContractsCreateBatchResponse,
   CreateReservationRequest as ContractsCreateReservationRequest,
   CreateReservationResponse as ContractsCreateReservationResponse,
+  UpdateReservationRequest as ContractsUpdateReservationRequest,
+  UpdateReservationResponse as ContractsUpdateReservationResponse,
+  AssignReservationStationRequest as ContractsAssignReservationStationRequest,
+  AssignReservationStationResponse as ContractsAssignReservationStationResponse,
   PickedUpAndCloseRequest as ContractsPickedUpAndCloseRequest,
   PickedUpAndCloseResponse as ContractsPickedUpAndCloseResponse,
   ListMaterialsProductsRequest as ContractsListMaterialsProductsRequest,
@@ -60,6 +64,10 @@ export type ContinueJourneyResponse = ContractsContinueJourneyResponse;
 
 export type CreateReservationRequest = ContractsCreateReservationRequest;
 export type CreateReservationResponse = ContractsCreateReservationResponse;
+export type UpdateReservationRequest = ContractsUpdateReservationRequest;
+export type UpdateReservationResponse = ContractsUpdateReservationResponse;
+export type AssignReservationStationRequest = ContractsAssignReservationStationRequest;
+export type AssignReservationStationResponse = ContractsAssignReservationStationResponse;
 
 export type ListMaterialsProductsRequest = ContractsListMaterialsProductsRequest;
 export type ListMaterialsProductsResponse = ContractsListMaterialsProductsResponse;
@@ -123,6 +131,12 @@ export type PortalApi = {
   createReservation(
     args: PortalApiCallArgs<CreateReservationRequest>
   ): Promise<PortalApiCallResult<CreateReservationResponse>>;
+  updateReservation(
+    args: PortalApiCallArgs<UpdateReservationRequest>
+  ): Promise<PortalApiCallResult<UpdateReservationResponse>>;
+  assignReservationStation(
+    args: PortalApiCallArgs<AssignReservationStationRequest>
+  ): Promise<PortalApiCallResult<AssignReservationStationResponse>>;
   continueJourney(
     args: PortalApiCallArgs<ContinueJourneyRequest>
   ): Promise<PortalApiCallResult<ContinueJourneyResponse>>;
@@ -311,6 +325,22 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
       return await callFn<CreateReservationRequest, CreateReservationResponse>(
         baseUrl,
         "createReservation",
+        args
+      );
+    },
+
+    async updateReservation(args) {
+      return await callFn<UpdateReservationRequest, UpdateReservationResponse>(
+        baseUrl,
+        "updateReservation",
+        args
+      );
+    },
+
+    async assignReservationStation(args) {
+      return await callFn<AssignReservationStationRequest, AssignReservationStationResponse>(
+        baseUrl,
+        "assignReservationStation",
         args
       );
     },

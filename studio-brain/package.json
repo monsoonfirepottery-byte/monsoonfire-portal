@@ -5,19 +5,27 @@
   "type": "commonjs",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "test:infra": "npm run build && node --test \"lib/infra/**/*.test.js\"",
     "test:connectors": "npm run build && node lib/connectors/testing/runHarness.js",
     "test": "npm run build && node --test \"lib/**/*.test.js\" && node lib/connectors/testing/runHarness.js",
     "start": "node lib/index.js",
     "dev": "npm run build && node lib/index.js",
     "preflight": "node scripts/preflight.mjs",
+    "compose:validate": "node scripts/validateCompose.mjs",
+    "healthcheck": "npm run build && node lib/cli/healthcheck.js",
+    "healthcheck:json": "npm run build && node lib/cli/healthcheck.js --output json",
     "soak": "node scripts/soak.mjs",
+    "infra:deps": "npm run compose:validate && npm run healthcheck",
+    "infra:integration": "npm run test:infra",
     "export:audit": "npm run build && node lib/cli/exportAudit.js",
     "lint:policy": "npm run build && node lib/cli/policyLint.js",
     "rebuild": "npm run build && node lib/cli/rebuild.js"
   },
   "dependencies": {
+    "minio": "^8.0.3",
     "dotenv": "^16.4.7",
     "firebase-admin": "^13.6.0",
+    "redis": "^4.7.0",
     "pg": "^8.13.1",
     "zod": "^4.3.6"
   },

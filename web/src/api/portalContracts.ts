@@ -7,6 +7,7 @@ export type PortalFnName =
   | "continueJourney"
   | "createReservation"
   | "updateReservation"
+  | "assignReservationStation"
   | "listMaterialsProducts"
   | "createMaterialsCheckoutSession"
   | "seedMaterialsCatalog"
@@ -182,8 +183,37 @@ export type ContinueJourneyRequest = {
 
 export type UpdateReservationRequest = {
   reservationId: string;
-  status: "REQUESTED" | "CONFIRMED" | "WAITLISTED" | "CANCELLED";
+  status?: "REQUESTED" | "CONFIRMED" | "WAITLISTED" | "CANCELLED";
+  loadStatus?: "queued" | "loading" | "loaded";
   staffNotes?: string | null;
+  force?: boolean;
+};
+
+export type UpdateReservationResponse = PortalApiOkEnvelope & {
+  reservationId?: string;
+  status?: string;
+  loadStatus?: string;
+  idempotentReplay?: boolean;
+};
+
+export type AssignReservationStationRequest = {
+  reservationId: string;
+  assignedStationId: string;
+  queueClass?: string | null;
+  requiredResources?: {
+    kilnProfile?: string | null;
+    rackCount?: number | null;
+    specialHandling?: string[];
+  } | null;
+};
+
+export type AssignReservationStationResponse = PortalApiOkEnvelope & {
+  reservationId?: string;
+  assignedStationId?: string;
+  previousAssignedStationId?: string | null;
+  stationCapacity?: number | null;
+  stationUsedAfter?: number | null;
+  idempotentReplay?: boolean;
 };
 
 export type MaterialsCartItemRequest = {
@@ -340,11 +370,6 @@ export type ContinueJourneyResponse = PortalApiOkEnvelope & {
 };
 
 export type CreateReservationResponse = PortalApiOkEnvelope & {
-  reservationId?: string;
-  status?: string;
-};
-
-export type UpdateReservationResponse = PortalApiOkEnvelope & {
   reservationId?: string;
   status?: string;
 };

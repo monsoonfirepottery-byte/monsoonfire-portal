@@ -2342,9 +2342,11 @@ export const readyForPickup = onRequest({ region: REGION }, async (req, res) => 
 });
 
 export { createReservation } from "./createReservation";
+export { updateReservation } from "./updateReservation";
 export { normalizeTimelineEventTypes } from "./normalizeTimelineEventTypes";
 export { createMaterialsCheckoutSession, listMaterialsProducts, seedMaterialsCatalog, stripeWebhook } from "./materials";
 export { importLibraryIsbns } from "./library";
+export { assignReservationStation } from "./assignReservationStation";
 export {
   getJukeboxConfig,
   listTracks,
@@ -2430,6 +2432,4 @@ export const backfillIsClosed = onRequest(
     res.status(200).json({ ok: true, scanned: snaps.size, updated });
   }
 );
-
-
 

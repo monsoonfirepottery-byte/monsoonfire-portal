@@ -47,10 +47,12 @@ Cloud remains authoritative; local computes and proposes; irreversible actions r
 - Goal: standard connector abstraction with safety constraints and health checks.
 - Scope: capability bindings, dry-run/read-first behavior.
 - Primary tickets: `P1-v3-connector-framework-hubitat-readonly.md`, `P1-v3-connector-framework-roborock-readonly.md`
-  - Supporting tickets: `P1-v3-connector-test-harness.md`
+- Supporting tickets: `P1-v3-connector-test-harness.md`
+- Future progression: `P3-v3-physical-connector-write-pilot.md` for capability-gated Hubitat/Roborock write pilots after existing approval plane is stable.
 - Exit criteria:
   - Connector SDK supports consistent auth, retries, health, and audit semantics.
   - Hubitat/Roborock live in read-only mode first.
+  - Read-only connector health and schema behavior is stable enough to support bounded write pilots.
 
 ## E05 Studio Ops Autopilot (Draft-only Recommendations)
 - Goal: detect studio anomalies and propose operational fixes.

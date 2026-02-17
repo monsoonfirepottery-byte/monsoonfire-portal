@@ -35,6 +35,11 @@ Status: Active
   - Script: `scripts/build-real-estate-quarterly-context.ps1`
   - Outputs: `output/real-estate/market-watch-history.csv`, `output/real-estate/real-estate-quarterly-report-YYYY-QX.md`, `output/real-estate/agent-swarm-context-YYYY-QX.json`
 - [ ] Automate quarterly context generation cadence (scheduled run + memory ingest handoff for swarm prompts).
+- [x] Add agentic local real-estate research scanner for proactive opportunity discovery and distress-signal hunting.
+  - Ticket: `tickets/P2-studio-real-estate-agentic-research-and-distress-scanner.md`
+  - Script: `scripts/run-real-estate-agentic-research.ps1`
+  - Outputs: `output/real-estate/agentic-research-<timestamp>.json`, `output/real-estate/agentic-research-<timestamp>.md`, `output/real-estate/agent-swarm-research-context-<timestamp>.json`
+- [ ] Wire daily/weekly autonomous research cadence and handoff into swarm execution queue.
 
 ## Later
 - [ ] Add a single-glaze tiles board (photos/notes per glaze, not just combos).

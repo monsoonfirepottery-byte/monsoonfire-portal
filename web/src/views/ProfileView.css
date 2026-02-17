@@ -77,6 +77,18 @@
   gap: 6px;
 }
 
+.theme-toggle-labels {
+  display: grid;
+  gap: 2px;
+}
+
+.theme-toggle-copy {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .inline-toggle-row {
   display: flex;
   align-items: center;

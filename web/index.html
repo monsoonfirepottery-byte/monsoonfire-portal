@@ -30,6 +30,49 @@
     <title>Monsoon Fire Portal</title>
   </head>
   <body>
+    <script>
+      (function () {
+        const isLocalhost =
+          typeof window !== "undefined" &&
+          (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+        if (!isLocalhost || !("serviceWorker" in navigator)) return;
+
+        const resetKey = "mf-dev-message-sw-reset";
+        const hadReset = window.localStorage.getItem(resetKey) === "1";
+        void (async () => {
+          let didCleanup = false;
+          try {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            if (registrations.length > 0) {
+              didCleanup = true;
+            }
+            await Promise.all(registrations.map((registration) => registration.unregister()));
+          } catch {
+            // Ignore service worker teardown failures in development.
+          }
+
+          if (typeof caches === "undefined") return;
+          try {
+            const cacheKeys = await caches.keys();
+            if (cacheKeys.length > 0) {
+              didCleanup = true;
+            }
+            await Promise.all(cacheKeys.map((name) => caches.delete(name)));
+          } catch {
+            // Ignore cache cleanup failures in development.
+          }
+
+          if (didCleanup && !hadReset) {
+            window.localStorage.setItem(resetKey, "1");
+            window.location.reload();
+          }
+
+          if (hadReset) {
+            window.localStorage.removeItem(resetKey);
+          }
+        })();
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

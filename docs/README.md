@@ -1,0 +1,26 @@
+# Monsoon Fire Portal Documentation
+
+This folder contains the current integration references for the project.
+
+## What to read first
+
+- `web/README.md`  
+  Dev runbook for web setup, Vite + Firebase Functions env switching, and emulator workflow.
+- `ios/README.md`  
+  iOS API-layer setup, contracts alignment, and smoke-test guidance.
+- `docs/API_CONTRACTS.md`  
+  Canonical API contract reference for request/response shapes and environment behavior.
+- `docs/MILESTONE_2026-01-19.md`  
+  Milestone history and implementation notes.
+
+## One-minute startup checklist
+
+1. Install dependencies for the web client and run dev server (see `web/README.md`).
+2. Confirm your target backend environment (prod vs emulator).
+3. Verify you can read required toolchain binaries:
+   - `command -v ufw fail2ban-client jq tmux git rg ffmpeg python3 pip3`
+4. Use `docs/API_CONTRACTS.md` for exact payloads before touching client call sites.
+
+## iOS contract parity
+
+Keep `ios/PortalModels.swift` aligned with `web/src/api/portalContracts.ts` whenever client contracts change.

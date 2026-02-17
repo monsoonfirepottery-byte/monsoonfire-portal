@@ -6,7 +6,6 @@ import { useBatches } from "../hooks/useBatches";
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
 import { isPortalThemeName, type PortalThemeName } from "../theme/themes";
 import { writeStoredEnhancedMotion } from "../theme/motionStorage";
-import { writeStoredPortalTheme } from "../theme/themeStorage";
 import { formatDateTime } from "../utils/format";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./ProfileView.css";
@@ -127,7 +126,7 @@ export default function ProfileView({
 }: {
   user: User;
   themeName: PortalThemeName;
-  onThemeChange: (next: PortalThemeName) => void;
+  onThemeChange: (next: PortalThemeName) => Promise<void>;
   enhancedMotion: boolean;
   onEnhancedMotionChange: (next: boolean) => void;
   onOpenIntegrations: () => void;
@@ -159,6 +158,7 @@ export default function ProfileView({
   const [motionStatus, setMotionStatus] = useState("");
   const [motionError, setMotionError] = useState("");
   const [motionSaving, setMotionSaving] = useState(false);
+  const isDarkTheme = themeName === "memoria";
 
   useEffect(() => {
     let cancelled = false;
@@ -203,20 +203,9 @@ export default function ProfileView({
     setThemeError("");
     setThemeStatus("");
 
-    onThemeChange(next);
-    writeStoredPortalTheme(next);
-
     setThemeSaving(true);
     try {
-      const ref = doc(db, "profiles", user.uid);
-      await setDoc(
-        ref,
-        {
-          uiTheme: next,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      await onThemeChange(next);
       setProfileDoc((prev) => (prev ? { ...prev, uiTheme: next } : { uiTheme: next }));
       setThemeStatus("Theme saved.");
     } catch (error: unknown) {
@@ -224,6 +213,10 @@ export default function ProfileView({
     } finally {
       setThemeSaving(false);
     }
+  };
+
+  const handleThemeToggle = (nextDark: boolean) => {
+    void handleThemeSelect(nextDark ? "memoria" : "portal");
   };
 
   const handleEnhancedMotionToggle = async (next: boolean) => {
@@ -420,21 +413,29 @@ export default function ProfileView({
                 placeholder="Kiln 1, Kiln 2"
               />
             </label>
-            <label>
-              Theme
-              <select
-                value={themeName}
-                onChange={(event) => void handleThemeSelect(event.target.value)}
-                disabled={themeSaving}
-              >
-                <option value="portal">Monsoon Fire (default)</option>
-                <option value="memoria">Memoria design system</option>
-              </select>
+            <div className="inline-toggle">
+              <label className="inline-toggle-row">
+                <span className="theme-toggle-labels">
+                  <span>Theme</span>
+                  <span className="theme-toggle-copy">
+                    {isDarkTheme ? "Dark mode enabled" : "Light mode enabled"}
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={isDarkTheme}
+                  onChange={(event) => {
+                    handleThemeToggle(event.currentTarget.checked);
+                  }}
+                  disabled={themeSaving}
+                  aria-label={isDarkTheme ? "Enable light mode" : "Enable dark mode"}
+                />
+              </label>
               <span className="profile-help">
                 Changes apply instantly and sync to your account.
                 {prefersReducedMotion ? " Reduced motion is enabled, so animations are minimized." : ""}
               </span>
-            </label>
+            </div>
             <div className="inline-toggle">
               <label className="inline-toggle-row">
                 <span>Enhanced motion</span>

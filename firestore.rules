@@ -587,10 +587,6 @@ service cloud.firestore {
             "replyToEmail",
             "toUids",
             "toEmails",
-            "ccUids",
-            "ccEmails",
-            "bccUids",
-            "bccEmails",
             "sentAt",
             "inReplyTo",
             "references"

@@ -167,7 +167,7 @@ function Get-PromptInjectionAssessment {
   }
 
   $score = 0
-  $matches = New-Object System.Collections.Generic.List[string]
+  $foundMatches = New-Object System.Collections.Generic.List[string]
 
   $literalRules = @{
     "ignore previous instructions" = 7
@@ -192,7 +192,7 @@ function Get-PromptInjectionAssessment {
     $weight = [int]$rule.Value
     if ($content -match [regex]::Escape($needle)) {
       $score += $weight
-      [void]$matches.Add($needle)
+      [void]$foundMatches.Add($needle)
     }
   }
 
@@ -206,13 +206,13 @@ function Get-PromptInjectionAssessment {
   foreach ($rule in $regexRules) {
     if ($content -match [string]$rule.pattern) {
       $score += [int]$rule.weight
-      [void]$matches.Add([string]$rule.label)
+      [void]$foundMatches.Add([string]$rule.label)
     }
   }
 
   return [pscustomobject]@{
     score = $score
-    matches = @($matches)
+    matches = @($foundMatches)
     flagged = ($score -ge $FlagThreshold)
     blocked = ($score -ge $BlockThreshold)
   }
@@ -363,6 +363,9 @@ function Get-SignalScoreParts {
     "ownership_transfer" = 18
     "government_auction_opportunity" = 30
     "grant_opportunity" = 24
+    "procurement_opportunity" = 24
+    "financial_assistance_rate" = 16
+    "workforce_program" = 14
     "community_signal" = 9
   }
 

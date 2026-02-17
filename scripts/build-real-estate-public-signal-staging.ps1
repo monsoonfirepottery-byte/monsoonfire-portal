@@ -70,6 +70,29 @@ function Extract-HttpLinks {
   return @([regex]::Matches($Text, "https?://[^""'\s>]+") | ForEach-Object { [string]$_.Value })
 }
 
+function Get-UrlsFromSourceResult {
+  param([pscustomobject]$SourceResult)
+
+  if ($null -eq $SourceResult) { return @() }
+  if ($SourceResult.status -ne "ok") { return @() }
+  if ([string]::IsNullOrWhiteSpace([string]$SourceResult.outputFile) -or -not (Test-Path $SourceResult.outputFile)) { return @() }
+
+  $mode = ([string]$SourceResult.mode).ToLowerInvariant()
+  if ($mode -eq "json") {
+    $raw = Get-Content -Raw $SourceResult.outputFile
+    return @(
+      Extract-HttpLinks -Text $raw |
+        Sort-Object -Unique
+    )
+  }
+
+  $html = Get-Content -Raw $SourceResult.outputFile
+  return @(
+    Extract-HttpLinks -Text $html |
+      Sort-Object -Unique
+  )
+}
+
 function Should-IncludeOpportunityUrl {
   param(
     [string]$Url,
@@ -551,9 +574,8 @@ $auctionSourceKeys = @(
 $auctionLinks = New-Object System.Collections.Generic.List[object]
 foreach ($key in $auctionSourceKeys) {
   $src = Get-SourceResult -Manifest $manifest -Key $key
-  if ($null -eq $src -or $src.status -ne "ok" -or -not (Test-Path $src.outputFile)) { continue }
-  $html = Get-Content -Raw $src.outputFile
-  foreach ($url in (Extract-HttpLinks -Text $html | Sort-Object -Unique)) {
+  if ($null -eq $src) { continue }
+  foreach ($url in (Get-UrlsFromSourceResult -SourceResult $src)) {
     if ((Should-IncludeOpportunityUrl -Url $url -Kind "auction") -and ($url -match "(?i)(auction|surplus|real.?estate|property|disposal|sale|bid|govdeals|gsa)")) {
       $auctionLinks.Add([pscustomobject]@{
         sourceKey = $key
@@ -618,19 +640,24 @@ $grantSourceKeys = @(
   "grants_gov_opportunities",
   "az_commerce_grants_incentives",
   "city_phoenix_business_grants_programs",
-  "sba_grants_and_funding_programs"
+  "sba_grants_and_funding_programs",
+  "sba_loan_programs",
+  "hud_grants_and_funding",
+  "eda_grants_and_competitions",
+  "doe_funding_opportunities",
+  "data_gov_business_assistance_catalog",
+  "usaspending_assistance_award_explorer"
 )
 $grantRowsBySource = @{}
 foreach ($sourceKey in $grantSourceKeys) {
   $grantRowsBySource[$sourceKey] = @()
   $src = Get-SourceResult -Manifest $manifest -Key $sourceKey
-  if ($null -eq $src -or $src.status -ne "ok" -or -not (Test-Path $src.outputFile)) {
+  if ($null -eq $src) {
     continue
   }
-  $html = Get-Content -Raw $src.outputFile
-  $urls = Extract-HttpLinks -Text $html | Sort-Object -Unique
+  $urls = Get-UrlsFromSourceResult -SourceResult $src
   foreach ($url in $urls) {
-    if ((Should-IncludeOpportunityUrl -Url $url -Kind "grant") -and ($url -match "(?i)(grant|funding|incentive|program|opportunit|awards|capital)")) {
+    if ((Should-IncludeOpportunityUrl -Url $url -Kind "grant") -and ($url -match "(?i)(grant|funding|incentive|program|opportunit|awards|capital|loan)")) {
       $grantRowsBySource[$sourceKey] += [pscustomobject]@{
         parcel = ""
         owner_name = ""
@@ -669,7 +696,164 @@ foreach ($sourceKey in $grantSourceKeysSnapshot) {
   }) | Out-Null
 }
 
-# 8) Manual drop templates for blocked/private-ish sources
+# 8) Procurement/buildout opportunity staging
+$procurementSourceKeys = @(
+  "sam_gov_contract_opportunities",
+  "az_state_procurement_portal",
+  "city_phoenix_procurement_bids",
+  "maricopa_county_procurement"
+)
+$procRowsBySource = @{}
+foreach ($sourceKey in $procurementSourceKeys) {
+  $procRowsBySource[$sourceKey] = @()
+  $src = Get-SourceResult -Manifest $manifest -Key $sourceKey
+  if ($null -eq $src) {
+    continue
+  }
+  foreach ($url in (Get-UrlsFromSourceResult -SourceResult $src)) {
+    if ($url -match "(?i)(bid|bids|procure|procurement|rfp|rfi|solicitation|opportunit|contract|tender|vendor)") {
+      $procRowsBySource[$sourceKey] += [pscustomobject]@{
+        parcel = ""
+        owner_name = ""
+        property_address = ""
+        city = if ($sourceKey -eq "city_phoenix_procurement_bids") { "Phoenix" } elseif ($sourceKey -eq "maricopa_county_procurement") { "Maricopa County" } else { "" }
+        state = "AZ"
+        postal_code = ""
+        signal_type = "procurement_opportunity"
+        distress_stage = "funding_open"
+        amount = ""
+        event_date = (Get-Date).ToUniversalTime().ToString("o")
+        case_number = ""
+        record_url = $url
+        notes = "government procurement/buildout opportunity watch link"
+      }
+    }
+  }
+}
+
+$procurementSourceSnapshot = @($procRowsBySource.Keys)
+foreach ($sourceKey in $procurementSourceSnapshot) {
+  $procRowsBySource[$sourceKey] = @(
+    $procRowsBySource[$sourceKey] |
+      Group-Object record_url |
+      ForEach-Object { $_.Group[0] } |
+      Select-Object -First 40
+  )
+  $path = Join-Path $StagingDir "$sourceKey.csv"
+  Save-Csv -Rows $procRowsBySource[$sourceKey] -Path $path
+  $summary.Add([pscustomobject]@{
+    sourceKey = $sourceKey
+    mode = "staged"
+    rowCount = $procRowsBySource[$sourceKey].Count
+    outputPath = $path
+    notes = "Derived from free/public procurement and bid portals."
+  }) | Out-Null
+}
+
+# 9) Community assistance opportunity staging
+$craigslistAssistanceRows = @()
+$redditAssistanceRows = @()
+$clSource = Get-SourceResult -Manifest $manifest -Key "craigslist_pottery_assistance_signals"
+if ($null -ne $clSource) {
+  foreach ($url in (Get-UrlsFromSourceResult -SourceResult $clSource)) {
+    if ($url -match "(?i)craigslist\.org" -and $url -match "(?i)(potter|pottery|ceramic|kiln|studio|assist|helper|job|gig)") {
+      $craigslistAssistanceRows += [pscustomobject]@{
+        parcel = ""
+        owner_name = "craigslist"
+        property_address = ""
+        city = "Phoenix"
+        state = "AZ"
+        postal_code = ""
+        signal_type = "community_signal"
+        distress_stage = "monitoring"
+        amount = ""
+        event_date = (Get-Date).ToUniversalTime().ToString("o")
+        case_number = ""
+        record_url = $url
+        notes = "community assistance signal from craigslist"
+      }
+    }
+  }
+}
+
+$redditAssistSource = Get-SourceResult -Manifest $manifest -Key "reddit_pottery_assistance_signals"
+if ($null -ne $redditAssistSource -and $redditAssistSource.status -eq "ok" -and (Test-Path $redditAssistSource.outputFile)) {
+  $redditDoc = Get-Content -Raw $redditAssistSource.outputFile | ConvertFrom-Json
+  $children = @()
+  if ($null -ne $redditDoc.data -and $null -ne $redditDoc.data.children) {
+    $children = @($redditDoc.data.children)
+  }
+  foreach ($child in $children) {
+    $post = $child.data
+    if ($null -eq $post) { continue }
+    $title = [string]$post.title
+    $selfText = [string]$post.selftext
+    $fullText = @($title, $selfText, [string]$post.subreddit) -join " "
+    if ($fullText.ToLowerInvariant() -notmatch "(assist|assistant|help|potter|pottery|ceramic|kiln|studio)") {
+      continue
+    }
+    $eventDateIso = ""
+    if ($null -ne $post.created_utc -and [string]$post.created_utc -ne "") {
+      $createdSeconds = 0.0
+      if ([double]::TryParse([string]$post.created_utc, [ref]$createdSeconds)) {
+        $eventDateIso = Convert-FromEpochMsToIsoDate ([int64]([math]::Round($createdSeconds * 1000)))
+      }
+    }
+    $permalink = [string]$post.permalink
+    $url = if ([string]::IsNullOrWhiteSpace($permalink)) { [string]$post.url } else { "https://www.reddit.com$permalink" }
+
+    $redditAssistanceRows += [pscustomobject]@{
+      parcel = ""
+      owner_name = [string]$post.author
+      property_address = ""
+      city = Parse-LikelyCityFromText -Text $fullText
+      state = "AZ"
+      postal_code = ""
+      signal_type = "community_signal"
+      distress_stage = "monitoring"
+      amount = ""
+      event_date = $eventDateIso
+      case_number = [string]$post.id
+      record_url = $url
+      notes = $title
+    }
+  }
+}
+
+$craigslistAssistanceRows = @(
+  $craigslistAssistanceRows |
+    Group-Object record_url |
+    ForEach-Object { $_.Group[0] } |
+    Select-Object -First 80
+)
+$redditAssistanceRows = @(
+  $redditAssistanceRows |
+    Group-Object record_url |
+    ForEach-Object { $_.Group[0] } |
+    Select-Object -First 80
+)
+
+$craigslistAssistancePath = Join-Path $StagingDir "craigslist_pottery_assistance_signals.csv"
+Save-Csv -Rows $craigslistAssistanceRows -Path $craigslistAssistancePath
+$summary.Add([pscustomobject]@{
+  sourceKey = "craigslist_pottery_assistance_signals"
+  mode = "staged"
+  rowCount = $craigslistAssistanceRows.Count
+  outputPath = $craigslistAssistancePath
+  notes = "Derived from Craigslist assistance signal feed."
+}) | Out-Null
+
+$redditAssistancePath = Join-Path $StagingDir "reddit_pottery_assistance_signals.csv"
+Save-Csv -Rows $redditAssistanceRows -Path $redditAssistancePath
+$summary.Add([pscustomobject]@{
+  sourceKey = "reddit_pottery_assistance_signals"
+  mode = "staged"
+  rowCount = $redditAssistanceRows.Count
+  outputPath = $redditAssistancePath
+  notes = "Derived from Reddit assistance signal feed."
+}) | Out-Null
+
+# 10) Manual drop templates for blocked/private-ish sources
 $templateDefs = @(
   @{ file = "reddit_local_commercial_signals.csv"; signalType = "community_signal"; distressStage = "monitoring" },
   @{ file = "meta_marketplace_community_signals.csv"; signalType = "community_signal"; distressStage = "monitoring" },
@@ -680,6 +864,18 @@ $templateDefs = @(
   @{ file = "az_commerce_grants_incentives.csv"; signalType = "grant_opportunity"; distressStage = "funding_open" },
   @{ file = "city_phoenix_business_grants_programs.csv"; signalType = "grant_opportunity"; distressStage = "funding_open" },
   @{ file = "sba_grants_and_funding_programs.csv"; signalType = "grant_opportunity"; distressStage = "funding_open" },
+  @{ file = "sba_loan_programs.csv"; signalType = "financial_assistance_rate"; distressStage = "monitoring" },
+  @{ file = "hud_grants_and_funding.csv"; signalType = "grant_opportunity"; distressStage = "funding_open" },
+  @{ file = "eda_grants_and_competitions.csv"; signalType = "grant_opportunity"; distressStage = "funding_open" },
+  @{ file = "doe_funding_opportunities.csv"; signalType = "grant_opportunity"; distressStage = "funding_open" },
+  @{ file = "data_gov_business_assistance_catalog.csv"; signalType = "grant_opportunity"; distressStage = "monitoring" },
+  @{ file = "usaspending_assistance_award_explorer.csv"; signalType = "financial_assistance_rate"; distressStage = "monitoring" },
+  @{ file = "sam_gov_contract_opportunities.csv"; signalType = "procurement_opportunity"; distressStage = "funding_open" },
+  @{ file = "az_state_procurement_portal.csv"; signalType = "procurement_opportunity"; distressStage = "funding_open" },
+  @{ file = "city_phoenix_procurement_bids.csv"; signalType = "procurement_opportunity"; distressStage = "funding_open" },
+  @{ file = "maricopa_county_procurement.csv"; signalType = "procurement_opportunity"; distressStage = "funding_open" },
+  @{ file = "craigslist_pottery_assistance_signals.csv"; signalType = "community_signal"; distressStage = "monitoring" },
+  @{ file = "reddit_pottery_assistance_signals.csv"; signalType = "community_signal"; distressStage = "monitoring" },
   @{ file = "maricopa_recorder_document_feed.csv"; signalType = "trustee_sale"; distressStage = "notice_filed" },
   @{ file = "arizona_ucc_filings.csv"; signalType = "ucc_distress"; distressStage = "active_case" },
   @{ file = "arizona_bankruptcy_filings.csv"; signalType = "bankruptcy"; distressStage = "active_case" },

@@ -247,6 +247,10 @@ Configured source families include:
 - community-market sources (Reddit local signals, Meta Marketplace listings via manual/accessible feeds)
 - government auctions (Arizona state surplus, Maricopa local surplus, federal disposals/GSA)
 - grants/funding programs (Grants.gov, Arizona Commerce, Phoenix business programs, SBA funding pages)
+- small-business financing/rate context (SBA loan program pages and macro-rate context)
+- government procurement/buildout signals (SAM opportunities, Arizona procurement portal, Phoenix/Maricopa bid pages)
+- federal/state assistance datasets (USASpending explorer, Data.gov assistance catalog, HUD/EDA/DOE funding pages)
+- community assistance demand signals (Craigslist + Reddit pottery/studio assistance watches)
 - Maricopa Treasurer delinquent roll
 - Maricopa Recorder trustee/legal notices
 - Arizona UCC + bankruptcy filings
@@ -268,6 +272,18 @@ Environment variables expected for remote URLs (set what you have now, add more 
 - `REAL_ESTATE_SRC_AZ_COMMERCE_GRANTS_URL`
 - `REAL_ESTATE_SRC_PHOENIX_GRANTS_URL`
 - `REAL_ESTATE_SRC_SBA_GRANTS_URL`
+- `REAL_ESTATE_SRC_SBA_LOAN_PROGRAMS_URL`
+- `REAL_ESTATE_SRC_HUD_GRANTS_URL`
+- `REAL_ESTATE_SRC_EDA_GRANTS_URL`
+- `REAL_ESTATE_SRC_DOE_FUNDING_URL`
+- `REAL_ESTATE_SRC_DATA_GOV_BUSINESS_ASSISTANCE_URL`
+- `REAL_ESTATE_SRC_USASPENDING_ASSISTANCE_URL`
+- `REAL_ESTATE_SRC_SAM_GOV_CONTRACT_OPPORTUNITIES_URL`
+- `REAL_ESTATE_SRC_AZ_STATE_PROCUREMENT_PORTAL_URL`
+- `REAL_ESTATE_SRC_CITY_PHOENIX_PROCUREMENT_BIDS_URL`
+- `REAL_ESTATE_SRC_MARICOPA_COUNTY_PROCUREMENT_URL`
+- `REAL_ESTATE_SRC_CRAIGSLIST_POTTERY_ASSISTANCE_SIGNALS_URL`
+- `REAL_ESTATE_SRC_REDDIT_POTTERY_ASSISTANCE_SIGNALS_URL`
 - `REAL_ESTATE_SRC_MARICOPA_TREASURER_URL`
 - `REAL_ESTATE_SRC_MARICOPA_RECORDER_URL`
 - `REAL_ESTATE_SRC_AZ_UCC_URL`
@@ -358,6 +374,30 @@ The analysis layer is deterministic and avoids per-run model calls while still p
 - confidence and urgency scoring
 - capability-fit checks against changing studio requirements
 - agent-ready task queue with acceptance criteria
+
+## Opportunities Research Layer (Wide-Net, Skepticism-First)
+Track long-effort, low-risk, high-upside opportunities across grants, programs, rates, procurement/buildout requests, and community assistance asks.
+
+```powershell
+pwsh -File scripts/run-real-estate-opportunity-research.ps1 `
+  -OutputDir "output/real-estate" `
+  -ConfigPath "docs/real-estate/opportunity-research-config.json" `
+  -PublicSignalsPath "output/real-estate/public-signals-latest.json" `
+  -AgenticResearchPath "output/real-estate/agentic-research-latest.json" `
+  -PublicDataManifestPath "output/real-estate/public-data/latest-manifest.json" `
+  -MacroContextPath "output/real-estate/macro-context-latest.json"
+```
+
+Outputs:
+- `output/real-estate/opportunity-research-<timestamp>.json`
+- `output/real-estate/opportunity-research-<timestamp>.md`
+- `output/real-estate/opportunity-research-latest.json`
+- `output/real-estate/opportunity-research-task-queue-latest.json`
+
+Safety posture:
+- every record is treated as suspect until verified
+- each opportunity includes `skepticismScore` and `verificationStatus`
+- high-skepticism items are forced into manual verification before action
 
 ## Human Review Packet + Steering Log
 Build a human-review packet from latest intelligence outputs:
@@ -473,6 +513,7 @@ Output:
 - Weekly: refresh local studio asset intelligence (meta/reddit/newsletter feed weighted).
 - Weekly: seed/check studio-asset manual-drop templates and pull direct community/newsletter feeds to staging.
 - Weekly: refresh needs context from versioned studio requirements and ops pressure signals.
+- Weekly: run skepticism-first opportunities research (grants/programs/rates/procurement/community asks).
 - Weekly: run model-free intelligence analysis and publish latest task queue/entity state.
 - Weekly: build human review packet for decisioning and steering.
 - Weekly: refresh StudioBrain coordinator contracts.

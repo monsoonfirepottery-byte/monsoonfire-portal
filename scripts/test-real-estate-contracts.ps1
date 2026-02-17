@@ -58,6 +58,7 @@ $paths = [ordered]@{
   publicSignals = Join-Path $OutputDir "public-signals-latest.json"
   assetIntel = Join-Path $OutputDir "studio-asset-intelligence-latest.json"
   assetWatchlist = Join-Path $OutputDir "studio-asset-watchlist-latest.json"
+  opportunityResearch = Join-Path $OutputDir "opportunity-research-latest.json"
   needs = Join-Path $OutputDir "needs-context-latest.json"
   intelligence = Join-Path $OutputDir "intelligence-analysis-latest.json"
   review = Join-Path $OutputDir "intelligence-review-packet-latest.json"
@@ -84,6 +85,12 @@ Assert-HasProp -Object $assetIntel -PropPath "neededWantedContext.consumables" -
 $assetWatchlist = Get-Json -Path $paths.assetWatchlist
 Assert-HasProp -Object $assetWatchlist -PropPath "assetCount" -Label "assetWatchlist"
 Assert-HasProp -Object $assetWatchlist -PropPath "taskQueue" -Label "assetWatchlist"
+
+$opportunityResearch = Get-Json -Path $paths.opportunityResearch
+Assert-HasProp -Object $opportunityResearch -PropPath "summary.totalOpportunities" -Label "opportunityResearch"
+Assert-HasProp -Object $opportunityResearch -PropPath "dataPolicy.defaultTrustLevel" -Label "opportunityResearch"
+Assert-HasProp -Object $opportunityResearch -PropPath "topOpportunities" -Label "opportunityResearch"
+Assert-HasProp -Object $opportunityResearch -PropPath "followUpQueue" -Label "opportunityResearch"
 
 $needs = Get-Json -Path $paths.needs
 Assert-HasProp -Object $needs -PropPath "summary.activeProfileId" -Label "needs"

@@ -1,0 +1,486 @@
+{
+  "generatedAtUtc": "2026-02-17T23:10:05.7889360Z",
+  "runId": "20260217T231005Z",
+  "tasks": [
+    {
+      "taskId": "opp-task-0001",
+      "opportunityId": "oppr-https-www-sbir-gov-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0061",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-make-payment-sba-2",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0099",
+      "opportunityId": "oppr-https-www-grants-gov-register-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0100",
+      "opportunityId": "oppr-https-www-azcommerce-com-small-business-financing-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0057",
+      "opportunityId": "oppr-https-www-sba-gov-about-sba-organization-contact-sba-202602",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0101",
+      "opportunityId": "oppr-https-www-energy-gov-eere-vehicles-articles-funding-notice-",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0102",
+      "opportunityId": "oppr-https-procurement-opengov-com-login-34-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0054",
+      "opportunityId": "oppr-https-procurement-opengov-com-portal-phoenix-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0062",
+      "opportunityId": "oppr-back-city-phoenix-procurement-bids-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0103",
+      "opportunityId": "oppr-https-www-phoenix-gov-eed-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0051",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-7a-loans-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0050",
+      "opportunityId": "oppr-https-www-energy-gov-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0049",
+      "opportunityId": "oppr-https-www-phoenix-gov-residents-pay-bill-html-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0048",
+      "opportunityId": "oppr-https-www-energy-gov-hgeo-geothermal-articles-gto-announces",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0047",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-504-loans-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0046",
+      "opportunityId": "oppr-https-www-acquisition-gov-q-procurement-forecasts-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0045",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-covid-19-relief-op",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0104",
+      "opportunityId": "oppr-https-www-energy-gov-sites-default-files-2025-02-ri-20tro-2",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0097",
+      "opportunityId": "oppr-https-www-hud-gov-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0064",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-lender-match-conne",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0065",
+      "opportunityId": "oppr-https-procurement-opengov-com-portal-phoenix-calendar-20260",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0084",
+      "opportunityId": "oppr-https-procurement-opengov-com-signup-34-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0090",
+      "opportunityId": "oppr-https-www-phoenix-gov-adobe-dynamicmedia-deliver-dm-aid-c08",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0092",
+      "opportunityId": "oppr-https-procure-az-gov-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0080",
+      "opportunityId": "oppr-https-www-phoenix-gov-administration-departments-court-viol",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0079",
+      "opportunityId": "oppr-https-open-gsa-gov-api-get-opportunities-public-api-2026021",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0078",
+      "opportunityId": "oppr-https-www-grants-gov-help-get-started-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0093",
+      "opportunityId": "oppr-https-www-grants-gov-site-search-results-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0076",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-disaster-assistance-2026",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0094",
+      "opportunityId": "oppr-https-payonline-phoenix-gov-eportal-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0074",
+      "opportunityId": "oppr-https-solicitations-phoenix-gov-34-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0073",
+      "opportunityId": "oppr-https-bit-ly-eere-exchange-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0071",
+      "opportunityId": "oppr-https-www-hud-gov-user-login-destination-comment-reply-node",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0070",
+      "opportunityId": "oppr-https-www-hud-gov-program-offices-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0069",
+      "opportunityId": "oppr-collapsebanner-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0096",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0067",
+      "opportunityId": "oppr-https-www-grants-gov-search-tips-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0066",
+      "opportunityId": "oppr-https-www-sba-gov-offices-headquarters-oit-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0042",
+      "opportunityId": "oppr-https-www-energy-gov-eere-solar-notice-funding-opportunity-",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0107",
+      "opportunityId": "oppr-return-to-top-grants-gov-opportunities-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0106",
+      "opportunityId": "oppr-https-grants-gov-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0109",
+      "opportunityId": "oppr-export-detailed-data-grants-gov-opportunities-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0019",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-grants-manufacturing-gra",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0018",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-grants-grants-community-",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0119",
+      "opportunityId": "oppr-https-www-maricopa-gov-3624-bids-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0016",
+      "opportunityId": "oppr-https-cms-prod-iae-mcaas-fcs-gsa-gov-opportunities-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0015",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-disaster-assistance-opti",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0014",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-microloans-2026021",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0120",
+      "opportunityId": "oppr-https-eere-exchange-energy-gov-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0121",
+      "opportunityId": "oppr-https-procure-az-gov-page-aspx-en-rfp-request-browse-public",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0011",
+      "opportunityId": "oppr-https-www-phoenix-gov-administration-departments-waterservi",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0122",
+      "opportunityId": "oppr-https-procurement-opengov-com-login-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0009",
+      "opportunityId": "oppr-https-www-sba-gov-es-programas-de-financiamiento-prestamos-",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0008",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-grants-state-trade-expan",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0007",
+      "opportunityId": "oppr-https-www-sba-gov-priorities-american-manufacturers-2026021",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0006",
+      "opportunityId": "oppr-residents-1-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0005",
+      "opportunityId": "oppr-return-to-top-sba-grants-and-funding-programs-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0003",
+      "opportunityId": "oppr-https-demo-mars-ussba-io-funding-programs-loans-lender-matc",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0002",
+      "opportunityId": "oppr-https-procurement-opengov-com-signup-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0108",
+      "opportunityId": "oppr-https-www-sba-gov-federal-contracting-counseling-help-20260",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    }
+  ]
+}

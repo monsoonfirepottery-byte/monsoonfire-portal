@@ -30,6 +30,11 @@ Status: Active
   - Script: `scripts/run-real-estate-market-watch.ps1`
   - Artifacts: `output/real-estate/market-watch-20260217T183648Z.json`, `output/real-estate/market-watch-20260217T183648Z.md`
 - [ ] Normalize listing import quality gates (required URL field, monthly-vs-annual rate flag, and per-source parser adapters).
+- [x] Generate quarterly price-trend rollup and agent-swarm context pack from historical snapshots.
+  - Ticket: `tickets/P2-studio-real-estate-quarterly-trends-and-agent-context.md`
+  - Script: `scripts/build-real-estate-quarterly-context.ps1`
+  - Outputs: `output/real-estate/market-watch-history.csv`, `output/real-estate/real-estate-quarterly-report-YYYY-QX.md`, `output/real-estate/agent-swarm-context-YYYY-QX.json`
+- [ ] Automate quarterly context generation cadence (scheduled run + memory ingest handoff for swarm prompts).
 
 ## Later
 - [ ] Add a single-glaze tiles board (photos/notes per glaze, not just combos).

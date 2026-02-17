@@ -1,6 +1,6 @@
 # P2 — API v1 Owner Context Regression
 
-Status: Done
+Status: Completed
 Date: 2026-02-17
 Owner: TBD
 

@@ -116,3 +116,24 @@ npm run dev
 ### Theme + Motion
 
 - `docs/PORTAL_THEME_AND_MOTION.md`
+
+---
+
+## 6) Collaboration Memory Profile (Codex defaults)
+
+Use these defaults unless the user explicitly overrides them in-session.
+
+- Execution style:
+  - Default to high-autonomy delivery: run deep and continue until a concrete blocker appears.
+  - Prefer momentum over repeated permission/checkpoint prompts for routine implementation work.
+- Durable memory workflow:
+  - Treat external memory workspace as source of truth:
+    - `C:\Users\micah\.codex\memory`
+  - Read from `accepted/accepted.jsonl` for stable preferences/decisions/open loops.
+  - Write new inferred items to `proposed/proposed.jsonl` first; do not auto-accept weak inferences.
+- Known durable decision:
+  - Maintain an external memory ingestion pipeline sourced from exported conversation data.
+- Strategic open loop to keep visible:
+  - Track West Valley/Phoenix studio real-estate opportunities for expansion timing (while home studio remains baseline).
+
+When uncertain, prefer execution and surface blockers with the minimal decision needed from the user.

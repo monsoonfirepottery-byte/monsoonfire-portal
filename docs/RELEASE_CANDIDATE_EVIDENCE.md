@@ -35,6 +35,26 @@ reasonCounts:
 providerCounts:
 ```
 
+## Studio OS v3 Operational Evidence
+- [x] Drill log scaffolding seeded for all quarterly scenarios in `docs/DRILL_EXECUTION_LOG.md`:
+  - `token_compromise`
+  - `connector_outage`
+  - `policy_bypass_attempt`
+  - `local_db_corruption`
+- [x] Drill template helper script fixed and usable:
+  - `scripts/new-studio-os-v3-drill-log-entry.ps1`
+- [x] Ops endpoint contract integration coverage expanded in `studio-brain/src/http/server.test.ts`:
+  - drill auth + required fields
+  - drill metadata fidelity (`outcome`, `mttrMinutes`, `unresolvedRisks`)
+  - degraded auth/status guardrails + metadata fidelity (`status`, `mode`)
+  - staff-only read guards for `GET /api/ops/audit` and `GET /api/ops/drills`
+- [x] Execute local-staging harness chaos drills and fill observed results in `docs/DRILL_EXECUTION_LOG.md`
+- [x] Attach drill API evidence rows (`/api/ops/drills`, `/api/ops/audit`, `/api/capabilities/audit`) per scenario via `output/drills/studio-os-v3-local-2026-02-17T17-47-52-585Z.json`
+- [x] Record MTTR + unresolved risks with owner/due date follow-ups in `docs/STUDIO_OS_V3_EVIDENCE_PACK.md`
+- [ ] Re-run all four Studio OS v3 drills in staging with real staff credentials before beta sign-off
+- [x] Operational evidence bundle doc created:
+  - `docs/STUDIO_OS_V3_EVIDENCE_PACK.md`
+
 ## Security + Secrets Evidence
 - [ ] `APNS_RELAY_KEY` configured in runtime environment for notification processors
 - [ ] Relay key rotation drill completed

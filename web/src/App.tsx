@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   FacebookAuthProvider,
   GoogleAuthProvider,
@@ -14,6 +14,7 @@ import {
   signInWithRedirect,
   signOut,
   sendSignInLinkToEmail,
+  updateProfile,
   type User,
 } from "firebase/auth";
 import {
@@ -40,6 +41,7 @@ import { readStoredEnhancedMotion, writeStoredEnhancedMotion } from "./theme/mot
 import { computeEnhancedMotionDefault, resolvePortalMotion } from "./theme/motionPreference";
 import { usePrefersReducedMotion } from "./hooks/usePrefersReducedMotion";
 import { UiSettingsProvider } from "./context/UiSettingsContext";
+import { PROFILE_DEFAULT_AVATAR_URL } from "./lib/profileAvatars";
 import "./App.css";
 
 const BillingView = React.lazy(() => import("./views/BillingView"));
@@ -351,6 +353,20 @@ const isNavKey = (value: string): value is NavKey =>
 
 const isNavSectionKey = (value: string): value is NavSectionKey =>
   NAV_SECTION_KEYS.includes(value as NavSectionKey);
+
+function UserProfileGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="avatar-fallback-icon">
+      <circle cx="12" cy="8" r="3.3" fill="none" strokeWidth="1.7" stroke="currentColor" />
+      <path
+        d="M6 19c0-3 2.2-5.2 6-5.2s6 2.2 6 5.2"
+        fill="none"
+        strokeWidth="1.7"
+        stroke="currentColor"
+      />
+    </svg>
+  );
+}
 
 const getSectionForNav = (navKey: NavKey): NavSectionKey | null => {
   const match = NAV_SECTIONS.find((section) =>
@@ -730,6 +746,27 @@ export default function App() {
     ["--portal-sidebar-width" as keyof React.CSSProperties]: `${clampedSidebarWidth}px`,
   };
 
+  const syncUserFromAuth = useCallback(async () => {
+    const current = authClient.currentUser;
+    if (!current) return;
+    try {
+      await current.reload();
+      setUser(authClient.currentUser);
+    } catch {
+      // Ignore transient auth sync errors.
+    }
+  }, [authClient]);
+
+  const ensureDefaultProfileAvatar = useCallback(async (nextUser: User) => {
+    if (!nextUser || nextUser.photoURL) return;
+    try {
+      await updateProfile(nextUser, { photoURL: PROFILE_DEFAULT_AVATAR_URL });
+      await syncUserFromAuth();
+    } catch {
+      // Best effort.
+    }
+  }, [syncUserFromAuth]);
+
   useEffect(() => {
     const theme = PORTAL_THEMES[themeName] ?? PORTAL_THEMES[DEFAULT_PORTAL_THEME];
     if (typeof document === "undefined") return;
@@ -745,6 +782,11 @@ export default function App() {
   useEffect(() => {
     setAvatarLoadFailed(false);
   }, [user?.photoURL]);
+
+  useEffect(() => {
+    if (!user) return;
+    void ensureDefaultProfileAvatar(user);
+  }, [user, ensureDefaultProfileAvatar]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1426,6 +1468,7 @@ export default function App() {
 
   const navSection = getSectionForNav(nav);
   const roleLabel = staffUi ? (isStaff ? "Staff" : "Dev Admin") : "Client";
+  const sidebarAvatarUrl = user?.photoURL || PROFILE_DEFAULT_AVATAR_URL;
 
   useEffect(() => {
     if (navSection && navSection !== openSection) {
@@ -1545,6 +1588,9 @@ export default function App() {
               writeStoredEnhancedMotion(next);
             }}
             onOpenIntegrations={() => setNav("integrations")}
+            onAvatarUpdated={() => {
+              void syncUserFromAuth();
+            }}
           />
         );
       case "integrations":
@@ -1835,20 +1881,17 @@ export default function App() {
               <button
                 type="button"
                 className="profile-card profile-card-button"
+                title="Open profile"
+                aria-label="Open profile"
                 onClick={() => setNav("profile")}
               >
                 <div className="avatar">
-                  <span className="avatar-fallback" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                      <path
-                        d="M12 12.5a4.25 4.25 0 1 0-4.25-4.25A4.26 4.26 0 0 0 12 12.5Zm0 2c-4.28 0-7.75 2.55-7.75 5.7a.8.8 0 0 0 .8.8h13.9a.8.8 0 0 0 .8-.8c0-3.15-3.47-5.7-7.75-5.7Z"
-                        fill="currentColor"
-                      />
-                    </svg>
+                <span className="avatar-fallback" aria-hidden="true">
+                    <UserProfileGlyph />
                   </span>
-                  {user.photoURL && !avatarLoadFailed ? (
+                  {sidebarAvatarUrl && !avatarLoadFailed ? (
                     <img
-                      src={user.photoURL}
+                      src={sidebarAvatarUrl}
                       alt={user.displayName ?? "User"}
                       onError={() => {
                         setAvatarLoadFailed(true);
@@ -1857,8 +1900,9 @@ export default function App() {
                   ) : null}
                 </div>
                 <div className="profile-meta">
-                  <strong>{user.displayName ?? "Member"}</strong>
-                  <span>{roleLabel}</span>
+                  <span className="profile-label">Profile</span>
+                  <strong className="profile-name">{user.displayName ?? "Member"}</strong>
+                  <span className="profile-role">{roleLabel}</span>
                 </div>
               </button>
               <button
@@ -1868,6 +1912,7 @@ export default function App() {
                 aria-label="Sign out"
                 title="Sign out"
               >
+                <span className="signout-text">Sign out</span>
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path
                     d="M10 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7"

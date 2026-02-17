@@ -20,6 +20,13 @@ Provide one staff cockpit for StudioState, connectors, proposals, approvals, and
 ## Tests
 - UI tests for empty/loading/error/success states.
 - Integration tests for proposal list and audit timeline retrieval.
+- Coverage now includes staff action payload assertions in `web/src/views/staff/StudioBrainModule.test.tsx` for:
+- missing admin-token access gate (no bootstrap fetches),
+- kill-switch toggle request contract (`enabled`, `rationale`),
+- intake override deny path contract (`decision`, `reasonCode`, `rationale`).
+
+## Progress Notes
+- 2026-02-17: Added targeted cockpit action-flow regression tests for admin-token gating, kill-switch toggles, and intake deny overrides.
 
 ## Security Notes
 - Staff-only visibility for privileged controls.

@@ -22,6 +22,15 @@ service firebase.storage {
         && request.resource.contentType.matches("image/.*");
     }
 
+    match /profileAvatars/{uid}/{fileName} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isStaff());
+      allow write: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.size < 3 * 1024 * 1024
+        && request.resource.contentType.matches("image/(png|jpeg|gif|webp)");
+      allow delete: if isSignedIn() && request.auth.uid == uid;
+    }
+
     match /glazes/{family}/combos/{comboId}/{date}/{fileName} {
       allow read: if isSignedIn();
       allow write: if isStaff()

@@ -1,0 +1,52 @@
+{
+  "rotateMonthly": true,
+  "potters": [
+    {
+      "month": "February 2026",
+      "start": "2026-02-01",
+      "end": "2026-02-28",
+      "name": "Potter of the Month",
+      "location": "West Valley, AZ",
+      "bio": "A short bio about the featured maker goes here. Include their focus, style, and what they are firing lately.",
+      "focus": "Functional stoneware",
+      "clayBody": "Stoneware",
+      "instagram": "@yourhandle",
+      "image": "/assets/images/finished-work.jpg",
+      "imageAlt": "Featured pottery work",
+      "pieces": [
+        {
+          "image": "/assets/images/hero-kiln.jpg",
+          "caption": "Glaze load staged before firing."
+        },
+        {
+          "image": "/assets/images/kiln-interior.jpg",
+          "caption": "Stacked shelves inside the L&L kiln."
+        },
+        {
+          "image": "/assets/images/finished-work.jpg",
+          "caption": "Finished work ready for pickup."
+        }
+      ]
+    },
+    {
+      "month": "January 2026",
+      "start": "2026-01-01",
+      "end": "2026-01-31",
+      "name": "Archive Potter",
+      "location": "Phoenix, AZ",
+      "bio": "A short archive bio for a previous featured maker.",
+      "focus": "Tableware",
+      "clayBody": "Porcelain",
+      "instagram": "@archivepotter",
+      "image": "/assets/images/hero-kiln.jpg",
+      "imageAlt": "Archive pottery work",
+      "pieces": [
+        {
+          "image": "/assets/images/finished-work.jpg",
+          "caption": "Recent batch highlight."
+        }
+      ]
+    }
+  ],
+  "nominationEmail": "support@monsoonfire.com"
+}

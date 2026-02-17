@@ -1,0 +1,65 @@
+{
+  "status": "passed",
+  "startedAt": "2026-02-17T08:09:53.588Z",
+  "baseUrl": "https://monsoonfire.com",
+  "outputDir": "D:\\monsoonfire-portal\\output\\playwright\\prod-post-deploy",
+  "checks": [
+    {
+      "label": "desktop:/",
+      "status": "passed"
+    },
+    {
+      "label": "desktop:/services/",
+      "status": "passed"
+    },
+    {
+      "label": "desktop:/kiln-firing/",
+      "status": "passed"
+    },
+    {
+      "label": "desktop:/memberships/",
+      "status": "passed"
+    },
+    {
+      "label": "desktop:/contact/",
+      "status": "passed"
+    },
+    {
+      "label": "desktop:/support/",
+      "status": "passed"
+    },
+    {
+      "label": "mobile:/",
+      "status": "passed"
+    },
+    {
+      "label": "mobile:/services/",
+      "status": "passed"
+    },
+    {
+      "label": "mobile:/kiln-firing/",
+      "status": "passed"
+    },
+    {
+      "label": "mobile:/memberships/",
+      "status": "passed"
+    },
+    {
+      "label": "mobile:/contact/",
+      "status": "passed"
+    },
+    {
+      "label": "mobile:/support/",
+      "status": "passed"
+    },
+    {
+      "label": "mobile:/support/ pricing filter interaction",
+      "status": "passed"
+    },
+    {
+      "label": "mobile:/contact/ validation interaction",
+      "status": "passed"
+    }
+  ],
+  "finishedAt": "2026-02-17T08:10:07.700Z"
+}

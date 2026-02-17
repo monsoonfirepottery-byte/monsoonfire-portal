@@ -143,6 +143,21 @@ function createStudioBrainFetchMock(options?: {
     if (method === "POST" && url.pathname === "/api/marketing/drafts/mk-2026-02-16-ig/review") {
       return json({ ok: true, draftId: "mk-2026-02-16-ig" });
     }
+    if (method === "POST" && url.pathname === "/api/capabilities/policy/kill-switch") {
+      const payload = JSON.parse(String(init?.body ?? "{}")) as { enabled?: boolean; rationale?: string };
+      return json({
+        ok: true,
+        policy: {
+          killSwitch: {
+            enabled: Boolean(payload.enabled),
+            updatedAt: "2026-02-16T12:30:00.000Z",
+            updatedBy: "staff-uid",
+            rationale: payload.rationale ?? null,
+          },
+          exemptions: [],
+        },
+      });
+    }
     if (method === "POST" && url.pathname === "/api/intake/review-queue/intake-1/override") {
       return json({ ok: true, intakeId: "intake-1" });
     }
@@ -176,6 +191,18 @@ afterEach(() => {
 });
 
 describe("StudioBrainModule", () => {
+  it("shows token gate and skips Studio Brain fetches when admin token is missing", async () => {
+    const fetchMock = createStudioBrainFetchMock();
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    render(<StudioBrainModule user={createUser()} active={true} disabled={false} adminToken="" />);
+
+    await screen.findByText("Set a Dev admin token in System module to access Studio Brain endpoints.");
+    await waitFor(() => {
+      expect(fetchMock.requestLog.length).toBe(0);
+    });
+  });
+
   it("loads bootstrap datasets with auth and admin-token headers", async () => {
     const fetchMock = createStudioBrainFetchMock();
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
@@ -315,6 +342,37 @@ describe("StudioBrainModule", () => {
     });
   });
 
+  it("posts kill-switch toggle payload with target state and rationale", async () => {
+    const fetchMock = createStudioBrainFetchMock();
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    render(
+      <StudioBrainModule
+        user={createUser()}
+        active={true}
+        disabled={false}
+        adminToken="dev-admin-token"
+      />
+    );
+
+    const rationaleInput = await screen.findByLabelText("Kill switch rationale");
+    fireEvent.change(rationaleInput, {
+      target: { value: "Emergency freeze during incident drill." },
+    });
+    const enableKillSwitchButton = await screen.findByRole("button", { name: "Enable kill switch" });
+    fireEvent.click(enableKillSwitchButton);
+
+    await waitFor(() => {
+      const killSwitchCall = fetchMock.requestLog.find((entry) =>
+        getInputUrl(entry.input).includes("/api/capabilities/policy/kill-switch")
+      );
+      expect(Boolean(killSwitchCall)).toBe(true);
+      const body = JSON.parse(String(killSwitchCall?.init?.body ?? "{}")) as { enabled?: boolean; rationale?: string };
+      expect(body.enabled).toBe(true);
+      expect(body.rationale).toBe("Emergency freeze during incident drill.");
+    });
+  });
+
   it("posts intake override grant with reason code and rationale", async () => {
     const fetchMock = createStudioBrainFetchMock({ includeIntakeRow: true });
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
@@ -342,6 +400,41 @@ describe("StudioBrainModule", () => {
         rationale?: string;
       };
       expect(body.decision).toBe("override_granted");
+      expect(body.reasonCode).toBe("staff_override_context_verified");
+      expect(String(body.rationale ?? "").length >= 10).toBe(true);
+    });
+  });
+
+  it("posts intake override deny payload with reason code and rationale", async () => {
+    const fetchMock = createStudioBrainFetchMock({ includeIntakeRow: true });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    render(
+      <StudioBrainModule
+        user={createUser()}
+        active={true}
+        disabled={false}
+        adminToken="dev-admin-token"
+      />
+    );
+
+    const denyOverrideButton = await screen.findByRole("button", { name: "Deny override" });
+    fireEvent.click(denyOverrideButton);
+
+    await waitFor(() => {
+      const denyCall = fetchMock.requestLog
+        .filter((entry) => getInputUrl(entry.input).includes("/api/intake/review-queue/intake-1/override"))
+        .find((entry) => {
+          const body = JSON.parse(String(entry.init?.body ?? "{}")) as { decision?: string };
+          return body.decision === "override_denied";
+        });
+      expect(Boolean(denyCall)).toBe(true);
+      const body = JSON.parse(String(denyCall?.init?.body ?? "{}")) as {
+        decision?: string;
+        reasonCode?: string;
+        rationale?: string;
+      };
+      expect(body.decision).toBe("override_denied");
       expect(body.reasonCode).toBe("staff_override_context_verified");
       expect(String(body.rationale ?? "").length >= 10).toBe(true);
     });

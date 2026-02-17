@@ -1,0 +1,50 @@
+{
+  "runId": "20260217T180033Z",
+  "startedAtUtc": "2026-02-17T18:00:33.0871552Z",
+  "config": {
+    "studioDrills": "local",
+    "runNotificationDrills": false,
+    "syncTracker": false,
+    "projectId": "monsoonfire-portal",
+    "dryRunTracker": false,
+    "outputDir": "D:\\monsoonfire-portal\\output\\ops-evidence"
+  },
+  "steps": [
+    {
+      "name": "studio-v3-local-drills",
+      "status": "success",
+      "notes": "D:\\monsoonfire-portal\\output\\drills\\studio-os-v3-local-2026-02-17T18-00-33-375Z.json",
+      "payload": {
+        "filePath": "node",
+        "arguments": [
+          "scripts/run-studio-os-v3-local-drills.mjs"
+        ],
+        "exitCode": 0,
+        "stdout": "Wrote D:\\monsoonfire-portal\\output\\drills\\studio-os-v3-local-2026-02-17T18-00-33-375Z.json\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "studio-v3-staging-drills",
+      "status": "skipped",
+      "notes": "Not requested.",
+      "payload": null
+    },
+    {
+      "name": "notification-drills",
+      "status": "skipped",
+      "notes": "Not requested.",
+      "payload": null
+    },
+    {
+      "name": "tracker-sync",
+      "status": "skipped",
+      "notes": "Not requested.",
+      "payload": null
+    }
+  ],
+  "artifacts": [
+    "D:\\monsoonfire-portal\\output\\drills\\studio-os-v3-local-2026-02-17T18-00-33-375Z.json"
+  ],
+  "finishedAtUtc": "2026-02-17T18:00:33.7281475Z"
+}

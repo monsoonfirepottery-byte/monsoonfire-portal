@@ -228,3 +228,24 @@ Record:
 ### Coordination log
 
 - YYYY-MM-DD HH:MM — [agent] claimed [file] for [task]
+
+---
+
+## Persistent Collaboration Memory (OpenClaw + Codex)
+
+Default operating profile inferred from durable memory:
+
+- Autonomy first:
+  - Proceed with deep execution by default and keep going until a real blocker appears.
+  - Avoid over-checkpointing for normal coding/release tasks.
+- Memory source:
+  - Use external memory workspace for cross-session continuity:
+    - `C:\Users\micah\.codex\memory`
+  - Prefer `accepted/accepted.jsonl` for stable traits/decisions.
+  - Stage new inferences in `proposed/proposed.jsonl` and require curation for promotion.
+- Durable strategic thread:
+  - Keep studio expansion visibility active by tracking local West Valley/Phoenix real-estate opportunities.
+- Coordination behavior:
+  - Translate findings into tickets/TODOs during execution so open loops stay explicit.
+
+If user intent conflicts with this profile, user intent wins immediately.

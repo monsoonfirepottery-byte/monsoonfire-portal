@@ -1,6 +1,6 @@
 # P2 — API v1 Rate-Limit Resilience
 
-Status: Done
+Status: Completed
 
 ## Problem
 Route-level and actor-level rate-limit checks are currently strict on unexpected backend/cache failures, which can introduce avoidable availability impact.

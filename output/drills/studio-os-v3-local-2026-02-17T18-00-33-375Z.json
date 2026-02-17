@@ -1,0 +1,1070 @@
+{
+  "mode": "local-staging-harness",
+  "baseUrl": "http://127.0.0.1:8788",
+  "startedAtUtc": "2026-02-17T18:00:33.375Z",
+  "finishedAtUtc": "2026-02-17T18:00:33.703Z",
+  "scenarios": [
+    {
+      "scenarioId": "token_compromise",
+      "startTimeUtc": "2026-02-17T18:00:33.375Z",
+      "endTimeUtc": "2026-02-17T18:00:33.497Z",
+      "mttrMinutes": 4,
+      "outcome": "success",
+      "script": {
+        "status": 0,
+        "stdout": "kill-switch on: 200 true\nkill-switch off: 200 true\n",
+        "stderr": "",
+        "signal": null,
+        "error": null
+      },
+      "evidence": {
+        "drillsStatus": 200,
+        "opsAuditStatus": 200,
+        "capabilityAuditStatus": 200,
+        "scenarioRows": [
+          {
+            "id": "83a70ecd-a804-4674-bac8-095a7328388f",
+            "at": "2026-02-17T18:00:33.498Z",
+            "scenarioId": "token_compromise",
+            "status": "completed",
+            "outcome": "success",
+            "notes": "Kill-switch toggle script executed.",
+            "mttrMinutes": 4,
+            "unresolvedRisks": []
+          },
+          {
+            "id": "f271a276-d942-490e-a6e9-ec479d1e1719",
+            "at": "2026-02-17T18:00:33.396Z",
+            "scenarioId": "token_compromise",
+            "status": "started",
+            "outcome": "in_progress",
+            "notes": "Starting token compromise chaos drill.",
+            "mttrMinutes": null,
+            "unresolvedRisks": []
+          }
+        ],
+        "recentOps": [
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill token_compromise status=completed.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "token_compromise",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "token_compromise",
+              "status": "completed",
+              "outcome": "success",
+              "notes": "Kill-switch toggle script executed.",
+              "mttrMinutes": 4,
+              "unresolvedRisks": []
+            },
+            "id": "83a70ecd-a804-4674-bac8-095a7328388f",
+            "at": "2026-02-17T18:00:33.498Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill token_compromise status=started.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "token_compromise",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "token_compromise",
+              "status": "started",
+              "outcome": "in_progress",
+              "notes": "Starting token compromise chaos drill.",
+              "mttrMinutes": null,
+              "unresolvedRisks": []
+            },
+            "id": "f271a276-d942-490e-a6e9-ec479d1e1719",
+            "at": "2026-02-17T18:00:33.396Z"
+          }
+        ],
+        "recentCapability": [
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.policy.kill_switch_disabled",
+            "rationale": "Chaos drill: restore normal operations.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "5acf3ff77b4420677b5923071f303facaba7a9273a346284a667a275df325146",
+            "outputHash": null,
+            "metadata": {
+              "enabled": false,
+              "updatedAt": "2026-02-17T18:00:33.460Z"
+            },
+            "id": "e4471fde-da38-46d2-92db-69e50b6e8b54",
+            "at": "2026-02-17T18:00:33.460Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.policy.kill_switch_enabled",
+            "rationale": "Chaos drill: verify kill-switch blocks execution safely.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "26b3426b2593763c96d0890b4a77a0bbf66d13fc512b0c6b138a23c290f30a2a",
+            "outputHash": null,
+            "metadata": {
+              "enabled": true,
+              "updatedAt": "2026-02-17T18:00:33.454Z"
+            },
+            "id": "ddcb90c0-15c3-402e-9153-ffa24aaacf5c",
+            "at": "2026-02-17T18:00:33.454Z"
+          }
+        ]
+      }
+    },
+    {
+      "scenarioId": "connector_outage",
+      "startTimeUtc": "2026-02-17T18:00:33.503Z",
+      "endTimeUtc": "2026-02-17T18:00:33.599Z",
+      "mttrMinutes": 9,
+      "outcome": "partial",
+      "script": {
+        "status": 0,
+        "stdout": "[1] status=200 connectors=0\n[2] status=200 connectors=0\n[3] status=200 connectors=0\n[4] status=200 connectors=0\n[5] status=200 connectors=0\n[6] status=200 connectors=0\n[7] status=200 connectors=0\n[8] status=200 connectors=0\n[9] status=200 connectors=0\n[10] status=200 connectors=0\n[11] status=200 connectors=0\n[12] status=200 connectors=0\n",
+        "stderr": "",
+        "signal": null,
+        "error": null
+      },
+      "evidence": {
+        "drillsStatus": 200,
+        "opsAuditStatus": 200,
+        "capabilityAuditStatus": 200,
+        "scenarioRows": [
+          {
+            "id": "ac57c8c3-6cac-4624-b91a-826b6a4adacd",
+            "at": "2026-02-17T18:00:33.600Z",
+            "scenarioId": "connector_outage",
+            "status": "completed",
+            "outcome": "partial",
+            "notes": "Timeout storm executed with degraded mode transition.",
+            "mttrMinutes": 9,
+            "unresolvedRisks": [
+              "connector-retry-threshold-tuning"
+            ]
+          },
+          {
+            "id": "1bf7a271-8517-4865-8e91-9666a2c35022",
+            "at": "2026-02-17T18:00:33.504Z",
+            "scenarioId": "connector_outage",
+            "status": "started",
+            "outcome": "in_progress",
+            "notes": "Starting connector timeout storm drill.",
+            "mttrMinutes": null,
+            "unresolvedRisks": []
+          }
+        ],
+        "recentOps": [
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill connector_outage status=completed.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "connector_outage",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "connector_outage",
+              "status": "completed",
+              "outcome": "partial",
+              "notes": "Timeout storm executed with degraded mode transition.",
+              "mttrMinutes": 9,
+              "unresolvedRisks": [
+                "connector-retry-threshold-tuning"
+              ]
+            },
+            "id": "ac57c8c3-6cac-4624-b91a-826b6a4adacd",
+            "at": "2026-02-17T18:00:33.600Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.degraded_mode_exited",
+            "rationale": "Staff console reported degraded mode change.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "exited:offline",
+            "outputHash": null,
+            "metadata": {
+              "status": "exited",
+              "mode": "offline",
+              "reason": "Connector timeout storm resolved.",
+              "details": "Exited degraded mode after drill."
+            },
+            "id": "184a4bd5-2b17-4951-b123-e4bb68212167",
+            "at": "2026-02-17T18:00:33.599Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.degraded_mode_entered",
+            "rationale": "Staff console reported degraded mode change.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "entered:offline",
+            "outputHash": null,
+            "metadata": {
+              "status": "entered",
+              "mode": "offline",
+              "reason": "Connector timeout storm drill.",
+              "details": "Entered degraded mode during timeout storm."
+            },
+            "id": "ddb79672-60dc-4d78-8849-f76e84845f4c",
+            "at": "2026-02-17T18:00:33.598Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill connector_outage status=started.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "connector_outage",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "connector_outage",
+              "status": "started",
+              "outcome": "in_progress",
+              "notes": "Starting connector timeout storm drill.",
+              "mttrMinutes": null,
+              "unresolvedRisks": []
+            },
+            "id": "1bf7a271-8517-4865-8e91-9666a2c35022",
+            "at": "2026-02-17T18:00:33.504Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill token_compromise status=completed.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "token_compromise",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "token_compromise",
+              "status": "completed",
+              "outcome": "success",
+              "notes": "Kill-switch toggle script executed.",
+              "mttrMinutes": 4,
+              "unresolvedRisks": []
+            },
+            "id": "83a70ecd-a804-4674-bac8-095a7328388f",
+            "at": "2026-02-17T18:00:33.498Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill token_compromise status=started.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "token_compromise",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "token_compromise",
+              "status": "started",
+              "outcome": "in_progress",
+              "notes": "Starting token compromise chaos drill.",
+              "mttrMinutes": null,
+              "unresolvedRisks": []
+            },
+            "id": "f271a276-d942-490e-a6e9-ec479d1e1719",
+            "at": "2026-02-17T18:00:33.396Z"
+          }
+        ],
+        "recentCapability": [
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.policy.kill_switch_disabled",
+            "rationale": "Chaos drill: restore normal operations.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "5acf3ff77b4420677b5923071f303facaba7a9273a346284a667a275df325146",
+            "outputHash": null,
+            "metadata": {
+              "enabled": false,
+              "updatedAt": "2026-02-17T18:00:33.460Z"
+            },
+            "id": "e4471fde-da38-46d2-92db-69e50b6e8b54",
+            "at": "2026-02-17T18:00:33.460Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.policy.kill_switch_enabled",
+            "rationale": "Chaos drill: verify kill-switch blocks execution safely.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "26b3426b2593763c96d0890b4a77a0bbf66d13fc512b0c6b138a23c290f30a2a",
+            "outputHash": null,
+            "metadata": {
+              "enabled": true,
+              "updatedAt": "2026-02-17T18:00:33.454Z"
+            },
+            "id": "ddcb90c0-15c3-402e-9153-ffa24aaacf5c",
+            "at": "2026-02-17T18:00:33.454Z"
+          }
+        ]
+      }
+    },
+    {
+      "scenarioId": "policy_bypass_attempt",
+      "startTimeUtc": "2026-02-17T18:00:33.602Z",
+      "endTimeUtc": "2026-02-17T18:00:33.696Z",
+      "mttrMinutes": 6,
+      "outcome": "success",
+      "script": {
+        "status": 0,
+        "stdout": "[1] status=403 ok=false reason=DELEGATION_ACTOR_MISMATCH\n[2] status=403 ok=false reason=DELEGATION_ACTOR_MISMATCH\n[3] status=403 ok=false reason=DELEGATION_REVOKED\n[4] status=403 ok=false reason=DELEGATION_REVOKED\n[5] status=403 ok=false reason=DELEGATION_EXPIRED\n[6] status=403 ok=false reason=DELEGATION_EXPIRED\n",
+        "stderr": "",
+        "signal": null,
+        "error": null
+      },
+      "evidence": {
+        "drillsStatus": 200,
+        "opsAuditStatus": 200,
+        "capabilityAuditStatus": 200,
+        "scenarioRows": [
+          {
+            "id": "77319db4-d690-4a8d-b9c7-a067e3fe8495",
+            "at": "2026-02-17T18:00:33.697Z",
+            "scenarioId": "policy_bypass_attempt",
+            "status": "completed",
+            "outcome": "success",
+            "notes": "Delegation race attempts executed; policy denials expected.",
+            "mttrMinutes": 6,
+            "unresolvedRisks": []
+          },
+          {
+            "id": "be8a17a9-a02f-452a-b95f-b8975d032dca",
+            "at": "2026-02-17T18:00:33.602Z",
+            "scenarioId": "policy_bypass_attempt",
+            "status": "started",
+            "outcome": "in_progress",
+            "notes": "Starting delegation revocation race drill.",
+            "mttrMinutes": null,
+            "unresolvedRisks": []
+          }
+        ],
+        "recentOps": [
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill policy_bypass_attempt status=completed.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "policy_bypass_attempt",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "policy_bypass_attempt",
+              "status": "completed",
+              "outcome": "success",
+              "notes": "Delegation race attempts executed; policy denials expected.",
+              "mttrMinutes": 6,
+              "unresolvedRisks": []
+            },
+            "id": "77319db4-d690-4a8d-b9c7-a067e3fe8495",
+            "at": "2026-02-17T18:00:33.697Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill policy_bypass_attempt status=started.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "policy_bypass_attempt",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "policy_bypass_attempt",
+              "status": "started",
+              "outcome": "in_progress",
+              "notes": "Starting delegation revocation race drill.",
+              "mttrMinutes": null,
+              "unresolvedRisks": []
+            },
+            "id": "be8a17a9-a02f-452a-b95f-b8975d032dca",
+            "at": "2026-02-17T18:00:33.602Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill connector_outage status=completed.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "connector_outage",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "connector_outage",
+              "status": "completed",
+              "outcome": "partial",
+              "notes": "Timeout storm executed with degraded mode transition.",
+              "mttrMinutes": 9,
+              "unresolvedRisks": [
+                "connector-retry-threshold-tuning"
+              ]
+            },
+            "id": "ac57c8c3-6cac-4624-b91a-826b6a4adacd",
+            "at": "2026-02-17T18:00:33.600Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.degraded_mode_exited",
+            "rationale": "Staff console reported degraded mode change.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "exited:offline",
+            "outputHash": null,
+            "metadata": {
+              "status": "exited",
+              "mode": "offline",
+              "reason": "Connector timeout storm resolved.",
+              "details": "Exited degraded mode after drill."
+            },
+            "id": "184a4bd5-2b17-4951-b123-e4bb68212167",
+            "at": "2026-02-17T18:00:33.599Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.degraded_mode_entered",
+            "rationale": "Staff console reported degraded mode change.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "entered:offline",
+            "outputHash": null,
+            "metadata": {
+              "status": "entered",
+              "mode": "offline",
+              "reason": "Connector timeout storm drill.",
+              "details": "Entered degraded mode during timeout storm."
+            },
+            "id": "ddb79672-60dc-4d78-8849-f76e84845f4c",
+            "at": "2026-02-17T18:00:33.598Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill connector_outage status=started.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "connector_outage",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "connector_outage",
+              "status": "started",
+              "outcome": "in_progress",
+              "notes": "Starting connector timeout storm drill.",
+              "mttrMinutes": null,
+              "unresolvedRisks": []
+            },
+            "id": "1bf7a271-8517-4865-8e91-9666a2c35022",
+            "at": "2026-02-17T18:00:33.504Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill token_compromise status=completed.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "token_compromise",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "token_compromise",
+              "status": "completed",
+              "outcome": "success",
+              "notes": "Kill-switch toggle script executed.",
+              "mttrMinutes": 4,
+              "unresolvedRisks": []
+            },
+            "id": "83a70ecd-a804-4674-bac8-095a7328388f",
+            "at": "2026-02-17T18:00:33.498Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill token_compromise status=started.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "token_compromise",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "token_compromise",
+              "status": "started",
+              "outcome": "in_progress",
+              "notes": "Starting token compromise chaos drill.",
+              "mttrMinutes": null,
+              "unresolvedRisks": []
+            },
+            "id": "f271a276-d942-490e-a6e9-ec479d1e1719",
+            "at": "2026-02-17T18:00:33.396Z"
+          }
+        ],
+        "recentCapability": [
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.delegation.denied",
+            "rationale": "proposal_create:DELEGATION_EXPIRED",
+            "target": "local",
+            "approvalState": "required",
+            "inputHash": "DELEGATION_EXPIRED",
+            "outputHash": null,
+            "metadata": {
+              "actorType": "agent",
+              "actorUid": "agent-chaos",
+              "ownerUid": "owner-chaos",
+              "tenantId": "owner-chaos",
+              "effectiveScopes": [],
+              "delegationId": "expired"
+            },
+            "id": "a859909c-1c83-4803-b3ea-cb0b2ca3eae3",
+            "at": "2026-02-17T18:00:33.663Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.delegation.denied",
+            "rationale": "proposal_create:DELEGATION_EXPIRED",
+            "target": "local",
+            "approvalState": "required",
+            "inputHash": "DELEGATION_EXPIRED",
+            "outputHash": null,
+            "metadata": {
+              "actorType": "agent",
+              "actorUid": "agent-chaos",
+              "ownerUid": "owner-chaos",
+              "tenantId": "owner-chaos",
+              "effectiveScopes": [],
+              "delegationId": "expired"
+            },
+            "id": "de54009b-7e56-4294-a15e-a4e87a79d6ef",
+            "at": "2026-02-17T18:00:33.663Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.delegation.denied",
+            "rationale": "proposal_create:DELEGATION_REVOKED",
+            "target": "local",
+            "approvalState": "required",
+            "inputHash": "DELEGATION_REVOKED",
+            "outputHash": null,
+            "metadata": {
+              "actorType": "agent",
+              "actorUid": "agent-chaos",
+              "ownerUid": "owner-chaos",
+              "tenantId": "owner-chaos",
+              "effectiveScopes": [],
+              "delegationId": "revoked"
+            },
+            "id": "2b3f7f4c-a774-40ff-852f-d734a23798f0",
+            "at": "2026-02-17T18:00:33.662Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.delegation.denied",
+            "rationale": "proposal_create:DELEGATION_REVOKED",
+            "target": "local",
+            "approvalState": "required",
+            "inputHash": "DELEGATION_REVOKED",
+            "outputHash": null,
+            "metadata": {
+              "actorType": "agent",
+              "actorUid": "agent-chaos",
+              "ownerUid": "owner-chaos",
+              "tenantId": "owner-chaos",
+              "effectiveScopes": [],
+              "delegationId": "revoked"
+            },
+            "id": "0d58f3d9-b6a3-413c-8c18-3183efced5a7",
+            "at": "2026-02-17T18:00:33.660Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.delegation.denied",
+            "rationale": "proposal_create:DELEGATION_ACTOR_MISMATCH",
+            "target": "local",
+            "approvalState": "required",
+            "inputHash": "DELEGATION_ACTOR_MISMATCH",
+            "outputHash": null,
+            "metadata": {
+              "actorType": "agent",
+              "actorUid": "agent-chaos",
+              "ownerUid": "owner-chaos",
+              "tenantId": "owner-chaos",
+              "effectiveScopes": [],
+              "delegationId": "missing-fields"
+            },
+            "id": "56e586c9-e592-467a-acaa-64a8d48f0404",
+            "at": "2026-02-17T18:00:33.654Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.delegation.denied",
+            "rationale": "proposal_create:DELEGATION_ACTOR_MISMATCH",
+            "target": "local",
+            "approvalState": "required",
+            "inputHash": "DELEGATION_ACTOR_MISMATCH",
+            "outputHash": null,
+            "metadata": {
+              "actorType": "agent",
+              "actorUid": "agent-chaos",
+              "ownerUid": "owner-chaos",
+              "tenantId": "owner-chaos",
+              "effectiveScopes": [],
+              "delegationId": "missing-fields"
+            },
+            "id": "9a1d8ee9-7e14-4487-8aee-158147ddc450",
+            "at": "2026-02-17T18:00:33.653Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.policy.kill_switch_disabled",
+            "rationale": "Chaos drill: restore normal operations.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "5acf3ff77b4420677b5923071f303facaba7a9273a346284a667a275df325146",
+            "outputHash": null,
+            "metadata": {
+              "enabled": false,
+              "updatedAt": "2026-02-17T18:00:33.460Z"
+            },
+            "id": "e4471fde-da38-46d2-92db-69e50b6e8b54",
+            "at": "2026-02-17T18:00:33.460Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.policy.kill_switch_enabled",
+            "rationale": "Chaos drill: verify kill-switch blocks execution safely.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "26b3426b2593763c96d0890b4a77a0bbf66d13fc512b0c6b138a23c290f30a2a",
+            "outputHash": null,
+            "metadata": {
+              "enabled": true,
+              "updatedAt": "2026-02-17T18:00:33.454Z"
+            },
+            "id": "ddcb90c0-15c3-402e-9153-ffa24aaacf5c",
+            "at": "2026-02-17T18:00:33.454Z"
+          }
+        ]
+      }
+    },
+    {
+      "scenarioId": "local_db_corruption",
+      "startTimeUtc": "2026-02-17T18:00:33.699Z",
+      "endTimeUtc": "2026-02-17T18:00:33.701Z",
+      "mttrMinutes": 12,
+      "outcome": "partial",
+      "script": {
+        "status": 0,
+        "stdout": "tabletop simulation",
+        "stderr": ""
+      },
+      "evidence": {
+        "drillsStatus": 200,
+        "opsAuditStatus": 200,
+        "capabilityAuditStatus": 200,
+        "scenarioRows": [
+          {
+            "id": "b1ac84dc-4b14-4652-90c4-a7480c29f79e",
+            "at": "2026-02-17T18:00:33.701Z",
+            "scenarioId": "local_db_corruption",
+            "status": "completed",
+            "outcome": "partial",
+            "notes": "Tabletop simulation completed; restore steps need runbook tightening.",
+            "mttrMinutes": 12,
+            "unresolvedRisks": [
+              "db-restore-runbook-step-order"
+            ]
+          },
+          {
+            "id": "7be66c53-be60-4452-a5ce-56830d06f02a",
+            "at": "2026-02-17T18:00:33.699Z",
+            "scenarioId": "local_db_corruption",
+            "status": "started",
+            "outcome": "in_progress",
+            "notes": "Starting local DB corruption tabletop simulation.",
+            "mttrMinutes": null,
+            "unresolvedRisks": []
+          }
+        ],
+        "recentOps": [
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill local_db_corruption status=completed.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "local_db_corruption",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "local_db_corruption",
+              "status": "completed",
+              "outcome": "partial",
+              "notes": "Tabletop simulation completed; restore steps need runbook tightening.",
+              "mttrMinutes": 12,
+              "unresolvedRisks": [
+                "db-restore-runbook-step-order"
+              ]
+            },
+            "id": "b1ac84dc-4b14-4652-90c4-a7480c29f79e",
+            "at": "2026-02-17T18:00:33.701Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.degraded_mode_exited",
+            "rationale": "Staff console reported degraded mode change.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "exited:offline",
+            "outputHash": null,
+            "metadata": {
+              "status": "exited",
+              "mode": "offline",
+              "reason": "Restore workflow complete.",
+              "details": "Fallback mode exited after tabletop."
+            },
+            "id": "a5da3a1b-3730-4bf7-bf14-23efd0ea0557",
+            "at": "2026-02-17T18:00:33.701Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.degraded_mode_entered",
+            "rationale": "Staff console reported degraded mode change.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "entered:offline",
+            "outputHash": null,
+            "metadata": {
+              "status": "entered",
+              "mode": "offline",
+              "reason": "Local DB corruption tabletop simulation.",
+              "details": "Fallback mode entered for restore workflow."
+            },
+            "id": "260d8ed9-5a15-4282-bf0b-f6eff4270bc4",
+            "at": "2026-02-17T18:00:33.700Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill local_db_corruption status=started.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "local_db_corruption",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "local_db_corruption",
+              "status": "started",
+              "outcome": "in_progress",
+              "notes": "Starting local DB corruption tabletop simulation.",
+              "mttrMinutes": null,
+              "unresolvedRisks": []
+            },
+            "id": "7be66c53-be60-4452-a5ce-56830d06f02a",
+            "at": "2026-02-17T18:00:33.699Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill policy_bypass_attempt status=completed.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "policy_bypass_attempt",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "policy_bypass_attempt",
+              "status": "completed",
+              "outcome": "success",
+              "notes": "Delegation race attempts executed; policy denials expected.",
+              "mttrMinutes": 6,
+              "unresolvedRisks": []
+            },
+            "id": "77319db4-d690-4a8d-b9c7-a067e3fe8495",
+            "at": "2026-02-17T18:00:33.697Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill policy_bypass_attempt status=started.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "policy_bypass_attempt",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "policy_bypass_attempt",
+              "status": "started",
+              "outcome": "in_progress",
+              "notes": "Starting delegation revocation race drill.",
+              "mttrMinutes": null,
+              "unresolvedRisks": []
+            },
+            "id": "be8a17a9-a02f-452a-b95f-b8975d032dca",
+            "at": "2026-02-17T18:00:33.602Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill connector_outage status=completed.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "connector_outage",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "connector_outage",
+              "status": "completed",
+              "outcome": "partial",
+              "notes": "Timeout storm executed with degraded mode transition.",
+              "mttrMinutes": 9,
+              "unresolvedRisks": [
+                "connector-retry-threshold-tuning"
+              ]
+            },
+            "id": "ac57c8c3-6cac-4624-b91a-826b6a4adacd",
+            "at": "2026-02-17T18:00:33.600Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.degraded_mode_exited",
+            "rationale": "Staff console reported degraded mode change.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "exited:offline",
+            "outputHash": null,
+            "metadata": {
+              "status": "exited",
+              "mode": "offline",
+              "reason": "Connector timeout storm resolved.",
+              "details": "Exited degraded mode after drill."
+            },
+            "id": "184a4bd5-2b17-4951-b123-e4bb68212167",
+            "at": "2026-02-17T18:00:33.599Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.degraded_mode_entered",
+            "rationale": "Staff console reported degraded mode change.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "entered:offline",
+            "outputHash": null,
+            "metadata": {
+              "status": "entered",
+              "mode": "offline",
+              "reason": "Connector timeout storm drill.",
+              "details": "Entered degraded mode during timeout storm."
+            },
+            "id": "ddb79672-60dc-4d78-8849-f76e84845f4c",
+            "at": "2026-02-17T18:00:33.598Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill connector_outage status=started.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "connector_outage",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "connector_outage",
+              "status": "started",
+              "outcome": "in_progress",
+              "notes": "Starting connector timeout storm drill.",
+              "mttrMinutes": null,
+              "unresolvedRisks": []
+            },
+            "id": "1bf7a271-8517-4865-8e91-9666a2c35022",
+            "at": "2026-02-17T18:00:33.504Z"
+          }
+        ],
+        "recentCapability": [
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.delegation.denied",
+            "rationale": "proposal_create:DELEGATION_EXPIRED",
+            "target": "local",
+            "approvalState": "required",
+            "inputHash": "DELEGATION_EXPIRED",
+            "outputHash": null,
+            "metadata": {
+              "actorType": "agent",
+              "actorUid": "agent-chaos",
+              "ownerUid": "owner-chaos",
+              "tenantId": "owner-chaos",
+              "effectiveScopes": [],
+              "delegationId": "expired"
+            },
+            "id": "a859909c-1c83-4803-b3ea-cb0b2ca3eae3",
+            "at": "2026-02-17T18:00:33.663Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.delegation.denied",
+            "rationale": "proposal_create:DELEGATION_EXPIRED",
+            "target": "local",
+            "approvalState": "required",
+            "inputHash": "DELEGATION_EXPIRED",
+            "outputHash": null,
+            "metadata": {
+              "actorType": "agent",
+              "actorUid": "agent-chaos",
+              "ownerUid": "owner-chaos",
+              "tenantId": "owner-chaos",
+              "effectiveScopes": [],
+              "delegationId": "expired"
+            },
+            "id": "de54009b-7e56-4294-a15e-a4e87a79d6ef",
+            "at": "2026-02-17T18:00:33.663Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.delegation.denied",
+            "rationale": "proposal_create:DELEGATION_REVOKED",
+            "target": "local",
+            "approvalState": "required",
+            "inputHash": "DELEGATION_REVOKED",
+            "outputHash": null,
+            "metadata": {
+              "actorType": "agent",
+              "actorUid": "agent-chaos",
+              "ownerUid": "owner-chaos",
+              "tenantId": "owner-chaos",
+              "effectiveScopes": [],
+              "delegationId": "revoked"
+            },
+            "id": "2b3f7f4c-a774-40ff-852f-d734a23798f0",
+            "at": "2026-02-17T18:00:33.662Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.delegation.denied",
+            "rationale": "proposal_create:DELEGATION_REVOKED",
+            "target": "local",
+            "approvalState": "required",
+            "inputHash": "DELEGATION_REVOKED",
+            "outputHash": null,
+            "metadata": {
+              "actorType": "agent",
+              "actorUid": "agent-chaos",
+              "ownerUid": "owner-chaos",
+              "tenantId": "owner-chaos",
+              "effectiveScopes": [],
+              "delegationId": "revoked"
+            },
+            "id": "0d58f3d9-b6a3-413c-8c18-3183efced5a7",
+            "at": "2026-02-17T18:00:33.660Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.delegation.denied",
+            "rationale": "proposal_create:DELEGATION_ACTOR_MISMATCH",
+            "target": "local",
+            "approvalState": "required",
+            "inputHash": "DELEGATION_ACTOR_MISMATCH",
+            "outputHash": null,
+            "metadata": {
+              "actorType": "agent",
+              "actorUid": "agent-chaos",
+              "ownerUid": "owner-chaos",
+              "tenantId": "owner-chaos",
+              "effectiveScopes": [],
+              "delegationId": "missing-fields"
+            },
+            "id": "56e586c9-e592-467a-acaa-64a8d48f0404",
+            "at": "2026-02-17T18:00:33.654Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.delegation.denied",
+            "rationale": "proposal_create:DELEGATION_ACTOR_MISMATCH",
+            "target": "local",
+            "approvalState": "required",
+            "inputHash": "DELEGATION_ACTOR_MISMATCH",
+            "outputHash": null,
+            "metadata": {
+              "actorType": "agent",
+              "actorUid": "agent-chaos",
+              "ownerUid": "owner-chaos",
+              "tenantId": "owner-chaos",
+              "effectiveScopes": [],
+              "delegationId": "missing-fields"
+            },
+            "id": "9a1d8ee9-7e14-4487-8aee-158147ddc450",
+            "at": "2026-02-17T18:00:33.653Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.policy.kill_switch_disabled",
+            "rationale": "Chaos drill: restore normal operations.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "5acf3ff77b4420677b5923071f303facaba7a9273a346284a667a275df325146",
+            "outputHash": null,
+            "metadata": {
+              "enabled": false,
+              "updatedAt": "2026-02-17T18:00:33.460Z"
+            },
+            "id": "e4471fde-da38-46d2-92db-69e50b6e8b54",
+            "at": "2026-02-17T18:00:33.460Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "capability.policy.kill_switch_enabled",
+            "rationale": "Chaos drill: verify kill-switch blocks execution safely.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "26b3426b2593763c96d0890b4a77a0bbf66d13fc512b0c6b138a23c290f30a2a",
+            "outputHash": null,
+            "metadata": {
+              "enabled": true,
+              "updatedAt": "2026-02-17T18:00:33.454Z"
+            },
+            "id": "ddcb90c0-15c3-402e-9153-ffa24aaacf5c",
+            "at": "2026-02-17T18:00:33.454Z"
+          }
+        ]
+      }
+    }
+  ]
+}

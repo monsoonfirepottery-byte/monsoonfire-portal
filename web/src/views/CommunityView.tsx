@@ -184,23 +184,23 @@ const SUGGESTED_VIDEOS: VideoLink[] = [
   {
     title: "Centering essentials",
     reason: "Great for consistent walls and faster starts.",
-    url: "https://www.youtube.com/results?search_query=pottery+centering+technique",
+    url: "https://www.youtube.com/watch?v=-YCGK33c0xs",
     favorite: true,
   },
   {
     title: "Pulling consistent walls",
     reason: "Smooths out wobbles and helps with even thickness.",
-    url: "https://www.youtube.com/results?search_query=pottery+pulling+walls+tutorial",
+    url: "https://www.youtube.com/watch?v=VM8SJZ4lNRY",
   },
   {
     title: "Trimming clean foot rings",
     reason: "Sharper bases and less chipping in bisque.",
-    url: "https://www.youtube.com/results?search_query=pottery+trimming+foot+ring",
+    url: "https://www.youtube.com/watch?v=XhlJLVL-Zg8",
   },
   {
     title: "Glaze application basics",
     reason: "Reliable coverage without drips or bare spots.",
-    url: "https://www.youtube.com/results?search_query=glaze+application+pottery+basics",
+    url: "https://www.youtube.com/watch?v=nvBxX7vteqA",
   },
 ];
 

@@ -1,0 +1,80 @@
+{
+  "runId": "20260217T180211Z",
+  "startedAtUtc": "2026-02-17T18:02:11.0379166Z",
+  "config": {
+    "studioDrills": "local",
+    "runNotificationDrills": false,
+    "syncTracker": true,
+    "projectId": "monsoonfire-portal",
+    "dryRunTracker": false,
+    "outputDir": "D:\\monsoonfire-portal\\output\\ops-evidence"
+  },
+  "steps": [
+    {
+      "name": "studio-v3-local-drills",
+      "status": "success",
+      "notes": "D:\\monsoonfire-portal\\output\\drills\\studio-os-v3-local-2026-02-17T18-02-11-307Z.json",
+      "payload": {
+        "filePath": "node",
+        "arguments": [
+          "scripts/run-studio-os-v3-local-drills.mjs"
+        ],
+        "exitCode": 0,
+        "stdout": "Wrote D:\\monsoonfire-portal\\output\\drills\\studio-os-v3-local-2026-02-17T18-02-11-307Z.json\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "studio-v3-staging-drills",
+      "status": "skipped",
+      "notes": "Not requested.",
+      "payload": null
+    },
+    {
+      "name": "notification-drills",
+      "status": "skipped",
+      "notes": "Not requested.",
+      "payload": null
+    },
+    {
+      "name": "tracker-sync",
+      "status": "success",
+      "notes": "syncTrackerTicketsFromMarkdown.js",
+      "payload": {
+        "filePath": "node",
+        "arguments": [
+          "functions/scripts/syncTrackerTicketsFromMarkdown.js",
+          "--projectId",
+          "monsoonfire-portal",
+          "--email",
+          "monsoonfirepottery@gmail.com"
+        ],
+        "exitCode": 0,
+        "stdout": "{\n  \"uid\": \"Q12TyY0YfzTFUpE057XHo1GecE62\",\n  \"projectId\": \"monsoonfire-portal\",\n  \"dryRun\": false,\n  \"markdownFiles\": 118,\n  \"markdownStatusCounts\": {\n    \"Planned\": 3,\n    \"In Progress\": 2,\n    \"Blocked\": 2,\n    \"Completed\": 111\n  },\n  \"markdownChangedFiles\": 8,\n  \"syncedTickets\": 118,\n  \"syncedByTrackerStatus\": {\n    \"Blocked\": 2,\n    \"Done\": 111,\n    \"Backlog\": 3,\n    \"InProgress\": 2\n  },\n  \"trackerCounts\": {\n    \"Blocked\": 2,\n    \"Done\": 111,\n    \"Backlog\": 3,\n    \"InProgress\": 2\n  }\n}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "tracker-counts",
+      "status": "success",
+      "notes": "tracker_counts.js",
+      "payload": {
+        "filePath": "node",
+        "arguments": [
+          "functions/scripts/tracker_counts.js",
+          "--projectId",
+          "monsoonfire-portal",
+          "--email",
+          "monsoonfirepottery@gmail.com"
+        ],
+        "exitCode": 0,
+        "stdout": "{\n  \"uid\": \"Q12TyY0YfzTFUpE057XHo1GecE62\",\n  \"projectId\": \"monsoonfire-portal\",\n  \"tracker\": {\n    \"total\": 118,\n    \"blocked\": 2,\n    \"byStatus\": {\n      \"Blocked\": 2,\n      \"Done\": 111,\n      \"Backlog\": 3,\n      \"InProgress\": 2\n    }\n  },\n  \"markdown\": {\n    \"total\": 118,\n    \"byStatus\": {\n      \"Blocked\": 2,\n      \"Completed\": 111,\n      \"Planned\": 3,\n      \"In Progress\": 2\n    }\n  },\n  \"markdownMappedToTrackerStatuses\": {\n    \"Blocked\": 2,\n    \"Done\": 111,\n    \"Backlog\": 3,\n    \"InProgress\": 2\n  }\n}\n",
+        "stderr": ""
+      }
+    }
+  ],
+  "artifacts": [
+    "D:\\monsoonfire-portal\\output\\drills\\studio-os-v3-local-2026-02-17T18-02-11-307Z.json"
+  ],
+  "finishedAtUtc": "2026-02-17T18:02:52.6509691Z"
+}

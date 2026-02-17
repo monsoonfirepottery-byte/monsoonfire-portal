@@ -39,6 +39,132 @@
   color: var(--muted);
 }
 
+.summary-separator {
+  margin: 10px 0;
+  height: 1px;
+  background: var(--border);
+}
+
+.profile-avatar-editor {
+  display: grid;
+  gap: 14px;
+}
+
+.avatar-preview {
+  width: 86px;
+  height: 86px;
+  border-radius: 22px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  position: relative;
+}
+
+.avatar-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.avatar-preview-fallback {
+  width: 100%;
+  height: 100%;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+}
+
+.avatar-preview-fallback-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.avatar-preview-fallback-icon circle,
+.avatar-preview-fallback-icon path {
+  stroke: currentColor;
+}
+
+.avatar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.avatar-actions .btn {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.avatar-file-input {
+  display: none;
+}
+
+.avatar-picklist {
+  display: grid;
+  gap: 10px;
+}
+
+.avatar-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.avatar-preset-option {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  padding: 8px 10px;
+  text-align: center;
+  min-height: 126px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.avatar-preset-option:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+.avatar-preset-option:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.avatar-preset-option img {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  object-fit: cover;
+}
+
+.avatar-preset-option.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.avatar-preset-title {
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.avatar-preset-description {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .summary-value {
   font-weight: 600;
   font-size: 14px;

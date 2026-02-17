@@ -23,6 +23,9 @@ Run only in staging:
 - `studio-brain/scripts/chaos/connector_timeout_storm.mjs`
 - `studio-brain/scripts/chaos/delegation_revocation_race.mjs`
 
+Before running a scenario, append a fresh log template:
+- `pwsh scripts/new-studio-os-v3-drill-log-entry.ps1 -ScenarioId "connector_outage" -Environment "staging" -StudioBrainBaseUrl "http://127.0.0.1:8787"`
+
 Guards:
 - `CHAOS_MODE=true`
 - `NODE_ENV=staging`
@@ -53,3 +56,5 @@ POST /api/ops/drills
 ```
 
 Log results in `docs/DRILL_EXECUTION_LOG.md`.
+
+Use `docs/STUDIO_OS_V3_EVIDENCE_PACK.md` as the execution matrix and release-handoff checklist.

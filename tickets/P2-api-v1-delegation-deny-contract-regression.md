@@ -1,6 +1,6 @@
 # P2 — Delegation Deny-Path Contract Regression
 
-Status: Done
+Status: Completed
 Date: 2026-02-17
 
 ## Problem

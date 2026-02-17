@@ -1,0 +1,706 @@
+{
+  "mode": "local-staging-harness",
+  "baseUrl": "http://127.0.0.1:8788",
+  "startedAtUtc": "2026-02-17T17:43:19.374Z",
+  "finishedAtUtc": "2026-02-17T17:44:00.816Z",
+  "scenarios": [
+    {
+      "scenarioId": "token_compromise",
+      "startTimeUtc": "2026-02-17T17:43:19.374Z",
+      "endTimeUtc": "2026-02-17T17:43:39.423Z",
+      "mttrMinutes": 4,
+      "outcome": "partial",
+      "script": {
+        "status": 1,
+        "stdout": "",
+        "stderr": "",
+        "signal": "SIGTERM",
+        "error": "spawnSync C:\\nvm4w\\nodejs\\node.exe ETIMEDOUT"
+      },
+      "evidence": {
+        "drillsStatus": 200,
+        "opsAuditStatus": 200,
+        "capabilityAuditStatus": 200,
+        "scenarioRows": [
+          {
+            "id": "0041fba4-2cf1-4d63-8269-768850d7f402",
+            "at": "2026-02-17T17:43:39.427Z",
+            "scenarioId": "token_compromise",
+            "status": "completed",
+            "outcome": "partial",
+            "notes": "Kill-switch toggle script executed.",
+            "mttrMinutes": 4,
+            "unresolvedRisks": [
+              "kill-switch-script-failure"
+            ]
+          },
+          {
+            "id": "7c44e857-12a3-43ee-badd-c92ed77dbe6c",
+            "at": "2026-02-17T17:43:19.395Z",
+            "scenarioId": "token_compromise",
+            "status": "started",
+            "outcome": "in_progress",
+            "notes": "Starting token compromise chaos drill.",
+            "mttrMinutes": null,
+            "unresolvedRisks": []
+          }
+        ],
+        "recentOps": [
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill token_compromise status=completed.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "token_compromise",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "token_compromise",
+              "status": "completed",
+              "outcome": "partial",
+              "notes": "Kill-switch toggle script executed.",
+              "mttrMinutes": 4,
+              "unresolvedRisks": [
+                "kill-switch-script-failure"
+              ]
+            },
+            "id": "0041fba4-2cf1-4d63-8269-768850d7f402",
+            "at": "2026-02-17T17:43:39.427Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill token_compromise status=started.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "token_compromise",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "token_compromise",
+              "status": "started",
+              "outcome": "in_progress",
+              "notes": "Starting token compromise chaos drill.",
+              "mttrMinutes": null,
+              "unresolvedRisks": []
+            },
+            "id": "7c44e857-12a3-43ee-badd-c92ed77dbe6c",
+            "at": "2026-02-17T17:43:19.395Z"
+          }
+        ],
+        "recentCapability": []
+      }
+    },
+    {
+      "scenarioId": "connector_outage",
+      "startTimeUtc": "2026-02-17T17:43:39.432Z",
+      "endTimeUtc": "2026-02-17T17:43:40.787Z",
+      "mttrMinutes": 9,
+      "outcome": "partial",
+      "script": {
+        "status": 0,
+        "stdout": "[1] timeout_or_error=AbortError\n[2] timeout_or_error=AbortError\n[3] timeout_or_error=AbortError\n[4] timeout_or_error=AbortError\n[5] timeout_or_error=AbortError\n[6] timeout_or_error=AbortError\n[7] timeout_or_error=AbortError\n[8] timeout_or_error=AbortError\n[9] timeout_or_error=AbortError\n[10] timeout_or_error=AbortError\n[11] timeout_or_error=AbortError\n[12] timeout_or_error=AbortError\n",
+        "stderr": "",
+        "signal": null,
+        "error": null
+      },
+      "evidence": {
+        "drillsStatus": 200,
+        "opsAuditStatus": 200,
+        "capabilityAuditStatus": 200,
+        "scenarioRows": [
+          {
+            "id": "bc84451f-4cfb-46bd-8fbf-ab8136812052",
+            "at": "2026-02-17T17:43:40.788Z",
+            "scenarioId": "connector_outage",
+            "status": "completed",
+            "outcome": "partial",
+            "notes": "Timeout storm executed with degraded mode transition.",
+            "mttrMinutes": 9,
+            "unresolvedRisks": [
+              "connector-retry-threshold-tuning"
+            ]
+          },
+          {
+            "id": "3224dd5a-0a0e-4a35-a1d5-a21b59fb8ac9",
+            "at": "2026-02-17T17:43:39.433Z",
+            "scenarioId": "connector_outage",
+            "status": "started",
+            "outcome": "in_progress",
+            "notes": "Starting connector timeout storm drill.",
+            "mttrMinutes": null,
+            "unresolvedRisks": []
+          }
+        ],
+        "recentOps": [
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill connector_outage status=completed.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "connector_outage",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "connector_outage",
+              "status": "completed",
+              "outcome": "partial",
+              "notes": "Timeout storm executed with degraded mode transition.",
+              "mttrMinutes": 9,
+              "unresolvedRisks": [
+                "connector-retry-threshold-tuning"
+              ]
+            },
+            "id": "bc84451f-4cfb-46bd-8fbf-ab8136812052",
+            "at": "2026-02-17T17:43:40.788Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.degraded_mode_exited",
+            "rationale": "Staff console reported degraded mode change.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "exited:offline",
+            "outputHash": null,
+            "metadata": {
+              "status": "exited",
+              "mode": "offline",
+              "reason": "Connector timeout storm resolved.",
+              "details": "Exited degraded mode after drill."
+            },
+            "id": "a6b9e845-0dc3-42e9-85ce-82792df8f2f4",
+            "at": "2026-02-17T17:43:40.787Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.degraded_mode_entered",
+            "rationale": "Staff console reported degraded mode change.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "entered:offline",
+            "outputHash": null,
+            "metadata": {
+              "status": "entered",
+              "mode": "offline",
+              "reason": "Connector timeout storm drill.",
+              "details": "Entered degraded mode during timeout storm."
+            },
+            "id": "78ecf35d-340d-4996-bccc-5dbbf224fdc9",
+            "at": "2026-02-17T17:43:40.782Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill connector_outage status=started.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "connector_outage",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "connector_outage",
+              "status": "started",
+              "outcome": "in_progress",
+              "notes": "Starting connector timeout storm drill.",
+              "mttrMinutes": null,
+              "unresolvedRisks": []
+            },
+            "id": "3224dd5a-0a0e-4a35-a1d5-a21b59fb8ac9",
+            "at": "2026-02-17T17:43:39.433Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill token_compromise status=completed.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "token_compromise",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "token_compromise",
+              "status": "completed",
+              "outcome": "partial",
+              "notes": "Kill-switch toggle script executed.",
+              "mttrMinutes": 4,
+              "unresolvedRisks": [
+                "kill-switch-script-failure"
+              ]
+            },
+            "id": "0041fba4-2cf1-4d63-8269-768850d7f402",
+            "at": "2026-02-17T17:43:39.427Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill token_compromise status=started.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "token_compromise",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "token_compromise",
+              "status": "started",
+              "outcome": "in_progress",
+              "notes": "Starting token compromise chaos drill.",
+              "mttrMinutes": null,
+              "unresolvedRisks": []
+            },
+            "id": "7c44e857-12a3-43ee-badd-c92ed77dbe6c",
+            "at": "2026-02-17T17:43:19.395Z"
+          }
+        ],
+        "recentCapability": []
+      }
+    },
+    {
+      "scenarioId": "policy_bypass_attempt",
+      "startTimeUtc": "2026-02-17T17:43:40.791Z",
+      "endTimeUtc": "2026-02-17T17:44:00.801Z",
+      "mttrMinutes": 6,
+      "outcome": "partial",
+      "script": {
+        "status": 1,
+        "stdout": "",
+        "stderr": "",
+        "signal": "SIGTERM",
+        "error": "spawnSync C:\\nvm4w\\nodejs\\node.exe ETIMEDOUT"
+      },
+      "evidence": {
+        "drillsStatus": 200,
+        "opsAuditStatus": 200,
+        "capabilityAuditStatus": 200,
+        "scenarioRows": [
+          {
+            "id": "ddfe543c-8125-4c01-84b0-78b0949e45a5",
+            "at": "2026-02-17T17:44:00.806Z",
+            "scenarioId": "policy_bypass_attempt",
+            "status": "completed",
+            "outcome": "partial",
+            "notes": "Delegation race attempts executed; policy denials expected.",
+            "mttrMinutes": 6,
+            "unresolvedRisks": []
+          },
+          {
+            "id": "c8186f99-1eb8-4eec-be3d-2bdca7b35cba",
+            "at": "2026-02-17T17:43:40.792Z",
+            "scenarioId": "policy_bypass_attempt",
+            "status": "started",
+            "outcome": "in_progress",
+            "notes": "Starting delegation revocation race drill.",
+            "mttrMinutes": null,
+            "unresolvedRisks": []
+          }
+        ],
+        "recentOps": [
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill policy_bypass_attempt status=completed.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "policy_bypass_attempt",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "policy_bypass_attempt",
+              "status": "completed",
+              "outcome": "partial",
+              "notes": "Delegation race attempts executed; policy denials expected.",
+              "mttrMinutes": 6,
+              "unresolvedRisks": []
+            },
+            "id": "ddfe543c-8125-4c01-84b0-78b0949e45a5",
+            "at": "2026-02-17T17:44:00.806Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill policy_bypass_attempt status=started.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "policy_bypass_attempt",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "policy_bypass_attempt",
+              "status": "started",
+              "outcome": "in_progress",
+              "notes": "Starting delegation revocation race drill.",
+              "mttrMinutes": null,
+              "unresolvedRisks": []
+            },
+            "id": "c8186f99-1eb8-4eec-be3d-2bdca7b35cba",
+            "at": "2026-02-17T17:43:40.792Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill connector_outage status=completed.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "connector_outage",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "connector_outage",
+              "status": "completed",
+              "outcome": "partial",
+              "notes": "Timeout storm executed with degraded mode transition.",
+              "mttrMinutes": 9,
+              "unresolvedRisks": [
+                "connector-retry-threshold-tuning"
+              ]
+            },
+            "id": "bc84451f-4cfb-46bd-8fbf-ab8136812052",
+            "at": "2026-02-17T17:43:40.788Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.degraded_mode_exited",
+            "rationale": "Staff console reported degraded mode change.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "exited:offline",
+            "outputHash": null,
+            "metadata": {
+              "status": "exited",
+              "mode": "offline",
+              "reason": "Connector timeout storm resolved.",
+              "details": "Exited degraded mode after drill."
+            },
+            "id": "a6b9e845-0dc3-42e9-85ce-82792df8f2f4",
+            "at": "2026-02-17T17:43:40.787Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.degraded_mode_entered",
+            "rationale": "Staff console reported degraded mode change.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "entered:offline",
+            "outputHash": null,
+            "metadata": {
+              "status": "entered",
+              "mode": "offline",
+              "reason": "Connector timeout storm drill.",
+              "details": "Entered degraded mode during timeout storm."
+            },
+            "id": "78ecf35d-340d-4996-bccc-5dbbf224fdc9",
+            "at": "2026-02-17T17:43:40.782Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill connector_outage status=started.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "connector_outage",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "connector_outage",
+              "status": "started",
+              "outcome": "in_progress",
+              "notes": "Starting connector timeout storm drill.",
+              "mttrMinutes": null,
+              "unresolvedRisks": []
+            },
+            "id": "3224dd5a-0a0e-4a35-a1d5-a21b59fb8ac9",
+            "at": "2026-02-17T17:43:39.433Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill token_compromise status=completed.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "token_compromise",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "token_compromise",
+              "status": "completed",
+              "outcome": "partial",
+              "notes": "Kill-switch toggle script executed.",
+              "mttrMinutes": 4,
+              "unresolvedRisks": [
+                "kill-switch-script-failure"
+              ]
+            },
+            "id": "0041fba4-2cf1-4d63-8269-768850d7f402",
+            "at": "2026-02-17T17:43:39.427Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill token_compromise status=started.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "token_compromise",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "token_compromise",
+              "status": "started",
+              "outcome": "in_progress",
+              "notes": "Starting token compromise chaos drill.",
+              "mttrMinutes": null,
+              "unresolvedRisks": []
+            },
+            "id": "7c44e857-12a3-43ee-badd-c92ed77dbe6c",
+            "at": "2026-02-17T17:43:19.395Z"
+          }
+        ],
+        "recentCapability": []
+      }
+    },
+    {
+      "scenarioId": "local_db_corruption",
+      "startTimeUtc": "2026-02-17T17:44:00.811Z",
+      "endTimeUtc": "2026-02-17T17:44:00.813Z",
+      "mttrMinutes": 12,
+      "outcome": "partial",
+      "script": {
+        "status": 0,
+        "stdout": "tabletop simulation",
+        "stderr": ""
+      },
+      "evidence": {
+        "drillsStatus": 200,
+        "opsAuditStatus": 200,
+        "capabilityAuditStatus": 200,
+        "scenarioRows": [
+          {
+            "id": "545a14ad-d0c8-474a-87b3-8f494252c809",
+            "at": "2026-02-17T17:44:00.814Z",
+            "scenarioId": "local_db_corruption",
+            "status": "completed",
+            "outcome": "partial",
+            "notes": "Tabletop simulation completed; restore steps need runbook tightening.",
+            "mttrMinutes": 12,
+            "unresolvedRisks": [
+              "db-restore-runbook-step-order"
+            ]
+          },
+          {
+            "id": "88d494d4-2b03-4f36-8cc8-fec88392e7dd",
+            "at": "2026-02-17T17:44:00.812Z",
+            "scenarioId": "local_db_corruption",
+            "status": "started",
+            "outcome": "in_progress",
+            "notes": "Starting local DB corruption tabletop simulation.",
+            "mttrMinutes": null,
+            "unresolvedRisks": []
+          }
+        ],
+        "recentOps": [
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill local_db_corruption status=completed.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "local_db_corruption",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "local_db_corruption",
+              "status": "completed",
+              "outcome": "partial",
+              "notes": "Tabletop simulation completed; restore steps need runbook tightening.",
+              "mttrMinutes": 12,
+              "unresolvedRisks": [
+                "db-restore-runbook-step-order"
+              ]
+            },
+            "id": "545a14ad-d0c8-474a-87b3-8f494252c809",
+            "at": "2026-02-17T17:44:00.814Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.degraded_mode_exited",
+            "rationale": "Staff console reported degraded mode change.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "exited:offline",
+            "outputHash": null,
+            "metadata": {
+              "status": "exited",
+              "mode": "offline",
+              "reason": "Restore workflow complete.",
+              "details": "Fallback mode exited after tabletop."
+            },
+            "id": "38f3b539-24cf-4fb8-87c3-59d0a171b03c",
+            "at": "2026-02-17T17:44:00.813Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.degraded_mode_entered",
+            "rationale": "Staff console reported degraded mode change.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "entered:offline",
+            "outputHash": null,
+            "metadata": {
+              "status": "entered",
+              "mode": "offline",
+              "reason": "Local DB corruption tabletop simulation.",
+              "details": "Fallback mode entered for restore workflow."
+            },
+            "id": "41e9a320-8067-4de3-987a-3d16d6938a79",
+            "at": "2026-02-17T17:44:00.812Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill local_db_corruption status=started.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "local_db_corruption",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "local_db_corruption",
+              "status": "started",
+              "outcome": "in_progress",
+              "notes": "Starting local DB corruption tabletop simulation.",
+              "mttrMinutes": null,
+              "unresolvedRisks": []
+            },
+            "id": "88d494d4-2b03-4f36-8cc8-fec88392e7dd",
+            "at": "2026-02-17T17:44:00.812Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill policy_bypass_attempt status=completed.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "policy_bypass_attempt",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "policy_bypass_attempt",
+              "status": "completed",
+              "outcome": "partial",
+              "notes": "Delegation race attempts executed; policy denials expected.",
+              "mttrMinutes": 6,
+              "unresolvedRisks": []
+            },
+            "id": "ddfe543c-8125-4c01-84b0-78b0949e45a5",
+            "at": "2026-02-17T17:44:00.806Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill policy_bypass_attempt status=started.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "policy_bypass_attempt",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "policy_bypass_attempt",
+              "status": "started",
+              "outcome": "in_progress",
+              "notes": "Starting delegation revocation race drill.",
+              "mttrMinutes": null,
+              "unresolvedRisks": []
+            },
+            "id": "c8186f99-1eb8-4eec-be3d-2bdca7b35cba",
+            "at": "2026-02-17T17:43:40.792Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill connector_outage status=completed.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "connector_outage",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "connector_outage",
+              "status": "completed",
+              "outcome": "partial",
+              "notes": "Timeout storm executed with degraded mode transition.",
+              "mttrMinutes": 9,
+              "unresolvedRisks": [
+                "connector-retry-threshold-tuning"
+              ]
+            },
+            "id": "bc84451f-4cfb-46bd-8fbf-ab8136812052",
+            "at": "2026-02-17T17:43:40.788Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.degraded_mode_exited",
+            "rationale": "Staff console reported degraded mode change.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "exited:offline",
+            "outputHash": null,
+            "metadata": {
+              "status": "exited",
+              "mode": "offline",
+              "reason": "Connector timeout storm resolved.",
+              "details": "Exited degraded mode after drill."
+            },
+            "id": "a6b9e845-0dc3-42e9-85ce-82792df8f2f4",
+            "at": "2026-02-17T17:43:40.787Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.degraded_mode_entered",
+            "rationale": "Staff console reported degraded mode change.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "entered:offline",
+            "outputHash": null,
+            "metadata": {
+              "status": "entered",
+              "mode": "offline",
+              "reason": "Connector timeout storm drill.",
+              "details": "Entered degraded mode during timeout storm."
+            },
+            "id": "78ecf35d-340d-4996-bccc-5dbbf224fdc9",
+            "at": "2026-02-17T17:43:40.782Z"
+          },
+          {
+            "actorType": "staff",
+            "actorId": "local-drill-staff",
+            "action": "studio_ops.drill_event",
+            "rationale": "Drill connector_outage status=started.",
+            "target": "local",
+            "approvalState": "approved",
+            "inputHash": "connector_outage",
+            "outputHash": null,
+            "metadata": {
+              "scenarioId": "connector_outage",
+              "status": "started",
+              "outcome": "in_progress",
+              "notes": "Starting connector timeout storm drill.",
+              "mttrMinutes": null,
+              "unresolvedRisks": []
+            },
+            "id": "3224dd5a-0a0e-4a35-a1d5-a21b59fb8ac9",
+            "at": "2026-02-17T17:43:39.433Z"
+          }
+        ],
+        "recentCapability": []
+      }
+    }
+  ]
+}

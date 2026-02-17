@@ -12,6 +12,7 @@ import {
   STATION_IDS,
   STATION_LABELS,
   STATION_FALLBACK_CAPACITY_HALF_SHELVES,
+  normalizeStationId,
   getStationCapacity,
 } from "./reservationStationConfig";
 
@@ -59,7 +60,7 @@ function normalizeStatus(value: unknown): string {
 }
 
 function normalizeStation(value: unknown): string {
-  return typeof value === "string" ? value.trim().toLowerCase() : "";
+  return normalizeStationId(value);
 }
 
 function normalizeLoadStatus(value: unknown): "queued" | "loading" | "loaded" {

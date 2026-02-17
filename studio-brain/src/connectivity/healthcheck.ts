@@ -35,21 +35,23 @@ export async function collectBackendHealth(
       const startedAt = Date.now();
       try {
         const outcome = await run();
-        const status = outcome.ok ? "ok" : "degraded";
+        const status: BackendDependencyCheck["status"] = outcome.ok ? "ok" : "degraded";
+        const outcomeLatencyMs = outcome.latencyMs ?? Date.now() - startedAt;
         return {
           name: label,
           status,
-          latencyMs: outcome.latencyMs ?? Date.now() - startedAt,
-          details: { ...outcome },
+          latencyMs: outcomeLatencyMs,
+          details: { ...outcome, latencyMs: outcomeLatencyMs },
         };
       } catch (error) {
         const latencyMs = Date.now() - startedAt;
+        const status: BackendDependencyCheck["status"] = "error";
         if (logger) {
           logger.warn("backend_dependency_healthcheck_failed", { check: label, message: error instanceof Error ? error.message : String(error) });
         }
         return {
           name: label,
-          status: "error",
+          status,
           latencyMs,
           error: error instanceof Error ? error.message : String(error),
         };

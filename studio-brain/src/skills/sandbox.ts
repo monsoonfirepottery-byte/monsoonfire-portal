@@ -104,7 +104,7 @@ export async function createSkillSandbox(
     payload?: Record<string, unknown>;
     command?: string;
   }): Promise<unknown> => {
-    const payload = { id: createRequestId(), method: "execute", params: input };
+    const payload: RpcMessage = { id: createRequestId(), method: "execute", params: input };
     const response = await send(payload);
     return response.result;
   };

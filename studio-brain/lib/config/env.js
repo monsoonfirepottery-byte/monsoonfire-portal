@@ -11,9 +11,20 @@ dotenv_1.default.config();
 const BoolFromString = zod_1.z
     .union([zod_1.z.enum(["true", "false", "1", "0"]), zod_1.z.boolean()])
     .transform((value) => value === true || value === "true" || value === "1");
+const requiredString = (field) => zod_1.z
+    .string()
+    .trim()
+    .min(1, { message: `${field} must not be empty` });
+const CsvFromString = zod_1.z
+    .string()
+    .transform((value) => value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean))
+    .pipe(zod_1.z.array(zod_1.z.string()));
 const EnvSchema = zod_1.z.object({
     STUDIO_BRAIN_PORT: zod_1.z.coerce.number().int().min(1).max(65535).default(8787),
-    STUDIO_BRAIN_HOST: zod_1.z.string().default("127.0.0.1"),
+    STUDIO_BRAIN_HOST: requiredString("STUDIO_BRAIN_HOST").default("127.0.0.1"),
     STUDIO_BRAIN_LOG_LEVEL: zod_1.z.enum(["debug", "info", "warn", "error"]).default("info"),
     STUDIO_BRAIN_ALLOWED_ORIGINS: zod_1.z.string().default("http://127.0.0.1:5173,http://localhost:5173"),
     STUDIO_BRAIN_ADMIN_TOKEN: zod_1.z.string().optional(),
@@ -29,32 +40,108 @@ const EnvSchema = zod_1.z.object({
     STUDIO_BRAIN_READY_MAX_SNAPSHOT_AGE_MINUTES: zod_1.z.coerce.number().int().min(5).max(10_080).default(240),
     STUDIO_BRAIN_ENABLE_RETENTION_PRUNE: BoolFromString.default(false),
     STUDIO_BRAIN_RETENTION_DAYS: zod_1.z.coerce.number().int().min(7).max(3650).default(180),
-    PGHOST: zod_1.z.string().default("127.0.0.1"),
+    PGHOST: requiredString("PGHOST").default("127.0.0.1"),
     PGPORT: zod_1.z.coerce.number().int().min(1).max(65535).default(5433),
-    PGDATABASE: zod_1.z.string().default("monsoonfire_studio_os"),
-    PGUSER: zod_1.z.string().default("postgres"),
-    PGPASSWORD: zod_1.z.string().default("postgres"),
+    PGDATABASE: requiredString("PGDATABASE").default("monsoonfire_studio_os"),
+    PGUSER: requiredString("PGUSER").default("postgres"),
+    PGPASSWORD: requiredString("PGPASSWORD").default("postgres"),
     PGSSLMODE: zod_1.z.enum(["disable", "prefer", "require"]).default("disable"),
     STUDIO_BRAIN_PG_POOL_MAX: zod_1.z.coerce.number().int().min(1).max(50).default(10),
     STUDIO_BRAIN_PG_IDLE_TIMEOUT_MS: zod_1.z.coerce.number().int().min(1_000).max(300_000).default(30_000),
     STUDIO_BRAIN_PG_CONNECTION_TIMEOUT_MS: zod_1.z.coerce.number().int().min(1_000).max(120_000).default(10_000),
+    STUDIO_BRAIN_PG_QUERY_TIMEOUT_MS: zod_1.z.coerce.number().int().min(500).max(120_000).default(5_000),
+    REDIS_HOST: requiredString("REDIS_HOST").default("127.0.0.1"),
+    REDIS_PORT: zod_1.z.coerce.number().int().min(1).max(65535).default(6379),
+    REDIS_USERNAME: zod_1.z.string().optional(),
+    REDIS_PASSWORD: zod_1.z.string().optional(),
+    REDIS_CONNECT_TIMEOUT_MS: zod_1.z.coerce.number().int().min(500).max(120_000).default(5_000),
+    REDIS_COMMAND_TIMEOUT_MS: zod_1.z.coerce.number().int().min(500).max(120_000).default(5_000),
+    STUDIO_BRAIN_REDIS_STREAM_NAME: requiredString("STUDIO_BRAIN_REDIS_STREAM_NAME").default("studiobrain.events"),
+    STUDIO_BRAIN_EVENT_BUS_POLL_INTERVAL_MS: zod_1.z.coerce.number().int().min(100).max(10_000).default(750),
+    STUDIO_BRAIN_EVENT_BUS_BATCH_SIZE: zod_1.z.coerce.number().int().min(1).max(500).default(32),
+    STUDIO_BRAIN_EVENT_BUS_START_ID: zod_1.z.string().default("$"),
+    STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT: requiredString("STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT").default("http://127.0.0.1:9000"),
+    STUDIO_BRAIN_ARTIFACT_STORE_BUCKET: requiredString("STUDIO_BRAIN_ARTIFACT_STORE_BUCKET").default("studiobrain-artifacts"),
+    STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY: requiredString("STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY").default("minioadmin"),
+    STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY: requiredString("STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY").default("minioadmin"),
+    STUDIO_BRAIN_ARTIFACT_STORE_USE_SSL: BoolFromString.default(false),
+    STUDIO_BRAIN_ARTIFACT_STORE_TIMEOUT_MS: zod_1.z.coerce.number().int().min(500).max(120_000).default(5_000),
+    STUDIO_BRAIN_VECTOR_STORE_ENABLED: BoolFromString.default(false),
+    STUDIO_BRAIN_VECTOR_STORE_TABLE: zod_1.z.string().default("swarm_memory"),
+    STUDIO_BRAIN_SWARM_ORCHESTRATOR_ENABLED: BoolFromString.default(false),
+    STUDIO_BRAIN_SWARM_ID: zod_1.z.string().default("default-swarm"),
+    STUDIO_BRAIN_SWARM_RUN_ID: zod_1.z.string().default(""),
+    STUDIO_BRAIN_SWARM_EVENT_POLL_MS: zod_1.z.coerce.number().int().min(100).max(10_000).default(1_000),
+    STUDIO_BRAIN_SKILL_REGISTRY_LOCAL_PATH: zod_1.z.string().default("./skills-registry"),
+    STUDIO_BRAIN_SKILL_REGISTRY_REMOTE_BASE_URL: zod_1.z.string().optional(),
+    STUDIO_BRAIN_SKILL_INSTALL_ROOT: requiredString("STUDIO_BRAIN_SKILL_INSTALL_ROOT").default("/var/lib/studiobrain/skills"),
+    STUDIO_BRAIN_SKILL_REQUIRE_PINNING: BoolFromString.default(true),
+    STUDIO_BRAIN_SKILL_REQUIRE_CHECKSUM: BoolFromString.default(true),
+    STUDIO_BRAIN_SKILL_REQUIRE_SIGNATURE: BoolFromString.default(false),
+    STUDIO_BRAIN_SKILL_ALLOWLIST: CsvFromString.default(() => []),
+    STUDIO_BRAIN_SKILL_DENYLIST: CsvFromString.default(() => []),
+    STUDIO_BRAIN_SKILL_SANDBOX_ENABLED: BoolFromString.default(true),
+    STUDIO_BRAIN_SKILL_SANDBOX_EGRESS_DENY: BoolFromString.default(true),
+    STUDIO_BRAIN_SKILL_SANDBOX_EGRESS_ALLOWLIST: CsvFromString.default(() => []),
+    STUDIO_BRAIN_SKILL_SANDBOX_ENTRY_TIMEOUT_MS: zod_1.z.coerce.number().int().min(250).max(120_000).default(15_000),
+    STUDIO_BRAIN_SKILL_RUNTIME_ALLOWLIST: CsvFromString.default(() => []),
     STUDIO_BRAIN_ENABLE_WRITE_EXECUTION: BoolFromString.default(false),
     STUDIO_BRAIN_REQUIRE_APPROVAL_FOR_EXTERNAL_WRITES: BoolFromString.default(true),
     STUDIO_BRAIN_FUNCTIONS_BASE_URL: zod_1.z.string().default("https://us-central1-monsoonfire-portal.cloudfunctions.net"),
     STUDIO_BRAIN_DEFAULT_TENANT_ID: zod_1.z.string().default("monsoonfire-main"),
     STUDIO_BRAIN_ALLOWED_TENANT_IDS: zod_1.z.string().default("monsoonfire-main"),
+    STUDIO_BRAIN_OTEL_ENABLED: BoolFromString.default(false),
+    STUDIO_BRAIN_OTEL_ENDPOINT: zod_1.z.string().optional(),
+    STUDIO_BRAIN_OTEL_SERVICE_NAME: zod_1.z.string().default("studiobrain"),
     FIREBASE_PROJECT_ID: zod_1.z.string().optional(),
     GOOGLE_APPLICATION_CREDENTIALS: zod_1.z.string().optional(),
     STRIPE_MODE: zod_1.z.enum(["test", "live"]).default("test"),
     STUDIO_BRAIN_STRIPE_READ_ONLY: BoolFromString.default(true),
 });
+function validateConnectivityConfig(env) {
+    const errors = [];
+    const assertUrl = (value, variableName) => {
+        if (!value)
+            return;
+        try {
+            new URL(value);
+        }
+        catch {
+            errors.push(`${variableName} must be a valid URL`);
+        }
+    };
+    if (env.STUDIO_BRAIN_VECTOR_STORE_ENABLED && !env.STUDIO_BRAIN_VECTOR_STORE_TABLE.trim()) {
+        errors.push("STUDIO_BRAIN_VECTOR_STORE_TABLE is required when vector store is enabled");
+    }
+    if (env.STUDIO_BRAIN_SKILL_INSTALL_ROOT.trim().length === 0) {
+        errors.push("STUDIO_BRAIN_SKILL_INSTALL_ROOT must not be empty");
+    }
+    assertUrl(env.STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT, "STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT");
+    if (env.STUDIO_BRAIN_SKILL_REGISTRY_REMOTE_BASE_URL) {
+        assertUrl(env.STUDIO_BRAIN_SKILL_REGISTRY_REMOTE_BASE_URL, "STUDIO_BRAIN_SKILL_REGISTRY_REMOTE_BASE_URL");
+    }
+    if (env.STUDIO_BRAIN_OTEL_ENABLED) {
+        if (!env.STUDIO_BRAIN_OTEL_ENDPOINT) {
+            errors.push("STUDIO_BRAIN_OTEL_ENDPOINT is required when STUDIO_BRAIN_OTEL_ENABLED=true");
+        }
+        else {
+            assertUrl(env.STUDIO_BRAIN_OTEL_ENDPOINT, "STUDIO_BRAIN_OTEL_ENDPOINT");
+        }
+    }
+    return errors;
+}
 function readEnv() {
     const parsed = EnvSchema.safeParse(process.env);
     if (!parsed.success) {
         const message = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
         throw new Error(`Invalid studio-brain env: ${message}`);
     }
-    return parsed.data;
+    const env = parsed.data;
+    const connectivityIssues = validateConnectivityConfig(env);
+    if (connectivityIssues.length > 0) {
+        throw new Error(`Invalid studio-brain env connectivity: ${connectivityIssues.join("; ")}`);
+    }
+    return env;
 }
 function redactEnvForLogs(env) {
     return {
@@ -92,6 +179,45 @@ function redactEnvForLogs(env) {
         STUDIO_BRAIN_PG_POOL_MAX: env.STUDIO_BRAIN_PG_POOL_MAX,
         STUDIO_BRAIN_PG_IDLE_TIMEOUT_MS: env.STUDIO_BRAIN_PG_IDLE_TIMEOUT_MS,
         STUDIO_BRAIN_PG_CONNECTION_TIMEOUT_MS: env.STUDIO_BRAIN_PG_CONNECTION_TIMEOUT_MS,
+        STUDIO_BRAIN_PG_QUERY_TIMEOUT_MS: env.STUDIO_BRAIN_PG_QUERY_TIMEOUT_MS,
         PGPASSWORD: "[redacted]",
+        REDIS_HOST: env.REDIS_HOST,
+        REDIS_PORT: env.REDIS_PORT,
+        REDIS_USERNAME: env.REDIS_USERNAME ?? null,
+        REDIS_PASSWORD: env.REDIS_PASSWORD ? "[set]" : null,
+        REDIS_CONNECT_TIMEOUT_MS: env.REDIS_CONNECT_TIMEOUT_MS,
+        REDIS_COMMAND_TIMEOUT_MS: env.REDIS_COMMAND_TIMEOUT_MS,
+        STUDIO_BRAIN_REDIS_STREAM_NAME: env.STUDIO_BRAIN_REDIS_STREAM_NAME,
+        STUDIO_BRAIN_EVENT_BUS_POLL_INTERVAL_MS: env.STUDIO_BRAIN_EVENT_BUS_POLL_INTERVAL_MS,
+        STUDIO_BRAIN_EVENT_BUS_BATCH_SIZE: env.STUDIO_BRAIN_EVENT_BUS_BATCH_SIZE,
+        STUDIO_BRAIN_EVENT_BUS_START_ID: env.STUDIO_BRAIN_EVENT_BUS_START_ID,
+        STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT: env.STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT,
+        STUDIO_BRAIN_ARTIFACT_STORE_BUCKET: env.STUDIO_BRAIN_ARTIFACT_STORE_BUCKET,
+        STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY: env.STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY ? "[set]" : "[missing]",
+        STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY: env.STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY ? "[set]" : "[missing]",
+        STUDIO_BRAIN_ARTIFACT_STORE_USE_SSL: env.STUDIO_BRAIN_ARTIFACT_STORE_USE_SSL,
+        STUDIO_BRAIN_ARTIFACT_STORE_TIMEOUT_MS: env.STUDIO_BRAIN_ARTIFACT_STORE_TIMEOUT_MS,
+        STUDIO_BRAIN_VECTOR_STORE_ENABLED: env.STUDIO_BRAIN_VECTOR_STORE_ENABLED,
+        STUDIO_BRAIN_VECTOR_STORE_TABLE: env.STUDIO_BRAIN_VECTOR_STORE_TABLE,
+        STUDIO_BRAIN_SWARM_ORCHESTRATOR_ENABLED: env.STUDIO_BRAIN_SWARM_ORCHESTRATOR_ENABLED,
+        STUDIO_BRAIN_SWARM_ID: env.STUDIO_BRAIN_SWARM_ID,
+        STUDIO_BRAIN_SWARM_RUN_ID: env.STUDIO_BRAIN_SWARM_RUN_ID || null,
+        STUDIO_BRAIN_SWARM_EVENT_POLL_MS: env.STUDIO_BRAIN_SWARM_EVENT_POLL_MS,
+        STUDIO_BRAIN_SKILL_REGISTRY_LOCAL_PATH: env.STUDIO_BRAIN_SKILL_REGISTRY_LOCAL_PATH,
+        STUDIO_BRAIN_SKILL_REGISTRY_REMOTE_BASE_URL: env.STUDIO_BRAIN_SKILL_REGISTRY_REMOTE_BASE_URL ?? null,
+        STUDIO_BRAIN_SKILL_INSTALL_ROOT: env.STUDIO_BRAIN_SKILL_INSTALL_ROOT,
+        STUDIO_BRAIN_SKILL_REQUIRE_PINNING: env.STUDIO_BRAIN_SKILL_REQUIRE_PINNING,
+        STUDIO_BRAIN_SKILL_REQUIRE_CHECKSUM: env.STUDIO_BRAIN_SKILL_REQUIRE_CHECKSUM,
+        STUDIO_BRAIN_SKILL_REQUIRE_SIGNATURE: env.STUDIO_BRAIN_SKILL_REQUIRE_SIGNATURE,
+        STUDIO_BRAIN_SKILL_ALLOWLIST: env.STUDIO_BRAIN_SKILL_ALLOWLIST.join(","),
+        STUDIO_BRAIN_SKILL_DENYLIST: env.STUDIO_BRAIN_SKILL_DENYLIST.join(","),
+        STUDIO_BRAIN_SKILL_SANDBOX_ENABLED: env.STUDIO_BRAIN_SKILL_SANDBOX_ENABLED,
+        STUDIO_BRAIN_SKILL_SANDBOX_EGRESS_DENY: env.STUDIO_BRAIN_SKILL_SANDBOX_EGRESS_DENY,
+        STUDIO_BRAIN_SKILL_SANDBOX_EGRESS_ALLOWLIST: env.STUDIO_BRAIN_SKILL_SANDBOX_EGRESS_ALLOWLIST.join(","),
+        STUDIO_BRAIN_SKILL_SANDBOX_ENTRY_TIMEOUT_MS: env.STUDIO_BRAIN_SKILL_SANDBOX_ENTRY_TIMEOUT_MS,
+        STUDIO_BRAIN_SKILL_RUNTIME_ALLOWLIST: env.STUDIO_BRAIN_SKILL_RUNTIME_ALLOWLIST.join(","),
+        STUDIO_BRAIN_OTEL_ENABLED: env.STUDIO_BRAIN_OTEL_ENABLED,
+        STUDIO_BRAIN_OTEL_ENDPOINT: env.STUDIO_BRAIN_OTEL_ENDPOINT ?? null,
+        STUDIO_BRAIN_OTEL_SERVICE_NAME: env.STUDIO_BRAIN_OTEL_SERVICE_NAME,
     };
 }

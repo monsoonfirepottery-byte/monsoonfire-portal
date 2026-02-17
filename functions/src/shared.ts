@@ -38,7 +38,10 @@ export function asInt(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
 }
 
-export function safeString(value: unknown, fallback = ""): string {
+export function safeString(value: unknown): string;
+export function safeString(value: unknown, fallback: string): string;
+export function safeString(value: unknown, fallback: null): null;
+export function safeString(value: unknown, fallback: string | null = ""): string | null {
   return typeof value === "string" ? value : fallback;
 }
 

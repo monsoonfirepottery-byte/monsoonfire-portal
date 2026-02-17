@@ -58,6 +58,19 @@ async function checksumDirectory(rootPath: string): Promise<string> {
     if (!entry.isFile()) continue;
     const entryPath = path.join(entry.parentPath, entry.name);
     const data = await fs.readFile(entryPath);
+    if (entry.name === "manifest.json") {
+      try {
+        const parsed = JSON.parse(data.toString("utf8")) as Record<string, unknown>;
+        if (parsed && typeof parsed === "object") {
+          const { checksum, ...withoutChecksum } = parsed;
+          void checksum;
+          payload.push(`${entryPath.replace(rootPath, "")}:${Buffer.from(JSON.stringify(withoutChecksum), "utf8").toString("hex")}`);
+          continue;
+        }
+      } catch {
+        // fallback to raw bytes
+      }
+    }
     payload.push(`${entryPath.replace(rootPath, "")}:${data.toString("hex")}`);
   }
   payload.sort();

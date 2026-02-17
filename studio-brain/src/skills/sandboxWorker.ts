@@ -52,7 +52,14 @@ function applyEgressPolicy(): void {
   const originalFetch = globalThis.fetch;
   if (typeof originalFetch === "function") {
     globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      const target = typeof input === "string" || input instanceof URL ? String(input) : (input as { href: string }).href;
+      const target =
+        typeof input === "string" || input instanceof URL
+          ? String(input)
+          : typeof input === "object" && input !== null && "url" in input
+            ? String((input as { url: string }).url)
+            : typeof input === "object" && input !== null && "href" in input
+              ? String((input as { href?: string }).href || "")
+              : "";
       checkUrl(target);
       return originalFetch.call(globalThis as never, input, init);
     };
@@ -72,7 +79,7 @@ function applyEgressPolicy(): void {
           checkUrl(`https://${host}`);
         }
       }
-      return originalRequest.apply(client, args);
+      return (originalRequest as (...requestArgs: unknown[]) => ReturnType<typeof originalRequest>).apply(client, args as unknown[]);
     };
   };
   blockClient(require("http"));

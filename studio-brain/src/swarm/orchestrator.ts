@@ -77,6 +77,7 @@ export class SwarmOrchestrator {
             outputs: existing.outputs,
             swarmId: existing.swarmId,
             runId: existing.runId,
+            createdAt: existing.createdAt,
           });
           this.context.logger.info("swarm_orchestrator_task_assigned", { taskId, assignedAgentId: newAssigned });
         }
@@ -97,6 +98,7 @@ export class SwarmOrchestrator {
             outputs: null,
             swarmId: event.swarmId,
             runId: event.runId,
+            createdAt: new Date().toISOString(),
           });
           this.context.logger.info("swarm_orchestrator_created_task", { taskId, assignedAgentId });
           await this.context.bus.publish({

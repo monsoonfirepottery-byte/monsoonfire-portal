@@ -1157,7 +1157,7 @@ test("staff override denied keeps blocked intake denied on retry", async () => {
       headers: { authorization: "Bearer test-staff", "content-type": "application/json" },
       body: JSON.stringify({
         decision: "override_denied",
-        reasonCode: "staff_override_context_verified",
+        reasonCode: "policy_confirmed_block",
         rationale: "Staff denied request because rights proof is missing.",
       }),
     });

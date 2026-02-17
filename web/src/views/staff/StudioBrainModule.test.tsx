@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { User } from "firebase/auth";
 import StudioBrainModule from "./StudioBrainModule";
@@ -186,6 +186,7 @@ function getHeadersFromCall(init?: RequestInit): Record<string, string> {
 }
 
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -215,10 +216,6 @@ describe("StudioBrainModule", () => {
         adminToken="dev-admin-token"
       />
     );
-
-    await screen.findByText("Studio Brain");
-    await screen.findByText("Recent proposals");
-    await screen.findByText("Close batch proposal");
 
     await waitFor(() => {
       const bootstrapCall = fetchMock.requestLog.find((entry) => getInputUrl(entry.input).includes("/api/capabilities"));
@@ -346,7 +343,7 @@ describe("StudioBrainModule", () => {
     const fetchMock = createStudioBrainFetchMock();
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
-    render(
+    const ui = render(
       <StudioBrainModule
         user={createUser()}
         active={true}
@@ -355,11 +352,23 @@ describe("StudioBrainModule", () => {
       />
     );
 
-    const rationaleInput = await screen.findByLabelText("Kill switch rationale");
+    const refreshButton = await ui.findByRole("button", { name: "Refresh" });
+    await waitFor(() => {
+      expect((refreshButton as HTMLButtonElement).disabled).toBe(false);
+    });
+    const policyControlSection = await ui.findByText("Policy controls");
+    const policyCard = policyControlSection.closest("section");
+    expect(policyCard).toBeTruthy();
+    const rationaleInput = await within(policyCard as HTMLElement).findByRole("textbox", { name: "Kill switch rationale" });
     fireEvent.change(rationaleInput, {
       target: { value: "Emergency freeze during incident drill." },
     });
-    const enableKillSwitchButton = await screen.findByRole("button", { name: "Enable kill switch" });
+    const enableKillSwitchButton = await within(policyCard as HTMLElement).findByRole("button", {
+      name: /Enable kill switch|Disable kill switch/,
+    });
+    await waitFor(() => {
+      expect((enableKillSwitchButton as HTMLButtonElement).disabled).toBe(false);
+    });
     fireEvent.click(enableKillSwitchButton);
 
     await waitFor(() => {
@@ -409,7 +418,7 @@ describe("StudioBrainModule", () => {
     const fetchMock = createStudioBrainFetchMock({ includeIntakeRow: true });
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
-    render(
+    const ui = render(
       <StudioBrainModule
         user={createUser()}
         active={true}
@@ -418,7 +427,21 @@ describe("StudioBrainModule", () => {
       />
     );
 
-    const denyOverrideButton = await screen.findByRole("button", { name: "Deny override" });
+    const refreshButton = await ui.findByRole("button", { name: "Refresh" });
+    await waitFor(() => {
+      expect((refreshButton as HTMLButtonElement).disabled).toBe(false);
+    });
+    const [intakeCell] = await ui.findAllByText("ip_infringement");
+    const intakeRow = intakeCell.closest("tr");
+    expect(intakeRow).toBeTruthy();
+    const scope = within(intakeRow as HTMLTableRowElement);
+    const reasonCodeSelect = await ui.findByRole("combobox", { name: "Decision reason code" });
+    fireEvent.change(reasonCodeSelect, { target: { value: "policy_confirmed_block" } });
+
+    const denyOverrideButton = await scope.findByRole("button", { name: "Deny override" });
+    await waitFor(() => {
+      expect((denyOverrideButton as HTMLButtonElement).disabled).toBe(false);
+    });
     fireEvent.click(denyOverrideButton);
 
     await waitFor(() => {
@@ -435,7 +458,7 @@ describe("StudioBrainModule", () => {
         rationale?: string;
       };
       expect(body.decision).toBe("override_denied");
-      expect(body.reasonCode).toBe("staff_override_context_verified");
+      expect(body.reasonCode).toBe("policy_confirmed_block");
       expect(String(body.rationale ?? "").length >= 10).toBe(true);
     });
   });

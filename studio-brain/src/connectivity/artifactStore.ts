@@ -46,7 +46,8 @@ function toHostAndPort(url: string): { host: string; port: number; useSSL: boole
 }
 
 function parseTimeoutMs(value: number | undefined): number {
-  return Number.isFinite(value) && value > 0 ? Math.min(value, 30_000) : 5_000;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 30_000) : 5_000;
 }
 
 function redactArtifactConfig(config: ArtifactStoreConfig): Record<string, string | number | boolean> {
@@ -117,9 +118,13 @@ export async function createArtifactStore(config: ArtifactStoreConfig, logger: L
         () => withRetry("artifact_store_get", async () => client.getObject(config.bucket, key), logger)
       );
       const chunks: Buffer[] = [];
-      for await (const chunk of stream) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      }
+      await new Promise<void>((resolve, reject) => {
+        stream.on("data", (chunk: Buffer | string) => {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        });
+        stream.on("end", () => resolve());
+        stream.on("error", (error: Error) => reject(error));
+      });
       return Buffer.concat(chunks);
     } catch (error) {
       if ((error as { code?: string }).code === "NoSuchKey") {
@@ -133,13 +138,18 @@ export async function createArtifactStore(config: ArtifactStoreConfig, logger: L
     const objects: string[] = [];
     const stream = await withTimeout(
       "list",
-      () => withRetry("artifact_store_list", () => client.listObjects(config.bucket, prefix, true), logger)
+      () =>
+        withRetry("artifact_store_list", () => Promise.resolve(client.listObjects(config.bucket, prefix, true)), logger)
     );
-    for await (const obj of stream) {
-      if (obj.name) {
-        objects.push(obj.name);
-      }
-    }
+    await new Promise<void>((resolve, reject) => {
+      stream.on("data", (obj: { name?: string }) => {
+        if (obj?.name) {
+          objects.push(obj.name);
+        }
+      });
+      stream.on("error", (error: Error) => reject(error));
+      stream.on("end", () => resolve());
+    });
     return objects;
   };
 

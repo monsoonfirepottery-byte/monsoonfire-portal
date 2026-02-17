@@ -933,6 +933,56 @@ async function withServer(options, run) {
         strict_1.default.equal(invalidStatus.status, 400);
     });
 });
+(0, node_test_1.default)("ops degraded endpoint preserves mode metadata and supports audit prefix filtering", async () => {
+    await withServer({}, async (baseUrl) => {
+        const entered = await fetch(`${baseUrl}/api/ops/degraded`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                status: "entered",
+                mode: "offline",
+                reason: "Studio Brain unavailable during connector outage drill.",
+                details: "Switched staff console to cloud-only fallback.",
+            }),
+        });
+        strict_1.default.equal(entered.status, 200);
+        const exited = await fetch(`${baseUrl}/api/ops/degraded`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                status: "exited",
+                mode: "offline",
+                reason: "Recovered after restart.",
+                details: "Restored normal studio-brain routing.",
+            }),
+        });
+        strict_1.default.equal(exited.status, 200);
+        const audit = await fetch(`${baseUrl}/api/ops/audit?limit=20&actionPrefix=studio_ops.degraded_mode_`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(audit.status, 200);
+        const payload = (await audit.json());
+        const enteredRow = payload.rows.find((row) => row.action === "studio_ops.degraded_mode_entered");
+        const exitedRow = payload.rows.find((row) => row.action === "studio_ops.degraded_mode_exited");
+        strict_1.default.ok(enteredRow);
+        strict_1.default.ok(exitedRow);
+        strict_1.default.equal(enteredRow?.metadata?.status, "entered");
+        strict_1.default.equal(exitedRow?.metadata?.status, "exited");
+        strict_1.default.equal(enteredRow?.metadata?.mode, "offline");
+    });
+});
+(0, node_test_1.default)("ops audit and ops drills listing endpoints reject non-staff principals", async () => {
+    await withServer({}, async (baseUrl) => {
+        const audit = await fetch(`${baseUrl}/api/ops/audit?limit=10`, {
+            headers: { authorization: "Bearer test-member" },
+        });
+        strict_1.default.equal(audit.status, 401);
+        const drills = await fetch(`${baseUrl}/api/ops/drills?limit=10`, {
+            headers: { authorization: "Bearer test-member" },
+        });
+        strict_1.default.equal(drills.status, 401);
+    });
+});
 (0, node_test_1.default)("staff override denied keeps blocked intake denied on retry", async () => {
     await withServer({}, async (baseUrl) => {
         const createBlocked = await fetch(`${baseUrl}/api/capabilities/proposals`, {
@@ -965,7 +1015,7 @@ async function withServer(options, run) {
             headers: { authorization: "Bearer test-staff", "content-type": "application/json" },
             body: JSON.stringify({
                 decision: "override_denied",
-                reasonCode: "staff_override_context_verified",
+                reasonCode: "policy_confirmed_block",
                 rationale: "Staff denied request because rights proof is missing.",
             }),
         });

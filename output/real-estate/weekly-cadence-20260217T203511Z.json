@@ -1,0 +1,75 @@
+{
+  "runId": "20260217T203511Z",
+  "startedAtUtc": "2026-02-17T20:35:11.8938927Z",
+  "finishedAtUtc": "2026-02-17T20:36:14.1084605Z",
+  "status": "ok",
+  "outputDir": "output/real-estate",
+  "publicDataDir": "output/real-estate/public-data",
+  "stagingDir": "output/real-estate/staging/public-signals",
+  "manualDropDir": "output/real-estate/manual-drops",
+  "steps": [
+    {
+      "name": "fetch_public_data",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:35:11.8944891Z",
+      "durationSec": 30.17,
+      "error": ""
+    },
+    {
+      "name": "seed_manual_drops",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:35:42.0668844Z",
+      "durationSec": 0.33,
+      "error": ""
+    },
+    {
+      "name": "build_staging",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:35:42.3960256Z",
+      "durationSec": 0.77,
+      "error": ""
+    },
+    {
+      "name": "run_public_signals",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:35:43.1638423Z",
+      "durationSec": 1.42,
+      "error": ""
+    },
+    {
+      "name": "build_macro_context",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:35:44.5862718Z",
+      "durationSec": 0.35,
+      "error": ""
+    },
+    {
+      "name": "build_parcel_graph",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:35:44.9326428Z",
+      "durationSec": 0.94,
+      "error": ""
+    },
+    {
+      "name": "run_agentic_research",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:35:45.8684354Z",
+      "durationSec": 26.86,
+      "error": ""
+    },
+    {
+      "name": "build_needs_context",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:36:12.7334751Z",
+      "durationSec": 0.42,
+      "error": ""
+    },
+    {
+      "name": "run_intelligence_analysis",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:36:13.1550349Z",
+      "durationSec": 0.95,
+      "error": ""
+    }
+  ]
+}

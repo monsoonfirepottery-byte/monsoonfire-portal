@@ -1,0 +1,1236 @@
+{
+  "generatedAtUtc": "2026-02-17T21:40:39.9691343Z",
+  "runId": "20260217T214039Z",
+  "summary": {
+    "marketArea": "West Valley and Phoenix, Arizona",
+    "totalQueries": 332,
+    "queryRows": 0,
+    "stagedRows": 0,
+    "manualRows": 7,
+    "rawItems": 7,
+    "uniqueItems": 7,
+    "opportunitiesAboveMinScore": 7,
+    "topReturned": 7,
+    "channelMix": "auction_marketplace:2, community_marketplace:2, community_signal:1, local_ceramic_org_feed:1, local_marketplace:1",
+    "neededWantedBoostedAssets": 7,
+    "carryForwardUsed": false,
+    "carryForwardFromRunId": "",
+    "carryForwardAgeDays": 0
+  },
+  "inputs": {
+    "configPath": "D:\\monsoonfire-portal\\docs\\real-estate\\studio-asset-intel-config.json",
+    "priorityListPath": "D:\\monsoonfire-portal\\docs\\real-estate\\studio-needed-wanted-list.json",
+    "autoFeedDir": "D:\\monsoonfire-portal\\output\\real-estate\\staging\\studio-assets",
+    "manualDropDir": "D:\\monsoonfire-portal\\output\\real-estate\\manual-drops\\studio-assets",
+    "minScore": 25,
+    "top": 30,
+    "maxResultsPerQuery": 20,
+    "enableCarryForward": true,
+    "carryForwardMaxAgeDays": 21
+  },
+  "topAssets": [
+    {
+      "assetId": "asset:579194501",
+      "title": "Skutt kiln shell and refractory package",
+      "url": "https://www.sierraauctions.com/search?query=kiln",
+      "summary": "Kiln shell, castable refractory, and blanket material lot",
+      "publishedAt": "2026-02-17T21:37:50.8200450Z",
+      "sourceQuery": "manual_seed:sierraauctions",
+      "sourceKey": "sierraauctions_az",
+      "sourceName": "Sierra Auctions Arizona",
+      "sourceType": "auction_marketplace",
+      "domain": "www.sierraauctions.com",
+      "cityHint": "Tolleson",
+      "ingestChannel": "manual_drop_all",
+      "assetCategory": "kiln",
+      "assetScore": 100,
+      "classification": "high_priority",
+      "scoreBreakdown": {
+        "equipmentScore": 56,
+        "dealScore": 0,
+        "riskScore": 0,
+        "localityScore": 14,
+        "sourceDomainScore": 3,
+        "sourceTypeScore": 12,
+        "sourceKeyScore": 6,
+        "priorityBoost": 42,
+        "shippingPenalty": 0,
+        "total": 100
+      },
+      "evidence": {
+        "equipmentMatches": [
+          {
+            "keyword": "kiln",
+            "weight": 22
+          },
+          {
+            "keyword": "refractory",
+            "weight": 12
+          },
+          {
+            "keyword": "castable refractory",
+            "weight": 12
+          },
+          {
+            "keyword": "kiln shell",
+            "weight": 10
+          }
+        ],
+        "dealMatches": [],
+        "riskMatches": [],
+        "neededWantedMatches": [
+          {
+            "id": "high-fire-kiln",
+            "label": "Production electric kiln",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 22
+          },
+          {
+            "id": "firebrick-and-reduction-build-materials",
+            "label": "Firebrick and reduction kiln build materials",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 20
+          }
+        ]
+      },
+      "isCarryForward": false,
+      "carriedForwardFromRunId": ""
+    },
+    {
+      "assetId": "asset:1315849405",
+      "title": "Lot of thick hard firebrick + IFB",
+      "url": "https://www.facebook.com/marketplace/search/?query=firebrick",
+      "summary": "Thick hard brick and insulating firebrick lot for reduction kiln build",
+      "publishedAt": "2026-02-17T21:37:50.8200450Z",
+      "sourceQuery": "manual_seed:meta",
+      "sourceKey": "facebook_marketplace",
+      "sourceName": "Facebook Marketplace",
+      "sourceType": "community_marketplace",
+      "domain": "www.facebook.com",
+      "cityHint": "Glendale",
+      "ingestChannel": "manual_drop_all",
+      "assetCategory": "kiln",
+      "assetScore": 100,
+      "classification": "high_priority",
+      "scoreBreakdown": {
+        "equipmentScore": 97,
+        "dealScore": 8,
+        "riskScore": 0,
+        "localityScore": 14,
+        "sourceDomainScore": 3,
+        "sourceTypeScore": 16,
+        "sourceKeyScore": 5,
+        "priorityBoost": 42,
+        "shippingPenalty": 0,
+        "total": 100
+      },
+      "evidence": {
+        "equipmentMatches": [
+          {
+            "keyword": "kiln",
+            "weight": 22
+          },
+          {
+            "keyword": "firebrick",
+            "weight": 16
+          },
+          {
+            "keyword": "hard brick",
+            "weight": 15
+          },
+          {
+            "keyword": "insulating firebrick",
+            "weight": 14
+          },
+          {
+            "keyword": "ifb",
+            "weight": 12
+          },
+          {
+            "keyword": "reduction kiln",
+            "weight": 18
+          }
+        ],
+        "dealMatches": [
+          {
+            "keyword": "pickup only",
+            "weight": 8
+          }
+        ],
+        "riskMatches": [],
+        "neededWantedMatches": [
+          {
+            "id": "high-fire-kiln",
+            "label": "Production electric kiln",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 22
+          },
+          {
+            "id": "firebrick-and-reduction-build-materials",
+            "label": "Firebrick and reduction kiln build materials",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 20
+          }
+        ]
+      },
+      "isCarryForward": false,
+      "carriedForwardFromRunId": ""
+    },
+    {
+      "assetId": "asset:16137548",
+      "title": "Skutt KM-1027 electric kiln with shelves",
+      "url": "https://phoenix.craigslist.org/search/sss?query=skutt+kiln",
+      "summary": "Cone 10 capable kiln, kiln shelves and posts included, pickup only",
+      "publishedAt": "2026-02-17T21:37:50.8200450Z",
+      "sourceQuery": "manual_seed:craigslist",
+      "sourceKey": "craigslist_phoenix",
+      "sourceName": "Craigslist Phoenix",
+      "sourceType": "local_marketplace",
+      "domain": "phoenix.craigslist.org",
+      "cityHint": "Phoenix",
+      "ingestChannel": "manual_drop_all",
+      "assetCategory": "kiln",
+      "assetScore": 100,
+      "classification": "high_priority",
+      "scoreBreakdown": {
+        "equipmentScore": 55,
+        "dealScore": 36,
+        "riskScore": 0,
+        "localityScore": 14,
+        "sourceDomainScore": 3,
+        "sourceTypeScore": 10,
+        "sourceKeyScore": 8,
+        "priorityBoost": 22,
+        "shippingPenalty": 0,
+        "total": 100
+      },
+      "evidence": {
+        "equipmentMatches": [
+          {
+            "keyword": "kiln",
+            "weight": 22
+          },
+          {
+            "keyword": "electric kiln",
+            "weight": 24
+          },
+          {
+            "keyword": "kiln shelves",
+            "weight": 9
+          }
+        ],
+        "dealMatches": [
+          {
+            "keyword": "pickup only",
+            "weight": 8
+          },
+          {
+            "keyword": "local pickup",
+            "weight": 10
+          },
+          {
+            "keyword": "tested",
+            "weight": 10
+          },
+          {
+            "keyword": "working",
+            "weight": 8
+          }
+        ],
+        "riskMatches": [],
+        "neededWantedMatches": [
+          {
+            "id": "high-fire-kiln",
+            "label": "Production electric kiln",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 22
+          }
+        ]
+      },
+      "isCarryForward": false,
+      "carriedForwardFromRunId": ""
+    },
+    {
+      "assetId": "asset:1873113040",
+      "title": "Venturi burners + propane regulators set",
+      "url": "https://www.facebook.com/marketplace/search/?query=venturi+burner",
+      "summary": "Burners, regulators, hose assemblies for reduction kiln setup",
+      "publishedAt": "2026-02-17T21:37:50.8200450Z",
+      "sourceQuery": "manual_seed:meta",
+      "sourceKey": "facebook_marketplace",
+      "sourceName": "Facebook Marketplace",
+      "sourceType": "community_marketplace",
+      "domain": "www.facebook.com",
+      "cityHint": "Avondale",
+      "ingestChannel": "manual_drop_all",
+      "assetCategory": "kiln",
+      "assetScore": 100,
+      "classification": "high_priority",
+      "scoreBreakdown": {
+        "equipmentScore": 75,
+        "dealScore": 0,
+        "riskScore": 0,
+        "localityScore": 14,
+        "sourceDomainScore": 3,
+        "sourceTypeScore": 16,
+        "sourceKeyScore": 5,
+        "priorityBoost": 42,
+        "shippingPenalty": 0,
+        "total": 100
+      },
+      "evidence": {
+        "equipmentMatches": [
+          {
+            "keyword": "kiln",
+            "weight": 22
+          },
+          {
+            "keyword": "burner",
+            "weight": 13
+          },
+          {
+            "keyword": "venturi burner",
+            "weight": 14
+          },
+          {
+            "keyword": "reduction kiln",
+            "weight": 18
+          },
+          {
+            "keyword": "regulator",
+            "weight": 8
+          }
+        ],
+        "dealMatches": [],
+        "riskMatches": [],
+        "neededWantedMatches": [
+          {
+            "id": "high-fire-kiln",
+            "label": "Production electric kiln",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 22
+          },
+          {
+            "id": "firebrick-and-reduction-build-materials",
+            "label": "Firebrick and reduction kiln build materials",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 20
+          }
+        ]
+      },
+      "isCarryForward": false,
+      "carriedForwardFromRunId": ""
+    },
+    {
+      "assetId": "asset:2098865022",
+      "title": "Guild newsletter: kiln furniture lot + slab roller",
+      "url": "https://example.substack.com/p/guild-classifieds",
+      "summary": "Community guild classifieds listing shelves, posts, slab roller",
+      "publishedAt": "2026-02-17T21:37:50.8200450Z",
+      "sourceQuery": "manual_seed:newsletter",
+      "sourceKey": "local_ceramic_org_newsletters",
+      "sourceName": "Local Ceramic Org Newsletters and Feeds",
+      "sourceType": "local_ceramic_org_feed",
+      "domain": "example.substack.com",
+      "cityHint": "Phoenix",
+      "ingestChannel": "manual_drop_all",
+      "assetCategory": "kiln",
+      "assetScore": 100,
+      "classification": "high_priority",
+      "scoreBreakdown": {
+        "equipmentScore": 43,
+        "dealScore": 0,
+        "riskScore": 0,
+        "localityScore": 14,
+        "sourceDomainScore": 3,
+        "sourceTypeScore": 13,
+        "sourceKeyScore": 0,
+        "priorityBoost": 32,
+        "shippingPenalty": 0,
+        "total": 100
+      },
+      "evidence": {
+        "equipmentMatches": [
+          {
+            "keyword": "kiln",
+            "weight": 22
+          },
+          {
+            "keyword": "slab roller",
+            "weight": 12
+          },
+          {
+            "keyword": "kiln furniture",
+            "weight": 9
+          }
+        ],
+        "dealMatches": [],
+        "riskMatches": [],
+        "neededWantedMatches": [
+          {
+            "id": "high-fire-kiln",
+            "label": "Production electric kiln",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 22
+          },
+          {
+            "id": "forming-tools",
+            "label": "Slab roller and extruder",
+            "priority": "medium",
+            "status": "wanted",
+            "scoreBoost": 10
+          }
+        ]
+      },
+      "isCarryForward": false,
+      "carriedForwardFromRunId": ""
+    },
+    {
+      "assetId": "asset:1016809334",
+      "title": "Pugmill de-airing model (studio closeout)",
+      "url": "https://www.reddit.com/search/?q=phoenix+pugmill+for+sale",
+      "summary": "Local studio closeout, pugmill and small mixer available",
+      "publishedAt": "2026-02-17T21:37:50.8200450Z",
+      "sourceQuery": "manual_seed:reddit",
+      "sourceKey": "reddit_local_sell",
+      "sourceName": "Reddit Local Sell Signals",
+      "sourceType": "community_signal",
+      "domain": "www.reddit.com",
+      "cityHint": "Peoria",
+      "ingestChannel": "manual_drop_all",
+      "assetCategory": "clay_processing",
+      "assetScore": 94,
+      "classification": "high_priority",
+      "scoreBreakdown": {
+        "equipmentScore": 32,
+        "dealScore": 12,
+        "riskScore": 0,
+        "localityScore": 14,
+        "sourceDomainScore": 3,
+        "sourceTypeScore": 14,
+        "sourceKeyScore": 5,
+        "priorityBoost": 14,
+        "shippingPenalty": 0,
+        "total": 94
+      },
+      "evidence": {
+        "equipmentMatches": [
+          {
+            "keyword": "pugmill",
+            "weight": 18
+          },
+          {
+            "keyword": "studio closeout",
+            "weight": 14
+          }
+        ],
+        "dealMatches": [
+          {
+            "keyword": "must go",
+            "weight": 12
+          }
+        ],
+        "riskMatches": [],
+        "neededWantedMatches": [
+          {
+            "id": "clay-processing",
+            "label": "Pugmill or clay mixer",
+            "priority": "medium",
+            "status": "wanted",
+            "scoreBoost": 14
+          }
+        ]
+      },
+      "isCarryForward": false,
+      "carriedForwardFromRunId": ""
+    },
+    {
+      "assetId": "asset:201711444",
+      "title": "Shimpo Whisper wheel and stool",
+      "url": "https://www.localauctions.com/search?query=shimpo",
+      "summary": "Studio surplus wheel from local auction, tested power on",
+      "publishedAt": "2026-02-17T21:37:50.8200450Z",
+      "sourceQuery": "manual_seed:localauctions",
+      "sourceKey": "localauctions_az",
+      "sourceName": "LocalAuctions Arizona",
+      "sourceType": "auction_marketplace",
+      "domain": "www.localauctions.com",
+      "cityHint": "Goodyear",
+      "ingestChannel": "manual_drop_all",
+      "assetCategory": "wheel",
+      "assetScore": 91,
+      "classification": "high_priority",
+      "scoreBreakdown": {
+        "equipmentScore": 30,
+        "dealScore": 10,
+        "riskScore": 0,
+        "localityScore": 14,
+        "sourceDomainScore": 3,
+        "sourceTypeScore": 12,
+        "sourceKeyScore": 6,
+        "priorityBoost": 16,
+        "shippingPenalty": 0,
+        "total": 91
+      },
+      "evidence": {
+        "equipmentMatches": [
+          {
+            "keyword": "wheel",
+            "weight": 14
+          },
+          {
+            "keyword": "shimpo",
+            "weight": 16
+          }
+        ],
+        "dealMatches": [
+          {
+            "keyword": "tested",
+            "weight": 10
+          }
+        ],
+        "riskMatches": [],
+        "neededWantedMatches": [
+          {
+            "id": "wheel-expansion",
+            "label": "Pottery wheels",
+            "priority": "high",
+            "status": "wanted",
+            "scoreBoost": 16
+          }
+        ]
+      },
+      "isCarryForward": false,
+      "carriedForwardFromRunId": ""
+    }
+  ],
+  "allAssets": [
+    {
+      "assetId": "asset:1016809334",
+      "title": "Pugmill de-airing model (studio closeout)",
+      "url": "https://www.reddit.com/search/?q=phoenix+pugmill+for+sale",
+      "summary": "Local studio closeout, pugmill and small mixer available",
+      "publishedAt": "2026-02-17T21:37:50.8200450Z",
+      "sourceQuery": "manual_seed:reddit",
+      "sourceKey": "reddit_local_sell",
+      "sourceName": "Reddit Local Sell Signals",
+      "sourceType": "community_signal",
+      "domain": "www.reddit.com",
+      "cityHint": "Peoria",
+      "ingestChannel": "manual_drop_all",
+      "assetCategory": "clay_processing",
+      "assetScore": 94,
+      "classification": "high_priority",
+      "scoreBreakdown": {
+        "equipmentScore": 32,
+        "dealScore": 12,
+        "riskScore": 0,
+        "localityScore": 14,
+        "sourceDomainScore": 3,
+        "sourceTypeScore": 14,
+        "sourceKeyScore": 5,
+        "priorityBoost": 14,
+        "shippingPenalty": 0,
+        "total": 94
+      },
+      "evidence": {
+        "equipmentMatches": [
+          {
+            "keyword": "pugmill",
+            "weight": 18
+          },
+          {
+            "keyword": "studio closeout",
+            "weight": 14
+          }
+        ],
+        "dealMatches": [
+          {
+            "keyword": "must go",
+            "weight": 12
+          }
+        ],
+        "riskMatches": [],
+        "neededWantedMatches": [
+          {
+            "id": "clay-processing",
+            "label": "Pugmill or clay mixer",
+            "priority": "medium",
+            "status": "wanted",
+            "scoreBoost": 14
+          }
+        ]
+      },
+      "isCarryForward": false,
+      "carriedForwardFromRunId": ""
+    },
+    {
+      "assetId": "asset:579194501",
+      "title": "Skutt kiln shell and refractory package",
+      "url": "https://www.sierraauctions.com/search?query=kiln",
+      "summary": "Kiln shell, castable refractory, and blanket material lot",
+      "publishedAt": "2026-02-17T21:37:50.8200450Z",
+      "sourceQuery": "manual_seed:sierraauctions",
+      "sourceKey": "sierraauctions_az",
+      "sourceName": "Sierra Auctions Arizona",
+      "sourceType": "auction_marketplace",
+      "domain": "www.sierraauctions.com",
+      "cityHint": "Tolleson",
+      "ingestChannel": "manual_drop_all",
+      "assetCategory": "kiln",
+      "assetScore": 100,
+      "classification": "high_priority",
+      "scoreBreakdown": {
+        "equipmentScore": 56,
+        "dealScore": 0,
+        "riskScore": 0,
+        "localityScore": 14,
+        "sourceDomainScore": 3,
+        "sourceTypeScore": 12,
+        "sourceKeyScore": 6,
+        "priorityBoost": 42,
+        "shippingPenalty": 0,
+        "total": 100
+      },
+      "evidence": {
+        "equipmentMatches": [
+          {
+            "keyword": "kiln",
+            "weight": 22
+          },
+          {
+            "keyword": "refractory",
+            "weight": 12
+          },
+          {
+            "keyword": "castable refractory",
+            "weight": 12
+          },
+          {
+            "keyword": "kiln shell",
+            "weight": 10
+          }
+        ],
+        "dealMatches": [],
+        "riskMatches": [],
+        "neededWantedMatches": [
+          {
+            "id": "high-fire-kiln",
+            "label": "Production electric kiln",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 22
+          },
+          {
+            "id": "firebrick-and-reduction-build-materials",
+            "label": "Firebrick and reduction kiln build materials",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 20
+          }
+        ]
+      },
+      "isCarryForward": false,
+      "carriedForwardFromRunId": ""
+    },
+    {
+      "assetId": "asset:1315849405",
+      "title": "Lot of thick hard firebrick + IFB",
+      "url": "https://www.facebook.com/marketplace/search/?query=firebrick",
+      "summary": "Thick hard brick and insulating firebrick lot for reduction kiln build",
+      "publishedAt": "2026-02-17T21:37:50.8200450Z",
+      "sourceQuery": "manual_seed:meta",
+      "sourceKey": "facebook_marketplace",
+      "sourceName": "Facebook Marketplace",
+      "sourceType": "community_marketplace",
+      "domain": "www.facebook.com",
+      "cityHint": "Glendale",
+      "ingestChannel": "manual_drop_all",
+      "assetCategory": "kiln",
+      "assetScore": 100,
+      "classification": "high_priority",
+      "scoreBreakdown": {
+        "equipmentScore": 97,
+        "dealScore": 8,
+        "riskScore": 0,
+        "localityScore": 14,
+        "sourceDomainScore": 3,
+        "sourceTypeScore": 16,
+        "sourceKeyScore": 5,
+        "priorityBoost": 42,
+        "shippingPenalty": 0,
+        "total": 100
+      },
+      "evidence": {
+        "equipmentMatches": [
+          {
+            "keyword": "kiln",
+            "weight": 22
+          },
+          {
+            "keyword": "firebrick",
+            "weight": 16
+          },
+          {
+            "keyword": "hard brick",
+            "weight": 15
+          },
+          {
+            "keyword": "insulating firebrick",
+            "weight": 14
+          },
+          {
+            "keyword": "ifb",
+            "weight": 12
+          },
+          {
+            "keyword": "reduction kiln",
+            "weight": 18
+          }
+        ],
+        "dealMatches": [
+          {
+            "keyword": "pickup only",
+            "weight": 8
+          }
+        ],
+        "riskMatches": [],
+        "neededWantedMatches": [
+          {
+            "id": "high-fire-kiln",
+            "label": "Production electric kiln",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 22
+          },
+          {
+            "id": "firebrick-and-reduction-build-materials",
+            "label": "Firebrick and reduction kiln build materials",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 20
+          }
+        ]
+      },
+      "isCarryForward": false,
+      "carriedForwardFromRunId": ""
+    },
+    {
+      "assetId": "asset:16137548",
+      "title": "Skutt KM-1027 electric kiln with shelves",
+      "url": "https://phoenix.craigslist.org/search/sss?query=skutt+kiln",
+      "summary": "Cone 10 capable kiln, kiln shelves and posts included, pickup only",
+      "publishedAt": "2026-02-17T21:37:50.8200450Z",
+      "sourceQuery": "manual_seed:craigslist",
+      "sourceKey": "craigslist_phoenix",
+      "sourceName": "Craigslist Phoenix",
+      "sourceType": "local_marketplace",
+      "domain": "phoenix.craigslist.org",
+      "cityHint": "Phoenix",
+      "ingestChannel": "manual_drop_all",
+      "assetCategory": "kiln",
+      "assetScore": 100,
+      "classification": "high_priority",
+      "scoreBreakdown": {
+        "equipmentScore": 55,
+        "dealScore": 36,
+        "riskScore": 0,
+        "localityScore": 14,
+        "sourceDomainScore": 3,
+        "sourceTypeScore": 10,
+        "sourceKeyScore": 8,
+        "priorityBoost": 22,
+        "shippingPenalty": 0,
+        "total": 100
+      },
+      "evidence": {
+        "equipmentMatches": [
+          {
+            "keyword": "kiln",
+            "weight": 22
+          },
+          {
+            "keyword": "electric kiln",
+            "weight": 24
+          },
+          {
+            "keyword": "kiln shelves",
+            "weight": 9
+          }
+        ],
+        "dealMatches": [
+          {
+            "keyword": "pickup only",
+            "weight": 8
+          },
+          {
+            "keyword": "local pickup",
+            "weight": 10
+          },
+          {
+            "keyword": "tested",
+            "weight": 10
+          },
+          {
+            "keyword": "working",
+            "weight": 8
+          }
+        ],
+        "riskMatches": [],
+        "neededWantedMatches": [
+          {
+            "id": "high-fire-kiln",
+            "label": "Production electric kiln",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 22
+          }
+        ]
+      },
+      "isCarryForward": false,
+      "carriedForwardFromRunId": ""
+    },
+    {
+      "assetId": "asset:1873113040",
+      "title": "Venturi burners + propane regulators set",
+      "url": "https://www.facebook.com/marketplace/search/?query=venturi+burner",
+      "summary": "Burners, regulators, hose assemblies for reduction kiln setup",
+      "publishedAt": "2026-02-17T21:37:50.8200450Z",
+      "sourceQuery": "manual_seed:meta",
+      "sourceKey": "facebook_marketplace",
+      "sourceName": "Facebook Marketplace",
+      "sourceType": "community_marketplace",
+      "domain": "www.facebook.com",
+      "cityHint": "Avondale",
+      "ingestChannel": "manual_drop_all",
+      "assetCategory": "kiln",
+      "assetScore": 100,
+      "classification": "high_priority",
+      "scoreBreakdown": {
+        "equipmentScore": 75,
+        "dealScore": 0,
+        "riskScore": 0,
+        "localityScore": 14,
+        "sourceDomainScore": 3,
+        "sourceTypeScore": 16,
+        "sourceKeyScore": 5,
+        "priorityBoost": 42,
+        "shippingPenalty": 0,
+        "total": 100
+      },
+      "evidence": {
+        "equipmentMatches": [
+          {
+            "keyword": "kiln",
+            "weight": 22
+          },
+          {
+            "keyword": "burner",
+            "weight": 13
+          },
+          {
+            "keyword": "venturi burner",
+            "weight": 14
+          },
+          {
+            "keyword": "reduction kiln",
+            "weight": 18
+          },
+          {
+            "keyword": "regulator",
+            "weight": 8
+          }
+        ],
+        "dealMatches": [],
+        "riskMatches": [],
+        "neededWantedMatches": [
+          {
+            "id": "high-fire-kiln",
+            "label": "Production electric kiln",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 22
+          },
+          {
+            "id": "firebrick-and-reduction-build-materials",
+            "label": "Firebrick and reduction kiln build materials",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 20
+          }
+        ]
+      },
+      "isCarryForward": false,
+      "carriedForwardFromRunId": ""
+    },
+    {
+      "assetId": "asset:201711444",
+      "title": "Shimpo Whisper wheel and stool",
+      "url": "https://www.localauctions.com/search?query=shimpo",
+      "summary": "Studio surplus wheel from local auction, tested power on",
+      "publishedAt": "2026-02-17T21:37:50.8200450Z",
+      "sourceQuery": "manual_seed:localauctions",
+      "sourceKey": "localauctions_az",
+      "sourceName": "LocalAuctions Arizona",
+      "sourceType": "auction_marketplace",
+      "domain": "www.localauctions.com",
+      "cityHint": "Goodyear",
+      "ingestChannel": "manual_drop_all",
+      "assetCategory": "wheel",
+      "assetScore": 91,
+      "classification": "high_priority",
+      "scoreBreakdown": {
+        "equipmentScore": 30,
+        "dealScore": 10,
+        "riskScore": 0,
+        "localityScore": 14,
+        "sourceDomainScore": 3,
+        "sourceTypeScore": 12,
+        "sourceKeyScore": 6,
+        "priorityBoost": 16,
+        "shippingPenalty": 0,
+        "total": 91
+      },
+      "evidence": {
+        "equipmentMatches": [
+          {
+            "keyword": "wheel",
+            "weight": 14
+          },
+          {
+            "keyword": "shimpo",
+            "weight": 16
+          }
+        ],
+        "dealMatches": [
+          {
+            "keyword": "tested",
+            "weight": 10
+          }
+        ],
+        "riskMatches": [],
+        "neededWantedMatches": [
+          {
+            "id": "wheel-expansion",
+            "label": "Pottery wheels",
+            "priority": "high",
+            "status": "wanted",
+            "scoreBoost": 16
+          }
+        ]
+      },
+      "isCarryForward": false,
+      "carriedForwardFromRunId": ""
+    },
+    {
+      "assetId": "asset:2098865022",
+      "title": "Guild newsletter: kiln furniture lot + slab roller",
+      "url": "https://example.substack.com/p/guild-classifieds",
+      "summary": "Community guild classifieds listing shelves, posts, slab roller",
+      "publishedAt": "2026-02-17T21:37:50.8200450Z",
+      "sourceQuery": "manual_seed:newsletter",
+      "sourceKey": "local_ceramic_org_newsletters",
+      "sourceName": "Local Ceramic Org Newsletters and Feeds",
+      "sourceType": "local_ceramic_org_feed",
+      "domain": "example.substack.com",
+      "cityHint": "Phoenix",
+      "ingestChannel": "manual_drop_all",
+      "assetCategory": "kiln",
+      "assetScore": 100,
+      "classification": "high_priority",
+      "scoreBreakdown": {
+        "equipmentScore": 43,
+        "dealScore": 0,
+        "riskScore": 0,
+        "localityScore": 14,
+        "sourceDomainScore": 3,
+        "sourceTypeScore": 13,
+        "sourceKeyScore": 0,
+        "priorityBoost": 32,
+        "shippingPenalty": 0,
+        "total": 100
+      },
+      "evidence": {
+        "equipmentMatches": [
+          {
+            "keyword": "kiln",
+            "weight": 22
+          },
+          {
+            "keyword": "slab roller",
+            "weight": 12
+          },
+          {
+            "keyword": "kiln furniture",
+            "weight": 9
+          }
+        ],
+        "dealMatches": [],
+        "riskMatches": [],
+        "neededWantedMatches": [
+          {
+            "id": "high-fire-kiln",
+            "label": "Production electric kiln",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 22
+          },
+          {
+            "id": "forming-tools",
+            "label": "Slab roller and extruder",
+            "priority": "medium",
+            "status": "wanted",
+            "scoreBoost": 10
+          }
+        ]
+      },
+      "isCarryForward": false,
+      "carriedForwardFromRunId": ""
+    }
+  ],
+  "neededWantedContext": {
+    "priorities": [
+      {
+        "id": "high-fire-kiln",
+        "label": "Production electric kiln",
+        "priority": "high",
+        "scoreBoost": 22,
+        "keywords": [
+          "kiln",
+          "electric kiln",
+          "cone 10",
+          "skutt",
+          "ll kiln"
+        ],
+        "status": "needed"
+      },
+      {
+        "id": "wheel-expansion",
+        "label": "Pottery wheels",
+        "priority": "high",
+        "scoreBoost": 16,
+        "keywords": [
+          "pottery wheel",
+          "shimpo",
+          "brent wheel",
+          "wheel"
+        ],
+        "status": "wanted"
+      },
+      {
+        "id": "clay-processing",
+        "label": "Pugmill or clay mixer",
+        "priority": "medium",
+        "scoreBoost": 14,
+        "keywords": [
+          "pugmill",
+          "clay mixer",
+          "de-airing"
+        ],
+        "status": "wanted"
+      },
+      {
+        "id": "forming-tools",
+        "label": "Slab roller and extruder",
+        "priority": "medium",
+        "scoreBoost": 10,
+        "keywords": [
+          "slab roller",
+          "extruder"
+        ],
+        "status": "wanted"
+      },
+      {
+        "id": "firebrick-and-reduction-build-materials",
+        "label": "Firebrick and reduction kiln build materials",
+        "priority": "high",
+        "scoreBoost": 20,
+        "keywords": [
+          "firebrick",
+          "fire brick",
+          "hard brick",
+          "insulating firebrick",
+          "ifb",
+          "burner",
+          "venturi burner",
+          "blower burner",
+          "castable refractory",
+          "kiln blanket",
+          "fiber blanket",
+          "reduction kiln",
+          "raku kiln",
+          "kiln shell",
+          "regulator"
+        ],
+        "status": "needed"
+      }
+    ],
+    "consumables": [
+      {
+        "id": "cone-10-clay",
+        "label": "Cone 10 clay",
+        "unit": "lbs",
+        "currentOnHand": 600.0,
+        "targetMin": 500.0,
+        "reorderPoint": 350.0,
+        "weeklyUsage": 90.0,
+        "weeksRemaining": 6.67,
+        "status": "healthy"
+      },
+      {
+        "id": "propane",
+        "label": "Propane",
+        "unit": "gallons",
+        "currentOnHand": 700.0,
+        "targetMin": 600.0,
+        "reorderPoint": 400.0,
+        "weeklyUsage": 80.0,
+        "weeksRemaining": 8.75,
+        "status": "healthy"
+      },
+      {
+        "id": "kiln-wash",
+        "label": "Kiln wash",
+        "unit": "lbs",
+        "currentOnHand": 45.0,
+        "targetMin": 30.0,
+        "reorderPoint": 20.0,
+        "weeklyUsage": 4.0,
+        "weeksRemaining": 11.25,
+        "status": "healthy"
+      },
+      {
+        "id": "shelf-paper",
+        "label": "Shelf paper",
+        "unit": "sheets",
+        "currentOnHand": 180.0,
+        "targetMin": 120.0,
+        "reorderPoint": 80.0,
+        "weeklyUsage": 24.0,
+        "weeksRemaining": 7.5,
+        "status": "healthy"
+      }
+    ]
+  },
+  "watchlist": {
+    "generatedAtUtc": "2026-02-17T21:40:39.9721758Z",
+    "runId": "20260217T214039Z",
+    "assetCount": 7,
+    "taskQueue": [
+      {
+        "taskId": "asset-task-0001",
+        "assetId": "asset:579194501",
+        "priority": "high",
+        "agentRole": "asset_scout_agent",
+        "objective": "Verify availability, condition, and local pickup feasibility for studio use.",
+        "requiredChecks": [
+          "confirm_current_availability",
+          "request_working_demo_or_test_video",
+          "confirm_power_or_fuel_requirements",
+          "confirm_pickup_location_and_loading_constraints"
+        ],
+        "dueWithinDays": 2
+      },
+      {
+        "taskId": "asset-task-0002",
+        "assetId": "asset:1315849405",
+        "priority": "high",
+        "agentRole": "asset_scout_agent",
+        "objective": "Verify availability, condition, and local pickup feasibility for studio use.",
+        "requiredChecks": [
+          "confirm_current_availability",
+          "request_working_demo_or_test_video",
+          "confirm_power_or_fuel_requirements",
+          "confirm_pickup_location_and_loading_constraints"
+        ],
+        "dueWithinDays": 2
+      },
+      {
+        "taskId": "asset-task-0003",
+        "assetId": "asset:16137548",
+        "priority": "high",
+        "agentRole": "asset_scout_agent",
+        "objective": "Verify availability, condition, and local pickup feasibility for studio use.",
+        "requiredChecks": [
+          "confirm_current_availability",
+          "request_working_demo_or_test_video",
+          "confirm_power_or_fuel_requirements",
+          "confirm_pickup_location_and_loading_constraints"
+        ],
+        "dueWithinDays": 2
+      },
+      {
+        "taskId": "asset-task-0004",
+        "assetId": "asset:1873113040",
+        "priority": "high",
+        "agentRole": "asset_scout_agent",
+        "objective": "Verify availability, condition, and local pickup feasibility for studio use.",
+        "requiredChecks": [
+          "confirm_current_availability",
+          "request_working_demo_or_test_video",
+          "confirm_power_or_fuel_requirements",
+          "confirm_pickup_location_and_loading_constraints"
+        ],
+        "dueWithinDays": 2
+      },
+      {
+        "taskId": "asset-task-0005",
+        "assetId": "asset:2098865022",
+        "priority": "high",
+        "agentRole": "asset_scout_agent",
+        "objective": "Verify availability, condition, and local pickup feasibility for studio use.",
+        "requiredChecks": [
+          "confirm_current_availability",
+          "request_working_demo_or_test_video",
+          "confirm_power_or_fuel_requirements",
+          "confirm_pickup_location_and_loading_constraints"
+        ],
+        "dueWithinDays": 2
+      },
+      {
+        "taskId": "asset-task-0006",
+        "assetId": "asset:1016809334",
+        "priority": "high",
+        "agentRole": "asset_scout_agent",
+        "objective": "Verify availability, condition, and local pickup feasibility for studio use.",
+        "requiredChecks": [
+          "confirm_current_availability",
+          "request_working_demo_or_test_video",
+          "confirm_power_or_fuel_requirements",
+          "confirm_pickup_location_and_loading_constraints"
+        ],
+        "dueWithinDays": 2
+      },
+      {
+        "taskId": "asset-task-0007",
+        "assetId": "asset:201711444",
+        "priority": "high",
+        "agentRole": "asset_scout_agent",
+        "objective": "Verify availability, condition, and local pickup feasibility for studio use.",
+        "requiredChecks": [
+          "confirm_current_availability",
+          "request_working_demo_or_test_video",
+          "confirm_power_or_fuel_requirements",
+          "confirm_pickup_location_and_loading_constraints"
+        ],
+        "dueWithinDays": 2
+      }
+    ],
+    "nextActions": [
+      "Prioritize high-score local kiln and wheel opportunities for same-week outreach.",
+      "Prioritize assets matching needed/wanted list boosts before lower-priority gear.",
+      "Request condition proof (video under power/load) before scheduling pickup.",
+      "Validate utility and fuel requirements against studio-needs profile before committing.",
+      "Batch nearby pickups to reduce hauling cost and downtime.",
+      "Review consumables status and align procurement with equipment opportunities (bulk/local pickup)."
+    ]
+  }
+}

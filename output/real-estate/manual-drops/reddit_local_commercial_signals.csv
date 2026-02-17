@@ -1,0 +1,2 @@
+"parcel","owner_name","property_address","city","state","postal_code","signal_type","distress_stage","amount","event_date","case_number","record_url","notes"
+"","reddit","","Phoenix","AZ","","community_signal","monitoring","","2026-02-17T20:08:16.3989928Z","REDDIT-001","https://www.reddit.com/r/phoenix/","Manual fallback for local Reddit signal tracking."

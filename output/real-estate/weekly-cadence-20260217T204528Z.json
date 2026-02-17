@@ -1,0 +1,82 @@
+{
+  "runId": "20260217T204528Z",
+  "startedAtUtc": "2026-02-17T20:45:28.5396183Z",
+  "finishedAtUtc": "2026-02-17T20:46:24.8142416Z",
+  "status": "ok",
+  "outputDir": "output/real-estate",
+  "publicDataDir": "output/real-estate/public-data",
+  "stagingDir": "output/real-estate/staging/public-signals",
+  "manualDropDir": "output/real-estate/manual-drops",
+  "steps": [
+    {
+      "name": "fetch_public_data",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:45:28.5402724Z",
+      "durationSec": 23.81,
+      "error": ""
+    },
+    {
+      "name": "seed_manual_drops",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:45:52.3570175Z",
+      "durationSec": 0.33,
+      "error": ""
+    },
+    {
+      "name": "build_staging",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:45:52.6846685Z",
+      "durationSec": 0.78,
+      "error": ""
+    },
+    {
+      "name": "run_public_signals",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:45:53.4630080Z",
+      "durationSec": 1.42,
+      "error": ""
+    },
+    {
+      "name": "build_macro_context",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:45:54.8815012Z",
+      "durationSec": 0.34,
+      "error": ""
+    },
+    {
+      "name": "build_parcel_graph",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:45:55.2170959Z",
+      "durationSec": 0.91,
+      "error": ""
+    },
+    {
+      "name": "run_agentic_research",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:45:56.1268967Z",
+      "durationSec": 26.9,
+      "error": ""
+    },
+    {
+      "name": "build_needs_context",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:46:23.0263565Z",
+      "durationSec": 0.41,
+      "error": ""
+    },
+    {
+      "name": "run_intelligence_analysis",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:46:23.4403142Z",
+      "durationSec": 1.0,
+      "error": ""
+    },
+    {
+      "name": "build_review_packet",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T20:46:24.4438187Z",
+      "durationSec": 0.37,
+      "error": ""
+    }
+  ]
+}

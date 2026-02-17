@@ -1,0 +1,16 @@
+{
+  "generatedAtUtc": "2026-02-17T20:41:56.2680514Z",
+  "totalEntries": 1,
+  "recent": [
+    {
+      "timestampUtc": "2026-02-17T20:41:56.2423223Z",
+      "opportunityId": "opp-signal-federal-real-property-disposals-20260217",
+      "action": "request_more_evidence",
+      "reasonCode": "missing_power_specs",
+      "riskMode": "",
+      "constraintsPatch": null,
+      "notes": "Need verified electric/propane capability before escalation.",
+      "actor": "micah"
+    }
+  ]
+}

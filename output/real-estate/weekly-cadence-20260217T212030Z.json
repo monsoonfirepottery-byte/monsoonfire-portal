@@ -1,0 +1,103 @@
+{
+  "runId": "20260217T212030Z",
+  "startedAtUtc": "2026-02-17T21:20:30.4522173Z",
+  "finishedAtUtc": "2026-02-17T21:21:25.3157643Z",
+  "status": "ok",
+  "outputDir": "output/real-estate",
+  "publicDataDir": "output/real-estate/public-data",
+  "stagingDir": "output/real-estate/staging/public-signals",
+  "manualDropDir": "output/real-estate/manual-drops",
+  "steps": [
+    {
+      "name": "fetch_public_data",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:20:30.4528352Z",
+      "durationSec": 23.3,
+      "error": ""
+    },
+    {
+      "name": "seed_manual_drops",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:20:53.7606525Z",
+      "durationSec": 0.34,
+      "error": ""
+    },
+    {
+      "name": "build_staging",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:20:54.1053944Z",
+      "durationSec": 0.77,
+      "error": ""
+    },
+    {
+      "name": "run_public_signals",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:20:54.8765923Z",
+      "durationSec": 1.44,
+      "error": ""
+    },
+    {
+      "name": "build_macro_context",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:20:56.3179455Z",
+      "durationSec": 0.36,
+      "error": ""
+    },
+    {
+      "name": "build_parcel_graph",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:20:56.6767755Z",
+      "durationSec": 0.93,
+      "error": ""
+    },
+    {
+      "name": "run_agentic_research",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:20:57.6113269Z",
+      "durationSec": 24.86,
+      "error": ""
+    },
+    {
+      "name": "seed_studio_asset_manual_drops",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:21:22.4696443Z",
+      "durationSec": 0.34,
+      "error": ""
+    },
+    {
+      "name": "fetch_studio_asset_community_data",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:21:22.8079310Z",
+      "durationSec": 0.36,
+      "error": ""
+    },
+    {
+      "name": "run_studio_asset_intelligence",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:21:23.1639542Z",
+      "durationSec": 0.35,
+      "error": ""
+    },
+    {
+      "name": "build_needs_context",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:21:23.5149984Z",
+      "durationSec": 0.42,
+      "error": ""
+    },
+    {
+      "name": "run_intelligence_analysis",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:21:23.9322192Z",
+      "durationSec": 1.01,
+      "error": ""
+    },
+    {
+      "name": "build_review_packet",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:21:24.9411625Z",
+      "durationSec": 0.37,
+      "error": ""
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "runId": "20260217T210758Z",
+  "startedAtUtc": "2026-02-17T21:07:58.4122175Z",
+  "finishedAtUtc": "2026-02-17T21:09:39.9340680Z",
+  "status": "ok",
+  "outputDir": "output/real-estate",
+  "publicDataDir": "output/real-estate/public-data",
+  "stagingDir": "output/real-estate/staging/public-signals",
+  "manualDropDir": "output/real-estate/manual-drops",
+  "steps": [
+    {
+      "name": "fetch_public_data",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:07:58.4128371Z",
+      "durationSec": 13.46,
+      "error": ""
+    },
+    {
+      "name": "seed_manual_drops",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:08:11.8825634Z",
+      "durationSec": 0.35,
+      "error": ""
+    },
+    {
+      "name": "build_staging",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:08:12.2285833Z",
+      "durationSec": 0.81,
+      "error": ""
+    },
+    {
+      "name": "run_public_signals",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:08:13.0345172Z",
+      "durationSec": 2.03,
+      "error": ""
+    },
+    {
+      "name": "build_macro_context",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:08:15.0677579Z",
+      "durationSec": 0.36,
+      "error": ""
+    },
+    {
+      "name": "build_parcel_graph",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:08:15.4251610Z",
+      "durationSec": 0.98,
+      "error": ""
+    },
+    {
+      "name": "run_agentic_research",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:08:16.4097359Z",
+      "durationSec": 27.41,
+      "error": ""
+    },
+    {
+      "name": "run_studio_asset_intelligence",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:08:43.8162356Z",
+      "durationSec": 54.22,
+      "error": ""
+    },
+    {
+      "name": "build_needs_context",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:09:38.0324833Z",
+      "durationSec": 0.47,
+      "error": ""
+    },
+    {
+      "name": "run_intelligence_analysis",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:09:38.4984108Z",
+      "durationSec": 1.04,
+      "error": ""
+    },
+    {
+      "name": "build_review_packet",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:09:39.5368180Z",
+      "durationSec": 0.4,
+      "error": ""
+    }
+  ]
+}

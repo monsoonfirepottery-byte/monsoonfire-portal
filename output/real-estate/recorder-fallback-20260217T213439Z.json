@@ -1,0 +1,11 @@
+{
+  "generatedAtUtc": "2026-02-17T21:34:39.2836084Z",
+  "runId": "20260217T213439Z",
+  "summary": {
+    "manualRows": 0,
+    "validRows": 0,
+    "staged": false
+  },
+  "templatePath": "output\\real-estate\\manual-drops\\recorder-fallback\\recorder-export.csv",
+  "stagingPath": "output\\real-estate\\staging\\public-signals\\maricopa_recorder_document_feed.csv"
+}

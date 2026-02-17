@@ -1,0 +1,129 @@
+{
+  "generatedAtUtc": "2026-02-17T20:41:55.8946993Z",
+  "runId": "20260217T204155Z",
+  "intelligenceRunId": "20260217T203614Z",
+  "summary": {
+    "opportunityCount": 1,
+    "alertCount": 1,
+    "marketRegime": "normal"
+  },
+  "inputs": {
+    "intelligencePath": "D:\\monsoonfire-portal\\output\\real-estate\\intelligence-analysis-latest.json",
+    "needsContextPath": "D:\\monsoonfire-portal\\output\\real-estate\\needs-context-latest.json"
+  },
+  "opportunities": [
+    {
+      "rank": 1,
+      "opportunityId": "opp-signal-federal-real-property-disposals-20260217",
+      "entityKey": "signal:federal-real-property-disposals",
+      "cityHint": "",
+      "classification": "watch",
+      "opportunityScore": 49,
+      "confidenceScore": 35,
+      "urgencyScore": 100,
+      "fitNowScore": 0,
+      "fitFutureScore": 0,
+      "hardFails": [],
+      "missingEvidence": [
+        "verify_electric_service_amps",
+        "verify_sqft",
+        "verify_clear_height",
+        "verify_propane_capacity"
+      ],
+      "whyNow": [
+        "High distress and legal/tax pressure signals are active.",
+        "Pricing language implies potential discount or motivated disposition.",
+        "Fresh signals and near-term events increase timing urgency."
+      ],
+      "riskNotes": [
+        "Key facility specs are not fully verified."
+      ],
+      "whatChangedSinceLastRun": [
+        "new opportunity in review packet"
+      ],
+      "recommendedHumanAction": "hold",
+      "recommendedAgentAction": {
+        "agentRole": "distress_verifier_agent",
+        "objective": "Corroborate distress posture and ownership/legal status across independent sources.",
+        "dueWithinDays": 5,
+        "priority": "low"
+      }
+    }
+  ],
+  "alerts": [
+    {
+      "severity": "medium",
+      "opportunityId": "opp-signal-federal-real-property-disposals-20260217",
+      "message": "Urgent signal window with unresolved evidence gaps."
+    }
+  ],
+  "humanActions": [
+    {
+      "action": "approve_next_step",
+      "description": "Proceed with the recommended next agent action."
+    },
+    {
+      "action": "hold",
+      "description": "Keep monitoring without additional execution right now."
+    },
+    {
+      "action": "reject",
+      "description": "Discard this opportunity from active focus."
+    },
+    {
+      "action": "request_more_evidence",
+      "description": "Require additional verification before moving forward."
+    },
+    {
+      "action": "change_constraints",
+      "description": "Update needs constraints and rescore."
+    },
+    {
+      "action": "change_risk_mode",
+      "description": "Adjust screening posture: conservative, balanced, aggressive."
+    }
+  ],
+  "steeringControls": {
+    "riskModes": [
+      "conservative",
+      "balanced",
+      "aggressive"
+    ],
+    "recommendedRiskMode": "balanced",
+    "activeNeedsProfileId": "current_home_2026",
+    "keyConstraints": {
+      "propertyTypes": [
+        "warehouse",
+        "light_industrial",
+        "flex_industrial"
+      ],
+      "zoningAllowlist": [
+        "industrial",
+        "i-1",
+        "i-2",
+        "m-1"
+      ],
+      "minSqFt": 1200,
+      "maxSqFt": 5000,
+      "electricServiceAmpsMin": 200,
+      "threePhaseRequired": false,
+      "clearHeightFtMin": 12,
+      "gradeDoorsMin": 1,
+      "maxMonthlyOccupancyUsd": 6500
+    }
+  },
+  "steeringContract": {
+    "requiredFields": [
+      "opportunityId",
+      "action",
+      "reasonCode",
+      "timestampUtc"
+    ],
+    "optionalFields": [
+      "constraintsPatch",
+      "riskMode",
+      "notes"
+    ],
+    "sinkPath": "output\\real-estate\\intelligence-steering-log.jsonl"
+  }
+}

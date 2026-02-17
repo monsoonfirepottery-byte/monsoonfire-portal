@@ -1,0 +1,129 @@
+{
+  "generatedAtUtc": "2026-02-17T19:39:35.6110245Z",
+  "runId": "20260217T193935Z",
+  "configPath": "D:\\monsoonfire-portal\\docs\\real-estate\\public-signal-sources.json",
+  "summary": {
+    "configuredSources": 12,
+    "enabledSources": 12,
+    "stagingDir": "D:\\monsoonfire-portal\\output\\real-estate\\staging\\public-signals",
+    "manualDropDir": "D:\\monsoonfire-portal\\output\\real-estate\\manual-drops",
+    "loadedSources": 0,
+    "failedSources": 0,
+    "totalSignals": 0,
+    "highPrioritySignals": 0,
+    "mediumPrioritySignals": 0,
+    "lowPrioritySignals": 0
+  },
+  "sourceStatus": [
+    {
+      "key": "maricopa_treasurer_delinquent_roll",
+      "name": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "government_tax",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "maricopa_recorder_document_feed",
+      "name": "Maricopa Recorder Trustee and Legal Notices",
+      "sourceType": "government_legal",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "arizona_ucc_filings",
+      "name": "Arizona UCC Filings",
+      "sourceType": "government_legal",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "arizona_bankruptcy_filings",
+      "name": "Arizona Bankruptcy Filings",
+      "sourceType": "government_legal",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "maricopa_civil_court",
+      "name": "Maricopa Civil Court Foreclosure and Receivership",
+      "sourceType": "government_legal",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "maricopa_assessor_ownership_history",
+      "name": "Maricopa Assessor Ownership History",
+      "sourceType": "government_data",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "aps_srp_utility_constraints",
+      "name": "APS/SRP Utility Capacity Constraints",
+      "sourceType": "utility_data",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "west_valley_code_enforcement",
+      "name": "West Valley Code Enforcement",
+      "sourceType": "government_planning",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "phoenix_west_valley_permitting_pipeline",
+      "name": "Phoenix and West Valley Permitting Pipeline",
+      "sourceType": "government_planning",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "lease_comps_vacancy_feeds",
+      "name": "Lease Comps and Vacancy Feeds",
+      "sourceType": "market_data",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "cmbs_distress_signals",
+      "name": "CMBS Delinquency and Maturity Signals",
+      "sourceType": "finance_data",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "environmental_land_use_constraints",
+      "name": "Environmental and Land-Use Constraints",
+      "sourceType": "regulatory_data",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    }
+  ],
+  "topSignals": [],
+  "signals": []
+}

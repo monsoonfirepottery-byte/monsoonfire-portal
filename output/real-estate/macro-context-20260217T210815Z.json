@@ -1,0 +1,34 @@
+{
+  "generatedAtUtc": "2026-02-17T21:08:15.3625821Z",
+  "runId": "20260217T210815Z",
+  "inputManifestPath": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\latest-manifest.json",
+  "crePriceIndex": {
+    "series": "COMREPUSQ159N",
+    "latest": {
+      "date": "",
+      "value": null
+    },
+    "qoqPct": null,
+    "yoyPct": null
+  },
+  "fedFunds": {
+    "series": "FEDFUNDS",
+    "latest": {
+      "date": "",
+      "value": null
+    },
+    "avg3m": null,
+    "avg12m": null
+  },
+  "maricopaAcs": {
+    "population": "4491987",
+    "medianGrossRent": "1587",
+    "medianHomeValue": "414700"
+  },
+  "swarmImplications": [
+    "If fed funds remain elevated vs 12-month average, prioritize distressed/off-market negotiation postures over competitive bids.",
+    "If CRE index YoY declines, increase watch cadence for tax/legal distress signals and lender-driven dispositions.",
+    "Use ACS rent and value baselines to sanity-check local asking rents against household affordability pressure.",
+    "Prioritize parcels where macro pressure and parcel-level distress signals co-occur."
+  ]
+}

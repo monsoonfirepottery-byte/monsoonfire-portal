@@ -1,0 +1,124 @@
+{
+  "runId": "20260217T213401Z",
+  "startedAtUtc": "2026-02-17T21:34:01.2975147Z",
+  "finishedAtUtc": "2026-02-17T21:36:09.5015322Z",
+  "status": "ok",
+  "outputDir": "output/real-estate",
+  "publicDataDir": "output/real-estate/public-data",
+  "stagingDir": "output/real-estate/staging/public-signals",
+  "manualDropDir": "output/real-estate/manual-drops",
+  "steps": [
+    {
+      "name": "fetch_public_data",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:34:01.2981136Z",
+      "durationSec": 36.28,
+      "error": ""
+    },
+    {
+      "name": "seed_manual_drops",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:34:37.5797542Z",
+      "durationSec": 0.51,
+      "error": ""
+    },
+    {
+      "name": "build_staging",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:34:38.0858221Z",
+      "durationSec": 0.89,
+      "error": ""
+    },
+    {
+      "name": "run_recorder_fallback_adapter",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:34:38.9788372Z",
+      "durationSec": 0.35,
+      "error": ""
+    },
+    {
+      "name": "run_public_signals",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:34:39.3312783Z",
+      "durationSec": 1.59,
+      "error": ""
+    },
+    {
+      "name": "build_macro_context",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:34:40.9181963Z",
+      "durationSec": 0.4,
+      "error": ""
+    },
+    {
+      "name": "build_parcel_graph",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:34:41.3189205Z",
+      "durationSec": 0.99,
+      "error": ""
+    },
+    {
+      "name": "build_entity_resolution",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:34:42.3112169Z",
+      "durationSec": 0.88,
+      "error": ""
+    },
+    {
+      "name": "run_agentic_research",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:34:43.1922712Z",
+      "durationSec": 22.52,
+      "error": ""
+    },
+    {
+      "name": "seed_studio_asset_manual_drops",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:35:05.7094163Z",
+      "durationSec": 0.37,
+      "error": ""
+    },
+    {
+      "name": "fetch_studio_asset_community_data",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:35:06.0817305Z",
+      "durationSec": 0.4,
+      "error": ""
+    },
+    {
+      "name": "run_studio_asset_intelligence",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:35:06.4847404Z",
+      "durationSec": 60.67,
+      "error": ""
+    },
+    {
+      "name": "build_needs_context",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:36:07.1578364Z",
+      "durationSec": 0.49,
+      "error": ""
+    },
+    {
+      "name": "run_intelligence_analysis",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:36:07.6471396Z",
+      "durationSec": 1.07,
+      "error": ""
+    },
+    {
+      "name": "build_review_packet",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:36:08.7160743Z",
+      "durationSec": 0.42,
+      "error": ""
+    },
+    {
+      "name": "build_studiobrain_coordinator_adapters",
+      "status": "ok",
+      "startedAtUtc": "2026-02-17T21:36:09.1366749Z",
+      "durationSec": 0.36,
+      "error": ""
+    }
+  ]
+}

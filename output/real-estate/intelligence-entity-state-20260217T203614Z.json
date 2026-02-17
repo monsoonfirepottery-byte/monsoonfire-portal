@@ -1,0 +1,19 @@
+{
+  "generatedAtUtc": "2026-02-17T20:36:14.0370713Z",
+  "runId": "20260217T203614Z",
+  "entities": [
+    {
+      "entityKey": "signal:federal-real-property-disposals",
+      "cityHint": "",
+      "latestClassification": "watch",
+      "latestOpportunityScore": 49,
+      "latestConfidenceScore": 35,
+      "requiredNextEvidence": [
+        "verify_electric_service_amps",
+        "verify_sqft",
+        "verify_clear_height",
+        "verify_propane_capacity"
+      ]
+    }
+  ]
+}

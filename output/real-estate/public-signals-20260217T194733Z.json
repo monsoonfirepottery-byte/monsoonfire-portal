@@ -1,0 +1,260 @@
+{
+  "generatedAtUtc": "2026-02-17T19:47:33.8648444Z",
+  "runId": "20260217T194733Z",
+  "configPath": "D:\\monsoonfire-portal\\docs\\real-estate\\public-signal-sources.json",
+  "summary": {
+    "configuredSources": 19,
+    "enabledSources": 19,
+    "stagingDir": "D:\\monsoonfire-portal\\output\\real-estate\\staging\\public-signals",
+    "manualDropDir": "D:\\monsoonfire-portal\\output\\real-estate\\manual-drops",
+    "loadedSources": 0,
+    "failedSources": 2,
+    "totalSignals": 1,
+    "highPrioritySignals": 0,
+    "mediumPrioritySignals": 0,
+    "lowPrioritySignals": 1
+  },
+  "sourceStatus": [
+    {
+      "key": "grants_gov_opportunities",
+      "name": "Grants.gov Opportunities",
+      "sourceType": "grant_program",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "az_commerce_grants_incentives",
+      "name": "Arizona Commerce Grants and Incentives",
+      "sourceType": "grant_program",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "city_phoenix_business_grants_programs",
+      "name": "City of Phoenix Business Grants Programs",
+      "sourceType": "grant_program",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "sba_grants_and_funding_programs",
+      "name": "SBA Grants and Funding Programs",
+      "sourceType": "grant_program",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "az_state_surplus_property_auctions",
+      "name": "Arizona State Surplus Property Auctions",
+      "sourceType": "government_auction",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "maricopa_local_surplus_property_auctions",
+      "name": "Maricopa Local Surplus Property Auctions",
+      "sourceType": "government_auction",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "federal_real_property_disposals",
+      "name": "Federal Real Property Disposals and Auctions",
+      "sourceType": "government_auction",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "maricopa_treasurer_delinquent_roll",
+      "name": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "government_tax",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "maricopa_recorder_document_feed",
+      "name": "Maricopa Recorder Trustee and Legal Notices",
+      "sourceType": "government_legal",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "arizona_ucc_filings",
+      "name": "Arizona UCC Filings",
+      "sourceType": "government_legal",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "arizona_bankruptcy_filings",
+      "name": "Arizona Bankruptcy Filings",
+      "sourceType": "government_legal",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "maricopa_civil_court",
+      "name": "Maricopa Civil Court Foreclosure and Receivership",
+      "sourceType": "government_legal",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "maricopa_assessor_ownership_history",
+      "name": "Maricopa Assessor Ownership History",
+      "sourceType": "government_data",
+      "status": "error",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": "Cannot find an overload for \"TryParse\" and the argument count: \"2\"."
+    },
+    {
+      "key": "aps_srp_utility_constraints",
+      "name": "APS/SRP Utility Capacity Constraints",
+      "sourceType": "utility_data",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "west_valley_code_enforcement",
+      "name": "West Valley Code Enforcement",
+      "sourceType": "government_planning",
+      "status": "ok",
+      "loadedFrom": "local",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "phoenix_west_valley_permitting_pipeline",
+      "name": "Phoenix and West Valley Permitting Pipeline",
+      "sourceType": "government_planning",
+      "status": "ok",
+      "loadedFrom": "local",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "lease_comps_vacancy_feeds",
+      "name": "Lease Comps and Vacancy Feeds",
+      "sourceType": "market_data",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "cmbs_distress_signals",
+      "name": "CMBS Delinquency and Maturity Signals",
+      "sourceType": "finance_data",
+      "status": "skipped_missing_input",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": ""
+    },
+    {
+      "key": "environmental_land_use_constraints",
+      "name": "Environmental and Land-Use Constraints",
+      "sourceType": "regulatory_data",
+      "status": "error",
+      "loadedFrom": "none",
+      "rowsRead": 0,
+      "error": "Cannot find an overload for \"TryParse\" and the argument count: \"2\"."
+    }
+  ],
+  "topSignals": [
+    {
+      "signalId": "maricopa_assessor_ownership_history:1",
+      "sourceKey": "maricopa_assessor_ownership_history",
+      "sourceName": "Maricopa Assessor Ownership History",
+      "sourceType": "government_data",
+      "sourceCadence": "monthly",
+      "signalType": "ownership_transfer",
+      "distressStage": "monitoring",
+      "signalScore": 32,
+      "priority": "low",
+      "scoreBreakdown": {
+        "typeScore": 18,
+        "stageScore": 4,
+        "recencyScore": 0,
+        "amountScore": 0,
+        "identityScore": 10,
+        "totalScore": 32,
+        "priority": "low"
+      },
+      "parcelId": "101-01-001C",
+      "parcelKey": "10101001C",
+      "ownerName": "EL PASO NATURAL GAS COMPANY",
+      "ownerKey": "elpasonaturalgascompany",
+      "address": "",
+      "city": "",
+      "state": "AZ",
+      "postalCode": "",
+      "amount": null,
+      "eventDate": "",
+      "caseNumber": "",
+      "recordUrl": "",
+      "notes": "assessor parcel sample"
+    }
+  ],
+  "signals": [
+    {
+      "signalId": "maricopa_assessor_ownership_history:1",
+      "sourceKey": "maricopa_assessor_ownership_history",
+      "sourceName": "Maricopa Assessor Ownership History",
+      "sourceType": "government_data",
+      "sourceCadence": "monthly",
+      "signalType": "ownership_transfer",
+      "distressStage": "monitoring",
+      "signalScore": 32,
+      "priority": "low",
+      "scoreBreakdown": {
+        "typeScore": 18,
+        "stageScore": 4,
+        "recencyScore": 0,
+        "amountScore": 0,
+        "identityScore": 10,
+        "totalScore": 32,
+        "priority": "low"
+      },
+      "parcelId": "101-01-001C",
+      "parcelKey": "10101001C",
+      "ownerName": "EL PASO NATURAL GAS COMPANY",
+      "ownerKey": "elpasonaturalgascompany",
+      "address": "",
+      "city": "",
+      "state": "AZ",
+      "postalCode": "",
+      "amount": null,
+      "eventDate": "",
+      "caseNumber": "",
+      "recordUrl": "",
+      "notes": "assessor parcel sample"
+    }
+  ]
+}

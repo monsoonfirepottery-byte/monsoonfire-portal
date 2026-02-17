@@ -1,0 +1,334 @@
+{
+  "schemaVersion": "1.0",
+  "marketArea": "West Valley and Phoenix, Arizona",
+  "cities": [
+    "Goodyear",
+    "Avondale",
+    "Tolleson",
+    "Glendale",
+    "Phoenix",
+    "Buckeye",
+    "Peoria",
+    "Surprise",
+    "Tempe",
+    "Mesa",
+    "Scottsdale",
+    "Chandler"
+  ],
+  "sourceTypeWeights": {
+    "community_marketplace": 16,
+    "community_signal": 14,
+    "local_ceramic_org_feed": 13,
+    "auction_marketplace": 12,
+    "local_marketplace": 10,
+    "institutional_surplus": 8,
+    "manufacturer_signal": 7
+  },
+  "sourceKeyWeights": {
+    "craigslist_phoenix": 8,
+    "localauctions_az": 6,
+    "sierraauctions_az": 6,
+    "facebook_marketplace": 5,
+    "reddit_local_sell": 5
+  },
+  "sources": [
+    {
+      "key": "localauctions_az",
+      "name": "LocalAuctions Arizona",
+      "sourceType": "auction_marketplace",
+      "domains": [
+        "localauctions.com"
+      ],
+      "cityQueryPatterns": [
+        "site:localauctions.com {CITY} pottery kiln",
+        "site:localauctions.com {CITY} pottery wheel",
+        "site:localauctions.com {CITY} ceramic studio equipment"
+      ],
+      "regionQueryPatterns": [
+        "site:localauctions.com Arizona kiln auction",
+        "site:localauctions.com Arizona pottery equipment auction"
+      ]
+    },
+    {
+      "key": "sierraauctions_az",
+      "name": "Sierra Auctions Arizona",
+      "sourceType": "auction_marketplace",
+      "domains": [
+        "sierraauctions.com"
+      ],
+      "cityQueryPatterns": [
+        "site:sierraauctions.com {CITY} kiln",
+        "site:sierraauctions.com {CITY} pottery wheel",
+        "site:sierraauctions.com {CITY} ceramic equipment"
+      ],
+      "regionQueryPatterns": [
+        "site:sierraauctions.com Arizona pottery kiln auction",
+        "site:sierraauctions.com Arizona ceramic studio surplus"
+      ]
+    },
+    {
+      "key": "craigslist_phoenix",
+      "name": "Craigslist Phoenix",
+      "sourceType": "local_marketplace",
+      "domains": [
+        "phoenix.craigslist.org",
+        "craigslist.org"
+      ],
+      "cityQueryPatterns": [
+        "site:craigslist.org {CITY} pottery kiln for sale",
+        "site:craigslist.org {CITY} pottery wheel for sale",
+        "site:craigslist.org {CITY} ceramics studio equipment"
+      ],
+      "regionQueryPatterns": [
+        "site:phoenix.craigslist.org pottery equipment",
+        "site:phoenix.craigslist.org kiln wheel slab roller"
+      ]
+    },
+    {
+      "key": "facebook_marketplace",
+      "name": "Facebook Marketplace",
+      "sourceType": "community_marketplace",
+      "domains": [
+        "facebook.com",
+        "m.facebook.com"
+      ],
+      "directFeeds": [
+        {
+          "name": "Meta marketplace export feed",
+          "urlEnv": "STUDIO_ASSET_META_FEED_URL",
+          "url": "",
+          "authType": "cookie",
+          "credentialEnvs": [
+            "STUDIO_ASSET_META_COOKIE_PRIMARY",
+            "STUDIO_ASSET_META_COOKIE_SECONDARY"
+          ],
+          "credentialValuesEnv": "STUDIO_ASSET_META_COOKIE_ROTATION",
+          "authRequired": false
+        }
+      ],
+      "cityQueryPatterns": [
+        "site:facebook.com marketplace {CITY} pottery kiln",
+        "site:facebook.com marketplace {CITY} pottery wheel",
+        "site:facebook.com marketplace {CITY} ceramics equipment",
+        "site:facebook.com marketplace {CITY} kiln shelves",
+        "site:facebook.com marketplace {CITY} slab roller"
+      ],
+      "regionQueryPatterns": [
+        "site:facebook.com marketplace phoenix pottery studio equipment",
+        "site:facebook.com marketplace arizona ceramic studio closing sale"
+      ]
+    },
+    {
+      "key": "offerup_local",
+      "name": "OfferUp Local",
+      "sourceType": "local_marketplace",
+      "domains": [
+        "offerup.com"
+      ],
+      "cityQueryPatterns": [
+        "site:offerup.com {CITY} pottery kiln",
+        "site:offerup.com {CITY} pottery wheel",
+        "site:offerup.com {CITY} ceramic studio equipment"
+      ],
+      "regionQueryPatterns": [
+        "site:offerup.com phoenix pottery equipment"
+      ]
+    },
+    {
+      "key": "reddit_local_sell",
+      "name": "Reddit Local Sell Signals",
+      "sourceType": "community_signal",
+      "domains": [
+        "reddit.com"
+      ],
+      "directFeeds": [
+        {
+          "name": "Reddit community feed",
+          "urlEnv": "STUDIO_ASSET_REDDIT_FEED_URL",
+          "url": "",
+          "authType": "bearer",
+          "credentialEnvs": [
+            "STUDIO_ASSET_REDDIT_TOKEN_PRIMARY",
+            "STUDIO_ASSET_REDDIT_TOKEN_SECONDARY"
+          ],
+          "credentialValuesEnv": "STUDIO_ASSET_REDDIT_TOKEN_ROTATION",
+          "authRequired": false
+        }
+      ],
+      "cityQueryPatterns": [
+        "site:reddit.com {CITY} pottery kiln for sale",
+        "site:reddit.com {CITY} ceramic studio closing sale",
+        "site:reddit.com {CITY} pottery wheel for sale",
+        "site:reddit.com {CITY} ceramics studio equipment"
+      ],
+      "regionQueryPatterns": [
+        "site:reddit.com phoenix pottery equipment for sale",
+        "site:reddit.com arizona pottery studio liquidation"
+      ]
+    },
+    {
+      "key": "local_ceramic_org_newsletters",
+      "name": "Local Ceramic Org Newsletters and Feeds",
+      "sourceType": "local_ceramic_org_feed",
+      "domains": [
+        "substack.com",
+        "mailchi.mp",
+        "groups.io",
+        "wildapricot.org",
+        "wordpress.com"
+      ],
+      "directFeeds": [
+        {
+          "name": "Arizona ceramic org feed #1",
+          "urlEnv": "STUDIO_ASSET_CERAMIC_ORG_FEED_1_URL",
+          "url": "",
+          "authType": "header",
+          "authHeader": "x-api-key",
+          "credentialEnvs": [
+            "STUDIO_ASSET_CERAMIC_ORG_FEED_1_KEY_PRIMARY",
+            "STUDIO_ASSET_CERAMIC_ORG_FEED_1_KEY_SECONDARY"
+          ],
+          "credentialValuesEnv": "STUDIO_ASSET_CERAMIC_ORG_FEED_1_KEY_ROTATION",
+          "authRequired": false
+        },
+        {
+          "name": "Arizona ceramic org feed #2",
+          "urlEnv": "STUDIO_ASSET_CERAMIC_ORG_FEED_2_URL",
+          "url": "",
+          "authType": "header",
+          "authHeader": "x-api-key",
+          "credentialEnvs": [
+            "STUDIO_ASSET_CERAMIC_ORG_FEED_2_KEY_PRIMARY",
+            "STUDIO_ASSET_CERAMIC_ORG_FEED_2_KEY_SECONDARY"
+          ],
+          "credentialValuesEnv": "STUDIO_ASSET_CERAMIC_ORG_FEED_2_KEY_ROTATION",
+          "authRequired": false
+        },
+        {
+          "name": "Arizona ceramic org feed #3",
+          "urlEnv": "STUDIO_ASSET_CERAMIC_ORG_FEED_3_URL",
+          "url": "",
+          "authType": "header",
+          "authHeader": "x-api-key",
+          "credentialEnvs": [
+            "STUDIO_ASSET_CERAMIC_ORG_FEED_3_KEY_PRIMARY",
+            "STUDIO_ASSET_CERAMIC_ORG_FEED_3_KEY_SECONDARY"
+          ],
+          "credentialValuesEnv": "STUDIO_ASSET_CERAMIC_ORG_FEED_3_KEY_ROTATION",
+          "authRequired": false
+        }
+      ],
+      "cityQueryPatterns": [
+        "{CITY} pottery guild newsletter equipment for sale",
+        "{CITY} ceramics association equipment listing",
+        "{CITY} clay community kiln for sale"
+      ],
+      "regionQueryPatterns": [
+        "Arizona pottery guild newsletter equipment for sale",
+        "Phoenix ceramics community equipment classifieds",
+        "West Valley clay studio gear for sale newsletter"
+      ]
+    },
+    {
+      "key": "school_university_surplus",
+      "name": "School and University Surplus",
+      "sourceType": "institutional_surplus",
+      "domains": [
+        "govdeals.com",
+        "publicsurplus.com",
+        "auctionsinternational.com"
+      ],
+      "cityQueryPatterns": [
+        "site:govdeals.com {CITY} kiln pottery",
+        "site:publicsurplus.com {CITY} ceramics equipment"
+      ],
+      "regionQueryPatterns": [
+        "site:govdeals.com Arizona kiln",
+        "site:publicsurplus.com Arizona pottery wheel"
+      ]
+    },
+    {
+      "key": "manufacturer_demo_and_test",
+      "name": "Manufacturer Demo and Test Gear",
+      "sourceType": "manufacturer_signal",
+      "domains": [
+        "skutt.com",
+        "llkilns.com",
+        "shimpo.com",
+        "brentwheel.com"
+      ],
+      "cityQueryPatterns": [],
+      "regionQueryPatterns": [
+        "Skutt demo kiln Arizona",
+        "L&L Kilns demo equipment Arizona",
+        "Shimpo test wheel Arizona",
+        "Brent pottery wheel demo Arizona"
+      ]
+    }
+  ],
+  "equipmentKeywordWeights": {
+    "kiln": 22,
+    "electric kiln": 24,
+    "gas kiln": 24,
+    "test kiln": 14,
+    "wheel": 14,
+    "pottery wheel": 16,
+    "shimpo": 16,
+    "brent": 16,
+    "slab roller": 12,
+    "pugmill": 18,
+    "extruder": 10,
+    "kiln shelves": 9,
+    "kiln furniture": 9,
+    "vent system": 10,
+    "spray booth": 10,
+    "compressor": 8,
+    "clay mixer": 11,
+    "glaze mixer": 8,
+    "firebrick": 16,
+    "fire brick": 16,
+    "hard brick": 15,
+    "insulating firebrick": 14,
+    "ifb": 12,
+    "burner": 13,
+    "venturi burner": 14,
+    "blower burner": 14,
+    "refractory": 12,
+    "kiln blanket": 11,
+    "fiber blanket": 11,
+    "castable refractory": 12,
+    "reduction kiln": 18,
+    "raku kiln": 12,
+    "kiln shell": 10,
+    "pipe burner": 9,
+    "regulator": 8,
+    "studio closeout": 14,
+    "ceramic studio": 10
+  },
+  "dealSignalWeights": {
+    "moving sale": 12,
+    "must go": 12,
+    "obo": 8,
+    "best offer": 8,
+    "closing studio": 16,
+    "liquidation": 16,
+    "estate sale": 10,
+    "price reduced": 10,
+    "pickup only": 8,
+    "local pickup": 10,
+    "tested": 10,
+    "working": 8
+  },
+  "riskSignalWeights": {
+    "parts only": -20,
+    "not working": -22,
+    "for parts": -20,
+    "as is": -8,
+    "unknown condition": -12,
+    "cracked": -12,
+    "needs repair": -14,
+    "no power": -10,
+    "shipping only": -16,
+    "out of state": -12
+  }
+}

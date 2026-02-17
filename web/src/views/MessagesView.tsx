@@ -96,6 +96,16 @@ function isAnnouncementUnread(announcement: Announcement, uid: string) {
   return !announcement.readBy.includes(uid);
 }
 
+function isLegacyRecipientLabel(value: string) {
+  const text = value
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/:/g, "")
+    .trim();
+
+  return text === "cc" || text === "bcc";
+}
+
 function useDirectMessageMessages(threadId: string | null) {
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -192,21 +202,9 @@ export default function MessagesView({
     const form = newThreadFormRef.current;
     if (!form) return;
 
-    const normalizeLabelText = (value: string) =>
-      value
-        .toLowerCase()
-        .replace(/\s+/g, "")
-        .replace(/:/g, "")
-        .trim();
-
-    const isLegacyRecipientLabel = (value: string) => {
-      const text = normalizeLabelText(value);
-      return text === "cc" || text === "bcc";
-    };
-
     const removeLegacyNode = (node: Element | null) => {
       if (!node || !form.contains(node)) return;
-      const target = node.closest("label, div, section") ?? node;
+      const target = node.closest("label, div, section, fieldset") ?? node;
       target.remove();
     };
 
@@ -230,6 +228,11 @@ export default function MessagesView({
     };
 
     const pruneLegacyFields = () => {
+      const multipleSelects = Array.from(form.querySelectorAll("select[multiple]"));
+      for (const control of multipleSelects) {
+        removeLegacyNode(control);
+      }
+
       const labels = Array.from(form.querySelectorAll("label"));
       for (const label of labels) {
         if (isLegacyRecipientLabel(label.textContent ?? "")) {
@@ -257,8 +260,8 @@ export default function MessagesView({
 
       const shortTextElements = Array.from(form.querySelectorAll("*"));
       for (const element of shortTextElements) {
-        const text = normalizeLabelText(element.textContent ?? "");
-        if ((text === "cc" || text === "bcc") && text.length <= 3) {
+        const text = element.textContent ?? "";
+        if (isLegacyRecipientLabel(text) && text.trim().length <= 3) {
           removeLegacyNode(element);
         }
       }
@@ -267,8 +270,10 @@ export default function MessagesView({
     pruneLegacyFields();
     const observer = new MutationObserver(() => pruneLegacyFields());
     observer.observe(form, { childList: true, subtree: true });
+    const sanitizerTimer = window.setInterval(() => pruneLegacyFields(), 80);
     return () => {
       observer.disconnect();
+      window.clearInterval(sanitizerTimer);
     };
   }, [newThreadOpen]);
 

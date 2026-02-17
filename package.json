@@ -1,7 +1,15 @@
 {
+  "scripts": {
+    "website:smoke:playwright": "node ./scripts/website-playwright-smoke.mjs",
+    "website:smoke:playwright:prod": "node ./scripts/website-playwright-smoke.mjs --base-url https://monsoonfire.com --output-dir output/playwright/prod",
+    "website:smoke:playwright:install": "npx playwright install chromium"
+  },
   "dependencies": {
     "@openai/codex": "^0.91.0",
     "firebase": "^12.8.0",
     "firebase-functions": "^7.0.5"
+  },
+  "devDependencies": {
+    "playwright": "^1.58.2"
   }
 }

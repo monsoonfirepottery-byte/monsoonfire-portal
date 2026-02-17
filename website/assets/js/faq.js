@@ -44,6 +44,14 @@
       .toLowerCase();
   };
 
+  const faqTaskGroups = [
+    { key: 'start', label: 'Start here', tags: ['overview', 'portal', 'west-valley'] },
+    { key: 'kiln', label: 'Kiln firing and handling', tags: ['kiln', 'scheduling', 'logistics'] },
+    { key: 'studio', label: 'Studio access and memberships', tags: ['studio', 'memberships', 'workshops'] },
+    { key: 'pricing', label: 'Pricing and payments', tags: ['pricing', 'payments', 'supplies'] },
+    { key: 'policy', label: 'Policies and safety', tags: ['policies', 'access', 'equipment'] }
+  ];
+
   const isSafeUrl = (value) => {
     if (!value || typeof value !== 'string') return false;
     const raw = value.trim();
@@ -186,6 +194,76 @@
     return filtered.length;
   };
 
+  const resolveFaqTaskKey = (item) => {
+    const tags = new Set(Array.isArray(item.tags) ? item.tags : []);
+    for (const group of faqTaskGroups) {
+      if (group.tags.some((tag) => tags.has(tag))) return group.key;
+    }
+    return 'other';
+  };
+
+  const renderGroupedFaqList = (listEl, items, emptyMessage) => {
+    listEl.replaceChildren();
+    const filtered = items.filter(matches);
+    if (!filtered.length) {
+      setEmptyState(listEl, emptyMessage);
+      return 0;
+    }
+
+    const grouped = new Map(faqTaskGroups.map((group) => [group.key, []]));
+    grouped.set('other', []);
+    filtered.forEach((item) => {
+      const key = resolveFaqTaskKey(item);
+      grouped.get(key).push(item);
+    });
+
+    faqTaskGroups.forEach((group) => {
+      const groupItems = grouped.get(group.key) || [];
+      if (!groupItems.length) return;
+
+      const section = document.createElement('section');
+      section.className = 'support-task-group';
+
+      const title = document.createElement('h3');
+      title.className = 'support-task-title';
+      title.textContent = group.label;
+      section.appendChild(title);
+
+      groupItems.forEach((item) => {
+        const itemTitle = item.question || item.title || 'Untitled';
+        const itemBody = item.answer || item.body || '';
+        const metaParts = [];
+        if (item.status) metaParts.push(item.status);
+        if (item.effectiveDate) metaParts.push(`Effective ${formatDate(item.effectiveDate)}`);
+        const metaLabel = metaParts.join(' · ');
+        section.appendChild(buildAccordionItem(itemTitle, itemBody, metaLabel));
+      });
+
+      listEl.appendChild(section);
+    });
+
+    const otherItems = grouped.get('other') || [];
+    if (otherItems.length) {
+      const section = document.createElement('section');
+      section.className = 'support-task-group';
+
+      const title = document.createElement('h3');
+      title.className = 'support-task-title';
+      title.textContent = 'More questions';
+      section.appendChild(title);
+
+      otherItems.forEach((item) => {
+        const itemTitle = item.question || item.title || 'Untitled';
+        const itemBody = item.answer || item.body || '';
+        section.appendChild(buildAccordionItem(itemTitle, itemBody, ''));
+      });
+
+      listEl.appendChild(section);
+    }
+
+    return filtered.length;
+  };
+
   const render = () => {
     const sourceItems = state.type === 'faq'
       ? state.faqs
@@ -196,7 +274,7 @@
     state.tags = new Set(Array.from(state.tags).filter((tag) => tags.includes(tag)));
     renderTags(tags);
 
-    const faqCount = renderList(faqList, state.faqs, 'No FAQs match this search.');
+    const faqCount = renderGroupedFaqList(faqList, state.faqs, 'No FAQs match this search.');
     const policyCount = renderList(policyList, state.policies, 'No policies match this search.');
 
     if (faqSection) {

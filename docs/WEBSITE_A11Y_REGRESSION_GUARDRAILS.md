@@ -4,6 +4,14 @@
 - Lighthouse runs on PRs and pushes to `main` via `.github/workflows/lighthouse.yml`.
 - Website-specific Lighthouse config:
   - `website/lighthouserc.json`
+- Playwright website smoke runs in `.github/workflows/ci-smoke.yml`:
+  - command: `npm run website:smoke:playwright`
+  - artifact: `website-playwright-smoke` (screenshots + interaction evidence)
+- Production smoke monitor runs in `.github/workflows/website-prod-smoke.yml`:
+  - command: `node ./scripts/website-playwright-smoke.mjs --base-url https://monsoonfire.com --output-dir output/playwright/prod-ci`
+  - artifact: `website-playwright-prod-smoke`
+- Runbook:
+  - `docs/runbooks/WEBSITE_PLAYWRIGHT_SMOKE.md`
 - Must-pass pages:
   - `/`
   - `/memberships/`

@@ -2,6 +2,14 @@
 
 This folder contains the current integration references for the project.
 
+## Testing URLs
+
+- Production app: `https://monsoonfire-portal.web.app`
+- Firebase Hosting fallback: `https://monsoonfire-portal.firebaseapp.com`
+- Direct function endpoint: `https://us-central1-monsoonfire-portal.cloudfunctions.net/websiteKilnBoard`
+- Local Firebase hosting emulator: `http://127.0.0.1:5000`
+- Local Vite dev server: `http://localhost:5173`
+
 ## What to read first
 
 - `web/README.md`  

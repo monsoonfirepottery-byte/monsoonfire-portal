@@ -226,20 +226,24 @@ export const updateReservation = onRequest(
 
         const history = normalizeStageHistory(data.stageHistory);
         if (hasStatusChange || hasLoadChange || notesProvided) {
-          const fromStage = stageForCurrentState(current.status, current.loadStatus);
-          const toStatusStage = stageForCurrentState(nextStatus, nextLoadStatus);
-          const toLoadStatusStage = stageForCurrentState(nextStatus, nextLoadStatus);
+          const currentStatusForStage = normalizeStatus(current.status);
+          const currentLoadStatusForStage = normalizeLoadStatus(current.loadStatus);
+          const nextStatusForStage = normalizeStatus(nextStatus);
+          const nextLoadStatusForStage = normalizeLoadStatus(nextLoadStatus);
+          const fromStage = stageForCurrentState(currentStatusForStage, currentLoadStatusForStage);
+          const toStatusStage = stageForCurrentState(nextStatusForStage, nextLoadStatusForStage);
+          const toLoadStatusStage = stageForCurrentState(nextStatusForStage, nextLoadStatusForStage);
           const finalStage = hasLoadChange ? toLoadStatusStage : toStatusStage;
           const notesTrimmed = notesProvided ? safeString(staffNotes, "").trim() || null : null;
           const reason = statusProvided
-            ? `status:${current.status}->${nextStatus}`
-            : makeLoadStatusReason(current.loadStatus, nextLoadStatus);
+            ? `status:${currentStatusForStage ?? "null"}->${nextStatusForStage ?? "null"}`
+            : makeLoadStatusReason(currentLoadStatusForStage, nextLoadStatusForStage);
 
           history.push({
-            fromStatus: current.status,
-            toStatus: nextStatus,
-            fromLoadStatus: current.loadStatus,
-            toLoadStatus: nextLoadStatus,
+            fromStatus: currentStatusForStage,
+            toStatus: nextStatusForStage,
+            fromLoadStatus: currentLoadStatusForStage,
+            toLoadStatus: nextLoadStatusForStage,
             fromStage,
             toStage: finalStage,
             at: now,

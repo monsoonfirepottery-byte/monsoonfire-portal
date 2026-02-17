@@ -1,6 +1,6 @@
 # P2 — API V1 Collection Projection Hardening
 
-Status: Done
+Status: Completed
 
 Date: 2026-02-17
 

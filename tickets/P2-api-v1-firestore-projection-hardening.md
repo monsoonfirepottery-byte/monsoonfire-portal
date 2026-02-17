@@ -1,6 +1,6 @@
 # P2 — API v1 Firestore Projection Hardening
 
-Status: Done
+Status: Completed
 
 ## Problem
 Several v1 responses rely on spreading full Firestore documents (especially batch/timeline/firing related paths), which can leak unexpected fields and expose unstable shapes.

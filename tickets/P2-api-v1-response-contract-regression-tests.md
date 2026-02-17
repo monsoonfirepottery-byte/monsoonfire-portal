@@ -1,6 +1,6 @@
 # P2 — API V1 Response Contract Regression Tests
 
-Status: Ready
+Status: Planned
 Date: 2026-02-17
 
 ## Problem

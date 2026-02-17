@@ -47,5 +47,10 @@ Legend:
 
 ## Outstanding Evidence Tasks
 1. Record recurring drill runs in `docs/DRILL_EXECUTION_LOG.md` using v3 scenario IDs.
-2. Add explicit CI wiring evidence for policy-lint gate enforcement.
-3. Keep cockpit UI action-flow coverage expanding from current `web/src/views/staff/StudioBrainModule.test.tsx`.
+2. Keep expanding cross-service integration coverage beyond current cockpit action-flow tests in `web/src/views/staff/StudioBrainModule.test.tsx`.
+
+## Recently Closed Evidence Gaps
+1. CI policy-lint wiring is explicit in `.github/workflows/ci-smoke.yml` (`Studio Brain policy lint` step).
+2. Cockpit UI action-flow regressions now cover admin-token gate, kill-switch toggle payload, and intake deny override payload in `web/src/views/staff/StudioBrainModule.test.tsx`.
+3. Ops drill contract coverage now includes auth/required-field validation and metadata fidelity checks (`mttrMinutes`, `unresolvedRisks`) in `studio-brain/src/http/server.test.ts`.
+4. Ops degraded-mode coverage now includes auth/status guardrails, metadata fidelity (`status`, `mode`), audit prefix filtering, and non-staff rejection for ops audit/drill listing in `studio-brain/src/http/server.test.ts`.

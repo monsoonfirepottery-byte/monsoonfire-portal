@@ -658,6 +658,97 @@ async function withServer(options, run) {
         strict_1.default.ok(payload.rows.some((row) => row.scenarioId === "token_compromise"));
     });
 });
+(0, node_test_1.default)("ops drills endpoint enforces auth and required drill fields", async () => {
+    await withServer({}, async (baseUrl) => {
+        const unauthorized = await fetch(`${baseUrl}/api/ops/drills`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+                scenarioId: "connector_outage",
+                status: "started",
+            }),
+        });
+        strict_1.default.equal(unauthorized.status, 401);
+        const missingScenario = await fetch(`${baseUrl}/api/ops/drills`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                status: "started",
+            }),
+        });
+        strict_1.default.equal(missingScenario.status, 400);
+        const missingStatus = await fetch(`${baseUrl}/api/ops/drills`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                scenarioId: "connector_outage",
+            }),
+        });
+        strict_1.default.equal(missingStatus.status, 400);
+        const nonStaff = await fetch(`${baseUrl}/api/ops/drills`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-member" },
+            body: JSON.stringify({
+                scenarioId: "connector_outage",
+                status: "started",
+            }),
+        });
+        strict_1.default.equal(nonStaff.status, 401);
+    });
+});
+(0, node_test_1.default)("ops drills endpoint preserves mttr and unresolved risk metadata", async () => {
+    await withServer({}, async (baseUrl) => {
+        const posted = await fetch(`${baseUrl}/api/ops/drills`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                scenarioId: "policy_bypass_attempt",
+                status: "completed",
+                outcome: "partial",
+                notes: "Kill switch blocked writes; one stale alert remained.",
+                mttrMinutes: 42,
+                unresolvedRisks: ["alert-routing-followup", "playbook-clarification"],
+            }),
+        });
+        strict_1.default.equal(posted.status, 200);
+        const list = await fetch(`${baseUrl}/api/ops/drills?limit=10`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(list.status, 200);
+        const payload = (await list.json());
+        const row = payload.rows.find((entry) => entry.scenarioId === "policy_bypass_attempt");
+        strict_1.default.ok(row);
+        strict_1.default.equal(row?.status, "completed");
+        strict_1.default.equal(row?.outcome, "partial");
+        strict_1.default.equal(row?.mttrMinutes, 42);
+        strict_1.default.deepEqual(row?.unresolvedRisks ?? [], ["alert-routing-followup", "playbook-clarification"]);
+    });
+});
+(0, node_test_1.default)("ops drills endpoint events are queryable in ops audit stream", async () => {
+    await withServer({}, async (baseUrl) => {
+        const post = await fetch(`${baseUrl}/api/ops/drills`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                scenarioId: "connector_outage",
+                status: "completed",
+                outcome: "success",
+                notes: "Connector timeout storm drill completed.",
+            }),
+        });
+        strict_1.default.equal(post.status, 200);
+        const audit = await fetch(`${baseUrl}/api/ops/audit?limit=20&actionPrefix=studio_ops.drill_event`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(audit.status, 200);
+        const payload = (await audit.json());
+        const row = payload.rows.find((entry) => entry.action === "studio_ops.drill_event");
+        strict_1.default.ok(row);
+        strict_1.default.equal(row?.metadata?.scenarioId, "connector_outage");
+        strict_1.default.equal(row?.metadata?.status, "completed");
+        strict_1.default.equal(row?.metadata?.outcome, "success");
+    });
+});
 (0, node_test_1.default)("ops degraded endpoint records entry and audit list returns events", async () => {
     await withServer({}, async (baseUrl) => {
         const post = await fetch(`${baseUrl}/api/ops/degraded`, {
@@ -818,6 +909,91 @@ async function withServer(options, run) {
             }),
         });
         strict_1.default.equal(createAllowed.status, 201);
+    });
+});
+(0, node_test_1.default)("ops degraded endpoint enforces auth and validates status values", async () => {
+    await withServer({}, async (baseUrl) => {
+        const nonStaff = await fetch(`${baseUrl}/api/ops/degraded`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-member" },
+            body: JSON.stringify({
+                status: "entered",
+                mode: "offline",
+            }),
+        });
+        strict_1.default.equal(nonStaff.status, 401);
+        const invalidStatus = await fetch(`${baseUrl}/api/ops/degraded`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                status: "paused",
+                mode: "offline",
+            }),
+        });
+        strict_1.default.equal(invalidStatus.status, 400);
+    });
+});
+(0, node_test_1.default)("staff override denied keeps blocked intake denied on retry", async () => {
+    await withServer({}, async (baseUrl) => {
+        const createBlocked = await fetch(`${baseUrl}/api/capabilities/proposals`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                actorType: "agent",
+                actorId: "agent-risk-3",
+                ownerUid: "owner-3",
+                delegation: {
+                    delegationId: "del-3",
+                    agentUid: "agent-risk-3",
+                    ownerUid: "owner-3",
+                    scopes: ["capability:firestore.batch.close:execute"],
+                    expiresAt: "2099-01-01T00:00:00.000Z",
+                },
+                capabilityId: "firestore.batch.close",
+                rationale: "Need exact replica disney logo for a rush order.",
+                previewSummary: "replica trademark commission",
+                requestInput: { note: "disney exact logo" },
+                expectedEffects: ["Batch is marked closed."],
+            }),
+        });
+        strict_1.default.equal(createBlocked.status, 403);
+        const blockedPayload = (await createBlocked.json());
+        strict_1.default.equal(blockedPayload.reasonCode, "BLOCKED_BY_INTAKE_POLICY");
+        strict_1.default.ok(blockedPayload.intakeId.length > 5);
+        const deny = await fetch(`${baseUrl}/api/intake/review-queue/${blockedPayload.intakeId}/override`, {
+            method: "POST",
+            headers: { authorization: "Bearer test-staff", "content-type": "application/json" },
+            body: JSON.stringify({
+                decision: "override_denied",
+                reasonCode: "staff_override_context_verified",
+                rationale: "Staff denied request because rights proof is missing.",
+            }),
+        });
+        strict_1.default.equal(deny.status, 200);
+        const createStillBlocked = await fetch(`${baseUrl}/api/capabilities/proposals`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                actorType: "agent",
+                actorId: "agent-risk-3",
+                ownerUid: "owner-3",
+                delegation: {
+                    delegationId: "del-3",
+                    agentUid: "agent-risk-3",
+                    ownerUid: "owner-3",
+                    scopes: ["capability:firestore.batch.close:execute"],
+                    expiresAt: "2099-01-01T00:00:00.000Z",
+                },
+                capabilityId: "firestore.batch.close",
+                rationale: "Need exact replica disney logo for a rush order.",
+                previewSummary: "replica trademark commission",
+                requestInput: { note: "disney exact logo" },
+                expectedEffects: ["Batch is marked closed."],
+            }),
+        });
+        strict_1.default.equal(createStillBlocked.status, 403);
+        const stillBlockedPayload = (await createStillBlocked.json());
+        strict_1.default.equal(stillBlockedPayload.reasonCode, "BLOCKED_BY_INTAKE_POLICY");
     });
 });
 (0, node_test_1.default)("trust safety triage suggestion endpoints generate and track feedback", async () => {

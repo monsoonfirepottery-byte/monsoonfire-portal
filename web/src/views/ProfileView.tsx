@@ -1,14 +1,105 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
+import { updateProfile } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import {
+  connectStorageEmulator,
+  deleteObject,
+  getDownloadURL,
+  getStorage,
+  ref,
+  uploadBytes,
+} from "firebase/storage";
 import { db } from "../firebase";
 import { useBatches } from "../hooks/useBatches";
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
 import { isPortalThemeName, type PortalThemeName } from "../theme/themes";
 import { writeStoredEnhancedMotion } from "../theme/motionStorage";
+import { writeStoredPortalTheme } from "../theme/themeStorage";
 import { formatDateTime } from "../utils/format";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./ProfileView.css";
+import {
+  parseProfileAvatarStoragePath,
+  PROFILE_AVATAR_ALLOWED_MIME,
+  PROFILE_AVATAR_MAX_BYTES,
+  PROFILE_AVATAR_MAX_DIMENSION,
+  PROFILE_AVATAR_MIN_DIMENSION,
+  PROFILE_AVATAR_OPTIONS,
+  PROFILE_DEFAULT_AVATAR_URL,
+  resolveAvatarFileExtension,
+  sanitizeAvatarUid,
+  type ProfileAvatarMime,
+  validateAvatarSignature,
+} from "../lib/profileAvatars";
+
+type ImportMetaEnvShape = {
+  VITE_USE_EMULATORS?: string;
+  VITE_STORAGE_EMULATOR_HOST?: string;
+  VITE_STORAGE_EMULATOR_PORT?: string;
+};
+const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
+async function validateImageDimensions(file: File): Promise<{ width: number; height: number } | null> {
+  if (typeof Image === "undefined" || typeof URL === "undefined") {
+    return null;
+  }
+
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Unable to read image dimensions."));
+    };
+    image.src = objectUrl;
+  });
+}
+
+async function deleteProfileAvatarBlob(previousPhotoUrl: string, uid: string): Promise<void> {
+  const path = parseProfileAvatarStoragePath(previousPhotoUrl, uid);
+  if (!path) return;
+  const storage = getStorage();
+  if (typeof import.meta !== "undefined" && ENV.VITE_USE_EMULATORS === "true") {
+    const host = String(ENV.VITE_STORAGE_EMULATOR_HOST || "127.0.0.1");
+    const port = Number(ENV.VITE_STORAGE_EMULATOR_PORT || 9199);
+    connectStorageEmulator(storage, host, port);
+  }
+  await deleteObject(ref(storage, path));
+}
+
+function AvatarFallbackGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="avatar-preview-fallback-icon">
+      <circle cx="12" cy="8" r="3.3" fill="none" strokeWidth="1.7" stroke="currentColor" />
+      <path
+        d="M6 19c0-3 2.2-5.2 6-5.2s6 2.2 6 5.2"
+        fill="none"
+        strokeWidth="1.7"
+        stroke="currentColor"
+      />
+    </svg>
+  );
+}
+
+async function uploadAvatarImage(file: File, uid: string): Promise<string> {
+  const storage = getStorage();
+  if (typeof import.meta !== "undefined" && ENV.VITE_USE_EMULATORS === "true") {
+    const host = String(ENV.VITE_STORAGE_EMULATOR_HOST || "127.0.0.1");
+    const port = Number(ENV.VITE_STORAGE_EMULATOR_PORT || 9199);
+    connectStorageEmulator(storage, host, port);
+  }
+
+  const ext = resolveAvatarFileExtension(file);
+  const fileName = `profile-${Date.now()}.${ext}`;
+  const path = `profileAvatars/${sanitizeAvatarUid(uid)}/${fileName}`;
+  const photoRef = ref(storage, path);
+  await uploadBytes(photoRef, file, { contentType: file.type || "image/png" });
+  return await getDownloadURL(photoRef);
+}
 
 type ProfileDoc = {
   displayName?: string | null;
@@ -123,13 +214,15 @@ export default function ProfileView({
   enhancedMotion,
   onEnhancedMotionChange,
   onOpenIntegrations,
+  onAvatarUpdated,
 }: {
   user: User;
   themeName: PortalThemeName;
-  onThemeChange: (next: PortalThemeName) => Promise<void>;
+  onThemeChange: (next: PortalThemeName) => void;
   enhancedMotion: boolean;
   onEnhancedMotionChange: (next: boolean) => void;
   onOpenIntegrations: () => void;
+  onAvatarUpdated: () => void;
 }) {
   const { active, history } = useBatches(user);
   const [profileDoc, setProfileDoc] = useState<ProfileDoc | null>(null);
@@ -158,7 +251,12 @@ export default function ProfileView({
   const [motionStatus, setMotionStatus] = useState("");
   const [motionError, setMotionError] = useState("");
   const [motionSaving, setMotionSaving] = useState(false);
-  const isDarkTheme = themeName === "memoria";
+  const [avatarUrl, setAvatarUrl] = useState(user.photoURL || PROFILE_DEFAULT_AVATAR_URL);
+  const [avatarStatus, setAvatarStatus] = useState("");
+  const [avatarError, setAvatarError] = useState("");
+  const [avatarSaving, setAvatarSaving] = useState(false);
+  const [avatarPreviewError, setAvatarPreviewError] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -196,6 +294,13 @@ export default function ProfileView({
     };
   }, [user]);
 
+  useEffect(() => {
+    setAvatarUrl(user.photoURL || PROFILE_DEFAULT_AVATAR_URL);
+    setAvatarStatus("");
+    setAvatarError("");
+    setAvatarPreviewError(false);
+  }, [user.photoURL]);
+
   const handleThemeSelect = async (nextRaw: string) => {
     if (!user || themeSaving) return;
     if (!isPortalThemeName(nextRaw)) return;
@@ -203,9 +308,20 @@ export default function ProfileView({
     setThemeError("");
     setThemeStatus("");
 
+    onThemeChange(next);
+    writeStoredPortalTheme(next);
+
     setThemeSaving(true);
     try {
-      await onThemeChange(next);
+      const ref = doc(db, "profiles", user.uid);
+      await setDoc(
+        ref,
+        {
+          uiTheme: next,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
       setProfileDoc((prev) => (prev ? { ...prev, uiTheme: next } : { uiTheme: next }));
       setThemeStatus("Theme saved.");
     } catch (error: unknown) {
@@ -213,10 +329,6 @@ export default function ProfileView({
     } finally {
       setThemeSaving(false);
     }
-  };
-
-  const handleThemeToggle = (nextDark: boolean) => {
-    void handleThemeSelect(nextDark ? "memoria" : "portal");
   };
 
   const handleEnhancedMotionToggle = async (next: boolean) => {
@@ -247,6 +359,91 @@ export default function ProfileView({
     } finally {
       setMotionSaving(false);
     }
+  };
+
+  const updateAvatar = async (nextPhotoUrl: string) => {
+    if (!user || avatarSaving) return;
+    const previousPhotoUrl = avatarUrl;
+    setAvatarError("");
+    setAvatarStatus("");
+    setAvatarSaving(true);
+    try {
+      await updateProfile(user, { photoURL: nextPhotoUrl });
+      setAvatarUrl(nextPhotoUrl);
+      setAvatarPreviewError(false);
+      setAvatarStatus("Profile photo updated.");
+      if (previousPhotoUrl && previousPhotoUrl !== nextPhotoUrl) {
+        void deleteProfileAvatarBlob(previousPhotoUrl, user.uid).catch(() => {});
+      }
+      onAvatarUpdated();
+    } catch (error: unknown) {
+      setAvatarError(getErrorMessage(error) || "Unable to save profile photo.");
+    } finally {
+      setAvatarSaving(false);
+    }
+  };
+
+  const handlePickPreset = async (nextPhotoUrl: string) => {
+    await updateAvatar(nextPhotoUrl);
+  };
+
+  const handleResetToDefault = async () => {
+    await updateAvatar(PROFILE_DEFAULT_AVATAR_URL);
+  };
+
+  const handleUploadClick = () => {
+    avatarInputRef.current?.click();
+  };
+
+  const handleAvatarFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    event.target.value = "";
+    setAvatarError("");
+    setAvatarStatus("");
+
+    if (!PROFILE_AVATAR_ALLOWED_MIME.includes(file.type as ProfileAvatarMime)) {
+      setAvatarError("Please choose a PNG, JPEG, GIF, or WEBP image.");
+      return;
+    }
+    if (file.size > PROFILE_AVATAR_MAX_BYTES) {
+      setAvatarError("Image is too large. Use a file under 3MB.");
+      return;
+    }
+    if (file.size <= 0) {
+      setAvatarError("Choose a valid image file.");
+      return;
+    }
+
+    void validateAvatarSignature(file, file.type)
+      .then((hasValidSignature) => {
+        if (!hasValidSignature) {
+          throw new Error("File contents do not match the selected image type.");
+        }
+        return validateImageDimensions(file);
+      })
+      .then((dimensions) => {
+        if (!dimensions) return;
+        if (
+          dimensions.width < PROFILE_AVATAR_MIN_DIMENSION ||
+          dimensions.height < PROFILE_AVATAR_MIN_DIMENSION
+        ) {
+          throw new Error("Image is too small. Use an image at least 64x64.");
+        }
+        if (
+          dimensions.width > PROFILE_AVATAR_MAX_DIMENSION ||
+          dimensions.height > PROFILE_AVATAR_MAX_DIMENSION
+        ) {
+          throw new Error("Image is too large. Use 2048x2048 or smaller.");
+        }
+      })
+      .then(() => uploadAvatarImage(file, user.uid))
+      .then((nextPhotoUrl) => {
+        void updateAvatar(nextPhotoUrl);
+      })
+      .catch((error: unknown) => {
+        setAvatarError(getErrorMessage(error) || "Unable to save image file.");
+      });
   };
 
   const totalPieces = active.length + history.length;
@@ -355,6 +552,75 @@ export default function ProfileView({
 
       <section className="profile-grid">
         <div className="card card-3d profile-summary">
+          <div className="card-title">Profile photo</div>
+          <div className="profile-avatar-editor">
+            <div className="avatar-preview">
+              {avatarPreviewError ? (
+                <span className="avatar-preview-fallback">
+                  <AvatarFallbackGlyph />
+                </span>
+              ) : (
+                <img
+                  src={avatarUrl}
+                  alt={`${user.displayName ?? "User"} avatar`}
+                  onError={() => {
+                    setAvatarPreviewError(true);
+                  }}
+                />
+              )}
+            </div>
+            <div className="avatar-actions">
+              <button
+                type="button"
+                className="btn"
+                onClick={toVoidHandler(handleUploadClick)}
+                disabled={avatarSaving}
+              >
+                {avatarSaving ? "Uploading..." : "Upload photo"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={toVoidHandler(handleResetToDefault)}
+                disabled={avatarSaving}
+              >
+                Use default icon
+              </button>
+            </div>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              className="avatar-file-input"
+              onChange={toVoidHandler(handleAvatarFileChange)}
+              onClick={(event) => {
+                event.currentTarget.value = "";
+              }}
+            />
+            <div className="avatar-picklist">
+              <span className="summary-label">Choose from presets</span>
+              <div className="avatar-preset-grid">
+                {PROFILE_AVATAR_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={`avatar-preset-option ${avatarUrl === option.photoURL ? "is-active" : ""}`}
+                    onClick={toVoidHandler(() => {
+                      void handlePickPreset(option.photoURL);
+                    })}
+                    disabled={avatarSaving}
+                  >
+                    <img src={option.photoURL} alt={option.label} />
+                    <span className="avatar-preset-title">{option.label}</span>
+                    <span className="avatar-preset-description">{option.description}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            {avatarError ? <div className="alert form-alert">{avatarError}</div> : null}
+            {avatarStatus ? <div className="notice form-alert">{avatarStatus}</div> : null}
+          </div>
+          <div className="summary-separator" aria-hidden="true" />
           <div className="card-title">Account summary</div>
           <div className="summary-row">
             <div>
@@ -413,29 +679,21 @@ export default function ProfileView({
                 placeholder="Kiln 1, Kiln 2"
               />
             </label>
-            <div className="inline-toggle">
-              <label className="inline-toggle-row">
-                <span className="theme-toggle-labels">
-                  <span>Theme</span>
-                  <span className="theme-toggle-copy">
-                    {isDarkTheme ? "Dark mode enabled" : "Light mode enabled"}
-                  </span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={isDarkTheme}
-                  onChange={(event) => {
-                    handleThemeToggle(event.currentTarget.checked);
-                  }}
-                  disabled={themeSaving}
-                  aria-label={isDarkTheme ? "Enable light mode" : "Enable dark mode"}
-                />
-              </label>
+            <label>
+              Theme
+              <select
+                value={themeName}
+                onChange={(event) => void handleThemeSelect(event.target.value)}
+                disabled={themeSaving}
+              >
+                <option value="portal">Monsoon Fire (default)</option>
+                <option value="memoria">Memoria design system</option>
+              </select>
               <span className="profile-help">
                 Changes apply instantly and sync to your account.
                 {prefersReducedMotion ? " Reduced motion is enabled, so animations are minimized." : ""}
               </span>
-            </div>
+            </label>
             <div className="inline-toggle">
               <label className="inline-toggle-row">
                 <span>Enhanced motion</span>

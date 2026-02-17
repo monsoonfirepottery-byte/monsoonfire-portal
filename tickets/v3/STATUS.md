@@ -29,7 +29,7 @@ As of 2026-02-16, this is the implementation-aligned status for `studio-brain` a
    Evidence: `studio-brain/src/observability/policyLint.ts`, `studio-brain/src/cli/policyLint.ts`, `.github/workflows/ci-smoke.yml`
 10. `E10 Cockpit Consolidation`: `implemented with hardening gaps`
    Evidence: `web/src/views/staff/StudioBrainModule.tsx`, `web/src/views/staff/ReportsModule.tsx`, `studio-brain/src/http/server.ts`
-   Gap: dedicated UI test coverage for staff cockpit flows is still limited.
+   Gap: cross-service integration proof is still limited, but coverage now includes UI action-flow regressions (admin-token gate, kill-switch toggle contract, intake override deny contract) and ops endpoint contract checks in `studio-brain/src/http/server.test.ts` (drill auth/required fields/metadata fidelity, degraded auth/status/metadata fidelity, and staff-only read guards for ops audit/drills).
 
 ## Ticket-Level Working Status
 - `P0` track: appears `done-in-code` for scaffold, config contract, observability, readonly state, drift controls, dashboard.
@@ -37,10 +37,9 @@ As of 2026-02-16, this is the implementation-aligned status for `studio-brain` a
 - `P2` track: mostly `done-in-code` for finance, trust/safety triage, cockpit, write pilot, DR/rebuild CLI, scorecard, retention/export, chaos scripts, and policy lint.
 - `P2` readiness items still needing explicit operational proof:
   - repeated drill execution logs tied to v3 scenarios
-  - explicit CI/governance wiring evidence in one place
-  - stronger UI and cross-service integration test coverage
+  - stronger cross-service integration test coverage
 
 ## Immediate Next Work
-1. Capture recurring v3 drill runs in `docs/DRILL_EXECUTION_LOG.md` with scenario IDs and MTTR outcomes.
+1. Capture recurring v3 drill runs in `docs/DRILL_EXECUTION_LOG.md` with scenario IDs and MTTR outcomes (use `scripts/new-studio-os-v3-drill-log-entry.ps1` to append consistent templates).
 2. Execute `docs/runbooks/STUDIO_BRAIN_PILOT_WRITE_VERIFICATION.md` and attach run output evidence.
 3. Keep policy/readiness docs synchronized with CI workflow changes.

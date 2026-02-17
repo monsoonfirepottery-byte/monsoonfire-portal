@@ -1,6 +1,6 @@
 # P2 — API v1 Hardening Swarm Dispatch
 
-Status: Ready
+Status: Planned
 Date: 2026-02-17
 
 ## Swarm targets

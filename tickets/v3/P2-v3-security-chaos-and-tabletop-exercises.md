@@ -22,6 +22,15 @@ Validate that Studio OS v3 fails safely under auth, connector, and policy disrup
 - Integration tests for kill-switch + denied write behavior under degraded conditions.
 - Replay/forgery negative tests for privileged endpoints.
 - Smoke tests for fallback cloud-only operation path.
+- Added endpoint-contract integration coverage in `studio-brain/src/http/server.test.ts` for:
+- `POST /api/ops/drills` auth (missing token + non-staff principal) and required fields (`scenarioId`, `status`)
+- `GET /api/ops/drills` metadata fidelity (`scenarioId`, `status`, `outcome`, `mttrMinutes`, `unresolvedRisks`)
+- `POST /api/ops/degraded` auth + status guardrails and metadata fidelity (`status`, `mode`)
+- `GET /api/ops/audit` and `GET /api/ops/drills` staff-only read guard checks
+- audit correlation query for drill events via `actionPrefix=studio_ops.drill_event`
+
+## Progress Notes
+- 2026-02-17: Expanded drill API integration tests to better lock operational evidence capture contract.
 
 ## Security Notes
 - Run drills with sanitized non-production data.

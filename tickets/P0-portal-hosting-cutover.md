@@ -1,6 +1,6 @@
 # P0 - Portal Hosting Cutover (portal.monsoonfire.com)
 
-Status: Ready for close (pending final auth/function-call evidence)
+Status: Planned
 
 Goal: ship the portal at `https://portal.monsoonfire.com` on Namecheap hosting, with working Firebase Auth + Cloud Functions calls, and the correct static hosting behavior for a SPA.
 

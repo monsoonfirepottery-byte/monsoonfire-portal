@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Contact | Monsoon Fire Pottery</title>
+  <meta name="description" content="Contact Monsoon Fire Pottery. Address and gate code are shared via the portal." />
+  <link rel="canonical" href="https://monsoonfire.com/contact/" />
+  <link rel="icon" href="/assets/images/logo-mark-black.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/css/styles.css" />
+  <style>
+    .contact-intake {
+      margin-top: var(--space-4);
+    }
+
+    .contact-intake-grid {
+      display: grid;
+      gap: var(--space-3);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin-bottom: var(--space-3);
+    }
+
+    .contact-field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-family: var(--font-ui);
+      font-size: var(--text-xs);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--ink-700);
+    }
+
+    .contact-field--full {
+      grid-column: 1 / -1;
+    }
+
+    .contact-field input,
+    .contact-field select,
+    .contact-field textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--paper-50);
+      color: var(--ink-900);
+      font-family: var(--font-body);
+      font-size: var(--text-md);
+      letter-spacing: normal;
+      text-transform: none;
+      font-weight: 400;
+      min-height: 48px;
+      padding: 12px 14px;
+    }
+
+    .contact-field textarea {
+      min-height: 132px;
+      resize: vertical;
+    }
+
+    .contact-field input[aria-invalid="true"],
+    .contact-field select[aria-invalid="true"],
+    .contact-field textarea[aria-invalid="true"] {
+      border-color: var(--accent-600);
+      box-shadow: 0 0 0 1px var(--accent-600);
+    }
+
+    .contact-form-error {
+      margin: 0 0 var(--space-3) 0;
+      color: var(--accent-700);
+      font-family: var(--font-ui);
+      font-size: var(--text-xs);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .contact-form-success {
+      margin-top: var(--space-3);
+      color: var(--ink-700);
+    }
+
+    @media (max-width: 740px) {
+      .contact-intake-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .contact-field--full {
+        grid-column: auto;
+      }
+    }
+  </style>
+  <!-- Google tag (gtag.js) -->
+  <script src="/assets/js/analytics.js" defer></script>
+  <meta property="og:site_name" content="Monsoon Fire Pottery" />
+  <meta property="og:title" content="Contact | Monsoon Fire Pottery" />
+  <meta property="og:description" content="Contact Monsoon Fire Pottery. Address and gate code are shared via the portal." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://monsoonfire.com/contact/" />
+  <meta property="og:image" content="https://monsoonfire.com/assets/images/finished-work-1200.jpg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="1600" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Contact | Monsoon Fire Pottery" />
+  <meta name="twitter:description" content="Contact Monsoon Fire Pottery. Address and gate code are shared via the portal." />
+  <meta name="twitter:image" content="https://monsoonfire.com/assets/images/finished-work-1200.jpg" />
+  <script type="application/ld+json" src="/assets/schema/localbusiness.json"></script>
+</head>
+<body data-nav-parent="/services/">
+  <header class="site-header">
+    <div class="container navbar">
+      <a class="brand" href="/">
+        <img loading="eager" src="/assets/images/logo-mark-black.png" alt="Monsoon Fire Pottery logo" />
+        Monsoon Fire Pottery
+      </a>
+            <!-- Navigation concept: spatial, editorial labels that feel like studio signage. -->
+      <nav class="nav-links" data-nav-links>
+        <a href="/services/">The Studio</a>
+        <a href="/kiln-firing/">Kiln Firing</a>
+        <a href="/faq/">Community</a>
+        <a href="/support/">Support</a>
+        <a href="/highlights/">Gallery</a></nav>
+            <div class="nav-portal-wrap">
+        <a class="button button-ghost nav-login" href="https://monsoonfire.kilnfire.com" target="_blank" rel="noopener noreferrer">Login</a>
+      </div><button class="menu-toggle" type="button" aria-label="Toggle menu" aria-expanded="false" data-menu-toggle>
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <main class="page" id="main">
+    <section class="section">
+      <div class="container">
+        <div class="heading-block">
+          <p class="eyebrow">Contact</p>
+          <h1 class="section-title">Reach the studio directly.</h1>
+          <p class="lead">Send a quick intake and we will route your request for firing, studio access, or membership questions.</p>
+          <p class="hero-note">Most requests get a response within 1 business day.</p>
+        </div>
+        <div class="cta-row">
+          <a class="button button-primary" href="https://monsoonfire.kilnfire.com/new-user" target="_blank" rel="noopener noreferrer">Get started</a>
+          <a class="button button-ghost" href="mailto:support@monsoonfire.com">Email the studio</a>
+        </div>
+        <form class="contact-intake" data-contact-intake novalidate>
+          <div class="contact-intake-grid">
+            <label class="contact-field">
+              Full name
+              <input type="text" name="name" autocomplete="name" required />
+            </label>
+            <label class="contact-field">
+              Email address
+              <input type="email" name="email" autocomplete="email" required />
+            </label>
+            <label class="contact-field">
+              Request type
+              <select name="intent" required>
+                <option value="">Select one</option>
+                <option value="Kiln firing">Kiln firing</option>
+                <option value="Membership">Membership</option>
+                <option value="Studio access">Studio access</option>
+                <option value="General question">General question</option>
+              </select>
+            </label>
+            <label class="contact-field">
+              Preferred timeline
+              <input type="text" name="timeline" placeholder="Example: This week, this month, flexible" />
+            </label>
+            <label class="contact-field contact-field--full">
+              Project details
+              <textarea name="message" required placeholder="Tell us what you need, piece count, and any deadlines."></textarea>
+            </label>
+          </div>
+          <p class="contact-form-error" data-contact-error hidden>Please complete all required fields before sending.</p>
+          <div class="cta-row">
+            <button class="button button-primary" type="submit">Send request</button>
+            <a class="button button-ghost" href="mailto:support@monsoonfire.com">Email instead</a>
+          </div>
+          <p class="contact-form-success" data-contact-success hidden>Request drafted. Your email app should open now. If it does not, send your details to <a href="mailto:support@monsoonfire.com">support@monsoonfire.com</a>. Typical reply window: 1 business day.</p>
+        </form>
+      </div>
+    </section>
+
+    <section class="section section--band">
+      <div class="container">
+        <div class="heading-block">
+          <p class="eyebrow">Location</p>
+          <h2 class="section-title">Address shared in the portal.</h2>
+          <p class="lead">The studio location and gate code are available once you create an account.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-grid">
+      <div>
+        <div class="footer-brand">Monsoon Fire Pottery</div>
+        <p class="footer-note">West Valley, Arizona. Address shared via portal.</p>
+        <p>All interactions are by appointment only.</p>
+        </div>
+      <div>
+        <div class="footer-title">Contact</div>
+        <p><a href="mailto:support@monsoonfire.com">support@monsoonfire.com</a></p>
+        <p><a href="/contact/">Contact form</a></p>
+        <p><a href="/policies/accessibility/">Accessibility statement</a></p>
+      </div>
+    </div>
+  </footer>
+
+  <script defer src="/assets/js/main.js"></script>
+  <script>
+    (() => {
+      const form = document.querySelector('[data-contact-intake]');
+      if (!form) return;
+
+      const errorNode = form.querySelector('[data-contact-error]');
+      const successNode = form.querySelector('[data-contact-success]');
+      const requiredFields = Array.from(form.querySelectorAll('[required]'));
+
+      const markField = (field, invalid) => {
+        field.setAttribute('aria-invalid', invalid ? 'true' : 'false');
+      };
+
+      requiredFields.forEach((field) => {
+        field.addEventListener('input', () => {
+          if (field.checkValidity()) markField(field, false);
+        });
+      });
+
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+
+        let firstInvalid = null;
+        requiredFields.forEach((field) => {
+          const invalid = !field.checkValidity();
+          markField(field, invalid);
+          if (invalid && !firstInvalid) firstInvalid = field;
+        });
+
+        if (firstInvalid) {
+          if (errorNode) errorNode.hidden = false;
+          if (successNode) successNode.hidden = true;
+          firstInvalid.focus();
+          return;
+        }
+
+        const values = new FormData(form);
+        const subject = `Monsoon Fire inquiry: ${values.get('intent') || 'General question'}`;
+        const body = [
+          `Name: ${values.get('name') || ''}`,
+          `Email: ${values.get('email') || ''}`,
+          `Request type: ${values.get('intent') || ''}`,
+          `Preferred timeline: ${values.get('timeline') || 'Not provided'}`,
+          '',
+          'Project details:',
+          `${values.get('message') || ''}`
+        ].join('\n');
+
+        window.location.href = `mailto:support@monsoonfire.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+        if (errorNode) errorNode.hidden = true;
+        if (successNode) successNode.hidden = false;
+        form.reset();
+      });
+    })();
+  </script>
+  
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

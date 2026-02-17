@@ -23,6 +23,10 @@ functions/lib/
 
 # Local temp
 tmp-firebase.json
+memory/
+exports/
+*.jsonl
+*openai*export*
 
 # Env / secrets
 .env

@@ -13,6 +13,7 @@
 - Firestore rejects undefined values.
 - continueJourney requires `{ uid, fromBatchId }` + Authorization header.
 - Dev-only admin token header: `x-admin-token` (user provided).
+- Default collaboration mode is high-autonomy execution until blocker.
 
 ## Files likely involved
 - web/src/App.tsx
@@ -31,6 +32,12 @@
 1)
 2)
 3)
+
+## Memory context (load at session start)
+- Durable memory root: `C:\Users\micah\.codex\memory`
+- Read first: `accepted/accepted.jsonl`
+- Review queue: `working/proposed_review_queue.md`
+- Strategic open loop to keep visible: local West Valley/Phoenix studio expansion real-estate tracking.
 
 ## Manual test checklist
 - Sign in

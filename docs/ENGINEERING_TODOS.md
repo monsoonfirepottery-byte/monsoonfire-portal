@@ -26,6 +26,8 @@ Status: Active
 
 ## Later
 - [ ] Add a single-glaze tiles board (photos/notes per glaze, not just combos).
+- [ ] Refresh Community view recommended YouTube links quarterly (favor high-signal, beginner-safe pottery workflow videos and replace stale links).
+- [ ] Track West Valley/Phoenix-area studio real estate opportunities for eventual expansion (warehouse/light-industrial listings, lease ranges, availability trend, and fit notes), while keeping home studio operations as default cost-effective baseline.
 
 ## Notes
 - Vite + Vitest dev flow now uses `web/scripts/dev.mjs` (no `concurrently`).

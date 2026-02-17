@@ -1,0 +1,31 @@
+{
+  "status": "failed",
+  "startedAt": "2026-02-17T07:56:46.505Z",
+  "baseUrl": "https://monsoonfire.com",
+  "outputDir": "D:\\monsoonfire-portal\\output\\playwright\\prod-smoke-check",
+  "checks": [
+    {
+      "label": "desktop:/",
+      "status": "passed"
+    },
+    {
+      "label": "desktop:/services/",
+      "status": "passed"
+    },
+    {
+      "label": "desktop:/kiln-firing/",
+      "status": "passed"
+    },
+    {
+      "label": "desktop:/memberships/",
+      "status": "passed"
+    },
+    {
+      "label": "desktop:/contact/",
+      "status": "failed",
+      "error": "Missing required selector form[data-contact-intake] on /contact/ (desktop)."
+    }
+  ],
+  "error": "Missing required selector form[data-contact-intake] on /contact/ (desktop).",
+  "finishedAt": "2026-02-17T07:56:51.718Z"
+}

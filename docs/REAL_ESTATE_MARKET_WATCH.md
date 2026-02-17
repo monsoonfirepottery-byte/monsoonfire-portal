@@ -94,10 +94,32 @@ The context JSON is designed as direct input to a real-estate agent swarm:
 - latest ranked candidates with fit metadata
 - concise baseline notes (home studio remains default baseline)
 
+## Agentic Research Scan (Proactive + Distress Signals)
+Run autonomous search-based discovery to find new opportunities and distressed-market leads:
+
+```powershell
+pwsh -File scripts/run-real-estate-agentic-research.ps1 `
+  -OutputDir "output/real-estate" `
+  -Top 30 `
+  -MaxResultsPerQuery 25
+```
+
+What it does:
+- runs location-specific industrial/warehouse search queries
+- runs distress-oriented queries (price reduced, foreclosure, auction, motivated seller, sublease, vacant)
+- scores leads by expansion fit + distress signal intensity
+- emits a swarm-ready context package with prioritized leads and recommended next actions.
+
+Outputs:
+- `output/real-estate/agentic-research-<timestamp>.json`
+- `output/real-estate/agentic-research-<timestamp>.md`
+- `output/real-estate/agent-swarm-research-context-<timestamp>.json`
+
 ## Cadence
 - Weekly while actively searching.
 - Biweekly otherwise.
 - Quarterly: generate trend + swarm context pack.
+- Weekly or faster during market stress: run agentic research scan.
 
 ## Live Data Notes
 - Pull listings from your preferred sources and export to CSV.

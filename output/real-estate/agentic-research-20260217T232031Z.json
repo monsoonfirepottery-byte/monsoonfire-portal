@@ -1,0 +1,3043 @@
+{
+  "generatedAtUtc": "2026-02-17T23:20:31.2081175Z",
+  "runId": "20260217T232031Z",
+  "summary": {
+    "totalQueries": 124,
+    "rawItems": 94,
+    "uniqueLeads": 94,
+    "leadsAboveThreshold": 30,
+    "distressOpportunities": 0,
+    "governmentDistressSignals": 13,
+    "publicSignalLeads": 94,
+    "minPublicSignalScore": 40,
+    "maxPublicSignalLeads": 120,
+    "macroContextLoaded": true,
+    "configuredSources": 15,
+    "sourcesWithHits": 17,
+    "fallbackUsed": false
+  },
+  "sourceCoverage": [
+    {
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "maricopa_treasurer_delinquent_roll",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 31,
+      "uniqueLeads": 31,
+      "rankedLeads": 8
+    },
+    {
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "federal_real_property_disposals",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 16,
+      "uniqueLeads": 16,
+      "rankedLeads": 16
+    },
+    {
+      "sourceKey": "doe_funding_opportunities",
+      "sourceName": "doe_funding_opportunities",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 16,
+      "uniqueLeads": 16,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "grants_gov_opportunities",
+      "sourceName": "grants_gov_opportunities",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 12,
+      "uniqueLeads": 12,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "sba_loan_programs",
+      "sourceName": "sba_loan_programs",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 3,
+      "uniqueLeads": 3,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_recorder_document_feed",
+      "sourceName": "maricopa_recorder_document_feed",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 2,
+      "uniqueLeads": 2,
+      "rankedLeads": 2
+    },
+    {
+      "sourceKey": "az_state_surplus_property_auctions",
+      "sourceName": "az_state_surplus_property_auctions",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 2,
+      "uniqueLeads": 2,
+      "rankedLeads": 2
+    },
+    {
+      "sourceKey": "sba_grants_and_funding_programs",
+      "sourceName": "sba_grants_and_funding_programs",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 2,
+      "uniqueLeads": 2,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "hud_grants_and_funding",
+      "sourceName": "hud_grants_and_funding",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 2,
+      "uniqueLeads": 2,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "city_phoenix_business_grants_programs",
+      "sourceName": "city_phoenix_business_grants_programs",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 1,
+      "uniqueLeads": 1,
+      "rankedLeads": 1
+    },
+    {
+      "sourceKey": "maricopa_local_surplus_property_auctions",
+      "sourceName": "maricopa_local_surplus_property_auctions",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 1,
+      "uniqueLeads": 1,
+      "rankedLeads": 1
+    },
+    {
+      "sourceKey": "arizona_bankruptcy_filings",
+      "sourceName": "arizona_bankruptcy_filings",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 1,
+      "uniqueLeads": 1,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "cmbs_distress_signals",
+      "sourceName": "cmbs_distress_signals",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 1,
+      "uniqueLeads": 1,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "data_gov_business_assistance_catalog",
+      "sourceName": "data_gov_business_assistance_catalog",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 1,
+      "uniqueLeads": 1,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "az_commerce_grants_incentives",
+      "sourceName": "az_commerce_grants_incentives",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 1,
+      "uniqueLeads": 1,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "eda_grants_and_competitions",
+      "sourceName": "eda_grants_and_competitions",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 1,
+      "uniqueLeads": 1,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_civil_court",
+      "sourceName": "maricopa_civil_court",
+      "sourceType": "unknown",
+      "queryCount": 0,
+      "rawItems": 1,
+      "uniqueLeads": 1,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "queryCount": 38,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "queryCount": 16,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "queryCount": 16,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "auctioncom_distress",
+      "sourceName": "Auction.com Distressed Inventory",
+      "sourceType": "auction_marketplace",
+      "queryCount": 11,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_assessor_parcel_signals",
+      "sourceName": "Maricopa Assessor Parcel Signals",
+      "sourceType": "government_data",
+      "queryCount": 11,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "commercialcafe_listings",
+      "sourceName": "CommercialCafe Listings",
+      "sourceType": "listing_marketplace",
+      "queryCount": 11,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_recorder_trustee_sales",
+      "sourceName": "Maricopa Recorder Trustee Notices",
+      "sourceType": "government_legal",
+      "queryCount": 3,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_treasurer_tax_lien",
+      "sourceName": "Maricopa Treasurer Tax Lien",
+      "sourceType": "government_tax",
+      "queryCount": 3,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_county_auctions_leases",
+      "sourceName": "Maricopa County Auctions and Leases",
+      "sourceType": "government_auction",
+      "queryCount": 3,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "avison_young_market_reports",
+      "sourceName": "Avison Young Market Reports",
+      "sourceType": "broker_research",
+      "queryCount": 2,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "maricopa_tax_deeded_land_sales",
+      "sourceName": "Maricopa Tax Deeded Land Sales",
+      "sourceType": "government_tax",
+      "queryCount": 2,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "mcso_tax_and_sheriff_sales",
+      "sourceName": "MCSO Sheriff Sales",
+      "sourceType": "government_auction",
+      "queryCount": 2,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "naiop_market_reports",
+      "sourceName": "NAIOP Market Reports",
+      "sourceType": "industry_research",
+      "queryCount": 2,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "colliers_market_reports",
+      "sourceName": "Colliers Market Reports",
+      "sourceType": "broker_research",
+      "queryCount": 2,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    },
+    {
+      "sourceKey": "cbre_market_reports",
+      "sourceName": "CBRE Market Reports",
+      "sourceType": "broker_research",
+      "queryCount": 2,
+      "rawItems": 0,
+      "uniqueLeads": 0,
+      "rankedLeads": 0
+    }
+  ],
+  "queries": [
+    {
+      "query": "site:auction.com Avondale AZ bank owned commercial property",
+      "sourceKey": "auctioncom_distress",
+      "sourceName": "Auction.com Distressed Inventory",
+      "sourceType": "auction_marketplace",
+      "sourceDomains": [
+        "auction.com"
+      ]
+    },
+    {
+      "query": "site:auction.com Avondale AZ foreclosure industrial property",
+      "sourceKey": "auctioncom_distress",
+      "sourceName": "Auction.com Distressed Inventory",
+      "sourceType": "auction_marketplace",
+      "sourceDomains": [
+        "auction.com"
+      ]
+    },
+    {
+      "query": "site:auction.com Glendale AZ bank owned commercial property",
+      "sourceKey": "auctioncom_distress",
+      "sourceName": "Auction.com Distressed Inventory",
+      "sourceType": "auction_marketplace",
+      "sourceDomains": [
+        "auction.com"
+      ]
+    },
+    {
+      "query": "site:auction.com Glendale AZ foreclosure industrial property",
+      "sourceKey": "auctioncom_distress",
+      "sourceName": "Auction.com Distressed Inventory",
+      "sourceType": "auction_marketplace",
+      "sourceDomains": [
+        "auction.com"
+      ]
+    },
+    {
+      "query": "site:auction.com Goodyear AZ bank owned commercial property",
+      "sourceKey": "auctioncom_distress",
+      "sourceName": "Auction.com Distressed Inventory",
+      "sourceType": "auction_marketplace",
+      "sourceDomains": [
+        "auction.com"
+      ]
+    },
+    {
+      "query": "site:auction.com Goodyear AZ foreclosure industrial property",
+      "sourceKey": "auctioncom_distress",
+      "sourceName": "Auction.com Distressed Inventory",
+      "sourceType": "auction_marketplace",
+      "sourceDomains": [
+        "auction.com"
+      ]
+    },
+    {
+      "query": "site:auction.com Maricopa County commercial auction property",
+      "sourceKey": "auctioncom_distress",
+      "sourceName": "Auction.com Distressed Inventory",
+      "sourceType": "auction_marketplace",
+      "sourceDomains": [
+        "auction.com"
+      ]
+    },
+    {
+      "query": "site:auction.com Phoenix AZ bank owned commercial property",
+      "sourceKey": "auctioncom_distress",
+      "sourceName": "Auction.com Distressed Inventory",
+      "sourceType": "auction_marketplace",
+      "sourceDomains": [
+        "auction.com"
+      ]
+    },
+    {
+      "query": "site:auction.com Phoenix AZ foreclosure industrial property",
+      "sourceKey": "auctioncom_distress",
+      "sourceName": "Auction.com Distressed Inventory",
+      "sourceType": "auction_marketplace",
+      "sourceDomains": [
+        "auction.com"
+      ]
+    },
+    {
+      "query": "site:auction.com Tolleson AZ bank owned commercial property",
+      "sourceKey": "auctioncom_distress",
+      "sourceName": "Auction.com Distressed Inventory",
+      "sourceType": "auction_marketplace",
+      "sourceDomains": [
+        "auction.com"
+      ]
+    },
+    {
+      "query": "site:auction.com Tolleson AZ foreclosure industrial property",
+      "sourceKey": "auctioncom_distress",
+      "sourceName": "Auction.com Distressed Inventory",
+      "sourceType": "auction_marketplace",
+      "sourceDomains": [
+        "auction.com"
+      ]
+    },
+    {
+      "query": "site:avisonyoung.com Arizona industrial warehouse outlook",
+      "sourceKey": "avison_young_market_reports",
+      "sourceName": "Avison Young Market Reports",
+      "sourceType": "broker_research",
+      "sourceDomains": [
+        "avisonyoung.com"
+      ]
+    },
+    {
+      "query": "site:avisonyoung.com Phoenix industrial market report",
+      "sourceKey": "avison_young_market_reports",
+      "sourceName": "Avison Young Market Reports",
+      "sourceType": "broker_research",
+      "sourceDomains": [
+        "avisonyoung.com"
+      ]
+    },
+    {
+      "query": "site:cbre.com Phoenix industrial market report",
+      "sourceKey": "cbre_market_reports",
+      "sourceName": "CBRE Market Reports",
+      "sourceType": "broker_research",
+      "sourceDomains": [
+        "cbre.com"
+      ]
+    },
+    {
+      "query": "site:cbre.com Phoenix west valley industrial vacancy rent",
+      "sourceKey": "cbre_market_reports",
+      "sourceName": "CBRE Market Reports",
+      "sourceType": "broker_research",
+      "sourceDomains": [
+        "cbre.com"
+      ]
+    },
+    {
+      "query": "site:colliers.com Arizona industrial trends vacancy",
+      "sourceKey": "colliers_market_reports",
+      "sourceName": "Colliers Market Reports",
+      "sourceType": "broker_research",
+      "sourceDomains": [
+        "colliers.com"
+      ]
+    },
+    {
+      "query": "site:colliers.com Phoenix industrial market report",
+      "sourceKey": "colliers_market_reports",
+      "sourceName": "Colliers Market Reports",
+      "sourceType": "broker_research",
+      "sourceDomains": [
+        "colliers.com"
+      ]
+    },
+    {
+      "query": "site:commercialcafe.com Avondale AZ industrial for lease",
+      "sourceKey": "commercialcafe_listings",
+      "sourceName": "CommercialCafe Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "commercialcafe.com"
+      ]
+    },
+    {
+      "query": "site:commercialcafe.com Avondale AZ warehouse for sale",
+      "sourceKey": "commercialcafe_listings",
+      "sourceName": "CommercialCafe Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "commercialcafe.com"
+      ]
+    },
+    {
+      "query": "site:commercialcafe.com Glendale AZ industrial for lease",
+      "sourceKey": "commercialcafe_listings",
+      "sourceName": "CommercialCafe Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "commercialcafe.com"
+      ]
+    },
+    {
+      "query": "site:commercialcafe.com Glendale AZ warehouse for sale",
+      "sourceKey": "commercialcafe_listings",
+      "sourceName": "CommercialCafe Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "commercialcafe.com"
+      ]
+    },
+    {
+      "query": "site:commercialcafe.com Goodyear AZ industrial for lease",
+      "sourceKey": "commercialcafe_listings",
+      "sourceName": "CommercialCafe Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "commercialcafe.com"
+      ]
+    },
+    {
+      "query": "site:commercialcafe.com Goodyear AZ warehouse for sale",
+      "sourceKey": "commercialcafe_listings",
+      "sourceName": "CommercialCafe Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "commercialcafe.com"
+      ]
+    },
+    {
+      "query": "site:commercialcafe.com Phoenix AZ industrial for lease",
+      "sourceKey": "commercialcafe_listings",
+      "sourceName": "CommercialCafe Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "commercialcafe.com"
+      ]
+    },
+    {
+      "query": "site:commercialcafe.com Phoenix AZ warehouse for sale",
+      "sourceKey": "commercialcafe_listings",
+      "sourceName": "CommercialCafe Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "commercialcafe.com"
+      ]
+    },
+    {
+      "query": "site:commercialcafe.com Phoenix industrial market listings",
+      "sourceKey": "commercialcafe_listings",
+      "sourceName": "CommercialCafe Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "commercialcafe.com"
+      ]
+    },
+    {
+      "query": "site:commercialcafe.com Tolleson AZ industrial for lease",
+      "sourceKey": "commercialcafe_listings",
+      "sourceName": "CommercialCafe Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "commercialcafe.com"
+      ]
+    },
+    {
+      "query": "site:commercialcafe.com Tolleson AZ warehouse for sale",
+      "sourceKey": "commercialcafe_listings",
+      "sourceName": "CommercialCafe Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "commercialcafe.com"
+      ]
+    },
+    {
+      "query": "site:crexi.com Avondale AZ industrial property for lease",
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "crexi.com"
+      ]
+    },
+    {
+      "query": "site:crexi.com Avondale AZ industrial property for sale",
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "crexi.com"
+      ]
+    },
+    {
+      "query": "site:crexi.com Avondale AZ warehouse vacant sublease",
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "crexi.com"
+      ]
+    },
+    {
+      "query": "site:crexi.com Glendale AZ industrial property for lease",
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "crexi.com"
+      ]
+    },
+    {
+      "query": "site:crexi.com Glendale AZ industrial property for sale",
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "crexi.com"
+      ]
+    },
+    {
+      "query": "site:crexi.com Glendale AZ warehouse vacant sublease",
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "crexi.com"
+      ]
+    },
+    {
+      "query": "site:crexi.com Goodyear AZ industrial property for lease",
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "crexi.com"
+      ]
+    },
+    {
+      "query": "site:crexi.com Goodyear AZ industrial property for sale",
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "crexi.com"
+      ]
+    },
+    {
+      "query": "site:crexi.com Goodyear AZ warehouse vacant sublease",
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "crexi.com"
+      ]
+    },
+    {
+      "query": "site:crexi.com Phoenix AZ industrial property for lease",
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "crexi.com"
+      ]
+    },
+    {
+      "query": "site:crexi.com Phoenix AZ industrial property for sale",
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "crexi.com"
+      ]
+    },
+    {
+      "query": "site:crexi.com Phoenix AZ warehouse vacant sublease",
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "crexi.com"
+      ]
+    },
+    {
+      "query": "site:crexi.com Phoenix metro industrial investment sale",
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "crexi.com"
+      ]
+    },
+    {
+      "query": "site:crexi.com Tolleson AZ industrial property for lease",
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "crexi.com"
+      ]
+    },
+    {
+      "query": "site:crexi.com Tolleson AZ industrial property for sale",
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "crexi.com"
+      ]
+    },
+    {
+      "query": "site:crexi.com Tolleson AZ warehouse vacant sublease",
+      "sourceKey": "crexi_listings",
+      "sourceName": "CREXi Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "crexi.com"
+      ]
+    },
+    {
+      "query": "site:loopnet.com Avondale AZ flex industrial space",
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "loopnet.com"
+      ]
+    },
+    {
+      "query": "site:loopnet.com Avondale AZ industrial warehouse for lease",
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "loopnet.com"
+      ]
+    },
+    {
+      "query": "site:loopnet.com Avondale AZ industrial warehouse for sale",
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "loopnet.com"
+      ]
+    },
+    {
+      "query": "site:loopnet.com Glendale AZ flex industrial space",
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "loopnet.com"
+      ]
+    },
+    {
+      "query": "site:loopnet.com Glendale AZ industrial warehouse for lease",
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "loopnet.com"
+      ]
+    },
+    {
+      "query": "site:loopnet.com Glendale AZ industrial warehouse for sale",
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "loopnet.com"
+      ]
+    },
+    {
+      "query": "site:loopnet.com Goodyear AZ flex industrial space",
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "loopnet.com"
+      ]
+    },
+    {
+      "query": "site:loopnet.com Goodyear AZ industrial warehouse for lease",
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "loopnet.com"
+      ]
+    },
+    {
+      "query": "site:loopnet.com Goodyear AZ industrial warehouse for sale",
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "loopnet.com"
+      ]
+    },
+    {
+      "query": "site:loopnet.com Maricopa County industrial warehouse opportunities",
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "loopnet.com"
+      ]
+    },
+    {
+      "query": "site:loopnet.com Phoenix AZ flex industrial space",
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "loopnet.com"
+      ]
+    },
+    {
+      "query": "site:loopnet.com Phoenix AZ industrial warehouse for lease",
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "loopnet.com"
+      ]
+    },
+    {
+      "query": "site:loopnet.com Phoenix AZ industrial warehouse for sale",
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "loopnet.com"
+      ]
+    },
+    {
+      "query": "site:loopnet.com Tolleson AZ flex industrial space",
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "loopnet.com"
+      ]
+    },
+    {
+      "query": "site:loopnet.com Tolleson AZ industrial warehouse for lease",
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "loopnet.com"
+      ]
+    },
+    {
+      "query": "site:loopnet.com Tolleson AZ industrial warehouse for sale",
+      "sourceKey": "loopnet_listings",
+      "sourceName": "LoopNet Listings",
+      "sourceType": "listing_marketplace",
+      "sourceDomains": [
+        "loopnet.com"
+      ]
+    },
+    {
+      "query": "site:mcassessor.maricopa.gov Avondale parcel search industrial",
+      "sourceKey": "maricopa_assessor_parcel_signals",
+      "sourceName": "Maricopa Assessor Parcel Signals",
+      "sourceType": "government_data",
+      "sourceDomains": [
+        "mcassessor.maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:mcassessor.maricopa.gov Avondale property detail warehouse",
+      "sourceKey": "maricopa_assessor_parcel_signals",
+      "sourceName": "Maricopa Assessor Parcel Signals",
+      "sourceType": "government_data",
+      "sourceDomains": [
+        "mcassessor.maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:mcassessor.maricopa.gov Glendale parcel search industrial",
+      "sourceKey": "maricopa_assessor_parcel_signals",
+      "sourceName": "Maricopa Assessor Parcel Signals",
+      "sourceType": "government_data",
+      "sourceDomains": [
+        "mcassessor.maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:mcassessor.maricopa.gov Glendale property detail warehouse",
+      "sourceKey": "maricopa_assessor_parcel_signals",
+      "sourceName": "Maricopa Assessor Parcel Signals",
+      "sourceType": "government_data",
+      "sourceDomains": [
+        "mcassessor.maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:mcassessor.maricopa.gov Goodyear parcel search industrial",
+      "sourceKey": "maricopa_assessor_parcel_signals",
+      "sourceName": "Maricopa Assessor Parcel Signals",
+      "sourceType": "government_data",
+      "sourceDomains": [
+        "mcassessor.maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:mcassessor.maricopa.gov Goodyear property detail warehouse",
+      "sourceKey": "maricopa_assessor_parcel_signals",
+      "sourceName": "Maricopa Assessor Parcel Signals",
+      "sourceType": "government_data",
+      "sourceDomains": [
+        "mcassessor.maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:mcassessor.maricopa.gov parcel map maricopa industrial property",
+      "sourceKey": "maricopa_assessor_parcel_signals",
+      "sourceName": "Maricopa Assessor Parcel Signals",
+      "sourceType": "government_data",
+      "sourceDomains": [
+        "mcassessor.maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:mcassessor.maricopa.gov Phoenix parcel search industrial",
+      "sourceKey": "maricopa_assessor_parcel_signals",
+      "sourceName": "Maricopa Assessor Parcel Signals",
+      "sourceType": "government_data",
+      "sourceDomains": [
+        "mcassessor.maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:mcassessor.maricopa.gov Phoenix property detail warehouse",
+      "sourceKey": "maricopa_assessor_parcel_signals",
+      "sourceName": "Maricopa Assessor Parcel Signals",
+      "sourceType": "government_data",
+      "sourceDomains": [
+        "mcassessor.maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:mcassessor.maricopa.gov Tolleson parcel search industrial",
+      "sourceKey": "maricopa_assessor_parcel_signals",
+      "sourceName": "Maricopa Assessor Parcel Signals",
+      "sourceType": "government_data",
+      "sourceDomains": [
+        "mcassessor.maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:mcassessor.maricopa.gov Tolleson property detail warehouse",
+      "sourceKey": "maricopa_assessor_parcel_signals",
+      "sourceName": "Maricopa Assessor Parcel Signals",
+      "sourceType": "government_data",
+      "sourceDomains": [
+        "mcassessor.maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:maricopa.gov county auction surplus real property",
+      "sourceKey": "maricopa_county_auctions_leases",
+      "sourceName": "Maricopa County Auctions and Leases",
+      "sourceType": "government_auction",
+      "sourceDomains": [
+        "maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:maricopa.gov county lease industrial property",
+      "sourceKey": "maricopa_county_auctions_leases",
+      "sourceName": "Maricopa County Auctions and Leases",
+      "sourceType": "government_auction",
+      "sourceDomains": [
+        "maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:maricopa.gov procurement real estate opportunities",
+      "sourceKey": "maricopa_county_auctions_leases",
+      "sourceName": "Maricopa County Auctions and Leases",
+      "sourceType": "government_auction",
+      "sourceDomains": [
+        "maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:maricopa.gov recorder trustee sale industrial property",
+      "sourceKey": "maricopa_recorder_trustee_sales",
+      "sourceName": "Maricopa Recorder Trustee Notices",
+      "sourceType": "government_legal",
+      "sourceDomains": [
+        "recorder.maricopa.gov",
+        "maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:recorder.maricopa.gov lis pendens maricopa county",
+      "sourceKey": "maricopa_recorder_trustee_sales",
+      "sourceName": "Maricopa Recorder Trustee Notices",
+      "sourceType": "government_legal",
+      "sourceDomains": [
+        "recorder.maricopa.gov",
+        "maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:recorder.maricopa.gov notice of trustee sale",
+      "sourceKey": "maricopa_recorder_trustee_sales",
+      "sourceName": "Maricopa Recorder Trustee Notices",
+      "sourceType": "government_legal",
+      "sourceDomains": [
+        "recorder.maricopa.gov",
+        "maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:landsales.maricopa.gov tax deed sale list maricopa county",
+      "sourceKey": "maricopa_tax_deeded_land_sales",
+      "sourceName": "Maricopa Tax Deeded Land Sales",
+      "sourceType": "government_tax",
+      "sourceDomains": [
+        "landsales.maricopa.gov",
+        "maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:maricopa.gov tax deeded land sale industrial",
+      "sourceKey": "maricopa_tax_deeded_land_sales",
+      "sourceName": "Maricopa Tax Deeded Land Sales",
+      "sourceType": "government_tax",
+      "sourceDomains": [
+        "landsales.maricopa.gov",
+        "maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:maricopa.gov treasurer delinquent taxes industrial",
+      "sourceKey": "maricopa_treasurer_tax_lien",
+      "sourceName": "Maricopa Treasurer Tax Lien",
+      "sourceType": "government_tax",
+      "sourceDomains": [
+        "treasurer.maricopa.gov",
+        "maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:treasurer.maricopa.gov delinquent property tax list",
+      "sourceKey": "maricopa_treasurer_tax_lien",
+      "sourceName": "Maricopa Treasurer Tax Lien",
+      "sourceType": "government_tax",
+      "sourceDomains": [
+        "treasurer.maricopa.gov",
+        "maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:treasurer.maricopa.gov maricopa county tax lien sale",
+      "sourceKey": "maricopa_treasurer_tax_lien",
+      "sourceName": "Maricopa Treasurer Tax Lien",
+      "sourceType": "government_tax",
+      "sourceDomains": [
+        "treasurer.maricopa.gov",
+        "maricopa.gov"
+      ]
+    },
+    {
+      "query": "site:mcso.org foreclosure auction list",
+      "sourceKey": "mcso_tax_and_sheriff_sales",
+      "sourceName": "MCSO Sheriff Sales",
+      "sourceType": "government_auction",
+      "sourceDomains": [
+        "mcso.org"
+      ]
+    },
+    {
+      "query": "site:mcso.org sheriff sale maricopa county property",
+      "sourceKey": "mcso_tax_and_sheriff_sales",
+      "sourceName": "MCSO Sheriff Sales",
+      "sourceType": "government_auction",
+      "sourceDomains": [
+        "mcso.org"
+      ]
+    },
+    {
+      "query": "site:naiop.org Arizona commercial real estate outlook",
+      "sourceKey": "naiop_market_reports",
+      "sourceName": "NAIOP Market Reports",
+      "sourceType": "industry_research",
+      "sourceDomains": [
+        "naiop.org"
+      ]
+    },
+    {
+      "query": "site:naiop.org Phoenix industrial market",
+      "sourceKey": "naiop_market_reports",
+      "sourceName": "NAIOP Market Reports",
+      "sourceType": "industry_research",
+      "sourceDomains": [
+        "naiop.org"
+      ]
+    },
+    {
+      "query": "site:avondaleaz.gov Avondale industrial permit",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:avondaleaz.gov Glendale industrial permit",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:avondaleaz.gov Goodyear industrial permit",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:avondaleaz.gov Phoenix industrial permit",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:avondaleaz.gov Tolleson industrial permit",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:glendaleaz.com Avondale industrial development review",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:glendaleaz.com Glendale industrial development review",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:glendaleaz.com Goodyear industrial development review",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:glendaleaz.com Phoenix industrial development review",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:glendaleaz.com Tolleson industrial development review",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:goodyearaz.gov Avondale industrial permit",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:goodyearaz.gov Glendale industrial permit",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:goodyearaz.gov Goodyear industrial permit",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:goodyearaz.gov Phoenix industrial permit",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:goodyearaz.gov Tolleson industrial permit",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:phoenix.gov Avondale code enforcement warehouse",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:phoenix.gov Avondale industrial zoning case",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:phoenix.gov Avondale planning commission industrial",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:phoenix.gov Glendale code enforcement warehouse",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:phoenix.gov Glendale industrial zoning case",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:phoenix.gov Glendale planning commission industrial",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:phoenix.gov Goodyear code enforcement warehouse",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:phoenix.gov Goodyear industrial zoning case",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:phoenix.gov Goodyear planning commission industrial",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:phoenix.gov industrial rezoning hearing",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:phoenix.gov Phoenix code enforcement warehouse",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:phoenix.gov Phoenix industrial zoning case",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:phoenix.gov Phoenix planning commission industrial",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:phoenix.gov Tolleson code enforcement warehouse",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:phoenix.gov Tolleson industrial zoning case",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:phoenix.gov Tolleson planning commission industrial",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:phoenix.gov vacant building code violation industrial",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:phoenix.legistar.com industrial development case",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:tolleson.az.gov Avondale industrial planning",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:tolleson.az.gov Glendale industrial planning",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:tolleson.az.gov Goodyear industrial planning",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:tolleson.az.gov Phoenix industrial planning",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    },
+    {
+      "query": "site:tolleson.az.gov Tolleson industrial planning",
+      "sourceKey": "phoenix_permitting_and_planning",
+      "sourceName": "City Planning and Permitting Signals",
+      "sourceType": "government_planning",
+      "sourceDomains": [
+        "phoenix.gov",
+        "phoenix.legistar.com",
+        "glendaleaz.com",
+        "goodyearaz.gov",
+        "avondaleaz.gov",
+        "tolleson.az.gov"
+      ]
+    }
+  ],
+  "topLeads": [
+    {
+      "title": "government_auction_opportunity | Maricopa County",
+      "url": "https://www.maricopa.gov/5268/Surplus-Properties",
+      "summary": "stage=auction_scheduled ; owner=Maricopa County ; County surplus property watch page.",
+      "publishedAt": "02/17/2026 20:07:06",
+      "sourceQuery": "public-signals:maricopa_local_surplus_property_auctions:maricopa_local_surplus_property_auctions:1",
+      "sourceKey": "maricopa_local_surplus_property_auctions",
+      "sourceName": "Maricopa Local Surplus Property Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.maricopa.gov"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "Maricopa County",
+      "domain": "www.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 64,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 124,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity | Arizona",
+      "url": "https://doa.az.gov/surplus-property",
+      "summary": "stage=auction_scheduled ; owner=Arizona Department of Administration ; State surplus property landing page.",
+      "publishedAt": "02/17/2026 20:07:06",
+      "sourceQuery": "public-signals:az_state_surplus_property_auctions:az_state_surplus_property_auctions:1",
+      "sourceKey": "az_state_surplus_property_auctions",
+      "sourceName": "Arizona State Surplus Property Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "doa.az.gov"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "Arizona Department of Administration",
+      "domain": "doa.az.gov",
+      "cityHint": "Arizona",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 64,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 124,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity | Arizona",
+      "url": "https://www.publicsurplus.com/sms/arizona,az/list/current?orgid=226",
+      "summary": "stage=auction_scheduled ; owner=Arizona Surplus Listings ; Public surplus listing feed.",
+      "publishedAt": "02/17/2026 20:07:06",
+      "sourceQuery": "public-signals:az_state_surplus_property_auctions:az_state_surplus_property_auctions:2",
+      "sourceKey": "az_state_surplus_property_auctions",
+      "sourceName": "Arizona State Surplus Property Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.publicsurplus.com"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "Arizona Surplus Listings",
+      "domain": "www.publicsurplus.com",
+      "cityHint": "Arizona",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 64,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 8,
+      "leadScore": 114,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "trustee_sale | Maricopa County",
+      "url": "https://recorder.maricopa.gov/recording/document-search.html",
+      "summary": "stage=notice_filed ; owner=Maricopa County Recorder ; case=MCR-RECORDER-001 ; Recorder document search (manual access).",
+      "publishedAt": "02/17/2026 20:07:06",
+      "sourceQuery": "public-signals:maricopa_recorder_document_feed:maricopa_recorder_document_feed:1",
+      "sourceKey": "maricopa_recorder_document_feed",
+      "sourceName": "Maricopa Recorder Trustee and Legal Notices",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "recorder.maricopa.gov"
+      ],
+      "signalType": "trustee_sale",
+      "distressStage": "notice_filed",
+      "parcelId": "",
+      "ownerName": "Maricopa County Recorder",
+      "domain": "recorder.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 63,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 105,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://d2m3yrz4x1yefr.cloudfront.net/property_image/1706846164.7074475_resauclogo.png",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:2",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "d2m3yrz4x1yefr.cloudfront.net"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "d2m3yrz4x1yefr.cloudfront.net",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://d2m3yrz4x1yefr.cloudfront.net/property_image/1764008220.3193836_Picture2.jpg",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:3",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "d2m3yrz4x1yefr.cloudfront.net"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "d2m3yrz4x1yefr.cloudfront.net",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://www.gsaig.gov/",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:16",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.gsaig.gov"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "www.gsaig.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://realestatesales.gov",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:8",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "realestatesales.gov"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "realestatesales.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://d2w9j5i7epyyai.cloudfront.net/static/theme-4/images/property-value.png",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:6",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "d2w9j5i7epyyai.cloudfront.net"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "d2w9j5i7epyyai.cloudfront.net",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://www.gsa.gov/website-information/accessibility-statement",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:14",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.gsa.gov"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "www.gsa.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://www.gsa.gov/reference/reports/budget-and-performance?_gl=1%2Acz8qoc%2A_ga%2ANzk5OTM3NTU5LjE3MjY1MTU2MTQ.%2A_ga_HBYXWFP794%2AMTczMjYzMjk3MS4xMC4wLjE3MzI2MzI5NzEuMC4wLjA.",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:13",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.gsa.gov"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "www.gsa.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://dap.digitalgov.gov/Universal-Federated-Analytics-Min.js?agency=GSA",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:7",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "dap.digitalgov.gov"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "dap.digitalgov.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://www.gsa.gov/about-us?topnav=about-us",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:10",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.gsa.gov"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "www.gsa.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://www.gsa.gov/",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:9",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.gsa.gov"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "www.gsa.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://www.gsa.gov/reference/freedom-of-information-act-foia",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:12",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.gsa.gov"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "www.gsa.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://d2m3yrz4x1yefr.cloudfront.net/property_image/1764788498.3673975_20250520_155612.jpg",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:4",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "d2m3yrz4x1yefr.cloudfront.net"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "d2m3yrz4x1yefr.cloudfront.net",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://d2m3yrz4x1yefr.cloudfront.net/property_image/1706846114.515992_resauclogo.png",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:1",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "d2m3yrz4x1yefr.cloudfront.net"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "d2m3yrz4x1yefr.cloudfront.net",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://d2m3yrz4x1yefr.cloudfront.net/property_image/1765292135.0287104_Bridgeton_main_door_photo.jpg",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:5",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "d2m3yrz4x1yefr.cloudfront.net"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "d2m3yrz4x1yefr.cloudfront.net",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://www.gsa.gov/website-information/website-policies#privacy",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:15",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.gsa.gov"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "www.gsa.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "government_auction_opportunity",
+      "url": "https://www.gsa.gov/reference/civil-rights-programs/the-no-fear-act",
+      "summary": "stage=auction_scheduled ; government auction watch link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:federal_real_property_disposals:federal_real_property_disposals:11",
+      "sourceKey": "federal_real_property_disposals",
+      "sourceName": "Federal Real Property Disposals and Auctions",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.gsa.gov"
+      ],
+      "signalType": "government_auction_opportunity",
+      "distressStage": "auction_scheduled",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "www.gsa.gov",
+      "cityHint": "",
+      "fitScore": 0,
+      "distressScore": 18,
+      "governmentDistressScore": 0,
+      "baseLeadScore": 60,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 0,
+      "cityScore": 0,
+      "leadScore": 102,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [
+        {
+          "keyword": "auction",
+          "weight": 18
+        }
+      ],
+      "governmentMatches": []
+    },
+    {
+      "title": "trustee_sale | Maricopa County",
+      "url": "https://recorder.maricopa.gov/recording/title-alert.html",
+      "summary": "stage=monitoring ; owner=Maricopa County Recorder ; case=MCR-RECORDER-002 ; Title alert monitoring page.",
+      "publishedAt": "02/17/2026 20:07:06",
+      "sourceQuery": "public-signals:maricopa_recorder_document_feed:maricopa_recorder_document_feed:2",
+      "sourceKey": "maricopa_recorder_document_feed",
+      "sourceName": "Maricopa Recorder Trustee and Legal Notices",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "recorder.maricopa.gov"
+      ],
+      "signalType": "trustee_sale",
+      "distressStage": "monitoring",
+      "parcelId": "",
+      "ownerName": "Maricopa County Recorder",
+      "domain": "recorder.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 55,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 97,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "grant_opportunity | Phoenix",
+      "url": "https://www.phoenix.gov/eed",
+      "summary": "stage=funding_open ; owner=City of Phoenix EED ; City business and economic development landing page.",
+      "publishedAt": "02/17/2026 20:07:06",
+      "sourceQuery": "public-signals:city_phoenix_business_grants_programs:city_phoenix_business_grants_programs:1",
+      "sourceKey": "city_phoenix_business_grants_programs",
+      "sourceName": "City of Phoenix Business Grants Programs",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "www.phoenix.gov"
+      ],
+      "signalType": "grant_opportunity",
+      "distressStage": "funding_open",
+      "parcelId": "",
+      "ownerName": "City of Phoenix EED",
+      "domain": "www.phoenix.gov",
+      "cityHint": "Phoenix",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 50,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 92,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/AboutTreasurer",
+      "summary": "stage=monitoring ; case=watch-link-4 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:4",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "signalType": "tax_delinquent",
+      "distressStage": "monitoring",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/AgencyWeb",
+      "summary": "stage=monitoring ; case=watch-link-5 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:5",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "signalType": "tax_delinquent",
+      "distressStage": "monitoring",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/ContactUs",
+      "summary": "stage=monitoring ; case=watch-link-6 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:6",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "signalType": "tax_delinquent",
+      "distressStage": "monitoring",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/WhatsNew",
+      "summary": "stage=monitoring ; case=watch-link-27 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:27",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "signalType": "tax_delinquent",
+      "distressStage": "monitoring",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/FAQ",
+      "summary": "stage=monitoring ; case=watch-link-8 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:8",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "signalType": "tax_delinquent",
+      "distressStage": "monitoring",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/Mobile",
+      "summary": "stage=monitoring ; case=watch-link-13 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:13",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "signalType": "tax_delinquent",
+      "distressStage": "monitoring",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/PropertyTaxInformation/",
+      "summary": "stage=monitoring ; case=watch-link-15 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:15",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "signalType": "tax_delinquent",
+      "distressStage": "monitoring",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    },
+    {
+      "title": "tax_delinquent | Maricopa County",
+      "url": "https://treasurer.maricopa.gov/PropertyTaxInformation/calendar",
+      "summary": "stage=monitoring ; case=watch-link-16 ; treasurer/tax-deed watch source link",
+      "publishedAt": "02/17/2026 23:19:55",
+      "sourceQuery": "public-signals:maricopa_treasurer_delinquent_roll:maricopa_treasurer_delinquent_roll:16",
+      "sourceKey": "maricopa_treasurer_delinquent_roll",
+      "sourceName": "Maricopa Treasurer Delinquent Roll",
+      "sourceType": "public_signal",
+      "sourceDomains": [
+        "treasurer.maricopa.gov"
+      ],
+      "signalType": "tax_delinquent",
+      "distressStage": "monitoring",
+      "parcelId": "",
+      "ownerName": "",
+      "domain": "treasurer.maricopa.gov",
+      "cityHint": "Maricopa County",
+      "fitScore": 0,
+      "distressScore": 0,
+      "governmentDistressScore": 10,
+      "baseLeadScore": 47,
+      "domainScore": 0,
+      "sourceDomainScore": 4,
+      "sourceTypeScore": 20,
+      "governmentDomainScore": 10,
+      "cityScore": 8,
+      "leadScore": 89,
+      "classification": "high_priority",
+      "fitMatches": [],
+      "distressMatches": [],
+      "governmentMatches": []
+    }
+  ],
+  "swarmContext": {
+    "objective": "Proactively identify local industrial expansion opportunities and distressed-market conditions.",
+    "marketArea": "West Valley and Phoenix, Arizona",
+    "latestQuarterContext": {
+      "file": "D:\\monsoonfire-portal\\output\\real-estate\\agent-swarm-context-2026-Q1.json",
+      "quarter": "2026-Q1"
+    },
+    "latestMacroContext": {
+      "file": "D:\\monsoonfire-portal\\output\\real-estate\\macro-context-latest.json",
+      "generatedAtUtc": "02/17/2026 23:19:58",
+      "creIndexLatest": {
+        "date": "",
+        "value": null
+      },
+      "creIndexYoYPct": null,
+      "fedFundsLatest": {
+        "date": "",
+        "value": null
+      }
+    },
+    "publicSignalsPath": "D:\\monsoonfire-portal\\output\\real-estate\\public-signals-latest.json",
+    "sourceCoverage": [
+      {
+        "sourceKey": "maricopa_treasurer_delinquent_roll",
+        "sourceName": "maricopa_treasurer_delinquent_roll",
+        "sourceType": "unknown",
+        "queryCount": 0,
+        "rawItems": 31,
+        "uniqueLeads": 31,
+        "rankedLeads": 8
+      },
+      {
+        "sourceKey": "federal_real_property_disposals",
+        "sourceName": "federal_real_property_disposals",
+        "sourceType": "unknown",
+        "queryCount": 0,
+        "rawItems": 16,
+        "uniqueLeads": 16,
+        "rankedLeads": 16
+      },
+      {
+        "sourceKey": "doe_funding_opportunities",
+        "sourceName": "doe_funding_opportunities",
+        "sourceType": "unknown",
+        "queryCount": 0,
+        "rawItems": 16,
+        "uniqueLeads": 16,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "grants_gov_opportunities",
+        "sourceName": "grants_gov_opportunities",
+        "sourceType": "unknown",
+        "queryCount": 0,
+        "rawItems": 12,
+        "uniqueLeads": 12,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "sba_loan_programs",
+        "sourceName": "sba_loan_programs",
+        "sourceType": "unknown",
+        "queryCount": 0,
+        "rawItems": 3,
+        "uniqueLeads": 3,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "maricopa_recorder_document_feed",
+        "sourceName": "maricopa_recorder_document_feed",
+        "sourceType": "unknown",
+        "queryCount": 0,
+        "rawItems": 2,
+        "uniqueLeads": 2,
+        "rankedLeads": 2
+      },
+      {
+        "sourceKey": "az_state_surplus_property_auctions",
+        "sourceName": "az_state_surplus_property_auctions",
+        "sourceType": "unknown",
+        "queryCount": 0,
+        "rawItems": 2,
+        "uniqueLeads": 2,
+        "rankedLeads": 2
+      },
+      {
+        "sourceKey": "sba_grants_and_funding_programs",
+        "sourceName": "sba_grants_and_funding_programs",
+        "sourceType": "unknown",
+        "queryCount": 0,
+        "rawItems": 2,
+        "uniqueLeads": 2,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "hud_grants_and_funding",
+        "sourceName": "hud_grants_and_funding",
+        "sourceType": "unknown",
+        "queryCount": 0,
+        "rawItems": 2,
+        "uniqueLeads": 2,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "city_phoenix_business_grants_programs",
+        "sourceName": "city_phoenix_business_grants_programs",
+        "sourceType": "unknown",
+        "queryCount": 0,
+        "rawItems": 1,
+        "uniqueLeads": 1,
+        "rankedLeads": 1
+      },
+      {
+        "sourceKey": "maricopa_local_surplus_property_auctions",
+        "sourceName": "maricopa_local_surplus_property_auctions",
+        "sourceType": "unknown",
+        "queryCount": 0,
+        "rawItems": 1,
+        "uniqueLeads": 1,
+        "rankedLeads": 1
+      },
+      {
+        "sourceKey": "arizona_bankruptcy_filings",
+        "sourceName": "arizona_bankruptcy_filings",
+        "sourceType": "unknown",
+        "queryCount": 0,
+        "rawItems": 1,
+        "uniqueLeads": 1,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "cmbs_distress_signals",
+        "sourceName": "cmbs_distress_signals",
+        "sourceType": "unknown",
+        "queryCount": 0,
+        "rawItems": 1,
+        "uniqueLeads": 1,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "data_gov_business_assistance_catalog",
+        "sourceName": "data_gov_business_assistance_catalog",
+        "sourceType": "unknown",
+        "queryCount": 0,
+        "rawItems": 1,
+        "uniqueLeads": 1,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "az_commerce_grants_incentives",
+        "sourceName": "az_commerce_grants_incentives",
+        "sourceType": "unknown",
+        "queryCount": 0,
+        "rawItems": 1,
+        "uniqueLeads": 1,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "eda_grants_and_competitions",
+        "sourceName": "eda_grants_and_competitions",
+        "sourceType": "unknown",
+        "queryCount": 0,
+        "rawItems": 1,
+        "uniqueLeads": 1,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "maricopa_civil_court",
+        "sourceName": "maricopa_civil_court",
+        "sourceType": "unknown",
+        "queryCount": 0,
+        "rawItems": 1,
+        "uniqueLeads": 1,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "phoenix_permitting_and_planning",
+        "sourceName": "City Planning and Permitting Signals",
+        "sourceType": "government_planning",
+        "queryCount": 38,
+        "rawItems": 0,
+        "uniqueLeads": 0,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "crexi_listings",
+        "sourceName": "CREXi Listings",
+        "sourceType": "listing_marketplace",
+        "queryCount": 16,
+        "rawItems": 0,
+        "uniqueLeads": 0,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "loopnet_listings",
+        "sourceName": "LoopNet Listings",
+        "sourceType": "listing_marketplace",
+        "queryCount": 16,
+        "rawItems": 0,
+        "uniqueLeads": 0,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "auctioncom_distress",
+        "sourceName": "Auction.com Distressed Inventory",
+        "sourceType": "auction_marketplace",
+        "queryCount": 11,
+        "rawItems": 0,
+        "uniqueLeads": 0,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "maricopa_assessor_parcel_signals",
+        "sourceName": "Maricopa Assessor Parcel Signals",
+        "sourceType": "government_data",
+        "queryCount": 11,
+        "rawItems": 0,
+        "uniqueLeads": 0,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "commercialcafe_listings",
+        "sourceName": "CommercialCafe Listings",
+        "sourceType": "listing_marketplace",
+        "queryCount": 11,
+        "rawItems": 0,
+        "uniqueLeads": 0,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "maricopa_recorder_trustee_sales",
+        "sourceName": "Maricopa Recorder Trustee Notices",
+        "sourceType": "government_legal",
+        "queryCount": 3,
+        "rawItems": 0,
+        "uniqueLeads": 0,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "maricopa_treasurer_tax_lien",
+        "sourceName": "Maricopa Treasurer Tax Lien",
+        "sourceType": "government_tax",
+        "queryCount": 3,
+        "rawItems": 0,
+        "uniqueLeads": 0,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "maricopa_county_auctions_leases",
+        "sourceName": "Maricopa County Auctions and Leases",
+        "sourceType": "government_auction",
+        "queryCount": 3,
+        "rawItems": 0,
+        "uniqueLeads": 0,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "avison_young_market_reports",
+        "sourceName": "Avison Young Market Reports",
+        "sourceType": "broker_research",
+        "queryCount": 2,
+        "rawItems": 0,
+        "uniqueLeads": 0,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "maricopa_tax_deeded_land_sales",
+        "sourceName": "Maricopa Tax Deeded Land Sales",
+        "sourceType": "government_tax",
+        "queryCount": 2,
+        "rawItems": 0,
+        "uniqueLeads": 0,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "mcso_tax_and_sheriff_sales",
+        "sourceName": "MCSO Sheriff Sales",
+        "sourceType": "government_auction",
+        "queryCount": 2,
+        "rawItems": 0,
+        "uniqueLeads": 0,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "naiop_market_reports",
+        "sourceName": "NAIOP Market Reports",
+        "sourceType": "industry_research",
+        "queryCount": 2,
+        "rawItems": 0,
+        "uniqueLeads": 0,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "colliers_market_reports",
+        "sourceName": "Colliers Market Reports",
+        "sourceType": "broker_research",
+        "queryCount": 2,
+        "rawItems": 0,
+        "uniqueLeads": 0,
+        "rankedLeads": 0
+      },
+      {
+        "sourceKey": "cbre_market_reports",
+        "sourceName": "CBRE Market Reports",
+        "sourceType": "broker_research",
+        "queryCount": 2,
+        "rawItems": 0,
+        "uniqueLeads": 0,
+        "rankedLeads": 0
+      }
+    ],
+    "leadSelectionRules": {
+      "minLeadScore": 30,
+      "top": 30,
+      "prioritizeDistress": true
+    },
+    "nextActions": [
+      "Validate listing status and current ask against broker or listing portal.",
+      "Prioritize leads with classification=distress_opportunity for immediate outreach.",
+      "Cross-check top leads against Maricopa Treasurer tax-lien and tax-deed sources before outreach.",
+      "Use parcel-centric public signal context (tax, legal, code, utility, permit, CMBS) to prioritize negotiation order.",
+      "Pull recorder notice + MCSO auction context for leads carrying foreclosure or trustee-sale signals.",
+      "Pull assessor parcel-level history for leads carrying governmentDistressScore > 0.",
+      "Review Phoenix and West Valley permitting/planning feeds for zoning or code signals near shortlisted assets.",
+      "Request rent roll and concessions where price-reduced or vacancy language appears.",
+      "Compare each shortlisted lead against latest quarterly medians before LOI strategy.",
+      "Use macro context (rates + CRE index trend) to bias outreach timing and offer aggressiveness.",
+      "Refresh broker and NAIOP reports monthly to detect vacancy/rent inflections before they hit listing portals."
+    ],
+    "promptSeed": "Use topLeads plus latestQuarterContext to produce a broker outreach plan, negotiation posture, and 30-day opportunity watchlist."
+  }
+}

@@ -30,7 +30,7 @@ function Get-Json {
   try {
     return Get-Content -Raw $Path | ConvertFrom-Json
   } catch {
-    throw "Invalid JSON at $Path: $($_.Exception.Message)"
+    throw "Invalid JSON at ${Path}: $($_.Exception.Message)"
   }
 }
 

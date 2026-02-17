@@ -1,0 +1,11 @@
+{
+  "help": "https://catalog.data.gov/api/3/action/help_show?name=package_search",
+  "success": true,
+  "result": {
+    "count": 0,
+    "facets": {},
+    "results": [],
+    "sort": "views_recent desc",
+    "search_facets": {}
+  }
+}

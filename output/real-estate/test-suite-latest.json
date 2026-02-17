@@ -1,0 +1,25 @@
+{
+  "generatedAtUtc": "2026-02-17T23:27:34.2800835Z",
+  "runId": "20260217T232734Z",
+  "status": "ok",
+  "summary": {
+    "totalSteps": 2,
+    "passed": 2,
+    "failed": 0,
+    "durationSec": 147.86
+  },
+  "steps": [
+    {
+      "name": "contract_checks",
+      "status": "ok",
+      "durationSec": 0.11,
+      "error": ""
+    },
+    {
+      "name": "asset_harness",
+      "status": "ok",
+      "durationSec": 147.73,
+      "error": ""
+    }
+  ]
+}

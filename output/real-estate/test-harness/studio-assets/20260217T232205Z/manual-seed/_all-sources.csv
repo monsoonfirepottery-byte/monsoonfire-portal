@@ -1,0 +1,3 @@
+title,url,summary,publishedAt,city,sourceQuery,notes,condition,price,location,sourceKey,sourceName,sourceType
+Thick IFB firebrick lot,https://example.local/firebrick-lot,"insulating firebrick IFB + hard brick + kiln shell parts",2026-02-17T00:00:00Z,Phoenix,manual:asset_test,"pickup only; reduction kiln materials",used,900,phoenix,facebook_marketplace,Facebook Marketplace,community_marketplace
+Used Skutt kiln,https://example.local/skutt-kiln,"skutt electric kiln tested working pickup only",2026-02-17T00:00:00Z,Goodyear,manual:asset_test,"local pickup",used,1800,goodyear,craigslist_phoenix,Craigslist Phoenix,local_marketplace

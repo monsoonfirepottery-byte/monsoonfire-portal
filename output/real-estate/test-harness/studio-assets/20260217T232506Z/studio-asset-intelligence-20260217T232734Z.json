@@ -1,0 +1,516 @@
+{
+  "generatedAtUtc": "2026-02-17T23:27:34.2601594Z",
+  "runId": "20260217T232734Z",
+  "summary": {
+    "marketArea": "West Valley and Phoenix, Arizona",
+    "totalQueries": 332,
+    "queryRows": 0,
+    "stagedRows": 0,
+    "manualRows": 0,
+    "rawItems": 0,
+    "uniqueItems": 0,
+    "opportunitiesAboveMinScore": 2,
+    "topReturned": 2,
+    "channelMix": "community_marketplace:1, local_marketplace:1",
+    "neededWantedBoostedAssets": 0,
+    "carryForwardUsed": true,
+    "carryForwardFromRunId": "20260217T232619Z",
+    "carryForwardAgeDays": 0
+  },
+  "inputs": {
+    "configPath": "D:\\monsoonfire-portal\\docs\\real-estate\\studio-asset-intel-config.json",
+    "priorityListPath": "D:\\monsoonfire-portal\\docs\\real-estate\\studio-needed-wanted-list.json",
+    "autoFeedDir": "D:\\monsoonfire-portal\\output\\real-estate\\test-harness\\studio-assets\\20260217T232506Z\\auto-empty",
+    "manualDropDir": "D:\\monsoonfire-portal\\output\\real-estate\\test-harness\\studio-assets\\20260217T232506Z\\manual-empty",
+    "minScore": 10,
+    "top": 10,
+    "maxResultsPerQuery": 0,
+    "enableCarryForward": true,
+    "carryForwardMaxAgeDays": 21
+  },
+  "topAssets": [
+    {
+      "assetId": "asset:1139137223",
+      "title": "Thick IFB firebrick lot",
+      "url": "https://example.local/firebrick-lot",
+      "summary": "insulating firebrick IFB + hard brick + kiln shell parts",
+      "publishedAt": "2026-02-17T00:00:00Z",
+      "sourceQuery": "manual:asset_test",
+      "sourceKey": "facebook_marketplace",
+      "sourceName": "Facebook Marketplace",
+      "sourceType": "community_marketplace",
+      "domain": "example.local",
+      "cityHint": "Phoenix",
+      "ingestChannel": "manual_drop_all",
+      "assetCategory": "kiln",
+      "assetScore": 100,
+      "classification": "high_priority",
+      "scoreBreakdown": {
+        "equipmentScore": 107,
+        "dealScore": 8,
+        "riskScore": 0,
+        "localityScore": 14,
+        "sourceDomainScore": 3,
+        "sourceTypeScore": 16,
+        "sourceKeyScore": 5,
+        "priorityBoost": 42,
+        "shippingPenalty": 0,
+        "total": 100
+      },
+      "evidence": {
+        "equipmentMatches": [
+          {
+            "keyword": "kiln",
+            "weight": 22
+          },
+          {
+            "keyword": "firebrick",
+            "weight": 16
+          },
+          {
+            "keyword": "hard brick",
+            "weight": 15
+          },
+          {
+            "keyword": "insulating firebrick",
+            "weight": 14
+          },
+          {
+            "keyword": "ifb",
+            "weight": 12
+          },
+          {
+            "keyword": "reduction kiln",
+            "weight": 18
+          },
+          {
+            "keyword": "kiln shell",
+            "weight": 10
+          }
+        ],
+        "dealMatches": [
+          {
+            "keyword": "pickup only",
+            "weight": 8
+          }
+        ],
+        "riskMatches": [],
+        "neededWantedMatches": [
+          {
+            "id": "high-fire-kiln",
+            "label": "Production electric kiln",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 22
+          },
+          {
+            "id": "firebrick-and-reduction-build-materials",
+            "label": "Firebrick and reduction kiln build materials",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 20
+          }
+        ]
+      },
+      "isCarryForward": true,
+      "carriedForwardFromRunId": "20260217T232619Z"
+    },
+    {
+      "assetId": "asset:1411620197",
+      "title": "Used Skutt kiln",
+      "url": "https://example.local/skutt-kiln",
+      "summary": "skutt electric kiln tested working pickup only",
+      "publishedAt": "2026-02-17T00:00:00Z",
+      "sourceQuery": "manual:asset_test",
+      "sourceKey": "craigslist_phoenix",
+      "sourceName": "Craigslist Phoenix",
+      "sourceType": "local_marketplace",
+      "domain": "example.local",
+      "cityHint": "Goodyear",
+      "ingestChannel": "manual_drop_all",
+      "assetCategory": "kiln",
+      "assetScore": 100,
+      "classification": "high_priority",
+      "scoreBreakdown": {
+        "equipmentScore": 46,
+        "dealScore": 36,
+        "riskScore": 0,
+        "localityScore": 14,
+        "sourceDomainScore": 3,
+        "sourceTypeScore": 10,
+        "sourceKeyScore": 8,
+        "priorityBoost": 22,
+        "shippingPenalty": 0,
+        "total": 100
+      },
+      "evidence": {
+        "equipmentMatches": [
+          {
+            "keyword": "kiln",
+            "weight": 22
+          },
+          {
+            "keyword": "electric kiln",
+            "weight": 24
+          }
+        ],
+        "dealMatches": [
+          {
+            "keyword": "pickup only",
+            "weight": 8
+          },
+          {
+            "keyword": "local pickup",
+            "weight": 10
+          },
+          {
+            "keyword": "tested",
+            "weight": 10
+          },
+          {
+            "keyword": "working",
+            "weight": 8
+          }
+        ],
+        "riskMatches": [],
+        "neededWantedMatches": [
+          {
+            "id": "high-fire-kiln",
+            "label": "Production electric kiln",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 22
+          }
+        ]
+      },
+      "isCarryForward": true,
+      "carriedForwardFromRunId": "20260217T232619Z"
+    }
+  ],
+  "allAssets": [
+    {
+      "assetId": "asset:1139137223",
+      "title": "Thick IFB firebrick lot",
+      "url": "https://example.local/firebrick-lot",
+      "summary": "insulating firebrick IFB + hard brick + kiln shell parts",
+      "publishedAt": "2026-02-17T00:00:00Z",
+      "sourceQuery": "manual:asset_test",
+      "sourceKey": "facebook_marketplace",
+      "sourceName": "Facebook Marketplace",
+      "sourceType": "community_marketplace",
+      "domain": "example.local",
+      "cityHint": "Phoenix",
+      "ingestChannel": "manual_drop_all",
+      "assetCategory": "kiln",
+      "assetScore": 100,
+      "classification": "high_priority",
+      "scoreBreakdown": {
+        "equipmentScore": 107,
+        "dealScore": 8,
+        "riskScore": 0,
+        "localityScore": 14,
+        "sourceDomainScore": 3,
+        "sourceTypeScore": 16,
+        "sourceKeyScore": 5,
+        "priorityBoost": 42,
+        "shippingPenalty": 0,
+        "total": 100
+      },
+      "evidence": {
+        "equipmentMatches": [
+          {
+            "keyword": "kiln",
+            "weight": 22
+          },
+          {
+            "keyword": "firebrick",
+            "weight": 16
+          },
+          {
+            "keyword": "hard brick",
+            "weight": 15
+          },
+          {
+            "keyword": "insulating firebrick",
+            "weight": 14
+          },
+          {
+            "keyword": "ifb",
+            "weight": 12
+          },
+          {
+            "keyword": "reduction kiln",
+            "weight": 18
+          },
+          {
+            "keyword": "kiln shell",
+            "weight": 10
+          }
+        ],
+        "dealMatches": [
+          {
+            "keyword": "pickup only",
+            "weight": 8
+          }
+        ],
+        "riskMatches": [],
+        "neededWantedMatches": [
+          {
+            "id": "high-fire-kiln",
+            "label": "Production electric kiln",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 22
+          },
+          {
+            "id": "firebrick-and-reduction-build-materials",
+            "label": "Firebrick and reduction kiln build materials",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 20
+          }
+        ]
+      },
+      "isCarryForward": true,
+      "carriedForwardFromRunId": "20260217T232619Z"
+    },
+    {
+      "assetId": "asset:1411620197",
+      "title": "Used Skutt kiln",
+      "url": "https://example.local/skutt-kiln",
+      "summary": "skutt electric kiln tested working pickup only",
+      "publishedAt": "2026-02-17T00:00:00Z",
+      "sourceQuery": "manual:asset_test",
+      "sourceKey": "craigslist_phoenix",
+      "sourceName": "Craigslist Phoenix",
+      "sourceType": "local_marketplace",
+      "domain": "example.local",
+      "cityHint": "Goodyear",
+      "ingestChannel": "manual_drop_all",
+      "assetCategory": "kiln",
+      "assetScore": 100,
+      "classification": "high_priority",
+      "scoreBreakdown": {
+        "equipmentScore": 46,
+        "dealScore": 36,
+        "riskScore": 0,
+        "localityScore": 14,
+        "sourceDomainScore": 3,
+        "sourceTypeScore": 10,
+        "sourceKeyScore": 8,
+        "priorityBoost": 22,
+        "shippingPenalty": 0,
+        "total": 100
+      },
+      "evidence": {
+        "equipmentMatches": [
+          {
+            "keyword": "kiln",
+            "weight": 22
+          },
+          {
+            "keyword": "electric kiln",
+            "weight": 24
+          }
+        ],
+        "dealMatches": [
+          {
+            "keyword": "pickup only",
+            "weight": 8
+          },
+          {
+            "keyword": "local pickup",
+            "weight": 10
+          },
+          {
+            "keyword": "tested",
+            "weight": 10
+          },
+          {
+            "keyword": "working",
+            "weight": 8
+          }
+        ],
+        "riskMatches": [],
+        "neededWantedMatches": [
+          {
+            "id": "high-fire-kiln",
+            "label": "Production electric kiln",
+            "priority": "high",
+            "status": "needed",
+            "scoreBoost": 22
+          }
+        ]
+      },
+      "isCarryForward": true,
+      "carriedForwardFromRunId": "20260217T232619Z"
+    }
+  ],
+  "neededWantedContext": {
+    "priorities": [
+      {
+        "id": "high-fire-kiln",
+        "label": "Production electric kiln",
+        "priority": "high",
+        "scoreBoost": 22,
+        "keywords": [
+          "kiln",
+          "electric kiln",
+          "cone 10",
+          "skutt",
+          "ll kiln"
+        ],
+        "status": "needed"
+      },
+      {
+        "id": "wheel-expansion",
+        "label": "Pottery wheels",
+        "priority": "high",
+        "scoreBoost": 16,
+        "keywords": [
+          "pottery wheel",
+          "shimpo",
+          "brent wheel",
+          "wheel"
+        ],
+        "status": "wanted"
+      },
+      {
+        "id": "clay-processing",
+        "label": "Pugmill or clay mixer",
+        "priority": "medium",
+        "scoreBoost": 14,
+        "keywords": [
+          "pugmill",
+          "clay mixer",
+          "de-airing"
+        ],
+        "status": "wanted"
+      },
+      {
+        "id": "forming-tools",
+        "label": "Slab roller and extruder",
+        "priority": "medium",
+        "scoreBoost": 10,
+        "keywords": [
+          "slab roller",
+          "extruder"
+        ],
+        "status": "wanted"
+      },
+      {
+        "id": "firebrick-and-reduction-build-materials",
+        "label": "Firebrick and reduction kiln build materials",
+        "priority": "high",
+        "scoreBoost": 20,
+        "keywords": [
+          "firebrick",
+          "fire brick",
+          "hard brick",
+          "insulating firebrick",
+          "ifb",
+          "burner",
+          "venturi burner",
+          "blower burner",
+          "castable refractory",
+          "kiln blanket",
+          "fiber blanket",
+          "reduction kiln",
+          "raku kiln",
+          "kiln shell",
+          "regulator"
+        ],
+        "status": "needed"
+      }
+    ],
+    "consumables": [
+      {
+        "id": "cone-10-clay",
+        "label": "Cone 10 clay",
+        "unit": "lbs",
+        "currentOnHand": 600.0,
+        "targetMin": 500.0,
+        "reorderPoint": 350.0,
+        "weeklyUsage": 90.0,
+        "weeksRemaining": 6.67,
+        "status": "healthy"
+      },
+      {
+        "id": "propane",
+        "label": "Propane",
+        "unit": "gallons",
+        "currentOnHand": 700.0,
+        "targetMin": 600.0,
+        "reorderPoint": 400.0,
+        "weeklyUsage": 80.0,
+        "weeksRemaining": 8.75,
+        "status": "healthy"
+      },
+      {
+        "id": "kiln-wash",
+        "label": "Kiln wash",
+        "unit": "lbs",
+        "currentOnHand": 45.0,
+        "targetMin": 30.0,
+        "reorderPoint": 20.0,
+        "weeklyUsage": 4.0,
+        "weeksRemaining": 11.25,
+        "status": "healthy"
+      },
+      {
+        "id": "shelf-paper",
+        "label": "Shelf paper",
+        "unit": "sheets",
+        "currentOnHand": 180.0,
+        "targetMin": 120.0,
+        "reorderPoint": 80.0,
+        "weeklyUsage": 24.0,
+        "weeksRemaining": 7.5,
+        "status": "healthy"
+      }
+    ]
+  },
+  "watchlist": {
+    "generatedAtUtc": "2026-02-17T23:27:34.2615116Z",
+    "runId": "20260217T232734Z",
+    "assetCount": 2,
+    "taskQueue": [
+      {
+        "taskId": "asset-task-0001",
+        "assetId": "asset:1139137223",
+        "priority": "high",
+        "agentRole": "asset_scout_agent",
+        "objective": "Verify availability, condition, and local pickup feasibility for studio use.",
+        "requiredChecks": [
+          "confirm_current_availability",
+          "request_working_demo_or_test_video",
+          "confirm_power_or_fuel_requirements",
+          "confirm_pickup_location_and_loading_constraints"
+        ],
+        "dueWithinDays": 2
+      },
+      {
+        "taskId": "asset-task-0002",
+        "assetId": "asset:1411620197",
+        "priority": "high",
+        "agentRole": "asset_scout_agent",
+        "objective": "Verify availability, condition, and local pickup feasibility for studio use.",
+        "requiredChecks": [
+          "confirm_current_availability",
+          "request_working_demo_or_test_video",
+          "confirm_power_or_fuel_requirements",
+          "confirm_pickup_location_and_loading_constraints"
+        ],
+        "dueWithinDays": 2
+      }
+    ],
+    "nextActions": [
+      "Prioritize high-score local kiln and wheel opportunities for same-week outreach.",
+      "Prioritize assets matching needed/wanted list boosts before lower-priority gear.",
+      "Request condition proof (video under power/load) before scheduling pickup.",
+      "Validate utility and fuel requirements against studio-needs profile before committing.",
+      "Batch nearby pickups to reduce hauling cost and downtime.",
+      "Review consumables status and align procurement with equipment opportunities (bulk/local pickup)."
+    ]
+  }
+}

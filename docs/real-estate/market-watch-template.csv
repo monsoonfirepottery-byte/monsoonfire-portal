@@ -1,0 +1,3 @@
+snapshotDate,source,listingId,title,address,city,submarket,propertyType,zoning,sqft,askingRentMonthly,askingRentPsfNnn,clearHeightFt,powerAmps,gradeDoors,dockDoors,parkingRatio,url,notes
+2026-02-17,example,listing-001,Sample Warehouse A,123 Example Ave,Goodyear,West Valley,Warehouse,Industrial I-1,3200,5200,1.63,16,225,1,0,1.6,https://example.com/listing-001,Sample row for schema validation
+2026-02-17,example,listing-002,Sample Flex Space B,456 Example Blvd,Avondale,West Valley,Flex,Commercial C-2,2800,6100,2.18,12,150,1,0,2.1,https://example.com/listing-002,Sample row for schema validation

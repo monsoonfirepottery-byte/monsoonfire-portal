@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
 import {
   addDoc,
@@ -159,12 +159,11 @@ export default function MessagesView({
   const [newThreadOpen, setNewThreadOpen] = useState(false);
   const [newSubject, setNewSubject] = useState("");
   const [newToUid, setNewToUid] = useState("");
-  const [newCcUids, setNewCcUids] = useState<string[]>([]);
-  const [newBccUids, setNewBccUids] = useState<string[]>([]);
   const [newBody, setNewBody] = useState("");
   const [selectedAnnouncementId, setSelectedAnnouncementId] = useState<string | null>(null);
   const [sendError, setSendError] = useState("");
   const [sendStatus, setSendStatus] = useState("");
+  const newThreadFormRef = useRef<HTMLDivElement>(null);
 
   const { messages, loading, error } = useDirectMessageMessages(selectedThreadId);
 
@@ -188,20 +187,121 @@ export default function MessagesView({
     return () => window.clearTimeout(timer);
   }, [sendStatus]);
 
+  useEffect(() => {
+    if (!newThreadOpen) return;
+    const form = newThreadFormRef.current;
+    if (!form) return;
+
+    const normalizeLabelText = (value: string) =>
+      value
+        .toLowerCase()
+        .replace(/\s+/g, "")
+        .replace(/:/g, "")
+        .trim();
+
+    const isLegacyRecipientLabel = (value: string) => {
+      const text = normalizeLabelText(value);
+      return text === "cc" || text === "bcc";
+    };
+
+    const getContainerForNode = (node: Element | null): Element | null => {
+      if (!node) return null;
+
+      if (node === form) return null;
+
+      if (node.parentElement === form) return node;
+      if (node.parentElement?.closest(".new-thread")) {
+        return node.closest("label, div, section") || node.parentElement;
+      }
+
+      let cursor: Element | null = node;
+      while (cursor && cursor !== form) {
+        if (!cursor.parentElement) return null;
+        if (cursor.parentElement === form) return cursor;
+        cursor = cursor.parentElement;
+      }
+
+      return null;
+    };
+
+    const removeLegacyNode = (node: Element | null) => {
+      const container = getContainerForNode(node);
+      if (container) {
+        container.remove();
+      }
+    };
+
+    const pruneLegacyFieldsFromControl = (control: Element) => {
+      if (!control) return;
+
+      const controlProps = [
+        control.getAttribute("name") ?? "",
+        control.id,
+        control.getAttribute("aria-label") ?? "",
+        control.getAttribute("placeholder") ?? "",
+        control.getAttribute("title") ?? "",
+      ];
+
+      if (controlProps.some(isLegacyRecipientLabel)) {
+        removeLegacyNode(control);
+        return;
+      }
+
+      if (control.tagName === "SELECT" && control.hasAttribute("multiple")) {
+        removeLegacyNode(control);
+        return;
+      }
+    };
+
+    const pruneLegacyFields = () => {
+      const labels = Array.from(form.querySelectorAll("label"));
+      for (const label of labels) {
+        if (isLegacyRecipientLabel(label.textContent ?? "")) {
+          removeLegacyNode(label);
+          continue;
+        }
+
+        const control = label.control;
+        if (control) {
+          pruneLegacyFieldsFromControl(control);
+        }
+      }
+
+      const controls = Array.from(form.querySelectorAll("input, select, textarea"));
+      for (const control of controls) {
+        pruneLegacyFieldsFromControl(control);
+
+        const options = Array.from(control.querySelectorAll("option"));
+        for (const option of options) {
+          if (isLegacyRecipientLabel(option.textContent ?? "")) {
+            removeLegacyNode(control);
+          }
+        }
+      }
+
+      const shortTextElements = Array.from(form.querySelectorAll("*"));
+      for (const element of shortTextElements) {
+        const text = normalizeLabelText(element.textContent ?? "");
+        if ((text === "cc" || text === "bcc") && text.length <= 3) {
+          removeLegacyNode(element);
+        }
+      }
+    };
+
+    pruneLegacyFields();
+    const observer = new MutationObserver(() => pruneLegacyFields());
+    observer.observe(form, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+    };
+  }, [newThreadOpen]);
+
   const selectedThread = useMemo(() => {
     if (!selectedThreadId) return null;
     return threads.find((thread) => thread.id === selectedThreadId) || null;
   }, [threads, selectedThreadId]);
 
   const shouldExpandAnnouncements = useMemo(() => messagesTab === "studio", [messagesTab]);
-
-  function handleMultiSelect(
-    event: React.ChangeEvent<HTMLSelectElement>,
-    setter: (next: string[]) => void
-  ) {
-    const next = Array.from(event.target.selectedOptions).map((opt) => opt.value);
-    setter(next);
-  }
 
   async function handleSendMessage() {
     if (!selectedThreadId || composerBusy) return;
@@ -280,16 +380,6 @@ export default function MessagesView({
       const toUid = newToUid.trim();
       const messageId = createMessageId();
       const fromEmail = user.email || null;
-      const ccUids = newCcUids;
-      const bccUids = newBccUids;
-      const ccEmails = liveUsers
-        .filter((liveUser) => ccUids.includes(liveUser.id))
-        .map((liveUser) => liveUser.email)
-        .filter(Boolean) as string[];
-      const bccEmails = liveUsers
-        .filter((liveUser) => bccUids.includes(liveUser.id))
-        .map((liveUser) => liveUser.email)
-        .filter(Boolean) as string[];
 
       if (!toUid) {
         const supportId = `${SUPPORT_THREAD_PREFIX}${user.uid}`;
@@ -315,10 +405,6 @@ export default function MessagesView({
           fromEmail,
           replyToEmail: fromEmail,
           toEmails: [supportEmail],
-          ccUids,
-          ccEmails,
-          bccUids,
-          bccEmails,
           sentAt: serverTimestamp(),
           inReplyTo: null,
           references: [],
@@ -362,10 +448,6 @@ export default function MessagesView({
           replyToEmail: fromEmail,
           toUids: [toUid],
           toEmails,
-          ccUids,
-          ccEmails,
-          bccUids,
-          bccEmails,
           sentAt: serverTimestamp(),
           inReplyTo: null,
           references: [],
@@ -389,8 +471,6 @@ export default function MessagesView({
       setMessagesTab("inbox");
       setNewSubject("");
       setNewToUid("");
-      setNewCcUids([]);
-      setNewBccUids([]);
       setNewBody("");
       setSendStatus("Message sent.");
     } catch (error: unknown) {
@@ -416,7 +496,7 @@ export default function MessagesView({
       <div className="page-header">
         <h1>Messages</h1>
         <p className="page-subtitle">
-          Keep conversations with the studio in one place. Messaging is coming online here.
+          We're excited to be your partner. Use this space for studio support and updates, or email us at {supportEmail}.
         </p>
       </div>
 
@@ -455,7 +535,7 @@ export default function MessagesView({
           </div>
 
           {newThreadOpen ? (
-            <div className="new-thread">
+            <div className="new-thread" ref={newThreadFormRef}>
               <label>
                 Subject
                 <input
@@ -473,36 +553,6 @@ export default function MessagesView({
                   disabled={liveUsersLoading}
                 >
                   <option value="">Studio Support</option>
-                  {liveUsers.map((liveUser) => (
-                    <option key={liveUser.id} value={liveUser.id}>
-                      {getLiveUserLabel(liveUser)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Cc
-                <select
-                  multiple
-                  value={newCcUids}
-                  onChange={(event) => handleMultiSelect(event, setNewCcUids)}
-                  disabled={liveUsersLoading}
-                >
-                  {liveUsers.map((liveUser) => (
-                    <option key={liveUser.id} value={liveUser.id}>
-                      {getLiveUserLabel(liveUser)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Bcc
-                <select
-                  multiple
-                  value={newBccUids}
-                  onChange={(event) => handleMultiSelect(event, setNewBccUids)}
-                  disabled={liveUsersLoading}
-                >
                   {liveUsers.map((liveUser) => (
                     <option key={liveUser.id} value={liveUser.id}>
                       {getLiveUserLabel(liveUser)}
@@ -531,7 +581,7 @@ export default function MessagesView({
           {threadsLoading ? (
             <div className="empty-state">Loading direct messages...</div>
           ) : threads.length === 0 ? (
-            <div className="empty-state">No direct messages yet.</div>
+            <div className="empty-state">No direct messages yet. Start a new thread with Studio Support for any questions.</div>
           ) : (
             <div className="thread-list">
               {threads.map((thread) => {
@@ -579,7 +629,7 @@ export default function MessagesView({
               ) : error ? (
                 <div className="empty-state">Messages are unavailable right now.</div>
               ) : messages.length === 0 ? (
-                <div className="empty-state">No messages yet. Send the first note below.</div>
+                <div className="empty-state">No messages yet. Send your first note below and we'll follow up.</div>
               ) : (
                 <div className="message-list">
                   {messages.map((msg) => (

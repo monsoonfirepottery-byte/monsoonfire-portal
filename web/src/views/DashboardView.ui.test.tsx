@@ -126,12 +126,14 @@ describe("DashboardView kiln reload", () => {
   it("shows retry after permission failure and loads kiln rows on retry", async () => {
     const user = createUser();
 
-    render(
+  render(
       <DashboardView
         user={user}
         name="Maker"
+        themeName="portal"
         threads={[]}
         announcements={[]}
+        onThemeChange={vi.fn()}
         onOpenKilnRentals={vi.fn()}
         onOpenCheckin={vi.fn()}
         onOpenQueues={vi.fn()}

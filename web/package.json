@@ -11,6 +11,7 @@
     "lint": "eslint . --max-warnings=0",
     "test": "node ./node_modules/vitest/vitest.mjs --configLoader runner",
     "dev:all": "node ./scripts/dev.mjs",
+    "check:messages-playwright": "node ./scripts/check-messages-playwright.mjs",
     "test:run": "node ./node_modules/vitest/vitest.mjs run --configLoader runner",
     "preview": "vite preview"
   },
@@ -33,6 +34,7 @@
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
     "jsdom": "^28.1.0",
+    "playwright": "^1.58.2",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.3.1",

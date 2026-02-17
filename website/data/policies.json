@@ -1,65 +1,113 @@
 [
   {
-    "title": "Studio access & supervision",
-    "body": "<p>Reservations are required for all visits. Access details and any supervised equipment requirements are listed in the portal.</p>",
-    "tags": ["studio", "access"],
-    "status": "draft",
-    "effectiveDate": "2026-01-31"
-  },
-  {
-    "title": "Safety & kiln rules",
-    "body": "<p>Follow posted kiln safety guidance at all times. Pieces must be clearly labeled and submitted according to studio guidelines.</p>",
-    "tags": ["kiln", "safety"],
-    "status": "draft",
-    "effectiveDate": "2026-01-31"
+    "title": "Accessibility statement",
+    "body": "<p>We support accessible access and invite requests for reasonable accommodations.</p>",
+    "tags": [
+      "accessibility",
+      "policy",
+      "support"
+    ],
+    "status": "active",
+    "effectiveDate": "2026-02-17"
   },
   {
     "title": "Clay & materials policy",
-    "body": "<p>Approved clay bodies and glaze materials are listed in the portal. Ask before introducing new materials.</p>",
-    "tags": ["materials", "kiln"],
-    "status": "draft",
-    "effectiveDate": "2026-01-31"
-  },
-  {
-    "title": "Firing & scheduling policy",
-    "body": "<p>Firing requests are submitted through the portal. Turnaround expectations and scheduling windows are listed there.</p>",
-    "tags": ["kiln", "scheduling"],
-    "status": "draft",
-    "effectiveDate": "2026-01-31"
-  },
-  {
-    "title": "Storage limits & abandoned work",
-    "body": "<p>Storage limits depend on membership tier. Long-abandoned work may be cleared after notice.</p>",
-    "tags": ["storage", "memberships"],
-    "status": "draft",
-    "effectiveDate": "2026-01-31"
-  },
-  {
-    "title": "Damage & responsibility",
-    "body": "<p>We handle pieces with care, but firing carries inherent risk. Responsibility and replacement guidelines are listed in the portal.</p>",
-    "tags": ["policies", "kiln"],
-    "status": "draft",
-    "effectiveDate": "2026-01-31"
-  },
-  {
-    "title": "Payment, refunds, and cancellations",
-    "body": "<p>Payment timing and cancellation windows are published in the portal.</p>",
-    "tags": ["payments", "policies"],
-    "status": "draft",
-    "effectiveDate": "2026-01-31"
+    "body": "<p>Use approved clay bodies and glazes. Ask for approval before introducing new materials.</p>",
+    "tags": [
+      "materials",
+      "kiln",
+      "approval"
+    ],
+    "status": "active",
+    "effectiveDate": "2026-02-17"
   },
   {
     "title": "Community conduct",
-    "body": "<p>Respect, safety, and shared space etiquette are required in the studio.</p>",
-    "tags": ["community", "policies"],
-    "status": "draft",
-    "effectiveDate": "2026-01-31"
+    "body": "<p>Respect, safety, and shared-space etiquette are required across studio and support channels.</p>",
+    "tags": [
+      "community",
+      "conduct",
+      "safety",
+      "policy"
+    ],
+    "status": "active",
+    "effectiveDate": "2026-02-17"
+  },
+  {
+    "title": "Damage & responsibility",
+    "body": "<p>Firing carries process variation. Damage from service or handling is reviewed case-by-case.</p>",
+    "tags": [
+      "policies",
+      "kiln",
+      "responsibility"
+    ],
+    "status": "active",
+    "effectiveDate": "2026-02-17"
+  },
+  {
+    "title": "Firing & scheduling policy",
+    "body": "<p>Submit firings through the portal. Turnaround estimates and scheduling windows are provided with status updates if windows shift.</p>",
+    "tags": [
+      "kiln",
+      "scheduling",
+      "portal"
+    ],
+    "status": "active",
+    "effectiveDate": "2026-02-17"
   },
   {
     "title": "Media accessibility standard",
-    "body": "<p>Public speech media includes captions, and long-form media includes transcript access before publication.</p>",
-    "tags": ["accessibility", "media", "policies"],
-    "status": "draft",
-    "effectiveDate": "2026-02-11"
+    "body": "<p>Public speech media should include captions. Long media should include transcript access.</p>",
+    "tags": [
+      "accessibility",
+      "media",
+      "policy"
+    ],
+    "status": "active",
+    "effectiveDate": "2026-02-17"
+  },
+  {
+    "title": "Payment, refunds, and cancellations",
+    "body": "<p>Payment and refund timing is tied to workflow stage and transaction state.</p>",
+    "tags": [
+      "payments",
+      "billing",
+      "policy"
+    ],
+    "status": "active",
+    "effectiveDate": "2026-02-17"
+  },
+  {
+    "title": "Safety & kiln rules",
+    "body": "<p>Follow posted kiln safety guidance at all times. Keep dust controlled, use required PPE, and label all kiln-bound work.</p>",
+    "tags": [
+      "kiln",
+      "safety",
+      "access"
+    ],
+    "status": "active",
+    "effectiveDate": "2026-02-17"
+  },
+  {
+    "title": "Storage limits & abandoned work",
+    "body": "<p>Storage limits depend on membership tier and available space. Long-abandoned work may move through notice and follow-up steps.</p>",
+    "tags": [
+      "storage",
+      "memberships",
+      "policy"
+    ],
+    "status": "active",
+    "effectiveDate": "2026-02-17"
+  },
+  {
+    "title": "Studio access & supervision",
+    "body": "<p>Reservations are required for all visits. Access details and any supervised equipment requirements are listed in the portal.</p>",
+    "tags": [
+      "studio",
+      "access",
+      "supervision"
+    ],
+    "status": "active",
+    "effectiveDate": "2026-02-17"
   }
 ]

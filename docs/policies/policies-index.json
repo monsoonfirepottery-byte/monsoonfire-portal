@@ -1,0 +1,366 @@
+{
+  "generatedAt": "2026-02-17T05:58:52.185Z",
+  "policies": [
+    {
+      "slug": "accessibility",
+      "title": "Accessibility statement",
+      "summary": "We support accessible access and invite requests for reasonable accommodations.",
+      "status": "active",
+      "tags": [
+        "accessibility",
+        "policy",
+        "support"
+      ],
+      "effectiveDate": "2026-02-17",
+      "reviewDate": "2026-08-01",
+      "owner": "Operations",
+      "sourceUrl": "/policies/accessibility/",
+      "agent": {
+        "canActForSelf": true,
+        "canActForOthers": true,
+        "decisionDomain": "Accessibility accommodation intake and communication routing.",
+        "defaultActions": [
+          "capture accommodation type and timeframe",
+          "confirm alternate communication methods",
+          "coordinate follow-up for implementation timeline"
+        ],
+        "requiredSignals": [
+          "requester and preferred format",
+          "location or digital channel involved",
+          "date range constraints"
+        ],
+        "escalateWhen": [
+          "accommodation needs conflicts with existing schedule",
+          "facility limitations requiring leadership review",
+          "no immediate workaround available"
+        ],
+        "replyTemplate": "Acknowledge request, confirm requested accommodation, and provide expected setup or follow-up path."
+      }
+    },
+    {
+      "slug": "clay-materials",
+      "title": "Clay & materials policy",
+      "summary": "Use approved clay bodies and glazes. Ask for approval before introducing new materials.",
+      "status": "active",
+      "tags": [
+        "materials",
+        "kiln",
+        "approval"
+      ],
+      "effectiveDate": "2026-02-17",
+      "reviewDate": "2026-08-01",
+      "owner": "Studio Operations",
+      "sourceUrl": "/policies/clay-materials/",
+      "agent": {
+        "canActForSelf": true,
+        "canActForOthers": true,
+        "decisionDomain": "Material approval and compatibility triage.",
+        "defaultActions": [
+          "collect full material list from request",
+          "check if requested materials are in approved set",
+          "route unknown materials to review and block until approval is logged"
+        ],
+        "requiredSignals": [
+          "supplier/material names",
+          "batch details",
+          "urgency or timeline constraint"
+        ],
+        "escalateWhen": [
+          "unapproved chemical materials",
+          "safety data missing for unknown glaze",
+          "high-value firing requiring exception review"
+        ],
+        "replyTemplate": "Hold submission if new materials are unapproved; request composition, source, and firing intent."
+      }
+    },
+    {
+      "slug": "community-conduct",
+      "title": "Community conduct",
+      "summary": "Respect, safety, and shared-space etiquette are required across studio and support channels.",
+      "status": "active",
+      "tags": [
+        "community",
+        "conduct",
+        "safety",
+        "policy"
+      ],
+      "effectiveDate": "2026-02-17",
+      "reviewDate": "2026-08-01",
+      "owner": "Studio Operations",
+      "sourceUrl": "/policies/community-conduct/",
+      "agent": {
+        "canActForSelf": true,
+        "canActForOthers": true,
+        "decisionDomain": "Conduct reports, de-escalation, and access restriction workflow.",
+        "defaultActions": [
+          "collect incident details and participant names",
+          "apply immediate safe-work instructions",
+          "log coaching/warning action for policy tracking"
+        ],
+        "requiredSignals": [
+          "participants and location",
+          "incident timestamp",
+          "witness or evidence references"
+        ],
+        "escalateWhen": [
+          "safety risk to person or equipment",
+          "repeat behavior",
+          "harassment or discrimination complaint"
+        ],
+        "replyTemplate": "Confirm report intake, state immediate interim expectations, and route to conduct review."
+      }
+    },
+    {
+      "slug": "damage-responsibility",
+      "title": "Damage & responsibility",
+      "summary": "Firing carries process variation. Damage from service or handling is reviewed case-by-case.",
+      "status": "active",
+      "tags": [
+        "policies",
+        "kiln",
+        "responsibility"
+      ],
+      "effectiveDate": "2026-02-17",
+      "reviewDate": "2026-08-01",
+      "owner": "Studio Operations",
+      "sourceUrl": "/policies/damage-responsibility/",
+      "agent": {
+        "canActForSelf": true,
+        "canActForOthers": true,
+        "decisionDomain": "Damage intake, evidence collection, and incident review status.",
+        "defaultActions": [
+          "collect timeline, batch id, and photos",
+          "determine if handling/material deviation was present",
+          "log incident under correct case type and severity"
+        ],
+        "requiredSignals": [
+          "batch id or piece reference",
+          "time of event and symptom details",
+          "photos and transport notes"
+        ],
+        "escalateWhen": [
+          "high-value batch involved",
+          "multiple connected incidents",
+          "user requests reversal beyond policy scope"
+        ],
+        "replyTemplate": "Acknowledge report, document evidence received, and state expected case review path."
+      }
+    },
+    {
+      "slug": "firing-scheduling",
+      "title": "Firing & scheduling policy",
+      "summary": "Submit firings through the portal. Turnaround estimates and scheduling windows are provided with status updates if windows shift.",
+      "status": "active",
+      "tags": [
+        "kiln",
+        "scheduling",
+        "portal"
+      ],
+      "effectiveDate": "2026-02-17",
+      "reviewDate": "2026-08-01",
+      "owner": "Scheduling Lead",
+      "sourceUrl": "/policies/firing-scheduling/",
+      "agent": {
+        "canActForSelf": true,
+        "canActForOthers": true,
+        "decisionDomain": "Window allocation, delay updates, and urgency routing.",
+        "defaultActions": [
+          "submit or validate required scheduling fields",
+          "advise current estimate band and queue position",
+          "prepare alternative window options for urgent changes"
+        ],
+        "requiredSignals": [
+          "requested date window",
+          "order size and piece type",
+          "current queue or status context"
+        ],
+        "escalateWhen": [
+          "conflict with safety hold or kiln outage",
+          "urgent same-day schedule change",
+          "customer asks for guaranteed exact window"
+        ],
+        "replyTemplate": "Provide the current estimate window and explain any shifts with practical alternatives."
+      }
+    },
+    {
+      "slug": "media-accessibility",
+      "title": "Media accessibility standard",
+      "summary": "Public speech media should include captions. Long media should include transcript access.",
+      "status": "active",
+      "tags": [
+        "accessibility",
+        "media",
+        "policy"
+      ],
+      "effectiveDate": "2026-02-17",
+      "reviewDate": "2026-08-01",
+      "owner": "Content Operations",
+      "sourceUrl": "/policies/media-accessibility/",
+      "agent": {
+        "canActForSelf": true,
+        "canActForOthers": true,
+        "decisionDomain": "Content accessibility audits and remediation triage.",
+        "defaultActions": [
+          "collect media URL and title",
+          "label issue type (caption/transcript/alt text)",
+          "assign remediation queue with expected publish impact"
+        ],
+        "requiredSignals": [
+          "asset URL",
+          "release date or campaign priority",
+          "current accessibility state"
+        ],
+        "escalateWhen": [
+          "urgent campaign launch dependency",
+          "multi-asset block with repeated failures",
+          "no-caption alternative unavailable"
+        ],
+        "replyTemplate": "Acknowledge request and commit to accessibility update window by impact priority."
+      }
+    },
+    {
+      "slug": "payments-refunds",
+      "title": "Payment, refunds, and cancellations",
+      "summary": "Payment and refund timing is tied to workflow stage and transaction state.",
+      "status": "active",
+      "tags": [
+        "payments",
+        "billing",
+        "policy"
+      ],
+      "effectiveDate": "2026-02-17",
+      "reviewDate": "2026-08-01",
+      "owner": "Billing Operations",
+      "sourceUrl": "/policies/payments-refunds/",
+      "agent": {
+        "canActForSelf": true,
+        "canActForOthers": true,
+        "decisionDomain": "Billing status, refund eligibility, cancellation handling.",
+        "defaultActions": [
+          "verify payment state and service progress",
+          "explain estimated refund/charge timing",
+          "prepare reversal or hold request if policy permits"
+        ],
+        "requiredSignals": [
+          "payment reference",
+          "order/workflow status",
+          "requested cancellation reason"
+        ],
+        "escalateWhen": [
+          "chargeback or payment dispute risk",
+          "billing mismatch across systems",
+          "manual intervention for partially completed service"
+        ],
+        "replyTemplate": "Share state-based outcome (eligible, pending, manual review) and next expected timeline."
+      }
+    },
+    {
+      "slug": "safety-kiln-rules",
+      "title": "Safety & kiln rules",
+      "summary": "Follow posted kiln safety guidance at all times. Keep dust controlled, use required PPE, and label all kiln-bound work.",
+      "status": "active",
+      "tags": [
+        "kiln",
+        "safety",
+        "access"
+      ],
+      "effectiveDate": "2026-02-17",
+      "reviewDate": "2026-08-01",
+      "owner": "Studio Operations",
+      "sourceUrl": "/policies/safety-kiln-rules/",
+      "agent": {
+        "canActForSelf": true,
+        "canActForOthers": true,
+        "decisionDomain": "PPE, dust control, kiln access, and handling constraints.",
+        "defaultActions": [
+          "confirm required PPE and dust-control behavior",
+          "confirm required piece labeling fields before kiln intake",
+          "recommend safe alternatives if unsafe instruction is requested"
+        ],
+        "requiredSignals": [
+          "intake item details",
+          "material/size/shape notes",
+          "requested kiln session type"
+        ],
+        "escalateWhen": [
+          "unclear material safety risk",
+          "requested unsafe action (e.g., dry sanding in kiln area)",
+          "incident report involving heat, burns, or alarm conditions"
+        ],
+        "replyTemplate": "State exact safety requirements and required documentation before submission."
+      }
+    },
+    {
+      "slug": "storage-abandoned-work",
+      "title": "Storage limits & abandoned work",
+      "summary": "Storage limits depend on membership tier and available space. Long-abandoned work may move through notice and follow-up steps.",
+      "status": "active",
+      "tags": [
+        "storage",
+        "memberships",
+        "policy"
+      ],
+      "effectiveDate": "2026-02-17",
+      "reviewDate": "2026-08-01",
+      "owner": "Studio Operations",
+      "sourceUrl": "/policies/storage-abandoned-work/",
+      "agent": {
+        "canActForSelf": true,
+        "canActForOthers": true,
+        "decisionDomain": "Stale-item notification, pickup reminders, and storage hold escalation.",
+        "defaultActions": [
+          "check piece age and membership tier",
+          "issue/remind pickup and hold-status notification",
+          "route items near retention boundary for review"
+        ],
+        "requiredSignals": [
+          "last pickup status update",
+          "membership tier and hold duration",
+          "contact method on file"
+        ],
+        "escalateWhen": [
+          "extended hold beyond policy boundary",
+          "dispute over prior notice",
+          "storage capacity conflict affecting active batches"
+        ],
+        "replyTemplate": "State current hold status, reminder obligations, and next action date before any removal step."
+      }
+    },
+    {
+      "slug": "studio-access",
+      "title": "Studio access & supervision",
+      "summary": "Reservations are required for all visits. Access details and any supervised equipment requirements are listed in the portal.",
+      "status": "active",
+      "tags": [
+        "studio",
+        "access",
+        "supervision"
+      ],
+      "effectiveDate": "2026-02-17",
+      "reviewDate": "2026-08-01",
+      "owner": "Studio Operations",
+      "sourceUrl": "/policies/studio-access/",
+      "agent": {
+        "canActForSelf": true,
+        "canActForOthers": true,
+        "decisionDomain": "Reservations, check-in, and supervised equipment requests.",
+        "defaultActions": [
+          "check reservation status and share upcoming access steps",
+          "verify whether a request requires supervision flagging",
+          "collect and confirm guest list and approval requirement"
+        ],
+        "requiredSignals": [
+          "user category and account",
+          "reservation id or preferred window",
+          "requested tools or stations"
+        ],
+        "escalateWhen": [
+          "safety or occupancy risk",
+          "repeated no-shows or access policy breaches",
+          "guest approval rejected by facility lead"
+        ],
+        "replyTemplate": "Share reservation requirements, required arrival steps, and whether supervision is needed."
+      }
+    }
+  ]
+}

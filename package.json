@@ -2,7 +2,8 @@
   "scripts": {
     "website:smoke:playwright": "node ./scripts/website-playwright-smoke.mjs",
     "website:smoke:playwright:prod": "node ./scripts/website-playwright-smoke.mjs --base-url https://monsoonfire.com --output-dir output/playwright/prod",
-    "website:smoke:playwright:install": "npx playwright install chromium"
+    "website:smoke:playwright:install": "npx playwright install chromium",
+    "lint:policies": "node website/scripts/lint-policies.mjs"
   },
   "dependencies": {
     "@openai/codex": "^0.91.0",

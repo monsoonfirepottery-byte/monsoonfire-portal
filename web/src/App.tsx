@@ -316,7 +316,14 @@ const EMAIL_LINK_KEY = "mf_email_link_email";
 const LOCAL_NAV_KEY = "mf_nav_key";
 const LOCAL_NAV_SECTION_KEY = "mf_nav_section_key";
 const LOCAL_NAV_COLLAPSED_KEY = "mf_nav_collapsed";
+const LOCAL_NAV_WIDTH_KEY = "mf_nav_width";
 const SUPPORT_EMAIL = "support@monsoonfire.com";
+const SIDEBAR_MIN_WIDTH = 220;
+const SIDEBAR_DEFAULT_WIDTH = 260;
+const SIDEBAR_MAX_WIDTH = 420;
+const SIDEBAR_RESIZE_BREAKPOINT_WIDTH = 1220;
+const SIDEBAR_RESIZE_BREAKPOINT_HEIGHT = 700;
+const SIDEBAR_RESIZE_MIN_MAIN_CONTENT = 580;
 const MF_LOGO = "/branding/logo-mark-black.webp";
 const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
@@ -331,6 +338,11 @@ const DEV_ADMIN_TOKEN_ENABLED =
   (FUNCTIONS_BASE_URL.includes("localhost") || FUNCTIONS_BASE_URL.includes("127.0.0.1"));
 const DEV_ADMIN_TOKEN_PERSIST_ENABLED =
   DEV_ADMIN_TOKEN_ENABLED && ENV.VITE_PERSIST_DEV_ADMIN_TOKEN === "true";
+const SUPPORT_THREAD_PREFIX = "support_";
+const SUPPORT_MESSAGE_PREFIX = "welcome";
+const WELCOME_NOTIFICATION_ID = "welcome-messaging-infra";
+const WELCOME_MESSAGE_SUBJECT = "Welcome to Monsoon Fire Support";
+const WELCOME_NOTIFICATION_TITLE = "Welcome to your Monsoon Fire portal";
 
 const NAV_SECTION_KEYS: NavSectionKey[] = ["kilnRentals", "studioResources", "community"];
 
@@ -347,6 +359,15 @@ const getSectionForNav = (navKey: NavKey): NavSectionKey | null => {
   return match?.key ?? null;
 };
 
+const clampSidebarWidth = (value: number, viewportWidth: number) => {
+  const maxForViewport = Math.max(
+    SIDEBAR_MIN_WIDTH,
+    Math.min(SIDEBAR_MAX_WIDTH, viewportWidth - SIDEBAR_RESIZE_MIN_MAIN_CONTENT)
+  );
+  const safeMax = Math.max(SIDEBAR_MIN_WIDTH, maxForViewport);
+  return Math.max(SIDEBAR_MIN_WIDTH, Math.min(value, safeMax));
+};
+
 function getErrorCode(error: unknown): string {
   if (!error || typeof error !== "object") return "";
   const code = (error as Record<string, unknown>).code;
@@ -361,6 +382,19 @@ function getErrorMessage(error: unknown): string {
     if (code) return code;
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === "string");
+}
+
+function getWelcomeNotificationBody(supportEmail: string) {
+  return `Welcome to your Monsoon Fire portal. We're excited to be your partner. Use the Messages area in the app for questions, support requests, and studio updates. For any needs, contact us at ${supportEmail}.`;
+}
+
+function getWelcomeMessageBody(supportEmail: string) {
+  return `Welcome to Monsoon Fire! We're excited to partner with you. This thread is your messaging hub for studio support and general questions. Any questions can be directed to support by replying here or emailing ${supportEmail}.`;
 }
 
 class AppErrorBoundary extends React.Component<
@@ -613,6 +647,16 @@ export default function App() {
     if (savedNav && isNavKey(savedNav)) return getSectionForNav(savedNav);
     return NAV_SECTIONS[0]?.key ?? null;
   });
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window === "undefined") return SIDEBAR_DEFAULT_WIDTH;
+    const raw = localStorage.getItem(LOCAL_NAV_WIDTH_KEY);
+    const parsed = Number.parseInt(raw ?? "", 10);
+    if (Number.isFinite(parsed)) {
+      return clampSidebarWidth(parsed, window.innerWidth);
+    }
+    return SIDEBAR_DEFAULT_WIDTH;
+  });
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [devAdminToken, setDevAdminToken] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
@@ -648,9 +692,43 @@ export default function App() {
   const devAdminActive = DEV_ADMIN_TOKEN_ENABLED && devAdminToken.trim().length > 0;
   const staffUi = isStaff || devAdminActive;
   const devAdminTokenValue = devAdminActive ? devAdminToken.trim() : "";
+  const [viewportWidth, setViewportWidth] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    return window.innerWidth;
+  });
+  const [viewportHeight, setViewportHeight] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    return window.innerHeight;
+  });
   const navBottomItems: NavItem[] = staffUi
     ? [...NAV_BOTTOM_ITEMS, { key: "staff", label: "Staff" }]
     : NAV_BOTTOM_ITEMS;
+  const sidebarResizeMaxWidth = viewportWidth > 0
+    ? clampSidebarWidth(SIDEBAR_MAX_WIDTH, viewportWidth)
+    : SIDEBAR_MAX_WIDTH;
+  const clampedSidebarWidth = clampSidebarWidth(sidebarWidth, viewportWidth);
+  const isSmallViewport = viewportWidth > 0 && viewportWidth <= 960;
+  const canResizeSidebar =
+    !navCollapsed &&
+    !isSmallViewport &&
+    viewportWidth >= SIDEBAR_RESIZE_BREAKPOINT_WIDTH &&
+    sidebarResizeMaxWidth - SIDEBAR_MIN_WIDTH >= 24 &&
+    viewportHeight >= SIDEBAR_RESIZE_BREAKPOINT_HEIGHT;
+
+  const persistThemeName = async (next: PortalThemeName): Promise<void> => {
+    setThemeName(next);
+    writeStoredPortalTheme(next);
+    if (!user?.uid) return;
+    await setDoc(
+      doc(db, "profiles", user.uid),
+      { uiTheme: next, updatedAt: serverTimestamp() },
+      { merge: true }
+    );
+  };
+
+  const shellStyle: React.CSSProperties = {
+    ["--portal-sidebar-width" as keyof React.CSSProperties]: `${clampedSidebarWidth}px`,
+  };
 
   useEffect(() => {
     const theme = PORTAL_THEMES[themeName] ?? PORTAL_THEMES[DEFAULT_PORTAL_THEME];
@@ -667,6 +745,32 @@ export default function App() {
   useEffect(() => {
     setAvatarLoadFailed(false);
   }, [user?.photoURL]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onResize = () => {
+      setViewportWidth(window.innerWidth);
+      setViewportHeight(window.innerHeight);
+    };
+
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+    };
+  }, []);
+
+  useEffect(() => {
+    setSidebarWidth((current) => {
+      const next = clampSidebarWidth(current, viewportWidth);
+      return next;
+    });
+  }, [viewportWidth]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(LOCAL_NAV_WIDTH_KEY, String(clampedSidebarWidth));
+  }, [clampedSidebarWidth]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -884,6 +988,129 @@ export default function App() {
       unsub();
     };
   }, [authClient, isAuthEmulator]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    let cancelled = false;
+    const supportThreadId = `${SUPPORT_THREAD_PREFIX}${user.uid}`;
+    const supportThreadRef = doc(db, "directMessages", supportThreadId);
+    const welcomeMessageRef = doc(supportThreadRef, "messages", SUPPORT_MESSAGE_PREFIX);
+    const welcomeNotificationRef = doc(db, "users", user.uid, "notifications", WELCOME_NOTIFICATION_ID);
+    const welcomeBody = getWelcomeMessageBody(SUPPORT_EMAIL);
+
+    const seedWelcomeInfrastructure = async () => {
+      try {
+        const [threadSnap, notificationSnap] = await Promise.all([
+          getDoc(supportThreadRef),
+          getDoc(welcomeNotificationRef),
+        ]);
+
+        if (cancelled) return;
+
+        if (!notificationSnap.exists()) {
+          await setDoc(welcomeNotificationRef, {
+            title: WELCOME_NOTIFICATION_TITLE,
+            body: getWelcomeNotificationBody(SUPPORT_EMAIL),
+            createdAt: serverTimestamp(),
+          });
+        }
+
+        const threadData = threadSnap.data() as Record<string, unknown> | undefined;
+        const threadPayload: Record<string, unknown> = {
+          kind: typeof threadData?.kind === "string" ? threadData.kind : "support",
+          participantUids: [...new Set([...toStringArray(threadData?.participantUids), user.uid])],
+          updatedAt: serverTimestamp(),
+        };
+
+        if (typeof threadData?.subject !== "string" || !threadData.subject.trim().length) {
+          threadPayload.subject = WELCOME_MESSAGE_SUBJECT;
+        }
+
+        const hasWelcomeMessage = threadSnap.exists() ? (await getDoc(welcomeMessageRef)).exists() : false;
+
+        if (!threadSnap.exists() || !hasWelcomeMessage) {
+          await setDoc(
+            welcomeMessageRef,
+            {
+              messageId: `<${SUPPORT_MESSAGE_PREFIX}-thread@monsoonfire.local>`,
+              subject: WELCOME_MESSAGE_SUBJECT,
+              body: welcomeBody,
+              fromUid: "support-system",
+              fromName: "Monsoon Fire Studio",
+              fromEmail: SUPPORT_EMAIL,
+              replyToEmail: SUPPORT_EMAIL,
+              toUids: [user.uid],
+              toEmails: user.email ? [user.email] : [],
+              sentAt: serverTimestamp(),
+              inReplyTo: null,
+              references: [],
+            },
+            { merge: true }
+          );
+
+          threadPayload.lastMessagePreview = welcomeBody.slice(0, 180);
+          threadPayload.lastMessageAt = serverTimestamp();
+          threadPayload.lastMessageId = SUPPORT_MESSAGE_PREFIX;
+          threadPayload.lastSenderName = "Monsoon Fire Studio";
+          threadPayload.lastSenderEmail = SUPPORT_EMAIL;
+          if (!threadSnap.exists()) {
+            threadPayload.createdAt = serverTimestamp();
+          }
+        }
+
+        await setDoc(supportThreadRef, threadPayload, { merge: true });
+      } catch {
+        // Keep onboarding tolerant: failure to seed should not block auth or portal usage.
+      }
+    };
+
+    void seedWelcomeInfrastructure();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid, user?.email]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    if (typeof window === "undefined") return;
+    if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") return;
+    if (!("serviceWorker" in navigator)) return;
+    const resetKey = "mf-dev-message-sw-reset";
+    void (async () => {
+      const hadReset = window.localStorage.getItem(resetKey) === "1";
+      let didCleanup = false;
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        if (registrations.length > 0) {
+          didCleanup = true;
+        }
+        for (const registration of registrations) {
+          await registration.unregister();
+        }
+      } catch {
+        // Ignore service worker teardown failures; they can happen in constrained dev contexts.
+      }
+
+      if (typeof caches === "undefined") return;
+      try {
+        const cacheKeys = await caches.keys();
+        if (cacheKeys.length > 0) {
+          didCleanup = true;
+        }
+        await Promise.all(cacheKeys.map((name) => caches.delete(name)));
+      } catch {
+        // Ignore cache cleanup failures; this should not block app usage.
+      }
+
+      if (didCleanup && !hadReset) {
+        window.localStorage.setItem(resetKey, "1");
+        window.location.reload();
+      } else if (hadReset) {
+        window.localStorage.removeItem(resetKey);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -1280,6 +1507,10 @@ export default function App() {
           <DashboardView
             user={user}
             name={user.displayName ?? "Member"}
+            themeName={themeName}
+            onThemeChange={(next) => {
+              void persistThemeName(next);
+            }}
             threads={threads}
             announcements={announcements}
             onOpenKilnRentals={() => setNav("kilnRentals")}
@@ -1307,10 +1538,7 @@ export default function App() {
           <ProfileView
             user={user}
             themeName={themeName}
-            onThemeChange={(next) => {
-              setThemeName(next);
-              writeStoredPortalTheme(next);
-            }}
+            onThemeChange={persistThemeName}
             enhancedMotion={enhancedMotion}
             onEnhancedMotionChange={(next) => {
               setEnhancedMotion(next);
@@ -1437,10 +1665,13 @@ export default function App() {
       <a className="skip-link" href="#main-content">
         Skip to main content
       </a>
-      <div className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`}>
+      <div
+        className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`}
+        style={shellStyle}
+      >
         <aside
           id="portal-sidebar-nav"
-          className={`sidebar ${mobileNavOpen ? "open" : ""} ${navCollapsed ? "collapsed" : ""}`}
+          className={`sidebar ${mobileNavOpen ? "open" : ""} ${navCollapsed ? "collapsed" : ""} ${isResizingSidebar ? "is-resizing" : ""}`}
           aria-label="Primary navigation"
         >
           <button
@@ -1570,6 +1801,33 @@ export default function App() {
                   {navCollapsed ? "Open nav" : "Collapse nav"}
                 </span>
               </button>
+              {canResizeSidebar ? (
+                <div className="sidebar-resize">
+                  <label className="sidebar-resize-label" htmlFor="portal-sidebar-width">
+                    <span>Width</span>
+                    <span>{clampedSidebarWidth}px</span>
+                  </label>
+                  <input
+                    id="portal-sidebar-width"
+                    className="sidebar-resize-slider"
+                    type="range"
+                    min={SIDEBAR_MIN_WIDTH}
+                    max={sidebarResizeMaxWidth}
+                    step={4}
+                    value={clampedSidebarWidth}
+                    onPointerDown={() => setIsResizingSidebar(true)}
+                    onPointerUp={() => setIsResizingSidebar(false)}
+                    onPointerCancel={() => setIsResizingSidebar(false)}
+                    onBlur={() => setIsResizingSidebar(false)}
+                    onChange={(event) => {
+                      const next = Number(event.currentTarget.value);
+                      if (Number.isNaN(next)) return;
+                      setSidebarWidth(next);
+                    }}
+                    aria-label="Set sidebar width"
+                  />
+                </div>
+              ) : null}
             </div>
           </nav>
           {user && (
@@ -1698,5 +1956,3 @@ export default function App() {
     </AppErrorBoundary>
   );
 }
-
-

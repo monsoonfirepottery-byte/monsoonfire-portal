@@ -33,10 +33,6 @@ export type DirectMessage = {
   replyToEmail?: string | null;
   toUids?: string[];
   toEmails?: string[];
-  ccUids?: string[];
-  ccEmails?: string[];
-  bccUids?: string[];
-  bccEmails?: string[];
   sentAt?: unknown;
   inReplyTo?: string;
   references?: string[];

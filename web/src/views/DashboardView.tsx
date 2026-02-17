@@ -4,6 +4,7 @@ import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 import RevealCard from "../components/RevealCard";
 import { useUiSettings } from "../context/UiSettingsContext";
 import { db } from "../firebase";
+import { type PortalThemeName } from "../theme/themes";
 import { mockFirings, mockKilns } from "../data/kilnScheduleMock";
 import { useBatches } from "../hooks/useBatches";
 import { normalizeFiringDoc as normalizeFiringRow, normalizeKilnDoc as normalizeKilnRow } from "../lib/normalizers/kiln";
@@ -288,6 +289,8 @@ function useKilnDashboardRows() {
 type Props = {
   user: User;
   name: string;
+  themeName: PortalThemeName;
+  onThemeChange: (next: PortalThemeName) => void;
   threads: DirectMessageThread[];
   announcements: Announcement[];
   onOpenKilnRentals: () => void;
@@ -304,6 +307,8 @@ type Props = {
 export default function DashboardView({
   user,
   name,
+  themeName,
+  onThemeChange,
   threads,
   announcements,
   onOpenKilnRentals,
@@ -316,8 +321,11 @@ export default function DashboardView({
   onOpenMessages,
   onOpenPieces,
 }: Props) {
-  const { themeName, portalMotion } = useUiSettings();
-  const motionEnabled = themeName === "memoria" && portalMotion === "enhanced";
+  const { themeName: resolvedThemeName, portalMotion } = useUiSettings();
+  const motionEnabled = resolvedThemeName === "memoria" && portalMotion === "enhanced";
+  const isDarkTheme = themeName === "memoria";
+  const nextTheme = isDarkTheme ? "portal" : "memoria";
+  const nextThemeLabel = isDarkTheme ? "light" : "dark";
   const { active, history } = useBatches(user);
   const activePreview = active.slice(0, DASHBOARD_PIECES_PREVIEW);
   const archivedCount = history.length;
@@ -361,7 +369,31 @@ export default function DashboardView({
     <div className="dashboard">
       <RevealCard as="section" className="card hero-card" index={0} enabled={motionEnabled}>
         <div className="hero-content">
-          <h1>Your studio dashboard</h1>
+          <div className="hero-toolbar">
+            <div className="hero-title-block">
+              <h1>Your studio dashboard</h1>
+              <div className="hero-profile">
+                <span className="hero-profile-label">Signed in as</span>
+                <span className="hero-profile-name">{name}</span>
+                {user.email ? <span className="hero-profile-meta">{user.email}</span> : null}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="theme-toggle-button"
+              onClick={() => {
+                onThemeChange(nextTheme);
+              }}
+              aria-label={`Switch to ${nextThemeLabel} theme`}
+              title={`Switch to ${nextThemeLabel} theme`}
+              aria-pressed={isDarkTheme}
+            >
+              <span className="theme-toggle-icon" aria-hidden="true">
+                {isDarkTheme ? "☀️" : "🌙"}
+              </span>
+              {`Switch to ${nextThemeLabel} theme`}
+            </button>
+          </div>
           <div className="hero-actions">
             <button className="btn btn-primary" onClick={onOpenKilnRentals}>
               Kiln rentals
@@ -372,11 +404,6 @@ export default function DashboardView({
             <button className="btn btn-ghost" onClick={onOpenCommunity}>
               Community
             </button>
-          </div>
-          <div className="hero-profile">
-            <span className="hero-profile-label">Signed in as</span>
-            <span className="hero-profile-name">{name}</span>
-            {user.email ? <span className="hero-profile-meta">{user.email}</span> : null}
           </div>
         </div>
         <div className="hero-updates">

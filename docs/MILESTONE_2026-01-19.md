@@ -5,7 +5,11 @@
 ✅ Web API client centralized: web/src/api/portalApi.ts
 ✅ App routes CF calls through the API client (no raw fetch in App.tsx)
 ✅ API contract doc added: docs/API_CONTRACTS.md
-✅ iOS reference client created (spec-level): PortalContracts.swift + PortalApiClient.swift
+✅ iOS reference client created (spec-level): PortalModels.swift + PortalApiClient.swift
+✅ Documentation set reviewed:
+  - `web/README.md` updated with explicit emulator and prod run workflows
+  - `ios/README.md` updated to point at `PortalModels.swift` and align with contract parity notes
+  - `docs/API_CONTRACTS.md` expanded with all implemented function contracts and request/response examples
 
 Notes:
 - Windows machine cannot run Swift/Xcode; iOS smoke test must be executed on macOS.

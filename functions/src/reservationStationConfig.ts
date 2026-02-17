@@ -19,19 +19,28 @@ export const STATION_LABELS: Record<string, string> = {
   reductionraku: "Reduction Raku",
 };
 
+const STATION_ID_ALIASES: Record<string, string> = {
+  reductionraku: "reduction-raku",
+  "reduction_raku": "reduction-raku",
+};
+
 export function normalizeStationId(value: unknown): string {
-  return typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (typeof value !== "string") return "";
+  const raw = value.trim().toLowerCase();
+  if (!raw) return "";
+  return STATION_ID_ALIASES[raw] ?? raw;
 }
 
 export function getStationCapacity(stationId: unknown): number {
   const normalized = normalizeStationId(stationId);
-  if (Object.prototype.hasOwnProperty.call(STATION_CAPACITY_HALF_SHELVES, normalized)) {
+  if (normalized && Object.prototype.hasOwnProperty.call(STATION_CAPACITY_HALF_SHELVES, normalized)) {
     return STATION_CAPACITY_HALF_SHELVES[normalized as ReservationStationId];
   }
   return STATION_FALLBACK_CAPACITY_HALF_SHELVES;
 }
 
 export function isKnownStationId(stationId: string | null | undefined): stationId is ReservationStationId {
-  if (!stationId) return false;
-  return Object.prototype.hasOwnProperty.call(STATION_CAPACITY_HALF_SHELVES, stationId);
+  const normalized = normalizeStationId(stationId);
+  if (!normalized) return false;
+  return Object.prototype.hasOwnProperty.call(STATION_CAPACITY_HALF_SHELVES, normalized);
 }

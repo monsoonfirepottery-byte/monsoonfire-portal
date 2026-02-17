@@ -10,7 +10,7 @@ import {
   requireAdmin,
   safeString,
 } from "./shared";
-import { getStationCapacity, isKnownStationId } from "./reservationStationConfig";
+import { getStationCapacity, isKnownStationId, normalizeStationId } from "./reservationStationConfig";
 
 const REGION = "us-central1";
 
@@ -47,10 +47,6 @@ const assignmentSchema = z.object({
     .optional()
     .nullable(),
 });
-
-function normalizeStation(value: unknown): string {
-  return safeString(value).trim().toLowerCase();
-}
 
 function normalizeQueueClass(value: unknown): string | null {
   const next = safeString(value, "").trim();
@@ -183,7 +179,7 @@ export const assignReservationStation = onRequest(
     }
 
     const reservationId = parsed.data.reservationId.trim();
-    const assignedStationId = normalizeStation(parsed.data.assignedStationId);
+    const assignedStationId = normalizeStationId(parsed.data.assignedStationId);
     const queueClass = normalizeQueueClass(parsed.data.queueClass);
     const requiredResources = normalizeRequiredResources(parsed.data.requiredResources);
     const actorContext = req.__mfAuthContext as { uid?: unknown } | undefined;
@@ -219,7 +215,7 @@ export const assignReservationStation = onRequest(
           throw new Error("RESERVATION_CANCELLED");
         }
 
-        const currentAssignedStation = normalizeStation(data.assignedStationId);
+        const currentAssignedStation = normalizeStationId(data.assignedStationId);
         const currentQueueClass = normalizeQueueClass(data.queueClass);
         const currentRequiredResources = normalizeRequiredResources(data.requiredResources);
         const requestedQueueClass = queueClass === null ? null : queueClass;

@@ -34,6 +34,10 @@
     ],
     "rewrites": [
       {
+        "source": "/api/websiteKilnBoard",
+        "function": "websiteKilnBoard"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

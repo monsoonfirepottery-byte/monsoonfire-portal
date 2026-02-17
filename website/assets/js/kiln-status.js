@@ -57,7 +57,6 @@
 
   const load = async () => {
     const candidates = [
-      'https://us-central1-monsoonfire-portal.cloudfunctions.net/websiteKilnBoard',
       '/api/websiteKilnBoard',
       '/data/kiln-status.json',
     ];

@@ -1,5 +1,5 @@
-import type { CSSProperties, ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
 
 type Props = {
@@ -7,7 +7,6 @@ type Props = {
   className: string;
   children: ReactNode;
   index?: number;
-  style?: CSSProperties;
   enabled?: boolean;
 };
 
@@ -18,7 +17,6 @@ export default function RevealCard({
   className,
   children,
   index = 0,
-  style,
   enabled = true,
 }: Props) {
   const prefersReducedMotion = usePrefersReducedMotion();
@@ -27,16 +25,6 @@ export default function RevealCard({
   const setNodeRef = (node: RevealElement | null) => {
     ref.current = node;
   };
-
-  const mergedStyle = useMemo(() => {
-    const delay = 80 + index * 90;
-    return {
-      ...style,
-      // Used by CSS for sequential reveals.
-      ["--reveal-delay" as unknown as string]: `${delay}ms`,
-      ["--reveal-duration" as unknown as string]: "880ms",
-    } as CSSProperties;
-  }, [index, style]);
 
   useEffect(() => {
     if (prefersReducedMotion || !enabled) return;
@@ -64,12 +52,12 @@ export default function RevealCard({
   }, [prefersReducedMotion, enabled]);
 
   const Tag = as;
+  const delayClass = `reveal-card-delay-${Math.max(0, Math.min(20, Math.trunc(index)))}`;
   return (
     <Tag
       ref={setNodeRef}
-      className={`reveal-card ${className}`}
+      className={`reveal-card ${className} ${delayClass}`}
       data-revealed={revealed || !enabled ? "true" : "false"}
-      style={mergedStyle}
     >
       {children}
     </Tag>

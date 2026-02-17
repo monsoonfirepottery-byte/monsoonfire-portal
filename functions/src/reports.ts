@@ -11,6 +11,8 @@ import {
   parseBody,
   requireAdmin,
   requireAuthUid,
+  type RequestLike,
+  type ResponseLike,
 } from "./shared";
 import { enforceAppCheckIfEnabled } from "./authz";
 
@@ -148,7 +150,7 @@ function targetSignalKey(targetType: string, targetId: string) {
     .slice(0, 40);
 }
 
-async function enforceReportAppCheck(req: any, res: any): Promise<boolean> {
+async function enforceReportAppCheck(req: RequestLike, res: ResponseLike): Promise<boolean> {
   const appCheck = await enforceAppCheckIfEnabled(req);
   if (!appCheck.ok) {
     res.status(appCheck.httpStatus).json({ ok: false, message: appCheck.message, code: appCheck.code });

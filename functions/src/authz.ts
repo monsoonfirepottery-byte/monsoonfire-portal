@@ -6,6 +6,7 @@ import {
   isStaffFromDecoded,
   nowTs,
   requireAuthContext,
+  type RequestLike,
   type AuthContext,
 } from "./shared";
 
@@ -175,7 +176,7 @@ export function readAuthFeatureFlags(): FeatureFlags {
   };
 }
 
-function getClientIp(req: any): string {
+function getClientIp(req: RequestLike): string {
   const header = req.headers?.["x-forwarded-for"];
   if (typeof header === "string" && header.trim()) {
     return header.split(",")[0].trim();
@@ -189,7 +190,7 @@ function hashIp(ip: string): string {
 }
 
 export async function logAuditEvent(params: {
-  req: any;
+  req: RequestLike;
   requestId: string;
   action: string;
   resourceType: string;
@@ -201,6 +202,14 @@ export async function logAuditEvent(params: {
   ctx?: AuthContext | null;
 }) {
   try {
+    const delegationMetadata =
+      params.ctx?.mode === "delegated"
+        ? {
+            delegationId: params.ctx.delegated.delegationId ?? null,
+            delegationAudience: params.ctx.delegated.audience ?? null,
+            agentClientId: params.ctx.delegated.agentClientId,
+          }
+        : null;
     const uaHeader = params.req?.headers?.["user-agent"];
     const userAgent = typeof uaHeader === "string" ? uaHeader.slice(0, 200) : null;
     const actorMode = params.ctx?.mode ?? "unknown";
@@ -224,11 +233,14 @@ export async function logAuditEvent(params: {
       ownerUid: params.ownerUid ?? null,
       result: params.result,
       reasonCode: params.reasonCode ?? null,
-      metadata: params.metadata ?? null,
       actorUid,
       actorType,
       actorMode,
       tokenId: params.ctx?.tokenId ?? null,
+      metadata: {
+        ...delegationMetadata,
+        ...(params.metadata ?? null ? params.metadata : {}),
+      },
       ipHash: hashIp(getClientIp(params.req)),
       userAgent,
     });
@@ -237,7 +249,7 @@ export async function logAuditEvent(params: {
   }
 }
 
-export async function enforceAppCheckIfEnabled(req: any): Promise<
+export async function enforceAppCheckIfEnabled(req: RequestLike): Promise<
   | { ok: true; appId: string | null; bypassed: boolean }
   | { ok: false; httpStatus: number; code: string; message: string }
 > {
@@ -283,7 +295,7 @@ export async function enforceAppCheckIfEnabled(req: any): Promise<
 }
 
 export async function assertActorAuthorized(params: {
-  req: any;
+  req: RequestLike;
   ownerUid: string;
   scope: string | null;
   resource: string | null;

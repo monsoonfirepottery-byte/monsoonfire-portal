@@ -11,6 +11,18 @@ const REGION = "us-central1";
 const JOB_MAX_ATTEMPTS = 5;
 const JOB_BASE_RETRY_MS = 60_000;
 
+function asRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function errorMessage(error: unknown): string {
+  const rawMessage =
+    asRecord(error) && "message" in error && error !== null
+      ? safeString((error as { message?: unknown }).message)
+      : safeString(error);
+  return rawMessage || String(error);
+}
+
 const registerDeviceTokenSchema = z.object({
   token: z.string().min(16).max(1024),
   platform: z.enum(["ios"]).optional(),
@@ -72,7 +84,7 @@ export const registerDeviceToken = onRequest({ region: REGION }, async (req, res
 
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
-    const existing = snap.exists ? (snap.data() as any) : null;
+    const existing = snap.exists ? (snap.data() as Record<string, unknown> | undefined) : undefined;
     tx.set(
       ref,
       {
@@ -388,7 +400,7 @@ async function resolveKilnName(kilnId?: string | null): Promise<string | null> {
   if (!kilnId) return null;
   const snap = await db.collection("kilns").doc(kilnId).get();
   if (!snap.exists) return null;
-  return safeString((snap.data() as any)?.name) || null;
+  return safeString((snap.data() as Record<string, unknown>)?.name) || null;
 }
 
 async function loadBatchOwners(batchIds: string[]): Promise<Map<string, string>> {
@@ -400,7 +412,7 @@ async function loadBatchOwners(batchIds: string[]): Promise<Map<string, string>>
     const snaps = await db.getAll(...refs);
     snaps.forEach((snap) => {
       if (!snap.exists) return;
-      const data = snap.data() as any;
+      const data = snap.data() as Record<string, unknown> | undefined;
       if (typeof data?.ownerUid === "string") {
         ownerMap.set(snap.id, data.ownerUid);
       }
@@ -486,11 +498,14 @@ async function createJob(job: NotificationJob): Promise<void> {
   const ref = db.collection("notificationJobs").doc(jobId);
   try {
     await ref.create(job);
-  } catch (err: any) {
-    if (err?.code === 6 || err?.code === "already-exists") {
+  } catch (error: unknown) {
+    if (
+      (asRecord(error) && "code" in error && error.code === 6) ||
+      (asRecord(error) && "code" in error && error.code === "already-exists")
+    ) {
       return;
     }
-    throw err;
+    throw error;
   }
 }
 
@@ -565,8 +580,8 @@ async function enqueueNotifications(params: {
 export const onKilnFiringUnloaded = onDocumentWritten(
   { region: REGION, document: "kilnFirings/{firingId}" },
   async (event) => {
-    const before = event.data?.before.data() as any | undefined;
-    const after = event.data?.after.data() as any | undefined;
+    const before = event.data?.before.data() as Record<string, unknown> | undefined;
+    const after = event.data?.after.data() as Record<string, unknown> | undefined;
     if (!after) return;
 
     const beforeUnloaded = Boolean(before?.unloadedAt);
@@ -580,10 +595,14 @@ export const onKilnFiringUnloaded = onDocumentWritten(
       firingTypeRaw === "bisque" ? "bisque" : firingTypeRaw === "glaze" ? "glaze" : null;
 
     const batchIds = Array.isArray(after.batchIds)
-      ? after.batchIds.map((id: any) => safeString(id)).filter(Boolean)
+      ? after.batchIds
+          .map((id) => safeString(id))
+          .filter((value): value is string => value.length > 0)
       : [];
     const pieceIds = Array.isArray(after.pieceIds)
-      ? after.pieceIds.map((id: any) => safeString(id)).filter(Boolean)
+      ? after.pieceIds
+          .map((id) => safeString(id))
+          .filter((value): value is string => value.length > 0)
       : [];
 
     const owners = new Map<string, { batchIds: string[]; pieceIds: string[] }>();
@@ -673,11 +692,14 @@ async function writeInAppNotification(job: NotificationJob): Promise<{ created: 
       status: "created",
     });
     return { created: true };
-  } catch (err: any) {
-    if (err?.code === 6 || err?.code === "already-exists") {
+  } catch (error: unknown) {
+    if (
+      (asRecord(error) && "code" in error && error.code === 6) ||
+      (asRecord(error) && "code" in error && error.code === "already-exists")
+    ) {
       return { created: false };
     }
-    throw err;
+    throw error;
   }
 }
 
@@ -718,11 +740,14 @@ async function writeEmailNotification(job: NotificationJob, email: string): Prom
       createdAt: nowTs(),
     });
     return { created: true };
-  } catch (err: any) {
-    if (err?.code === 6 || err?.code === "already-exists") {
+  } catch (error: unknown) {
+    if (
+      (asRecord(error) && "code" in error && error.code === 6) ||
+      (asRecord(error) && "code" in error && error.code === "already-exists")
+    ) {
       return { created: false };
     }
-    throw err;
+    throw error;
   }
 }
 
@@ -763,8 +788,21 @@ async function readActiveDeviceTokens(uid: string): Promise<DeviceTokenRecord[]>
     .get();
 
   return snap.docs
-    .map((docSnap) => ({ ...(docSnap.data() as any), tokenHash: docSnap.id }))
-    .filter((entry) => typeof entry?.token === "string" && entry.token.length > 0);
+    .map((docSnap) => {
+      const data = asRecord(docSnap.data()) ? (docSnap.data() as Record<string, unknown>) : {};
+      const token = safeString(data.token);
+      if (!token) return null;
+      return {
+        token,
+        tokenHash: safeString(data.tokenHash) || docSnap.id,
+        platform: safeString(data.platform) || "ios",
+        environment: safeString(data.environment) || "production",
+        active: data.active === true,
+      };
+    })
+    .filter((entry): entry is DeviceTokenRecord =>
+      Boolean(entry && entry.active && typeof entry.token === "string" && entry.token.length > 0)
+    );
 }
 
 async function writePushAttemptTelemetry(params: {
@@ -976,8 +1014,8 @@ async function sendPushNotification(job: NotificationJob): Promise<void> {
       rejected: result.rejected,
       providerCodes: failedCodes,
     });
-  } catch (err: any) {
-    const message = safeString(err?.message) || "PUSH_PROVIDER_SEND_FAILED";
+  } catch (error: unknown) {
+    const message = errorMessage(error);
     await writePushAttemptTelemetry({
       job,
       tokenHashes: tokens.map((entry) => entry.tokenHash),
@@ -988,7 +1026,7 @@ async function sendPushNotification(job: NotificationJob): Promise<void> {
       rejected: tokens.length,
       providerCodes: [],
     });
-    throw err;
+    throw error;
   }
 }
 
@@ -1000,7 +1038,9 @@ type NotificationErrorClass =
   | "unknown";
 
 function classifyNotificationError(err: unknown): NotificationErrorClass {
-  const text = safeString((err as any)?.message ?? String(err)).toLowerCase();
+  const text = safeString(
+    asRecord(err) && "message" in err && err.message ? err.message : err
+  ).toLowerCase();
   if (text.includes("401") || text.includes("403") || text.includes("unauthorized")) return "auth";
   if (text.includes(" 4") || text.includes("400") || text.includes("404") || text.includes("429")) {
     return "provider_4xx";
@@ -1097,9 +1137,9 @@ async function processJob(ref: DocumentReference): Promise<void> {
       },
       { merge: true }
     );
-  } catch (err: any) {
-    const rawMessage = safeString(err?.message) || "Notification job failed";
-    const errorClass = classifyNotificationError(err);
+  } catch (error: unknown) {
+    const rawMessage = errorMessage(error);
+    const errorClass = classifyNotificationError(error);
     const retryable = isRetryableError(errorClass);
     const hasRetry = retryable && currentAttempt < JOB_MAX_ATTEMPTS;
 
@@ -1194,7 +1234,7 @@ async function aggregateNotificationMetricsWindow(windowHours: number): Promise<
   const providerCounts: Record<string, number> = {};
 
   snap.docs.forEach((docSnap) => {
-    const data = docSnap.data() as any;
+    const data = docSnap.data() as Record<string, unknown>;
     incrementCounter(statusCounts, safeString(data.status) || "unknown");
     incrementCounter(reasonCounts, safeString(data.reason) || "unknown");
     incrementCounter(providerCounts, safeString(data.provider) || "unknown");

@@ -135,7 +135,7 @@ function maybeIso(value: unknown): string | null {
   return null;
 }
 
-function getWebhookEndpointUrl(req: any): string {
+function getWebhookEndpointUrl(): string {
   const configured = safeString(process.env.STRIPE_WEBHOOK_PUBLIC_URL).trim();
   if (configured) return configured;
   const projectId = safeString(process.env.GCLOUD_PROJECT).trim();
@@ -425,7 +425,7 @@ export const staffGetStripeConfig = onRequest(
       ok: true,
       config,
       audit,
-      webhookEndpointUrl: getWebhookEndpointUrl(req),
+      webhookEndpointUrl: getWebhookEndpointUrl(),
       safeFields: [
         "mode",
         "publishableKeys",

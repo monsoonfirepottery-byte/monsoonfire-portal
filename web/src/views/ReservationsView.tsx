@@ -321,10 +321,6 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     if (!Number.isFinite(estimatedHalfShelves)) return 0;
     return Math.round(estimatedHalfShelves as number);
   }, [estimatedHalfShelves]);
-  const spaceProgress = useMemo(() => {
-    const safe = Math.min(estimatedHalfShelvesRounded, 8);
-    return safe / 8;
-  }, [estimatedHalfShelvesRounded]);
   const spaceLabel = estimatedHalfShelvesRounded > 8 ? "8+" : String(estimatedHalfShelvesRounded);
   const showFitPrompt = (tiers ?? 1) > 1;
   const firingLabel =
@@ -1484,19 +1480,12 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
                     </div>
                   ) : null}
                   <div className="space-meter">
-                    <div
+                    <progress
                       className="space-meter-track"
-                      role="progressbar"
-                      aria-valuenow={Math.min(estimatedHalfShelvesRounded, 8)}
-                      aria-valuemin={0}
-                      aria-valuemax={8}
+                      value={Math.min(estimatedHalfShelvesRounded, 8)}
+                      max={8}
                       aria-label="Estimated kiln space used"
-                    >
-                      <div
-                        className="space-meter-fill"
-                        style={{ width: `${spaceProgress * 100}%` }}
-                      />
-                    </div>
+                    />
                     <div className="space-meter-label">
                       Space used: {spaceLabel} / 8 half shelves
                     </div>
@@ -1826,3 +1815,4 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     </div>
   );
 }
+

@@ -1799,7 +1799,7 @@ const loadEvents = useCallback(async () => {
             </div>
             <div className="staff-log-message">
               {alert.label}
-              <div className="staff-actions-row" style={{ marginTop: 8 }}>
+              <div className="staff-actions-row staff-actions-row--mt8">
                 <button
                   className="btn btn-ghost btn-small"
                   onClick={() => setModuleKey(alert.module)}
@@ -2147,7 +2147,7 @@ const loadEvents = useCallback(async () => {
               Recommended next actions:{" "}
               {recommendedBatchActions.length ? (
                 recommendedBatchActions.map((entry) => (
-                  <span key={entry.action} className="pill" style={{ marginRight: 6 }}>
+                  <span key={entry.action} className="pill staff-pill-margin-right">
                     {entry.label}
                   </span>
                 ))
@@ -2381,10 +2381,10 @@ const loadEvents = useCallback(async () => {
           {selectedFiring ? (
             <div className="staff-note">
               Flags:{" "}
-              {selectedFiring.confidence.toLowerCase() === "low" ? <span className="pill" style={{ marginRight: 6 }}>low confidence</span> : null}
-              {selectedFiring.startAtMs > 0 && selectedFiring.endAtMs === 0 ? <span className="pill" style={{ marginRight: 6 }}>missing end window</span> : null}
+              {selectedFiring.confidence.toLowerCase() === "low" ? <span className="pill staff-pill-margin-right">low confidence</span> : null}
+              {selectedFiring.startAtMs > 0 && selectedFiring.endAtMs === 0 ? <span className="pill staff-pill-margin-right">missing end window</span> : null}
               {selectedFiring.updatedAtMs > 0 && Date.now() - selectedFiring.updatedAtMs > 12 * 60 * 60 * 1000 && ["loading", "firing", "cooling", "unloading", "loaded"].includes(selectedFiring.status.toLowerCase()) ? (
-                <span className="pill" style={{ marginRight: 6 }}>stale active</span>
+                <span className="pill staff-pill-margin-right">stale active</span>
               ) : null}
               {selectedFiring.confidence.toLowerCase() !== "low" && !(selectedFiring.startAtMs > 0 && selectedFiring.endAtMs === 0) && !(selectedFiring.updatedAtMs > 0 && Date.now() - selectedFiring.updatedAtMs > 12 * 60 * 60 * 1000 && ["loading", "firing", "cooling", "unloading", "loaded"].includes(selectedFiring.status.toLowerCase())) ? (
                 <span className="staff-mini">No triage flags.</span>
@@ -2628,7 +2628,7 @@ const loadEvents = useCallback(async () => {
             <div className="staff-kpi"><span>Paid</span><strong>{signups.filter((signup) => signup.paymentStatus === "paid").length}</strong></div>
           </div>
           <div className="staff-actions-row">
-            <label className="staff-field" style={{ flex: 2 }}>
+            <label className="staff-field staff-field-flex-2">
               Quick title
               <input
                 value={eventCreateDraft.title}
@@ -2667,7 +2667,7 @@ const loadEvents = useCallback(async () => {
             </button>
           </div>
           <div className="staff-actions-row">
-            <label className="staff-field" style={{ flex: 1 }}>
+            <label className="staff-field staff-field-flex-1">
               Publish override reason (optional)
               <input
                 value={publishOverrideReason}
@@ -2684,7 +2684,7 @@ const loadEvents = useCallback(async () => {
             </button>
           </div>
           <div className="staff-actions-row">
-            <label className="staff-field" style={{ flex: 1 }}>
+            <label className="staff-field staff-field-flex-1">
               Status change reason {selectedEvent?.status !== "cancelled" ? "(required for cancel)" : "(optional)"}
               <input
                 value={eventStatusReason}
@@ -3200,7 +3200,7 @@ const lendingContent = (
                       <td>
                         <span className="pill">{loan.status}</span>
                         {loan.dueAtMs > 0 && loan.dueAtMs < Date.now() && loan.returnedAtMs === 0 ? (
-                          <span className="pill" style={{ marginLeft: 6 }}>overdue</span>
+                          <span className="pill staff-pill-margin-left">overdue</span>
                         ) : null}
                       </td>
                       <td>{loan.borrowerName}</td>
@@ -3622,3 +3622,5 @@ const lendingContent = (
     </div>
   );
 }
+
+

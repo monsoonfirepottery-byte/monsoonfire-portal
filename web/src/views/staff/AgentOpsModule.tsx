@@ -1156,7 +1156,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
         Agent keys are shown once at creation/rotation and never stored in plaintext.
       </div>
       <div className="staff-actions-row">
-        <label className="staff-field" style={{ flex: 1 }}>
+        <label className="staff-field staff-field-flex-1">
           <span>Agent API enabled</span>
           <input
             type="checkbox"
@@ -1164,7 +1164,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             onChange={(event) => setAgentApiEnabled(event.target.checked)}
           />
         </label>
-        <label className="staff-field" style={{ flex: 1 }}>
+        <label className="staff-field staff-field-flex-1">
           <span>Agent payments enabled</span>
           <input
             type="checkbox"
@@ -1174,7 +1174,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
         </label>
       </div>
       <div className="staff-actions-row">
-        <label className="staff-field" style={{ flex: 1 }}>
+        <label className="staff-field staff-field-flex-1">
           <span>Controls change reason (required when disabling)</span>
           <input
             value={agentControlsReason}
@@ -1236,7 +1236,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             <input value={scopesDraft} onChange={(event) => setScopesDraft(event.target.value)} />
           </label>
           <div className="staff-actions-row">
-            <label className="staff-field" style={{ flex: 1 }}>
+            <label className="staff-field staff-field-flex-1">
               Trust tier
               <select value={trustTierDraft} onChange={(event) => setTrustTierDraft(event.target.value as "low" | "medium" | "high")}>
                 <option value="low">Low</option>
@@ -1244,21 +1244,21 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 <option value="high">High</option>
               </select>
             </label>
-            <label className="staff-field" style={{ flex: 1 }}>
+            <label className="staff-field staff-field-flex-1">
               Per-minute limit
               <input value={perMinuteDraft} onChange={(event) => setPerMinuteDraft(event.target.value)} />
             </label>
-              <label className="staff-field" style={{ flex: 1 }}>
+              <label className="staff-field staff-field-flex-1">
                 Per-hour limit
                 <input value={perHourDraft} onChange={(event) => setPerHourDraft(event.target.value)} />
               </label>
             </div>
           <div className="staff-actions-row">
-            <label className="staff-field" style={{ flex: 1 }}>
+            <label className="staff-field staff-field-flex-1">
               Max order cents
               <input value={orderMaxCentsDraft} onChange={(event) => setOrderMaxCentsDraft(event.target.value)} />
             </label>
-            <label className="staff-field" style={{ flex: 1 }}>
+            <label className="staff-field staff-field-flex-1">
               Max orders / hour
               <input value={maxOrdersPerHourDraft} onChange={(event) => setMaxOrdersPerHourDraft(event.target.value)} />
             </label>
@@ -1354,7 +1354,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 </span>
               </div>
               <div className="staff-actions-row">
-                <label className="staff-field" style={{ flex: 1 }}>
+                <label className="staff-field staff-field-flex-1">
                   Admin reason (saved to audit)
                   <input
                     value={statusReasonDraft}
@@ -1394,7 +1394,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 <input value={profileScopes} onChange={(event) => setProfileScopes(event.target.value)} />
               </label>
               <div className="staff-actions-row">
-                <label className="staff-field" style={{ flex: 1 }}>
+                <label className="staff-field staff-field-flex-1">
                   Trust tier
                   <select value={profileTrustTier} onChange={(event) => setProfileTrustTier(event.target.value as "low" | "medium" | "high")}>
                     <option value="low">Low</option>
@@ -1402,21 +1402,21 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                     <option value="high">High</option>
                   </select>
                 </label>
-                <label className="staff-field" style={{ flex: 1 }}>
+                <label className="staff-field staff-field-flex-1">
                   Per-minute limit
                   <input value={profilePerMinute} onChange={(event) => setProfilePerMinute(event.target.value)} />
                 </label>
-                <label className="staff-field" style={{ flex: 1 }}>
+                <label className="staff-field staff-field-flex-1">
                   Per-hour limit
                   <input value={profilePerHour} onChange={(event) => setProfilePerHour(event.target.value)} />
                 </label>
               </div>
               <div className="staff-actions-row">
-                <label className="staff-field" style={{ flex: 1 }}>
+                <label className="staff-field staff-field-flex-1">
                   Max order cents
                   <input value={profileOrderMaxCents} onChange={(event) => setProfileOrderMaxCents(event.target.value)} />
                 </label>
-                <label className="staff-field" style={{ flex: 1 }}>
+                <label className="staff-field staff-field-flex-1">
                   Max orders / hour
                   <input value={profileMaxOrdersPerHour} onChange={(event) => setProfileMaxOrdersPerHour(event.target.value)} />
                 </label>
@@ -1443,11 +1443,11 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 <input value={delegatedScopesDraft} onChange={(event) => setDelegatedScopesDraft(event.target.value)} />
               </label>
               <div className="staff-actions-row">
-                <label className="staff-field" style={{ flex: 1 }}>
+                <label className="staff-field staff-field-flex-1">
                   TTL seconds (30-600)
                   <input value={delegatedTtlDraft} onChange={(event) => setDelegatedTtlDraft(event.target.value)} />
                 </label>
-                <label className="staff-field" style={{ flex: 1 }}>
+                <label className="staff-field staff-field-flex-1">
                   Audience
                   <input value={delegatedAudienceDraft} onChange={(event) => setDelegatedAudienceDraft(event.target.value)} />
                 </label>
@@ -1520,32 +1520,32 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                     <div className="pill">Spend day: {selectedAccount.spendDayKey || "-"}</div>
                   </div>
                   <div className="staff-actions-row">
-                    <label className="staff-field" style={{ flex: 1 }}>
+                    <label className="staff-field staff-field-flex-1">
                       Account status
                       <select value={accountStatusDraft} onChange={(event) => setAccountStatusDraft(event.target.value as "active" | "on_hold")}>
                         <option value="active">active</option>
                         <option value="on_hold">on_hold</option>
                       </select>
                     </label>
-                    <label className="staff-field" style={{ flex: 1 }}>
+                    <label className="staff-field staff-field-flex-1">
                       Independent mode enabled
                       <input type="checkbox" checked={accountIndependentDraft} onChange={(event) => setAccountIndependentDraft(event.target.checked)} />
                     </label>
-                    <label className="staff-field" style={{ flex: 1 }}>
+                    <label className="staff-field staff-field-flex-1">
                       Prepay required
                       <input type="checkbox" checked={accountPrepayDraft} onChange={(event) => setAccountPrepayDraft(event.target.checked)} />
                     </label>
                   </div>
                   <div className="staff-actions-row">
-                    <label className="staff-field" style={{ flex: 1 }}>
+                    <label className="staff-field staff-field-flex-1">
                       Daily spend cap (cents)
                       <input value={accountDailyCapDraft} onChange={(event) => setAccountDailyCapDraft(event.target.value)} />
                     </label>
-                    <label className="staff-field" style={{ flex: 1 }}>
+                    <label className="staff-field staff-field-flex-1">
                       Balance delta cents (+/-)
                       <input value={accountBalanceDeltaDraft} onChange={(event) => setAccountBalanceDeltaDraft(event.target.value)} />
                     </label>
-                    <label className="staff-field" style={{ flex: 2 }}>
+                    <label className="staff-field staff-field-flex-2">
                       Reason
                       <input value={accountReasonDraft} onChange={(event) => setAccountReasonDraft(event.target.value)} placeholder="Hold account pending fraud review" />
                     </label>
@@ -1575,7 +1575,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
           onChange={(event) => setCatalogJsonDraft(event.target.value)}
           rows={14}
           placeholder="Catalog configuration JSON"
-          style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
+          className="staff-mono-input"
         />
       </label>
       <div className="staff-actions-row">
@@ -1829,7 +1829,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
         <div className="pill">Rejected/Cancelled: {agentRequestKpis.blocked}</div>
       </div>
       <div className="staff-actions-row">
-        <label className="staff-field" style={{ flex: 2 }}>
+        <label className="staff-field staff-field-flex-2">
           Search
           <input
             value={agentRequestSearch}
@@ -1945,7 +1945,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 <span>Commission order: <code>{selectedAgentRequest.commissionOrderId || "-"}</code> · Payment: {selectedAgentRequest.commissionPaymentStatus || "-"}</span>
               </div>
               <div className="staff-actions-row">
-                <label className="staff-field" style={{ flex: 1 }}>
+                <label className="staff-field staff-field-flex-1">
                   Next status
                   <select
                     value={agentRequestNextStatus}
@@ -1961,7 +1961,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                     <option value="cancelled">cancelled</option>
                   </select>
                 </label>
-                <label className="staff-field" style={{ flex: 2 }}>
+                <label className="staff-field staff-field-flex-2">
                   Reason / internal note
                   <input
                     value={agentRequestReasonDraft}
@@ -1969,7 +1969,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                     placeholder="Queued for next bisque cycle"
                   />
                 </label>
-                <label className="staff-field" style={{ flex: 1 }}>
+                <label className="staff-field staff-field-flex-1">
                   Reason code
                   <select
                     value={agentRequestReasonCodeDraft}
@@ -1994,7 +1994,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
                 </button>
               </div>
               <div className="staff-actions-row">
-                <label className="staff-field" style={{ flex: 2 }}>
+                <label className="staff-field staff-field-flex-2">
                   Link batch ID
                   <input
                     value={agentRequestBatchDraft}
@@ -2060,7 +2060,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             <option value="error">error</option>
           </select>
         </label>
-        <label className="staff-field" style={{ flex: 1 }}>
+        <label className="staff-field staff-field-flex-1">
           Owner UID
           <input
             value={securityOwnerFilter}
@@ -2068,7 +2068,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             placeholder="optional owner uid"
           />
         </label>
-        <label className="staff-field" style={{ flex: 1 }}>
+        <label className="staff-field staff-field-flex-1">
           Actor UID
           <input
             value={securityActorFilter}
@@ -2076,7 +2076,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             placeholder="optional actor uid"
           />
         </label>
-        <label className="staff-field" style={{ flex: 1 }}>
+        <label className="staff-field staff-field-flex-1">
           Action
           <input
             value={securityActionFilter}
@@ -2173,7 +2173,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
 
       <div className="staff-subtitle">Denied events</div>
       <div className="staff-actions-row">
-        <label className="staff-field" style={{ flex: 1 }}>
+        <label className="staff-field staff-field-flex-1">
           Client filter
           <select
             value={deniedClientFilter}
@@ -2187,7 +2187,7 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
             ))}
           </select>
         </label>
-        <label className="staff-field" style={{ flex: 1 }}>
+        <label className="staff-field staff-field-flex-1">
           Action filter
           <select
             value={deniedActionFilter}
@@ -2275,3 +2275,4 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     </section>
   );
 }
+

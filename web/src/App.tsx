@@ -623,6 +623,7 @@ export default function App() {
   const [supportBusy, setSupportBusy] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [themeName, setThemeName] = useState<PortalThemeName>(() => readStoredPortalTheme());
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
   const prefersReducedMotion = usePrefersReducedMotion();
   const [enhancedMotion, setEnhancedMotion] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
@@ -662,6 +663,10 @@ export default function App() {
       document.documentElement.style.setProperty(key, String(value));
     }
   }, [themeName, prefersReducedMotion, enhancedMotion]);
+
+  useEffect(() => {
+    setAvatarLoadFailed(false);
+  }, [user?.photoURL]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1432,10 +1437,7 @@ export default function App() {
       <a className="skip-link" href="#main-content">
         Skip to main content
       </a>
-      <div
-        className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`}
-        style={PORTAL_THEMES[themeName] ?? PORTAL_THEMES[DEFAULT_PORTAL_THEME]}
-      >
+      <div className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`}>
         <aside
           id="portal-sidebar-nav"
           className={`sidebar ${mobileNavOpen ? "open" : ""} ${navCollapsed ? "collapsed" : ""}`}
@@ -1586,12 +1588,12 @@ export default function App() {
                       />
                     </svg>
                   </span>
-                  {user.photoURL ? (
+                  {user.photoURL && !avatarLoadFailed ? (
                     <img
                       src={user.photoURL}
                       alt={user.displayName ?? "User"}
-                      onError={(event) => {
-                        event.currentTarget.style.display = "none";
+                      onError={() => {
+                        setAvatarLoadFailed(true);
                       }}
                     />
                   ) : null}

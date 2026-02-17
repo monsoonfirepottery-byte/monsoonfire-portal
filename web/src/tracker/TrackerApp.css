@@ -7,6 +7,19 @@
   font-family: "Fraunces", "Georgia", serif;
 }
 
+.tracker-theme-memoria {
+  --text: rgba(255, 255, 255, 0.92);
+  --muted: rgba(255, 255, 255, 0.64);
+  --bg: #0b0d0f;
+  --surface: #121518;
+  --surface-2: #14181c;
+  --border: rgba(255, 255, 255, 0.10);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --shadow-soft: 0 6px 16px rgba(0, 0, 0, 0.28);
+  --accent: rgba(255, 255, 255, 0.92);
+  --body-font: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
 .tracker-nav {
   position: sticky;
   top: 0;

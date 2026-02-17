@@ -46,6 +46,9 @@ import type {
   BillingSummaryResponse as ContractsBillingSummaryResponse,
   PortalApiMeta,
   PortalFnName,
+  V1_RESERVATION_ASSIGN_STATION_FN,
+  V1_RESERVATION_CREATE_FN,
+  V1_RESERVATION_UPDATE_FN,
 } from "./portalContracts";
 import { getErrorCode, getErrorMessage } from "./portalContracts";
 
@@ -179,6 +182,14 @@ type CreatePortalApiOptions = {
 };
 
 const DEFAULT_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
+const RESERVATION_CREATE_FN = V1_RESERVATION_CREATE_FN;
+const RESERVATION_UPDATE_FN = V1_RESERVATION_UPDATE_FN;
+const RESERVATION_ASSIGN_STATION_FN = V1_RESERVATION_ASSIGN_STATION_FN;
+const LEGACY_RESERVATION_FN_PATHS: Record<string, string> = {
+  createReservation: RESERVATION_CREATE_FN,
+  updateReservation: RESERVATION_UPDATE_FN,
+  assignReservationStation: RESERVATION_ASSIGN_STATION_FN,
+};
 type ImportMetaEnvShape = { VITE_FUNCTIONS_BASE_URL?: string };
 const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
 
@@ -239,7 +250,8 @@ async function callFn<TReq, TResp>(
   fn: PortalFnName,
   args: PortalApiCallArgs<TReq>
 ): Promise<PortalApiCallResult<TResp>> {
-  const url = `${baseUrl.replace(/\/$/, "")}/${fn}`;
+  const route = LEGACY_RESERVATION_FN_PATHS[fn] ?? fn;
+  const url = `${baseUrl.replace(/\/$/, "")}/${route}`;
   const requestId = makeRequestId();
 
   const metaStart: PortalApiMeta = {
@@ -324,7 +336,7 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
     async createReservation(args) {
       return await callFn<CreateReservationRequest, CreateReservationResponse>(
         baseUrl,
-        "createReservation",
+        RESERVATION_CREATE_FN,
         args
       );
     },
@@ -332,7 +344,7 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
     async updateReservation(args) {
       return await callFn<UpdateReservationRequest, UpdateReservationResponse>(
         baseUrl,
-        "updateReservation",
+        RESERVATION_UPDATE_FN,
         args
       );
     },
@@ -340,7 +352,7 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
     async assignReservationStation(args) {
       return await callFn<AssignReservationStationRequest, AssignReservationStationResponse>(
         baseUrl,
-        "assignReservationStation",
+        RESERVATION_ASSIGN_STATION_FN,
         args
       );
     },

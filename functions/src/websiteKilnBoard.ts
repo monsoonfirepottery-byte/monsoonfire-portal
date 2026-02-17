@@ -8,20 +8,19 @@ import {
   Timestamp,
   enforceRateLimit,
 } from "./shared";
+import {
+  STATION_IDS,
+  STATION_LABELS,
+  STATION_FALLBACK_CAPACITY_HALF_SHELVES,
+  getStationCapacity,
+} from "./reservationStationConfig";
 
 const REGION = "us-central1";
 
-const KNOWN_STATION_LABELS: Record<string, string> = {
-  "studio-electric": "L&L eQ2827-3",
-  "studio-kiln-a": "Studio Kiln A",
-  "studio-kiln-b": "Studio Kiln B",
-  reductionraku: "Reduction Raku",
-  "reduction-raku": "Reduction Raku",
-};
-
 const DEFAULT_CONTROLLER = "Manual";
 const DEFAULT_STATION_NAME = "Kiln";
-const STATION_CAPACITY_HALF_SHELVES = 8;
+const ACTIVE_RESERVATION_STATUSES = ["REQUESTED", "CONFIRMED", "WAITLISTED"] as const;
+const MAX_ACTIVE_RESERVATIONS_FOR_BOARD = 500;
 
 type BoardReservationRow = {
   status: string;
@@ -51,6 +50,7 @@ type BoardStation = {
   queuedHalfShelves: number;
   loadingHalfShelves: number;
   loadedHalfShelves: number;
+  stationCapacity: number;
   nextFire: BoardFiringRow | null;
 };
 
@@ -142,7 +142,7 @@ function formatBoardDate(value: Date | null, now: Date): string {
 
 function buildStationLabel(stationId: string): string {
   const id = stationId.trim().toLowerCase();
-  return KNOWN_STATION_LABELS[id] || `${DEFAULT_STATION_NAME} ${id}`;
+  return STATION_LABELS[id] || `${DEFAULT_STATION_NAME} ${id}`;
 }
 
 function normalizeStationName(stationId: string, sourceName: string): string {
@@ -181,8 +181,8 @@ export const websiteKilnBoard = onRequest({ region: REGION, cors: true }, async 
         .get(),
       db
         .collection("reservations")
-        .orderBy("createdAt", "desc")
-        .limit(250)
+        .where("status", "in", ACTIVE_RESERVATION_STATUSES)
+        .limit(MAX_ACTIVE_RESERVATIONS_FOR_BOARD)
         .get(),
     ]);
 
@@ -200,6 +200,7 @@ export const websiteKilnBoard = onRequest({ region: REGION, cors: true }, async 
         id,
         name,
         controller,
+        stationCapacity: getStationCapacity(id),
         queuedHalfShelves: 0,
         loadingHalfShelves: 0,
         loadedHalfShelves: 0,
@@ -207,13 +208,14 @@ export const websiteKilnBoard = onRequest({ region: REGION, cors: true }, async 
       });
     });
 
-    const fallbackStationIds = ["studio-electric", "studio-kiln-a", "studio-kiln-b", "reduction-raku"];
+    const fallbackStationIds = new Set(STATION_IDS);
     for (const fallbackId of fallbackStationIds) {
       if (!stationMap.has(fallbackId)) {
         stationMap.set(fallbackId, {
           id: fallbackId,
           name: buildStationLabel(fallbackId),
           controller: DEFAULT_CONTROLLER,
+          stationCapacity: getStationCapacity(fallbackId),
           queuedHalfShelves: 0,
           loadingHalfShelves: 0,
           loadedHalfShelves: 0,
@@ -247,6 +249,7 @@ export const websiteKilnBoard = onRequest({ region: REGION, cors: true }, async 
           id: stationId,
           name: buildStationLabel(stationId),
           controller: DEFAULT_CONTROLLER,
+          stationCapacity: getStationCapacity(stationId),
           queuedHalfShelves: 0,
           loadingHalfShelves: 0,
           loadedHalfShelves: 0,
@@ -334,7 +337,7 @@ export const websiteKilnBoard = onRequest({ region: REGION, cors: true }, async 
           nextFirePlanned: `${statusText}: ${formatBoardDate(load.startAt, now)}`,
           readyForPickup: load.endAt ? `Ready near ${formatDateRange(load.endAt)}` : nextStart,
           notes: queueNotes,
-          capacity: `${totalActive}/${STATION_CAPACITY_HALF_SHELVES}`,
+          capacity: `${totalActive}/${station.stationCapacity}`,
         };
       }
 
@@ -345,19 +348,19 @@ export const websiteKilnBoard = onRequest({ region: REGION, cors: true }, async 
         nextFirePlanned: "Next load announced in portal",
         readyForPickup: totalActive > 0 ? `Currently ${totalActive} half-shelves active` : "2+ days after firing",
         notes: queueNotes,
-        capacity: `${totalActive}/${STATION_CAPACITY_HALF_SHELVES}`,
+        capacity: `${totalActive}/${station.stationCapacity}`,
       };
     });
 
     if (payloadStations.length === 0) {
       payloadStations.push({
-        name: KNOWN_STATION_LABELS["studio-electric"] ?? "L&L eQ2827-3",
+        name: STATION_LABELS["studio-electric"] ?? "L&L eQ2827-3",
         controller: DEFAULT_CONTROLLER,
         nextFireType: "Manual schedule",
         nextFirePlanned: "Next load announced in portal",
         readyForPickup: "—",
         notes: "No active queue right now.",
-        capacity: `0/${STATION_CAPACITY_HALF_SHELVES}`,
+        capacity: `0/${STATION_FALLBACK_CAPACITY_HALF_SHELVES}`,
       });
     }
 

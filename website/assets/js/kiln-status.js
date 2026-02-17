@@ -63,22 +63,28 @@
 
     try {
       let data = null;
-      let endpointError = null;
+      let lastError = null;
+      let lastTriedEndpoint = null;
       for (const endpoint of candidates) {
         try {
           const response = await fetch(endpoint, { cache: 'no-store' });
           if (!response.ok) {
-            throw new Error(`Kiln status fetch failed: ${response.status}`);
+            throw new Error(`HTTP ${response.status}`);
           }
           data = await response.json();
+          if (!data || !Array.isArray(data.kilns)) {
+            throw new Error("Malformed kiln payload");
+          }
+          lastTriedEndpoint = endpoint;
           break;
         } catch (err) {
-          endpointError = err instanceof Error ? err.message : String(err);
+          lastTriedEndpoint = endpoint;
+          lastError = err instanceof Error ? err.message : String(err);
         }
       }
 
       if (!data) {
-        throw new Error(endpointError ?? 'Kiln status unavailable');
+        throw new Error(`${lastTriedEndpoint ?? 'none'}: ${lastError ?? "unavailable"}`);
       }
 
       list.replaceChildren();
@@ -95,7 +101,11 @@
         updated.textContent = String(data.lastUpdated);
       }
     } catch (_err) {
-      setEmptyState('Manual status is currently unavailable.');
+      const message = _err instanceof Error ? _err.message : String(_err);
+      setEmptyState(`Manual status is currently unavailable. ${message}`);
+      if (updated) {
+        updated.textContent = `Error: ${message}`;
+      }
     }
   };
 

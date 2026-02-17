@@ -46,11 +46,14 @@ import type {
   BillingSummaryResponse as ContractsBillingSummaryResponse,
   PortalApiMeta,
   PortalFnName,
+} from "./portalContracts";
+import {
+  getErrorCode,
+  getErrorMessage,
   V1_RESERVATION_ASSIGN_STATION_FN,
   V1_RESERVATION_CREATE_FN,
   V1_RESERVATION_UPDATE_FN,
 } from "./portalContracts";
-import { getErrorCode, getErrorMessage } from "./portalContracts";
 
 /**
  * Re-export canonical contracts so existing imports keep working,

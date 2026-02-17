@@ -2800,6 +2800,11 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   font-size: 14px;
 }
 
+.new-thread select[multiple],
+.new-thread label:has(select[multiple]) {
+  display: none;
+}
+
 .new-thread select[multiple] {
   min-height: 110px;
 }

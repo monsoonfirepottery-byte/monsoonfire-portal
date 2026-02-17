@@ -1,4 +1,5 @@
 import { randomBytes, createHmac } from "crypto";
+import { Timestamp } from "firebase-admin/firestore";
 import { db, nowTs } from "./shared";
 
 export const INTEGRATION_TOKEN_PREFIX = "mf_pat_v1";
@@ -81,7 +82,13 @@ function toBase64Url(bytes: Buffer): string {
 function formatToken(tokenId: string, secret: string): string {
   return `${INTEGRATION_TOKEN_PREFIX}.${tokenId}.${secret}`;
 }
+function asRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
 
+function asTimestamp(value: unknown): Timestamp | null {
+  return value instanceof Timestamp ? value : null;
+}
 export async function createIntegrationToken(params: {
   ownerUid: string;
   label: string | null;
@@ -112,13 +119,17 @@ export async function createIntegrationToken(params: {
 
     try {
       await ref.create(doc);
-    } catch (e: any) {
-      const code = String(e?.code ?? "");
+    } catch (error: unknown) {
+      const code = String(
+        typeof error === "object" && error !== null && "code" in error
+          ? (error as { code?: unknown }).code
+          : ""
+      );
       // ALREADY_EXISTS
       if (code.includes("already-exists") || code.includes("ALREADY_EXISTS")) {
         continue;
       }
-      throw e;
+      throw error;
     }
 
     const record: IntegrationTokenPublic = {
@@ -147,15 +158,17 @@ export async function listIntegrationTokensForOwner(ownerUid: string): Promise<I
   const out: IntegrationTokenPublic[] = [];
 
   for (const doc of snap.docs) {
-    const data = doc.data() as any;
+    const data = asRecord(doc.data()) ? (doc.data() as Record<string, unknown>) : {};
     out.push({
       tokenId: doc.id,
       label: typeof data.label === "string" ? data.label : null,
-      scopes: Array.isArray(data.scopes) ? (data.scopes.filter((s: any) => typeof s === "string") as IntegrationTokenScope[]) : [],
-      createdAt: data.createdAt ?? nowTs(),
-      updatedAt: data.updatedAt ?? nowTs(),
-      lastUsedAt: data.lastUsedAt ?? null,
-      revokedAt: data.revokedAt ?? null,
+      scopes: Array.isArray(data?.scopes)
+        ? (data.scopes.filter((entry): entry is string => typeof entry === "string") as IntegrationTokenScope[])
+        : [],
+      createdAt: asTimestamp(data.createdAt) ?? nowTs(),
+      updatedAt: asTimestamp(data.updatedAt) ?? nowTs(),
+      lastUsedAt: asTimestamp(data.lastUsedAt),
+      revokedAt: asTimestamp(data.revokedAt),
     });
   }
 
@@ -173,7 +186,7 @@ export async function revokeIntegrationTokenForOwner(params: {
   const snap = await ref.get();
   if (!snap.exists) return { ok: false, message: "Token not found" };
 
-  const data = snap.data() as any;
+  const data = snap.data() as Record<string, unknown> | undefined;
   if (data?.ownerUid !== ownerUid) return { ok: false, message: "Forbidden" };
 
   const t = nowTs();

@@ -481,9 +481,12 @@ export default function DashboardView({
               <div className="snapshot-value">
                 {queueFillCount} / 8 half shelves
               </div>
-              <div className="meter">
-                <span style={{ width: `${queueFillRatio * 100}%` }} />
-              </div>
+              <progress
+                className="meter"
+                value={Math.round(queueFillRatio * 100)}
+                max={100}
+                aria-label="Queue fullness"
+              />
             </div>
             <div className="snapshot-block">
               <div className="snapshot-label">Average turnaround this month</div>
@@ -521,9 +524,13 @@ export default function DashboardView({
                     <div className="pill">{kiln.pill}</div>
                     <div className="list-meta">{kiln.etaLabel}</div>
                   </div>
-                  <div className="kiln-progress" aria-hidden="true">
-                    <span style={{ width: `${(kiln.progress ?? 0) * 100}%` }} />
-                  </div>
+                  <progress
+                    className="kiln-progress"
+                    value={Math.round((kiln.progress ?? 0) * 100)}
+                    max={100}
+                    aria-label="Kiln progress"
+                    aria-hidden="true"
+                  />
                 </div>
               ))
             )}

@@ -25,6 +25,6 @@ export const TIMELINE_EVENT_LABELS: Record<TimelineEventType, string> = {
   [TimelineEventType.CONTINUE_JOURNEY]: "Journey continued",
 };
 
-export function isTimelineEventType(v: any): v is TimelineEventType {
+export function isTimelineEventType(v: unknown): v is TimelineEventType {
   return Object.values(TimelineEventType).includes(v as TimelineEventType);
 }

@@ -11,6 +11,24 @@ export const adminAuth = getAuth();
 
 export { FieldValue, Timestamp };
 
+export type HeaderValue = string | string[] | undefined;
+export type HeaderRecord = Record<string, unknown>;
+export type RequestLike = {
+  headers?: HeaderRecord;
+  method?: string;
+  path?: string;
+  ip?: string;
+  body?: unknown;
+  __mfAuth?: unknown;
+  __mfAuthContext?: unknown;
+};
+export type ResponseLike = {
+  status: (statusCode: number) => ResponseLike;
+  json: (body: unknown) => void;
+  set: (name: string, value: string) => void;
+  send: (body: string) => void;
+};
+
 export function nowTs(): Timestamp {
   return Timestamp.now();
 }
@@ -62,8 +80,9 @@ function allowDevAdminToken(): boolean {
   );
 }
 
-export function applyCors(req: any, res: any): boolean {
-  const origin = typeof req.headers.origin === "string" ? req.headers.origin : "";
+export function applyCors(req: RequestLike, res: ResponseLike): boolean {
+  const headers = req.headers ?? {};
+  const origin = typeof headers.origin === "string" ? headers.origin : "";
   if (origin && !isOriginAllowed(origin)) {
     res.status(403).json({ ok: false, message: "Origin not allowed" });
     return true;
@@ -89,24 +108,44 @@ export function applyCors(req: any, res: any): boolean {
   return false;
 }
 
-export function readAdminTokenFromReq(req: any): string {
-  const header = req.headers["x-admin-token"];
+export function readAdminTokenFromReq(req: RequestLike): string {
+  const headers = req.headers ?? {};
+  const header = headers["x-admin-token"];
   if (typeof header === "string") return header.trim();
-  if (Array.isArray(header)) return (header[0] ?? "").trim();
+  if (Array.isArray(header)) {
+    const first = header[0];
+    if (typeof first === "string") return first.trim();
+    if (typeof first === "number") return String(first).trim();
+  }
   return "";
 }
 
 export function isStaffFromDecoded(decoded: DecodedIdToken | null | undefined): boolean {
   if (!decoded) return false;
-  if ((decoded as any).staff === true) return true;
-  const roles = (decoded as any).roles;
-  return Array.isArray(roles) && roles.includes("staff");
+  const decodedRecord = decoded as Record<string, unknown> | null | undefined;
+  const explicitStaff = decodedRecord?.staff;
+  if (typeof explicitStaff === "boolean") return explicitStaff;
+  const roles = Array.isArray(decodedRecord?.roles)
+    ? decodedRecord.roles
+        .filter((entry): entry is string => typeof entry === "string")
+        .filter((entry): entry is "staff" => entry === "staff")
+    : [];
+  return roles.length > 0;
 }
 
-export function parseAuthToken(req: any): string | null {
-  const header = req.headers?.authorization ?? req.headers?.Authorization;
+export function parseAuthToken(req: RequestLike): string | null {
+  const headers = req.headers ?? {};
+  const header = headers.authorization ?? headers.Authorization;
   const raw =
-    typeof header === "string" ? header : Array.isArray(header) ? header[0] : "";
+    typeof header === "string"
+      ? header
+      : Array.isArray(header)
+      ? typeof header[0] === "string"
+        ? header[0]
+        : typeof header[0] === "number"
+        ? String(header[0])
+        : ""
+      : "";
   if (!raw) return null;
 
   const parts = raw.trim().split(" ");
@@ -118,7 +157,7 @@ export function parseAuthToken(req: any): string | null {
 }
 
 export async function requireAuthUid(
-  req: any
+  req: RequestLike
 ): Promise<{ ok: true; uid: string; decoded: DecodedIdToken } | { ok: false; message: string }> {
   const token = parseAuthToken(req);
   if (!token) return { ok: false, message: "Missing Authorization header" };
@@ -126,7 +165,7 @@ export async function requireAuthUid(
   try {
     const checkRevoked = boolEnv("STRICT_TOKEN_REVOCATION_CHECK", false);
     const decoded = await adminAuth.verifyIdToken(token, checkRevoked);
-    (req as any).__mfAuth = decoded;
+    req.__mfAuth = decoded;
     return { ok: true, uid: decoded.uid, decoded };
   } catch {
     return { ok: false, message: "Invalid Authorization token" };
@@ -169,7 +208,7 @@ type SecurityAuditMode = "firebase" | "pat" | "delegated" | "unknown";
 type SecurityAuditOutcome = "ok" | "deny" | "error";
 
 export async function logSecurityEvent(params: {
-  req: any;
+  req: RequestLike;
   type: string;
   outcome: SecurityAuditOutcome;
   code?: string;
@@ -204,7 +243,7 @@ export async function logSecurityEvent(params: {
 }
 
 export async function logIntegrationTokenAudit(params: {
-  req: any;
+  req: RequestLike;
   type: "created" | "used" | "revoked" | "failed_auth" | "listed";
   tokenId?: string | null;
   ownerUid?: string | null;
@@ -395,9 +434,9 @@ export function createDelegatedAgentToken(params: {
 }
 
 export async function requireAuthContext(
-  req: any
+  req: RequestLike
 ): Promise<{ ok: true; ctx: AuthContext } | { ok: false; code: "UNAUTHENTICATED"; message: string }> {
-  const cached = (req as any).__mfAuthContext as AuthContext | undefined;
+  const cached = req.__mfAuthContext as AuthContext | undefined;
   if (cached && typeof cached.uid === "string" && cached.uid) return { ok: true, ctx: cached };
 
   const token = parseAuthToken(req);
@@ -489,7 +528,7 @@ export async function requireAuthContext(
         delegationId: payload.delegationId ?? null,
       },
     };
-    (req as any).__mfAuthContext = ctx;
+    req.__mfAuthContext = ctx;
 
     try {
       const t = nowTs();
@@ -545,11 +584,13 @@ export async function requireAuthContext(
       return { ok: false, code: "UNAUTHENTICATED", message: "Unauthorized" };
     }
 
-    const data = snap.data() as any;
+    const data = snap.data() as Record<string, unknown> | undefined;
     const expectedHash = typeof data?.secretHash === "string" ? data.secretHash : "";
     const ownerUid = typeof data?.ownerUid === "string" ? data.ownerUid : "";
     const revokedAt = data?.revokedAt ?? null;
-    const scopes = Array.isArray(data?.scopes) ? data.scopes.filter((s: any) => typeof s === "string") : [];
+    const scopes = Array.isArray(data?.scopes)
+      ? data.scopes.filter((entry): entry is string => typeof entry === "string")
+      : [];
 
     // Revoked or malformed records are treated as unauthorized.
     if (!expectedHash || !ownerUid || revokedAt) {
@@ -597,7 +638,7 @@ export async function requireAuthContext(
       tokenId: parsed.tokenId,
       delegated: null,
     };
-    (req as any).__mfAuthContext = ctx;
+    req.__mfAuthContext = ctx;
 
     // Best-effort usage marker (never block auth if this fails).
     try {
@@ -639,18 +680,18 @@ export async function requireAuthContext(
     tokenId: null,
     delegated: null,
   };
-  (req as any).__mfAuthContext = ctx;
+  req.__mfAuthContext = ctx;
   return { ok: true, ctx };
 }
 
-async function getAuthDecoded(req: any): Promise<DecodedIdToken | null> {
-  const cached = (req as any).__mfAuth as DecodedIdToken | undefined;
+async function getAuthDecoded(req: RequestLike): Promise<DecodedIdToken | null> {
+  const cached = req.__mfAuth as DecodedIdToken | undefined;
   if (cached) return cached;
   const token = parseAuthToken(req);
   if (!token) return null;
   try {
     const decoded = await adminAuth.verifyIdToken(token);
-    (req as any).__mfAuth = decoded;
+    req.__mfAuth = decoded;
     return decoded;
   } catch {
     return null;
@@ -658,7 +699,7 @@ async function getAuthDecoded(req: any): Promise<DecodedIdToken | null> {
 }
 
 export async function requireAdmin(
-  req: any
+  req: RequestLike
 ): Promise<{ ok: true; mode: "staff" | "dev" } | { ok: false; message: string }> {
   const decoded = await getAuthDecoded(req);
   if (!decoded) return { ok: false, message: "Unauthorized" };
@@ -725,8 +766,9 @@ export function evaluateRateLimitWindow(params: {
   };
 }
 
-function getClientIp(req: any): string {
-  const header = req.headers["x-forwarded-for"];
+function getClientIp(req: RequestLike): string {
+  const headers = req.headers ?? {};
+  const header = headers["x-forwarded-for"];
   if (typeof header === "string" && header.trim()) {
     return header.split(",")[0].trim();
   }
@@ -740,14 +782,14 @@ function hashClientIp(ip: string): string {
 }
 
 export async function enforceRateLimit(params: {
-  req: any;
+  req: RequestLike;
   key: string;
   max: number;
   windowMs: number;
 }): Promise<{ ok: true } | { ok: false; retryAfterMs: number }> {
   const { req, key, max, windowMs } = params;
-  const cachedCtx = (req as any).__mfAuthContext as AuthContext | undefined;
-  const uid = cachedCtx?.uid ?? (req as any).__mfAuth?.uid ?? "anon";
+  const cachedCtx = req.__mfAuthContext as AuthContext | undefined;
+  const uid = cachedCtx?.uid ?? (req.__mfAuth as { uid?: string } | undefined)?.uid ?? "anon";
   const ipHash = hashClientIp(getClientIp(req));
   const bucketKey = `${key}:${uid}:${ipHash}`;
   const now = Date.now();

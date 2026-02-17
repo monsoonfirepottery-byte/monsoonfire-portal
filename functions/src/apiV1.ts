@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { randomBytes } from "crypto";
 import { z } from "zod";
 import * as logger from "firebase-functions/logger";
@@ -14,6 +12,9 @@ import {
   parseBody,
   enforceRateLimit,
   type AuthContext,
+  safeString,
+  type RequestLike,
+  type ResponseLike,
 } from "./shared";
 import {
   assertActorAuthorized,
@@ -37,27 +38,30 @@ function boolEnv(name: string, fallback = false): boolean {
 const AUTO_COOLDOWN_ON_RATE_LIMIT = boolEnv("AUTO_COOLDOWN_ON_RATE_LIMIT", false);
 const AUTO_COOLDOWN_MINUTES = Math.max(1, Number(process.env.AUTO_COOLDOWN_MINUTES ?? 5) || 5);
 
-function readHeaderFirst(req: any, name: string): string {
+function readHeaderFirst(req: RequestLike, name: string): string {
   const key = name.toLowerCase();
   const raw = req.headers?.[key] ?? req.headers?.[name];
   if (typeof raw === "string") return raw.trim();
-  if (Array.isArray(raw) && raw[0]) return String(raw[0]).trim();
+  if (Array.isArray(raw)) {
+    const first = raw[0];
+    if (typeof first === "string" || typeof first === "number") return String(first).trim();
+  }
   return "";
 }
 
-function getRequestId(req: any): string {
+function getRequestId(req: RequestLike): string {
   const provided = readHeaderFirst(req, "x-request-id");
   if (provided) return provided.slice(0, 128);
   return `req_${randomBytes(12).toString("base64url")}`;
 }
 
-function jsonOk(res: any, requestId: string, data: unknown) {
+function jsonOk(res: ResponseLike, requestId: string, data: unknown) {
   res.set("x-request-id", requestId);
   res.status(200).json({ ok: true, requestId, data });
 }
 
 function jsonError(
-  res: any,
+  res: ResponseLike,
   requestId: string,
   httpStatus: number,
   code: string,
@@ -261,27 +265,51 @@ async function enforceDelegatedCooldownIfNeeded(params: {
   });
 }
 
+type BatchDoc = Record<string, unknown>;
+
+type BatchSummary = {
+  id: string;
+  ownerUid: string | null;
+  ownerDisplayName: string | null;
+  title: string | null;
+  intakeMode: string | null;
+  estimatedCostCents: number | null;
+  kilnName: string | null;
+  estimateNotes: string | null;
+  state: string | null;
+  isClosed: boolean | null;
+  createdAt: unknown;
+  updatedAt: unknown;
+  closedAt: unknown;
+  journeyRootBatchId: string | null;
+  journeyParentBatchId: string | null;
+};
+
 function isMissingIndexError(error: unknown): boolean {
   const msg = safeErrorMessage(error).toLowerCase();
   return msg.includes("requires an index") || (msg.includes("failed_precondition") && msg.includes("index"));
 }
 
-function canReadBatchDoc(params: { uid: string; isStaff: boolean; batch: any }): boolean {
+function canReadBatchDoc(params: { uid: string; isStaff: boolean; batch: BatchDoc }): boolean {
   const { uid, isStaff, batch } = params;
   if (isStaff) return true;
-  if (batch?.ownerUid === uid) return true;
+  const ownerUid = typeof batch.ownerUid === "string" ? batch.ownerUid : "";
+  if (ownerUid === uid) return true;
   return false;
 }
 
-function canReadBatchTimeline(params: { uid: string; isStaff: boolean; batch: any }): boolean {
+function canReadBatchTimeline(params: { uid: string; isStaff: boolean; batch: BatchDoc }): boolean {
   const { uid, isStaff, batch } = params;
   if (isStaff) return true;
-  if (batch?.ownerUid === uid) return true;
-  const editors = Array.isArray(batch?.editors) ? batch.editors : [];
+  const ownerUid = typeof batch.ownerUid === "string" ? batch.ownerUid : "";
+  if (ownerUid === uid) return true;
+  const editors = Array.isArray(batch.editors)
+    ? batch.editors.filter((entry): entry is string => typeof entry === "string")
+    : [];
   return editors.includes(uid);
 }
 
-function toBatchSummary(id: string, data: any) {
+function toBatchSummary(id: string, data: BatchDoc): BatchSummary {
   return {
     id,
     ownerUid: typeof data?.ownerUid === "string" ? data.ownerUid : null,
@@ -483,6 +511,50 @@ const ROUTE_SCOPE_HINTS: Record<string, string | null> = {
   "/v1/agent.requests.linkBatch": "requests:write",
   "/v1/agent.requests.createCommissionOrder": "requests:write",
 };
+const ALLOWED_API_V1_ROUTES = new Set<string>([
+  "/v1/hello",
+  "/v1/agent.account.get",
+  "/v1/agent.account.update",
+  "/v1/agent.catalog",
+  "/v1/agent.order.get",
+  "/v1/agent.orders.list",
+  "/v1/agent.pay",
+  "/v1/agent.quote",
+  "/v1/agent.requests.create",
+  "/v1/agent.requests.createCommissionOrder",
+  "/v1/agent.requests.linkBatch",
+  "/v1/agent.requests.listMine",
+  "/v1/agent.requests.listStaff",
+  "/v1/agent.requests.updateStatus",
+  "/v1/agent.reserve",
+  "/v1/agent.status",
+  "/v1/agent.terms.accept",
+  "/v1/agent.terms.get",
+  "/v1/batches.get",
+  "/v1/batches.list",
+  "/v1/batches.timeline.list",
+  "/v1/events.feed",
+  "/v1/firings.listUpcoming",
+]);
+
+const API_V1_ROUTE_AUTHZ_EVENTS: Record<string, { action: string; resourceType: string }> = {
+  "/v1/agent.order.get": {
+    action: "agent_order_authz",
+    resourceType: "agent_order",
+  },
+  "/v1/agent.orders.list": {
+    action: "agent_orders_list_authz",
+    resourceType: "agent_orders",
+  },
+  "/v1/agent.requests.updateStatus": {
+    action: "agent_request_status_update_authz",
+    resourceType: "agent_request",
+  },
+  "/v1/agent.status": {
+    action: "agent_status_authz",
+    resourceType: "agent_status",
+  },
+};
 const X1C_VALIDATION_VERSION = "2026-02-12.v1";
 const AGENT_ACCOUNT_DEFAULT_DAILY_SPEND_CAP_CENTS = 200_000;
 const AGENT_ACCOUNT_DEFAULTS = {
@@ -506,6 +578,158 @@ function readTimestampSeconds(value: unknown): number {
   return typeof (value as { seconds?: unknown } | undefined)?.seconds === "number"
     ? Number((value as { seconds: number }).seconds)
     : 0;
+}
+
+function readStringOrNull(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function readObjectOrEmpty(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry === "string") {
+      out.push(entry);
+    }
+  }
+  return out;
+}
+
+type TimelineEventRow = {
+  id: string;
+  type: string | null;
+  at: unknown;
+  actorUid: string | null;
+  actorName: string | null;
+  notes: string | null;
+  kilnId: string | null;
+  kilnName: string | null;
+  photos: string[];
+  pieceState: unknown;
+};
+
+type FiringRow = {
+  id: string;
+  kilnId: string | null;
+  title: string | null;
+  cycleType: string | null;
+  startAt: unknown;
+  endAt: unknown;
+  status: string | null;
+  confidence: string | null;
+  notes: string | null;
+  unloadedAt: unknown;
+  unloadedByUid: string | null;
+  unloadNote: string | null;
+  batchIds: string[];
+  pieceIds: string[];
+  kilnName: string | null;
+};
+
+type AgentRequestRow = {
+  id: string;
+  createdByUid: string | null;
+  createdByMode: string | null;
+  createdByTokenId: string | null;
+  title: string | null;
+  summary: string | null;
+  notes: string | null;
+  kind: string | null;
+  status: string | null;
+  linkedBatchId: string | null;
+  logisticsMode: string | null;
+  createdAt: unknown;
+  updatedAt: unknown;
+  staffAssignedToUid: string | null;
+  staffTriagedAt: unknown;
+  staffInternalNotes: string | null;
+  constraints: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  commissionOrderId: string | null;
+  commissionPaymentStatus: string | null;
+};
+
+export function toTimelineEventRow(id: string, row: Record<string, unknown>): TimelineEventRow {
+  return {
+    id,
+    type: readStringOrNull(row.type),
+    at: (row.at ?? null),
+    actorUid: readStringOrNull(row.actorUid),
+    actorName: readStringOrNull(row.actorName),
+    notes: readStringOrNull(row.notes),
+    kilnId: readStringOrNull(row.kilnId),
+    kilnName: readStringOrNull(row.kilnName),
+    photos: readStringArray(row.photos),
+    pieceState: row.pieceState ?? null,
+  };
+}
+
+export function toFiringRow(id: string, row: Record<string, unknown>): FiringRow {
+  return {
+    id,
+    kilnId: readStringOrNull(row.kilnId),
+    title: readStringOrNull(row.title),
+    cycleType: readStringOrNull(row.cycleType),
+    startAt: row.startAt ?? null,
+    endAt: row.endAt ?? null,
+    status: readStringOrNull(row.status),
+    confidence: readStringOrNull(row.confidence),
+    notes: readStringOrNull(row.notes),
+    unloadedAt: row.unloadedAt ?? null,
+    unloadedByUid: readStringOrNull(row.unloadedByUid),
+    unloadNote: readStringOrNull(row.unloadNote),
+    batchIds: readStringArray(row.batchIds),
+    pieceIds: readStringArray(row.pieceIds),
+    kilnName: readStringOrNull(row.kilnName),
+  };
+}
+
+export function toBatchDetailRow(id: string, row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = Object.create(null);
+  out.id = id;
+  if (!row || typeof row !== "object") {
+    return out;
+  }
+  for (const [key, value] of Object.entries(row)) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") {
+      continue;
+    }
+    if (value !== undefined) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+export function toAgentRequestRow(id: string, row: Record<string, unknown>): AgentRequestRow {
+  const logistics = readObjectOrEmpty(row.logistics);
+  const staff = readObjectOrEmpty(row.staff);
+  return {
+    id,
+    createdByUid: readStringOrNull(row.createdByUid),
+    createdByMode: readStringOrNull(row.createdByMode),
+    createdByTokenId: readStringOrNull(row.createdByTokenId),
+    title: readStringOrNull(row.title),
+    summary: readStringOrNull(row.summary),
+    notes: readStringOrNull(row.notes),
+    kind: readStringOrNull(row.kind),
+    status: readStringOrNull(row.status),
+    linkedBatchId: readStringOrNull(row.linkedBatchId),
+    logisticsMode: readStringOrNull(logistics.mode),
+    createdAt: row.createdAt ?? null,
+    updatedAt: row.updatedAt ?? null,
+    staffAssignedToUid: readStringOrNull(staff.assignedToUid),
+    staffTriagedAt: staff.triagedAt ?? null,
+    staffInternalNotes: readStringOrNull(staff.internalNotes),
+    constraints: readObjectOrEmpty(row.constraints),
+    metadata: readObjectOrEmpty(row.metadata),
+    commissionOrderId: readStringOrNull(row.commissionOrderId),
+    commissionPaymentStatus: readStringOrNull(row.commissionPaymentStatus),
+  };
 }
 
 function evaluateCommissionPolicy(payload: {
@@ -704,7 +928,7 @@ async function hasAcceptedAgentTerms(ctx: AuthContext, version: string): Promise
   return !snap.empty;
 }
 
-export async function handleApiV1(req: any, res: any) {
+export async function handleApiV1(req: RequestLike, res: ResponseLike) {
   if (applyCors(req, res)) return;
 
   const requestId = getRequestId(req);
@@ -750,7 +974,22 @@ export async function handleApiV1(req: any, res: any) {
   const isStaff = ctx.mode === "firebase" && isStaffFromDecoded(ctx.decoded);
 
   const path = typeof req.path === "string" ? req.path : "/";
-  const route = path.startsWith("/") ? path : `/${path}`;
+  const route = path.endsWith("/") && path.length > 1 ? path.slice(0, -1) : path.startsWith("/") ? path : `/${path}`;
+  if (!ALLOWED_API_V1_ROUTES.has(route)) {
+    await logAuditEvent({
+      req,
+      requestId,
+      action: "api_v1_route_reject",
+      resourceType: "api_v1_route",
+      resourceId: route,
+      result: "deny",
+      reasonCode: "ROUTE_NOT_FOUND",
+      ctx,
+      metadata: { resourceType: route.split(".")[0].replace("/v1/", "") },
+    });
+    jsonError(res, requestId, 404, "NOT_FOUND", "Unknown route", { route });
+    return;
+  }
 
   const rateLimit =
     route === "/v1/events.feed"
@@ -761,12 +1000,42 @@ export async function handleApiV1(req: any, res: any) {
           ? { max: 300, windowMs: 60_000 }
           : { max: 120, windowMs: 60_000 };
 
-  const rate = await enforceRateLimit({
-    req,
-    key: `apiV1:${route}`,
-    max: rateLimit.max,
-    windowMs: rateLimit.windowMs,
-  });
+  let rate: { ok: true } | { ok: false; retryAfterMs: number };
+  try {
+    rate = await enforceRateLimit({
+      req,
+      key: `apiV1:${route}`,
+      max: rateLimit.max,
+      windowMs: rateLimit.windowMs,
+    });
+  } catch (error: unknown) {
+    await logAuditEvent({
+      req,
+      requestId,
+      action: "api_v1_route_rate_limit_fallback",
+      resourceType: "api_v1_route",
+      resourceId: route,
+      ownerUid: ctx.uid,
+      result: "allow",
+      reasonCode: "RATE_LIMIT_CHECK_ERROR",
+      ctx,
+      metadata: {
+        scope: "route",
+        route,
+        mode: ctx.mode,
+        actorMode: ctx.mode,
+        error: safeErrorMessage(error),
+      },
+    });
+    logger.error("apiV1 route rate limit check failed, continuing in degraded mode", {
+      route,
+      requestId,
+      actorUid: ctx.uid,
+      mode: ctx.mode,
+      error: safeErrorMessage(error),
+    });
+    rate = { ok: true };
+  }
   if (!rate.ok) {
     logger.warn("apiV1 route rate limited", {
       route,
@@ -787,12 +1056,43 @@ export async function handleApiV1(req: any, res: any) {
       ctx.mode === "delegated"
         ? `agent:${ctx.delegated.agentClientId}:${ctx.uid}`
         : `actor:${ctx.uid}`;
-    const agentRate = await enforceRateLimit({
-      req,
-      key: `apiV1:${route}:${actorKey}`,
-      max: 90,
-      windowMs: 60_000,
-    });
+    let agentRate: { ok: true } | { ok: false; retryAfterMs: number };
+    try {
+      agentRate = await enforceRateLimit({
+        req,
+        key: `apiV1:${route}:${actorKey}`,
+        max: 90,
+        windowMs: 60_000,
+      });
+    } catch (error: unknown) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "api_v1_agent_rate_limit_fallback",
+        resourceType: "api_v1_route",
+        resourceId: route,
+        ownerUid: ctx.uid,
+        result: "allow",
+        reasonCode: "RATE_LIMIT_CHECK_ERROR",
+        ctx,
+        metadata: {
+          scope: "agent",
+          route,
+          actorMode: ctx.mode,
+          actorKey,
+          error: safeErrorMessage(error),
+        },
+      });
+      logger.error("apiV1 agent actor rate limit check failed, continuing in degraded mode", {
+        route,
+        requestId,
+        actorUid: ctx.uid,
+        actorKey,
+        mode: ctx.mode,
+        error: safeErrorMessage(error),
+      });
+      agentRate = { ok: true };
+    }
     if (!agentRate.ok) {
       logger.warn("apiV1 agent actor rate limited", {
         route,
@@ -876,6 +1176,7 @@ export async function handleApiV1(req: any, res: any) {
 
     const hintedScope = ROUTE_SCOPE_HINTS[route] ?? null;
     if (hintedScope) {
+      const routeAuthzEvent = API_V1_ROUTE_AUTHZ_EVENTS[route];
       const routeAuthz = await assertActorAuthorized({
         req,
         ctx,
@@ -888,8 +1189,8 @@ export async function handleApiV1(req: any, res: any) {
         await logAuditEvent({
           req,
           requestId,
-          action: "api_v1_route_authz",
-          resourceType: "api_v1_route",
+          action: routeAuthzEvent?.action ?? "api_v1_route_authz",
+          resourceType: routeAuthzEvent?.resourceType ?? "api_v1_route",
           resourceId: route,
           ownerUid: ctx.uid,
           result: "deny",
@@ -983,7 +1284,7 @@ export async function handleApiV1(req: any, res: any) {
     if (route === "/v1/agent.account.get") {
       const scopeCheck = requireScopes(ctx, ["status:read"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
       const parsed = parseBody(agentAccountGetSchema, req.body);
@@ -1001,11 +1302,11 @@ export async function handleApiV1(req: any, res: any) {
       }
       if (ctx.mode !== "firebase") {
         if (ctx.mode === "delegated" && targetClientId !== ctx.delegated.agentClientId) {
-          jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+          jsonError(res, requestId, 403, "FORBIDDEN", "Forbidden");
           return;
         }
       } else if (!isStaff) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+        jsonError(res, requestId, 403, "FORBIDDEN", "Forbidden");
         return;
       }
 
@@ -1016,7 +1317,7 @@ export async function handleApiV1(req: any, res: any) {
 
     if (route === "/v1/agent.account.update") {
       if (!(ctx.mode === "firebase" && isStaff)) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+        jsonError(res, requestId, 403, "FORBIDDEN", "Forbidden");
         return;
       }
       const parsed = parseBody(agentAccountUpdateSchema, req.body);
@@ -1085,7 +1386,7 @@ export async function handleApiV1(req: any, res: any) {
     if (route === "/v1/batches.list") {
       const scopeCheck = requireScopes(ctx, ["batches:read"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
 
@@ -1132,7 +1433,7 @@ export async function handleApiV1(req: any, res: any) {
 
       const active = activeSnap.docs.map((d) => toBatchSummary(d.id, d.data()));
 
-      let closed: any[] | undefined;
+      let closed: BatchSummary[] | null = null;
       if (includeClosed) {
         const closedSnap = await db
           .collection("batches")
@@ -1141,7 +1442,7 @@ export async function handleApiV1(req: any, res: any) {
           .orderBy("closedAt", "desc")
           .limit(limit)
           .get();
-        closed = closedSnap.docs.map((d) => toBatchSummary(d.id, d.data()));
+        closed = closedSnap.docs.map((d) => toBatchSummary(d.id, d.data() as Record<string, unknown>));
       }
 
       jsonOk(res, requestId, { ownerUid, active, closed: includeClosed ? closed ?? [] : null });
@@ -1151,7 +1452,7 @@ export async function handleApiV1(req: any, res: any) {
     if (route === "/v1/batches.get") {
       const scopeCheck = requireScopes(ctx, ["batches:read"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
 
@@ -1169,7 +1470,7 @@ export async function handleApiV1(req: any, res: any) {
         return;
       }
 
-      const data = snap.data() as any;
+      const data = snap.data() as BatchDoc;
       const ownerUid = typeof data?.ownerUid === "string" ? data.ownerUid : "";
       const authz = await assertActorAuthorized({
         req,
@@ -1195,14 +1496,14 @@ export async function handleApiV1(req: any, res: any) {
         return;
       }
 
-      jsonOk(res, requestId, { batch: { id: snap.id, ...data } });
+      jsonOk(res, requestId, { batch: toBatchDetailRow(snap.id, data) });
       return;
     }
 
     if (route === "/v1/batches.timeline.list") {
       const scopeCheck = requireScopes(ctx, ["timeline:read"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
 
@@ -1220,7 +1521,7 @@ export async function handleApiV1(req: any, res: any) {
         jsonError(res, requestId, 404, "NOT_FOUND", "Batch not found");
         return;
       }
-      const batch = batchSnap.data() as any;
+      const batch = batchSnap.data() as BatchDoc;
       const ownerUid = typeof batch?.ownerUid === "string" ? batch.ownerUid : "";
       const authz = await assertActorAuthorized({
         req,
@@ -1254,7 +1555,7 @@ export async function handleApiV1(req: any, res: any) {
         .limit(limit)
         .get();
 
-      const events = eventsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      const events = eventsSnap.docs.map((d) => toTimelineEventRow(d.id, d.data() as Record<string, unknown>));
       jsonOk(res, requestId, { batchId, events });
       return;
     }
@@ -1262,7 +1563,7 @@ export async function handleApiV1(req: any, res: any) {
     if (route === "/v1/firings.listUpcoming") {
       const scopeCheck = requireScopes(ctx, ["firings:read"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
 
@@ -1282,7 +1583,7 @@ export async function handleApiV1(req: any, res: any) {
         .limit(limit)
         .get();
 
-      const firings = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      const firings = snap.docs.map((d) => toFiringRow(d.id, d.data() as Record<string, unknown>));
       jsonOk(res, requestId, { firings, now });
       return;
     }
@@ -1290,7 +1591,7 @@ export async function handleApiV1(req: any, res: any) {
     if (route === "/v1/events.feed") {
       const scopeCheck = requireScopes(ctx, ["events:read"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
 
@@ -1301,8 +1602,27 @@ export async function handleApiV1(req: any, res: any) {
       }
 
       const targetUid = parsed.data.uid ? String(parsed.data.uid) : ctx.uid;
-      if (targetUid !== ctx.uid && !isStaff) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+      const eventsFeedAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid: targetUid,
+        scope: "events:read",
+        resource: `owner:${targetUid}`,
+        allowStaff: true,
+      });
+      if (!eventsFeedAuthz.ok) {
+        await logAuditEvent({
+          req,
+          requestId,
+          action: "events_feed_authz",
+          resourceType: "agent_events",
+          resourceId: targetUid,
+          ownerUid: targetUid,
+          result: "deny",
+          reasonCode: eventsFeedAuthz.code,
+          ctx,
+        });
+        jsonError(res, requestId, eventsFeedAuthz.httpStatus, eventsFeedAuthz.code, eventsFeedAuthz.message);
         return;
       }
 
@@ -1323,7 +1643,7 @@ export async function handleApiV1(req: any, res: any) {
     if (route === "/v1/agent.catalog") {
       const scopeCheck = requireScopes(ctx, ["catalog:read"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
 
@@ -1352,7 +1672,7 @@ export async function handleApiV1(req: any, res: any) {
     if (route === "/v1/agent.quote") {
       const scopeCheck = requireScopes(ctx, ["quote:write"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
 
@@ -1488,7 +1808,7 @@ export async function handleApiV1(req: any, res: any) {
     if (route === "/v1/agent.reserve") {
       const scopeCheck = requireScopes(ctx, ["reserve:write"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
 
@@ -1503,11 +1823,6 @@ export async function handleApiV1(req: any, res: any) {
         jsonError(res, requestId, 503, "UNAVAILABLE", "Agent reservation capability is disabled");
         return;
       }
-      const delegatedPolicy = await loadDelegatedRiskPolicy(ctx);
-      const independentAccount =
-        delegatedPolicy && ctx.mode === "delegated"
-          ? await getOrInitAgentAccount(delegatedPolicy.agentClientId)
-          : null;
 
       const quoteId = String(parsed.data.quoteId).trim();
       const quoteRef = db.collection("agentQuotes").doc(quoteId);
@@ -1517,6 +1832,21 @@ export async function handleApiV1(req: any, res: any) {
       const holdMinutes = parsed.data.holdMinutes ?? 60;
       const holdExpiresAt = Timestamp.fromMillis(Date.now() + holdMinutes * 60_000);
       const reservationMetadata = parsed.data.metadata ?? {};
+
+      type AgentReserveTxFailure = {
+        ok: false;
+        httpStatus: number;
+        code: string;
+        message: string;
+        ownerUid: string | null;
+      };
+      type AgentReserveTxSuccess = {
+        ok: true;
+        reservationId: string;
+        reservation: Record<string, unknown>;
+        idempotentReplay: boolean;
+      };
+      type AgentReserveTxResult = AgentReserveTxFailure | AgentReserveTxSuccess;
 
       const txResult = await db.runTransaction(async (tx) => {
         const [quoteSnap, existingReservationSnap] = await Promise.all([
@@ -1530,9 +1860,28 @@ export async function handleApiV1(req: any, res: any) {
         const quote = quoteSnap.data() as Record<string, unknown>;
 
         const quoteOwnerUid = typeof quote.uid === "string" ? quote.uid : "";
-        if (quoteOwnerUid !== ctx.uid && !isStaff) {
-          throw new Error("FORBIDDEN");
+        const reserveAuthz = await assertActorAuthorized({
+          req,
+          ctx,
+          ownerUid: quoteOwnerUid,
+          scope: "reserve:write",
+          resource: `quote:${quoteId}`,
+          allowStaff: true,
+        });
+        if (!reserveAuthz.ok) {
+          return {
+            ok: false,
+            httpStatus: reserveAuthz.httpStatus,
+            code: reserveAuthz.code,
+            message: reserveAuthz.message,
+            ownerUid: quoteOwnerUid || null,
+          };
         }
+        const delegatedPolicy = await loadDelegatedRiskPolicy(ctx);
+        const independentAccount =
+          delegatedPolicy && ctx.mode === "delegated"
+            ? await getOrInitAgentAccount(delegatedPolicy.agentClientId)
+            : null;
 
         const quoteStatus = typeof quote.status === "string" ? quote.status : "quoted";
         if (quoteStatus !== "quoted" && quoteStatus !== "reserved") {
@@ -1562,6 +1911,7 @@ export async function handleApiV1(req: any, res: any) {
         if (existingReservationSnap.exists) {
           const existing = existingReservationSnap.data() as Record<string, unknown>;
           return {
+            ok: true,
             reservationId: existingReservationSnap.id,
             reservation: existing,
             idempotentReplay: true,
@@ -1626,7 +1976,25 @@ export async function handleApiV1(req: any, res: any) {
         });
 
         return { reservationId, reservation, idempotentReplay: false };
-      });
+      }) as AgentReserveTxResult;
+
+      if (!txResult.ok) {
+        if (txResult.httpStatus === 403 && txResult.ownerUid) {
+          await logAuditEvent({
+            req,
+            requestId,
+            action: "agent_reserve_authz",
+            resourceType: "agent_quote",
+            resourceId: quoteId,
+            ownerUid: txResult.ownerUid,
+            result: "deny",
+            reasonCode: txResult.code,
+            ctx,
+          });
+        }
+        jsonError(res, requestId, txResult.httpStatus, txResult.code, txResult.message);
+        return;
+      }
 
       jsonOk(res, requestId, {
         reservationId: txResult.reservationId,
@@ -1652,7 +2020,7 @@ export async function handleApiV1(req: any, res: any) {
     if (route === "/v1/agent.pay") {
       const scopeCheck = requireScopes(ctx, ["pay:write"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
 
@@ -1682,8 +2050,27 @@ export async function handleApiV1(req: any, res: any) {
         jsonError(res, requestId, 500, "INTERNAL", "Reservation missing owner");
         return;
       }
-      if (reservationUid !== ctx.uid && !isStaff) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+      const reservationAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid: reservationUid,
+        scope: "pay:write",
+        resource: `reservation:${reservationId}`,
+        allowStaff: true,
+      });
+      if (!reservationAuthz.ok) {
+        await logAuditEvent({
+          req,
+          requestId,
+          action: "agent_pay_authz",
+          resourceType: "agent_order",
+          resourceId: reservationId,
+          ownerUid: reservationUid,
+          result: "deny",
+          reasonCode: reservationAuthz.code,
+          ctx,
+        });
+        jsonError(res, requestId, reservationAuthz.httpStatus, reservationAuthz.code, reservationAuthz.message);
         return;
       }
 
@@ -1807,13 +2194,17 @@ export async function handleApiV1(req: any, res: any) {
             order: existing,
           };
         }
+        const delegatedPolicyForAccount = independentAccount && delegatedPolicy ? delegatedPolicy : null;
         const accountRef =
-          independentAccount && delegatedPolicy
-            ? db.collection("agentAccounts").doc(delegatedPolicy.agentClientId)
+          delegatedPolicyForAccount
+            ? db.collection("agentAccounts").doc(delegatedPolicyForAccount.agentClientId)
             : null;
         const accountSnap = accountRef ? await tx.get(accountRef) : null;
         const accountRow = accountSnap
-          ? normalizeAgentAccountRow(delegatedPolicy!.agentClientId, accountSnap.exists ? (accountSnap.data() as Record<string, unknown>) : null)
+          ? normalizeAgentAccountRow(
+              safeString(delegatedPolicyForAccount?.agentClientId),
+              accountSnap.exists ? (accountSnap.data() as Record<string, unknown>) : null
+            )
           : null;
         const accountActive = accountRow ? withDailySpendWindow(accountRow) : null;
 
@@ -1927,7 +2318,7 @@ export async function handleApiV1(req: any, res: any) {
     if (route === "/v1/agent.status") {
       const scopeCheck = requireScopes(ctx, ["status:read"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
 
@@ -1982,8 +2373,27 @@ export async function handleApiV1(req: any, res: any) {
         jsonError(res, requestId, 404, "NOT_FOUND", "No matching status resource found");
         return;
       }
-      if (ownerUid !== ctx.uid && !isStaff) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+      const statusAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid,
+        scope: "status:read",
+        resource: `owner:${ownerUid}`,
+        allowStaff: true,
+      });
+      if (!statusAuthz.ok) {
+        await logAuditEvent({
+          req,
+          requestId,
+          action: "agent_status_authz",
+          resourceType: "agent_status",
+          resourceId: orderId || reservationId || quoteId || ownerUid,
+          ownerUid,
+          result: "deny",
+          reasonCode: statusAuthz.code,
+          ctx,
+        });
+        jsonError(res, requestId, statusAuthz.httpStatus, statusAuthz.code, statusAuthz.message);
         return;
       }
 
@@ -2060,7 +2470,7 @@ export async function handleApiV1(req: any, res: any) {
     if (route === "/v1/agent.order.get") {
       const scopeCheck = requireScopes(ctx, ["status:read"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
 
@@ -2083,8 +2493,27 @@ export async function handleApiV1(req: any, res: any) {
         jsonError(res, requestId, 500, "INTERNAL", "Order missing owner");
         return;
       }
-      if (ownerUid !== ctx.uid && !isStaff) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+      const orderAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid,
+        scope: "status:read",
+        resource: `order:${orderId}`,
+        allowStaff: true,
+      });
+      if (!orderAuthz.ok) {
+        await logAuditEvent({
+          req,
+          requestId,
+          action: "agent_order_authz",
+          resourceType: "agent_order",
+          resourceId: orderId,
+          ownerUid,
+          result: "deny",
+          reasonCode: orderAuthz.code,
+          ctx,
+        });
+        jsonError(res, requestId, orderAuthz.httpStatus, orderAuthz.code, orderAuthz.message);
         return;
       }
 
@@ -2131,7 +2560,7 @@ export async function handleApiV1(req: any, res: any) {
     if (route === "/v1/agent.orders.list") {
       const scopeCheck = requireScopes(ctx, ["status:read"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
 
@@ -2142,8 +2571,27 @@ export async function handleApiV1(req: any, res: any) {
       }
 
       const targetUid = parsed.data.uid ? String(parsed.data.uid) : ctx.uid;
-      if (targetUid !== ctx.uid && !isStaff) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+      const ordersListAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid: targetUid,
+        scope: "status:read",
+        resource: `owner:${targetUid}`,
+        allowStaff: true,
+      });
+      if (!ordersListAuthz.ok) {
+        await logAuditEvent({
+          req,
+          requestId,
+          action: "agent_orders_list_authz",
+          resourceType: "agent_orders",
+          resourceId: targetUid,
+          ownerUid: targetUid,
+          result: "deny",
+          reasonCode: ordersListAuthz.code,
+          ctx,
+        });
+        jsonError(res, requestId, ordersListAuthz.httpStatus, ordersListAuthz.code, ordersListAuthz.message);
         return;
       }
 
@@ -2195,7 +2643,7 @@ export async function handleApiV1(req: any, res: any) {
     if (route === "/v1/agent.requests.create") {
       const scopeCheck = requireScopes(ctx, ["requests:write"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
 
@@ -2360,7 +2808,7 @@ export async function handleApiV1(req: any, res: any) {
     if (route === "/v1/agent.requests.listMine") {
       const scopeCheck = requireScopes(ctx, ["requests:read"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
       const parsed = parseBody(agentRequestListMineSchema, req.body);
@@ -2374,7 +2822,7 @@ export async function handleApiV1(req: any, res: any) {
       const rows = snap.docs
         .map((docSnap) => {
           const data = docSnap.data() as Record<string, unknown>;
-          return { id: docSnap.id, ...data } as Record<string, unknown> & { id: string };
+          return toAgentRequestRow(docSnap.id, data);
         })
         .filter((row) => includeClosed || !CLOSED_AGENT_REQUEST_STATUSES.has(String(row.status ?? "")))
         .sort((a, b) => readTimestampSeconds(b.updatedAt) - readTimestampSeconds(a.updatedAt))
@@ -2396,11 +2844,11 @@ export async function handleApiV1(req: any, res: any) {
     if (route === "/v1/agent.requests.listStaff") {
       const scopeCheck = requireScopes(ctx, ["requests:read"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
       if (!isStaff) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+        jsonError(res, requestId, 403, "FORBIDDEN", "Forbidden");
         return;
       }
       const parsed = parseBody(agentRequestListStaffSchema, req.body);
@@ -2415,7 +2863,7 @@ export async function handleApiV1(req: any, res: any) {
       const rows = snap.docs
         .map((docSnap) => {
           const data = docSnap.data() as Record<string, unknown>;
-          return { id: docSnap.id, ...data } as Record<string, unknown> & { id: string };
+          return toAgentRequestRow(docSnap.id, data);
         })
         .filter((row) => (statusFilter === "all" ? true : String(row.status ?? "") === statusFilter))
         .filter((row) => (kindFilter === "all" ? true : String(row.kind ?? "") === kindFilter))
@@ -2440,7 +2888,7 @@ export async function handleApiV1(req: any, res: any) {
     if (route === "/v1/agent.requests.updateStatus") {
       const scopeCheck = requireScopes(ctx, ["requests:write"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
       const parsed = parseBody(agentRequestUpdateStatusSchema, req.body);
@@ -2486,8 +2934,31 @@ export async function handleApiV1(req: any, res: any) {
       }
 
       const ownerCanCancel = ownerUid === ctx.uid && toStatus === "cancelled";
+      const requestAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid,
+        scope: "requests:write",
+        resource: `agent_request:${parsed.data.requestId}`,
+        allowStaff: true,
+      });
+      if (!requestAuthz.ok) {
+        await logAuditEvent({
+          req,
+          requestId,
+          action: "agent_request_status_update_authz",
+          resourceType: "agent_request",
+          resourceId: parsed.data.requestId,
+          ownerUid,
+          result: "deny",
+          reasonCode: requestAuthz.code,
+          ctx,
+        });
+        jsonError(res, requestId, requestAuthz.httpStatus, requestAuthz.code, requestAuthz.message);
+        return;
+      }
       if (!isStaff && !ownerCanCancel) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+        jsonError(res, requestId, 403, "FORBIDDEN", "Forbidden");
         return;
       }
 
@@ -2551,11 +3022,11 @@ export async function handleApiV1(req: any, res: any) {
     if (route === "/v1/agent.requests.linkBatch") {
       const scopeCheck = requireScopes(ctx, ["requests:write"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
       if (!isStaff) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+        jsonError(res, requestId, 403, "FORBIDDEN", "Forbidden");
         return;
       }
       const parsed = parseBody(agentRequestLinkBatchSchema, req.body);
@@ -2606,11 +3077,11 @@ export async function handleApiV1(req: any, res: any) {
     if (route === "/v1/agent.requests.createCommissionOrder") {
       const scopeCheck = requireScopes(ctx, ["requests:write"]);
       if (!scopeCheck.ok) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", scopeCheck.message);
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
         return;
       }
       if (!isStaff) {
-        jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+        jsonError(res, requestId, 403, "FORBIDDEN", "Forbidden");
         return;
       }
       const parsed = parseBody(agentRequestCreateCommissionOrderSchema, req.body);
@@ -2749,7 +3220,7 @@ export async function handleApiV1(req: any, res: any) {
       return;
     }
     if (msg === "FORBIDDEN") {
-      jsonError(res, requestId, 403, "UNAUTHORIZED", "Forbidden");
+      jsonError(res, requestId, 403, "FORBIDDEN", "Forbidden");
       return;
     }
     if (msg === "QUOTE_NOT_RESERVABLE") {
@@ -2761,11 +3232,11 @@ export async function handleApiV1(req: any, res: any) {
       return;
     }
     if (msg === "DELEGATED_CLIENT_NOT_FOUND") {
-      jsonError(res, requestId, 403, "UNAUTHORIZED", "Delegated client not found");
+      jsonError(res, requestId, 403, "FORBIDDEN", "Delegated client not found");
       return;
     }
     if (msg === "DELEGATED_CLIENT_INACTIVE") {
-      jsonError(res, requestId, 403, "UNAUTHORIZED", "Delegated client is not active");
+      jsonError(res, requestId, 403, "FORBIDDEN", "Delegated client is not active");
       return;
     }
     if (msg === "DELEGATED_CLIENT_COOLDOWN") {
@@ -2799,3 +3270,4 @@ export async function handleApiV1(req: any, res: any) {
     jsonError(res, requestId, 500, "INTERNAL", "Request failed", { message: msg });
   }
 }
+

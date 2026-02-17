@@ -984,7 +984,7 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
         >
           Clear
         </button>
-        <span className="staff-mini" style={{ marginInlineEnd: 8 }}>Selected: {selectedCount}</span>
+        <span className="staff-mini staff-mini-inline-gap">Selected: {selectedCount}</span>
         <select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value as ReportStatus)}>
           <option value="open">Open</option>
           <option value="triaged">Triaged</option>
@@ -1567,3 +1567,4 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
     </section>
   );
 }
+

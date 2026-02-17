@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { GoogleAuthProvider, onIdTokenChanged, signInAnonymously, signInWithPopup, signOut, type User } from "firebase/auth";
 import { auth } from "../firebase";
 import { createFunctionsClient } from "../api/functionsClient";
-import { PORTAL_THEMES } from "../theme/themes";
 import {
   addTicketActivity,
   createEpic,
@@ -1558,7 +1557,7 @@ function TrackerAppInner() {
  */
 export default function TrackerApp() {
   return (
-    <div className="tracker-theme-memoria" style={PORTAL_THEMES.memoria}>
+    <div className="tracker-theme-memoria">
       <TrackerErrorBoundary>
         <TrackerAppInner />
       </TrackerErrorBoundary>

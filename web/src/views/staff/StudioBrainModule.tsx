@@ -545,7 +545,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
       </div>
       {policy.killSwitch.rationale ? <div className="staff-note">Last rationale: {policy.killSwitch.rationale}</div> : null}
       <div className="staff-actions-row">
-        <label className="staff-field" style={{ flex: 1 }}>
+        <label className="staff-field staff-field-flex-1">
           Kill switch rationale
           <input value={killSwitchRationale} onChange={(event) => setKillSwitchRationale(event.target.value)} />
         </label>
@@ -580,7 +580,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
         </label>
       </div>
       <div className="staff-actions-row">
-        <label className="staff-field" style={{ flex: 1 }}>
+        <label className="staff-field staff-field-flex-1">
           Exemption justification
           <input value={exemptionJustification} onChange={(event) => setExemptionJustification(event.target.value)} />
         </label>
@@ -640,7 +640,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
         </table>
       </div>
       <div className="staff-actions-row">
-        <label className="staff-field" style={{ flex: 1 }}>
+        <label className="staff-field staff-field-flex-1">
           Exemption revoke reason
           <input value={exemptionRevokeReason} onChange={(event) => setExemptionRevokeReason(event.target.value)} />
         </label>
@@ -870,11 +870,11 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
         </table>
       </div>
       <div className="staff-actions-row">
-        <label className="staff-field" style={{ flex: 1 }}>
+        <label className="staff-field staff-field-flex-1">
           Approval rationale
           <input value={approvalRationale} onChange={(event) => setApprovalRationale(event.target.value)} />
         </label>
-        <label className="staff-field" style={{ flex: 1 }}>
+        <label className="staff-field staff-field-flex-1">
           Reopen reason (admin only)
           <input value={reopenReason} onChange={(event) => setReopenReason(event.target.value)} />
         </label>
@@ -882,7 +882,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
 
       <div className="staff-subtitle">Quota buckets</div>
       <div className="staff-actions-row">
-        <label className="staff-field" style={{ flex: 1 }}>
+        <label className="staff-field staff-field-flex-1">
           Reset reason
           <input value={resetReason} onChange={(event) => setResetReason(event.target.value)} />
         </label>
@@ -996,7 +996,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
       </div>
       <div className="staff-subtitle">Marketing drafts</div>
       <div className="staff-actions-row">
-        <label className="staff-field" style={{ flex: 1 }}>
+        <label className="staff-field staff-field-flex-1">
           Review rationale
           <input value={marketingReviewRationale} onChange={(event) => setMarketingReviewRationale(event.target.value)} />
         </label>
@@ -1012,7 +1012,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
             <option value="policy_confirmed_illegal">policy_confirmed_illegal</option>
           </select>
         </label>
-        <label className="staff-field" style={{ flex: 1 }}>
+        <label className="staff-field staff-field-flex-1">
           Decision rationale
           <input value={intakeDecisionRationale} onChange={(event) => setIntakeDecisionRationale(event.target.value)} />
         </label>
@@ -1246,3 +1246,4 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
     </section>
   );
 }
+

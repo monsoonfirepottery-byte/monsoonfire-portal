@@ -416,15 +416,32 @@
 }
 
 .space-meter-track {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
   height: 8px;
   border-radius: 999px;
   background: var(--surface-2);
   overflow: hidden;
 }
 
-.space-meter-fill {
-  height: 100%;
+.space-meter-track::-webkit-progress-bar {
+  background: var(--surface-2);
+  border-radius: 999px;
+}
+
+.space-meter-track::-webkit-progress-value {
   background: linear-gradient(90deg, rgba(180, 79, 53, 0.9), rgba(196, 106, 80, 0.8));
+  border-radius: 999px;
+}
+
+.space-meter-track::-moz-progress-bar {
+  background: linear-gradient(90deg, rgba(180, 79, 53, 0.9), rgba(196, 106, 80, 0.8));
+  border-radius: 999px;
+}
+
+.space-meter-fill {
+  display: none;
 }
 
 .space-meter-label {

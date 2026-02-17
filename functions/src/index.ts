@@ -110,6 +110,12 @@ function requestIdFromReq(req: any): string {
 function legacyReservationCompatHandler(route: string) {
   return onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
     const apiV1Req = Object.create(req) as Record<string, unknown>;
+    Object.defineProperty(apiV1Req, "__routeFamily", {
+      value: "legacy",
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    });
     Object.defineProperty(apiV1Req, "path", {
       value: route,
       writable: true,

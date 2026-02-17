@@ -1,6 +1,8 @@
 {
   "scripts": {
     "bootstrap": "npm install && npm --prefix functions install && npm --prefix studio-brain install && npm --prefix web install",
+    "build:web": "npm --prefix web run build",
+    "build:functions": "npm --prefix functions run build",
     "website:smoke:playwright": "node ./scripts/website-playwright-smoke.mjs",
     "website:smoke:playwright:prod": "node ./scripts/website-playwright-smoke.mjs --base-url https://monsoonfire.com --output-dir output/playwright/prod",
     "website:smoke:playwright:install": "npx playwright install chromium",

@@ -1,6 +1,8 @@
-import { createClient, type RedisClientType } from "redis";
+import { createClient } from "redis";
 import type { Logger } from "../config/logger";
 import { withRetry } from "./retry";
+
+type RedisClient = ReturnType<typeof createClient>;
 
 export type RedisConfig = {
   host: string;
@@ -18,7 +20,7 @@ export type RedisHealth = {
 };
 
 export type RedisConnection = {
-  client: RedisClientType;
+  client: RedisClient;
   healthcheck: () => Promise<RedisHealth>;
   close: () => Promise<void>;
 };

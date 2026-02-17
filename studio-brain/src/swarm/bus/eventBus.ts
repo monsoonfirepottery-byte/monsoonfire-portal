@@ -3,6 +3,8 @@ import type { RedisConnection } from "../../connectivity/redis";
 import { withRetry } from "../../connectivity/retry";
 import type { SwarmEvent } from "../models";
 
+export type PublishableSwarmEvent = Omit<SwarmEvent, "createdAt" | "id"> & { id?: string };
+
 export type EventBusHealth = {
   ok: boolean;
   latencyMs: number;
@@ -14,13 +16,13 @@ export type EventBusSubscription = {
 };
 
 export type SwarmEventBus = {
-  publish: (event: Omit<SwarmEvent, "id" | "createdAt">) => Promise<string>;
+  publish: (event: PublishableSwarmEvent) => Promise<string>;
   subscribe: (handler: (event: SwarmEvent) => Promise<void>) => Promise<EventBusSubscription>;
   healthcheck: () => Promise<EventBusHealth>;
   close: () => Promise<void>;
 };
 
-type RedisStreamRawField = [string | Buffer, string | Buffer][];
+type RedisStreamRawField = (string | Buffer)[];
 
 type RedisStreamEntry = [string, RedisStreamRawField];
 
@@ -89,12 +91,14 @@ export async function createRedisStreamEventBus(
     const records: Array<{ id: string; event: SwarmEvent }> = [];
     for (const entryRaw of entries) {
       if (!Array.isArray(entryRaw) || entryRaw.length < 2) continue;
-      const [idRaw, fieldsRaw] = entryRaw as RedisStreamEntry;
+      const idRaw = (entryRaw as unknown[])[0];
+      const fieldsRaw = (entryRaw as unknown[])[1];
+      if (typeof idRaw !== "string" && !Buffer.isBuffer(idRaw)) continue;
       const id = toStringValue(idRaw);
       if (!Array.isArray(fieldsRaw)) continue;
       for (let i = 0; i + 1 < fieldsRaw.length; i += 2) {
-        const key = toStringValue(fieldsRaw[i]);
-        const value = toStringValue(fieldsRaw[i + 1]);
+        const key = toStringValue(fieldsRaw[i] as string | Buffer);
+        const value = toStringValue(fieldsRaw[i + 1] as string | Buffer);
         if (key !== "event") continue;
         records.push({ id, event: parseEventPayload(value) });
       }
@@ -102,7 +106,7 @@ export async function createRedisStreamEventBus(
     return records;
   };
 
-  const publish = async (event: Omit<SwarmEvent, "id" | "createdAt">): Promise<string> => {
+  const publish = async (event: PublishableSwarmEvent): Promise<string> => {
     const now = new Date().toISOString();
     const payload: SwarmEvent = {
       ...event,

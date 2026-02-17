@@ -20,7 +20,8 @@ const CsvFromString = z
       .split(",")
       .map((entry) => entry.trim())
       .filter(Boolean)
-  );
+  )
+  .pipe(z.array(z.string()));
 
 const EnvSchema = z.object({
   STUDIO_BRAIN_PORT: z.coerce.number().int().min(1).max(65535).default(8787),
@@ -84,13 +85,13 @@ const EnvSchema = z.object({
   STUDIO_BRAIN_SKILL_REQUIRE_PINNING: BoolFromString.default(true),
   STUDIO_BRAIN_SKILL_REQUIRE_CHECKSUM: BoolFromString.default(true),
   STUDIO_BRAIN_SKILL_REQUIRE_SIGNATURE: BoolFromString.default(false),
-  STUDIO_BRAIN_SKILL_ALLOWLIST: CsvFromString.default(""),
-  STUDIO_BRAIN_SKILL_DENYLIST: CsvFromString.default(""),
+  STUDIO_BRAIN_SKILL_ALLOWLIST: CsvFromString.default(() => []),
+  STUDIO_BRAIN_SKILL_DENYLIST: CsvFromString.default(() => []),
   STUDIO_BRAIN_SKILL_SANDBOX_ENABLED: BoolFromString.default(true),
   STUDIO_BRAIN_SKILL_SANDBOX_EGRESS_DENY: BoolFromString.default(true),
-  STUDIO_BRAIN_SKILL_SANDBOX_EGRESS_ALLOWLIST: CsvFromString.default(""),
+  STUDIO_BRAIN_SKILL_SANDBOX_EGRESS_ALLOWLIST: CsvFromString.default(() => []),
   STUDIO_BRAIN_SKILL_SANDBOX_ENTRY_TIMEOUT_MS: z.coerce.number().int().min(250).max(120_000).default(15_000),
-  STUDIO_BRAIN_SKILL_RUNTIME_ALLOWLIST: CsvFromString.default(""),
+  STUDIO_BRAIN_SKILL_RUNTIME_ALLOWLIST: CsvFromString.default(() => []),
 
   STUDIO_BRAIN_ENABLE_WRITE_EXECUTION: BoolFromString.default(false),
   STUDIO_BRAIN_REQUIRE_APPROVAL_FOR_EXTERNAL_WRITES: BoolFromString.default(true),

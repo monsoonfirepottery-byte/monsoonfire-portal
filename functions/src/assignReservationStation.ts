@@ -9,6 +9,7 @@ import {
   parseBody,
   requireAdmin,
   safeString,
+  type RequestLike,
 } from "./shared";
 import { getStationCapacity, isKnownStationId, normalizeStationId } from "./reservationStationConfig";
 
@@ -182,12 +183,10 @@ export const assignReservationStation = onRequest(
     const assignedStationId = normalizeStationId(parsed.data.assignedStationId);
     const queueClass = normalizeQueueClass(parsed.data.queueClass);
     const requiredResources = normalizeRequiredResources(parsed.data.requiredResources);
-    const reqWithAuth = req as unknown as {
-      __mfAuthContext?: { uid?: unknown };
-      __mfAuth?: { uid?: string };
-    };
-    const actorContext = reqWithAuth.__mfAuthContext;
-    const actorUid = reqWithAuth.__mfAuth?.uid || safeString(actorContext?.uid);
+    const requestLike = req as RequestLike;
+    const actorContext = requestLike.__mfAuthContext as { uid?: unknown } | undefined;
+    const actorUidCandidate = (requestLike.__mfAuth as { uid?: unknown } | undefined)?.uid ?? actorContext?.uid;
+    const actorUid = actorUidCandidate ? safeString(actorUidCandidate) : null;
     const actorRole: "staff" | "dev" = auth.mode === "staff" ? "staff" : "dev";
 
     if (!isKnownStationId(assignedStationId)) {

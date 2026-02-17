@@ -2796,36 +2796,25 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
 
           const currentAssignedStation = normalizeStationId(row.assignedStationId);
           const currentQueueClass = normalizeQueueClass(row.queueClass);
-          const currentRequiredResources = normalizeRequiredResources(row.requiredResources) ?? {
-            kilnProfile: null,
-            rackCount: null,
-            specialHandling: [] as string[],
-          };
+          const currentRequiredResources = normalizeRequiredResources(row.requiredResources);
           const requestedQueueClass = normalizeQueueClass(parsed.data.queueClass);
+          const hasRequiredResourcesRequest = parsed.data.requiredResources !== undefined;
           const requestedRequiredResources =
-            parsed.data.requiredResources === undefined
-              ? undefined
-              : parsed.data.requiredResources === null
+            hasRequiredResourcesRequest
+              ? parsed.data.requiredResources === null
                 ? null
-                : (normalizeRequiredResources(parsed.data.requiredResources) ?? {
-                  kilnProfile: null,
-                  rackCount: null,
-                  specialHandling: [] as string[],
-                });
-          const requiredResources =
-            requestedRequiredResources === undefined ? currentRequiredResources : requestedRequiredResources;
+                : normalizeRequiredResources(parsed.data.requiredResources)
+              : currentRequiredResources;
+          const requiredResources = requestedRequiredResources;
 
           const queueClassChanged =
             parsed.data.queueClass !== undefined && requestedQueueClass !== currentQueueClass;
-          let resourcesChanged = false;
-          if (parsed.data.requiredResources !== undefined) {
-            if (requestedRequiredResources === null) {
-              resourcesChanged = row.requiredResources != null;
-            } else {
-              const requestedNormalized = requestedRequiredResources ?? currentRequiredResources;
-              resourcesChanged = !isSameRequiredResources(currentRequiredResources, requestedNormalized);
-            }
-          }
+          const resourcesChanged =
+            hasRequiredResourcesRequest
+              ? requestedRequiredResources === null
+                ? row.requiredResources != null
+                : !isSameRequiredResources(currentRequiredResources, requestedRequiredResources)
+              : false;
           const stationChanged = currentAssignedStation !== assignedStationId;
 
           const requestedNoop =

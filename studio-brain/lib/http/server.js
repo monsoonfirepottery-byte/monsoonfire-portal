@@ -76,6 +76,12 @@ function firstHeader(value) {
         return value[0];
     return undefined;
 }
+function parseTraceId(traceparent) {
+    if (!traceparent)
+        return null;
+    const parts = traceparent.split("-");
+    return parts.length >= 2 ? parts[1] ?? null : null;
+}
 function ensureFirebaseAdminForAuth() {
     if ((0, app_1.getApps)().length > 0)
         return;
@@ -100,7 +106,7 @@ async function verifyFirebaseAuthHeader(authorizationHeader) {
     };
 }
 function startHttpServer(params) {
-    const { host, port, logger, stateStore, eventStore, requireFreshSnapshotForReady = false, readyMaxSnapshotAgeMinutes = 240, pgCheck = postgres_1.checkPgConnection, getRuntimeStatus, getRuntimeMetrics, capabilityRuntime, allowedOrigins = [], adminToken, verifyFirebaseAuth = verifyFirebaseAuthHeader, endpointRateLimits, abuseQuotaStore = new policy_1.InMemoryQuotaStore(), pilotWriteExecutor = null, } = params;
+    const { host, port, logger, stateStore, eventStore, requireFreshSnapshotForReady = false, readyMaxSnapshotAgeMinutes = 240, pgCheck = postgres_1.checkPgConnection, getRuntimeStatus, getRuntimeMetrics, capabilityRuntime, allowedOrigins = [], adminToken, verifyFirebaseAuth = verifyFirebaseAuthHeader, backendHealth, endpointRateLimits, abuseQuotaStore = new policy_1.InMemoryQuotaStore(), pilotWriteExecutor = null, } = params;
     const rateLimits = {
         createProposalPerMinute: Math.max(1, endpointRateLimits?.createProposalPerMinute ?? 20),
         executeProposalPerMinute: Math.max(1, endpointRateLimits?.executeProposalPerMinute ?? 20),
@@ -147,13 +153,31 @@ function startHttpServer(params) {
         }
     };
     const server = node_http_1.default.createServer(async (req, res) => {
-        const requestId = node_crypto_1.default.randomUUID();
+        const requestId = firstHeader(req.headers["x-request-id"]) ??
+            firstHeader(req.headers["x-trace-id"]) ??
+            firstHeader(req.headers["traceparent"]) ??
+            node_crypto_1.default.randomUUID();
         const startedAt = Date.now();
+        const traceParent = firstHeader(req.headers["traceparent"]);
+        const traceId = parseTraceId(traceParent);
         const method = req.method ?? "GET";
         const url = new node_url_1.URL(req.url ?? "/", `http://${host}:${port}`);
         const originHeader = req.headers.origin ?? null;
         const corsHeaders = corsHeadersFor(originHeader);
         let statusCode = 500;
+        const requestMeta = {
+            requestId,
+            method,
+            path: url.pathname,
+            traceId: traceId ?? requestId,
+            traceParent,
+        };
+        res.setHeader("x-request-id", requestId);
+        res.setHeader("x-trace-id", requestMeta.traceId);
+        if (traceParent) {
+            res.setHeader("traceparent", traceParent);
+        }
+        logger.debug("studio_brain_http_request_start", requestMeta);
         try {
             const enforceRateLimit = async (bucket, limit, windowSeconds, actorId, capabilityId = null) => {
                 const decision = await abuseQuotaStore.consume(bucket, limit, windowSeconds, Date.now());
@@ -191,6 +215,13 @@ function startHttpServer(params) {
                 statusCode = 200;
                 res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
                 res.end(JSON.stringify({ ok: true, service: "studio-brain", at: new Date().toISOString() }));
+                return;
+            }
+            if (method === "GET" && url.pathname === "/health/dependencies") {
+                const dependencyHealth = backendHealth ? await backendHealth() : { at: new Date().toISOString(), ok: true, checks: [] };
+                statusCode = dependencyHealth.ok ? 200 : 503;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify(dependencyHealth));
                 return;
             }
             if (method === "GET" && url.pathname === "/readyz") {
@@ -1656,9 +1687,7 @@ function startHttpServer(params) {
         catch (error) {
             statusCode = 500;
             logger.error("studio_brain_http_handler_error", {
-                requestId,
-                method,
-                path: url.pathname,
+                ...requestMeta,
                 message: error instanceof Error ? error.message : String(error),
             });
             res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
@@ -1666,9 +1695,7 @@ function startHttpServer(params) {
         }
         finally {
             logger.info("studio_brain_http_request", {
-                requestId,
-                method,
-                path: url.pathname,
+                ...requestMeta,
                 statusCode,
                 durationMs: Date.now() - startedAt,
             });

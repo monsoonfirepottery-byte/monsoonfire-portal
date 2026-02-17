@@ -59,8 +59,8 @@ type StageHistoryEntry = {
 };
 
 type ReservationStage = {
-  status: string | null;
-  loadStatus: string | null;
+  status: ReservationStatus | null;
+  loadStatus: LoadStatus | null;
 };
 
 function normalizeStatus(value: unknown): ReservationStatus | null {
@@ -181,13 +181,13 @@ export const updateReservation = onRequest(
         }
 
         const data = reservationSnap.data() as Record<string, unknown>;
-        const existingStatus = normalizeStatus(data.status) ?? "REQUESTED";
-        const existingLoadStatus = normalizeLoadStatus(data.loadStatus);
-        const current: ReservationStage = {
-          status: existingStatus,
-          loadStatus: existingLoadStatus,
-        };
-        const nextStatus: ReservationStatus | null = requestedStatus ?? existingStatus;
+    const existingStatus: ReservationStatus = normalizeStatus(data.status) ?? "REQUESTED";
+    const existingLoadStatus = normalizeLoadStatus(data.loadStatus);
+    const current: ReservationStage = {
+      status: existingStatus,
+      loadStatus: existingLoadStatus,
+    };
+    const nextStatus: ReservationStatus = requestedStatus ?? existingStatus;
         const nextLoadStatus: LoadStatus | null = requestedLoadStatus ?? existingLoadStatus;
 
         const statusProvided = requestedStatus != null;

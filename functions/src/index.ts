@@ -107,6 +107,19 @@ function requestIdFromReq(req: any): string {
   return `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function legacyReservationCompatHandler(route: string) {
+  return onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+    const apiV1Req = Object.create(req) as Record<string, unknown>;
+    Object.defineProperty(apiV1Req, "path", {
+      value: route,
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    });
+    await handleApiV1(apiV1Req as Parameters<typeof handleApiV1>[0], res);
+  });
+}
+
 async function bestEffortEmitIntegrationEvent(params: {
   uid: string;
   type: string;
@@ -2342,12 +2355,12 @@ export const readyForPickup = onRequest({ region: REGION }, async (req, res) => 
   res.status(200).json({ ok: true });
 });
 
-export { createReservation } from "./createReservation";
-export { updateReservation } from "./updateReservation";
 export { normalizeTimelineEventTypes } from "./normalizeTimelineEventTypes";
 export { createMaterialsCheckoutSession, listMaterialsProducts, seedMaterialsCatalog, stripeWebhook } from "./materials";
 export { importLibraryIsbns } from "./library";
-export { assignReservationStation } from "./assignReservationStation";
+export const createReservation = legacyReservationCompatHandler("/v1/reservations.create");
+export const updateReservation = legacyReservationCompatHandler("/v1/reservations.update");
+export const assignReservationStation = legacyReservationCompatHandler("/v1/reservations.assignStation");
 export {
   getJukeboxConfig,
   listTracks,

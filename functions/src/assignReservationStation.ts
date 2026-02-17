@@ -10,17 +10,9 @@ import {
   requireAdmin,
   safeString,
 } from "./shared";
+import { getStationCapacity, isKnownStationId } from "./reservationStationConfig";
 
 const REGION = "us-central1";
-
-const STATION_CAPACITY_HALF_SHELVES = {
-  "studio-kiln-a": 8,
-  "studio-kiln-b": 8,
-  "studio-electric": 8,
-  "reduction-raku": 8,
-} as const;
-
-type StationId = keyof typeof STATION_CAPACITY_HALF_SHELVES;
 
 type StageHistoryEntry = {
   fromStation: string | null;
@@ -198,7 +190,7 @@ export const assignReservationStation = onRequest(
     const actorUid = req.__mfAuth?.uid || safeString(actorContext?.uid);
     const actorRole: "staff" | "dev" = auth.mode === "staff" ? "staff" : "dev";
 
-    if (!Object.prototype.hasOwnProperty.call(STATION_CAPACITY_HALF_SHELVES, assignedStationId)) {
+    if (!isKnownStationId(assignedStationId)) {
       res.status(400).json({
         ok: false,
         code: "INVALID_STATION",
@@ -230,8 +222,6 @@ export const assignReservationStation = onRequest(
         const currentAssignedStation = normalizeStation(data.assignedStationId);
         const currentQueueClass = normalizeQueueClass(data.queueClass);
         const currentRequiredResources = normalizeRequiredResources(data.requiredResources);
-        const currentCapacityRelevant = isCapacityRelevantLoadStatus(data.loadStatus);
-
         const requestedQueueClass = queueClass === null ? null : queueClass;
         const requestedRequiredResources =
           parsed.data.requiredResources === undefined ? currentRequiredResources : requiredResources;
@@ -243,7 +233,7 @@ export const assignReservationStation = onRequest(
           !isSameRequiredResources(currentRequiredResources, requestedRequiredResources);
         const requestedNoop = sameStation && !queueClassChanged && !resourcesChanged;
 
-        const stationCapacity = STATION_CAPACITY_HALF_SHELVES[assignedStationId as StationId];
+        const stationCapacity = getStationCapacity(assignedStationId);
         let stationUsedAfter: number | null = null;
 
         if (!sameStation) {
@@ -254,10 +244,11 @@ export const assignReservationStation = onRequest(
             .map((docSnap) => {
               const raw = docSnap.data() as Record<string, unknown>;
               if (docSnap.id === reservationId) return 0;
-              const isActive = normalizeQueueClass(raw.status) !== "cancelled" && currentCapacityRelevant;
+              const isActive =
+                normalizeQueueClass(raw.status) !== "cancelled" &&
+                isCapacityRelevantLoadStatus(raw.loadStatus);
               if (!isActive) return 0;
-              const nextLoadStatus = raw.loadStatus;
-              if (!isCapacityRelevantLoadStatus(nextLoadStatus)) return 0;
+              if (!isCapacityRelevantLoadStatus(raw.loadStatus)) return 0;
               return estimateHalfShelves(raw);
             })
             .reduce((total, each) => total + each, 0);

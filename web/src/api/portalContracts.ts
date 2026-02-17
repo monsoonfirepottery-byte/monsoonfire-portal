@@ -1,6 +1,10 @@
 // web/src/api/portalContracts.ts
 // Canonical Portal API + timeline contracts (web + native clients)
 
+export const V1_RESERVATION_CREATE_FN = "apiV1/v1/reservations.create";
+export const V1_RESERVATION_UPDATE_FN = "apiV1/v1/reservations.update";
+export const V1_RESERVATION_ASSIGN_STATION_FN = "apiV1/v1/reservations.assignStation";
+
 export type PortalFnName =
   | "createBatch"
   | "pickedUpAndClose"
@@ -8,6 +12,9 @@ export type PortalFnName =
   | "createReservation"
   | "updateReservation"
   | "assignReservationStation"
+  | typeof V1_RESERVATION_CREATE_FN
+  | typeof V1_RESERVATION_UPDATE_FN
+  | typeof V1_RESERVATION_ASSIGN_STATION_FN
   | "listMaterialsProducts"
   | "createMaterialsCheckoutSession"
   | "seedMaterialsCatalog"

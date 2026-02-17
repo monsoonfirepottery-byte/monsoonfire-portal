@@ -25,6 +25,7 @@ import {
 import { listIntegrationEvents } from "./integrationEvents";
 import { getAgentServiceCatalogConfig } from "./agentCatalog";
 import { getAgentOpsConfig } from "./agentCommerce";
+import { getStationCapacity, isKnownStationId, type ReservationStationId } from "./reservationStationConfig";
 
 function boolEnv(name: string, fallback = false): boolean {
   const raw = process.env[name];
@@ -507,15 +508,6 @@ const reservationsAssignStationSchema = z.object({
     .nullable(),
 });
 
-const STATION_CAPACITY_HALF_SHELVES = {
-  "studio-kiln-a": 8,
-  "studio-kiln-b": 8,
-  "studio-electric": 8,
-  "reduction-raku": 8,
-} as const;
-
-type StationId = keyof typeof STATION_CAPACITY_HALF_SHELVES;
-
 type ReservationStatus = "REQUESTED" | "CONFIRMED" | "WAITLISTED" | "CANCELLED" | string;
 type ReservationLoadStatus = "queued" | "loading" | "loaded" | null;
 
@@ -594,9 +586,9 @@ function normalizeStationId(value: unknown): string | null {
   return next.length ? next : null;
 }
 
-function isValidStation(value: string | null): value is StationId {
+function isValidStation(value: string | null): value is ReservationStationId {
   if (!value) return false;
-  return Object.prototype.hasOwnProperty.call(STATION_CAPACITY_HALF_SHELVES, value);
+  return isKnownStationId(value);
 }
 
 function stageForCurrentState(status: ReservationStatus | null, loadStatus: ReservationLoadStatus): string {
@@ -2738,7 +2730,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           const requestedNoop =
             !stationChanged && !queueClassChanged && !resourcesChanged;
 
-          const stationCapacity = STATION_CAPACITY_HALF_SHELVES[assignedStationId as StationId];
+          const stationCapacity = getStationCapacity(assignedStationId);
           let stationUsedAfter: number | null = null;
 
           if (stationChanged) {

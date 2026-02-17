@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "node ./scripts/dev.mjs",
     "build": "tsc -b && vite build",
-    "lint": "eslint .",
+    "perf:chunks": "node ./scripts/check-chunk-budgets.mjs",
+    "a11y:smoke": "node ./scripts/a11y-smoke.mjs",
+    "lint": "eslint . --max-warnings=0",
     "test": "node ./node_modules/vitest/vitest.mjs --configLoader runner",
     "dev:all": "node ./scripts/dev.mjs",
     "test:run": "node ./node_modules/vitest/vitest.mjs run --configLoader runner",
@@ -19,6 +21,9 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
@@ -27,6 +32,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "jsdom": "^28.1.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.3.1",

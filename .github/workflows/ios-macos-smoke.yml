@@ -1,0 +1,81 @@
+name: iOS macOS Smoke
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  ios-smoke:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare report paths
+        run: |
+          mkdir -p artifacts
+          echo "date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" > artifacts/ios-smoke-report.txt
+
+      - name: Build iOS target (xcodeproj when available)
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          projects=(ios/*.xcodeproj)
+          workspaces=(ios/*.xcworkspace)
+          if [ ${#workspaces[@]} -gt 0 ]; then
+            workspace="${workspaces[0]}"
+            scheme="$(xcodebuild -list -workspace "$workspace" | awk '/Schemes:/{getline; gsub(/^ +| +$/, ""); print; exit}')"
+            if [ -z "$scheme" ]; then
+              echo "No scheme found in workspace" | tee -a artifacts/ios-smoke-report.txt
+              exit 1
+            fi
+            xcodebuild \
+              -workspace "$workspace" \
+              -scheme "$scheme" \
+              -destination 'platform=iOS Simulator,name=iPhone 15' \
+              -configuration Debug \
+              build | tee artifacts/ios-build.log
+          elif [ ${#projects[@]} -gt 0 ]; then
+            project="${projects[0]}"
+            scheme="$(xcodebuild -list -project "$project" | awk '/Schemes:/{getline; gsub(/^ +| +$/, ""); print; exit}')"
+            if [ -z "$scheme" ]; then
+              echo "No scheme found in project" | tee -a artifacts/ios-smoke-report.txt
+              exit 1
+            fi
+            xcodebuild \
+              -project "$project" \
+              -scheme "$scheme" \
+              -destination 'platform=iOS Simulator,name=iPhone 15' \
+              -configuration Debug \
+              build | tee artifacts/ios-build.log
+          else
+            sdk_path="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+            xcrun swiftc \
+              -sdk "$sdk_path" \
+              -target x86_64-apple-ios15.0-simulator \
+              -typecheck ios/*.swift 2>&1 | tee artifacts/ios-typecheck.log
+          fi
+
+      - name: Smoke report summary
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          {
+            echo "result=${{ job.status }}"
+            echo "runner=${{ runner.os }}"
+            echo "event=${{ github.event_name }}"
+          } >> artifacts/ios-smoke-report.txt
+
+      - name: Upload iOS smoke artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-smoke-artifacts
+          path: artifacts/

@@ -1,6 +1,5 @@
 // src/components/ActiveBatchCard.tsx
 import type { Batch } from "../types/domain";
-import { styles as S } from "../ui/styles";
 
 type Props = {
   batch: Batch;
@@ -17,10 +16,13 @@ function formatMoney(cents?: number) {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-function formatTs(ts: any) {
+type TimestampLike = { toDate?: () => Date };
+
+function formatTs(ts: unknown) {
   if (!ts) return "";
   try {
-    return typeof ts.toDate === "function" ? ts.toDate().toLocaleString() : String(ts);
+    const value = ts as TimestampLike;
+    return typeof value.toDate === "function" ? value.toDate().toLocaleString() : String(ts);
   } catch {
     return "";
   }
@@ -39,31 +41,26 @@ export default function ActiveBatchCard({
   const status = (batch.status as string) || (batch.intakeMode as string) || "—";
 
   return (
-    <div style={S.batchCard}>
-      <div style={{ minWidth: 360 }}>
-        <div style={{ fontSize: 18, fontWeight: 800 }}>{batch.title || "Batch"}</div>
-        <div style={{ ...S.muted, fontSize: 13, marginTop: 3 }}>
+    <div className="panel active-batch-card">
+      <div className="active-batch-info">
+        <div className="active-batch-title">{batch.title || "Batch"}</div>
+        <div className="active-batch-meta">
           {formatMoney(price)} • {status} • {batch.id}
         </div>
-        <div style={{ ...S.muted, fontSize: 13, marginTop: 3 }}>
-          Updated: {formatTs(batch.updatedAt)}
-        </div>
+        <div className="active-batch-meta">Updated: {formatTs(batch.updatedAt)}</div>
       </div>
 
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <button
-          style={S.btnSmall}
-          onClick={() => onViewHistory(batch.id)}
-          disabled={disabled}
-        >
+      <div className="active-batch-actions">
+        <button className="btn-small" onClick={() => onViewHistory(batch.id)} disabled={disabled} type="button">
           History
         </button>
 
         <button
-          style={S.btnSmall}
+          className="btn-small"
           onClick={() => onCloseBatch(batch.id)}
           disabled={closeDisabled}
           title={closeTitle}
+          type="button"
         >
           {closeBusy ? "Working..." : "Picked up & close"}
         </button>

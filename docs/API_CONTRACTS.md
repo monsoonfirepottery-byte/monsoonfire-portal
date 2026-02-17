@@ -123,8 +123,553 @@ Dev-only admin header (required for admin-gated endpoints):
 
 Notes:
 - Never paste real `Authorization` tokens into chat/logs. Treat them as credentials.
-- The web UI only shows the dev admin token input when `VITE_ENABLE_DEV_ADMIN_TOKEN=true` and the functions base URL is localhost; it stores the token in sessionStorage for that browser session only.
+- The web UI only shows the dev admin token input when `VITE_ENABLE_DEV_ADMIN_TOKEN=true` and the functions base URL is localhost.
+- Session persistence is opt-in (`VITE_PERSIST_DEV_ADMIN_TOKEN=true`); otherwise the token stays in-memory only.
 - Stripe webhook endpoints are verified via Stripe signature headers and **do not** use Firebase ID tokens.
+
+---
+
+## Integration tokens (PATs) for agents
+
+Portal UI and native clients should keep using Firebase ID tokens.
+
+For agentic / non-interactive workflows, the backend supports **Integration Tokens** (personal access tokens, PATs).
+
+Token format:
+- `mf_pat_v1.<tokenId>.<secret>`
+
+Usage:
+- Send as `Authorization: Bearer <PAT>`
+
+Security properties:
+- The token `secret` is only shown once on creation.
+- The server stores only a hash (`secretHash`), never the plaintext secret.
+- Tokens are scoped and revocable.
+
+Required Functions runtime config:
+- `INTEGRATION_TOKEN_PEPPER` (a long random secret used to hash PAT secrets; configure via Firebase Secrets in prod, and via `functions/.env.local` in the emulator)
+
+### createIntegrationToken
+
+POST `${BASE_URL}/createIntegrationToken`
+
+Auth:
+- Firebase ID token (interactive)
+
+Request:
+```json
+{
+  "label": "My assistant (optional)",
+  "scopes": ["batches:read", "timeline:read", "firings:read", "events:read"]
+}
+```
+
+Response:
+```json
+{
+  "ok": true,
+  "tokenId": "base64url...",
+  "token": "mf_pat_v1.<tokenId>.<secret>",
+  "record": { "tokenId": "...", "label": "...", "scopes": ["..."] }
+}
+```
+
+### listIntegrationTokens
+
+POST `${BASE_URL}/listIntegrationTokens`
+
+Auth:
+- Firebase ID token
+
+Response:
+```json
+{
+  "ok": true,
+  "tokens": [
+    {
+      "tokenId": "base64url...",
+      "label": "My assistant",
+      "scopes": ["events:read"],
+      "createdAt": "...",
+      "lastUsedAt": null,
+      "revokedAt": null
+    }
+  ]
+}
+```
+
+### revokeIntegrationToken
+
+POST `${BASE_URL}/revokeIntegrationToken`
+
+Auth:
+- Firebase ID token
+
+Request:
+```json
+{ "tokenId": "base64url..." }
+```
+
+Response:
+```json
+{ "ok": true }
+```
+
+### helloPat (debug)
+
+POST `${BASE_URL}/helloPat`
+
+Auth:
+- Firebase ID token OR PAT
+
+Response:
+```json
+{ "ok": true, "uid": "uid_123", "mode": "firebase|pat", "scopes": ["..."] }
+```
+
+### Delegations (V2 strict mode)
+
+Delegation-backed agent auth is feature-flagged:
+- `V2_AGENTIC_ENABLED=true`
+- `STRICT_DELEGATION_CHECKS_ENABLED=true`
+
+When strict mode is enabled, delegated tokens must carry a valid `delegationId`.
+
+#### createDelegatedAgentToken
+
+POST `${BASE_URL}/createDelegatedAgentToken`
+
+Auth:
+- Firebase ID token (owner or staff)
+
+Request:
+```json
+{
+  "agentClientId": "client_123",
+  "scopes": ["quote:write", "reserve:write", "pay:write", "status:read"],
+  "ttlSeconds": 300,
+  "principalUid": "uid_123",
+  "resources": ["owner:uid_123", "route:/v1/agent.pay"],
+  "note": "assistant worker"
+}
+```
+
+Response:
+```json
+{
+  "ok": true,
+  "delegatedToken": "mf_dlg_v1....",
+  "delegationId": "delegation_doc_id",
+  "expiresAtMs": 1760000000000,
+  "audience": "monsoonfire-agent-v1",
+  "principalUid": "uid_123"
+}
+```
+
+#### listDelegations
+
+POST `${BASE_URL}/listDelegations`
+
+Auth:
+- Firebase ID token
+
+Request:
+```json
+{ "ownerUid": "uid_123", "agentClientId": "client_123", "includeRevoked": false, "limit": 100 }
+```
+
+#### revokeDelegation
+
+POST `${BASE_URL}/revokeDelegation`
+
+Auth:
+- Firebase ID token (owner or staff)
+
+Request:
+```json
+{ "delegationId": "delegation_doc_id", "reason": "suspicious behavior" }
+```
+
+#### listSecurityAuditEvents
+
+POST `${BASE_URL}/listSecurityAuditEvents`
+
+Auth:
+- Firebase ID token (staff only)
+
+Request:
+```json
+{
+  "ownerUid": "uid_123",
+  "actorUid": "uid_actor",
+  "action": "agent_batches_list",
+  "result": "deny",
+  "limit": 80
+}
+```
+
+Response:
+```json
+{
+  "ok": true,
+  "requestId": "req_...",
+  "rows": [
+    {
+      "id": "audit_1",
+      "action": "agent_batches_list",
+      "result": "deny",
+      "actorUid": "uid_actor",
+      "ownerUid": "uid_123",
+      "requestId": "req_..."
+    }
+  ]
+}
+```
+
+---
+
+## Agent API v1 (JSON envelope + scopes)
+
+Base URL:
+- `${BASE_URL}/apiV1`
+
+All v1 responses use:
+- Success: `{ ok: true, requestId, data }`
+- Error: `{ ok: false, requestId, code, message, details }`
+- Rate limiting: HTTP `429` with `code=RATE_LIMITED`, `details.retryAfterMs`, and `Retry-After` header.
+- Delegated agent requests write security audit rows on route-level denials; optional auto-cooldown is controlled by `AUTO_COOLDOWN_ON_RATE_LIMIT`.
+
+If calling with a PAT, required scopes are enforced per endpoint.
+
+### v1/hello
+
+POST `${BASE_URL}/apiV1/v1/hello`
+
+Auth:
+- Firebase ID token OR PAT
+
+Response:
+```json
+{ "ok": true, "requestId": "req_...", "data": { "uid": "uid_123", "mode": "pat", "scopes": ["..."] } }
+```
+
+### v1/events.feed
+
+POST `${BASE_URL}/apiV1/v1/events.feed`
+
+Auth:
+- Firebase ID token OR PAT with scope `events:read`
+
+Request:
+```json
+{ "uid": "uid_123 (optional, defaults to caller uid)", "cursor": 0, "limit": 100 }
+```
+
+Response:
+```json
+{
+  "ok": true,
+  "requestId": "req_...",
+  "data": {
+    "uid": "uid_123",
+    "events": [{ "id": "evt", "cursor": 1, "type": "batch.updated", "subject": { "batchId": "..." } }],
+    "nextCursor": 1
+  }
+}
+```
+
+### v1/batches.list
+
+POST `${BASE_URL}/apiV1/v1/batches.list`
+
+Auth:
+- Firebase ID token OR PAT with scope `batches:read`
+
+Request:
+```json
+{ "ownerUid": "uid_123 (optional)", "limit": 50, "includeClosed": true }
+```
+
+### v1/batches.get
+
+POST `${BASE_URL}/apiV1/v1/batches.get`
+
+Auth:
+- Firebase ID token OR PAT with scope `batches:read`
+
+Request:
+```json
+{ "batchId": "batch_123" }
+```
+
+### v1/batches.timeline.list
+
+POST `${BASE_URL}/apiV1/v1/batches.timeline.list`
+
+Auth:
+- Firebase ID token OR PAT with scope `timeline:read`
+
+Request:
+```json
+{ "batchId": "batch_123", "limit": 200 }
+```
+
+### v1/firings.listUpcoming
+
+POST `${BASE_URL}/apiV1/v1/firings.listUpcoming`
+
+Auth:
+- Firebase ID token OR PAT with scope `firings:read`
+
+Request:
+```json
+{ "limit": 200 }
+```
+
+### v1/agent.requests.create
+
+POST `${BASE_URL}/apiV1/v1/agent.requests.create`
+
+Auth:
+- Firebase ID token OR PAT with scope `requests:write`
+
+Request:
+```json
+{
+  "kind": "firing",
+  "title": "Need bisque firing for cone 06 pieces",
+  "summary": "Drop-off this week, 2 half shelves.",
+  "notes": "Please keep pieces from this request together.",
+  "logisticsMode": "dropoff",
+  "rightsAttested": true,
+  "intendedUse": "Commissioned storefront display pieces",
+  "constraints": {
+    "targetCone": "06",
+    "estimatedPieces": 18
+  },
+  "metadata": {
+    "source": "agent"
+  }
+}
+```
+
+For X1C print intake (`kind: "x1c_print"`), include:
+```json
+{
+  "x1cFileType": "3mf",
+  "x1cMaterialProfile": "pla",
+  "x1cDimensionsMm": { "x": 120, "y": 80, "z": 60 },
+  "x1cQuantity": 2
+}
+```
+
+Optional idempotency header:
+- `x-idempotency-key: <client-generated-key>`
+
+### v1/agent.requests.listMine
+
+POST `${BASE_URL}/apiV1/v1/agent.requests.listMine`
+
+Auth:
+- Firebase ID token OR PAT with scope `requests:read`
+
+Request:
+```json
+{
+  "limit": 50,
+  "includeClosed": true
+}
+```
+
+### v1/agent.requests.listStaff
+
+POST `${BASE_URL}/apiV1/v1/agent.requests.listStaff`
+
+Auth:
+- Staff Firebase user (PATs are not allowed for staff triage)
+- Scope check: `requests:read`
+
+Request:
+```json
+{
+  "status": "all",
+  "kind": "all",
+  "limit": 120
+}
+```
+
+### v1/agent.requests.updateStatus
+
+POST `${BASE_URL}/apiV1/v1/agent.requests.updateStatus`
+
+Auth:
+- Staff Firebase user with `requests:write`
+- Owner may only set `status: "cancelled"` on own request
+
+Request:
+```json
+{
+  "requestId": "agentRequest_123",
+  "status": "triaged",
+  "reason": "Queued for next bisque load",
+  "reasonCode": "rights_verified"
+}
+```
+
+Notes:
+- For `kind == "commission"`, transitions to `accepted` or `rejected` require `reasonCode`.
+- Commission create requests require `rightsAttested=true`.
+
+### v1/agent.requests.linkBatch
+
+POST `${BASE_URL}/apiV1/v1/agent.requests.linkBatch`
+
+Auth:
+- Staff Firebase user with `requests:write`
+
+Request:
+```json
+{
+  "requestId": "agentRequest_123",
+  "batchId": "batch_456"
+}
+```
+
+### v1/agent.requests.createCommissionOrder
+
+POST `${BASE_URL}/apiV1/v1/agent.requests.createCommissionOrder`
+
+Auth:
+- Staff Firebase user with `requests:write`
+
+Request:
+```json
+{
+  "requestId": "agentRequest_123",
+  "priceId": "price_optional_override",
+  "quantity": 1
+}
+```
+
+Response:
+```json
+{
+  "ok": true,
+  "requestId": "req_...",
+  "data": {
+    "agentRequestId": "agentRequest_123",
+    "orderId": "agent-commission-order_...",
+    "idempotentReplay": false
+  }
+}
+```
+
+Notes:
+- Request must be `kind == "commission"` and status in `accepted | in_progress | ready`.
+- Price ID resolution order:
+  - request payload `priceId`
+  - request metadata `commissionPriceId`
+  - `config/stripe.priceIds.agent_commission`
+  - `config/stripe.priceIds.commission`
+  - `config/stripe.priceIds.agent_default`
+- This endpoint creates/attaches `commissionOrderId` and sets `commissionPaymentStatus="checkout_pending"` on the request.
+- Use `POST createAgentCheckoutSession` with returned `orderId` to generate checkout URL.
+
+### v1/agent.terms.get
+
+POST `${BASE_URL}/apiV1/v1/agent.terms.get`
+
+Auth:
+- Firebase ID token OR PAT
+
+Response:
+```json
+{
+  "ok": true,
+  "requestId": "req_...",
+  "data": {
+    "version": "2026-02-12.v1",
+    "accepted": false,
+    "termsUrl": "https://...",
+    "refundPolicyUrl": "https://...",
+    "incidentPolicyUrl": "https://..."
+  }
+}
+```
+
+### v1/agent.terms.accept
+
+POST `${BASE_URL}/apiV1/v1/agent.terms.accept`
+
+Auth:
+- Firebase ID token OR PAT
+
+Request:
+```json
+{
+  "version": "2026-02-12.v1",
+  "source": "portal_staff"
+}
+```
+
+Response:
+```json
+{
+  "ok": true,
+  "requestId": "req_...",
+  "data": {
+    "accepted": true,
+    "version": "2026-02-12.v1"
+  }
+}
+```
+
+Notes:
+- PAT/delegated calls to `v1/agent.*` routes require current terms acceptance, except:
+  - `/v1/hello`
+  - `/v1/agent.terms.get`
+  - `/v1/agent.terms.accept`
+
+### v1/agent.account.get
+
+POST `${BASE_URL}/apiV1/v1/agent.account.get`
+
+Auth:
+- Staff Firebase user, or delegated agent token for its own `agentClientId`
+
+Request:
+```json
+{
+  "agentClientId": "optional-for-delegated"
+}
+```
+
+### v1/agent.account.update
+
+POST `${BASE_URL}/apiV1/v1/agent.account.update`
+
+Auth:
+- Staff Firebase user only
+
+Request:
+```json
+{
+  "agentClientId": "client_123",
+  "status": "on_hold",
+  "independentEnabled": true,
+  "prepayRequired": true,
+  "dailySpendCapCents": 200000,
+  "prepaidBalanceDeltaCents": 50000,
+  "reason": "Initial funding and hold for verification"
+}
+```
+
+Notes:
+- Independent-mode reserve/pay enforces:
+  - account active state
+  - prepaid balance (when `prepayRequired=true`)
+  - daily and category caps
+- Internal prepay debits are logged to `agentAccounts/{id}/ledger`.
 
 ---
 
@@ -172,6 +717,136 @@ Request body (`CreateBatchRequest`):
   "clientRequestId": "req_8f9d1c3b"
 }
 ```
+
+---
+
+### registerDeviceToken
+
+POST `${BASE_URL}/registerDeviceToken`
+
+Headers:
+- `Authorization: Bearer <ID_TOKEN>`
+- `Content-Type: application/json`
+
+Request body (`RegisterDeviceTokenRequest`):
+```json
+{
+  "token": "<APNS_HEX_TOKEN>",
+  "platform": "ios",
+  "environment": "production",
+  "appVersion": "1.0.0",
+  "appBuild": "1",
+  "deviceModel": "iPhone"
+}
+```
+
+Response (`RegisterDeviceTokenResponse`):
+```json
+{
+  "ok": true,
+  "uid": "uid_123",
+  "tokenHash": "sha256hex..."
+}
+```
+
+Persistence contract:
+- Function enforces Firebase auth (`401` + `code: UNAUTHENTICATED` without valid bearer token).
+- Writes idempotently to `users/{uid}/deviceTokens/{tokenHash}`.
+- Keeps first `createdAt` and updates `updatedAt` on re-registration.
+- Stores metadata: `platform`, `environment`, `appVersion`, `appBuild`, `deviceModel`.
+
+---
+
+### unregisterDeviceToken
+
+POST `${BASE_URL}/unregisterDeviceToken`
+
+Headers:
+- `Authorization: Bearer <ID_TOKEN>`
+- `Content-Type: application/json`
+
+Request body (`UnregisterDeviceTokenRequest`):
+```json
+{
+  "tokenHash": "sha256hex..."
+}
+```
+
+Response (`UnregisterDeviceTokenResponse`):
+```json
+{
+  "ok": true,
+  "uid": "uid_123",
+  "tokenHash": "sha256hex..."
+}
+```
+
+Behavior:
+- Authenticated user can deactivate only their own token record.
+- Accepts either raw token (`token`) or precomputed hash (`tokenHash`).
+- Sets `active=false`, `deactivatedAt`, and `updatedAt`.
+
+---
+
+### Push delivery telemetry + cleanup
+
+Notification jobs with `channels.push=true` now write push delivery attempt telemetry to:
+- `notificationDeliveryAttempts/{attemptId}`
+
+Current provider state:
+- Push delivery uses an APNs relay adapter when configured.
+- Relay configuration env vars:
+  - `APNS_RELAY_URL`
+  - `APNS_RELAY_KEY`
+- Attempts are recorded with statuses and reasons such as:
+  - `NO_ACTIVE_DEVICE_TOKENS`
+  - `PUSH_PROVIDER_SENT`
+  - `PUSH_PROVIDER_PARTIAL`
+  - `APNS relay failed: ...`
+
+Token invalidation:
+- Provider rejection codes `BadDeviceToken`, `Unregistered`, and `Device_Token_Not_For_Topic`
+  trigger token deactivation with `deactivationReason` set to the provider code.
+
+Scheduled cleanup:
+- `cleanupStaleDeviceTokens` runs daily and deactivates device tokens with:
+  - `active=true`
+  - `updatedAt` older than 90 days
+
+Reliability controls:
+- Notification job processing now classifies failures into:
+  - `auth`
+  - `provider_4xx`
+  - `provider_5xx`
+  - `network`
+  - `unknown`
+- Retryable classes (`provider_5xx`, `network`, `unknown`) are re-queued with exponential backoff.
+- Max attempts: 5. Exhausted or non-retryable failures are written to:
+  - `notificationJobDeadLetters/{jobId}`
+
+Aggregate metrics:
+- `aggregateNotificationDeliveryMetrics` runs every 30 minutes.
+- Writes 24-hour aggregate snapshot to:
+  - `notificationMetrics/delivery_24h`
+- Snapshot includes:
+  - `totalAttempts`
+  - `statusCounts`
+  - `reasonCounts`
+  - `providerCounts`
+- Staff-gated manual trigger endpoint:
+  - `POST ${BASE_URL}/runNotificationMetricsAggregationNow`
+
+Drill endpoints (staff-gated):
+- `POST ${BASE_URL}/runNotificationFailureDrill`
+  - body: `{ uid, mode, channels?, forceRunNow? }`
+  - `mode`: `auth | provider_4xx | provider_5xx | network | success`
+  - queues deterministic drill jobs for retry/dead-letter validation.
+- `POST ${BASE_URL}/runNotificationMetricsAggregationNow`
+  - triggers immediate 24h metrics snapshot refresh.
+
+Secret management:
+- Push relay key is read from runtime environment variable `APNS_RELAY_KEY`.
+- Configure it in deploy environment and emulator `.env` before running push relay sends.
 
 ---
 

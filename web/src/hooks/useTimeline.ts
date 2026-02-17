@@ -40,11 +40,12 @@ export function useTimeline(batchId: string | null): Result {
         const snap = await getDocs(q);
         const rows: TimelineEvent[] = snap.docs.map((d) => ({
           id: d.id,
-          ...(d.data() as any),
+          ...(d.data() as Partial<TimelineEvent>),
         }));
         setTimeline(rows);
-      } catch (err: any) {
-        setError(`Timeline failed: ${err.message || String(err)}`);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        setError(`Timeline failed: ${message}`);
         setTimeline([]);
       } finally {
         setLoading(false);

@@ -4,6 +4,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Local npm caches (never commit)
+.npm-cache/
+.npm-cache-web/
+
 # Vite / build
 dist/
 build/
@@ -11,12 +15,22 @@ build/
 # Firebase
 .firebase/
 firebase-debug.log*
+firestore-debug.log*
 functions/lib/
+
+# Lighthouse CI
+.lighthouseci/
+
+# Local temp
+tmp-firebase.json
 
 # Env / secrets
 .env
 .env.local
 .env.*.local
+extensions/*.env
+extensions/*.secret.local
+secrets/
 
 # OS
 .DS_Store

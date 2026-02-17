@@ -12,6 +12,7 @@ import {
 import type { User } from "firebase/auth";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { db } from "../firebase";
+import { toVoidHandler } from "../utils/toVoidHandler";
 import "./KilnLaunchView.css";
 
 type LoadStatus = "queued" | "loading" | "loaded";
@@ -129,6 +130,31 @@ function isCancelled(status: string | null | undefined) {
   return typeof status === "string" && status.toUpperCase() === "CANCELLED";
 }
 
+function getFiringProgressCopy(plannedHalfShelves: number) {
+  if (plannedHalfShelves <= 0) return "Waiting for the first pieces to arrive.";
+  if (plannedHalfShelves <= 3) return "The kiln is waking up.";
+  if (plannedHalfShelves <= 6) return "This firing is taking shape.";
+  return "Almost ready to fire.";
+}
+
+function buildLoadStatusSummary(loadingCount: number, loadedCount: number) {
+  if (loadingCount + loadedCount === 0) {
+    return "No pieces are being loaded yet. Staff will confirm the load once firing prep begins.";
+  }
+  if (loadedCount > 0) {
+    return `Staff are confirming the load. ${loadedCount} check-in${
+      loadedCount === 1 ? "" : "s"
+    } already in the kiln.`;
+  }
+  return `Staff are loading pieces and planning the final layout. ${loadingCount} check-in${
+    loadingCount === 1 ? "" : "s"
+  } in progress.`;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
   const [reservations, setReservations] = useState<ReservationQueueItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -173,8 +199,8 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
       });
       setReservations(rows);
       setLastUpdated(new Date());
-    } catch (err: any) {
-      setError(`Queue load failed: ${err?.message || String(err)}`);
+    } catch (error: unknown) {
+      setError(`Queue load failed: ${getErrorMessage(error)}`);
     } finally {
       setLoading(false);
     }
@@ -256,6 +282,11 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
     queuedHalfShelves + loadingHalfShelves + loadedHalfShelves
   );
 
+  const firingProgressCopy = useMemo(
+    () => getFiringProgressCopy(plannedHalfShelves),
+    [plannedHalfShelves]
+  );
+
   const loadStateLabel =
     loadedHalfShelves >= KILN_CAPACITY_HALF_SHELVES
       ? "Ready to fire"
@@ -264,6 +295,50 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
       : queuedHalfShelves > 0
       ? "Awaiting load"
       : "Idle";
+
+  const loadStatusSummary = useMemo(
+    () => buildLoadStatusSummary(loadingEntries.length, loadedEntries.length),
+    [loadingEntries.length, loadedEntries.length]
+  );
+  const hasLoadActivity = loadingEntries.length + loadedEntries.length > 0;
+
+  const userEntries = useMemo(
+    () => queueEntries.filter((item) => item.ownerUid === user.uid),
+    [queueEntries, user.uid]
+  );
+  const userHalfShelves = useMemo(
+    () => userEntries.reduce((sum, item) => sum + item.halfShelves, 0),
+    [userEntries]
+  );
+  const userLoadedCount = useMemo(
+    () => userEntries.filter((item) => item.loadStatus === "loaded").length,
+    [userEntries]
+  );
+  const userLoadingCount = useMemo(
+    () => userEntries.filter((item) => item.loadStatus === "loading").length,
+    [userEntries]
+  );
+  const userQueuedCount = useMemo(
+    () => userEntries.filter((item) => item.loadStatus === "queued").length,
+    [userEntries]
+  );
+
+  const userFlowCopy = useMemo(() => {
+    if (userEntries.length === 0) {
+      return "No check-ins yet. Start a check-in when you are ready to join the line for the next firing.";
+    }
+    const shelfLabel = formatHalfShelfLabel(userHalfShelves);
+    if (userLoadedCount > 0) {
+      return `You have ${shelfLabel} in this plan. Some of your work is confirmed in the kiln; we will review placement together at drop-off.`;
+    }
+    if (userLoadingCount > 0) {
+      return `You have ${shelfLabel} in this plan. Staff are loading your work now and confirm placement with you.`;
+    }
+    if (userQueuedCount > 0) {
+      return `You have ${shelfLabel} in line. Your work is awaiting load while we build the next firing plan.`;
+    }
+    return "Your check-ins are in line. We will confirm placement together at drop-off.";
+  }, [userEntries.length, userHalfShelves, userLoadedCount, userLoadingCount, userQueuedCount]);
 
   const loadSlots = useMemo(() => {
     const slots: Array<LoadStatus | "empty"> = [];
@@ -294,8 +369,8 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
       });
       setActionStatus("Load status updated.");
       await loadReservations();
-    } catch (err: any) {
-      setActionStatus(`Update failed: ${err?.message || String(err)}`);
+    } catch (error: unknown) {
+      setActionStatus(`Update failed: ${getErrorMessage(error)}`);
     } finally {
       setActionBusyId(null);
     }
@@ -305,18 +380,21 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
     <div className="kiln-launch-page">
       <header className="kiln-launch-header">
         <div>
-          <p className="kiln-launch-kicker">View the Queues</p>
-          <h1 className="kiln-launch-title">View the Queues</h1>
+          <p className="kiln-launch-kicker">Kiln queues</p>
+          <h1 className="kiln-launch-title">The next firing is coming together</h1>
           <p className="kiln-launch-subtitle">
-            The studio kiln holds {KILN_CAPACITY_HALF_SHELVES} half shelves. Queued work
-            fills the planned load, and staff confirm what’s actually in the kiln.
+            Work is lining up, the load is taking shape, and the kiln plan keeps moving forward.
+          </p>
+          <p className="kiln-launch-meaning">
+            What this means for you: as queues fill, staff plan the next firing and confirm what
+            fits, and your check-ins help shape that plan.
           </p>
           {lastUpdated ? (
             <p className="kiln-launch-updated">Last updated {lastUpdated.toLocaleTimeString()}</p>
           ) : null}
         </div>
         <div className="kiln-launch-actions">
-          <button className="btn btn-ghost" onClick={loadReservations} disabled={loading}>
+          <button className="btn btn-ghost" onClick={toVoidHandler(loadReservations)} disabled={loading}>
             {loading ? "Refreshing..." : "Refresh"}
           </button>
         </div>
@@ -336,7 +414,10 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
           </div>
           <div className="kiln-queue-list">
             {bisqueQueue.length === 0 ? (
-              <p className="kiln-empty">No bisque requests yet.</p>
+              <p className="kiln-empty">
+                No bisque check-ins yet. This is normal between drop-offs; the queue wakes up with
+                the first pieces.
+              </p>
             ) : (
               bisqueQueue.map((item) => (
                 <div key={item.id} className="kiln-queue-card">
@@ -364,14 +445,14 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
                     <div className="kiln-queue-actions">
                       <button
                         className="kiln-action primary"
-                        onClick={() => handleLoadStatusUpdate(item.id, "loading")}
+                        onClick={toVoidHandler(() => handleLoadStatusUpdate(item.id, "loading"))}
                         disabled={actionBusyId === item.id}
                       >
                         Start loading
                       </button>
                       <button
                         className="kiln-action ghost"
-                        onClick={() => handleLoadStatusUpdate(item.id, "loaded")}
+                        onClick={toVoidHandler(() => handleLoadStatusUpdate(item.id, "loaded"))}
                         disabled={actionBusyId === item.id}
                       >
                         Mark loaded
@@ -385,6 +466,20 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
         </section>
 
         <section className="kiln-launch-center">
+          <div className="kiln-launch-panel kiln-flow-panel">
+            <div className="kiln-panel-header">
+              <div>
+                <h2>Your place in the flow</h2>
+                <p className="kiln-panel-meta">
+                  {userEntries.length === 0
+                    ? "No check-ins yet"
+                    : `${userEntries.length} check-in${userEntries.length === 1 ? "" : "s"} in motion`}
+                </p>
+              </div>
+            </div>
+            <p className="kiln-flow-copy">{userFlowCopy}</p>
+          </div>
+
           <div className="kiln-launch-panel kiln-meter-panel">
             <div className="kiln-panel-header">
               <div>
@@ -399,6 +494,7 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
             </div>
 
             <div className="kiln-meter">
+              <div className="kiln-progress-label">Firing progress</div>
               <div className="kiln-graphic" aria-hidden="true">
                 <div className="kiln-ring">
                   <div className="kiln-ring-inner">
@@ -413,8 +509,15 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
                   </div>
                 </div>
               </div>
+              <div className="kiln-progress-copy">{firingProgressCopy}</div>
               <div className="kiln-meter-label">
                 {plannedHalfShelves} / {KILN_CAPACITY_HALF_SHELVES} half shelves planned
+              </div>
+              <div className="kiln-progress-note">
+                Fuller kilns tend to fire sooner, but timing always depends on the load.
+              </div>
+              <div className="kiln-progress-moment">
+                Firing is a shared process; each piece helps build the next load.
               </div>
               <div className="kiln-legend">
                 <div className="kiln-legend-item">
@@ -451,15 +554,17 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
           <div className="kiln-launch-panel">
             <div className="kiln-panel-header">
               <div>
-                <h2>Load status</h2>
+                <h2>What&apos;s happening now</h2>
                 <p className="kiln-panel-meta">
-                  {loadingEntries.length + loadedEntries.length} check-ins in progress
+                  {hasLoadActivity
+                    ? loadStatusSummary
+                    : "Staff updates will appear here as the load begins."}
                 </p>
               </div>
             </div>
             <div className="kiln-queue-list">
-              {loadingEntries.length + loadedEntries.length === 0 ? (
-                <p className="kiln-empty">No loads in progress yet.</p>
+              {!hasLoadActivity ? (
+                <p className="kiln-empty">{loadStatusSummary}</p>
               ) : (
                 [...loadingEntries, ...loadedEntries].map((item) => (
                   <div key={item.id} className="kiln-queue-card">
@@ -478,7 +583,7 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
                         {item.loadStatus === "loading" ? (
                           <button
                             className="kiln-action primary"
-                            onClick={() => handleLoadStatusUpdate(item.id, "loaded")}
+                            onClick={toVoidHandler(() => handleLoadStatusUpdate(item.id, "loaded"))}
                             disabled={actionBusyId === item.id}
                           >
                             Confirm loaded
@@ -486,7 +591,7 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
                         ) : null}
                         <button
                           className="kiln-action ghost"
-                          onClick={() => handleLoadStatusUpdate(item.id, "queued")}
+                          onClick={toVoidHandler(() => handleLoadStatusUpdate(item.id, "queued"))}
                           disabled={actionBusyId === item.id}
                         >
                           Return to queue
@@ -510,7 +615,10 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
           </div>
           <div className="kiln-queue-list">
             {glazeQueue.length === 0 ? (
-              <p className="kiln-empty">No glaze requests yet.</p>
+              <p className="kiln-empty">
+                No glaze check-ins yet. Planning starts once the first glazed pieces arrive, so
+                nothing is wrong.
+              </p>
             ) : (
               glazeQueue.map((item) => (
                 <div key={item.id} className="kiln-queue-card">
@@ -538,14 +646,14 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
                     <div className="kiln-queue-actions">
                       <button
                         className="kiln-action primary"
-                        onClick={() => handleLoadStatusUpdate(item.id, "loading")}
+                        onClick={toVoidHandler(() => handleLoadStatusUpdate(item.id, "loading"))}
                         disabled={actionBusyId === item.id}
                       >
                         Start loading
                       </button>
                       <button
                         className="kiln-action ghost"
-                        onClick={() => handleLoadStatusUpdate(item.id, "loaded")}
+                        onClick={toVoidHandler(() => handleLoadStatusUpdate(item.id, "loaded"))}
                         disabled={actionBusyId === item.id}
                       >
                         Mark loaded

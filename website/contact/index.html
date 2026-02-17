@@ -12,13 +12,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/assets/css/styles.css" />
   <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-ZJQ30LHFKH"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-ZJQ30LHFKH');
-  </script>
+  <script src="/assets/js/analytics.js" defer></script>
   <meta property="og:site_name" content="Monsoon Fire Pottery" />
   <meta property="og:title" content="Contact | Monsoon Fire Pottery" />
   <meta property="og:description" content="Contact Monsoon Fire Pottery. Address and gate code are shared via the portal." />
@@ -31,19 +25,7 @@
   <meta name="twitter:title" content="Contact | Monsoon Fire Pottery" />
   <meta name="twitter:description" content="Contact Monsoon Fire Pottery. Address and gate code are shared via the portal." />
   <meta name="twitter:image" content="https://monsoonfire.com/assets/images/finished-work-1200.jpg" />
-  <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "LocalBusiness",
-      "name": "Monsoon Fire Pottery Studio",
-      "url": "https://monsoonfire.com/",
-      "description": "Production-first ceramics studio with kiln firing, studio access, memberships, and production support in Arizona's West Valley.",
-      "areaServed": [
-        {"@type": "AdministrativeArea", "name": "West Valley, AZ"},
-        {"@type": "AdministrativeArea", "name": "Phoenix Metro"}
-      ]
-    }
-  </script>
+  <script type="application/ld+json" src="/assets/schema/localbusiness.json"></script>
 </head>
 <body data-nav-parent="/services/">
   <header class="site-header">
@@ -104,14 +86,16 @@
         <div class="footer-title">Contact</div>
         <p><a href="mailto:support@monsoonfire.com">support@monsoonfire.com</a></p>
         <p><a href="/contact/">Contact form</a></p>
+        <p><a href="/policies/accessibility/">Accessibility statement</a></p>
       </div>
     </div>
   </footer>
 
-  <script src="/assets/js/main.js"></script>
-  <script>function loadScript(a){var b=document.getElementsByTagName("head")[0],c=document.createElement("script");c.type="text/javascript",c.src="https://tracker.metricool.com/resources/be.js",c.onreadystatechange=a,c.onload=a,b.appendChild(c)}loadScript(function(){beTracker.t({hash:"66cdb7f9a3fce2c22ac2edbdc56cb820"})});</script>
+  <script defer src="/assets/js/main.js"></script>
+  
 </body>
 </html>
+
 
 
 

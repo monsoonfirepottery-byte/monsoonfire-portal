@@ -1,0 +1,18 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "<APPLE_TEAM_ID>.<BUNDLE_ID>",
+        "paths": [
+          "/materials*",
+          "/events*",
+          "/kiln*",
+          "/pieces*",
+          "/notifications*"
+        ]
+      }
+    ]
+  }
+}
+

@@ -33,6 +33,20 @@ service cloud.firestore {
       return value is string && value.size() > 0;
     }
 
+    function isMembershipTier(value) {
+      return value is string
+        && [
+          "A la carte",
+          "Apprentice",
+          "Journeyman",
+          "Master",
+          "Studio",
+          "Premium",
+          "Founding",
+          "Studio Member"
+        ].hasAny([value]);
+    }
+
     function isStage(value) {
       return value is string
         && ["GREENWARE", "BISQUE", "GLAZED", "FINISHED", "HOLD", "UNKNOWN"].hasAny([value]);
@@ -127,6 +141,8 @@ service cloud.firestore {
           "wareCategory",
           "isArchived",
           "selectedGlazes",
+          "clientRating",
+          "clientRatingUpdatedAt",
           "updatedAt"
         ])
         && request.resource.data.pieceCode == resource.data.pieceCode
@@ -137,6 +153,18 @@ service cloud.firestore {
         && isWareCategory(request.resource.data.wareCategory)
         && request.resource.data.isArchived is bool
         && request.resource.data.updatedAt is timestamp
+        && (
+          !request.resource.data.keys().hasAny(["clientRating"])
+          || (
+            request.resource.data.clientRating is int
+            && request.resource.data.clientRating >= 1
+            && request.resource.data.clientRating <= 5
+          )
+        )
+        && (
+          !request.resource.data.keys().hasAny(["clientRatingUpdatedAt"])
+          || request.resource.data.clientRatingUpdatedAt is timestamp
+        )
         && (
           !request.resource.data.keys().hasAny(["selectedGlazes"])
           || request.resource.data.selectedGlazes is list
@@ -259,17 +287,81 @@ service cloud.firestore {
     }
 
     match /profiles/{profileId} {
-      allow read: if isOwner(profileId);
+      allow read: if isOwner(profileId) || isStaff();
       allow create, update: if isOwner(profileId)
         && hasOnlyKeys([
           "displayName",
           "preferredKilns",
+          "membershipTier",
+          "membershipSince",
+          "membershipExpiresAt",
           "notifyKiln",
           "notifyClasses",
           "notifyPieces",
+          "notifyReservations",
+          "personalNotes",
+          "studioNotes",
+          "uiTheme",
+          "uiEnhancedMotion",
           "updatedAt"
         ])
-        && request.resource.data.updatedAt is timestamp;
+        && request.resource.data.updatedAt is timestamp
+        && (
+          !request.resource.data.keys().hasAny(["membershipTier"])
+          || isMembershipTier(request.resource.data.membershipTier)
+        )
+        && (
+          !request.resource.data.keys().hasAny(["membershipSince"])
+          || request.resource.data.membershipSince is timestamp
+        )
+        && (
+          !request.resource.data.keys().hasAny(["membershipExpiresAt"])
+          || request.resource.data.membershipExpiresAt is timestamp
+        )
+        && (
+          !request.resource.data.keys().hasAny(["notifyReservations"])
+          || request.resource.data.notifyReservations is bool
+        )
+        && (
+          !request.resource.data.keys().hasAny(["personalNotes"])
+          || request.resource.data.personalNotes is string
+          || request.resource.data.personalNotes == null
+        )
+        && (
+          !request.resource.data.keys().hasAny(["studioNotes"])
+          || request.resource.data.studioNotes is string
+          || request.resource.data.studioNotes == null
+        )
+        && (
+          !request.resource.data.keys().hasAny(["uiTheme"])
+          || request.resource.data.uiTheme is string
+          || request.resource.data.uiTheme == null
+        )
+        && (
+          !request.resource.data.keys().hasAny(["uiTheme"])
+          || request.resource.data.uiTheme == null
+          || request.resource.data.uiTheme in ["portal", "memoria"]
+        )
+        && (
+          !request.resource.data.keys().hasAny(["uiEnhancedMotion"])
+          || request.resource.data.uiEnhancedMotion is bool
+          || request.resource.data.uiEnhancedMotion == null
+        )
+        && (
+          resource == null
+          || !request.resource.data.keys().hasAny(["membershipSince"])
+          || request.resource.data.membershipSince == resource.data.membershipSince
+        )
+        && (
+          resource == null
+          || !request.resource.data.keys().hasAny(["membershipExpiresAt"])
+          || request.resource.data.membershipExpiresAt == resource.data.membershipExpiresAt
+        )
+        && (
+          resource == null
+          || !request.resource.data.keys().hasAny(["studioNotes"])
+          || request.resource.data.studioNotes == resource.data.studioNotes
+        );
       allow delete: if false;
     }
 
@@ -308,7 +400,8 @@ service cloud.firestore {
     }
 
     match /kilnLaunchRequests/{requestId} {
-      allow read: if isSignedIn();
+      allow read: if isStaff()
+        || (isSignedIn() && resource.data.uid == request.auth.uid);
       allow create: if isSignedIn()
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.status == "queued"
@@ -367,6 +460,17 @@ service cloud.firestore {
             || request.resource.data.readBy.hasAll(resource.data.readBy)
           )
           && request.resource.data.readBy.hasAny([request.auth.uid])
+          && (
+            !(resource.data.readBy is list)
+            || (
+              resource.data.readBy.hasAny([request.auth.uid])
+              && request.resource.data.readBy.size() == resource.data.readBy.size()
+            )
+            || (
+              !resource.data.readBy.hasAny([request.auth.uid])
+              && request.resource.data.readBy.size() == resource.data.readBy.size() + 1
+            )
+          )
         );
       allow delete: if false;
     }
@@ -374,6 +478,65 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId) || isStaff();
       allow write: if false;
+    }
+
+    match /users/{userId}/prefs/{prefId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && prefId == "notifications"
+        && request.resource.data.enabled is bool
+        && request.resource.data.channels is map
+        && request.resource.data.events is map
+        && request.resource.data.frequency is map
+        && request.resource.data.channels.keys().hasOnly([
+          "inApp",
+          "email",
+          "push",
+          "sms"
+        ])
+        && request.resource.data.events.keys().hasOnly([
+          "kilnUnloaded",
+          "kilnUnloadedBisque",
+          "kilnUnloadedGlaze"
+        ])
+        && request.resource.data.frequency.keys().hasOnly([
+          "mode",
+          "digestHours"
+        ])
+        && (
+          !request.resource.data.keys().hasAny(["quietHours"])
+          || (
+            request.resource.data.quietHours is map
+            && request.resource.data.quietHours.keys().hasOnly([
+              "enabled",
+              "startLocal",
+              "endLocal",
+              "timezone"
+            ])
+          )
+        )
+        && request.resource.data.updatedAt is timestamp;
+      allow delete: if false;
+    }
+
+    match /users/{userId}/notifications/{notificationId} {
+      allow read: if isOwner(userId);
+      allow update: if isOwner(userId)
+        && changedKeysOnly(["readAt"])
+        && request.resource.data.readAt is timestamp;
+      allow create, delete: if false;
+    }
+
+    match /notificationJobs/{jobId} {
+      allow read, write: if false;
+    }
+
+    match /rateLimits/{rateId} {
+      allow read, write: if false;
+    }
+
+    match /mail/{mailId} {
+      allow read, write: if false;
     }
 
     match /directMessages/{threadId} {
@@ -439,7 +602,7 @@ service cloud.firestore {
     }
 
     match /materialsProducts/{productId} {
-      allow read: if false;
+      allow read: if isSignedIn();
       allow write: if isStaff();
     }
 
@@ -514,6 +677,202 @@ service cloud.firestore {
     }
 
     match /glazes/{glazeId} {
+      allow read: if isSignedIn();
+      allow write: if isStaff();
+    }
+
+    match /config/studioJukebox {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    match /config/stripe {
+      allow read: if isStaff();
+      allow write: if false;
+
+      match /stripe_audit/{auditId} {
+        allow read: if isStaff();
+        allow write: if false;
+      }
+    }
+
+    match /config/moderationPolicy {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /config/communitySafety {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /moderationPolicyVersions/{versionId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /moderationPolicyAuditLogs/{logId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /communitySafetyAuditLogs/{logId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /trackerProjects/{projectId} {
+      allow read: if isSignedIn()
+        && resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isSignedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if false;
+    }
+
+    match /trackerEpics/{epicId} {
+      allow read: if isSignedIn()
+        && resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isSignedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if false;
+    }
+
+    match /trackerTickets/{ticketId} {
+      allow read: if isSignedIn()
+        && resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.trackerVisible == true;
+      allow update: if isSignedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.trackerVisible == true;
+      allow delete: if false;
+
+      match /comments/{commentId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/trackerTickets/$(ticketId)).data.ownerUid == request.auth.uid;
+        allow create, update: if isSignedIn()
+          && get(/databases/$(database)/documents/trackerTickets/$(ticketId)).data.ownerUid == request.auth.uid;
+        allow delete: if false;
+      }
+
+      match /activity/{activityId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/trackerTickets/$(ticketId)).data.ownerUid == request.auth.uid;
+        allow create, update: if isSignedIn()
+          && get(/databases/$(database)/documents/trackerTickets/$(ticketId)).data.ownerUid == request.auth.uid;
+        allow delete: if false;
+      }
+    }
+
+    match /trackerIntegrationHealth/{uid} {
+      allow read, create, update: if isOwner(uid);
+      allow delete: if false;
+    }
+
+    match /communityReports/{reportId} {
+      allow read: if isStaff()
+        || (isSignedIn() && resource.data.reporterUid == request.auth.uid);
+      allow create, update, delete: if false;
+
+      match /internalNotes/{noteId} {
+        allow read: if isStaff();
+        allow create, update, delete: if false;
+      }
+
+      match /actions/{actionId} {
+        allow read: if isStaff();
+        allow create, update, delete: if false;
+      }
+    }
+
+    match /communityReportAppeals/{appealId} {
+      allow read: if isStaff()
+        || (isSignedIn() && resource.data.reporterUid == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    match /communityReportAuditLogs/{auditId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /communityReportDedupe/{dedupeId} {
+      allow read, write: if false;
+    }
+
+    match /communityReportTargetSignals/{signalId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /communityReportHousekeeping/{jobId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /agentClients/{clientId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /agentClientAuditLogs/{logId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /securityAudit/{logId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /integrationTokenAudit/{logId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /delegations/{delegationId} {
+      allow read: if isStaff()
+        || (isSignedIn() && resource.data.ownerUid == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /auditEvents/{auditId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /delegatedTokenNonces/{nonceId} {
+      allow read, write: if false;
+    }
+
+    match /communityFeedOverrides/{overrideId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /studioJukebox/tracks/items/{trackId} {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    match /studioJukebox/queue/items/{itemId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /studioJukebox/votes/items/{itemId}/byUid/{uid} {
+      allow read, write: if false;
+    }
+
+    match /studioJukebox/state {
       allow read: if isSignedIn();
       allow write: if isStaff();
     }

@@ -4,6 +4,12 @@
     "lint": "eslint --ext .js,.ts .",
     "build": "tsc",
     "build:watch": "tsc --watch",
+    "test": "npm run build && node --test \"lib/**/*.test.js\"",
+    "tracker:sync": "node scripts/syncTrackerTicketsFromMarkdown.js",
+    "tracker:seed": "node scripts/seedTracker.js",
+    "tracker:counts": "node scripts/tracker_counts.js",
+    "tracker:smoke": "node scripts/tracker_smoke.js",
+    "agent:commerce:smoke": "node scripts/agent_commerce_smoke.js",
     "serve": "npm run build && firebase emulators:start --only functions",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
@@ -11,12 +17,12 @@
     "logs": "firebase functions:log"
   },
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "lib/index.js",
   "dependencies": {
     "firebase-admin": "^13.6.0",
-    "firebase-functions": "^7.0.3",
+    "firebase-functions": "^7.0.5",
     "googleapis": "^169.0.0",
     "stripe": "^19.1.0",
     "zod": "^4.3.6"

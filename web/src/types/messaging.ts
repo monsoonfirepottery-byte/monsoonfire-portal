@@ -14,10 +14,10 @@ export type DirectMessageThread = {
   participantUids?: string[];
   lastMessagePreview?: string;
   lastMessageId?: string;
-  lastMessageAt?: any;
+  lastMessageAt?: unknown;
   lastSenderName?: string;
   lastSenderEmail?: string | null;
-  lastReadAtByUid?: Record<string, any>;
+  lastReadAtByUid?: Record<string, unknown>;
   references?: string[];
   [key: string]: unknown;
 };
@@ -37,7 +37,7 @@ export type DirectMessage = {
   ccEmails?: string[];
   bccUids?: string[];
   bccEmails?: string[];
-  sentAt?: any;
+  sentAt?: unknown;
   inReplyTo?: string;
   references?: string[];
   [key: string]: unknown;
@@ -48,7 +48,7 @@ export type Announcement = {
   title?: string;
   body?: string;
   type?: string;
-  createdAt?: any;
+  createdAt?: unknown;
   pinned?: boolean;
   readBy?: string[];
   ctaLabel?: string;

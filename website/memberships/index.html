@@ -12,13 +12,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/assets/css/styles.css" />
   <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-ZJQ30LHFKH"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-ZJQ30LHFKH');
-  </script>
+  <script src="/assets/js/analytics.js" defer></script>
   <meta property="og:site_name" content="Monsoon Fire Pottery" />
   <meta property="og:title" content="Memberships | Monsoon Fire Pottery" />
   <meta property="og:description" content="Memberships for makers who use kiln firing or studio access multiple times per month. Compare tiers and learn who each fits best." />
@@ -33,6 +27,7 @@
   <meta name="twitter:image" content="https://monsoonfire.com/assets/images/finished-work-1200.jpg" />
 </head>
 <body data-nav-parent="/services/">
+  <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
     <div class="container navbar">
       <a class="brand" href="/">
@@ -63,7 +58,7 @@
           <p class="lead">Memberships are for makers who need consistent access, storage, and priority scheduling. Pricing is published in the portal.</p>
         </div>
         <div class="cta-row">
-          <a class="button button-primary" href="https://monsoonfire.kilnfire.com/new-user" target="_blank" rel="noopener noreferrer">Join the portal</a>
+          <a class="button button-primary" href="https://monsoonfire.kilnfire.com/new-user" target="_blank" rel="noopener noreferrer">Choose your tier in portal</a>
           <a class="button button-ghost" href="/faq/">How memberships work</a>
         </div>
       </div>
@@ -145,6 +140,42 @@
         </div>
       </div>
     </section>
+
+    <section class="section" id="membership-expectations">
+      <div class="container">
+        <div class="heading-block">
+          <p class="eyebrow">Trust and expectations</p>
+          <h2 class="section-title">How membership works in practice.</h2>
+          <p class="lead">Membership is designed for repeat makers who want predictable capacity and clear policy.</p>
+        </div>
+        <ul class="meta-grid">
+          <li>
+            <span>Cycle</span>
+            <strong>Month-to-month cadence</strong>
+            <p>Tier benefits refresh monthly and are visible in your portal account.</p>
+          </li>
+          <li>
+            <span>Scheduling</span>
+            <strong>Priority follows policy</strong>
+            <p>Queue order and exceptions are governed by published firing and safety rules.</p>
+          </li>
+          <li>
+            <span>Storage</span>
+            <strong>Defined shelf allowances</strong>
+            <p>Storage is finite and tracked to keep shared space reliable for everyone.</p>
+          </li>
+          <li>
+            <span>Payments</span>
+            <strong>Transparent billing + refund policy</strong>
+            <p>Terms are documented in plain language before checkout.</p>
+          </li>
+        </ul>
+        <div class="cta-row">
+          <a class="button button-ghost" href="/policies/payments-refunds/">Review payments policy</a>
+          <a class="button button-ghost" href="/policies/firing-scheduling/">Review firing policy</a>
+        </div>
+      </div>
+    </section>
   </main>
 
   <footer class="footer">
@@ -162,10 +193,11 @@
     </div>
   </footer>
 
-  <script src="/assets/js/main.js"></script>
-  <script>function loadScript(a){var b=document.getElementsByTagName("head")[0],c=document.createElement("script");c.type="text/javascript",c.src="https://tracker.metricool.com/resources/be.js",c.onreadystatechange=a,c.onload=a,b.appendChild(c)}loadScript(function(){beTracker.t({hash:"66cdb7f9a3fce2c22ac2edbdc56cb820"})});</script>
+  <script defer src="/assets/js/main.js"></script>
+  
 </body>
 </html>
+
 
 
 

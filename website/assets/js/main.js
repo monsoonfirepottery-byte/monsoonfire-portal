@@ -6,6 +6,31 @@
   };
 
   const body = document.body;
+  const main = document.getElementById('main');
+  if (body && main && !document.querySelector('.skip-link')) {
+    const skipLink = document.createElement('a');
+    skipLink.className = 'skip-link';
+    skipLink.href = '#main';
+    skipLink.textContent = 'Skip to main content';
+    body.insertBefore(skipLink, body.firstChild);
+  }
+
+  const contactTitleNodes = Array.from(document.querySelectorAll('.footer .footer-title'));
+  contactTitleNodes.forEach((titleNode) => {
+    if (!titleNode || !titleNode.textContent) return;
+    if (titleNode.textContent.trim().toLowerCase() !== 'contact') return;
+    const contactContainer = titleNode.parentElement;
+    if (!contactContainer) return;
+    if (contactContainer.querySelector('a[href="/policies/accessibility/"]')) return;
+
+    const line = document.createElement('p');
+    const link = document.createElement('a');
+    link.href = '/policies/accessibility/';
+    link.textContent = 'Accessibility statement';
+    line.appendChild(link);
+    contactContainer.appendChild(line);
+  });
+
   const parentPath = body ? body.getAttribute('data-nav-parent') : null;
   const currentPath = normalizePath(parentPath || window.location.pathname);
   document.querySelectorAll('[data-nav-links] a').forEach((link) => {
@@ -111,10 +136,11 @@
     });
   });
 
-  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const prefersReducedMotion = () => reducedMotionQuery.matches;
   const carousels = document.querySelectorAll('[data-auto-rotate="true"]');
   carousels.forEach((carousel) => {
-    if (prefersReducedMotion) return;
+    if (prefersReducedMotion()) return;
     const items = carousel.querySelectorAll('.chip-card');
     if (!items.length) return;
     const getGap = () => {
@@ -129,9 +155,9 @@
       const scrollBy = itemWidth * perView;
       const maxScroll = carousel.scrollWidth - carousel.clientWidth;
       if (carousel.scrollLeft + scrollBy >= maxScroll - 4) {
-        carousel.scrollTo({ left: 0, behavior: 'smooth' });
+        carousel.scrollTo({ left: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
       } else {
-        carousel.scrollBy({ left: scrollBy, behavior: 'smooth' });
+        carousel.scrollBy({ left: scrollBy, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
       }
     };
     setInterval(tick, 4500);

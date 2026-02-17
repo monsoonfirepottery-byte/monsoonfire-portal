@@ -165,6 +165,8 @@ type CreatePortalApiOptions = {
 };
 
 const DEFAULT_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
+type ImportMetaEnvShape = { VITE_FUNCTIONS_BASE_URL?: string };
+const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
 
 function nowIso() {
   return new Date().toISOString();
@@ -173,9 +175,7 @@ function nowIso() {
 function makeRequestId(): string {
   // Browser-friendly UUID fallback
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const anyCrypto = crypto as any;
-    if (anyCrypto?.randomUUID) return anyCrypto.randomUUID();
+    if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
   } catch {
     // ignore
   }
@@ -273,10 +273,10 @@ async function callFn<TReq, TResp>(
     }
 
     return { data: body as TResp, meta: metaDone };
-  } catch (err: any) {
-    if (err instanceof PortalApiError) throw err;
+  } catch (error: unknown) {
+    if (error instanceof PortalApiError) throw error;
 
-    const msg = err?.message ? String(err.message) : "Request failed";
+    const msg = error instanceof Error ? error.message : "Request failed";
     const metaFail: PortalApiMeta = {
       ...metaStart,
       status: resp?.status,
@@ -292,10 +292,8 @@ async function callFn<TReq, TResp>(
 export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi {
   const baseUrl =
     options.baseUrl ||
-    (typeof import.meta !== "undefined" &&
-    (import.meta as any).env &&
-    (import.meta as any).env.VITE_FUNCTIONS_BASE_URL
-      ? String((import.meta as any).env.VITE_FUNCTIONS_BASE_URL)
+    (typeof import.meta !== "undefined" && ENV.VITE_FUNCTIONS_BASE_URL
+      ? String(ENV.VITE_FUNCTIONS_BASE_URL)
       : DEFAULT_BASE_URL);
 
   return {

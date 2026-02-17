@@ -54,5 +54,12 @@
     "tags": ["community", "policies"],
     "status": "draft",
     "effectiveDate": "2026-01-31"
+  },
+  {
+    "title": "Media accessibility standard",
+    "body": "<p>Public speech media includes captions, and long-form media includes transcript access before publication.</p>",
+    "tags": ["accessibility", "media", "policies"],
+    "status": "draft",
+    "effectiveDate": "2026-02-11"
   }
 ]

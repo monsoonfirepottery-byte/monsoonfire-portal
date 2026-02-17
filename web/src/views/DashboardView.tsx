@@ -1,16 +1,31 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
 import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
+import RevealCard from "../components/RevealCard";
+import { useUiSettings } from "../context/UiSettingsContext";
 import { db } from "../firebase";
 import { mockFirings, mockKilns } from "../data/kilnScheduleMock";
 import { useBatches } from "../hooks/useBatches";
+import { normalizeFiringDoc as normalizeFiringRow, normalizeKilnDoc as normalizeKilnRow } from "../lib/normalizers/kiln";
 import type { Kiln, KilnFiring } from "../types/kiln";
 import type { Announcement, DirectMessageThread } from "../types/messaging";
 import { formatMaybeTimestamp } from "../utils/format";
 
 const SAMPLE_WORKSHOPS = [
-  { name: "Wheel Lab", time: "Sat 10:00 AM", seats: "3 open" },
-  { name: "Glaze Science", time: "Sun 4:00 PM", seats: "Waitlist" },
+  {
+    name: "Wheel Lab",
+    time: "Sat 10:00 AM",
+    spotsLeft: 3,
+    waitlist: 0,
+    level: "Beginner",
+  },
+  {
+    name: "Glaze Science",
+    time: "Sun 4:00 PM",
+    spotsLeft: 0,
+    waitlist: 6,
+    level: "Intermediate",
+  },
 ];
 
 const DASHBOARD_PIECES_PREVIEW = 3;
@@ -30,9 +45,12 @@ const RAKU_KILN_NAME = "Reduction Raku Kiln";
 type KilnRow = {
   id: string;
   name: string;
+  timeLabel: string;
   statusLabel: string;
   pill: string;
   etaLabel: string;
+  firingTypeLabel: string;
+  progress: number | null;
   isOffline: boolean;
 };
 
@@ -69,43 +87,84 @@ function formatRelativeEta(target: Date, now: Date) {
   return `in ${days}d`;
 }
 
+function formatShortDate(value: Date) {
+  return value.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function inferFiringTypeLabel(value?: string) {
+  if (!value) return "Firing";
+  const normalized = value.toLowerCase();
+  if (normalized.includes("bisque")) return "Bisque";
+  if (normalized.includes("glaze")) return "Glaze";
+  if (normalized.includes("raku")) return "Raku";
+  return "Firing";
+}
+
 function useKilnDashboardRows() {
   const [kilns, setKilns] = useState<Kiln[]>([]);
   const [firings, setFirings] = useState<KilnFiring[]>([]);
   const [loading, setLoading] = useState(true);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const isMountedRef = useRef(true);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const kilnsQuery = query(collection(db, "kilns"), orderBy("name", "asc"), limit(25));
-        const firingsQuery = query(collection(db, "kilnFirings"), orderBy("startAt", "asc"), limit(200));
-        const [kilnSnap, firingSnap] = await Promise.all([getDocs(kilnsQuery), getDocs(firingsQuery)]);
-        setKilns(
-          kilnSnap.docs.map((docSnap) => ({
-            id: docSnap.id,
-            ...(docSnap.data() as any),
-          }))
-        );
-        setFirings(
-          firingSnap.docs.map((docSnap) => ({
-            id: docSnap.id,
-            ...(docSnap.data() as any),
-          }))
-        );
-      } catch (err) {
-        if (isPermissionDenied(err)) setPermissionDenied(true);
-      } finally {
-        setLoading(false);
+  const reload = useCallback(async () => {
+    if (!isMountedRef.current) return;
+
+    setPermissionDenied(false);
+    setLoading(true);
+
+    try {
+      const kilnsQuery = query(collection(db, "kilns"), orderBy("name", "asc"), limit(25));
+      const firingsQuery = query(collection(db, "kilnFirings"), orderBy("startAt", "asc"), limit(200));
+      const [kilnSnap, firingSnap] = await Promise.all([getDocs(kilnsQuery), getDocs(firingsQuery)]);
+      if (!isMountedRef.current) return;
+      setKilns(
+        kilnSnap.docs.map((docSnap) => ({
+          ...normalizeKilnRow(docSnap.id, docSnap.data() as Partial<Kiln>),
+        }))
+      );
+      setFirings(
+        firingSnap.docs.map((docSnap) => ({
+          ...normalizeFiringRow(docSnap.id, docSnap.data() as Partial<KilnFiring>),
+        }))
+      );
+    } catch (err) {
+      if (!isMountedRef.current) return;
+      if (isPermissionDenied(err)) {
+        setPermissionDenied(true);
+        setKilns([]);
+        setFirings([]);
       }
-    };
-
-    void load();
+    } finally {
+      if (isMountedRef.current) setLoading(false);
+    }
   }, []);
 
-  const useMock = permissionDenied || (!loading && kilns.length === 0 && firings.length === 0);
+  useEffect(() => {
+    isMountedRef.current = true;
+    void reload();
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [reload]);
+
+  const useMock = import.meta.env.DEV && (permissionDenied || (!loading && kilns.length === 0 && firings.length === 0));
   const rawKilns = useMock ? mockKilns : kilns;
   const rawFirings = useMock ? mockFirings : firings;
+  const noData = !loading && !permissionDenied && kilns.length === 0 && firings.length === 0;
+  const showRetry = permissionDenied || noData;
+  const statusNotice = permissionDenied
+    ? "Unable to load kiln schedules. Permissions may not be configured yet."
+    : noData
+      ? "No kiln status available yet."
+      : loading
+        ? "Loading kiln status..."
+        : "";
 
   const primaryKiln =
     rawKilns.find((kiln) => kiln.name === PRIMARY_KILN_NAME) ??
@@ -131,6 +190,13 @@ function useKilnDashboardRows() {
       .filter(Boolean) as Array<KilnFiring & { startDate: Date; endDate: Date }>;
   }, [rawFirings]);
 
+  const nextFiring = useMemo(() => {
+    const now = new Date();
+    return normalizedFirings
+      .filter((firing) => firing.status !== "cancelled" && firing.startDate > now)
+      .sort((a, b) => a.startDate.getTime() - b.startDate.getTime())[0];
+  }, [normalizedFirings]);
+
   const rows: KilnRow[] = useMemo(() => {
     const now = new Date();
     return displayKilns
@@ -152,7 +218,7 @@ function useKilnDashboardRows() {
               firing.status !== "cancelled" &&
               firing.startDate > now
           )
-          .sort((a, b) => a.startDate.getTime() - b.startDate.getTime())[0];
+            .sort((a, b) => a.startDate.getTime() - b.startDate.getTime())[0];
 
         const statusLabel = isOffline
           ? "Offline"
@@ -170,22 +236,53 @@ function useKilnDashboardRows() {
           ? "Temporarily offline"
           : active
             ? `Ends ${formatRelativeEta(active.endDate, now)}`
+          : next
+            ? `Starts ${formatRelativeEta(next.startDate, now)}`
+            : "No firing scheduled";
+        const firingSource = active ?? next;
+        const firingTypeLabel = inferFiringTypeLabel(
+          firingSource?.title || firingSource?.cycleType || ""
+        );
+        const timeLabel = isOffline
+          ? "Offline"
+          : active
+            ? `Ends ${formatRelativeEta(active.endDate, now)}`
             : next
               ? `Starts ${formatRelativeEta(next.startDate, now)}`
-              : "No firing scheduled";
+              : "No start scheduled";
+        const progress =
+          active && active.endDate.getTime() > active.startDate.getTime()
+            ? Math.min(
+                1,
+                Math.max(
+                  0,
+                  (now.getTime() - active.startDate.getTime()) /
+                    (active.endDate.getTime() - active.startDate.getTime())
+                )
+              )
+            : null;
 
         return {
           id: kiln.id,
           name: isRaku ? "Raku" : kiln.name,
+          timeLabel,
           statusLabel,
           pill,
           etaLabel,
+          firingTypeLabel,
+          progress,
           isOffline,
         };
       });
   }, [displayKilns, normalizedFirings]);
 
-  return rows;
+  const nextFiringLabel = nextFiring
+    ? `${formatShortDate(nextFiring.startDate)} · ${nextFiring.title || nextFiring.cycleType || "Firing"}`
+    : permissionDenied
+      ? "Firing schedule unavailable."
+      : "No firings scheduled yet";
+
+  return { rows, nextFiringLabel, statusNotice, useMock, permissionDenied, loading, reload, showRetry };
 }
 
 type Props = {
@@ -194,7 +291,11 @@ type Props = {
   threads: DirectMessageThread[];
   announcements: Announcement[];
   onOpenKilnRentals: () => void;
+  onOpenCheckin: () => void;
+  onOpenQueues: () => void;
+  onOpenFirings: () => void;
   onOpenStudioResources: () => void;
+  onOpenGlazeBoard: () => void;
   onOpenCommunity: () => void;
   onOpenMessages: () => void;
   onOpenPieces: () => void;
@@ -206,27 +307,61 @@ export default function DashboardView({
   threads,
   announcements,
   onOpenKilnRentals,
+  onOpenCheckin,
+  onOpenQueues,
+  onOpenFirings,
   onOpenStudioResources,
+  onOpenGlazeBoard,
   onOpenCommunity,
   onOpenMessages,
   onOpenPieces,
 }: Props) {
+  const { themeName, portalMotion } = useUiSettings();
+  const motionEnabled = themeName === "memoria" && portalMotion === "enhanced";
   const { active, history } = useBatches(user);
   const activePreview = active.slice(0, DASHBOARD_PIECES_PREVIEW);
   const archivedCount = history.length;
   const messagePreview = threads.slice(0, 3);
   const announcementPreview = announcements.slice(0, 3);
-  const kilnRows = useKilnDashboardRows();
+  const {
+    rows: kilnRows,
+    nextFiringLabel,
+    statusNotice,
+    useMock,
+    permissionDenied,
+    showRetry,
+    loading: kilnLoading,
+    reload: reloadKilns,
+  } = useKilnDashboardRows();
+  const queueFillCount = Math.min(8, Math.max(active.length, 0));
+  const queueFillRatio = Math.min(1, queueFillCount / 8);
+  const averageTurnaroundDays = useMemo(() => {
+    const durations = history
+      .map((item) => {
+        const created = coerceDate(item.createdAt);
+        const closed = coerceDate(item.closedAt);
+        if (!created || !closed) return null;
+        const diffDays = (closed.getTime() - created.getTime()) / (1000 * 60 * 60 * 24);
+        return diffDays > 0 ? diffDays : null;
+      })
+      .filter(Boolean) as number[];
+    if (durations.length === 0) return null;
+    const sample = durations.slice(0, 8);
+    const avg = sample.reduce((total, value) => total + value, 0) / sample.length;
+    return Math.round(avg);
+  }, [history]);
+  const nextPiece = activePreview[0];
+  const nextPieceStatus = nextPiece?.status || "In progress";
+  const nextPieceEta = nextPiece?.updatedAt
+    ? formatMaybeTimestamp(nextPiece.updatedAt)
+    : "Check back soon";
+  const kilnEmptyStateLabel = statusNotice || "No kiln status available yet.";
 
   return (
     <div className="dashboard">
-      <section className="card hero-card">
+      <RevealCard as="section" className="card hero-card" index={0} enabled={motionEnabled}>
         <div className="hero-content">
-          <p className="eyebrow">Client Dashboard</p>
           <h1>Your studio dashboard</h1>
-          <p className="hero-copy">
-            Track your wares, reserve kiln time, and keep up with studio life from one place.
-          </p>
           <div className="hero-actions">
             <button className="btn btn-primary" onClick={onOpenKilnRentals}>
               Kiln rentals
@@ -259,93 +394,200 @@ export default function DashboardView({
             </div>
           )}
         </div>
+      </RevealCard>
+
+      <section className="quick-actions">
+        <RevealCard className="card card-3d quick-action-card" index={1} enabled={motionEnabled}>
+          <div className="card-title">Quick actions</div>
+          <div className="quick-action-row">
+            <button className="btn btn-primary" onClick={onOpenCheckin}>
+              Start a check-in
+            </button>
+            <button className="btn btn-ghost" onClick={onOpenQueues}>
+              View the queues
+            </button>
+            <button className="btn btn-ghost" onClick={onOpenFirings}>
+              Firings
+            </button>
+            <button className="btn btn-ghost" onClick={onOpenGlazeBoard}>
+              Glaze inspiration
+            </button>
+            <button className="btn btn-ghost" onClick={onOpenMessages}>
+              Message the studio
+            </button>
+          </div>
+          <p className="quick-action-note">Pick a lane and we will take it from there.</p>
+        </RevealCard>
       </section>
 
       <section className="dashboard-grid">
-        <div className="card card-3d">
+        <RevealCard className="card card-3d" index={2} enabled={motionEnabled}>
           <div className="card-title">Your pieces</div>
           <div className="card-subtitle">Personal queue</div>
           {activePreview.length === 0 ? (
-            <div className="empty-state">No pieces in progress right now.</div>
+            <div className="empty-block">
+              <div className="empty-state">Nothing in the kiln line yet.</div>
+              <div className="empty-meta">Add work to the next firing.</div>
+              <button className="btn btn-primary" onClick={onOpenCheckin}>
+                Start a Check-In
+              </button>
+            </div>
           ) : (
-            <div className="list">
-              {activePreview.map((piece) => (
-                <div className="list-row" key={piece.id}>
-                  <div>
-                    <div className="list-title">{piece.title || "Untitled piece"}</div>
-                    <div className="list-meta">{piece.status || "In progress"}</div>
-                  </div>
-                  <div className="pill">{formatMaybeTimestamp(piece.updatedAt)}</div>
-                </div>
-              ))}
+            <div className="pieces-preview">
+              <div className="pieces-next">
+                <div className="pieces-next-label">Next status</div>
+                <div className="pieces-next-title">{nextPieceStatus}</div>
+                <div className="pieces-next-meta">{nextPieceEta}</div>
+              </div>
+              <div className="pieces-thumbs">
+                {activePreview.map((piece, index) => {
+                  const title = piece.title || "Piece";
+                  const initials = title
+                    .split(" ")
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((word) => word[0]?.toUpperCase())
+                    .join("");
+                  return (
+                    <div
+                      key={piece.id}
+                      className="piece-thumb"
+                      aria-label={`${title} preview`}
+                      title={title}
+                      data-index={index + 1}
+                    >
+                      {initials || "•"}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
           <button className="btn btn-ghost dashboard-link" onClick={onOpenPieces}>
             Open My Pieces
           </button>
-        </div>
+        </RevealCard>
 
-        <div className="card card-3d">
+        <RevealCard className="card card-3d" index={3} enabled={motionEnabled}>
           <div className="card-title">Studio snapshot</div>
           <div className="card-subtitle">Studio-wide status</div>
-          <div className="stat-grid">
-            <div className="stat">
-              <div className="stat-label">Pieces in progress</div>
-              <div className="stat-value">{active.length}</div>
+          <div className="snapshot-grid">
+            <div className="snapshot-block">
+              <div className="snapshot-label">Next scheduled firing</div>
+              <div className="snapshot-value">{nextFiringLabel}</div>
             </div>
-            <div className="stat">
-              <div className="stat-label">Ready for pickup</div>
-              <div className="stat-value">{archivedCount}</div>
+            <div className="snapshot-block">
+              <div className="snapshot-label">Queue fullness</div>
+              <div className="snapshot-value">
+                {queueFillCount} / 8 half shelves
+              </div>
+              <progress
+                className="meter"
+                value={Math.round(queueFillRatio * 100)}
+                max={100}
+                aria-label="Queue fullness"
+              />
             </div>
-            <div className="stat">
-              <div className="stat-label">Membership level</div>
-              <div className="stat-value">Studio</div>
+            <div className="snapshot-block">
+              <div className="snapshot-label">Average turnaround this month</div>
+              <div className="snapshot-value">
+                {averageTurnaroundDays ? `${averageTurnaroundDays} days` : "We are still collecting data"}
+              </div>
             </div>
           </div>
-        </div>
+        </RevealCard>
 
-        <div className="card card-3d">
+        <RevealCard className="card card-3d" index={4} enabled={motionEnabled}>
           <div className="card-title">Kilns firing now</div>
+          {useMock ? <div className="notice">Using sample kiln data for development.</div> : null}
+          {useMock && permissionDenied ? (
+            <div className="notice" role="status" aria-live="polite">
+              {statusNotice}
+            </div>
+          ) : null}
           <div className="list">
             {kilnRows.length === 0 ? (
-              <div className="empty-state">No kiln status available yet.</div>
+              <div className="empty-state" role="status" aria-live="polite">
+                {kilnEmptyStateLabel}
+              </div>
             ) : (
               kilnRows.map((kiln) => (
-              <div className={`list-row ${kiln.isOffline ? "kiln-offline" : ""}`} key={kiln.id}>
-                <div>
-                  <div className="list-title">{kiln.name}</div>
-                  <div className="list-meta">{kiln.statusLabel}</div>
+                <div className={`list-row kiln-row ${kiln.isOffline ? "kiln-offline" : ""}`} key={kiln.id}>
+                  <div className="kiln-left">
+                    <div className="list-title">{kiln.name}</div>
+                    <div className="kiln-time" title={`Firing type: ${kiln.firingTypeLabel}`}>
+                      {kiln.timeLabel}
+                    </div>
+                    <div className="list-meta">{kiln.statusLabel}</div>
+                  </div>
+                  <div className="list-right">
+                    <div className="pill">{kiln.pill}</div>
+                    <div className="list-meta">{kiln.etaLabel}</div>
+                  </div>
+                  <progress
+                    className="kiln-progress"
+                    value={Math.round((kiln.progress ?? 0) * 100)}
+                    max={100}
+                    aria-label="Kiln progress"
+                    aria-hidden="true"
+                  />
                 </div>
-                <div className="list-right">
-                  <div className="pill">{kiln.pill}</div>
-                  <div className="list-meta">{kiln.etaLabel}</div>
-                </div>
-              </div>
               ))
             )}
           </div>
-        </div>
+          {showRetry && !kilnLoading ? (
+            <button className="btn btn-secondary" onClick={() => void reloadKilns()} disabled={kilnLoading}>
+              Retry loading kiln status
+            </button>
+          ) : null}
+        </RevealCard>
 
-        <div className="card card-3d">
+        <RevealCard className="card card-3d" index={5} enabled={motionEnabled}>
           <div className="card-title">Upcoming workshops</div>
           <div className="list">
             {SAMPLE_WORKSHOPS.map((item) => (
-              <div className="list-row" key={item.name}>
+              <div className="list-row workshop-row" key={item.name}>
                 <div>
                   <div className="list-title">{item.name}</div>
                   <div className="list-meta">{item.time}</div>
+                  <div className="workshop-tags">
+                    <span className="pill pill-muted">{item.level}</span>
+                  </div>
                 </div>
-                <div className="pill">{item.seats}</div>
+                <div className="workshop-right">
+                  <div className="pill">
+                    {item.spotsLeft > 0
+                      ? `${item.spotsLeft} spot${item.spotsLeft === 1 ? "" : "s"} left`
+                      : `${item.waitlist} on waitlist`}
+                  </div>
+                  <button className="btn btn-ghost btn-small">Quick RSVP</button>
+                </div>
               </div>
             ))}
           </div>
-        </div>
+        </RevealCard>
 
-        <div className="card card-3d">
+        <RevealCard className="card card-3d" index={6} enabled={motionEnabled}>
+          <div className="card-title">Glaze inspiration</div>
+          <div className="card-subtitle">Pick a base + top combo</div>
+          <p className="card-body-copy">
+            Browse the studio glaze matrix and save combos for your next firing.
+          </p>
+          <button className="btn btn-ghost dashboard-link" onClick={onOpenGlazeBoard}>
+            Open the glaze board
+          </button>
+        </RevealCard>
+
+        <RevealCard className="card card-3d" index={7} enabled={motionEnabled}>
           <div className="card-title">Direct messages</div>
           <div className="messages-preview">
             {messagePreview.length === 0 ? (
-              <div className="empty-state">No conversations yet.</div>
+              <div className="empty-block">
+                <div className="empty-state">Questions about your work? We're here.</div>
+                <button className="btn btn-ghost btn-small" onClick={onOpenMessages}>
+                  Ask the studio
+                </button>
+              </div>
             ) : (
               messagePreview.map((thread) => (
                 <div className="message" key={thread.id}>
@@ -363,9 +605,9 @@ export default function DashboardView({
           <button className="btn btn-ghost" onClick={onOpenMessages}>
             Open messages inbox
           </button>
-        </div>
+        </RevealCard>
 
-        <div className="card card-3d span-2 archived-summary">
+        <RevealCard className="card card-3d span-2 archived-summary" index={8} enabled={motionEnabled}>
           <div>
             <div className="card-title">Archived pieces</div>
             <div className="archived-count">
@@ -377,7 +619,7 @@ export default function DashboardView({
           <button className="btn btn-ghost" onClick={onOpenPieces}>
             View archived pieces
           </button>
-        </div>
+        </RevealCard>
       </section>
     </div>
   );

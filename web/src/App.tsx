@@ -1,22 +1,53 @@
 import React, { useEffect, useState } from "react";
 import {
+  FacebookAuthProvider,
   GoogleAuthProvider,
-  onAuthStateChanged,
+  OAuthProvider,
+  createUserWithEmailAndPassword,
+  getRedirectResult,
+  isSignInWithEmailLink,
+  onIdTokenChanged,
+  signInAnonymously,
+  signInWithEmailAndPassword,
+  signInWithEmailLink,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
+  sendSignInLinkToEmail,
   type User,
 } from "firebase/auth";
-import { addDoc, collection, getDocs, limit, orderBy, query, serverTimestamp, where } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  where,
+} from "firebase/firestore";
 import { auth, db } from "./firebase";
 import type { Announcement, DirectMessageThread, LiveUser } from "./types/messaging";
+import { toVoidHandler } from "./utils/toVoidHandler";
+import { identify, shortId, track } from "./lib/analytics";
 import type { SupportRequestInput } from "./views/SupportView";
-import { portalTheme } from "./theme/themes";
+import { DEFAULT_PORTAL_THEME, isPortalThemeName, PORTAL_THEMES, type PortalThemeName } from "./theme/themes";
+import { readStoredPortalTheme, writeStoredPortalTheme } from "./theme/themeStorage";
+import { readStoredEnhancedMotion, writeStoredEnhancedMotion } from "./theme/motionStorage";
+import { computeEnhancedMotionDefault, resolvePortalMotion } from "./theme/motionPreference";
+import { usePrefersReducedMotion } from "./hooks/usePrefersReducedMotion";
+import { UiSettingsProvider } from "./context/UiSettingsContext";
 import "./App.css";
 
 const BillingView = React.lazy(() => import("./views/BillingView"));
+const AgentRequestsView = React.lazy(() => import("./views/AgentRequestsView"));
 const CommunityView = React.lazy(() => import("./views/CommunityView"));
 const DashboardView = React.lazy(() => import("./views/DashboardView"));
 const EventsView = React.lazy(() => import("./views/EventsView"));
+const IntegrationsView = React.lazy(() => import("./views/IntegrationsView"));
 const KilnLaunchView = React.lazy(() => import("./views/KilnLaunchView"));
 const KilnRentalsView = React.lazy(() => import("./views/KilnRentalsView"));
 const KilnScheduleView = React.lazy(() => import("./views/KilnScheduleView"));
@@ -26,16 +57,19 @@ const MembershipView = React.lazy(() => import("./views/MembershipView"));
 const MaterialsView = React.lazy(() => import("./views/MaterialsView"));
 const MessagesView = React.lazy(() => import("./views/MessagesView"));
 const MyPiecesView = React.lazy(() => import("./views/MyPiecesView"));
+const NotificationsView = React.lazy(() => import("./views/NotificationsView"));
 const PlaceholderView = React.lazy(() => import("./views/PlaceholderView"));
 const ProfileView = React.lazy(() => import("./views/ProfileView"));
 const ReservationsView = React.lazy(() => import("./views/ReservationsView"));
 const SignedOutView = React.lazy(() => import("./views/SignedOutView"));
 const StudioResourcesView = React.lazy(() => import("./views/StudioResourcesView"));
 const SupportView = React.lazy(() => import("./views/SupportView"));
+const StaffView = React.lazy(() => import("./views/StaffView"));
 
 type NavKey =
   | "dashboard"
   | "profile"
+  | "integrations"
   | "pieces"
   | "kiln"
   | "kilnRentals"
@@ -47,8 +81,10 @@ type NavKey =
   | "glazes"
   | "membership"
   | "materials"
+  | "requests"
   | "billing"
   | "studioResources"
+  | "notifications"
   | "messages"
   | "support"
   | "staff";
@@ -67,11 +103,39 @@ type NavSection = {
   items: NavItem[];
 };
 
+type ImportMetaEnvShape = {
+  DEV?: boolean;
+  VITE_FUNCTIONS_BASE_URL?: string;
+  VITE_ENABLE_DEV_ADMIN_TOKEN?: string;
+  VITE_PERSIST_DEV_ADMIN_TOKEN?: string;
+  VITE_USE_EMULATORS?: string;
+  VITE_USE_AUTH_EMULATOR?: string;
+};
+
+type NotificationItem = {
+  id: string;
+  title?: string;
+  body?: string;
+  createdAt?: { toDate?: () => Date } | null;
+  readAt?: { toDate?: () => Date } | null;
+  data?: {
+    firingId?: string;
+    kilnName?: string | null;
+    firingType?: string | null;
+  };
+};
+
+type StaffClaims = {
+  staff?: boolean;
+  roles?: string[];
+};
+
 const NAV_TOP_ITEMS: NavItem[] = [
   { key: "dashboard", label: "Dashboard" },
 ];
 
 const NAV_BOTTOM_ITEMS: NavItem[] = [
+  { key: "notifications", label: "Notifications" },
   { key: "messages", label: "Messages" },
   { key: "support", label: "Support" },
 ];
@@ -96,6 +160,7 @@ const NAV_SECTIONS: NavSection[] = [
       { key: "glazes", label: "Glaze Board" },
       { key: "materials", label: "Store" },
       { key: "membership", label: "Membership" },
+      { key: "requests", label: "Requests" },
       { key: "billing", label: "Billing" },
     ],
   },
@@ -130,6 +195,24 @@ const NAV_ITEM_ICONS: Partial<Record<NavKey, React.ReactNode>> = {
       />
     </svg>
   ),
+  notifications: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M6 9a6 6 0 0 1 12 0v5l2 3H4l2-3V9z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9.5 18a2.5 2.5 0 0 0 5 0"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  ),
   support: (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2" />
@@ -141,6 +224,24 @@ const NAV_ITEM_ICONS: Partial<Record<NavKey, React.ReactNode>> = {
         strokeLinecap="round"
       />
       <circle cx="12" cy="17.5" r="1" fill="currentColor" />
+    </svg>
+  ),
+  staff: (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9 12l2 2 4-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
   ),
 };
@@ -189,6 +290,7 @@ const NAV_SECTION_ICONS: Record<NavSectionKey, React.ReactNode> = {
 const NAV_LABELS: Record<NavKey, string> = {
   dashboard: "Dashboard",
   profile: "Profile",
+  integrations: "Integrations",
   pieces: "My Pieces",
   kiln: "Firings",
   kilnRentals: "Kiln Rentals",
@@ -200,31 +302,35 @@ const NAV_LABELS: Record<NavKey, string> = {
   glazes: "Glaze Board",
   membership: "Membership",
   materials: "Store",
+  requests: "Requests",
   billing: "Billing",
   studioResources: "Studio & Resources",
+  notifications: "Notifications",
   messages: "Messages",
   support: "Support",
   staff: "Staff",
 };
 
 const SESSION_ADMIN_TOKEN_KEY = "mf_dev_admin_token";
+const EMAIL_LINK_KEY = "mf_email_link_email";
 const LOCAL_NAV_KEY = "mf_nav_key";
 const LOCAL_NAV_SECTION_KEY = "mf_nav_section_key";
 const LOCAL_NAV_COLLAPSED_KEY = "mf_nav_collapsed";
 const SUPPORT_EMAIL = "support@monsoonfire.com";
-const MF_LOGO = "/branding/logo.png";
+const MF_LOGO = "/branding/logo-mark-black.webp";
+const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
 const FUNCTIONS_BASE_URL =
-  typeof import.meta !== "undefined" &&
-  (import.meta as any).env &&
-  (import.meta as any).env.VITE_FUNCTIONS_BASE_URL
-    ? String((import.meta as any).env.VITE_FUNCTIONS_BASE_URL)
+  typeof import.meta !== "undefined" && ENV.VITE_FUNCTIONS_BASE_URL
+    ? String(ENV.VITE_FUNCTIONS_BASE_URL)
     : DEFAULT_FUNCTIONS_BASE_URL;
 const DEV_ADMIN_TOKEN_ENABLED =
   typeof import.meta !== "undefined" &&
-  (import.meta as any).env?.DEV === true &&
-  (import.meta as any).env?.VITE_ENABLE_DEV_ADMIN_TOKEN === "true" &&
+  ENV.DEV === true &&
+  ENV.VITE_ENABLE_DEV_ADMIN_TOKEN === "true" &&
   (FUNCTIONS_BASE_URL.includes("localhost") || FUNCTIONS_BASE_URL.includes("127.0.0.1"));
+const DEV_ADMIN_TOKEN_PERSIST_ENABLED =
+  DEV_ADMIN_TOKEN_ENABLED && ENV.VITE_PERSIST_DEV_ADMIN_TOKEN === "true";
 
 const NAV_SECTION_KEYS: NavSectionKey[] = ["kilnRentals", "studioResources", "community"];
 
@@ -241,6 +347,22 @@ const getSectionForNav = (navKey: NavKey): NavSectionKey | null => {
   return match?.key ?? null;
 };
 
+function getErrorCode(error: unknown): string {
+  if (!error || typeof error !== "object") return "";
+  const code = (error as Record<string, unknown>).code;
+  return typeof code === "string" ? code : "";
+}
+
+function getErrorMessage(error: unknown): string {
+  const code = getErrorCode(error);
+  if (code) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (code && message && !message.includes(code)) return `${message} (${code})`;
+    if (code) return code;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
 class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean; message: string }
@@ -249,12 +371,11 @@ class AppErrorBoundary extends React.Component<
     super(props);
     this.state = { hasError: false, message: "" };
   }
-  static getDerivedStateFromError(err: any) {
-    return { hasError: true, message: err?.message || String(err) };
+  static getDerivedStateFromError(error: unknown) {
+    return { hasError: true, message: getErrorMessage(error) };
   }
-  componentDidCatch(err: any) {
-    // eslint-disable-next-line no-console
-    console.error("AppErrorBoundary caught:", err);
+  componentDidCatch(error: unknown) {
+    console.error("AppErrorBoundary caught:", error);
   }
   render() {
     if (!this.state.hasError) return this.props.children;
@@ -266,7 +387,7 @@ class AppErrorBoundary extends React.Component<
             The app hit a runtime error. Refresh usually fixes it.
           </div>
           <pre className="error-pre">{this.state.message}</pre>
-          <button className="btn btn-primary" onClick={() => window.location.reload()}>
+          <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>
             Reload
           </button>
         </div>
@@ -299,11 +420,11 @@ function useLiveUsers(user: User | null, canLoad: boolean) {
         if (canceled) return;
         const rows: LiveUser[] = snap.docs.map((docSnap) => ({
           id: docSnap.id,
-          ...(docSnap.data() as any),
+          ...(docSnap.data() as Partial<LiveUser>),
         }));
         setUsers(rows.filter((liveUser) => liveUser.id !== user.uid && liveUser.isActive !== false));
-      } catch (err: any) {
-        if (!canceled) setError(`Users failed: ${err.message || String(err)}`);
+      } catch (error: unknown) {
+        if (!canceled) setError(`Users failed: ${getErrorMessage(error)}`);
       } finally {
         if (!canceled) setLoading(false);
       }
@@ -327,6 +448,8 @@ function useDirectMessages(user: User | null) {
     let canceled = false;
     if (!user) {
       setThreads([]);
+      setLoading(false);
+      setError("");
       return;
     }
 
@@ -345,11 +468,11 @@ function useDirectMessages(user: User | null) {
         if (canceled) return;
         const rows: DirectMessageThread[] = snap.docs.map((docSnap) => ({
           id: docSnap.id,
-          ...(docSnap.data() as any),
+          ...(docSnap.data() as Partial<DirectMessageThread>),
         }));
         setThreads(rows);
-      } catch (err: any) {
-        if (!canceled) setError(`Direct messages failed: ${err.message || String(err)}`);
+      } catch (error: unknown) {
+        if (!canceled) setError(`Direct messages failed: ${getErrorMessage(error)}`);
       } finally {
         if (!canceled) setLoading(false);
       }
@@ -373,6 +496,8 @@ function useAnnouncements(user: User | null) {
     let canceled = false;
     if (!user) {
       setAnnouncements([]);
+      setLoading(false);
+      setError("");
       return;
     }
 
@@ -390,11 +515,11 @@ function useAnnouncements(user: User | null) {
         if (canceled) return;
         const rows: Announcement[] = snap.docs.map((docSnap) => ({
           id: docSnap.id,
-          ...(docSnap.data() as any),
+          ...(docSnap.data() as Partial<Announcement>),
         }));
         setAnnouncements(rows);
-      } catch (err: any) {
-        if (!canceled) setError(`Announcements failed: ${err.message || String(err)}`);
+      } catch (error: unknown) {
+        if (!canceled) setError(`Announcements failed: ${getErrorMessage(error)}`);
       } finally {
         if (!canceled) setLoading(false);
       }
@@ -409,9 +534,65 @@ function useAnnouncements(user: User | null) {
   return { announcements, loading, error };
 }
 
+function useNotifications(user: User | null, canLoad: boolean) {
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let canceled = false;
+    if (!user || !canLoad) {
+      setNotifications([]);
+      setLoading(false);
+      setError("");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    const load = async () => {
+      try {
+        const notificationsQuery = query(
+          collection(db, "users", user.uid, "notifications"),
+          orderBy("createdAt", "desc"),
+          limit(50)
+        );
+        const snap = await getDocs(notificationsQuery);
+        if (canceled) return;
+        const rows = snap.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...(docSnap.data() as Record<string, unknown>),
+        }));
+        setNotifications(rows as NotificationItem[]);
+      } catch (error: unknown) {
+        if (!canceled) setError(`Notifications failed: ${getErrorMessage(error)}`);
+      } finally {
+        if (!canceled) setLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      canceled = true;
+    };
+  }, [user, canLoad]);
+
+  return { notifications, loading, error };
+}
+
+function prefetchLikelyNextViews() {
+  void import("./views/KilnRentalsView");
+  void import("./views/ReservationsView");
+  void import("./views/KilnLaunchView");
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [authStatus, setAuthStatus] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [emailLinkPending, setEmailLinkPending] = useState(false);
   const [nav, setNav] = useState<NavKey>(() => {
     if (typeof window === "undefined") return "dashboard";
     const path = window.location.pathname;
@@ -437,16 +618,150 @@ export default function App() {
   const [isStaff, setIsStaff] = useState(false);
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [supportStatus, setSupportStatus] = useState("");
   const [supportBusy, setSupportBusy] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [themeName, setThemeName] = useState<PortalThemeName>(() => readStoredPortalTheme());
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const [enhancedMotion, setEnhancedMotion] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const likelyMobile = window.matchMedia?.("(max-width: 720px)")?.matches ?? false;
+    const saveData = (navigator as { connection?: { saveData?: boolean } }).connection?.saveData ?? false;
+    const deviceMemory = (navigator as { deviceMemory?: number }).deviceMemory ?? null;
+    const cores = (navigator as { hardwareConcurrency?: number }).hardwareConcurrency ?? null;
+    const defaultValue = computeEnhancedMotionDefault({
+      likelyMobile,
+      saveData,
+      deviceMemory,
+      hardwareConcurrency: cores,
+    });
+    return readStoredEnhancedMotion(defaultValue);
+  });
+  const [motionAutoReduced, setMotionAutoReduced] = useState(false);
 
   const authClient = auth;
+  const isAuthEmulator =
+    typeof import.meta !== "undefined" &&
+    (ENV.VITE_USE_AUTH_EMULATOR ?? ENV.VITE_USE_EMULATORS) === "true";
   const devAdminActive = DEV_ADMIN_TOKEN_ENABLED && devAdminToken.trim().length > 0;
   const staffUi = isStaff || devAdminActive;
   const devAdminTokenValue = devAdminActive ? devAdminToken.trim() : "";
+  const navBottomItems: NavItem[] = staffUi
+    ? [...NAV_BOTTOM_ITEMS, { key: "staff", label: "Staff" }]
+    : NAV_BOTTOM_ITEMS;
 
   useEffect(() => {
-    if (!DEV_ADMIN_TOKEN_ENABLED) return;
+    const theme = PORTAL_THEMES[themeName] ?? PORTAL_THEMES[DEFAULT_PORTAL_THEME];
+    if (typeof document === "undefined") return;
+    document.documentElement.dataset.portalTheme = themeName;
+    document.documentElement.dataset.portalMotion = resolvePortalMotion(prefersReducedMotion, enhancedMotion);
+    document.documentElement.style.colorScheme = themeName === "memoria" ? "dark" : "light";
+    for (const [key, value] of Object.entries(theme)) {
+      if (!key.startsWith("--") || value == null) continue;
+      document.documentElement.style.setProperty(key, String(value));
+    }
+  }, [themeName, prefersReducedMotion, enhancedMotion]);
+
+  useEffect(() => {
+    setAvatarLoadFailed(false);
+  }, [user?.photoURL]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (prefersReducedMotion) return;
+    if (!enhancedMotion) return;
+    if (themeName !== "memoria") return;
+
+    let stopped = false;
+    let armed = true;
+
+    const runProbe = () => {
+      if (stopped || !armed) return;
+      armed = false;
+      let frames = 0;
+      let last = performance.now();
+      const deltas: number[] = [];
+
+      const tick = (now: number) => {
+        if (stopped) return;
+        const dt = now - last;
+        last = now;
+        deltas.push(dt);
+        frames += 1;
+        if (frames < 50) {
+          requestAnimationFrame(tick);
+          return;
+        }
+        const sorted = deltas.slice().sort((a, b) => a - b);
+        const avg = deltas.reduce((t, v) => t + v, 0) / Math.max(1, deltas.length);
+        const p95 = sorted[Math.floor(sorted.length * 0.95)] ?? avg;
+        const slow = avg > 24 || p95 > 34;
+        if (slow) {
+          setEnhancedMotion(false);
+          writeStoredEnhancedMotion(false);
+          setMotionAutoReduced(true);
+          // Best effort: sync to profile when signed in.
+          if (user?.uid) {
+            setDoc(
+              doc(db, "profiles", user.uid),
+              { uiEnhancedMotion: false, updatedAt: serverTimestamp() },
+              { merge: true }
+            ).catch(() => {});
+          }
+        }
+      };
+
+      requestAnimationFrame(tick);
+    };
+
+    const onFirstInteraction = () => runProbe();
+    window.addEventListener("pointerdown", onFirstInteraction, { once: true, passive: true });
+    window.addEventListener("keydown", onFirstInteraction, { once: true, passive: true });
+    window.addEventListener("scroll", onFirstInteraction, { once: true, passive: true });
+
+    return () => {
+      stopped = true;
+      window.removeEventListener("pointerdown", onFirstInteraction);
+      window.removeEventListener("keydown", onFirstInteraction);
+      window.removeEventListener("scroll", onFirstInteraction);
+    };
+  }, [prefersReducedMotion, enhancedMotion, themeName, user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    let cancelled = false;
+    async function loadThemeFromProfile(uid: string) {
+      try {
+        const snap = await getDoc(doc(db, "profiles", uid));
+        const data = (snap.data() as { uiTheme?: unknown; uiEnhancedMotion?: unknown } | undefined) ?? undefined;
+        const raw = data?.uiTheme;
+        const rawMotion = data?.uiEnhancedMotion;
+        if (cancelled) return;
+        if (isPortalThemeName(raw)) {
+          setThemeName(raw);
+          writeStoredPortalTheme(raw);
+        }
+        if (typeof rawMotion === "boolean") {
+          setEnhancedMotion(rawMotion);
+          writeStoredEnhancedMotion(rawMotion);
+        }
+      } catch {
+        // Ignore theme load failures; default/localStorage theme still works.
+      }
+    }
+    void loadThemeFromProfile(user.uid);
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!DEV_ADMIN_TOKEN_ENABLED || !DEV_ADMIN_TOKEN_PERSIST_ENABLED) {
+      sessionStorage.removeItem(SESSION_ADMIN_TOKEN_KEY);
+      return;
+    }
     const saved = sessionStorage.getItem(SESSION_ADMIN_TOKEN_KEY);
     if (saved) {
       setDevAdminToken(saved);
@@ -476,7 +791,10 @@ export default function App() {
   }, [openSection]);
 
   useEffect(() => {
-    if (!DEV_ADMIN_TOKEN_ENABLED) return;
+    if (!DEV_ADMIN_TOKEN_ENABLED || !DEV_ADMIN_TOKEN_PERSIST_ENABLED) {
+      sessionStorage.removeItem(SESSION_ADMIN_TOKEN_KEY);
+      return;
+    }
     if (devAdminToken) {
       sessionStorage.setItem(SESSION_ADMIN_TOKEN_KEY, devAdminToken);
     } else {
@@ -485,44 +803,126 @@ export default function App() {
   }, [devAdminToken]);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(authClient, (nextUser) => {
-      setUser(nextUser);
-      setAuthReady(true);
-      if (!nextUser) setNav("dashboard");
-    });
-    return () => unsub();
-  }, [authClient]);
-
-  useEffect(() => {
     let cancelled = false;
-    if (!user) {
-      setIsStaff(false);
-      return () => {
-        cancelled = true;
-      };
-    }
+    let unsub = () => {};
 
-    user
-      .getIdTokenResult()
-      .then((result) => {
-        if (cancelled) return;
-        const claims: any = result.claims ?? {};
-        const roles = Array.isArray(claims.roles) ? claims.roles : [];
-        const staff = claims.staff === true || roles.includes("staff");
-        setIsStaff(staff);
-      })
-      .catch(() => {
-        if (!cancelled) setIsStaff(false);
+    const init = async () => {
+      if (typeof window !== "undefined") {
+        const link = window.location.href;
+        if (isSignInWithEmailLink(authClient, link)) {
+          const storedEmail = localStorage.getItem(EMAIL_LINK_KEY);
+          if (storedEmail) {
+            try {
+              await signInWithEmailLink(authClient, storedEmail, link);
+              localStorage.removeItem(EMAIL_LINK_KEY);
+              if (!cancelled) setEmailLinkPending(false);
+            } catch (_err: unknown) {
+              if (!cancelled) {
+                setEmailLinkPending(true);
+                setAuthStatus("Sign-in link failed. Please try again.");
+              }
+            }
+          } else if (!cancelled) {
+            setEmailLinkPending(true);
+          }
+        }
+      }
+      try {
+        const result = await getRedirectResult(authClient);
+        if (!cancelled && result?.user) {
+          track("auth_sign_in_success", {
+            method: "redirect",
+            uid: shortId(result.user.uid),
+          });
+          identify(result.user);
+          setUser(result.user);
+          setAuthReady(true);
+        }
+      } catch {
+        // Redirect result is best-effort; when no redirect occurred it may throw or return null.
+      }
+      if (cancelled) return;
+      unsub = onIdTokenChanged(authClient, (nextUser) => {
+        if (nextUser) {
+          identify(nextUser);
+        }
+        setUser(nextUser);
+        setAuthReady(true);
+        if (typeof window !== "undefined" && import.meta.env?.DEV) {
+          const debugWindow = window as Window & {
+            __mfGetIdToken?: () => Promise<string>;
+            __mfGetUid?: () => string | null;
+          };
+          if (!nextUser) {
+            delete debugWindow.__mfGetIdToken;
+            delete debugWindow.__mfGetUid;
+          } else {
+            debugWindow.__mfGetUid = () => nextUser.uid ?? null;
+            debugWindow.__mfGetIdToken = async () => await nextUser.getIdToken(true);
+          }
+        }
+        if (!nextUser) {
+          setIsStaff(false);
+        } else {
+          nextUser
+            .getIdTokenResult()
+            .then((result) => {
+              const claims = (result.claims ?? {}) as StaffClaims;
+              const roles = Array.isArray(claims.roles) ? claims.roles : [];
+              const staff = claims.staff === true || roles.includes("staff");
+              setIsStaff(staff);
+            })
+            .catch(() => setIsStaff(false));
+        }
+        if (!nextUser) setNav("dashboard");
       });
+    };
 
+    void init();
     return () => {
       cancelled = true;
+      unsub();
     };
-  }, [user]);
+  }, [authClient, isAuthEmulator]);
+
+  useEffect(() => {
+    if (!user) {
+      setNotificationsEnabled(false);
+      return;
+    }
+    if (nav === "notifications") {
+      setNotificationsEnabled(true);
+      return;
+    }
+
+    let canceled = false;
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (
+        callback: IdleRequestCallback,
+        options?: IdleRequestOptions
+      ) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    const enable = () => {
+      if (!canceled) setNotificationsEnabled(true);
+    };
+    if (idleWindow.requestIdleCallback) {
+      const handle = idleWindow.requestIdleCallback(enable, { timeout: 2200 });
+      return () => {
+        canceled = true;
+        idleWindow.cancelIdleCallback?.(handle);
+      };
+    }
+    const timer = window.setTimeout(enable, 700);
+    return () => {
+      canceled = true;
+      window.clearTimeout(timer);
+    };
+  }, [user, nav]);
 
   const { users: liveUsers, loading: liveUsersLoading, error: liveUsersError } = useLiveUsers(
     user,
-    isStaff
+    isStaff && nav === "messages"
   );
   const { threads, loading: threadsLoading, error: threadsError } = useDirectMessages(user);
   const {
@@ -530,6 +930,11 @@ export default function App() {
     loading: announcementsLoading,
     error: announcementsError,
   } = useAnnouncements(user);
+  const {
+    notifications,
+    loading: notificationsLoading,
+    error: notificationsError,
+  } = useNotifications(user, notificationsEnabled);
 
   useEffect(() => {
     if (!user) {
@@ -553,14 +958,206 @@ export default function App() {
     setUnreadAnnouncements(unread);
   }, [announcements]);
 
-  const handleSignIn = async () => {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(authClient, provider);
+  useEffect(() => {
+    const unread = notifications.filter((item) => !item.readAt).length;
+    setUnreadNotifications(unread);
+  }, [notifications]);
+
+  const handleProviderSignIn = async (
+    providerId: "google" | "apple" | "facebook" | "microsoft"
+  ) => {
+    setAuthStatus("");
+    setAuthBusy(true);
+    track("auth_sign_in_start", {
+      method: providerId,
+    });
+    try {
+      let provider;
+      switch (providerId) {
+        case "google":
+          provider = new GoogleAuthProvider();
+          provider.addScope("email");
+          break;
+        case "facebook":
+          provider = new FacebookAuthProvider();
+          provider.addScope("email");
+          break;
+        case "apple":
+          provider = new OAuthProvider("apple.com");
+          provider.addScope("email");
+          provider.addScope("name");
+          break;
+        case "microsoft":
+          provider = new OAuthProvider("microsoft.com");
+          provider.addScope("email");
+          break;
+        default:
+          return;
+      }
+      if (isAuthEmulator) {
+        await signInWithRedirect(authClient, provider);
+        return;
+      }
+      try {
+        const result = await signInWithPopup(authClient, provider);
+        if (result?.user) {
+          track("auth_sign_in_success", {
+            method: providerId,
+            uid: shortId(result.user.uid),
+          });
+          identify(result.user);
+          setUser(result.user);
+          setAuthReady(true);
+        }
+      } catch (error: unknown) {
+        // Popups can be blocked (mobile Safari, aggressive privacy settings). Redirect is a reliable fallback.
+        const code = getErrorCode(error);
+        const shouldFallbackToRedirect =
+          code === "auth/popup-blocked" ||
+          code === "auth/popup-closed-by-user" ||
+          code === "auth/operation-not-supported-in-this-environment";
+        if (shouldFallbackToRedirect) {
+          await signInWithRedirect(authClient, provider);
+          return;
+        }
+        throw error;
+      }
+    } catch (error: unknown) {
+      setAuthStatus(getErrorMessage(error) || "Sign-in failed. Please try again.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleEmailPassword = async (
+    email: string,
+    password: string,
+    mode: "signin" | "create"
+  ) => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
+      setAuthStatus("Please enter your email and password.");
+      return;
+    }
+    setAuthStatus("");
+    setAuthBusy(true);
+    track("auth_sign_in_start", {
+      method: "email_password",
+      mode,
+    });
+    try {
+      if (mode === "create") {
+        const result = await createUserWithEmailAndPassword(authClient, trimmedEmail, password);
+        if (result?.user) {
+          track("auth_sign_in_success", {
+            method: "email_password_create",
+            uid: shortId(result.user.uid),
+          });
+          identify(result.user);
+          setUser(result.user);
+          setAuthReady(true);
+        }
+      } else {
+        const result = await signInWithEmailAndPassword(authClient, trimmedEmail, password);
+        if (result?.user) {
+          track("auth_sign_in_success", {
+            method: "email_password_signin",
+            uid: shortId(result.user.uid),
+          });
+          identify(result.user);
+          setUser(result.user);
+          setAuthReady(true);
+        }
+      }
+    } catch (error: unknown) {
+      setAuthStatus(getErrorMessage(error) || "Email sign-in failed. Please try again.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleEmailLink = async (email: string) => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setAuthStatus("Enter an email to receive a sign-in link.");
+      return;
+    }
+    setAuthStatus("");
+    setAuthBusy(true);
+    try {
+      const actionCodeSettings = {
+        url: window.location.origin,
+        handleCodeInApp: true,
+      };
+      await sendSignInLinkToEmail(authClient, trimmedEmail, actionCodeSettings);
+      localStorage.setItem(EMAIL_LINK_KEY, trimmedEmail);
+      setAuthStatus("Check your email for your sign-in link.");
+    } catch (error: unknown) {
+      setAuthStatus(getErrorMessage(error) || "Unable to send sign-in link.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleCompleteEmailLink = async (email: string) => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setAuthStatus("Enter the email that received the link.");
+      return;
+    }
+    setAuthStatus("");
+    setAuthBusy(true);
+    track("auth_sign_in_start", {
+      method: "email_link",
+    });
+    try {
+      const result = await signInWithEmailLink(authClient, trimmedEmail, window.location.href);
+      localStorage.removeItem(EMAIL_LINK_KEY);
+      setEmailLinkPending(false);
+      if (result?.user) {
+        track("auth_sign_in_success", {
+          method: "email_link",
+          uid: shortId(result.user.uid),
+        });
+        identify(result.user);
+        setUser(result.user);
+        setAuthReady(true);
+      }
+    } catch (error: unknown) {
+      setAuthStatus(getErrorMessage(error) || "Unable to finish sign-in.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleEmulatorSignIn = async () => {
+    if (!isAuthEmulator) return;
+    track("auth_sign_in_start", {
+      method: "auth_emulator_anonymous",
+    });
+    const result = await signInAnonymously(authClient);
+    if (result?.user) {
+      track("auth_sign_in_success", {
+        method: "auth_emulator_anonymous",
+        uid: shortId(result.user.uid),
+      });
+      identify(result.user);
+      setUser(result.user);
+      setAuthReady(true);
+    }
   };
 
   const handleSignOut = async () => {
+    track("auth_sign_out", {
+      uid: user?.uid ? shortId(user.uid) : "unknown",
+    });
     await signOut(authClient);
     setNav("dashboard");
+  };
+
+  const handleAuthHandlerError = (error: unknown) => {
+    setAuthStatus(getErrorMessage(error) || "Authentication action failed.");
+    setAuthBusy(false);
   };
 
   const handleSupportSubmit = async (input: SupportRequestInput) => {
@@ -592,8 +1189,8 @@ export default function App() {
       });
       setSupportStatus("Thanks! Your question was sent to the studio.");
       return true;
-    } catch (err: any) {
-      setSupportStatus(`Support request failed: ${err?.message || String(err)}`);
+    } catch (error: unknown) {
+      setSupportStatus(`Support request failed: ${getErrorMessage(error)}`);
       return false;
     } finally {
       setSupportBusy(false);
@@ -609,6 +1206,46 @@ export default function App() {
     }
   }, [navSection, openSection]);
 
+  useEffect(() => {
+    if (!staffUi && nav === "staff") {
+      setNav("dashboard");
+    }
+  }, [staffUi, nav]);
+
+  useEffect(() => {
+    if (!authReady || !user || nav !== "dashboard" || typeof window === "undefined") {
+      return;
+    }
+
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (
+        callback: IdleRequestCallback,
+        options?: IdleRequestOptions
+      ) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+
+    let canceled = false;
+    const runPrefetch = () => {
+      if (canceled) return;
+      prefetchLikelyNextViews();
+    };
+
+    if (idleWindow.requestIdleCallback) {
+      const handle = idleWindow.requestIdleCallback(runPrefetch, { timeout: 1500 });
+      return () => {
+        canceled = true;
+        idleWindow.cancelIdleCallback?.(handle);
+      };
+    }
+
+    const timer = window.setTimeout(runPrefetch, 300);
+    return () => {
+      canceled = true;
+      window.clearTimeout(timer);
+    };
+  }, [authReady, user, nav]);
+
   const handleSectionToggle = (sectionKey: NavSectionKey) => {
     if (nav !== sectionKey) {
       setNav(sectionKey);
@@ -621,9 +1258,21 @@ export default function App() {
   };
 
   const renderView = (key: NavKey) => {
-    if (!user) {
-      return <SignedOutView onSignIn={handleSignIn} />;
-    }
+      if (!user) {
+        return (
+          <SignedOutView
+            onProviderSignIn={toVoidHandler(handleProviderSignIn, handleAuthHandlerError, "auth.provider")}
+            onEmailPassword={toVoidHandler(handleEmailPassword, handleAuthHandlerError, "auth.emailPassword")}
+            onEmailLink={toVoidHandler(handleEmailLink, handleAuthHandlerError, "auth.emailLinkSend")}
+            onCompleteEmailLink={toVoidHandler(handleCompleteEmailLink, handleAuthHandlerError, "auth.emailLinkComplete")}
+            emailLinkPending={emailLinkPending}
+            status={authStatus}
+            busy={authBusy}
+            onEmulatorSignIn={toVoidHandler(handleEmulatorSignIn, handleAuthHandlerError, "auth.emulator")}
+            showEmulatorTools={isAuthEmulator}
+          />
+        );
+      }
 
     switch (key) {
       case "dashboard":
@@ -634,7 +1283,11 @@ export default function App() {
             threads={threads}
             announcements={announcements}
             onOpenKilnRentals={() => setNav("kilnRentals")}
+            onOpenCheckin={() => setNav("reservations")}
+            onOpenQueues={() => setNav("kilnLaunch")}
+            onOpenFirings={() => setNav("kiln")}
             onOpenStudioResources={() => setNav("studioResources")}
+            onOpenGlazeBoard={() => setNav("glazes")}
             onOpenCommunity={() => setNav("community")}
             onOpenMessages={() => setNav("messages")}
             onOpenPieces={() => setNav("pieces")}
@@ -650,9 +1303,38 @@ export default function App() {
           />
         );
       case "profile":
-        return <ProfileView user={user} />;
+        return (
+          <ProfileView
+            user={user}
+            themeName={themeName}
+            onThemeChange={(next) => {
+              setThemeName(next);
+              writeStoredPortalTheme(next);
+            }}
+            enhancedMotion={enhancedMotion}
+            onEnhancedMotionChange={(next) => {
+              setEnhancedMotion(next);
+              writeStoredEnhancedMotion(next);
+            }}
+            onOpenIntegrations={() => setNav("integrations")}
+          />
+        );
+      case "integrations":
+        return (
+          <IntegrationsView
+            user={user}
+            functionsBaseUrl={FUNCTIONS_BASE_URL}
+            onBack={() => setNav("profile")}
+          />
+        );
       case "community":
-        return <CommunityView onOpenLendingLibrary={() => setNav("lendingLibrary")} />;
+        return (
+          <CommunityView
+            user={user}
+            onOpenLendingLibrary={() => setNav("lendingLibrary")}
+            onOpenWorkshops={() => setNav("events")}
+          />
+        );
       case "events":
         return <EventsView user={user} adminToken={devAdminTokenValue} isStaff={staffUi} />;
       case "lendingLibrary":
@@ -665,12 +1347,14 @@ export default function App() {
         return <MembershipView user={user} />;
       case "materials":
         return <MaterialsView user={user} adminToken={devAdminTokenValue} isStaff={staffUi} />;
+      case "requests":
+        return <AgentRequestsView user={user} functionsBaseUrl={FUNCTIONS_BASE_URL} />;
       case "billing":
         return <BillingView user={user} />;
       case "reservations":
         return <ReservationsView user={user} isStaff={staffUi} adminToken={devAdminTokenValue} />;
       case "kiln":
-        return <KilnScheduleView />;
+        return <KilnScheduleView user={user} isStaff={staffUi} />;
       case "kilnRentals":
         return (
           <KilnRentalsView
@@ -707,6 +1391,16 @@ export default function App() {
             unreadAnnouncements={unreadAnnouncements}
           />
         );
+      case "notifications":
+        return (
+          <NotificationsView
+            user={user}
+            onOpenFirings={() => setNav("kiln")}
+            notifications={notifications}
+            loading={notificationsLoading}
+            error={notificationsError}
+          />
+        );
       case "support":
         return (
           <SupportView
@@ -715,6 +1409,17 @@ export default function App() {
             onSubmit={handleSupportSubmit}
             status={supportStatus}
             isBusy={supportBusy}
+          />
+        );
+      case "staff":
+        return (
+          <StaffView
+            user={user}
+            isStaff={isStaff}
+            devAdminToken={devAdminToken}
+            onDevAdminTokenChange={setDevAdminToken}
+            devAdminEnabled={DEV_ADMIN_TOKEN_ENABLED}
+            showEmulatorTools={isAuthEmulator}
           />
         );
       default:
@@ -729,21 +1434,45 @@ export default function App() {
 
   return (
     <AppErrorBoundary>
-      <div className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`} style={portalTheme}>
-        <aside className={`sidebar ${mobileNavOpen ? "open" : ""} ${navCollapsed ? "collapsed" : ""}`}>
-          <div className="brand">
-            <img src={MF_LOGO} alt="Monsoon Fire Pottery Studio" />
+      <a className="skip-link" href="#main-content">
+        Skip to main content
+      </a>
+      <div className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`}>
+        <aside
+          id="portal-sidebar-nav"
+          className={`sidebar ${mobileNavOpen ? "open" : ""} ${navCollapsed ? "collapsed" : ""}`}
+          aria-label="Primary navigation"
+        >
+          <button
+            type="button"
+            className="brand brand-home"
+            onClick={() => {
+              setNav("dashboard");
+              setMobileNavOpen(false);
+            }}
+            aria-label="Go to dashboard"
+            title="Go to dashboard"
+          >
+            <img
+              src={MF_LOGO}
+              alt="Monsoon Fire Pottery Studio"
+              loading="eager"
+              decoding="async"
+              fetchPriority="high"
+            />
             <div>
               <h1>Monsoon Fire</h1>
               <span>Pottery Studio</span>
             </div>
-          </div>
-          <nav>
+          </button>
+          <nav aria-label="Main navigation">
             <div className="nav-primary">
               {NAV_TOP_ITEMS.map((item) => (
                 <button
+                  type="button"
                   key={item.key}
                   className={`nav-top-item ${nav === item.key ? "active" : ""}`}
+                  aria-current={nav === item.key ? "page" : undefined}
                   title={item.label}
                   onClick={() => {
                     setNav(item.key);
@@ -765,6 +1494,7 @@ export default function App() {
                     type="button"
                     className="nav-section-title"
                     aria-expanded={openSection === section.key}
+                    aria-controls={`nav-section-${section.key}`}
                     title={section.title}
                     onClick={() => handleSectionToggle(section.key)}
                   >
@@ -773,12 +1503,15 @@ export default function App() {
                   </button>
                   <div
                     className="nav-section-items"
+                    id={`nav-section-${section.key}`}
                     aria-hidden={openSection !== section.key}
                   >
                     {section.items.map((item) => (
                       <button
+                        type="button"
                         key={item.key}
                         className={`nav-subitem ${nav === item.key ? "active" : ""}`}
+                        aria-current={nav === item.key ? "page" : undefined}
                         title={item.label}
                         onClick={() => {
                           setNav(item.key);
@@ -796,10 +1529,12 @@ export default function App() {
               ))}
             </div>
             <div className="nav-bottom">
-              {NAV_BOTTOM_ITEMS.map((item) => (
+              {navBottomItems.map((item) => (
                 <button
+                  type="button"
                   key={item.key}
                   className={nav === item.key ? "active" : ""}
+                  aria-current={nav === item.key ? "page" : undefined}
                   title={item.label}
                   onClick={() => {
                     setNav(item.key);
@@ -813,9 +1548,13 @@ export default function App() {
                   {item.key === "messages" && unreadMessages + unreadAnnouncements > 0 ? (
                     <span className="badge">{unreadMessages + unreadAnnouncements}</span>
                   ) : null}
+                  {item.key === "notifications" && unreadNotifications > 0 ? (
+                    <span className="badge">{unreadNotifications}</span>
+                  ) : null}
                 </button>
               ))}
               <button
+                type="button"
                 className="nav-toggle nav-toggle-inline"
                 data-collapsed={navCollapsed ? "true" : "false"}
                 title={navCollapsed ? "Open nav" : "Collapse nav"}
@@ -824,6 +1563,7 @@ export default function App() {
                   setMobileNavOpen(false);
                 }}
                 aria-label={navCollapsed ? "Open navigation" : "Collapse navigation"}
+                aria-pressed={!navCollapsed}
               >
                 <span className="nav-toggle-icon" aria-hidden="true" />
                 <span className="nav-label nav-toggle-text">
@@ -835,11 +1575,28 @@ export default function App() {
           {user && (
             <div className="profile-actions">
               <button
+                type="button"
                 className="profile-card profile-card-button"
                 onClick={() => setNav("profile")}
               >
                 <div className="avatar">
-                  {user.photoURL ? <img src={user.photoURL} alt={user.displayName ?? "User"} /> : null}
+                  <span className="avatar-fallback" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                      <path
+                        d="M12 12.5a4.25 4.25 0 1 0-4.25-4.25A4.26 4.26 0 0 0 12 12.5Zm0 2c-4.28 0-7.75 2.55-7.75 5.7a.8.8 0 0 0 .8.8h13.9a.8.8 0 0 0 .8-.8c0-3.15-3.47-5.7-7.75-5.7Z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                  </span>
+                  {user.photoURL && !avatarLoadFailed ? (
+                    <img
+                      src={user.photoURL}
+                      alt={user.displayName ?? "User"}
+                      onError={() => {
+                        setAvatarLoadFailed(true);
+                      }}
+                    />
+                  ) : null}
                 </div>
                 <div className="profile-meta">
                   <strong>{user.displayName ?? "Member"}</strong>
@@ -847,8 +1604,9 @@ export default function App() {
                 </div>
               </button>
               <button
+                type="button"
                 className="signout-icon"
-                onClick={handleSignOut}
+                onClick={toVoidHandler(handleSignOut, handleAuthHandlerError, "auth.signOut")}
                 aria-label="Sign out"
                 title="Sign out"
               >
@@ -881,24 +1639,20 @@ export default function App() {
               </button>
             </div>
           )}
-          {user && DEV_ADMIN_TOKEN_ENABLED ? (
-            <div className="admin-token">
-              <label htmlFor="admin-token-input">Dev admin token (emulator only)</label>
-              <input
-                id="admin-token-input"
-                type="password"
-                value={devAdminToken}
-                placeholder="Paste token"
-                onChange={(event) => setDevAdminToken(event.target.value)}
-              />
-              <p>Stored for this browser session only. Disabled in production.</p>
-            </div>
-          ) : null}
         </aside>
 
-        <main className="main">
+        <main id="main-content" className="main" tabIndex={-1}>
           <div className="nav-toggle-row">
-            <button className="mobile-nav" onClick={() => setMobileNavOpen((prev) => !prev)}>
+            <button
+              type="button"
+              className="mobile-nav"
+              onClick={() => setMobileNavOpen((prev) => !prev)}
+              aria-expanded={mobileNavOpen}
+              aria-controls="portal-sidebar-nav"
+              aria-label={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"}
+              title={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"}
+              aria-pressed={mobileNavOpen}
+            >
               <span className="mobile-nav-icon" aria-hidden="true" />
               Menu
             </button>
@@ -920,7 +1674,23 @@ export default function App() {
                 </div>
               }
             >
-              {renderView(nav)}
+              {motionAutoReduced && themeName === "memoria" ? (
+                <div className="notice motion-notice">
+                  Enhanced motion was disabled for performance. You can re-enable it in Profile.
+                </div>
+              ) : null}
+              <UiSettingsProvider
+                value={{
+                  themeName,
+                  portalMotion: resolvePortalMotion(prefersReducedMotion, enhancedMotion),
+                  enhancedMotion,
+                  prefersReducedMotion,
+                }}
+              >
+                <div key={`${nav}:${themeName}:${enhancedMotion ? "m1" : "m0"}`} className="view-root">
+                  {renderView(nav)}
+                </div>
+              </UiSettingsProvider>
             </React.Suspense>
           ) : null}
         </main>

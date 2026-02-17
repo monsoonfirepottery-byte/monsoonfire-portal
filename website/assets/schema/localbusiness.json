@@ -1,0 +1,12 @@
+{
+  "@context": "https://schema.org",
+  "@type": "LocalBusiness",
+  "name": "Monsoon Fire Pottery Studio",
+  "url": "https://monsoonfire.com/",
+  "description": "Production-first ceramics studio with kiln firing, studio access, memberships, and production support in Arizona's West Valley.",
+  "areaServed": [
+    { "@type": "AdministrativeArea", "name": "West Valley, AZ" },
+    { "@type": "AdministrativeArea", "name": "Phoenix Metro" }
+  ]
+}
+

@@ -16,10 +16,15 @@ import {
 
 const REGION = "us-central1";
 
-const VALID_FIRING_TYPES = new Set(["bisque", "glaze", "other"] as const);
-const VALID_WARE_TYPES = new Set(["stoneware", "earthenware", "porcelain", "mixed", "other"] as const);
-const VALID_KILN_IDS = new Set(["studio-electric", "reduction-raku"] as const);
-const VALID_QUANTITY_TIERS = new Set(["few", "small", "medium", "large"] as const);
+type FiringType = "bisque" | "glaze" | "other";
+type WareType = "stoneware" | "earthenware" | "porcelain" | "mixed" | "other";
+type KilnId = "studio-electric" | "reduction-raku";
+type QuantityTier = "few" | "small" | "medium" | "large";
+
+const VALID_FIRING_TYPES: ReadonlySet<FiringType> = new Set(["bisque", "glaze", "other"] as const);
+const VALID_WARE_TYPES: ReadonlySet<WareType> = new Set(["stoneware", "earthenware", "porcelain", "mixed", "other"] as const);
+const VALID_KILN_IDS: ReadonlySet<KilnId> = new Set(["studio-electric", "reduction-raku"] as const);
+const VALID_QUANTITY_TIERS: ReadonlySet<QuantityTier> = new Set(["few", "small", "medium", "large"] as const);
 
 const reservationSchema = z.object({
   firingType: z.enum(["bisque", "glaze", "other"]).optional(),
@@ -164,7 +169,7 @@ export const createReservation = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "createReservation",
       max: 6,
@@ -192,8 +197,8 @@ export const createReservation = onRequest(
     }
     const firingTypeRaw =
       typeof body.firingType === "string" ? body.firingType.toLowerCase() : "";
-    let firingType = VALID_FIRING_TYPES.has(firingTypeRaw as any)
-      ? (firingTypeRaw as "bisque" | "glaze" | "other")
+    let firingType = VALID_FIRING_TYPES.has(firingTypeRaw as FiringType)
+      ? (firingTypeRaw as FiringType)
       : "other";
 
     const footprintHalfShelves = normalizeFootprint(body.footprintHalfShelves);
@@ -260,9 +265,12 @@ export const createReservation = onRequest(
         res.status(404).json({ ok: false, message: "Linked batch not found" });
         return;
       }
-      const batchData = batchSnap.data() as Record<string, any>;
-      const editors = Array.isArray(batchData.editors) ? batchData.editors : [];
-      const ownerMatches = batchData.ownerUid === ownerUid || editors.includes(ownerUid);
+      const batchData = batchSnap.data() as Record<string, unknown> | undefined;
+      const editors = Array.isArray(batchData?.editors)
+        ? batchData.editors.filter((entry): entry is string => typeof entry === "string")
+        : [];
+      const ownerUidFromData = typeof batchData?.ownerUid === "string" ? batchData.ownerUid : null;
+      const ownerMatches = ownerUidFromData === ownerUid || editors.includes(ownerUid);
       if (!ownerMatches) {
         res.status(403).json({ ok: false, message: "Linked batch not owned by requester" });
         return;
@@ -277,12 +285,12 @@ export const createReservation = onRequest(
     if (clientRequestId) {
       const existing = await ref.get();
       if (existing.exists) {
-        const data = existing.data() as Record<string, any>;
-        if (data?.ownerUid === ownerUid) {
+        const data = existing.data() as Record<string, unknown> | undefined;
+        if (typeof data?.ownerUid === "string" && data.ownerUid === ownerUid) {
           res.status(200).json({
             ok: true,
             reservationId: ref.id,
-            status: data.status ?? "REQUESTED",
+            status: typeof data?.status === "string" ? data.status : "REQUESTED",
           });
           return;
         }
@@ -290,13 +298,15 @@ export const createReservation = onRequest(
     }
 
     const wareRaw = safeString(body.wareType).trim().toLowerCase();
-    const wareType = VALID_WARE_TYPES.has(wareRaw as any) ? wareRaw : null;
+    const wareType = VALID_WARE_TYPES.has(wareRaw as WareType) ? (wareRaw as WareType) : null;
     const kilnIdRaw = safeString(body.kilnId).trim();
-    const kilnId = VALID_KILN_IDS.has(kilnIdRaw as any) ? kilnIdRaw : null;
+    const kilnId = VALID_KILN_IDS.has(kilnIdRaw as KilnId) ? (kilnIdRaw as KilnId) : null;
     const kilnLabelRaw = safeString(body.kilnLabel).trim();
     const kilnLabel = kilnLabelRaw ? kilnLabelRaw : null;
     const quantityTierRaw = safeString(body.quantityTier).trim();
-    const quantityTier = VALID_QUANTITY_TIERS.has(quantityTierRaw as any) ? quantityTierRaw : null;
+    const quantityTier = VALID_QUANTITY_TIERS.has(quantityTierRaw as QuantityTier)
+      ? (quantityTierRaw as QuantityTier)
+      : null;
     const quantityLabelRaw = safeString(body.quantityLabel).trim();
     const quantityLabel = quantityLabelRaw ? quantityLabelRaw : null;
     const photoUrlRaw = safeString(body.photoUrl).trim();
@@ -434,3 +444,4 @@ export const createReservation = onRequest(
       .json({ ok: true, reservationId: ref.id, status: "REQUESTED" });
   }
 );
+

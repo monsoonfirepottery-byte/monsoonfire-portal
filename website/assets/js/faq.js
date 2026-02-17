@@ -1,4 +1,7 @@
 (() => {
+  const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const prefersReducedMotion = () => reducedMotionQuery.matches;
+
   const faqList = document.querySelector('[data-faq-list]');
   const policyList = document.querySelector('[data-policy-list]');
   const tagContainer = document.querySelector('[data-tag-list]');
@@ -10,13 +13,8 @@
   const policySection = document.querySelector('[data-policy-section]');
   if (!faqList || !policyList || !tagContainer || !searchInput) return;
 
-  const state = {
-    query: '',
-    tags: new Set(),
-    type: 'all',
-    faqs: [],
-    policies: []
-  };
+  const parser = new DOMParser();
+  const allowedTags = new Set(["P", "UL", "OL", "LI", "A", "STRONG", "B", "EM", "I", "BR", "SPAN"]);
 
   const normalize = (value) => String(value || '').toLowerCase();
   const formatDate = (value) => {
@@ -29,22 +27,91 @@
   const collectTags = (items) => {
     const tags = new Set();
     items.forEach((item) => {
-      (item.tags || []).forEach((tag) => tags.add(tag));
+      (item.tags || []).forEach((tag) => {
+        if (typeof tag === 'string' && tag.trim()) tags.add(tag.trim());
+      });
     });
     return Array.from(tags).sort();
   };
 
+  const stripHtml = (value) => {
+    const valueString = String(value || '');
+    return valueString
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&[a-zA-Z]+;/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  };
+
+  const isSafeUrl = (value) => {
+    if (!value || typeof value !== 'string') return false;
+    const raw = value.trim();
+    if (!raw || raw.startsWith('javascript:')) return false;
+    try {
+      const parsed = new URL(raw, window.location.href);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'mailto:';
+    } catch {
+      return false;
+    }
+  };
+
+  const sanitizeNode = (node, out) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent;
+      if (text) out.appendChild(document.createTextNode(text));
+      return;
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+    const tag = node.tagName.toUpperCase();
+    if (!allowedTags.has(tag)) {
+      Array.from(node.childNodes).forEach((child) => sanitizeNode(child, out));
+      return;
+    }
+
+    const element = document.createElement(tag.toLowerCase());
+    if (tag === 'A') {
+      const href = node.getAttribute('href');
+      if (isSafeUrl(href)) {
+        element.setAttribute('href', href);
+      }
+      const rel = node.getAttribute('rel');
+      if (rel) element.setAttribute('rel', rel);
+      const target = node.getAttribute('target');
+      if (target) element.setAttribute('target', target);
+    }
+
+    Array.from(node.childNodes).forEach((child) => sanitizeNode(child, element));
+    out.appendChild(element);
+  };
+
+  const setSafeHtml = (el, value) => {
+    const doc = parser.parseFromString(String(value || ''), 'text/html');
+    const fragment = document.createDocumentFragment();
+    Array.from(doc.body.childNodes).forEach((node) => sanitizeNode(node, fragment));
+    el.replaceChildren(fragment);
+  };
+
+  const setEmptyState = (el, message) => {
+    el.replaceChildren();
+    const messageEl = document.createElement('div');
+    messageEl.textContent = message;
+    el.appendChild(messageEl);
+  };
+
   const matches = (item) => {
     const text = `${item.question || item.title || ''} ${item.answer || item.body || ''}`;
-    const haystack = normalize(text);
+    const haystack = stripHtml(text);
     const queryMatch = !state.query || haystack.includes(state.query);
-    const tags = new Set(item.tags || []);
+    const tags = new Set(Array.isArray(item.tags) ? item.tags : []);
     const tagMatch = state.tags.size === 0 || Array.from(state.tags).every((tag) => tags.has(tag));
     return queryMatch && tagMatch;
   };
 
   const renderTags = (tags) => {
-    tagContainer.innerHTML = '';
+    tagContainer.replaceChildren();
     tags.forEach((tag) => {
       const button = document.createElement('button');
       button.type = 'button';
@@ -63,29 +130,48 @@
     });
   };
 
-  const buildAccordionItem = (title, body, meta) => {
+  const buildAccordionItem = (title, body, metaLabel) => {
     const wrapper = document.createElement('div');
     wrapper.className = 'accordion-item';
     const button = document.createElement('button');
     button.className = 'accordion-button';
     button.type = 'button';
-    button.innerHTML = `<span class="accordion-title">${title}</span>${meta || ''}`;
+    button.setAttribute('aria-expanded', 'false');
+
+    const titleEl = document.createElement('span');
+    titleEl.className = 'accordion-title';
+    titleEl.textContent = title;
+    button.appendChild(titleEl);
+
+    const meta = document.createElement('span');
+    meta.className = 'accordion-meta';
+    if (metaLabel) {
+      meta.textContent = metaLabel;
+    } else {
+      meta.setAttribute('aria-hidden', 'true');
+    }
+    button.appendChild(meta);
+
     const panel = document.createElement('div');
     panel.className = 'accordion-panel';
-    panel.innerHTML = body;
+    setSafeHtml(panel, body);
+
     button.addEventListener('click', () => {
-      wrapper.classList.toggle('open');
+      const isOpen = !wrapper.classList.contains('open');
+      wrapper.classList.toggle('open', isOpen);
+      button.setAttribute('aria-expanded', String(isOpen));
     });
+
     wrapper.appendChild(button);
     wrapper.appendChild(panel);
     return wrapper;
   };
 
   const renderList = (listEl, items, emptyMessage) => {
-    listEl.innerHTML = '';
+    listEl.replaceChildren();
     const filtered = items.filter(matches);
     if (!filtered.length) {
-      listEl.innerHTML = `<div>${emptyMessage}</div>`;
+      setEmptyState(listEl, emptyMessage);
       return;
     }
     filtered.forEach((item) => {
@@ -95,8 +181,7 @@
       if (item.status) metaParts.push(item.status);
       if (item.effectiveDate) metaParts.push(`Effective ${formatDate(item.effectiveDate)}`);
       const metaLabel = metaParts.join(' · ');
-      const meta = `<span class="accordion-meta"${metaLabel ? '' : ' aria-hidden=\"true\"'}>${metaLabel}</span>`;
-      listEl.appendChild(buildAccordionItem(title, body, meta));
+      listEl.appendChild(buildAccordionItem(title, body, metaLabel));
     });
     return filtered.length;
   };
@@ -110,44 +195,65 @@
     const tags = collectTags(sourceItems);
     state.tags = new Set(Array.from(state.tags).filter((tag) => tags.includes(tag)));
     renderTags(tags);
-    const faqCount = renderList(faqList, state.faqs, 'No FAQs match this search.') || 0;
-    const policyCount = renderList(policyList, state.policies, 'No policies match this search.') || 0;
+
+    const faqCount = renderList(faqList, state.faqs, 'No FAQs match this search.');
+    const policyCount = renderList(policyList, state.policies, 'No policies match this search.');
 
     if (faqSection) {
-      faqSection.style.display = state.type === 'policy' ? 'none' : '';
-    }
-    if (policySection) {
-      policySection.style.display = state.type === 'faq' ? 'none' : '';
-    }
-    if (countEl) {
-      if (state.type === 'faq') {
-        countEl.textContent = `${faqCount} FAQ${faqCount === 1 ? '' : 's'} shown.`;
-      } else if (state.type === 'policy') {
-        countEl.textContent = `${policyCount} polic${policyCount === 1 ? 'y' : 'ies'} shown.`;
+      if (state.type === 'policy') {
+        faqSection.classList.add('is-hidden');
       } else {
-        countEl.textContent = `${faqCount + policyCount} total entries shown.`;
+        faqSection.classList.remove('is-hidden');
       }
     }
+    if (policySection) {
+      if (state.type === 'faq') {
+        policySection.classList.add('is-hidden');
+      } else {
+        policySection.classList.remove('is-hidden');
+      }
+    }
+    const safeFaqCount = faqCount || 0;
+    const safePolicyCount = policyCount || 0;
+
+    if (countEl) {
+      if (state.type === 'faq') {
+        countEl.textContent = `${safeFaqCount} FAQ${safeFaqCount === 1 ? '' : 's'} shown.`;
+      } else if (state.type === 'policy') {
+        countEl.textContent = `${safePolicyCount} polic${safePolicyCount === 1 ? 'y' : 'ies'} shown.`;
+      } else {
+        countEl.textContent = `${safeFaqCount + safePolicyCount} total entries shown.`;
+      }
+    }
+
     typeFilters.forEach((button) => {
-      button.classList.toggle('active', button.dataset.typeFilter === state.type);
+      const isActive = button.dataset.typeFilter === state.type;
+      button.classList.toggle('active', isActive);
+      button.setAttribute('aria-pressed', String(isActive));
     });
     topicButtons.forEach((button) => {
       const topic = button.dataset.topic;
       const active = state.tags.size === 1 && state.tags.has(topic);
       button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
     });
   };
 
+  const state = {
+    query: '',
+    tags: new Set(),
+    type: 'all',
+    faqs: [],
+    policies: []
+  };
+
   const init = async () => {
-    const [faqRes, policyRes] = await Promise.all([
-      fetch('/data/faq.json'),
-      fetch('/data/policies.json')
-    ]);
+    const [faqRes, policyRes] = await Promise.all([fetch('/data/faq.json'), fetch('/data/policies.json')]);
     state.faqs = faqRes.ok ? await faqRes.json() : [];
     state.policies = policyRes.ok ? await policyRes.json() : [];
     state.policies = state.policies.map((policy) => ({
       ...policy,
-      tags: [...(policy.tags || []), policy.status || 'active'].filter(Boolean)
+      tags: [...(Array.isArray(policy.tags) ? policy.tags : []), policy.status || 'active'].filter(Boolean)
     }));
     render();
   };
@@ -173,7 +279,7 @@
         state.query = '';
         searchInput.value = '';
         if (faqSection) {
-          faqSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          faqSection.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
         }
         render();
       }
@@ -181,7 +287,7 @@
   });
 
   init().catch(() => {
-    faqList.innerHTML = '<div>FAQ data is not available.</div>';
-    policyList.innerHTML = '<div>Policy data is not available.</div>';
+    setEmptyState(faqList, 'FAQ data is not available.');
+    setEmptyState(policyList, 'Policy data is not available.');
   });
 })();

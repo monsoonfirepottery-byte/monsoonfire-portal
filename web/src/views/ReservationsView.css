@@ -416,15 +416,32 @@
 }
 
 .space-meter-track {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
   height: 8px;
   border-radius: 999px;
   background: var(--surface-2);
   overflow: hidden;
 }
 
-.space-meter-fill {
-  height: 100%;
+.space-meter-track::-webkit-progress-bar {
+  background: var(--surface-2);
+  border-radius: 999px;
+}
+
+.space-meter-track::-webkit-progress-value {
   background: linear-gradient(90deg, rgba(180, 79, 53, 0.9), rgba(196, 106, 80, 0.8));
+  border-radius: 999px;
+}
+
+.space-meter-track::-moz-progress-bar {
+  background: linear-gradient(90deg, rgba(180, 79, 53, 0.9), rgba(196, 106, 80, 0.8));
+  border-radius: 999px;
+}
+
+.space-meter-fill {
+  display: none;
 }
 
 .space-meter-label {
@@ -446,6 +463,30 @@
   margin: 10px 0;
   font-size: 12px;
   color: var(--muted);
+}
+
+.checkin-submit-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  line-height: 1.2;
+  text-align: center;
+  min-height: 56px;
+  padding: 10px 16px;
+}
+
+.checkin-submit-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: #000;
+}
+
+.checkin-submit-sub {
+  font-weight: 500;
+  font-size: 11px;
+  color: #000;
 }
 
 .debug-panel {
@@ -633,35 +674,61 @@
   background: var(--bg-2);
   border: 1px solid var(--border);
   position: relative;
+  overflow: hidden;
 }
 
+.option-icon::before,
 .option-icon::after {
   content: "";
   position: absolute;
+  pointer-events: none;
+}
+
+.option-icon::after {
+  inset: 7px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.option-icon-stoneware::before {
+  inset: 5px 6px 8px;
+  border-radius: 6px 6px 9px 9px;
+  background: linear-gradient(180deg, rgba(177, 94, 63, 0.95), rgba(117, 53, 38, 0.9));
+}
+
+.option-icon-earthenware::before {
+  inset: 7px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(239, 179, 141, 0.95), rgba(174, 98, 67, 0.9));
+}
+
+.option-icon-porcelain::before {
   inset: 6px;
   border-radius: 8px;
-  background: rgba(180, 79, 53, 0.2);
+  background: linear-gradient(180deg, rgba(245, 244, 238, 0.96), rgba(208, 205, 194, 0.88));
+  box-shadow: inset 0 0 0 1px rgba(116, 110, 95, 0.18);
 }
 
-.option-icon-stoneware::after {
-  background: rgba(180, 79, 53, 0.28);
+.option-icon-mixed::before {
+  inset: 6px;
+  border-radius: 6px;
+  background:
+    linear-gradient(135deg, rgba(177, 94, 63, 0.92) 0 50%, rgba(89, 100, 118, 0.9) 50% 100%);
 }
 
-.option-icon-earthenware::after {
-  background: rgba(196, 106, 80, 0.28);
-}
-
-.option-icon-porcelain::after {
-  background: rgba(220, 210, 190, 0.6);
-}
-
-.option-icon-mixed::after {
-  background: rgba(107, 98, 86, 0.22);
+.option-icon-kiln::before {
+  inset: 6px 8px 7px;
+  border-radius: 6px 6px 4px 4px;
+  background: linear-gradient(180deg, rgba(201, 122, 79, 0.92), rgba(125, 66, 47, 0.92));
 }
 
 .option-icon-kiln::after {
-  background: linear-gradient(135deg, rgba(180, 79, 53, 0.25), rgba(107, 98, 86, 0.22));
+  inset: 12px 10px 8px;
+  border: 0;
+  border-radius: 3px;
+  background: rgba(22, 28, 40, 0.6);
 }
+
 
 .photo-upload {
   display: flex;
@@ -954,4 +1021,130 @@
     position: sticky;
     top: 12px;
   }
+}
+
+.segmented-button:focus-visible,
+.tiny-toggle:focus-visible,
+.addon-toggle input:focus-visible + .addon-text {
+  outline: 2px solid rgba(215, 132, 92, 0.7);
+  outline-offset: 2px;
+}
+
+html[data-portal-theme="memoria"] .reservations-page .page-header h1 {
+  letter-spacing: 0.02em;
+}
+
+html[data-portal-theme="memoria"] .reservations-page .page-subtitle {
+  color: rgba(233, 238, 248, 0.72);
+}
+
+html[data-portal-theme="memoria"] .reservations-page .checkin-step {
+  border-color: rgba(164, 179, 206, 0.36);
+  background:
+    linear-gradient(165deg, rgba(35, 46, 66, 0.92), rgba(22, 30, 46, 0.9)),
+    radial-gradient(circle at 85% -15%, rgba(146, 176, 229, 0.24), transparent 58%);
+  box-shadow: inset 0 1px 0 rgba(197, 214, 238, 0.08), 0 14px 28px rgba(6, 11, 20, 0.28);
+}
+
+html[data-portal-theme="memoria"] .reservations-page .checkin-step-title {
+  color: rgba(243, 247, 255, 0.95);
+  letter-spacing: 0.02em;
+}
+
+html[data-portal-theme="memoria"] .reservations-page .option-card,
+html[data-portal-theme="memoria"] .reservations-page .addon-toggle,
+html[data-portal-theme="memoria"] .reservations-page .notes-grid input,
+html[data-portal-theme="memoria"] .reservations-page .notes-grid textarea,
+html[data-portal-theme="memoria"] .reservations-page .staff-client-grid select,
+html[data-portal-theme="memoria"] .reservations-page .addon-fields input,
+html[data-portal-theme="memoria"] .reservations-page .addon-fields textarea {
+  border-color: rgba(161, 178, 208, 0.34);
+  background: linear-gradient(170deg, rgba(29, 39, 58, 0.9), rgba(20, 28, 42, 0.92));
+}
+
+html[data-portal-theme="memoria"] .reservations-page .option-card:hover {
+  border-color: rgba(207, 222, 246, 0.52);
+  box-shadow: 0 10px 24px rgba(3, 8, 17, 0.36);
+}
+
+html[data-portal-theme="memoria"] .reservations-page .option-card.selected,
+html[data-portal-theme="memoria"] .reservations-page .segmented-button.selected,
+html[data-portal-theme="memoria"] .reservations-page .note-tag.selected,
+html[data-portal-theme="memoria"] .reservations-page .tiny-toggle.active {
+  border-color: rgba(139, 213, 185, 0.9);
+  background: linear-gradient(165deg, rgba(38, 70, 62, 0.9), rgba(25, 49, 44, 0.9));
+  color: #d8f6ea;
+  box-shadow: 0 0 0 1px rgba(139, 213, 185, 0.24), 0 12px 24px rgba(3, 16, 14, 0.28);
+}
+
+html[data-portal-theme="memoria"] .reservations-page .segmented-sub,
+html[data-portal-theme="memoria"] .reservations-page .option-meta,
+html[data-portal-theme="memoria"] .reservations-page .form-helper,
+html[data-portal-theme="memoria"] .reservations-page .photo-status,
+html[data-portal-theme="memoria"] .reservations-page .notes-grid label,
+html[data-portal-theme="memoria"] .reservations-page .addon-fields label {
+  color: rgba(221, 230, 245, 0.7);
+}
+
+html[data-portal-theme="memoria"] .reservations-page .option-sticker {
+  border-color: rgba(241, 208, 123, 0.72);
+  background: rgba(241, 208, 123, 0.14);
+  color: #ffe7ab;
+}
+
+html[data-portal-theme="memoria"] .reservations-page .photo-frame {
+  border-color: rgba(152, 176, 212, 0.58);
+  background:
+    radial-gradient(circle at 50% -10%, rgba(150, 177, 220, 0.2), transparent 58%),
+    linear-gradient(180deg, rgba(24, 33, 51, 0.94), rgba(16, 23, 36, 0.94));
+}
+
+html[data-portal-theme="memoria"] .reservations-page .estimate-summary {
+  border-color: rgba(152, 173, 207, 0.5);
+  background:
+    radial-gradient(circle at 85% 0%, rgba(143, 184, 232, 0.24), transparent 50%),
+    linear-gradient(175deg, rgba(24, 36, 56, 0.94), rgba(15, 22, 35, 0.95));
+  box-shadow: 0 18px 34px rgba(1, 6, 13, 0.42), inset 0 1px 0 rgba(187, 211, 247, 0.12);
+}
+
+html[data-portal-theme="memoria"] .reservations-page .estimate-chip {
+  border-color: rgba(152, 173, 207, 0.46);
+  background: rgba(124, 154, 201, 0.16);
+  color: #dfedff;
+}
+
+html[data-portal-theme="memoria"] .reservations-page .estimate-line.total {
+  border-top-color: rgba(166, 190, 226, 0.44);
+}
+
+html[data-portal-theme="memoria"] .reservations-page .addon-tag,
+html[data-portal-theme="memoria"] .reservations-page .estimate-hint,
+html[data-portal-theme="memoria"] .reservations-page .estimate-reassure {
+  color: #9ddac3;
+}
+
+html[data-portal-theme="memoria"] .reservations-page .reservation-card {
+  border-color: rgba(151, 170, 200, 0.34);
+  background:
+    linear-gradient(170deg, rgba(28, 39, 58, 0.9), rgba(19, 28, 42, 0.92)),
+    radial-gradient(circle at 82% -15%, rgba(138, 165, 212, 0.2), transparent 55%);
+  box-shadow: 0 14px 26px rgba(2, 7, 16, 0.34);
+}
+
+html[data-portal-theme="memoria"] .reservations-page .status-requested {
+  border-color: rgba(114, 210, 173, 0.54);
+  background: rgba(66, 156, 127, 0.26);
+  color: #d6faea;
+}
+
+html[data-portal-theme="memoria"] .reservations-page .status-confirmed {
+  border-color: rgba(103, 191, 220, 0.56);
+  background: rgba(60, 125, 160, 0.28);
+  color: #d7f1ff;
+}
+
+html[data-portal-theme="memoria"] .reservations-page .status-waitlisted {
+  border-color: rgba(227, 197, 121, 0.58);
+  background: rgba(162, 128, 61, 0.3);
+  color: #ffedbd;
 }

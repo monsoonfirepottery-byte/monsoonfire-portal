@@ -1,0 +1,103 @@
+.requests-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.requests-card {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.requests-copy {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.requests-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.requests-field {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+.requests-field input,
+.requests-field select,
+.requests-field textarea {
+  width: 100%;
+  border: 1px solid color-mix(in oklab, var(--surface-border), transparent 20%);
+  border-radius: 0.7rem;
+  background: color-mix(in oklab, var(--surface-panel), black 18%);
+  color: var(--text-primary);
+  padding: 0.58rem 0.72rem;
+  font: inherit;
+}
+
+.requests-check {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.requests-check input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+}
+
+.requests-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.requests-table {
+  overflow: auto;
+  border: 1px solid color-mix(in oklab, var(--surface-border), transparent 25%);
+  border-radius: 0.8rem;
+}
+
+.requests-table table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 680px;
+}
+
+.requests-table th,
+.requests-table td {
+  text-align: left;
+  padding: 0.62rem 0.7rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--surface-border), transparent 35%);
+  vertical-align: top;
+}
+
+.requests-table th {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.requests-mini {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+.requests-filter {
+  min-width: 180px;
+}
+
+.requests-troubleshooting summary {
+  cursor: pointer;
+}
+
+.requests-troubleshooting pre {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+}

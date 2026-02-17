@@ -214,3 +214,43 @@
     grid-template-columns: 1fr;
   }
 }
+
+html[data-portal-theme="memoria"] .lending-library-page {
+  background:
+    radial-gradient(circle at 8% -10%, rgba(146, 178, 226, 0.12), transparent 40%),
+    radial-gradient(circle at 90% 0%, rgba(122, 155, 214, 0.12), transparent 42%);
+  border-radius: 20px;
+  padding: 4px;
+}
+
+html[data-portal-theme="memoria"] .lending-library-page .lending-hero,
+html[data-portal-theme="memoria"] .lending-library-page .lending-search,
+html[data-portal-theme="memoria"] .lending-library-page .lending-panel,
+html[data-portal-theme="memoria"] .lending-library-page .lending-admin,
+html[data-portal-theme="memoria"] .lending-library-page .library-card {
+  border-color: rgba(153, 174, 207, 0.36);
+  background:
+    linear-gradient(168deg, rgba(30, 42, 62, 0.9), rgba(20, 29, 44, 0.92)),
+    radial-gradient(circle at 84% -16%, rgba(141, 171, 223, 0.2), transparent 58%);
+  box-shadow: inset 0 1px 0 rgba(194, 211, 239, 0.08), 0 16px 30px rgba(4, 9, 18, 0.34);
+}
+
+html[data-portal-theme="memoria"] .lending-library-page .lending-hero-meta > div,
+html[data-portal-theme="memoria"] .lending-library-page .library-cover,
+html[data-portal-theme="memoria"] .lending-library-page .donation-grid input,
+html[data-portal-theme="memoria"] .lending-library-page .csv-upload input[type="file"],
+html[data-portal-theme="memoria"] .lending-library-page .csv-input,
+html[data-portal-theme="memoria"] .lending-library-page .lending-search input[type="search"] {
+  border-color: rgba(154, 176, 212, 0.34);
+  background: linear-gradient(170deg, rgba(34, 46, 67, 0.86), rgba(23, 33, 50, 0.9));
+}
+
+html[data-portal-theme="memoria"] .lending-library-page .lending-copy,
+html[data-portal-theme="memoria"] .lending-library-page .library-subtitle,
+html[data-portal-theme="memoria"] .lending-library-page .library-meta,
+html[data-portal-theme="memoria"] .lending-library-page .library-description,
+html[data-portal-theme="memoria"] .lending-library-page .summary-label,
+html[data-portal-theme="memoria"] .lending-library-page .csv-upload,
+html[data-portal-theme="memoria"] .lending-library-page .donation-grid label {
+  color: rgba(223, 232, 247, 0.72);
+}

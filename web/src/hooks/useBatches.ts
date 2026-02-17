@@ -26,14 +26,14 @@ export function useBatches(user: User | null): Result {
   const [history, setHistory] = useState<Batch[]>([]);
   const [error, setError] = useState<string>("");
 
-  useEffect(() => {
-    setError("");
+  const visibleActive = user ? active : [];
+  const visibleHistory = user ? history : [];
+  const visibleError = user ? error : "";
 
-    if (!user) {
-      setActive([]);
-      setHistory([]);
-      return;
-    }
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!user) return;
 
     const uid = user.uid;
 
@@ -55,26 +55,32 @@ export function useBatches(user: User | null): Result {
 
         const [snapActive, snapHistory] = await Promise.all([getDocs(qActive), getDocs(qHistory)]);
 
+        if (cancelled) return;
+        setError("");
         setActive(
           snapActive.docs.map((d) => ({
             id: d.id,
-            ...(d.data() as any),
+            ...(d.data() as Partial<Batch>),
           }))
         );
 
         setHistory(
           snapHistory.docs.map((d) => ({
             id: d.id,
-            ...(d.data() as any),
+            ...(d.data() as Partial<Batch>),
           }))
         );
-      } catch (err: any) {
-        setError(err?.message || String(err));
+      } catch (err: unknown) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : String(err));
       }
     };
 
     void load();
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
-  return { active, history, error };
+  return { active: visibleActive, history: visibleHistory, error: visibleError };
 }

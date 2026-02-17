@@ -21,6 +21,9 @@ Status: In progress
 - [x] Add a migration plan for legacy timeline events already stored in Firestore.
 - [x] Mirror Events contracts in iOS and Android (list/get/signup/cancel/check-in/checkout session).
 - [x] Mirror materials + events contract shapes from `web/src/api/portalContracts.ts` into `ios/PortalContracts.swift` and `android/.../PortalContracts.kt` so native clients share the same request/response types.
+- [x] Define push lifecycle + telemetry contract in `docs/MOBILE_PUSH_LIFECYCLE_AND_TELEMETRY.md`.
+- [x] Define offline write retry contract in `docs/MOBILE_WRITE_RETRY_POLICY.md`.
+- [x] Define secure storage + session model in `docs/MOBILE_SESSION_SECURITY_MODEL.md`.
 
 ## Next up
 - [ ] Implement Events UI parity (attendee + staff roster) in iOS and Android.
@@ -29,6 +32,16 @@ Status: In progress
 - [ ] Mirror materials contracts (`MaterialProduct`, checkout request/response) in iOS + Android.
 - [ ] Add deep-link handling for `/materials?status=success|cancel` in native clients.
 - [ ] Add Billing summary parity (materials orders + event charges).
+- [ ] Execute iOS migration phases in `docs/IOS_MIGRATION_PLAN.md` (Foundations -> Alpha gates).
+- [ ] Implement APNs provider delivery integration and invalid-token deactivation path.
+- [ ] Add push delivery observability dashboards from `notificationDeliveryAttempts`.
+
+## iOS Alpha Milestones (proposed)
+- [ ] Phase 0: foundations (contract parity + API client parity + debug/error logging).
+- [ ] Phase 1: auth + app shell + navigation parity.
+- [ ] Phase 2: reservations + pieces + kiln schedule core flows.
+- [ ] Phase 3: events + materials + billing parity.
+- [ ] Phase 4: hardening (perf, a11y, retry/offline, alpha exit checks).
 
 ## Decisions
 - Auto-generation of Swift/Kotlin is deferred. Manual sync is the current source-of-truth workflow.
@@ -36,3 +49,18 @@ Status: In progress
 ## Notes
 - Firestore rejects `undefined`; omit fields or use `null` in all platforms.
 - Keep Android + iOS helpers in sync with `portalContracts.ts` for contract changes.
+
+## Sprint Execution
+- Sprint manager playbook: `docs/SPRINT_MANAGER.md`
+- Swarm board: `docs/sprints/SWARM_BOARD.md`
+- Sprint plans:
+  - `docs/sprints/SPRINT_01_FOUNDATIONS.md`
+  - `docs/sprints/SPRINT_02_CORE_STUDIO.md`
+  - `docs/sprints/SPRINT_03_COMMERCE_EVENTS.md`
+  - `docs/sprints/SPRINT_04_HARDENING_ALPHA.md`
+  - `docs/sprints/SPRINT_05_AUTH_PRODUCTION.md`
+  - `docs/sprints/SPRINT_06_DEVICE_RELEASE.md`
+  - `docs/sprints/SPRINT_07_PUSH_OPERATIONS.md`
+  - `docs/sprints/SPRINT_08_RELEASE_CONTROLS.md`
+  - `docs/sprints/SPRINT_09_STABILIZATION_DRILLS.md`
+  - `docs/sprints/SPRINT_10_ALPHA_LAUNCH.md`

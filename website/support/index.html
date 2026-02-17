@@ -12,13 +12,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/assets/css/styles.css" />
   <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-ZJQ30LHFKH"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-ZJQ30LHFKH');
-  </script>
+  <script src="/assets/js/analytics.js" defer></script>
   <meta property="og:site_name" content="Monsoon Fire Pottery" />
   <meta property="og:title" content="Support | Monsoon Fire Pottery" />
   <meta property="og:description" content="Support hub for Monsoon Fire Pottery: FAQs, policies, payments, and portal guidance." />
@@ -61,10 +55,17 @@
           <p class="eyebrow">Support</p>
           <h1 class="section-title">Start here for answers.</h1>
           <p class="lead">Search by keyword or filter by topic. Policies are summarized here and published in full in the portal.</p>
+          <p class="meta"><a href="/policies/media-accessibility/">Media captions and transcript standard</a></p>
         </div>
         <div class="faq-toolbar">
           <div class="faq-search">
-            <input type="search" placeholder="Search questions and policies" data-faq-search />
+            <label for="support-search" class="visually-hidden">Search questions and policies</label>
+            <input
+              id="support-search"
+              type="search"
+              placeholder="Search questions and policies"
+              data-faq-search
+            />
           </div>
           <div class="filter-group" data-type-filters>
             <button class="filter-toggle active" type="button" data-type-filter="all">All</button>
@@ -83,7 +84,7 @@
           </div>
           <div class="tag-list" data-tag-list></div>
         </div>
-        <div class="faq-meta" data-faq-count>Showing all entries.</div>
+        <div class="faq-meta" data-faq-count role="status" aria-live="polite">Showing all entries.</div>
       </div>
     </section>
 
@@ -122,15 +123,17 @@
         <div class="footer-title">Contact</div>
         <p><a href="mailto:support@monsoonfire.com">support@monsoonfire.com</a></p>
         <p><a href="/contact/">Contact form</a></p>
+        <p><a href="/policies/accessibility/">Accessibility statement</a></p>
       </div>
     </div>
   </footer>
 
-  <script src="/assets/js/main.js"></script>
+  <script defer src="/assets/js/main.js"></script>
   <script src="/assets/js/faq.js"></script>
-  <script>function loadScript(a){var b=document.getElementsByTagName("head")[0],c=document.createElement("script");c.type="text/javascript",c.src="https://tracker.metricool.com/resources/be.js",c.onreadystatechange=a,c.onload=a,b.appendChild(c)}loadScript(function(){beTracker.t({hash:"66cdb7f9a3fce2c22ac2edbdc56cb820"})});</script>
+  
 </body>
 </html>
+
 
 
 

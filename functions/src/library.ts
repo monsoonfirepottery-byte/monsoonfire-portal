@@ -9,6 +9,7 @@ import {
   nowTs,
   enforceRateLimit,
   parseBody,
+  safeString,
 } from "./shared";
 
 const REGION = "us-central1";
@@ -118,39 +119,87 @@ function buildSearchTokens(input: Array<string | null | undefined>) {
   return Array.from(new Set(tokens));
 }
 
+function asRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function asUnknownArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function asStringArray(value: unknown): string[] {
+  return asUnknownArray(value).map((entry) => safeString(entry)).filter((entry) => entry.length > 0);
+}
+
+function firstString(value: unknown): string | null {
+  return (
+    asUnknownArray(value).find((entry): entry is string => typeof entry === "string" && entry.length > 0) ?? null
+  );
+}
+
+function textOrNull(value: unknown): string | null {
+  const valueText = safeString(value);
+  return valueText ? valueText : null;
+}
+
+function getIndustryIdentifier(info: unknown, targetType: "ISBN_10" | "ISBN_13"): string | null {
+  if (!Array.isArray(info)) return null;
+  const found = info.find((entry): entry is Record<string, unknown> => asRecord(entry) && safeString(entry.type) === targetType);
+  return textOrNull(found?.identifier);
+}
+
 async function fetchOpenLibrary(isbn: string): Promise<LookupResult | null> {
   const url = `https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`;
   const resp = await fetch(url);
   if (!resp.ok) return null;
-  const data = (await resp.json()) as Record<string, any>;
-  const entry = data[`ISBN:${isbn}`];
-  if (!entry) return null;
+  const data = (await resp.json()) as Record<string, unknown>;
+  const rawEntry = data[`ISBN:${isbn}`];
+  if (!asRecord(rawEntry)) return null;
+  const entry = rawEntry;
+  const cover = asRecord(entry.cover) ? (entry.cover as Record<string, unknown>) : {};
+  const identifiers = asRecord(entry.identifiers) ? (entry.identifiers as Record<string, unknown>) : {};
+  const publishers = asStringArray(asRecord(entry.publishers) ? entry.publishers : []);
 
-  const authors = Array.isArray(entry.authors)
-    ? entry.authors.map((author: any) => author?.name).filter(Boolean)
-    : [];
-  const subjects = Array.isArray(entry.subjects)
-    ? entry.subjects.map((subject: any) => subject?.name).filter(Boolean)
-    : [];
+  const authors =
+    asUnknownArray(entry.authors)
+      .map((author) => safeString(asRecord(author) ? (author as Record<string, unknown>).name : null))
+      .filter((entry) => entry.length > 0);
+  const subjects =
+    asUnknownArray(entry.subjects)
+      .map((subject) => safeString(asRecord(subject) ? (subject as Record<string, unknown>).name : null))
+      .filter((entry) => entry.length > 0);
+  const entryDescription =
+    typeof entry.description === "string"
+      ? entry.description
+      : asRecord(entry.description)
+      ? safeString((entry.description as Record<string, unknown>).value)
+      : "";
+  const entrySubtitle = textOrNull(entry.subtitle);
+  const entryPublishedDate = textOrNull(entry.publish_date);
+  const pageCount = typeof entry.number_of_pages === "number" ? entry.number_of_pages : null;
+  const format = textOrNull(entry.physical_format);
+
+  const coverUrl = textOrNull(cover.large) || textOrNull(cover.medium) || textOrNull(cover.small);
+  const publisher = publishers[0] ?? null;
+  const pageCountValue = pageCount;
+
+  const publisherList = publishers;
 
   return {
-    title: entry.title || `ISBN ${isbn}`,
-    subtitle: entry.subtitle ?? null,
+    title: textOrNull(entry.title) || `ISBN ${isbn}`,
+    subtitle: entrySubtitle,
     authors,
-    description:
-      typeof entry.description === "string"
-        ? entry.description
-        : entry.description?.value ?? null,
-    publisher: Array.isArray(entry.publishers) ? entry.publishers[0]?.name ?? null : null,
-    publishedDate: entry.publish_date ?? null,
-    pageCount: typeof entry.number_of_pages === "number" ? entry.number_of_pages : null,
+    description: entryDescription || null,
+    publisher,
+    publishedDate: entryPublishedDate,
+    pageCount: pageCountValue,
     subjects,
-    coverUrl: entry.cover?.large ?? entry.cover?.medium ?? entry.cover?.small ?? null,
-    format: entry.physical_format ?? null,
+    coverUrl: textOrNull(coverUrl),
+    format: format,
     identifiers: {
-      isbn10: Array.isArray(entry.identifiers?.isbn_10) ? entry.identifiers.isbn_10[0] : null,
-      isbn13: Array.isArray(entry.identifiers?.isbn_13) ? entry.identifiers.isbn_13[0] : null,
-      olid: Array.isArray(entry.identifiers?.openlibrary) ? entry.identifiers.openlibrary[0] : null,
+      isbn10: firstString(identifiers.isbn_10),
+      isbn13: firstString(identifiers.isbn_13),
+      olid: firstString(identifiers.openlibrary),
       googleVolumeId: null,
     },
     source: "openlibrary",
@@ -160,11 +209,9 @@ async function fetchOpenLibrary(isbn: string): Promise<LookupResult | null> {
       authors,
       publish_date: entry.publish_date ?? null,
       number_of_pages: entry.number_of_pages ?? null,
-      publishers: Array.isArray(entry.publishers)
-        ? entry.publishers.map((publisher: any) => publisher?.name).filter(Boolean)
-        : [],
+      publishers: publisherList,
       subjects,
-      cover: entry.cover ?? null,
+      cover,
     },
   };
 }
@@ -173,50 +220,56 @@ async function fetchGoogleBooks(isbn: string): Promise<LookupResult | null> {
   const url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`;
   const resp = await fetch(url);
   if (!resp.ok) return null;
-  const data = (await resp.json()) as any;
-  const item = Array.isArray(data.items) ? data.items[0] : null;
-  if (!item?.volumeInfo) return null;
+  const data = (await resp.json()) as Record<string, unknown>;
+  const items = asUnknownArray(data.items);
+  const item = items[0];
+  if (!asRecord(item)) return null;
+  if (!asRecord(item.volumeInfo)) return null;
+  const itemRecord = item as Record<string, unknown>;
+  const info = itemRecord.volumeInfo as Record<string, unknown>;
 
-  const info = item.volumeInfo;
+  const imageLinks = asRecord(info.imageLinks) ? (info.imageLinks as Record<string, unknown>) : {};
+  const industryIdentifiers = asUnknownArray(info.industryIdentifiers);
+
+  const title = safeString(info.title) || `ISBN ${isbn}`;
+  const subtitle = textOrNull(info.subtitle);
+  const description = textOrNull(info.description);
+  const publisher = textOrNull(info.publisher);
+  const publishedDate = textOrNull(info.publishedDate);
+  const pageCountValue = typeof info.pageCount === "number" ? info.pageCount : null;
+  const format = textOrNull(info.printType) || null;
+
+  const categories = asStringArray(info.categories);
+  const publishers = asStringArray(info.authors);
+  const coverUrl = textOrNull(imageLinks.thumbnail) || textOrNull(imageLinks.smallThumbnail) || textOrNull(imageLinks.small);
+
   return {
-    title: info.title || `ISBN ${isbn}`,
-    subtitle: info.subtitle ?? null,
-    authors: Array.isArray(info.authors) ? info.authors : [],
-    description: info.description ?? null,
-    publisher: info.publisher ?? null,
-    publishedDate: info.publishedDate ?? null,
-    pageCount: typeof info.pageCount === "number" ? info.pageCount : null,
-    subjects: Array.isArray(info.categories) ? info.categories : [],
-    coverUrl:
-      info.imageLinks?.thumbnail ??
-      info.imageLinks?.smallThumbnail ??
-      info.imageLinks?.small ??
-      null,
-    format: info.printType ?? null,
+    title,
+    subtitle,
+    authors: asStringArray(info.authors),
+    description,
+    publisher,
+    publishedDate,
+    pageCount: pageCountValue,
+    subjects: categories,
+    coverUrl,
+    format,
     identifiers: {
-      isbn10:
-        Array.isArray(info.industryIdentifiers) &&
-        info.industryIdentifiers.find((id: any) => id.type === "ISBN_10")?.identifier
-          ? info.industryIdentifiers.find((id: any) => id.type === "ISBN_10")?.identifier
-          : null,
-      isbn13:
-        Array.isArray(info.industryIdentifiers) &&
-        info.industryIdentifiers.find((id: any) => id.type === "ISBN_13")?.identifier
-          ? info.industryIdentifiers.find((id: any) => id.type === "ISBN_13")?.identifier
-          : null,
+      isbn10: getIndustryIdentifier(industryIdentifiers, "ISBN_10") ?? null,
+      isbn13: getIndustryIdentifier(industryIdentifiers, "ISBN_13") ?? null,
       olid: null,
-      googleVolumeId: item.id ?? null,
+      googleVolumeId: safeString((item as Record<string, unknown>).id) || null,
     },
     source: "googlebooks",
     raw: {
       title: info.title ?? null,
       subtitle: info.subtitle ?? null,
-      authors: info.authors ?? null,
+      authors: publishers,
       publisher: info.publisher ?? null,
       publishedDate: info.publishedDate ?? null,
-      pageCount: info.pageCount ?? null,
+      pageCount: pageCountValue,
       categories: info.categories ?? null,
-      imageLinks: info.imageLinks ?? null,
+      imageLinks,
     },
   };
 }
@@ -312,7 +365,7 @@ export const importLibraryIsbns = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "importLibraryIsbns",
       max: 3,
@@ -393,8 +446,9 @@ export const importLibraryIsbns = onRequest(
           await docRef.set(baseDoc, { merge: true });
           updated.push(itemId);
         }
-      } catch (err: any) {
-        errors.push({ isbn: rawIsbn, message: err?.message ?? String(err) });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : safeString(error);
+        errors.push({ isbn: rawIsbn, message: message || "Import failed" });
       }
     }
 
@@ -407,3 +461,4 @@ export const importLibraryIsbns = onRequest(
     });
   }
 );
+

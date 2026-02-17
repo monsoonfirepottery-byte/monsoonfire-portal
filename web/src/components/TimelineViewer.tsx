@@ -1,7 +1,7 @@
 // src/components/TimelineViewer.tsx
 import type { TimelineEvent } from "../types/domain";
 import { TIMELINE_EVENT_LABELS, normalizeTimelineEventType } from "../timelineEventTypes";
-import { styles as S } from "../ui/styles";
+import "./TimelineViewer.css";
 
 type Props = {
   selectedBatchId: string;
@@ -11,10 +11,13 @@ type Props = {
   onClose: () => void;
 };
 
-function formatTs(ts: any) {
+type TimestampLike = { toDate?: () => Date };
+
+function formatTs(ts: unknown) {
   if (!ts) return "";
   try {
-    return typeof ts.toDate === "function" ? ts.toDate().toLocaleString() : String(ts);
+    const value = ts as TimestampLike;
+    return typeof value.toDate === "function" ? value.toDate().toLocaleString() : String(ts);
   } catch {
     return "";
   }
@@ -37,32 +40,32 @@ export default function TimelineViewer({
   const title = selectedBatchTitle || selectedBatchId;
 
   return (
-    <div style={S.card}>
-      <div style={S.rowBetween}>
-        <div style={S.h2}>
-          Timeline: <span style={S.muted}>{title}</span>
+    <div className="timeline-viewer card">
+      <div className="timeline-viewer__header">
+        <div className="timeline-viewer__title">
+          Timeline: <span className="muted-text">{title}</span>
         </div>
-        <button style={S.btnSmall} onClick={onClose}>
+        <button type="button" className="timeline-viewer__close btn-small" onClick={onClose}>
           Close
         </button>
       </div>
 
       {loading ? (
-        <div style={S.muted}>Loading…</div>
+        <div className="muted-text">Loading…</div>
       ) : timeline.length === 0 ? (
-        <div style={S.muted}>(no events)</div>
+        <div className="muted-text">(no events)</div>
       ) : (
-        <div style={S.stack}>
+        <div className="timeline-viewer__stack">
           {timeline.map((ev) => (
-            <div key={ev.id} style={S.timelineRow}>
-              <div style={S.timelineAt}>{formatTs(ev.at)}</div>
-              <div style={S.flex1}>
-                <div style={S.timelineType}>{getTimelineLabel(ev.type)}</div>
-                <div style={S.timelineMeta}>
+            <div key={ev.id} className="timeline-viewer__row">
+              <div className="timeline-viewer__at">{formatTs(ev.at)}</div>
+              <div className="timeline-viewer__body">
+                <div className="timeline-viewer__type">{getTimelineLabel(ev.type)}</div>
+                <div className="timeline-viewer__meta">
                   {ev.actorName ? `by ${ev.actorName}` : ""}
                   {ev.kilnName ? ` • kiln: ${ev.kilnName}` : ""}
                 </div>
-                {ev.notes ? <div style={S.timelineNotes}>{ev.notes}</div> : null}
+                {ev.notes ? <div className="timeline-viewer__notes">{ev.notes}</div> : null}
               </div>
             </div>
           ))}

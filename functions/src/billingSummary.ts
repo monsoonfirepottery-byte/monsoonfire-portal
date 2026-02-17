@@ -189,7 +189,7 @@ export const listBillingSummary = onRequest({ region: REGION }, async (req, res)
       id: order.id,
       type: "materials" as const,
       sourceId: order.id,
-      title: `Material order`,
+      title: "Material order",
       amountCents: order.totalCents,
       currency: order.currency,
       paidAt: order.updatedAt,

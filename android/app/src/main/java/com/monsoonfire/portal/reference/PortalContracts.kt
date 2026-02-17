@@ -48,7 +48,8 @@ data class CreateBatchRequest(
     val intakeMode: String,
     val estimatedCostCents: Int,
     val estimateNotes: String? = null,
-    val notes: String? = null
+    val notes: String? = null,
+    val clientRequestId: String? = null
 )
 
 @Serializable
@@ -123,6 +124,13 @@ data class ListEventSignupsRequest(
     val includeCancelled: Boolean? = null,
     val includeExpired: Boolean? = null,
     val limit: Int? = null
+)
+
+@Serializable
+data class ListBillingSummaryRequest(
+    val limit: Int? = null,
+    val from: String? = null,
+    val to: String? = null
 )
 
 @Serializable
@@ -401,6 +409,60 @@ data class CheckInEventResponse(
 data class CreateEventCheckoutSessionResponse(
     val ok: Boolean,
     val checkoutUrl: String? = null
+)
+
+@Serializable
+data class MaterialOrderItemSummary(
+    val productId: String,
+    val name: String,
+    val quantity: Int,
+    val unitPrice: Int,
+    val currency: String
+)
+
+@Serializable
+data class MaterialOrderSummary(
+    val id: String,
+    val status: String,
+    val totalCents: Int,
+    val currency: String,
+    val pickupNotes: String? = null,
+    val checkoutUrl: String? = null,
+    val createdAt: String? = null,
+    val updatedAt: String? = null,
+    val items: List<MaterialOrderItemSummary> = emptyList()
+)
+
+@Serializable
+data class BillingReceipt(
+    val id: String,
+    val type: String,
+    val sourceId: String? = null,
+    val title: String,
+    val amountCents: Int,
+    val currency: String,
+    val paidAt: String? = null,
+    val createdAt: String? = null,
+    val metadata: JsonElement? = null
+)
+
+@Serializable
+data class BillingSummaryTotals(
+    val unpaidCheckInsCount: Int,
+    val unpaidCheckInsAmountCents: Int,
+    val materialsPendingCount: Int,
+    val materialsPendingAmountCents: Int,
+    val receiptsCount: Int,
+    val receiptsAmountCents: Int
+)
+
+@Serializable
+data class BillingSummaryResponse(
+    val ok: Boolean,
+    val unpaidCheckIns: List<EventSignupRosterEntry> = emptyList(),
+    val materialsOrders: List<MaterialOrderSummary> = emptyList(),
+    val receipts: List<BillingReceipt> = emptyList(),
+    val summary: BillingSummaryTotals
 )
 
 fun getResultBatchId(resp: CreateBatchResponse?): String? {

@@ -18,6 +18,28 @@ private func decodeAnyJsonValue(_ data: Data) -> JSONValue? {
     return nil
 }
 
+private func getErrorMessage(from body: JSONValue?) -> String {
+    guard let body else { return "Request failed" }
+    switch body {
+    case .string(let s):
+        return s
+    case .object(let o):
+        if case .string(let msg)? = o["message"] { return msg }
+        if case .string(let err)? = o["error"] { return err }
+        if case .string(let details)? = o["details"] { return details }
+        return "Request failed"
+    default:
+        return "Request failed"
+    }
+}
+
+private func getErrorCode(from body: JSONValue?) -> String? {
+    guard let body else { return nil }
+    guard case .object(let o) = body else { return nil }
+    guard case .string(let code)? = o["code"] else { return nil }
+    return code
+}
+
 private func nowIso() -> String {
     ISO8601DateFormatter().string(from: Date())
 }
@@ -45,19 +67,19 @@ private func buildCurl(url: String, hasAdmin: Bool, payloadJson: String) -> Stri
 // MARK: - Client errors
 
 enum PortalApiClientError: Error, CustomStringConvertible {
-    case invalidURL(String)
-    case encodingFailed(String)
-    case networkFailed(String)
+    case invalidURL(String, meta: PortalApiMeta?)
+    case encodingFailed(String, meta: PortalApiMeta?)
+    case networkFailed(String, meta: PortalApiMeta?)
     case serverError(status: Int, message: String, envelope: PortalApiErrorEnvelope?, meta: PortalApiMeta)
-    case decodingFailed(String)
+    case decodingFailed(String, meta: PortalApiMeta?)
 
     var description: String {
         switch self {
-        case .invalidURL(let s): return "Invalid URL: \(s)"
-        case .encodingFailed(let s): return "Encoding failed: \(s)"
-        case .networkFailed(let s): return "Network failed: \(s)"
+        case .invalidURL(let s, _): return "Invalid URL: \(s)"
+        case .encodingFailed(let s, _): return "Encoding failed: \(s)"
+        case .networkFailed(let s, _): return "Network failed: \(s)"
         case .serverError(let status, let message, _, _): return "HTTP \(status): \(message)"
-        case .decodingFailed(let s): return "Decoding failed: \(s)"
+        case .decodingFailed(let s, _): return "Decoding failed: \(s)"
         }
     }
 }
@@ -96,7 +118,7 @@ final class PortalApiClient {
 
         let fullUrl = "\(config.baseUrl)/\(fn)"
         guard let url = URL(string: fullUrl) else {
-            throw PortalApiClientError.invalidURL(fullUrl)
+            throw PortalApiClientError.invalidURL(fullUrl, meta: nil)
         }
 
         // Encode payload (pretty + stable keys helps debugging)
@@ -108,7 +130,7 @@ final class PortalApiClient {
             jsonData = try enc.encode(payload)
             payloadJson = String(data: jsonData, encoding: .utf8) ?? "{}"
         } catch {
-            throw PortalApiClientError.encodingFailed(error.localizedDescription)
+            throw PortalApiClientError.encodingFailed(error.localizedDescription, meta: nil)
         }
 
         var meta = PortalApiMeta(
@@ -144,15 +166,15 @@ final class PortalApiClient {
                 meta.ok = false
                 meta.error = "Non-HTTP response"
                 meta.message = "Non-HTTP response"
-                throw PortalApiClientError.networkFailed("Non-HTTP response")
+                throw PortalApiClientError.networkFailed("Non-HTTP response", meta: meta)
             }
             http = h
         } catch {
-            // Match web behavior: "Failed to fetch" style
+            let msg = error.localizedDescription
             meta.ok = false
-            meta.error = "Failed to fetch"
-            meta.message = "Failed to fetch"
-            throw PortalApiClientError.networkFailed(error.localizedDescription)
+            meta.error = msg
+            meta.message = msg
+            throw PortalApiClientError.networkFailed(msg, meta: meta)
         }
 
         meta.status = http.statusCode
@@ -161,11 +183,12 @@ final class PortalApiClient {
 
         // Handle non-2xx as error envelope if possible
         if !(200...299).contains(http.statusCode) {
+            let code = getErrorCode(from: meta.response)
+            let msg = getErrorMessage(from: meta.response)
             let env = try? JSONDecoder().decode(PortalApiErrorEnvelope.self, from: data)
-            let msg = env?.message ?? env?.error ?? "Request failed"
             meta.error = msg
             meta.message = msg
-            meta.code = env?.code
+            meta.code = code ?? env?.code
             throw PortalApiClientError.serverError(status: http.statusCode, message: msg, envelope: env, meta: meta)
         }
 
@@ -177,7 +200,7 @@ final class PortalApiClient {
             meta.ok = false
             meta.error = "Decoding failed"
             meta.message = error.localizedDescription
-            throw PortalApiClientError.decodingFailed(error.localizedDescription)
+            throw PortalApiClientError.decodingFailed(error.localizedDescription, meta: meta)
         }
     }
 
@@ -253,5 +276,25 @@ final class PortalApiClient {
 
     func createEventCheckoutSession(idToken: String, adminToken: String?, payload: CreateEventCheckoutSessionRequest) async throws -> CallResult<CreateEventCheckoutSessionResponse> {
         try await post(fn: "createEventCheckoutSession", idToken: idToken, adminToken: adminToken, payload: payload, respType: CreateEventCheckoutSessionResponse.self)
+    }
+
+    func importLibraryIsbns(idToken: String, adminToken: String?, payload: ImportLibraryIsbnsRequest) async throws -> CallResult<ImportLibraryIsbnsResponse> {
+        try await post(fn: "importLibraryIsbns", idToken: idToken, adminToken: adminToken, payload: payload, respType: ImportLibraryIsbnsResponse.self)
+    }
+
+    func registerDeviceToken(idToken: String, adminToken: String?, payload: RegisterDeviceTokenRequest) async throws -> CallResult<RegisterDeviceTokenResponse> {
+        try await post(fn: "registerDeviceToken", idToken: idToken, adminToken: adminToken, payload: payload, respType: RegisterDeviceTokenResponse.self)
+    }
+
+    func unregisterDeviceToken(idToken: String, adminToken: String?, payload: UnregisterDeviceTokenRequest) async throws -> CallResult<UnregisterDeviceTokenResponse> {
+        try await post(fn: "unregisterDeviceToken", idToken: idToken, adminToken: adminToken, payload: payload, respType: UnregisterDeviceTokenResponse.self)
+    }
+
+    func runNotificationFailureDrill(idToken: String, adminToken: String?, payload: RunNotificationFailureDrillRequest) async throws -> CallResult<RunNotificationFailureDrillResponse> {
+        try await post(fn: "runNotificationFailureDrill", idToken: idToken, adminToken: adminToken, payload: payload, respType: RunNotificationFailureDrillResponse.self)
+    }
+
+    func runNotificationMetricsAggregationNow(idToken: String, adminToken: String?, payload: RunNotificationMetricsAggregationNowRequest = .init()) async throws -> CallResult<RunNotificationMetricsAggregationNowResponse> {
+        try await post(fn: "runNotificationMetricsAggregationNow", idToken: idToken, adminToken: adminToken, payload: payload, respType: RunNotificationMetricsAggregationNowResponse.self)
     }
 }

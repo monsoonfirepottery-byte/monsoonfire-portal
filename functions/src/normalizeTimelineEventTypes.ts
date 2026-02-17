@@ -54,7 +54,7 @@ export const normalizeTimelineEventTypes = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "normalizeTimelineEventTypes",
       max: 2,
@@ -88,10 +88,13 @@ export const normalizeTimelineEventTypes = onRequest(
           .limit(limit)
           .get();
       }
-    } catch (e: any) {
+    } catch (err: unknown) {
+      const errMsg = String(
+        typeof err === "object" && err !== null && "message" in err ? (err as { message?: unknown }).message : err
+      );
       res.status(200).json({
         ok: false,
-        message: e?.message ?? String(e),
+        message: errMsg,
         hint:
           "If you see FAILED_PRECONDITION, create the required index from the console link in the error.",
       });
@@ -166,3 +169,4 @@ export const normalizeTimelineEventTypes = onRequest(
     });
   }
 );
+

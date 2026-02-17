@@ -1,17 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { User } from "firebase/auth";
 import {
   collection,
-  doc,
+  addDoc,
   getDocs,
   limit,
   orderBy,
   query,
-  writeBatch,
+  doc,
+  Timestamp,
+  updateDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import { mockFirings, mockKilns } from "../data/kilnScheduleMock";
+import { normalizeFiringDoc, normalizeKilnDoc } from "../lib/normalizers/kiln";
 import type { Kiln, KilnFiring, KilnStatus } from "../types/kiln";
 import { formatDateTime } from "../utils/format";
+import RevealCard from "../components/RevealCard";
+import { useUiSettings } from "../context/UiSettingsContext";
 import "./KilnScheduleView.css";
 
 type NormalizedFiring = KilnFiring & { startDate: Date; endDate: Date };
@@ -21,7 +27,9 @@ type ScheduleState = {
   firings: KilnFiring[];
   loading: boolean;
   error: string;
+  errorDetails: { code?: string; message?: string } | null;
   permissionDenied: boolean;
+  reload: () => Promise<void>;
 };
 
 const STATUS_LABELS: Record<KilnStatus, string> = {
@@ -123,38 +131,6 @@ function downloadCalendarInvite(firing: NormalizedFiring, kiln: Kiln | undefined
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function toFirestoreKiln(kiln: Kiln) {
-  return {
-    name: kiln.name,
-    type: kiln.type,
-    volume: kiln.volume,
-    maxTemp: kiln.maxTemp,
-    status: kiln.status,
-    isAvailable: kiln.isAvailable,
-    typicalCycles: kiln.typicalCycles.map((cycle) => ({
-      id: cycle.id,
-      name: cycle.name,
-      typicalDurationHours: cycle.typicalDurationHours,
-      tempRange: cycle.tempRange,
-      notes: cycle.notes ?? null,
-    })),
-    notes: kiln.notes ?? null,
-  };
-}
-
-function toFirestoreFiring(firing: KilnFiring) {
-  return {
-    kilnId: firing.kilnId,
-    title: firing.title,
-    cycleType: firing.cycleType,
-    startAt: firing.startAt instanceof Date ? firing.startAt : null,
-    endAt: firing.endAt instanceof Date ? firing.endAt : null,
-    status: firing.status,
-    confidence: firing.confidence,
-    notes: firing.notes ?? null,
-  };
-}
-
 function useKilnSchedule(): ScheduleState {
   const [kilns, setKilns] = useState<Kiln[]>([]);
   const [firings, setFirings] = useState<KilnFiring[]>([]);
@@ -163,76 +139,122 @@ function useKilnSchedule(): ScheduleState {
   const [kilnsError, setKilnsError] = useState("");
   const [firingsError, setFiringsError] = useState("");
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const [errorDetails, setErrorDetails] = useState<{ code?: string; message?: string } | null>(null);
+  const isMountedRef = useRef(true);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const kilnsQuery = query(collection(db, "kilns"), orderBy("name", "asc"), limit(25));
-        const firingsQuery = query(collection(db, "kilnFirings"), orderBy("startAt", "asc"), limit(200));
-        const [kilnSnap, firingSnap] = await Promise.all([getDocs(kilnsQuery), getDocs(firingsQuery)]);
-        setKilns(
-          kilnSnap.docs.map((docSnap) => ({
-            id: docSnap.id,
-            ...(docSnap.data() as any),
-          }))
-        );
-        setFirings(
-          firingSnap.docs.map((docSnap) => ({
-            id: docSnap.id,
-            ...(docSnap.data() as any),
-          }))
-        );
-      } catch (err: any) {
-        const msg = err?.message || String(err);
-        setKilnsError(`Kilns failed: ${msg}`);
-        setFiringsError(`Kiln schedule failed: ${msg}`);
-        if (isPermissionDenied(err)) setPermissionDenied(true);
-      } finally {
+  const reload = useCallback(async () => {
+    if (!isMountedRef.current) return;
+
+    setPermissionDenied(false);
+    setErrorDetails(null);
+    setKilnsLoading(true);
+    setFiringsLoading(true);
+    setKilnsError("");
+    setFiringsError("");
+
+    try {
+      const kilnsQuery = query(collection(db, "kilns"), orderBy("name", "asc"), limit(25));
+      const firingsQuery = query(collection(db, "kilnFirings"), orderBy("startAt", "asc"), limit(200));
+      const [kilnSnap, firingSnap] = await Promise.all([getDocs(kilnsQuery), getDocs(firingsQuery)]);
+      if (!isMountedRef.current) return;
+      setKilns(
+        kilnSnap.docs.map((docSnap) => normalizeKilnDoc(docSnap.id, docSnap.data() as Partial<Kiln>)
+        )
+      );
+      setFirings(
+        firingSnap.docs.map((docSnap) =>
+          normalizeFiringDoc(docSnap.id, docSnap.data() as Partial<KilnFiring>)
+        )
+      );
+    } catch (error: unknown) {
+      if (!isMountedRef.current) return;
+      const msg = getErrorMessage(error);
+      setKilnsError(`Kilns failed: ${msg}`);
+      setFiringsError(`Kiln schedule failed: ${msg}`);
+      setErrorDetails({
+        code:
+          typeof (error as { code?: unknown })?.code === "string"
+            ? ((error as { code?: string }).code)
+            : undefined,
+        message: msg,
+      });
+      if (isPermissionDenied(error)) setPermissionDenied(true);
+    } finally {
+      if (isMountedRef.current) {
         setKilnsLoading(false);
         setFiringsLoading(false);
       }
-    };
-
-    void load();
+    }
   }, []);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    void reload();
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [reload]);
 
   return {
     kilns,
     firings,
     loading: kilnsLoading || firingsLoading,
     error: [kilnsError, firingsError].filter(Boolean).join(" "),
+    errorDetails,
     permissionDenied,
+    reload,
   };
 }
 
-export default function KilnScheduleView() {
-  const { kilns, firings, loading, error, permissionDenied } = useKilnSchedule();
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function parseHoursInput(value: string, fallback: number, min = 0.5, max = 720): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(parsed, min), max);
+}
+
+function formatFiringLabel(firing: NormalizedFiring | null): string {
+  if (!firing) return "No firing selected";
+  return `${firing.title} (${formatDateTime(firing.startDate)})`;
+}
+
+export default function KilnScheduleView({ user, isStaff }: { user?: User | null; isStaff?: boolean }) {
+  const { themeName, portalMotion } = useUiSettings();
+  const motionEnabled = themeName === "memoria" && portalMotion === "enhanced";
+  const { kilns, firings, loading, error, errorDetails, permissionDenied, reload } = useKilnSchedule();
   const [selectedFiringId, setSelectedFiringId] = useState<string | null>(null);
-  const [seedBusy, setSeedBusy] = useState(false);
-  const [seedStatus, setSeedStatus] = useState("");
-
-  const dataReady = !loading;
-  const useMock = permissionDenied || (dataReady && kilns.length === 0 && firings.length === 0);
-  const rawKilns = useMock ? mockKilns : kilns;
-  const rawFirings = useMock ? mockFirings : firings;
-
-  const fallbackPrimary = mockKilns.find((kiln) => kiln.name === PRIMARY_KILN_NAME) ?? mockKilns[0];
-  const fallbackRaku = mockKilns.find((kiln) => kiln.name === RAKU_KILN_NAME) ?? mockKilns[1];
+  const [unloadStatus, setUnloadStatus] = useState("");
+  const [unloadBusy, setUnloadBusy] = useState(false);
+  const [unloadError, setUnloadError] = useState("");
+  const [staffBusy, setStaffBusy] = useState(false);
+  const [staffError, setStaffError] = useState("");
+  const [staffStatus, setStaffStatus] = useState("");
+  const [followUpLeadHours, setFollowUpLeadHours] = useState("6");
+  const [followUpDurationHours, setFollowUpDurationHours] = useState("8");
+  const [delayHours, setDelayHours] = useState("24");
 
   const primaryKiln =
-    rawKilns.find((kiln) => kiln.name === PRIMARY_KILN_NAME) ??
-    rawKilns.find((kiln) => /eQ2827|L&L/i.test(kiln.name)) ??
-    fallbackPrimary;
+    kilns.find((kiln) => kiln.name === PRIMARY_KILN_NAME) ??
+    kilns.find((kiln) => /eQ2827|L&L/i.test(kiln.name)) ??
+    kilns[0] ??
+    null;
   const rakuKiln =
-    rawKilns.find((kiln) => kiln.name === RAKU_KILN_NAME) ??
-    rawKilns.find((kiln) => /raku|reduction/i.test(kiln.name)) ??
-    fallbackRaku;
+    kilns.find((kiln) => kiln.name === RAKU_KILN_NAME) ??
+    kilns.find((kiln) => /raku|reduction/i.test(kiln.name)) ??
+    kilns.find((kiln) => kiln.id !== primaryKiln?.id) ??
+    null;
 
-  const displayKilns = [primaryKiln, rakuKiln].filter(
+  const displayKilns = [primaryKiln, rakuKiln].filter((kiln): kiln is Kiln => Boolean(kiln)).filter(
     (kiln, index, arr) => arr.findIndex((item) => item.id === kiln.id) === index
   );
   const displayKilnIds = new Set(displayKilns.map((kiln) => kiln.id));
-  const displayFirings = rawFirings.filter((firing) => displayKilnIds.has(firing.kilnId));
+  const displayFirings =
+    displayKilnIds.size > 0
+      ? firings.filter((firing) => displayKilnIds.has(firing.kilnId))
+      : firings;
 
   const normalizedFirings = useMemo(() => {
     return displayFirings
@@ -259,6 +281,8 @@ export default function KilnScheduleView() {
       .slice(0, 8);
   }, [normalizedFirings]);
 
+  const nextOverallFiring = upcomingFirings[0] ?? null;
+
   useEffect(() => {
     if (!selectedFiringId && upcomingFirings.length > 0) {
       setSelectedFiringId(upcomingFirings[0].id);
@@ -278,70 +302,175 @@ export default function KilnScheduleView() {
   const selectedFiring = selectedFiringId
     ? normalizedFirings.find((firing) => firing.id === selectedFiringId) || null
     : null;
+  const unloadedAt = selectedFiring ? coerceDate(selectedFiring.unloadedAt) : null;
 
-  const handleSeedMock = async () => {
-    if (seedBusy || permissionDenied) return;
-    setSeedBusy(true);
-    setSeedStatus("");
+  const runStaffAction = async (actionLabel: string, action: () => Promise<void>) => {
+    if (!isStaff || !user || staffBusy) return;
+
+    setStaffBusy(true);
+    setStaffError("");
+    setStaffStatus("");
 
     try {
-      const batch = writeBatch(db);
-      mockKilns.forEach((kiln) => {
-        batch.set(doc(db, "kilns", kiln.id), toFirestoreKiln(kiln));
-      });
-      mockFirings.forEach((firing) => {
-        batch.set(doc(db, "kilnFirings", firing.id), toFirestoreFiring(firing));
-      });
-      await batch.commit();
-      setSeedStatus("Mock kiln schedule seeded to Firestore.");
-    } catch (err: any) {
-      setSeedStatus(`Seed failed: ${err?.message || String(err)}`);
+      await action();
+      setStaffStatus(`${actionLabel} complete.`);
+      await reload();
+    } catch (error: unknown) {
+      setStaffError(getErrorMessage(error) || `${actionLabel} failed.`);
     } finally {
-      setSeedBusy(false);
+      setStaffBusy(false);
     }
   };
 
-  const headerPill = useMock
-    ? permissionDenied
-      ? "Mock data (no Firestore access)"
-      : "Mock data"
-    : "Live data";
+  const createFollowUpFiring = async () => {
+    if (!selectedFiring || !user) {
+      throw new Error("Select a firing and sign in as staff first.");
+    }
+
+    const leadHours = parseHoursInput(followUpLeadHours, 6);
+    const durationHours = parseHoursInput(followUpDurationHours, 8, 1);
+    const kiln = kilnById.get(selectedFiring.kilnId);
+    const baseStart = coerceDate(selectedFiring.endAt) ?? new Date();
+    const startAt = new Date(baseStart.getTime() + leadHours * 60 * 60 * 1000);
+    const endAt = new Date(startAt.getTime() + durationHours * 60 * 60 * 1000);
+
+    await addDoc(collection(db, "kilnFirings"), {
+      kilnId: selectedFiring.kilnId,
+      kilnName: kiln?.name ?? null,
+      title: `${selectedFiring.title} (staff follow-up)`,
+      cycleType: selectedFiring.cycleType,
+      startAt: Timestamp.fromDate(startAt),
+      endAt: Timestamp.fromDate(endAt),
+      status: "scheduled",
+      confidence: "scheduled",
+      notes: `Scheduled by staff ${user.uid}`,
+      createdAt: serverTimestamp(),
+      createdByUid: user.uid,
+      updatedByUid: user.uid,
+      updatedAt: serverTimestamp(),
+    });
+  };
+
+  const delaySelectedFiringByHours = async () => {
+    if (!selectedFiring || !user) {
+      throw new Error("Select a firing and sign in as staff first.");
+    }
+    const delayAmount = parseHoursInput(delayHours, 24, 1);
+    const startDate = coerceDate(selectedFiring.startAt);
+    const endDate = coerceDate(selectedFiring.endAt);
+    if (!startDate || !endDate) {
+      throw new Error("Selected firing is missing start or end time.");
+    }
+
+    const shiftMs = delayAmount * 60 * 60 * 1000;
+    await updateDoc(doc(db, "kilnFirings", selectedFiring.id), {
+      startAt: Timestamp.fromDate(new Date(startDate.getTime() + shiftMs)),
+      endAt: Timestamp.fromDate(new Date(endDate.getTime() + shiftMs)),
+      updatedByUid: user.uid,
+      updatedAt: serverTimestamp(),
+    });
+  };
 
   return (
     <div className="page kiln-page">
       <div className="page-header">
         <div>
           <h1>Firings</h1>
-          <p className="page-subtitle">
-            See what is firing next, what is in progress, and what has already fired.
-          </p>
-        </div>
-        <div className="kiln-header-actions">
-          <span className="pill subtle">{headerPill}</span>
         </div>
       </div>
 
+      <section className="kiln-intro-grid">
+        <RevealCard className="card card-3d" index={0} enabled={motionEnabled}>
+          <div className="card-title">Next expected firing</div>
+          {nextOverallFiring ? (
+            <>
+              <div className="next-firing-title">
+                {(kilnById.get(nextOverallFiring.kilnId)?.name ?? "Kiln") +
+                  " — " +
+                  nextOverallFiring.title}
+              </div>
+              <div className="next-firing-meta">
+                {formatDateTime(nextOverallFiring.startDate)} ·{" "}
+                {formatTimeRange(nextOverallFiring.startDate, nextOverallFiring.endDate)}
+              </div>
+              <button
+                className="btn btn-primary"
+                onClick={() => downloadCalendarInvite(nextOverallFiring, kilnById.get(nextOverallFiring.kilnId))}
+              >
+                Add to my calendar
+              </button>
+              <p className="muted">Includes a 1‑day reminder.</p>
+            </>
+          ) : (
+            <div className="empty-state">No upcoming firings scheduled yet.</div>
+          )}
+        </RevealCard>
+        <RevealCard className="card card-3d" index={1} enabled={motionEnabled}>
+          <div className="card-title">How to use this page</div>
+          <div className="page-subtitle">
+            Check the next firing, pick the one that fits your timing, and we will confirm details at
+            drop‑off.
+          </div>
+          <ul className="kiln-steps">
+            <li>Scan the next firing for each kiln.</li>
+            <li>Use “Add to my calendar” for a reminder.</li>
+            <li>Drop off by the posted cutoff time.</li>
+          </ul>
+        </RevealCard>
+      </section>
+
       {loading ? (
-        <div className="loading">
+        <div className="loading" role="status" aria-live="polite">
           <span />
           Loading kiln schedule
         </div>
       ) : null}
 
+      {error ? (
+        <div className="card card-3d alert" role="status" aria-live="polite">
+          {error}
+        </div>
+      ) : null}
       {permissionDenied ? (
-        <div className="card card-3d notice">
-          Firestore permissions are missing for `kilns` or `kilnFirings`. Showing mock schedule
-          data until read access is granted.
+        <div className="card card-3d notice" role="status" aria-live="polite">
+          You do not have sufficient Firestore permissions to read kiln schedule data.
+        </div>
+      ) : null}
+      {(error || permissionDenied) && !loading ? (
+        <div className="card card-3d">
+          <button className="btn btn-secondary" disabled={loading} onClick={() => void reload()}>
+            Retry loading kiln schedule
+          </button>
         </div>
       ) : null}
 
-      {!permissionDenied && error ? <div className="card card-3d alert">{error}</div> : null}
+      {import.meta.env.DEV && errorDetails ? (
+        <div className="card card-3d notice">
+          <div className="card-title">Firestore debug</div>
+          <div className="mono">
+            {JSON.stringify(
+              {
+                code: errorDetails.code ?? "unknown",
+                message: errorDetails.message ?? "unknown",
+                collections: ["kilns", "kilnFirings"],
+              },
+              null,
+              2
+            )}
+          </div>
+        </div>
+      ) : null}
 
       <section className="kiln-card-grid">
-        {displayKilns.map((kiln) => {
+        {displayKilns.map((kiln, idx) => {
           const nextFiring = nextFiringByKiln.get(kiln.id);
           return (
-            <div className="card card-3d kiln-card" key={kiln.id}>
+            <RevealCard
+              className="card card-3d kiln-card"
+              key={kiln.id}
+              index={2 + idx}
+              enabled={motionEnabled}
+            >
               <div className="kiln-card-header">
                 <div>
                   <div className="kiln-name">{kiln.name}</div>
@@ -378,13 +507,13 @@ export default function KilnScheduleView() {
                 </div>
               </div>
               {kiln.notes ? <div className="kiln-notes">{kiln.notes}</div> : null}
-            </div>
+            </RevealCard>
           );
         })}
       </section>
 
       <section className="kiln-lower-grid">
-        <div className="card card-3d kiln-upcoming">
+        <RevealCard className="card card-3d kiln-upcoming" index={4} enabled={motionEnabled}>
           <div className="card-title">Upcoming firings</div>
           {upcomingFirings.length === 0 ? (
             <div className="empty-state">No upcoming firings scheduled.</div>
@@ -392,8 +521,12 @@ export default function KilnScheduleView() {
             <div className="upcoming-list">
               {upcomingFirings.map((firing) => {
                 const kiln = kilnById.get(firing.kilnId);
+                const isSelected = firing.id === selectedFiringId;
                 return (
-                  <div className="upcoming-row" key={firing.id}>
+                  <div
+                    className={`upcoming-row ${isSelected ? "active" : ""}`}
+                    key={firing.id}
+                  >
                     <div>
                       <div className="upcoming-title">
                         {kiln?.name ?? "Kiln"} · {firing.title}
@@ -402,7 +535,17 @@ export default function KilnScheduleView() {
                         {formatDateTime(firing.startDate)} · {formatTimeRange(firing.startDate, firing.endDate)}
                       </div>
                     </div>
-                    <button className="btn btn-ghost" onClick={() => downloadCalendarInvite(firing, kiln)}>
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() => setSelectedFiringId(firing.id)}
+                      disabled={isSelected}
+                    >
+                      {isSelected ? "Selected" : "View details"}
+                    </button>
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() => downloadCalendarInvite(firing, kiln)}
+                    >
                       Add to my calendar
                     </button>
                   </div>
@@ -410,8 +553,9 @@ export default function KilnScheduleView() {
               })}
             </div>
           )}
-        </div>
-        <div className="card card-3d kiln-details">
+          <p className="muted">Calendar invites add a 1‑day reminder.</p>
+        </RevealCard>
+        <RevealCard className="card card-3d kiln-details" index={5} enabled={motionEnabled}>
           <div className="card-title">Selected firing</div>
           {selectedFiring ? (
             <div className="details-body">
@@ -427,6 +571,11 @@ export default function KilnScheduleView() {
                 {formatDateTime(selectedFiring.startDate)} · {formatTimeRange(selectedFiring.startDate, selectedFiring.endDate)}
               </div>
               {selectedFiring.notes ? <div className="details-notes">{selectedFiring.notes}</div> : null}
+              {unloadedAt ? (
+                <div className="details-notes">
+                  Unloaded {formatDateTime(unloadedAt)}.
+                </div>
+              ) : null}
               <div className="details-actions">
                 <button
                   className="btn btn-primary"
@@ -434,37 +583,99 @@ export default function KilnScheduleView() {
                 >
                   Add to my calendar
                 </button>
+                {isStaff && user ? (
+                  <button
+                    className="btn btn-secondary"
+                    disabled={unloadBusy || Boolean(unloadedAt)}
+                    onClick={() => {
+                      void (async () => {
+                        if (!selectedFiring || !user || unloadBusy || unloadedAt) return;
+                        setUnloadError("");
+                        setUnloadStatus("");
+                        setUnloadBusy(true);
+                        try {
+                          const ref = doc(db, "kilnFirings", selectedFiring.id);
+                          await updateDoc(ref, {
+                            unloadedAt: serverTimestamp(),
+                            unloadedByUid: user.uid,
+                          });
+                          setUnloadStatus("Marked unloaded.");
+                        } catch (error: unknown) {
+                          setUnloadError(getErrorMessage(error) || "Failed to mark unloaded.");
+                        } finally {
+                          setUnloadBusy(false);
+                        }
+                      })();
+                    }}
+                  >
+                    {unloadedAt ? "Unloaded" : unloadBusy ? "Marking..." : "Mark unloaded"}
+                  </button>
+                ) : null}
               </div>
+              {isStaff && user ? (
+                <div className="details-actions">
+                  <div className="details-subtitle">Staff actions</div>
+                  <label className="form-row">
+                    <span>Lead time from selected end (hrs)</span>
+                    <input
+                      type="number"
+                      min="0.5"
+                      max="720"
+                      step="0.5"
+                      value={followUpLeadHours}
+                      onChange={(event) => setFollowUpLeadHours(event.target.value)}
+                    />
+                  </label>
+                  <label className="form-row">
+                    <span>New firing duration (hrs)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="240"
+                      step="0.5"
+                      value={followUpDurationHours}
+                      onChange={(event) => setFollowUpDurationHours(event.target.value)}
+                    />
+                  </label>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={staffBusy}
+                    onClick={() => void runStaffAction("Create follow-up firing", createFollowUpFiring)}
+                  >
+                    {staffBusy ? "Creating..." : "Kick off follow-up firing"}
+                  </button>
+                  <label className="form-row">
+                    <span>Delay selected firing by (hrs)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="720"
+                      step="0.5"
+                      value={delayHours}
+                      onChange={(event) => setDelayHours(event.target.value)}
+                    />
+                  </label>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={staffBusy}
+                    onClick={() => void runStaffAction("Delay selected firing", delaySelectedFiringByHours)}
+                  >
+                    {staffBusy ? "Rescheduling..." : "Delay selected firing"}
+                  </button>
+                  <div className="muted">Selected: {formatFiringLabel(selectedFiring)}</div>
+                  {staffError ? <div className="alert">{staffError}</div> : null}
+                  {staffStatus ? <div className="notice">{staffStatus}</div> : null}
+                </div>
+              ) : null}
               <p className="muted">Includes a 1‑day reminder.</p>
+              {unloadError ? <div className="alert">{unloadError}</div> : null}
+              {unloadStatus ? <div className="notice">{unloadStatus}</div> : null}
             </div>
           ) : (
             <div className="empty-state">Select a firing from the list to see details.</div>
           )}
-          {/* TODO: Staff role can kick off new firings and adjust schedules here. */}
-        </div>
+        </RevealCard>
       </section>
-
-      {import.meta.env.DEV ? (
-        <section className="card card-3d kiln-dev">
-          <div className="card-title">Dev tools</div>
-          <p className="muted">
-            Seed mock kiln schedule data to Firestore when you need a baseline dataset.
-          </p>
-          {permissionDenied ? (
-            <div className="notice">
-              Firestore write access is required to seed `kilns` and `kilnFirings`.
-            </div>
-          ) : null}
-          {seedStatus ? <div className="status-line">{seedStatus}</div> : null}
-          <button
-            className="btn btn-ghost"
-            onClick={handleSeedMock}
-            disabled={seedBusy || permissionDenied}
-          >
-            {seedBusy ? "Seeding..." : "Seed mock schedule"}
-          </button>
-        </section>
-      ) : null}
     </div>
   );
 }

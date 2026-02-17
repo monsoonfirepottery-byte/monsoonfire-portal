@@ -9,22 +9,179 @@ import {
   applyCors,
   requireAdmin,
   requireAuthUid,
+  requireAuthContext,
   nowTs,
   asInt,
   safeString,
   enforceRateLimit,
   parseBody,
   makeIdempotencyId,
+  createDelegatedAgentToken as createDelegatedToken,
   FieldValue,
   Timestamp,
+  logIntegrationTokenAudit,
 } from "./shared";
+import {
+  enforceAppCheckIfEnabled,
+  logAuditEvent,
+  readAuthFeatureFlags,
+} from "./authz";
 import { TimelineEventType } from "./timelineEventTypes";
 import { z } from "zod";
+import { handleApiV1 } from "./apiV1";
+import {
+  staffGetCommunitySafetyConfig,
+  staffScanCommunityDraft,
+  staffUpdateCommunitySafetyConfig,
+} from "./communitySafety";
+import {
+  getModerationPolicyCurrent,
+  listModerationPolicies,
+  staffPublishModerationPolicy,
+  staffUpsertModerationPolicy,
+} from "./moderationPolicy";
+import {
+  addInternalNote,
+  cleanupCommunityReportArtifacts,
+  createReportAppeal,
+  createReport,
+  listMyReports,
+  listMyReportAppeals,
+  listReportAppeals,
+  listReports,
+  takeContentAction,
+  updateReportAppeal,
+  updateReportStatus,
+} from "./reports";
+import {
+  createIntegrationToken as createIntegrationTokenRecord,
+  listIntegrationTokensForOwner,
+  normalizeAndValidateScopes,
+  revokeIntegrationTokenForOwner,
+} from "./integrationTokens";
+import {
+  staffClearAgentClientCooldown,
+  staffCreateAgentClient,
+  staffListAgentClientAuditLogs,
+  staffListAgentClients,
+  staffRotateAgentClientKey,
+  staffUpdateAgentClientProfile,
+  staffUpdateAgentClientStatus,
+} from "./agentClients";
+import {
+  staffGetAgentServiceCatalog,
+  staffUpdateAgentServiceCatalog,
+} from "./agentCatalog";
+import {
+  staffExportAgentDeniedEventsCsv,
+  staffListAgentOperations,
+  staffGetAgentOpsConfig,
+  staffUpdateAgentOrderFulfillment,
+  staffReviewAgentReservation,
+  staffUpdateAgentOpsConfig,
+} from "./agentCommerce";
+import { emitIntegrationEvent } from "./integrationEvents";
+import { executeStudioBrainPilotAction, rollbackStudioBrainPilotAction } from "./v3Execution/pilotFirestoreAction";
+export {
+  registerDeviceToken,
+  unregisterDeviceToken,
+  runNotificationFailureDrill,
+  onKilnFiringUnloaded,
+  processNotificationJob,
+  processQueuedNotificationJobs,
+  aggregateNotificationDeliveryMetrics,
+  runNotificationMetricsAggregationNow,
+  cleanupStaleDeviceTokens,
+} from "./notifications";
 
 // -----------------------------
 // Config
 // -----------------------------
 const REGION = "us-central1";
+
+function requestIdFromReq(req: any): string {
+  const raw = req.headers?.["x-request-id"];
+  if (typeof raw === "string" && raw.trim()) return raw.trim().slice(0, 128);
+  if (Array.isArray(raw) && raw[0]) return String(raw[0]).trim().slice(0, 128);
+  return `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function bestEffortEmitIntegrationEvent(params: {
+  uid: string;
+  type: string;
+  subject?: Record<string, unknown>;
+  data?: Record<string, unknown>;
+}) {
+  try {
+    const evt = await emitIntegrationEvent({
+      uid: params.uid,
+      type: params.type,
+      subject: (params.subject ?? {}) as Record<string, any>,
+      data: (params.data ?? {}) as Record<string, any>,
+    });
+    if (!evt.ok) {
+      logger.warn("emitIntegrationEvent failed", {
+        uid: params.uid,
+        type: params.type,
+        message: evt.message,
+      });
+    }
+  } catch (e: any) {
+    logger.warn("emitIntegrationEvent exception", {
+      uid: params.uid,
+      type: params.type,
+      message: e?.message ?? String(e),
+    });
+  }
+}
+
+export const apiV1 = onRequest({ region: REGION, timeoutSeconds: 60 }, handleApiV1);
+export {
+  createReport,
+  listMyReports,
+  listMyReportAppeals,
+  listReports,
+  updateReportStatus,
+  addInternalNote,
+  takeContentAction,
+  createReportAppeal,
+  listReportAppeals,
+  updateReportAppeal,
+  cleanupCommunityReportArtifacts,
+};
+export {
+  getModerationPolicyCurrent,
+  listModerationPolicies,
+  staffUpsertModerationPolicy,
+  staffPublishModerationPolicy,
+};
+export {
+  staffGetCommunitySafetyConfig,
+  staffUpdateCommunitySafetyConfig,
+  staffScanCommunityDraft,
+};
+export {
+  staffClearAgentClientCooldown,
+  staffCreateAgentClient,
+  staffListAgentClients,
+  staffRotateAgentClientKey,
+  staffUpdateAgentClientStatus,
+  staffUpdateAgentClientProfile,
+  staffListAgentClientAuditLogs,
+};
+export {
+  staffGetAgentServiceCatalog,
+  staffUpdateAgentServiceCatalog,
+};
+export {
+  staffExportAgentDeniedEventsCsv,
+  staffGetAgentOpsConfig,
+  staffListAgentOperations,
+  staffUpdateAgentOrderFulfillment,
+  staffReviewAgentReservation,
+  staffUpdateAgentOpsConfig,
+};
+export { executeStudioBrainPilotAction, rollbackStudioBrainPilotAction };
 
 /**
  * IMPORTANT:
@@ -105,6 +262,64 @@ const kilnUnloadSchema = z.object({
 
 const backfillSchema = z.object({
   limit: z.number().int().min(1).max(500).optional(),
+});
+
+const createIntegrationTokenSchema = z.object({
+  label: z.string().max(60).optional().nullable(),
+  scopes: z.array(z.string()).min(1).max(20),
+});
+
+const revokeIntegrationTokenSchema = z.object({
+  tokenId: z.string().min(1),
+});
+
+const createDelegatedAgentTokenSchema = z.object({
+  agentClientId: z.string().min(1).max(120),
+  scopes: z.array(z.string().min(1).max(120)).min(1).max(20),
+  ttlSeconds: z.number().int().min(30).max(600).optional(),
+  audience: z.string().min(1).max(120).optional().nullable(),
+  principalUid: z.string().min(1).max(128).optional().nullable(),
+  resources: z.array(z.string().min(1).max(200)).max(20).optional(),
+  note: z.string().max(240).optional().nullable(),
+});
+
+const listDelegationsSchema = z.object({
+  ownerUid: z.string().min(1).max(128).optional().nullable(),
+  agentClientId: z.string().min(1).max(120).optional().nullable(),
+  includeRevoked: z.boolean().optional(),
+  limit: z.number().int().min(1).max(200).optional(),
+});
+
+const revokeDelegationSchema = z.object({
+  delegationId: z.string().min(1).max(200),
+  ownerUid: z.string().min(1).max(128).optional().nullable(),
+  reason: z.string().max(240).optional().nullable(),
+});
+
+const listSecurityAuditEventsSchema = z.object({
+  ownerUid: z.string().min(1).max(128).optional().nullable(),
+  actorUid: z.string().min(1).max(128).optional().nullable(),
+  action: z.string().min(1).max(120).optional().nullable(),
+  result: z.enum(["allow", "deny", "error"]).optional().nullable(),
+  limit: z.number().int().min(1).max(300).optional(),
+});
+
+const githubLookupSchema = z.object({
+  owner: z.string().min(1),
+  repo: z.string().min(1),
+  number: z.number().int().positive(),
+  type: z.enum(["issue", "pr"]),
+});
+
+const staffUpdateUserProfileSchema = z.object({
+  uid: z.string().min(1),
+  reason: z.string().max(240).optional().nullable(),
+  patch: z.object({
+    displayName: z.string().min(1).max(80).optional().nullable(),
+    membershipTier: z.string().min(1).max(60).optional().nullable(),
+    kilnPreferences: z.string().max(240).optional().nullable(),
+    staffNotes: z.string().max(2000).optional().nullable(),
+  }),
 });
 
 function batchesCol() {
@@ -202,6 +417,1038 @@ export const hello = onRequest({ region: REGION }, async (req, res) => {
   }
 
   res.status(200).json({ ok: true, message: "ok" });
+});
+
+function readGitHubToken(): string {
+  const preferred = (process.env.GITHUB_LOOKUP_TOKEN ?? "").trim();
+  if (preferred) return preferred;
+  return (process.env.GITHUB_TOKEN ?? "").trim();
+}
+
+async function fetchGitHubResource(input: {
+  owner: string;
+  repo: string;
+  number: number;
+  type: "issue" | "pr";
+}) {
+  const path =
+    input.type === "issue"
+      ? `/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repo)}/issues/${input.number}`
+      : `/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repo)}/pulls/${input.number}`;
+  const url = `https://api.github.com${path}`;
+
+  const token = readGitHubToken();
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "monsoonfire-portal-tracker",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(url, { method: "GET", headers });
+  const body = (await response.json()) as {
+    html_url?: unknown;
+    title?: unknown;
+    state?: unknown;
+    updated_at?: unknown;
+    merged?: unknown;
+  };
+
+  if (!response.ok) {
+    return {
+      ok: false as const,
+      status: response.status,
+      message:
+        typeof (body as { message?: unknown }).message === "string"
+          ? String((body as { message?: unknown }).message)
+          : "GitHub lookup failed",
+    };
+  }
+
+  return {
+    ok: true as const,
+    status: response.status,
+    data: {
+      url: typeof body.html_url === "string" ? body.html_url : url,
+      title: typeof body.title === "string" ? body.title : "",
+      state: typeof body.state === "string" ? body.state : "unknown",
+      updatedAt:
+        typeof body.updated_at === "string"
+          ? body.updated_at
+          : new Date().toISOString(),
+      merged: input.type === "pr" && typeof body.merged === "boolean" ? body.merged : undefined,
+    },
+  };
+}
+
+export const githubLookup = onRequest(
+  { region: REGION, timeoutSeconds: 30 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+
+    const rate = await enforceRateLimit({
+      req,
+      key: "githubLookup",
+      max: 60,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    const parsed = parseBody(githubLookupSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    try {
+      const result = await fetchGitHubResource(parsed.data);
+      if (!result.ok) {
+        res.status(result.status).json({ ok: false, message: result.message });
+        return;
+      }
+
+      res.status(200).json({ ok: true, data: result.data });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error("githubLookup failed", { message });
+      res.status(500).json({ ok: false, message: "GitHub lookup failed" });
+    }
+  }
+);
+
+export const staffUpdateUserProfile = onRequest(
+  { region: REGION, timeoutSeconds: 30 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+
+    const admin = await requireAdmin(req);
+    if (!admin.ok) {
+      res.status(403).json({ ok: false, message: "Forbidden" });
+      return;
+    }
+
+    const parsed = parseBody(staffUpdateUserProfileSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const patchInput = parsed.data.patch;
+    const hasPatchField =
+      patchInput.displayName !== undefined ||
+      patchInput.membershipTier !== undefined ||
+      patchInput.kilnPreferences !== undefined ||
+      patchInput.staffNotes !== undefined;
+
+    if (!hasPatchField) {
+      res.status(400).json({ ok: false, message: "Patch must include at least one editable field" });
+      return;
+    }
+
+    try {
+      const userRef = db.collection("users").doc(parsed.data.uid);
+      const auditRef = db.collection("staffProfileEdits").doc();
+
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(userRef);
+        if (!snap.exists) throw new Error("User not found");
+
+        const current = (snap.data() ?? {}) as Record<string, any>;
+        const before = {
+          displayName: current.displayName ?? null,
+          membershipTier: current.membershipTier ?? null,
+          kilnPreferences: current.kilnPreferences ?? null,
+          staffNotes: current.staffNotes ?? null,
+        };
+
+        const writePatch: Record<string, unknown> = {
+          updatedAt: nowTs(),
+          staffProfileUpdatedBy: auth.uid,
+        };
+
+        const after = { ...before } as Record<string, unknown>;
+
+        if (patchInput.displayName !== undefined) {
+          writePatch.displayName = patchInput.displayName;
+          after.displayName = patchInput.displayName;
+        }
+        if (patchInput.membershipTier !== undefined) {
+          writePatch.membershipTier = patchInput.membershipTier;
+          after.membershipTier = patchInput.membershipTier;
+        }
+        if (patchInput.kilnPreferences !== undefined) {
+          writePatch.kilnPreferences = patchInput.kilnPreferences;
+          after.kilnPreferences = patchInput.kilnPreferences;
+        }
+        if (patchInput.staffNotes !== undefined) {
+          writePatch.staffNotes = patchInput.staffNotes;
+          after.staffNotes = patchInput.staffNotes;
+        }
+
+        tx.set(userRef, writePatch, { merge: true });
+        tx.set(auditRef, {
+          uid: parsed.data.uid,
+          editedByUid: auth.uid,
+          editedByMode: admin.mode,
+          reason: parsed.data.reason ?? null,
+          before,
+          after,
+          at: nowTs(),
+        });
+      });
+
+      res.status(200).json({ ok: true });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const code = message === "User not found" ? 404 : 500;
+      logger.error("staffUpdateUserProfile failed", { message });
+      res.status(code).json({ ok: false, message });
+    }
+  }
+);
+
+// -----------------------------
+// Integrations: PATs (integration tokens)
+// -----------------------------
+export const createIntegrationToken = onRequest(
+  { region: REGION, timeoutSeconds: 60 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+    const requestId = requestIdFromReq(req);
+
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const appCheck = await enforceAppCheckIfEnabled(req);
+    if (!appCheck.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "create_integration_token",
+        resourceType: "integration_token",
+        result: "deny",
+        reasonCode: appCheck.code,
+      });
+      res.status(appCheck.httpStatus).json({ ok: false, code: appCheck.code, message: appCheck.message });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "create_integration_token",
+        resourceType: "integration_token",
+        result: "deny",
+        reasonCode: "UNAUTHENTICATED",
+      });
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+
+    const parsed = parseBody(createIntegrationTokenSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const rate = await enforceRateLimit({
+      req,
+      key: "createIntegrationToken",
+      max: 6,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    const scopesParsed = normalizeAndValidateScopes(parsed.data.scopes);
+    if (!scopesParsed.ok) {
+      res.status(400).json({ ok: false, message: scopesParsed.message });
+      return;
+    }
+
+    try {
+      const out = await createIntegrationTokenRecord({
+        ownerUid: auth.uid,
+        label: parsed.data.label ? String(parsed.data.label) : null,
+        scopes: scopesParsed.scopes,
+      });
+      void logIntegrationTokenAudit({
+        req,
+        type: "created",
+        tokenId: out.tokenId,
+        ownerUid: auth.uid,
+        details: {
+          scopeCount: out.record.scopes.length,
+          label: out.record.label ?? null,
+        },
+      });
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "create_integration_token",
+        resourceType: "integration_token",
+        resourceId: out.tokenId,
+        ownerUid: auth.uid,
+        result: "allow",
+        ctx: {
+          mode: "firebase",
+          uid: auth.uid,
+          decoded: auth.decoded,
+          scopes: null,
+          tokenId: null,
+          delegated: null,
+        },
+        metadata: {
+          appId: appCheck.appId,
+          appCheckBypassed: appCheck.bypassed,
+          scopeCount: out.record.scopes.length,
+        },
+      });
+
+      res.status(200).json({
+        ok: true,
+        tokenId: out.tokenId,
+        token: out.token,
+        record: out.record,
+      });
+    } catch (e: any) {
+      logger.error("createIntegrationToken failed", e);
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "create_integration_token",
+        resourceType: "integration_token",
+        ownerUid: auth.uid,
+        result: "error",
+        reasonCode: "CREATE_FAILED",
+      });
+      res.status(500).json({ ok: false, message: e?.message ?? "Failed to create token" });
+    }
+  }
+);
+
+export const listIntegrationTokens = onRequest(
+  { region: REGION, timeoutSeconds: 60 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+    const requestId = requestIdFromReq(req);
+
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const appCheck = await enforceAppCheckIfEnabled(req);
+    if (!appCheck.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "list_integration_tokens",
+        resourceType: "integration_token",
+        result: "deny",
+        reasonCode: appCheck.code,
+      });
+      res.status(appCheck.httpStatus).json({ ok: false, code: appCheck.code, message: appCheck.message });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "list_integration_tokens",
+        resourceType: "integration_token",
+        result: "deny",
+        reasonCode: "UNAUTHENTICATED",
+      });
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+
+    const rate = await enforceRateLimit({
+      req,
+      key: "listIntegrationTokens",
+      max: 30,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    const tokens = await listIntegrationTokensForOwner(auth.uid);
+    void logIntegrationTokenAudit({
+      req,
+      type: "listed",
+      ownerUid: auth.uid,
+      details: { count: tokens.length },
+    });
+    await logAuditEvent({
+      req,
+      requestId,
+      action: "list_integration_tokens",
+      resourceType: "integration_token",
+      ownerUid: auth.uid,
+      result: "allow",
+      ctx: {
+        mode: "firebase",
+        uid: auth.uid,
+        decoded: auth.decoded,
+        scopes: null,
+        tokenId: null,
+        delegated: null,
+      },
+      metadata: {
+        count: tokens.length,
+        appId: appCheck.appId,
+        appCheckBypassed: appCheck.bypassed,
+      },
+    });
+    res.status(200).json({ ok: true, tokens });
+  }
+);
+
+export const revokeIntegrationToken = onRequest(
+  { region: REGION, timeoutSeconds: 60 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+    const requestId = requestIdFromReq(req);
+
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const appCheck = await enforceAppCheckIfEnabled(req);
+    if (!appCheck.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "revoke_integration_token",
+        resourceType: "integration_token",
+        result: "deny",
+        reasonCode: appCheck.code,
+      });
+      res.status(appCheck.httpStatus).json({ ok: false, code: appCheck.code, message: appCheck.message });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "revoke_integration_token",
+        resourceType: "integration_token",
+        result: "deny",
+        reasonCode: "UNAUTHENTICATED",
+      });
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+
+    const parsed = parseBody(revokeIntegrationTokenSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const rate = await enforceRateLimit({
+      req,
+      key: "revokeIntegrationToken",
+      max: 20,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    const tokenId = safeString(parsed.data.tokenId);
+    const out = await revokeIntegrationTokenForOwner({ ownerUid: auth.uid, tokenId });
+    if (!out.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "revoke_integration_token",
+        resourceType: "integration_token",
+        resourceId: tokenId,
+        ownerUid: auth.uid,
+        result: "deny",
+        reasonCode: out.message === "Token not found" ? "TOKEN_NOT_FOUND" : "FORBIDDEN",
+      });
+      res.status(out.message === "Token not found" ? 404 : 403).json({ ok: false, message: out.message });
+      return;
+    }
+    void logIntegrationTokenAudit({
+      req,
+      type: "revoked",
+      tokenId,
+      ownerUid: auth.uid,
+    });
+    await logAuditEvent({
+      req,
+      requestId,
+      action: "revoke_integration_token",
+      resourceType: "integration_token",
+      resourceId: tokenId,
+      ownerUid: auth.uid,
+      result: "allow",
+      ctx: {
+        mode: "firebase",
+        uid: auth.uid,
+        decoded: auth.decoded,
+        scopes: null,
+        tokenId: null,
+        delegated: null,
+      },
+      metadata: {
+        appId: appCheck.appId,
+        appCheckBypassed: appCheck.bypassed,
+      },
+    });
+
+    res.status(200).json({ ok: true });
+  }
+);
+
+export const createDelegatedAgentToken = onRequest(
+  { region: REGION, timeoutSeconds: 60 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+    const requestId = requestIdFromReq(req);
+
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const appCheck = await enforceAppCheckIfEnabled(req);
+    if (!appCheck.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "create_delegated_agent_token",
+        resourceType: "delegation",
+        result: "deny",
+        reasonCode: appCheck.code,
+      });
+      res.status(appCheck.httpStatus).json({ ok: false, code: appCheck.code, message: appCheck.message });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "create_delegated_agent_token",
+        resourceType: "delegation",
+        result: "deny",
+        reasonCode: "UNAUTHENTICATED",
+      });
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+
+    const parsed = parseBody(createDelegatedAgentTokenSchema, req.body ?? {});
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const rate = await enforceRateLimit({
+      req,
+      key: "createDelegatedAgentToken",
+      max: 30,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many requests" });
+      return;
+    }
+
+    const clientId = safeString(parsed.data.agentClientId);
+    const ref = db.collection("agentClients").doc(clientId);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      res.status(404).json({ ok: false, message: "Agent client not found" });
+      return;
+    }
+
+    const row = snap.data() as Record<string, unknown>;
+    const clientStatus = safeString(row.status, "active");
+    if (clientStatus !== "active") {
+      res.status(400).json({ ok: false, message: "Agent client must be active for delegated tokens." });
+      return;
+    }
+
+    const ownerUid = safeString(row.ownerUid) || safeString(row.createdByUid);
+    const admin = await requireAdmin(req);
+    const isStaff = admin.ok;
+    if (!isStaff && ownerUid && ownerUid !== auth.uid) {
+      res.status(403).json({ ok: false, message: "Forbidden" });
+      return;
+    }
+
+    const requestedScopes = [...new Set(parsed.data.scopes.map((entry) => String(entry).trim()).filter(Boolean))];
+    if (!requestedScopes.length) {
+      res.status(400).json({ ok: false, message: "At least one scope is required." });
+      return;
+    }
+
+    const allowedScopes = Array.isArray(row.scopes)
+      ? row.scopes.filter((entry): entry is string => typeof entry === "string")
+      : [];
+    const missingScopes = requestedScopes.filter((scope) => !allowedScopes.includes(scope));
+    if (missingScopes.length) {
+      res.status(403).json({
+        ok: false,
+        message: `Agent client missing scope(s): ${missingScopes.join(", ")}`,
+      });
+      return;
+    }
+
+    const principalUid = safeString(parsed.data.principalUid) || auth.uid;
+    if (principalUid !== auth.uid && !isStaff) {
+      res.status(403).json({ ok: false, message: "Only staff can issue delegated tokens for other principals." });
+      return;
+    }
+
+    try {
+      const flags = readAuthFeatureFlags();
+      const ttlSeconds = parsed.data.ttlSeconds ?? 300;
+      const resources = Array.isArray(parsed.data.resources)
+        ? [...new Set(parsed.data.resources.map((entry) => String(entry).trim()).filter(Boolean))]
+        : [];
+      if (!resources.includes(`owner:${principalUid}`)) {
+        resources.push(`owner:${principalUid}`);
+      }
+
+      const now = nowTs();
+      const expiresAt = Timestamp.fromMillis(Date.now() + ttlSeconds * 1000);
+      const delegationRef = db.collection("delegations").doc();
+      await delegationRef.set({
+        ownerUid: principalUid,
+        agentClientId: clientId,
+        scopes: requestedScopes,
+        resources,
+        status: "active",
+        note: parsed.data.note ?? null,
+        createdBy: auth.uid,
+        createdAt: now,
+        updatedAt: now,
+        expiresAt,
+        revokedAt: null,
+      });
+
+      const issued = createDelegatedToken({
+        principalUid,
+        agentClientId: clientId,
+        scopes: requestedScopes,
+        ttlSeconds,
+        audience: parsed.data.audience ?? null,
+        delegationId: flags.v2AgenticEnabled ? delegationRef.id : null,
+      });
+
+      await db.collection("agentClientAuditLogs").add({
+        actorUid: auth.uid,
+        action: "issue_delegated_token",
+        clientId,
+        metadata: {
+          requestId,
+          delegationId: delegationRef.id,
+          principalUid,
+          scopes: requestedScopes,
+          ttlSeconds,
+          audience: issued.audience,
+          expiresAtMs: issued.expiresAt,
+          nonce: issued.nonce,
+          strictDelegationChecksEnabled: flags.v2AgenticEnabled && flags.strictDelegationChecks,
+        },
+        createdAt: nowTs(),
+      });
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "create_delegated_agent_token",
+        resourceType: "delegation",
+        resourceId: delegationRef.id,
+        ownerUid: principalUid,
+        result: "allow",
+        ctx: {
+          mode: "firebase",
+          uid: auth.uid,
+          decoded: auth.decoded,
+          scopes: null,
+          tokenId: null,
+          delegated: null,
+        },
+        metadata: {
+          agentClientId: clientId,
+          scopeCount: requestedScopes.length,
+          appId: appCheck.appId,
+          appCheckBypassed: appCheck.bypassed,
+          strictDelegationChecksEnabled: flags.v2AgenticEnabled && flags.strictDelegationChecks,
+        },
+      });
+
+      res.status(200).json({
+        ok: true,
+        delegatedToken: issued.token,
+        delegationId: delegationRef.id,
+        expiresAtMs: issued.expiresAt,
+        audience: issued.audience,
+        principalUid,
+        mode: "delegated",
+        warning: "Delegated token is short-lived and single-use (nonce protected).",
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      await logAuditEvent({
+        req,
+        requestId,
+        action: "create_delegated_agent_token",
+        resourceType: "delegation",
+        ownerUid: principalUid,
+        result: "error",
+        reasonCode: "CREATE_FAILED",
+      });
+      res.status(500).json({ ok: false, message });
+    }
+  }
+);
+
+export const listDelegations = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  const requestId = requestIdFromReq(req);
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+  const admin = await requireAdmin(req);
+  const parsed = parseBody(listDelegationsSchema, req.body ?? {});
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+  const ownerUid = safeString(parsed.data.ownerUid) || auth.uid;
+  if (!admin.ok && ownerUid !== auth.uid) {
+    res.status(403).json({ ok: false, message: "Forbidden" });
+    return;
+  }
+  const listLimit = await enforceRateLimit({
+    req,
+    key: `staff:listDelegations:${auth.uid}`,
+    max: 90,
+    windowMs: 60_000,
+  });
+  if (!listLimit.ok) {
+    res.status(429).json({
+      ok: false,
+      message: "Rate limit exceeded",
+      retryAfterSec: Math.max(1, Math.ceil(listLimit.retryAfterMs / 1000)),
+    });
+    return;
+  }
+  const includeRevoked = parsed.data.includeRevoked === true;
+  const limitValue = parsed.data.limit ?? 100;
+  const agentClientIdFilter = safeString(parsed.data.agentClientId);
+
+  let queryRef: FirebaseFirestore.Query<FirebaseFirestore.DocumentData> = db.collection("delegations");
+  if (ownerUid) {
+    queryRef = queryRef.where("ownerUid", "==", ownerUid);
+  }
+  const scanLimit = Math.min(300, Math.max(limitValue, 120));
+  const snap = await queryRef.limit(scanLimit).get();
+  type DelegationRow = {
+    id: string;
+    ownerUid?: unknown;
+    agentClientId?: unknown;
+    revokedAt?: unknown;
+    createdAt?: { seconds?: number } | null;
+    [key: string]: unknown;
+  };
+  const rows = snap.docs
+    .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Record<string, unknown>) }) as DelegationRow)
+    .filter((row) => includeRevoked || !row.revokedAt)
+    .filter((row) => !agentClientIdFilter || safeString(row.agentClientId) === agentClientIdFilter)
+    .sort((a, b) => {
+      const aMs = Number((a.createdAt?.seconds ?? 0));
+      const bMs = Number((b.createdAt?.seconds ?? 0));
+      return bMs - aMs;
+    })
+    .slice(0, limitValue);
+  await logAuditEvent({
+    req,
+    requestId,
+    action: "list_delegations",
+    resourceType: "delegation",
+    ownerUid,
+    result: "allow",
+    ctx: {
+      mode: "firebase",
+      uid: auth.uid,
+      decoded: auth.decoded,
+      scopes: null,
+      tokenId: null,
+      delegated: null,
+    },
+    metadata: { count: rows.length, includeRevoked, ownerUid, agentClientId: agentClientIdFilter || null },
+  });
+  res.status(200).json({ ok: true, ownerUid, rows });
+});
+
+export const revokeDelegation = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  const requestId = requestIdFromReq(req);
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+  const parsed = parseBody(revokeDelegationSchema, req.body ?? {});
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+  const revokeLimit = await enforceRateLimit({
+    req,
+    key: `staff:revokeDelegation:${auth.uid}`,
+    max: 30,
+    windowMs: 60_000,
+  });
+  if (!revokeLimit.ok) {
+    res.status(429).json({
+      ok: false,
+      message: "Rate limit exceeded",
+      retryAfterSec: Math.max(1, Math.ceil(revokeLimit.retryAfterMs / 1000)),
+    });
+    return;
+  }
+  const ref = db.collection("delegations").doc(parsed.data.delegationId.trim());
+  const snap = await ref.get();
+  if (!snap.exists) {
+    res.status(404).json({ ok: false, message: "Delegation not found" });
+    return;
+  }
+  const row = snap.data() as Record<string, unknown>;
+  const ownerUid = safeString(parsed.data.ownerUid) || safeString(row.ownerUid);
+  const admin = await requireAdmin(req);
+  if (!admin.ok && ownerUid !== auth.uid) {
+    res.status(403).json({ ok: false, message: "Forbidden" });
+    return;
+  }
+  const now = nowTs();
+  await ref.set(
+    {
+      status: "revoked",
+      revokedAt: now,
+      updatedAt: now,
+      updatedBy: auth.uid,
+      revokeReason: parsed.data.reason ?? null,
+    },
+    { merge: true }
+  );
+  await logAuditEvent({
+    req,
+    requestId,
+    action: "revoke_delegation",
+    resourceType: "delegation",
+    resourceId: ref.id,
+    ownerUid,
+    result: "allow",
+    reasonCode: "MANUAL_REVOCATION",
+    ctx: {
+      mode: "firebase",
+      uid: auth.uid,
+      decoded: auth.decoded,
+      scopes: null,
+      tokenId: null,
+      delegated: null,
+    },
+    metadata: {
+      reason: parsed.data.reason ?? null,
+    },
+  });
+  res.status(200).json({ ok: true, delegationId: ref.id });
+});
+
+export const listSecurityAuditEvents = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  const requestId = requestIdFromReq(req);
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+  const admin = await requireAdmin(req);
+  if (!admin.ok) {
+    res.status(403).json({ ok: false, message: "Forbidden" });
+    return;
+  }
+  const parsed = parseBody(listSecurityAuditEventsSchema, req.body ?? {});
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+  const auditLimit = await enforceRateLimit({
+    req,
+    key: `staff:listSecurityAuditEvents:${auth.uid}`,
+    max: 60,
+    windowMs: 60_000,
+  });
+  if (!auditLimit.ok) {
+    res.status(429).json({
+      ok: false,
+      message: "Rate limit exceeded",
+      retryAfterSec: Math.max(1, Math.ceil(auditLimit.retryAfterMs / 1000)),
+    });
+    return;
+  }
+
+  const ownerUidFilter = safeString(parsed.data.ownerUid);
+  const actorUidFilter = safeString(parsed.data.actorUid);
+  const actionFilter = safeString(parsed.data.action);
+  const resultFilter = safeString(parsed.data.result);
+  const limitValue = parsed.data.limit ?? 80;
+  const scanLimit = Math.min(500, Math.max(limitValue, 180));
+
+  const snap = await db.collection("auditEvents").orderBy("at", "desc").limit(scanLimit).get();
+  type AuditEventRow = {
+    id: string;
+    ownerUid?: unknown;
+    actorUid?: unknown;
+    action?: unknown;
+    result?: unknown;
+    [key: string]: unknown;
+  };
+  const rows = snap.docs
+    .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Record<string, unknown>) }) as AuditEventRow)
+    .filter((row) => !ownerUidFilter || safeString(row.ownerUid) === ownerUidFilter)
+    .filter((row) => !actorUidFilter || safeString(row.actorUid) === actorUidFilter)
+    .filter((row) => !actionFilter || safeString(row.action) === actionFilter)
+    .filter((row) => !resultFilter || safeString(row.result) === resultFilter)
+    .slice(0, limitValue);
+
+  await logAuditEvent({
+    req,
+    requestId,
+    action: "list_security_audit_events",
+    resourceType: "audit_event",
+    ownerUid: ownerUidFilter || null,
+    result: "allow",
+    ctx: {
+      mode: "firebase",
+      uid: auth.uid,
+      decoded: auth.decoded,
+      scopes: null,
+      tokenId: null,
+      delegated: null,
+    },
+    metadata: {
+      count: rows.length,
+      filters: {
+        ownerUid: ownerUidFilter || null,
+        actorUid: actorUidFilter || null,
+        action: actionFilter || null,
+        result: resultFilter || null,
+      },
+    },
+  });
+
+  res.status(200).json({
+    ok: true,
+    rows,
+    requestId,
+  });
+});
+
+export const helloPat = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  if (applyCors(req, res)) return;
+  const requestId = requestIdFromReq(req);
+
+  const auth = await requireAuthContext(req);
+  if (!auth.ok) {
+    await logAuditEvent({
+      req,
+      requestId,
+      action: "hello_pat",
+      resourceType: "auth_probe",
+      result: "deny",
+      reasonCode: auth.code,
+    });
+    res.status(401).json({ ok: false, code: auth.code, message: auth.message });
+    return;
+  }
+
+  await logAuditEvent({
+    req,
+    requestId,
+    action: "hello_pat",
+    resourceType: "auth_probe",
+    ownerUid: auth.ctx.uid,
+    result: "allow",
+    ctx: auth.ctx,
+  });
+
+  res.status(200).json({
+    ok: true,
+    uid: auth.ctx.uid,
+    mode: auth.ctx.mode,
+    scopes: auth.ctx.mode === "firebase" ? null : auth.ctx.scopes,
+    delegated: auth.ctx.mode === "delegated" ? auth.ctx.delegated : null,
+  });
 });
 
 // -----------------------------
@@ -358,7 +1605,7 @@ export const syncFiringsNow = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "syncFiringsNow",
       max: 3,
@@ -432,7 +1679,7 @@ export const createBatch = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "createBatch",
       max: 6,
@@ -509,6 +1756,13 @@ export const createBatch = onRequest(
       notes: "Batch created",
     });
 
+    await bestEffortEmitIntegrationEvent({
+      uid: ownerUid,
+      type: "batch.updated",
+      subject: { batchId: ref.id },
+      data: { state: doc.state, isClosed: doc.isClosed, title: doc.title },
+    });
+
     res.status(200).json({ ok: true, batchId: ref.id });
   }
 );
@@ -539,7 +1793,7 @@ export const submitDraftBatch = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "submitDraftBatch",
       max: 6,
@@ -584,6 +1838,17 @@ export const submitDraftBatch = onRequest(
       notes: safeString(parsed.data.notes) || "Submitted",
     });
 
+    await bestEffortEmitIntegrationEvent({
+      uid,
+      type: "batch.updated",
+      subject: { batchId },
+      data: {
+        state: "SUBMITTED",
+        isClosed: Boolean(data.isClosed),
+        title: safeString(data.title),
+      },
+    });
+
     res.status(200).json({ ok: true });
   }
 );
@@ -620,7 +1885,7 @@ export const pickedUpAndClose = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "pickedUpAndClose",
       max: 10,
@@ -635,6 +1900,14 @@ export const pickedUpAndClose = onRequest(
     const batchId = safeString(parsed.data.batchId);
 
     const ref = batchDoc(batchId);
+    const batchSnap = await ref.get();
+    if (!batchSnap.exists) {
+      res.status(404).json({ ok: false, message: "Batch not found" });
+      return;
+    }
+    const batch = batchSnap.data() as Record<string, unknown>;
+    const ownerUid = safeString(batch.ownerUid);
+    const batchTitle = safeString(batch.title);
     const t = nowTs();
 
     await ref.set(
@@ -655,6 +1928,15 @@ export const pickedUpAndClose = onRequest(
       actorName: "admin",
       notes: safeString(parsed.data.notes) || "Picked up; batch closed",
     });
+
+    if (ownerUid) {
+      await bestEffortEmitIntegrationEvent({
+        uid: ownerUid,
+        type: "batch.closed",
+        subject: { batchId },
+        data: { state: "CLOSED_PICKED_UP", isClosed: true, title: batchTitle || null },
+      });
+    }
 
     res.status(200).json({ ok: true });
   }
@@ -687,7 +1969,7 @@ export const continueJourney = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "continueJourney",
       max: 4,
@@ -750,6 +2032,18 @@ export const continueJourney = onRequest(
       extra: { fromBatchId },
     });
 
+    await bestEffortEmitIntegrationEvent({
+      uid,
+      type: "batch.updated",
+      subject: { batchId: newRef.id, fromBatchId },
+      data: {
+        state: "DRAFT",
+        isClosed: false,
+        title: safeString(parsed.data.title) || safeString(from.title),
+        journeyRootBatchId: rootId,
+      },
+    });
+
     res.status(200).json({ ok: true, batchId: newRef.id, rootId });
   }
 );
@@ -782,7 +2076,7 @@ export const shelveBatch = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "shelveBatch",
     max: 15,
@@ -838,7 +2132,7 @@ export const kilnLoad = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "kilnLoad",
     max: 20,
@@ -853,6 +2147,14 @@ export const kilnLoad = onRequest({ region: REGION }, async (req, res) => {
   const batchId = safeString(parsed.data.batchId);
   const kilnId = safeString(parsed.data.kilnId);
   const kilnName = safeString(parsed.data.kilnName);
+  const batchSnap = await batchDoc(batchId).get();
+  if (!batchSnap.exists) {
+    res.status(404).json({ ok: false, message: "Batch not found" });
+    return;
+  }
+  const batch = batchSnap.data() as Record<string, unknown>;
+  const ownerUid = safeString(batch.ownerUid);
+  const batchTitle = safeString(batch.title);
 
   const t = nowTs();
   await batchDoc(batchId).set(
@@ -876,6 +2178,21 @@ export const kilnLoad = onRequest({ region: REGION }, async (req, res) => {
     notes: safeString(parsed.data.notes) || "Loaded to kiln",
     photos: Array.isArray(parsed.data.photos) ? parsed.data.photos : [],
   });
+
+  if (ownerUid) {
+    await bestEffortEmitIntegrationEvent({
+      uid: ownerUid,
+      type: "batch.updated",
+      subject: { batchId },
+      data: {
+        state: "LOADED",
+        kilnId,
+        kilnName: kilnName || null,
+        isClosed: false,
+        title: batchTitle || null,
+      },
+    });
+  }
 
   res.status(200).json({ ok: true });
 });
@@ -905,7 +2222,7 @@ export const kilnUnload = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "kilnUnload",
     max: 20,
@@ -918,6 +2235,15 @@ export const kilnUnload = onRequest({ region: REGION }, async (req, res) => {
   }
 
   const batchId = safeString(parsed.data.batchId);
+  const batchSnap = await batchDoc(batchId).get();
+  if (!batchSnap.exists) {
+    res.status(404).json({ ok: false, message: "Batch not found" });
+    return;
+  }
+  const batch = batchSnap.data() as Record<string, unknown>;
+  const ownerUid = safeString(batch.ownerUid);
+  const batchTitle = safeString(batch.title);
+  const batchState = safeString(batch.state);
 
   const t = nowTs();
   await batchDoc(batchId).set(
@@ -939,6 +2265,21 @@ export const kilnUnload = onRequest({ region: REGION }, async (req, res) => {
     notes: safeString(parsed.data.notes) || "Unloaded from kiln",
     photos: Array.isArray(parsed.data.photos) ? parsed.data.photos : [],
   });
+
+  if (ownerUid) {
+    await bestEffortEmitIntegrationEvent({
+      uid: ownerUid,
+      type: "batch.updated",
+      subject: { batchId },
+      data: {
+        state: batchState || "UNKNOWN",
+        kilnId: null,
+        kilnName: null,
+        isClosed: false,
+        title: batchTitle || null,
+      },
+    });
+  }
 
   res.status(200).json({ ok: true });
 });
@@ -968,7 +2309,7 @@ export const readyForPickup = onRequest({ region: REGION }, async (req, res) => 
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "readyForPickup",
     max: 20,
@@ -1005,11 +2346,27 @@ export { normalizeTimelineEventTypes } from "./normalizeTimelineEventTypes";
 export { createMaterialsCheckoutSession, listMaterialsProducts, seedMaterialsCatalog, stripeWebhook } from "./materials";
 export { importLibraryIsbns } from "./library";
 export {
+  getJukeboxConfig,
+  listTracks,
+  listQueue,
+  getJukeboxState,
+  enqueueTrack,
+  vote,
+  requestSkip,
+  adminUpsertTrack,
+  adminSetConfig,
+  adminAdvanceQueue,
+  adminSetPlaybackState,
+  adminSkipNowPlaying,
+  adminClearQueue,
+} from "./jukebox";
+export {
   listEvents,
   listEventSignups,
   getEvent,
   createEvent,
   publishEvent,
+  staffSetEventStatus,
   signupForEvent,
   cancelEventSignup,
   claimEventOffer,
@@ -1019,6 +2376,14 @@ export {
   sweepEventOffers,
 } from "./events";
 export { listBillingSummary } from "./billingSummary";
+export {
+  staffGetStripeConfig,
+  staffUpdateStripeConfig,
+  staffValidateStripeConfig,
+  createAgentCheckoutSession,
+  createCheckoutSession,
+  stripePortalWebhook,
+} from "./stripeConfig";
 
 // -----------------------------
 // Backfill helper: ensure isClosed field exists (admin-only)
@@ -1065,5 +2430,6 @@ export const backfillIsClosed = onRequest(
     res.status(200).json({ ok: true, scanned: snaps.size, updated });
   }
 );
+
 
 

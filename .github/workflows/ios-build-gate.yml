@@ -1,0 +1,24 @@
+name: ios-build-gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  swift-build:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Swift Build (Release)
+        run: |
+          cd ios-gate
+          swift --version
+          swift build -c release

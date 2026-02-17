@@ -1,20 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
+import { collection, doc, getDocs, serverTimestamp, setDoc } from "firebase/firestore";
 import type {
   CreateMaterialsCheckoutSessionResponse,
   ListMaterialsProductsResponse,
   MaterialProduct,
   SeedMaterialsCatalogResponse,
 } from "../api/portalContracts";
-import {
-  createFunctionsClient,
-  type LastRequest,
-} from "../api/functionsClient";
-import TroubleshootingPanel from "../components/TroubleshootingPanel";
+import { createFunctionsClient } from "../api/functionsClient";
+import { db } from "../firebase";
+import { toVoidHandler } from "../utils/toVoidHandler";
 import { formatCents } from "../utils/format";
+import {
+  checkoutErrorMessage,
+  isConnectivityError,
+  serviceOfflineMessage,
+} from "../utils/userFacingErrors";
 import "./MaterialsView.css";
 
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
+type ImportMetaEnvShape = { VITE_FUNCTIONS_BASE_URL?: string };
+const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
 const CATALOG_CACHE_KEY = "mf_materials_catalog_v1";
 const CATALOG_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -34,14 +40,88 @@ type CachedCatalog = {
   products: MaterialProduct[];
 };
 
+type VariantOption = {
+  product: MaterialProduct;
+  label: string;
+};
+
+type ProductGroup = {
+  id: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  variants: VariantOption[];
+};
+
+type MaterialProductFirestoreDoc = {
+  name?: string;
+  description?: string | null;
+  category?: string | null;
+  sku?: string | null;
+  priceCents?: number;
+  currency?: string;
+  stripePriceId?: string | null;
+  imageUrl?: string | null;
+  trackInventory?: boolean;
+  inventoryOnHand?: number | null;
+  inventoryReserved?: number | null;
+  active?: boolean;
+};
+
+const LOCAL_SEED_PRODUCTS: Array<{
+  sku: string;
+  name: string;
+  description: string;
+  category: string;
+  priceCents: number;
+  trackInventory: boolean;
+}> = [
+  {
+    sku: "DAY_PASS",
+    name: "Day Pass",
+    description:
+      "Reserve your creative time in our fully equipped west-side studio. Full access to workspace, tools, wheels, glazes, and materials.",
+    category: "Studio Access",
+    priceCents: 4000,
+    trackInventory: false,
+  },
+  {
+    sku: "LAGUNA_BMIX_5_25",
+    name: "Laguna WC-401 B-Mix Cone 5/6 (25 lb)",
+    description: "Wet clay direct from Laguna in a 25 lb bag.",
+    category: "Clays",
+    priceCents: 4000,
+    trackInventory: false,
+  },
+  {
+    sku: "TOOL_KIT_BASIC",
+    name: "Studio Starter Tool Kit",
+    description: "Needle, rib, sponge, trim tool, and loop set.",
+    category: "Tools",
+    priceCents: 2800,
+    trackInventory: true,
+  },
+];
+
 function resolveFunctionsBaseUrl() {
   const env =
-    typeof import.meta !== "undefined" &&
-    (import.meta as any).env &&
-    (import.meta as any).env.VITE_FUNCTIONS_BASE_URL
-      ? String((import.meta as any).env.VITE_FUNCTIONS_BASE_URL)
+    typeof import.meta !== "undefined" && ENV.VITE_FUNCTIONS_BASE_URL
+      ? String(ENV.VITE_FUNCTIONS_BASE_URL)
       : "";
   return env || DEFAULT_FUNCTIONS_BASE_URL;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isAuthTokenError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    message.includes("invalid authorization token") ||
+    message.includes("unauthenticated") ||
+    message.includes("unauthorized")
+  );
 }
 
 function readCachedCatalog(): CachedCatalog | null {
@@ -69,6 +149,57 @@ function writeCachedCatalog(products: MaterialProduct[]) {
   }
 }
 
+function parseVariantName(name: string) {
+  const dashIndex = name.lastIndexOf(" - ");
+  if (dashIndex > 0) {
+    return {
+      baseName: name.slice(0, dashIndex).trim(),
+      variantLabel: name.slice(dashIndex + 3).trim(),
+    };
+  }
+
+  const match = name.match(/^(.*)\s*\(([^)]+)\)\s*$/);
+  if (match) {
+    return { baseName: match[1].trim(), variantLabel: match[2].trim() };
+  }
+
+  return { baseName: name.trim(), variantLabel: "" };
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+function normalizeProductFromDoc(id: string, data: MaterialProductFirestoreDoc): MaterialProduct {
+  const trackInventory = data.trackInventory === true;
+  const inventoryOnHand = trackInventory ? Number(data.inventoryOnHand ?? 0) : null;
+  const inventoryReserved = trackInventory ? Number(data.inventoryReserved ?? 0) : null;
+  const inventoryAvailable =
+    trackInventory && inventoryOnHand !== null && inventoryReserved !== null
+      ? Math.max(inventoryOnHand - inventoryReserved, 0)
+      : null;
+
+  return {
+    id,
+    name: String(data.name ?? "").trim(),
+    description: data.description ?? null,
+    category: data.category ?? null,
+    sku: data.sku ?? null,
+    priceCents: Number(data.priceCents ?? 0),
+    currency: String(data.currency ?? "USD").toUpperCase(),
+    stripePriceId: data.stripePriceId ?? null,
+    imageUrl: data.imageUrl ?? null,
+    trackInventory,
+    inventoryOnHand,
+    inventoryReserved,
+    inventoryAvailable,
+    active: data.active !== false,
+  };
+}
+
 export default function MaterialsView({ user, adminToken, isStaff }: Props) {
   const [products, setProducts] = useState<MaterialProduct[]>([]);
   const [loading, setLoading] = useState(false);
@@ -80,8 +211,9 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
   const [pickupNotes, setPickupNotes] = useState("");
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [seedBusy, setSeedBusy] = useState(false);
-  const [lastReq, setLastReq] = useState<LastRequest | null>(null);
   const [cacheNote, setCacheNote] = useState("");
+  const [selectedVariant, setSelectedVariant] = useState<Record<string, string>>({});
+  const [serviceOffline, setServiceOffline] = useState(false);
 
   const baseUrl = useMemo(() => resolveFunctionsBaseUrl(), []);
 
@@ -90,7 +222,6 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
       baseUrl,
       getIdToken: async () => await user.getIdToken(),
       getAdminToken: () => adminToken,
-      onLastRequest: setLastReq,
     });
   }, [adminToken, baseUrl, user]);
 
@@ -118,6 +249,7 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
     const load = async () => {
       setLoading(true);
       setError("");
+      setServiceOffline(false);
 
       try {
         const resp = await client.postJson<ListMaterialsProductsResponse>("listMaterialsProducts", {
@@ -127,15 +259,42 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
         setProducts(resp.products ?? []);
         writeCachedCatalog(resp.products ?? []);
         setCacheNote("");
-      } catch (err: any) {
+      } catch (error: unknown) {
         if (!mounted) return;
-        setError(err?.message || String(err));
+        if (isConnectivityError(error)) {
+          setServiceOffline(true);
+          setError(serviceOfflineMessage());
+          return;
+        }
+        if (isAuthTokenError(error)) {
+          try {
+            const snap = await getDocs(collection(db, "materialsProducts"));
+            if (!mounted) return;
+            const fallbackProducts = snap.docs
+              .map((docSnap) =>
+                normalizeProductFromDoc(
+                  docSnap.id,
+                  (docSnap.data() as MaterialProductFirestoreDoc) ?? {}
+                )
+              )
+              .filter((product) => product.active);
+            setProducts(fallbackProducts);
+            writeCachedCatalog(fallbackProducts);
+            setCacheNote("Loaded from Firestore fallback (local functions auth mismatch).");
+            setStatus("Store is running in fallback mode while functions auth is unavailable.");
+            setError("");
+            return;
+          } catch {
+            // fall through to standard error handling
+          }
+        }
+        setError(getErrorMessage(error));
       } finally {
         if (mounted) setLoading(false);
       }
     };
 
-    load();
+    void load();
     return () => {
       mounted = false;
     };
@@ -155,18 +314,73 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
     return ["All", ...Array.from(set).sort()];
   }, [products]);
 
-  const filtered = useMemo(() => {
+  const groupedProducts = useMemo(() => {
+    const map = new Map<string, ProductGroup>();
+    products.forEach((product) => {
+      const { baseName, variantLabel } = parseVariantName(product.name);
+      const id = slugify(baseName);
+      const existing = map.get(id);
+      const variantLabelFinal = variantLabel || "Standard";
+      const option: VariantOption = {
+        product,
+        label: variantLabelFinal,
+      };
+
+      if (!existing) {
+        map.set(id, {
+          id,
+          name: baseName,
+          description: product.description ?? null,
+          category: product.category ?? null,
+          variants: [option],
+        });
+      } else {
+        existing.variants.push(option);
+        if (!existing.description && product.description) {
+          existing.description = product.description;
+        }
+      }
+    });
+
+    return Array.from(map.values()).map((group) => ({
+      ...group,
+      variants: group.variants.sort((a, b) => a.label.localeCompare(b.label)),
+    }));
+  }, [products]);
+
+  useEffect(() => {
+    setSelectedVariant((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      groupedProducts.forEach((group) => {
+        const currentId = next[group.id];
+        const hasCurrent = group.variants.some((variant) => variant.product.id === currentId);
+        if (!hasCurrent) {
+          next[group.id] = group.variants[0]?.product.id ?? "";
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [groupedProducts]);
+
+  const filteredGroups = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return products.filter((product) => {
-      const matchesCategory = category === "All" || product.category === category;
+    return groupedProducts.filter((group) => {
+      const matchesCategory = category === "All" || group.category === category;
       if (!matchesCategory) return false;
       if (!term) return true;
       return (
-        product.name.toLowerCase().includes(term) ||
-        (product.description ?? "").toLowerCase().includes(term)
+        group.name.toLowerCase().includes(term) ||
+        (group.description ?? "").toLowerCase().includes(term) ||
+        group.variants.some((variant) => {
+          const label = variant.label.toLowerCase();
+          const name = variant.product.name.toLowerCase();
+          return label.includes(term) || name.includes(term);
+        })
       );
     });
-  }, [category, products, search]);
+  }, [category, groupedProducts, search]);
 
   const cartLines: CartLine[] = useMemo(() => {
     return Object.entries(cart)
@@ -234,11 +448,16 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
       }
 
       window.location.assign(resp.checkoutUrl);
-    } catch (err: any) {
-      setStatus(err?.message || String(err));
+    } catch (error: unknown) {
+      setStatus(checkoutErrorMessage(error));
     } finally {
       setCheckoutBusy(false);
     }
+  };
+
+  const handleCheckoutHandlerError = (error: unknown) => {
+    setStatus(checkoutErrorMessage(error));
+    setCheckoutBusy(false);
   };
 
   const handleSeedCatalog = async () => {
@@ -258,8 +477,55 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
       setProducts(refreshed.products ?? []);
       writeCachedCatalog(refreshed.products ?? []);
       setCacheNote("");
-    } catch (err: any) {
-      setStatus(err?.message || String(err));
+    } catch (error: unknown) {
+      if (isAuthTokenError(error) && isStaff) {
+        try {
+          for (const product of LOCAL_SEED_PRODUCTS) {
+            const id = slugify(product.sku);
+            await setDoc(
+              doc(db, "materialsProducts", id),
+              {
+                sku: product.sku,
+                name: product.name,
+                description: product.description,
+                category: product.category,
+                priceCents: product.priceCents,
+                currency: "USD",
+                stripePriceId: null,
+                imageUrl: null,
+                trackInventory: product.trackInventory,
+                inventoryOnHand: product.trackInventory ? 30 : 0,
+                inventoryReserved: 0,
+                active: true,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              },
+              { merge: true }
+            );
+          }
+
+          const snap = await getDocs(collection(db, "materialsProducts"));
+          const fallbackProducts = snap.docs
+            .map((docSnap) =>
+              normalizeProductFromDoc(
+                docSnap.id,
+                (docSnap.data() as MaterialProductFirestoreDoc) ?? {}
+              )
+            )
+            .filter((product) => product.active);
+          setProducts(fallbackProducts);
+          writeCachedCatalog(fallbackProducts);
+          setCacheNote("Seeded via Firestore fallback.");
+          setStatus("Sample catalog seeded via Firestore fallback.");
+          setError("");
+          return;
+        } catch (fallbackError: unknown) {
+          setStatus(getErrorMessage(fallbackError));
+          return;
+        }
+      }
+
+      setStatus(getErrorMessage(error));
     } finally {
       setSeedBusy(false);
     }
@@ -270,10 +536,6 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
       <div className="page-header">
         <div>
           <h1>Store</h1>
-          <p className="page-subtitle">
-            Pickup-only supplies for the work you are already doing. Take what you need today, and
-            keep your studio momentum steady.
-          </p>
         </div>
       </div>
 
@@ -298,6 +560,11 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
       </section>
 
       <section className="materials-toolbar">
+        {serviceOffline ? (
+          <div className="alert inline-alert">
+            {serviceOfflineMessage()}
+          </div>
+        ) : null}
         <div className="materials-search">
           <label htmlFor="materials-search">Search</label>
           <input
@@ -324,7 +591,7 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
             Refresh catalog
           </button>
           {products.length === 0 && canSeed ? (
-            <button className="btn btn-primary" onClick={handleSeedCatalog} disabled={seedBusy}>
+            <button className="btn btn-primary" onClick={toVoidHandler(handleSeedCatalog)} disabled={seedBusy}>
               {seedBusy ? "Seeding..." : "Seed sample catalog"}
             </button>
           ) : null}
@@ -334,10 +601,16 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
 
       <div className="materials-layout">
         <section className="materials-list">
-          {loading ? <div className="materials-loading">Loading catalog...</div> : null}
+          {loading ? (
+            <div className="materials-skeleton-grid" aria-hidden="true">
+              <div className="materials-skeleton-card" />
+              <div className="materials-skeleton-card" />
+              <div className="materials-skeleton-card" />
+            </div>
+          ) : null}
           {error ? <div className="alert inline-alert">{error}</div> : null}
 
-          {!loading && filtered.length === 0 ? (
+          {!loading && filteredGroups.length === 0 ? (
             <div className="card card-3d materials-empty">
               <div className="card-title">Catalog is empty</div>
               <p className="materials-copy">
@@ -348,29 +621,66 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
           ) : null}
 
           <div className="materials-grid">
-            {filtered.map((product) => {
-              const available = product.trackInventory
-                ? product.inventoryAvailable ?? 0
+            {filteredGroups.map((group) => {
+              const selectedId =
+                selectedVariant[group.id] ?? group.variants[0]?.product.id ?? "";
+              const selected =
+                group.variants.find((variant) => variant.product.id === selectedId) ??
+                group.variants[0];
+              const selectedProduct = selected?.product;
+              if (!selectedProduct) return null;
+
+              const available = selectedProduct.trackInventory
+                ? selectedProduct.inventoryAvailable ?? 0
                 : null;
-              const inCart = cart[product.id] ?? 0;
+              const inCart = cart[selectedProduct.id] ?? 0;
               const limited = available !== null && available <= 5;
               const disabled = available !== null && available <= 0;
 
               return (
-                <div key={product.id} className="card card-3d product-card">
+                <div key={group.id} className="card card-3d product-card">
                   <div className="product-header">
                     <div>
-                      <div className="product-title">{product.name}</div>
-                      {product.category ? (
-                        <div className="product-category">{product.category}</div>
+                      <div className="product-title">{group.name}</div>
+                      {group.category ? (
+                        <div className="product-category">{group.category}</div>
                       ) : null}
                     </div>
-                    <div className="product-price">{formatCents(product.priceCents)}</div>
+                    <div className="product-price">
+                      {formatCents(selectedProduct.priceCents)}
+                    </div>
                   </div>
-                  {product.description ? (
-                    <p className="materials-copy">{product.description}</p>
+                  {group.description ? (
+                    <p className="materials-copy">{group.description}</p>
                   ) : null}
-                  {product.trackInventory ? (
+                  {group.variants.length > 1 ? (
+                    <div className="product-variants">
+                      <div className="variant-label">Sizes & options</div>
+                      <div className="variant-row">
+                        {group.variants.map((variant) => {
+                          const active = variant.product.id === selectedId;
+                          return (
+                            <button
+                              key={variant.product.id}
+                              className={`variant-chip ${active ? "active" : ""}`}
+                              onClick={() =>
+                                setSelectedVariant((prev) => ({
+                                  ...prev,
+                                  [group.id]: variant.product.id,
+                                }))
+                              }
+                            >
+                              {variant.label}
+                              <span className="variant-price">
+                                {formatCents(variant.product.priceCents)}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                  {selectedProduct.trackInventory ? (
                     <div className={`inventory-badge ${disabled ? "empty" : ""}`}>
                       {disabled
                         ? "Out of stock"
@@ -378,13 +688,11 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
                         ? `Only ${available} left`
                         : `${available} available`}
                     </div>
-                  ) : (
-                    <div className="inventory-badge soft">Stock flexible</div>
-                  )}
+                  ) : null}
                   <div className="product-actions">
                     <button
                       className="btn btn-ghost"
-                      onClick={() => updateCart(product.id, -1, available)}
+                      onClick={() => updateCart(selectedProduct.id, -1, available)}
                       disabled={inCart <= 0}
                     >
                       −
@@ -392,14 +700,14 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
                     <span className="product-qty">{inCart}</span>
                     <button
                       className="btn btn-ghost"
-                      onClick={() => updateCart(product.id, 1, available)}
+                      onClick={() => updateCart(selectedProduct.id, 1, available)}
                       disabled={disabled}
                     >
                       +
                     </button>
                     <button
                       className="btn btn-primary"
-                      onClick={() => updateCart(product.id, 1, available)}
+                      onClick={() => updateCart(selectedProduct.id, 1, available)}
                       disabled={disabled}
                     >
                       Add to cart
@@ -466,7 +774,11 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
 
           {status ? <div className="notice inline-alert">{status}</div> : null}
 
-          <button className="btn btn-primary" onClick={handleCheckout} disabled={!canCheckout}>
+          <button
+            className="btn btn-primary"
+            onClick={toVoidHandler(handleCheckout, handleCheckoutHandlerError, "materials.checkout")}
+            disabled={!canCheckout}
+          >
             {checkoutBusy ? "Starting checkout..." : "Checkout (Stripe)"}
           </button>
 
@@ -484,11 +796,6 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
         </p>
       </section>
 
-      <TroubleshootingPanel
-        lastReq={lastReq}
-        curl={client.getLastCurl()}
-        onStatus={(msg) => setStatus(msg)}
-      />
     </div>
   );
 }

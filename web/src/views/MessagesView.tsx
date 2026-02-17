@@ -15,6 +15,9 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import type { Announcement, DirectMessage, DirectMessageThread, LiveUser } from "../types/messaging";
+import { toVoidHandler } from "../utils/toVoidHandler";
+import RevealCard from "../components/RevealCard";
+import { useUiSettings } from "../context/UiSettingsContext";
 
 const SUPPORT_THREAD_PREFIX = "support_";
 
@@ -61,12 +64,20 @@ function formatMaybeTimestamp(value: unknown): string {
   }
 }
 
-function isAfterTimestamp(a?: any, b?: any) {
+type TimestampWithMillis = { toMillis?: () => number };
+
+function isAfterTimestamp(a?: unknown, b?: unknown) {
   if (!a || !b) return false;
-  const aMillis = typeof a.toMillis === "function" ? a.toMillis() : null;
-  const bMillis = typeof b.toMillis === "function" ? b.toMillis() : null;
+  const aValue = a as TimestampWithMillis;
+  const bValue = b as TimestampWithMillis;
+  const aMillis = typeof aValue.toMillis === "function" ? aValue.toMillis() : null;
+  const bMillis = typeof bValue.toMillis === "function" ? bValue.toMillis() : null;
   if (aMillis === null || bMillis === null) return false;
   return aMillis > bMillis;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function isPermissionError(message: string) {
@@ -109,11 +120,11 @@ function useDirectMessageMessages(threadId: string | null) {
         const snap = await getDocs(messagesQuery);
         const rows: DirectMessage[] = snap.docs.map((docSnap) => ({
           id: docSnap.id,
-          ...(docSnap.data() as any),
+          ...(docSnap.data() as Partial<DirectMessage>),
         }));
         setMessages(rows);
-      } catch (err: any) {
-        setError(`Messages failed: ${err?.message || String(err)}`);
+      } catch (error: unknown) {
+        setError(`Messages failed: ${getErrorMessage(error)}`);
       } finally {
         setLoading(false);
       }
@@ -139,6 +150,8 @@ export default function MessagesView({
   announcementsError,
   unreadAnnouncements,
 }: Props) {
+  const { themeName, portalMotion } = useUiSettings();
+  const motionEnabled = themeName === "memoria" && portalMotion === "enhanced";
   const [messagesTab, setMessagesTab] = useState<MessagesTab>("inbox");
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(threads[0]?.id || null);
   const [composerText, setComposerText] = useState("");
@@ -242,8 +255,8 @@ export default function MessagesView({
 
       setComposerText("");
       setSendStatus("Reply sent.");
-    } catch (err: any) {
-      setSendError(`Send failed: ${err?.message || String(err)}`);
+    } catch (error: unknown) {
+      setSendError(`Send failed: ${getErrorMessage(error)}`);
       setSendStatus("Send failed. Check permissions and connectivity.");
     } finally {
       setComposerBusy(false);
@@ -380,8 +393,8 @@ export default function MessagesView({
       setNewBccUids([]);
       setNewBody("");
       setSendStatus("Message sent.");
-    } catch (err: any) {
-      setSendError(`Send failed: ${err?.message || String(err)}`);
+    } catch (error: unknown) {
+      setSendError(`Send failed: ${getErrorMessage(error)}`);
       setSendStatus("Send failed. Check permissions and connectivity.");
     } finally {
       setComposerBusy(false);
@@ -433,7 +446,7 @@ export default function MessagesView({
       {announcementsError ? <div className="card card-3d alert">{announcementsError}</div> : null}
 
       <div className="messages-layout">
-        <div className="card card-3d thread-pane">
+        <RevealCard className="card card-3d thread-pane" index={0} enabled={motionEnabled}>
           <div className="card-title-row">
             <div className="card-title">Direct messages</div>
             <button className="btn btn-ghost" onClick={() => setNewThreadOpen((prev) => !prev)}>
@@ -509,7 +522,7 @@ export default function MessagesView({
               {liveUsers.length === 0 && !liveUsersLoading ? (
                 <div className="empty-state">No live users are available yet.</div>
               ) : null}
-              <button className="btn btn-primary" onClick={handleCreateThread} disabled={composerBusy}>
+              <button className="btn btn-primary" onClick={toVoidHandler(handleCreateThread)} disabled={composerBusy}>
                 {composerBusy ? "Starting..." : "Send new message"}
               </button>
             </div>
@@ -544,9 +557,9 @@ export default function MessagesView({
               })}
             </div>
           )}
-        </div>
+        </RevealCard>
 
-        <div className="card card-3d conversation-pane">
+        <RevealCard className="card card-3d conversation-pane" index={1} enabled={motionEnabled}>
           <div className="card-title">
             {selectedThread ? selectedThread.subject || "(no subject)" : "Select a direct message"}
           </div>
@@ -592,7 +605,7 @@ export default function MessagesView({
                   value={composerText}
                   onChange={(event) => setComposerText(event.target.value)}
                 />
-                <button className="btn btn-primary" onClick={handleSendMessage} disabled={composerBusy}>
+                <button className="btn btn-primary" onClick={toVoidHandler(handleSendMessage)} disabled={composerBusy}>
                   {composerBusy ? "Sending..." : "Send reply"}
                 </button>
               </div>
@@ -600,10 +613,14 @@ export default function MessagesView({
           ) : (
             <div className="empty-state">Choose a direct message to read and reply.</div>
           )}
-        </div>
+        </RevealCard>
       </div>
 
-      <div className={`card card-3d announcements-strip ${shouldExpandAnnouncements ? "expanded" : ""}`}>
+      <RevealCard
+        className={`card card-3d announcements-strip ${shouldExpandAnnouncements ? "expanded" : ""}`}
+        index={2}
+        enabled={motionEnabled}
+      >
         <div className="card-title">Studio announcements</div>
         {announcementsLoading ? (
           <div className="empty-state">Loading announcements...</div>
@@ -620,7 +637,7 @@ export default function MessagesView({
                   className={`announcement-card ${unread ? "unread" : ""} ${
                     isSelected ? "active" : ""
                   }`}
-                  onClick={() => handleSelectAnnouncement(announcement)}
+                  onClick={toVoidHandler(() => handleSelectAnnouncement(announcement))}
                 >
                   <div className="announcement-header">
                     <div>
@@ -640,7 +657,7 @@ export default function MessagesView({
             })}
           </div>
         )}
-      </div>
+      </RevealCard>
     </div>
   );
 }

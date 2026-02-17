@@ -12,13 +12,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/assets/css/styles.css" />
   <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-ZJQ30LHFKH"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-ZJQ30LHFKH');
-  </script>
+  <script src="/assets/js/analytics.js" defer></script>
   <meta property="og:site_name" content="Monsoon Fire Pottery" />
   <meta property="og:title" content="The Studio | Monsoon Fire Pottery" />
   <meta property="og:description" content="The Monsoon Fire studio: kiln firing, studio access, memberships, and production support for West Valley potters." />
@@ -31,21 +25,10 @@
   <meta name="twitter:title" content="The Studio | Monsoon Fire Pottery" />
   <meta name="twitter:description" content="The Monsoon Fire studio: kiln firing, studio access, memberships, and production support for West Valley potters." />
   <meta name="twitter:image" content="https://monsoonfire.com/assets/images/finished-work-1200.jpg" />
-  <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "LocalBusiness",
-      "name": "Monsoon Fire Pottery Studio",
-      "url": "https://monsoonfire.com/",
-      "description": "Production-first ceramics studio with kiln firing, studio access, memberships, and production support in Arizona's West Valley.",
-      "areaServed": [
-        {"@type": "AdministrativeArea", "name": "West Valley, AZ"},
-        {"@type": "AdministrativeArea", "name": "Phoenix Metro"}
-      ]
-    }
-  </script>
+  <script type="application/ld+json" src="/assets/schema/localbusiness.json"></script>
 </head>
 <body data-nav-parent="/services/">
+  <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
     <div class="container navbar">
       <a class="brand" href="/">
@@ -72,7 +55,7 @@
       <div class="container">
         <div class="heading-block">
           <p class="eyebrow">What we offer</p>
-          <h2 class="section-title">Core ways to work with the studio.</h2>
+          <h1 class="section-title">Core ways to work with the studio.</h1>
         </div>
         <div class="feature-grid">
           <div class="feature">
@@ -102,9 +85,41 @@
           <p class="lead">Day passes are $40 and include access to production tools and workstations. All visits are by reservation.</p>
         </div>
         <div class="cta-row">
-          <a class="button button-primary" href="https://monsoonfire.kilnfire.com/new-user" target="_blank" rel="noopener noreferrer">Reserve via portal</a>
+          <a class="button button-primary" href="https://monsoonfire.kilnfire.com/new-user" target="_blank" rel="noopener noreferrer">Start in portal</a>
           <a class="button button-ghost" href="/memberships/">See memberships</a>
         </div>
+      </div>
+    </section>
+
+    <section class="section section--band" id="what-to-expect">
+      <div class="container">
+        <div class="heading-block">
+          <p class="eyebrow">What to expect</p>
+          <h2 class="section-title">Clear process, no surprises.</h2>
+          <p class="lead">We keep studio operations explicit so you can plan your work with confidence.</p>
+        </div>
+        <ul class="meta-grid">
+          <li>
+            <span>Booking</span>
+            <strong>Appointment-only access</strong>
+            <p>Reserve studio time before arrival so equipment and space are ready.</p>
+          </li>
+          <li>
+            <span>Firing flow</span>
+            <strong>Queue visibility in portal</strong>
+            <p>Track drop-off to ready-for-pickup with status updates and notes.</p>
+          </li>
+          <li>
+            <span>Billing</span>
+            <strong>Charged after service milestones</strong>
+            <p>Pricing and policy are documented before you commit work.</p>
+          </li>
+          <li>
+            <span>Support</span>
+            <strong>Direct studio follow-up</strong>
+            <p>Questions route to staff through support channels and policy-backed responses.</p>
+          </li>
+        </ul>
       </div>
     </section>
 
@@ -231,10 +246,11 @@
     </div>
   </footer>
 
-  <script src="/assets/js/main.js"></script>
-  <script>function loadScript(a){var b=document.getElementsByTagName("head")[0],c=document.createElement("script");c.type="text/javascript",c.src="https://tracker.metricool.com/resources/be.js",c.onreadystatechange=a,c.onload=a,b.appendChild(c)}loadScript(function(){beTracker.t({hash:"66cdb7f9a3fce2c22ac2edbdc56cb820"})});</script>
+  <script defer src="/assets/js/main.js"></script>
+  
 </body>
 </html>
+
 
 
 

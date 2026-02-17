@@ -1,21 +1,24 @@
 .glaze-board-page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
 .glaze-tabs {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .glaze-tabs button {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
-  padding: 8px 14px;
+  padding: 8px 16px;
   border-radius: 999px;
   cursor: pointer;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .glaze-tabs button.active {
@@ -26,8 +29,8 @@
 
 .glaze-board-layout {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 240px;
-  gap: 16px;
+  grid-template-columns: 230px minmax(0, 1fr) 230px;
+  gap: 18px;
   align-items: start;
 }
 
@@ -41,12 +44,36 @@
 .glaze-filter-count {
   font-size: 12px;
   color: var(--muted);
+  background: rgba(0, 0, 0, 0.04);
+  padding: 4px 10px;
+  border-radius: 999px;
 }
 
 .glaze-active-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.glaze-active-filter-wrap {
+  display: grid;
+  gap: 8px;
+}
+
+.glaze-active-filter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.glaze-active-filter-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.glaze-active-filters.collapsed {
+  display: none;
 }
 
 .glaze-filter-pill {
@@ -57,14 +84,20 @@
   font-size: 11px;
   padding: 6px 10px;
   cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .glaze-filter-panel {
   display: grid;
   gap: 12px;
-  padding: 16px;
+  padding: 18px;
   position: relative;
   z-index: 2;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.glaze-filter-panel.collapsed {
+  display: none;
 }
 
 .glaze-filter-header {
@@ -72,6 +105,8 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.08);
 }
 
 .glaze-filter-toggles {
@@ -181,12 +216,16 @@
   color: var(--text);
   padding: 10px 12px;
   font-size: 14px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .glaze-list-panel {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  background: var(--surface);
 }
 
 .glaze-subtitle {
@@ -210,9 +249,14 @@
   text-align: left;
   font-size: 13px;
   cursor: pointer;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease,
+    transform 0.15s ease;
 }
 
+.glaze-list-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
+}
 .glaze-list-item.active {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px rgba(180, 79, 53, 0.2);
@@ -260,13 +304,15 @@
 }
 
 .glaze-detail h2 {
-  font-size: 16px;
-  margin: 6px 0 10px;
+  font-size: 18px;
+  margin: 8px 0 12px;
+  line-height: 1.3;
 }
 
 .glaze-photo-strip {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
 }
 
 .glaze-photo-strip figure {
@@ -279,7 +325,7 @@
 
 .glaze-photo-strip img {
   width: 100%;
-  height: 160px;
+  height: 150px;
   border-radius: 12px;
   object-fit: cover;
 }
@@ -319,6 +365,9 @@
   margin-top: 10px;
   font-size: 12px;
   color: var(--muted);
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 12px;
+  padding: 10px 12px;
 }
 
 .glaze-links {
@@ -330,12 +379,19 @@
 .glaze-links a {
   color: var(--accent);
   font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(180, 79, 53, 0.25);
+  background: rgba(180, 79, 53, 0.08);
+  width: fit-content;
 }
 
 .glaze-staff-controls {
   display: grid;
   gap: 12px;
   margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.08);
 }
 
 .glaze-staff-row {

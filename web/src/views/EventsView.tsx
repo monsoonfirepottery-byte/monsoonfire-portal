@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
 import type {
   EventDetail,
@@ -14,12 +14,15 @@ import type {
   CheckInEventResponse,
   CreateEventCheckoutSessionResponse,
 } from "../api/portalContracts";
-import { createFunctionsClient, type LastRequest } from "../api/functionsClient";
-import TroubleshootingPanel from "../components/TroubleshootingPanel";
+import { createFunctionsClient } from "../api/functionsClient";
 import { formatCents, formatDateTime } from "../utils/format";
+import { checkoutErrorMessage } from "../utils/userFacingErrors";
+import { toVoidHandler } from "../utils/toVoidHandler";
 import "./EventsView.css";
 
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
+type ImportMetaEnvShape = { VITE_FUNCTIONS_BASE_URL?: string };
+const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
 
 const STATUS_LABELS: Record<string, string> = {
   ticketed: "Ticketed",
@@ -59,12 +62,14 @@ type RosterCounts = {
 
 function resolveFunctionsBaseUrl() {
   const env =
-    typeof import.meta !== "undefined" &&
-    (import.meta as any).env &&
-    (import.meta as any).env.VITE_FUNCTIONS_BASE_URL
-      ? String((import.meta as any).env.VITE_FUNCTIONS_BASE_URL)
+    typeof import.meta !== "undefined" && ENV.VITE_FUNCTIONS_BASE_URL
+      ? String(ENV.VITE_FUNCTIONS_BASE_URL)
       : "";
   return env || DEFAULT_FUNCTIONS_BASE_URL;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function labelForStatus(status?: string | null) {
@@ -127,7 +132,6 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
   const [rosterIncludeCancelled, setRosterIncludeCancelled] = useState(false);
   const [rosterIncludeExpired, setRosterIncludeExpired] = useState(false);
   const [rosterBusyIds, setRosterBusyIds] = useState<Record<string, boolean>>({});
-  const [lastReq, setLastReq] = useState<LastRequest | null>(null);
 
   const baseUrl = useMemo(() => resolveFunctionsBaseUrl(), []);
   const hasAdmin = isStaff || !!adminToken?.trim();
@@ -137,7 +141,6 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       baseUrl,
       getIdToken: async () => await user.getIdToken(),
       getAdminToken: () => adminToken,
-      onLastRequest: setLastReq,
     });
   }, [adminToken, baseUrl, user]);
 
@@ -155,7 +158,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     if (!detail || signup?.status !== "checked_in") {
       setSelectedAddOns([]);
     }
-  }, [detail?.id, signup?.status]);
+  }, [detail, signup?.status]);
 
   const filteredEvents = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -199,7 +202,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
 
   const rosterCounts = useMemo(() => buildRosterCounts(roster), [roster]);
 
-  const loadEvents = async () => {
+  const loadEvents = useCallback(async () => {
     setEventsLoading(true);
     setEventsError("");
 
@@ -215,14 +218,14 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         if (prev && nextEvents.some((event) => event.id === prev)) return prev;
         return nextEvents[0]?.id ?? null;
       });
-    } catch (err: any) {
-      setEventsError(err?.message || String(err));
+    } catch (error: unknown) {
+      setEventsError(getErrorMessage(error));
     } finally {
       setEventsLoading(false);
     }
-  };
+  }, [client, hasAdmin, includeDrafts, includeCancelled]);
 
-  const loadDetail = async (eventId: string) => {
+  const loadDetail = useCallback(async (eventId: string) => {
     setDetailLoading(true);
     setDetailError("");
 
@@ -230,16 +233,16 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       const resp = await client.postJson<GetEventResponse>("getEvent", { eventId });
       setDetail(resp.event);
       setSignup(resp.signup ?? null);
-    } catch (err: any) {
-      setDetailError(err?.message || String(err));
+    } catch (error: unknown) {
+      setDetailError(getErrorMessage(error));
       setDetail(null);
       setSignup(null);
     } finally {
       setDetailLoading(false);
     }
-  };
+  }, [client]);
 
-  const loadRoster = async (eventId: string) => {
+  const loadRoster = useCallback(async (eventId: string) => {
     if (!hasAdmin) {
       setRoster([]);
       return;
@@ -256,16 +259,16 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         limit: 300,
       });
       setRoster(resp.signups ?? []);
-    } catch (err: any) {
-      setRosterError(err?.message || String(err));
+    } catch (error: unknown) {
+      setRosterError(getErrorMessage(error));
     } finally {
       setRosterLoading(false);
     }
-  };
+  }, [client, hasAdmin, rosterIncludeCancelled, rosterIncludeExpired]);
 
   useEffect(() => {
-    loadEvents();
-  }, [client, includeDrafts, includeCancelled, hasAdmin]);
+    void loadEvents();
+  }, [loadEvents]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -273,18 +276,18 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       setSignup(null);
       return;
     }
-    loadDetail(selectedId);
-  }, [client, selectedId]);
+    void loadDetail(selectedId);
+  }, [selectedId, loadDetail]);
 
   useEffect(() => {
     if (!selectedId || !hasAdmin) {
       setRoster([]);
       return;
     }
-    loadRoster(selectedId);
-  }, [client, selectedId, hasAdmin, rosterIncludeCancelled, rosterIncludeExpired]);
+    void loadRoster(selectedId);
+  }, [selectedId, hasAdmin, loadRoster]);
 
-  const refreshAll = async () => {
+  const refreshAll = useCallback(async () => {
     if (!selectedId) {
       await loadEvents();
       return;
@@ -295,7 +298,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       loadDetail(selectedId),
       hasAdmin ? loadRoster(selectedId) : Promise.resolve(),
     ]);
-  };
+  }, [selectedId, hasAdmin, loadEvents, loadDetail, loadRoster]);
 
   const handleSignup = async () => {
     if (!detail || actionBusy) return;
@@ -311,8 +314,8 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         : "You're on the waitlist - we'll notify you if a spot opens.";
       setStatus(nextStatus);
       await refreshAll();
-    } catch (err: any) {
-      setStatus(err?.message || String(err));
+    } catch (error: unknown) {
+      setStatus(getErrorMessage(error));
     } finally {
       setActionBusy(false);
     }
@@ -329,8 +332,8 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       });
       setStatus("Your spot has been released. Thanks for letting us know.");
       await refreshAll();
-    } catch (err: any) {
-      setStatus(err?.message || String(err));
+    } catch (error: unknown) {
+      setStatus(getErrorMessage(error));
     } finally {
       setActionBusy(false);
     }
@@ -347,8 +350,8 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       });
       setStatus("Offer claimed! You're confirmed.");
       await refreshAll();
-    } catch (err: any) {
-      setStatus(err?.message || String(err));
+    } catch (error: unknown) {
+      setStatus(getErrorMessage(error));
     } finally {
       setActionBusy(false);
     }
@@ -366,8 +369,8 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       });
       setStatus("Checked in! You can add extras and pay after you're settled.");
       await refreshAll();
-    } catch (err: any) {
-      setStatus(err?.message || String(err));
+    } catch (error: unknown) {
+      setStatus(getErrorMessage(error));
     } finally {
       setActionBusy(false);
     }
@@ -396,11 +399,15 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       }
 
       window.location.assign(resp.checkoutUrl);
-    } catch (err: any) {
-      setStatus(err?.message || String(err));
+    } catch (error: unknown) {
+      setStatus(checkoutErrorMessage(error));
     } finally {
       setCheckoutBusy(false);
     }
+  };
+
+  const handleCheckoutHandlerError = (error: unknown) => {
+    setStatus(checkoutErrorMessage(error));
   };
 
   const handleStaffCheckIn = async (signupId: string) => {
@@ -419,8 +426,8 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         await loadRoster(selectedId);
         await loadDetail(selectedId);
       }
-    } catch (err: any) {
-      setStatus(err?.message || String(err));
+    } catch (error: unknown) {
+      setStatus(getErrorMessage(error));
     } finally {
       setRosterBusyIds((prev) => {
         const next = { ...prev };
@@ -461,9 +468,6 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       <div className="page-header">
         <div>
           <h1>Events & workshops</h1>
-          <p className="page-subtitle">
-            One-night experiences, studio collaborations, and firing-focused gatherings.
-          </p>
         </div>
       </div>
 
@@ -503,7 +507,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
           />
         </div>
         <div className="events-actions">
-          <button className="btn btn-ghost" onClick={refreshAll}>
+          <button className="btn btn-ghost" onClick={toVoidHandler(refreshAll)}>
             Refresh events
           </button>
         </div>
@@ -651,24 +655,24 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                   {canSignup ? (
                     <button
                       className="btn btn-primary"
-                      onClick={handleSignup}
+                      onClick={toVoidHandler(handleSignup)}
                       disabled={actionBusy || isSoldOut}
                     >
                       {actionBusy ? "Working..." : isSoldOut ? "Sold out" : joinLabel}
                     </button>
                   ) : null}
                   {canClaim ? (
-                    <button className="btn btn-primary" onClick={handleClaimOffer} disabled={actionBusy}>
+                    <button className="btn btn-primary" onClick={toVoidHandler(handleClaimOffer)} disabled={actionBusy}>
                       {actionBusy ? "Claiming..." : "Claim offer"}
                     </button>
                   ) : null}
                   {canCheckIn ? (
-                    <button className="btn btn-primary" onClick={handleSelfCheckIn} disabled={actionBusy}>
+                    <button className="btn btn-primary" onClick={toVoidHandler(handleSelfCheckIn)} disabled={actionBusy}>
                       {actionBusy ? "Checking in..." : "Self check-in"}
                     </button>
                   ) : null}
                   {canCancel ? (
-                    <button className="btn btn-ghost" onClick={handleCancel} disabled={actionBusy}>
+                    <button className="btn btn-ghost" onClick={toVoidHandler(handleCancel)} disabled={actionBusy}>
                       {actionBusy ? "Canceling..." : "Cancel signup"}
                     </button>
                   ) : null}
@@ -703,7 +707,11 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                     </div>
                     <button
                       className="btn btn-primary"
-                      onClick={handleCheckout}
+                      onClick={toVoidHandler(
+                        handleCheckout,
+                        handleCheckoutHandlerError,
+                        "events.checkout"
+                      )}
                       disabled={!canCheckout || checkoutBusy}
                     >
                       {checkoutBusy ? "Starting checkout..." : "Pay event total"}
@@ -805,7 +813,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                         {row.status === "ticketed" ? (
                           <button
                             className="btn btn-primary"
-                            onClick={() => handleStaffCheckIn(row.id)}
+                            onClick={toVoidHandler(() => handleStaffCheckIn(row.id))}
                             disabled={!!rosterBusyIds[row.id]}
                           >
                             {rosterBusyIds[row.id] ? "Checking..." : "Check in attendee"}
@@ -825,11 +833,6 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         </aside>
       </div>
 
-      <TroubleshootingPanel
-        lastReq={lastReq}
-        curl={client.getLastCurl()}
-        onStatus={(msg) => setStatus(msg)}
-      />
     </div>
   );
 }

@@ -22,6 +22,10 @@ export type PortalFnName =
   | "createEventCheckoutSession"
   | "importLibraryIsbns"
   | "listBillingSummary"
+  | "registerDeviceToken"
+  | "unregisterDeviceToken"
+  | "runNotificationMetricsAggregationNow"
+  | "runNotificationFailureDrill"
   // add more function names here as you ship them
   | (string & {});
 
@@ -59,7 +63,7 @@ export type PortalApiOkEnvelope = {
  * Utility: narrow an unknown response into "ok: true"
  */
 export function isOkEnvelope(x: unknown): x is PortalApiOkEnvelope {
-  return !!x && typeof x === "object" && (x as any).ok === true;
+  return !!x && typeof x === "object" && (x as { ok?: unknown }).ok === true;
 }
 
 /**
@@ -70,11 +74,11 @@ export function getErrorMessage(x: unknown): string {
   if (typeof x === "string") return x;
   if (typeof x !== "object") return String(x);
 
-  const o = x as any;
+  const o = x as { message?: unknown; error?: unknown; details?: unknown };
   return (
-    o.message ||
-    o.error ||
-    (o.details && typeof o.details === "string" ? o.details : undefined) ||
+    (typeof o.message === "string" ? o.message : undefined) ||
+    (typeof o.error === "string" ? o.error : undefined) ||
+    (typeof o.details === "string" ? o.details : undefined) ||
     "Request failed"
   );
 }
@@ -84,8 +88,8 @@ export function getErrorMessage(x: unknown): string {
  */
 export function getErrorCode(x: unknown): PortalApiErrorCode | undefined {
   if (!x || typeof x !== "object") return undefined;
-  const o = x as any;
-  return o.code as PortalApiErrorCode | undefined;
+  const o = x as { code?: unknown };
+  return typeof o.code === "string" ? (o.code as PortalApiErrorCode) : undefined;
 }
 
 /* =========================
@@ -281,6 +285,33 @@ export type ImportLibraryIsbnsRequest = {
   isbns: string[];
   source?: "csv" | "manual" | "donation" | (string & {});
 };
+
+export type RegisterDeviceTokenRequest = {
+  token: string;
+  platform?: "ios";
+  environment?: "sandbox" | "production";
+  appVersion?: string;
+  appBuild?: string;
+  deviceModel?: string;
+};
+
+export type UnregisterDeviceTokenRequest = {
+  token?: string;
+  tokenHash?: string;
+};
+
+export type RunNotificationFailureDrillRequest = {
+  uid: string;
+  mode: "auth" | "provider_4xx" | "provider_5xx" | "network" | "success";
+  channels?: {
+    inApp?: boolean;
+    email?: boolean;
+    push?: boolean;
+  };
+  forceRunNow?: boolean;
+};
+
+export type RunNotificationMetricsAggregationNowRequest = Record<string, never>;
 
 /* =========================
    Responses
@@ -479,6 +510,30 @@ export type ImportLibraryIsbnsResponse = PortalApiOkEnvelope & {
   errors?: Array<{ isbn: string; message: string }>;
 };
 
+export type RegisterDeviceTokenResponse = PortalApiOkEnvelope & {
+  uid: string;
+  tokenHash: string;
+};
+
+export type UnregisterDeviceTokenResponse = PortalApiOkEnvelope & {
+  uid: string;
+  tokenHash: string;
+};
+
+export type RunNotificationFailureDrillResponse = PortalApiOkEnvelope & {
+  jobId: string;
+  uid: string;
+  mode: "auth" | "provider_4xx" | "provider_5xx" | "network" | "success";
+};
+
+export type RunNotificationMetricsAggregationNowResponse = PortalApiOkEnvelope & {
+  windowHours: number;
+  totalAttempts: number;
+  statusCounts: Record<string, number>;
+  reasonCounts: Record<string, number>;
+  providerCounts: Record<string, number>;
+};
+
 export type MaterialOrderItemSummary = {
   productId: string;
   name: string;
@@ -535,8 +590,11 @@ export function getResultBatchId(
   resp: CreateBatchResponse | ContinueJourneyResponse | unknown
 ): string | undefined {
   if (!resp || typeof resp !== "object") return undefined;
-  const o = resp as any;
-  return o.newBatchId || o.batchId || o.existingBatchId;
+  const o = resp as { newBatchId?: unknown; batchId?: unknown; existingBatchId?: unknown };
+  if (typeof o.newBatchId === "string") return o.newBatchId;
+  if (typeof o.batchId === "string") return o.batchId;
+  if (typeof o.existingBatchId === "string") return o.existingBatchId;
+  return undefined;
 }
 
 /* =========================

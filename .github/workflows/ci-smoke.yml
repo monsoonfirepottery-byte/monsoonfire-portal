@@ -1,0 +1,63 @@
+name: Smoke Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  schedule:
+    - cron: "0 15 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            functions/package-lock.json
+            studio-brain/package-lock.json
+
+      - name: Install web deps
+        run: npm ci --prefix web
+
+      - name: Install functions deps
+        run: npm ci --prefix functions
+
+      - name: Install studio-brain deps
+        run: npm ci --prefix studio-brain
+
+      - name: Functions lint
+        run: npm --prefix functions run lint
+
+      - name: Studio Brain policy lint
+        run: npm --prefix studio-brain run lint:policy
+
+      - name: Web lint
+        run: npm --prefix web run lint
+
+      - name: Web tests
+        run: npm --prefix web run test:run
+
+      - name: Web accessibility smoke
+        run: npm --prefix web run a11y:smoke
+
+      - name: Web build
+        run: npm --prefix web run build
+
+      - name: Web chunk budgets
+        run: npm --prefix web run perf:chunks
+
+      - name: Functions build
+        run: npm --prefix functions run build

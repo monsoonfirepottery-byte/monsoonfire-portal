@@ -15,12 +15,25 @@
   justify-content: space-between;
   gap: 18px;
   flex-wrap: wrap;
+  align-items: flex-start;
+  padding: 18px 20px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.6), rgba(255, 250, 245, 0.9));
 }
 
 .materials-banner-meta {
   display: grid;
   gap: 12px;
   min-width: 220px;
+}
+
+.materials-banner-meta > div {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
 }
 
 .materials-copy {
@@ -34,6 +47,10 @@
   gap: 12px;
   margin-top: 18px;
   margin-bottom: 18px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  background: var(--surface);
 }
 
 .materials-search {
@@ -55,6 +72,7 @@
   color: var(--text);
   padding: 10px 12px;
   font-size: 14px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .materials-filters {
@@ -101,7 +119,7 @@
 .materials-layout {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-  gap: 18px;
+  gap: 20px;
 }
 
 .materials-list {
@@ -114,15 +132,53 @@
   color: var(--muted);
 }
 
+.materials-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+.materials-skeleton-card {
+  height: 180px;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.4) 0%,
+    rgba(255, 255, 255, 0.7) 50%,
+    rgba(255, 255, 255, 0.4) 100%
+  );
+  background-size: 200% 100%;
+  animation: materials-skeleton-shimmer 1.2s linear infinite;
+}
+
+@keyframes materials-skeleton-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
 .materials-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
+  gap: 18px;
 }
 
 .product-card {
   display: grid;
   gap: 10px;
+  padding: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  background: var(--surface);
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.product-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08);
 }
 
 .product-header {
@@ -151,6 +207,54 @@
   color: var(--accent-2);
 }
 
+.product-variants {
+  display: grid;
+  gap: 8px;
+}
+
+.variant-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+.variant-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.variant-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease, border 0.2s ease, transform 0.2s ease;
+}
+
+.variant-chip:hover {
+  transform: translateY(-1px);
+  background: var(--surface-3);
+}
+
+.variant-chip.active {
+  border-color: var(--accent);
+  background: rgba(180, 79, 53, 0.18);
+  color: var(--accent);
+}
+
+.variant-price {
+  font-weight: 600;
+  color: var(--muted);
+}
+
 .inventory-badge {
   font-size: 12px;
   color: var(--text);
@@ -159,10 +263,6 @@
   background: var(--surface-2);
   border: 1px solid var(--border);
   width: fit-content;
-}
-
-.inventory-badge.soft {
-  color: var(--muted);
 }
 
 .inventory-badge.empty {
@@ -189,6 +289,9 @@
   align-content: start;
   position: sticky;
   top: 18px;
+  padding: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  background: var(--surface);
 }
 
 .cart-lines {
@@ -220,9 +323,17 @@
 
 .cart-summary {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   border-top: 1px solid var(--border);
   padding-top: 12px;
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.cart-summary > div {
+  display: grid;
+  gap: 4px;
 }
 
 .materials-notes {
@@ -241,12 +352,16 @@
   font-size: 14px;
   min-height: 100px;
   resize: vertical;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .materials-help {
   display: grid;
   gap: 12px;
   margin-top: 18px;
+  padding: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  background: var(--surface);
 }
 
 .materials-empty {
@@ -268,4 +383,83 @@
   .materials-chip {
     transition: none;
   }
+
+  .materials-skeleton-card {
+    animation: none;
+  }
+}
+
+html[data-portal-theme="memoria"] .materials-page {
+  background: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+html[data-portal-theme="memoria"] .materials-page .materials-banner,
+html[data-portal-theme="memoria"] .materials-page .materials-toolbar,
+html[data-portal-theme="memoria"] .materials-page .product-card,
+html[data-portal-theme="memoria"] .materials-page .materials-cart,
+html[data-portal-theme="memoria"] .materials-page .materials-help,
+html[data-portal-theme="memoria"] .materials-page .materials-empty {
+  border-color: rgba(153, 174, 207, 0.36);
+  background:
+    linear-gradient(168deg, rgba(30, 42, 62, 0.9), rgba(20, 29, 44, 0.92)),
+    radial-gradient(circle at 84% -16%, rgba(141, 171, 223, 0.2), transparent 58%);
+  box-shadow: inset 0 1px 0 rgba(194, 211, 239, 0.08), 0 16px 30px rgba(4, 9, 18, 0.34);
+}
+
+html[data-portal-theme="memoria"] .materials-page .materials-banner-meta > div,
+html[data-portal-theme="memoria"] .materials-page .cycle,
+html[data-portal-theme="memoria"] .materials-page .cart-summary {
+  border-color: rgba(154, 176, 212, 0.34);
+  background: linear-gradient(170deg, rgba(34, 46, 67, 0.86), rgba(23, 33, 50, 0.9));
+}
+
+html[data-portal-theme="memoria"] .materials-page .materials-copy,
+html[data-portal-theme="memoria"] .materials-page .materials-cache-note,
+html[data-portal-theme="memoria"] .materials-page .product-category,
+html[data-portal-theme="memoria"] .materials-page .variant-label,
+html[data-portal-theme="memoria"] .materials-page .variant-price,
+html[data-portal-theme="memoria"] .materials-page .cart-meta,
+html[data-portal-theme="memoria"] .materials-page .materials-notes,
+html[data-portal-theme="memoria"] .materials-page .materials-search label {
+  color: rgba(223, 232, 247, 0.72);
+}
+
+html[data-portal-theme="memoria"] .materials-page .materials-search input,
+html[data-portal-theme="memoria"] .materials-page .materials-notes textarea {
+  border-color: rgba(154, 176, 212, 0.4);
+  background: linear-gradient(170deg, rgba(28, 39, 58, 0.92), rgba(19, 28, 42, 0.94));
+  box-shadow: inset 0 1px 0 rgba(190, 208, 235, 0.08);
+}
+
+html[data-portal-theme="memoria"] .materials-page .materials-chip,
+html[data-portal-theme="memoria"] .materials-page .variant-chip {
+  border-color: rgba(154, 176, 212, 0.4);
+  background: rgba(116, 141, 184, 0.16);
+  color: rgba(228, 238, 255, 0.9);
+}
+
+html[data-portal-theme="memoria"] .materials-page .materials-chip.active,
+html[data-portal-theme="memoria"] .materials-page .variant-chip.active {
+  border-color: rgba(143, 220, 189, 0.84);
+  background: linear-gradient(165deg, rgba(38, 77, 66, 0.92), rgba(24, 53, 45, 0.94));
+  color: #d8f7ea;
+  box-shadow: 0 0 0 1px rgba(143, 220, 189, 0.2);
+}
+
+html[data-portal-theme="memoria"] .materials-page .inventory-badge {
+  border-color: rgba(154, 176, 212, 0.4);
+  background: rgba(112, 140, 187, 0.18);
+  color: rgba(232, 240, 255, 0.9);
+}
+
+html[data-portal-theme="memoria"] .materials-page .inventory-badge.empty {
+  border-color: rgba(255, 160, 147, 0.58);
+  background: rgba(164, 71, 59, 0.3);
+  color: #ffd8d1;
+}
+
+html[data-portal-theme="memoria"] .materials-page .product-card:hover {
+  box-shadow: 0 14px 28px rgba(2, 7, 15, 0.38);
 }

@@ -20,6 +20,7 @@ import {
   Timestamp,
 } from "./shared";
 import { z } from "zod";
+import { evaluateCommunityContentRisk, getCommunitySafetyConfig } from "./communitySafety";
 
 const REGION = "us-central1";
 const EVENTS_COL = "events";
@@ -45,6 +46,18 @@ const listEventSignupsSchema = z.object({
 
 const eventIdSchema = z.object({
   eventId: z.string().min(1),
+});
+
+const publishEventSchema = z.object({
+  eventId: z.string().min(1),
+  forcePublish: z.boolean().optional(),
+  overrideReason: z.string().max(500).optional().nullable(),
+});
+
+const staffSetEventStatusSchema = z.object({
+  eventId: z.string().min(1),
+  status: z.enum(["draft", "cancelled"]),
+  reason: z.string().max(500).optional().nullable(),
 });
 
 const createEventSchema = z.object({
@@ -235,7 +248,7 @@ export const listEvents = onRequest({ region: REGION, cors: true }, async (req, 
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "listEvents",
     max: 30,
@@ -326,7 +339,7 @@ export const listEventSignups = onRequest({ region: REGION }, async (req, res) =
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "listEventSignups",
     max: 20,
@@ -492,7 +505,7 @@ export const createEvent = onRequest({ region: REGION, timeoutSeconds: 60 }, asy
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "createEvent",
     max: 10,
@@ -537,6 +550,32 @@ export const createEvent = onRequest({ region: REGION, timeoutSeconds: 60 }, asy
     return;
   }
 
+  const safetyConfig = await getCommunitySafetyConfig();
+  if (safetyConfig.publishKillSwitch) {
+    res.status(503).json({
+      ok: false,
+      message: "Community publishing is temporarily paused by staff.",
+    });
+    return;
+  }
+
+  const scan = evaluateCommunityContentRisk(
+    {
+      textFields: [
+        { field: "title", text: title },
+        { field: "summary", text: summary },
+        { field: "description", text: description },
+        { field: "location", text: location },
+        { field: "policyCopy", text: policyCopy },
+        { field: "firingDetails", text: firingDetails ?? "" },
+      ],
+      explicitUrls: [],
+    },
+    safetyConfig
+  );
+  const requiresReview = safetyConfig.autoFlagEnabled && scan.flagged && scan.severity === "high";
+  const initialStatus = requiresReview ? "review_required" : "draft";
+
   const ref = db.collection(EVENTS_COL).doc();
   const t = nowTs();
 
@@ -559,7 +598,19 @@ export const createEvent = onRequest({ region: REGION, timeoutSeconds: 60 }, asy
     waitlistEnabled,
     offerClaimWindowHours,
     cancelCutoffHours,
-    status: "draft",
+    status: initialStatus,
+    moderation: {
+      score: scan.score,
+      severity: scan.severity,
+      flagged: scan.flagged,
+      triggers: scan.triggers,
+      requiresReview,
+      reviewed: false,
+      reviewDecision: null,
+      reviewNote: null,
+      scannedAt: t,
+      scannedByUid: auth.uid,
+    },
     ticketedCount: 0,
     offeredCount: 0,
     checkedInCount: 0,
@@ -569,7 +620,18 @@ export const createEvent = onRequest({ region: REGION, timeoutSeconds: 60 }, asy
     publishedAt: null,
   });
 
-  res.status(200).json({ ok: true, eventId: ref.id });
+  res.status(200).json({
+    ok: true,
+    eventId: ref.id,
+    status: initialStatus,
+    moderation: {
+      score: scan.score,
+      severity: scan.severity,
+      flagged: scan.flagged,
+      triggerCount: scan.triggers.length,
+      requiresReview,
+    },
+  });
 });
 
 export const publishEvent = onRequest({ region: REGION }, async (req, res) => {
@@ -592,13 +654,13 @@ export const publishEvent = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  const parsed = parseBody(eventIdSchema, req.body);
+  const parsed = parseBody(publishEventSchema, req.body);
   if (!parsed.ok) {
     res.status(400).json({ ok: false, message: parsed.message });
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "publishEvent",
     max: 10,
@@ -610,21 +672,137 @@ export const publishEvent = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  const eventId = safeString(parsed.data.eventId).trim();
+  const safetyConfig = await getCommunitySafetyConfig();
+  if (safetyConfig.publishKillSwitch) {
+    res.status(503).json({
+      ok: false,
+      message: "Community publishing is temporarily paused by staff.",
+    });
+    return;
+  }
 
-  const ref = db.collection(EVENTS_COL).doc(eventId);
+  const eventId = safeString(parsed.data.eventId).trim();
+  const forcePublish = parsed.data.forcePublish === true;
+  const overrideReason = safeString(parsed.data.overrideReason).trim();
+
+  const eventRef = db.collection(EVENTS_COL).doc(eventId);
+  const eventSnap = await eventRef.get();
+  if (!eventSnap.exists) {
+    res.status(404).json({ ok: false, message: "Event not found" });
+    return;
+  }
+
+  const eventData = (eventSnap.data() as Record<string, any>) ?? {};
+  const moderation = (eventData.moderation as Record<string, any> | undefined) ?? {};
+  const requiresReview = moderation.requiresReview === true || (moderation.flagged === true && safeString(moderation.severity) === "high");
+
+  if (requiresReview && !forcePublish) {
+    res.status(409).json({
+      ok: false,
+      message: "Event is flagged for safety review. Provide forcePublish with overrideReason to proceed.",
+    });
+    return;
+  }
+  if (forcePublish && !overrideReason) {
+    res.status(400).json({
+      ok: false,
+      message: "overrideReason is required when forcePublish is true.",
+    });
+    return;
+  }
+
   const t = nowTs();
 
-  await ref.set(
+  await eventRef.set(
     {
       status: "published",
       publishedAt: t,
       updatedAt: t,
+      moderation: {
+        ...moderation,
+        reviewed: true,
+        reviewDecision: forcePublish ? "allow_override" : "allow",
+        reviewNote: forcePublish ? overrideReason : null,
+        reviewedAt: t,
+        reviewedByUid: auth.uid,
+      },
     },
     { merge: true }
   );
 
   res.status(200).json({ ok: true, status: "published" });
+});
+
+export const staffSetEventStatus = onRequest({ region: REGION }, async (req, res) => {
+  if (applyCors(req, res)) return;
+
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+
+  const admin = await requireAdmin(req);
+  if (!admin.ok) {
+    res.status(403).json({ ok: false, message: "Forbidden" });
+    return;
+  }
+
+  const parsed = parseBody(staffSetEventStatusSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const rate = await enforceRateLimit({
+    req,
+    key: "staffSetEventStatus",
+    max: 20,
+    windowMs: 60_000,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ ok: false, message: "Too many requests" });
+    return;
+  }
+
+  const eventId = safeString(parsed.data.eventId).trim();
+  const nextStatus = parsed.data.status;
+  const reason = safeString(parsed.data.reason).trim();
+  if (nextStatus === "cancelled" && !reason) {
+    res.status(400).json({ ok: false, message: "Reason is required when cancelling an event." });
+    return;
+  }
+
+  const eventRef = db.collection(EVENTS_COL).doc(eventId);
+  const eventSnap = await eventRef.get();
+  if (!eventSnap.exists) {
+    res.status(404).json({ ok: false, message: "Event not found" });
+    return;
+  }
+
+  const t = nowTs();
+  const patch: Record<string, unknown> = {
+    status: nextStatus,
+    updatedAt: t,
+    lastStatusChangedByUid: auth.uid,
+    lastStatusReason: reason || null,
+    lastStatusChangedAt: t,
+  };
+
+  if (nextStatus === "cancelled") {
+    patch.cancelledAt = t;
+  } else if (nextStatus === "draft") {
+    patch.cancelledAt = null;
+  }
+
+  await eventRef.set(patch, { merge: true });
+  res.status(200).json({ ok: true, status: nextStatus });
 });
 
 export const signupForEvent = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
@@ -647,7 +825,7 @@ export const signupForEvent = onRequest({ region: REGION, timeoutSeconds: 60 }, 
     return;
   }
 
-  const rate = enforceRateLimit({
+  const rate = await enforceRateLimit({
     req,
     key: "signupForEvent",
     max: 6,
@@ -770,7 +948,7 @@ export const cancelEventSignup = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "cancelEventSignup",
       max: 6,
@@ -941,7 +1119,7 @@ export const claimEventOffer = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "claimEventOffer",
       max: 6,
@@ -1070,7 +1248,7 @@ export const checkInEvent = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "checkInEvent",
       max: 10,
@@ -1186,7 +1364,7 @@ export const createEventCheckoutSession = onRequest(
       return;
     }
 
-    const rate = enforceRateLimit({
+    const rate = await enforceRateLimit({
       req,
       key: "eventCheckout",
       max: 6,
@@ -1357,7 +1535,10 @@ export const createEventCheckoutSession = onRequest(
       res.status(200).json({ ok: true, checkoutUrl: session.url });
     } catch (err: any) {
       logger.error("createEventCheckoutSession failed", err);
-      res.status(500).json({ ok: false, message: err?.message ?? String(err) });
+      res.status(500).json({
+        ok: false,
+        message: "Unable to start checkout right now. Please try again in a minute.",
+      });
     }
   }
 );
@@ -1550,3 +1731,4 @@ export const sweepEventOffers = onSchedule(
     }
   }
 );
+

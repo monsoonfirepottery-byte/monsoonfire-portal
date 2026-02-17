@@ -2802,11 +2802,13 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
 
 .new-thread select[multiple],
 .new-thread label:has(select[multiple]) {
-  display: none;
-}
-
-.new-thread select[multiple] {
-  min-height: 110px;
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  min-height: 0 !important;
 }
 
 .new-thread textarea {

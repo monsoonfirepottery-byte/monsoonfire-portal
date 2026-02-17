@@ -4,6 +4,7 @@ import * as logger from "firebase-functions/logger";
 import {
   applyCors,
   requireAuthContext,
+  requireAdmin,
   isStaffFromDecoded,
   db,
   nowTs,
@@ -59,6 +60,45 @@ function getRequestId(req: RequestLike): string {
   const provided = readHeaderFirst(req, "x-request-id");
   if (provided) return provided.slice(0, 128);
   return `req_${randomBytes(12).toString("base64url")}`;
+}
+
+const ROUTE_FAMILY_V1 = "v1";
+const ROUTE_FAMILY_LEGACY = "legacy";
+type RouteFamily = typeof ROUTE_FAMILY_V1 | typeof ROUTE_FAMILY_LEGACY;
+
+function getRouteFamily(req: RequestLike): RouteFamily {
+  const marker = (req as { __routeFamily?: string | undefined }).__routeFamily;
+  return marker === ROUTE_FAMILY_LEGACY ? ROUTE_FAMILY_LEGACY : ROUTE_FAMILY_V1;
+}
+
+function includeRouteFamilyMetadata(
+  req: RequestLike,
+  metadata?: Record<string, unknown> | null
+): Record<string, unknown> {
+  return {
+    ...(metadata ?? {}),
+    routeFamily: getRouteFamily(req),
+  };
+}
+
+async function logReservationAuditEvent(
+  params: Parameters<typeof logAuditEvent>[0] & {
+    req: RequestLike;
+    requestId: string;
+    action: string;
+    resourceType: string;
+    ownerUid?: string | null;
+    result: "allow" | "deny" | "error";
+    resourceId?: string | null;
+    reasonCode?: string | null;
+    ctx?: AuthContext | null;
+    metadata?: Record<string, unknown> | null;
+  }
+) {
+  await logAuditEvent({
+    ...params,
+    metadata: includeRouteFamilyMetadata(params.req, params.metadata),
+  });
 }
 
 function jsonOk(res: ResponseLike, requestId: string, data: unknown) {
@@ -1396,6 +1436,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
 
   const requestId = getRequestId(req);
   const flags = readAuthFeatureFlags();
+  const routeFamily = getRouteFamily(req);
 
   if (req.method !== "POST") {
     jsonError(res, requestId, 405, "INVALID_ARGUMENT", "Use POST");
@@ -1412,7 +1453,10 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       resourceId: typeof req.path === "string" ? req.path : "/",
       result: "deny",
       reasonCode: appCheck.code,
-      metadata: { enforcedByFlag: flags.enforceAppCheck },
+      metadata: {
+        enforcedByFlag: flags.enforceAppCheck,
+        routeFamily,
+      },
     });
     jsonError(res, requestId, appCheck.httpStatus, appCheck.code, appCheck.message);
     return;
@@ -1428,6 +1472,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       resourceId: typeof req.path === "string" ? req.path : "/",
       result: "deny",
       reasonCode: ctxResult.code,
+      metadata: { routeFamily },
     });
     jsonError(res, requestId, 401, "UNAUTHENTICATED", ctxResult.message);
     return;
@@ -1448,7 +1493,10 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       result: "deny",
       reasonCode: "ROUTE_NOT_FOUND",
       ctx,
-      metadata: { resourceType: route.split(".")[0].replace("/v1/", "") },
+      metadata: {
+        resourceType: route.split(".")[0].replace("/v1/", ""),
+        routeFamily,
+      },
     });
     jsonError(res, requestId, 404, "NOT_FOUND", "Unknown route", { route });
     return;
@@ -2462,6 +2510,21 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         return;
       }
 
+      const admin = await requireAdmin(req);
+      if (!admin.ok) {
+        await logReservationAuditEvent({
+          req,
+          requestId,
+          action: "reservations_update_admin_auth",
+          resourceType: "reservation",
+          result: "deny",
+          reasonCode: admin.message,
+          ctx,
+        });
+        jsonError(res, requestId, 401, "UNAUTHORIZED", admin.message);
+        return;
+      }
+
       const parsed = parseBody(reservationUpdateSchema, req.body);
       if (!parsed.ok) {
         jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
@@ -2509,11 +2572,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
 
       try {
         const now = nowTs();
-        const actorRole = isStaff
-          ? "staff"
-          : ctx.mode === "firebase"
-            ? "client"
-            : "dev";
+        const actorRole = admin.mode === "staff" ? "staff" : "dev";
 
         const out = await db.runTransaction(async (tx) => {
           const snap = await tx.get(reservationRef);
@@ -2642,6 +2701,21 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         return;
       }
 
+      const admin = await requireAdmin(req);
+      if (!admin.ok) {
+        await logReservationAuditEvent({
+          req,
+          requestId,
+          action: "reservations_assign_station_admin_auth",
+          resourceType: "reservation",
+          result: "deny",
+          reasonCode: admin.message,
+          ctx,
+        });
+        jsonError(res, requestId, 401, "UNAUTHORIZED", admin.message);
+        return;
+      }
+
       const parsed = parseBody(reservationsAssignStationSchema, req.body);
       if (!parsed.ok) {
         jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
@@ -2689,7 +2763,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
 
       try {
         const now = nowTs();
-        const actorRole = isStaff ? "staff" : ctx.mode === "firebase" ? "client" : "dev";
+        const actorRole = admin.mode === "staff" ? "staff" : "dev";
         const assignedStationId = normalizeStationId(parsed.data.assignedStationId);
 
         if (!assignedStationId || !isValidStation(assignedStationId)) {

@@ -147,6 +147,126 @@ $seedSpecs = @(
     )
   },
   @{
+    file = "sba_loan_programs.csv"
+    rows = @(
+      [pscustomobject]@{
+        parcel = ""; owner_name = "US SBA"; property_address = ""; city = ""; state = "AZ"; postal_code = "";
+        signal_type = "financial_assistance_rate"; distress_stage = "monitoring"; amount = ""; event_date = $nowIso;
+        case_number = "SBA-LOAN-001"; record_url = "https://www.sba.gov/funding-programs/loans"; notes = "SBA loan programs and financing options."
+      }
+    )
+  },
+  @{
+    file = "hud_grants_and_funding.csv"
+    rows = @(
+      [pscustomobject]@{
+        parcel = ""; owner_name = "HUD"; property_address = ""; city = ""; state = "AZ"; postal_code = "";
+        signal_type = "grant_opportunity"; distress_stage = "funding_open"; amount = ""; event_date = $nowIso;
+        case_number = "HUD-001"; record_url = "https://www.hud.gov/program_offices/spm/gmomgmt/grantsinfo"; notes = "HUD grants information page."
+      }
+    )
+  },
+  @{
+    file = "eda_grants_and_competitions.csv"
+    rows = @(
+      [pscustomobject]@{
+        parcel = ""; owner_name = "EDA"; property_address = ""; city = ""; state = "AZ"; postal_code = "";
+        signal_type = "grant_opportunity"; distress_stage = "funding_open"; amount = ""; event_date = $nowIso;
+        case_number = "EDA-001"; record_url = "https://www.eda.gov/funding"; notes = "EDA funding and competitions page."
+      }
+    )
+  },
+  @{
+    file = "doe_funding_opportunities.csv"
+    rows = @(
+      [pscustomobject]@{
+        parcel = ""; owner_name = "DOE"; property_address = ""; city = ""; state = "AZ"; postal_code = "";
+        signal_type = "grant_opportunity"; distress_stage = "funding_open"; amount = ""; event_date = $nowIso;
+        case_number = "DOE-001"; record_url = "https://www.energy.gov/eere/funding/eere-funding-opportunities"; notes = "DOE funding opportunities."
+      }
+    )
+  },
+  @{
+    file = "data_gov_business_assistance_catalog.csv"
+    rows = @(
+      [pscustomobject]@{
+        parcel = ""; owner_name = "Data.gov"; property_address = ""; city = ""; state = "AZ"; postal_code = "";
+        signal_type = "grant_opportunity"; distress_stage = "monitoring"; amount = ""; event_date = $nowIso;
+        case_number = "DATAGOV-001"; record_url = "https://catalog.data.gov/api/3/action/package_search?q=arizona+small+business+grant+procurement&rows=100"; notes = "Data.gov business assistance catalog query."
+      }
+    )
+  },
+  @{
+    file = "usaspending_assistance_award_explorer.csv"
+    rows = @(
+      [pscustomobject]@{
+        parcel = ""; owner_name = "USASpending"; property_address = ""; city = ""; state = "AZ"; postal_code = "";
+        signal_type = "financial_assistance_rate"; distress_stage = "monitoring"; amount = ""; event_date = $nowIso;
+        case_number = "USASPENDING-001"; record_url = "https://www.usaspending.gov/search/"; notes = "USASpending award explorer."
+      }
+    )
+  },
+  @{
+    file = "sam_gov_contract_opportunities.csv"
+    rows = @(
+      [pscustomobject]@{
+        parcel = ""; owner_name = "SAM.gov"; property_address = ""; city = ""; state = "AZ"; postal_code = "";
+        signal_type = "procurement_opportunity"; distress_stage = "funding_open"; amount = ""; event_date = $nowIso;
+        case_number = "SAM-001"; record_url = "https://sam.gov/content/opportunities"; notes = "Federal contract opportunities."
+      }
+    )
+  },
+  @{
+    file = "az_state_procurement_portal.csv"
+    rows = @(
+      [pscustomobject]@{
+        parcel = ""; owner_name = "State of Arizona"; property_address = ""; city = "Arizona"; state = "AZ"; postal_code = "";
+        signal_type = "procurement_opportunity"; distress_stage = "funding_open"; amount = ""; event_date = $nowIso;
+        case_number = "AZ-PROCURE-001"; record_url = "https://procure.az.gov/"; notes = "Arizona procurement portal."
+      }
+    )
+  },
+  @{
+    file = "city_phoenix_procurement_bids.csv"
+    rows = @(
+      [pscustomobject]@{
+        parcel = ""; owner_name = "City of Phoenix"; property_address = ""; city = "Phoenix"; state = "AZ"; postal_code = "";
+        signal_type = "procurement_opportunity"; distress_stage = "funding_open"; amount = ""; event_date = $nowIso;
+        case_number = "PHX-PROCURE-001"; record_url = "https://www.phoenix.gov/finance/procurement"; notes = "Phoenix procurement and bid resources."
+      }
+    )
+  },
+  @{
+    file = "maricopa_county_procurement.csv"
+    rows = @(
+      [pscustomobject]@{
+        parcel = ""; owner_name = "Maricopa County"; property_address = ""; city = "Maricopa County"; state = "AZ"; postal_code = "";
+        signal_type = "procurement_opportunity"; distress_stage = "funding_open"; amount = ""; event_date = $nowIso;
+        case_number = "MCO-PROCURE-001"; record_url = "https://www.maricopa.gov/3624/Bids"; notes = "Maricopa County bids and solicitations."
+      }
+    )
+  },
+  @{
+    file = "craigslist_pottery_assistance_signals.csv"
+    rows = @(
+      [pscustomobject]@{
+        parcel = ""; owner_name = "craigslist"; property_address = ""; city = "Phoenix"; state = "AZ"; postal_code = "";
+        signal_type = "community_signal"; distress_stage = "monitoring"; amount = ""; event_date = $nowIso;
+        case_number = "CL-HELP-001"; record_url = "https://phoenix.craigslist.org/search/jjj?query=pottery+studio+assistant"; notes = "Craigslist pottery assistance watch."
+      }
+    )
+  },
+  @{
+    file = "reddit_pottery_assistance_signals.csv"
+    rows = @(
+      [pscustomobject]@{
+        parcel = ""; owner_name = "reddit"; property_address = ""; city = "Phoenix"; state = "AZ"; postal_code = "";
+        signal_type = "community_signal"; distress_stage = "monitoring"; amount = ""; event_date = $nowIso;
+        case_number = "REDDIT-HELP-001"; record_url = "https://www.reddit.com/search/?q=phoenix+pottery+assistant"; notes = "Reddit pottery assistance watch."
+      }
+    )
+  },
+  @{
     file = "maricopa_recorder_document_feed.csv"
     rows = @(
       [pscustomobject]@{

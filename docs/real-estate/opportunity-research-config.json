@@ -1,0 +1,68 @@
+{
+  "marketArea": "West Valley and Phoenix, Arizona",
+  "maxLinksPerSourceFile": 10,
+  "categories": [
+    {
+      "key": "grant_funding",
+      "score": 24,
+      "keywords": ["grant", "funding", "incentive", "rebate", "tax credit", "award", "matching funds"]
+    },
+    {
+      "key": "financial_assistance_rates",
+      "score": 20,
+      "keywords": ["loan", "interest rate", "apr", "prime rate", "fixed rate", "variable rate", "financing"]
+    },
+    {
+      "key": "procurement_buildout",
+      "score": 22,
+      "keywords": ["rfp", "request for proposal", "solicitation", "bid", "procurement", "build-out", "facility expansion", "manufacturing"]
+    },
+    {
+      "key": "community_help_wanted",
+      "score": 14,
+      "keywords": ["help wanted", "assistant", "studio help", "pottery help", "ceramic assistant", "contract help"]
+    },
+    {
+      "key": "workforce_programs",
+      "score": 16,
+      "keywords": ["apprenticeship", "workforce", "training grant", "upskilling", "technical assistance"]
+    }
+  ],
+  "sourceTypeTrust": {
+    "government_program": 90,
+    "government_procurement": 88,
+    "government_signal": 78,
+    "grant_program": 82,
+    "government_data": 75,
+    "public_signal": 74,
+    "listing_marketplace": 56,
+    "broker_research": 60,
+    "finance_data": 66,
+    "community_signal": 32,
+    "public_web": 48,
+    "fallback": 40
+  },
+  "sourceKeyTrustOverrides": {
+    "grants_gov_opportunities": 94,
+    "sba_grants_and_funding_programs": 93,
+    "sba_loan_programs": 93,
+    "hud_grants_and_funding": 92,
+    "eda_grants_and_competitions": 92,
+    "doe_funding_opportunities": 92,
+    "data_gov_business_assistance_catalog": 90,
+    "usaspending_assistance_award_explorer": 90,
+    "sam_gov_contract_opportunities": 92,
+    "city_phoenix_procurement_bids": 90,
+    "az_state_procurement_portal": 88,
+    "maricopa_county_procurement": 88,
+    "reddit_pottery_assistance_signals": 28,
+    "craigslist_pottery_assistance_signals": 26,
+    "meta_marketplace_community_signals": 26
+  },
+  "suspicionPatterns": [
+    { "pattern": "ignore previous instructions", "weight": 12 },
+    { "pattern": "wire money", "weight": 10 },
+    { "pattern": "crypto only", "weight": 8 },
+    { "pattern": "deposit required", "weight": 6 }
+  ]
+}

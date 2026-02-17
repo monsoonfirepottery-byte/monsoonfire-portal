@@ -1,16 +1,16 @@
 # Real Estate Public Signals Run
 
-- generatedAtUtc: 2026-02-17T23:10:04.5763803Z
+- generatedAtUtc: 2026-02-17T23:04:55.4163285Z
 - configuredSources: 33
 - enabledSources: 33
 - stagingDir: D:\monsoonfire-portal\output\real-estate\staging\public-signals
 - manualDropDir: D:\monsoonfire-portal\output\real-estate\manual-drops
-- loadedSources: 31
-- failedSources: 0
-- totalSignals: 750
+- loadedSources: 30
+- failedSources: 1
+- totalSignals: 715
 - highPrioritySignals: 21
-- mediumPrioritySignals: 398
-- promptInjectionScanned: 750
+- mediumPrioritySignals: 393
+- promptInjectionScanned: 715
 - promptInjectionFlagged: 0
 - promptInjectionBlocked: 0
 
@@ -50,7 +50,7 @@
 | City Phoenix Procurement Bids | government_procurement | ok | local | 14 | 0 | 0 |
 | Maricopa County Procurement | government_procurement | ok | local | 1 | 0 | 0 |
 | Craigslist Pottery Assistance Signals | community_signal | ok | local | 6 | 0 | 0 |
-| Reddit Pottery Assistance Signals | community_signal | ok | local | 80 | 0 | 0 |
+| Reddit Pottery Assistance Signals | community_signal | error | none | 0 | 0 | 0 |
 
 ## Top Signals
 
@@ -79,14 +79,14 @@
 | 55 | high | trustee_sale | monitoring | Maricopa County |  | Maricopa County Recorder | Maricopa Recorder Trustee and Legal Notices |
 | 52 | medium | ownership_transfer | monitoring | AVONDALE | 101-01-289 | ADKINS JAMES PETER/KAYLA VICTORIA | Maricopa Assessor Ownership History |
 | 52 | medium | ownership_transfer | monitoring | TOLLESON | 101-14-162 | AMEZCUA DENNY MATA/CASTILLO MARAY | Maricopa Assessor Ownership History |
-| 50 | medium | grant_opportunity | funding_open |  |  | EDA | EDA Grants and Competitions |
-| 50 | medium | procurement_opportunity | funding_open | Arizona |  | State of Arizona | Arizona State Procurement Portal |
-| 50 | medium | procurement_opportunity | funding_open | Maricopa County |  | Maricopa County | Maricopa County Procurement |
 | 50 | medium | grant_opportunity | funding_open | Phoenix |  | City of Phoenix EED | City of Phoenix Business Grants Programs |
 | 50 | medium | grant_opportunity | funding_open | Phoenix |  | Arizona Commerce Authority | Arizona Commerce Grants and Incentives |
-| 48 | medium | ownership_transfer | monitoring | AVONDALE | 101-01-310 | MALMROSE CARA | Maricopa Assessor Ownership History |
 | 48 | medium | ownership_transfer | monitoring | AVONDALE | 101-01-471 | LOPEZ FRYDA MENDOZA/CARDENAS ANDREW | Maricopa Assessor Ownership History |
 | 48 | medium | ownership_transfer | monitoring | AVONDALE | 101-01-043 | GASTELUM IRAM D CHAVARIN | Maricopa Assessor Ownership History |
+| 48 | medium | ownership_transfer | monitoring | AVONDALE | 101-01-310 | MALMROSE CARA | Maricopa Assessor Ownership History |
+| 47 | medium | tax_delinquent | monitoring | Maricopa County |  |  | Maricopa Treasurer Delinquent Roll |
+| 47 | medium | tax_delinquent | monitoring | Maricopa County |  |  | Maricopa Treasurer Delinquent Roll |
+| 47 | medium | tax_delinquent | monitoring | Maricopa County |  |  | Maricopa Treasurer Delinquent Roll |
 | 47 | medium | tax_delinquent | monitoring | Maricopa County |  |  | Maricopa Treasurer Delinquent Roll |
 | 47 | medium | tax_delinquent | monitoring | Maricopa County |  |  | Maricopa Treasurer Delinquent Roll |
 | 47 | medium | tax_delinquent | monitoring | Maricopa County |  |  | Maricopa Treasurer Delinquent Roll |

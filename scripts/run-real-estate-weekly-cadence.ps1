@@ -8,9 +8,10 @@ Executes deterministic stages in sequence:
 2) structured signal scoring and guardrails
 3) macro + parcel context builds
 4) agentic lead scan
-5) studio needs context derivation
-6) intelligence analysis and task queue generation
-7) human review packet generation
+5) skepticism-first opportunity research scan
+6) studio needs context derivation
+7) intelligence analysis and task queue generation
+8) human review packet generation
 
 Produces a machine-readable manifest with per-step status and duration.
 
@@ -41,6 +42,7 @@ $steps = @(
   @{ name = "build_parcel_graph"; cmd = "pwsh -File scripts/build-real-estate-parcel-graph.ps1 -PublicSignalsPath `"$OutputDir/public-signals-latest.json`" -OutputDir `"$OutputDir`"" },
   @{ name = "build_entity_resolution"; cmd = "pwsh -File scripts/build-real-estate-entity-resolution.ps1 -PublicSignalsPath `"$OutputDir/public-signals-latest.json`" -ParcelGraphPath `"$OutputDir/parcel-graph-latest.json`" -OutputDir `"$OutputDir`"" },
   @{ name = "run_agentic_research"; cmd = "pwsh -File scripts/run-real-estate-agentic-research.ps1 -OutputDir `"$OutputDir`" -PublicSignalsPath `"$OutputDir/public-signals-latest.json`" -MacroContextPath `"$OutputDir/macro-context-latest.json`"" },
+  @{ name = "run_opportunity_research"; cmd = "pwsh -File scripts/run-real-estate-opportunity-research.ps1 -OutputDir `"$OutputDir`" -ConfigPath `"docs/real-estate/opportunity-research-config.json`" -PublicSignalsPath `"$OutputDir/public-signals-latest.json`" -AgenticResearchPath `"$OutputDir/agentic-research-latest.json`" -PublicDataManifestPath `"$PublicDataDir/latest-manifest.json`" -MacroContextPath `"$OutputDir/macro-context-latest.json`"" },
   @{ name = "seed_studio_asset_manual_drops"; cmd = "pwsh -File scripts/seed-studio-asset-manual-drops.ps1 -ConfigPath `"docs/real-estate/studio-asset-intel-config.json`" -ManualDropDir `"$ManualDropDir/studio-assets`"" },
   @{ name = "fetch_studio_asset_community_data"; cmd = "pwsh -File scripts/fetch-studio-asset-community-data.ps1 -ConfigPath `"docs/real-estate/studio-asset-intel-config.json`" -OutDir `"$OutputDir/asset-community-data`" -StagingDir `"$OutputDir/staging/studio-assets`"" },
   @{ name = "run_studio_asset_intelligence"; cmd = "pwsh -File scripts/run-studio-asset-intelligence.ps1 -ConfigPath `"docs/real-estate/studio-asset-intel-config.json`" -PriorityListPath `"docs/real-estate/studio-needed-wanted-list.json`" -OutputDir `"$OutputDir`" -AutoFeedDir `"$OutputDir/staging/studio-assets`" -ManualDropDir `"$ManualDropDir/studio-assets`"" },

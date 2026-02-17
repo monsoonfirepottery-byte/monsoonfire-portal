@@ -109,6 +109,15 @@ Status: Active
 - [x] Add StudioBrain coordinator adapters so swarm outputs can be actioned from Discord, CLI, and Portal UI with consistent command contracts.
   - Script: `scripts/build-studiobrain-coordinator-adapters.ps1`
   - Output: `output/real-estate/studiobrain-coordinator-latest.json`
+- [x] Add skepticism-first opportunities research layer for grants/programs/rates/procurement/community requests.
+  - Script: `scripts/run-real-estate-opportunity-research.ps1`
+  - Config: `docs/real-estate/opportunity-research-config.json`
+  - Outputs: `output/real-estate/opportunity-research-latest.json`, `output/real-estate/opportunity-research-task-queue-latest.json`
+  - Weekly integration: `scripts/run-real-estate-weekly-cadence.ps1`
+- [x] Prepopulate opportunity intelligence coverage across free/public federal/state/local databases.
+  - Added source adapters: SAM.gov, USASpending explorer, Data.gov assistance catalog, HUD, EDA, DOE, SBA loans, ProcureAZ, Phoenix/Maricopa procurement, Craigslist/Reddit assistance signals.
+  - Scripts: `scripts/fetch-real-estate-public-data.ps1`, `scripts/build-real-estate-public-signal-staging.ps1`, `scripts/seed-real-estate-manual-drops.ps1`
+  - Config: `docs/real-estate/public-signal-sources.json`
 
 ## Later
 - [ ] Add a single-glaze tiles board (photos/notes per glaze, not just combos).

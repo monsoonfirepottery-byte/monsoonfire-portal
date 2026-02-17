@@ -1,0 +1,2165 @@
+{
+  "generatedAtUtc": "2026-02-17T23:08:08.2084542Z",
+  "runId": "20260217T230808Z",
+  "marketArea": "West Valley and Phoenix, Arizona",
+  "summary": {
+    "totalCandidates": 137,
+    "totalOpportunities": 40,
+    "highPriority": 40,
+    "mediumPriority": 0,
+    "highSkepticism": 0,
+    "categoryCounts": {
+      "financial_assistance_rates": 13,
+      "procurement_buildout": 19,
+      "grant_funding": 39
+    }
+  },
+  "inputs": {
+    "configPath": "D:\\monsoonfire-portal\\docs\\real-estate\\opportunity-research-config.json",
+    "publicSignalsPath": "D:\\monsoonfire-portal\\output\\real-estate\\public-signals-latest.json",
+    "agenticResearchPath": "D:\\monsoonfire-portal\\output\\real-estate\\agentic-research-20260217T213505Z.json",
+    "publicDataManifestPath": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\latest-manifest.json",
+    "macroContextPath": "D:\\monsoonfire-portal\\output\\real-estate\\macro-context-latest.json"
+  },
+  "dataPolicy": {
+    "defaultTrustLevel": "suspect_until_verified",
+    "verificationRule": "Never commit funds or outreach without primary-source validation.",
+    "highRiskTrigger": "skepticismScore >= 75"
+  },
+  "rateContext": {
+    "fedFundsRate": null,
+    "crePriceIndexYoYPct": 0.0,
+    "sentiment": "easing_credit_bias",
+    "note": "Context only; verify current lender and program rates before decisions."
+  },
+  "sourceCoverage": [
+    {
+      "sourceKey": "az_commerce_grants_incentives",
+      "opportunities": 1
+    },
+    {
+      "sourceKey": "city_phoenix_business_grants_programs",
+      "opportunities": 1
+    },
+    {
+      "sourceKey": "city_phoenix_procurement_bids",
+      "opportunities": 12
+    },
+    {
+      "sourceKey": "grants_gov_opportunities",
+      "opportunities": 3
+    },
+    {
+      "sourceKey": "sam_gov_contract_opportunities",
+      "opportunities": 4
+    },
+    {
+      "sourceKey": "sba_grants_and_funding_programs",
+      "opportunities": 9
+    },
+    {
+      "sourceKey": "sba_loan_programs",
+      "opportunities": 11
+    }
+  ],
+  "topOpportunities": [
+    {
+      "opportunityId": "oppr-https-www-phoenix-gov-eed-20260217",
+      "title": "grant_opportunity | Phoenix",
+      "summary": "stage=funding_open ; owner=City of Phoenix EED ; City business and economic development landing page.",
+      "url": "https://www.phoenix.gov/eed",
+      "publishedAt": "02/17/2026 20:07:06",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "grant"
+      ],
+      "opportunityScore": 96,
+      "confidenceScore": 97,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "cross_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 2,
+        "sourceKeys": [
+          "city_phoenix_business_grants_programs"
+        ],
+        "sourceSystems": [
+          "agentic_research",
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "City of Phoenix Business Grants Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-https-www-sba-gov-priorities-american-manufacturers-2026021",
+      "title": "Made in America Manufacturing Initiative",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "https://www.sba.gov/priorities/american-manufacturers",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "grant",
+        "manufacturing"
+      ],
+      "opportunityScore": 96,
+      "confidenceScore": 77,
+      "skepticismScore": 0,
+      "urgencyScore": 42,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_grants_and_funding_programs"
+        ],
+        "sourceSystems": [
+          "public_data_manifest"
+        ]
+      },
+      "sources": [
+        "SBA Grants and Funding Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-grants-manufacturing-gra",
+      "title": "SBA grants to help American small manufacturers",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "https://www.sba.gov/funding-programs/grants/manufacturing-grants",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "grant",
+        "manufacturing"
+      ],
+      "opportunityScore": 96,
+      "confidenceScore": 77,
+      "skepticismScore": 0,
+      "urgencyScore": 42,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_grants_and_funding_programs"
+        ],
+        "sourceSystems": [
+          "public_data_manifest"
+        ]
+      },
+      "sources": [
+        "SBA Grants and Funding Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-covid-19-relief-op",
+      "title": "report fraud",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "https://www.sba.gov/funding-programs/loans/covid-19-relief-options/preventing-fraud-identity-theft",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "financial_assistance_rates",
+      "categories": [
+        "financial_assistance_rates",
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "grant",
+        "loan"
+      ],
+      "opportunityScore": 94,
+      "confidenceScore": 77,
+      "skepticismScore": 0,
+      "urgencyScore": 42,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_grants_and_funding_programs"
+        ],
+        "sourceSystems": [
+          "public_data_manifest"
+        ]
+      },
+      "sources": [
+        "SBA Grants and Funding Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-7a-loans-20260217",
+      "title": "Fund or grow your small business",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "https://www.sba.gov/funding-programs/loans/7a-loans",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "financial_assistance_rates",
+      "categories": [
+        "financial_assistance_rates",
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "loan"
+      ],
+      "opportunityScore": 92,
+      "confidenceScore": 77,
+      "skepticismScore": 0,
+      "urgencyScore": 42,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_loan_programs"
+        ],
+        "sourceSystems": [
+          "public_data_manifest"
+        ]
+      },
+      "sources": [
+        "SBA Loan Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-lender-match-conne",
+      "title": "Lender Match",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "https://www.sba.gov/funding-programs/loans/lender-match-connects-you-lenders",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "financial_assistance_rates",
+      "categories": [
+        "financial_assistance_rates",
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "loan"
+      ],
+      "opportunityScore": 92,
+      "confidenceScore": 77,
+      "skepticismScore": 0,
+      "urgencyScore": 42,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_loan_programs"
+        ],
+        "sourceSystems": [
+          "public_data_manifest"
+        ]
+      },
+      "sources": [
+        "SBA Loan Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-microloans-2026021",
+      "title": "Get funding for small improvements",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "https://www.sba.gov/funding-programs/loans/microloans",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "financial_assistance_rates",
+      "categories": [
+        "financial_assistance_rates",
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "loan"
+      ],
+      "opportunityScore": 92,
+      "confidenceScore": 77,
+      "skepticismScore": 0,
+      "urgencyScore": 42,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_loan_programs"
+        ],
+        "sourceSystems": [
+          "public_data_manifest"
+        ]
+      },
+      "sources": [
+        "SBA Loan Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-504-loans-20260217",
+      "title": "Finance your business&#039;s growth",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "https://www.sba.gov/funding-programs/loans/504-loans",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "financial_assistance_rates",
+      "categories": [
+        "financial_assistance_rates",
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "loan"
+      ],
+      "opportunityScore": 92,
+      "confidenceScore": 77,
+      "skepticismScore": 0,
+      "urgencyScore": 42,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_loan_programs"
+        ],
+        "sourceSystems": [
+          "public_data_manifest"
+        ]
+      },
+      "sources": [
+        "SBA Loan Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-disaster-assistance-2026",
+      "title": "recovering from a declared disaster",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "https://www.sba.gov/funding-programs/disaster-assistance",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "financial_assistance_rates",
+      "categories": [
+        "financial_assistance_rates",
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "loan"
+      ],
+      "opportunityScore": 92,
+      "confidenceScore": 77,
+      "skepticismScore": 0,
+      "urgencyScore": 42,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_loan_programs"
+        ],
+        "sourceSystems": [
+          "public_data_manifest"
+        ]
+      },
+      "sources": [
+        "SBA Loan Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-make-payment-sba-2",
+      "title": "how to make a payment",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "https://www.sba.gov/funding-programs/loans/make-payment-sba",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "financial_assistance_rates",
+      "categories": [
+        "financial_assistance_rates",
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "loan"
+      ],
+      "opportunityScore": 92,
+      "confidenceScore": 77,
+      "skepticismScore": 0,
+      "urgencyScore": 42,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_loan_programs"
+        ],
+        "sourceSystems": [
+          "public_data_manifest"
+        ]
+      },
+      "sources": [
+        "SBA Loan Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-disaster-assistance-opti",
+      "title": "Read more about this option.",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "https://www.sba.gov/funding-programs/disaster-assistance/options-bypass-permitting-delays",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "financial_assistance_rates",
+      "categories": [
+        "financial_assistance_rates",
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "grant",
+        "loan"
+      ],
+      "opportunityScore": 92,
+      "confidenceScore": 77,
+      "skepticismScore": 0,
+      "urgencyScore": 42,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 2,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_grants_and_funding_programs",
+          "sba_loan_programs"
+        ],
+        "sourceSystems": [
+          "public_data_manifest"
+        ]
+      },
+      "sources": [
+        "SBA Grants and Funding Programs",
+        "SBA Loan Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-https-www-sba-gov-offices-headquarters-oit-20260217",
+      "title": "Office of Manufacturing and Trade",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "https://www.sba.gov/offices/headquarters/oit",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "financial_assistance_rates",
+      "categories": [
+        "financial_assistance_rates",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "loan",
+        "manufacturing"
+      ],
+      "opportunityScore": 91,
+      "confidenceScore": 77,
+      "skepticismScore": 0,
+      "urgencyScore": 42,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_loan_programs"
+        ],
+        "sourceSystems": [
+          "public_data_manifest"
+        ]
+      },
+      "sources": [
+        "SBA Loan Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-www-grants-gov-20260217",
+      "title": "Grants.gov Opportunities",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "https://www.grants.gov/",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "grant"
+      ],
+      "opportunityScore": 82,
+      "confidenceScore": 86,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "cross_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 2,
+        "sourceKeys": [
+          "grants_gov_opportunities"
+        ],
+        "sourceSystems": [
+          "public_data_manifest",
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "Grants.gov Opportunities"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-http-blog-grants-gov-20260217",
+      "title": "Blog",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "http://blog.grants.gov/",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "grant"
+      ],
+      "opportunityScore": 82,
+      "confidenceScore": 86,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "cross_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 2,
+        "sourceKeys": [
+          "grants_gov_opportunities"
+        ],
+        "sourceSystems": [
+          "public_data_manifest",
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "Grants.gov Opportunities"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-https-www-azcommerce-com-small-business-financing-20260217",
+      "title": "Arizona financing and support programs.",
+      "summary": "Arizona financing and support programs.",
+      "url": "https://www.azcommerce.com/small-business/financing/",
+      "publishedAt": "02/17/2026 20:07:06",
+      "primaryCategory": "financial_assistance_rates",
+      "categories": [
+        "financial_assistance_rates",
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "financing",
+        "funding",
+        "grant",
+        "incentive"
+      ],
+      "opportunityScore": 82,
+      "confidenceScore": 70,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "az_commerce_grants_incentives"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "Arizona Commerce Grants and Incentives"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-https-www-sba-gov-federal-contracting-counseling-help-20260",
+      "title": "government procurement/buildout opportunity watch link",
+      "summary": "government procurement/buildout opportunity watch link",
+      "url": "https://www.sba.gov/federal-contracting/counseling-help",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "procurement"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 76,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sam_gov_contract_opportunities"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "SAM.gov Contract Opportunities"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-open-gsa-gov-api-get-opportunities-public-api-2026021",
+      "title": "government procurement/buildout opportunity watch link",
+      "summary": "government procurement/buildout opportunity watch link",
+      "url": "https://open.gsa.gov/api/get-opportunities-public-api/",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "procurement"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 76,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sam_gov_contract_opportunities"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "SAM.gov Contract Opportunities"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-demo-mars-ussba-io-funding-programs-loans-lender-matc",
+      "title": "grant/funding opportunity watch link",
+      "summary": "grant/funding opportunity watch link",
+      "url": "https://demo.mars.ussba.io/funding-programs/loans/lender-match-connects-you-lenders",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "financial_assistance_rates",
+      "categories": [
+        "financial_assistance_rates",
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "grant",
+        "loan"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 76,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_loan_programs"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "SBA Loan Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-https-cms-prod-iae-mcaas-fcs-gsa-gov-opportunities-20260217",
+      "title": "government procurement/buildout opportunity watch link",
+      "summary": "government procurement/buildout opportunity watch link",
+      "url": "https://cms.prod.iae.mcaas.fcs.gsa.gov/opportunities",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "procurement"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 76,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sam_gov_contract_opportunities"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "SAM.gov Contract Opportunities"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-20260217",
+      "title": "grant/funding opportunity watch link",
+      "summary": "grant/funding opportunity watch link",
+      "url": "https://www.sba.gov/funding-programs/loans",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "financial_assistance_rates",
+      "categories": [
+        "financial_assistance_rates",
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "grant",
+        "loan"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 76,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_loan_programs"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "SBA Loan Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-https-www-acquisition-gov-q-procurement-forecasts-20260217",
+      "title": "government procurement/buildout opportunity watch link",
+      "summary": "government procurement/buildout opportunity watch link",
+      "url": "https://www.acquisition.gov/?q=procurement-forecasts",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "procurement"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 76,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sam_gov_contract_opportunities"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "SAM.gov Contract Opportunities"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-www-sba-gov-es-programas-de-financiamiento-prestamos-",
+      "title": "grant/funding opportunity watch link",
+      "summary": "grant/funding opportunity watch link",
+      "url": "https://www.sba.gov/es/programas-de-financiamiento/prestamos",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "financial_assistance_rates",
+      "categories": [
+        "financial_assistance_rates",
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "grant",
+        "loan"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 76,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_loan_programs"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "SBA Loan Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-https-procurement-opengov-com-login-34-20260217",
+      "title": "government procurement/buildout opportunity watch link",
+      "summary": "government procurement/buildout opportunity watch link",
+      "url": "https://procurement.opengov.com/login&#34;}}",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "bid",
+        "funding",
+        "procurement"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 74,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "city_phoenix_procurement_bids"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "City Phoenix Procurement Bids"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-procurement-opengov-com-signup-34-20260217",
+      "title": "government procurement/buildout opportunity watch link",
+      "summary": "government procurement/buildout opportunity watch link",
+      "url": "https://procurement.opengov.com/signup&#34;}}",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "bid",
+        "funding",
+        "procurement"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 74,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "city_phoenix_procurement_bids"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "City Phoenix Procurement Bids"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-solicitations-phoenix-gov-34-20260217",
+      "title": "government procurement/buildout opportunity watch link",
+      "summary": "government procurement/buildout opportunity watch link",
+      "url": "https://solicitations.phoenix.gov/&#34;}}",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "bid",
+        "funding",
+        "procurement"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 74,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "city_phoenix_procurement_bids"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "City Phoenix Procurement Bids"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-procurement-opengov-com-login-20260217",
+      "title": "government procurement/buildout opportunity watch link",
+      "summary": "government procurement/buildout opportunity watch link",
+      "url": "https://procurement.opengov.com/login",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "bid",
+        "funding",
+        "procurement"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 74,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "city_phoenix_procurement_bids"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "City Phoenix Procurement Bids"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-www-phoenix-gov-adobe-dynamicmedia-deliver-dm-aid-c08",
+      "title": "government procurement/buildout opportunity watch link",
+      "summary": "government procurement/buildout opportunity watch link",
+      "url": "https://www.phoenix.gov/adobe/dynamicmedia/deliver/dm-aid--c08e0bbc-bd65-44c8-a26a-d232078ff87d/logo-procurephx-color-web--3-.jpg?preferwebp=true&amp;quality=85",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "bid",
+        "funding",
+        "procurement"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 74,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "city_phoenix_procurement_bids"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "City Phoenix Procurement Bids"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-procurement-opengov-com-portal-phoenix-20260217",
+      "title": "government procurement/buildout opportunity watch link",
+      "summary": "government procurement/buildout opportunity watch link",
+      "url": "https://procurement.opengov.com/portal/phoenix/",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "bid",
+        "funding",
+        "procurement"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 74,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "city_phoenix_procurement_bids"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "City Phoenix Procurement Bids"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-procurement-opengov-com-portal-phoenix-calendar-34-20",
+      "title": "government procurement/buildout opportunity watch link",
+      "summary": "government procurement/buildout opportunity watch link",
+      "url": "https://procurement.opengov.com/portal/phoenix/calendar&#34;}}",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "bid",
+        "funding",
+        "procurement"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 74,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "city_phoenix_procurement_bids"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "City Phoenix Procurement Bids"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-procurement-opengov-com-portal-phoenix-34-20260217",
+      "title": "government procurement/buildout opportunity watch link",
+      "summary": "government procurement/buildout opportunity watch link",
+      "url": "https://procurement.opengov.com/portal/phoenix&#34;}}",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "bid",
+        "funding",
+        "procurement"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 74,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "city_phoenix_procurement_bids"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "City Phoenix Procurement Bids"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-procurement-opengov-com-signup-20260217",
+      "title": "government procurement/buildout opportunity watch link",
+      "summary": "government procurement/buildout opportunity watch link",
+      "url": "https://procurement.opengov.com/signup",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "bid",
+        "funding",
+        "procurement"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 74,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "city_phoenix_procurement_bids"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "City Phoenix Procurement Bids"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-solicitations-phoenix-gov-20260217",
+      "title": "government procurement/buildout opportunity watch link",
+      "summary": "government procurement/buildout opportunity watch link",
+      "url": "https://solicitations.phoenix.gov/",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "bid",
+        "funding",
+        "procurement"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 74,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "city_phoenix_procurement_bids"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "City Phoenix Procurement Bids"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-www-phoenix-gov-administration-departments-finance-pr",
+      "title": "government procurement/buildout opportunity watch link",
+      "summary": "government procurement/buildout opportunity watch link",
+      "url": "https://www.phoenix.gov/administration/departments/finance/procurement.html",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "bid",
+        "funding",
+        "procurement"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 74,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "city_phoenix_procurement_bids"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "City Phoenix Procurement Bids"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-procurement-opengov-com-portal-phoenix-calendar-20260",
+      "title": "government procurement/buildout opportunity watch link",
+      "summary": "government procurement/buildout opportunity watch link",
+      "url": "https://procurement.opengov.com/portal/phoenix/calendar",
+      "publishedAt": "02/17/2026 23:08:05",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding",
+        "procurement_buildout"
+      ],
+      "matchedKeywords": [
+        "bid",
+        "funding",
+        "procurement"
+      ],
+      "opportunityScore": 81,
+      "confidenceScore": 74,
+      "skepticismScore": 0,
+      "urgencyScore": 76,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "city_phoenix_procurement_bids"
+        ],
+        "sourceSystems": [
+          "public_signals"
+        ]
+      },
+      "sources": [
+        "City Phoenix Procurement Bids"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "check_eligibility_scope_and_deadline"
+    },
+    {
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-grants-state-trade-expan",
+      "title": "State Trade Expansion Program (STEP)",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "https://www.sba.gov/funding-programs/grants/state-trade-expansion-program-step",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "grant"
+      ],
+      "opportunityScore": 76,
+      "confidenceScore": 77,
+      "skepticismScore": 0,
+      "urgencyScore": 42,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_grants_and_funding_programs"
+        ],
+        "sourceSystems": [
+          "public_data_manifest"
+        ]
+      },
+      "sources": [
+        "SBA Grants and Funding Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-grants-grants-community-",
+      "title": "grants to community organizations",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "https://www.sba.gov/funding-programs/grants/grants-community-organizations",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "grant"
+      ],
+      "opportunityScore": 76,
+      "confidenceScore": 77,
+      "skepticismScore": 0,
+      "urgencyScore": 42,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_grants_and_funding_programs"
+        ],
+        "sourceSystems": [
+          "public_data_manifest"
+        ]
+      },
+      "sources": [
+        "SBA Grants and Funding Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-https-www-sbir-gov-20260217",
+      "title": "Small Business Innovation Research (SBIR)",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "https://www.sbir.gov/",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "grant"
+      ],
+      "opportunityScore": 76,
+      "confidenceScore": 77,
+      "skepticismScore": 0,
+      "urgencyScore": 42,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_grants_and_funding_programs"
+        ],
+        "sourceSystems": [
+          "public_data_manifest"
+        ]
+      },
+      "sources": [
+        "SBA Grants and Funding Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-https-www-sba-gov-about-sba-organization-contact-sba-202602",
+      "title": "Contact SBA",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "https://www.sba.gov/about-sba/organization/contact-sba",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "grant"
+      ],
+      "opportunityScore": 76,
+      "confidenceScore": 77,
+      "skepticismScore": 0,
+      "urgencyScore": 42,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_grants_and_funding_programs"
+        ],
+        "sourceSystems": [
+          "public_data_manifest"
+        ]
+      },
+      "sources": [
+        "SBA Grants and Funding Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-return-to-top-sba-grants-and-funding-programs-20260217",
+      "title": "Return to top",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "#",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "funding",
+        "grant"
+      ],
+      "opportunityScore": 76,
+      "confidenceScore": 77,
+      "skepticismScore": 0,
+      "urgencyScore": 42,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "sba_grants_and_funding_programs"
+        ],
+        "sourceSystems": [
+          "public_data_manifest"
+        ]
+      },
+      "sources": [
+        "SBA Grants and Funding Programs"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    },
+    {
+      "opportunityId": "oppr-login-grants-gov-opportunities-20260217",
+      "title": "Login",
+      "summary": "Derived from fetched opportunity page links.",
+      "url": "#",
+      "publishedAt": "02/17/2026 23:08:04",
+      "primaryCategory": "grant_funding",
+      "categories": [
+        "grant_funding"
+      ],
+      "matchedKeywords": [
+        "grant"
+      ],
+      "opportunityScore": 75,
+      "confidenceScore": 78,
+      "skepticismScore": 0,
+      "urgencyScore": 42,
+      "verificationStatus": "source_verified",
+      "skepticismReasons": [],
+      "corroboration": {
+        "sourceCount": 1,
+        "systemCount": 1,
+        "sourceKeys": [
+          "grants_gov_opportunities"
+        ],
+        "sourceSystems": [
+          "public_data_manifest"
+        ]
+      },
+      "sources": [
+        "Grants.gov Opportunities"
+      ],
+      "cautionNotes": [
+        "Treat as suspect until corroborated with primary source documents.",
+        "Verify source freshness and eligibility before execution."
+      ],
+      "recommendedNextStep": "validate_grant_fit_and_prepare_submission"
+    }
+  ],
+  "followUpQueue": [
+    {
+      "taskId": "opp-task-0062",
+      "opportunityId": "oppr-https-www-energy-gov-eere-solar-american-made-promoting-reg",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0060",
+      "opportunityId": "oppr-https-www-azcommerce-com-small-business-financing-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0058",
+      "opportunityId": "oppr-collapsebanner-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0057",
+      "opportunityId": "oppr-http-blog-grants-gov-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0056",
+      "opportunityId": "oppr-https-www-energy-gov-eere-solar-notice-funding-opportunity-",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0054",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-disaster-assistance-2026",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0053",
+      "opportunityId": "oppr-https-www-grants-gov-help-search-grants-search-grants-tab-2",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0101",
+      "opportunityId": "oppr-https-www-grants-gov-help-get-started-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0051",
+      "opportunityId": "oppr-https-www-sba-gov-priorities-american-manufacturers-2026021",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0102",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-lender-match-conne",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0049",
+      "opportunityId": "oppr-https-procurement-opengov-com-login-34-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0104",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-7a-loans-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0046",
+      "opportunityId": "oppr-return-to-top-sba-grants-and-funding-programs-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0106",
+      "opportunityId": "oppr-https-www-herox-com-capacityacceleratorfortribaloswengageme",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0084",
+      "opportunityId": "oppr-return-to-top-grants-gov-opportunities-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0042",
+      "opportunityId": "oppr-https-www-grants-gov-register-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0098",
+      "opportunityId": "oppr-https-www-sbir-gov-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0097",
+      "opportunityId": "oppr-https-www-sba-gov-federal-contracting-counseling-help-20260",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0063",
+      "opportunityId": "oppr-https-procurement-opengov-com-portal-phoenix-calendar-20260",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0064",
+      "opportunityId": "oppr-https-grants-gov-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0082",
+      "opportunityId": "oppr-https-www-grants-gov-site-search-results-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0087",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-microloans-2026021",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0088",
+      "opportunityId": "oppr-back-city-phoenix-procurement-bids-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0089",
+      "opportunityId": "oppr-residents-1-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0078",
+      "opportunityId": "oppr-https-procurement-opengov-com-signup-34-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0077",
+      "opportunityId": "oppr-https-demo-mars-ussba-io-funding-programs-loans-lender-matc",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0092",
+      "opportunityId": "oppr-https-procurement-opengov-com-signup-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0041",
+      "opportunityId": "oppr-https-www-grants-gov-search-tips-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0093",
+      "opportunityId": "oppr-main-content-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0072",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-disaster-assistance-opti",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0071",
+      "opportunityId": "oppr-https-www-energy-gov-eere-ammto-funding-notice-circular-sup",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0070",
+      "opportunityId": "oppr-login-grants-gov-opportunities-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0069",
+      "opportunityId": "oppr-https-www-energy-gov-hgeo-geothermal-articles-gto-announces",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0068",
+      "opportunityId": "oppr-https-www-hud-gov-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0096",
+      "opportunityId": "oppr-https-www-phoenix-gov-residents-pay-bill-html-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0065",
+      "opportunityId": "oppr-https-bit-ly-eere-exchange-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0094",
+      "opportunityId": "oppr-https-www-grants-gov-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0107",
+      "opportunityId": "oppr-https-solicitations-phoenix-gov-34-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0043",
+      "opportunityId": "oppr-https-cms-prod-iae-mcaas-fcs-gsa-gov-opportunities-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0038",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-504-loans-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0108",
+      "opportunityId": "oppr-https-www-phoenix-gov-eed-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0019",
+      "opportunityId": "oppr-https-www-sba-gov-about-sba-organization-contact-sba-202602",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0114",
+      "opportunityId": "oppr-https-www-phoenix-gov-administration-departments-finance-pr",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0015",
+      "opportunityId": "oppr-https-procurement-opengov-com-portal-phoenix-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0014",
+      "opportunityId": "oppr-residents-2-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0011",
+      "opportunityId": "oppr-https-www-phoenix-gov-administration-departments-court-viol",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0010",
+      "opportunityId": "oppr-https-www-sba-gov-es-programas-de-financiamiento-prestamos-",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0009",
+      "opportunityId": "oppr-https-www-phoenix-gov-adobe-dynamicmedia-deliver-dm-aid-c08",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0008",
+      "opportunityId": "oppr-https-procurement-opengov-com-login-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0007",
+      "opportunityId": "oppr-https-www-hud-gov-program-offices-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0119",
+      "opportunityId": "oppr-https-www-sba-gov-offices-headquarters-oit-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0005",
+      "opportunityId": "oppr-https-open-gsa-gov-api-get-opportunities-public-api-2026021",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0120",
+      "opportunityId": "oppr-https-www-energy-gov-eere-vehicles-articles-funding-notice-",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0121",
+      "opportunityId": "oppr-https-payonline-phoenix-gov-eportal-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0002",
+      "opportunityId": "oppr-https-www-energy-gov-sites-default-files-2025-02-ri-20tro-2",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0022",
+      "opportunityId": "oppr-export-detailed-data-grants-gov-opportunities-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0023",
+      "opportunityId": "oppr-https-www-sba-gov-funding-programs-loans-20260217",
+      "priority": "high",
+      "agentRole": "grant_funding_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0020",
+      "opportunityId": "oppr-https-www-phoenix-gov-administration-departments-waterservi",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0030",
+      "opportunityId": "oppr-https-procurement-opengov-com-portal-phoenix-calendar-34-20",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    },
+    {
+      "taskId": "opp-task-0109",
+      "opportunityId": "oppr-https-procurement-opengov-com-portal-phoenix-34-20260217",
+      "priority": "high",
+      "agentRole": "procurement_agent",
+      "objective": "Collect eligibility, timeline, and execution constraints with source citations.",
+      "dueWithinDays": 2
+    }
+  ]
+}

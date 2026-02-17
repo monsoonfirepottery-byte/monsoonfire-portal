@@ -1,0 +1,2 @@
+"parcel","owner_name","property_address","city","state","postal_code","signal_type","distress_stage","amount","event_date","case_number","record_url","notes"
+"","Data.gov","","","AZ","","grant_opportunity","monitoring","","2026-02-17T23:08:39.8783546Z","DATAGOV-001","https://catalog.data.gov/api/3/action/package_search?q=arizona+small+business+grant+procurement&rows=100","Data.gov business assistance catalog query."

@@ -248,7 +248,7 @@ $sources = @(
   [pscustomobject]@{
     key = "city_phoenix_business_grants_programs"
     name = "City of Phoenix Business Programs"
-    url = "https://www.phoenix.gov/eed/programs-and-resources"
+    url = "https://www.phoenix.gov/eed"
     mode = "text"
     file = "phoenix-business-programs.html"
   },
@@ -258,6 +258,95 @@ $sources = @(
     url = "https://www.sba.gov/funding-programs/grants"
     mode = "text"
     file = "sba-grants-and-funding-programs.html"
+  },
+  [pscustomobject]@{
+    key = "sba_loan_programs"
+    name = "SBA Loan Programs"
+    url = "https://www.sba.gov/funding-programs/loans"
+    mode = "text"
+    file = "sba-loan-programs.html"
+  },
+  [pscustomobject]@{
+    key = "sam_gov_contract_opportunities"
+    name = "SAM.gov Contract Opportunities"
+    url = "https://sam.gov/content/opportunities"
+    mode = "text"
+    file = "sam-gov-contract-opportunities.html"
+  },
+  [pscustomobject]@{
+    key = "usaspending_assistance_award_explorer"
+    name = "USASpending Assistance Award Explorer"
+    url = "https://www.usaspending.gov/search/?f=%7B%22award_type_codes%22%3A%5B%2202%22%2C%2203%22%2C%2204%22%2C%2205%22%5D%7D"
+    urlEnv = "REAL_ESTATE_SRC_USASPENDING_ASSISTANCE_URL"
+    mode = "text"
+    file = "usaspending-assistance-award-explorer.html"
+  },
+  [pscustomobject]@{
+    key = "data_gov_business_assistance_catalog"
+    name = "Data.gov Business Assistance Catalog Search"
+    url = "https://catalog.data.gov/api/3/action/package_search?q=arizona+small+business+grant+procurement&rows=100"
+    urlEnv = "REAL_ESTATE_SRC_DATA_GOV_BUSINESS_ASSISTANCE_URL"
+    mode = "json"
+    file = "data-gov-business-assistance-catalog.json"
+  },
+  [pscustomobject]@{
+    key = "hud_grants_and_funding"
+    name = "HUD Grants and Funding Resources"
+    url = "https://www.hud.gov/program_offices/spm/gmomgmt/grantsinfo"
+    urlEnv = "REAL_ESTATE_SRC_HUD_GRANTS_URL"
+    mode = "text"
+    file = "hud-grants-and-funding.html"
+  },
+  [pscustomobject]@{
+    key = "eda_grants_and_competitions"
+    name = "EDA Grants and Competitions"
+    url = "https://www.eda.gov/funding"
+    urlEnv = "REAL_ESTATE_SRC_EDA_GRANTS_URL"
+    mode = "text"
+    file = "eda-grants-and-competitions.html"
+  },
+  [pscustomobject]@{
+    key = "doe_funding_opportunities"
+    name = "DOE Funding Opportunities"
+    url = "https://www.energy.gov/eere/funding/eere-funding-opportunities"
+    urlEnv = "REAL_ESTATE_SRC_DOE_FUNDING_URL"
+    mode = "text"
+    file = "doe-funding-opportunities.html"
+  },
+  [pscustomobject]@{
+    key = "az_state_procurement_portal"
+    name = "Arizona State Procurement Portal"
+    url = "https://procure.az.gov/"
+    mode = "text"
+    file = "az-state-procurement-portal.html"
+  },
+  [pscustomobject]@{
+    key = "city_phoenix_procurement_bids"
+    name = "City of Phoenix Procurement and Bids"
+    url = "https://www.phoenix.gov/finance/procurement"
+    mode = "text"
+    file = "phoenix-procurement-bids.html"
+  },
+  [pscustomobject]@{
+    key = "maricopa_county_procurement"
+    name = "Maricopa County Procurement Opportunities"
+    url = "https://www.maricopa.gov/5561/Current-Bids"
+    mode = "text"
+    file = "maricopa-county-procurement-bids.html"
+  },
+  [pscustomobject]@{
+    key = "craigslist_pottery_assistance_signals"
+    name = "Craigslist Pottery Assistance Signals"
+    url = "https://phoenix.craigslist.org/search/jjj?query=pottery+studio+assistant"
+    mode = "text"
+    file = "craigslist-pottery-assistance-signals.html"
+  },
+  [pscustomobject]@{
+    key = "reddit_pottery_assistance_signals"
+    name = "Reddit Pottery Assistance Signals"
+    url = "https://www.reddit.com/search.json?q=(phoenix+pottery+assistant)+OR+(ceramic+studio+help)+OR+(kiln+assistant)&sort=new&limit=100"
+    mode = "json"
+    file = "reddit-pottery-assistance-signals.json"
   },
   [pscustomobject]@{
     key = "az_state_surplus_property_auctions"

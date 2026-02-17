@@ -21,6 +21,8 @@ Provide one high-level, operational map of what the real-estate intelligence sta
 12. Supports authenticated source adapters with credential rotation for gated feeds.
 13. Adds parcel/entity resolution enrichment and recorder fallback staging for anti-bot resilience.
 14. Produces StudioBrain channel command contracts for Discord/CLI/Portal adapters.
+15. Produces skepticism-first opportunity research across grants/programs/rates/procurement/community asks.
+16. Prepopulates opportunities from free/public federal-state-local datasets and portals.
 
 ## Trust and safety boundaries
 1. Community feeds are low-trust and corroboration-gated.
@@ -32,20 +34,22 @@ Provide one high-level, operational map of what the real-estate intelligence sta
 1. `scripts/fetch-real-estate-public-data.ps1`
 2. `scripts/seed-real-estate-manual-drops.ps1`
 3. `scripts/build-real-estate-public-signal-staging.ps1`
-4. `scripts/run-real-estate-public-signals.ps1`
-5. `scripts/build-real-estate-macro-context.ps1`
-6. `scripts/build-real-estate-parcel-graph.ps1`
-7. `scripts/run-real-estate-agentic-research.ps1`
-8. `scripts/run-recorder-fallback-adapter.ps1`
-9. `scripts/seed-studio-asset-manual-drops.ps1`
-10. `scripts/fetch-studio-asset-community-data.ps1`
-11. `scripts/run-studio-asset-intelligence.ps1`
-12. `scripts/build-real-estate-needs-context.ps1`
-13. `scripts/run-real-estate-intelligence-analysis.ps1`
-14. `scripts/run-real-estate-review-packet.ps1`
-15. `scripts/build-studiobrain-coordinator-adapters.ps1`
-16. Orchestrator: `scripts/run-real-estate-weekly-cadence.ps1`
-17. Test suite: `scripts/run-real-estate-test-suite.ps1`
+4. `scripts/run-recorder-fallback-adapter.ps1`
+5. `scripts/run-real-estate-public-signals.ps1`
+6. `scripts/build-real-estate-macro-context.ps1`
+7. `scripts/build-real-estate-parcel-graph.ps1`
+8. `scripts/build-real-estate-entity-resolution.ps1`
+9. `scripts/run-real-estate-agentic-research.ps1`
+10. `scripts/run-real-estate-opportunity-research.ps1`
+11. `scripts/seed-studio-asset-manual-drops.ps1`
+12. `scripts/fetch-studio-asset-community-data.ps1`
+13. `scripts/run-studio-asset-intelligence.ps1`
+14. `scripts/build-real-estate-needs-context.ps1`
+15. `scripts/run-real-estate-intelligence-analysis.ps1`
+16. `scripts/run-real-estate-review-packet.ps1`
+17. `scripts/build-studiobrain-coordinator-adapters.ps1`
+18. Orchestrator: `scripts/run-real-estate-weekly-cadence.ps1`
+19. Test suite: `scripts/run-real-estate-test-suite.ps1`
 
 ## Primary output contracts
 1. Structured signals:
@@ -66,12 +70,15 @@ Provide one high-level, operational map of what the real-estate intelligence sta
    - `output/real-estate/intelligence-steering-log-latest.json`
 7. Weekly health:
    - `output/real-estate/weekly-cadence-latest.json`
-8. Studio asset opportunities:
+8. Opportunity research:
+   - `output/real-estate/opportunity-research-latest.json`
+   - `output/real-estate/opportunity-research-task-queue-latest.json`
+9. Studio asset opportunities:
    - `output/real-estate/studio-asset-intelligence-latest.json`
    - `output/real-estate/studio-asset-watchlist-latest.json`
-9. Entity resolution:
+10. Entity resolution:
    - `output/real-estate/entity-resolution-latest.json`
-10. Coordinator contracts:
+11. Coordinator contracts:
    - `output/real-estate/studiobrain-coordinator-latest.json`
 
 ## Human steering contract
@@ -116,9 +123,8 @@ Asset needed/wanted + consumables source:
 
 ## What this system does not do yet
 1. No dedicated frontend review UI yet (artifact-first model).
-2. No authenticated/gated source adapters yet.
-3. No advanced LLC/entity resolution confidence model yet.
-4. No native Discord/Portal command adapter layer yet (contracts are ready).
+2. No advanced LLC/entity-resolution confidence model yet.
+3. No native Discord/Portal execution bridge yet (contracts exist; runtime adapter remains).
 
 ## Minimum operator workflow
 1. Run `scripts/run-real-estate-weekly-cadence.ps1`.

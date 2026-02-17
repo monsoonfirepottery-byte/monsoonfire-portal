@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-02-17T23:08:05.4366225Z",
-  "runId": "20260217T230805Z",
+  "generatedAtUtc": "2026-02-17T23:04:53.8092190Z",
+  "runId": "20260217T230453Z",
   "inputs": {
     "publicDataManifestPath": "D:\\monsoonfire-portal\\output\\real-estate\\public-data\\latest-manifest.json"
   },
@@ -78,13 +78,6 @@
       "notes": "Derived from free/public government auction pages."
     },
     {
-      "sourceKey": "az_state_surplus_property_auctions",
-      "mode": "staged",
-      "rowCount": 0,
-      "outputPath": "output\\real-estate\\staging\\public-signals\\az_state_surplus_property_auctions.csv",
-      "notes": "Derived from free/public government auction pages."
-    },
-    {
       "sourceKey": "maricopa_local_surplus_property_auctions",
       "mode": "staged",
       "rowCount": 0,
@@ -92,24 +85,24 @@
       "notes": "Derived from free/public government auction pages."
     },
     {
-      "sourceKey": "grants_gov_opportunities",
+      "sourceKey": "az_state_surplus_property_auctions",
       "mode": "staged",
-      "rowCount": 12,
-      "outputPath": "output\\real-estate\\staging\\public-signals\\grants_gov_opportunities.csv",
+      "rowCount": 0,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\az_state_surplus_property_auctions.csv",
+      "notes": "Derived from free/public government auction pages."
+    },
+    {
+      "sourceKey": "data_gov_business_assistance_catalog",
+      "mode": "staged",
+      "rowCount": 0,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\data_gov_business_assistance_catalog.csv",
       "notes": "Derived from free/public grants and funding pages."
     },
     {
-      "sourceKey": "usaspending_assistance_award_explorer",
+      "sourceKey": "doe_funding_opportunities",
       "mode": "staged",
-      "rowCount": 0,
-      "outputPath": "output\\real-estate\\staging\\public-signals\\usaspending_assistance_award_explorer.csv",
-      "notes": "Derived from free/public grants and funding pages."
-    },
-    {
-      "sourceKey": "eda_grants_and_competitions",
-      "mode": "staged",
-      "rowCount": 0,
-      "outputPath": "output\\real-estate\\staging\\public-signals\\eda_grants_and_competitions.csv",
+      "rowCount": 16,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\doe_funding_opportunities.csv",
       "notes": "Derived from free/public grants and funding pages."
     },
     {
@@ -120,10 +113,10 @@
       "notes": "Derived from free/public grants and funding pages."
     },
     {
-      "sourceKey": "az_commerce_grants_incentives",
+      "sourceKey": "sba_grants_and_funding_programs",
       "mode": "staged",
-      "rowCount": 0,
-      "outputPath": "output\\real-estate\\staging\\public-signals\\az_commerce_grants_incentives.csv",
+      "rowCount": 2,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\sba_grants_and_funding_programs.csv",
       "notes": "Derived from free/public grants and funding pages."
     },
     {
@@ -141,32 +134,32 @@
       "notes": "Derived from free/public grants and funding pages."
     },
     {
-      "sourceKey": "doe_funding_opportunities",
-      "mode": "staged",
-      "rowCount": 16,
-      "outputPath": "output\\real-estate\\staging\\public-signals\\doe_funding_opportunities.csv",
-      "notes": "Derived from free/public grants and funding pages."
-    },
-    {
-      "sourceKey": "data_gov_business_assistance_catalog",
+      "sourceKey": "usaspending_assistance_award_explorer",
       "mode": "staged",
       "rowCount": 0,
-      "outputPath": "output\\real-estate\\staging\\public-signals\\data_gov_business_assistance_catalog.csv",
+      "outputPath": "output\\real-estate\\staging\\public-signals\\usaspending_assistance_award_explorer.csv",
       "notes": "Derived from free/public grants and funding pages."
     },
     {
-      "sourceKey": "sba_grants_and_funding_programs",
-      "mode": "staged",
-      "rowCount": 2,
-      "outputPath": "output\\real-estate\\staging\\public-signals\\sba_grants_and_funding_programs.csv",
-      "notes": "Derived from free/public grants and funding pages."
-    },
-    {
-      "sourceKey": "az_state_procurement_portal",
+      "sourceKey": "eda_grants_and_competitions",
       "mode": "staged",
       "rowCount": 0,
-      "outputPath": "output\\real-estate\\staging\\public-signals\\az_state_procurement_portal.csv",
-      "notes": "Derived from free/public procurement and bid portals."
+      "outputPath": "output\\real-estate\\staging\\public-signals\\eda_grants_and_competitions.csv",
+      "notes": "Derived from free/public grants and funding pages."
+    },
+    {
+      "sourceKey": "az_commerce_grants_incentives",
+      "mode": "staged",
+      "rowCount": 0,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\az_commerce_grants_incentives.csv",
+      "notes": "Derived from free/public grants and funding pages."
+    },
+    {
+      "sourceKey": "grants_gov_opportunities",
+      "mode": "staged",
+      "rowCount": 12,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\grants_gov_opportunities.csv",
+      "notes": "Derived from free/public grants and funding pages."
     },
     {
       "sourceKey": "city_phoenix_procurement_bids",
@@ -176,10 +169,10 @@
       "notes": "Derived from free/public procurement and bid portals."
     },
     {
-      "sourceKey": "maricopa_county_procurement",
+      "sourceKey": "az_state_procurement_portal",
       "mode": "staged",
       "rowCount": 0,
-      "outputPath": "output\\real-estate\\staging\\public-signals\\maricopa_county_procurement.csv",
+      "outputPath": "output\\real-estate\\staging\\public-signals\\az_state_procurement_portal.csv",
       "notes": "Derived from free/public procurement and bid portals."
     },
     {
@@ -187,6 +180,13 @@
       "mode": "staged",
       "rowCount": 4,
       "outputPath": "output\\real-estate\\staging\\public-signals\\sam_gov_contract_opportunities.csv",
+      "notes": "Derived from free/public procurement and bid portals."
+    },
+    {
+      "sourceKey": "maricopa_county_procurement",
+      "mode": "staged",
+      "rowCount": 0,
+      "outputPath": "output\\real-estate\\staging\\public-signals\\maricopa_county_procurement.csv",
       "notes": "Derived from free/public procurement and bid portals."
     },
     {

@@ -283,16 +283,38 @@ select:focus-visible {
 
 .menu-toggle {
   display: none;
-  background: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--paper-50);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  min-height: 44px;
-  min-width: 44px;
-  padding: 8px 10px;
+  min-height: 48px;
+  min-width: 48px;
+  padding: 10px;
   font-family: var(--font-ui);
   text-transform: uppercase;
   letter-spacing: 0.2em;
   font-size: var(--text-xs);
+  color: var(--ink-900);
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.menu-toggle:hover {
+  border-color: var(--ink-700);
+  background: var(--paper-100);
+}
+
+.menu-toggle:focus-visible {
+  outline: 2px solid var(--accent-600);
+  outline-offset: 2px;
+}
+
+.menu-toggle[aria-expanded="true"] {
+  border-color: var(--ink-900);
+  background: var(--ink-900);
 }
 
 .menu-toggle span {
@@ -300,7 +322,26 @@ select:focus-visible {
   width: 18px;
   height: 2px;
   background: var(--ink-900);
-  margin: 3px 0;
+  margin: 0;
+  border-radius: 99px;
+  transform-origin: center;
+  transition: transform 0.2s ease, opacity 0.2s ease, background 0.2s ease;
+}
+
+.menu-toggle[aria-expanded="true"] span {
+  background: var(--paper-50);
+}
+
+.menu-toggle[aria-expanded="true"] span:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+
+.menu-toggle[aria-expanded="true"] span:nth-child(2) {
+  opacity: 0;
+}
+
+.menu-toggle[aria-expanded="true"] span:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
 }
 
 .section {
@@ -1462,8 +1503,11 @@ select:focus-visible {
     width: 100%;
     flex-direction: column;
     gap: 0;
-    padding: var(--space-4) 0;
-    border-top: 1px solid var(--border);
+    padding: var(--space-2) var(--space-3);
+    margin-top: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--paper-50);
     grid-column: 1 / -1;
     grid-row: 2;
   }
@@ -1492,8 +1536,19 @@ select:focus-visible {
   }
 
   .nav-links a {
-    padding: 12px 0;
+    min-height: 48px;
+    padding: 14px 0;
     border-bottom: 1px solid var(--border);
+  }
+
+  .nav-links a:last-child {
+    border-bottom: 0;
+  }
+
+  .nav-links a:focus-visible {
+    outline: 2px solid var(--accent-600);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
   }
 
   .nav-links a::after {

@@ -44,18 +44,55 @@
   const toggle = document.querySelector('[data-menu-toggle]');
   const nav = document.querySelector('[data-nav-links]');
   if (toggle && nav) {
+    if (!nav.id) {
+      nav.id = 'site-nav-links';
+    }
+    toggle.setAttribute('aria-controls', nav.id);
+    toggle.setAttribute('aria-label', 'Open menu');
+
+    const setMenuState = (isOpen) => {
+      nav.classList.toggle('open', isOpen);
+      toggle.setAttribute('aria-expanded', String(isOpen));
+      toggle.setAttribute('aria-label', isOpen ? 'Close menu' : 'Open menu');
+    };
+
     toggle.addEventListener('click', () => {
-      nav.classList.toggle('open');
       const expanded = toggle.getAttribute('aria-expanded') === 'true';
-      toggle.setAttribute('aria-expanded', String(!expanded));
+      setMenuState(!expanded);
     });
 
     nav.addEventListener('click', (event) => {
       if (event.target && event.target.matches('a')) {
-        nav.classList.remove('open');
-        toggle.setAttribute('aria-expanded', 'false');
+        setMenuState(false);
       }
     });
+
+    document.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (nav.contains(target) || toggle.contains(target)) return;
+      setMenuState(false);
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      if (toggle.getAttribute('aria-expanded') !== 'true') return;
+      setMenuState(false);
+      toggle.focus();
+    });
+
+    const desktopMedia = window.matchMedia('(min-width: 981px)');
+    const collapseOnDesktop = (media) => {
+      if (media.matches) {
+        setMenuState(false);
+      }
+    };
+    collapseOnDesktop(desktopMedia);
+    if (typeof desktopMedia.addEventListener === 'function') {
+      desktopMedia.addEventListener('change', collapseOnDesktop);
+    } else if (typeof desktopMedia.addListener === 'function') {
+      desktopMedia.addListener(collapseOnDesktop);
+    }
   }
 
   const normalizeLabel = (value) => {

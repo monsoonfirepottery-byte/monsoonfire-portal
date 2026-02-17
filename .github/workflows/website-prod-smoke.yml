@@ -1,0 +1,61 @@
+name: Website Production Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Website base URL"
+        required: false
+        default: "https://monsoonfire.com"
+  schedule:
+    - cron: "0 17 * * 2"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-prod-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Resolve base URL
+        id: base_url
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.base_url }}" ]; then
+            echo "value=${{ github.event.inputs.base_url }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=https://monsoonfire.com" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run production smoke
+        run: node ./scripts/website-playwright-smoke.mjs --base-url "${{ steps.base_url.outputs.value }}" --output-dir output/playwright/prod-ci
+
+      - name: Upload production smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: website-playwright-prod-smoke
+          path: output/playwright/prod-ci
+          if-no-files-found: ignore
+          retention-days: 14

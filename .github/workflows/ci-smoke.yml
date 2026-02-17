@@ -25,9 +25,13 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: |
+            package-lock.json
             web/package-lock.json
             functions/package-lock.json
             studio-brain/package-lock.json
+
+      - name: Install root deps
+        run: npm ci
 
       - name: Install web deps
         run: npm ci --prefix web
@@ -52,6 +56,21 @@ jobs:
 
       - name: Web accessibility smoke
         run: npm --prefix web run a11y:smoke
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Website Playwright smoke
+        run: npm run website:smoke:playwright
+
+      - name: Upload website smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: website-playwright-smoke
+          path: output/playwright
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Web build
         run: npm --prefix web run build

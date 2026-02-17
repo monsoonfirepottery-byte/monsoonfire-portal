@@ -11,6 +11,43 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/assets/css/styles.css" />
+  <style>
+    .support-quickstart-grid {
+      margin-top: var(--space-4);
+    }
+
+    .support-shortcuts {
+      margin-top: var(--space-3);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .support-task-groups {
+      display: grid;
+      gap: var(--space-4);
+    }
+
+    .support-task-group {
+      padding-top: var(--space-2);
+      border-top: 1px solid var(--border);
+    }
+
+    .support-task-group:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .support-task-title {
+      margin: 0 0 var(--space-2) 0;
+      font-family: var(--font-ui);
+      font-size: var(--text-xs);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--ink-700);
+      font-weight: 700;
+    }
+  </style>
   <!-- Google tag (gtag.js) -->
   <script src="/assets/js/analytics.js" defer></script>
   <meta property="og:site_name" content="Monsoon Fire Pottery" />
@@ -41,7 +78,7 @@
         <a href="/support/">Support</a>
         <a href="/highlights/">Gallery</a></nav>
             <div class="nav-portal-wrap">
-        <a class="nav-portal" href="https://monsoonfire.kilnfire.com" target="_blank" rel="noopener noreferrer">Login</a>
+        <a class="button button-ghost nav-login" href="https://monsoonfire.kilnfire.com" target="_blank" rel="noopener noreferrer">Login</a>
       </div><button class="menu-toggle" type="button" aria-label="Toggle menu" aria-expanded="false" data-menu-toggle>
         <span></span><span></span><span></span>
       </button>
@@ -54,8 +91,40 @@
         <div class="heading-block heading-block--compact">
           <p class="eyebrow">Support</p>
           <h1 class="section-title">Start here for answers.</h1>
-          <p class="lead">Search by keyword or filter by topic. Policies are summarized here and published in full in the portal.</p>
+          <p class="lead">Use the quick-start cards first, then open detailed FAQ answers and policy archive entries as needed.</p>
           <p class="meta"><a href="/policies/media-accessibility/">Media captions and transcript standard</a></p>
+        </div>
+        <div class="feature-grid support-quickstart-grid">
+          <article class="feature">
+            <h3>New here?</h3>
+            <p>Start an account first, then choose kiln firing, studio access, or membership path.</p>
+            <div class="support-shortcuts">
+              <button class="filter-toggle" type="button" data-topic="portal">Portal setup</button>
+              <button class="filter-toggle" type="button" data-topic="overview">Basics</button>
+            </div>
+          </article>
+          <article class="feature">
+            <h3>Firing and pickup</h3>
+            <p>Find request flow, scheduling cadence, and unload or pickup expectations.</p>
+            <div class="support-shortcuts">
+              <button class="filter-toggle" type="button" data-topic="kiln">Kiln process</button>
+              <button class="filter-toggle" type="button" data-topic="scheduling">Scheduling</button>
+            </div>
+          </article>
+          <article class="feature">
+            <h3>Membership, studio, and pricing</h3>
+            <p>See tier basics, studio access details, and common pricing/payment answers.</p>
+            <div class="support-shortcuts">
+              <button class="filter-toggle" type="button" data-topic="memberships">Memberships</button>
+              <button class="filter-toggle" type="button" data-topic="pricing">Pricing</button>
+              <button class="filter-toggle" type="button" data-topic="studio">Studio access</button>
+            </div>
+          </article>
+        </div>
+        <div class="section-divider" aria-hidden="true"></div>
+        <div class="heading-block heading-block--compact">
+          <p class="eyebrow">Detailed answers</p>
+          <h2 class="section-title">Search and filter full FAQ + policy content.</h2>
         </div>
         <div class="faq-toolbar">
           <div class="faq-search">
@@ -91,19 +160,19 @@
     <section class="section section--tight" data-faq-section>
       <div class="container">
         <div class="heading-block">
-          <p class="eyebrow">Questions</p>
-          <h2 class="section-title">Most common questions.</h2>
+          <p class="eyebrow">Questions by task</p>
+          <h2 class="section-title">Most common questions, grouped by what you need to do.</h2>
         </div>
-        <div data-faq-list></div>
+        <div class="support-task-groups" data-faq-list></div>
       </div>
     </section>
 
     <section class="section section--band" data-policy-section>
       <div class="container">
         <div class="heading-block">
-          <p class="eyebrow">Policies</p>
-          <h2 class="section-title">Studio policies archive.</h2>
-          <p class="lead">Policies are published through the portal and summarized here.</p>
+          <p class="eyebrow">Policy archive</p>
+          <h2 class="section-title">Deep policy details and formal summaries.</h2>
+          <p class="lead">Use this section when you need the full policy context. Portal records remain source of truth.</p>
           <p class="meta">Last updated: February 2, 2026</p>
         </div>
         <div data-policy-list></div>

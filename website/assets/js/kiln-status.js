@@ -56,10 +56,31 @@
   };
 
   const load = async () => {
+    const candidates = [
+      'https://us-central1-monsoonfire-portal.cloudfunctions.net/websiteKilnBoard',
+      '/api/websiteKilnBoard',
+      '/data/kiln-status.json',
+    ];
+
     try {
-      const res = await fetch('/data/kiln-status.json', { cache: 'no-store' });
-      if (!res.ok) throw new Error('Kiln status not available');
-      const data = await res.json();
+      let data = null;
+      let endpointError = null;
+      for (const endpoint of candidates) {
+        try {
+          const response = await fetch(endpoint, { cache: 'no-store' });
+          if (!response.ok) {
+            throw new Error(`Kiln status fetch failed: ${response.status}`);
+          }
+          data = await response.json();
+          break;
+        } catch (err) {
+          endpointError = err instanceof Error ? err.message : String(err);
+        }
+      }
+
+      if (!data) {
+        throw new Error(endpointError ?? 'Kiln status unavailable');
+      }
 
       list.replaceChildren();
       const kilnItems = Array.isArray(data?.kilns) ? data.kilns : [];

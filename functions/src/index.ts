@@ -82,6 +82,7 @@ import {
 } from "./agentCommerce";
 import { emitIntegrationEvent } from "./integrationEvents";
 import { executeStudioBrainPilotAction, rollbackStudioBrainPilotAction } from "./v3Execution/pilotFirestoreAction";
+export { websiteKilnBoard } from "./websiteKilnBoard";
 export {
   registerDeviceToken,
   unregisterDeviceToken,
@@ -2432,4 +2433,3 @@ export const backfillIsClosed = onRequest(
     res.status(200).json({ ok: true, scanned: snaps.size, updated });
   }
 );
-

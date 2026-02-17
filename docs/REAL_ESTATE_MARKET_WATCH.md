@@ -74,9 +74,30 @@ The markdown output includes:
 - fit-tier counts
 - ranked top candidates
 
+## Quarterly Trends + Agent Swarm Context
+Build quarterly trend context from all historical snapshot JSON artifacts:
+
+```powershell
+pwsh -File scripts/build-real-estate-quarterly-context.ps1 `
+  -InputDir "output/real-estate" `
+  -OutputDir "output/real-estate"
+```
+
+Outputs:
+- `output/real-estate/market-watch-history.csv`
+- `output/real-estate/real-estate-quarterly-report-YYYY-QX.md`
+- `output/real-estate/agent-swarm-context-YYYY-QX.json`
+
+The context JSON is designed as direct input to a real-estate agent swarm:
+- quarter-over-quarter pricing trend signals
+- recent run history tail
+- latest ranked candidates with fit metadata
+- concise baseline notes (home studio remains default baseline)
+
 ## Cadence
 - Weekly while actively searching.
 - Biweekly otherwise.
+- Quarterly: generate trend + swarm context pack.
 
 ## Live Data Notes
 - Pull listings from your preferred sources and export to CSV.

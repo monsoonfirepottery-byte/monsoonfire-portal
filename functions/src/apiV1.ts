@@ -358,6 +358,442 @@ const firingsListUpcomingSchema = z.object({
   limit: z.number().int().min(1).max(500).optional(),
 });
 
+const reservationCreateSchema = z.object({
+  firingType: z
+    .enum(["bisque", "glaze", "other"])
+    .optional()
+    .default("other"),
+  shelfEquivalent: z
+    .number()
+    .positive()
+    .min(0.25)
+    .max(999)
+    .default(1),
+  footprintHalfShelves: z.number().optional(),
+  heightInches: z.number().optional(),
+  tiers: z.number().optional(),
+  estimatedHalfShelves: z.number().optional(),
+  useVolumePricing: z.boolean().optional(),
+  volumeIn3: z.number().optional(),
+  estimatedCost: z.number().optional(),
+  preferredWindow: z
+    .object({
+      earliestDate: z.any().optional().nullable(),
+      latestDate: z.any().optional().nullable(),
+    })
+    .optional(),
+  linkedBatchId: z.string().optional().nullable(),
+  clientRequestId: z.string().optional().nullable(),
+  ownerUid: z.string().optional().nullable(),
+  wareType: z
+    .enum(["stoneware", "earthenware", "porcelain", "mixed", "other"])
+    .optional()
+    .nullable(),
+  kilnId: z.string().optional().nullable(),
+  kilnLabel: z.string().optional().nullable(),
+  quantityTier: z
+    .enum(["few", "small", "medium", "large"])
+    .optional()
+    .nullable(),
+  quantityLabel: z.string().optional().nullable(),
+  photoUrl: z.string().optional().nullable(),
+  photoPath: z.string().optional().nullable(),
+  notes: z
+    .object({
+      general: z.string().optional().nullable(),
+      clayBody: z.string().optional().nullable(),
+      glazeNotes: z.string().optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+  dropOffProfile: z
+    .object({
+      id: z.string().optional().nullable(),
+      label: z.string().optional().nullable(),
+      pieceCount: z.string().optional().nullable(),
+      hasTall: z.boolean().optional().nullable(),
+      stackable: z.boolean().optional().nullable(),
+      bisqueOnly: z.boolean().optional().nullable(),
+      specialHandling: z.boolean().optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+  dropOffQuantity: z
+    .object({
+      id: z.string().optional().nullable(),
+      label: z.string().optional().nullable(),
+      pieceRange: z.string().optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+  addOns: z
+    .object({
+      rushRequested: z.boolean().optional().nullable(),
+      wholeKilnRequested: z.boolean().optional().nullable(),
+      pickupDeliveryRequested: z.boolean().optional().nullable(),
+      returnDeliveryRequested: z.boolean().optional().nullable(),
+      useStudioGlazes: z.boolean().optional().nullable(),
+      glazeAccessCost: z.number().optional().nullable(),
+      waxResistAssistRequested: z.boolean().optional().nullable(),
+      glazeSanityCheckRequested: z.boolean().optional().nullable(),
+      deliveryAddress: z.string().optional().nullable(),
+      deliveryInstructions: z.string().optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+});
+
+const reservationsGetSchema = z.object({
+  reservationId: z.string().min(1),
+});
+
+const reservationsListSchema = z.object({
+  ownerUid: z.string().min(1).optional().nullable(),
+  limit: z.number().int().min(1).max(250).optional(),
+  status: z.string().optional().nullable(),
+  includeCancelled: z.boolean().optional(),
+});
+
+const ALLOWED_RESERVATION_STATUSES = new Set<string>([
+  "REQUESTED",
+  "CONFIRMED",
+  "WAITLISTED",
+  "CANCELLED",
+  "CONFIRMED_ARRIVED",
+  "LOADED",
+]);
+
+const ALLOWED_STATUS_TRANSITIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ["REQUESTED", new Set(["REQUESTED", "CONFIRMED", "WAITLISTED", "CANCELLED"])],
+  ["CONFIRMED", new Set(["CONFIRMED", "WAITLISTED", "CANCELLED", "LOADED"])],
+  ["WAITLISTED", new Set(["WAITLISTED", "CONFIRMED", "CANCELLED"])],
+  ["CANCELLED", new Set(["CANCELLED"])],
+  ["LOADED", new Set(["LOADED", "CANCELLED"])],
+  ["CONFIRMED_ARRIVED", new Set(["CONFIRMED_ARRIVED", "CANCELLED"])],
+]);
+
+const reservationUpdateSchema = z
+  .object({
+    reservationId: z.string().min(1).max(160).trim(),
+    status: z
+      .enum(["REQUESTED", "CONFIRMED", "WAITLISTED", "CANCELLED"])
+      .optional(),
+    loadStatus: z.enum(["queued", "loading", "loaded"]).optional(),
+    staffNotes: z.string().max(1500).optional().nullable(),
+    force: z.boolean().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.status && !value.loadStatus && value.staffNotes == null) {
+      ctx.addIssue({
+        code: "custom",
+        path: [],
+        message: "Provide status, loadStatus, or staffNotes.",
+      });
+    }
+  });
+
+const reservationsAssignStationSchema = z.object({
+  reservationId: z.string().min(1).max(160).trim(),
+  assignedStationId: z.string().min(1).max(120).trim(),
+  queueClass: z.string().max(120).optional().nullable(),
+  requiredResources: z
+    .object({
+      kilnProfile: z.string().max(120).optional().nullable(),
+      rackCount: z.number().int().min(1).max(20).optional().nullable(),
+      specialHandling: z.array(z.string().max(120)).max(20).optional(),
+    })
+    .partial()
+    .optional()
+    .nullable(),
+});
+
+const STATION_CAPACITY_HALF_SHELVES = {
+  "studio-kiln-a": 8,
+  "studio-kiln-b": 8,
+  "studio-electric": 8,
+  "reduction-raku": 8,
+} as const;
+
+type StationId = keyof typeof STATION_CAPACITY_HALF_SHELVES;
+
+type ReservationStatus = "REQUESTED" | "CONFIRMED" | "WAITLISTED" | "CANCELLED" | string;
+type ReservationLoadStatus = "queued" | "loading" | "loaded" | null;
+
+type ReservationStageHistoryEntry = {
+  fromStatus: string | null;
+  toStatus: string | null;
+  fromLoadStatus: ReservationLoadStatus;
+  toLoadStatus: ReservationLoadStatus;
+  fromStage: string;
+  toStage: string;
+  at: unknown;
+  actorUid: string;
+  actorRole: "staff" | "dev" | "client";
+  reason: string;
+  notes: string | null;
+};
+
+function normalizeReservationStatus(value: unknown): ReservationStatus | null {
+  if (typeof value !== "string") return null;
+  const up = value.trim().toUpperCase();
+  if (up === "CANCELED") return "CANCELLED";
+  return ALLOWED_RESERVATION_STATUSES.has(up) ? up : null;
+}
+
+function makeLoadStatusReason(before: ReservationLoadStatus, after: ReservationLoadStatus): string {
+  if (before === after) return "load_status_refresh";
+  if (after === "loaded") return "reservation_loaded";
+  if (before === null && after === "loading") return "reservation_loading_start";
+  return "reservation_load_status_change";
+}
+
+function normalizeLoadStatus(value: unknown): ReservationLoadStatus {
+  if (value === "loading" || value === "loaded") return value;
+  if (value === "queued" || value === null) return value;
+  return null;
+}
+
+function normalizeQueueClass(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const next = value.trim().toLowerCase();
+  return next.length ? next : null;
+}
+
+function parseReservationIsoDate(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  if (typeof value === "object") {
+    const maybe = value as { toDate?: () => Date };
+    if (typeof maybe.toDate === "function") {
+      try {
+        return maybe.toDate();
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+function normalizeNumber(value: unknown, fallback: number | null = null) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) return fallback;
+  return raw;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizeStationId(value: unknown): string | null {
+  const next = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return next.length ? next : null;
+}
+
+function isValidStation(value: string | null): value is StationId {
+  if (!value) return false;
+  return Object.prototype.hasOwnProperty.call(STATION_CAPACITY_HALF_SHELVES, value);
+}
+
+function stageForCurrentState(status: ReservationStatus | null, loadStatus: ReservationLoadStatus): string {
+  if (status === "CANCELLED") return "canceled";
+  if (loadStatus === "loaded") return "loaded";
+  if (loadStatus === "loading") return "queued";
+  return status === "CONFIRMED" || status === "WAITLISTED" || status === "REQUESTED"
+    ? "intake"
+    : "intake";
+}
+
+function normalizeReservationStageHistory(raw: unknown): ReservationStageHistoryEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ReservationStageHistoryEntry[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const source = row as Record<string, unknown>;
+    const toStage = safeString(source.toStage, "");
+    const fromStage = safeString(source.fromStage, "");
+    out.push({
+      fromStatus: normalizeReservationStatus(source.fromStatus),
+      toStatus: normalizeReservationStatus(source.toStatus),
+      fromLoadStatus: normalizeLoadStatus(source.fromLoadStatus),
+      toLoadStatus: normalizeLoadStatus(source.toLoadStatus),
+      fromStage: fromStage.length ? fromStage : "queued",
+      toStage: toStage.length ? toStage : "queued",
+      at: source.at ?? nowTs(),
+      actorUid: safeString(source.actorUid),
+      actorRole: source.actorRole === "client" ? "client" : source.actorRole === "dev" ? "dev" : "staff",
+      reason: safeString(source.reason, "").trim() || "reservation_update",
+      notes: typeof source.notes === "string" ? source.notes.trim() : null,
+    });
+  }
+  return out.slice(-120);
+}
+
+function normalizeReservationWindow(value: unknown): { earliestDate: Date | null; latestDate: Date | null } {
+  const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return {
+    earliestDate: parseReservationIsoDate(raw.earliestDate),
+    latestDate: parseReservationIsoDate(raw.latestDate),
+  };
+}
+
+function estimateHalfShelves(data: Record<string, unknown>): number {
+  const estimatedHalfShelves = normalizeNumber(data.estimatedHalfShelves);
+  if (typeof estimatedHalfShelves === "number") return Math.max(1, Math.ceil(estimatedHalfShelves));
+
+  const shelfEquivalent = normalizeNumber(data.shelfEquivalent);
+  if (typeof shelfEquivalent === "number") {
+    return Math.max(1, Math.round(shelfEquivalent * 2));
+  }
+
+  const footprint = normalizeNumber(data.footprintHalfShelves);
+  const tiers = normalizeNumber(data.tiers);
+  if (typeof footprint === "number" && typeof tiers === "number") {
+    return Math.max(1, Math.ceil(footprint * Math.max(1, Math.round(tiers))));
+  }
+
+  return 1;
+}
+
+function normalizeRequiredResources(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return {
+      kilnProfile: null,
+      rackCount: null,
+      specialHandling: [] as string[],
+    };
+  }
+
+  const source = value as Record<string, unknown>;
+  const rawSpecial = Array.isArray(source.specialHandling) ? source.specialHandling : [];
+  const specialHandling = rawSpecial
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    .filter((entry) => entry.length > 0)
+    .slice(0, 20);
+
+  const rawRack = Number(source.rackCount);
+  const rackCount = Number.isFinite(rawRack) && rawRack >= 1 && rawRack <= 20 ? Math.round(rawRack) : null;
+  const kilnProfile = safeString(source.kilnProfile, "").trim();
+
+  return {
+    kilnProfile: kilnProfile.length ? kilnProfile : null,
+    rackCount,
+    specialHandling,
+  };
+}
+
+function isSameRequiredResources(
+  a: ReturnType<typeof normalizeRequiredResources>,
+  b: ReturnType<typeof normalizeRequiredResources>
+) {
+  if (a.kilnProfile !== b.kilnProfile) return false;
+  if (a.rackCount !== b.rackCount) return false;
+  if (a.specialHandling.length !== b.specialHandling.length) return false;
+  for (let i = 0; i < a.specialHandling.length; i += 1) {
+    if (a.specialHandling[i] !== b.specialHandling[i]) return false;
+  }
+  return true;
+}
+
+function isCapacityRelevantLoadStatus(value: unknown): boolean {
+  const normalized = normalizeLoadStatus(value);
+  if (normalized === null) return true;
+  return normalized === "queued" || normalized === "loading" || normalized === "loaded";
+}
+
+function toReservationRow(id: string, row: Record<string, unknown>) {
+  const loadStatus = normalizeLoadStatus(row.loadStatus);
+  const stageStatusRaw = row.stageStatus && typeof row.stageStatus === "object" ? row.stageStatus : null;
+  const stageStatus = stageStatusRaw ? (stageStatusRaw as Record<string, unknown>) : null;
+  const stageHistory = normalizeReservationStageHistory(row.stageHistory);
+  const preferredWindow = normalizeReservationWindow(row.preferredWindow);
+  const estimatedWindow = row.estimatedWindow && typeof row.estimatedWindow === "object" ? (row.estimatedWindow as Record<string, unknown>) : {};
+  const pickupWindow = row.pickupWindow && typeof row.pickupWindow === "object" ? (row.pickupWindow as Record<string, unknown>) : {};
+  const requiredResources = row.requiredResources && typeof row.requiredResources === "object" ? row.requiredResources : null;
+
+  return {
+    id,
+    ownerUid: safeString(row.ownerUid),
+    status: safeString(row.status, "REQUESTED"),
+    firingType: safeString(row.firingType, "other"),
+    shelfEquivalent: normalizeNumber(row.shelfEquivalent, 1) as number,
+    footprintHalfShelves: normalizeNumber(row.footprintHalfShelves),
+    heightInches: normalizeNumber(row.heightInches),
+    tiers: normalizeNumber(row.tiers),
+    estimatedHalfShelves: normalizeNumber(row.estimatedHalfShelves),
+    useVolumePricing: row.useVolumePricing === true,
+    volumeIn3: normalizeNumber(row.volumeIn3),
+    estimatedCost: normalizeNumber(row.estimatedCost),
+    preferredWindow: {
+      earliestDate: preferredWindow.earliestDate ?? null,
+      latestDate: preferredWindow.latestDate ?? null,
+    },
+    linkedBatchId: safeString(row.linkedBatchId, null),
+    wareType: safeString(row.wareType, null),
+    kilnId: safeString(row.kilnId, null),
+    kilnLabel: safeString(row.kilnLabel, null),
+    quantityTier: safeString(row.quantityTier, null),
+    quantityLabel: safeString(row.quantityLabel, null),
+    dropOffQuantity: row.dropOffQuantity ? (row.dropOffQuantity as Record<string, unknown>) : null,
+    dropOffProfile: row.dropOffProfile ? (row.dropOffProfile as Record<string, unknown>) : null,
+    photoUrl: safeString(row.photoUrl, null),
+    photoPath: safeString(row.photoPath, null),
+    notes: row.notes ? (row.notes as Record<string, unknown>) : null,
+    notesHistory: Array.isArray(row.notesHistory) ? row.notesHistory : null,
+    addOns: row.addOns ? (row.addOns as Record<string, unknown>) : null,
+    loadStatus,
+    queuePositionHint: normalizeNumber(row.queuePositionHint),
+    queueClass: safeString(row.queueClass, null),
+    queueLaneHint: safeString(row.queueLaneHint, null),
+    assignedStationId: safeString(row.assignedStationId, null),
+    requiredResources: requiredResources ? normalizeRequiredResources(requiredResources) : null,
+    stageStatus: stageStatus ?
+      {
+        stage: safeString(stageStatus.stage, "intake"),
+        at: stageStatus.at ?? null,
+        source: safeString(stageStatus.source, "client"),
+        reason: safeString(stageStatus.reason, null),
+        notes: safeString(stageStatus.notes, null),
+        actorUid: safeString(stageStatus.actorUid, null),
+        actorRole: safeString(stageStatus.actorRole, "client"),
+      }
+      : null,
+    stageHistory,
+    estimatedWindow: {
+      currentStart: parseReservationIsoDate(estimatedWindow.currentStart),
+      currentEnd: parseReservationIsoDate(estimatedWindow.currentEnd),
+      updatedAt: parseReservationIsoDate(estimatedWindow.updatedAt),
+      slaState: safeString(estimatedWindow.slaState, null),
+    },
+    pickupWindow: {
+      requestedStart: parseReservationIsoDate(pickupWindow.requestedStart),
+      requestedEnd: parseReservationIsoDate(pickupWindow.requestedEnd),
+      confirmedStart: parseReservationIsoDate(pickupWindow.confirmedStart),
+      confirmedEnd: parseReservationIsoDate(pickupWindow.confirmedEnd),
+      status: safeString(pickupWindow.status, null),
+    },
+    storageStatus: safeString(row.storageStatus, null),
+    readyForPickupAt: parseReservationIsoDate(row.readyForPickupAt),
+    pickupReminderCount: normalizeNumber(row.pickupReminderCount),
+    lastReminderAt: parseReservationIsoDate(row.lastReminderAt),
+    arrivalStatus: safeString(row.arrivalStatus, null),
+    arrivedAt: parseReservationIsoDate(row.arrivedAt),
+    arrivalToken: safeString(row.arrivalToken, null),
+    arrivalTokenIssuedAt: parseReservationIsoDate(row.arrivalTokenIssuedAt),
+    arrivalTokenExpiresAt: parseReservationIsoDate(row.arrivalTokenExpiresAt),
+    arrivalTokenVersion: normalizeNumber(row.arrivalTokenVersion),
+    staffNotes: safeString(row.staffNotes, null),
+    createdByUid: safeString(row.createdByUid, null),
+    createdByRole: safeString(row.createdByRole, null),
+    createdAt: row.createdAt ?? null,
+    updatedAt: row.updatedAt ?? null,
+  };
+}
+
 const eventsFeedSchema = z.object({
   uid: z.string().min(1).optional().nullable(),
   cursor: z.number().int().min(0).optional(),
@@ -510,6 +946,11 @@ const ROUTE_SCOPE_HINTS: Record<string, string | null> = {
   "/v1/agent.requests.updateStatus": "requests:write",
   "/v1/agent.requests.linkBatch": "requests:write",
   "/v1/agent.requests.createCommissionOrder": "requests:write",
+  "/v1/reservations.create": "reservations:write",
+  "/v1/reservations.update": "reservations:write",
+  "/v1/reservations.assignStation": "reservations:write",
+  "/v1/reservations.get": "reservations:read",
+  "/v1/reservations.list": "reservations:read",
 };
 const ALLOWED_API_V1_ROUTES = new Set<string>([
   "/v1/hello",
@@ -533,6 +974,11 @@ const ALLOWED_API_V1_ROUTES = new Set<string>([
   "/v1/batches.get",
   "/v1/batches.list",
   "/v1/batches.timeline.list",
+  "/v1/reservations.assignStation",
+  "/v1/reservations.create",
+  "/v1/reservations.get",
+  "/v1/reservations.list",
+  "/v1/reservations.update",
   "/v1/events.feed",
   "/v1/firings.listUpcoming",
 ]);
@@ -553,6 +999,26 @@ const API_V1_ROUTE_AUTHZ_EVENTS: Record<string, { action: string; resourceType: 
   "/v1/agent.status": {
     action: "agent_status_authz",
     resourceType: "agent_status",
+  },
+  "/v1/reservations.create": {
+    action: "reservations_create",
+    resourceType: "reservation",
+  },
+  "/v1/reservations.get": {
+    action: "reservations_get",
+    resourceType: "reservation",
+  },
+  "/v1/reservations.list": {
+    action: "reservations_list",
+    resourceType: "reservation",
+  },
+  "/v1/reservations.update": {
+    action: "reservations_update",
+    resourceType: "reservation",
+  },
+  "/v1/reservations.assignStation": {
+    action: "reservations_assign_station",
+    resourceType: "reservation",
   },
 };
 const X1C_VALIDATION_VERSION = "2026-02-12.v1";
@@ -1558,6 +2024,849 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       const events = eventsSnap.docs.map((d) => toTimelineEventRow(d.id, d.data() as Record<string, unknown>));
       jsonOk(res, requestId, { batchId, events });
       return;
+    }
+
+    if (route === "/v1/reservations.create") {
+      const scopeCheck = requireScopes(ctx, ["reservations:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(reservationCreateSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const body = parsed.data;
+      const ownerUidInput = trimOrNull(body.ownerUid);
+      const ownerUid = ownerUidInput ?? ctx.uid;
+      if (ownerUidInput && ownerUidInput !== ctx.uid && !isStaff) {
+        jsonError(res, requestId, 403, "FORBIDDEN", "Cannot create reservation for another user");
+        return;
+      }
+
+      const reservationAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid,
+        scope: "reservations:write",
+        resource: `owner:${ownerUid}`,
+        allowStaff: true,
+      });
+      if (!reservationAuthz.ok) {
+        await logAuditEvent({
+          req,
+          requestId,
+          action: "reservations_create_authz",
+          resourceType: "reservation",
+          resourceId: ownerUid,
+          ownerUid,
+          result: "deny",
+          reasonCode: reservationAuthz.code,
+          ctx,
+        });
+        jsonError(res, requestId, reservationAuthz.httpStatus, reservationAuthz.code, reservationAuthz.message);
+        return;
+      }
+
+      const firingTypeRaw = trimOrNull(body.firingType) ?? "other";
+      const firingType =
+        firingTypeRaw === "bisque" || firingTypeRaw === "glaze" || firingTypeRaw === "other"
+          ? firingTypeRaw
+          : "other";
+
+      const preferredWindow = body.preferredWindow ?? {};
+      const earliestDate = parseReservationIsoDate(preferredWindow.earliestDate);
+      const latestDate = parseReservationIsoDate(preferredWindow.latestDate);
+      if (earliestDate && latestDate && earliestDate > latestDate) {
+        jsonError(
+          res,
+          requestId,
+          400,
+          "INVALID_ARGUMENT",
+          "Earliest date must come before latest date"
+        );
+        return;
+      }
+
+      const linkedBatchId = trimOrNull(body.linkedBatchId);
+      if (linkedBatchId) {
+        const batchSnap = await db.collection("batches").doc(linkedBatchId).get();
+        if (!batchSnap.exists) {
+          jsonError(res, requestId, 404, "NOT_FOUND", "Linked batch not found");
+          return;
+        }
+        const batchData = batchSnap.data() as Record<string, unknown> | undefined;
+        const owners = Array.isArray(batchData?.editors)
+          ? batchData.editors.filter((entry): entry is string => typeof entry === "string")
+          : [];
+        const ownerUidFromBatch = typeof batchData?.ownerUid === "string" ? batchData.ownerUid : null;
+        if (ownerUidFromBatch !== ownerUid && !owners.includes(ownerUid)) {
+          jsonError(res, requestId, 403, "FORBIDDEN", "Linked batch not owned by requester");
+          return;
+        }
+      }
+
+      const now = nowTs();
+      const clientRequestId = trimOrNull(body.clientRequestId);
+      const reservationRef = clientRequestId
+        ? db.collection("reservations").doc(makeIdempotencyId("reservation", ownerUid, clientRequestId))
+        : db.collection("reservations").doc();
+
+      if (clientRequestId) {
+        const existing = await reservationRef.get();
+        if (existing.exists) {
+          const existingData = existing.data() as Record<string, unknown>;
+          if (typeof existingData?.ownerUid === "string" && existingData.ownerUid === ownerUid) {
+            jsonOk(res, requestId, {
+              reservationId: reservationRef.id,
+              status: typeof existingData?.status === "string" ? existingData.status : "REQUESTED",
+              idempotentReplay: true,
+            });
+            return;
+          }
+        }
+      }
+
+      const heightInchesRaw = normalizeNumber(body.heightInches);
+      const heightInches =
+        typeof heightInchesRaw === "number" && heightInchesRaw > 0 ? heightInchesRaw : null;
+      const footprintHalfShelvesRaw = normalizeNumber(body.footprintHalfShelves);
+      const footprintHalfShelves =
+        typeof footprintHalfShelvesRaw === "number" && footprintHalfShelvesRaw > 0
+          ? clampNumber(footprintHalfShelvesRaw, 1, 8)
+          : null;
+      const tiersRaw = normalizeNumber(body.tiers);
+      const tiersInput =
+        typeof tiersRaw === "number" && tiersRaw > 0 ? Math.round(tiersRaw) : null;
+      const providedEstimatedHalfShelves = normalizeNumber(body.estimatedHalfShelves);
+      const estimatedHalfShelvesInput =
+        typeof providedEstimatedHalfShelves === "number" && providedEstimatedHalfShelves > 0
+          ? Math.ceil(providedEstimatedHalfShelves)
+          : null;
+
+      const resolvedTiers =
+        tiersInput ??
+        (typeof footprintHalfShelves === "number"
+          ? Math.max(1, 1 + Math.floor(((heightInches ?? 0) - 1) / 10))
+          : null);
+      const resolvedEstimatedHalfShelves =
+        estimatedHalfShelvesInput ??
+        (typeof footprintHalfShelves === "number" && typeof resolvedTiers === "number"
+          ? footprintHalfShelves * resolvedTiers
+          : null);
+
+      const shelfInput = normalizeNumber(body.shelfEquivalent, 1);
+      const shelfEquivalent =
+        typeof resolvedEstimatedHalfShelves === "number"
+          ? Math.max(0.25, resolvedEstimatedHalfShelves / 2)
+          : clampNumber(Number(shelfInput ?? 1), 0.25, 32);
+
+      const dropInput = body.dropOffProfile ?? {};
+      const pieceCountRaw = trimOrNull(dropInput.pieceCount);
+      const dropOffProfile =
+        trimOrNull(dropInput.id) ||
+        trimOrNull(dropInput.label) ||
+        pieceCountRaw ||
+        dropInput.hasTall ||
+        dropInput.stackable ||
+        dropInput.bisqueOnly ||
+        dropInput.specialHandling
+          ? {
+              id: trimOrNull(dropInput.id) || null,
+              label: trimOrNull(dropInput.label) || null,
+              pieceCount:
+                pieceCountRaw === "single" || pieceCountRaw === "many" ? pieceCountRaw : null,
+              hasTall: dropInput.hasTall === true,
+              stackable: dropInput.stackable === true,
+              bisqueOnly: dropInput.bisqueOnly === true,
+              specialHandling: dropInput.specialHandling === true,
+            }
+          : null;
+
+      const quantityInput = body.dropOffQuantity ?? {};
+      const dropOffQuantity =
+        trimOrNull(quantityInput.id) || trimOrNull(quantityInput.label) || trimOrNull(quantityInput.pieceRange)
+          ? {
+              id: trimOrNull(quantityInput.id) || null,
+              label: trimOrNull(quantityInput.label) || null,
+              pieceRange: trimOrNull(quantityInput.pieceRange) || null,
+            }
+          : null;
+
+      if (dropOffProfile?.bisqueOnly && firingType !== "bisque") {
+        jsonError(
+          res,
+          requestId,
+          400,
+          "INVALID_ARGUMENT",
+          "Bisque-only dropoff profile is only valid for bisque firings."
+        );
+        return;
+      }
+
+      const notesInput = body.notes ?? {};
+      const notes = {
+        general: trimOrNull(notesInput.general) || null,
+        clayBody: trimOrNull(notesInput.clayBody) || null,
+        glazeNotes: trimOrNull(notesInput.glazeNotes) || null,
+      };
+
+      const resolvedNotes =
+        notes.general || notes.clayBody || notes.glazeNotes
+          ? {
+              general: notes.general,
+              clayBody: notes.clayBody,
+              glazeNotes: notes.glazeNotes,
+            }
+          : null;
+
+      const addOnsInput = body.addOns ?? {};
+      const addOns = {
+        rushRequested: addOnsInput.rushRequested === true,
+        wholeKilnRequested: addOnsInput.wholeKilnRequested === true,
+        pickupDeliveryRequested: addOnsInput.pickupDeliveryRequested === true,
+        returnDeliveryRequested: addOnsInput.returnDeliveryRequested === true,
+        useStudioGlazes: addOnsInput.useStudioGlazes === true,
+        glazeAccessCost: resolvedEstimatedHalfShelves && resolvedEstimatedHalfShelves > 0 && addOnsInput.useStudioGlazes === true
+          ? resolvedEstimatedHalfShelves * 3
+          : null,
+        waxResistAssistRequested: addOnsInput.waxResistAssistRequested === true,
+        glazeSanityCheckRequested: addOnsInput.glazeSanityCheckRequested === true,
+        deliveryAddress: trimOrNull(addOnsInput.deliveryAddress),
+        deliveryInstructions: trimOrNull(addOnsInput.deliveryInstructions),
+      };
+
+      if (
+        (addOns.pickupDeliveryRequested || addOns.returnDeliveryRequested) &&
+        (!addOns.deliveryAddress || !addOns.deliveryInstructions)
+      ) {
+        jsonError(
+          res,
+          requestId,
+          400,
+          "INVALID_ARGUMENT",
+          "Delivery address and instructions are required for pickup/return."
+        );
+        return;
+      }
+
+      const photoUrl = trimOrNull(body.photoUrl);
+      const photoPath = trimOrNull(body.photoPath);
+      if (photoPath && !photoPath.startsWith(`checkins/${ownerUid}/`)) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Invalid photo path");
+        return;
+      }
+
+      const dropOffQuantityPayload = dropOffQuantity;
+
+      const notesPayload = resolvedNotes
+        ? {
+            ...resolvedNotes,
+            general: resolvedNotes.general || null,
+            clayBody: resolvedNotes.clayBody || null,
+            glazeNotes: resolvedNotes.glazeNotes || null,
+          }
+        : null;
+
+      const addOnsPayload = addOns;
+
+      await reservationRef.set({
+        ownerUid,
+        status: "REQUESTED",
+        loadStatus: "queued",
+        firingType,
+        shelfEquivalent: Number(shelfEquivalent),
+        footprintHalfShelves,
+        heightInches,
+        tiers: resolvedTiers,
+        estimatedHalfShelves: resolvedEstimatedHalfShelves,
+        useVolumePricing: body.useVolumePricing === true,
+        volumeIn3: normalizeNumber(body.volumeIn3),
+        estimatedCost: normalizeNumber(body.estimatedCost),
+        preferredWindow: {
+          earliestDate: earliestDate ? Timestamp.fromDate(earliestDate) : null,
+          latestDate: latestDate ? Timestamp.fromDate(latestDate) : null,
+        },
+        linkedBatchId,
+        wareType: trimOrNull(body.wareType),
+        kilnId: trimOrNull(body.kilnId),
+        kilnLabel: trimOrNull(body.kilnLabel),
+        quantityTier: trimOrNull(body.quantityTier),
+        quantityLabel: trimOrNull(body.quantityLabel),
+        dropOffQuantity: dropOffQuantityPayload,
+        dropOffProfile,
+        photoUrl,
+        photoPath,
+        notes: notesPayload,
+        notesHistory: notesPayload
+          ? [
+              {
+                at: now,
+                byUid: ctx.uid,
+                byRole: isStaff ? "staff" : ctx.mode === "firebase" ? "client" : "dev",
+                notes: notesPayload,
+              },
+            ]
+          : [],
+        addOns: addOnsPayload,
+        stageStatus: {
+          stage: "intake",
+          at: now,
+          source: isStaff ? "staff" : "client",
+          reason: "Reservation created",
+          notes: null,
+          actorUid: ctx.uid,
+          actorRole: isStaff ? "staff" : ctx.mode === "firebase" ? "client" : "dev",
+        },
+        stageHistory: [],
+        createdByUid: ctx.uid,
+        createdByRole: isStaff ? "staff" : ctx.mode === "firebase" ? "client" : "dev",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      jsonOk(res, requestId, {
+        reservationId: reservationRef.id,
+        status: "REQUESTED",
+        idempotentReplay: false,
+      });
+      return;
+    }
+
+    if (route === "/v1/reservations.get") {
+      const scopeCheck = requireScopes(ctx, ["reservations:read"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(reservationsGetSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const reservationId = parsed.data.reservationId;
+      const reservationRef = db.collection("reservations").doc(reservationId);
+      const reservationSnap = await reservationRef.get();
+      if (!reservationSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Reservation not found");
+        return;
+      }
+
+      const row = reservationSnap.data() as Record<string, unknown>;
+      const ownerUid = safeString(row.ownerUid, "");
+      if (!ownerUid) {
+        jsonError(res, requestId, 500, "INTERNAL", "Reservation missing owner");
+        return;
+      }
+
+      const reservationAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid,
+        scope: "reservations:read",
+        resource: `reservation:${reservationId}`,
+        allowStaff: true,
+      });
+      if (!reservationAuthz.ok) {
+        await logAuditEvent({
+          req,
+          requestId,
+          action: "reservations_get_authz",
+          resourceType: "reservation",
+          resourceId: reservationId,
+          ownerUid,
+          result: "deny",
+          reasonCode: reservationAuthz.code,
+          ctx,
+        });
+        jsonError(res, requestId, reservationAuthz.httpStatus, reservationAuthz.code, reservationAuthz.message);
+        return;
+      }
+
+      jsonOk(res, requestId, { reservation: toReservationRow(reservationId, row) });
+      return;
+    }
+
+    if (route === "/v1/reservations.list") {
+      const scopeCheck = requireScopes(ctx, ["reservations:read"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(reservationsListSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const targetOwnerUid = trimOrNull(parsed.data.ownerUid) ?? ctx.uid;
+      const limit = parsed.data.limit ?? 100;
+      const includeCancelled = parsed.data.includeCancelled === true;
+      const statusFilter = trimOrNull(parsed.data.status)?.toUpperCase() ?? null;
+
+      const reservationAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid: targetOwnerUid,
+        scope: "reservations:read",
+        resource: `owner:${targetOwnerUid}`,
+        allowStaff: true,
+      });
+      if (!reservationAuthz.ok) {
+        await logAuditEvent({
+          req,
+          requestId,
+          action: "reservations_list_authz",
+          resourceType: "reservation",
+          resourceId: targetOwnerUid,
+          ownerUid: targetOwnerUid,
+          result: "deny",
+          reasonCode: reservationAuthz.code,
+          ctx,
+        });
+        jsonError(res, requestId, reservationAuthz.httpStatus, reservationAuthz.code, reservationAuthz.message);
+        return;
+      }
+
+      const snap = await db
+        .collection("reservations")
+        .where("ownerUid", "==", targetOwnerUid)
+        .orderBy("createdAt", "desc")
+        .limit(500)
+        .get();
+
+      const reservations = snap.docs
+        .map((rowSnap) => toReservationRow(rowSnap.id, rowSnap.data() as Record<string, unknown>))
+        .filter((row) => {
+          if (!includeCancelled && safeString(row.status).toUpperCase() === "CANCELLED") {
+            return false;
+          }
+          if (statusFilter) {
+            return safeString(row.status).toUpperCase() === statusFilter;
+          }
+          return true;
+        })
+        .slice(0, limit);
+
+      jsonOk(res, requestId, { ownerUid: targetOwnerUid, reservations });
+      return;
+    }
+
+    if (route === "/v1/reservations.update") {
+      const scopeCheck = requireScopes(ctx, ["reservations:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(reservationUpdateSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const reservationId = parsed.data.reservationId;
+      const reservationRef = db.collection("reservations").doc(reservationId);
+      const reservationSnap = await reservationRef.get();
+      if (!reservationSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Reservation not found");
+        return;
+      }
+
+      const row = reservationSnap.data() as Record<string, unknown>;
+      const ownerUid = safeString(row.ownerUid, "");
+      if (!ownerUid) {
+        jsonError(res, requestId, 500, "INTERNAL", "Reservation missing owner");
+        return;
+      }
+
+      const reservationAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid,
+        scope: "reservations:write",
+        resource: `reservation:${reservationId}`,
+        allowStaff: true,
+      });
+      if (!reservationAuthz.ok) {
+        await logAuditEvent({
+          req,
+          requestId,
+          action: "reservations_update_authz",
+          resourceType: "reservation",
+          resourceId: reservationId,
+          ownerUid,
+          result: "deny",
+          reasonCode: reservationAuthz.code,
+          ctx,
+        });
+        jsonError(res, requestId, reservationAuthz.httpStatus, reservationAuthz.code, reservationAuthz.message);
+        return;
+      }
+
+      try {
+        const now = nowTs();
+        const actorRole = isStaff
+          ? "staff"
+          : ctx.mode === "firebase"
+            ? "client"
+            : "dev";
+
+        const out = await db.runTransaction(async (tx) => {
+          const snap = await tx.get(reservationRef);
+          if (!snap.exists) {
+            throw new Error("RESERVATION_NOT_FOUND");
+          }
+
+          const row = snap.data() as Record<string, unknown>;
+          const existingStatus = normalizeReservationStatus(row.status) ?? "REQUESTED";
+          const existingLoadStatus = normalizeLoadStatus(row.loadStatus);
+          const requestedStatus = parsed.data.status ?? existingStatus;
+          const requestedLoadStatus = normalizeLoadStatus(parsed.data.loadStatus) ?? existingLoadStatus;
+          const requestedNotes = parsed.data.staffNotes;
+
+          const statusProvided = parsed.data.status != null;
+          const loadProvided = parsed.data.loadStatus != null;
+          const notesProvided = requestedNotes != null;
+
+          if (!statusProvided && !loadProvided && !notesProvided) {
+            throw new Error("NO_UPDATES");
+          }
+
+          if (statusProvided && !parsed.data.force) {
+            const allowed = ALLOWED_STATUS_TRANSITIONS.get(existingStatus) ?? new Set([]);
+            if (!allowed.has(requestedStatus)) {
+              throw new Error(`INVALID_STATUS_TRANSITION:${existingStatus}->${requestedStatus}`);
+            }
+          }
+
+          const update: Record<string, unknown> = { updatedAt: now };
+          const nextStatus = statusProvided ? requestedStatus : existingStatus;
+          const nextLoadStatus = loadProvided ? requestedLoadStatus : existingLoadStatus;
+
+          if (statusProvided) {
+            update.status = nextStatus;
+          }
+
+          if (loadProvided) {
+            update.loadStatus = nextLoadStatus;
+          }
+
+          if (notesProvided) {
+            const notesTrimmed = trimOrNull(requestedNotes);
+            update.staffNotes = notesTrimmed || null;
+          }
+
+          if (statusProvided || loadProvided || notesProvided) {
+            const fromStage = stageForCurrentState(existingStatus, existingLoadStatus);
+            const toStage = stageForCurrentState(nextStatus, nextLoadStatus);
+            const history = normalizeReservationStageHistory(row.stageHistory);
+            const notesTrimmed = notesProvided ? trimOrNull(requestedNotes) : null;
+            const reason = statusProvided
+              ? `status:${existingStatus}->${requestedStatus}`
+              : makeLoadStatusReason(existingLoadStatus, nextLoadStatus);
+
+            history.push({
+              fromStatus: existingStatus,
+              toStatus: nextStatus,
+              fromLoadStatus: existingLoadStatus,
+              toLoadStatus: nextLoadStatus,
+              fromStage,
+              toStage,
+              at: now,
+              actorUid: ctx.uid,
+              actorRole,
+              reason,
+              notes: notesTrimmed,
+            });
+
+            update.stageHistory = history.slice(-120);
+            update.stageStatus = {
+              stage: toStage,
+              at: now,
+              source: actorRole,
+              reason,
+              notes: notesTrimmed,
+              actorUid: ctx.uid,
+              actorRole,
+            };
+          }
+
+          tx.set(reservationRef, update, { merge: true });
+          return {
+            reservationId,
+            status: requestedStatus,
+            loadStatus: nextLoadStatus,
+            idempotentReplay: false,
+          };
+        });
+
+        jsonOk(res, requestId, {
+          reservationId: out.reservationId,
+          status: out.status,
+          loadStatus: out.loadStatus,
+          idempotentReplay: out.idempotentReplay,
+        });
+      } catch (error: unknown) {
+        const message = safeErrorMessage(error);
+        if (message.startsWith("INVALID_STATUS_TRANSITION")) {
+          jsonError(
+            res,
+            requestId,
+            409,
+            "CONFLICT",
+            "Requested status transition is not permitted"
+          );
+          return;
+        }
+        if (message === "NO_UPDATES") {
+          jsonError(res, requestId, 400, "INVALID_ARGUMENT", "No updates provided");
+          return;
+        }
+        if (message === "RESERVATION_NOT_FOUND") {
+          jsonError(res, requestId, 404, "NOT_FOUND", "Reservation not found");
+          return;
+        }
+        throw error;
+      }
+      return;
+    }
+
+    if (route === "/v1/reservations.assignStation") {
+      const scopeCheck = requireScopes(ctx, ["reservations:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(reservationsAssignStationSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const reservationId = parsed.data.reservationId;
+      const reservationRef = db.collection("reservations").doc(reservationId);
+      const reservationSnap = await reservationRef.get();
+      if (!reservationSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Reservation not found");
+        return;
+      }
+
+      const existing = reservationSnap.data() as Record<string, unknown>;
+      const ownerUid = safeString(existing.ownerUid, "");
+      if (!ownerUid) {
+        jsonError(res, requestId, 500, "INTERNAL", "Reservation missing owner");
+        return;
+      }
+
+      const reservationAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid,
+        scope: "reservations:write",
+        resource: `reservation:${reservationId}`,
+        allowStaff: true,
+      });
+      if (!reservationAuthz.ok) {
+        await logAuditEvent({
+          req,
+          requestId,
+          action: "reservations_assign_authz",
+          resourceType: "reservation",
+          resourceId: reservationId,
+          ownerUid,
+          result: "deny",
+          reasonCode: reservationAuthz.code,
+          ctx,
+        });
+        jsonError(res, requestId, reservationAuthz.httpStatus, reservationAuthz.code, reservationAuthz.message);
+        return;
+      }
+
+      try {
+        const now = nowTs();
+        const actorRole = isStaff ? "staff" : ctx.mode === "firebase" ? "client" : "dev";
+        const assignedStationId = normalizeStationId(parsed.data.assignedStationId);
+
+        if (!assignedStationId || !isValidStation(assignedStationId)) {
+          jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Unknown station id.");
+          return;
+        }
+
+        const out = await db.runTransaction(async (tx) => {
+          const snap = await tx.get(reservationRef);
+          if (!snap.exists) {
+            throw new Error("RESERVATION_NOT_FOUND");
+          }
+
+          const row = snap.data() as Record<string, unknown>;
+          const status = normalizeReservationStatus(row.status) ?? "REQUESTED";
+          if (status === "CANCELLED") {
+            throw new Error("RESERVATION_CANCELLED");
+          }
+
+          const currentAssignedStation = normalizeStationId(row.assignedStationId);
+          const currentQueueClass = normalizeQueueClass(row.queueClass);
+          const currentRequiredResources = normalizeRequiredResources(row.requiredResources);
+          const requestedQueueClass = normalizeQueueClass(parsed.data.queueClass);
+          const requestedRequiredResources =
+            parsed.data.requiredResources === undefined
+              ? undefined
+              : parsed.data.requiredResources === null
+                ? null
+                : normalizeRequiredResources(parsed.data.requiredResources);
+          const requiredResources =
+            requestedRequiredResources === undefined ? currentRequiredResources : requestedRequiredResources;
+
+          const queueClassChanged =
+            parsed.data.queueClass !== undefined && requestedQueueClass !== currentQueueClass;
+          const resourcesChanged =
+            parsed.data.requiredResources !== undefined
+              ? requestedRequiredResources === null
+                ? row.requiredResources != null
+                : !isSameRequiredResources(currentRequiredResources, requestedRequiredResources)
+              : false;
+          const stationChanged = currentAssignedStation !== assignedStationId;
+
+          const requestedNoop =
+            !stationChanged && !queueClassChanged && !resourcesChanged;
+
+          const stationCapacity = STATION_CAPACITY_HALF_SHELVES[assignedStationId as StationId];
+          let stationUsedAfter: number | null = null;
+
+          if (stationChanged) {
+            const activeDocs = await tx.get(
+              db.collection("reservations").where("assignedStationId", "==", assignedStationId)
+            );
+
+            stationUsedAfter = activeDocs.docs
+              .map((r) => {
+                if (r.id === reservationId) return 0;
+                const raw = r.data() as Record<string, unknown>;
+                const rowStatus = normalizeReservationStatus(raw.status);
+                if (rowStatus === "CANCELLED") return 0;
+                if (!isCapacityRelevantLoadStatus(raw.loadStatus)) return 0;
+                return estimateHalfShelves(raw);
+              })
+              .reduce((total, each) => total + each, 0);
+
+            stationUsedAfter += estimateHalfShelves(row);
+
+            if (stationUsedAfter > stationCapacity) {
+              throw new Error("STATION_CAPACITY_EXCEEDED");
+            }
+          }
+
+          if (requestedNoop) {
+            return {
+              reservationId,
+              assignedStationId,
+              previousAssignedStationId: currentAssignedStation,
+              stationCapacity,
+              stationUsedAfter,
+              idempotentReplay: true,
+            };
+          }
+
+          const updates: Record<string, unknown> = {
+            assignedStationId,
+            updatedAt: now,
+            updatedByUid: ctx.uid,
+            updatedByRole: actorRole,
+          };
+
+          if (parsed.data.queueClass !== undefined) {
+            updates.queueClass = requestedQueueClass;
+          }
+          if (parsed.data.requiredResources !== undefined) {
+            updates.requiredResources = requiredResources;
+          }
+
+          if (stationChanged) {
+            const history = normalizeReservationStageHistory(row.stageHistory);
+            history.push({
+              fromStatus: normalizeReservationStatus(row.status),
+              toStatus: normalizeReservationStatus(row.status),
+              fromLoadStatus: normalizeLoadStatus(row.loadStatus),
+              toLoadStatus: normalizeLoadStatus(row.loadStatus),
+              fromStage: stageForCurrentState(
+                normalizeReservationStatus(row.status),
+                normalizeLoadStatus(row.loadStatus)
+              ),
+              toStage: stageForCurrentState(
+                normalizeReservationStatus(row.status),
+                normalizeLoadStatus(row.loadStatus)
+              ),
+              at: now,
+              actorUid: ctx.uid,
+              actorRole,
+              reason: "Station assignment updated",
+              notes: null,
+            });
+            updates.stageHistory = history.slice(-120);
+          }
+
+          tx.set(reservationRef, updates, { merge: true });
+
+          if (stationUsedAfter === null) {
+            const activeDocs = await tx.get(
+              db.collection("reservations").where("assignedStationId", "==", assignedStationId)
+            );
+            stationUsedAfter = activeDocs.docs
+              .map((r) => {
+                if (r.id === reservationId) return 0;
+                const raw = r.data() as Record<string, unknown>;
+                const rowStatus = normalizeReservationStatus(raw.status);
+                if (rowStatus === "CANCELLED") return 0;
+                if (!isCapacityRelevantLoadStatus(raw.loadStatus)) return 0;
+                return estimateHalfShelves(raw);
+              })
+              .reduce((total, each) => total + each, 0);
+            stationUsedAfter += estimateHalfShelves(row);
+          }
+
+          return {
+            reservationId,
+            assignedStationId,
+            previousAssignedStationId: currentAssignedStation,
+            stationCapacity,
+            stationUsedAfter,
+            idempotentReplay: false,
+          };
+        });
+
+        jsonOk(res, requestId, {
+          reservationId: out.reservationId,
+          assignedStationId: out.assignedStationId,
+          previousAssignedStationId: out.previousAssignedStationId,
+          stationCapacity: out.stationCapacity,
+          stationUsedAfter: out.stationUsedAfter,
+          idempotentReplay: out.idempotentReplay,
+        });
+        return;
+      } catch (error: unknown) {
+        const message = safeErrorMessage(error);
+        if (message === "RESERVATION_NOT_FOUND") {
+          jsonError(res, requestId, 404, "NOT_FOUND", "Reservation not found");
+          return;
+        }
+        if (message === "RESERVATION_CANCELLED") {
+          jsonError(res, requestId, 409, "CONFLICT", "Reservation is cancelled");
+          return;
+        }
+        if (message === "STATION_CAPACITY_EXCEEDED") {
+          jsonError(res, requestId, 409, "CONFLICT", "Station is at capacity");
+          return;
+        }
+        throw error;
+      }
     }
 
     if (route === "/v1/firings.listUpcoming") {
@@ -3270,4 +4579,3 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
     jsonError(res, requestId, 500, "INTERNAL", "Request failed", { message: msg });
   }
 }
-

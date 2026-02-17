@@ -25,7 +25,12 @@ import {
 import { listIntegrationEvents } from "./integrationEvents";
 import { getAgentServiceCatalogConfig } from "./agentCatalog";
 import { getAgentOpsConfig } from "./agentCommerce";
-import { getStationCapacity, isKnownStationId, type ReservationStationId } from "./reservationStationConfig";
+import {
+  getStationCapacity,
+  isKnownStationId,
+  normalizeStationId as normalizeKnownStationId,
+  type ReservationStationId,
+} from "./reservationStationConfig";
 
 function boolEnv(name: string, fallback = false): boolean {
   const raw = process.env[name];
@@ -582,7 +587,7 @@ function clampNumber(value: number, min: number, max: number): number {
 }
 
 function normalizeStationId(value: unknown): string | null {
-  const next = typeof value === "string" ? value.trim().toLowerCase() : "";
+  const next = normalizeKnownStationId(value);
   return next.length ? next : null;
 }
 

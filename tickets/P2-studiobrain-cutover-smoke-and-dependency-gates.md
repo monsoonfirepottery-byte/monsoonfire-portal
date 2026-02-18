@@ -67,6 +67,7 @@ Define and implement a deterministic, low-friction cutover gate command that val
 - `scripts/studio-cutover-gate.mjs` created and wired to root scripts as `npm run studio:cutover:gate`.
 - Artifact currently writes to `output/cutover-gate/summary.json` by default.
 - Website smoke is intentionally non-blocking; failures are returned as warnings for review.
+- Emulator contract validation (`npm run studio:emulator:contract:check:strict`) is now part of the cutover gate before preflight.
 
 ## Definition of Done
 

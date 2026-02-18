@@ -30,7 +30,7 @@ function checkTcp({ host, port, timeoutMs }) {
 
 async function main() {
   process.stdout.write("studio-brain preflight\n");
-  const report = validateEnvContract({ strict: false });
+  const report = validateEnvContract({ strict: true });
   if (!report.ok) {
     printValidationReport(report);
     process.exit(1);

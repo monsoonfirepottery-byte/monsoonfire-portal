@@ -3,6 +3,23 @@ import { z } from "zod";
 
 dotenv.config();
 
+const PLACEHOLDER_MATCHERS = [
+  /change-?me/i,
+  /todo/i,
+  /placeholder/i,
+  /replace[_-]?with/i,
+  /^\s*<.*>\s*$/,
+  /\$\{[^}]+\}/,
+];
+
+const RUNTIME_ENFORCED_SENSITIVE_VARS = new Set([
+  "STUDIO_BRAIN_ADMIN_TOKEN",
+  "STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY",
+  "STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY",
+  "PGPASSWORD",
+  "REDIS_PASSWORD",
+]);
+
 const BoolFromString = z
   .union([z.enum(["true", "false", "1", "0"]), z.boolean()])
   .transform((value) => value === true || value === "true" || value === "1");
@@ -118,6 +135,10 @@ const EnvSchema = z.object({
 
 export type BrainEnv = z.infer<typeof EnvSchema>;
 
+function hasPlaceholderValue(value: string): boolean {
+  return PLACEHOLDER_MATCHERS.some((pattern) => pattern.test(value));
+}
+
 function validateConnectivityConfig(env: BrainEnv): string[] {
   const errors: string[] = [];
 
@@ -155,6 +176,22 @@ function validateConnectivityConfig(env: BrainEnv): string[] {
   return errors;
 }
 
+function validateRuntimeSecretValues(env: BrainEnv): string[] {
+  const issues: string[] = [];
+
+  for (const [rawName, rawValue] of Object.entries(env)) {
+    const name = rawName as keyof BrainEnv;
+    if (!RUNTIME_ENFORCED_SENSITIVE_VARS.has(name)) continue;
+
+    if (typeof rawValue !== "string") continue;
+    if (!hasPlaceholderValue(rawValue)) continue;
+
+    issues.push(`${name} is configured with a placeholder value; set a concrete secret before runtime startup.`);
+  }
+
+  return issues;
+}
+
 export function readEnv(): BrainEnv {
   const parsed = EnvSchema.safeParse(process.env);
   if (!parsed.success) {
@@ -165,6 +202,10 @@ export function readEnv(): BrainEnv {
   const connectivityIssues = validateConnectivityConfig(env);
   if (connectivityIssues.length > 0) {
     throw new Error(`Invalid studio-brain env connectivity: ${connectivityIssues.join("; ")}`);
+  }
+  const runtimeSecretIssues = validateRuntimeSecretValues(env);
+  if (runtimeSecretIssues.length > 0) {
+    throw new Error(`Invalid studio-brain env values: ${runtimeSecretIssues.join("; ")}`);
   }
   return env;
 }

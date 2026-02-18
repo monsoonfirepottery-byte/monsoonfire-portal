@@ -69,6 +69,7 @@ Define explicit network profiles and enforce their selection across all startup/
   - `studio-brain/scripts/preflight.mjs` prints host profile context and host mismatch warnings.
   - `scripts/studiobrain-status.mjs` uses profile-resolved defaults when `STUDIO_BRAIN_BASE_URL` is unset.
   - `scripts/pr-gate.mjs` now validates Studio Brain base URLs against resolved profile host allowlist.
+  - `scripts/validate-emulator-contract.mjs` now enforces emulator host/port compatibility before gates.
 
 ## Definition of Done
 

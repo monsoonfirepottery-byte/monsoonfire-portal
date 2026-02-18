@@ -1,8 +1,9 @@
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { spawn } from "node:child_process";
+import { resolveStudioBrainBaseUrlFromEnv } from "./studio-brain-url-resolution.mjs";
 
-const BASE_URL = process.env.STUDIO_BRAIN_BASE_URL || "http://127.0.0.1:8787";
+const BASE_URL = resolveStudioBrainBaseUrlFromEnv({ env: process.env });
 const ADMIN_TOKEN = process.env.STUDIO_BRAIN_ADMIN_TOKEN || readAdminTokenFromDotEnv() || "";
 const ID_TOKEN = process.env.STUDIO_BRAIN_ID_TOKEN || "";
 

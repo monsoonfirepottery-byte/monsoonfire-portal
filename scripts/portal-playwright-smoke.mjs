@@ -166,7 +166,7 @@ const DEEP_ENDPOINT_PROBES = [
   {
     label: "apiV1 v1 events.feed",
     path: "/apiV1/v1/events.feed",
-    method: "GET",
+    method: "POST",
     body: null,
     allowAuthFailure: true,
     host: "functions",
@@ -174,8 +174,8 @@ const DEEP_ENDPOINT_PROBES = [
   {
     label: "apiV1 v1 batches.list",
     path: "/apiV1/v1/batches.list",
-    method: "GET",
-    body: null,
+    method: "POST",
+    body: {},
     allowAuthFailure: true,
     host: "functions",
   },
@@ -567,19 +567,23 @@ const runEndpointProbes = async (page, summary, options, runtime) => {
       allowLocalLoopback: allowLocalLoopbackReadyz,
       isProduction,
     });
-    const isCors = hasMatch(result.fetchError || "", CORS_ERROR_TOKENS)
-      || isCorsResponseFailure({
-        method: result.method,
-        status: result.status,
-        text: result.responseText,
-        allowOriginHeader: result.accessControlAllowOrigin,
-        requestOrigin: result.requestHeaders?.origin,
-        requestOriginUrl: result.responseOrigin || result.url,
-        crossOrigin: isCrossOriginRequest(result.responseOrigin || result.url, result.requestHeaders?.origin || ""),
-      });
-    const isForbiddenStudioBrain = hasMatch(result.url || "", FORBIDDEN_URL_PATTERNS);
     const isAuthFailure = result.isAuthFailure === true;
     const isAuthAllowed = Boolean(result.allowAuthFailure) && isAuthFailure && !runtime.authenticated;
+
+    const isCors = !isAuthAllowed
+      && (
+        hasMatch(result.fetchError || "", CORS_ERROR_TOKENS)
+        || isCorsResponseFailure({
+          method: result.method,
+          status: result.status,
+          text: result.responseText,
+          allowOriginHeader: result.accessControlAllowOrigin,
+          requestOrigin: result.requestHeaders?.origin,
+          requestOriginUrl: result.responseOrigin || result.url,
+          crossOrigin: isCrossOriginRequest(result.responseOrigin || result.url, result.requestHeaders?.origin || ""),
+        })
+      );
+    const isForbiddenStudioBrain = hasMatch(result.url || "", FORBIDDEN_URL_PATTERNS);
     const isStudioBrainReadyz = isReadyzPath(result.path);
     const isCriticalFailure = !result.ok && !result.skipped && !isAuthAllowed && !isExpectedStudioBrainLoopback;
     const isServerFailure = (result.status !== null && result.status >= 500) || false;

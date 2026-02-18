@@ -58,3 +58,9 @@ Make Node-first command execution the normative path for all required portal/fun
 - Cross-platform command list is documented and verified as first-class.
 - Legacy commands are explicitly labeled as compatibility-only.
 - Core cutover runs can be executed from Linux/macOS with no PowerShell path dependency.
+
+## Work completed
+
+- Added required-node-entrypoint preflight to `scripts/pr-gate.mjs` to hard-fail if required Node scripts are missing before any smoke/health checks.
+- Added matching required-entrypoint preflight in `scripts/studio-cutover-gate.mjs` to keep cutover gates Linux/macOS-safe by default.
+- Updated `docs/EMULATOR_RUNBOOK.md` to remove duplicated/ambiguous steps and clearly mark PowerShell fallback as legacy-compatible only.

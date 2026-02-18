@@ -3,6 +3,7 @@ import { dirname, resolve, isAbsolute } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { isStudioBrainHostAllowed, resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
+import { existsSync } from "node:fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -11,7 +12,27 @@ const repoRoot = resolve(__dirname, "..");
 const parsedArgs = parseArgs(process.argv.slice(2));
 const includeSmoke = parsedArgs.smoke;
 
+const REQUIRED_NODE_ENTRYPOINTS = [
+  "scripts/start-emulators.mjs",
+  "scripts/portal-playwright-smoke.mjs",
+  "scripts/website-playwright-smoke.mjs",
+  "scripts/scan-studiobrain-host-contract.mjs",
+  "scripts/studio-network-check.mjs",
+  "scripts/studiobrain-status.mjs",
+  "scripts/studiobrain-network-check.mjs",
+  "website/scripts/serve.mjs",
+  "website/scripts/deploy.mjs",
+  "website/ncsitebuilder/scripts/serve.mjs",
+];
+
 const steps = [
+  {
+    name: "required node entrypoints",
+    kind: "check",
+    check: checkRequiredNodeEntrypoints,
+    remediation: "Restore missing script files before running PR gate. This should be a repo-level integrity blocker, not an environment issue.",
+    required: true,
+  },
   {
     name: "studio-brain env contract",
     kind: "command",
@@ -124,21 +145,20 @@ function executeStep(step) {
 
   if (step.kind === "check") {
     try {
-      const detail = step.check();
-      common.ok = detail.ok;
-      common.exitCode = detail.ok ? 0 : 1;
-      common.output = detail.message || "";
-      if (detail.checks && detail.checks.length > 0) {
-        common.checks = detail.checks;
+      const checkResult = step.check();
+      common.ok = checkResult.ok;
+      common.exitCode = checkResult.ok ? 0 : 1;
+      common.output = checkResult.message;
+      if (checkResult.details?.length > 0) {
+        common.checks = checkResult.details;
       }
       if (common.output) {
         process.stdout.write(`${common.output}\n`);
       }
-      return common;
     } catch (error) {
       common.output = error instanceof Error ? error.message : String(error);
-      return common;
     }
+    return common;
   }
 
   const result = spawnSync(step.command, step.args, {
@@ -174,6 +194,30 @@ function executeStep(step) {
   }
 
   return common;
+}
+
+function checkRequiredNodeEntrypoints() {
+  const missing = [];
+  for (const rel of REQUIRED_NODE_ENTRYPOINTS) {
+    const abs = resolve(repoRoot, rel);
+    if (!existsSync(abs)) {
+      missing.push(rel);
+    }
+  }
+
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      message: `Missing required node entrypoint(s): ${missing.join(", ")}`,
+      details: missing,
+    };
+  }
+
+  return {
+    ok: true,
+    message: `Required node entrypoints present (${REQUIRED_NODE_ENTRYPOINTS.length}).`,
+    details: [],
+  };
 }
 
 function checkStudioBrainHostProfile() {

@@ -6,20 +6,22 @@ Run a deterministic pre-merge checklist for Studio Brain + portal/site smoke cov
 ## Required (minimal) mode
 Default `npm run pr:gate` runs these required checks:
 
-1. Studio Brain env contract validation (`npm --prefix studio-brain run env:validate -- --json`)
-2. Studio Brain runtime integrity check (`npm run integrity:check`)
-3. Host profile consistency check for `STUDIO_BRAIN_HOST`, `STUDIO_BRAIN_PORT`, and `STUDIO_BRAIN_BASE_URL`
-4. Legacy host-contract scan (`npm run studio:host:contract:scan:strict`)
-5. Studio Brain network runtime contract (`node ./scripts/studiobrain-network-check.mjs --gate --strict --write-state`)
-6. Studio Brain preflight (`npm --prefix studio-brain run preflight`)
-7. Studio Brain status gate (`node ./scripts/studiobrain-status.mjs --json --gate`)
+1. Required node entrypoints (`scripts/pr-gate.mjs` internal preflight)
+2. Studio Brain env contract validation (`npm --prefix studio-brain run env:validate -- --json`)
+3. Studio Brain runtime integrity check (`npm run integrity:check`)
+4. Host profile consistency check for `STUDIO_BRAIN_HOST`, `STUDIO_BRAIN_PORT`, and `STUDIO_BRAIN_BASE_URL`
+5. Legacy host-contract scan (`npm run studio:host:contract:scan:strict`)
+6. Studio Brain network runtime contract (`node ./scripts/studiobrain-network-check.mjs --gate --strict --write-state`)
+7. Studio Brain preflight (`npm --prefix studio-brain run preflight`)
+8. Studio Brain status gate (`node ./scripts/studiobrain-status.mjs --json --gate`)
 
 For a clean local state, each onboarding run should pass host contract scan + smoke + status checks in sequence.
 Recommended sequence:
-1. `npm run integrity:check`
-2. `npm run studio:host:contract:scan:strict`
-3. `npm run studio:status`
-4. `npm run pr:gate -- --smoke`
+1. `npm run pr:gate`
+2. `npm run integrity:check`
+3. `npm run studio:host:contract:scan:strict`
+4. `npm run studio:status`
+5. `npm run pr:gate -- --smoke`
 
 ## Studiobrain cutover gate
 Use this for deterministic end-to-end readiness from a fresh Studiobrain workstation:

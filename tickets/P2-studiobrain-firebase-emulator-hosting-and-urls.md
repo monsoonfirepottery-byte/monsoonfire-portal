@@ -1,6 +1,6 @@
 # P2 — Firebase Emulator Hosting and URL Contract for Studiobrain Cutover
 
-Status: Planned
+Status: In Progress
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Functions + Portal
@@ -54,6 +54,11 @@ Create one canonical emulator host contract and ensure every run path (web, func
 3. Portal Playwright smoke and local serve instructions are aligned with the same emulator contract.
 4. Emulators can be started and used from a clean Studiobrain checkout without `wuff-laptop`-specific notes.
 
+## Work completed
+
+- Added a canonical host/URL matrix and web onboarding section updates in `docs/EMULATOR_RUNBOOK.md`.
+- Added `web/.env.local.example` to standardize emulator/Functions/StudioBrain local contract setup on fresh checkouts.
+
 ## Dependencies
 
 - `scripts/start-emulators.mjs`
@@ -70,4 +75,3 @@ Create one canonical emulator host contract and ensure every run path (web, func
 - Contract file or doc exists with one source-of-truth URL table.
 - Contract mismatch is visible in smoke output and documented with exact corrective steps.
 - Onboarding docs show the same contract that smoke and launch scripts consume.
-

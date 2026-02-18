@@ -41,8 +41,10 @@
 
 ### Stable local env across terminals
 1. Copy `functions/.env.local.example` to `functions/.env.local`.
-2. Set local-only values (for example `ADMIN_TOKEN`, `ALLOW_DEV_ADMIN_TOKEN=true`).
-3. Start emulators via `npm run emulators:start -- --only firestore,functions,auth`.
+1. Copy `functions/.env.local.example` to `functions/.env.local`.
+2. Copy `web/.env.local.example` to `web/.env.local`.
+3. Set local-only values (for example `ADMIN_TOKEN`, `ALLOW_DEV_ADMIN_TOKEN=true`).
+4. Start emulators via `npm run emulators:start -- --only firestore,functions,auth`.
    - Compatibility fallback: `pwsh -File scripts/start-emulators.ps1`.
 
 ## Emulator and UI contract matrix

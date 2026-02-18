@@ -3,6 +3,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { printValidationReport, validateEnvContract } from "../studio-brain/scripts/env-contract-validator.mjs";
+import { runIntegrityCheck } from "./integrity-check.mjs";
 import { resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -66,6 +68,37 @@ const parseOptions = (argv) => {
 
   return options;
 };
+
+function assertStudioBrainContract() {
+  const report = validateEnvContract({ strict: false });
+  if (!report.ok) {
+    printValidationReport(report);
+    throw new Error("Studio Brain env contract validation failed before website smoke.");
+  }
+  if (report.warnings.length > 0) {
+    process.stdout.write("website smoke: studio-brain env warnings\n");
+    report.warnings.forEach((warning) => process.stdout.write(`  - ${warning}\n`));
+  }
+}
+
+function assertStudioBrainIntegrity() {
+  const report = runIntegrityCheck({ manifest: "studio-brain/.env.integrity.json", strict: false, verbose: false });
+  if (!report.ok) {
+    process.stderr.write("website smoke: studio-brain integrity check failed before website smoke.\n");
+    if (report.issues?.length) {
+      report.issues.forEach((issue) => {
+        const suffix = issue.expected ? ` [expected=${issue.expected}, actual=${issue.actual}]` : "";
+        process.stderr.write(`  - ${issue.file}: ${issue.message}${suffix}\n`);
+      });
+    }
+    throw new Error("Studio Brain integrity check failed before website smoke.");
+  }
+
+  if (report.warnings?.length > 0) {
+    process.stdout.write("website smoke: studio-brain integrity warnings\n");
+    report.warnings.forEach((warning) => process.stdout.write(`  - ${warning.file}: ${warning.message}\n`));
+  }
+}
 
 const createStaticServer = () => {
   const server = createServer(async (req, res) => {
@@ -137,6 +170,9 @@ const assert = (condition, message) => {
 };
 
 const run = async () => {
+  assertStudioBrainContract();
+  assertStudioBrainIntegrity();
+
   const options = parseOptions(process.argv.slice(2));
   const outputRoot = options.outputDir;
   let baseUrl = options.baseUrl || localBaseUrl;

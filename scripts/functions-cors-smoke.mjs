@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
 
+import { printValidationReport, validateEnvContract } from "../studio-brain/scripts/env-contract-validator.mjs";
+import { runIntegrityCheck } from "./integrity-check.mjs";
+
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
 const DEFAULT_WEB_ORIGIN = "https://monsoonfire-portal.web.app";
 const DEFAULT_TIMEOUT_MS = 12_000;
@@ -35,6 +38,25 @@ function parseArgs() {
   };
 }
 
+function assertStudioBrainIntegrity() {
+  const report = runIntegrityCheck({ manifest: "studio-brain/.env.integrity.json", strict: false, verbose: false });
+  if (!report.ok) {
+    process.stderr.write("functions cors smoke: studio-brain integrity check failed before CORS smoke.\n");
+    if (report.issues?.length) {
+      report.issues.forEach((issue) => {
+        const suffix = issue.expected ? ` [expected=${issue.expected}, actual=${issue.actual}]` : "";
+        process.stderr.write(`  - ${issue.file}: ${issue.message}${suffix}\n`);
+      });
+    }
+    throw new Error("Studio Brain integrity check failed before functions CORS smoke.");
+  }
+
+  if (report.warnings?.length > 0) {
+    process.stdout.write("functions cors smoke: studio-brain integrity warnings\n");
+    report.warnings.forEach((warning) => process.stdout.write(`  - ${warning.file}: ${warning.message}\n`));
+  }
+}
+
 function normalizeBase(baseUrl) {
   const trimmed = baseUrl.trim().replace(/\/+$/, "");
   return trimmed || DEFAULT_FUNCTIONS_BASE_URL;
@@ -46,6 +68,18 @@ function normalizeOrigin(origin) {
 
 function normalizeEndpoint(endpoint) {
   return endpoint.replace(/^\/+/, "");
+}
+
+function assertStudioBrainContract() {
+  const report = validateEnvContract({ strict: false });
+  if (!report.ok) {
+    printValidationReport(report);
+    throw new Error("Studio Brain env contract validation failed before CORS smoke.");
+  }
+  if (report.warnings.length > 0) {
+    process.stdout.write("functions cors smoke: studio-brain env warnings\n");
+    report.warnings.forEach((warning) => process.stdout.write(`  - ${warning}\n`));
+  }
 }
 
 function hasCorsAllowOrigin(headers, origin) {
@@ -168,6 +202,8 @@ function printSummary(results) {
 }
 
 async function main() {
+  assertStudioBrainIntegrity();
+  assertStudioBrainContract();
   const { baseUrl, origin } = parseArgs();
   const normalizedBase = normalizeBase(baseUrl);
   const normalizedOrigin = normalizeOrigin(origin);

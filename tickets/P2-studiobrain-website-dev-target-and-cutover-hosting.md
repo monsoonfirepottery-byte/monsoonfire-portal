@@ -51,3 +51,4 @@ Create a stable website development/deploy target model that works from any work
 - Kept PowerShell shim compatibility while resolving deployment params via env with explicit fallback behavior.
 - Removed hard-coded legacy `monsggbd@66.29.137.142` fallback from the canonical Node deploy path.
 - Enforced deploy failure when no deploy target is configured, so core commands now require `WEBSITE_DEPLOY_SERVER` or explicit `--server`.
+- Hardened shim path (`website/deploy.ps1`) so it no longer uses any legacy host default and fails fast if no server target is supplied.

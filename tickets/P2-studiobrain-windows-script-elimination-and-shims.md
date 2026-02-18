@@ -70,3 +70,4 @@ Replace platform-specific scripts with cross-platform equivalents and keep only 
   - `website:deploy:ncsitebuilder`
 - Updated `AGENTS.md` to mark PowerShell wrappers as compatibility-only for these flows.
 - Tightened canonical deploy behavior so machine-specific host defaults are removed from the Node script and enforced at environment/CLI level.
+- Tightened `website/deploy.ps1` to remove legacy hard-coded host fallback (`monsggbd@66.29.137.142`) and fail with a clear error when deploy target is missing.

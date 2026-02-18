@@ -54,6 +54,7 @@ import {
   V1_RESERVATION_CREATE_FN,
   V1_RESERVATION_UPDATE_FN,
 } from "./portalContracts";
+import { makeRequestId as createRequestId } from "./requestId";
 
 /**
  * Re-export canonical contracts so existing imports keep working,
@@ -200,15 +201,7 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function makeRequestId(): string {
-  // Browser-friendly UUID fallback
-  try {
-    if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
-  } catch {
-    // ignore
-  }
-  return `req_${Math.random().toString(16).slice(2)}_${Date.now()}`;
-}
+const makeRequestId = createRequestId;
 
 function safeStringifyJson(value: unknown): string {
   try {

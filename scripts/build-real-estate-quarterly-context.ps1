@@ -212,11 +212,17 @@ $context = [pscustomobject]@{
 $quarterSlug = $latestQuarter.quarter
 $contextPath = Join-Path $OutputDir "agent-swarm-context-$quarterSlug.json"
 $reportPath = Join-Path $OutputDir "real-estate-quarterly-report-$quarterSlug.md"
+$latestContextPath = Join-Path $OutputDir "agent-swarm-context-latest.json"
+$latestReportPath = Join-Path $OutputDir "real-estate-quarterly-report-latest.md"
 
 $context | ConvertTo-Json -Depth 10 | Set-Content -Path $contextPath -Encoding UTF8
 $report = Build-QuarterlyMarkdown -Context $context -LatestQuarter $latestQuarter -PreviousQuarter $previousQuarter
 $report | Set-Content -Path $reportPath -Encoding UTF8
+Copy-Item -Path $contextPath -Destination $latestContextPath -Force
+Copy-Item -Path $reportPath -Destination $latestReportPath -Force
 
 Write-Host "Wrote $HistoryCsvPath"
 Write-Host "Wrote $contextPath"
 Write-Host "Wrote $reportPath"
+Write-Host "Wrote $latestContextPath"
+Write-Host "Wrote $latestReportPath"

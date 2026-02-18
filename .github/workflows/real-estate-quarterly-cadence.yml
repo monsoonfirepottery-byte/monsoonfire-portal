@@ -1,0 +1,40 @@
+name: Real Estate Quarterly Cadence
+
+on:
+  schedule:
+    - cron: "0 9 1 1,4,7,10 *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  run-quarterly-cadence:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run quarterly context cadence
+        run: |
+          pwsh -File scripts/run-real-estate-quarterly-cadence.ps1 `
+            -InputDir "output/real-estate" `
+            -OutputDir "output/real-estate"
+
+      - name: Upload quarterly cadence artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-estate-quarterly-cadence
+          path: |
+            output/real-estate/quarterly-cadence-*.json
+            output/real-estate/quarterly-cadence-latest.json
+            output/real-estate/quarterly-context-memory-latest.json
+            output/real-estate/quarterly-context-memory-*.json
+            output/real-estate/agent-swarm-context-latest.json
+            output/real-estate/real-estate-quarterly-report-latest.md
+            output/real-estate/market-watch-history.csv
+          if-no-files-found: ignore
+          retention-days: 14

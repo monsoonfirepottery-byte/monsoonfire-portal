@@ -1,6 +1,6 @@
 # P2 — Windows Script Elimination and Compatibility Shim Cleanup
 
-Status: Planned
+Status: In Progress
 Date: 2026-02-18
 Priority: P2
 Owner: Platform
@@ -53,3 +53,19 @@ Replace platform-specific scripts with cross-platform equivalents and keep only 
 
 - The project no longer relies on Windows tooling for routine operations.
 - Compatibility shims are explicitly constrained and temporary.
+
+## Work completed
+
+- Added Node replacements for core website flows:
+  - `website/scripts/deploy.mjs`
+  - `website/scripts/serve.mjs`
+  - `website/ncsitebuilder/scripts/serve.mjs`
+- Kept compatibility shims with explicit deprecation warning:
+  - `website/deploy.ps1`
+  - `website/serve.ps1`
+  - `website/ncsitebuilder/serve.ps1`
+- Added cross-platform root script aliases:
+  - `website:serve`
+  - `website:serve:ncsitebuilder`
+  - `website:deploy:ncsitebuilder`
+- Updated `AGENTS.md` to mark PowerShell wrappers as compatibility-only for these flows.

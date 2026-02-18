@@ -40,6 +40,8 @@
     "studio:env:validate": "npm --prefix studio-brain run env:validate",
     "studio:status": "node ./scripts/studiobrain-status.mjs",
     "studio:check": "node ./scripts/studiobrain-status.mjs --gate",
+    "studio:network:check": "node ./scripts/studiobrain-network-check.mjs",
+    "studio:network:check:gate": "node ./scripts/studiobrain-network-check.mjs --gate",
     "pr:gate": "node ./scripts/pr-gate.mjs"
   },
   "dependencies": {

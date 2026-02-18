@@ -1,9 +1,37 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { resolveStudioBrainNetworkProfile } from "../../scripts/studio-network-profile.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(__dirname, "..");
+
+const networkProfile = (() => {
+  const next = process.argv.find((value, index) => {
+    return value === "--network-profile" && typeof process.argv[index + 1] === "string";
+  });
+  if (!next) {
+    return "";
+  }
+
+  const index = process.argv.indexOf(next);
+  return process.argv[index + 1] || "";
+})();
+
+const studioProfile = resolveStudioBrainNetworkProfile({
+  env: {
+    ...process.env,
+    ...(networkProfile ? { STUDIO_BRAIN_NETWORK_PROFILE: networkProfile } : {}),
+  },
+});
+
+const inheritedEnv = {
+  ...process.env,
+  ...(!process.env.VITE_DEV_HOST && { VITE_DEV_HOST: studioProfile.host }),
+  ...(!process.env.VITE_ALLOWED_HOSTS && {
+    VITE_ALLOWED_HOSTS: studioProfile.allowedStudioBrainHosts.join(","),
+  }),
+};
 
 const commands = [
   { name: "vite", args: ["./node_modules/vite/bin/vite.js"] },
@@ -14,7 +42,7 @@ const children = commands.map(({ name, args }) => {
   const child = spawn(process.execPath, args, {
     cwd: rootDir,
     stdio: "inherit",
-    env: process.env,
+    env: inheritedEnv,
   });
   child.on("exit", (code) => {
     if (code && code !== 0) {

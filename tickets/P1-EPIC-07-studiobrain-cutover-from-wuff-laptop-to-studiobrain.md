@@ -13,6 +13,9 @@ Development and smoke workflows still assume a mixed local setup path rooted in 
 Cut over all current local/service dependencies used by portal, functions, and studio-brain workflows to a studiobrain-first model with reproducible startup, shared environment contracts, and cross-platform tooling.
 
 ## Tickets
+- `tickets/P1-studiobrain-static-network-resilience-hardening.md`
+- `tickets/P1-studiobrain-cross-platform-toolchain-hardening.md`
+- `tickets/P1-studiobrain-observability-baseline-tooling-for-home-host.md`
 - `tickets/P2-studiobrain-legacy-host-detection-and-cutover-validation.md`
 - `tickets/P2-studiobrain-postgres-redis-minio-stack-portability.md`
 - `tickets/P2-studiobrain-vite-local-hosting-and-proxy-migration.md`

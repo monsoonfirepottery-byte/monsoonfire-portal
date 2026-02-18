@@ -1581,7 +1581,9 @@ export default function App() {
           <ProfileView
             user={user}
             themeName={themeName}
-            onThemeChange={persistThemeName}
+            onThemeChange={(next) => {
+              void persistThemeName(next);
+            }}
             enhancedMotion={enhancedMotion}
             onEnhancedMotionChange={(next) => {
               setEnhancedMotion(next);

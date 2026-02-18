@@ -3,6 +3,8 @@ import type { ComboKey, Glaze } from "./types";
 type ParseResult = {
   glazes: Glaze[];
   comboKeys: ComboKey[];
+  baseNames: string[];
+  topNames: string[];
 };
 
 type CellLocation = {
@@ -144,6 +146,7 @@ export function importGlazeMatrix(raw: string): ParseResult {
   const glazeByName = new Map<string, Glaze>();
   const comboKeys: ComboKey[] = [];
   const seenIds = new Set<number>();
+  const topNames: string[] = [];
 
   baseNames.forEach((base) => {
     if (!glazeByName.has(base)) {
@@ -164,6 +167,7 @@ export function importGlazeMatrix(raw: string): ParseResult {
 
     if (!glazeByName.has(rowLabelRaw)) {
       glazeByName.set(rowLabelRaw, buildGlaze(rowLabelRaw));
+      topNames.push(rowLabelRaw);
     }
 
     for (let colIndex = 1; colIndex <= baseNames.length; colIndex += 1) {
@@ -195,5 +199,7 @@ export function importGlazeMatrix(raw: string): ParseResult {
   return {
     glazes: Array.from(glazeByName.values()),
     comboKeys,
+    baseNames,
+    topNames,
   };
 }

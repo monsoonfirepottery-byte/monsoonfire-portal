@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 
-/* eslint-disable no-console */
-
 import { promises as fs } from "node:fs";
 import path from "node:path";
 

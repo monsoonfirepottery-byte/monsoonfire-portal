@@ -182,25 +182,25 @@ const MEMBER_QUOTES: MemberQuote[] = [
 
 const SUGGESTED_VIDEOS: VideoLink[] = [
   {
-    title: "Centering essentials",
-    reason: "Great for consistent walls and faster starts.",
+    title: "How to center clay",
+    reason: "Most reliable beginner centering walkthrough to build your first stable throws.",
     url: "https://www.youtube.com/watch?v=-YCGK33c0xs",
     favorite: true,
   },
   {
-    title: "Pulling consistent walls",
-    reason: "Smooths out wobbles and helps with even thickness.",
+    title: "How to pull up the walls",
+    reason: "Step-by-step wall control and consistent thickness for bowls and cylinders.",
     url: "https://www.youtube.com/watch?v=VM8SJZ4lNRY",
   },
   {
-    title: "Trimming clean foot rings",
-    reason: "Sharper bases and less chipping in bisque.",
-    url: "https://www.youtube.com/watch?v=XhlJLVL-Zg8",
+    title: "How to open up and form the base",
+    reason: "Good for early-stage shaping and avoiding uneven bases.",
+    url: "https://www.youtube.com/watch?v=HF5IAJ0x2g0",
   },
   {
-    title: "Glaze application basics",
-    reason: "Reliable coverage without drips or bare spots.",
-    url: "https://www.youtube.com/watch?v=nvBxX7vteqA",
+    title: "Trimming tips and tricks",
+    reason: "Clean bottoms and safer handling at the leather-hard stage.",
+    url: "https://www.youtube.com/watch?v=XhlJLVL-Zg8",
   },
 ];
 

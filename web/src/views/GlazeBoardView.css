@@ -10,6 +10,13 @@
   flex-wrap: wrap;
 }
 
+.glaze-mode-toggle {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: 12px;
+}
+
 .glaze-tabs button {
   border: 1px solid var(--border);
   background: var(--surface);
@@ -27,11 +34,33 @@
   background: rgba(180, 79, 53, 0.12);
 }
 
+.glaze-mode-toggle button {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  font-size: 12px;
+}
+
+.glaze-mode-toggle button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(180, 79, 53, 0.12);
+}
+
 .glaze-board-layout {
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr) 230px;
   gap: 18px;
   align-items: start;
+}
+
+.glaze-board-layout--single {
+  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
 }
 
 .glaze-toolbar {

@@ -36,7 +36,8 @@
     "check:studio-brain:bundle": "node ./scripts/check-studio-brain-bundle.mjs web/dist",
     "studio:env:validate": "npm --prefix studio-brain run env:validate",
     "studio:status": "node ./scripts/studiobrain-status.mjs",
-    "studio:check": "node ./scripts/studiobrain-status.mjs --gate"
+    "studio:check": "node ./scripts/studiobrain-status.mjs --gate",
+    "pr:gate": "node ./scripts/pr-gate.mjs"
   },
   "dependencies": {
     "@openai/codex": "^0.91.0",

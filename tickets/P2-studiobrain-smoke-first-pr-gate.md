@@ -1,6 +1,6 @@
 # P2 — Smoke-First PR Gate for Studiobrain Cutover Changes
 
-Status: Planned
+Status: In Progress
 Date: 2026-02-18
 Priority: P2
 Owner: QA + Platform
@@ -57,3 +57,10 @@ Implement a deterministic smoke-first gate that runs contract, host, and depende
 ## Definition of Done
 
 - PR gate is adopted as the default pre-merge safety path and documented for all contributors.
+
+## Work completed
+- `scripts/pr-gate.mjs` now runs deterministic required checks (env contract, host profile consistency, preflight, status gate).
+- Added optional smoke mode via `--smoke` for portal and website Playwright smoke checks.
+- Added `npm run pr:gate` script in root `package.json`.
+- Added machine-readable artifact output to `artifacts/pr-gate.json` (overridable via `--artifact`).
+- Added runbook at `docs/runbooks/PR_GATE.md`.

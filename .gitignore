@@ -21,6 +21,9 @@ functions/lib/
 # Lighthouse CI
 .lighthouseci/
 
+# Local automation artifacts
+output/
+
 # Local temp
 tmp-firebase.json
 memory/

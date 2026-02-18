@@ -1,0 +1,75 @@
+name: Portal Production Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Portal base URL"
+        required: false
+        default: "https://monsoonfire-portal.web.app"
+      run_deep_smoke:
+        description: "Run deep endpoint probes (production)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+  schedule:
+    - cron: "0 18 * * 2"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portal-prod-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Resolve base URL
+        id: base_url
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.base_url }}" ]; then
+            echo "value=${{ github.event.inputs.base_url }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=https://monsoonfire-portal.web.app" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run portal production smoke
+        run: node ./scripts/portal-playwright-smoke.mjs --base-url "${{ steps.base_url.outputs.value }}" --output-dir output/playwright/prod-ci
+
+      - name: Run portal production deep smoke
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_deep_smoke == 'true' }}
+        run: node ./scripts/portal-playwright-smoke.mjs --base-url "${{ steps.base_url.outputs.value }}" --deep --output-dir output/playwright/prod-ci/deep
+
+      - name: Upload production portal smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-playwright-prod-smoke
+          path: |
+            output/playwright/prod-ci
+            output/playwright/prod-ci/deep
+          if-no-files-found: ignore
+          retention-days: 14

@@ -5,6 +5,16 @@ on:
     branches:
       - main
   pull_request:
+  workflow_dispatch:
+    inputs:
+      run_deep_playwright:
+        description: Run deep portal Playwright smoke with explicit backend probes.
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
   schedule:
     - cron: "0 15 * * 1"
 
@@ -14,7 +24,7 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,17 +64,33 @@ jobs:
       - name: Web lint
         run: npm --prefix web run lint
 
-      - name: Web tests
-        run: npm --prefix web run test:run
-
-      - name: Web accessibility smoke
-        run: npm --prefix web run a11y:smoke
-
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Website Playwright smoke
-        run: npm run website:smoke:playwright
+      - name: Automated validation suite (unit, CORS, accessibility, UI)
+        run: npm run test:automation
+
+      - name: Portal Playwright deep smoke (manual)
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_deep_playwright == 'true' || github.event_name == 'schedule' }}
+        run: npm run functions:smoke:cors -- --base-url https://us-central1-monsoonfire-portal.cloudfunctions.net --origin https://monsoonfire-portal.web.app && npm run test:automation:ui:deep
+
+      - name: Upload portal smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-playwright-smoke
+          path: output/playwright/portal
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload portal deep smoke artifacts
+        if: ${{ always() && (github.event_name == 'workflow_dispatch' && github.event.inputs.run_deep_playwright == 'true' || github.event_name == 'schedule') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-playwright-smoke-deep
+          path: output/playwright/portal/deep
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload website smoke artifacts
         if: always()
@@ -75,8 +101,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Web build
-        run: npm --prefix web run build
+      - name: Verify no localhost Studio Brain endpoint in production bundle
+        run: npm run check:studio-brain:bundle
 
       - name: Web chunk budgets
         run: npm --prefix web run perf:chunks

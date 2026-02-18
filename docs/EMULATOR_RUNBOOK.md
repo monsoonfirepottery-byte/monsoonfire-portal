@@ -25,10 +25,16 @@
 ## Functions local dev
 - `npm --prefix functions run build` (typecheck)
 - Preferred (loads env from `functions/.env.local` every time):
+  - `node ./scripts/start-emulators.mjs --only firestore,functions,auth`
+- Optional host/profile override:
+  - `STUDIO_BRAIN_NETWORK_PROFILE=local|lan-static|lan-dhcp|ci`
+  - `STUDIO_BRAIN_STATIC_IP=<optional_static_ipv4_for_lan_static>`
+  - `node ./scripts/start-emulators.mjs --network-profile lan-dhcp --only firestore,functions,auth`
+- Equivalent command via npm script:
   - `npm run emulators:start -- --only firestore,functions,auth`
 - Equivalent direct command:
   - `firebase emulators:start --only firestore,functions,auth`
-- Legacy command (PowerShell):
+- Legacy command (PowerShell shim):
   - `pwsh -File scripts/start-emulators.ps1`
 - Staff claims setup: `docs/STAFF_CLAIMS_SETUP.md`
 
@@ -36,7 +42,7 @@
 1. Copy `functions/.env.local.example` to `functions/.env.local`.
 2. Set local-only values (for example `ADMIN_TOKEN`, `ALLOW_DEV_ADMIN_TOKEN=true`).
 3. Start emulators via `npm run emulators:start -- --only firestore,functions,auth`.
-   - Legacy: `pwsh -File scripts/start-emulators.ps1`.
+   - Legacy shim: `pwsh -File scripts/start-emulators.ps1`.
 
 This avoids losing env vars when opening a new terminal session.
 

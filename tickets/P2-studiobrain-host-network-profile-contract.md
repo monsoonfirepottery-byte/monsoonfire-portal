@@ -1,6 +1,6 @@
 # P2 — Host Network Profile Contract for Studiobrain
 
-Status: Planned
+Status: In Progress
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Studio Brain
@@ -54,6 +54,21 @@ Define explicit network profiles and enforce their selection across all startup/
 - `docs/EMULATOR_RUNBOOK.md`
 - `studio-brain/src/config/env.ts`
 - `studio-brain/scripts/preflight.mjs`
+- `scripts/studio-network-profile.mjs`
+- `scripts/start-emulators.mjs`
+- `scripts/pr-gate.mjs`
+- `scripts/studiobrain-status.mjs`
+
+## Work completed
+
+- Added network profile resolver and contract source:
+  - `scripts/studio-network-profile.mjs`
+  - `studio-brain/.env.network.profile`
+- Integrated profile contract into startup and validation:
+  - `scripts/start-emulators.mjs` now accepts `--network-profile`, resolves host, and passes `--host` to emulators.
+  - `studio-brain/scripts/preflight.mjs` prints host profile context and host mismatch warnings.
+  - `scripts/studiobrain-status.mjs` uses profile-resolved defaults when `STUDIO_BRAIN_BASE_URL` is unset.
+  - `scripts/pr-gate.mjs` now validates Studio Brain base URLs against resolved profile host allowlist.
 
 ## Definition of Done
 

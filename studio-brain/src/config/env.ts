@@ -26,6 +26,12 @@ const CsvFromString = z
 const EnvSchema = z.object({
   STUDIO_BRAIN_PORT: z.coerce.number().int().min(1).max(65535).default(8787),
   STUDIO_BRAIN_HOST: requiredString("STUDIO_BRAIN_HOST").default("127.0.0.1"),
+  STUDIO_BRAIN_NETWORK_PROFILE: z.enum(["local", "lan-static", "lan-dhcp", "ci"]).default("local"),
+  STUDIO_BRAIN_LOCAL_HOST: requiredString("STUDIO_BRAIN_LOCAL_HOST").default("127.0.0.1"),
+  STUDIO_BRAIN_LAN_HOST: requiredString("STUDIO_BRAIN_LAN_HOST").default("studiobrain.local"),
+  STUDIO_BRAIN_STATIC_IP: z.string().default(""),
+  STUDIO_BRAIN_ALLOWED_HOSTS: z.string().default(""),
+  STUDIO_BRAIN_HOST_STATE_FILE: requiredString("STUDIO_BRAIN_HOST_STATE_FILE").default(".studiobrain-host-state.json"),
   STUDIO_BRAIN_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   STUDIO_BRAIN_ALLOWED_ORIGINS: z.string().default("http://127.0.0.1:5173,http://localhost:5173"),
   STUDIO_BRAIN_ADMIN_TOKEN: z.string().optional(),

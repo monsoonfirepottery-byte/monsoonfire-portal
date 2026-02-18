@@ -19,5 +19,5 @@ Canonical host/port contract for local and LAN-aware development and cutover too
 
 - `scripts/studio-network-profile.mjs` resolves profile/host defaults.
 - `scripts/studiobrain-status.mjs` and `scripts/pr-gate.mjs` validate host alignment.
+- `scripts/validate-emulator-contract.mjs` validates portal emulator host/port toggles before cutover.
 - `docs/EMULATOR_RUNBOOK.md` publishes the canonical contract values.
-

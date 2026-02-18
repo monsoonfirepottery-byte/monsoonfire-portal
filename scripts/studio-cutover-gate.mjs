@@ -15,7 +15,7 @@ const REQUIRED_NODE_ENTRYPOINTS = [
   "scripts/portal-playwright-smoke.mjs",
   "scripts/website-playwright-smoke.mjs",
   "scripts/scan-studiobrain-host-contract.mjs",
-  "scripts/studio-network-check.mjs",
+  "scripts/validate-emulator-contract.mjs",
   "scripts/studiobrain-network-check.mjs",
   "scripts/studiobrain-status.mjs",
 ];
@@ -108,6 +108,14 @@ function buildSteps(config) {
       required: true,
       note: "Validates host profile and persistence state.",
       remediation: "Fix host profile configuration and rerun `studio-brain-network` checks.",
+    },
+    {
+      name: "studio-brain emulator contract",
+      command: "npm",
+      args: ["run", "studio:emulator:contract:check", "--", "--strict", "--json"],
+      required: true,
+      note: "Fails fast on mismatched portal emulator host/URL values.",
+      remediation: "Align portal emulator toggles and host contracts before preflight.",
     },
     {
       name: "studio-brain preflight",

@@ -3,3 +3,6 @@
 url = "https://mcp.context7.com/mcp"
 startup_timeout_ms = 120000
 search_tool = true
+
+[features]
+multi_agent = true

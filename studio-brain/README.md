@@ -84,7 +84,7 @@ Capability endpoints require header:
 - `x-studio-brain-admin-token` alone is not accepted for `GET /api/capabilities`.
 
 Auth probe for local verification:
-- `pwsh scripts/test-studio-brain-auth.ps1`
+- `node ../scripts/test-studio-brain-auth.mjs`
 - Optional env vars:
   - `STUDIO_BRAIN_BASE_URL` (default `http://127.0.0.1:8787`)
   - `STUDIO_BRAIN_ID_TOKEN`

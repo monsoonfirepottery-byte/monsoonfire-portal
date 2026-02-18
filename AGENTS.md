@@ -32,7 +32,7 @@ Codex, treat this file as your **ground truth** for how to work here: what matte
 - **Owner/operator (Micah / Wuff):** shipping-focused, momentum-sensitive. Prefers small decisive increments and strong guardrails.
 
 ### Environments
-- **Local dev:** Vite + Firebase emulators (functions + firestore). Windows + PowerShell is common.
+- **Local dev:** Vite + Firebase emulators (functions + firestore). Linux/macOS/Windows workflows are supported; PowerShell remains optional for legacy scripts.
 - **Production:** Firebase hosting/functions + Firestore rules/indexes.
 - **Website hosting:** separate path/deploy (cPanel / static hosting style). Don’t assume Firebase deploy handles it.
 

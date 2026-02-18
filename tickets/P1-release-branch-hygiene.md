@@ -13,7 +13,7 @@ Status: Completed
 - Update (2026-02-12): release slicing pass completed with mapped commit evidence:
   - `docs/RELEASE_DIFF_SUMMARY_2026-02-12.md`
   - small, reviewable commits mapped to ticket scope
-  - tracker sync run after status changes to keep Firestore aligned
+  - ticket index sync after status changes to keep docs, board, and PR evidence aligned
 - Effort: M
 - Risk: High
 - What to test: clean build/lint/test passes from the frozen release branch with only intended files included.

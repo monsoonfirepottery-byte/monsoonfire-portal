@@ -1,6 +1,6 @@
 # GA data package: extraction template and access protocol
 
-Status: Proposed
+Status: Planned
 Priority: P1
 Severity: Sev3
 Component: website

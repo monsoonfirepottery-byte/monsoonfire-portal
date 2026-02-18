@@ -52,4 +52,3 @@ Community feedback similarly shows pain around missing "where is my work" update
 - `tickets/P1-studio-reservation-status-api.md`
 - `tickets/P1-studio-reservation-queue-ops-ui.md`
 - `tickets/P2-studio-reservation-doc-and-playbook-gap.md`
-

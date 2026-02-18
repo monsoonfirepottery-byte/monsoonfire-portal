@@ -43,4 +43,3 @@ Introduce an offline-capable workflow for staff queue operations so status chang
 ## Dependencies
 - `tickets/P1-studio-reservation-status-api.md`
 - `tickets/P1-studio-reservation-stage-timeline-and-audit.md`
-

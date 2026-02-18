@@ -460,7 +460,7 @@ async function fetchGitHubResource(input: {
   const token = readGitHubToken();
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
-    "User-Agent": "monsoonfire-portal-tracker",
+    "User-Agent": "monsoonfire-portal-functions",
   };
   if (token) headers.Authorization = `Bearer ${token}`;
 

@@ -53,4 +53,3 @@ This creates uneven behavior:
 - `tickets/P1-studio-reservation-status-api.md`
 - `tickets/P1-studio-notification-sla-journey.md`
 - `tickets/P2-studio-storage-hold-automation.md`
-

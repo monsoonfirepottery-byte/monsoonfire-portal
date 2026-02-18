@@ -47,4 +47,3 @@ Add a station-aware queue model so staff and members both get accurate, enforcea
 - `tickets/P1-studio-reservation-status-api.md`
 - `tickets/P1-studio-queue-position-and-eta-band.md`
 - `tickets/P1-studio-reservation-stage-timeline-and-audit.md`
-

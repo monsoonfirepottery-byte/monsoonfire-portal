@@ -1,6 +1,6 @@
 # GA-backed website experiment backlog and prioritization
 
-Status: Proposed
+Status: Planned
 Priority: P2
 Severity: Sev3
 Component: website

@@ -1,6 +1,6 @@
 # P2 — Stripe Order and Payment State Contracts
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P2
 Owner: Functions Team
@@ -31,4 +31,3 @@ Define and enforce a narrow contract for payment state transitions sourced from 
 ## References
 - `functions/src/stripeConfig.ts`
 - `tickets/P1-agent-quote-reserve-pay-status-v1.md`
-

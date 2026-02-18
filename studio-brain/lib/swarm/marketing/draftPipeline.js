@@ -5,7 +5,6 @@ exports.hasRecentMarketingDraft = hasRecentMarketingDraft;
 exports.canTransitionDraftStatus = canTransitionDraftStatus;
 function buildMarketingDrafts(snapshot) {
     const refs = [
-        `ops.blockedTickets=${snapshot.ops.blockedTickets}`,
         `ops.agentRequestsPending=${snapshot.ops.agentRequestsPending}`,
         `counts.batchesActive=${snapshot.counts.batchesActive}`,
         `counts.firingsScheduled=${snapshot.counts.firingsScheduled}`,

@@ -1,6 +1,6 @@
 # Epic: P1 — Functions Type Safety and Data Contract Fidelity
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P1
 Owner: Functions Team

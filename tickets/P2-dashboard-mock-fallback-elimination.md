@@ -1,6 +1,6 @@
 # P2 — Dashboard Mock Fallback Elimination
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P2
 Owner: Portal Team
@@ -30,4 +30,3 @@ Replace silent fallback behavior with explicit states and user-visible outcomes.
 
 ## References
 - `web/src/views/DashboardView.tsx:529`
-

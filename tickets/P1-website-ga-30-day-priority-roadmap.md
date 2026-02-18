@@ -1,6 +1,6 @@
 # 30-day GA optimization roadmap (priority execution plan)
 
-Status: Proposed
+Status: Planned
 Priority: P1
 Severity: Sev2
 Component: website

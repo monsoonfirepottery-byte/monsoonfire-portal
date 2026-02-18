@@ -1,6 +1,6 @@
 # P2 — Stripe Webhook Secret Configuration and Validation
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P2
 Owner: Functions Team
@@ -32,4 +32,3 @@ Make secret resolution explicit and fail-safe with strong validation in all non-
 ## References
 - `functions/src/stripeConfig.ts:1157`
 - `functions/src/stripeConfig.ts:1138`
-

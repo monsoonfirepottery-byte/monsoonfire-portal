@@ -76,7 +76,7 @@ async function readFirestoreModel(projectId, scanLimitOverride) {
     const scanLimit = scanLimitOverride ?? env.STUDIO_BRAIN_SCAN_LIMIT;
     const queryTimeoutMs = env.STUDIO_BRAIN_FIRESTORE_QUERY_TIMEOUT_MS;
     const warnings = [];
-    const [batchesRead, reservationsRead, firingsRead, reportsRead, trackerRead, agentRequestsRead, ordersRead,] = await Promise.all([
+    const [batchesRead, reservationsRead, firingsRead, reportsRead, agentRequestsRead, ordersRead] = await Promise.all([
         safeReadCollection({
             name: "batches",
             fields: ["state"],
@@ -101,13 +101,6 @@ async function readFirestoreModel(projectId, scanLimitOverride) {
         safeReadCollection({
             name: "communityReports",
             fields: ["status", "severity"],
-            scanLimit,
-            queryTimeoutMs,
-            warnings,
-        }),
-        safeReadCollection({
-            name: "trackerTickets",
-            fields: ["blocked"],
             scanLimit,
             queryTimeoutMs,
             warnings,
@@ -160,11 +153,6 @@ async function readFirestoreModel(projectId, scanLimitOverride) {
         if (severity === "high")
             highSeverityReports += 1;
     }
-    let blockedTickets = 0;
-    for (const doc of trackerRead.docs) {
-        if (doc.data().blocked === true)
-            blockedTickets += 1;
-    }
     let agentRequestsPending = 0;
     for (const doc of agentRequestsRead.docs) {
         const status = String(doc.data().status ?? "pending").toLowerCase();
@@ -182,7 +170,6 @@ async function readFirestoreModel(projectId, scanLimitOverride) {
         reservationsRead,
         firingsRead,
         reportsRead,
-        trackerRead,
         agentRequestsRead,
         ordersRead,
     ]
@@ -207,7 +194,6 @@ async function readFirestoreModel(projectId, scanLimitOverride) {
             reservationsOpen,
             firingsScheduled,
             reportsOpen,
-            blockedTickets,
             agentRequestsPending,
             highSeverityReports,
             pendingOrders,

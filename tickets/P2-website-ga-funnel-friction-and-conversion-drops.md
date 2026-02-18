@@ -1,6 +1,6 @@
 # Website GA funnel friction and conversion drop investigation
 
-Status: Proposed
+Status: Planned
 Priority: P2
 Severity: Sev3
 Component: website

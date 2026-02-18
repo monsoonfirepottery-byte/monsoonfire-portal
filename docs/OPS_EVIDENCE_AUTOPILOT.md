@@ -9,7 +9,6 @@ Single-command orchestration for recurring operational evidence capture.
 1. Studio OS v3 local drills (`scripts/run-studio-os-v3-local-drills.mjs`)
 2. Studio OS v3 staging drills (`scripts/run-studio-os-v3-staging-drills.mjs`) when `STUDIO_BRAIN_ID_TOKEN` is set
 3. Notification reliability drills (`scripts/run-notification-drills.ps1`) when token + uid are supplied
-4. Tracker sync + status snapshot (`functions/scripts/syncTrackerTicketsFromMarkdown.js`, `functions/scripts/tracker_counts.js`)
 
 ## Outputs
 - `output/ops-evidence/ops-evidence-summary-<UTC>.json`
@@ -35,13 +34,6 @@ pwsh -File scripts/run-ops-evidence-autopilot.ps1 `
   -RunNotificationDrills `
   -NotificationIdToken "<REAL_FIREBASE_ID_TOKEN>" `
   -NotificationUid "<REAL_UID>"
-```
-
-### Add tracker sync
-```powershell
-pwsh -File scripts/run-ops-evidence-autopilot.ps1 `
-  -SyncTracker `
-  -TrackerEmail "monsoonfirepottery@gmail.com"
 ```
 
 ## Notes

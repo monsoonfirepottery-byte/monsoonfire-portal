@@ -16,7 +16,6 @@ const compute_1 = require("./compute");
                 reservationsOpen: 2,
                 firingsScheduled: 4,
                 reportsOpen: 1,
-                blockedTickets: 2,
                 agentRequestsPending: 5,
                 highSeverityReports: 1,
                 pendingOrders: 6,
@@ -35,7 +34,6 @@ const compute_1 = require("./compute");
     });
     strict_1.default.equal(snapshot.schemaVersion, "v3.0");
     strict_1.default.equal(snapshot.counts.batchesActive, 3);
-    strict_1.default.equal(snapshot.ops.blockedTickets, 2);
     strict_1.default.equal(snapshot.finance.unsettledPayments, 9);
     strict_1.default.ok(snapshot.sourceHashes.firestore.length > 0);
 });
@@ -49,7 +47,6 @@ const compute_1 = require("./compute");
                 reservationsOpen: 1,
                 firingsScheduled: 1,
                 reportsOpen: 1,
-                blockedTickets: 1,
                 agentRequestsPending: 1,
                 highSeverityReports: 1,
                 pendingOrders: 1,
@@ -80,7 +77,6 @@ const compute_1 = require("./compute");
                 reservationsOpen: 1,
                 firingsScheduled: 1,
                 reportsOpen: 1,
-                blockedTickets: 1,
                 agentRequestsPending: 1,
                 highSeverityReports: 1,
                 pendingOrders: 1,
@@ -100,13 +96,12 @@ const compute_1 = require("./compute");
     const current = {
         ...previous,
         counts: { ...previous.counts, batchesActive: 4 },
-        ops: { ...previous.ops, blockedTickets: 3 },
+        ops: { ...previous.ops, agentRequestsPending: 1 },
         finance: { ...previous.finance, unsettledPayments: 2 },
         generatedAt: "2026-02-12T02:00:00.000Z",
     };
     const diff = (0, compute_1.computeDiff)(previous, current);
     strict_1.default.ok(diff);
     strict_1.default.equal(diff?.changes["counts.batchesActive"]?.to, 4);
-    strict_1.default.equal(diff?.changes["ops.blockedTickets"]?.to, 3);
     strict_1.default.equal(diff?.changes["finance.unsettledPayments"]?.to, 2);
 });

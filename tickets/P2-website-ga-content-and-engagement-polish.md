@@ -1,6 +1,6 @@
 # Website GA content and engagement polish
 
-Status: Proposed
+Status: Planned
 Priority: P2
 Severity: Sev3
 Component: website

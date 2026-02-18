@@ -1,19 +1,19 @@
 # Epic: P1 — Backlog Hygiene and Ticket Topology
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P1
 Owner: PM + Engineering
 Type: Epic
 
 ## Problem
-Sprint docs and the tracker include unresolved TODO states and mixed ownership that make execution ordering difficult.
+Sprint docs and the ticket log include unresolved TODO states and mixed ownership that make execution ordering difficult.
 
 ## Objective
 Normalize all near-term backlog items into explicit, owned tickets with hierarchy and dependencies.
 
 ## Tickets
-- `tickets/P2-claims-and-todos-audit-to-tracker.md`
+- `tickets/P2-claims-and-todos-audit-to-ticket-files.md`
 - `tickets/P2-sprint-10-11-gap-cleanup-tickets.md`
 - `tickets/P2-epic-board-hygiene-and-status-reconcile.md`
 
@@ -28,7 +28,7 @@ Normalize all near-term backlog items into explicit, owned tickets with hierarch
 - `docs/sprints/SPRINT_11_PERF_TESTING.md`
 
 ## Acceptance Criteria
-1. Active TODOs in docs map to current tracker tickets.
+1. Active TODOs in docs map to current ticket files.
 2. Every high-priority gap has owner + acceptance + dependency.
 3. Board and ticket hierarchy are synchronized at least weekly.
 

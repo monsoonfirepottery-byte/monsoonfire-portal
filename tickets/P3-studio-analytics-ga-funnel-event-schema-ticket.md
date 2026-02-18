@@ -1,6 +1,6 @@
 # Ticket: P3 — Studio Analytics GA Funnel and Event Schema Alignment
 
-Status: Proposed  
+Status: Planned
 Created: 2026-02-17  
 Priority: P3  
 Owner: Website + Analytics Team  
@@ -45,4 +45,3 @@ Align analytics instrumentation with reservation lifecycle milestones and websit
 
 - GA funnel exists and is reviewed by product owner.
 - Analytics event schema is documented in repo and linked from planning docs.
-

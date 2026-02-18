@@ -1,6 +1,6 @@
 # Website GA event and goal instrumentation completeness
 
-Status: Proposed
+Status: Planned
 Priority: P1
 Severity: Sev2
 Component: website

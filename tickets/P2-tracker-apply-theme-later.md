@@ -1,30 +1,29 @@
-# P2: Apply New Theme to Tracker UI (Deferred)
+# P2 — Tracker Experience Retired (Docs + Git Tracking Transition)
 
-Status: Completed
+Status: Closed
 Priority: P2
 Severity: Sev3
 Component: portal
-Impact: med
-Tags: tracker, theme, followup
+Impact: low
+Tags: tracker-deprecation, docs, migration
 
 ## Goal
-Apply the approved Monsoon Fire portal theme and motion language to the internal Tracker experience (`/tracker`, `/tracker/board`) after MVP stability is verified.
+Tracker UI and board surfaces were removed from active product scope, and this ticket confirms we are now using markdown + Git for work tracking.
 
 ## Scope
-- Align typography, spacing, tokens, and component states with the current portal visual language.
-- Keep troubleshooting panel readability and copy/debug affordances as first-class UX.
-- Preserve mobile usability and no-jank interactions.
+- Remove tracker-surface assumptions from active roadmap and operational work plans.
+- Confirm no runtime dependency remains on Firebase tracker collections/routes.
+- Keep this closure documented as a terminal state so future work does not re-activate the old tracker.
 
 ## Constraints
-- Do not reduce tracker reliability instrumentation.
-- No regressions in ticket creation, status changes, filters, or GitHub sync flows.
+- No replacement Tracker UI is required.
+- No fallback or migration path back to `/tracker` is in-scope.
 
 ## Acceptance Criteria
-- Tracker shell and board feel visually consistent with the latest portal theme system.
-- Empty states, form states, and error states remain explicit and legible.
-- Existing functionality remains unchanged except visual polish.
+1. No runtime routes or pages reference `/tracker` or `/tracker/board`.
+2. Ticketing docs no longer require Firebase tracker route or sync workflows for normal execution.
+3. Closure note exists in a primary process doc or board reference.
 
-## Completion Notes (2026-02-12)
-- Tracker routes (`/tracker`, `/tracker/board`) are running on the Memoria token system via `tracker-theme-memoria`.
-- Dark theme styling parity is in place for shell, cards, buttons, form states, error states, and troubleshooting diagnostics blocks.
-- Functional behavior (ticket CRUD, status transitions, filters, GitHub metadata sync, seed flow) remains unchanged.
+## Completion Notes (2026-02-18)
+- Tracker collections were removed from active schema and rules in prior cleanup.
+- Existing tracker-specific ticket now serves as historical context and closure record.

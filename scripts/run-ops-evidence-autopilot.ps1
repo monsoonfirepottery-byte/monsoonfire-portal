@@ -6,11 +6,6 @@ param(
   [string]$NotificationIdToken = '',
   [string]$NotificationUid = '',
   [string]$NotificationAdminToken = '',
-  [switch]$SyncTracker,
-  [string]$TrackerUid = '',
-  [string]$TrackerEmail = 'monsoonfirepottery@gmail.com',
-  [string]$ProjectId = 'monsoonfire-portal',
-  [switch]$DryRunTracker,
   [string]$OutputDir = 'output/ops-evidence'
 )
 
@@ -138,9 +133,6 @@ $summary = [pscustomobject]@{
   config = [pscustomobject]@{
     studioDrills = $StudioDrills
     runNotificationDrills = [bool]$RunNotificationDrills
-    syncTracker = [bool]$SyncTracker
-    projectId = $ProjectId
-    dryRunTracker = [bool]$DryRunTracker
     outputDir = $outDirPath
   }
   steps = $null
@@ -208,37 +200,6 @@ if ($RunNotificationDrills) {
   }
 } else {
   Add-StepResult -Results ([ref]$steps) -Name 'notification-drills' -Status 'skipped' -Notes 'Not requested.'
-}
-
-if ($SyncTracker) {
-  $syncArgs = @('functions/scripts/syncTrackerTicketsFromMarkdown.js', '--projectId', $ProjectId)
-  if ($DryRunTracker) {
-    $syncArgs += @('--dryRun', 'true')
-  }
-  if (-not [string]::IsNullOrWhiteSpace($TrackerUid)) {
-    $syncArgs += @('--uid', $TrackerUid)
-  } elseif (-not [string]::IsNullOrWhiteSpace($TrackerEmail)) {
-    $syncArgs += @('--email', $TrackerEmail)
-  }
-
-  $syncResult = Invoke-CapturedProcess -FilePath 'node' -Arguments $syncArgs
-  $syncStatus = if ($syncResult.exitCode -eq 0) { 'success' } else { 'failed' }
-  Add-StepResult -Results ([ref]$steps) -Name 'tracker-sync' -Status $syncStatus -Notes 'syncTrackerTicketsFromMarkdown.js' -Payload $syncResult
-
-  if ($syncResult.exitCode -eq 0) {
-    $countArgs = @('functions/scripts/tracker_counts.js', '--projectId', $ProjectId)
-    if (-not [string]::IsNullOrWhiteSpace($TrackerUid)) {
-      $countArgs += @('--uid', $TrackerUid)
-    } elseif (-not [string]::IsNullOrWhiteSpace($TrackerEmail)) {
-      $countArgs += @('--email', $TrackerEmail)
-    }
-
-    $countResult = Invoke-CapturedProcess -FilePath 'node' -Arguments $countArgs
-    $countStatus = if ($countResult.exitCode -eq 0) { 'success' } else { 'failed' }
-    Add-StepResult -Results ([ref]$steps) -Name 'tracker-counts' -Status $countStatus -Notes 'tracker_counts.js' -Payload $countResult
-  }
-} else {
-  Add-StepResult -Results ([ref]$steps) -Name 'tracker-sync' -Status 'skipped' -Notes 'Not requested.'
 }
 
 $summary | Add-Member -NotePropertyName finishedAtUtc -NotePropertyValue ((Get-Date).ToUniversalTime().ToString('o'))

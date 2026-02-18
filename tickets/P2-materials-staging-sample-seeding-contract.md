@@ -1,6 +1,6 @@
 # P2 — Materials Sample Seeding Contract
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P2
 Owner: Functions Team
@@ -30,4 +30,3 @@ Create a strict seeding contract and environment guardrails for sample material 
 
 ## References
 - `functions/src/materials.ts:234`
-

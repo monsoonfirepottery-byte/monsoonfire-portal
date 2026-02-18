@@ -31,4 +31,3 @@ This can produce inconsistent load accounting when stations are renamed/aliased 
 - Station capacity calculations in board and queue flows use the same normalized ID source.
 - Invalid/stale IDs return clear `INVALID_ARGUMENT`-style responses in API responses.
 - Legacy identifiers are safely mapped (not rejected silently) where policy allows.
-

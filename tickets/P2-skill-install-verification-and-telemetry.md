@@ -1,6 +1,6 @@
 # P2 — Skill Install Verification and Telemetry
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P2
 Owner: Studio Brain Team
@@ -31,4 +31,3 @@ Add high-signal telemetry around every verification decision in the skill instal
 ## References
 - `studio-brain/docs/SKILL_SECURITY_MODEL.md:77`
 - `studio-brain/src/skills/ingestion.test.ts`
-

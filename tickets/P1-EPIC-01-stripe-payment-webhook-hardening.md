@@ -1,6 +1,6 @@
 # Epic: P1 — Stripe Payment/Webhook Hardening
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P1
 Owner: Functions + Security
@@ -35,5 +35,5 @@ Make webhook verification deterministic, auditable, and test-driven across all d
 
 ## Definition of Done
 1. `functions/src/stripeConfig.ts` passes typed checks for mode and secret fallback handling.
-2. New tickets complete and linked in tracker.
+2. New tickets complete and linked in the ticket set.
 3. No remaining placeholder or silent fallback path for webhook verification mode.

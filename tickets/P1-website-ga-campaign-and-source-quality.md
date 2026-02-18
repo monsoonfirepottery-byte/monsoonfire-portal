@@ -1,6 +1,6 @@
 # Website GA campaign and acquisition quality
 
-Status: Proposed
+Status: Planned
 Priority: P1
 Severity: Sev2
 Component: website

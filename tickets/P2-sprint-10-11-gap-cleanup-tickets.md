@@ -1,6 +1,6 @@
 # P2 — Sprint 10/11 Gap Cleanup Tickets
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P2
 Owner: PM + Engineering
@@ -14,7 +14,7 @@ Sprint 10 and Sprint 11 docs still contain goals that are no longer clearly trac
 Normalize sprint 10 and sprint 11 gaps into this ticket hierarchy and preserve continuity.
 
 ## Scope
-1. Compare sprint docs with ticket tracker list.
+1. Compare sprint docs with the active ticket file set.
 2. Promote unresolved high-priority items into explicit tickets.
 3. Add parent/child links and ordering labels.
 
@@ -31,4 +31,3 @@ Normalize sprint 10 and sprint 11 gaps into this ticket hierarchy and preserve c
 ## References
 - `docs/sprints/SPRINT_10_ALPHA_LAUNCH.md:10`
 - `docs/sprints/SPRINT_11_PERF_TESTING.md:10`
-

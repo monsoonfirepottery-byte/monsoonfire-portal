@@ -1,6 +1,6 @@
 # P2 — Role Gating and Authority Coverage
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P2
 Owner: Portal Team
@@ -32,4 +32,3 @@ Audit and harden all staff-only UI surfaces using the shared role contract.
 - `web/src/App.tsx`
 - `web/src/views/ReservationsView.tsx`
 - `web/src/views/StaffView.tsx`
-

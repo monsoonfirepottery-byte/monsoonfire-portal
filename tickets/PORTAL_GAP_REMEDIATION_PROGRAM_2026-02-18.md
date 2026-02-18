@@ -25,7 +25,7 @@ This program tracks the security, auth, data integrity, and backlog-quality gaps
 ## Execution Notes
 1. Start with E5 then E4 before broadening to E3 and E6 so trust and typed guards are in place.
 2. Run a smoke verification after each phase completion.
-3. Update tracker status from markdown before each merge window.
+3. Update ticket status from markdown before each merge window.
 
 ## Cross-Epic Dependencies
 1. `tickets/P1-EPIC-05-security-surface-hardening-and-trust-controls.md` feeds directly into safe execution of `tickets/P1-EPIC-04-functions-type-safety-and-data-contract-fidelity.md`.
@@ -35,4 +35,4 @@ This program tracks the security, auth, data integrity, and backlog-quality gaps
 ## Definition of Done (Program)
 1. All six epics have at least one ticket completed to P1 standard.
 2. No high-confidence silent-fallback path remains untagged in production.
-3. Board and tracker state are synchronized for all created tickets before merge.
+3. Board state and ticket files are synchronized for all created tickets before merge.

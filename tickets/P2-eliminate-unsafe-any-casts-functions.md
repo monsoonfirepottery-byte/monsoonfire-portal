@@ -1,6 +1,6 @@
 # P2 — Remove Unsafe `as any` in High-Risk Function Paths
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P2
 Owner: Functions Team
@@ -32,4 +32,3 @@ Eliminate or narrow `as any` usage in high-risk functions and replace with safe 
 - `functions/src/integrationEvents.ts:88`
 - `functions/src/jukebox.ts:264`
 - `functions/src/materials.ts:688`
-

@@ -1,6 +1,6 @@
 # Website analytics review: Google Analytics-backed growth epic
 
-Status: Proposed
+Status: Planned
 Priority: P2
 Severity: Sev4
 Component: website
@@ -50,7 +50,7 @@ The goal is to convert this into a concrete engineering + analytics execution pl
 - Each ticket is executed in priority order with clear owners and acceptance targets.
 - Website instrumentation coverage includes a stable event-to-goal map before funnel analysis tickets start.
 - Each completed ticket updates the same ticketing format with observed baselines and deltas.
-- Final status is posted to tracker with links to GA exports and supporting screenshots.
+- Final status is posted to the ticket file set with links to GA exports and supporting screenshots.
 
 ## Delivery sequencing
 - Week 1
@@ -67,4 +67,4 @@ The goal is to convert this into a concrete engineering + analytics execution pl
 - The GA link you shared resolves to a restricted login wall, so evidence collection should use:
   - 30-day and 90-day snapshots from `Acquisition`, `Behavior > Behavior Flow`, and `Conversions`.
   - Source/medium + device reports for the same date windows.
-- Keep all edits in markdown ticket format to match existing tracker sync workflows.
+- Keep all edits in markdown ticket format to match the existing docs-and-git tracking workflow.

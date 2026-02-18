@@ -46,4 +46,3 @@ Market competitors and community requests both point toward piece-level workflow
 ## Dependencies
 - `tickets/P1-studio-reservation-status-api.md`
 - `tickets/P1-studio-notification-sla-journey.md`
-

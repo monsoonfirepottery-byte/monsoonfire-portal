@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { setTimeout as setAbortTimeout } from "node:timers";
 import { validateEnvContract } from "../studio-brain/scripts/env-contract-validator.mjs";
+import { runIntegrityCheck } from "./integrity-check.mjs";
 import { resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
 
 const args = new Set(process.argv.slice(2));
@@ -47,11 +48,33 @@ async function probe(url, label) {
   }
 }
 
+function assertStudioBrainIntegrity() {
+  const report = runIntegrityCheck({ manifest: "studio-brain/.env.integrity.json", strict: false, verbose: false });
+  if (!report.ok) {
+    process.stderr.write("studio-brain status: integrity check failed.\n");
+    if (report.issues?.length) {
+      report.issues.forEach((issue) => {
+        const suffix = issue.expected ? ` [expected=${issue.expected}, actual=${issue.actual}]` : "";
+        process.stderr.write(`  - ${issue.file}: ${issue.message}${suffix}\n`);
+      });
+    }
+    return false;
+  }
+
+  if (report.warnings?.length > 0) {
+    process.stdout.write("studio-brain status: integrity warnings\n");
+    report.warnings.forEach((warning) => process.stdout.write(`  - ${warning.file}: ${warning.message}\n`));
+  }
+
+  return true;
+}
+
 async function main() {
   const contract = validateEnvContract();
+  const integrityOk = assertStudioBrainIntegrity();
   const checks = await Promise.all(endpoints.map((entry) => probe(`${baseUrl}${entry.path}`, entry.name)));
 
-  const fail = !contract.ok || checks.some((entry) => !entry.ok);
+  const fail = !integrityOk || !contract.ok || checks.some((entry) => !entry.ok);
   const payload = {
     status: fail ? "fail" : "pass",
     timestamp: new Date().toISOString(),

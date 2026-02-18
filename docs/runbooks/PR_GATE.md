@@ -13,7 +13,7 @@ Default `npm run pr:gate` runs these required checks:
 5. Legacy host-contract scan (`npm run studio:host:contract:scan:strict`)
 6. Studio Brain network runtime contract (`node ./scripts/studiobrain-network-check.mjs --gate --strict --write-state`)
 7. Studio Brain preflight (`npm --prefix studio-brain run preflight`)
-8. Studio Brain status gate (`node ./scripts/studiobrain-status.mjs --json --gate`)
+8. Studio Brain status gate (`node ./scripts/studiobrain-status.mjs --json --gate --strict`)
 
 For a clean local state, each onboarding run should pass host contract scan + smoke + status checks in sequence.
 Recommended sequence:

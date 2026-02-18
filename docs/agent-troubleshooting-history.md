@@ -9,7 +9,17 @@ Use this as a handoff for future agents and on-call staff.
 - Last known-good commits:
   - `1a70318a` — fixed web API import usage for function-name constants
   - `d4f3749d` — fixed Firebase `predeploy` commands for cross-platform deploy reliability
-- `web` build/tests currently pass locally after fixes.
+  - `web` build/tests currently pass locally after fixes.
+
+## Consistency and history notes (2026-02-18)
+
+- This branch was intentionally rewritten for a clean history before finalization.
+- A temporary PR merge flow was used (`PR #13`), then `main` was force-updated with a single squash commit:
+  - `760dc0d9` (`chore(portal): complete remaining TODOs and add single-glaze tile mode`)
+- The resulting history is now linear from `99842e97` with a single post-deploy feature commit on `main`.
+- Prior intermediate commit chain was preserved for recovery on local branch:
+  - `backup/portal-history-preclean`
+- PR #13 now has a follow-up comment documenting this rewrite for audit traceability.
 
 ## Deployment history (recent)
 

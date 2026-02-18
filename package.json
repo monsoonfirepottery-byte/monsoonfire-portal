@@ -43,6 +43,8 @@
     "studio:network:check": "node ./scripts/studiobrain-network-check.mjs",
     "studio:network:check:write-state": "node ./scripts/studiobrain-network-check.mjs --write-state",
     "studio:network:check:gate": "node ./scripts/studiobrain-network-check.mjs --gate",
+    "studio:emulator:contract:check": "node ./scripts/validate-emulator-contract.mjs",
+    "studio:emulator:contract:check:strict": "node ./scripts/validate-emulator-contract.mjs --strict",
     "studio:cutover:gate": "node ./scripts/studio-cutover-gate.mjs",
     "cutover:smoke": "node ./scripts/studio-cutover-gate.mjs",
     "studio:host:contract:scan": "node ./scripts/scan-studiobrain-host-contract.mjs",

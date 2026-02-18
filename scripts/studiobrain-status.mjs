@@ -70,7 +70,8 @@ function assertStudioBrainIntegrity() {
 }
 
 async function main() {
-  const contract = validateEnvContract();
+  const enforceContractStrict = failFast || process.env.STUDIO_BRAIN_STATUS_STRICT === "true";
+  const contract = validateEnvContract({ strict: enforceContractStrict });
   const integrityOk = assertStudioBrainIntegrity();
   const checks = await Promise.all(endpoints.map((entry) => probe(`${baseUrl}${entry.path}`, entry.name)));
 

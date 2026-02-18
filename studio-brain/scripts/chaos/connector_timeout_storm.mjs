@@ -1,4 +1,6 @@
-const baseUrl = process.env.STUDIO_BRAIN_BASE_URL || "http://127.0.0.1:8787";
+import { resolveStudioBrainBaseUrlFromEnv } from "../../scripts/studio-brain-url-resolution.mjs";
+
+const baseUrl = resolveStudioBrainBaseUrlFromEnv({ env: process.env });
 const adminToken = process.env.STUDIO_BRAIN_ADMIN_TOKEN || "";
 const iterations = Number(process.env.CHAOS_STORM_COUNT || "20");
 const timeoutMs = Number(process.env.CHAOS_TIMEOUT_MS || "250");

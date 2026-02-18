@@ -1,6 +1,6 @@
 # P2 — Vite Local Hosting and Proxy Migration to Studiobrain Workflows
 
-Status: Planned
+Status: In Progress
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Portal
@@ -38,6 +38,11 @@ Migrate local Vite dev setup and proxy behavior to a studiobrain-first, host-sta
 3. Local dev and portal automation smoke paths share one host/endpoint convention.
 4. Any host mismatch is explicitly rejected by smoke/validation checks.
 5. The LAN profile path is documented and stable without code edits for DHCP environments.
+
+## Work completed
+
+- Added environment-driven Vite host/allowed-host configuration in `web/vite.config.js` (`VITE_DEV_HOST`, `VITE_ALLOWED_HOSTS`) to support Studio Brain LAN/stability workflows without code edits.
+- Extended `web/.env.local.example` with matching Vite host/allowed-host hints for onboarding.
 
 ## Dependencies
 - `web/vite.config.js`

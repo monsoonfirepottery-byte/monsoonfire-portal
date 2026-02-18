@@ -4,6 +4,15 @@ import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig(({ mode }) => {
   const isDev = mode === "development";
+  const parseCsvList = (value) =>
+    String(value || "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+
+  const host = process.env.VITE_DEV_HOST || process.env.VITE_HOST || "127.0.0.1";
+  const allowedHosts = parseCsvList(process.env.VITE_ALLOWED_HOSTS);
+
   const plugins = [react()];
   if (!isDev) {
     plugins.push(
@@ -29,6 +38,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     server: {
+      host,
+      allowedHosts,
+      strictPort: true,
       headers: {
         "Cache-Control": "no-store",
       },

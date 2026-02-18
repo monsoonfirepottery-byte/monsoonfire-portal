@@ -1,0 +1,271 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "contracts": {
+    "functions.listIntegrationTokens": {
+      "request": {
+        "type": "object",
+        "required": [],
+        "additionalProperties": true,
+        "properties": {}
+      },
+      "response": {
+        "type": "object",
+        "required": ["ok", "tokens"],
+        "properties": {
+          "ok": {
+            "const": true,
+            "type": "boolean"
+          },
+          "tokens": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "tokenId",
+                "label",
+                "scopes",
+                "createdAt",
+                "updatedAt",
+                "lastUsedAt",
+                "revokedAt"
+              ],
+              "properties": {
+                "tokenId": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": ["string", "null"]
+                },
+                "scopes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "createdAt": {
+                  "type": "object"
+                },
+                "updatedAt": {
+                  "type": "object"
+                },
+                "lastUsedAt": {
+                  "type": ["object", "null"]
+                },
+                "revokedAt": {
+                  "type": ["object", "null"]
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "functions.listBillingSummary": {
+      "request": {
+        "type": "object",
+        "required": [],
+        "additionalProperties": true,
+        "properties": {
+          "limit": {
+            "type": ["integer", "null"]
+          },
+          "from": {
+            "type": ["integer", "string", "null"]
+          },
+          "to": {
+            "type": ["integer", "string", "null"]
+          }
+        }
+      },
+      "response": {
+        "type": "object",
+        "required": ["ok", "unpaidCheckIns", "materialsOrders", "receipts", "summary"],
+        "properties": {
+          "ok": {
+            "const": true,
+            "type": "boolean"
+          },
+          "unpaidCheckIns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "signupId",
+                "eventId",
+                "eventTitle",
+                "status",
+                "paymentStatus",
+                "amountCents",
+                "currency",
+                "offerExpiresAt",
+                "checkedInAt",
+                "createdAt",
+                "checkInMethod"
+              ],
+              "properties": {
+                "signupId": { "type": "string" },
+                "eventId": { "type": "string" },
+                "eventTitle": { "type": "string" },
+                "status": { "type": "string" },
+                "paymentStatus": {
+                  "type": ["string", "null"]
+                },
+                "amountCents": {
+                  "type": ["integer", "null"]
+                },
+                "currency": { "type": ["string", "null"] },
+                "offerExpiresAt": { "type": ["string", "null"] },
+                "checkedInAt": { "type": ["string", "null"] },
+                "createdAt": { "type": ["string", "null"] },
+                "checkInMethod": { "type": ["string", "null"] }
+              },
+              "additionalProperties": true
+            }
+          },
+          "materialsOrders": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "status",
+                "totalCents",
+                "currency",
+                "pickupNotes",
+                "checkoutUrl",
+                "createdAt",
+                "updatedAt",
+                "items"
+              ],
+              "properties": {
+                "id": { "type": "string" },
+                "status": { "type": "string" },
+                "totalCents": { "type": "integer" },
+                "currency": { "type": "string" },
+                "pickupNotes": { "type": ["string", "null"] },
+                "checkoutUrl": { "type": ["string", "null"] },
+                "createdAt": { "type": ["string", "null"] },
+                "updatedAt": { "type": ["string", "null"] },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["productId", "name", "quantity", "unitPrice", "currency"],
+                    "properties": {
+                      "productId": { "type": "string" },
+                      "name": { "type": "string" },
+                      "quantity": { "type": "integer" },
+                      "unitPrice": { "type": "integer" },
+                      "currency": { "type": "string" }
+                    },
+                    "additionalProperties": true
+                  }
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "receipts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "type", "sourceId", "title", "amountCents", "currency", "paidAt", "createdAt", "metadata"],
+              "properties": {
+                "id": { "type": "string" },
+                "type": {
+                  "type": "string",
+                  "enum": ["materials", "event"]
+                },
+                "sourceId": { "type": ["string", "null"] },
+                "title": { "type": "string" },
+                "amountCents": { "type": "integer" },
+                "currency": { "type": "string" },
+                "paidAt": { "type": ["string", "null"] },
+                "createdAt": { "type": ["string", "null"] },
+                "metadata": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "summary": {
+            "type": "object",
+            "required": [
+              "unpaidCheckInsCount",
+              "unpaidCheckInsAmountCents",
+              "materialsPendingCount",
+              "materialsPendingAmountCents",
+              "receiptsCount",
+              "receiptsAmountCents"
+            ],
+            "properties": {
+              "unpaidCheckInsCount": { "type": "integer" },
+              "unpaidCheckInsAmountCents": { "type": "integer" },
+              "materialsPendingCount": { "type": "integer" },
+              "materialsPendingAmountCents": { "type": "integer" },
+              "receiptsCount": { "type": "integer" },
+              "receiptsAmountCents": { "type": "integer" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "functions.listDelegations": {
+      "request": {
+        "type": "object",
+        "required": [],
+        "additionalProperties": true,
+        "properties": {
+          "ownerUid": {
+            "type": ["string", "null"]
+          },
+          "agentClientId": {
+            "type": ["string", "null"]
+          },
+          "includeRevoked": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": ["integer", "null"]
+          }
+        }
+      },
+      "response": {
+        "type": "object",
+        "required": ["ok", "ownerUid", "rows"],
+        "properties": {
+          "ok": {
+            "const": true,
+            "type": "boolean"
+          },
+          "ownerUid": {
+            "type": ["string", "null"]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id"],
+              "properties": {
+                "id": { "type": "string" },
+                "ownerUid": { "type": "string" },
+                "agentClientId": { "type": ["string", "null"] },
+                "status": { "type": "string" },
+                "revokedAt": { "type": ["object", "null"] },
+                "createdAt": { "type": ["object", "null"] }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  }
+}

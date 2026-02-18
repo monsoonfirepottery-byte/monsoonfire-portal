@@ -15,6 +15,8 @@
     "test:web": "npm --prefix web run test:run",
     "test:functions": "npm --prefix functions run test",
     "test:studio-brain": "npm --prefix studio-brain run test",
+    "test:unit": "npm run test:all",
+    "test:full": "npm run test:automation",
     "test:all": "npm run test:functions && npm run test:studio-brain && npm run test:web",
     "test:automation:unit": "npm run test:all",
     "test:automation:gateway": "npm run functions:smoke:cors",
@@ -24,7 +26,7 @@
     "test:automation:bundle": "npm run build:web && npm run check:studio-brain:bundle",
     "test:automation": "npm run test:automation:unit && npm run test:automation:gateway && npm run test:automation:checks && npm run test:automation:ui && npm run test:automation:bundle",
     "test:automation:deep": "npm run test:automation && npm run functions:smoke:cors -- --base-url https://us-central1-monsoonfire-portal.cloudfunctions.net --origin https://monsoonfire-portal.web.app && npm run test:automation:ui:deep",
-    "test": "npm run test:all",
+    "test": "npm run test:full",
     "check:studio-brain:bundle": "node ./scripts/check-studio-brain-bundle.mjs web/dist"
   },
   "dependencies": {

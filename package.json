@@ -34,7 +34,9 @@
     "test:automation:deep": "npm run test:automation && npm run functions:smoke:cors -- --base-url https://us-central1-monsoonfire-portal.cloudfunctions.net --origin https://monsoonfire-portal.web.app && npm run test:automation:ui:deep",
     "test": "npm run test:full",
     "check:studio-brain:bundle": "node ./scripts/check-studio-brain-bundle.mjs web/dist",
-    "studio:env:validate": "npm --prefix studio-brain run env:validate"
+    "studio:env:validate": "npm --prefix studio-brain run env:validate",
+    "studio:status": "node ./scripts/studiobrain-status.mjs",
+    "studio:check": "node ./scripts/studiobrain-status.mjs --gate"
   },
   "dependencies": {
     "@openai/codex": "^0.91.0",

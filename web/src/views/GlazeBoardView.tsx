@@ -25,6 +25,7 @@ import { db } from "../firebase";
 import { useBatches } from "../hooks/useBatches";
 import { importGlazeMatrix } from "../lib/glazes/importMatrix";
 import { ALL_TAGS, QUICK_TAGS, TAG_GROUPS, type GlazeTag } from "../lib/glazes/tags";
+import { REAL_GLAZE_MATRIX_CSV } from "../lib/glazes/glazeMatrixData";
 import {
   createEmptyTagFilters,
   getActiveTags,
@@ -36,40 +37,21 @@ import type { ComboKey, Glaze } from "../lib/glazes/types";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./GlazeBoardView.css";
 
-const GLAZE_NAMES = [
-  "Walnut Spice",
-  "Forrest Green",
-  "Redwood Matte",
-  "June Perry Purple",
-  "Agate",
-  "Turbulent Indigo",
-  "Sue's Blue Saphire",
-  "Studio White",
-  "Transparent Glossy",
-  "High Gloss Black",
-  "Crackle Glaze Base",
-];
-
 const GLAZY_SEARCH_BASE = "https://glazy.org/search?search=";
 const MAX_IMAGE_EDGE = 1600;
 const JPEG_QUALITY = 0.8;
 const FAVORITES_KEY = "mf_glaze_favorites";
+type MatrixParseResult = ReturnType<typeof importGlazeMatrix>;
 type ImportMetaEnvShape = {
+  BASE_URL?: string;
   VITE_USE_EMULATORS?: string;
   VITE_STORAGE_EMULATOR_HOST?: string;
   VITE_STORAGE_EMULATOR_PORT?: string;
 };
 const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
 
-function buildSampleMatrix(names: string[]) {
-  let nextId = 1;
-  const header = ["0", ...names].join(",");
-  const rows = names.map((top) => {
-    const ids = names.map(() => String(nextId++));
-    return [top, ...ids].join(",");
-  });
-  return [header, ...rows].join("\n");
-}
+const FALLBACK_MATRIX = importGlazeMatrix(REAL_GLAZE_MATRIX_CSV);
+const GLAZE_MATRIX_URL = `${(ENV.BASE_URL || "/").replace(/\/$/, "")}/glaze-matrix.csv`;
 
 function buildGlazySearchUrl(name: string) {
   return `${GLAZY_SEARCH_BASE}${encodeURIComponent(name)}`;
@@ -133,10 +115,6 @@ async function compressImage(file: File): Promise<Blob> {
   });
 }
 
-const SAMPLE_MATRIX = buildSampleMatrix(GLAZE_NAMES);
-const BASE_ORDER = GLAZE_NAMES;
-const TOP_ORDER = GLAZE_NAMES;
-
 type Props = {
   user: User;
   isStaff: boolean;
@@ -167,6 +145,8 @@ type ComboPhotoView = ComboPhotoDoc & {
   url?: string;
 };
 
+type TileMode = "combo" | "single";
+
 type ComboTileView = {
   comboId: number;
   coverPhotoPath?: string | null;
@@ -177,6 +157,31 @@ type ComboTileView = {
   updatedAt?: string | null;
   updatedBy?: string | null;
 };
+
+type SingleTileDoc = {
+  glazeId?: string | null;
+  coverPhotoPath?: string | null;
+  photos?: ComboPhotoDoc[] | null;
+  notes?: string | null;
+  flags?: string[] | null;
+  updatedAt?: { toDate?: () => Date } | string | null;
+  updatedBy?: string | null;
+};
+
+type SingleTileView = {
+  glazeId: string;
+  coverPhotoPath?: string | null;
+  photos: ComboPhotoView[];
+  notes?: string | null;
+  flags?: string[] | null;
+  updatedAt?: string | null;
+  updatedBy?: string | null;
+};
+
+type SingleTileLookup = {
+  glaze: Glaze;
+  tile: SingleTileView | null;
+} | null;
 
 type ComboLookup = {
   id: number;
@@ -205,6 +210,7 @@ type AttachPieceOption = {
 
 export default function GlazeBoardView({ user, isStaff }: Props) {
   const [tab, setTab] = useState<"studio" | "raku">("studio");
+  const [tileMode, setTileMode] = useState<TileMode>("combo");
   const [searchQuery, setSearchQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filterChipsOpen, setFilterChipsOpen] = useState(true);
@@ -216,7 +222,9 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
 
   const [selectedBaseId, setSelectedBaseId] = useState<string | null>(null);
   const [selectedTopId, setSelectedTopId] = useState<string | null>(null);
+  const [selectedGlazeId, setSelectedGlazeId] = useState<string | null>(null);
   const [comboTilesById, setComboTilesById] = useState<Record<number, ComboTileView>>({});
+  const [singleTilesById, setSingleTilesById] = useState<Record<string, SingleTileView>>({});
   const [glazeMetaById, setGlazeMetaById] = useState<Record<string, GlazeMetaDoc>>({});
   const [photoUrlByPath, setPhotoUrlByPath] = useState<Record<string, string>>({});
   const [tileStatus, setTileStatus] = useState("");
@@ -246,7 +254,34 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
 
   const { active: activeBatches, history: historyBatches } = useBatches(user);
 
-  const { glazes: rawGlazes, comboKeys } = useMemo(() => importGlazeMatrix(SAMPLE_MATRIX), []);
+  const [matrixState, setMatrixState] = useState<MatrixParseResult>(() => FALLBACK_MATRIX);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadMatrix = async () => {
+      try {
+        const response = await fetch(GLAZE_MATRIX_URL, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`Unable to load glaze matrix (${response.status} ${response.statusText})`);
+        }
+        const nextMatrix = importGlazeMatrix(await response.text());
+        if (!cancelled) {
+          setMatrixState(nextMatrix);
+        }
+      } catch {
+        if (!cancelled) {
+          setMatrixState(FALLBACK_MATRIX);
+        }
+      }
+    };
+
+    void loadMatrix();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const { glazes: rawGlazes, comboKeys, baseNames, topNames } = matrixState;
 
   const glazes = useMemo(() => {
     return rawGlazes.map((glaze) => {
@@ -271,13 +306,13 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
   }, [glazes]);
 
   const baseGlazes = useMemo(
-    () => BASE_ORDER.map((name) => glazeByName.get(name)).filter(Boolean) as Glaze[],
-    [glazeByName]
+    () => baseNames.map((name) => glazeByName.get(name)).filter(Boolean) as Glaze[],
+    [baseNames, glazeByName]
   );
 
   const topGlazes = useMemo(
-    () => TOP_ORDER.map((name) => glazeByName.get(name)).filter(Boolean) as Glaze[],
-    [glazeByName]
+    () => topNames.map((name) => glazeByName.get(name)).filter(Boolean) as Glaze[],
+    [glazeByName, topNames]
   );
 
   const comboByKey = useMemo(() => {
@@ -300,6 +335,12 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
     }
   }, [selectedTopId, topGlazes]);
 
+  useEffect(() => {
+    if (!selectedGlazeId && glazes.length) {
+      setSelectedGlazeId(glazes[0].id);
+    }
+  }, [selectedGlazeId, glazes]);
+
   const selectedComboId = useMemo(() => {
     if (!selectedBaseId || !selectedTopId) return null;
     return comboByKey.get(`${selectedBaseId}::${selectedTopId}`)?.id ?? null;
@@ -321,6 +362,16 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
     };
   }, [comboKeys, glazes, selectedComboId, comboTilesById]);
 
+  const selectedSingle: SingleTileLookup = useMemo(() => {
+    if (!selectedGlazeId) return null;
+    const glaze = glazes.find((item) => item.id === selectedGlazeId);
+    if (!glaze) return null;
+    return {
+      glaze,
+      tile: singleTilesById[selectedGlazeId] ?? null,
+    };
+  }, [glazes, selectedGlazeId, singleTilesById]);
+
   const comboMetaById = useMemo(() => {
     const meta: Record<number, ComboFilterMeta> = {};
     comboKeys.forEach((combo) => {
@@ -339,6 +390,26 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
     return meta;
   }, [comboKeys, comboTilesById]);
 
+  const singleMetaById = useMemo(() => {
+    const meta: Record<string, ComboFilterMeta> = {};
+    glazes.forEach((glaze) => {
+      meta[glaze.id] = { hasPhoto: false, hasNotes: false, flags: [] };
+    });
+    Object.values(singleTilesById).forEach((tile) => {
+      const flagList = normalizeTagList(tile.flags);
+      const photoTags = tile.photos.flatMap((photo) => normalizeTagList(photo.tags));
+      const tags = mergeTagLists(flagList, photoTags);
+      meta[tile.glazeId] = {
+        hasPhoto: tile.photos.length > 0,
+        hasNotes: Boolean(tile.notes),
+        flags: tags,
+      };
+    });
+    return meta;
+  }, [glazes, singleTilesById]);
+
+  const isComboMode = tileMode === "combo";
+
   const filterState: ComboFilterState = useMemo(
     () => ({
       requirePhoto: filterHasPhoto,
@@ -351,7 +422,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
   const activeTags = useMemo(() => getActiveTags(filterTagsByGroup), [filterTagsByGroup]);
   const favoriteSet = useMemo(() => new Set(favoriteComboIds), [favoriteComboIds]);
   const filtersActive =
-    filterHasPhoto || filterHasNotes || filterFavorites || activeTags.length > 0;
+    filterHasPhoto || filterHasNotes || activeTags.length > 0 || (isComboMode && filterFavorites);
 
   const comboMatches = useMemo(() => {
     const next = new Map<number, boolean>();
@@ -367,12 +438,56 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
     return { map: next, count };
   }, [comboKeys, comboMetaById, filterState, filterFavorites, favoriteSet]);
 
-  const matchingCount = filtersActive ? comboMatches.count : comboKeys.length;
+  const singleMatches = useMemo(() => {
+    const next = new Map<string, boolean>();
+    let count = 0;
+    glazes.forEach((glaze) => {
+      const meta = singleMetaById[glaze.id] || { hasPhoto: false, hasNotes: false, flags: [] };
+      const matches = matchesComboFilters(meta, filterState);
+      next.set(glaze.id, matches);
+      if (matches) count += 1;
+    });
+    return { map: next, count };
+  }, [glazes, singleMetaById, filterState]);
+
+  const matchingCount = isComboMode
+    ? filtersActive
+      ? comboMatches.count
+      : comboKeys.length
+    : filtersActive
+      ? singleMatches.count
+      : glazes.length;
 
   const selectedComboMatches = useMemo(() => {
     if (!filtersActive || !selectedComboId) return true;
     return comboMatches.map.get(selectedComboId) ?? false;
   }, [filtersActive, selectedComboId, comboMatches.map]);
+
+  const selectedSingleMatches = useMemo(() => {
+    if (!filtersActive || !selectedGlazeId) return true;
+    return singleMatches.map.get(selectedGlazeId) ?? false;
+  }, [filtersActive, selectedGlazeId, singleMatches.map]);
+
+  const selectedTileRecord = isComboMode ? selectedCombo?.tile : selectedSingle?.tile;
+
+  const selectedTilePhotos = useMemo(() => {
+    if (!selectedTileRecord?.photos.length) return [];
+    return selectedTileRecord.photos.map((photo) => ({
+      ...photo,
+      url: photoUrlByPath[photo.path],
+    }));
+  }, [selectedTileRecord?.photos, photoUrlByPath]);
+
+  const selectedTileMatches = isComboMode ? selectedComboMatches : selectedSingleMatches;
+
+  const selectedTileTitle = useMemo(() => {
+    if (isComboMode) {
+      if (!selectedCombo) return null;
+      return `Base: ${selectedCombo.base.name} + Top: ${selectedCombo.top.name}`;
+    }
+    if (!selectedSingle) return null;
+    return `Glaze: ${selectedSingle.glaze.name}`;
+  }, [isComboMode, selectedCombo, selectedSingle]);
 
   const baseMatches = useMemo(() => {
     const map = new Map<string, boolean>();
@@ -407,6 +522,12 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
     if (!query) return topGlazes;
     return topGlazes.filter((glaze) => glaze.name.toLowerCase().includes(query));
   }, [topGlazes, searchQuery]);
+
+  const filteredGlazes = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return glazes;
+    return glazes.filter((glaze) => glaze.name.toLowerCase().includes(query));
+  }, [glazes, searchQuery]);
 
   const storage = useMemo(() => {
     const instance = getStorage();
@@ -467,6 +588,42 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
   }, []);
 
   useEffect(() => {
+    const tilesRef = collection(db, "singleTiles");
+    setTileStatus("");
+    const unsubscribe = onSnapshot(
+      tilesRef,
+      (snap) => {
+        const next: Record<string, SingleTileView> = {};
+        snap.docs.forEach((docSnap) => {
+          const data = docSnap.data() as SingleTileDoc;
+          const glazeId = data.glazeId ?? docSnap.id;
+          const photos = Array.isArray(data.photos)
+            ? data.photos.filter((photo) => photo && typeof photo.path === "string")
+            : [];
+          const updatedAt =
+            typeof data.updatedAt === "string"
+              ? data.updatedAt
+              : data.updatedAt?.toDate?.()?.toISOString() ?? null;
+          next[glazeId] = {
+            glazeId,
+            coverPhotoPath: data.coverPhotoPath ?? null,
+            photos,
+            notes: data.notes ?? null,
+            flags: data.flags ?? null,
+            updatedAt,
+            updatedBy: data.updatedBy ?? null,
+          };
+        });
+        setSingleTilesById(next);
+      },
+      (error) => {
+        setTileStatus(`Single glaze tiles unavailable: ${error.message}`);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
     const glazesRef = collection(db, "glazes");
     const unsubscribe = onSnapshot(glazesRef, (snap) => {
       const next: Record<string, GlazeMetaDoc> = {};
@@ -483,8 +640,8 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!selectedCombo?.tile?.photos?.length) return;
-    const missing = selectedCombo.tile.photos
+    if (!selectedTileRecord?.photos?.length) return;
+    const missing = selectedTileRecord.photos
       .map((photo) => photo.path)
       .filter((path) => path && !photoUrlByPath[path]);
     if (missing.length === 0) return;
@@ -516,13 +673,28 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [selectedCombo?.tile?.photos, photoUrlByPath, storage]);
+  }, [selectedTileRecord?.photos, photoUrlByPath, storage]);
 
   useEffect(() => {
-    if (!selectedCombo) return;
-    setGlazyBaseUrl(selectedCombo.base.glazy?.url ?? "");
-    setGlazyTopUrl(selectedCombo.top.glazy?.url ?? "");
-  }, [selectedCombo]);
+    if (isComboMode) {
+      if (!selectedCombo) {
+        setGlazyBaseUrl("");
+        setGlazyTopUrl("");
+        return;
+      }
+      setGlazyBaseUrl(selectedCombo.base.glazy?.url ?? "");
+      setGlazyTopUrl(selectedCombo.top.glazy?.url ?? "");
+      return;
+    }
+
+    if (!selectedSingle) {
+      setGlazyBaseUrl("");
+      setGlazyTopUrl("");
+      return;
+    }
+    setGlazyBaseUrl(selectedSingle.glaze.glazy?.url ?? "");
+    setGlazyTopUrl("");
+  }, [isComboMode, selectedCombo, selectedSingle]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -544,11 +716,11 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
   }, [favoriteComboIds]);
 
   const selectedTileTags = useMemo(() => {
-    if (!selectedCombo?.tile) return [];
-    const tileFlags = normalizeTagList(selectedCombo.tile.flags);
-    const photoTags = selectedCombo.tile.photos.flatMap((photo) => normalizeTagList(photo.tags));
+    if (!selectedTileRecord) return [];
+    const tileFlags = normalizeTagList(selectedTileRecord.flags);
+    const photoTags = selectedTileRecord.photos.flatMap((photo) => normalizeTagList(photo.tags));
     return mergeTagLists(tileFlags, photoTags);
-  }, [selectedCombo?.tile]);
+  }, [selectedTileRecord]);
 
   const activeFilterPills = useMemo(() => {
     const pills: { key: string; label: string; onRemove: () => void }[] = [];
@@ -566,7 +738,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
         onRemove: () => setFilterHasNotes(false),
       });
     }
-    if (filterFavorites) {
+    if (isComboMode && filterFavorites) {
       pills.push({
         key: "favorites",
         label: "Favorites",
@@ -588,24 +760,17 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
       });
     });
     return pills;
-  }, [activeTags, filterHasPhoto, filterHasNotes, filterFavorites]);
-
-  const selectedComboPhotos = useMemo(() => {
-    if (!selectedCombo?.tile?.photos?.length) return [];
-    return selectedCombo.tile.photos.map((photo) => ({
-      ...photo,
-      url: photoUrlByPath[photo.path],
-    }));
-  }, [selectedCombo?.tile?.photos, photoUrlByPath]);
+  }, [activeTags, filterHasPhoto, filterHasNotes, filterFavorites, isComboMode]);
 
   const openSheet = (mode: "add" | "edit") => {
-    if (!selectedCombo) return;
-    const tile = selectedCombo.tile;
+    const target = isComboMode ? selectedCombo : selectedSingle;
+    if (!target) return;
+    const tile = selectedTileRecord;
     const tagSeed = tile ? normalizeTagList(tile.flags) : [];
     setSheetMode(mode);
     setSheetPhotoFile(null);
     setSheetNote(tile?.notes ?? "");
-    setSheetConeNote(tile?.coneNotes ?? "");
+    setSheetConeNote(isComboMode ? selectedCombo?.tile?.coneNotes ?? "" : "");
     setSheetTags(tagSeed);
     setSheetNeedsRetest(Boolean(tile?.flags?.includes("needs-retest")));
     setSheetStatus("");
@@ -642,32 +807,37 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
   };
 
   const handleSaveSheet = async () => {
-    if (!selectedComboId) return;
+    const tileId = isComboMode ? selectedComboId : selectedGlazeId;
+    if (!tileId) return;
     if (!isStaff) return;
 
     const note = sheetNote.trim();
-    const coneNote = sheetConeNote.trim();
+    const coneNote = isComboMode ? sheetConeNote.trim() : "";
     const hasNote = Boolean(note || coneNote);
     const hasPhoto = Boolean(sheetPhotoFile);
 
     if (!hasNote && !hasPhoto) {
-      setSheetStatus("Add a photo or a note so we can save this combo.");
+      setSheetStatus(`Add a photo or a note so we can save this ${isComboMode ? "combo" : "glaze"}.`);
       return;
     }
 
     setSheetSaving(true);
     setSheetStatus("");
 
-    const tileRef = doc(db, "comboTiles", String(selectedComboId));
-    const existingTile = comboTilesById[selectedComboId];
+    const tileCollection = isComboMode ? "comboTiles" : "singleTiles";
+    const tileRef = doc(db, tileCollection, String(tileId));
+    const existingTile = isComboMode
+      ? comboTilesById[selectedComboId as number]
+      : singleTilesById[tileId];
     let nextPhotos = existingTile?.photos ?? [];
     let coverPhotoPath = existingTile?.coverPhotoPath ?? null;
+    const storageFamily = isComboMode ? "combos" : "singles";
 
     try {
       if (sheetPhotoFile) {
         const dateStamp = formatDateStamp();
         const fileName = `${Date.now()}_${createShortId()}.jpg`;
-        const newPhotoPath = `glazes/${tab}/combos/${selectedComboId}/${dateStamp}/${fileName}`;
+        const newPhotoPath = `glazes/${tab}/${storageFamily}/${tileId}/${dateStamp}/${fileName}`;
         const photoRef = ref(storage, newPhotoPath);
         const blob = await compressImage(sheetPhotoFile);
         await uploadBytes(photoRef, blob, { contentType: "image/jpeg" });
@@ -678,9 +848,11 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
           caption: null,
           createdAt,
           createdBy,
-          coneNote: coneNote || null,
           tags: sheetTags,
         };
+        if (coneNote) {
+          photoEntry.coneNote = coneNote;
+        }
         nextPhotos = [...nextPhotos, photoEntry];
         if (!coverPhotoPath) {
           coverPhotoPath = newPhotoPath;
@@ -698,37 +870,53 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
 
       await setDoc(
         tileRef,
-        {
-          comboId: selectedComboId,
-          coverPhotoPath: coverPhotoPath ?? null,
-          photos: nextPhotos,
-          notes: note || null,
-          coneNotes: coneNote || null,
-          flags: nextFlags,
-          updatedAt: serverTimestamp(),
-          updatedBy: getUserLabel(user),
-        },
+        isComboMode
+          ? {
+              comboId: selectedComboId ?? tileId,
+              coverPhotoPath: coverPhotoPath ?? null,
+              photos: nextPhotos,
+              notes: note || null,
+              coneNotes: coneNote || null,
+              flags: nextFlags,
+              updatedAt: serverTimestamp(),
+              updatedBy: getUserLabel(user),
+            }
+          : {
+              glazeId: tileId,
+              coverPhotoPath: coverPhotoPath ?? null,
+              photos: nextPhotos,
+              notes: note || null,
+              flags: nextFlags,
+              updatedAt: serverTimestamp(),
+              updatedBy: getUserLabel(user),
+            },
         { merge: true }
       );
 
       setSheetStatus("Saved.");
       closeSheet();
     } catch (error: unknown) {
-      setSheetStatus(error instanceof Error ? error.message : "Unable to save this combo right now.");
+      setSheetStatus(
+        error instanceof Error
+          ? error.message
+          : `Unable to save this ${isComboMode ? "combo" : "glaze"} right now.`
+      );
     } finally {
       setSheetSaving(false);
     }
   };
 
   const handleDeletePhoto = async (path: string) => {
-    if (!selectedComboId || !isStaff) return;
-    const tile = comboTilesById[selectedComboId];
+    const tileId = isComboMode ? selectedComboId : selectedGlazeId;
+    if (!tileId || !isStaff) return;
+    const tile = isComboMode ? comboTilesById[selectedComboId as number] : singleTilesById[tileId];
     if (!tile) return;
     const nextPhotos = tile.photos.filter((photo) => photo.path !== path);
     const nextCover =
       tile.coverPhotoPath === path ? nextPhotos[0]?.path ?? null : tile.coverPhotoPath ?? null;
 
-    await updateDoc(doc(db, "comboTiles", String(selectedComboId)), {
+    const tileCollection = isComboMode ? "comboTiles" : "singleTiles";
+    await updateDoc(doc(db, tileCollection, String(tileId)), {
       photos: nextPhotos,
       coverPhotoPath: nextCover,
       updatedAt: serverTimestamp(),
@@ -743,8 +931,10 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
   };
 
   const handleSetCover = async (path: string) => {
-    if (!selectedComboId || !isStaff) return;
-    await updateDoc(doc(db, "comboTiles", String(selectedComboId)), {
+    const tileId = isComboMode ? selectedComboId : selectedGlazeId;
+    if (!tileId || !isStaff) return;
+    const tileCollection = isComboMode ? "comboTiles" : "singleTiles";
+    await updateDoc(doc(db, tileCollection, String(tileId)), {
       coverPhotoPath: path,
       updatedAt: serverTimestamp(),
       updatedBy: getUserLabel(user),
@@ -885,7 +1075,8 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
     });
   }, [attachPieces, attachQuery]);
 
-  const selectedComboFavorite = selectedComboId ? favoriteSet.has(selectedComboId) : false;
+  const selectedComboFavorite =
+    isComboMode && selectedComboId ? favoriteSet.has(selectedComboId) : false;
 
   if (tab === "raku") {
     return (
@@ -917,7 +1108,9 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
         <div>
           <h1>Studio glaze board</h1>
           <p className="page-subtitle">
-            Pick a base and a top glaze. The studio photo + notes sit in the middle.
+            {isComboMode
+              ? "Pick a base and a top glaze. The studio photo + notes sit in the middle."
+              : "Pick a glaze to view its single tile photos and notes."}
           </p>
         </div>
         <div className="glaze-tabs">
@@ -926,6 +1119,22 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
           </button>
           <button type="button" onClick={() => setTab("raku")}>
             Raku
+          </button>
+        </div>
+        <div className="glaze-mode-toggle">
+          <button
+            type="button"
+            className={tileMode === "combo" ? "active" : ""}
+            onClick={() => setTileMode("combo")}
+          >
+            Combo tiles
+          </button>
+          <button
+            type="button"
+            className={tileMode === "single" ? "active" : ""}
+            onClick={() => setTileMode("single")}
+          >
+            Single glaze tiles
           </button>
         </div>
       </div>
@@ -1005,7 +1214,9 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
         <div className="glaze-filter-header">
           <div>
             <div className="card-title">Filters</div>
-            <div className="glaze-subtitle">Use tags to narrow to the combos you want.</div>
+            <div className="glaze-subtitle">
+              Use tags to narrow to the {isComboMode ? "combos" : "glazes"} you want.
+            </div>
           </div>
         </div>
 
@@ -1015,7 +1226,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
             type="text"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search base or top"
+            placeholder={isComboMode ? "Search base or top" : "Search glaze"}
           />
         </label>
 
@@ -1083,238 +1294,386 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
           </div>
         ))}
 
-        <label className="glaze-filter-toggle">
-          <input
-            type="checkbox"
-            checked={filterFavorites}
-            onChange={(event) => setFilterFavorites(event.target.checked)}
-          />
-          <span>Only show favorites</span>
-        </label>
+        {isComboMode ? (
+          <label className="glaze-filter-toggle">
+            <input
+              type="checkbox"
+              checked={filterFavorites}
+              onChange={(event) => setFilterFavorites(event.target.checked)}
+            />
+            <span>Only show favorites</span>
+          </label>
+        ) : null}
       </section>
 
-      <div className="glaze-board-layout">
-        <section className="glaze-list-panel card card-3d glaze-panel-base">
-          <div className="card-title">Base glazes</div>
-          <div className="glaze-list">
-            {filteredBaseGlazes.map((glaze) => {
-              const hasMatch = baseMatches.get(glaze.id) ?? true;
-              return (
-                <button
-                  key={glaze.id}
-                  type="button"
-                  className={`glaze-list-item ${selectedBaseId === glaze.id ? "active" : ""} ${
-                    filtersActive && !hasMatch ? "muted" : ""
-                  }`}
-                  onClick={() => setSelectedBaseId(glaze.id)}
-                >
-                  {glaze.name}
-                </button>
-              );
-            })}
-            {filteredBaseGlazes.length === 0 ? (
-              <div className="glaze-empty">No base glazes match.</div>
-            ) : null}
-          </div>
-        </section>
+      <div className={`glaze-board-layout ${isComboMode ? "" : "glaze-board-layout--single"}`}>
+        {isComboMode ? (
+          <>
+            <section className="glaze-list-panel card card-3d glaze-panel-base">
+              <div className="card-title">Base glazes</div>
+              <div className="glaze-list">
+                {filteredBaseGlazes.map((glaze) => {
+                  const hasMatch = baseMatches.get(glaze.id) ?? true;
+                  return (
+                    <button
+                      key={glaze.id}
+                      type="button"
+                      className={`glaze-list-item ${selectedBaseId === glaze.id ? "active" : ""} ${
+                        filtersActive && !hasMatch ? "muted" : ""
+                      }`}
+                      onClick={() => setSelectedBaseId(glaze.id)}
+                    >
+                      {glaze.name}
+                    </button>
+                  );
+                })}
+                {filteredBaseGlazes.length === 0 ? (
+                  <div className="glaze-empty">No base glazes match.</div>
+                ) : null}
+              </div>
+            </section>
 
-        <aside className="glaze-detail card card-3d glaze-panel-detail">
-          {selectedCombo ? (
-            <>
-              <div className="glaze-detail-header">
-                <div className="card-title">Combo details</div>
-                <div className="glaze-detail-actions">
+            <aside className="glaze-detail card card-3d glaze-panel-detail">
+              {selectedCombo ? (
+                <>
+                  <div className="glaze-detail-header">
+                    <div className="card-title">Combo details</div>
+                    <div className="glaze-detail-actions">
+                      <button
+                        type="button"
+                        className={`glaze-favorite ${selectedComboFavorite ? "active" : ""}`}
+                        onClick={toggleFavorite}
+                        aria-pressed={selectedComboFavorite}
+                      >
+                        {selectedComboFavorite ? "★ Favorite" : "☆ Favorite"}
+                      </button>
+                      {!selectedTileMatches ? (
+                        <span className="glaze-filter-flag">Doesn&apos;t match filters</span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <h2>{selectedTileTitle}</h2>
+                  {selectedTileTags.length ? (
+                    <div className="glaze-tag-row compact">
+                      {selectedTileTags.map((tag) => (
+                        <span key={tag} className="glaze-tag active">
+                          {tag.replace(/-/g, " ")}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {selectedTilePhotos.length ? (
+                    <div className="glaze-photo-strip">
+                      {selectedTilePhotos.map((photo, index) => (
+                        <figure key={`${photo.path}-${index}`}>
+                          {photo.url ? (
+                            <img src={photo.url} alt={photo.caption || "Glaze photo"} />
+                          ) : (
+                            <div className="glaze-photo-placeholder">Loading image...</div>
+                          )}
+                          <figcaption>{photo.caption || "Studio photo"}</figcaption>
+                          {isStaff ? (
+                            <div className="glaze-photo-actions">
+                              <button
+                                type="button"
+                                className={
+                                  selectedTileRecord?.coverPhotoPath === photo.path ? "active" : ""
+                                }
+                                onClick={toVoidHandler(() => handleSetCover(photo.path))}
+                              >
+                                {selectedTileRecord?.coverPhotoPath === photo.path ? "Cover" : "Set as cover"}
+                              </button>
+                              <button type="button" onClick={toVoidHandler(() => handleDeletePhoto(photo.path))}>
+                                Delete
+                              </button>
+                            </div>
+                          ) : null}
+                        </figure>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="glaze-empty">No photos yet.</div>
+                  )}
+                  <div className="glaze-note">
+                    <strong>Notes</strong>
+                    <p>{selectedCombo.tile?.notes || "No notes yet."}</p>
+                  </div>
+                  <div className="glaze-note">
+                    <strong>Cone notes</strong>
+                    <p>{selectedCombo.tile?.coneNotes || "No cone notes yet."}</p>
+                  </div>
+                  <div className="glaze-links">
+                    <a
+                      href={buildGlazySearchUrl(selectedCombo.base.name)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Search {selectedCombo.base.name} on Glazy
+                    </a>
+                    {selectedCombo.base.glazy?.url ? (
+                      <a href={selectedCombo.base.glazy.url} target="_blank" rel="noreferrer">
+                        Open {selectedCombo.base.name} on Glazy
+                      </a>
+                    ) : null}
+                    <a
+                      href={buildGlazySearchUrl(selectedCombo.top.name)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Search {selectedCombo.top.name} on Glazy
+                    </a>
+                    {selectedCombo.top.glazy?.url ? (
+                      <a href={selectedCombo.top.glazy.url} target="_blank" rel="noreferrer">
+                        Open {selectedCombo.top.name} on Glazy
+                      </a>
+                    ) : null}
+                  </div>
+
+                  {isStaff ? (
+                    <div className="glaze-staff-controls">
+                      <div className="glaze-staff-row">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => openSheet("add")}
+                        >
+                          Add photo + note
+                        </button>
+                        <button type="button" className="btn btn-ghost" onClick={() => openSheet("edit")}>
+                          Edit notes
+                        </button>
+                      </div>
+                      <div className="glaze-staff-row glaze-staff-mapping">
+                        <label>
+                          Base Glazy URL
+                          <input
+                            type="url"
+                            value={glazyBaseUrl}
+                            placeholder="https://glazy.org/..."
+                            onChange={(event) => setGlazyBaseUrl(event.target.value)}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={toVoidHandler(() =>
+                            handleSaveGlazyUrl(selectedCombo.base.id, glazyBaseUrl)
+                          )}
+                        >
+                          Save base link
+                        </button>
+                      </div>
+                      <div className="glaze-staff-row glaze-staff-mapping">
+                        <label>
+                          Top Glazy URL
+                          <input
+                            type="url"
+                            value={glazyTopUrl}
+                            placeholder="https://glazy.org/..."
+                            onChange={(event) => setGlazyTopUrl(event.target.value)}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={toVoidHandler(() =>
+                            handleSaveGlazyUrl(selectedCombo.top.id, glazyTopUrl)
+                          )}
+                        >
+                          Save top link
+                        </button>
+                      </div>
+                      {glazyStatus ? <div className="glaze-status">{glazyStatus}</div> : null}
+                    </div>
+                  ) : null}
+
                   <button
                     type="button"
-                    className={`glaze-favorite ${selectedComboFavorite ? "active" : ""}`}
-                    onClick={toggleFavorite}
-                    aria-pressed={selectedComboFavorite}
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setAttachOpen(true);
+                      setAttachStatus("");
+                    }}
                   >
-                    {selectedComboFavorite ? "★ Favorite" : "☆ Favorite"}
+                    Attach to a piece
                   </button>
-                  {!selectedComboMatches ? (
-                    <span className="glaze-filter-flag">Doesn&apos;t match filters</span>
-                  ) : null}
-                </div>
-              </div>
-              <h2>
-                Base: {selectedCombo.base.name} + Top: {selectedCombo.top.name}
-              </h2>
-              {selectedTileTags.length ? (
-                <div className="glaze-tag-row compact">
-                  {selectedTileTags.map((tag) => (
-                    <span key={tag} className="glaze-tag active">
-                      {tag.replace(/-/g, " ")}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-              {selectedComboPhotos.length ? (
-                <div className="glaze-photo-strip">
-                  {selectedComboPhotos.map((photo, index) => (
-                    <figure key={`${photo.path}-${index}`}>
-                      {photo.url ? (
-                        <img src={photo.url} alt={photo.caption || "Glaze combo"} />
-                      ) : (
-                        <div className="glaze-photo-placeholder">Loading image...</div>
-                      )}
-                      <figcaption>{photo.caption || "Studio photo"}</figcaption>
-                      {isStaff ? (
-                        <div className="glaze-photo-actions">
-                          <button
-                            type="button"
-                            className={
-                              selectedCombo.tile?.coverPhotoPath === photo.path ? "active" : ""
-                            }
-                            onClick={toVoidHandler(() => handleSetCover(photo.path))}
-                          >
-                            {selectedCombo.tile?.coverPhotoPath === photo.path
-                              ? "Cover"
-                              : "Set as cover"}
-                          </button>
-                          <button type="button" onClick={toVoidHandler(() => handleDeletePhoto(photo.path))}>
-                            Delete
-                          </button>
-                        </div>
-                      ) : null}
-                    </figure>
-                  ))}
-                </div>
+                  {tileStatus ? <div className="glaze-status">{tileStatus}</div> : null}
+                </>
               ) : (
-                <div className="glaze-empty">No photos yet.</div>
+                <div className="glaze-empty">Tap a combo to see photos, notes, and cone details.</div>
               )}
-              <div className="glaze-note">
-                <strong>Notes</strong>
-                <p>{selectedCombo.tile?.notes || "No notes yet."}</p>
+            </aside>
+
+            <section className="glaze-list-panel card card-3d glaze-panel-top">
+              <div className="card-title">Top glazes</div>
+              <div className="glaze-subtitle">
+                Base: {selectedCombo?.base.name ?? "Select a base glaze"}
               </div>
-              <div className="glaze-note">
-                <strong>Cone notes</strong>
-                <p>{selectedCombo.tile?.coneNotes || "No cone notes yet."}</p>
-              </div>
-              <div className="glaze-links">
-                <a
-                  href={buildGlazySearchUrl(selectedCombo.base.name)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Search {selectedCombo.base.name} on Glazy
-                </a>
-                {selectedCombo.base.glazy?.url ? (
-                  <a href={selectedCombo.base.glazy.url} target="_blank" rel="noreferrer">
-                    Open {selectedCombo.base.name} on Glazy
-                  </a>
-                ) : null}
-                <a
-                  href={buildGlazySearchUrl(selectedCombo.top.name)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Search {selectedCombo.top.name} on Glazy
-                </a>
-                {selectedCombo.top.glazy?.url ? (
-                  <a href={selectedCombo.top.glazy.url} target="_blank" rel="noreferrer">
-                    Open {selectedCombo.top.name} on Glazy
-                  </a>
+              <div className="glaze-list">
+                {filteredTopGlazes.map((glaze) => {
+                  const hasMatch = topMatches.get(glaze.id) ?? true;
+                  return (
+                    <button
+                      key={glaze.id}
+                      type="button"
+                      className={`glaze-list-item ${selectedTopId === glaze.id ? "active" : ""} ${
+                        filtersActive && !hasMatch ? "muted" : ""
+                      }`}
+                      onClick={() => setSelectedTopId(glaze.id)}
+                    >
+                      {glaze.name}
+                    </button>
+                  );
+                })}
+                {filteredTopGlazes.length === 0 ? (
+                  <div className="glaze-empty">No top glazes match.</div>
                 ) : null}
               </div>
-
-              {isStaff ? (
-                <div className="glaze-staff-controls">
-                  <div className="glaze-staff-row">
-                    <button type="button" className="btn btn-secondary" onClick={() => openSheet("add")}>
-                      Add photo + note
-                    </button>
-                    <button type="button" className="btn btn-ghost" onClick={() => openSheet("edit")}>
-                      Edit notes
-                    </button>
-                  </div>
-                  <div className="glaze-staff-row glaze-staff-mapping">
-                    <label>
-                      Base Glazy URL
-                      <input
-                        type="url"
-                        value={glazyBaseUrl}
-                        placeholder="https://glazy.org/..."
-                        onChange={(event) => setGlazyBaseUrl(event.target.value)}
-                      />
-                    </label>
+            </section>
+          </>
+        ) : (
+          <>
+            <section className="glaze-list-panel card card-3d">
+              <div className="card-title">All glazes</div>
+              <div className="glaze-list">
+                {filteredGlazes.map((glaze) => {
+                  const hasMatch = singleMatches.map.get(glaze.id) ?? true;
+                  return (
                     <button
+                      key={glaze.id}
                       type="button"
-                      className="btn btn-ghost"
-                      onClick={toVoidHandler(() =>
-                        handleSaveGlazyUrl(selectedCombo.base.id, glazyBaseUrl)
-                      )}
+                      className={`glaze-list-item ${selectedGlazeId === glaze.id ? "active" : ""} ${
+                        filtersActive && !hasMatch ? "muted" : ""
+                      }`}
+                      onClick={() => setSelectedGlazeId(glaze.id)}
                     >
-                      Save base link
+                      {glaze.name}
                     </button>
+                  );
+                })}
+                {filteredGlazes.length === 0 ? (
+                  <div className="glaze-empty">No glazes match.</div>
+                ) : null}
+              </div>
+            </section>
+
+            <aside className="glaze-detail card card-3d glaze-panel-detail">
+              {selectedSingle ? (
+                <>
+                  <div className="glaze-detail-header">
+                    <div className="card-title">Glaze details</div>
+                    <div className="glaze-detail-actions">
+                      {!selectedTileMatches ? (
+                        <span className="glaze-filter-flag">Doesn&apos;t match filters</span>
+                      ) : null}
+                    </div>
                   </div>
-                  <div className="glaze-staff-row glaze-staff-mapping">
-                    <label>
-                      Top Glazy URL
-                      <input
-                        type="url"
-                        value={glazyTopUrl}
-                        placeholder="https://glazy.org/..."
-                        onChange={(event) => setGlazyTopUrl(event.target.value)}
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={toVoidHandler(() =>
-                        handleSaveGlazyUrl(selectedCombo.top.id, glazyTopUrl)
-                      )}
+                  <h2>{selectedTileTitle}</h2>
+                  {selectedTileTags.length ? (
+                    <div className="glaze-tag-row compact">
+                      {selectedTileTags.map((tag) => (
+                        <span key={tag} className="glaze-tag active">
+                          {tag.replace(/-/g, " ")}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {selectedTilePhotos.length ? (
+                    <div className="glaze-photo-strip">
+                      {selectedTilePhotos.map((photo, index) => (
+                        <figure key={`${photo.path}-${index}`}>
+                          {photo.url ? (
+                            <img src={photo.url} alt={photo.caption || "Glaze photo"} />
+                          ) : (
+                            <div className="glaze-photo-placeholder">Loading image...</div>
+                          )}
+                          <figcaption>{photo.caption || "Studio photo"}</figcaption>
+                          {isStaff ? (
+                            <div className="glaze-photo-actions">
+                              <button
+                                type="button"
+                                className={
+                                  selectedTileRecord?.coverPhotoPath === photo.path ? "active" : ""
+                                }
+                                onClick={toVoidHandler(() => handleSetCover(photo.path))}
+                              >
+                                {selectedTileRecord?.coverPhotoPath === photo.path ? "Cover" : "Set as cover"}
+                              </button>
+                              <button type="button" onClick={toVoidHandler(() => handleDeletePhoto(photo.path))}>
+                                Delete
+                              </button>
+                            </div>
+                          ) : null}
+                        </figure>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="glaze-empty">No photos yet.</div>
+                  )}
+                  <div className="glaze-note">
+                    <strong>Notes</strong>
+                    <p>{selectedSingle?.tile?.notes || "No notes yet."}</p>
+                  </div>
+                  <div className="glaze-links">
+                    <a
+                      href={buildGlazySearchUrl(selectedSingle.glaze.name)}
+                      target="_blank"
+                      rel="noreferrer"
                     >
-                      Save top link
-                    </button>
+                      Search {selectedSingle.glaze.name} on Glazy
+                    </a>
+                    {selectedSingle.glaze.glazy?.url ? (
+                      <a href={selectedSingle.glaze.glazy.url} target="_blank" rel="noreferrer">
+                        Open {selectedSingle.glaze.name} on Glazy
+                      </a>
+                    ) : null}
                   </div>
-                  {glazyStatus ? <div className="glaze-status">{glazyStatus}</div> : null}
-                </div>
-              ) : null}
 
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => {
-                  setAttachOpen(true);
-                  setAttachStatus("");
-                }}
-              >
-                Attach to a piece
-              </button>
-              {tileStatus ? <div className="glaze-status">{tileStatus}</div> : null}
-            </>
-          ) : (
-            <div className="glaze-empty">Tap a combo to see photos, notes, and cone details.</div>
-          )}
-        </aside>
-
-        <section className="glaze-list-panel card card-3d glaze-panel-top">
-          <div className="card-title">Top glazes</div>
-          <div className="glaze-subtitle">
-            Base: {selectedCombo?.base.name ?? "Select a base glaze"}
-          </div>
-          <div className="glaze-list">
-            {filteredTopGlazes.map((glaze) => {
-              const hasMatch = topMatches.get(glaze.id) ?? true;
-              return (
-                <button
-                  key={glaze.id}
-                  type="button"
-                  className={`glaze-list-item ${selectedTopId === glaze.id ? "active" : ""} ${
-                    filtersActive && !hasMatch ? "muted" : ""
-                  }`}
-                  onClick={() => setSelectedTopId(glaze.id)}
-                >
-                  {glaze.name}
-                </button>
-              );
-            })}
-            {filteredTopGlazes.length === 0 ? (
-              <div className="glaze-empty">No top glazes match.</div>
-            ) : null}
-          </div>
-        </section>
+                  {isStaff ? (
+                    <div className="glaze-staff-controls">
+                      <div className="glaze-staff-row">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => openSheet("add")}
+                        >
+                          Add photo + note
+                        </button>
+                        <button type="button" className="btn btn-ghost" onClick={() => openSheet("edit")}>
+                          Edit notes
+                        </button>
+                      </div>
+                      <div className="glaze-staff-row glaze-staff-mapping">
+                        <label>
+                          Glazy URL
+                          <input
+                            type="url"
+                            value={glazyBaseUrl}
+                            placeholder="https://glazy.org/..."
+                            onChange={(event) => setGlazyBaseUrl(event.target.value)}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={toVoidHandler(() =>
+                            handleSaveGlazyUrl(selectedSingle.glaze.id, glazyBaseUrl)
+                          )}
+                        >
+                          Save glaze link
+                        </button>
+                      </div>
+                      {glazyStatus ? <div className="glaze-status">{glazyStatus}</div> : null}
+                    </div>
+                  ) : null}
+                  {tileStatus ? <div className="glaze-status">{tileStatus}</div> : null}
+                </>
+              ) : (
+                <div className="glaze-empty">Tap a glaze to see its photos and notes.</div>
+              )}
+            </aside>
+          </>
+        )}
       </div>
 
       {attachOpen ? (
@@ -1407,9 +1766,11 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
             type="button"
             className="btn btn-ghost"
             onClick={() => {
-              if (selectedCombo?.tile) {
-                setSheetNote(selectedCombo.tile.notes ?? "");
-                setSheetConeNote(selectedCombo.tile.coneNotes ?? "");
+              if (selectedTileRecord) {
+                setSheetNote(selectedTileRecord.notes ?? "");
+                if (isComboMode) {
+                  setSheetConeNote(selectedCombo?.tile?.coneNotes ?? "");
+                }
               }
             }}
           >
@@ -1426,15 +1787,17 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
             />
           </label>
 
-          <label>
-            Cone / firing note
-            <textarea
-              rows={3}
-              value={sheetConeNote}
-              onChange={(event) => setSheetConeNote(event.target.value)}
-              placeholder="Cone 6 ran more, cone 5 held, etc."
-            />
-          </label>
+          {isComboMode ? (
+            <label>
+              Cone / firing note
+              <textarea
+                rows={3}
+                value={sheetConeNote}
+                onChange={(event) => setSheetConeNote(event.target.value)}
+                placeholder="Cone 6 ran more, cone 5 held, etc."
+              />
+            </label>
+          ) : null}
 
           <div className="glaze-filter-group">
             <div className="glaze-filter-group-title">Quick tags</div>

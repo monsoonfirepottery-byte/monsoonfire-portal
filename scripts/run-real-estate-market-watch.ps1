@@ -33,6 +33,194 @@ function Convert-ToNullableNumber {
   return [double]$number
 }
 
+$COMMON_REQUIRED_FIELDS = @(
+  "snapshotDate"
+  "source"
+  "listingId"
+  "title"
+  "city"
+  "propertyType"
+  "sqft"
+  "url"
+)
+
+function Resolve-AdapterField {
+  param(
+    [pscustomobject]$Row,
+    [hashtable]$Adapter,
+    [string]$Field
+  )
+
+  $candidates = New-Object System.Collections.Generic.List[string]
+  $candidates.Add($Field)
+  if ($Adapter.ContainsKey("fieldAliases") -and $Adapter.fieldAliases.ContainsKey($Field)) {
+    [void]$candidates.AddRange(@($Adapter.fieldAliases[$Field]))
+  }
+
+  foreach ($candidate in $candidates) {
+    $value = if ($Row.PSObject.Properties[$candidate]) { [string]$Row.$candidate } else { "" }
+    if (-not [string]::IsNullOrWhiteSpace($value)) {
+      return $value
+    }
+  }
+  return ""
+}
+
+function Normalize-ListingRate {
+  param(
+    [double]$Monthly,
+    [double]$MonthlyPsf,
+    [double]$Annual,
+    [double]$AnnualPsf,
+    [string]$RateBasisInput
+  )
+
+  $normalizedBasis = if ([string]::IsNullOrWhiteSpace($RateBasisInput)) { $null } else { $RateBasisInput.ToLowerInvariant().Trim() }
+
+  if ($normalizedBasis -and $normalizedBasis -notin @("monthly", "annual")) {
+    return @{ ok = $false; reason = "askingRentRateBasis must be monthly or annual when present." }
+  }
+
+  if ($normalizedBasis -eq "monthly") {
+    if (($null -ne $Annual -or $null -ne $AnnualPsf) -and ($null -eq $Monthly -and $null -eq $MonthlyPsf)) {
+      return @{ ok = $false; reason = "askingRentRateBasis is monthly but only annual rent fields were provided." }
+    }
+    if (($null -ne $Monthly -or $null -ne $MonthlyPsf)) {
+      return @{
+        ok = $true
+        askingRentMonthly = $Monthly
+        askingRentPsfNnn = $MonthlyPsf
+        askingRentRateBasis = "monthly"
+        convertedFromAnnual = $false
+      }
+    }
+    return @{ ok = $false; reason = "askingRentRateBasis is monthly but no monthly rent fields were provided." }
+  }
+
+  if ($normalizedBasis -eq "annual") {
+    if ($null -eq $Annual -and $null -eq $AnnualPsf) {
+      return @{ ok = $false; reason = "askingRentRateBasis is annual but no annual rent fields were provided." }
+    }
+    $monthlyConverted = if ($null -ne $Annual) { $Annual / 12 } else { $null }
+    $psfConverted = if ($null -ne $AnnualPsf) { $AnnualPsf / 12 } else { $null }
+    return @{
+      ok = $true
+      askingRentMonthly = $monthlyConverted
+      askingRentPsfNnn = $psfConverted
+      askingRentRateBasis = "annual"
+      convertedFromAnnual = $true
+    }
+  }
+
+  if ($null -ne $Monthly -or $null -ne $MonthlyPsf) {
+    return @{
+      ok = $true
+      askingRentMonthly = $Monthly
+      askingRentPsfNnn = $MonthlyPsf
+      askingRentRateBasis = "monthly"
+      convertedFromAnnual = $false
+    }
+  }
+
+  if ($null -ne $Annual -or $null -ne $AnnualPsf) {
+    $monthlyConverted = if ($null -ne $Annual) { $Annual / 12 } else { $null }
+    $psfConverted = if ($null -ne $AnnualPsf) { $AnnualPsf / 12 } else { $null }
+    return @{
+      ok = $true
+      askingRentMonthly = $monthlyConverted
+      askingRentPsfNnn = $psfConverted
+      askingRentRateBasis = "annual"
+      convertedFromAnnual = $true
+    }
+  }
+
+  return @{ ok = $false; reason = "Listing rent missing. Provide askingRentMonthly/askingRentPsfNnn or askingRentAnnual/askingRentAnnualPsfNnn." }
+}
+
+$SOURCE_ADAPTERS = @{
+  default = @{
+    requiredFields = @($COMMON_REQUIRED_FIELDS)
+    fieldAliases = @{}
+  }
+  crexi = @{
+    requiredFields = @($COMMON_REQUIRED_FIELDS)
+    fieldAliases = @{
+      askingRentMonthly = @("askingRentMonthly", "askingRent")
+      askingRentPsfNnn = @("askingRentPsfNnn", "askingRentPsf", "askingRentPsf", "askingRentPerSF", "askingRentPerSqFt")
+      askingRentAnnual = @("askingRentAnnual", "annualRent")
+      askingRentAnnualPsfNnn = @("askingRentAnnualPsfNnn", "askingRentAnnualPsf", "askingRentPsfNnnAnnual")
+      askingRentRateBasis = @("askingRentRateBasis", "rentBasis", "rateBasis", "askingRentBasis")
+      url = @("url", "link", "listingUrl", "sourceUrl")
+      notes = @("notes", "description", "summary")
+      sqft = @("sqft", "squareFeet", "sizeSqFt", "size")
+      clearHeightFt = @("clearHeightFt", "clearHeight", "clearHeightFeet")
+      powerAmps = @("powerAmps", "amps", "electricAmps")
+      gradeDoors = @("gradeDoors", "dockDoorsGrade")
+      dockDoors = @("dockDoors", "loadingDocks")
+      parkingRatio = @("parkingRatio", "parking")
+      propertyType = @("propertyType", "type")
+    }
+  }
+  commercialcafe = @{
+    requiredFields = @($COMMON_REQUIRED_FIELDS)
+    fieldAliases = @{}
+  }
+  moodyscre = @{
+    requiredFields = @($COMMON_REQUIRED_FIELDS)
+    fieldAliases = @{
+      askingRentMonthly = @("askingRentMonthly", "askingRent")
+      askingRentPsfNnn = @("askingRentPsfNnn", "askingRentPsf")
+      askingRentAnnual = @("askingRentAnnual", "annualRent")
+      askingRentAnnualPsfNnn = @("askingRentAnnualPsfNnn", "askingRentAnnualPsf")
+      askingRentRateBasis = @("askingRentRateBasis", "rentBasis", "rateBasis")
+      clearHeightFt = @("clearHeightFt", "clearHeight")
+      powerAmps = @("powerAmps", "amps")
+      gradeDoors = @("gradeDoors", "gradeDoorCount")
+      dockDoors = @("dockDoors", "dockDoorCount")
+      parkingRatio = @("parkingRatio", "parking")
+      url = @("url", "link", "listingUrl")
+      notes = @("notes", "comment")
+    }
+  }
+}
+
+function Get-SourceAdapter {
+  param([string]$Source)
+  $normalized = if ([string]::IsNullOrWhiteSpace($Source)) { "default" } else { $Source.ToLowerInvariant().Trim() }
+  if ($SOURCE_ADAPTERS.ContainsKey($normalized)) {
+    return $SOURCE_ADAPTERS[$normalized]
+  }
+  return $SOURCE_ADAPTERS["default"]
+}
+
+function Normalize-InputRow {
+  param([pscustomobject]$Row, [hashtable]$Adapter)
+  return [pscustomobject]@{
+    snapshotDate = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "snapshotDate"
+    source = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "source"
+    listingId = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "listingId"
+    title = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "title"
+    address = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "address"
+    city = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "city"
+    submarket = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "submarket"
+    propertyType = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "propertyType"
+    zoning = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "zoning"
+    sqft = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "sqft"
+    askingRentMonthly = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "askingRentMonthly"
+    askingRentPsfNnn = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "askingRentPsfNnn"
+    askingRentAnnual = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "askingRentAnnual"
+    askingRentAnnualPsfNnn = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "askingRentAnnualPsfNnn"
+    askingRentRateBasis = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "askingRentRateBasis"
+    clearHeightFt = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "clearHeightFt"
+    powerAmps = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "powerAmps"
+    gradeDoors = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "gradeDoors"
+    dockDoors = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "dockDoors"
+    parkingRatio = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "parkingRatio"
+    url = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "url"
+    notes = Resolve-AdapterField -Row $Row -Adapter $Adapter -Field "notes"
+  }
+}
+
 function Get-Median {
   param([double[]]$Values)
 
@@ -159,7 +347,11 @@ function Build-Markdown {
   $lines += ""
   $lines += "- generatedAtUtc: $($Summary.generatedAtUtc)"
   $lines += "- inputCsv: $($Summary.inputCsv)"
-  $lines += "- listingCount: $($Summary.listingCount)"
+  $lines += "- listingRows: $($Summary.qualityCheck.rawRows)"
+  $lines += "- acceptedRows: $($Summary.qualityCheck.acceptedRows)"
+  $lines += "- skippedRows: $($Summary.qualityCheck.skippedRows)"
+  $lines += "- rentBasisMonthly: $($Summary.qualityCheck.rentRateBasis.monthly)"
+  $lines += "- rentBasisAnnual: $($Summary.qualityCheck.rentRateBasis.annual)"
   $lines += "- strongFitCount: $($Summary.fitTierCounts.strong_fit)"
   $lines += "- viableCount: $($Summary.fitTierCounts.viable)"
   $lines += "- stretchCount: $($Summary.fitTierCounts.stretch)"
@@ -193,28 +385,103 @@ if ($rows.Count -eq 0) {
   throw "Listings CSV has no rows: $ListingsCsv"
 }
 
+$validRows = 0
 $scored = @()
-foreach ($row in $rows) {
-  $fit = Get-FitScore -Row $row -MinSqFt $TargetMinSqFt -MaxSqFt $TargetMaxSqFt -MaxMonthlyRent $TargetMaxMonthlyRent -Cities $PreferredCities
+$invalidRows = @()
+for ($rowIndex = 0; $rowIndex -lt $rows.Count; $rowIndex += 1) {
+  $row = $rows[$rowIndex]
+
+  $lineNumber = $rowIndex + 2
+  $adapter = Get-SourceAdapter -Source ([string]$row.source)
+  $normalizedRow = Normalize-InputRow -Row $row -Adapter $adapter
+  $errors = New-Object System.Collections.Generic.List[string]
+
+  foreach ($field in $adapter.requiredFields) {
+    $value = [string]($normalizedRow.$field)
+    if ([string]::IsNullOrWhiteSpace($value)) {
+      $errors.Add("Missing required field: $field")
+    }
+  }
+
+  $url = [string]$normalizedRow.url
+  if ([string]::IsNullOrWhiteSpace($url)) {
+    $errors.Add("Missing required field: url")
+  } else {
+    try {
+      $uri = [Uri]$url.Trim()
+      if (-not $uri.IsAbsoluteUri -or -not @("http", "https").Contains($uri.Scheme.ToLowerInvariant())) {
+        $errors.Add("Invalid URL: must be absolute http(s) URL")
+      }
+    } catch {
+      $errors.Add("Invalid URL format")
+    }
+  }
+
+  $normalizedRate = Normalize-ListingRate `
+    -Monthly (Convert-ToNullableNumber $normalizedRow.askingRentMonthly) `
+    -MonthlyPsf (Convert-ToNullableNumber $normalizedRow.askingRentPsfNnn) `
+    -Annual (Convert-ToNullableNumber $normalizedRow.askingRentAnnual) `
+    -AnnualPsf (Convert-ToNullableNumber $normalizedRow.askingRentAnnualPsfNnn) `
+    -RateBasisInput ([string]$normalizedRow.askingRentRateBasis)
+  if (-not $normalizedRate.ok) {
+    $errors.Add($normalizedRate.reason)
+  }
+
+  $normalizedSqFt = Convert-ToNullableNumber $normalizedRow.sqft
+  if ($null -eq $normalizedSqFt) {
+    $errors.Add("Invalid numeric value for required field: sqft")
+  }
+
+  if ($errors.Count -gt 0) {
+    $invalidRows += [pscustomobject]@{
+      lineNumber = $lineNumber
+      listingId = [string]$normalizedRow.listingId
+      source = [string]$normalizedRow.source
+      errors = $errors
+    }
+    continue
+  }
+
+  $normalizedRow.sqft = [string]$normalizedSqFt
+  $normalizedRow.askingRentMonthly = [string]$normalizedRate.askingRentMonthly
+  $normalizedRow.askingRentPsfNnn = [string]$normalizedRate.askingRentPsfNnn
+  $normalizedRow.askingRentRateBasis = [string]$normalizedRate.askingRentRateBasis
+
+  $fit = Get-FitScore -Row $normalizedRow -MinSqFt $TargetMinSqFt -MaxSqFt $TargetMaxSqFt -MaxMonthlyRent $TargetMaxMonthlyRent -Cities $PreferredCities
+
+  $validRows += 1
   $scored += [pscustomobject]@{
-    snapshotDate = [string]$row.snapshotDate
-    source = [string]$row.source
-    listingId = [string]$row.listingId
-    title = [string]$row.title
-    address = [string]$row.address
-    city = [string]$row.city
-    submarket = [string]$row.submarket
-    propertyType = [string]$row.propertyType
-    zoning = [string]$row.zoning
-    clearHeightFt = Convert-ToNullableNumber $row.clearHeightFt
-    powerAmps = Convert-ToNullableNumber $row.powerAmps
-    gradeDoors = Convert-ToNullableNumber $row.gradeDoors
-    dockDoors = Convert-ToNullableNumber $row.dockDoors
-    parkingRatio = Convert-ToNullableNumber $row.parkingRatio
-    url = [string]$row.url
-    notes = [string]$row.notes
+    snapshotDate = [string]$normalizedRow.snapshotDate
+    source = [string]$normalizedRow.source
+    listingId = [string]$normalizedRow.listingId
+    title = [string]$normalizedRow.title
+    address = [string]$normalizedRow.address
+    city = [string]$normalizedRow.city
+    submarket = [string]$normalizedRow.submarket
+    propertyType = [string]$normalizedRow.propertyType
+    zoning = [string]$normalizedRow.zoning
+    clearHeightFt = Convert-ToNullableNumber $normalizedRow.clearHeightFt
+    powerAmps = Convert-ToNullableNumber $normalizedRow.powerAmps
+    gradeDoors = Convert-ToNullableNumber $normalizedRow.gradeDoors
+    dockDoors = Convert-ToNullableNumber $normalizedRow.dockDoors
+    parkingRatio = Convert-ToNullableNumber $normalizedRow.parkingRatio
+    url = [string]$normalizedRow.url
+    notes = [string]$normalizedRow.notes
+    askingRentRateBasis = [string]$normalizedRate.askingRentRateBasis
+    convertedFromAnnual = [bool]$normalizedRate.convertedFromAnnual
     fit = $fit
   }
+}
+
+if ($invalidRows.Count -gt 0) {
+  Write-Host "Skipped $($invalidRows.Count) listing rows due to quality gates:"
+  foreach ($entry in $invalidRows) {
+    Write-Host "  Row $($entry.lineNumber) [$($entry.source)] $($entry.listingId): $($entry.errors -join '; ')"
+  }
+}
+
+if ($validRows -eq 0) {
+  throw "No valid listing rows after quality gates."
 }
 
 $sorted = $scored | Sort-Object @{ Expression = { $_.fit.score }; Descending = $true }, @{ Expression = { $_.fit.askingRentMonthly }; Ascending = $true }
@@ -231,10 +498,21 @@ $fitTierCounts = [ordered]@{
   weak = (@($scored | Where-Object { $_.fit.tier -eq "weak" })).Count
 }
 
+$rentBasisCounts = [ordered]@{
+  monthly = (@($scored | Where-Object { $_.askingRentRateBasis -eq "monthly" })).Count
+  annual = (@($scored | Where-Object { $_.askingRentRateBasis -eq "annual" })).Count
+}
+
 $summary = [pscustomobject]@{
   generatedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
   inputCsv = (Resolve-Path $ListingsCsv).Path
-  listingCount = $scored.Count
+  listingCount = $validRows
+  qualityCheck = [pscustomobject]@{
+    rawRows = $rows.Count
+    acceptedRows = $validRows
+    skippedRows = $invalidRows.Count
+    rentRateBasis = [pscustomobject]$rentBasisCounts
+  }
   targets = [pscustomobject]@{
     minSqFt = $TargetMinSqFt
     maxSqFt = $TargetMaxSqFt

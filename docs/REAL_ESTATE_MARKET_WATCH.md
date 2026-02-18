@@ -26,7 +26,9 @@ Minimum fields:
 - `city`
 - `propertyType`
 - `sqft`
-- `askingRentMonthly` or `askingRentPsfNnn`
+- One of the rent field pairs:
+  - `askingRentMonthly` + `askingRentPsfNnn` (monthly basis)
+  - `askingRentAnnual` + `askingRentAnnualPsfNnn` (`askingRentRateBasis` set to `annual`)
 - `zoning`
 - `clearHeightFt`
 - `powerAmps`
@@ -90,12 +92,27 @@ Outputs:
 - `output/real-estate/market-watch-history.csv`
 - `output/real-estate/real-estate-quarterly-report-YYYY-QX.md`
 - `output/real-estate/agent-swarm-context-YYYY-QX.json`
+- `output/real-estate/agent-swarm-context-latest.json` (stable handoff alias)
 
 The context JSON is designed as direct input to a real-estate agent swarm:
 - quarter-over-quarter pricing trend signals
 - recent run history tail
 - latest ranked candidates with fit metadata
 - concise baseline notes (home studio remains default baseline)
+
+Use scheduled cadence command for hands-free quarterly publishing and prompt ingest handoff:
+
+```powershell
+pwsh -File scripts/run-real-estate-quarterly-cadence.ps1 `
+  -InputDir "output/real-estate" `
+  -OutputDir "output/real-estate"
+```
+
+Cadence outputs:
+- `output/real-estate/quarterly-cadence-<timestamp>.json`
+- `output/real-estate/quarterly-cadence-latest.json`
+- `output/real-estate/quarterly-context-memory-<timestamp>.json`
+- `output/real-estate/quarterly-context-memory-latest.json`
 
 ## Agentic Research Scan (Proactive + Distress Signals)
 Run autonomous search-based discovery to find new opportunities and distressed-market leads:
@@ -531,6 +548,14 @@ pwsh -File scripts/run-real-estate-weekly-cadence.ps1 `
 Weekly run manifests:
 - `output/real-estate/weekly-cadence-<timestamp>.json`
 - `output/real-estate/weekly-cadence-latest.json`
+
+Quarterly cadence scheduling (example):
+
+```cron
+0 9 1 1,4,7,10 *
+```
+
+Run that schedule with `scripts/run-real-estate-quarterly-cadence.ps1` to keep `agent-swarm-context-latest.json` and memory handoff artifacts current.
 
 ## Live Data Notes
 - Pull listings from your preferred sources and export to CSV.

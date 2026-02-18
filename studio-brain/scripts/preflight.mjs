@@ -1,3 +1,4 @@
+import { printValidationReport, validateEnvContract } from "./env-contract-validator.mjs";
 import net from "node:net";
 
 const host = process.env.PGHOST ?? "127.0.0.1";
@@ -26,6 +27,16 @@ function checkTcp({ host, port, timeoutMs }) {
 
 async function main() {
   process.stdout.write("studio-brain preflight\n");
+  const report = validateEnvContract({ strict: false });
+  if (!report.ok) {
+    printValidationReport(report);
+    process.exit(1);
+  }
+  if (report.warnings.length > 0) {
+    process.stdout.write("WARNING: env contract checks had cautions.\n");
+    report.warnings.forEach((warning) => process.stdout.write(` - ${warning}\n`));
+  }
+
   process.stdout.write(`Checking Postgres TCP at ${host}:${port}...\n`);
 
   const postgres = await checkTcp({ host, port, timeoutMs });

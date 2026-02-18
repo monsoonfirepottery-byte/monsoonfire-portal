@@ -5,6 +5,7 @@
   "type": "commonjs",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "env:validate": "node scripts/validate-env-contract.mjs",
     "test:infra": "npm run build && node --test \"lib/infra/**/*.test.js\"",
     "test:connectors": "npm run build && node lib/connectors/testing/runHarness.js",
     "test": "npm run build && node --test \"lib/**/*.test.js\" && node lib/connectors/testing/runHarness.js",

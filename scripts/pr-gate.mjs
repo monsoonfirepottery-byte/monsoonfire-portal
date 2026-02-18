@@ -76,7 +76,7 @@ const steps = [
     name: "studio-brain status gate",
     kind: "command",
     command: "node",
-    args: ["./scripts/studiobrain-status.mjs", "--json", "--gate"],
+    args: ["./scripts/studiobrain-status.mjs", "--json", "--gate", "--strict"],
     remediation: "Start studio-brain, run env fixes, and rerun this gate.",
     required: true,
   },

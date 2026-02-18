@@ -1,5 +1,6 @@
 {
   "scripts": {
+    "emulators:start": "node ./scripts/start-emulators.mjs",
     "bootstrap": "npm install && npm --prefix functions install && npm --prefix studio-brain install && npm --prefix web install",
     "build:web": "npm --prefix web run build",
     "build:functions": "npm --prefix functions run build",
@@ -23,6 +24,7 @@
     "test:full": "npm run test:automation",
     "test:all": "npm run test:functions && npm run test:studio-brain && npm run test:web",
     "test:automation:unit": "npm run test:all",
+    "studio-brain:auth-probe": "node ./scripts/test-studio-brain-auth.mjs",
     "test:automation:gateway": "npm run functions:smoke:cors",
     "test:automation:checks": "npm --prefix web run a11y:smoke",
     "test:automation:ui": "npm run website:smoke:playwright && npm run portal:smoke:playwright",

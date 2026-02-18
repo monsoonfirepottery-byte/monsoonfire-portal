@@ -1,6 +1,6 @@
 # P2 — Stable Host and URL Contract Matrix for Local Cutover
 
-Status: Planned
+Status: In Progress
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Portal
@@ -36,6 +36,11 @@ Create a single authoritative local-host contract and enforce it in scripts and 
 3. Local cutover smoke pass with a single, documented workflow profile.
 4. No untracked ad-hoc host literals remain in primary developer entrypoint scripts.
 5. The contract includes a DHCP/Static-IP fallback policy for Studiobrain and is referenced by onboarding docs.
+
+## Work completed
+
+- Added `docs/studiobrain-host-url-contract-matrix.md` as the canonical local/LAN host and endpoint matrix.
+- Connected the matrix to related tasks via `docs/EMULATOR_RUNBOOK.md` and environment examples.
 
 ## Dependencies
 - `web/src/firebase.ts`

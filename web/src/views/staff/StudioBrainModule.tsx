@@ -8,6 +8,7 @@ import {
   canExecuteProposalAction,
   canRollbackProposalAction,
 } from "./studioBrainGuards";
+import { resolveStudioBrainBaseUrlResolution } from "../../utils/studioBrain";
 
 type Props = {
   user: User;
@@ -185,13 +186,7 @@ type PolicyState = {
   exemptions: PolicyExemption[];
 };
 
-const DEFAULT_STUDIO_BRAIN_BASE_URL = "http://127.0.0.1:8787";
-type ImportMetaEnvShape = { VITE_STUDIO_BRAIN_BASE_URL?: string };
-const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
-const STUDIO_BRAIN_BASE_URL =
-  typeof import.meta !== "undefined" && ENV.VITE_STUDIO_BRAIN_BASE_URL
-    ? String(ENV.VITE_STUDIO_BRAIN_BASE_URL).replace(/\/+$/, "")
-    : DEFAULT_STUDIO_BRAIN_BASE_URL;
+const NO_BASE_URL_MESSAGE = "Studio Brain is not configured for this browser host.";
 
 function when(iso: string | undefined): string {
   if (!iso) return "-";
@@ -201,6 +196,8 @@ function when(iso: string | undefined): string {
 }
 
 export default function StudioBrainModule({ user, active, disabled, adminToken }: Props) {
+  const studioBrainResolution = useMemo(() => resolveStudioBrainBaseUrlResolution(), []);
+  const studioBrainBaseUrl = studioBrainResolution.baseUrl;
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -267,6 +264,9 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
   };
 
   const fetchJson = async <T,>(path: string, init?: RequestInit): Promise<T> => {
+    if (!studioBrainBaseUrl) {
+      throw new Error(studioBrainResolution.reason || NO_BASE_URL_MESSAGE);
+    }
     const idToken = await user.getIdToken();
     const headers = {
       "content-type": "application/json",
@@ -274,7 +274,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
       "x-studio-brain-admin-token": adminToken.trim(),
       ...(init?.headers ?? {}),
     };
-    const resp = await fetch(`${STUDIO_BRAIN_BASE_URL}${path}`, { ...init, headers });
+    const resp = await fetch(`${studioBrainBaseUrl}${path}`, { ...init, headers });
     const payload = (await resp.json()) as T & { ok?: boolean; message?: string };
     if (!resp.ok) {
       throw new Error(payload.message || `Request failed (${resp.status})`);
@@ -356,7 +356,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
     if (!active || disabledByToken) return;
     void run("loadStudioBrain", loadAll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, disabledByToken, auditActionPrefix, auditActorFilter, auditApprovalFilter]);
+  }, [active, disabledByToken, auditActionPrefix, auditActorFilter, auditApprovalFilter, studioBrainBaseUrl]);
 
   const capabilityById = useMemo(() => new Map(capabilities.map((row) => [row.id, row])), [capabilities]);
   const filteredProposals = useMemo(() => {
@@ -397,9 +397,15 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
         </button>
       </div>
       <div className="staff-note">
-        Direct browser access to <code>{STUDIO_BRAIN_BASE_URL}</code> requires both
-        <code>Authorization: Bearer &lt;Firebase ID token&gt;</code> and
-        <code>x-studio-brain-admin-token</code> when configured.
+        {studioBrainBaseUrl ? (
+          <>
+            Direct browser access to <code>{studioBrainBaseUrl}</code> requires both
+            <code>Authorization: Bearer &lt;Firebase ID token&gt;</code> and
+            <code>x-studio-brain-admin-token</code> when configured.
+          </>
+        ) : (
+          <span>Studio Brain is disabled for this host. Configure VITE_STUDIO_BRAIN_BASE_URL.</span>
+        )}
       </div>
       {!hasAdminToken ? (
         <div className="staff-note staff-note-error">Set a Dev admin token in System module to access Studio Brain endpoints.</div>
@@ -1246,4 +1252,3 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
     </section>
   );
 }
-

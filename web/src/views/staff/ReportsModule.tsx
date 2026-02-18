@@ -3,6 +3,7 @@ import type { FunctionsClient } from "../../api/functionsClient";
 import type { User } from "firebase/auth";
 import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
 import { db } from "../../firebase";
+import { resolveStudioBrainBaseUrlResolution } from "../../utils/studioBrain";
 
 type ReportStatus = "open" | "triaged" | "actioned" | "resolved" | "dismissed";
 type ReportSeverity = "low" | "medium" | "high";
@@ -112,13 +113,7 @@ type TriageStats = {
   mismatchRatePct: number;
 };
 
-const DEFAULT_STUDIO_BRAIN_BASE_URL = "http://127.0.0.1:8787";
-type ImportMetaEnvShape = { VITE_STUDIO_BRAIN_BASE_URL?: string };
-const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
-const STUDIO_BRAIN_BASE_URL =
-  typeof import.meta !== "undefined" && ENV.VITE_STUDIO_BRAIN_BASE_URL
-    ? String(ENV.VITE_STUDIO_BRAIN_BASE_URL).replace(/\/+$/, "")
-    : DEFAULT_STUDIO_BRAIN_BASE_URL;
+const NO_BASE_URL_MESSAGE = "Studio Brain is not configured for this browser host.";
 
 const DEFAULT_REASON_TEMPLATES = [
   "policy_violation_confirmed",
@@ -288,6 +283,8 @@ function normalizeAppeal(row: Record<string, unknown>): AppealRow {
 }
 
 export default function ReportsModule({ client, active, disabled, user, studioBrainAdminToken }: Props) {
+  const studioBrainResolution = useMemo(() => resolveStudioBrainBaseUrlResolution(), []);
+  const studioBrainBaseUrl = studioBrainResolution.baseUrl;
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -353,6 +350,9 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
   };
 
   const fetchStudioBrain = async <T,>(path: string, init?: RequestInit): Promise<T> => {
+    if (!studioBrainBaseUrl) {
+      throw new Error(studioBrainResolution.reason || NO_BASE_URL_MESSAGE);
+    }
     const idToken = await user.getIdToken();
     const headers = {
       "content-type": "application/json",
@@ -360,7 +360,7 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
       "x-studio-brain-admin-token": studioBrainAdminToken.trim(),
       ...(init?.headers ?? {}),
     };
-    const resp = await fetch(`${STUDIO_BRAIN_BASE_URL}${path}`, { ...init, headers });
+    const resp = await fetch(`${studioBrainBaseUrl}${path}`, { ...init, headers });
     const payload = (await resp.json()) as T & { message?: string };
     if (!resp.ok) {
       throw new Error(payload.message || `Studio Brain request failed (${resp.status})`);
@@ -511,12 +511,12 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
   };
 
   useEffect(() => {
-    if (!active || disabled) return;
+    if (!active || disabled || !studioBrainBaseUrl) return;
     void run("loadReports", async () => {
       await Promise.all([loadReports(), loadAppeals(), loadActivePolicy(), loadTriageStats()]);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, disabled, filterStatus, filterSeverity, filterCategory, filterType, filterDateRange, studioBrainAdminToken]);
+  }, [active, disabled, filterStatus, filterSeverity, filterCategory, filterType, filterDateRange, studioBrainAdminToken, studioBrainBaseUrl]);
 
   useEffect(() => {
     if (!active || disabled) return;
@@ -1567,4 +1567,3 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
     </section>
   );
 }
-

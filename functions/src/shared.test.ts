@@ -77,6 +77,48 @@ test("applyCors handles preflight OPTIONS requests and returns early", () => {
   assert.equal(captured.statusCode, 204);
 });
 
+test("applyCors accepts origin header with canonical casing", () => {
+  const { response, captured } = createMockResponse();
+
+  const handled = applyCors(
+    {
+      method: "POST",
+      headers: {
+        Origin: "https://monsoonfire-portal.web.app",
+      },
+    } as never,
+    response as never
+  );
+
+  assert.equal(handled, false);
+  assert.equal(captured.headers["Access-Control-Allow-Origin"], "https://monsoonfire-portal.web.app");
+});
+
+test("applyCors normalizes configured allowed origins and origin header values", () => {
+  const previousAllowedOrigins = process.env.ALLOWED_ORIGINS;
+  process.env.ALLOWED_ORIGINS = " https://monsoonfire-portal.web.app/ , https://example-studio-brian.invalid ";
+
+  const { response, captured } = createMockResponse();
+  const handled = applyCors(
+    {
+      method: "POST",
+      headers: {
+        origin: ["https://monsoonfire-portal.web.app/"],
+      },
+    } as never,
+    response as never
+  );
+
+  assert.equal(handled, false);
+  assert.equal(captured.headers["Access-Control-Allow-Origin"], "https://monsoonfire-portal.web.app");
+
+  if (previousAllowedOrigins === undefined) {
+    delete process.env.ALLOWED_ORIGINS;
+  } else {
+    process.env.ALLOWED_ORIGINS = previousAllowedOrigins;
+  }
+});
+
 test("applyCors allows requests without origin header and falls back to wildcard allow origin", () => {
   const { response, captured } = createMockResponse();
 

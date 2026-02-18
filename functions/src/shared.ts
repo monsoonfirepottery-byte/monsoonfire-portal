@@ -60,21 +60,78 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "https://monsoonfire-portal.web.app",
 ];
 
+function normalizeOriginValue(origin: string): string {
+  const trimmed = origin.trim();
+  if (!trimmed) return "";
+
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.origin;
+  } catch {
+    return trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
+  }
+}
+
 function readAllowedOrigins(): string[] {
   const raw = (process.env.ALLOWED_ORIGINS ?? "").trim();
   if (raw) {
-    return raw
+    const configured = raw
       .split(",")
       .map((entry) => entry.trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .map(normalizeOriginValue);
+
+    if (configured.includes("*")) {
+      return ["*"];
+    }
+
+    const deduped: string[] = [];
+    for (const origin of [...DEFAULT_ALLOWED_ORIGINS, ...configured]) {
+      const normalized = normalizeOriginValue(origin);
+      if (normalized && !deduped.includes(normalized)) {
+        deduped.push(normalized);
+      }
+    }
+    return deduped;
   }
-  return DEFAULT_ALLOWED_ORIGINS;
+  return DEFAULT_ALLOWED_ORIGINS.map(normalizeOriginValue);
+}
+
+function extractHeaderValue(headers: HeaderRecord, key: string): HeaderValue {
+  const exact = headers[key];
+  if (typeof exact === "string" || Array.isArray(exact)) {
+    return exact;
+  }
+
+  const lower = key.toLowerCase();
+  for (const headerKey of Object.keys(headers)) {
+    if (headerKey.toLowerCase() === lower) {
+      const value = headers[headerKey];
+      if (typeof value === "string" || Array.isArray(value)) {
+        return value;
+      }
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function readSingleHeader(headers: HeaderRecord, key: string): string {
+  const raw = extractHeaderValue(headers, key);
+  if (typeof raw === "string") return raw.trim();
+  if (Array.isArray(raw)) {
+    const first = raw[0];
+    if (typeof first === "string") return first.trim();
+    if (typeof first === "number") return String(first).trim();
+  }
+  return "";
 }
 
 function isOriginAllowed(origin: string | undefined): boolean {
   if (!origin) return true;
+  const normalizedOrigin = normalizeOriginValue(origin);
   const allowList = readAllowedOrigins();
-  return allowList.includes(origin);
+  return allowList.includes(normalizedOrigin);
 }
 
 function allowDevAdminToken(): boolean {
@@ -86,13 +143,14 @@ function allowDevAdminToken(): boolean {
 
 export function applyCors(req: RequestLike, res: ResponseLike): boolean {
   const headers = req.headers ?? {};
-  const origin = typeof headers.origin === "string" ? headers.origin : "";
-  if (origin && !isOriginAllowed(origin)) {
+  const origin = readSingleHeader(headers, "origin");
+  const normalizedOrigin = normalizeOriginValue(origin);
+  if (normalizedOrigin && !isOriginAllowed(origin)) {
     res.status(403).json({ ok: false, message: "Origin not allowed" });
     return true;
   }
 
-  res.set("Access-Control-Allow-Origin", origin || "*");
+  res.set("Access-Control-Allow-Origin", normalizedOrigin || "*");
   res.set("Vary", "Origin");
   res.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD");
   res.set(

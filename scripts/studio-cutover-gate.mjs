@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -10,6 +11,14 @@ const repoRoot = resolve(__dirname, "..");
 const parsedArgs = parseArgs(process.argv.slice(2));
 const artifactPath = resolveArtifactPath(parsedArgs.artifact);
 const startedAt = new Date().toISOString();
+const REQUIRED_NODE_ENTRYPOINTS = [
+  "scripts/portal-playwright-smoke.mjs",
+  "scripts/website-playwright-smoke.mjs",
+  "scripts/scan-studiobrain-host-contract.mjs",
+  "scripts/studio-network-check.mjs",
+  "scripts/studiobrain-network-check.mjs",
+  "scripts/studiobrain-status.mjs",
+];
 
 const steps = buildSteps(parsedArgs);
 const results = [];
@@ -60,6 +69,14 @@ if (status === "fail") {
 
 function buildSteps(config) {
   const steps = [
+    {
+      name: "required node entrypoints",
+      kind: "check",
+      required: true,
+      check: checkRequiredNodeEntrypoints,
+      note: "Ensures core Node workflows are present before cutover orchestration.",
+      remediation: "Restore missing script files; required Node entrypoints are a hard blocker for Studiobrain-first workflows.",
+    },
     {
       name: "studio-brain infra integrity",
       command: "npm",
@@ -135,10 +152,38 @@ function buildSteps(config) {
 }
 
 function runStep(step) {
-  const commandLine = `${step.command} ${step.args.join(" ")}`.trim();
+  const commandLine = step.command ? `${step.command} ${step.args.join(" ")}`.trim() : "check";
   process.stdout.write(`\n== ${step.name} ==\n`);
   process.stdout.write(`${step.note}\n`);
   process.stdout.write(`command: ${commandLine}\n`);
+
+  if (step.kind === "check") {
+    try {
+      const detail = step.check ? step.check() : { ok: false, message: "Missing check implementation." };
+      const message = detail?.message || "Required node entrypoint check failed.";
+      return {
+        name: step.name,
+        command: commandLine,
+        required: Boolean(step.required),
+        remediation: step.remediation,
+        ok: Boolean(detail?.ok),
+        exitCode: detail?.ok ? 0 : 1,
+        output: message,
+        error: detail?.error || "",
+      };
+    } catch (error) {
+      return {
+        name: step.name,
+        command: commandLine,
+        required: Boolean(step.required),
+        remediation: step.remediation,
+        ok: false,
+        exitCode: 1,
+        output: error instanceof Error ? error.message : String(error),
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
 
   const result = spawnSync(step.command, step.args, {
     cwd: repoRoot,
@@ -171,6 +216,28 @@ function runStep(step) {
   detail.ok = result.status === 0;
   detail.exitCode = result.status ?? 1;
   return detail;
+}
+
+function checkRequiredNodeEntrypoints() {
+  const missing = [];
+  for (const rel of REQUIRED_NODE_ENTRYPOINTS) {
+    const abs = resolve(repoRoot, rel);
+    if (!existsSync(abs)) {
+      missing.push(rel);
+    }
+  }
+
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      message: `Missing required node entrypoint(s): ${missing.join(", ")}`,
+    };
+  }
+
+  return {
+    ok: true,
+    message: `Required node entrypoints present (${REQUIRED_NODE_ENTRYPOINTS.length}).`,
+  };
 }
 
 function buildPortalSmokeArgs(config) {

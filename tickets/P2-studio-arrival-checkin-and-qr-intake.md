@@ -43,4 +43,3 @@ Enable members to perform first-step check-in with a reservation-specific code, 
 - `tickets/P1-studio-reservation-stage-timeline-and-audit.md`
 - `tickets/P1-studio-notification-sla-journey.md`
 - `tickets/P1-studio-reservation-status-api.md`
-

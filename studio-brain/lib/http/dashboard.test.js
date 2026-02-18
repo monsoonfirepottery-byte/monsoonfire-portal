@@ -20,7 +20,6 @@ const compute_1 = require("../studioState/compute");
                 reservationsOpen: 3,
                 firingsScheduled: 4,
                 reportsOpen: 5,
-                blockedTickets: 0,
                 agentRequestsPending: 0,
                 highSeverityReports: 0,
                 pendingOrders: 0,

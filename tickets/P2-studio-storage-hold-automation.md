@@ -42,4 +42,3 @@ Without hold logic, retention becomes manual and hard to audit, especially when 
 ## Dependencies
 - `tickets/P1-studio-notification-sla-journey.md`
 - `tickets/P1-studio-reservation-status-api.md`
-

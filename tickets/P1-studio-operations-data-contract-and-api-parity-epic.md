@@ -1,6 +1,6 @@
 # Ticket: P1 — Studio Operations Data Contract & API Parity Epic
 
-Status: Proposed  
+Status: Planned
 Created: 2026-02-17  
 Priority: P1  
 Owner: Web + Functions Team  
@@ -58,4 +58,3 @@ Create a single, explicit contract and API parity across:
 - API docs updated + reviewed.
 - A simple end-to-end smoke check confirms fetch/update works across function -> API -> web path.
 - Product owner sign-off on accepted schema fields.
-

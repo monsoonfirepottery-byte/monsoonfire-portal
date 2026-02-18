@@ -16,7 +16,6 @@ export type MarketingDraft = {
 
 export function buildMarketingDrafts(snapshot: StudioStateSnapshot): MarketingDraft[] {
   const refs = [
-    `ops.blockedTickets=${snapshot.ops.blockedTickets}`,
     `ops.agentRequestsPending=${snapshot.ops.agentRequestsPending}`,
     `counts.batchesActive=${snapshot.counts.batchesActive}`,
     `counts.firingsScheduled=${snapshot.counts.firingsScheduled}`,

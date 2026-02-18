@@ -61,10 +61,8 @@ This runbook covers first-response actions for agent auth failures, PAT abuse, a
   - controls toggled
   - tokens/clients revoked
   - recovery confirmation
-- Add remediation tasks to tracker (policy/rate-limit/scope tightening).
+- Add remediation tasks to tickets (policy/rate-limit/scope tightening).
 
 ## Verification commands
 - Agent smoke:
   - `node functions/scripts/agent_smoke.js --pat "<TOKEN>"`
-- Tracker sync:
-  - `node functions/scripts/syncTrackerTicketsFromMarkdown.js`

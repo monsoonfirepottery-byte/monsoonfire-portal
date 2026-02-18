@@ -1,6 +1,6 @@
 # P2 — Stripe Webhook Mode Selection and Telemetry
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P2
 Owner: Functions Team
@@ -32,4 +32,3 @@ Add deterministic mode selection and observability around webhook verification p
 ## References
 - `functions/src/stripeConfig.ts:383`
 - `functions/src/stripeConfig.ts:1157`
-

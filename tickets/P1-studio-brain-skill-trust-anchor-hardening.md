@@ -1,6 +1,6 @@
 # P1 — Studio Brain Skill Trust Anchor Hardening
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P1
 Owner: Studio Brain Team
@@ -32,4 +32,3 @@ Complete the trust-anchor step for skill source and signature checks before broa
 - `studio-brain/docs/SKILL_SECURITY_MODEL.md:29`
 - `studio-brain/docs/SKILL_SECURITY_MODEL.md:67`
 - `studio-brain/docs/SKILL_SECURITY_MODEL.md:70`
-

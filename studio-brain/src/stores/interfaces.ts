@@ -16,7 +16,6 @@ export type StudioStateSnapshot = {
     reportsOpen: number;
   };
   ops: {
-    blockedTickets: number;
     agentRequestsPending: number;
     highSeverityReports: number;
   };

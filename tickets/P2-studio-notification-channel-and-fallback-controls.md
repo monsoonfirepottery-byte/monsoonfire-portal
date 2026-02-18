@@ -43,4 +43,3 @@ Build a predictable communications layer for stage and pickup updates that suppo
 ## Dependencies
 - `tickets/P1-studio-notification-sla-journey.md`
 - `tickets/P1-studio-reservation-status-api.md`
-

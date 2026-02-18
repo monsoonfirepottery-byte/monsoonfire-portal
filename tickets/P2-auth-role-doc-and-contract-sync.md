@@ -1,6 +1,6 @@
 # P2 — Auth Role Documentation and Contract Sync
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P2
 Owner: Portal + Docs Team
@@ -31,4 +31,3 @@ Make docs reflect the single role contract and keep enforcement tests aligned.
 ## References
 - `docs/DESIGN_2026-01-20.md:37`
 - `docs/STAFF_CLAIMS_SETUP.md`
-

@@ -31,7 +31,6 @@ function buildStudioState(inputs) {
             reportsOpen: inputs.firestore.counts.reportsOpen,
         },
         ops: {
-            blockedTickets: inputs.firestore.counts.blockedTickets,
             agentRequestsPending: inputs.firestore.counts.agentRequestsPending,
             highSeverityReports: inputs.firestore.counts.highSeverityReports,
         },
@@ -64,7 +63,6 @@ function computeDiff(previous, current) {
         { key: "counts.reservationsOpen", from: previous.counts.reservationsOpen, to: current.counts.reservationsOpen },
         { key: "counts.firingsScheduled", from: previous.counts.firingsScheduled, to: current.counts.firingsScheduled },
         { key: "counts.reportsOpen", from: previous.counts.reportsOpen, to: current.counts.reportsOpen },
-        { key: "ops.blockedTickets", from: previous.ops.blockedTickets, to: current.ops.blockedTickets },
         { key: "ops.agentRequestsPending", from: previous.ops.agentRequestsPending, to: current.ops.agentRequestsPending },
         { key: "ops.highSeverityReports", from: previous.ops.highSeverityReports, to: current.ops.highSeverityReports },
         { key: "finance.pendingOrders", from: previous.finance.pendingOrders, to: current.finance.pendingOrders },

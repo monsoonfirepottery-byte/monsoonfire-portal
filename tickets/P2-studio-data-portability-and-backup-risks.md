@@ -43,4 +43,3 @@ Guarantee predictable data continuity for studio records and member workflow dat
 - `tickets/P1-studio-reservation-status-api.md`
 - `tickets/P1-studio-reservation-stage-timeline-and-audit.md`
 - `tickets/P2-studio-piece-traceability-with-piece-codes.md`
-

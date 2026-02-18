@@ -1,6 +1,6 @@
 # Epic: P1 — Security Surface Hardening and Trust Controls
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P1
 Owner: Security + Functions + Studio Brain Teams

@@ -17,7 +17,6 @@ function snapshot(partial?: Partial<StudioStateSnapshot>): StudioStateSnapshot {
       reportsOpen: 4,
     },
     ops: {
-      blockedTickets: 1,
       agentRequestsPending: 4,
       highSeverityReports: 0,
     },
@@ -36,12 +35,12 @@ function snapshot(partial?: Partial<StudioStateSnapshot>): StudioStateSnapshot {
 test("detectOpsRecommendations emits baseline anomalies", () => {
   const current = snapshot({
     counts: { batchesActive: 30, batchesClosed: 20, reservationsOpen: 35, firingsScheduled: 1, reportsOpen: 4 },
-    ops: { blockedTickets: 1, agentRequestsPending: 22, highSeverityReports: 0 },
+    ops: { agentRequestsPending: 22, highSeverityReports: 0 },
   });
   const prev = snapshot({
     snapshotDate: "2026-02-12",
     counts: { batchesActive: 24, batchesClosed: 18, reservationsOpen: 28, firingsScheduled: 3, reportsOpen: 3 },
-    ops: { blockedTickets: 1, agentRequestsPending: 10, highSeverityReports: 0 },
+    ops: { agentRequestsPending: 10, highSeverityReports: 0 },
   });
 
   const result = detectOpsRecommendations(current, prev, {
@@ -85,11 +84,11 @@ test("detectOpsRecommendations throttles recently emitted rules", () => {
 
 test("detectOpsRecommendations suppresses false positives when queue stable", () => {
   const current = snapshot({
-    ops: { blockedTickets: 1, agentRequestsPending: 9, highSeverityReports: 0 },
+    ops: { agentRequestsPending: 9, highSeverityReports: 0 },
   });
   const prev = snapshot({
     snapshotDate: "2026-02-12",
-    ops: { blockedTickets: 1, agentRequestsPending: 8, highSeverityReports: 0 },
+    ops: { agentRequestsPending: 8, highSeverityReports: 0 },
   });
 
   const result = detectOpsRecommendations(current, prev, {

@@ -1,6 +1,6 @@
 # P2 — Stripe Webhook Verification Contract Tests
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P2
 Owner: QA + Functions Team
@@ -32,4 +32,3 @@ Add deterministic webhook tests that lock down high-risk behavior before hardeni
 
 ## References
 - `functions/src/stripeConfig.ts`
-

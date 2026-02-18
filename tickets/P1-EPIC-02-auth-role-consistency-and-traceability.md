@@ -1,6 +1,6 @@
 # Epic: P1 — Auth Role Consistency and Traceability
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P1
 Owner: Portal Team

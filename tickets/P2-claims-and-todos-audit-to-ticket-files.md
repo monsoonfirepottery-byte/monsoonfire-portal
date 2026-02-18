@@ -1,6 +1,6 @@
-# P2 — Claims and TODOs Audit to Tracker
+# P2 — Claims and TODOs Audit to Ticket Files
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P2
 Owner: PM + Engineering
@@ -11,7 +11,7 @@ Parent Epic: tickets/P1-EPIC-06-backlog-hygiene-and-ticket-topology.md
 Some TODO entries and gap notes are not reflected as tickets with dependencies and owners, reducing execution clarity.
 
 ## Objective
-Create a one-time audit to reconcile active TODOs into tracker-ready tickets.
+Create a one-time audit to reconcile active TODOs into current markdown ticket files.
 
 ## Scope
 1. Parse current backlog docs for unresolved TODOs.
@@ -31,4 +31,3 @@ Create a one-time audit to reconcile active TODOs into tracker-ready tickets.
 ## References
 - `docs/sprints/SWARM_BOARD.md:47`
 - `docs/ENGINEERING_TODOS.md`
-

@@ -1,6 +1,6 @@
 # P1 — Staff Role Source-of-Truth Contract
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P1
 Owner: Portal + Security
@@ -32,4 +32,3 @@ Publish and adopt one contract for staff role and permission derivation.
 - `docs/DESIGN_2026-01-20.md:37`
 - `docs/STAFF_CLAIMS_SETUP.md`
 - `web/src/App.tsx:1017`
-

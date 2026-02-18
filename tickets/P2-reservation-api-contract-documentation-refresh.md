@@ -36,4 +36,3 @@ This creates confusion for implementation, QA, and release readiness.
 - Migration path is clear for clients currently using legacy URLs.
 - No unresolved reference to deprecated route assumptions in schema docs.
 - Planned compatibility window is recorded with a review date.
-

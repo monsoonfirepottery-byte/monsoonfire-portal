@@ -6,7 +6,7 @@
 ## 1) Repo Map
 - Root: `D:/monsoonfire-portal`
 - Primary packages/apps:
-  - `web` | `web/` | React 19 + Vite + TypeScript + Firebase Web SDK | Main Portal app (member + staff UI, tracker route gate via `/tracker`).
+  - `web` | `web/` | React 19 + Vite + TypeScript + Firebase Web SDK | Main Portal app (member + staff UI, feature-gated internal tooling screens).
   - `functions` | `functions/` | Firebase Functions v2 + TypeScript + Node 22 | API/backend surface (portal ops, events, reports, agentic, Stripe, notifications).
   - `website` | `website/` | Static HTML/CSS/JS | Marketing/public site + policies/support pages.
   - `ios` | `ios/` | Swift/SwiftUI-style client files | Native parity work (runtime/build docs indicate partial/ongoing).
@@ -29,7 +29,7 @@ List implemented, user-visible features grouped by surface:
   - Dashboard + kiln rentals flow (ware check-in, queues, firings). Where: `web/src/views/DashboardView.tsx`, `ReservationsView.tsx`, `KilnLaunchView.tsx`, `KilnScheduleView.tsx`. Status: Implemented.
   - Studio resources (My Pieces, Glaze Board, Store, Membership, Billing, Requests). Where: `web/src/views/*`. Status: Implemented.
   - Community/workshops/lending/messages/notifications/support. Where: `web/src/views/CommunityView.tsx`, `EventsView.tsx`, `LendingLibraryView.tsx`, `MessagesView.tsx`, `NotificationsView.tsx`, `SupportView.tsx`. Status: Implemented.
-  - Internal tracker app route split (`/tracker*` loads tracker shell). Where: `web/src/main.tsx`, `web/src/tracker/TrackerApp.tsx`. Status: Implemented.
+  - Internal tracker surfaces retired from portal routing; staff operations now use dedicated Studio Brain workflows instead.
 - Staff/Admin:
   - Staff Console modules (members, pieces/batches, firings, events, lending, store/billing, system, stripe, policy/reports, agent ops). Where: `web/src/views/StaffView.tsx`, `web/src/views/staff/*`. Status: Implemented/Partial by module.
   - Community report triage/actions/appeals UI. Where: `web/src/views/staff/ReportsModule.tsx`. Status: Implemented.
@@ -82,12 +82,12 @@ List implemented, user-visible features grouped by surface:
   - Core: `batches`, `batches/{id}/pieces`, `timeline`, `profiles`, `reservations`, `kilnLaunchRequests`, `kilnFirings`, `kilns`, `firingsCalendarEvents`, `announcements`.
   - Messaging/support: `directMessages`, `messages`, `supportRequests`, `faqItems`.
   - Commerce/events/materials: `events`, `eventSignups`, `eventCharges`, `materialsProducts`, `materialsOrders`, `library*`.
-  - Tracker: `trackerProjects`, `trackerEpics`, `trackerTickets`, `trackerIntegrationHealth`.
+  - Tracker collections removed: `trackerProjects`, `trackerEpics`, `trackerTickets`, `trackerIntegrationHealth` (no longer part of active schema).
   - Safety/agent/audit: `communityReports`, `communityReportAppeals`, `communityFeedOverrides`, `communityReportAuditLogs`, `agentClients`, `delegations`, `auditEvents`, `securityAudit`, `integrationTokenAudit`, `rateLimits`, `delegatedTokenNonces`.
   - Evidence: `firestore.rules` match blocks.
 - External services:
   - Stripe (checkout + webhooks + staff config). Where: `functions/src/stripeConfig.ts`, `functions/src/events.ts`, `functions/src/materials.ts`, `web/src/views/staff/StripeSettingsModule.tsx`.
-  - GitHub lookup integration for tracker metadata. Where: `functions/src/index.ts` (`githubLookup`), tracker web UI.
+  - GitHub lookup integration (`githubLookup`), used for external metadata enrichment where useful.
   - Google Calendar sync for firings. Where: `functions/src/index.ts` (`debugCalendarId`, `acceptFiringsCalendar`, `syncFiringsNow`).
   - Firebase email extension configured. Where: `firebase.json` extensions block.
 - Env vars (names only):

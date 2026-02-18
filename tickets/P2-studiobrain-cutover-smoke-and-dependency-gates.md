@@ -1,6 +1,6 @@
 # P2 — Cutover Smoke and Dependency Gates for Studiobrain Migration
 
-Status: Planned
+Status: In Progress
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + QA
@@ -36,11 +36,12 @@ Define and implement a deterministic, low-friction cutover gate command that val
    - website smoke (local or staged target as configured)
 2. Add one root cutover command (for example `npm run cutover:smoke`) that runs the above in order and stops on first hard failure.
 3. Make dependency checks non-negotiable before launching UI smoke checks.
-4. Emit one summary artifact (`output/cutover-smoke/summary.json`) with:
+4. Emit one summary artifact (`output/cutover-gate/summary.json`) with:
    - command results
    - host contract checks
    - dependency health evidence
    - smoke failures
+   - optional-check warning summary
 5. Add a short "expected runtime" section in runbooks for normal and degraded-path execution.
 
 ## Acceptance Criteria
@@ -60,10 +61,15 @@ Define and implement a deterministic, low-friction cutover gate command that val
 - `docs/EMULATOR_RUNBOOK.md`
 - `docs/runbooks/PORTAL_PLAYWRIGHT_SMOKE.md`
 - `docs/runbooks/WEBSITE_PLAYWRIGHT_SMOKE.md`
+ 
+### Current implementation status
+
+- `scripts/studio-cutover-gate.mjs` created and wired to root scripts as `npm run studio:cutover:gate`.
+- Artifact currently writes to `output/cutover-gate/summary.json` by default.
+- Website smoke is intentionally non-blocking; failures are returned as warnings for review.
 
 ## Definition of Done
 
 - Single cutover-gate command exists and is linked from onboarding docs.
 - A successful gate run is accepted as handoff evidence for the next workflow stage.
 - No "optional" dependencies in the sequence can silently bypass blocking requirements.
-

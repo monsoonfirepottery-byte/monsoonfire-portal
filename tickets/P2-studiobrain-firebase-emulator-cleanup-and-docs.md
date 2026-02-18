@@ -1,6 +1,6 @@
 # P2 — Firebase Emulator Cleanup and Studiobrain Docs Alignment
 
-Status: Planned
+Status: In Progress
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Functions
@@ -37,6 +37,10 @@ Simplify emulator workflow to a single studiobrain-first runbook with clear host
 2. Emulator host/URL usage is documented once and is reused across scripts and docs.
 3. Portal/functions smoke scripts explicitly confirm emulator wiring before deep checks.
 4. Legacy wuff-laptop emulator dependencies are either removed or clearly marked deprecated.
+
+## Work completed
+
+- Added a canonical emulator host contract table to `docs/EMULATOR_RUNBOOK.md` for auth/firestore/functions/StudioBrain endpoints and LAN profile usage.
 
 ## Dependencies
 - `docs/EMULATOR_RUNBOOK.md`

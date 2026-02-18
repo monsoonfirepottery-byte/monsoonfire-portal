@@ -45,6 +45,25 @@
 3. Start emulators via `npm run emulators:start -- --only firestore,functions,auth`.
    - Compatibility fallback: `pwsh -File scripts/start-emulators.ps1`.
 
+## Emulator and UI contract matrix
+
+Use this matrix when setting `web` env values for deterministic smoke and onboarding behavior:
+
+| Target | Variable / Value | Notes |
+| --- | --- | --- |
+| Auth emulator host | `VITE_AUTH_EMULATOR_HOST` | `127.0.0.1` (or `studiobrain.local` for LAN-aware flows) |
+| Auth emulator port | `VITE_AUTH_EMULATOR_PORT` | `9099` |
+| Firestore emulator host | `VITE_FIRESTORE_EMULATOR_HOST` | `127.0.0.1` (or `studiobrain.local` for LAN-aware flows) |
+| Firestore emulator port | `VITE_FIRESTORE_EMULATOR_PORT` | `8080` |
+| Functions host mode | `VITE_USE_AUTH_EMULATOR`, `VITE_USE_FIRESTORE_EMULATOR`, `VITE_USE_EMULATORS` | Prefer split flags for stable workflows |
+| Functions API base | `VITE_FUNCTIONS_BASE_URL` | `http://127.0.0.1:5001/monsoonfire-portal/us-central1` |
+| Studio Brain base | `STUDIO_BRAIN_BASE_URL` | Derived from `STUDIO_BRAIN_NETWORK_PROFILE` via `scripts/studio-network-profile.mjs` |
+
+When testing from another device, align host fields with the active Studiobrain network profile:
+
+- `local` profile: loopback defaults (`127.0.0.1` + localhost aliases).
+- `lan-dhcp`/`lan-static`: host values should use the LAN hostname (example: `studiobrain.local`) and `npm run studio:network:check` should reflect the active profile.
+
 This avoids losing env vars when opening a new terminal session.
 
 ## Network profile health and host stability

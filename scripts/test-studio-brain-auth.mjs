@@ -1,6 +1,7 @@
 import { createInterface } from "node:readline";
 import { stdin as input, stdout as output } from "node:process";
 import { setTimeout as setAbortTimeout } from "node:timers";
+import { resolveStudioBrainBaseUrlFromEnv } from "./studio-brain-url-resolution.mjs";
 
 const parseArgs = () => {
   const parsed = {};
@@ -116,10 +117,14 @@ const findWorkingCapabilitiesPath = async (baseUrl, preferredPath) => {
 
 const run = async () => {
   const options = parseArgs();
+  const explicitOptionBaseUrl = String(options.baseUrl || options.baseURL || "").trim();
   const baseUrl =
-    String(
-      options.baseUrl || options.baseURL || process.env.STUDIO_BRAIN_BASE_URL || "http://127.0.0.1:8787",
-    ).replace(/\/$/, "");
+    resolveStudioBrainBaseUrlFromEnv({
+      env: {
+        ...process.env,
+        ...(explicitOptionBaseUrl ? { STUDIO_BRAIN_BASE_URL: explicitOptionBaseUrl } : {}),
+      },
+    }).replace(/\/$/, "");
   const capabilitiesPath =
     options.capabilitiesPath || "/api/capabilities";
   let idToken = (options.idToken || process.env.STUDIO_BRAIN_ID_TOKEN || "").trim();

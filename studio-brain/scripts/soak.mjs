@@ -1,4 +1,9 @@
-const baseUrl = process.env.SOAK_BASE_URL ?? "http://127.0.0.1:8787";
+import { resolveStudioBrainBaseUrlFromEnv } from "../../scripts/studio-brain-url-resolution.mjs";
+
+const baseUrl = resolveStudioBrainBaseUrlFromEnv({
+  env: process.env,
+  fallbackVars: ["SOAK_BASE_URL", "STUDIO_BRAIN_BASE_URL"],
+});
 const durationMinutes = Number(process.env.SOAK_DURATION_MINUTES ?? "60");
 const pollSeconds = Number(process.env.SOAK_POLL_SECONDS ?? "30");
 

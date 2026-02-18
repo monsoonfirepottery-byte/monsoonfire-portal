@@ -17,7 +17,7 @@ const REQUIRED_NODE_ENTRYPOINTS = [
   "scripts/portal-playwright-smoke.mjs",
   "scripts/website-playwright-smoke.mjs",
   "scripts/scan-studiobrain-host-contract.mjs",
-  "scripts/studio-network-check.mjs",
+  "scripts/validate-emulator-contract.mjs",
   "scripts/studiobrain-status.mjs",
   "scripts/studiobrain-network-check.mjs",
   "website/scripts/serve.mjs",
@@ -54,6 +54,14 @@ const steps = [
     command: "node",
     args: ["./scripts/studiobrain-network-check.mjs", "--gate", "--strict", "--write-state"],
     remediation: "Resolve host drift by refreshing STUDIO_BRAIN_NETWORK_PROFILE and STUDIO_BRAIN_HOST values for LAN workflows.",
+    required: true,
+  },
+  {
+    name: "studio-brain emulator contract",
+    kind: "command",
+    command: "npm",
+    args: ["run", "studio:emulator:contract:check", "--", "--strict", "--json"],
+    remediation: "Fix portal emulator contracts in web/.env.local (auth/firestore/functions host and port toggles) before PR gate checks.",
     required: true,
   },
   {

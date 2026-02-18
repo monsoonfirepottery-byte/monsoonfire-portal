@@ -1,6 +1,6 @@
 # P2 — Windows Script Elimination and Compatibility Shim Cleanup
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform

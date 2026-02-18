@@ -58,6 +58,7 @@ Create one canonical emulator host contract and ensure every run path (web, func
 
 - Added a canonical host/URL matrix and web onboarding section updates in `docs/EMULATOR_RUNBOOK.md`.
 - Added `web/.env.local.example` to standardize emulator/Functions/StudioBrain local contract setup on fresh checkouts.
+- Added a dedicated hard-fail validator command (`scripts/validate-emulator-contract.mjs`) and gated it in `scripts/pr-gate.mjs` and `scripts/studio-cutover-gate.mjs` with `npm run studio:emulator:contract:check:strict`.
 
 ## Dependencies
 

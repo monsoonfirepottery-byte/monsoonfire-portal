@@ -4,6 +4,7 @@
 - Pre-start drift checks:
   - `npm run integrity:check`
   - `npm run studio:host:contract:scan:strict`
+  - `npm run studio:emulator:contract:check:strict`
 - Recommended: run Firestore + Functions emulators while using REAL Firebase Auth.
   - In `web/.env.local`:
     - `VITE_USE_AUTH_EMULATOR=false`
@@ -73,6 +74,7 @@ This avoids losing env vars when opening a new terminal session.
 ## Network profile health and host stability
 - Validate host identity and profile drift before smoke or deployment workflows:
   - `npm run studio:host:contract:scan:strict`
+  - `npm run studio:emulator:contract:check:strict`
   - `npm run studio:network:check:gate -- --strict`
 - Recommended sequence before major cutover changes:
   - `npm run studio:host:contract:scan:strict`

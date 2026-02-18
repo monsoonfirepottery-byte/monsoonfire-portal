@@ -49,3 +49,5 @@ Create a stable website development/deploy target model that works from any work
   - `WEBSITE_DEPLOY_PORT`
   - `WEBSITE_DEPLOY_REMOTE_PATH`
 - Kept PowerShell shim compatibility while resolving deployment params via env with explicit fallback behavior.
+- Removed hard-coded legacy `monsggbd@66.29.137.142` fallback from the canonical Node deploy path.
+- Enforced deploy failure when no deploy target is configured, so core commands now require `WEBSITE_DEPLOY_SERVER` or explicit `--server`.

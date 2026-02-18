@@ -52,7 +52,13 @@
     "integrity:check": "node ./scripts/integrity-check.mjs",
     "integrity:check:strict": "node ./scripts/integrity-check.mjs --strict",
     "integrity:update": "node ./scripts/integrity-check.mjs --update",
-    "pr:gate": "node ./scripts/pr-gate.mjs"
+    "pr:gate": "node ./scripts/pr-gate.mjs",
+    "reliability:once": "node ./scripts/reliability-hub.mjs once",
+    "reliability:watch": "node ./scripts/reliability-hub.mjs watch",
+    "reliability:report": "node ./scripts/reliability-hub.mjs report --json",
+    "cutover-watchdog": "node ./scripts/cutover-watchdog.mjs",
+    "cutover-watchdog:once": "node ./scripts/cutover-watchdog.mjs once",
+    "cutover-watchdog:watch": "node ./scripts/cutover-watchdog.mjs watch"
   },
   "dependencies": {
     "@openai/codex": "^0.91.0",

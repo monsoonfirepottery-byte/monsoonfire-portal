@@ -23,6 +23,23 @@ Recommended sequence:
 4. `npm run studio:status`
 5. `npm run pr:gate -- --smoke`
 
+## Reliability and house-status loop
+For daily cutover readiness on Studiobrain, keep an always-on heartbeat record:
+
+```bash
+npm run reliability:once
+npm run reliability:watch
+npm run reliability:report
+```
+
+Suggested cadence:
+- During day shifts: `npm run reliability:watch -- --interval-ms 60000`
+- Before cutover handoff: `npm run reliability:once -- --json`
+
+Artifacts are written to `output/stability`:
+- `heartbeat-summary.json` (latest gate result)
+- `heartbeat-events.log` (append-only event trail)
+
 ## Studiobrain cutover gate
 Use this for deterministic end-to-end readiness from a fresh Studiobrain workstation:
 

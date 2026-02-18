@@ -60,3 +60,26 @@ Establish lightweight, stable observability tooling and procedures for everyday 
 - Core operational checks are standardized and documented.
 - Baseline monitoring is optional for dev, required for cutover/handoff.
 - Evidence artifacts become part of handoff/checklist flow.
+
+## Work completed
+
+- Added reliability heartbeat infrastructure for Studiobrain residency:
+  - `scripts/reliability-hub.mjs`
+  - `scripts/cutover-watchdog.mjs`
+  - `scripts/cutover-watchdog.ps1`
+  - `package.json` command additions:
+    - `reliability:once`
+    - `reliability:watch`
+    - `reliability:report`
+    - `cutover-watchdog` (and `:once`, `:watch`)
+- Documented reliability operations in:
+  - `docs/runbooks/PR_GATE.md`
+  - `docs/EMULATOR_RUNBOOK.md`
+- Updated reliability loop to include critical checks:
+  - Studio Brain env contract
+  - Studio Brain infra integrity
+  - Host contract scan
+  - Network profile contract
+  - Emulator contract
+  - Studio health status gate
+  - Optional preflight/smoke probes

@@ -1,6 +1,6 @@
 # P2 — Site Reliability Hub and Heartbeat Checks for Stable Home Residency
 
-Status: Planned
+Status: In Progress
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + QA
@@ -55,6 +55,26 @@ Create a "Reliability Hub" that runs scheduled heartbeat checks and publishes a 
 4. Failure artifacts persist across restarts and include actionable remediation notes.
 5. Maintenance mode is documented and avoids alert fatigue during planned work.
 
+## Work completed
+
+- Added `scripts/reliability-hub.mjs` with output artifacts:
+  - `output/stability/heartbeat-summary.json`
+  - `output/stability/heartbeat-events.log`
+- Added compatibility/watch entrypoints:
+  - `scripts/cutover-watchdog.mjs`
+  - `scripts/cutover-watchdog.ps1`
+- Added npm commands:
+  - `npm run reliability:once`
+  - `npm run reliability:watch`
+  - `npm run reliability:report`
+  - `npm run cutover-watchdog` and watch/once variants
+- Updated runbook usage in:
+  - `docs/runbooks/PR_GATE.md`
+  - `docs/EMULATOR_RUNBOOK.md`
+- Expanded check surface to include required infra integrity validation:
+  - `npm run integrity:check -- --strict --json`
+- Kept smoke probes optional by default; they can be enabled with `--include-preflight` or `--include-smoke`.
+
 ## Dependencies
 
 - `studio-brain/src/http/server.ts`
@@ -69,4 +89,3 @@ Create a "Reliability Hub" that runs scheduled heartbeat checks and publishes a 
 - A single "health status card" command exists and is used in onboarding handoff.
 - Reliability checks are automated enough to catch host contract drift in the first cycle.
 - Reliability profile can run independently from manual smoke runs and still reuse shared tokens/hosts.
-

@@ -83,6 +83,12 @@ This avoids losing env vars when opening a new terminal session.
   - `npm run studio:cutover:gate -- --no-smoke`
   - `npm run studio:cutover:gate -- --portal-deep` (or `npm run studio:cutover:gate -- --portal-deep --portal-base-url https://monsoonfire-portal.web.app` for production-aligned API target)
   - `npm run integrity:check`
+
+### Cutover residency check
+- Optional command loop for long-lived Studiobrain operations:
+  - `npm run reliability:once` (single pass)
+  - `npm run reliability:watch -- --interval-ms 60000`
+  - `npm run reliability:report`
   
 Recommended clean-state definition:
 - host contract scan passes (`npm run studio:host:contract:scan:strict`)

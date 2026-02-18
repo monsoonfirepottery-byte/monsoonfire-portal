@@ -62,9 +62,8 @@ export default function HouseView({
       <StudioBrainModule
         user={user}
         active={isHouseManager || isHouseMember || isHouseGuest}
-        disabled={false}
+        disabled={readOnlyStudioBrain}
         adminToken={adminToken}
-        readOnly={readOnlyStudioBrain}
       />
 
       {isHouseGuest && (

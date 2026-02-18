@@ -57,6 +57,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "https://monsoonfire.com",
   "https://www.monsoonfire.com",
   "https://portal.monsoonfire.com",
+  "https://monsoonfire-portal.web.app",
 ];
 
 function readAllowedOrigins(): string[] {
@@ -93,10 +94,10 @@ export function applyCors(req: RequestLike, res: ResponseLike): boolean {
 
   res.set("Access-Control-Allow-Origin", origin || "*");
   res.set("Vary", "Origin");
-  res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD");
   res.set(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, x-admin-token, x-request-id, idempotency-key"
+    "Content-Type, Authorization, x-admin-token, x-studio-brain-admin-token, x-request-id, idempotency-key"
   );
   res.set("Access-Control-Max-Age", "3600");
 

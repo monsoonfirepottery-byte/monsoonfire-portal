@@ -16,7 +16,9 @@ import {
 import { createFunctionsClient, safeJsonStringify, type LastRequest } from "../api/functionsClient";
 import { db } from "../firebase";
 import { clearHandlerErrorLog, getHandlerErrorLog } from "../utils/handlerLog";
+import { resolveFunctionsBaseUrlResolution } from "../utils/functionsBaseUrl";
 import { isStudioBrainDegradedMode } from "../utils/studioBrainHealth";
+import { resolveStudioBrainBaseUrlResolution } from "../utils/studioBrain";
 import PolicyModule from "./staff/PolicyModule";
 import StripeSettingsModule from "./staff/StripeSettingsModule";
 import ReportsModule from "./staff/ReportsModule";
@@ -254,26 +256,6 @@ const MODULES: Array<{ key: ModuleKey; label: string }> = [
   { key: "system", label: "System" },
 ];
 
-const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
-type ImportMetaEnvShape = { VITE_FUNCTIONS_BASE_URL?: string };
-const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
-
-function functionsBaseUrl() {
-  return typeof import.meta !== "undefined" && ENV.VITE_FUNCTIONS_BASE_URL
-    ? String(ENV.VITE_FUNCTIONS_BASE_URL)
-    : DEFAULT_FUNCTIONS_BASE_URL;
-}
-
-const DEFAULT_STUDIO_BRAIN_BASE_URL = "http://127.0.0.1:8787";
-type ImportMetaStudioBrainEnv = { VITE_STUDIO_BRAIN_BASE_URL?: string };
-const STUDIO_BRAIN_ENV = (import.meta.env ?? {}) as ImportMetaStudioBrainEnv;
-
-function studioBrainBaseUrl() {
-  return typeof import.meta !== "undefined" && STUDIO_BRAIN_ENV.VITE_STUDIO_BRAIN_BASE_URL
-    ? String(STUDIO_BRAIN_ENV.VITE_STUDIO_BRAIN_BASE_URL).replace(/\/+$/, "")
-    : DEFAULT_STUDIO_BRAIN_BASE_URL;
-}
-
 function str(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
@@ -440,8 +422,12 @@ export default function StaffView({
     successRate?: number;
   } | null>(null);
 
-  const fBaseUrl = useMemo(() => functionsBaseUrl(), []);
-  const sbBaseUrl = useMemo(() => studioBrainBaseUrl(), []);
+  const functionsBaseUrlResolution = useMemo(() => resolveFunctionsBaseUrlResolution(), []);
+  const studioBrainResolution = useMemo(() => resolveStudioBrainBaseUrlResolution(), []);
+  const fBaseUrl = functionsBaseUrlResolution.baseUrl;
+  const sbBaseUrl = studioBrainResolution.baseUrl;
+  const studioBrainUnreachableReason = studioBrainResolution.reason || "Studio Brain is disabled for this host.";
+
   const usingLocalFunctions = useMemo(
     () => fBaseUrl.includes("localhost") || fBaseUrl.includes("127.0.0.1"),
     [fBaseUrl]
@@ -952,6 +938,7 @@ export default function StaffView({
 
   const postStudioBrainDegradedEvent = useCallback(
     async (status: "entered" | "exited", mode: "degraded" | "offline", reason: string) => {
+      if (!sbBaseUrl) return;
       try {
         const idToken = await user.getIdToken();
         const headers: Record<string, string> = {
@@ -980,6 +967,26 @@ export default function StaffView({
 
   const loadStudioBrainStatus = useCallback(async () => {
     const checkedAt = new Date().toISOString();
+    if (!sbBaseUrl) {
+      const reason = studioBrainUnreachableReason;
+      setStudioBrainStatus({
+        checkedAt,
+        mode: "offline",
+        healthOk: false,
+        readyOk: false,
+        snapshotAgeMinutes: null,
+        reason,
+      });
+      upsertSystemCheck({
+        key: "studio_brain_ready",
+        label: "Studio Brain ready",
+        ok: false,
+        atMs: Date.now(),
+        details: reason,
+      });
+      return;
+    }
+
     try {
       const readyResp = await fetch(`${sbBaseUrl}/readyz`, { method: "GET" });
       const payload = (await readyResp.json()) as {
@@ -1027,7 +1034,7 @@ export default function StaffView({
         details: details || "Studio Brain unreachable.",
       });
     }
-  }, [sbBaseUrl, upsertSystemCheck]);
+  }, [sbBaseUrl, studioBrainUnreachableReason, upsertSystemCheck]);
 
   const loadUsers = useCallback(async () => {
     qTrace("users", { limit: 240 });
@@ -3622,5 +3629,3 @@ const lendingContent = (
     </div>
   );
 }
-
-

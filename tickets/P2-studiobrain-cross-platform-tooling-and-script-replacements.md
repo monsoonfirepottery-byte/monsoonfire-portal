@@ -55,6 +55,7 @@ Migrate launch/deploy/smoke entrypoints to Node-first, cross-platform wrappers w
 - Confirmed studio-brain emulator startup remains Node-first via `node ./scripts/start-emulators.mjs` and npm script entrypoints.
 - Made website deploy canonical path machine-agnostic by requiring `WEBSITE_DEPLOY_SERVER`/`--server` for `website/scripts/deploy.mjs` and removing legacy hard-coded host fallback from the Node default path.
 - Updated `website/deploy.ps1` compatibility shim to remove fixed host fallback and fail fast when no server target is provided (`--server` or `WEBSITE_DEPLOY_SERVER`).
+- Added hard-stop preflight in `scripts/pr-gate.mjs` and `scripts/studio-cutover-gate.mjs` for required Node entrypoints so missing Windows-only compatibility paths cannot block the Studio Brain-first flow.
 
 ## Dependencies
 

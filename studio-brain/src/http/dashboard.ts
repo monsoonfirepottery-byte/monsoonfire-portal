@@ -26,7 +26,6 @@ export async function renderDashboard(
     ["Reservations open", snapshot.counts.reservationsOpen],
     ["Firings scheduled", snapshot.counts.firingsScheduled],
     ["Reports open", snapshot.counts.reportsOpen],
-    ["Blocked tickets", snapshot.ops.blockedTickets],
     ["Agent requests pending", snapshot.ops.agentRequestsPending],
     ["High severity reports", snapshot.ops.highSeverityReports],
     ["Pending orders", snapshot.finance.pendingOrders],

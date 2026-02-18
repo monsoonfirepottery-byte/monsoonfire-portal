@@ -23,7 +23,6 @@ const sampleSnapshot = {
         reportsOpen: 0,
     },
     ops: {
-        blockedTickets: 0,
         agentRequestsPending: 1,
         highSeverityReports: 0,
     },

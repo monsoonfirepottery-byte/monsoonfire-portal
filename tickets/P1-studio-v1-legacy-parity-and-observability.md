@@ -37,4 +37,3 @@ Today, parity is mostly expected rather than guaranteed, and there is limited tr
 - No regression where one route path permits updates that the other rejects.
 - All new parity paths are covered by automated tests and a basic smoke checklist.
 - Alerting points to route family when parity checks fail.
-

@@ -1,6 +1,6 @@
 # P2 — Studio Brain Stripe Reader Stub Guardrails
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P2
 Owner: Studio-Brain Team
@@ -30,4 +30,3 @@ Add explicit stub mode controls and prevent hidden activation in operational env
 
 ## References
 - `studio-brain/src/cloud/stripeReader.ts:17`
-

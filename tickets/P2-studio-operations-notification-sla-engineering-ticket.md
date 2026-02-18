@@ -1,6 +1,6 @@
 # Ticket: P2 — Studio Notification SLA & ETA Communication
 
-Status: Proposed  
+Status: Planned
 Created: 2026-02-17  
 Priority: P2  
 Owner: Product + Functions Team  
@@ -46,4 +46,3 @@ Define and execute a predictable communication journey around reservation state 
   - transition to ready
   - delay reason
   - pickup completed
-

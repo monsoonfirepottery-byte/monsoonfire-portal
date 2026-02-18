@@ -12,7 +12,7 @@ const snapshot = {
     generatedAt: "2026-02-13T00:00:00.000Z",
     cloudSync: { firestoreReadAt: "2026-02-13T00:00:00.000Z", stripeReadAt: null },
     counts: { batchesActive: 12, batchesClosed: 21, reservationsOpen: 14, firingsScheduled: 3, reportsOpen: 2 },
-    ops: { blockedTickets: 1, agentRequestsPending: 5, highSeverityReports: 0 },
+    ops: { agentRequestsPending: 5, highSeverityReports: 0 },
     finance: { pendingOrders: 1, unsettledPayments: 0 },
     sourceHashes: { firestore: "h1", stripe: null },
 };

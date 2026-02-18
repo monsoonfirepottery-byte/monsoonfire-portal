@@ -1,6 +1,6 @@
 # P2 — Legacy Archived Auth Route Deprecation Gate
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P2
 Owner: Functions Team
@@ -30,4 +30,3 @@ Retire or hard-gate legacy archived auth handling with explicit deployment check
 
 ## References
 - `functions/archive/index_old.ts:598`
-

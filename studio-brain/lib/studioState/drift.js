@@ -13,7 +13,6 @@ function detectSnapshotDrift(previous, current, thresholds) {
         "counts.reservationsOpen",
         "counts.firingsScheduled",
         "counts.reportsOpen",
-        "ops.blockedTickets",
         "ops.agentRequestsPending",
         "ops.highSeverityReports",
         "finance.pendingOrders",

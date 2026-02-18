@@ -1,6 +1,6 @@
 # P1 — Typed Data Access Framework
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P1
 Owner: Functions Team
@@ -31,4 +31,3 @@ Create shared typed helpers for core domain reads/writes in Functions.
 ## References
 - `functions/src/index.ts:1837`
 - `functions/src/integrationEvents.ts:88`
-

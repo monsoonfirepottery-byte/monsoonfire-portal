@@ -1,6 +1,6 @@
 # P2 — Epic Board Hygiene and Status Reconciliation
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P2
 Owner: PM
@@ -21,7 +21,7 @@ Create a recurring procedure to keep epic board state, ticket status, and owners
 ## Tasks
 1. Implement status hygiene pass in `docs/sprints/SWARM_BOARD.md`.
 2. Add "Parent Epic" metadata in new and existing tickets where missing.
-3. Add a recurring task in tracker sync runbook to close the loop monthly.
+3. Add a recurring task in the ticket/docs reconciliation runbook to close the loop monthly.
 
 ## Acceptance Criteria
 1. Board no longer contains unresolved orphan tickets.

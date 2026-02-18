@@ -1,6 +1,6 @@
 # P2 — Type Safety Review and CI Guardrails
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P2
 Owner: QA + Functions Team
@@ -19,7 +19,7 @@ Add lightweight review and CI guardrails to keep the typed contract cleanup from
 3. Add a tracked checklist for follow-up conversions.
 
 ## Tasks
-1. Update tracker and sprint docs to include type-safety acceptance criteria.
+1. Update ticket logs and sprint docs to include type-safety acceptance criteria.
 2. Add CI lint or script check that flags new unsafe casts in priority paths.
 3. Add a periodic diff review ticket template for future cleanup cycles.
 
@@ -30,4 +30,3 @@ Add lightweight review and CI guardrails to keep the typed contract cleanup from
 
 ## References
 - `functions/src/index.ts`
-

@@ -1,6 +1,6 @@
 # Ticket: P2 — Studio Website Kiln Board Live Feed
 
-Status: Proposed  
+Status: Planned
 Created: 2026-02-17  
 Priority: P2  
 Owner: Website Team  
@@ -44,4 +44,3 @@ Replace static source with live data from existing operational stores/functions.
 
 - Manual status file update process removed from deployment runbook.
 - Visual board and underlying API payload pass manual QA scenario set.
-

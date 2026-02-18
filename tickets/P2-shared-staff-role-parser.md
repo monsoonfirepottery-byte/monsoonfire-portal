@@ -1,6 +1,6 @@
 # P2 — Shared Staff Role Parser Refactor
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P2
 Owner: Portal Team
@@ -32,4 +32,3 @@ Create one shared parser for staff roles and role flags across web views and API
 - `web/src/App.tsx:1017`
 - `web/src/views/ReservationsView.tsx:393`
 - `web/src/views/StaffView.tsx:307`
-

@@ -43,4 +43,3 @@ The repo’s own policy schema and docs describe scheduling windows and access w
 ## Dependencies
 - `tickets/P1-studio-reservation-status-api.md`
 - `tickets/P1-studio-notification-sla-journey.md`
-

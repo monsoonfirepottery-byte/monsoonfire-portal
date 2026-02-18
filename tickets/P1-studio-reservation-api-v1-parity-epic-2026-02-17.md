@@ -53,4 +53,3 @@ Define a single, explicit parity contract for reservation mutation endpoints and
 - Any incompatibility between legacy and v1 flows is documented and has an issue ticket assigned before release.
 - At least one automated parity test exists for each of create/update/assign.
 - Documentation for consumers clearly marks v1 as default and lists deprecating legacy routes.
-

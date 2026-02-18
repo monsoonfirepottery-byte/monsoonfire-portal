@@ -1,6 +1,6 @@
 # P2 — Add Core Firestore Converters
 
-Status: Proposed
+Status: Planned
 Date: 2026-02-18
 Priority: P2
 Owner: Functions Team
@@ -31,4 +31,3 @@ Introduce converters for core business entities used in payment and inventory fl
 ## References
 - `functions/src/index.ts:2016`
 - `functions/src/materials.ts`
-

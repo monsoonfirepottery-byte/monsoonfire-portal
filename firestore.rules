@@ -717,62 +717,6 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    match /trackerProjects/{projectId} {
-      allow read: if isSignedIn()
-        && resource.data.ownerUid == request.auth.uid;
-      allow create: if isSignedIn()
-        && request.resource.data.ownerUid == request.auth.uid;
-      allow update: if isSignedIn()
-        && resource.data.ownerUid == request.auth.uid
-        && request.resource.data.ownerUid == resource.data.ownerUid;
-      allow delete: if false;
-    }
-
-    match /trackerEpics/{epicId} {
-      allow read: if isSignedIn()
-        && resource.data.ownerUid == request.auth.uid;
-      allow create: if isSignedIn()
-        && request.resource.data.ownerUid == request.auth.uid;
-      allow update: if isSignedIn()
-        && resource.data.ownerUid == request.auth.uid
-        && request.resource.data.ownerUid == resource.data.ownerUid;
-      allow delete: if false;
-    }
-
-    match /trackerTickets/{ticketId} {
-      allow read: if isSignedIn()
-        && resource.data.ownerUid == request.auth.uid;
-      allow create: if isSignedIn()
-        && request.resource.data.ownerUid == request.auth.uid
-        && request.resource.data.trackerVisible == true;
-      allow update: if isSignedIn()
-        && resource.data.ownerUid == request.auth.uid
-        && request.resource.data.ownerUid == resource.data.ownerUid
-        && request.resource.data.trackerVisible == true;
-      allow delete: if false;
-
-      match /comments/{commentId} {
-        allow read: if isSignedIn()
-          && get(/databases/$(database)/documents/trackerTickets/$(ticketId)).data.ownerUid == request.auth.uid;
-        allow create, update: if isSignedIn()
-          && get(/databases/$(database)/documents/trackerTickets/$(ticketId)).data.ownerUid == request.auth.uid;
-        allow delete: if false;
-      }
-
-      match /activity/{activityId} {
-        allow read: if isSignedIn()
-          && get(/databases/$(database)/documents/trackerTickets/$(ticketId)).data.ownerUid == request.auth.uid;
-        allow create, update: if isSignedIn()
-          && get(/databases/$(database)/documents/trackerTickets/$(ticketId)).data.ownerUid == request.auth.uid;
-        allow delete: if false;
-      }
-    }
-
-    match /trackerIntegrationHealth/{uid} {
-      allow read, create, update: if isOwner(uid);
-      allow delete: if false;
-    }
-
     match /communityReports/{reportId} {
       allow read: if isStaff()
         || (isSignedIn() && resource.data.reporterUid == request.auth.uid);

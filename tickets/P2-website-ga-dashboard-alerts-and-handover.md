@@ -1,6 +1,6 @@
 # Website GA dashboard, alerting, and reporting handover
 
-Status: Proposed
+Status: Planned
 Priority: P2
 Severity: Sev3
 Component: website

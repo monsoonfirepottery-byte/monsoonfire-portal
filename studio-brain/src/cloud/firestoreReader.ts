@@ -15,7 +15,6 @@ export type FirestoreReadModel = {
     reservationsOpen: number;
     firingsScheduled: number;
     reportsOpen: number;
-    blockedTickets: number;
     agentRequestsPending: number;
     highSeverityReports: number;
     pendingOrders: number;
@@ -123,7 +122,6 @@ export async function readFirestoreModel(projectId?: string, scanLimitOverride?:
     reservationsRead,
     firingsRead,
     reportsRead,
-    trackerRead,
     agentRequestsRead,
     ordersRead,
   ] = await Promise.all([
@@ -151,13 +149,6 @@ export async function readFirestoreModel(projectId?: string, scanLimitOverride?:
     safeReadCollection({
       name: "communityReports",
       fields: ["status", "severity"],
-      scanLimit,
-      queryTimeoutMs,
-      warnings,
-    }),
-    safeReadCollection({
-      name: "trackerTickets",
-      fields: ["blocked"],
       scanLimit,
       queryTimeoutMs,
       warnings,
@@ -210,11 +201,6 @@ export async function readFirestoreModel(projectId?: string, scanLimitOverride?:
     if (severity === "high") highSeverityReports += 1;
   }
 
-  let blockedTickets = 0;
-  for (const doc of trackerRead.docs) {
-    if (doc.data().blocked === true) blockedTickets += 1;
-  }
-
   let agentRequestsPending = 0;
   for (const doc of agentRequestsRead.docs) {
     const status = String(doc.data().status ?? "pending").toLowerCase();
@@ -232,7 +218,6 @@ export async function readFirestoreModel(projectId?: string, scanLimitOverride?:
     reservationsRead,
     firingsRead,
     reportsRead,
-    trackerRead,
     agentRequestsRead,
     ordersRead,
   ]
@@ -258,7 +243,6 @@ export async function readFirestoreModel(projectId?: string, scanLimitOverride?:
       reservationsOpen,
       firingsScheduled,
       reportsOpen,
-      blockedTickets,
       agentRequestsPending,
       highSeverityReports,
       pendingOrders,

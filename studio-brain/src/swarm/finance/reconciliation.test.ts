@@ -10,7 +10,7 @@ function baseSnapshot(overrides?: Partial<StudioStateSnapshot>): StudioStateSnap
     generatedAt: "2026-02-13T12:00:00.000Z",
     cloudSync: { firestoreReadAt: "2026-02-13T12:00:00.000Z", stripeReadAt: "2026-02-13T12:00:00.000Z" },
     counts: { batchesActive: 0, batchesClosed: 0, reservationsOpen: 0, firingsScheduled: 0, reportsOpen: 0 },
-    ops: { blockedTickets: 0, agentRequestsPending: 0, highSeverityReports: 0 },
+    ops: { agentRequestsPending: 0, highSeverityReports: 0 },
     finance: { pendingOrders: 0, unsettledPayments: 0 },
     sourceHashes: { firestore: "f", stripe: "s" },
     diagnostics: { completeness: "full", warnings: [] },

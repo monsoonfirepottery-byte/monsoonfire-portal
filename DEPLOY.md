@@ -10,12 +10,16 @@
 Run from repository root:
 
 ```bash
-npm run -C functions build
-firebase deploy --only functions:websiteKilnBoard,hosting
+npm run deploy:functions-hosting
 ```
 
 Notes:
-- `functions` deploy will prompt for missing Secret Manager values when needed.
+- `deploy:functions-hosting` deploys **all** Cloud Functions and Hosting together, so shared middleware changes are included.
+- It is safer than targeting `functions:websiteKilnBoard` when a change touches shared function code.
+- If needed, you can run:
+  - `npm run deploy:functions` (functions only)
+  - `npm run deploy:hosting` (hosting only)
+  - `npm run deploy` (both sections from `firebase.json`)
 - CLI output should end with:
   - `+  Deploy complete!`
 

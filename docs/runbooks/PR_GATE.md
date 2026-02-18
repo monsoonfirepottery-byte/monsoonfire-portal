@@ -21,11 +21,30 @@ Recommended sequence:
 3. `npm run studio:status`
 4. `npm run pr:gate -- --smoke`
 
+## Studiobrain cutover gate
+Use this for deterministic end-to-end readiness from a fresh Studiobrain workstation:
+
+```bash
+npm run studio:cutover:gate
+```
+
+Behavior:
+- Stops immediately on required-step failures (integrity, host contract, network gate, preflight, status, portal smoke).
+- Runs website smoke as a non-blocking optional check (captured in the artifact with status/warning metadata).
+- Writes a machine-readable artifact to `output/cutover-gate/summary.json` by default.
+
 ## Extended smoke mode
 Run smoke mode for PR confidence:
 
 ```bash
 npm run pr:gate -- --smoke
+```
+
+## Legacy/optional host smoke
+For quick, local-only onboarding from `studiobrain` you can still run:
+
+```bash
+npm run pr:gate -- --smoke --json --artifact output/pr-gate-smoke.json
 ```
 
 That appends:

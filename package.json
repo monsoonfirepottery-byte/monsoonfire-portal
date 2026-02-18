@@ -32,7 +32,7 @@
     "test:automation:checks": "npm --prefix web run a11y:smoke",
     "test:automation:ui": "npm run website:smoke:playwright && npm run portal:smoke:playwright",
     "test:automation:ui:deep": "npm run portal:smoke:playwright:deep",
-    "test:automation:bundle": "npm run build:web && npm run check:studio-brain:bundle",
+    "test:automation:bundle": "npm run build:web && npm run studio:host:contract:scan && npm run check:studio-brain:bundle",
     "test:automation": "npm run test:automation:unit && npm run test:automation:gateway && npm run test:automation:checks && npm run test:automation:ui && npm run test:automation:bundle",
     "test:automation:deep": "npm run test:automation && npm run functions:smoke:cors -- --base-url https://us-central1-monsoonfire-portal.cloudfunctions.net --origin https://monsoonfire-portal.web.app && npm run test:automation:ui:deep",
     "test": "npm run test:full",
@@ -43,6 +43,13 @@
     "studio:network:check": "node ./scripts/studiobrain-network-check.mjs",
     "studio:network:check:write-state": "node ./scripts/studiobrain-network-check.mjs --write-state",
     "studio:network:check:gate": "node ./scripts/studiobrain-network-check.mjs --gate",
+    "studio:cutover:gate": "node ./scripts/studio-cutover-gate.mjs",
+    "cutover:smoke": "node ./scripts/studio-cutover-gate.mjs",
+    "studio:host:contract:scan": "node ./scripts/scan-studiobrain-host-contract.mjs",
+    "studio:host:contract:scan:strict": "node ./scripts/scan-studiobrain-host-contract.mjs --strict",
+    "integrity:check": "node ./scripts/integrity-check.mjs",
+    "integrity:check:strict": "node ./scripts/integrity-check.mjs --strict",
+    "integrity:update": "node ./scripts/integrity-check.mjs --update",
     "pr:gate": "node ./scripts/pr-gate.mjs"
   },
   "dependencies": {

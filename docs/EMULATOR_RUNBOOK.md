@@ -79,13 +79,14 @@ This avoids losing env vars when opening a new terminal session.
   - `npm run studio:host:contract:scan:strict`
   - `npm run studio:check`
   - `npm run studio:network:check:gate -- --strict`
-  - `npm run pr:gate -- --smoke`
+  - `npm run studio:cutover:gate -- --no-smoke`
+  - `npm run studio:cutover:gate -- --portal-deep` (or `npm run studio:cutover:gate -- --portal-deep --portal-base-url https://monsoonfire-portal.web.app` for production-aligned API target)
   - `npm run integrity:check`
   
 Recommended clean-state definition:
 - host contract scan passes (`npm run studio:host:contract:scan:strict`)
 - status gate passes (`npm run studio:check`)
-- smoke checks pass (`npm run pr:gate -- --smoke`)
+- smoke checks pass (`npm run studio:cutover:gate`)
 - runtime integrity check passes (`npm run integrity:check`)
 
 ## Network profile and DHCP/static-host strategy

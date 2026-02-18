@@ -1,6 +1,10 @@
 # P2 — LAN Discovery and DHCP Fallback for Studiobrain
 
-Status: Planned
+Status: In Progress
+
+## Blockers
+
+- DHCP hostname persistence state file remains open design: this ticket currently relies on DNS/host resolution fallback behavior; stateful host-change drift detection is planned for follow-up ticket `P2-studiobrain-host-network-profile-contract` and `P2-studiobrain-site-reliability-hub-and-heartbeats`.
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Studio Brain

@@ -6,6 +6,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(__filename, "..", "..");
@@ -706,6 +707,7 @@ const runEndpointProbes = async (page, summary, options, runtime) => {
 };
 
 const parseOptions = (argv) => {
+  const network = resolveStudioBrainNetworkProfile();
   const options = {
     baseUrl: normalizeBaseUrl(process.env.PORTAL_URL || "") || DEFAULT_BASE_URL,
     outputDir: process.env.PORTAL_OUTPUT_DIR ? resolve(process.cwd(), process.env.PORTAL_OUTPUT_DIR) : defaultOutputRoot,
@@ -718,7 +720,8 @@ const parseOptions = (argv) => {
       process.env.PORTAL_FUNCTIONS_BASE_URL || "",
       parseFunctionsBaseFromPageHost(process.env.PORTAL_URL || DEFAULT_BASE_URL)
     ),
-    studioBrainBaseUrl: normalizeBaseUrl(process.env.PORTAL_STUDIO_BRAIN_BASE_URL || "") || "",
+    studioBrainBaseUrl:
+      normalizeBaseUrl(process.env.PORTAL_STUDIO_BRAIN_BASE_URL || "") || normalizeBaseUrl(network.baseUrl || ""),
     probeBearerToken: process.env.PORTAL_SMOKE_PROBE_BEARER_TOKEN || "",
     probeAdminToken: process.env.PORTAL_SMOKE_PROBE_ADMIN_TOKEN || "",
     probeCredentialMode: normalizeProbeCredentialMode(

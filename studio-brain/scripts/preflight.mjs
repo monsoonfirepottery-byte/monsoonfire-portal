@@ -1,9 +1,12 @@
 import { printValidationReport, validateEnvContract } from "./env-contract-validator.mjs";
 import net from "node:net";
+import { isStudioBrainHostAllowed, resolveStudioBrainNetworkProfile } from "../../scripts/studio-network-profile.mjs";
 
-const host = process.env.PGHOST ?? "127.0.0.1";
+const network = resolveStudioBrainNetworkProfile();
+const host = process.env.PGHOST || network.host;
 const port = Number(process.env.PGPORT ?? "5433");
 const timeoutMs = Number(process.env.PREFLIGHT_TIMEOUT_MS ?? "2000");
+const warningPrefix = "[network-profile]";
 
 function checkTcp({ host, port, timeoutMs }) {
   return new Promise((resolve) => {
@@ -35,6 +38,24 @@ async function main() {
   if (report.warnings.length > 0) {
     process.stdout.write("WARNING: env contract checks had cautions.\n");
     report.warnings.forEach((warning) => process.stdout.write(` - ${warning}\n`));
+  }
+
+  process.stdout.write(`Network profile: ${network.requestedProfile} (${network.profile}) -> ${network.host}\n`);
+  if (network.warnings.length > 0) {
+    process.stdout.write(`${warningPrefix} profile warnings:\n`);
+    network.warnings.forEach((warning) => process.stdout.write(` - ${warning}\n`));
+  }
+
+  if (process.env.STUDIO_BRAIN_BASE_URL) {
+    try {
+      const base = new URL(process.env.STUDIO_BRAIN_BASE_URL);
+      if (!isStudioBrainHostAllowed(base.hostname, network)) {
+        process.stdout.write(`${warningPrefix} STUDIO_BRAIN_BASE_URL host is outside profile allowlist: ${base.hostname}\n`);
+        process.stdout.write(`allowed hosts: ${network.allowedStudioBrainHosts.join(", ")}\n`);
+      }
+    } catch {
+      process.stdout.write(`${warningPrefix} STUDIO_BRAIN_BASE_URL is not a valid URL, default checks will apply.\n`);
+    }
   }
 
   process.stdout.write(`Checking Postgres TCP at ${host}:${port}...\n`);

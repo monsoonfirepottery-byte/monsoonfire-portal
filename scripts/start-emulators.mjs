@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -14,6 +15,8 @@ const parseArgs = () => {
     only: "firestore,functions,auth",
     project: "monsoonfire-portal",
     config: "firebase.json",
+    host: null,
+    networkProfile: null,
   };
 
   for (let i = 0; i < args.length; i += 1) {
@@ -52,6 +55,26 @@ const parseArgs = () => {
       options.config = args[++i];
       continue;
     }
+
+    if (arg.startsWith("--host=")) {
+      options.host = arg.substring("--host=".length);
+      continue;
+    }
+
+    if (arg === "--host" && args[i + 1]) {
+      options.host = args[++i];
+      continue;
+    }
+
+    if (arg.startsWith("--network-profile=")) {
+      options.networkProfile = arg.substring("--network-profile=".length);
+      continue;
+    }
+
+    if (arg === "--network-profile" && args[i + 1]) {
+      options.networkProfile = args[++i];
+      continue;
+    }
   }
 
   return options;
@@ -86,17 +109,44 @@ const loadDotenv = (filePath) => {
   });
 };
 
-const { only, project, config } = parseArgs();
+const { only, project, config, host, networkProfile } = parseArgs();
 const envFile = resolve(repoRoot, "functions", ".env.local");
 const resolvedConfig = resolve(repoRoot, config);
 
 loadDotenv(envFile);
 
+const network = resolveStudioBrainNetworkProfile({
+  env: {
+    ...process.env,
+    ...(networkProfile ? { STUDIO_BRAIN_NETWORK_PROFILE: networkProfile } : {}),
+  },
+});
+const emulatorHost = host || network.emulatorHost;
+const warnings = network.warnings || [];
+
+if (warnings.length > 0) {
+  for (const warning of warnings) {
+    console.log(`warn: ${warning}`);
+  }
+}
+console.log(`Using Studiobrain network profile: ${network.profile} (${network.profileLabel})`);
+console.log(`Emulator host: ${emulatorHost}`);
+
 console.log(`Starting Firebase emulators (${only}) for project ${project}...`);
 
 const result = spawnSync(
   "firebase",
-  ["emulators:start", "--config", resolvedConfig, "--project", project, "--only", only],
+  [
+    "emulators:start",
+    "--config",
+    resolvedConfig,
+    "--project",
+    project,
+    "--only",
+    only,
+    "--host",
+    emulatorHost,
+  ],
   {
     cwd: repoRoot,
     stdio: "inherit",

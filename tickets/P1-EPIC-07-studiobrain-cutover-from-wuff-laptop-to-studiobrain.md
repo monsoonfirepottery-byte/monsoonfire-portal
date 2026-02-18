@@ -1,6 +1,6 @@
 # Epic: P1 — Studiobrain Cutover from wuff-laptop to Studiobrain
 
-Status: Planned
+Status: In Progress
 Date: 2026-02-18
 Priority: P1 (Next Task)
 Owner: Platform + Portal + Studio Brain

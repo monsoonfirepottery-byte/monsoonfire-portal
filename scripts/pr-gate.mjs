@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve, isAbsolute } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { isStudioBrainHostAllowed, resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -168,6 +169,7 @@ function executeStep(step) {
 }
 
 function checkStudioBrainHostProfile() {
+  const network = resolveStudioBrainNetworkProfile();
   const host = process.env.STUDIO_BRAIN_HOST?.trim() || "127.0.0.1";
   const portText = process.env.STUDIO_BRAIN_PORT?.trim() || "8787";
   const rawBase = process.env.STUDIO_BRAIN_BASE_URL?.trim() || "";
@@ -198,10 +200,10 @@ function checkStudioBrainHostProfile() {
     };
   }
 
-  if (normalizeHost(parsed.hostname) !== normalizeHost(host) && !areLoopbackAliases(parsed.hostname, host)) {
+  if (!isStudioBrainHostAllowed(parsed.hostname, network)) {
     return {
       ok: false,
-      message: `Host mismatch: STUDIO_BRAIN_HOST (${host}) != STUDIO_BRAIN_BASE_URL host (${parsed.hostname}).`,
+      message: `Host mismatch: STUDIO_BRAIN_BASE_URL host (${parsed.hostname}) not in allowed hosts (${network.allowedStudioBrainHosts.join(", ")}).`,
     };
   }
 

@@ -3,12 +3,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(__filename, "..", "..");
 const websiteRoot = resolve(repoRoot, "website");
 const defaultOutputRoot = resolve(repoRoot, "output", "playwright");
-const host = "127.0.0.1";
+const host = resolveStudioBrainNetworkProfile().host;
 const preferredPort = 4173;
 const localBaseUrl = `http://${host}:${preferredPort}`;
 
@@ -75,7 +76,7 @@ const createStaticServer = () => {
     }
 
     try {
-      const url = new URL(req.url, "http://127.0.0.1");
+      const url = new URL(req.url, `http://${host}`);
       let routePath = decodeURIComponent(url.pathname);
       if (routePath.endsWith("/")) {
         routePath += "index.html";

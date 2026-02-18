@@ -1,18 +1,17 @@
 #!/usr/bin/env node
 import { setTimeout as setAbortTimeout } from "node:timers";
 import { validateEnvContract } from "../studio-brain/scripts/env-contract-validator.mjs";
+import { resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
 
 const args = new Set(process.argv.slice(2));
 const outputJson = args.has("--json");
 const failFast = args.has("--gate");
 
+const network = resolveStudioBrainNetworkProfile();
 const baseUrl = (() => {
   const rawBase = process.env.STUDIO_BRAIN_BASE_URL?.trim();
   if (rawBase) return rawBase.replace(/\/$/, "");
-
-  const host = process.env.STUDIO_BRAIN_HOST || "127.0.0.1";
-  const port = Number(process.env.STUDIO_BRAIN_PORT || "8787");
-  return `http://${host}:${port}`;
+  return `${network.baseUrl.replace(/\/+$/, "")}`;
 })();
 
 const timeoutMs = Number(process.env.STUDIO_BRAIN_STATUS_TIMEOUT_MS || "5000");

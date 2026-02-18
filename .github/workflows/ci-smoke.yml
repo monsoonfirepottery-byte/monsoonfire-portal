@@ -68,7 +68,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Automated validation suite (unit, CORS, accessibility, UI)
-        run: npm run test:automation
+        run: npm run test:full
 
       - name: Portal Playwright deep smoke (manual)
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_deep_playwright == 'true' || github.event_name == 'schedule' }}

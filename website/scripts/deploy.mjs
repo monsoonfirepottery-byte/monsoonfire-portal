@@ -8,18 +8,32 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const repoRoot = resolve(__dirname, "..");
+const env = process.env;
 const defaults = {
-  server: "monsggbd@66.29.137.142",
-  port: 21098,
-  remotePath: "public_html/",
+  server: env.WEBSITE_DEPLOY_SERVER || "monsggbd@66.29.137.142",
+  port: Number.parseInt(env.WEBSITE_DEPLOY_PORT || "21098", 10) || 21098,
+  remotePath: env.WEBSITE_DEPLOY_REMOTE_PATH || "public_html/",
   source: resolve(repoRoot, "ncsitebuilder"),
 };
+if (!env.WEBSITE_DEPLOY_SERVER) {
+  process.stdout.write("Warning: WEBSITE_DEPLOY_SERVER is not set; using legacy default server.\n");
+}
+if (!env.WEBSITE_DEPLOY_PORT) {
+  process.stdout.write("Warning: WEBSITE_DEPLOY_PORT is not set; using default 21098.\n");
+}
+if (!env.WEBSITE_DEPLOY_REMOTE_PATH) {
+  process.stdout.write("Warning: WEBSITE_DEPLOY_REMOTE_PATH is not set; using default public_html/.\n");
+}
 
 const args = parseArgs(process.argv.slice(2));
 const source = resolve(args.source);
 
 if (!existsSync(source)) {
   process.stderr.write(`Missing source directory: ${source}\n`);
+  process.exit(1);
+}
+if (!args.server || args.server === "null" || args.server.trim() === "") {
+  process.stderr.write("Missing deploy server. Set --server or WEBSITE_DEPLOY_SERVER.\n");
   process.exit(1);
 }
 if (!Number.isInteger(args.port) || args.port < 1 || args.port > 65535) {
@@ -78,7 +92,10 @@ function parseArgs(argv) {
     }
     if (current === "--help") {
       process.stdout.write(
-        "Usage: node website/scripts/deploy.mjs [--server user@host] [--port 21098] [--remote-path public_html/] [--source <path>]\n"
+        "Usage: node website/scripts/deploy.mjs [--server user@host] [--port 21098] [--remote-path public_html/] [--source <path>]\n" +
+          "Server defaults: --server from WEBSITE_DEPLOY_SERVER or fallback legacy value.\n" +
+          "Port defaults: --port from WEBSITE_DEPLOY_PORT.\n" +
+          "Remote path defaults: --remote-path from WEBSITE_DEPLOY_REMOTE_PATH.\n"
       );
       process.exit(0);
     }

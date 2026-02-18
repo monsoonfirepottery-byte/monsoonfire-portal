@@ -1,6 +1,6 @@
 # P2 — Website Development Target and Cutover Hosting for Studiobrain Workflow
 
-Status: Planned
+Status: In Progress
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Website
@@ -41,3 +41,11 @@ Create a stable website development/deploy target model that works from any work
 - `website/ncsitebuilder/serve.ps1`
 - `scripts/website-playwright-smoke.mjs`
 - `AGENTS.md`
+
+## Work completed
+
+- Added environment-driven server/port/path resolution to `website/scripts/deploy.mjs`:
+  - `WEBSITE_DEPLOY_SERVER`
+  - `WEBSITE_DEPLOY_PORT`
+  - `WEBSITE_DEPLOY_REMOTE_PATH`
+- Kept PowerShell shim compatibility while resolving deployment params via env with explicit fallback behavior.

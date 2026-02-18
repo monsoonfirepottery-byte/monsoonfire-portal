@@ -8,6 +8,21 @@ exports.redactEnvForLogs = redactEnvForLogs;
 const dotenv_1 = __importDefault(require("dotenv"));
 const zod_1 = require("zod");
 dotenv_1.default.config();
+const PLACEHOLDER_MATCHERS = [
+    /change-?me/i,
+    /todo/i,
+    /placeholder/i,
+    /replace[_-]?with/i,
+    /^\s*<.*>\s*$/,
+    /\$\{[^}]+\}/,
+];
+const RUNTIME_ENFORCED_SENSITIVE_VARS = new Set([
+    "STUDIO_BRAIN_ADMIN_TOKEN",
+    "STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY",
+    "STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY",
+    "PGPASSWORD",
+    "REDIS_PASSWORD",
+]);
 const BoolFromString = zod_1.z
     .union([zod_1.z.enum(["true", "false", "1", "0"]), zod_1.z.boolean()])
     .transform((value) => value === true || value === "true" || value === "1");
@@ -25,6 +40,12 @@ const CsvFromString = zod_1.z
 const EnvSchema = zod_1.z.object({
     STUDIO_BRAIN_PORT: zod_1.z.coerce.number().int().min(1).max(65535).default(8787),
     STUDIO_BRAIN_HOST: requiredString("STUDIO_BRAIN_HOST").default("127.0.0.1"),
+    STUDIO_BRAIN_NETWORK_PROFILE: zod_1.z.enum(["local", "lan-static", "lan-dhcp", "ci"]).default("local"),
+    STUDIO_BRAIN_LOCAL_HOST: requiredString("STUDIO_BRAIN_LOCAL_HOST").default("127.0.0.1"),
+    STUDIO_BRAIN_LAN_HOST: requiredString("STUDIO_BRAIN_LAN_HOST").default("studiobrain.local"),
+    STUDIO_BRAIN_STATIC_IP: zod_1.z.string().default(""),
+    STUDIO_BRAIN_ALLOWED_HOSTS: zod_1.z.string().default(""),
+    STUDIO_BRAIN_HOST_STATE_FILE: requiredString("STUDIO_BRAIN_HOST_STATE_FILE").default(".studiobrain-host-state.json"),
     STUDIO_BRAIN_LOG_LEVEL: zod_1.z.enum(["debug", "info", "warn", "error"]).default("info"),
     STUDIO_BRAIN_ALLOWED_ORIGINS: zod_1.z.string().default("http://127.0.0.1:5173,http://localhost:5173"),
     STUDIO_BRAIN_ADMIN_TOKEN: zod_1.z.string().optional(),
@@ -98,6 +119,9 @@ const EnvSchema = zod_1.z.object({
     STRIPE_MODE: zod_1.z.enum(["test", "live"]).default("test"),
     STUDIO_BRAIN_STRIPE_READ_ONLY: BoolFromString.default(true),
 });
+function hasPlaceholderValue(value) {
+    return PLACEHOLDER_MATCHERS.some((pattern) => pattern.test(value));
+}
 function validateConnectivityConfig(env) {
     const errors = [];
     const assertUrl = (value, variableName) => {
@@ -130,6 +154,20 @@ function validateConnectivityConfig(env) {
     }
     return errors;
 }
+function validateRuntimeSecretValues(env) {
+    const issues = [];
+    for (const [rawName, rawValue] of Object.entries(env)) {
+        const name = rawName;
+        if (!RUNTIME_ENFORCED_SENSITIVE_VARS.has(name))
+            continue;
+        if (typeof rawValue !== "string")
+            continue;
+        if (!hasPlaceholderValue(rawValue))
+            continue;
+        issues.push(`${name} is configured with a placeholder value; set a concrete secret before runtime startup.`);
+    }
+    return issues;
+}
 function readEnv() {
     const parsed = EnvSchema.safeParse(process.env);
     if (!parsed.success) {
@@ -140,6 +178,10 @@ function readEnv() {
     const connectivityIssues = validateConnectivityConfig(env);
     if (connectivityIssues.length > 0) {
         throw new Error(`Invalid studio-brain env connectivity: ${connectivityIssues.join("; ")}`);
+    }
+    const runtimeSecretIssues = validateRuntimeSecretValues(env);
+    if (runtimeSecretIssues.length > 0) {
+        throw new Error(`Invalid studio-brain env values: ${runtimeSecretIssues.join("; ")}`);
     }
     return env;
 }

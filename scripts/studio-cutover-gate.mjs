@@ -88,7 +88,7 @@ function buildSteps(config) {
     {
       name: "studio-brain env contract",
       command: "npm",
-      args: ["--prefix", "studio-brain", "run", "env:validate", "--", "--json"],
+      args: ["--prefix", "studio-brain", "run", "env:validate", "--", "--strict", "--json"],
       required: true,
       note: "Validates Studio Brain environment variables and contract defaults.",
       remediation: "Update `studio-brain/.env.local` and re-run this gate.",

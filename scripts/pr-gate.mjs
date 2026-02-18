@@ -37,7 +37,7 @@ const steps = [
     name: "studio-brain env contract",
     kind: "command",
     command: "npm",
-    args: ["--prefix", "studio-brain", "run", "env:validate", "--", "--json"],
+    args: ["--prefix", "studio-brain", "run", "env:validate", "--", "--strict", "--json"],
     remediation: "Fix variables in studio-brain/.env.local or run dotenv load for PR profile.",
     required: true,
   },

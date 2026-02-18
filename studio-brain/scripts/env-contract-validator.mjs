@@ -12,9 +12,16 @@ const PLACEHOLDER_MATCHERS = [
   /change-?me/i,
   /todo/i,
   /placeholder/i,
-  /replace.?me/i,
+  /replace[_-]?with/i,
   /^\s*<.*>\s*$/,
 ];
+const SENSITIVE_ENFORCED_VARS = new Set([
+  "STUDIO_BRAIN_ADMIN_TOKEN",
+  "STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY",
+  "STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY",
+  "PGPASSWORD",
+  "REDIS_PASSWORD",
+]);
 
 function loadContract() {
   if (!existsSync(CONTRACT_PATH)) {
@@ -117,7 +124,12 @@ export function validateEnvContract({ strict = false } = {}) {
       if (parsed && meta.sensitive && strict) {
         warnings.push(`${name} is configured and marked sensitive; validate via secret manager for production`);
       }
-      if (isPlaceholderValue(rawValue) || hasTemplateVar(rawValue)) {
+      if (
+        (isPlaceholderValue(rawValue) || hasTemplateVar(rawValue)) &&
+        (strict || meta.sensitive || SENSITIVE_ENFORCED_VARS.has(name))
+      ) {
+        warnings.push(`${name} is configured with a placeholder or template value; set a concrete value before runtime.`);
+      } else if (isPlaceholderValue(rawValue) || hasTemplateVar(rawValue)) {
         warnings.push(`${name} looks like a placeholder value`);
       }
     } catch (error) {

@@ -1,6 +1,6 @@
 # P2 — Environment and Secret Hygiene for Studiobrain Cutover
 
-Status: Planned
+Status: In Progress
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Security
@@ -66,3 +66,15 @@ Make environment setup explicit and safe on Studiobrain by separating local defa
 - Secret placeholders are never treated as valid operational values.
 - The environment contract is stable across platform-specific command paths.
 
+## Progress Notes (2026-02-18)
+
+- Implemented startup-level placeholder guard in `studio-brain/src/config/env.ts` so runtime startup hard-fails when sensitive vars still contain placeholder/template markers.
+- Tightened `.env` sample guidance in `studio-brain/.env.example`:
+  - `PGPASSWORD=replace_with_local_db_password`
+  - `STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY=replace_with_local_minio_access_key`
+  - `STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY=replace_with_local_minio_secret_key`
+- Preflight, status, and PR/cutover gates now run `env:validate --strict` via updated scripts:
+  - `studio-brain/scripts/preflight.mjs`
+  - `scripts/studiobrain-status.mjs`
+  - `scripts/pr-gate.mjs`
+  - `scripts/studio-cutover-gate.mjs`

@@ -56,6 +56,14 @@ Create a deterministic host identity pattern (with documented fallback) that kee
 - `studio-brain/.env.network.profile`
 - `tickets/P2-studiobrain-host-network-profile-contract.md`
 
+## Work completed
+
+- Added `scripts/studiobrain-network-check.mjs` to validate profile/host contracts with LAN, DHCP loopback, and drift warning checks.
+- Added `npm run studio:network:check:write-state` and integrated persisted host state updates.
+- PR gate now runs host-state check in strict mode (`--gate --strict --write-state`) prior to preflight.
+- Updated `docs/EMULATOR_RUNBOOK.md` with host check and persistence flow so onboarding includes state-aware host contract checks.
+- Added `.studiobrain-host-state.json` ignore rule to prevent accidental check-ins.
+
 ## Definition of Done
 
 - Profile policy is documented with explicit command examples.

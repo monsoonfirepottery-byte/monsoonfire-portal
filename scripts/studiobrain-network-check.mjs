@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import dns from "node:dns/promises";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 
 import { resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
 
@@ -8,6 +9,7 @@ const args = new Set(process.argv.slice(2));
 const asJson = args.has("--json");
 const gate = args.has("--gate");
 const strict = args.has("--strict");
+const writeState = args.has("--write-state") || args.has("--persist-state");
 
 const network = resolveStudioBrainNetworkProfile();
 const nowIso = new Date().toISOString();
@@ -74,6 +76,21 @@ function loadHostState(stateFile) {
   }
 }
 
+function saveHostState(stateFile, payload) {
+  if (!stateFile) {
+    return { ok: false, reason: "Missing host state file path." };
+  }
+
+  const parent = dirname(stateFile);
+  if (parent && parent !== "." && parent !== "..") {
+    mkdirSync(parent, { recursive: true });
+  }
+
+  const payloadWithMeta = { ...payload, updatedAt: nowIso, schemaVersion: "1" };
+  writeFileSync(stateFile, `${JSON.stringify(payloadWithMeta, null, 2)}\n`, "utf8");
+  return { ok: true };
+}
+
 function summary(lines) {
   return lines.filter(Boolean).map((line) => `  - ${line}`).join("\n");
 }
@@ -118,15 +135,48 @@ async function main() {
       String(state.state.host || "").toLowerCase() !== String(network.host || "").toLowerCase()
     ) {
       warnings.push(
-        `Host drift detected for profile "${network.profile}":`
-          + ` previous="${state.state.host}" current="${network.host}".`,
+        `Host drift detected for profile "${network.profile}":` +
+          ` previous="${state.state.host}" current="${network.host}".`,
       );
     }
   }
 
+  const statePersistRequested = writeState;
+  const preStateHardFail = issues.length > 0 || (strict && warnings.length > 0);
+
+  let stateSaved = false;
+  const stateSaveWarning = [];
+  if (statePersistRequested && !preStateHardFail) {
+    const statePayload = {
+      profile: network.profile,
+      requestedProfile: network.requestedProfile,
+      host: network.host,
+      hostMode: hostResolution.mode,
+      addresses: hostResolution.addresses,
+      baseUrl: network.baseUrl,
+    };
+
+    try {
+      const stateResult = saveHostState(network.hostStateFile, statePayload);
+      stateSaved = stateResult.ok;
+      if (!stateResult.ok) {
+        stateSaveWarning.push(`Host state not persisted: ${stateResult.reason}`);
+      }
+    } catch (error) {
+      stateSaved = false;
+      stateSaveWarning.push(`Host state persistence failed: ${error?.message || String(error)}`);
+    }
+  } else if (!statePersistRequested) {
+    stateSaved = false;
+  }
+
+  stateSaveWarning.forEach((entry) => warnings.push(entry));
+
+  const hardFail = issues.length > 0 || (strict && warnings.length > 0);
+
   const result = {
     timestamp: nowIso,
-    status: issues.length === 0 ? "pass" : "fail",
+    status: hardFail ? "fail" : "pass",
     strictMode: strict,
     networkProfile: network.profile,
     requestedProfile: network.requestedProfile,
@@ -135,11 +185,11 @@ async function main() {
     hostMode: hostResolution.mode,
     hostAddresses: hostResolution.addresses,
     hostStateFile: network.hostStateFile,
+    stateSaved,
     issues,
     warnings,
   };
 
-  const hardFail = issues.length > 0 || (strict && warnings.length > 0);
   if (asJson) {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } else {
@@ -154,6 +204,9 @@ async function main() {
     }
     if (hostResolution.error) {
       process.stdout.write(`  resolve error: ${hostResolution.error}\n`);
+    }
+    if (statePersistRequested) {
+      process.stdout.write(`  state file: ${stateSaved ? "updated" : "not updated"} (${network.hostStateFile})\n`);
     }
 
     if (issues.length > 0) {

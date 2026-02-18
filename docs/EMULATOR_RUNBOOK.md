@@ -34,6 +34,7 @@
   - `npm run emulators:start -- --only firestore,functions,auth`
 - Optional preflight before startup:
   - `npm run studio:network:check -- --json`
+  - `npm run studio:network:check:write-state`
 - Equivalent direct command:
   - `firebase emulators:start --only firestore,functions,auth`
 - Legacy command (PowerShell shim):

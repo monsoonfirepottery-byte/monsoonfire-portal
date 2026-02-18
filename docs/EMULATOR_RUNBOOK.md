@@ -32,6 +32,8 @@
   - `node ./scripts/start-emulators.mjs --network-profile lan-dhcp --only firestore,functions,auth`
 - Equivalent command via npm script:
   - `npm run emulators:start -- --only firestore,functions,auth`
+- Optional preflight before startup:
+  - `npm run studio:network:check -- --json`
 - Equivalent direct command:
   - `firebase emulators:start --only firestore,functions,auth`
 - Legacy command (PowerShell shim):
@@ -45,6 +47,14 @@
    - Legacy shim: `pwsh -File scripts/start-emulators.ps1`.
 
 This avoids losing env vars when opening a new terminal session.
+
+### Network profile health check
+- Validate host identity and profile drift before smoke or deployment workflows:
+  - `npm run studio:network:check:gate -- --strict`
+- Recommended sequence before major cutover changes:
+  - `npm run studio:network:check:gate -- --strict`
+  - `npm run studio:check`
+  - `npm run pr:gate -- --smoke`
 
 ## Required env for CORS allowlist
 - `ALLOWED_ORIGINS` should include portal domains and dev origin.

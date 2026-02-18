@@ -7,7 +7,7 @@ Run a deterministic pre-merge checklist for Studio Brain + portal/site smoke cov
 Default `npm run pr:gate` runs these required checks:
 
 1. Required node entrypoints (`scripts/pr-gate.mjs` internal preflight)
-2. Studio Brain env contract validation (`npm --prefix studio-brain run env:validate -- --json`)
+2. Studio Brain env contract validation (`npm --prefix studio-brain run env:validate -- --strict --json`)
 3. Studio Brain runtime integrity check (`npm run integrity:check`)
 4. Host profile consistency check for `STUDIO_BRAIN_HOST`, `STUDIO_BRAIN_PORT`, and `STUDIO_BRAIN_BASE_URL`
 5. Legacy host-contract scan (`npm run studio:host:contract:scan:strict`)

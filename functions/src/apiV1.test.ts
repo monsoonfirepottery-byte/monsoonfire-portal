@@ -107,7 +107,9 @@ function withMockFirestore<T>(
           __mfCollection: collectionName,
           __mfDocId: id,
           get: async () => createSnapshot(id, Object.prototype.hasOwnProperty.call(rows, id) ? collectionRow : null),
-          set: async () => {},
+          set: async () => {
+            return undefined;
+          },
           collection: (_sub: string) => ({
             add: async () => ({ id: `${id}-${_sub}` }),
           }),
@@ -129,7 +131,9 @@ function withMockFirestore<T>(
     const raw = Object.prototype.hasOwnProperty.call(rows, docId) ? rows[docId] : null;
     return {
       get: async () => createSnapshot(docId, raw),
-      set: async () => {},
+      set: async () => {
+        return undefined;
+      },
       exists: raw !== null,
     };
   };
@@ -139,7 +143,9 @@ function withMockFirestore<T>(
     (async (txCallback) => {
       const tx: MockTransaction = {
         get: async (docRef) => lookup(docRef.__mfCollection, docRef.__mfDocId),
-        set: async () => {},
+        set: async () => {
+          return undefined;
+        },
       };
       return txCallback(tx);
     });
@@ -199,7 +205,9 @@ function createResponse() {
     set: (name: string, value: string) => {
       headers[name] = value;
     },
-    send: () => {},
+    send: () => {
+      return undefined;
+    },
   } satisfies shared.ResponseLike;
 
   return { res, status: () => status, body: () => body, headers: () => headers };
@@ -974,7 +982,9 @@ test("handleApiV1 denies agent.reserve for non-owner quote owner", async () => {
           }
           return { id: docRef.__mfDocId, exists: false, data: () => null };
         },
-        set: async () => {},
+        set: async () => {
+          return undefined;
+        },
       }),
     });
   });

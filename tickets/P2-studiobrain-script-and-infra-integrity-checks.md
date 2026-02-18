@@ -1,6 +1,6 @@
 # P2 — Script and Infrastructure Integrity Checks for Studiobrain
 
-Status: Planned
+Status: In Progress
 Date: 2026-02-18
 Priority: P2
 Owner: Platform
@@ -56,3 +56,20 @@ Add integrity manifests and validation checks for infra-critical files and start
 ## Definition of Done
 
 - Integrity checks are documented and enforced where risk outweighs convenience.
+
+## Work completed
+
+- Added runtime integrity manifest and scanner: `scripts/integrity-check.mjs` + `studio-brain/.env.integrity.json`.
+- Integrated integrity validation into critical entrypoints:
+  - `scripts/start-emulators.mjs`
+  - `studio-brain/scripts/preflight.mjs`
+  - `scripts/pr-gate.mjs`
+  - `scripts/portal-playwright-smoke.mjs`
+  - `scripts/website-playwright-smoke.mjs`
+  - `scripts/functions-cors-smoke.mjs`
+  - `scripts/studiobrain-status.mjs`
+- Added new root commands:
+  - `npm run integrity:check`
+  - `npm run integrity:check:strict`
+  - `npm run integrity:update`
+- Documented integrity as part of PR gate and emulator onboarding (`docs/runbooks/PR_GATE.md`, `docs/EMULATOR_RUNBOOK.md`).

@@ -1,6 +1,9 @@
 # Emulator + Extensions Runbook
 
 ## Emulator startup (portal)
+- Pre-start drift checks:
+  - `npm run integrity:check`
+  - `npm run studio:host:contract:scan:strict`
 - Recommended: run Firestore + Functions emulators while using REAL Firebase Auth.
   - In `web/.env.local`:
     - `VITE_USE_AUTH_EMULATOR=false`
@@ -35,7 +38,7 @@
   - `npm run studio:network:check:write-state`
 - Equivalent direct command:
   - `node ./scripts/start-emulators.mjs --only firestore,functions,auth`
-- Legacy compatibility shim (PowerShell):
+- Recommended compatibility path (PowerShell only):
   - `pwsh -File scripts/start-emulators.ps1`
 - Staff claims setup: `docs/STAFF_CLAIMS_SETUP.md`
 
@@ -45,7 +48,7 @@
 2. Copy `web/.env.local.example` to `web/.env.local`.
 3. Set local-only values (for example `ADMIN_TOKEN`, `ALLOW_DEV_ADMIN_TOKEN=true`).
 4. Start emulators via `npm run emulators:start -- --only firestore,functions,auth`.
-   - Compatibility fallback: `pwsh -File scripts/start-emulators.ps1`.
+   - Compatibility fallback (Windows-only): `pwsh -File scripts/start-emulators.ps1`.
 
 ## Emulator and UI contract matrix
 
@@ -70,11 +73,20 @@ This avoids losing env vars when opening a new terminal session.
 
 ## Network profile health and host stability
 - Validate host identity and profile drift before smoke or deployment workflows:
+  - `npm run studio:host:contract:scan:strict`
   - `npm run studio:network:check:gate -- --strict`
 - Recommended sequence before major cutover changes:
-  - `npm run studio:network:check:gate -- --strict`
+  - `npm run studio:host:contract:scan:strict`
   - `npm run studio:check`
+  - `npm run studio:network:check:gate -- --strict`
   - `npm run pr:gate -- --smoke`
+  - `npm run integrity:check`
+  
+Recommended clean-state definition:
+- host contract scan passes (`npm run studio:host:contract:scan:strict`)
+- status gate passes (`npm run studio:check`)
+- smoke checks pass (`npm run pr:gate -- --smoke`)
+- runtime integrity check passes (`npm run integrity:check`)
 
 ## Network profile and DHCP/static-host strategy
 

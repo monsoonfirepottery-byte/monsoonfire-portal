@@ -7,9 +7,19 @@ Run a deterministic pre-merge checklist for Studio Brain + portal/site smoke cov
 Default `npm run pr:gate` runs these required checks:
 
 1. Studio Brain env contract validation (`npm --prefix studio-brain run env:validate -- --json`)
-2. Host profile consistency check for `STUDIO_BRAIN_HOST`, `STUDIO_BRAIN_PORT`, and `STUDIO_BRAIN_BASE_URL`
-3. Studio Brain preflight (`npm --prefix studio-brain run preflight`)
-4. Studio Brain status gate (`node ./scripts/studiobrain-status.mjs --json --gate`)
+2. Studio Brain runtime integrity check (`npm run integrity:check`)
+3. Host profile consistency check for `STUDIO_BRAIN_HOST`, `STUDIO_BRAIN_PORT`, and `STUDIO_BRAIN_BASE_URL`
+4. Legacy host-contract scan (`npm run studio:host:contract:scan:strict`)
+5. Studio Brain network runtime contract (`node ./scripts/studiobrain-network-check.mjs --gate --strict --write-state`)
+6. Studio Brain preflight (`npm --prefix studio-brain run preflight`)
+7. Studio Brain status gate (`node ./scripts/studiobrain-status.mjs --json --gate`)
+
+For a clean local state, each onboarding run should pass host contract scan + smoke + status checks in sequence.
+Recommended sequence:
+1. `npm run integrity:check`
+2. `npm run studio:host:contract:scan:strict`
+3. `npm run studio:status`
+4. `npm run pr:gate -- --smoke`
 
 ## Extended smoke mode
 Run smoke mode for PR confidence:

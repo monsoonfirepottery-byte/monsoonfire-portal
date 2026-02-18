@@ -31,7 +31,7 @@ jobs:
         run: npm --prefix web run build
 
       - name: Run Lighthouse CI
-        run: npx --yes @lhci/cli@0.14.x autorun --config=./web/lighthouserc.json
+        run: npm --prefix web run lighthouse:local
 
       - name: Run Lighthouse CI (website)
-        run: npx --yes @lhci/cli@0.14.x autorun --config=./website/lighthouserc.json
+        run: node ./web/scripts/lighthouse-local.mjs ./website/lighthouserc.json

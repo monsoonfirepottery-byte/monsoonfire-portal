@@ -6,6 +6,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { printValidationReport, validateEnvContract } from "../studio-brain/scripts/env-contract-validator.mjs";
+import { runIntegrityCheck } from "./integrity-check.mjs";
 import { resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -205,6 +207,37 @@ const DEEP_ENDPOINT_PROBES = [
     host: "studio-brain",
   },
 ];
+
+function assertStudioBrainContract() {
+  const report = validateEnvContract({ strict: false });
+  if (!report.ok) {
+    printValidationReport(report);
+    throw new Error("Studio Brain env contract validation failed before portal smoke.");
+  }
+  if (report.warnings.length > 0) {
+    process.stdout.write("portal smoke: studio-brain env warnings\n");
+    report.warnings.forEach((warning) => process.stdout.write(`  - ${warning}\n`));
+  }
+}
+
+function assertStudioBrainIntegrity() {
+  const report = runIntegrityCheck({ manifest: "studio-brain/.env.integrity.json", strict: false, verbose: false });
+  if (!report.ok) {
+    process.stderr.write("portal smoke: studio-brain integrity check failed before portal smoke.\n");
+    if (report.issues?.length) {
+      report.issues.forEach((issue) => {
+        const suffix = issue.expected ? ` [expected=${issue.expected}, actual=${issue.actual}]` : "";
+        process.stderr.write(`  - ${issue.file}: ${issue.message}${suffix}\n`);
+      });
+    }
+    throw new Error("Studio Brain integrity check failed before portal smoke.");
+  }
+
+  if (report.warnings?.length > 0) {
+    process.stdout.write("portal smoke: studio-brain integrity warnings\n");
+    report.warnings.forEach((warning) => process.stdout.write(`  - ${warning.file}: ${warning.message}\n`));
+  }
+}
 
 const READYZ_PATTERNS = [/\/readyz(?:\?.*)?$/i];
 
@@ -1356,6 +1389,8 @@ const takeScreenshot = async (page, outputDir, fileName, summary, label) => {
 const run = async () => {
   const options = parseOptions(process.argv.slice(2));
   const summary = createSummary(options);
+  assertStudioBrainIntegrity();
+  assertStudioBrainContract();
 
   if (!options.baseUrl) {
     throw new Error("Missing base URL.");

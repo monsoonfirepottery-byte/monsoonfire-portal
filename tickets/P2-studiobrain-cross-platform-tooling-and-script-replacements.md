@@ -1,6 +1,6 @@
 # P2 — Cross-Platform Script Replacements for Studiobrain Cutover
 
-Status: Planned
+Status: In Progress
 Date: 2026-02-18
 Priority: P2
 Owner: Platform
@@ -49,6 +49,12 @@ Migrate launch/deploy/smoke entrypoints to Node-first, cross-platform wrappers w
 3. All platform-specific scripts are documented as optional and not used by default in onboarding.
 4. If both paths remain, they resolve to identical env contracts and host contracts.
 
+## Work completed
+
+- Updated `docs/EMULATOR_RUNBOOK.md` to make Node-first command order primary and move PowerShell shims to compatibility-only notes.
+- Confirmed studio-brain emulator startup remains Node-first via `node ./scripts/start-emulators.mjs` and npm script entrypoints.
+- Made website deploy canonical path machine-agnostic by requiring `WEBSITE_DEPLOY_SERVER`/`--server` for `website/scripts/deploy.mjs` and removing legacy hard-coded host fallback from the Node default path.
+
 ## Dependencies
 
 - `package.json`
@@ -64,4 +70,3 @@ Migrate launch/deploy/smoke entrypoints to Node-first, cross-platform wrappers w
 - Core commands have documented primary paths on Node and optional PowerShell delegates.
 - Team can execute all mandatory smoke/onboarding workflows from Linux/macOS without manual command translation.
 - No new script behavior depends on Windows-only defaults.
-

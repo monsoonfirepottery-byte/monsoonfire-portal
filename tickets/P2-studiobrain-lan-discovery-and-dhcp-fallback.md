@@ -2,6 +2,11 @@
 
 Status: In Progress
 
+## Work completed
+
+- Added DHCP/static-host guidance to `docs/EMULATOR_RUNBOOK.md` with canonical commands and recovery steps for `lan-dhcp` and `lan-static`.
+- Kept PowerShell emulator shim as optional compatibility note while keeping Node-first command order explicit.
+
 ## Blockers
 
 - DHCP hostname persistence state file remains open design: this ticket currently relies on DNS/host resolution fallback behavior; stateful host-change drift detection is planned for follow-up ticket `P2-studiobrain-host-network-profile-contract` and `P2-studiobrain-site-reliability-hub-and-heartbeats`.

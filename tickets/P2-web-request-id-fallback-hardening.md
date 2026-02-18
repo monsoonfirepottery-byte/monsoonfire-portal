@@ -1,6 +1,6 @@
 # P2 — Web Request-ID Fallback Hardening
 
-Status: Planned
+Status: In Progress
 Date: 2026-02-18
 Priority: P2
 Owner: Portal Team
@@ -33,3 +33,5 @@ Replace weak request-id fallback behavior with explicit deterministic/crypto-saf
 ## References
 - `web/src/api/functionsClient.ts:72`
 - `web/src/api/portalApi.ts:206`
+- `web/src/api/requestId.ts`
+- `web/src/api/requestId.test.ts`

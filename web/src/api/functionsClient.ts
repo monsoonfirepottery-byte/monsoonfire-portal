@@ -12,6 +12,7 @@
  * - curlExample is REDACTED by default (<ID_TOKEN>, <ADMIN_TOKEN>)
  * - A separate helper can generate a real curl string if needed.
  */
+import { makeRequestId as createRequestId } from "./requestId";
 
 export type LastRequest = {
   atIso: string;
@@ -69,15 +70,7 @@ async function readResponseBody(resp: Response): Promise<unknown> {
   return await resp.text();
 }
 
-function makeRequestId() {
-  try {
-    // modern browsers
-    return crypto.randomUUID();
-  } catch {
-    // fallback: not cryptographically strong, but fine for correlation IDs
-    return `req_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
-  }
-}
+const makeRequestId = createRequestId;
 
 export function buildCurlRedacted(url: string, payload?: unknown) {
   const headerArgs = [

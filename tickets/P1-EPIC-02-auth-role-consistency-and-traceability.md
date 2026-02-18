@@ -17,6 +17,7 @@ Unify role extraction and authorization checks across portal web and docs with o
 - `tickets/P2-shared-staff-role-parser.md`
 - `tickets/P2-role-gates-and-ui-authority-coverage.md`
 - `tickets/P2-auth-role-doc-and-contract-sync.md`
+- `tickets/P2-web-request-id-fallback-hardening.md`
 
 ## Scope
 1. Define one canonical staff-role source and precedence model.

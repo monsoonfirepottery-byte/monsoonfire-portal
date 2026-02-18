@@ -425,7 +425,7 @@ function runJsonCommand({ command, path: sourcePath, timeoutMs = 30_000 }) {
     ok: result.status === 0,
     output,
     payload,
-    message: "ok",
+    message: result.status === 0 ? "ok" : `non-zero exit: ${result.status}`,
   };
 }
 

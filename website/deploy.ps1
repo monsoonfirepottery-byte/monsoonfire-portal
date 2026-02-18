@@ -1,17 +1,11 @@
-# MonsoonFire.com — deploy ncsitebuilder via SSH/SCP
-$ErrorActionPreference = "Stop"
+param(
+  [string] $Server = "monsggbd@66.29.137.142",
+  [int] $Port = 21098,
+  [string] $RemotePath = "public_html/"
+)
 
-$Server = "monsggbd@66.29.137.142"
-$Port   = 21098
-$RemotePath = "public_html/"
+Write-Warning "Legacy PowerShell wrapper: use Node equivalent when possible."
+Write-Warning "node ./website/scripts/deploy.mjs --server $Server --port $Port --remote-path $RemotePath"
 
-$LocalNc = Join-Path $PSScriptRoot "ncsitebuilder"
-if (-not (Test-Path $LocalNc)) {
-  throw "Missing folder: $LocalNc"
-}
-
-Write-Host "Deploying ncsitebuilder/ to ${Server}:$RemotePath (port $Port)..."
-scp -P $Port -r "$LocalNc" "${Server}:$RemotePath"
-Write-Host "Promoting ncsitebuilder/ into live public_html/..."
-ssh -p $Port $Server "cd public_html && cp -a ncsitebuilder/. ."
-Write-Host "Done."
+$script = Join-Path $PSScriptRoot "scripts/deploy.mjs"
+node $script --server $Server --port $Port --remote-path $RemotePath

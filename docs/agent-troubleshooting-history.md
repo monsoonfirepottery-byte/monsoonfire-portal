@@ -42,6 +42,10 @@ Use this as a handoff for future agents and on-call staff.
 
 Why this helps:
 - Removes command-parser differences where CLI can incorrectly treat `npm --prefix ...` as a single executable token on Windows/Powershell during spawn.
+- If deployment stalls at:
+  `User code failed to load. Cannot determine backend specification. Timeout after 10000...`
+  - raise discovery timeout before redeploying:
+    - `FUNCTIONS_DISCOVERY_TIMEOUT` (seconds) = `120` is a good first value.
 
 ## Commands that now work reliably (Windows PowerShell)
 
@@ -52,7 +56,13 @@ $env:FIREBASE_TOKEN="your-token"
 
 Deploy only website backend function + hosting:
 ```powershell
+$env:FUNCTIONS_DISCOVERY_TIMEOUT="120"
 npx firebase-tools deploy --project monsoonfire-portal --only functions:websiteKilnBoard,hosting --token $env:FIREBASE_TOKEN --non-interactive
+```
+If you only need functions right now:
+```powershell
+$env:FUNCTIONS_DISCOVERY_TIMEOUT="120"
+npx firebase-tools deploy --project monsoonfire-portal --only functions:websiteKilnBoard --token $env:FIREBASE_TOKEN --non-interactive
 ```
 
 Validate project context if needed:
@@ -92,3 +102,57 @@ npm --prefix web run test:run
 - If you switch teams/OS, force a clean git pull from this repo before deploy.
 - Always keep `web/dist` generation/redeploy under `npm run build:web` to avoid stale output.
 
+## Session follow-up: recent house-level and deploy iteration
+
+- `HouseView` was introduced as a new top-level staff-facing surface in the portal shell, with:
+  - role-aware access states (`isHouseManager`, `isHouseMember`, `isHouseGuest`)
+  - Studio Brain read-through embedded under the house shell
+  - read-only mode for non-manager house users
+  - `StaffView` now excludes Studio Brain direct mounting so controls stay centralized under House.
+- `StudioBrainModule` was hardened with explicit read-only support:
+  - refresh remains available in read-only mode
+  - write actions stay disabled without admin token
+  - table row cap removal was removed for many read-only dashboards so managers can view full history payloads.
+- `web/src/views/staff/StudioBrainModule.test.tsx` now includes read-only coverage for house/member flows and stable selectors for text that previously duplicated.
+
+## Practical testing endpoints to verify after each handoff
+
+- Production app: `https://monsoonfire-portal.web.app`
+- Firebase Hosting fallback: `https://monsoonfire-portal.firebaseapp.com`
+- Local Firebase hosting emulator: `http://127.0.0.1:5000`
+- Local Vite dev server: `http://localhost:5173`
+- Function endpoint: `https://us-central1-monsoonfire-portal.cloudfunctions.net/websiteKilnBoard`
+
+## Host-side command reminders for Windows PowerShell
+
+- If browser shows CORS errors like `No 'Access-Control-Allow-Origin' header` against
+  `https://us-central1-monsoonfire-portal.cloudfunctions.net/...` from
+  `https://monsoonfire-portal.web.app`, verify both are set:
+  - `ALLOWED_ORIGINS` includes `https://monsoonfire-portal.web.app` and
+    `https://monsoonfire-portal.firebaseapp.com` for Functions.
+  - `STUDIO_BRAIN_ALLOWED_ORIGINS` includes the same domains for Studio Brain server.
+- If you still see calls to `http://127.0.0.1:8787` from the production web origin,
+  set `VITE_STUDIO_BRAIN_BASE_URL` in the web app environment/build for that deployment.
+
+- Set token once per session:
+  - `$env:FIREBASE_TOKEN="563584335869-..."`
+- Validate access before deploy:
+  - `npx firebase-tools projects:list --token $env:FIREBASE_TOKEN`
+- If deploy fails with discovery timeout, set timeout and use this deploy pattern:
+  - `npx firebase-tools deploy --project monsoonfire-portal --only functions:websiteKilnBoard,hosting --token $env:FIREBASE_TOKEN --non-interactive`
+- If deploy fails with `401`:
+  - check token freshness
+  - rerun `projects:list` with the same token
+  - retry with freshly copied token from browser login flow
+
+## PowerShell-specific gotchas observed
+
+- `export` is a Bash command and does not work in PowerShell.
+- Use `$env:VAR = "..."` to persist env in-session values.
+- `--project` must receive a value; missing alias/id produces parser errors before auth can begin.
+- `npx firebase-tools deploy --only functions:websiteKilnBoard --only hosting` can trigger parsing ambiguities.
+  - Prefer one combined `--only` list string, for example:
+    - `--only "functions:websiteKilnBoard,hosting"`
+- If you still hit `No function matches the filter`:
+  - recheck function export name in `functions/src/index.ts`
+  - ensure the codebase is built and deployed after the last pull

@@ -26,8 +26,24 @@ This folder contains the current integration references for the project.
 1. Install dependencies for the web client and run dev server (see `web/README.md`).
 2. Confirm your target backend environment (prod vs emulator).
 3. Verify you can read required toolchain binaries:
-   - `command -v ufw fail2ban-client jq tmux git rg ffmpeg python3 pip3`
+	- `command -v ufw fail2ban-client jq tmux git rg ffmpeg python3 pip3`
 4. Use `docs/API_CONTRACTS.md` for exact payloads before touching client call sites.
+
+## Automation commands
+
+- `npm run test:automation`  
+  Full local/CI-ready validation bundle:
+  - unit tests (`functions`, `studio-brain`, `web`)
+  - functions CORS smoke
+  - website + portal Playwright smoke
+  - portal production bundle readiness guard
+  - web accessibility smoke
+- `npm run test:automation:deep`  
+  Extends `test:automation` with explicit production-gated CORS options and deep portal endpoint probes.
+- `npm run test:automation:bundle`  
+  Build portal bundle and assert no localhost Studio Brain backend references are shipped.
+- `npm run test:automation:ui:deep`  
+  Deep portal browser probes only (`/readyz`, backend function probes, critical endpoint capture).
 
 ## iOS contract parity
 

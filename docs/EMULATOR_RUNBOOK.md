@@ -39,7 +39,7 @@ This avoids losing env vars when opening a new terminal session.
 
 ## Required env for CORS allowlist
 - `ALLOWED_ORIGINS` should include portal domains and dev origin.
-  - Example: `http://localhost:5173,https://portal.monsoonfire.com,https://monsoonfire.com`
+  - Example: `http://localhost:5173,https://portal.monsoonfire.com,https://monsoonfire.com,https://monsoonfire-portal.web.app,https://monsoonfire-portal.firebaseapp.com`
 
 ## Email extension (firestore-send-email)
 - Firestore region is **nam5**. Extension must match:

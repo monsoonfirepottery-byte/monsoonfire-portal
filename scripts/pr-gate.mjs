@@ -28,6 +28,14 @@ const steps = [
     required: true,
   },
   {
+    name: "studio-brain network runtime contract",
+    kind: "command",
+    command: "node",
+    args: ["./scripts/studiobrain-network-check.mjs", "--gate", "--strict"],
+    remediation: "Resolve host drift by refreshing STUDIO_BRAIN_NETWORK_PROFILE and STUDIO_BRAIN_HOST values for LAN workflows.",
+    required: true,
+  },
+  {
     name: "studio-brain preflight",
     kind: "command",
     command: "npm",

@@ -1,9 +1,13 @@
 # Swarm Board
 
-Date: 2026-02-10  
+Date: 2026-02-19  
 Use this board for daily execution and ticket routing.
 
-## Current Focus (2026-02-10)
+## Current Focus (2026-02-19)
+- Epic 07 Studiobrain cutover execution is complete:
+  - Cutover decision: `GO` (executed on 2026-02-19)
+  - Runtime target: `127.0.0.1:8787`
+  - Gate evidence: `artifacts/pr-gate.json`, `output/stability/heartbeat-summary.json`, `output/cutover-gate/summary.json`
 - P0 alpha closures (ship-stoppers):
   - `tickets/P0-alpha-drills-real-auth.md`: run live drill suite with real staff auth (production evidence)
   - `tickets/P1-prod-auth-oauth-provider-credentials.md`: create provider apps (Apple/Facebook/Microsoft) and paste IDs/secrets into Firebase Auth providers
@@ -44,15 +48,27 @@ Use this board for daily execution and ticket routing.
   - Sprint 12: S12-04, S12-06
 
 ## Open Tickets (Reality-Based)
-- `P0` (`todo`): `tickets/P0-alpha-drills-real-auth.md`
-- `P0` (`todo`): `tickets/P0-portal-hosting-cutover.md`
-- `P1` (`todo`): `tickets/P1-prod-auth-oauth-provider-credentials.md`
-- `P1` (`todo`): `tickets/S12-01-auth-domain-strategy.md` (blocked on DNS + Firebase console)
-- `P1` (`todo`): `tickets/S12-02-universal-links-and-callbacks.md` (blocked on real AASA/assetlinks values + deploy)
+- `P1` (`done`): Epic 07 Studiobrain cutover execution (all go/no-go gates passed on 2026-02-19)
+- `P0` (`blocked`): `tickets/P0-alpha-drills-real-auth.md` (requires real production staff token path)
+- `P0` (`planned`): `tickets/P0-portal-hosting-cutover.md` (depends on DNS/hosting + signed OAuth domain completion)
+- `P0` (`todo`): `tickets/P0-security-advisories-dependency-remediation-2026-02-19.md` (root/functions/studio-brain high vulnerabilities to clear in next session)
+- `P1` (`blocked`): `tickets/P1-prod-auth-oauth-provider-credentials.md` (provider console/firebase console dependency)
+- `P1` (`done`): `tickets/S12-01-auth-domain-strategy.md`
+- `P1` (`done`): `tickets/S12-02-universal-links-and-callbacks.md`
 - `P2` (`todo`): `tickets/S12-03-push-lifecycle-and-telemetry-spec.md`
 - `P2` (`todo`): `tickets/S12-04-offline-retry-policy.md`
 - `P2` (`todo`): `tickets/S12-05-secure-storage-and-session-model.md`
 - `P2` (`done`): `tickets/P1-ios-build-gate-btier.md`
+
+## Reconciliation Cadence
+- Monthly:
+  - Run `node ./scripts/epic-hub.mjs status`.
+  - Run `node ./scripts/epic-hub.mjs next`.
+  - Confirm every ticket in "Open Tickets" has:
+    - an existing `tickets/*.md` file
+    - `Parent Epic` metadata (if it is still active)
+    - owner + priority
+  - Record follow-up entries in `docs/sprints/BOARD_RECONCILIATION_RUNBOOK.md`.
 
 ## Ops Blockers (Do Outside Repo)
 - DNS: provision `portal.monsoonfire.com` and (recommended) `auth.monsoonfire.com`

@@ -22,6 +22,7 @@ Cut over all current local/service dependencies used by portal, functions, and s
 - `tickets/P2-studiobrain-firebase-emulator-hosting-and-urls.md`
 - `tickets/P2-studiobrain-static-network-binding-and-lan-stability.md`
 - `tickets/P2-studiobrain-cross-platform-tooling-and-script-replacements.md`
+- `tickets/P2-studiobrain-remove-nonessential-ps1-windows-wuff-references.md`
 - `tickets/P2-studiobrain-env-secret-and-config-hygiene.md`
 - `tickets/P2-studiobrain-cutover-smoke-and-dependency-gates.md`
 - `tickets/P2-studiobrain-observability-and-self-healing-tools.md`
@@ -31,6 +32,7 @@ Cut over all current local/service dependencies used by portal, functions, and s
 - `tickets/P2-studiobrain-website-dev-target-and-cutover-hosting.md`
 - `tickets/P2-studiobrain-host-and-url-contract-matrix.md`
 - `tickets/P2-studiobrain-env-contract-schema-and-runtime-validation.md`
+- `tickets/P2-studiobrain-platform-reference-automation-and-exemptions.md`
 - `tickets/P2-studiobrain-host-network-profile-contract.md`
 - `tickets/P2-studiobrain-status-command-and-health-card.md`
 - `tickets/P2-studiobrain-structured-logs-and-correlation-ids.md`

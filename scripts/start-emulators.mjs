@@ -17,6 +17,7 @@ const parseArgs = () => {
     config: "firebase.json",
     host: null,
     networkProfile: null,
+    skipNetworkCheck: false,
   };
 
   for (let i = 0; i < args.length; i += 1) {
@@ -75,6 +76,11 @@ const parseArgs = () => {
       options.networkProfile = args[++i];
       continue;
     }
+
+    if (arg === "--no-network-check") {
+      options.skipNetworkCheck = true;
+      continue;
+    }
   }
 
   return options;
@@ -109,7 +115,7 @@ const loadDotenv = (filePath) => {
   });
 };
 
-const { only, project, config, host, networkProfile } = parseArgs();
+const { only, project, config, host, networkProfile, skipNetworkCheck } = parseArgs();
 const envFile = resolve(repoRoot, "functions", ".env.local");
 const resolvedConfig = resolve(repoRoot, config);
 
@@ -129,6 +135,28 @@ if (warnings.length > 0) {
     console.log(`warn: ${warning}`);
   }
 }
+
+if (!skipNetworkCheck) {
+  const networkCheckEnv = {
+    ...process.env,
+    ...(networkProfile ? { STUDIO_BRAIN_NETWORK_PROFILE: networkProfile } : {}),
+  };
+
+  const networkCheck = spawnSync(
+    "node",
+    ["./scripts/studiobrain-network-check.mjs", "--gate", "--write-state"],
+    {
+      cwd: repoRoot,
+      stdio: "inherit",
+      env: networkCheckEnv,
+    },
+  );
+  if (networkCheck.status !== 0) {
+    console.error("Aborting emulator startup: studio-brain network profile check failed.");
+    process.exit(networkCheck.status || 1);
+  }
+}
+
 console.log(`Using Studiobrain network profile: ${network.profile} (${network.profileLabel})`);
 console.log(`Emulator host: ${emulatorHost}`);
 

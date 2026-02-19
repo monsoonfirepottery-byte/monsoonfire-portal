@@ -1,6 +1,7 @@
 import { printValidationReport, validateEnvContract } from "./env-contract-validator.mjs";
 import net from "node:net";
 import { isStudioBrainHostAllowed, resolveStudioBrainNetworkProfile } from "../../scripts/studio-network-profile.mjs";
+import { runGuardrails } from "../../scripts/stability-guardrails.mjs";
 
 const network = resolveStudioBrainNetworkProfile();
 const host = process.env.PGHOST || network.host;
@@ -40,10 +41,26 @@ async function main() {
     report.warnings.forEach((warning) => process.stdout.write(` - ${warning}\n`));
   }
 
-  process.stdout.write(`Network profile: ${network.requestedProfile} (${network.profile}) -> ${network.host}\n`);
+  process.stdout.write(
+    `Network profile: ${network.requestedProfile} -> ${network.profile} (${network.networkTargetMode}) -> ${network.host}\n`,
+  );
+  process.stdout.write(`Network host source: ${network.hostSource}\n`);
+  process.stdout.write(`Network profile source: ${network.profileSource}\n`);
+  process.stdout.write(`Profile static target enabled: ${network.staticIpEnabled ? "yes" : "no"}\n`);
+  process.stdout.write(`Host state file: ${network.hostStateFile || "(not configured)"}\n`);
   if (network.warnings.length > 0) {
     process.stdout.write(`${warningPrefix} profile warnings:\n`);
     network.warnings.forEach((warning) => process.stdout.write(` - ${warning}\n`));
+  }
+
+  if (network.networkTargetMode === "static" && !network.staticIpEnabled) {
+    process.stdout.write(`${warningPrefix} static-profile selected but no STUDIO_BRAIN_STATIC_IP is configured.\n`);
+  }
+
+  if (network.networkTargetMode === "dhcp" && network.hostSource.includes("STUDIO_BRAIN_STATIC_IP")) {
+    process.stdout.write(
+      `${warningPrefix} STUDIO_BRAIN_STATIC_IP is set while using DHCP profile; keep for static-target override only.\n`,
+    );
   }
 
   if (process.env.STUDIO_BRAIN_BASE_URL) {
@@ -63,6 +80,11 @@ async function main() {
   const postgres = await checkTcp({ host, port, timeoutMs });
   if (postgres.ok) {
     process.stdout.write(`PASS: ${postgres.message}\n`);
+    const guardrails = runGuardrails({ strict: false });
+    process.stdout.write(`stability guardrails: ${guardrails.status.toUpperCase()}\n`);
+    if (guardrails.status !== "pass") {
+      process.stdout.write("See guardrail warnings for cleanup and disk policy recommendations before merge.\n");
+    }
     process.exit(0);
   }
 

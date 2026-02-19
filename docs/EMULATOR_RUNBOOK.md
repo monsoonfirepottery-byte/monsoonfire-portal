@@ -39,8 +39,8 @@
   - `npm run studio:network:check:write-state`
 - Equivalent direct command:
   - `node ./scripts/start-emulators.mjs --only firestore,functions,auth`
-- Recommended compatibility path (PowerShell only):
-  - `pwsh -File scripts/start-emulators.ps1`
+- Optional compatibility path (legacy / compatibility-only):
+  - `node ./scripts/ps1-run.mjs scripts/start-emulators.ps1`
 - Staff claims setup: `docs/STAFF_CLAIMS_SETUP.md`
 
 ### Stable local env across terminals
@@ -48,7 +48,7 @@
 2. Copy `web/.env.local.example` to `web/.env.local`.
 3. Set local-only values (for example `ADMIN_TOKEN`, `ALLOW_DEV_ADMIN_TOKEN=true`).
 4. Start emulators via canonical command: `npm run emulators:start -- --only firestore,functions,auth`.
-   - Legacy compatibility fallback (Windows-only): `pwsh -File scripts/start-emulators.ps1`.
+  - Optional compatibility fallback: `node ./scripts/ps1-run.mjs scripts/start-emulators.ps1`.
 
 ## Emulator and UI contract matrix
 
@@ -76,13 +76,55 @@ This avoids losing env vars when opening a new terminal session.
   - `npm run studio:host:contract:scan:strict`
   - `npm run studio:emulator:contract:check:strict`
   - `npm run studio:network:check:gate -- --strict`
+
+### Stack profile evidence capture
+- Before onboarding or cutover handoffs, capture a stack profile snapshot for reproducible evidence:
+  - `npm run studio:stack:profile:snapshot`
+  - `npm run studio:stack:profile:snapshot:strict`
+  - capture artifact: `output/studio-stack-profile/latest.json`
+- Use profile-aware emulator bootstrap command when host strategy changes:
+  - `npm run emulators:start -- --network-profile local --only firestore,functions,auth`
+  - `npm run emulators:start -- --network-profile lan-dhcp --only firestore,functions,auth`
+  - `npm run emulators:start -- --network-profile lan-static --only firestore,functions,auth`
 - Recommended sequence before major cutover changes:
   - `npm run studio:host:contract:scan:strict`
-  - `npm run studio:check`
+  - `npm run studio:check:safe`
   - `npm run studio:network:check:gate -- --strict`
+  - `npm run guardrails:check -- --strict`
   - `npm run studio:cutover:gate -- --no-smoke`
   - `npm run studio:cutover:gate -- --portal-deep` (or `npm run studio:cutover:gate -- --portal-deep --portal-base-url https://monsoonfire-portal.web.app` for production-aligned API target)
   - `npm run integrity:check`
+
+### Stability resource guardrails
+
+Run this when a local Studiobrain instance has been up for multiple cycles, before cutover handoff, or after large smoke batches:
+
+```bash
+npm run guardrails:check
+npm run guardrails:check -- --strict
+npm run guardrails:check -- --cleanup --cleanup-days 14
+```
+
+The guardrails command checks:
+- compose service guardrails (restart/logging/deploy limits in `studio-brain/docker-compose.yml`)
+- output artifacts (`output/playwright`, `output/stability`, `output/cutover-gate`, `output/pr-gate`)
+- docker volume size (`postgres_data`, `minio_data`)
+- Studiobrain container log size
+
+## Deployment gate and evidence
+
+Before major cutover handoffs, run the full deployment gate matrix:
+
+```bash
+npm run source:truth:deployment -- --phase all --strict --json --artifact output/source-of-truth-deployment-gates/emulator-pass.json
+```
+
+If the gate fails:
+- `staging`/`production` failures: check referenced workflow and runbook files in the printed finding.
+- `beta` failures: verify `docs/studiobrain-host-url-contract-matrix.md` and `docs/EMULATOR_RUNBOOK.md` reflect active LAN profile expectations.
+- `store-readiness` failures: verify deep-link and `.well-known` doc parity, then rerun this step.
+
+Attach the generated artifact path to handoff notes so release staff can replay the same checks.
 
 ### Cutover residency check
 - Optional command loop for long-lived Studiobrain operations:
@@ -92,7 +134,7 @@ This avoids losing env vars when opening a new terminal session.
   
 Recommended clean-state definition:
 - host contract scan passes (`npm run studio:host:contract:scan:strict`)
-- status gate passes (`npm run studio:check`)
+- status gate passes (`npm run studio:check:safe`)
 - smoke checks pass (`npm run studio:cutover:gate`)
 - runtime integrity check passes (`npm run integrity:check`)
 
@@ -115,6 +157,29 @@ emulator startup, smoke, and status checks:
    - verify router or local DNS for the host name
    - confirm `.studiobrain-host-state.json` and rerun the network check
    - switch temporarily to `local` to recover if needed, then restore LAN profile.
+
+### Static-IP governance and ownership
+
+Use this when the LAN host should stay stable across reboots and router churn:
+
+1. Set profile to static mode:
+   - `STUDIO_BRAIN_NETWORK_PROFILE=lan-static`
+2. Set ownership details in `studio-brain/.env.network.profile`:
+   - `STUDIO_BRAIN_STATIC_IP=<reserved_ipv4>` (required)
+   - `STUDIO_BRAIN_LAN_HOST=<dns_or_mdns_hostname>` (optional, for readability)
+3. Keep the static assignment ownership list current in operations docs:
+   - Owner: primary platform operator
+   - Review cadence: when router firmware or VLAN changes are made
+4. Validate and persist governance evidence:
+   - `npm run studio:network:check -- --json`
+   - `npm run studio:network:check:write-state -- --strict`
+
+Recovery path when static governance breaks:
+
+1. Flip `STUDIO_BRAIN_NETWORK_PROFILE=local` to regain local control.
+2. Confirm static DHCP/route state in router and host file mapping for `studiobrain.local`.
+3. Update `STUDIO_BRAIN_STATIC_IP` only after validation.
+4. Run the write-state gate above before resuming remote workflows.
 
 ### Optional static IP path
 1. Reserve a stable IP on your router for the Studiobrain host.

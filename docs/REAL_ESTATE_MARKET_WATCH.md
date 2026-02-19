@@ -52,15 +52,15 @@ Fit tiers:
 - `weak` (< 40)
 
 ## Run
-```powershell
-pwsh -File scripts/run-real-estate-market-watch.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/run-real-estate-market-watch.ps1 `
   -ListingsCsv "docs/real-estate/market-watch-template.csv" `
   -OutDir "output/real-estate"
 ```
 
 Useful overrides:
-```powershell
-pwsh -File scripts/run-real-estate-market-watch.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/run-real-estate-market-watch.ps1 `
   -ListingsCsv "C:\\path\\to\\live-listings.csv" `
   -TargetMinSqFt 1500 `
   -TargetMaxSqFt 7000 `
@@ -82,8 +82,8 @@ The markdown output includes:
 ## Quarterly Trends + Agent Swarm Context
 Build quarterly trend context from all historical snapshot JSON artifacts:
 
-```powershell
-pwsh -File scripts/build-real-estate-quarterly-context.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/build-real-estate-quarterly-context.ps1 `
   -InputDir "output/real-estate" `
   -OutputDir "output/real-estate"
 ```
@@ -102,8 +102,8 @@ The context JSON is designed as direct input to a real-estate agent swarm:
 
 Use scheduled cadence command for hands-free quarterly publishing and prompt ingest handoff:
 
-```powershell
-pwsh -File scripts/run-real-estate-quarterly-cadence.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/run-real-estate-quarterly-cadence.ps1 `
   -InputDir "output/real-estate" `
   -OutputDir "output/real-estate"
 ```
@@ -117,8 +117,8 @@ Cadence outputs:
 ## Agentic Research Scan (Proactive + Distress Signals)
 Run autonomous search-based discovery to find new opportunities and distressed-market leads:
 
-```powershell
-pwsh -File scripts/run-real-estate-agentic-research.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/run-real-estate-agentic-research.ps1 `
   -OutputDir "output/real-estate" `
   -Top 30 `
   -MaxResultsPerQuery 25
@@ -150,21 +150,21 @@ Source coverage now included in each run:
 ## Studio Asset Intelligence (Local Equipment + Grey Market)
 Run localized asset discovery for pottery gear where shipping friction is high and local pickup dominates:
 
-```powershell
-pwsh -File scripts/seed-studio-asset-manual-drops.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/seed-studio-asset-manual-drops.ps1 `
   -ConfigPath "docs/real-estate/studio-asset-intel-config.json" `
   -ManualDropDir "output/real-estate/manual-drops/studio-assets"
 ```
 
-```powershell
-pwsh -File scripts/fetch-studio-asset-community-data.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/fetch-studio-asset-community-data.ps1 `
   -ConfigPath "docs/real-estate/studio-asset-intel-config.json" `
   -OutDir "output/real-estate/asset-community-data" `
   -StagingDir "output/real-estate/staging/studio-assets"
 ```
 
-```powershell
-pwsh -File scripts/run-studio-asset-intelligence.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/run-studio-asset-intelligence.ps1 `
   -ConfigPath "docs/real-estate/studio-asset-intel-config.json" `
   -PriorityListPath "docs/real-estate/studio-needed-wanted-list.json" `
   -OutputDir "output/real-estate" `
@@ -224,15 +224,15 @@ Asset feed auth adapter + rotation environment variables:
 ## Structured Public Signals (Parcel + Owner Distress Context)
 Pull free/public datasets first:
 
-```powershell
-pwsh -File scripts/fetch-real-estate-public-data.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/fetch-real-estate-public-data.ps1 `
   -OutDir "output/real-estate/public-data"
 ```
 
 Stage normalized source-key CSV files from the pull (and create manual-drop templates for blocked sources):
 
-```powershell
-pwsh -File scripts/build-real-estate-public-signal-staging.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/build-real-estate-public-signal-staging.ps1 `
   -PublicDataManifestPath "output/real-estate/public-data/latest-manifest.json" `
   -StagingDir "output/real-estate/staging/public-signals" `
   -ManualDropDir "output/real-estate/manual-drops"
@@ -240,10 +240,10 @@ pwsh -File scripts/build-real-estate-public-signal-staging.ps1 `
 
 Configure and ingest structured feeds:
 - config: `docs/real-estate/public-signal-sources.json`
-- ingestor: `scripts/run-real-estate-public-signals.ps1`
+- ingestor: `node ./scripts/ps1-run.mjs scripts/run-real-estate-public-signals.ps1`
 
-```powershell
-pwsh -File scripts/run-real-estate-public-signals.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/run-real-estate-public-signals.ps1 `
   -ConfigPath "docs/real-estate/public-signal-sources.json" `
   -OutputDir "output/real-estate" `
   -AutoStagingDir "output/real-estate/staging/public-signals" `
@@ -328,8 +328,8 @@ Blocked endpoints can be fed through manual CSV drops in:
 ## Macro Context Pack (Rates + CRE Trend + ACS Baseline)
 Build macro context from free/public pull artifacts:
 
-```powershell
-pwsh -File scripts/build-real-estate-macro-context.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/build-real-estate-macro-context.ps1 `
   -PublicDataManifestPath "output/real-estate/public-data/latest-manifest.json" `
   -OutputDir "output/real-estate"
 ```
@@ -349,8 +349,8 @@ Maintain a versioned profile of current and future studio expansion requirements
 
 Build the deterministic needs context:
 
-```powershell
-pwsh -File scripts/build-real-estate-needs-context.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/build-real-estate-needs-context.ps1 `
   -NeedsProfilePath "docs/real-estate/studio-needs-profile.json" `
   -OutputDir "output/real-estate" `
   -PublicSignalsPath "output/real-estate/public-signals-latest.json"
@@ -369,8 +369,8 @@ This context computes:
 ## Intelligence Analysis Layer (Model-Free, Agent-Aware)
 Compile all available context into deterministic opportunity intelligence and task planning:
 
-```powershell
-pwsh -File scripts/run-real-estate-intelligence-analysis.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/run-real-estate-intelligence-analysis.ps1 `
   -OutputDir "output/real-estate" `
   -PublicSignalsPath "output/real-estate/public-signals-latest.json" `
   -ParcelGraphPath "output/real-estate/parcel-graph-latest.json" `
@@ -395,8 +395,8 @@ The analysis layer is deterministic and avoids per-run model calls while still p
 ## Opportunities Research Layer (Wide-Net, Skepticism-First)
 Track long-effort, low-risk, high-upside opportunities across grants, programs, rates, procurement/buildout requests, and community assistance asks.
 
-```powershell
-pwsh -File scripts/run-real-estate-opportunity-research.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/run-real-estate-opportunity-research.ps1 `
   -OutputDir "output/real-estate" `
   -ConfigPath "docs/real-estate/opportunity-research-config.json" `
   -PublicSignalsPath "output/real-estate/public-signals-latest.json" `
@@ -419,8 +419,8 @@ Safety posture:
 ## Human Review Packet + Steering Log
 Build a human-review packet from latest intelligence outputs:
 
-```powershell
-pwsh -File scripts/run-real-estate-review-packet.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/run-real-estate-review-packet.ps1 `
   -OutputDir "output/real-estate" `
   -IntelligencePath "output/real-estate/intelligence-analysis-latest.json" `
   -NeedsContextPath "output/real-estate/needs-context-latest.json"
@@ -438,8 +438,8 @@ This packet is channel-agnostic for Portal/Discord/CLI and includes:
 
 Append a steering decision:
 
-```powershell
-pwsh -File scripts/add-intelligence-steering-entry.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/add-intelligence-steering-entry.ps1 `
   -OutputDir "output/real-estate" `
   -OpportunityId "opp-..." `
   -Action "request_more_evidence" `
@@ -462,8 +462,8 @@ Keep output contracts stable (`*-latest.json` files and source/score fields) so 
 ## Parcel Graph Foundation
 Build a parcel/owner graph from the latest structured signal run:
 
-```powershell
-pwsh -File scripts/build-real-estate-parcel-graph.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/build-real-estate-parcel-graph.ps1 `
   -PublicSignalsPath "output/real-estate/public-signals-latest.json" `
   -OutputDir "output/real-estate"
 ```
@@ -478,8 +478,8 @@ This provides a parcel-centric ranking layer for agent-swarm targeting and negot
 ## Entity Resolution Enrichment (LLC + Link Confidence)
 Build normalized entity resolution from signals + parcel graph:
 
-```powershell
-pwsh -File scripts/build-real-estate-entity-resolution.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/build-real-estate-entity-resolution.ps1 `
   -PublicSignalsPath "output/real-estate/public-signals-latest.json" `
   -ParcelGraphPath "output/real-estate/parcel-graph-latest.json" `
   -OutputDir "output/real-estate"
@@ -492,8 +492,8 @@ Outputs:
 ## Recorder Anti-Bot Fallback Adapter
 Maintain a manual recorder export template and stage it into canonical signal ingestion:
 
-```powershell
-pwsh -File scripts/run-recorder-fallback-adapter.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/run-recorder-fallback-adapter.ps1 `
   -ManualDir "output/real-estate/manual-drops/recorder-fallback" `
   -StagingDir "output/real-estate/staging/public-signals" `
   -OutputDir "output/real-estate"
@@ -507,8 +507,8 @@ Outputs:
 ## StudioBrain Coordinator Contracts
 Build channel command contracts + execution queue for Discord/CLI/Portal:
 
-```powershell
-pwsh -File scripts/build-studiobrain-coordinator-adapters.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/build-studiobrain-coordinator-adapters.ps1 `
   -OutputDir "output/real-estate" `
   -ReviewPacketPath "output/real-estate/intelligence-review-packet-latest.json" `
   -IntelligencePath "output/real-estate/intelligence-analysis-latest.json" `
@@ -537,8 +537,8 @@ Output:
 
 Single-command weekly run:
 
-```powershell
-pwsh -File scripts/run-real-estate-weekly-cadence.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/run-real-estate-weekly-cadence.ps1 `
   -OutputDir "output/real-estate" `
   -PublicDataDir "output/real-estate/public-data" `
   -StagingDir "output/real-estate/staging/public-signals" `
@@ -555,7 +555,7 @@ Quarterly cadence scheduling (example):
 0 9 1 1,4,7,10 *
 ```
 
-Run that schedule with `scripts/run-real-estate-quarterly-cadence.ps1` to keep `agent-swarm-context-latest.json` and memory handoff artifacts current.
+Run that schedule with `node ./scripts/ps1-run.mjs scripts/run-real-estate-quarterly-cadence.ps1` to keep `agent-swarm-context-latest.json` and memory handoff artifacts current.
 
 ## Live Data Notes
 - Pull listings from your preferred sources and export to CSV.
@@ -565,30 +565,30 @@ Run that schedule with `scripts/run-real-estate-quarterly-cadence.ps1` to keep `
 ## Testing Harness and Validation Workflow
 Fast contract checks on latest artifacts:
 
-```powershell
-pwsh -File scripts/test-real-estate-contracts.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/test-real-estate-contracts.ps1 `
   -OutputDir "output/real-estate"
 ```
 
 Deterministic studio-asset harness (needed/wanted boosts + carry-forward continuity):
 
-```powershell
-pwsh -File scripts/test-studio-asset-intel-harness.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/test-studio-asset-intel-harness.ps1 `
   -ConfigPath "docs/real-estate/studio-asset-intel-config.json" `
   -PriorityListPath "docs/real-estate/studio-needed-wanted-list.json"
 ```
 
 Unified suite runner:
 
-```powershell
-pwsh -File scripts/run-real-estate-test-suite.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/run-real-estate-test-suite.ps1 `
   -OutputDir "output/real-estate"
 ```
 
 Optional full-run + tests:
 
-```powershell
-pwsh -File scripts/run-real-estate-test-suite.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/run-real-estate-test-suite.ps1 `
   -OutputDir "output/real-estate" `
   -RunCadence
 ```

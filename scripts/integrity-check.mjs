@@ -27,6 +27,7 @@ const DEFAULT_TARGET_FILES = [
   "scripts/portal-playwright-smoke.mjs",
   "scripts/website-playwright-smoke.mjs",
   "scripts/functions-cors-smoke.mjs",
+  "scripts/stability-guardrails.mjs",
   "website/scripts/deploy.mjs",
   "website/scripts/serve.mjs",
 ];

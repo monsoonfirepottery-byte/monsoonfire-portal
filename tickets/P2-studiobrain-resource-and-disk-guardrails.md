@@ -1,6 +1,6 @@
 # P2 — Resource and Disk Guardrails for Long-Lived Studiobrain Host
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform
@@ -56,3 +56,24 @@ Add explicit resource guardrails and fail-fast checks to keep the host stable an
 ## Definition of Done
 
 - Stability risks from resource drift are visible and actionable before user-impacting failures.
+
+## Completion notes
+
+- Added runtime limits and log-rotation policy directly in `studio-brain/docker-compose.yml` for postgres/redis/minio/otel.
+- Added `scripts/stability-guardrails.mjs` with checks for:
+  - compose restart/logging/resource guardrails
+  - docker volume growth (`postgres_data`, `minio_data`)
+  - container log growth thresholds
+  - output artifact size + safe stale cleanup mode
+- Added command surface:
+  - `npm run guardrails:check`
+  - `npm run guardrails:check:strict`
+- Wired the guardrail check into:
+  - `scripts/reliability-hub.mjs`
+  - `scripts/pr-gate.mjs` (optional warning)
+  - `scripts/studio-cutover-gate.mjs` (optional warning)
+  - `studio-brain/scripts/preflight.mjs` (informational post-DB check)
+- Updated docs:
+  - `docs/EMULATOR_RUNBOOK.md`
+  - `docs/runbooks/PR_GATE.md`
+- Added the new script to `scripts/integrity-check.mjs` target list and refreshed manifest.

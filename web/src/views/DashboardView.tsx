@@ -7,6 +7,7 @@ import { db } from "../firebase";
 import { type PortalThemeName } from "../theme/themes";
 import { mockFirings, mockKilns } from "../data/kilnScheduleMock";
 import { useBatches } from "../hooks/useBatches";
+import { track } from "../lib/analytics";
 import { normalizeFiringDoc as normalizeFiringRow, normalizeKilnDoc as normalizeKilnRow } from "../lib/normalizers/kiln";
 import type { Kiln, KilnFiring } from "../types/kiln";
 import type { Announcement, DirectMessageThread } from "../types/messaging";
@@ -42,6 +43,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 const PRIMARY_KILN_NAME = "L&L eQ2827-3";
 const RAKU_KILN_NAME = "Reduction Raku Kiln";
+const ALLOW_DASHBOARD_MOCK_DATA = import.meta.env.DEV && String(import.meta.env.VITE_DASHBOARD_USE_MOCK_KILN_DATA).toLowerCase() === "true";
 
 type KilnRow = {
   id: string;
@@ -154,11 +156,23 @@ function useKilnDashboardRows() {
     };
   }, [reload]);
 
-  const useMock = import.meta.env.DEV && (permissionDenied || (!loading && kilns.length === 0 && firings.length === 0));
+  const noData = !loading && !permissionDenied && kilns.length === 0 && firings.length === 0;
+  const useMock = ALLOW_DASHBOARD_MOCK_DATA && !permissionDenied && noData;
   const rawKilns = useMock ? mockKilns : kilns;
   const rawFirings = useMock ? mockFirings : firings;
-  const noData = !loading && !permissionDenied && kilns.length === 0 && firings.length === 0;
-  const showRetry = permissionDenied || noData;
+  const showRetry = permissionDenied || (!loading && noData);
+  const mockNotice = useMock
+    ? "Using sample kiln data for explicit dev-only dashboard mode. Configure backend data sources when available."
+    : "";
+
+  useEffect(() => {
+    if (!useMock) return;
+    track("dashboard_kiln_sample_fallback_used", {
+      reason: "no_data",
+      permissionDenied,
+      backendRecordCount: 0,
+    });
+  }, [useMock, permissionDenied]);
   const statusNotice = permissionDenied
     ? "Unable to load kiln schedules. Permissions may not be configured yet."
     : noData
@@ -526,7 +540,7 @@ export default function DashboardView({
 
         <RevealCard className="card card-3d" index={4} enabled={motionEnabled}>
           <div className="card-title">Kilns firing now</div>
-          {useMock ? <div className="notice">Using sample kiln data for development.</div> : null}
+          {mockNotice ? <div className="notice">{mockNotice}</div> : null}
           {useMock && permissionDenied ? (
             <div className="notice" role="status" aria-live="polite">
               {statusNotice}

@@ -4,6 +4,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: studiobrain_postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: monsoonfire_studio_os
       POSTGRES_USER: postgres
@@ -17,10 +18,23 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+        reservations:
+          memory: 384M
+    logging:
+      driver: json-file
+      options:
+        max-size: 16m
+        max-file: "3"
 
   redis:
     image: redis:7-alpine
     container_name: studiobrain_redis
+    restart: unless-stopped
     command: ["redis-server", "--save", "60", "1", "--appendonly", "no"]
     ports:
       - "6379:6379"
@@ -29,10 +43,23 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 384M
+        reservations:
+          memory: 192M
+    logging:
+      driver: json-file
+      options:
+        max-size: 8m
+        max-file: "2"
 
   minio:
     image: minio/minio:latest
     container_name: studiobrain_minio
+    restart: unless-stopped
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
@@ -47,10 +74,23 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+        reservations:
+          memory: 384M
+    logging:
+      driver: json-file
+      options:
+        max-size: 16m
+        max-file: "3"
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     container_name: studiobrain_otel_collector
+    restart: unless-stopped
     profiles: ["observability"]
     command: ["--config", "/etc/otel/config.yaml"]
     volumes:
@@ -63,6 +103,18 @@ services:
       - postgres
       - redis
       - minio
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: 8m
+        max-file: "2"
 
 volumes:
   postgres_data:

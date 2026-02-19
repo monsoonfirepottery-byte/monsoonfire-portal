@@ -42,9 +42,9 @@ const checks = buildChecks({
   snapshotReport,
   evidence,
 });
-const hardFailCount = checks.filter((entry) => entry.severity === "error" && !entry.ok).length;
-const warningCount = checks.filter((entry) => entry.severity === "warning" && !entry.ok).length;
-const status = hardFailCount > 0 || (args.strict && warningCount > 0) ? "fail" : warningCount > 0 ? "warn" : "pass";
+  const hardFailCount = checks.filter((entry) => entry.severity === "error" && !entry.ok).length;
+  const warningCount = checks.filter((entry) => entry.severity === "warning" && !entry.ok).length;
+  const status = hardFailCount > 0 || (args.strict && warningCount > 0) ? "fail" : warningCount > 0 ? "warn" : "pass";
 
 const payload = {
   status,
@@ -118,7 +118,7 @@ if (args.artifactPath) {
   writeArtifact(args.artifactPath, payload);
 }
 
-if (status === "fail" && args.gate) {
+if ((args.gate && status === "fail") || (args.requireSafe && status !== "pass")) {
   process.exit(1);
 }
 
@@ -132,6 +132,7 @@ function parseArgs(rawArgs) {
   const parsed = {
     json: false,
     gate: false,
+    requireSafe: false,
     strict: false,
     skipHostScan: false,
     skipEvidence: false,
@@ -149,6 +150,11 @@ function parseArgs(rawArgs) {
 
     if (arg === "--gate") {
       parsed.gate = true;
+      continue;
+    }
+
+    if (arg === "--require-safe") {
+      parsed.requireSafe = true;
       continue;
     }
 
@@ -187,6 +193,7 @@ function parseArgs(rawArgs) {
       process.stdout.write("Usage: node ./scripts/studiobrain-status.mjs [flags]\n");
       process.stdout.write("  --json\n");
       process.stdout.write("  --gate\n");
+      process.stdout.write("  --require-safe    require status === pass (includes warnings)\n");
       process.stdout.write("  --strict\n");
       process.stdout.write("  --include-metrics\n");
       process.stdout.write("  --no-host-scan\n");
@@ -860,6 +867,7 @@ function printTextSummary(payload) {
     process.stdout.write("    warnings:\n");
     payload.contract.warnings.forEach((entry) => process.stdout.write(`      - ${entry}\n`));
   }
+  process.stdout.write(`  safe-to-run-high-risk: ${payload.posture.safeToRunHighRisk ? "yes" : "no"}\n`);
 
   if (payload.posture.blockers.length > 0) {
     process.stdout.write("  blockers:\n");

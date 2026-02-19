@@ -176,8 +176,8 @@ if ($RunNotificationDrills) {
     Add-StepResult -Results ([ref]$steps) -Name 'notification-drills' -Status 'skipped' -Notes 'Missing NotificationIdToken/NotificationUid (or env NOTIFICATION_ID_TOKEN/NOTIFICATION_UID).'
   } else {
     $notificationLog = Join-Path $outDirPath "notification-drills-$runId.jsonl"
-    $args = @(
-      '-File',
+    $notificationArgs = @(
+      'scripts/ps1-run.mjs',
       'scripts/run-notification-drills.ps1',
       '-BaseUrl', $FunctionsBaseUrl,
       '-IdToken', $idToken,
@@ -187,10 +187,10 @@ if ($RunNotificationDrills) {
     )
 
     if (-not [string]::IsNullOrWhiteSpace($NotificationAdminToken)) {
-      $args += @('-AdminToken', $NotificationAdminToken)
+      $notificationArgs += @('-AdminToken', $NotificationAdminToken)
     }
 
-    $result = Invoke-CapturedProcess -FilePath 'pwsh' -Arguments $args
+    $result = Invoke-CapturedProcess -FilePath 'node' -Arguments $notificationArgs
     if (Test-Path $notificationLog) {
       $artifacts.Add($notificationLog)
     }

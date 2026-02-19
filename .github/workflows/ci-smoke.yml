@@ -70,6 +70,15 @@ jobs:
       - name: Automated validation suite (unit, CORS, accessibility, UI)
         run: npm run test:full
 
+      - name: Source-of-truth index strict audit
+        run: npm run source:truth:index:strict
+
+      - name: Studio stack profile snapshot
+        run: npm run studio:stack:profile:snapshot:strict -- --artifact output/studio-stack-profile/latest.json
+
+      - name: Source-of-truth deployment gate matrix
+        run: node ./scripts/source-of-truth-deployment-gates.mjs --phase all --strict --json --artifact output/source-of-truth-deployment-gates/ci-smoke.json
+
       - name: Portal Playwright deep smoke (manual)
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_deep_playwright == 'true' || github.event_name == 'schedule' }}
         run: npm run functions:smoke:cors -- --base-url https://us-central1-monsoonfire-portal.cloudfunctions.net --origin https://monsoonfire-portal.web.app && npm run test:automation:ui:deep

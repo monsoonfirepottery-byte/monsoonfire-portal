@@ -5,9 +5,11 @@ import { createServer } from "node:http";
 import { extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
+import { resolveStudioBrainNetworkProfile } from "../../../scripts/studio-network-profile.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
+const defaultHost = resolveStudioBrainNetworkProfile().host || "127.0.0.1";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -108,7 +110,7 @@ process.on("SIGTERM", () => {
 
 function parseArgs(args) {
   const parsed = {
-    host: "127.0.0.1",
+    host: defaultHost,
     port: 8000,
     portRaw: "8000",
     root: repoRoot,

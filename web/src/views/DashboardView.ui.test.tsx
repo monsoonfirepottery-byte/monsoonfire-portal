@@ -107,6 +107,15 @@ function setupGetDocsPermissionThenSuccess() {
   };
 }
 
+function setupGetDocsEmptySuccess() {
+  getDocsCalls = [];
+  const empty = createSnapshot([]);
+  getDocsMock = async (queryRef: MockQuery) => {
+    getDocsCalls.push(queryRef);
+    return queryRef.path === "kilns" || queryRef.path === "kilnFirings" ? empty : createSnapshot([]);
+  };
+}
+
 function createUser(): User {
   return {
     uid: "studio-user-id",
@@ -159,5 +168,34 @@ describe("DashboardView kiln reload", () => {
     expect(getDocsCalls).toHaveLength(4);
     expect(getDocsCalls.filter((entry) => getQueryPath(entry) === "kilns").length).toBe(2);
     expect(getDocsCalls.filter((entry) => getQueryPath(entry) === "kilnFirings").length).toBe(2);
+  });
+
+  it("shows empty kiln state when no live data exists and mock fallback is not enabled", async () => {
+    setupGetDocsEmptySuccess();
+    const user = createUser();
+
+    render(
+      <DashboardView
+        user={user}
+        name="Maker"
+        themeName="portal"
+        threads={[]}
+        announcements={[]}
+        onThemeChange={vi.fn()}
+        onOpenKilnRentals={vi.fn()}
+        onOpenCheckin={vi.fn()}
+        onOpenQueues={vi.fn()}
+        onOpenFirings={vi.fn()}
+        onOpenStudioResources={vi.fn()}
+        onOpenGlazeBoard={vi.fn()}
+        onOpenCommunity={vi.fn()}
+        onOpenMessages={vi.fn()}
+        onOpenPieces={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText("No kiln status available yet.")).toBeDefined();
+    expect(screen.queryByText(/Using sample kiln data/i)).toBeNull();
+    expect(screen.queryByText("L&L eQ2827-3")).toBeNull();
   });
 });

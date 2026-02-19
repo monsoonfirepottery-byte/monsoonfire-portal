@@ -12,7 +12,7 @@
   - `docs/API_CONTRACTS.md` expanded with all implemented function contracts and request/response examples
 
 Notes:
-- Windows machine cannot run Swift/Xcode; iOS smoke test must be executed on macOS.
+- Some environments cannot run Swift/Xcode; iOS smoke test must be executed on macOS.
 - Emulator ADMIN_TOKEN must be set in env and emulator restarted.
 
 ## Progress update (2026-01-22)

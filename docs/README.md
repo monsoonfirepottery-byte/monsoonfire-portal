@@ -18,6 +18,10 @@ This folder contains the current integration references for the project.
   iOS API-layer setup, contracts alignment, and smoke-test guidance.
 - `docs/API_CONTRACTS.md`  
   Canonical API contract reference for request/response shapes and environment behavior.
+- `docs/DEEP_LINK_CONTRACT.md`  
+  Canonical deep-link contract for web + native clients.
+- `docs/SOURCE_OF_TRUTH_INDEX.md`  
+  Source-of-truth registry for contract/deployment gate wiring.
 - `docs/MILESTONE_2026-01-19.md`  
   Milestone history and implementation notes.
 
@@ -44,6 +48,18 @@ This folder contains the current integration references for the project.
   Build portal bundle and assert no localhost Studio Brain backend references are shipped.
 - `npm run test:automation:ui:deep`  
   Deep portal browser probes only (`/readyz`, backend function probes, critical endpoint capture).
+- `npm run source:truth:contract:strict`  
+  Contract parity matrix for web/native/backend and API route drift.
+- `npm run source:truth:deployment`  
+  Deployment target and profile matrix checks for staging/beta/production/store-readiness.
+- `npm run smoke:phased`  
+  Phase-aware smoke matrix validation.
+- `npm run mobile:store-readiness`  
+  Deep-link + `.well-known` + mobile parity validation.
+- `npm run epics:agentic:run`  
+  Emit an agentic dispatch manifest for blocker epics `1-8` in JSONL for autonomous ticket execution.
+- `npm run epics:agentic:run:md`  
+  Emit the same agentic dispatch for blocker epics `1-8` as markdown artifacts under `output/epic-hub-runner/<run-id>/`.
 
 ## iOS contract parity
 

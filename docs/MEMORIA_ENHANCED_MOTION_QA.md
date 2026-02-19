@@ -22,7 +22,7 @@
   - included in `.github/workflows/ci-smoke.yml`.
 
 ## Manual QA Matrix
-- Windows desktop Chrome:
+- Non-macOS desktop environments:
   - Toggle Enhanced motion in Profile and verify immediate behavior change.
   - Reload and verify persistence.
 - Narrow viewport (`<=720px`):

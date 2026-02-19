@@ -9,11 +9,25 @@ The folder structure mirrors the site root. For example:
 
 If a file does not exist in the variant folder, the server falls back to the main site file.
 
-Run the server with:
+Run the server with the Node entrypoint:
 
+```bash
+node website/scripts/serve-ab.mjs --root website/ncsitebuilder
 ```
-pwsh .\serve-ab.ps1
+
+Or via npm:
+
+```bash
+npm run website:serve:ncsitebuilder:ab
 ```
+
+Compatibility shim (legacy/optional):
+
+```sh
+node ./scripts/ps1-run.mjs website/ncsitebuilder/serve-ab.ps1
+```
+
+For primary Studio Brain onboarding and CI-style flows, prefer `node website/scripts/serve-ab.mjs` or `npm run website:serve:ncsitebuilder:ab`.
 
 Force a variant with:
 

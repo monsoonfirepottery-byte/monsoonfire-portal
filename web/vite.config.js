@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import { resolveStudioBrainNetworkProfile } from "../scripts/studio-network-profile.mjs";
 
 export default defineConfig(({ mode }) => {
   const isDev = mode === "development";
@@ -10,8 +11,15 @@ export default defineConfig(({ mode }) => {
       .map((entry) => entry.trim())
       .filter(Boolean);
 
-  const host = process.env.VITE_DEV_HOST || process.env.VITE_HOST || "127.0.0.1";
-  const allowedHosts = parseCsvList(process.env.VITE_ALLOWED_HOSTS);
+  const network = resolveStudioBrainNetworkProfile();
+  const defaultHost = network.host || "127.0.0.1";
+  const profileHosts = network.allowedStudioBrainHosts || [];
+  const defaultAllowedHosts = Array.from(new Set(profileHosts.concat(parseCsvList(process.env.VITE_ALLOWED_HOSTS)));
+
+  const host = process.env.VITE_DEV_HOST || process.env.VITE_HOST || defaultHost;
+  const allowedHosts = parseCsvList(process.env.VITE_ALLOWED_HOSTS).length > 0
+    ? parseCsvList(process.env.VITE_ALLOWED_HOSTS)
+    : defaultAllowedHosts;
 
   const plugins = [react()];
   if (!isDev) {

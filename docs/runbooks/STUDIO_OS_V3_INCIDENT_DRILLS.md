@@ -24,7 +24,7 @@ Run only in staging:
 - `studio-brain/scripts/chaos/delegation_revocation_race.mjs`
 
 Before running a scenario, append a fresh log template:
-- `pwsh scripts/new-studio-os-v3-drill-log-entry.ps1 -ScenarioId "connector_outage" -Environment "staging" -StudioBrainBaseUrl "http://127.0.0.1:8787"`
+- `node ./scripts/ps1-run.mjs scripts/new-studio-os-v3-drill-log-entry.ps1 -ScenarioId "connector_outage" -Environment "staging" -StudioBrainBaseUrl "http://127.0.0.1:8787"`
 
 Guards:
 - `CHAOS_MODE=true`

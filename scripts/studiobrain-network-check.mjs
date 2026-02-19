@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import dns from "node:dns/promises";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 
 import { resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
 
@@ -10,6 +10,20 @@ const asJson = args.has("--json");
 const gate = args.has("--gate");
 const strict = args.has("--strict");
 const writeState = args.has("--write-state") || args.has("--persist-state");
+const parseArgs = process.argv.slice(2);
+let artifactPath = null;
+
+for (let index = 0; index < parseArgs.length; index += 1) {
+  if (parseArgs[index] === "--artifact") {
+    artifactPath = parseArgs[index + 1] || null;
+    index += 1;
+    continue;
+  }
+
+  if (parseArgs[index]?.startsWith("--artifact=")) {
+    artifactPath = parseArgs[index].substring("--artifact=".length);
+  }
+}
 
 const network = resolveStudioBrainNetworkProfile();
 const nowIso = new Date().toISOString();
@@ -103,6 +117,18 @@ async function main() {
     issues.push("No base URL resolved from network profile.");
   }
 
+  if (network.networkTargetMode === "static" && !network.staticIpEnabled) {
+    issues.push("LAN static profile is active but STUDIO_BRAIN_STATIC_IP is not configured.");
+  }
+
+  if (network.networkTargetMode === "dhcp" && network.hostSource?.includes("STUDIO_BRAIN_STATIC_IP")) {
+    warnings.push("Static IP source was provided while profile is DHCP-oriented; confirm this is intentional.");
+  }
+
+  if (network.profileSource && network.profileSource !== "environment" && network.profileSource !== "network profile file") {
+    warnings.push(`Host profile source is ${network.profileSource}; verify this is expected.`);
+  }
+
   if (network.requestedProfile && network.requestedProfile !== network.profile) {
     warnings.push(`Requested profile "${network.requestedProfile}" normalized to "${network.profile}".`);
   }
@@ -143,6 +169,23 @@ async function main() {
 
   const statePersistRequested = writeState;
   const preStateHardFail = issues.length > 0 || (strict && warnings.length > 0);
+  const lease = {
+    enabled: Boolean(state.state),
+    lastProfile: state.state?.profile || "",
+    lastRequestedProfile: state.state?.requestedProfile || "",
+    lastHost: state.state?.host || "",
+    lastBaseUrl: state.state?.baseUrl || "",
+    lastUpdatedAt: state.state?.updatedAt || "",
+    changed: Boolean(
+      state.state &&
+      (state.state.profile === network.profile) &&
+      String(state.state.host || "").toLowerCase() !== String(network.host || "").toLowerCase(),
+    ),
+  };
+
+  if (lease.enabled && lease.changed && !strict) {
+    warnings.push(`Host identity changed for ${network.profile} profile: previous=${lease.lastHost}; current=${network.host}.`);
+  }
 
   let stateSaved = false;
   const stateSaveWarning = [];
@@ -179,16 +222,30 @@ async function main() {
     status: hardFail ? "fail" : "pass",
     strictMode: strict,
     networkProfile: network.profile,
+    networkTargetMode: network.networkTargetMode,
+    profileSource: network.profileSource,
+    hostSource: network.hostSource,
+    staticIpEnabled: network.staticIpEnabled,
     requestedProfile: network.requestedProfile,
     host: network.host,
     baseUrl: network.baseUrl,
     hostMode: hostResolution.mode,
     hostAddresses: hostResolution.addresses,
+    lease,
     hostStateFile: network.hostStateFile,
     stateSaved,
     issues,
     warnings,
   };
+
+  if (artifactPath) {
+    const artifactDir = dirname(resolve(process.cwd(), artifactPath));
+    if (artifactDir) {
+      mkdirSync(artifactDir, { recursive: true });
+    }
+    writeFileSync(resolve(process.cwd(), artifactPath), `${JSON.stringify(result, null, 2)}\n`, "utf8");
+    result.artifact = resolve(process.cwd(), artifactPath);
+  }
 
   if (asJson) {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

@@ -12,9 +12,9 @@ Firebase project: monsoonfire-portal
 - [ ] Confirm `.well-known` files exist when needed
 
 Run verifier:
-```powershell
-pwsh web/deploy/namecheap/verify-cutover.ps1 -PortalUrl "https://portal.monsoonfire.com" -ReportPath "docs/cutover-verify.json"
-```
+- Execute verifier script (primary Node path): `node ./web/deploy/namecheap/verify-cutover.mjs --portal-url "https://portal.monsoonfire.com" --report-path "docs/cutover-verify.json"`
+- Compatibility shell form:
+  - `web/deploy/namecheap/verify-cutover -PortalUrl "https://portal.monsoonfire.com" -ReportPath "docs/cutover-verify.json"`
 
 ## 2) Firebase Auth baseline
 - [ ] Firebase Console -> Authentication -> Settings -> Authorized domains include:
@@ -32,9 +32,9 @@ pwsh web/deploy/namecheap/verify-cutover.ps1 -PortalUrl "https://portal.monsoonf
 - [ ] Redirect URIs copied from Firebase provider panels exactly
 
 Log entry helper:
-```powershell
-pwsh scripts/new-auth-provider-run-entry.ps1 -OutFile docs/PROD_AUTH_PROVIDER_RUN_LOG.md -PortalUrl "https://portal.monsoonfire.com"
-```
+- Use `node ./scripts/ps1-run.mjs scripts/new-auth-provider-run-entry.ps1`
+- `-OutFile docs/PROD_AUTH_PROVIDER_RUN_LOG.md`
+- `-PortalUrl "https://portal.monsoonfire.com"`
 
 ## 4) Hosted auth verification
 - [ ] Google sign-in succeeds on hosted portal
@@ -46,13 +46,16 @@ pwsh scripts/new-auth-provider-run-entry.ps1 -OutFile docs/PROD_AUTH_PROVIDER_RU
 
 ## 5) Notification drill execution (prod token required)
 - [ ] Append run template:
-```powershell
-pwsh scripts/new-drill-log-entry.ps1 -Uid "<REAL_UID>"
-```
+  - Run `node ./scripts/ps1-run.mjs scripts/new-drill-log-entry.ps1`
+  - `-Uid "<REAL_UID>"`
 - [ ] Run drills:
-```powershell
-pwsh scripts/run-notification-drills.ps1 -BaseUrl "https://us-central1-monsoonfire-portal.cloudfunctions.net" -IdToken "<REAL_ID_TOKEN>" -Uid "<REAL_UID>" -OutputJson -LogFile "docs/drill-runs.jsonl"
-```
+  - Execute `node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1`
+  - Parameters:
+    - `-BaseUrl "https://us-central1-monsoonfire-portal.cloudfunctions.net"`
+    - `-IdToken "<REAL_ID_TOKEN>"`
+    - `-Uid "<REAL_UID>"`
+    - `-OutputJson`
+    - `-LogFile "docs/drill-runs.jsonl"`
 - [ ] Verify Firestore evidence collections and update `docs/DRILL_EXECUTION_LOG.md`
 
 ## 6) Final evidence handoff

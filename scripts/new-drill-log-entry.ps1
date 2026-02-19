@@ -29,8 +29,8 @@ adminTokenUsed: no
 ```
 
 ## Command used
-```powershell
-pwsh -File scripts/run-notification-drills.ps1 `
+```sh
+node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1 `
   -BaseUrl "$BaseUrl" `
   -IdToken "<REDACTED_ID_TOKEN>" `
   -Uid "$uidText"

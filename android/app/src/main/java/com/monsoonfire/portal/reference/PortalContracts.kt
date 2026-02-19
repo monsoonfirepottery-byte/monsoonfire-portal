@@ -86,6 +86,21 @@ data class UpdateReservationRequest(
 )
 
 @Serializable
+data class AssignReservationStationRequest(
+    val reservationId: String,
+    val assignedStationId: String,
+    val queueClass: String? = null,
+    val requiredResources: AssignedStationRequiredResources? = null
+)
+
+@Serializable
+data class AssignedStationRequiredResources(
+    val kilnProfile: String? = null,
+    val rackCount: Int? = null,
+    val specialHandling: List<String>? = null
+)
+
+@Serializable
 data class MaterialsCartItemRequest(
     val productId: String,
     val quantity: Int
@@ -131,6 +146,47 @@ data class ListBillingSummaryRequest(
     val limit: Int? = null,
     val from: String? = null,
     val to: String? = null
+)
+
+@Serializable
+data class ImportLibraryIsbnsRequest(
+    val isbns: List<String>,
+    val source: String? = null
+)
+
+@Serializable
+data class RegisterDeviceTokenRequest(
+    val token: String,
+    val platform: String? = null,
+    val environment: String? = null,
+    val appVersion: String? = null,
+    val appBuild: String? = null,
+    val deviceModel: String? = null
+)
+
+@Serializable
+data class UnregisterDeviceTokenRequest(
+    val token: String? = null,
+    val tokenHash: String? = null
+)
+
+@Serializable
+data class RunNotificationFailureDrillRequest(
+    val uid: String,
+    val mode: String,
+    val channels: NotificationFailureDrillChannels? = null,
+    val forceRunNow: Boolean? = null
+)
+
+@Serializable
+data class NotificationFailureDrillChannels(
+    val inApp: Boolean? = null,
+    val email: Boolean? = null,
+    val push: Boolean? = null
+)
+
+@Serializable
+data class RunNotificationMetricsAggregationNowRequest(
 )
 
 @Serializable
@@ -232,6 +288,17 @@ data class UpdateReservationResponse(
     val ok: Boolean,
     val reservationId: String? = null,
     val status: String? = null
+)
+
+@Serializable
+data class AssignReservationStationResponse(
+    val ok: Boolean,
+    val reservationId: String? = null,
+    val assignedStationId: String? = null,
+    val previousAssignedStationId: String? = null,
+    val stationCapacity: Int? = null,
+    val stationUsedAfter: Int? = null,
+    val idempotentReplay: Boolean? = null
 )
 
 typealias EventStatus = String
@@ -409,6 +476,53 @@ data class CheckInEventResponse(
 data class CreateEventCheckoutSessionResponse(
     val ok: Boolean,
     val checkoutUrl: String? = null
+)
+
+@Serializable
+data class ImportLibraryIsbnError(
+    val isbn: String,
+    val message: String
+)
+
+@Serializable
+data class ImportLibraryIsbnsResponse(
+    val ok: Boolean,
+    val requested: Int,
+    val created: Int,
+    val updated: Int,
+    val errors: List<ImportLibraryIsbnError>? = null
+)
+
+@Serializable
+data class RegisterDeviceTokenResponse(
+    val ok: Boolean,
+    val uid: String,
+    val tokenHash: String
+)
+
+@Serializable
+data class UnregisterDeviceTokenResponse(
+    val ok: Boolean,
+    val uid: String,
+    val tokenHash: String
+)
+
+@Serializable
+data class RunNotificationFailureDrillResponse(
+    val ok: Boolean,
+    val jobId: String,
+    val uid: String,
+    val mode: String
+)
+
+@Serializable
+data class RunNotificationMetricsAggregationNowResponse(
+    val ok: Boolean,
+    val windowHours: Int,
+    val totalAttempts: Int,
+    val statusCounts: Map<String, Int>,
+    val reasonCounts: Map<String, Int>,
+    val providerCounts: Map<String, Int>
 )
 
 @Serializable

@@ -74,9 +74,9 @@ $commands = [pscustomobject]@{
     [pscustomobject]@{ command = "/assets watchlist"; description = "Show latest studio asset watchlist." }
   )
   cli = @(
-    [pscustomobject]@{ command = "pwsh -File scripts/run-real-estate-weekly-cadence.ps1"; description = "Run full weekly intelligence cadence." },
-    [pscustomobject]@{ command = "pwsh -File scripts/run-real-estate-test-suite.ps1"; description = "Run test suite checks." },
-    [pscustomobject]@{ command = "pwsh -File scripts/add-intelligence-steering-entry.ps1 -OpportunityId <id> -Action <action> -ReasonCode <code>"; description = "Log steering action." }
+    [pscustomobject]@{ command = "node ./scripts/ps1-run.mjs scripts/run-real-estate-weekly-cadence.ps1"; description = "Run full weekly intelligence cadence." },
+    [pscustomobject]@{ command = "node ./scripts/ps1-run.mjs scripts/run-real-estate-test-suite.ps1"; description = "Run test suite checks." },
+    [pscustomobject]@{ command = "node ./scripts/ps1-run.mjs scripts/add-intelligence-steering-entry.ps1 -OpportunityId <id> -Action <action> -ReasonCode <code>"; description = "Log steering action." }
   )
   portal = @(
     [pscustomobject]@{ action = "open_review_packet"; description = "Render latest review cards." },
@@ -112,4 +112,3 @@ $result | ConvertTo-Json -Depth 10 | Set-Content -Path $latestPath -Encoding UTF
 
 Write-Host "Wrote $jsonPath"
 Write-Host "Wrote $latestPath"
-

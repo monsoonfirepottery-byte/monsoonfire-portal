@@ -25,14 +25,14 @@ These items cannot be completed from repo-only tooling because they require:
   - Apple Developer
   - Facebook Developers
 - A production staff account able to sign in to portal auth
-- PowerShell in repo root: `D:\monsoonfire-portal`
+- Repo root in your terminal: your checked-out `monsoonfire-portal` workspace
 
 ## Step 1: Run Consolidated Checklist
 
 From repo root:
 
-```powershell
-scripts/run-external-cutover-checklist.ps1
+```bash
+node ./scripts/run-external-cutover-checklist.mjs
 ```
 
 If script supports report output in your branch, use it and keep the output artifact.
@@ -57,8 +57,8 @@ Perform:
 
 Verify with:
 
-```powershell
-web/deploy/namecheap/verify-cutover.ps1
+```text
+web/deploy/namecheap/verify-cutover
 ```
 
 Capture evidence:
@@ -95,14 +95,14 @@ Follow:
 
 Generate a sanitized drill log entry template:
 
-```powershell
-scripts/new-drill-log-entry.ps1
+```text
+node ./scripts/ps1-run.mjs scripts/new-drill-log-entry.ps1
 ```
 
 Run drills (example shape; use your approved args/window):
 
-```powershell
-scripts/run-notification-drills.ps1 -IdToken "<REAL_STAFF_ID_TOKEN>" -Uid "<STAFF_UID>" -OutputJson "docs/drill-output.json" -LogFile "docs/DRILL_EXECUTION_LOG.md"
+```text
+node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1 -IdToken "<REAL_STAFF_ID_TOKEN>" -Uid "<STAFF_UID>" -OutputJson "docs/drill-output.json" -LogFile "docs/DRILL_EXECUTION_LOG.md"
 ```
 
 Post-run verify Firestore artifacts:
@@ -123,7 +123,7 @@ Use this prompt in ChatGPT web (GPT-5.2) to guide live console work:
 You are my production rollout copilot. I need a strict, step-by-step execution and verification walkthrough for Monsoon Fire portal unblock tasks.
 
 Repository context:
-- Local repo: D:\monsoonfire-portal
+- Local repo: monsoonfire-portal
 - Runbook: docs/EXTERNAL_UNBLOCK_ACTIONS_CHATGPT_WEB.md
 - Related docs:
   - web/deploy/namecheap/README.md
@@ -163,4 +163,3 @@ Update (YYYY-MM-DD):
 - Residual issues: <none or details>
 - Next action: <if any>
 ```
-

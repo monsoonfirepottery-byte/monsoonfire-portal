@@ -65,9 +65,9 @@ const RULES = [
     id: "legacy-host-assumption",
     category: "legacy-host-assumption",
     severity: "warning",
-    description: "Legacy host assumptions may drift when moving off wuff-laptop.",
+    description: "Legacy host assumptions may drift during workstation migration.",
     patterns: [
-      /\bwuff-laptop\b/gi,
+      /legacy host assumptions/gi,
     ],
   },
 ];

@@ -1,14 +1,14 @@
 # Notification Drill Execution Log
 
-Use this log while running `scripts/run-notification-drills.ps1` against deployed functions.
+Use this log while running `node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1` against deployed functions.
 
 IMPORTANT: Do not paste real Firebase ID tokens or admin tokens into this file. Keep token values in your shell/clipboard only and record sources/results here.
 
 Helper:
 - You can append a fresh run template automatically with:
-  - `pwsh scripts/new-drill-log-entry.ps1 -Uid "<REAL_UID>"`
+  - `node ./scripts/ps1-run.mjs scripts/new-drill-log-entry.ps1 -Uid "<REAL_UID>"`
 - For Studio OS v3 incident drills, append a v3 template with:
-  - `pwsh scripts/new-studio-os-v3-drill-log-entry.ps1 -ScenarioId "connector_outage" -Environment "staging" -StudioBrainBaseUrl "http://127.0.0.1:8787"`
+  - `scripts/new-studio-os-v3-drill-log-entry -ScenarioId "connector_outage" -Environment "staging" -StudioBrainBaseUrl "http://127.0.0.1:8787"`
 
 ## Run metadata
 ```txt
@@ -21,10 +21,10 @@ adminTokenUsed: yes/no (should be "no" for production drills)
 ```
 
 ## Command used
-```powershell
-pwsh -File scripts/run-notification-drills.ps1 `
-  -BaseUrl "https://us-central1-monsoonfire-portal.cloudfunctions.net" `
-  -IdToken "<REDACTED_ID_TOKEN>" `
+```shell
+node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1 \
+  -BaseUrl "https://us-central1-monsoonfire-portal.cloudfunctions.net" \
+  -IdToken "<REDACTED_ID_TOKEN>" \
   -Uid "<REAL_UID>"
 ```
 
@@ -66,10 +66,10 @@ adminTokenUsed: no
 ```
 
 ## Command used
-```powershell
-pwsh -File scripts/run-notification-drills.ps1 `
-  -BaseUrl "https://us-central1-monsoonfire-portal.cloudfunctions.net" `
-  -IdToken "<REDACTED_ID_TOKEN>" `
+```shell
+node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1 \
+  -BaseUrl "https://us-central1-monsoonfire-portal.cloudfunctions.net" \
+  -IdToken "<REDACTED_ID_TOKEN>" \
   -Uid "<REAL_UID>"
 ```
 
@@ -107,7 +107,7 @@ scenarioId: (token_compromise | connector_outage | policy_bypass_attempt | local
 ```
 
 ## Commands used
-```powershell
+```sh
 # Example: kill switch toggle
 CHAOS_MODE=true NODE_ENV=staging STUDIO_BRAIN_BASE_URL=http://127.0.0.1:8787 STUDIO_BRAIN_ADMIN_TOKEN=<REDACTED> node studio-brain/scripts/chaos/kill_switch_toggle.mjs
 
@@ -155,7 +155,7 @@ scenarioId: token_compromise
 ```
 
 ## Commands used
-```powershell
+```sh
 # Set only one chaos script per run entry.
 CHAOS_MODE=true NODE_ENV=staging STUDIO_BRAIN_BASE_URL=http://127.0.0.1:8787 STUDIO_BRAIN_ADMIN_TOKEN=<REDACTED> node studio-brain/scripts/chaos/kill_switch_toggle.mjs
 ```
@@ -199,7 +199,7 @@ artifact: output/drills/studio-os-v3-local-2026-02-17T17-47-52-585Z.json
 ```
 
 ## Commands used
-```powershell
+```sh
 node scripts/run-studio-os-v3-local-drills.mjs
 ```
 
@@ -257,7 +257,7 @@ scenarioId: connector_outage
 ```
 
 ## Commands used
-```powershell
+```sh
 # Set only one chaos script per run entry.
 CHAOS_MODE=true NODE_ENV=staging STUDIO_BRAIN_BASE_URL=http://127.0.0.1:8787 STUDIO_BRAIN_ADMIN_TOKEN=<REDACTED> node studio-brain/scripts/chaos/kill_switch_toggle.mjs
 ```
@@ -300,7 +300,7 @@ scenarioId: policy_bypass_attempt
 ```
 
 ## Commands used
-```powershell
+```sh
 # Set only one chaos script per run entry.
 CHAOS_MODE=true NODE_ENV=staging STUDIO_BRAIN_BASE_URL=http://127.0.0.1:8787 STUDIO_BRAIN_ADMIN_TOKEN=<REDACTED> node studio-brain/scripts/chaos/kill_switch_toggle.mjs
 ```
@@ -343,7 +343,7 @@ scenarioId: local_db_corruption
 ```
 
 ## Commands used
-```powershell
+```sh
 # Set only one chaos script per run entry.
 CHAOS_MODE=true NODE_ENV=staging STUDIO_BRAIN_BASE_URL=http://127.0.0.1:8787 STUDIO_BRAIN_ADMIN_TOKEN=<REDACTED> node studio-brain/scripts/chaos/kill_switch_toggle.mjs
 ```

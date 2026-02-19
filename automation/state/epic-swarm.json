@@ -101,6 +101,11 @@
         "task_01": "completed",
         "task_02": "completed",
         "task_03": "completed"
+      },
+      "slice_2": {
+        "task_01": "completed",
+        "task_02": "completed",
+        "task_03": "completed"
       }
     },
     {

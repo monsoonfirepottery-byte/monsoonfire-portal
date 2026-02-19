@@ -3,7 +3,7 @@
     "apps": [],
     "details": [
       {
-        "appID": "<APPLE_TEAM_ID>.<BUNDLE_ID>",
+        "appID": "TEAMID.com.monsoonfire.portal.reference",
         "paths": [
           "/materials*",
           "/events*",
@@ -15,4 +15,3 @@
     ]
   }
 }
-

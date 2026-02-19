@@ -1,6 +1,6 @@
 # P2 — `studiobrain status` Command and Health Card
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Studio Brain
@@ -54,3 +54,16 @@ Add a unified status command that prints one-line and expanded health summaries 
 ## Definition of Done
 
 - Status is stable across Linux/macOS and usable as the first command for onboarding.
+- Operators can answer “is this safe to continue?” from one command.
+- JSON mode is parseable by CI/local automation hooks.
+- Critical drift is explicit in output with remediation links.
+
+## Completion notes
+
+- Implemented status safety gate mechanics for risky/high-risk operations.
+- Added `--require-safe` to `scripts/studiobrain-status.mjs`; the command now exits non-zero when status is not `pass` and `safeToRunHighRisk` is false.
+- Added `npm run studio:check:safe` script (`node ./scripts/studiobrain-status.mjs --require-safe`).
+- Updated required gate flows to consume the safe status check:
+  - `scripts/pr-gate.mjs` uses `npm run studio:check:safe -- --json`
+  - `scripts/studio-cutover-gate.mjs` uses `npm run studio:check:safe`
+- Updated PR and emulator runbooks to call safe status checks for cutover and high-risk flows.

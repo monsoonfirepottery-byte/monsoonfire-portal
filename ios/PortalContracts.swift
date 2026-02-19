@@ -166,6 +166,19 @@ struct UpdateReservationRequest: Codable {
     let staffNotes: String?
 }
 
+struct AssignReservationStationRequest: Codable {
+    let reservationId: String
+    let assignedStationId: String
+    let queueClass: String?
+    let requiredResources: ReservationStationResources?
+}
+
+struct ReservationStationResources: Codable {
+    let kilnProfile: String?
+    let rackCount: Int?
+    let specialHandling: [String]?
+}
+
 struct MaterialsCartItemRequest: Codable {
     let productId: String
     let quantity: Int
@@ -328,6 +341,16 @@ struct UpdateReservationResponse: Codable {
     let ok: Bool
     let reservationId: String?
     let status: String?
+}
+
+struct AssignReservationStationResponse: Codable {
+    let ok: Bool
+    let reservationId: String?
+    let assignedStationId: String?
+    let previousAssignedStationId: String?
+    let stationCapacity: Int?
+    let stationUsedAfter: Int?
+    let idempotentReplay: Bool?
 }
 
 struct MaterialProduct: Codable {

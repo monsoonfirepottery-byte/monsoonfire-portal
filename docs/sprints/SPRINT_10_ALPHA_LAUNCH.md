@@ -10,7 +10,7 @@ Goal: Close alpha go/no-go evidence, run production drills with real auth, and p
 - State: `todo`
 - Dependencies: S9-01, S9-02
 - Deliverables:
-  - run `scripts/run-notification-drills.ps1` with real staff ID token + UID
+- run `node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1` with real staff ID token + UID
   - capture responses in `docs/DRILL_EXECUTION_LOG.md`
   - verify retry/dead-letter behavior in Firestore collections
 - Verification:

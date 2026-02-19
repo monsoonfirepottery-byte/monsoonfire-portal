@@ -339,6 +339,43 @@ function buildChecks(profile, args) {
       },
     },
     {
+      name: "stability guardrails",
+      command: "npm",
+      args: ["run", "guardrails:check", "--", "--strict", "--json"],
+      required: false,
+      severity: "warning",
+      parseOutput: ({ output, command, durationMs, name }) => {
+        const parsed = safeJson({ output });
+        if (!parsed) {
+          return buildCheckFailure({
+            name,
+            severity: "warning",
+            required: false,
+            command,
+            durationMs,
+            status: COMMAND_SEVERITY.WARN,
+            message: "Unable to parse guardrails JSON output.",
+            output: truncateOutput(output),
+          });
+        }
+        const checkStatus = parsed.status === "pass" ? "pass" : "warn";
+        return {
+          name,
+          severity: "warning",
+          required: false,
+          status: checkStatus === "pass" ? COMMAND_SEVERITY.PASS : COMMAND_SEVERITY.WARN,
+          command,
+          durationMs,
+          message: `stability guardrails ${parsed.status}`,
+          output: truncateOutput(output),
+          extra: {
+            strict: parsed.strict,
+            summary: parsed.summary,
+          },
+        };
+      },
+    },
+    {
       name: "studio-brain host contract",
       command: "npm",
       args: ["run", "studio:host:contract:scan", "--", "--strict", "--json"],

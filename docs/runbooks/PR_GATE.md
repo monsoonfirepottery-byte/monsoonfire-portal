@@ -12,16 +12,40 @@ Default `npm run pr:gate` runs these required checks:
 4. Host profile consistency check for `STUDIO_BRAIN_HOST`, `STUDIO_BRAIN_PORT`, and `STUDIO_BRAIN_BASE_URL`
 5. Legacy host-contract scan (`npm run studio:host:contract:scan:strict`)
 6. Studio Brain network runtime contract (`node ./scripts/studiobrain-network-check.mjs --gate --strict --write-state`)
-7. Studio Brain preflight (`npm --prefix studio-brain run preflight`)
-8. Studio Brain status gate (`node ./scripts/studiobrain-status.mjs --json --gate --strict`)
+7. Stability guardrails (`npm run guardrails:check -- --strict`)
+8. Studio Brain preflight (`npm --prefix studio-brain run preflight`)
+9. Studio Brain status gate (`npm run studio:check:safe -- --json`)
+10. Platform-reference drift scan (`npm run audit:platform:refs:strict`) to catch non-essential OS/tooling assumptions outside host contracts.
+11. Source-of-truth contract matrix (`npm run source:truth:contract:strict`).
+12. Source-of-truth deployment matrix (`npm run source:truth:deployment -- --phase all --json --artifact output/source-of-truth-deployment-gates/pr-gate.json`).
+13. Well-known validation (`npm run well-known:validate:strict`).
 
 For a clean local state, each onboarding run should pass host contract scan + smoke + status checks in sequence.
 Recommended sequence:
 1. `npm run pr:gate`
 2. `npm run integrity:check`
 3. `npm run studio:host:contract:scan:strict`
-4. `npm run studio:status`
-5. `npm run pr:gate -- --smoke`
+4. `npm run guardrails:check`
+5. `npm run studio:status`
+6. `npm run pr:gate -- --smoke`
+7. `npm run source:truth:contract:strict`
+8. `npm run source:truth:deployment -- --phase all --json --artifact output/source-of-truth-deployment-gates/pr-gate.json`
+9. `npm run well-known:validate:strict`
+10. `npm run audit:platform:refs:strict`
+
+## Deployment gate recovery
+
+If `Source-of-truth deployment matrix` fails, run:
+
+```bash
+npm run source:truth:deployment -- --phase all --strict --json --artifact output/source-of-truth-deployment-gates/pr-gate.json
+```
+
+Then fix the first failed check by file:
+
+1. Workflow contract gaps: update the relevant `.github/workflows/*`.
+2. Runbook gaps: update `docs/EMULATOR_RUNBOOK.md`, `docs/runbooks/PORTAL_PLAYWRIGHT_SMOKE.md`, or `docs/runbooks/WEBSITE_PLAYWRIGHT_SMOKE.md`.
+3. Re-run the same command and `npm run pr:gate` until pass.
 
 ## Reliability and house-status loop
 For daily cutover readiness on Studiobrain, keep an always-on heartbeat record:
@@ -70,6 +94,7 @@ That appends:
 
 1. `npm run portal:smoke:playwright`
 2. `npm run website:smoke:playwright`
+3. `node ./scripts/phased-smoke-gate.mjs --phase staging --strict --json`
 
 ## Machine-readable artifact
 By default, the gate writes `artifacts/pr-gate.json`.
@@ -91,5 +116,7 @@ The JSON artifact includes:
 
 ## Related commands
 - `npm run studio:status` — quick health and contract state
-- `npm run studio:check` — strict readiness check
+- `npm run studio:check` — status gate for blockable checks
+- `npm run studio:check:safe` — strict "all green" readiness for high-risk ops
 - `npm run studio:env:validate` — env-only check
+- `npm run guardrails:check` — stability guardrails (resource, log, artifact, volume posture)

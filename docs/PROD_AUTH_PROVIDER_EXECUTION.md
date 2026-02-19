@@ -3,7 +3,7 @@
 This checklist is the execution companion for `tickets/P1-prod-auth-oauth-provider-credentials.md`.
 
 One-command planner:
-- `pwsh scripts/run-external-cutover-checklist.ps1 -PortalUrl https://portal.monsoonfire.com`
+- `node ./scripts/run-external-cutover-checklist.mjs --portal-url https://portal.monsoonfire.com`
 - Generates `docs/EXTERNAL_CUTOVER_EXECUTION.md` and runs cutover verifier when DNS resolves.
 
 ## Scope
@@ -79,7 +79,7 @@ Suggested table:
 | Microsoft |  |  |  |  |
 
 Helper:
-- `pwsh scripts/new-auth-provider-run-entry.ps1`
+- `node ./scripts/ps1-run.mjs scripts/new-auth-provider-run-entry.ps1` (compatibility script)
 - Optional: `-OutFile docs/PROD_AUTH_PROVIDER_RUN_LOG.md`
 
 ## 6) Rollback

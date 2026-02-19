@@ -51,7 +51,7 @@ These are "??" in `git status` but appear necessary for CI/build/test/docs:
 ## Web portal review notes
 
 ### Token handling and drill ergonomics
-- `scripts/run-notification-drills.ps1` now validates `-IdToken` looks like a Firebase ID token (JWT issuer `https://securetoken.google.com/*`), strips accidental `Bearer `, and provides a concrete "where to get it" hint.
+- `node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1` now validates `-IdToken` looks like a Firebase ID token (JWT issuer `https://securetoken.google.com/*`), strips accidental `Bearer `, and provides a concrete "where to get it" hint.
 - `docs/NOTIFICATION_ONCALL_RUNBOOK.md` now documents token sourcing and warns not to paste real tokens into repo docs.
 
 ### PWA assets (resolved)

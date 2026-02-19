@@ -48,11 +48,11 @@ Notes:
 - `-AdminToken` is the dev-only `x-admin-token` header. It is not a Firebase ID token and should normally be omitted for production drills.
 
 Drill runner script:
-- `scripts/run-notification-drills.ps1`
+- `node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1`
 - Production example (recommended):
-  - `pwsh -File scripts/run-notification-drills.ps1 -BaseUrl "https://us-central1-monsoonfire-portal.cloudfunctions.net" -IdToken "<REAL_ID_TOKEN>" -Uid "<REAL_UID>"`
+  - `node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1 -BaseUrl "https://us-central1-monsoonfire-portal.cloudfunctions.net" -IdToken "<REAL_ID_TOKEN>" -Uid "<REAL_UID>"`
 - Emulator example (dev-only):
-  - `pwsh -File scripts/run-notification-drills.ps1 -BaseUrl "http://127.0.0.1:5001/monsoonfire-portal/us-central1" -IdToken "<REAL_ID_TOKEN>" -Uid "<REAL_UID>" -AdminToken "<DEV_ADMIN_TOKEN>"`
+  - `node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1 -BaseUrl "http://127.0.0.1:5001/monsoonfire-portal/us-central1" -IdToken "<REAL_ID_TOKEN>" -Uid "<REAL_UID>" -AdminToken "<DEV_ADMIN_TOKEN>"`
 - Structured evidence output options:
   - `-OutputJson` prints a machine-readable run summary.
   - `-LogFile "docs/drill-runs.jsonl"` appends a compact JSON line per run for easy audit/history.

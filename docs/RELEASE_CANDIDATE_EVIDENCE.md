@@ -13,7 +13,7 @@
 - [x] Web tests pass (`npm --prefix web run test:run`)
 - [x] Web build pass (`npm --prefix web run build`)
 - [x] Web chunk budgets pass (`npm --prefix web run perf:chunks`)
-- [x] Alpha preflight script run (`pwsh scripts/alpha-preflight.ps1`) on head `62eba15dc593cb1c1422183e4d314238859dca51`
+- [x] Alpha preflight script run (`node ./scripts/ps1-run.mjs scripts/alpha-preflight.ps1`) on head `62eba15dc593cb1c1422183e4d314238859dca51`
 
 ## Notification Reliability Evidence
 - [ ] Retry/backoff verified for retryable classes (`provider_5xx`, `network`, `unknown`)
@@ -21,7 +21,7 @@
 - [ ] Push telemetry emits sent/partial/failed outcomes
 - [ ] Token invalidation verified on provider invalid-token responses
 - [ ] Stale-token cleanup scheduler verified
-- [ ] Drill script run log captured (`scripts/run-notification-drills.ps1`)
+- [ ] Drill script run log captured (`node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1`)
 - [ ] Drill worksheet completed (`docs/DRILL_EXECUTION_LOG.md`)
 
 ## Observability Evidence
@@ -75,12 +75,12 @@ rollbackNeeded: yes/no
 ```txt
 RISK-001: Production notification drill requires real staff token + runtime config.
 owner: Micah (owner/operator)
-mitigation: Execute `scripts/run-notification-drills.ps1` using real staff token; capture evidence in `docs/DRILL_EXECUTION_LOG.md`.
+mitigation: Execute `node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1` using real staff token; capture evidence in `docs/DRILL_EXECUTION_LOG.md`.
 rollback: Keep notification drill ticket open (`tickets/P0-alpha-drills-real-auth.md`) and do not promote alpha->beta without drill evidence.
 
 RISK-002: portal.monsoonfire.com cutover depends on external DNS/hosting console actions.
 owner: Micah (owner/operator)
-mitigation: Follow `web/deploy/namecheap/README.md` and run `web/deploy/namecheap/verify-cutover.ps1` after deployment.
+mitigation: Follow `web/deploy/namecheap/README.md` and run `node ./web/deploy/namecheap/verify-cutover.mjs` after deployment.
 rollback: Keep current known-good hosting path and do not switch traffic until cutover verification passes.
 
 RISK-003: OAuth provider credentials (Apple/Facebook/Microsoft) are external-console managed.

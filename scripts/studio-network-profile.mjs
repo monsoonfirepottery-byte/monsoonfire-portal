@@ -74,6 +74,26 @@ function normalizeProfile(value) {
   return PROFILE_ALIASES[normalized] ? normalized : "local";
 }
 
+function resolveHostSource({ requestedHost, profile, staticIp, requestedProfile, baseHost, networkFileHostFallback }) {
+  if (requestedHost) {
+    return `env STUDIO_BRAIN_HOST = ${requestedHost}`;
+  }
+
+  if (profile === "lan-static" && staticIp) {
+    return `STUDIO_BRAIN_STATIC_IP = ${staticIp}`;
+  }
+
+  if (profile !== "local" && baseHost === networkFileHostFallback) {
+    return `network profile STUDIO_BRAIN_LAN_HOST = ${networkFileHostFallback}`;
+  }
+
+  if (profile === "local") {
+    return "network profile fallback local host";
+  }
+
+  return `requested profile ${requestedProfile || profile}`;
+}
+
 function isLoopback(host) {
   const value = String(host || "").toLowerCase();
   return value === "127.0.0.1" || value === "localhost" || value === "::1";
@@ -102,14 +122,19 @@ export function resolveStudioBrainNetworkProfile(options = {}) {
   const requestedHost = String(
     env.STUDIO_BRAIN_HOST || networkFile.STUDIO_BRAIN_HOST || "",
   ).trim();
+  const localHost = String(
+    env.STUDIO_BRAIN_LOCAL_HOST || networkFile.STUDIO_BRAIN_LOCAL_HOST || "127.0.0.1",
+  ).trim();
 
   const profileHost = String(
     env.STUDIO_BRAIN_LAN_HOST || networkFile.STUDIO_BRAIN_LAN_HOST || normalizedConfig.defaultHost,
   ).trim();
-  const resolvedHost = requestedHost || (normalizedProfile === "lan-static" && staticIp ? staticIp : profileHost);
+  const networkFileHostFallback = normalizedProfile === "local" ? localHost : profileHost;
+  const resolvedHost = requestedHost
+    || (normalizedProfile === "lan-static" && staticIp ? staticIp : networkFileHostFallback);
   const baseHost = isLoopback(resolvedHost)
     ? normalizedProfile === "local"
-      ? "127.0.0.1"
+      ? localHost
       : String(env.STUDIO_BRAIN_LAN_HOST || networkFile.STUDIO_BRAIN_LAN_HOST || "studiobrain.local")
     : resolvedHost;
 
@@ -128,6 +153,22 @@ export function resolveStudioBrainNetworkProfile(options = {}) {
     env.STUDIO_BRAIN_HOST_STATE_FILE || networkFile.STUDIO_BRAIN_HOST_STATE_FILE || ".studiobrain-host-state.json",
   ).trim();
   const profileName = env.STUDIO_BRAIN_NETWORK_PROFILE || networkFile.STUDIO_BRAIN_NETWORK_PROFILE || normalizedProfile;
+  const hostSource = resolveHostSource({
+    requestedHost,
+    profile: normalizedProfile,
+    staticIp,
+    requestedProfile: profileName,
+    baseHost,
+    networkFileHostFallback,
+  });
+
+  const profileSource =
+    env.STUDIO_BRAIN_NETWORK_PROFILE ? "environment"
+      : networkFile.STUDIO_BRAIN_NETWORK_PROFILE ? "network profile file"
+      : "default profile fallback";
+
+  const staticIpEnabled = normalizedProfile === "lan-static" && Boolean(staticIp);
+  const networkTargetMode = normalizedProfile === "lan-static" ? "static" : normalizedProfile === "lan-dhcp" ? "dhcp" : "local";
 
   const warnings = [];
   if (!env.STUDIO_BRAIN_NETWORK_PROFILE && !networkFile.STUDIO_BRAIN_NETWORK_PROFILE) {
@@ -150,8 +191,12 @@ export function resolveStudioBrainNetworkProfile(options = {}) {
     requestedProfile: profileName,
     profile: normalizedProfile,
     port,
+    networkTargetMode,
+    hostSource,
+    profileSource,
     host: baseHost,
     profileLabel: normalizedConfig.label,
+    staticIpEnabled,
     baseUrl: resolvedBaseUrl,
     emulatorHost: baseHost,
     hostStateFile,

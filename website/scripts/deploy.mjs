@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
-import { existsSync } from "node:fs";
+import { basename, dirname, resolve } from "node:path";
+import { existsSync, statSync } from "node:fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -23,9 +23,18 @@ if (!env.WEBSITE_DEPLOY_SERVER) {
 
 const args = parseArgs(process.argv.slice(2));
 const source = resolve(args.source);
+const sourceName = basename(source);
+const remotePath = args.remotePath.endsWith("/") ? args.remotePath : `${args.remotePath}/`;
+const remoteSource = shellQuote(sourceName);
+const remotePathArg = shellQuote(remotePath);
 
 if (!existsSync(source)) {
   process.stderr.write(`Missing source directory: ${source}\n`);
+  process.exit(1);
+}
+const sourceStat = statSync(source);
+if (!sourceStat.isDirectory()) {
+  process.stderr.write(`Deploy source must be a directory: ${source}\n`);
   process.exit(1);
 }
 if (!args.server || args.server === "null" || args.server.trim() === "") {
@@ -46,12 +55,12 @@ runCommand("scp", [
   `${args.server}:${args.remotePath}`,
 ]);
 
-process.stdout.write(`Promoting ncsitebuilder into ${args.remotePath}...\n`);
+process.stdout.write(`Promoting ${sourceName} into ${args.remotePath}...\n`);
 runCommand("ssh", [
   "-p",
   String(args.port),
   args.server,
-  `cd ${args.remotePath} && cp -a ncsitebuilder/. .`,
+  `mkdir -p ${remotePathArg} && cd ${remotePathArg} && if [ -d ${remoteSource} ]; then cp -a ${remoteSource}/. . && rm -rf ${remoteSource}; fi`,
 ]);
 
 process.stdout.write("Done.\n");
@@ -98,6 +107,10 @@ function parseArgs(argv) {
   }
 
   return parsed;
+}
+
+function shellQuote(raw) {
+  return `'${String(raw).replace(/'/g, "'\"'\"'")}'`;
 }
 
 function runCommand(command, commandArgs) {

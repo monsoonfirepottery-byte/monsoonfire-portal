@@ -16,11 +16,11 @@ Date: 2026-02-06
 1. Restart your terminal (so PATH picks up GitHub CLI).
 2. Authenticate GitHub CLI:
 
-```powershell
-"C:\Program Files\GitHub CLI\gh.exe" auth login
+```bash
+gh auth login
 ```
 
-If you prefer to keep everything in Git Credential Manager instead of `gh`, a plain `git fetch`/`git push` will prompt for auth when needed.
+If you prefer to keep everything in Git Credential Manager, use `git fetch`/`git push` and the normal prompt flow.
 
 ## Structure / Release Hygiene (alpha)
 High signal items to keep CI and release branches sane:

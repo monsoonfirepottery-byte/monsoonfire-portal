@@ -34,8 +34,8 @@ Use this as a handoff for future agents and on-call staff.
    - `updateReservation.ts`: mismatch between `string | null` and typed `ReservationStatus` / `LoadStatus`.
    - These were resolved in the earlier commit series culminating in `0c91e4f0`.
 
-3. `npx firebase-tools deploy ... --only functions:websiteKilnBoard --only hosting` / PowerShell attempts produced inconsistent behavior.
-   - Root cause: deploying command + predeploy parsing under Windows and outdated local code mismatch.
+3. `npx firebase-tools deploy ... --only functions:websiteKilnBoard --only hosting` / legacy shell attempts produced inconsistent behavior.
+  - Root cause: deploying command + predeploy parsing under legacy shells and outdated local code mismatch.
    - Initial function deploy prechecks passed after auth/session issues were resolved, then:
      - `TS1361: cannot be used as a value because it was imported using 'import type'`
      - `hosting predeploy` failure: `spawn npm --prefix web run build ENOENT`.
@@ -51,33 +51,33 @@ Use this as a handoff for future agents and on-call staff.
   - `hosting.predeploy`: changed from `npm --prefix web run build` to `npm run build:web`
 
 Why this helps:
-- Removes command-parser differences where CLI can incorrectly treat `npm --prefix ...` as a single executable token on Windows/Powershell during spawn.
+- Removes command-parser differences where CLI can incorrectly treat `npm --prefix ...` as a single executable token during spawn.
 - If deployment stalls at:
   `User code failed to load. Cannot determine backend specification. Timeout after 10000...`
   - raise discovery timeout before redeploying:
     - `FUNCTIONS_DISCOVERY_TIMEOUT` (seconds) = `120` is a good first value.
 
-## Commands that now work reliably (Windows PowerShell)
+## Commands that now work reliably (cross-platform shells)
 
 Set token:
-```powershell
-$env:FIREBASE_TOKEN="your-token"
+```bash
+export FIREBASE_TOKEN="your-token"
 ```
 
 Deploy only website backend function + hosting:
-```powershell
-$env:FUNCTIONS_DISCOVERY_TIMEOUT="120"
-npx firebase-tools deploy --project monsoonfire-portal --only functions:websiteKilnBoard,hosting --token $env:FIREBASE_TOKEN --non-interactive
+```bash
+export FUNCTIONS_DISCOVERY_TIMEOUT="120"
+npx firebase-tools deploy --project monsoonfire-portal --only functions:websiteKilnBoard,hosting --token "$FIREBASE_TOKEN" --non-interactive
 ```
 If you only need functions right now:
-```powershell
-$env:FUNCTIONS_DISCOVERY_TIMEOUT="120"
-npx firebase-tools deploy --project monsoonfire-portal --only functions:websiteKilnBoard --token $env:FIREBASE_TOKEN --non-interactive
+```bash
+export FUNCTIONS_DISCOVERY_TIMEOUT="120"
+npx firebase-tools deploy --project monsoonfire-portal --only functions:websiteKilnBoard --token "$FIREBASE_TOKEN" --non-interactive
 ```
 
 Validate project context if needed:
-```powershell
-npx firebase-tools projects:list --token $env:FIREBASE_TOKEN
+```bash
+npx firebase-tools projects:list --token "$FIREBASE_TOKEN"
 ```
 
 Optional local checks before deploy:
@@ -133,7 +133,7 @@ npm --prefix web run test:run
 - Local Vite dev server: `http://localhost:5173`
 - Function endpoint: `https://us-central1-monsoonfire-portal.cloudfunctions.net/websiteKilnBoard`
 
-## Host-side command reminders for Windows PowerShell
+## Host-side command reminders
 
 - If browser shows CORS errors like `No 'Access-Control-Allow-Origin' header` against
   `https://us-central1-monsoonfire-portal.cloudfunctions.net/...` from
@@ -145,20 +145,20 @@ npm --prefix web run test:run
   set `VITE_STUDIO_BRAIN_BASE_URL` in the web app environment/build for that deployment.
 
 - Set token once per session:
-  - `$env:FIREBASE_TOKEN="563584335869-..."`
+  - `export FIREBASE_TOKEN="563584335869-..."`
 - Validate access before deploy:
-  - `npx firebase-tools projects:list --token $env:FIREBASE_TOKEN`
+  - `npx firebase-tools projects:list --token "$FIREBASE_TOKEN"`
 - If deploy fails with discovery timeout, set timeout and use this deploy pattern:
-  - `npx firebase-tools deploy --project monsoonfire-portal --only functions:websiteKilnBoard,hosting --token $env:FIREBASE_TOKEN --non-interactive`
+- `npx firebase-tools deploy --project monsoonfire-portal --only functions:websiteKilnBoard,hosting --token "$FIREBASE_TOKEN" --non-interactive`
 - If deploy fails with `401`:
   - check token freshness
   - rerun `projects:list` with the same token
   - retry with freshly copied token from browser login flow
 
-## PowerShell-specific gotchas observed
+## Shell-specific gotchas observed
 
-- `export` is a Bash command and does not work in PowerShell.
-- Use `$env:VAR = "..."` to persist env in-session values.
+- `export` is not a legacy shell assignment command on all environments.
+- Use shell-native environment assignment for your shell (`export`, `$env:VAR = "..."`, etc.).
 - `--project` must receive a value; missing alias/id produces parser errors before auth can begin.
 - `npx firebase-tools deploy --only functions:websiteKilnBoard --only hosting` can trigger parsing ambiguities.
   - Prefer one combined `--only` list string, for example:

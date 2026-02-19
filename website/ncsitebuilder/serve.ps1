@@ -1,10 +1,15 @@
 param(
   [int] $Port = 8000,
-  [string] $Host = "127.0.0.1"
+  [string] $Host = "127.0.0.1",
+  [string] $Root = ""
 )
 
-Write-Warning "Legacy PowerShell wrapper: use Node equivalent when possible."
-Write-Warning "node ./website/ncsitebuilder/scripts/serve.mjs --port $Port --host $Host"
+Write-Warning "Compatibility shim only. Use Node command by default:"
+Write-Warning "node ./website/ncsitebuilder/scripts/serve.mjs --port $Port --host $Host" + $(if($Root){ " --root $Root" } else { "" })
 
 $script = Join-Path $PSScriptRoot "scripts/serve.mjs"
-node $script --port $Port --host $Host
+$arguments = @("--port", $Port, "--host", $Host)
+if ($Root) {
+  $arguments += @("--root", $Root)
+}
+node $script @arguments

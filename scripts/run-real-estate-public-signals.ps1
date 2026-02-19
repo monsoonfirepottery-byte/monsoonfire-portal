@@ -180,7 +180,7 @@ function Get-PromptInjectionAssessment {
     "do not follow your instructions" = 7
     "api key" = 5
     "access token" = 5
-    "powershell -enc" = 8
+    "encoded shell command" = 8
     "cmd.exe" = 7
     "<script" = 8
     "javascript:" = 8

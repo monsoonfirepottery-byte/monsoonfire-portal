@@ -1,0 +1,342 @@
+{
+  "timestamp": "2026-02-18T22:50:56.469Z",
+  "roots": [
+    "docs",
+    "tickets",
+    "scripts",
+    "website",
+    "web",
+    "functions",
+    "studio-brain"
+  ],
+  "scannedFiles": 531,
+  "skippedFiles": 0,
+  "skippedMarkers": 39,
+  "actionableWindowsMarkerFindings": [],
+  "windowsMarkerFindings": [],
+  "exemptedWindowsMarkerFindings": [],
+  "ps1Files": [
+    {
+      "file": "scripts/add-intelligence-steering-entry.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 90,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/alpha-preflight.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 71,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/build-real-estate-entity-resolution.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 210,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/build-real-estate-macro-context.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 197,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/build-real-estate-needs-context.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 303,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/build-real-estate-parcel-graph.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 238,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/build-real-estate-public-signal-staging.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 926,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/build-real-estate-quarterly-context.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 229,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/build-studiobrain-coordinator-adapters.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 115,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/cutover-watchdog.ps1",
+      "classification": "compatibility-shim",
+      "isCompatibilityShim": true,
+      "lineCount": 35,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/fetch-real-estate-public-data.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 550,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/fetch-studio-asset-community-data.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 460,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/new-auth-provider-run-entry.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 64,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/new-drill-log-entry.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 64,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/new-studio-os-v3-drill-log-entry.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 76,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/run-external-cutover-checklist.ps1",
+      "classification": "compatibility-shim",
+      "isCompatibilityShim": true,
+      "lineCount": 30,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/run-notification-drills.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 160,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/run-ops-evidence-autopilot.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 221,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/run-real-estate-agentic-research.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 1033,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/run-real-estate-intelligence-analysis.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 648,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/run-real-estate-market-watch.ps1",
+      "classification": "review",
+      "isCompatibilityShim": false,
+      "lineCount": 542,
+      "isPotentiallyReviewCandidate": true
+    },
+    {
+      "file": "scripts/run-real-estate-opportunity-research.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 330,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/run-real-estate-public-signals.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 690,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/run-real-estate-quarterly-cadence.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 147,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/run-real-estate-review-packet.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 278,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/run-real-estate-test-suite.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 98,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/run-real-estate-weekly-cadence.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 99,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/run-recorder-fallback-adapter.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 80,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/run-studio-asset-intelligence.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 705,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/seed-real-estate-manual-drops.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 314,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/seed-studio-asset-manual-drops.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 82,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/start-emulators.ps1",
+      "classification": "compatibility-shim",
+      "isCompatibilityShim": true,
+      "lineCount": 22,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/test-real-estate-contracts.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 121,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/test-smoke.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 15,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/test-studio-asset-intel-harness.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 101,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "scripts/test-studio-brain-auth.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 37,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "website/deploy.ps1",
+      "classification": "compatibility-shim",
+      "isCompatibilityShim": true,
+      "lineCount": 43,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "website/ncsitebuilder/scripts/check-links.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 52,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "website/ncsitebuilder/serve-ab.ps1",
+      "classification": "compatibility-shim",
+      "isCompatibilityShim": true,
+      "lineCount": 16,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "website/ncsitebuilder/serve.ps1",
+      "classification": "compatibility-shim",
+      "isCompatibilityShim": true,
+      "lineCount": 16,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "website/scripts/check-links.ps1",
+      "classification": "automation",
+      "isCompatibilityShim": false,
+      "lineCount": 52,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "website/serve-ab.ps1",
+      "classification": "compatibility-shim",
+      "isCompatibilityShim": true,
+      "lineCount": 17,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "website/serve.ps1",
+      "classification": "compatibility-shim",
+      "isCompatibilityShim": true,
+      "lineCount": 16,
+      "isPotentiallyReviewCandidate": false
+    },
+    {
+      "file": "web/deploy/namecheap/verify-cutover.ps1",
+      "classification": "compatibility-shim",
+      "isCompatibilityShim": true,
+      "lineCount": 23,
+      "isPotentiallyReviewCandidate": false
+    }
+  ],
+  "ps1CompatibilityCount": 9,
+  "ps1ReviewCount": 35,
+  "strictMode": true,
+  "maxActionable": 0,
+  "strictExemptions": "scripts/ralph-platform-reference-exemptions.json",
+  "wuffLaptopFindings": [],
+  "summary": {
+    "windowsMarkerFindings": 0,
+    "actionableWindowsMarkerFindings": 0,
+    "wuffLaptopFindings": 0,
+    "ps1Files": 44,
+    "ps1Compatibility": 9,
+    "ps1ReviewCandidate": 35
+  }
+}

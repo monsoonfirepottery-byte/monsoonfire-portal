@@ -28,7 +28,7 @@ scenarioId: {SCENARIO_ID}
 ```
 
 ## Commands used
-```powershell
+```sh
 # Set only one chaos script per run entry.
 CHAOS_MODE=true NODE_ENV={ENVIRONMENT} STUDIO_BRAIN_BASE_URL={STUDIO_BRAIN_BASE_URL} STUDIO_BRAIN_ADMIN_TOKEN=<REDACTED> node studio-brain/scripts/chaos/kill_switch_toggle.mjs
 ```

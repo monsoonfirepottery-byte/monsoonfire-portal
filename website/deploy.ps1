@@ -4,7 +4,8 @@ param(
   [string] $RemotePath = ""
 )
 
-Write-Warning "Compatibility shim only: mainline workflow is node ./website/scripts/deploy.mjs."
+Write-Warning "Compatibility shim only: mainline workflow is Node."
+Write-Warning "node ./website/scripts/deploy.mjs --server <server> --port <port> --remote-path <path>"
 
 $ResolvedServer = if ($Server) {
   $Server

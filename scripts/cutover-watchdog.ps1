@@ -7,7 +7,8 @@ param(
   [string] $ArtifactDir = "output/stability"
 )
 
-Write-Warning "Compatibility shim only: prefer node ./scripts/cutover-watchdog.mjs"
+Write-Warning "Compatibility shim only: prefer Node command."
+Write-Warning "node ./scripts/cutover-watchdog.mjs (or npm run cutover-watchdog...)"
 
 $arguments = @()
 if ($Mode -ieq "watch") {

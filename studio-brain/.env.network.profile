@@ -1,3 +1,9 @@
+# Host policy:
+# local        = loopback host for workstation-only workflows
+# lan-dhcp     = use hostname and DHCP/resolve path for remote LAN access
+# lan-static   = use STUDIO_BRAIN_STATIC_IP for stable LAN addressing (recommended for production-like hosting)
+# ci           = ephemeral CI profile; treat as local/loopback-safe mode
+
 STUDIO_BRAIN_NETWORK_PROFILE=local
 
 # Local/stable profile settings

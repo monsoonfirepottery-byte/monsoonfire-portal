@@ -1,0 +1,70 @@
+[
+  {
+    "file": "scripts/run-real-estate-public-signals.ps1",
+    "owner": "platform",
+    "reason": "Retains legacy CLI fallback for compatibility while wrapper-first workflow is being migrated."
+  },
+  {
+    "file": "scripts/run-ops-evidence-autopilot.ps1",
+    "owner": "platform",
+    "reason": "Compatibility adapter for scripted ops evidence runs; not part of primary onboarding path."
+  },
+  {
+    "file": "scripts/new-drill-log-entry.ps1",
+    "owner": "platform",
+    "reason": "Template helper for drill evidence; not executed in the standard CLI path."
+  },
+  {
+    "file": "scripts/new-studio-os-v3-drill-log-entry.ps1",
+    "owner": "platform",
+    "reason": "Template helper for studio-os drill evidence; compatibility-only utility."
+  },
+  {
+    "file": "scripts/scan-studiobrain-host-contract.mjs",
+    "owner": "platform",
+    "reason": "Migration-rule documentation references legacy host migration language."
+  },
+  {
+    "file": "web/deploy/namecheap/verify-cutover.ps1",
+    "owner": "ops",
+    "reason": "Dedicated cutover compatibility script retained for hosting validation where shell runner is accepted."
+  },
+  {
+    "file": "scripts/ralph-platform-reference-exemptions.json",
+    "owner": "platform",
+    "reason": "Governance catalog is intentionally a compatibility record and does not define runtime behavior."
+  },
+  {
+    "file": "docs/EMULATOR_RUNBOOK.md",
+    "contextContains": "compatibility",
+    "owner": "platform",
+    "reason": "Documented optional compatibility note; canonical command remains Node-first."
+  },
+  {
+    "file": "docs/agent-troubleshooting-history.md",
+    "owner": "platform",
+    "reason": "Historical incident history archive; retained for longitudinal context."
+  },
+  {
+    "file": "docs/DRILL_EXECUTION_LOG.md",
+    "contextContains": "compatibility",
+    "owner": "platform",
+    "reason": "Template snippets intentionally preserve prior command style for copy/paste in historical templates."
+  },
+  {
+    "file": "docs/REAL_ESTATE_MARKET_WATCH.md",
+    "owner": "platform",
+    "reason": "Operational onboarding document includes compatibility references alongside Node-first commands."
+  },
+  {
+    "file": "docs/RELEASE_CANDIDATE_EVIDENCE.md",
+    "owner": "qa",
+    "reason": "Evidence docs capture historical command examples, including compatibility fallback."
+  },
+  {
+    "file": "web/deploy/namecheap/README.md",
+    "contextContains": "compatibility shell",
+    "owner": "ops",
+    "reason": "Release verification notes preserve compatibility usage example."
+  }
+]

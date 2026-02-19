@@ -6,7 +6,7 @@ param(
   [string] $NetworkProfile = ""
 )
 
-Write-Warning "Legacy PowerShell wrapper: use Node command by default."
+Write-Warning "Compatibility shim only; primary workflow is Node."
 Write-Warning "node ./scripts/start-emulators.mjs --only $Only --project $Project --config $Config $(if ($NetworkProfile) { '--network-profile ' + $NetworkProfile }) $(if ($Host) { '--host ' + $Host })"
 
 $script = Join-Path $PSScriptRoot "start-emulators.mjs"

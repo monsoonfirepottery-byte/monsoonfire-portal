@@ -18,6 +18,7 @@ const REQUIRED_NODE_ENTRYPOINTS = [
   "scripts/validate-emulator-contract.mjs",
   "scripts/studiobrain-network-check.mjs",
   "scripts/studiobrain-status.mjs",
+  "scripts/ps1-run.mjs",
 ];
 
 const steps = buildSteps(parsedArgs);
@@ -104,10 +105,27 @@ function buildSteps(config) {
     {
       name: "studio-brain network gate",
       command: "npm",
-      args: ["run", "studio:network:check", "--", "--gate", "--strict", "--json"],
+      args: [
+        "run",
+        "studio:network:check",
+        "--",
+        "--gate",
+        "--strict",
+        "--json",
+        "--artifact",
+        "output/studio-network-check/cutover-gate.json",
+      ],
       required: true,
       note: "Validates host profile and persistence state.",
       remediation: "Fix host profile configuration and rerun `studio-brain-network` checks.",
+    },
+    {
+      name: "studio-brain stability guardrails",
+      command: "npm",
+      args: ["run", "guardrails:check:strict"],
+      required: false,
+      note: "Detects long-lived host drift and artifact/disk pressure.",
+      remediation: "Review warning details and clear stale output artifacts or container state.",
     },
     {
       name: "studio-brain emulator contract",
@@ -116,6 +134,14 @@ function buildSteps(config) {
       required: true,
       note: "Fails fast on mismatched portal emulator host/URL values.",
       remediation: "Align portal emulator toggles and host contracts before preflight.",
+    },
+    {
+      name: "studio-brain stack profile snapshot",
+      command: "npm",
+      args: ["run", "studio:stack:profile:snapshot:strict", "--", "--json", "--artifact", "output/studio-stack-profile/latest.json"],
+      required: true,
+      note: "Captures canonical stack profile evidence used by source-of-truth readiness checks.",
+      remediation: "Align Vite/Firebase profile settings and rerun before cutover.",
     },
     {
       name: "studio-brain preflight",
@@ -128,7 +154,7 @@ function buildSteps(config) {
     {
       name: "studio-brain status gate",
       command: "npm",
-      args: ["run", "studio:check"],
+      args: ["run", "studio:check:safe"],
       required: true,
       note: "Checks Studio Brain contract + endpoints are healthy.",
       remediation: "Start studio-brain and rerun gate.",

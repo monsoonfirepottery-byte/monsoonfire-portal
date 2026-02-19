@@ -1,6 +1,6 @@
 # P2 — Website Development Target and Cutover Hosting for Studiobrain Workflow
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Website
@@ -52,3 +52,7 @@ Create a stable website development/deploy target model that works from any work
 - Removed hard-coded legacy `monsggbd@66.29.137.142` fallback from the canonical Node deploy path.
 - Enforced deploy failure when no deploy target is configured, so core commands now require `WEBSITE_DEPLOY_SERVER` or explicit `--server`.
 - Hardened shim path (`website/deploy.ps1`) so it no longer uses any legacy host default and fails fast if no server target is supplied.
+- `website/scripts/deploy.mjs` now supports generic directory source promotion.
+  - `--source` now controls the promoted directory dynamically (instead of hard-coding `ncsitebuilder`).
+  - Command now fails if source is not a directory.
+  - Remote promotion removes the uploaded source folder after copying into destination.

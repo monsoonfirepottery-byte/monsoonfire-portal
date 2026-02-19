@@ -4,12 +4,13 @@ import { existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveStudioBrainNetworkProfile } from "../../scripts/studio-network-profile.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
 const defaultRoot = repoRoot;
 const defaultPort = 8000;
-const defaultHost = "127.0.0.1";
+const defaultHost = resolveStudioBrainNetworkProfile().host || "127.0.0.1";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",

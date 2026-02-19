@@ -3,6 +3,8 @@ import Foundation
 enum DeepLinkTarget: String {
     case events
     case materials
+    case kiln
+    case pieces
     case unknown
 }
 
@@ -41,6 +43,10 @@ enum DeepLinkRouter {
             target = .events
         } else if path.contains("material") || flow.contains("material") || path.contains("checkout") {
             target = .materials
+        } else if path.contains("/kiln") || flow.contains("kiln") {
+            target = .kiln
+        } else if path.contains("/pieces") || flow.contains("pieces") {
+            target = .pieces
         } else {
             target = .unknown
         }

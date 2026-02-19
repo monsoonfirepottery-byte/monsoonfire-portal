@@ -37,7 +37,7 @@
   - manual aggregate trigger endpoint
 - Drill tooling:
   - deterministic drill injection endpoint
-  - PowerShell runner: `scripts/run-notification-drills.ps1`
+  - Compatibility runner: `node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1`
 - Dev ergonomics:
   - persistent emulator env loader: `scripts/start-emulators.ps1`
   - template: `functions/.env.local.example`
@@ -65,21 +65,21 @@
 
 ## Resume commands
 ### 1) Start emulators with stable env
-```powershell
-pwsh -File scripts/start-emulators.ps1
+```sh
+node ./scripts/ps1-run.mjs scripts/start-emulators.ps1
 ```
 
 ### 2) Run notification drill suite (requires real ID token)
-```powershell
-pwsh -File scripts/run-notification-drills.ps1 `
-  -BaseUrl "https://us-central1-monsoonfire-portal.cloudfunctions.net" `
-  -IdToken "<REAL_ID_TOKEN>" `
-  -Uid "<REAL_UID>" `
+```sh
+node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1 \
+  -BaseUrl "https://us-central1-monsoonfire-portal.cloudfunctions.net" \
+  -IdToken "<REAL_ID_TOKEN>" \
+  -Uid "<REAL_UID>" \
   -AdminToken "<REAL_ADMIN_TOKEN_IF_NEEDED>"
 ```
 
 ### 3) Build/lint quick verification
-```powershell
+```sh
 npm --prefix functions run build
 npm --prefix functions run lint
 npm --prefix web run lint

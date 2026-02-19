@@ -100,6 +100,8 @@ struct PortalAppShellView: View {
     @State private var deepLinkRawUrl = ""
     @State private var routeToEvents = false
     @State private var routeToMaterials = false
+    @State private var routeToKiln = false
+    @State private var routeToPieces = false
     @State private var tokenCopyStatus = ""
 
     private var effectiveIdToken: String {
@@ -280,6 +282,21 @@ struct PortalAppShellView: View {
                 NavigationLink(
                     destination: MaterialsView(config: $vm.config),
                     isActive: $routeToMaterials
+                ) { EmptyView() }
+                .hidden()
+
+                NavigationLink(
+                    destination: KilnScheduleView(
+                        isStaff: isStaffResolved,
+                        staffUid: authSession.userId
+                    ),
+                    isActive: $routeToKiln
+                ) { EmptyView() }
+                .hidden()
+
+                NavigationLink(
+                    destination: MyPiecesView(),
+                    isActive: $routeToPieces
                 ) { EmptyView() }
                 .hidden()
 
@@ -493,9 +510,23 @@ struct PortalAppShellView: View {
             case .events:
                 routeToEvents = true
                 routeToMaterials = false
+                routeToKiln = false
+                routeToPieces = false
             case .materials:
                 routeToMaterials = true
                 routeToEvents = false
+                routeToKiln = false
+                routeToPieces = false
+            case .kiln:
+                routeToKiln = true
+                routeToEvents = false
+                routeToMaterials = false
+                routeToPieces = false
+            case .pieces:
+                routeToPieces = true
+                routeToEvents = false
+                routeToMaterials = false
+                routeToKiln = false
             case .unknown:
                 deepLinkStatusMessage += " No matching in-app route."
             }

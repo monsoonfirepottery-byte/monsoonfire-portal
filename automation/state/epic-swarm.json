@@ -1,0 +1,131 @@
+{
+  "run_id": "epic-swarm-2026-02-19",
+  "run_date": "2026-02-19",
+  "sources": {
+    "epics": "tickets/v3/EPICS.md",
+    "dependency_graph": "tickets/v3/DEPENDENCY_GRAPH.md"
+  },
+  "top_n": 10,
+  "epics": [
+    {
+      "id": "E01",
+      "title": "Studio Brain Control Plane",
+      "status": "ready_to_execute",
+      "effort": "L",
+      "priority": 1,
+      "slice_1": {
+        "task_01": "completed",
+        "task_02": "completed",
+        "task_03": "completed"
+      }
+    },
+    {
+      "id": "E02",
+      "title": "StudioState Model",
+      "status": "ready_to_execute",
+      "effort": "M-L",
+      "priority": 2,
+      "slice_1": {
+        "task_01": "completed",
+        "task_02": "completed",
+        "task_03": "completed"
+      }
+    },
+    {
+      "id": "E03",
+      "title": "Capability Gateway + Proposal/Approval Engine",
+      "status": "ready_to_execute",
+      "effort": "L",
+      "priority": 3,
+      "slice_1": {
+        "task_01": "completed",
+        "task_02": "completed",
+        "task_03": "completed"
+      }
+    },
+    {
+      "id": "E04",
+      "title": "Connector Framework",
+      "status": "ready_to_execute",
+      "effort": "M-L",
+      "priority": 4,
+      "slice_1": {
+        "task_01": "completed",
+        "task_02": "completed",
+        "task_03": "completed"
+      }
+    },
+    {
+      "id": "E05",
+      "title": "Studio Ops Autopilot",
+      "status": "ready_to_execute",
+      "effort": "M",
+      "priority": 5,
+      "slice_1": {
+        "task_01": "completed",
+        "task_02": "completed",
+        "task_03": "completed"
+      }
+    },
+    {
+      "id": "E06",
+      "title": "Marketing Department Swarm",
+      "status": "ready_to_execute",
+      "effort": "M",
+      "priority": 6,
+      "slice_1": {
+        "task_01": "completed",
+        "task_02": "completed",
+        "task_03": "completed"
+      }
+    },
+    {
+      "id": "E07",
+      "title": "Finance & Reconciliation Swarm",
+      "status": "ready_to_execute",
+      "effort": "M",
+      "priority": 7,
+      "slice_1": {
+        "task_01": "completed",
+        "task_02": "completed",
+        "task_03": "completed"
+      }
+    },
+    {
+      "id": "E08",
+      "title": "Trust & Safety Automation",
+      "status": "ready_to_execute",
+      "effort": "M",
+      "priority": 8,
+      "slice_1": {
+        "task_01": "completed",
+        "task_02": "completed",
+        "task_03": "completed"
+      }
+    },
+    {
+      "id": "E09",
+      "title": "Self-Improving Specifications",
+      "status": "ready_to_execute",
+      "effort": "S-M",
+      "priority": 9,
+      "slice_1": {
+        "task_01": "completed",
+        "task_02": "completed",
+        "task_03": "completed"
+      }
+    },
+    {
+      "id": "E10",
+      "title": "OS Surfaces UI Consolidation",
+      "status": "ready_to_execute",
+      "effort": "L",
+      "priority": 10,
+      "slice_1": {
+        "task_01": "completed",
+        "task_02": "completed",
+        "task_03": "completed"
+      }
+    }
+  ]
+}

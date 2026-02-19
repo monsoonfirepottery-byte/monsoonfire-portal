@@ -1,0 +1,480 @@
+{
+  "schemaVersion": "1.1.0",
+  "source": "manual-curated source-of-truth deployment gate matrix",
+  "phases": {
+    "staging": {
+      "requiredFiles": [
+        ".github/workflows/ci-smoke.yml",
+        "docs/EMULATOR_RUNBOOK.md",
+        "docs/runbooks/PORTAL_PLAYWRIGHT_SMOKE.md",
+        "docs/runbooks/WEBSITE_PLAYWRIGHT_SMOKE.md",
+        "web/.env.local.example",
+        "web/vite.config.js",
+        "scripts/source-of-truth-contract-matrix.mjs",
+        "scripts/source-of-truth-index-audit.mjs",
+        "scripts/stability-guardrails.mjs",
+        "scripts/scan-studiobrain-host-contract.mjs",
+        "scripts/studio-stack-profile-snapshot.mjs",
+        "scripts/phased-smoke-gate.mjs",
+        "output/studio-stack-profile/latest.json",
+        "package.json"
+      ],
+      "checks": [
+        {
+          "kind": "contains",
+          "id": "staging-network-profile-baseline",
+          "file": "studio-brain/.env.network.profile",
+          "severity": "warning",
+          "needle": "STUDIO_BRAIN_NETWORK_PROFILE",
+          "message": "host profile baseline must be documented in network profile file"
+        },
+        {
+          "kind": "contains-any",
+          "id": "staging-network-governance-command",
+          "file": "docs/EMULATOR_RUNBOOK.md",
+          "severity": "warning",
+          "options": [
+            "studio:network:check",
+            "studiobrain-network-check",
+            "host drift"
+          ],
+          "message": "staging runbook should document network-gate recovery and host-policy checks"
+        },
+        {
+          "kind": "contains",
+          "id": "staging-workflow-baseline",
+          "file": ".github/workflows/ci-smoke.yml",
+          "severity": "error",
+          "needle": "name: Smoke Tests",
+          "message": "staging smoke workflow exists and is discoverable"
+        },
+        {
+          "kind": "contains",
+          "id": "staging-workflow-gate-command",
+          "file": ".github/workflows/ci-smoke.yml",
+          "severity": "error",
+          "needle": "npm run test:full",
+          "message": "staging smoke workflow must execute the full automation suite"
+        },
+        {
+          "kind": "contains-any",
+          "id": "staging-runbook-smoke-evidence",
+          "file": "docs/EMULATOR_RUNBOOK.md",
+          "severity": "warning",
+          "options": [
+            "npm run studio:cutover:gate",
+            "npm run pr:gate",
+            "npm run portal:smoke:playwright"
+          ],
+          "message": "emulator runbook references production-equivalent smoke and readiness commands"
+        },
+        {
+          "kind": "contains-any",
+          "id": "staging-stack-profile-evidence-command",
+          "file": "docs/EMULATOR_RUNBOOK.md",
+          "severity": "error",
+          "options": [
+            "npm run emulators:start -- --network-profile",
+            "npm run studio:stack:profile:snapshot"
+          ],
+          "message": "stack profile snapshot flow and profile-based emulator bootstrap should be present in the emulator runbook"
+        },
+        {
+          "kind": "contains-any",
+          "id": "staging-stack-profile-evidence-snapshot",
+          "file": "docs/EMULATOR_RUNBOOK.md",
+          "severity": "warning",
+          "options": [
+            "npm run studio:stack:profile:snapshot:strict",
+            "studio-stack-profile/latest.json",
+            "output/studio-stack-profile/latest.json"
+          ],
+          "message": "emulator runbook should include stack profile evidence capture with artifact path"
+        },
+        {
+          "kind": "contains",
+          "id": "staging-stack-profile-snapshot-script",
+          "file": "package.json",
+          "severity": "error",
+          "needle": "\"studio:stack:profile:snapshot\"",
+          "message": "stack profile evidence command is registered in package scripts"
+        },
+        {
+          "kind": "contains",
+          "id": "staging-portal-smoke-evidence-doc",
+          "file": "docs/runbooks/PORTAL_PLAYWRIGHT_SMOKE.md",
+          "severity": "warning",
+          "needle": "npm run portal:smoke:playwright",
+          "message": "portal smoke runbook should expose the canonical local command"
+        },
+        {
+          "kind": "contains",
+          "id": "staging-website-smoke-evidence-doc",
+          "file": "docs/runbooks/WEBSITE_PLAYWRIGHT_SMOKE.md",
+          "severity": "warning",
+          "needle": "npm run website:smoke:playwright",
+          "message": "website smoke runbook should expose the canonical local command"
+        },
+        {
+          "kind": "contains",
+          "id": "staging-contract-matrix-script-hook",
+          "file": "package.json",
+          "severity": "error",
+          "needle": "\"source:truth:contract:strict\"",
+          "message": "contract matrix gate is exposed via package scripts for stage and CI reuse"
+        },
+        {
+          "kind": "contains",
+          "id": "staging-source-truth-index-script",
+          "file": "package.json",
+          "severity": "error",
+          "needle": "\"source:truth:index\"",
+          "message": "source-of-truth index audit script is registered in package scripts"
+        },
+        {
+          "kind": "contains",
+          "id": "staging-source-truth-index-strict-script",
+          "file": "package.json",
+          "severity": "error",
+          "needle": "\"source:truth:index:strict\"",
+          "message": "strict source-of-truth index audit command is registered for staging enforcement"
+        },
+        {
+          "kind": "contains",
+          "id": "staging-stack-profile-artifact",
+          "file": "output/studio-stack-profile/latest.json",
+          "severity": "warning",
+          "needle": "\"resolvedProfile\"",
+          "message": "stack profile snapshot artifact should include resolvedProfile evidence"
+        },
+        {
+          "kind": "contains",
+          "id": "staging-phased-smoke-check",
+          "file": "scripts/phased-smoke-gate.mjs",
+          "severity": "error",
+          "needle": "id: \"staging-test-full\"",
+          "message": "staged phase should include staging smoke checks and artifactized outputs."
+        },
+        {
+          "kind": "contains-any",
+          "id": "staging-phased-smoke-artifact",
+          "file": "scripts/phased-smoke-gate.mjs",
+          "severity": "warning",
+          "options": [
+            "output/phased-smoke-gate/staging/",
+            "\"staging\":"
+          ],
+          "message": "staged phase should record phased smoke artifacts."
+        }
+      ]
+    },
+    "beta-pilot": {
+      "requiredFiles": [
+        ".github/workflows/ci-smoke.yml",
+        "docs/studiobrain-host-url-contract-matrix.md",
+        "docs/EMULATOR_RUNBOOK.md",
+        "scripts/source-of-truth-deployment-gates.mjs",
+        "scripts/studio-stack-profile-snapshot.mjs",
+        "scripts/phased-smoke-gate.mjs",
+        "output/studio-stack-profile/latest.json"
+      ],
+      "checks": [
+        {
+          "kind": "contains",
+          "id": "beta-phase-static-ip-policy",
+          "file": "docs/studiobrain-host-url-contract-matrix.md",
+          "severity": "warning",
+          "needle": "lan-static",
+          "message": "host policy matrix should call out static-target profile behavior"
+        },
+        {
+          "kind": "contains-any",
+          "id": "beta-phase-state-driven-recovery",
+          "file": "docs/EMULATOR_RUNBOOK.md",
+          "severity": "warning",
+          "options": [
+            "host drift",
+            "state file",
+            ".studiobrain-host-state.json"
+          ],
+          "message": "beta rollout docs should describe host drift persistence and recovery"
+        },
+        {
+          "kind": "contains-any",
+          "id": "beta-phase-network-state-command",
+          "file": "docs/studiobrain-host-url-contract-matrix.md",
+          "severity": "warning",
+          "options": [
+            "host state",
+            "static-ip",
+            "networkTargetMode"
+          ],
+          "message": "beta matrix should include network target state and static-IP provenance"
+        },
+        {
+          "kind": "contains",
+          "id": "beta-phase-gate-profile",
+          "file": ".github/workflows/ci-smoke.yml",
+          "severity": "error",
+          "needle": "run_deep_playwright",
+          "message": "beta-pilot or manual pilots should use explicit deep-smoke toggles for profile escalation"
+        },
+        {
+          "kind": "contains",
+          "id": "beta-phase-phased-doc",
+          "file": "docs/studiobrain-host-url-contract-matrix.md",
+          "severity": "warning",
+          "needle": "beta-pilot",
+          "message": "host-profile matrix doc should include beta-pilot language and profile target"
+        },
+        {
+          "kind": "contains",
+          "id": "beta-phase-profile-target-note",
+          "file": "docs/studiobrain-host-url-contract-matrix.md",
+          "severity": "warning",
+          "needle": "beta-pilot profile",
+          "message": "host-profile matrix doc should call out beta-pilot behavior explicitly"
+        },
+        {
+          "kind": "contains",
+          "id": "beta-phase-host-profile",
+          "file": "scripts/source-of-truth-deployment-gates.mjs",
+          "severity": "warning",
+          "needle": "beta-pilot",
+          "message": "phase model should include beta-pilot phase in source-of-truth deployment gates"
+        },
+        {
+          "kind": "contains",
+          "id": "beta-phase-emulator-rendezvous",
+          "file": "docs/EMULATOR_RUNBOOK.md",
+          "severity": "warning",
+          "needle": "smoke",
+          "message": "emulator runbook should describe beta rollout smoke gating"
+        },
+        {
+          "kind": "contains-any",
+          "id": "beta-phase-stack-profile-command",
+          "file": "docs/EMULATOR_RUNBOOK.md",
+          "severity": "warning",
+          "options": [
+            "npm run studio:stack:profile:snapshot",
+            "stack profile",
+            "studio:stack:profile:snapshot:strict",
+            "output/studio-stack-profile/latest.json"
+          ],
+          "message": "beta-profile evidence flow should include stack profile snapshot guidance"
+        },
+        {
+          "kind": "contains",
+          "id": "beta-phase-phased-smoke-check",
+          "file": "scripts/phased-smoke-gate.mjs",
+          "severity": "error",
+          "needle": "id: \"beta-pilot-phase-gate\"",
+          "message": "beta-pilot phase should include deployment-gate execution and artifact capture."
+        },
+        {
+          "kind": "contains-any",
+          "id": "beta-phase-phased-smoke-artifact",
+          "file": "scripts/phased-smoke-gate.mjs",
+          "severity": "warning",
+          "options": [
+            "output/phased-smoke-gate/beta/",
+            "\"beta-pilot\""
+          ],
+          "message": "beta phase should preserve per-phase phased-smoke artifact evidence."
+        }
+      ]
+    },
+    "production": {
+      "requiredFiles": [
+        ".github/workflows/portal-prod-smoke.yml",
+        ".github/workflows/website-prod-smoke.yml",
+        "scripts/studio-cutover-gate.mjs",
+        "scripts/phased-smoke-gate.mjs",
+        "website/.well-known/apple-app-site-association",
+        "website/.well-known/assetlinks.json"
+      ],
+      "checks": [
+        {
+          "kind": "contains",
+          "id": "production-portal-prod-workflow",
+          "file": ".github/workflows/portal-prod-smoke.yml",
+          "severity": "error",
+          "needle": "Portal Production Smoke",
+          "message": "portal production workflow is present and discoverable"
+        },
+        {
+          "kind": "contains",
+          "id": "production-portal-prod-base-url",
+          "file": ".github/workflows/portal-prod-smoke.yml",
+          "severity": "error",
+          "needle": "https://monsoonfire-portal.web.app",
+          "message": "portal production workflow uses the portal production base URL"
+        },
+        {
+          "kind": "contains",
+          "id": "production-website-prod-base-url",
+          "file": ".github/workflows/website-prod-smoke.yml",
+          "severity": "error",
+          "needle": "https://monsoonfire.com",
+          "message": "website production workflow uses production marketing base URL"
+        },
+        {
+          "kind": "contains",
+          "id": "production-portal-prod-smoke-script",
+          "file": ".github/workflows/portal-prod-smoke.yml",
+          "severity": "error",
+          "needle": "portal-playwright-smoke.mjs --base-url",
+          "message": "production portal smoke command is executable and parameterized"
+        },
+        {
+          "kind": "contains",
+          "id": "production-website-prod-smoke-script",
+          "file": ".github/workflows/website-prod-smoke.yml",
+          "severity": "error",
+          "needle": "website-playwright-smoke.mjs --base-url",
+          "message": "production website smoke command is executable and parameterized"
+        },
+        {
+          "kind": "contains",
+          "id": "production-well-known-source",
+          "file": "package.json",
+          "severity": "error",
+          "needle": "well-known:validate:strict",
+          "message": "production deployment profile includes well-known validation in gate matrix orchestration"
+        },
+        {
+          "kind": "contains",
+          "id": "production-cutover-command-rail",
+          "file": "scripts/studio-cutover-gate.mjs",
+          "severity": "warning",
+          "needle": "portal smoke",
+          "message": "cutover gate should preserve portal smoke command rail in production cutover"
+        },
+        {
+          "kind": "contains",
+          "id": "production-phased-smoke-check",
+          "file": "scripts/phased-smoke-gate.mjs",
+          "severity": "error",
+          "needle": "id: \"production-deployment-gate\"",
+          "message": "production phase should include production deployment-gate execution and artifactized command."
+        },
+        {
+          "kind": "contains-any",
+          "id": "production-phased-smoke-artifact",
+          "file": "scripts/phased-smoke-gate.mjs",
+          "severity": "warning",
+          "options": [
+            "output/phased-smoke-gate/production/",
+            "\"production-portal-smoke-command\""
+          ],
+          "message": "production phase should capture per-phase phased-smoke artifacts."
+        }
+      ]
+    },
+    "store-readiness": {
+      "requiredFiles": [
+        ".github/workflows/ios-build-gate.yml",
+        ".github/workflows/ios-macos-smoke.yml",
+        ".github/workflows/android-compile.yml",
+        "ios/DeepLinkRouter.swift",
+        "android/app/src/main/java/com/monsoonfire/portal/reference/DeepLinkRouter.kt",
+        "android/app/src/main/java/com/monsoonfire/portal/reference/PortalContracts.kt",
+        "android/app/src/main/AndroidManifest.xml",
+        "ios/PortalContracts.swift",
+        "scripts/source-of-truth-index-audit.mjs",
+        "docs/IOS_RUNBOOK.md",
+        "docs/DEEP_LINK_CONTRACT.md",
+        "docs/MOBILE_PARITY_TODOS.md",
+        "website/.well-known/apple-app-site-association",
+        "website/.well-known/assetlinks.json",
+        "scripts/phased-smoke-gate.mjs"
+      ],
+      "checks": [
+        {
+          "kind": "contains",
+          "id": "store-ios-build-workflow",
+          "file": ".github/workflows/ios-build-gate.yml",
+          "severity": "error",
+          "needle": "swift build",
+          "message": "iOS build workflow remains in source-of-truth deployment matrix"
+        },
+        {
+          "kind": "contains",
+          "id": "store-ios-smoke-workflow",
+          "file": ".github/workflows/ios-macos-smoke.yml",
+          "severity": "error",
+          "needle": "ios-smoke",
+          "message": "iOS smoke workflow is discoverable"
+        },
+        {
+          "kind": "contains",
+          "id": "store-android-compile-workflow",
+          "file": ".github/workflows/android-compile.yml",
+          "severity": "error",
+          "needle": "compileDebugKotlin",
+          "message": "Android compile workflow validates Kotlin compile in store-readiness path"
+        },
+        {
+          "kind": "contains",
+          "id": "store-ios-router-coverage",
+          "file": "ios/DeepLinkRouter.swift",
+          "severity": "error",
+          "needle": "case unknown",
+          "message": "iOS deep-link router maintains safe unknown-route behavior"
+        },
+        {
+          "kind": "contains",
+          "id": "store-android-router-coverage",
+          "file": "android/app/src/main/java/com/monsoonfire/portal/reference/DeepLinkRouter.kt",
+          "severity": "error",
+          "needle": "UNKNOWN",
+          "message": "Android deep-link router maintains unknown-route behavior"
+        },
+        {
+          "kind": "contains",
+          "id": "store-deep-link-contract-doc",
+          "file": "docs/DEEP_LINK_CONTRACT.md",
+          "severity": "error",
+          "needle": "### Materials checkout callback",
+          "message": "deep-link contract source is authoritative for store readiness validation"
+        },
+        {
+          "kind": "contains",
+          "id": "store-well-known-files",
+          "file": "website/.well-known/apple-app-site-association",
+          "severity": "error",
+          "needle": "\"appID\"",
+          "message": "AASA file exists and includes AASA App ID section"
+        },
+        {
+          "kind": "contains",
+          "id": "store-asset-links-file",
+          "file": "website/.well-known/assetlinks.json",
+          "severity": "error",
+          "needle": "\"namespace\": \"android_app\"",
+          "message": "Android assetlinks file exists and includes delegated namespace"
+        },
+        {
+          "kind": "contains",
+          "id": "store-phased-smoke-check",
+          "file": "scripts/phased-smoke-gate.mjs",
+          "severity": "warning",
+          "needle": "id: \"store-readiness-deployment-gate\"",
+          "message": "store-readiness phase should include deployment-gate and parity smoke checks."
+        },
+        {
+          "kind": "contains-any",
+          "id": "store-phased-smoke-artifact",
+          "file": "scripts/phased-smoke-gate.mjs",
+          "severity": "warning",
+          "options": [
+            "output/phased-smoke-gate/store-readiness/",
+            "\"store-readiness-\""
+          ],
+          "message": "store-readiness phase should persist phased-smoke artifacts for parity and review."
+        }
+      ]
+    }
+  }
+}

@@ -9,8 +9,12 @@
     "deploy:hosting": "npx firebase-tools deploy --project monsoonfire-portal --only hosting --non-interactive",
     "deploy:functions-hosting": "npx firebase-tools deploy --project monsoonfire-portal --only functions,hosting --non-interactive",
     "deploy:namecheap": "node ./scripts/deploy-namecheap-portal.mjs",
-    "deploy:namecheap:verify": "node ./scripts/deploy-namecheap-portal.mjs --verify",
+    "deploy:namecheap:all": "bash ./scripts/deploy-namecheap-live.sh",
+    "deploy:namecheap:all:quick": "bash ./scripts/deploy-namecheap-live.sh --no-build",
+    "deploy:namecheap:auto": "bash ./scripts/deploy-namecheap-portal-live.sh",
+    "deploy:namecheap:verify": "bash ./scripts/deploy-namecheap-portal-live.sh --verify",
     "deploy:namecheap:portal": "npm run deploy:namecheap -- --remote-path portal/ --verify --portal-url https://portal.monsoonfire.com",
+    "deploy:namecheap:website": "node ./website/scripts/deploy.mjs --source ./website/ncsitebuilder",
     "deploy:namecheap:portal:quick": "npm run deploy:namecheap:portal -- --no-build",
     "deploy:namecheap:portal:live": "bash ./scripts/deploy-namecheap-portal-live.sh",
     "website:smoke:playwright": "node ./scripts/website-playwright-smoke.mjs",
@@ -23,6 +27,10 @@
     "website:serve:ncsitebuilder": "node ./website/ncsitebuilder/scripts/serve.mjs",
     "website:serve:ncsitebuilder:ab": "node ./website/scripts/serve-ab.mjs --root ./website/ncsitebuilder",
     "website:deploy:ncsitebuilder": "node ./website/scripts/deploy.mjs",
+    "website:deploy:preview": "node ./scripts/deploy-namecheap-preview.mjs",
+    "test:e2e": "npx playwright test -c website/playwright.config.mjs",
+    "test:e2e:headed": "npx playwright test -c website/playwright.config.mjs --headed",
+    "test:e2e:dev": "BASE_URL=${BASE_URL:?Set BASE_URL to your preview URL} npx playwright test -c website/playwright.config.mjs",
     "portal:smoke:playwright": "node ./scripts/portal-playwright-smoke.mjs --output-dir output/playwright/portal",
     "portal:smoke:playwright:prod": "node ./scripts/portal-playwright-smoke.mjs --base-url https://monsoonfire-portal.web.app --output-dir output/playwright/portal/prod",
     "portal:smoke:playwright:deep": "node ./scripts/portal-playwright-smoke.mjs --base-url https://monsoonfire-portal.web.app --output-dir output/playwright/portal/deep --deep",
@@ -122,6 +130,8 @@
     "firebase-functions": "^7.0.5"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.1",
+    "@playwright/test": "^1.58.2",
     "playwright": "^1.58.2"
   },
   "overrides": {

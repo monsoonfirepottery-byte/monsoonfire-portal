@@ -96,10 +96,32 @@
   };
 
   const setSafeHtml = (el, value) => {
-    const doc = parser.parseFromString(String(value || ''), 'text/html');
+    const doc = parser.parseFromString(normalizeRichBody(value), 'text/html');
     const fragment = document.createDocumentFragment();
     Array.from(doc.body.childNodes).forEach((node) => sanitizeNode(node, fragment));
     el.replaceChildren(fragment);
+  };
+
+  const escapeHtml = (value) => String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  const normalizeRichBody = (value) => {
+    const raw = String(value || "").replace(/\\n/g, "\n").trim();
+    if (!raw) return "";
+    if (/[<][a-z!/]/i.test(raw)) return raw;
+
+    const paragraphs = raw
+      .split(/\n{2,}/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    if (!paragraphs.length) {
+      return `<p>${escapeHtml(raw).replace(/\n/g, "<br />")}</p>`;
+    }
+    return paragraphs
+      .map((entry) => `<p>${escapeHtml(entry).replace(/\n/g, "<br />")}</p>`)
+      .join("");
   };
 
   const setEmptyState = (el, message) => {

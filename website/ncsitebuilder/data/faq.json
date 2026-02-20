@@ -1,135 +1,107 @@
 [
   {
     "question": "What is Monsoon Fire Pottery?",
-    "answer": "<p>Monsoon Fire is a production-first ceramics studio in the West Valley. We work out of a 2,500 sqft basement studio plus 1,000 sqft of garage and outdoor workspace, built for steady firing, quiet making, and dependable support.</p>",
-    "tags": [
-      "studio",
-      "overview",
-      "west-valley"
-    ]
+    "answer": "<p>Monsoon Fire is a production-first ceramics studio in the West Valley built for dependable kiln firing, studio access, and community support for working potters and focused hobbyists.</p>",
+    "tags": ["studio", "overview", "west-valley"]
   },
   {
-    "question": "Who is the studio for?",
-    "answer": "<p>We are most useful for production potters and serious hobbyists who need dependable firing and workspace. If you are brand-new to clay and want structured group workshops, we can point you to great Phoenix studios. If you want focused, independent time, you will feel at home here.</p>",
-    "tags": [
-      "studio",
-      "memberships",
-      "workshops"
-    ]
+    "question": "Who is the studio best for?",
+    "answer": "<p>We are best for makers who want independent work time, dependable firing cadence, and clear studio rules. If you are brand new to clay and want frequent beginner classes, we recommend starting with <a href=\"https://www.phoenixcenterforthearts.org/\" target=\"_blank\" rel=\"noopener noreferrer\">Phoenix Center for the Arts</a> and then moving into Monsoon Fire when you want production-focused support.</p>",
+    "tags": ["studio", "community", "workshops"]
   },
   {
-    "question": "How is Potter of the Month selected?",
-    "answer": "<p>Potter of the Month features are selected from active studio members. We look at the work moving through the kilns and rotate highlights through the membership. It is a member-only feature rather than an open nomination.</p>",
-    "tags": [
-      "studio",
-      "policies"
-    ]
+    "question": "How do I get started in the portal?",
+    "answer": "<p>Create a free account in the portal first. After signup, you can request kiln firing, reserve studio time, and get access details.</p><p><a href=\"https://portal.monsoonfire.com\" target=\"_blank\" rel=\"noopener noreferrer\">Open the portal</a></p>",
+    "tags": ["portal", "overview"]
   },
   {
-    "question": "How do I get the address and gate code?",
-    "answer": "<p>We share the exact address and access details through the portal once your account is set up. <a href=\"https://monsoonfire.kilnfire.com/new-user\" target=\"_blank\" rel=\"noopener\">Create a free portal account here</a>.</p>",
-    "tags": [
-      "portal",
-      "logistics"
-    ]
+    "question": "How do I get the studio address and gate code?",
+    "answer": "<p>Address and gate access details are shared in the portal after your account setup is complete.</p>",
+    "tags": ["portal", "logistics", "access"]
+  },
+  {
+    "question": "How quickly does support reply?",
+    "answer": "<p>Support replies within <strong>1 business day</strong>. For urgent kiln handling questions, include your batch details and requested firing type in your first message.</p>",
+    "tags": ["support", "portal", "logistics"]
   },
   {
     "question": "How do I submit a firing request?",
-    "answer": "<p>Submit a firing request through the portal with your clay body, glaze notes, and firing type. You will see the current scheduling window there too.</p>",
-    "tags": [
-      "kiln",
-      "portal",
-      "scheduling"
-    ]
+    "answer": "<p>Submit your firing request in the portal with clay body, glaze notes, and requested firing type. We use that information for safe loading and scheduling.</p>",
+    "tags": ["kiln", "portal", "scheduling"]
   },
   {
-    "question": "What are the kiln firing prices?",
-    "answer": "<p>Half shelf = about a carry-on suitcase laid flat. Tall pieces need clearance; handles waste space; stacks are more efficient. If you are unsure, send a quick photo and we will help estimate.</p><ul><li>Full Kiln (or custom fire) — $60</li><li>Half-Shelf Bisque — $15</li><li>Half-Shelf Glaze — $25</li><li>By Volume — $0.03 per cubic inch</li><li>Delivery — $25 per trip</li></ul>",
-    "tags": [
-      "kiln",
-      "pricing"
-    ]
+    "question": "What is the typical firing turnaround?",
+    "answer": "<p>Typical turnaround is about <strong>1.5 days</strong>, with pieces unloaded after firing. Timing can vary by load mix and queue size.</p>",
+    "tags": ["kiln", "scheduling", "logistics"]
   },
   {
-    "question": "How do I estimate how many half shelves I need?",
-    "answer": "<p>If your work fits laid flat inside a carry-on, that is about one half shelf. Tall pieces need clearance; handles and irregular shapes take extra room; stacks (like plates) are more efficient. When in doubt, ask and we will help size it.</p>",
-    "tags": [
-      "kiln",
-      "pricing",
-      "scheduling"
-    ]
+    "question": "How long are finished pieces held for pickup?",
+    "answer": "<p>Most owners pick up within about <strong>2 weeks</strong>. We can hold completed work for up to <strong>4 weeks</strong> before the abandoned-work policy starts.</p>",
+    "tags": ["kiln", "storage", "policies", "logistics"]
   },
   {
-    "question": "How often do you fire?",
-    "answer": "<p>We fire at least once per week and add extra loads when demand is high. Most weeks include both bisque and mid-fire glaze firings.</p>",
-    "tags": [
-      "kiln",
-      "scheduling"
-    ]
+    "question": "What are your kiln prices?",
+    "answer": "<p>Half shelf is roughly the footprint of a carry-on suitcase laid flat.</p><ul><li>Full kiln/custom fire: $60</li><li>Half shelf bisque: $15</li><li>Half shelf glaze: $25</li><li>By volume: $0.03 per cubic inch</li><li>Delivery: $25 per trip</li></ul>",
+    "tags": ["kiln", "pricing", "payments"]
   },
   {
-    "question": "What kiln do you use?",
-    "answer": "<p>We fire in an L&amp;L eQ2827-3 electric oxidation kiln with a Genesis touch screen controller, rated to cone 10. A raku reduction kiln is planned for the property.</p>",
-    "tags": [
-      "kiln",
-      "equipment"
-    ]
+    "question": "Do you offer credits if work is damaged?",
+    "answer": "<p>If damage is the studio's fault (for example: loading error, incorrect firing type), we credit the full impacted half-shelf bisque or glaze fee. If the issue is maker-side (dryness, construction/process fault, or firing-temp miscommunication), no firing credit is issued.</p>",
+    "tags": ["kiln", "policies", "payments"]
   },
   {
-    "question": "Do you load the kiln for me?",
-    "answer": "<p>Yes. Kilns are loaded by studio technicians so spacing, supports, and kiln furniture are handled safely and consistently.</p>",
-    "tags": [
-      "kiln",
-      "policies"
-    ]
+    "question": "Do you use witness cones?",
+    "answer": "<p>Yes, witness cones are available on request today. We are also planning a witness-cone add-on option in the portal.</p>",
+    "tags": ["kiln", "policies", "portal"]
+  },
+  {
+    "question": "When are charges processed for firing?",
+    "answer": "<p>Firing fees are charged at unloading, after we confirm there was no studio-fault issue that should receive credit.</p>",
+    "tags": ["payments", "kiln", "policies"]
+  },
+  {
+    "question": "When are charges processed for supplies, day passes, and workshops?",
+    "answer": "<p>Supplies, day passes, and workshops are charged immediately. Workshop charges are processed at attendance, not reservation.</p>",
+    "tags": ["payments", "supplies", "workshops", "studio"]
+  },
+  {
+    "question": "What payment methods do you accept?",
+    "answer": "<p>We accept major card and tap methods, including credit cards and Apple Pay.</p>",
+    "tags": ["payments", "portal", "studio"]
   },
   {
     "question": "What is a day pass?",
-    "answer": "<p>Day passes are $40 and include access to studio equipment and work areas by reservation. Book through the portal so we can keep the floor calm and workable.</p>",
-    "tags": [
-      "studio",
-      "pricing",
-      "access"
-    ]
+    "answer": "<p>Day pass access is $40 and gives reserved use of studio work areas and shared resources for that session.</p>",
+    "tags": ["studio", "pricing", "access"]
   },
   {
     "question": "How do memberships work?",
-    "answer": "<p>Membership tiers include A la Carte, Apprentice, Journeyman, and Master, with varying firing credits, storage, and discounts. Compare tiers on the Memberships page; pricing is published in the portal. We are happy to help you choose.</p>",
-    "tags": [
-      "memberships",
-      "pricing"
-    ]
+    "answer": "<p>Memberships are tiered for cadence and usage level. Tiers differ by firing credits, storage, and discounts. If you are unsure, we can map your typical monthly volume to the right tier.</p>",
+    "tags": ["memberships", "pricing", "studio"]
   },
   {
-    "question": "How do payments work?",
-    "answer": "<p>We process online payments through Stripe. If you need to pay in person, we have a POS for tap card payments. If you need another arrangement, just reach out.</p>",
-    "tags": [
-      "payments",
-      "portal"
-    ]
+    "question": "How often are community events?",
+    "answer": "<p>Community programming runs monthly and includes game nights, ceramics process workshops, business mentoring sessions, and occasional meet-and-greet events.</p>",
+    "tags": ["community", "events", "workshops"]
   },
   {
-    "question": "How often are workshops offered?",
-    "answer": "<p>Workshops are occasional and announced when the studio schedule allows. Invites go to members and details are posted in the portal.</p>",
-    "tags": [
-      "workshops",
-      "scheduling"
-    ]
+    "question": "How do I get Discord access?",
+    "answer": "<p>Discord invites are shared with active clients and members. Request access through support if your invite has expired.</p>",
+    "tags": ["community", "portal", "support"]
   },
   {
-    "question": "Can you pick up supplies for me?",
-    "answer": "<p>Yes. Members can request supplies through the portal and pick them up during a reservation, or ask for delivery.</p>",
-    "tags": [
-      "supplies",
-      "memberships"
-    ]
+    "question": "Can I request supplies through Monsoon Fire?",
+    "answer": "<p>Yes. You can request commonly stocked supplies through support or the portal and pick up during your reservation window.</p>",
+    "tags": ["supplies", "memberships", "portal"]
   },
   {
     "question": "Do you offer reduction firing?",
-    "answer": "<p>Not yet. A raku reduction kiln is planned for the property, and we will announce it through the portal when it is ready.</p>",
-    "tags": [
-      "kiln",
-      "equipment"
-    ]
+    "answer": "<p>Reduction is planned as the studio expands, but current production service is electric oxidation firing. Updates will be posted in the portal and community feed.</p>",
+    "tags": ["kiln", "equipment", "scheduling"]
+  },
+  {
+    "question": "What should I include when reporting a firing issue?",
+    "answer": "<p>Include batch ID, firing type requested, clay body, glaze notes, and clear photos. This speeds up root-cause review and helps us apply the correct credit policy if needed.</p>",
+    "tags": ["support", "kiln", "policies", "portal"]
   }
 ]

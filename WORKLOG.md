@@ -167,3 +167,4 @@ Full marketing-site UI/UX + accessibility pass for `monsoonfire.com` website (no
   - ignore/untrack screenshots, logs, and timestamped capture folders.
 - Promoted stable latest snapshot from `artifacts/telemetry/after-seed-2/`.
 - Updated `.gitignore` and `COST_NOTES.md` with regeneration + promotion workflow.
+- Fresh checkout: run `npm run verify:bootstrap`

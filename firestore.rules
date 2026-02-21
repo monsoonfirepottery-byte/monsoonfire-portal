@@ -540,8 +540,11 @@ service cloud.firestore {
     }
 
     match /directMessages/{threadId} {
-      allow read: if isSignedIn()
-        && request.auth.uid in resource.data.participantUids;
+      allow read: if isStaff()
+        || (
+          isSignedIn()
+          && request.auth.uid in resource.data.participantUids
+        );
       allow create: if isSignedIn()
         && request.resource.data.participantUids is list
         && request.resource.data.participantUids.hasAny([request.auth.uid])
@@ -559,8 +562,13 @@ service cloud.firestore {
           "references",
           "lastReadAtByUid"
         ]);
-      allow update: if isSignedIn()
-        && request.auth.uid in resource.data.participantUids
+      allow update: if (
+          isStaff()
+          || (
+            isSignedIn()
+            && request.auth.uid in resource.data.participantUids
+          )
+        )
         && request.resource.data.participantUids == resource.data.participantUids
         && changedKeysOnly([
           "subject",
@@ -576,8 +584,8 @@ service cloud.firestore {
       allow delete: if false;
 
       match /messages/{messageId} {
-        allow read: if isThreadParticipant(threadId);
-        allow create: if isThreadParticipant(threadId)
+        allow read: if isStaff() || isThreadParticipant(threadId);
+        allow create: if (isStaff() || isThreadParticipant(threadId))
           && request.resource.data.fromUid == request.auth.uid
           && hasOnlyKeys([
             "messageId",

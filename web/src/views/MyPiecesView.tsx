@@ -2,15 +2,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
 import {
-  addDoc,
   collection,
   doc,
-  getDocs,
   limit,
   orderBy,
   query,
   serverTimestamp,
-  updateDoc,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useBatches } from "../hooks/useBatches";
@@ -22,8 +19,11 @@ import { toVoidHandler } from "../utils/toVoidHandler";
 import { shortId, track } from "../lib/analytics";
 import RevealCard from "../components/RevealCard";
 import { useUiSettings } from "../context/UiSettingsContext";
+import { trackedAddDoc, trackedGetDocs, trackedUpdateDoc } from "../lib/firestoreTelemetry";
 
-const PIECES_PREVIEW_COUNT = 12;
+const PIECES_PAGE_SIZE = 25;
+const BATCHES_PAGE_SIZE = 5;
+const BATCH_PIECES_QUERY_LIMIT = 50;
 const NOTE_LOAD_LIMIT = 40;
 const MEDIA_LOAD_LIMIT = 30;
 const AUDIT_LOAD_LIMIT = 60;
@@ -253,6 +253,8 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
   const [editingNoteText, setEditingNoteText] = useState("");
 
   const [piecesFilter, setPiecesFilter] = useState<"all" | "active" | "history">("all");
+  const [batchWindow, setBatchWindow] = useState(BATCHES_PAGE_SIZE);
+  const [pieceListLimit, setPieceListLimit] = useState(PIECES_PAGE_SIZE);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"recent" | "oldest" | "stage" | "rating">("recent");
   const [ratingStatus, setRatingStatus] = useState<Record<string, string>>({});
@@ -289,6 +291,15 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
   }, [activePieceCount, historyPieceCount, piecesFilter, user.uid]);
 
   useEffect(() => {
+    setBatchWindow(BATCHES_PAGE_SIZE);
+    setPieceListLimit(PIECES_PAGE_SIZE);
+  }, [piecesFilter]);
+
+  useEffect(() => {
+    setPieceListLimit(PIECES_PAGE_SIZE);
+  }, [searchQuery, sortBy]);
+
+  useEffect(() => {
     if (!user) {
       setPieces([]);
       return;
@@ -302,20 +313,26 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
       setPiecesError("");
 
       try {
-        const batches = [...active, ...history];
+        const batches =
+          piecesFilter === "active"
+            ? active
+            : piecesFilter === "history"
+              ? history
+              : [...active, ...history];
         if (batches.length === 0) {
           setPieces([]);
           return;
         }
+        const visibleBatches = batches.slice(0, batchWindow);
 
         const rows = await Promise.all(
-          batches.map(async (batch) => {
+          visibleBatches.map(async (batch) => {
             const piecesQuery = query(
               collection(db, "batches", batch.id, "pieces"),
               orderBy("updatedAt", "desc"),
-              limit(200)
+              limit(BATCH_PIECES_QUERY_LIMIT)
             );
-            const snap = await getDocs(piecesQuery);
+            const snap = await trackedGetDocs("pieces:list", piecesQuery);
             return snap.docs.map((docSnap) => {
               const data = docSnap.data() as Partial<PieceDoc>;
               const batchTitle =
@@ -351,7 +368,7 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
     };
 
     void loadPieces();
-  }, [user, active, history, historyBatchIds, isBusy, setBusy]);
+  }, [user, active, history, historyBatchIds, isBusy, setBusy, piecesFilter, batchWindow]);
 
   const selectedPiece = useMemo(
     () => pieces.find((piece) => piece.key === selectedPieceKey) ?? null,
@@ -405,10 +422,10 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
         );
 
         const [clientSnap, studioSnap, auditSnap, mediaSnap] = await Promise.all([
-          getDocs(clientQuery),
-          getDocs(studioQuery),
-          getDocs(auditQuery),
-          getDocs(mediaQuery),
+          trackedGetDocs("pieces:detail", clientQuery),
+          trackedGetDocs("pieces:detail", studioQuery),
+          trackedGetDocs("pieces:detail", auditQuery),
+          trackedGetDocs("pieces:detail", mediaQuery),
         ]);
 
         setClientNotes(
@@ -487,8 +504,15 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
     return sorted;
   }, [pieces, piecesFilter, searchQuery, sortBy]);
 
-  const visiblePieces =
-    piecesFilter === "all" ? filteredPieces.slice(0, PIECES_PREVIEW_COUNT) : filteredPieces;
+  const visiblePieces = filteredPieces.slice(0, pieceListLimit);
+  const hasMoreVisiblePieces = filteredPieces.length > pieceListLimit;
+  const sourceBatchCount =
+    piecesFilter === "active"
+      ? active.length
+      : piecesFilter === "history"
+        ? history.length
+        : active.length + history.length;
+  const hasMoreBatches = sourceBatchCount > batchWindow;
 
   const selectedPieceCanContinue =
     selectedPiece?.stage === "BISQUE" || selectedPiece?.stage === "GREENWARE";
@@ -500,7 +524,7 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
     setStatus("");
 
     try {
-      await updateDoc(doc(db, "batches", piece.batchId, "pieces", piece.id), {
+      await trackedUpdateDoc("pieces:update", doc(db, "batches", piece.batchId, "pieces", piece.id), {
         ...payload,
         updatedAt: serverTimestamp(),
       });
@@ -537,7 +561,7 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
     setRatingStatus((prev) => ({ ...prev, [piece.key]: "" }));
 
     try {
-      await updateDoc(doc(db, "batches", piece.batchId, "pieces", piece.id), {
+      await trackedUpdateDoc("pieces:rating", doc(db, "batches", piece.batchId, "pieces", piece.id), {
         clientRating: rating,
         clientRatingUpdatedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -580,7 +604,8 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
         authorName: user.displayName || (stream === "client" ? "Member" : "Staff"),
         searchTokens: toTokens(text),
       };
-      await addDoc(
+      await trackedAddDoc(
+        "pieces:notes",
         collection(
           db,
           "batches",
@@ -591,7 +616,8 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
         ),
         payload
       );
-      await addDoc(
+      await trackedAddDoc(
+        "pieces:notes",
         collection(db, "batches", selectedPiece.batchId, "pieces", selectedPiece.id, "audit"),
         {
           type: "NOTE_ADDED",
@@ -631,7 +657,8 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
     setBusy(busyKey, true);
 
     try {
-      await updateDoc(
+      await trackedUpdateDoc(
+        "pieces:notes",
         doc(
           db,
           "batches",
@@ -647,7 +674,8 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
           searchTokens: toTokens(editingNoteText),
         }
       );
-      await addDoc(
+      await trackedAddDoc(
+        "pieces:notes",
         collection(db, "batches", selectedPiece.batchId, "pieces", selectedPiece.id, "audit"),
         {
           type: "NOTE_EDITED",
@@ -843,7 +871,20 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
             <option value="stage">Stage</option>
             <option value="rating">Rating</option>
           </select>
+          {hasMoreBatches ? (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setBatchWindow((prev) => prev + BATCHES_PAGE_SIZE)}
+              disabled={piecesLoading}
+            >
+              {piecesLoading ? "Loading..." : "Load more check-ins"}
+            </button>
+          ) : null}
         </div>
+      </div>
+      <div className="piece-meta">
+        Showing up to {batchWindow} recent check-ins and up to {BATCH_PIECES_QUERY_LIMIT} pieces per check-in.
       </div>
 
       <div className="cta-bar">
@@ -866,6 +907,9 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
               renderPiecesEmptyState()
             ) : (
               <div className="pieces-list">
+                <div className="piece-meta">
+                  Showing {visiblePieces.length} of {filteredPieces.length} pieces.
+                </div>
                 {visiblePieces.map((piece) => (
                   <div className="piece-row" key={piece.key}>
                     <div>
@@ -903,10 +947,14 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
                     </div>
                   </div>
                 ))}
-                {piecesFilter === "all" && filteredPieces.length > PIECES_PREVIEW_COUNT ? (
-                  <div className="piece-meta">
-                    Showing {PIECES_PREVIEW_COUNT} of {filteredPieces.length}. Use filters to see more.
-                  </div>
+                {hasMoreVisiblePieces ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => setPieceListLimit((prev) => prev + PIECES_PAGE_SIZE)}
+                  >
+                    Load more pieces ({PIECES_PAGE_SIZE} at a time)
+                  </button>
                 ) : null}
               </div>
             )}

@@ -249,7 +249,6 @@ const MODULES: Array<{ key: ModuleKey; label: string }> = [
   { key: "reports", label: "Reports" },
   { key: "governance", label: "Governance" },
   { key: "agentOps", label: "Agent ops" },
-  { key: "studioBrain", label: "Studio Brain" },
   { key: "stripe", label: "Stripe settings" },
   { key: "commerce", label: "Store & billing" },
   { key: "lending", label: "Lending" },
@@ -1603,12 +1602,76 @@ const loadEvents = useCallback(async () => {
     if (selectedEventId) await loadSignups(selectedEventId);
   }, [hasFunctionsAuthMismatch, loadBatches, loadCommerce, loadEvents, loadFirings, loadLending, loadReportOps, loadSignups, loadStudioBrainStatus, loadSystemStats, loadUsers, selectedEventId]);
 
+  const loadModule = useCallback(
+    async (target: ModuleKey) => {
+      switch (target) {
+        case "cockpit":
+        case "overview":
+          await Promise.allSettled([loadUsers(), loadBatches(), loadFirings(), loadEvents(), loadLending(), loadReportOps(), loadStudioBrainStatus()]);
+          if (!hasFunctionsAuthMismatch) {
+            await Promise.allSettled([loadCommerce(), loadSystemStats()]);
+          }
+          return;
+        case "members":
+          await loadUsers();
+          return;
+        case "pieces":
+          await loadBatches();
+          return;
+        case "firings":
+          await loadFirings();
+          return;
+        case "events":
+          await loadEvents();
+          if (selectedEventId) await loadSignups(selectedEventId);
+          return;
+        case "reports":
+          await loadReportOps();
+          return;
+        case "lending":
+          await loadLending();
+          return;
+        case "commerce":
+          if (hasFunctionsAuthMismatch) {
+            setStatus("Commerce module requires matching Functions + Auth emulator settings.");
+            return;
+          }
+          await loadCommerce();
+          return;
+        case "system":
+          if (!hasFunctionsAuthMismatch) {
+            await loadSystemStats();
+          }
+          await loadStudioBrainStatus();
+          return;
+        case "governance":
+        case "agentOps":
+        case "studioBrain":
+        case "stripe":
+          await loadStudioBrainStatus();
+          return;
+        default:
+          return;
+      }
+    },
+    [
+      hasFunctionsAuthMismatch,
+      loadBatches,
+      loadCommerce,
+      loadEvents,
+      loadFirings,
+      loadLending,
+      loadReportOps,
+      loadSignups,
+      loadStudioBrainStatus,
+      loadSystemStats,
+      loadUsers,
+      selectedEventId,
+    ]
+  );
+
   useEffect(() => {
-    void run("bootstrap", async () => {
-      await loadAll();
-      setStatus("Staff modules loaded.");
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setStatus("Select a module and click Load current module to fetch data.");
   }, []);
 
   useEffect(() => {
@@ -3058,13 +3121,11 @@ const loadEvents = useCallback(async () => {
           </div>
         ) : null}
         <div className="staff-actions-row">
-          <button className="btn btn-ghost btn-small" onClick={() => setModuleKey("studioBrain")}>Open Studio Brain module</button>
           <button className="btn btn-ghost btn-small" onClick={() => setModuleKey("agentOps")}>Open Agent ops module</button>
           <button className="btn btn-ghost btn-small" onClick={() => setModuleKey("governance")}>Open Governance module</button>
           <button className="btn btn-ghost btn-small" onClick={() => setModuleKey("reports")}>Open Reports module</button>
         </div>
       </section>
-      <div className="card staff-console-card">{studioBrainContent}</div>
       <div className="card staff-console-card">{agentOpsContent}</div>
       <div className="card staff-console-card">{governanceContent}</div>
       <div className="card staff-console-card">{reportsContent}</div>
@@ -3429,8 +3490,6 @@ const lendingContent = (
         <div className="staff-kpi"><span>Functions base</span><strong>{usingLocalFunctions ? "Local" : "Remote"}</strong></div>
         <div className="staff-kpi"><span>Auth mode</span><strong>{showEmulatorTools ? "Emulator" : "Production"}</strong></div>
         <div className="staff-kpi"><span>Integration tokens</span><strong>{integrationTokenCount ?? 0}</strong></div>
-        <div className="staff-kpi"><span>Studio Brain</span><strong>{studioBrainStatus ? studioBrainStatus.mode : "-"}</strong></div>
-        <div className="staff-kpi"><span>Snapshot age</span><strong>{studioBrainStatus?.snapshotAgeMinutes ?? "-"}</strong></div>
         <div className="staff-kpi"><span>System checks</span><strong>{systemChecks.length}</strong></div>
         <div className="staff-kpi"><span>Notif success</span><strong>{notificationMetricsSummary ? `${num(notificationMetricsSummary.successRate, 0)}%` : "-"}</strong></div>
         <div className="staff-kpi"><span>Notif failed</span><strong>{notificationMetricsSummary ? num(notificationMetricsSummary.totalFailed, 0) : "-"}</strong></div>
@@ -3471,12 +3530,8 @@ const lendingContent = (
         >
           Refresh token stats
         </button>
-        <button
-          className="btn btn-secondary"
-          disabled={Boolean(busy)}
-          onClick={() => void run("refreshStudioBrainStatus", loadStudioBrainStatus)}
-        >
-          Check Studio Brain
+        <button className="btn btn-secondary" disabled>
+          Studio Brain checks retired
         </button>
       </div>
       {hasFunctionsAuthMismatch ? (
@@ -3580,15 +3635,35 @@ const lendingContent = (
       <div className="staff-hero card card-3d">
         <div className="card-title-row">
           <div className="card-title">Staff Console</div>
-          <button
-            className="btn btn-secondary"
-            disabled={Boolean(busy)}
-            onClick={() => void run("refreshAll", async () => { await loadAll(); setStatus("Refreshed all modules"); })}
-          >
-            {busy ? "Working..." : "Refresh all"}
-          </button>
+          <div className="staff-hero-actions">
+            <button
+              className="btn btn-secondary"
+              disabled={Boolean(busy)}
+              onClick={() =>
+                void run("refreshModule", async () => {
+                  await loadModule(moduleKey);
+                  setStatus(`Loaded ${moduleKey} module.`);
+                })
+              }
+            >
+              {busy ? "Working..." : "Load current module"}
+            </button>
+            <button
+              className="btn btn-ghost"
+              disabled={Boolean(busy)}
+              onClick={() =>
+                void run("refreshAll", async () => {
+                  await loadAll();
+                  setStatus("Refreshed all modules");
+                })
+              }
+            >
+              Refresh all
+            </button>
+          </div>
         </div>
         <p className="card-subtitle">Portal administration for users, pieces, firings, events, store, lending, and system health.</p>
+        <div className="staff-note">Data is lazy-loaded. Start with <strong>Load current module</strong> to keep reads controlled.</div>
         <div className="staff-meta">
           <div><span className="label">Signed in</span><strong>{user.displayName ?? "Staff"}</strong></div>
           <div><span className="label">Role</span><strong>{isStaff ? "Staff claim" : "No staff claim"}</strong></div>

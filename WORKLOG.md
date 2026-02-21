@@ -63,3 +63,45 @@ Full marketing-site UI/UX + accessibility pass for `monsoonfire.com` website (no
 - Capture limitations:
   - Load-older messages button unavailable with current local dataset (<50 in thread).
   - Staff nav not visible under anonymous emulator auth; claim escalation via emulator API returned INSUFFICIENT_PERMISSION.
+
+## 2026-02-21 follow-up stabilization pass (fix-ensureUserDoc-seed-staff-20260221)
+- Initialized clean worktree branch from verify-emulators-telemetry-uxcaps-20260221.
+
+### Java + emulator unblock and evidence rerun
+- `java` missing in shell; installed portable Temurin runtimes under `~/.local/`:
+  - `~/.local/jre17-portable` (for compatibility tests)
+  - `~/.local/jre21-portable` (required by current firebase-tools)
+- Emulator startup command used for this pass:
+  - `JAVA_HOME=/home/wuff/.local/jre21-portable PATH=/home/wuff/.local/jre21-portable/bin:$PATH firebase emulators:start --config firebase.emulators.local.json --project monsoonfire-portal --only auth,firestore,functions > artifacts/telemetry/ensureUserDoc-errors.log 2>&1`
+- Active emulator ports:
+  - Auth `127.0.0.1:9099`
+  - Firestore `127.0.0.1:8085`
+  - Functions `127.0.0.1:5001`
+  - UI `http://127.0.0.1:4000`
+- Seeded deterministic data:
+  - `FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 FIRESTORE_EMULATOR_HOST=127.0.0.1:8085 GCLOUD_PROJECT=monsoonfire-portal npm run seed:emulators`
+- Captured telemetry evidence:
+  - `TELEMETRY_OUT_DIR=artifacts/telemetry/after-seed node scripts/capture-telemetry-evidence.mjs`
+  - Output bundle: `artifacts/telemetry/after-seed/`
+
+### ensureUserDoc error diagnosis and fix
+- Root cause found in prior implementation path:
+  - Firestore transaction mixed reads after writes in same transaction flow, which can trigger repeated transaction failures/log spam under emulator traffic.
+- Fix implemented:
+  - Replaced with idempotent get-then-create flow (no read-after-write transaction pattern).
+  - Added explicit `OPTIONS` handling, strict `POST` behavior, and structured JSON error responses.
+  - Added field sanitization to avoid writing `undefined`.
+  - Client bootstrap throttles retries so failures remain non-blocking and non-spammy.
+- Verification evidence:
+  - `artifacts/telemetry/ensureUserDoc-errors.log` includes successful completions:
+    - `ensureUserDoc complete`
+    - `emulatorGrantStaffRole complete`
+  - No repeating error stack traces for `ensureUserDoc` in this rerun.
+
+### Captured telemetry summary (after seed)
+- Startup (A): reads=2, writes=0
+- Messages open (B): reads=3, writes=0
+- Thread open (C): reads=3, writes=0
+- My Pieces initial/load-more (E/F): reads rose under seeded pagination flow (see evidence file)
+- Glaze Board idle (G): listener events observed with capped listeners
+- Staff before/after load (H/I): captured in evidence screenshots and markdown

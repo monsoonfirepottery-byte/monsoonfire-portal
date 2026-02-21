@@ -29,7 +29,7 @@ describe("makeRequestId", () => {
     const originalCrypto = globalThis.crypto;
     const expectedBytes = Uint8Array.from([0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe, 0xba, 0xbe, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77]);
     const customCrypto = {
-      // @ts-expect-error
+      // @ts-expect-error intentional undefined randomUUID fallback coverage
       randomUUID: undefined,
       getRandomValues: vi.fn((bytes: Uint8Array) => {
         bytes.set(expectedBytes.subarray(0, bytes.length));

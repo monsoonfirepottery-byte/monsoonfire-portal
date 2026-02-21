@@ -80,6 +80,7 @@ import {
   staffReviewAgentReservation,
   staffUpdateAgentOpsConfig,
 } from "./agentCommerce";
+export { ensureUserDoc, emulatorGrantStaffRole } from "./ensureUserDoc";
 import { emitIntegrationEvent } from "./integrationEvents";
 import { executeStudioBrainPilotAction, rollbackStudioBrainPilotAction } from "./v3Execution/pilotFirestoreAction";
 export { websiteKilnBoard } from "./websiteKilnBoard";

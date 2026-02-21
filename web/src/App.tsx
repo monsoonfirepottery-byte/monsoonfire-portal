@@ -21,8 +21,6 @@ import {
   addDoc,
   collection,
   doc,
-  getDoc,
-  getDocs,
   limit,
   orderBy,
   query,
@@ -34,6 +32,8 @@ import { auth, db } from "./firebase";
 import type { Announcement, DirectMessageThread, LiveUser } from "./types/messaging";
 import { toVoidHandler } from "./utils/toVoidHandler";
 import { identify, shortId, track } from "./lib/analytics";
+import { ensureUserDocForSession } from "./api/ensureUserDoc";
+import FirestoreTelemetryPanel from "./components/FirestoreTelemetryPanel";
 import type { SupportRequestInput } from "./views/SupportView";
 import { DEFAULT_PORTAL_THEME, isPortalThemeName, PORTAL_THEMES, type PortalThemeName } from "./theme/themes";
 import { readStoredPortalTheme, writeStoredPortalTheme } from "./theme/themeStorage";
@@ -42,6 +42,7 @@ import { computeEnhancedMotionDefault, resolvePortalMotion } from "./theme/motio
 import { usePrefersReducedMotion } from "./hooks/usePrefersReducedMotion";
 import { UiSettingsProvider } from "./context/UiSettingsContext";
 import { PROFILE_DEFAULT_AVATAR_URL } from "./lib/profileAvatars";
+import { setTelemetryView, trackedGetDoc, trackedGetDocs } from "./lib/firestoreTelemetry";
 import "./App.css";
 
 const BillingView = React.lazy(() => import("./views/BillingView"));
@@ -466,7 +467,7 @@ function useLiveUsers(user: User | null, canLoad: boolean) {
     const load = async () => {
       try {
         const usersQuery = query(collection(db, "users"), orderBy("displayName", "asc"), limit(100));
-        const snap = await getDocs(usersQuery);
+        const snap = await trackedGetDocs("messages:liveUsers", usersQuery);
         if (canceled) return;
         const rows: LiveUser[] = snap.docs.map((docSnap) => ({
           id: docSnap.id,
@@ -489,14 +490,14 @@ function useLiveUsers(user: User | null, canLoad: boolean) {
   return { users, loading, error };
 }
 
-function useDirectMessages(user: User | null) {
+function useDirectMessages(user: User | null, canLoad: boolean) {
   const [threads, setThreads] = useState<DirectMessageThread[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let canceled = false;
-    if (!user) {
+    if (!user || !canLoad) {
       setThreads([]);
       setLoading(false);
       setError("");
@@ -514,7 +515,7 @@ function useDirectMessages(user: User | null) {
           orderBy("lastMessageAt", "desc"),
           limit(50)
         );
-        const snap = await getDocs(threadsQuery);
+        const snap = await trackedGetDocs("messages:threads", threadsQuery);
         if (canceled) return;
         const rows: DirectMessageThread[] = snap.docs.map((docSnap) => ({
           id: docSnap.id,
@@ -532,19 +533,19 @@ function useDirectMessages(user: User | null) {
     return () => {
       canceled = true;
     };
-  }, [user]);
+  }, [user, canLoad]);
 
   return { threads, loading, error };
 }
 
-function useAnnouncements(user: User | null) {
+function useAnnouncements(user: User | null, canLoad: boolean) {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let canceled = false;
-    if (!user) {
+    if (!user || !canLoad) {
       setAnnouncements([]);
       setLoading(false);
       setError("");
@@ -561,7 +562,7 @@ function useAnnouncements(user: User | null) {
           orderBy("createdAt", "desc"),
           limit(30)
         );
-        const snap = await getDocs(announcementsQuery);
+        const snap = await trackedGetDocs("messages:announcements", announcementsQuery);
         if (canceled) return;
         const rows: Announcement[] = snap.docs.map((docSnap) => ({
           id: docSnap.id,
@@ -579,7 +580,7 @@ function useAnnouncements(user: User | null) {
     return () => {
       canceled = true;
     };
-  }, [user]);
+  }, [user, canLoad]);
 
   return { announcements, loading, error };
 }
@@ -608,7 +609,7 @@ function useNotifications(user: User | null, canLoad: boolean) {
           orderBy("createdAt", "desc"),
           limit(50)
         );
-        const snap = await getDocs(notificationsQuery);
+        const snap = await trackedGetDocs("notifications:list", notificationsQuery);
         if (canceled) return;
         const rows = snap.docs.map((docSnap) => ({
           id: docSnap.id,
@@ -681,6 +682,7 @@ export default function App() {
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [supportStatus, setSupportStatus] = useState("");
   const [supportBusy, setSupportBusy] = useState(false);
+  const [bootstrapWarning, setBootstrapWarning] = useState("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [themeName, setThemeName] = useState<PortalThemeName>(() => readStoredPortalTheme());
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
@@ -880,7 +882,7 @@ export default function App() {
     let cancelled = false;
     async function loadThemeFromProfile(uid: string) {
       try {
-        const snap = await getDoc(doc(db, "profiles", uid));
+        const snap = await trackedGetDoc("startup:profile", doc(db, "profiles", uid));
         const data = (snap.data() as { uiTheme?: unknown; uiEnhancedMotion?: unknown } | undefined) ?? undefined;
         const raw = data?.uiTheme;
         const rawMotion = data?.uiEnhancedMotion;
@@ -1032,6 +1034,50 @@ export default function App() {
   }, [authClient, isAuthEmulator]);
 
   useEffect(() => {
+    if (!user?.uid) {
+      setBootstrapWarning("");
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const projectId = authClient.app.options.projectId ?? "monsoonfire-portal";
+      const result = await ensureUserDocForSession({
+        uid: user.uid,
+        getIdToken: async () => await user.getIdToken(),
+        baseUrl: FUNCTIONS_BASE_URL,
+        projectId,
+      });
+      if (cancelled) return;
+      if (!result.ok) {
+        const nextWarning = result.message
+          ? `Account setup check failed: ${result.message}`
+          : "Account setup check failed. Some personalization may be delayed.";
+        setBootstrapWarning(nextWarning);
+        console.warn("[bootstrap] ensureUserDoc failed", {
+          uid: user.uid,
+          message: result.message ?? "unknown",
+        });
+        return;
+      }
+      setBootstrapWarning("");
+      if (result.userCreated || result.profileCreated) {
+        console.info("[bootstrap] ensureUserDoc complete", {
+          uid: user.uid,
+          userCreated: result.userCreated,
+          profileCreated: result.profileCreated,
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authClient.app.options.projectId, user]);
+
+  useEffect(() => {
+    setTelemetryView(nav);
+  }, [nav]);
+
+  useEffect(() => {
     if (!user?.uid) return;
 
     let cancelled = false;
@@ -1044,8 +1090,8 @@ export default function App() {
     const seedWelcomeInfrastructure = async () => {
       try {
         const [threadSnap, notificationSnap] = await Promise.all([
-          getDoc(supportThreadRef),
-          getDoc(welcomeNotificationRef),
+          trackedGetDoc("startup:welcome", supportThreadRef),
+          trackedGetDoc("startup:welcome", welcomeNotificationRef),
         ]);
 
         if (cancelled) return;
@@ -1069,7 +1115,9 @@ export default function App() {
           threadPayload.subject = WELCOME_MESSAGE_SUBJECT;
         }
 
-        const hasWelcomeMessage = threadSnap.exists() ? (await getDoc(welcomeMessageRef)).exists() : false;
+        const hasWelcomeMessage = threadSnap.exists()
+          ? (await trackedGetDoc("startup:welcome", welcomeMessageRef)).exists()
+          : false;
 
         if (!threadSnap.exists() || !hasWelcomeMessage) {
           await setDoc(
@@ -1193,12 +1241,17 @@ export default function App() {
     user,
     isStaff && nav === "messages"
   );
-  const { threads, loading: threadsLoading, error: threadsError } = useDirectMessages(user);
+  const shouldLoadMessages = nav === "messages";
+  const shouldLoadAnnouncements = nav === "messages";
+  const { threads, loading: threadsLoading, error: threadsError } = useDirectMessages(
+    user,
+    shouldLoadMessages
+  );
   const {
     announcements,
     loading: announcementsLoading,
     error: announcementsError,
-  } = useAnnouncements(user);
+  } = useAnnouncements(user, shouldLoadAnnouncements);
   const {
     notifications,
     loading: notificationsLoading,
@@ -1984,6 +2037,11 @@ export default function App() {
                   Enhanced motion was disabled for performance. You can re-enable it in Profile.
                 </div>
               ) : null}
+              {bootstrapWarning ? (
+                <div className="notice motion-notice" role="status" aria-live="polite">
+                  {bootstrapWarning}
+                </div>
+              ) : null}
               <UiSettingsProvider
                 value={{
                   themeName,
@@ -1996,6 +2054,7 @@ export default function App() {
                   {renderView(nav)}
                 </div>
               </UiSettingsProvider>
+              <FirestoreTelemetryPanel enabled={import.meta.env.DEV} />
             </React.Suspense>
           ) : null}
         </main>

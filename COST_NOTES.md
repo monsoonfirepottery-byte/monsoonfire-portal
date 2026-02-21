@@ -123,3 +123,25 @@
   - Client bootstrap remains non-blocking and now throttles retries to prevent log spam loops.
 - Production safety:
   - `emulatorGrantStaffRole` is emulator-only (`FUNCTIONS_EMULATOR` gate) and unavailable in production.
+
+## Telemetry artifact git policy (Option A)
+
+- Ignored in Git:
+  - All files under `artifacts/telemetry/` except the two stable summaries.
+  - This includes screenshots (`*.png`, `*.jpg`), logs, and timestamped capture folders.
+- Tracked in Git:
+  - `artifacts/telemetry/latest-telemetry-results.md`
+  - `artifacts/telemetry/latest-telemetry-results.json`
+- Why:
+  - Keep reviewable telemetry history lightweight and avoid long-term binary bloat in repository history.
+
+### Regenerate telemetry locally
+
+- Capture a fresh run:
+  - `TELEMETRY_OUT_DIR=artifacts/telemetry/after-seed-2 node scripts/capture-telemetry-evidence.mjs`
+
+### Promote latest for commit
+
+- `cp artifacts/telemetry/after-seed-2/telemetry-results.md artifacts/telemetry/latest-telemetry-results.md`
+- `cp artifacts/telemetry/after-seed-2/telemetry-results.json artifacts/telemetry/latest-telemetry-results.json`
+- `git add artifacts/telemetry/latest-telemetry-results.md artifacts/telemetry/latest-telemetry-results.json`

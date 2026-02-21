@@ -160,3 +160,10 @@ Full marketing-site UI/UX + accessibility pass for `monsoonfire.com` website (no
 - Local verification run:
   - `npm run verify:local` ✅
   - Rules tests: 14/14 passing (`scripts/rules/directMessages.rules.test.mjs`).
+
+## 2026-02-21 telemetry artifact hygiene pass (hygiene-telemetry-artifacts-20260221)
+- Implemented Option A telemetry git policy:
+  - track only `artifacts/telemetry/latest-telemetry-results.md` and `.json`
+  - ignore/untrack screenshots, logs, and timestamped capture folders.
+- Promoted stable latest snapshot from `artifacts/telemetry/after-seed-2/`.
+- Updated `.gitignore` and `COST_NOTES.md` with regeneration + promotion workflow.

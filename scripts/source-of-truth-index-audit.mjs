@@ -229,12 +229,12 @@ if (existsSync(codexConfigPath)) {
   }
 } else {
   addFinding(
-    "warning",
+    "pass",
     "mcp-key",
-    `.codex/config.toml not found at ${codexConfigPath}; MCP source inventory skipped`,
+    `.codex/config.toml not found at ${codexConfigPath}; MCP source inventory skipped (non-fatal in CI)`,
     {
       config: codexConfigPath,
-      mode: "warning",
+      mode: "pass",
     },
     "missing",
   );

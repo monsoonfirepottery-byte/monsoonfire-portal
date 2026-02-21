@@ -63,6 +63,7 @@ contract parity, deployment gates, smoke profiles, and mobile store-readiness ch
 | Agent orchestration runtime | `~/.codex/config.toml` (`mcp_servers.k8s_mcp_server`, `mcp_servers.ansible_docs`, `mcp_servers.jenkins_docs`, `mcp_servers.nomad_docs`, `mcp_servers.podman_docs`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
 | Agent orchestration control-plane references | `~/.codex/config.toml` (`mcp_servers.kubernetes_docs`, `mcp_servers.docker_docs`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
 | Apple Home / associated domains | `~/.codex/config.toml` (`mcp_servers.apple_fetch`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
+| Legacy MCP alias compatibility (strict index audit coverage) | `~/.codex/config.toml` (`mcp_servers.agentOrchestration*`, `mcp_servers.homeAssistant*`, `mcp_servers.ubuntu*`, `mcp_servers.serverOperations*`, `mcp_servers.hubitat*`, `mcp_servers.apple*`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
 
 ## 4) Evidence Evidence Bundle Outputs
 

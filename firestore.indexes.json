@@ -67,6 +67,14 @@
         { "fieldPath": "cursor", "order": "ASCENDING" }
       ]
     },
+    {
+      "collectionGroup": "directMessages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "participantUids", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "lastMessageAt", "order": "DESCENDING" }
+      ]
+    }
   ],
   "fieldOverrides": []
 }

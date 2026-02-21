@@ -1,25 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
 import {
-  addDoc,
   arrayUnion,
   collection,
   doc,
   limit,
-  getDocs,
   orderBy,
   query,
   serverTimestamp,
-  setDoc,
-  updateDoc,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import type { Announcement, DirectMessage, DirectMessageThread, LiveUser } from "../types/messaging";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import RevealCard from "../components/RevealCard";
 import { useUiSettings } from "../context/UiSettingsContext";
+import { trackedAddDoc, trackedGetDocs, trackedSetDoc, trackedUpdateDoc } from "../lib/firestoreTelemetry";
 
 const SUPPORT_THREAD_PREFIX = "support_";
+const DEFAULT_MESSAGE_FETCH_LIMIT = 50;
+const MAX_MESSAGE_FETCH_LIMIT = 200;
 
 type MessagesTab = "inbox" | "studio";
 
@@ -106,7 +105,7 @@ function isLegacyRecipientLabel(value: string) {
   return text === "cc" || text === "bcc";
 }
 
-function useDirectMessageMessages(threadId: string | null) {
+function useDirectMessageMessages(threadId: string | null, fetchLimit: number) {
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -124,14 +123,19 @@ function useDirectMessageMessages(threadId: string | null) {
       try {
         const messagesQuery = query(
           collection(db, "directMessages", threadId, "messages"),
-          orderBy("sentAt", "asc"),
-          limit(200)
+          orderBy("sentAt", "desc"),
+          limit(fetchLimit)
         );
-        const snap = await getDocs(messagesQuery);
+        const snap = await trackedGetDocs("messages:thread", messagesQuery);
         const rows: DirectMessage[] = snap.docs.map((docSnap) => ({
           id: docSnap.id,
           ...(docSnap.data() as Partial<DirectMessage>),
         }));
+        rows.sort((a, b) => {
+          const aAt = (a.sentAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
+          const bAt = (b.sentAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
+          return aAt - bAt;
+        });
         setMessages(rows);
       } catch (error: unknown) {
         setError(`Messages failed: ${getErrorMessage(error)}`);
@@ -141,7 +145,7 @@ function useDirectMessageMessages(threadId: string | null) {
     };
 
     void load();
-  }, [threadId]);
+  }, [fetchLimit, threadId]);
 
   return { messages, loading, error };
 }
@@ -173,9 +177,10 @@ export default function MessagesView({
   const [selectedAnnouncementId, setSelectedAnnouncementId] = useState<string | null>(null);
   const [sendError, setSendError] = useState("");
   const [sendStatus, setSendStatus] = useState("");
+  const [messageFetchLimit, setMessageFetchLimit] = useState(DEFAULT_MESSAGE_FETCH_LIMIT);
   const newThreadFormRef = useRef<HTMLDivElement>(null);
 
-  const { messages, loading, error } = useDirectMessageMessages(selectedThreadId);
+  const { messages, loading, error } = useDirectMessageMessages(selectedThreadId, messageFetchLimit);
 
   useEffect(() => {
     if (!selectedThreadId && threads.length > 0) {
@@ -184,9 +189,13 @@ export default function MessagesView({
   }, [threads, selectedThreadId]);
 
   useEffect(() => {
+    setMessageFetchLimit(DEFAULT_MESSAGE_FETCH_LIMIT);
+  }, [selectedThreadId]);
+
+  useEffect(() => {
     if (!selectedThreadId) return;
     const threadRef = doc(db, "directMessages", selectedThreadId);
-    updateDoc(threadRef, {
+    trackedUpdateDoc("messages:readState", threadRef, {
       [`lastReadAtByUid.${user.uid}`]: serverTimestamp(),
     }).catch(() => null);
   }, [selectedThreadId, user.uid]);
@@ -308,7 +317,7 @@ export default function MessagesView({
       const previousMessageId = selectedThread?.lastMessageId || null;
       const references = selectedThread?.references || [];
 
-      await addDoc(collection(threadRef, "messages"), {
+      await trackedAddDoc("messages:send", collection(threadRef, "messages"), {
         messageId,
         subject: selectedThread?.subject || "(no subject)",
         body: composerText,
@@ -323,7 +332,7 @@ export default function MessagesView({
         references,
       });
 
-      await updateDoc(threadRef, {
+      await trackedUpdateDoc("messages:send", threadRef, {
         lastMessagePreview: composerText.slice(0, 180),
         lastMessageAt: serverTimestamp(),
         lastMessageId: messageId,
@@ -366,7 +375,8 @@ export default function MessagesView({
         const supportId = `${SUPPORT_THREAD_PREFIX}${user.uid}`;
         const supportRef = doc(db, "directMessages", supportId);
 
-        await setDoc(
+        await trackedSetDoc(
+          "messages:newThread",
           supportRef,
           {
             subject,
@@ -377,7 +387,7 @@ export default function MessagesView({
           { merge: true }
         );
 
-        await addDoc(collection(supportRef, "messages"), {
+        await trackedAddDoc("messages:newThread", collection(supportRef, "messages"), {
           messageId,
           subject,
           body: newBody.trim(),
@@ -391,7 +401,7 @@ export default function MessagesView({
           references: [],
         });
 
-        await updateDoc(supportRef, {
+        await trackedUpdateDoc("messages:newThread", supportRef, {
           lastMessagePreview: newBody.trim().slice(0, 180),
           lastMessageAt: serverTimestamp(),
           lastMessageId: messageId,
@@ -417,9 +427,9 @@ export default function MessagesView({
           updatedAt: serverTimestamp(),
         };
 
-        const newThreadRef = await addDoc(collection(db, "directMessages"), payload);
+        const newThreadRef = await trackedAddDoc("messages:newThread", collection(db, "directMessages"), payload);
 
-        await addDoc(collection(newThreadRef, "messages"), {
+        await trackedAddDoc("messages:newThread", collection(newThreadRef, "messages"), {
           messageId,
           subject,
           body: newBody.trim(),
@@ -434,7 +444,7 @@ export default function MessagesView({
           references: [],
         });
 
-        await updateDoc(newThreadRef, {
+        await trackedUpdateDoc("messages:newThread", newThreadRef, {
           lastMessagePreview: newBody.trim().slice(0, 180),
           lastMessageAt: serverTimestamp(),
           lastMessageId: messageId,
@@ -468,9 +478,15 @@ export default function MessagesView({
 
     if (!announcement.readBy?.includes(user.uid)) {
       const annRef = doc(db, "announcements", announcement.id);
-      updateDoc(annRef, { readBy: arrayUnion(user.uid) }).catch(() => null);
+      trackedUpdateDoc("messages:announcement", annRef, { readBy: arrayUnion(user.uid) }).catch(() => null);
     }
   }
+
+  const canLoadOlder =
+    Boolean(selectedThread) &&
+    !loading &&
+    messageFetchLimit < MAX_MESSAGE_FETCH_LIMIT &&
+    messages.length >= messageFetchLimit;
 
   return (
     <div className="page">
@@ -612,21 +628,38 @@ export default function MessagesView({
               ) : messages.length === 0 ? (
                 <div className="empty-state">No messages yet. Send your first note below and we'll follow up.</div>
               ) : (
-                <div className="message-list">
-                  {messages.map((msg) => (
-                    <div className={`bubble ${msg.fromUid === user.uid ? "me" : ""}`} key={msg.id}>
-                      <div className="bubble-meta">
-                        <span>{msg.fromName || msg.fromEmail || "Studio"}</span>
-                        <span>{formatMaybeTimestamp(msg.sentAt)}</span>
+                <>
+                  <div className="piece-meta">
+                    Showing {Math.min(messages.length, messageFetchLimit)} most recent messages
+                    {messageFetchLimit >= MAX_MESSAGE_FETCH_LIMIT ? ` (max ${MAX_MESSAGE_FETCH_LIMIT})` : ""}.
+                  </div>
+                  <div className="message-list">
+                    {messages.map((msg) => (
+                      <div className={`bubble ${msg.fromUid === user.uid ? "me" : ""}`} key={msg.id}>
+                        <div className="bubble-meta">
+                          <span>{msg.fromName || msg.fromEmail || "Studio"}</span>
+                          <span>{formatMaybeTimestamp(msg.sentAt)}</span>
+                        </div>
+                        <div className="bubble-subject">{msg.subject || "(no subject)"}</div>
+                        <div className="bubble-body">{msg.body || ""}</div>
+                        {msg.inReplyTo ? (
+                          <div className="bubble-reply">In-Reply-To: {msg.inReplyTo}</div>
+                        ) : null}
                       </div>
-                      <div className="bubble-subject">{msg.subject || "(no subject)"}</div>
-                      <div className="bubble-body">{msg.body || ""}</div>
-                      {msg.inReplyTo ? (
-                        <div className="bubble-reply">In-Reply-To: {msg.inReplyTo}</div>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                  {canLoadOlder ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() =>
+                        setMessageFetchLimit((prev) => Math.min(MAX_MESSAGE_FETCH_LIMIT, prev + 50))
+                      }
+                    >
+                      Load older messages (next 50)
+                    </button>
+                  ) : null}
+                </>
               )}
 
               <div className="composer">

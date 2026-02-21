@@ -4,14 +4,10 @@ import type { User } from "firebase/auth";
 import {
   collection,
   doc,
-  getDocs,
   limit,
-  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
-  setDoc,
-  updateDoc,
 } from "firebase/firestore";
 import {
   connectStorageEmulator,
@@ -34,6 +30,12 @@ import {
   type ComboFilterState,
 } from "../lib/glazes/filters";
 import type { ComboKey, Glaze } from "../lib/glazes/types";
+import {
+  trackedGetDocs,
+  trackedOnSnapshot,
+  trackedSetDoc,
+  trackedUpdateDoc,
+} from "../lib/firestoreTelemetry";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./GlazeBoardView.css";
 
@@ -41,6 +43,9 @@ const GLAZY_SEARCH_BASE = "https://glazy.org/search?search=";
 const MAX_IMAGE_EDGE = 1600;
 const JPEG_QUALITY = 0.8;
 const FAVORITES_KEY = "mf_glaze_favorites";
+const GLAZE_LISTENER_LIMIT = 300;
+const ATTACH_BATCH_LIMIT = 8;
+const ATTACH_PIECES_PER_BATCH_LIMIT = 12;
 type MatrixParseResult = ReturnType<typeof importGlazeMatrix>;
 type ImportMetaEnvShape = {
   BASE_URL?: string;
@@ -550,16 +555,17 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
   }, [sheetPhotoFile]);
 
   useEffect(() => {
-    const tilesRef = collection(db, "comboTiles");
+    const tilesRef = query(collection(db, "comboTiles"), limit(GLAZE_LISTENER_LIMIT));
     setTileStatus("");
-    const unsubscribe = onSnapshot(
+    const unsubscribe = trackedOnSnapshot(
+      "glazes:comboTiles",
       tilesRef,
       (snap) => {
         const next: Record<number, ComboTileView> = {};
-        snap.docs.forEach((docSnap) => {
+        for (const docSnap of snap.docs ?? []) {
           const data = docSnap.data() as ComboTileDoc;
           const comboId = Number(data.comboId ?? docSnap.id);
-          if (!Number.isFinite(comboId)) return;
+          if (!Number.isFinite(comboId)) continue;
           const photos = Array.isArray(data.photos)
             ? data.photos.filter((photo) => photo && typeof photo.path === "string")
             : [];
@@ -577,7 +583,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
             updatedAt,
             updatedBy: data.updatedBy ?? null,
           };
-        });
+        }
         setComboTilesById(next);
       },
       (error) => {
@@ -588,13 +594,14 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
   }, []);
 
   useEffect(() => {
-    const tilesRef = collection(db, "singleTiles");
+    const tilesRef = query(collection(db, "singleTiles"), limit(GLAZE_LISTENER_LIMIT));
     setTileStatus("");
-    const unsubscribe = onSnapshot(
+    const unsubscribe = trackedOnSnapshot(
+      "glazes:singleTiles",
       tilesRef,
       (snap) => {
         const next: Record<string, SingleTileView> = {};
-        snap.docs.forEach((docSnap) => {
+        for (const docSnap of snap.docs ?? []) {
           const data = docSnap.data() as SingleTileDoc;
           const glazeId = data.glazeId ?? docSnap.id;
           const photos = Array.isArray(data.photos)
@@ -613,7 +620,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
             updatedAt,
             updatedBy: data.updatedBy ?? null,
           };
-        });
+        }
         setSingleTilesById(next);
       },
       (error) => {
@@ -624,18 +631,25 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
   }, []);
 
   useEffect(() => {
-    const glazesRef = collection(db, "glazes");
-    const unsubscribe = onSnapshot(glazesRef, (snap) => {
-      const next: Record<string, GlazeMetaDoc> = {};
-      snap.docs.forEach((docSnap) => {
-        const data = docSnap.data() as GlazeMetaDoc;
-        next[docSnap.id] = {
-          glazyUrl: data.glazyUrl ?? null,
-          defaultTags: data.defaultTags ?? null,
-        };
-      });
-      setGlazeMetaById(next);
-    });
+    const glazesRef = query(collection(db, "glazes"), limit(GLAZE_LISTENER_LIMIT));
+    const unsubscribe = trackedOnSnapshot(
+      "glazes:meta",
+      glazesRef,
+      (snap) => {
+        const next: Record<string, GlazeMetaDoc> = {};
+        for (const docSnap of snap.docs ?? []) {
+          const data = docSnap.data() as GlazeMetaDoc;
+          next[docSnap.id] = {
+            glazyUrl: data.glazyUrl ?? null,
+            defaultTags: data.defaultTags ?? null,
+          };
+        }
+        setGlazeMetaById(next);
+      },
+      () => {
+        setTileStatus("Glaze metadata is temporarily unavailable.");
+      }
+    );
     return () => unsubscribe();
   }, []);
 
@@ -868,7 +882,8 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
         ])
       );
 
-      await setDoc(
+      await trackedSetDoc(
+        "glazes:tileWrite",
         tileRef,
         isComboMode
           ? {
@@ -916,7 +931,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
       tile.coverPhotoPath === path ? nextPhotos[0]?.path ?? null : tile.coverPhotoPath ?? null;
 
     const tileCollection = isComboMode ? "comboTiles" : "singleTiles";
-    await updateDoc(doc(db, tileCollection, String(tileId)), {
+    await trackedUpdateDoc("glazes:tileWrite", doc(db, tileCollection, String(tileId)), {
       photos: nextPhotos,
       coverPhotoPath: nextCover,
       updatedAt: serverTimestamp(),
@@ -934,7 +949,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
     const tileId = isComboMode ? selectedComboId : selectedGlazeId;
     if (!tileId || !isStaff) return;
     const tileCollection = isComboMode ? "comboTiles" : "singleTiles";
-    await updateDoc(doc(db, tileCollection, String(tileId)), {
+    await trackedUpdateDoc("glazes:tileWrite", doc(db, tileCollection, String(tileId)), {
       coverPhotoPath: path,
       updatedAt: serverTimestamp(),
       updatedBy: getUserLabel(user),
@@ -946,7 +961,8 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
     const cleanUrl = url.trim();
     setGlazyStatus("Saving...");
     try {
-      await setDoc(
+      await trackedSetDoc(
+        "glazes:meta",
         doc(db, "glazes", glazeId),
         {
           glazyUrl: cleanUrl || null,
@@ -976,7 +992,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
     setAttachLoading(true);
     setAttachStatus("");
 
-    const allBatches = [...activeBatches, ...historyBatches];
+    const allBatches = [...activeBatches, ...historyBatches].slice(0, ATTACH_BATCH_LIMIT);
     if (!allBatches.length) {
       setAttachPieces([]);
       setAttachStatus("No pieces found yet.");
@@ -991,9 +1007,9 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
           const piecesQuery = query(
             collection(db, "batches", batchId, "pieces"),
             orderBy("updatedAt", "desc"),
-            limit(20)
+            limit(ATTACH_PIECES_PER_BATCH_LIMIT)
           );
-          const snap = await getDocs(piecesQuery);
+          const snap = await trackedGetDocs("glazes:attachPieces", piecesQuery);
           return snap.docs.map((docSnap) => {
             const data = docSnap.data() as {
               pieceCode?: unknown;
@@ -1018,6 +1034,8 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
       setAttachPieces(combined);
       if (combined.length === 0) {
         setAttachStatus("No pieces found yet.");
+      } else if (activeBatches.length + historyBatches.length > ATTACH_BATCH_LIMIT) {
+        setAttachStatus("Showing recent pieces from the latest check-ins. Use search to narrow quickly.");
       }
     } catch (error: unknown) {
       setAttachStatus(error instanceof Error ? error.message : "Unable to load pieces right now.");
@@ -1051,7 +1069,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
     }
 
     const next = [...existing, nextSelection];
-    await updateDoc(doc(db, "batches", piece.batchId, "pieces", piece.pieceId), {
+    await trackedUpdateDoc("glazes:attachPiece", doc(db, "batches", piece.batchId, "pieces", piece.pieceId), {
       selectedGlazes: next,
       updatedAt: serverTimestamp(),
     });
@@ -1166,6 +1184,9 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
             Reset filters
           </button>
         ) : null}
+      </div>
+      <div className="glaze-subtitle">
+        Live tile streams are capped to {GLAZE_LISTENER_LIMIT} records per board in this view.
       </div>
 
       {filtersActive && activeFilterPills.length ? (
@@ -1691,6 +1712,9 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
             <div className="card-title">Attach this combo</div>
             <div className="glaze-subtitle">
               Add a glaze combo to one of your pieces for studio reference.
+            </div>
+            <div className="glaze-subtitle">
+              Showing pieces from up to {ATTACH_BATCH_LIMIT} recent check-ins ({ATTACH_PIECES_PER_BATCH_LIMIT} pieces each).
             </div>
           </div>
           <button type="button" className="btn btn-ghost" onClick={() => setAttachOpen(false)}>

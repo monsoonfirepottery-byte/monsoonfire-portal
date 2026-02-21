@@ -1,0 +1,70 @@
+# Telemetry evidence
+- Base URL: http://127.0.0.1:5173
+- Captured at: 2026-02-21T00:30:40.710Z
+
+## Samples
+- A_startup_10s_idle:
+  - Current view: dashboard
+  - Last 60s reads: 2
+  - Last 60s writes: 0
+  - Last 60s listener reads: 0
+  - Session reads: 2
+  - Session writes: 0
+  - Session deletes: 0
+  - Session listener events: 0
+  - Screenshot: 01-startup.png
+- B_messages_view_open:
+  - Current view: messages
+  - Last 60s reads: 2
+  - Last 60s writes: 0
+  - Last 60s listener reads: 0
+  - Session reads: 2
+  - Session writes: 0
+  - Session deletes: 0
+  - Session listener events: 0
+  - Screenshot: 02-messages-view.png
+- C_thread_open_initial:
+  - Current view: messages
+  - Last 60s reads: 3
+  - Last 60s writes: 4
+  - Last 60s listener reads: 0
+  - Session reads: 3
+  - Session writes: 4
+  - Session deletes: 0
+  - Session listener events: 0
+  - Screenshot: 03-thread-open.png
+- E_my_pieces_initial:
+  - Current view: pieces
+  - Last 60s reads: 3
+  - Last 60s writes: 4
+  - Last 60s listener reads: 0
+  - Session reads: 3
+  - Session writes: 4
+  - Session deletes: 0
+  - Session listener events: 0
+  - Screenshot: 06-my-pieces.png
+- F_my_pieces_load_more:
+  - Current view: pieces
+  - Last 60s reads: 3
+  - Last 60s writes: 4
+  - Last 60s listener reads: 0
+  - Session reads: 3
+  - Session writes: 4
+  - Session deletes: 0
+  - Session listener events: 0
+  - Screenshot: 07-my-pieces-load-more.png
+- G_glaze_board_idle_10s:
+  - Current view: glazes
+  - Last 60s reads: 3
+  - Last 60s writes: 4
+  - Last 60s listener reads: 0
+  - Session reads: 3
+  - Session writes: 4
+  - Session deletes: 0
+  - Session listener events: 3
+  - Screenshot: 08-glaze-board.png
+
+## Notes
+- Load older messages button not available with current local dataset.
+- Failed to set staff claim in Auth emulator: {"error":{"code":400,"message":"INSUFFICIENT_PERMISSION","errors":[{"message":"INSUFFICIENT_PERMISSION","reason":"invalid","domain":"global"}]}}
+- Staff button not visible for current signed-in role.

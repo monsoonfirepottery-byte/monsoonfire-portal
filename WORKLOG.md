@@ -33,3 +33,33 @@ Full marketing-site UI/UX + accessibility pass for `monsoonfire.com` website (no
   - `npm run test:e2e` passed (18/18).
   - `BASE_URL='https://monsoonfire.com/__preview/ux-a11y-theme-toggle-20260220-r1/' npm run test:e2e:dev` passed (18/18).
   - Final preview redeployed after preview-rewrite hardening and revalidated at HTTP 200.
+\n## 2026-02-21 verification pass
+- Started branch: verify-emulators-telemetry-uxcaps-20260221
+- Pre-existing dirty working tree detected; preserving unrelated changes and scoping edits to targeted files.
+- Installed local Java runtimes in user space:
+  - `~/.local/java/jdk-17.0.18+8-jre`
+  - `~/.local/java/jdk-21.0.10+7-jre`
+- Firebase emulator startup required Java 21 with current `firebase-tools`.
+- Started emulators with local config override due occupied port 8080:
+  - Auth: `127.0.0.1:9099`
+  - Functions: `127.0.0.1:5001`
+  - Firestore: `127.0.0.1:8085`
+  - Emulator UI: `http://127.0.0.1:4000`
+- Ran Vite against emulators:
+  - `http://127.0.0.1:5173`
+- Captured telemetry evidence:
+  - `artifacts/telemetry/telemetry-results.json`
+  - `artifacts/telemetry/telemetry-results.md`
+  - `artifacts/telemetry/*.png`
+- Added UX cap messaging in Messages, My Pieces, Glaze Board, and Staff.
+- Added/normalized Firestore index definitions in `firestore.indexes.json`.
+- Telemetry capture summary (latest run):
+  - Startup (10s idle): reads=2, writes=0
+  - Messages view open: reads=2, writes=0
+  - Thread open: reads=3, writes=4
+  - My Pieces initial: reads=3, writes=4
+  - My Pieces load-more interaction: reads=3, writes=4
+  - Glaze Board idle (10s): reads=3, writes=4, listener events=3
+- Capture limitations:
+  - Load-older messages button unavailable with current local dataset (<50 in thread).
+  - Staff nav not visible under anonymous emulator auth; claim escalation via emulator API returned INSUFFICIENT_PERMISSION.

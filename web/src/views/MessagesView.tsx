@@ -580,7 +580,7 @@ export default function MessagesView({
           ) : threads.length === 0 ? (
             <div className="empty-state">No direct messages yet. Start a new thread with Studio Support for any questions.</div>
           ) : (
-            <div className="thread-list">
+            <div className="thread-list" data-testid="messages-thread-list">
               {threads.map((thread) => {
                 const isUnread = isDirectMessageUnread(thread, user.uid);
                 return (
@@ -588,6 +588,7 @@ export default function MessagesView({
                     className={`thread-item ${selectedThreadId === thread.id ? "active" : ""} ${
                       isUnread ? "unread" : ""
                     }`}
+                    data-testid={`thread-item-${thread.id}`}
                     key={thread.id}
                     onClick={() => setSelectedThreadId(thread.id)}
                   >
@@ -633,7 +634,7 @@ export default function MessagesView({
                     Showing {Math.min(messages.length, messageFetchLimit)} most recent messages
                     {messageFetchLimit >= MAX_MESSAGE_FETCH_LIMIT ? ` (max ${MAX_MESSAGE_FETCH_LIMIT})` : ""}.
                   </div>
-                  <div className="message-list">
+                  <div className="message-list" data-testid="messages-message-list">
                     {messages.map((msg) => (
                       <div className={`bubble ${msg.fromUid === user.uid ? "me" : ""}`} key={msg.id}>
                         <div className="bubble-meta">
@@ -652,6 +653,7 @@ export default function MessagesView({
                     <button
                       type="button"
                       className="btn btn-ghost"
+                      data-testid="messages-load-older"
                       onClick={() =>
                         setMessageFetchLimit((prev) => Math.min(MAX_MESSAGE_FETCH_LIMIT, prev + 50))
                       }

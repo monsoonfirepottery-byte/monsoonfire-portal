@@ -125,6 +125,9 @@
     "epics:json": "node ./scripts/epic-hub.mjs --json",
     "epics:show": "node ./scripts/epic-hub.mjs show"
   },
+  "engines": {
+    "node": "22"
+  },
   "dependencies": {
     "@openai/codex": "^0.91.0",
     "firebase": "^12.8.0",

@@ -540,7 +540,8 @@ service cloud.firestore {
     }
 
     match /directMessages/{threadId} {
-      allow read: if isThreadParticipant(threadId);
+      allow read: if isSignedIn()
+        && request.auth.uid in resource.data.participantUids;
       allow create: if isSignedIn()
         && request.resource.data.participantUids is list
         && request.resource.data.participantUids.hasAny([request.auth.uid])
@@ -558,7 +559,8 @@ service cloud.firestore {
           "references",
           "lastReadAtByUid"
         ]);
-      allow update: if isThreadParticipant(threadId)
+      allow update: if isSignedIn()
+        && request.auth.uid in resource.data.participantUids
         && request.resource.data.participantUids == resource.data.participantUids
         && changedKeysOnly([
           "subject",

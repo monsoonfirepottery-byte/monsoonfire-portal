@@ -31,7 +31,13 @@ jobs:
         run: npm --prefix web run build
 
       - name: Run Lighthouse CI
-        run: npm --prefix web run lighthouse:local
+        run: |
+          rm -rf .lighthouseci
+          npx @lhci/cli@0.15.1 collect --config=web/lighthouserc.json
+          npx @lhci/cli@0.15.1 assert --config=web/lighthouserc.json
 
       - name: Run Lighthouse CI (website)
-        run: node ./web/scripts/lighthouse-local.mjs ./website/lighthouserc.json
+        run: |
+          rm -rf .lighthouseci
+          npx @lhci/cli@0.15.1 collect --config=website/lighthouserc.json
+          npx @lhci/cli@0.15.1 assert --config=website/lighthouserc.json

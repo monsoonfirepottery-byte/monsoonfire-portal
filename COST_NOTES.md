@@ -94,3 +94,32 @@
 - If you still see a Firestore console prompt for a missing index, capture and add the generated URL into this section.
 - Known non-index risk to watch:
   - `StaffView` count query uses `where(\"participants\", \"array-contains\", uid)` while thread docs use `participantUids`. If counts look wrong, align this field name in `web/src/views/StaffView.tsx`.
+
+## Emulator reproducibility and telemetry evidence
+
+- Java prerequisite:
+  - Current `firebase-tools` in this environment requires Java 21+.
+  - Portable runtime used: `~/.local/jre21-portable`.
+- Start emulators:
+  - `JAVA_HOME=/home/wuff/.local/jre21-portable PATH=/home/wuff/.local/jre21-portable/bin:$PATH firebase emulators:start --config firebase.emulators.local.json --project monsoonfire-portal --only auth,firestore,functions`
+- Seed deterministic data:
+  - `FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 FIRESTORE_EMULATOR_HOST=127.0.0.1:8085 GCLOUD_PROJECT=monsoonfire-portal npm run seed:emulators`
+- Capture evidence:
+  - `TELEMETRY_OUT_DIR=artifacts/telemetry/after-seed node scripts/capture-telemetry-evidence.mjs`
+- Evidence paths:
+  - `artifacts/telemetry/after-seed/telemetry-results.md`
+  - `artifacts/telemetry/after-seed/telemetry-results.json`
+  - `artifacts/telemetry/after-seed/*.png`
+  - `artifacts/telemetry/ensureUserDoc-errors.log`
+
+## ensureUserDoc stabilization note
+
+- Symptom:
+  - Repeated ensureUserDoc errors/noise during emulator runs.
+- Root cause:
+  - Previous transaction pattern mixed reads after writes in a single transaction path under repeated bootstrap calls.
+- Fix:
+  - Idempotent create-only flow with explicit existence checks, strict method handling, and undefined-field stripping.
+  - Client bootstrap remains non-blocking and now throttles retries to prevent log spam loops.
+- Production safety:
+  - `emulatorGrantStaffRole` is emulator-only (`FUNCTIONS_EMULATOR` gate) and unavailable in production.

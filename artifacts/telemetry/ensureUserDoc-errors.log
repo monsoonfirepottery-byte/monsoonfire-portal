@@ -1,0 +1,167 @@
+i  emulators: Starting emulators: auth, functions, firestore
+⚠  functions: The following emulators are not running, calls to these services from the Functions emulator will affect production: apphosting, database, hosting, pubsub, storage, dataconnect
+i  firestore: Firestore Emulator logging to firestore-debug.log
+✔  firestore: Firestore Emulator UI websocket is running on 9150.
+(node:2764867) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+i  functions: Watching "/home/wuff/monsoonfire-portal/.worktrees/fix-ensureUserDoc-seed-staff-20260221/functions" for Cloud Functions...
+⚠  functions: Your requested "node" version "22" doesn't match your global version "25". Using node@25 from host.
+Serving at port 8614
+
+✔  functions: Loaded functions definitions from source: ensureUserDoc, emulatorGrantStaffRole, websiteKilnBoard, registerDeviceToken, unregisterDeviceToken, runNotificationFailureDrill, onKilnFiringUnloaded, processNotificationJob, processQueuedNotificationJobs, aggregateNotificationDeliveryMetrics, runNotificationMetricsAggregationNow, cleanupStaleDeviceTokens, apiV1, createReport, listMyReports, listMyReportAppeals, listReports, updateReportStatus, addInternalNote, takeContentAction, createReportAppeal, listReportAppeals, updateReportAppeal, cleanupCommunityReportArtifacts, getModerationPolicyCurrent, listModerationPolicies, staffUpsertModerationPolicy, staffPublishModerationPolicy, staffGetCommunitySafetyConfig, staffUpdateCommunitySafetyConfig, staffScanCommunityDraft, staffClearAgentClientCooldown, staffCreateAgentClient, staffListAgentClients, staffRotateAgentClientKey, staffUpdateAgentClientStatus, staffUpdateAgentClientProfile, staffListAgentClientAuditLogs, staffGetAgentServiceCatalog, staffUpdateAgentServiceCatalog, staffExportAgentDeniedEventsCsv, staffGetAgentOpsConfig, staffListAgentOperations, staffUpdateAgentOrderFulfillment, staffReviewAgentReservation, staffUpdateAgentOpsConfig, executeStudioBrainPilotAction, rollbackStudioBrainPilotAction, hello, githubLookup, staffUpdateUserProfile, createIntegrationToken, listIntegrationTokens, revokeIntegrationToken, createDelegatedAgentToken, listDelegations, revokeDelegation, listSecurityAuditEvents, helloPat, debugCalendarId, acceptFiringsCalendar, syncFiringsNow, syncFirings, createBatch, submitDraftBatch, pickedUpAndClose, continueJourney, shelveBatch, kilnLoad, kilnUnload, readyForPickup, normalizeTimelineEventTypes, createMaterialsCheckoutSession, listMaterialsProducts, seedMaterialsCatalog, stripeWebhook, importLibraryIsbns, createReservation, updateReservation, assignReservationStation, getJukeboxConfig, listTracks, listQueue, getJukeboxState, enqueueTrack, vote, requestSkip, adminUpsertTrack, adminSetConfig, adminAdvanceQueue, adminSetPlaybackState, adminSkipNowPlaying, adminClearQueue, listEvents, listEventSignups, getEvent, createEvent, publishEvent, staffSetEventStatus, signupForEvent, cancelEventSignup, claimEventOffer, checkInEvent, createEventCheckoutSession, eventStripeWebhook, sweepEventOffers, listBillingSummary, staffGetStripeConfig, staffUpdateStripeConfig, staffValidateStripeConfig, createAgentCheckoutSession, createCheckoutSession, stripePortalWebhook, backfillIsClosed.
+✔  functions[us-central1-ensureUserDoc]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/ensureUserDoc).
+✔  functions[us-central1-emulatorGrantStaffRole]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/emulatorGrantStaffRole).
+✔  functions[us-central1-websiteKilnBoard]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/websiteKilnBoard).
+✔  functions[us-central1-registerDeviceToken]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/registerDeviceToken).
+✔  functions[us-central1-unregisterDeviceToken]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/unregisterDeviceToken).
+✔  functions[us-central1-runNotificationFailureDrill]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/runNotificationFailureDrill).
+✔  functions[us-central1-onKilnFiringUnloaded]: firestore function initialized.
+✔  functions[us-central1-processNotificationJob]: firestore function initialized.
+i  functions[us-central1-processQueuedNotificationJobs]: function ignored because the pubsub emulator does not exist or is not running.
+i  functions[us-central1-aggregateNotificationDeliveryMetrics]: function ignored because the pubsub emulator does not exist or is not running.
+✔  functions[us-central1-runNotificationMetricsAggregationNow]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/runNotificationMetricsAggregationNow).
+i  functions[us-central1-cleanupStaleDeviceTokens]: function ignored because the pubsub emulator does not exist or is not running.
+✔  functions[us-central1-apiV1]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/apiV1).
+✔  functions[us-central1-createReport]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/createReport).
+✔  functions[us-central1-listMyReports]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/listMyReports).
+✔  functions[us-central1-listMyReportAppeals]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/listMyReportAppeals).
+✔  functions[us-central1-listReports]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/listReports).
+✔  functions[us-central1-updateReportStatus]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/updateReportStatus).
+✔  functions[us-central1-addInternalNote]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/addInternalNote).
+✔  functions[us-central1-takeContentAction]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/takeContentAction).
+✔  functions[us-central1-createReportAppeal]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/createReportAppeal).
+✔  functions[us-central1-listReportAppeals]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/listReportAppeals).
+✔  functions[us-central1-updateReportAppeal]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/updateReportAppeal).
+i  functions[us-central1-cleanupCommunityReportArtifacts]: function ignored because the pubsub emulator does not exist or is not running.
+✔  functions[us-central1-getModerationPolicyCurrent]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/getModerationPolicyCurrent).
+✔  functions[us-central1-listModerationPolicies]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/listModerationPolicies).
+✔  functions[us-central1-staffUpsertModerationPolicy]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffUpsertModerationPolicy).
+✔  functions[us-central1-staffPublishModerationPolicy]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffPublishModerationPolicy).
+✔  functions[us-central1-staffGetCommunitySafetyConfig]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffGetCommunitySafetyConfig).
+✔  functions[us-central1-staffUpdateCommunitySafetyConfig]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffUpdateCommunitySafetyConfig).
+✔  functions[us-central1-staffScanCommunityDraft]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffScanCommunityDraft).
+✔  functions[us-central1-staffClearAgentClientCooldown]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffClearAgentClientCooldown).
+✔  functions[us-central1-staffCreateAgentClient]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffCreateAgentClient).
+✔  functions[us-central1-staffListAgentClients]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffListAgentClients).
+✔  functions[us-central1-staffRotateAgentClientKey]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffRotateAgentClientKey).
+✔  functions[us-central1-staffUpdateAgentClientStatus]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffUpdateAgentClientStatus).
+✔  functions[us-central1-staffUpdateAgentClientProfile]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffUpdateAgentClientProfile).
+✔  functions[us-central1-staffListAgentClientAuditLogs]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffListAgentClientAuditLogs).
+✔  functions[us-central1-staffGetAgentServiceCatalog]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffGetAgentServiceCatalog).
+✔  functions[us-central1-staffUpdateAgentServiceCatalog]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffUpdateAgentServiceCatalog).
+✔  functions[us-central1-staffExportAgentDeniedEventsCsv]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffExportAgentDeniedEventsCsv).
+✔  functions[us-central1-staffGetAgentOpsConfig]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffGetAgentOpsConfig).
+✔  functions[us-central1-staffListAgentOperations]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffListAgentOperations).
+✔  functions[us-central1-staffUpdateAgentOrderFulfillment]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffUpdateAgentOrderFulfillment).
+✔  functions[us-central1-staffReviewAgentReservation]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffReviewAgentReservation).
+✔  functions[us-central1-staffUpdateAgentOpsConfig]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffUpdateAgentOpsConfig).
+✔  functions[us-central1-executeStudioBrainPilotAction]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/executeStudioBrainPilotAction).
+✔  functions[us-central1-rollbackStudioBrainPilotAction]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/rollbackStudioBrainPilotAction).
+✔  functions[us-central1-hello]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/hello).
+✔  functions[us-central1-githubLookup]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/githubLookup).
+✔  functions[us-central1-staffUpdateUserProfile]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffUpdateUserProfile).
+✔  functions[us-central1-createIntegrationToken]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/createIntegrationToken).
+✔  functions[us-central1-listIntegrationTokens]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/listIntegrationTokens).
+✔  functions[us-central1-revokeIntegrationToken]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/revokeIntegrationToken).
+✔  functions[us-central1-createDelegatedAgentToken]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/createDelegatedAgentToken).
+✔  functions[us-central1-listDelegations]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/listDelegations).
+✔  functions[us-central1-revokeDelegation]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/revokeDelegation).
+✔  functions[us-central1-listSecurityAuditEvents]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/listSecurityAuditEvents).
+✔  functions[us-central1-helloPat]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/helloPat).
+✔  functions[us-central1-debugCalendarId]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/debugCalendarId).
+✔  functions[us-central1-acceptFiringsCalendar]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/acceptFiringsCalendar).
+✔  functions[us-central1-syncFiringsNow]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/syncFiringsNow).
+i  functions[us-central1-syncFirings]: function ignored because the pubsub emulator does not exist or is not running.
+✔  functions[us-central1-createBatch]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/createBatch).
+✔  functions[us-central1-submitDraftBatch]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/submitDraftBatch).
+✔  functions[us-central1-pickedUpAndClose]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/pickedUpAndClose).
+✔  functions[us-central1-continueJourney]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/continueJourney).
+✔  functions[us-central1-shelveBatch]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/shelveBatch).
+✔  functions[us-central1-kilnLoad]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/kilnLoad).
+✔  functions[us-central1-kilnUnload]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/kilnUnload).
+✔  functions[us-central1-readyForPickup]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/readyForPickup).
+✔  functions[us-central1-normalizeTimelineEventTypes]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/normalizeTimelineEventTypes).
+✔  functions[us-central1-createMaterialsCheckoutSession]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/createMaterialsCheckoutSession).
+✔  functions[us-central1-listMaterialsProducts]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/listMaterialsProducts).
+✔  functions[us-central1-seedMaterialsCatalog]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/seedMaterialsCatalog).
+✔  functions[us-central1-stripeWebhook]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/stripeWebhook).
+✔  functions[us-central1-importLibraryIsbns]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/importLibraryIsbns).
+✔  functions[us-central1-createReservation]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/createReservation).
+✔  functions[us-central1-updateReservation]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/updateReservation).
+✔  functions[us-central1-assignReservationStation]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/assignReservationStation).
+✔  functions[us-central1-getJukeboxConfig]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/getJukeboxConfig).
+✔  functions[us-central1-listTracks]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/listTracks).
+✔  functions[us-central1-listQueue]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/listQueue).
+✔  functions[us-central1-getJukeboxState]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/getJukeboxState).
+✔  functions[us-central1-enqueueTrack]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/enqueueTrack).
+✔  functions[us-central1-vote]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/vote).
+✔  functions[us-central1-requestSkip]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/requestSkip).
+✔  functions[us-central1-adminUpsertTrack]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/adminUpsertTrack).
+✔  functions[us-central1-adminSetConfig]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/adminSetConfig).
+✔  functions[us-central1-adminAdvanceQueue]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/adminAdvanceQueue).
+✔  functions[us-central1-adminSetPlaybackState]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/adminSetPlaybackState).
+✔  functions[us-central1-adminSkipNowPlaying]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/adminSkipNowPlaying).
+✔  functions[us-central1-adminClearQueue]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/adminClearQueue).
+✔  functions[us-central1-listEvents]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/listEvents).
+✔  functions[us-central1-listEventSignups]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/listEventSignups).
+✔  functions[us-central1-getEvent]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/getEvent).
+✔  functions[us-central1-createEvent]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/createEvent).
+✔  functions[us-central1-publishEvent]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/publishEvent).
+✔  functions[us-central1-staffSetEventStatus]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffSetEventStatus).
+✔  functions[us-central1-signupForEvent]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/signupForEvent).
+✔  functions[us-central1-cancelEventSignup]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/cancelEventSignup).
+✔  functions[us-central1-claimEventOffer]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/claimEventOffer).
+✔  functions[us-central1-checkInEvent]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/checkInEvent).
+✔  functions[us-central1-createEventCheckoutSession]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/createEventCheckoutSession).
+✔  functions[us-central1-eventStripeWebhook]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/eventStripeWebhook).
+i  functions[us-central1-sweepEventOffers]: function ignored because the pubsub emulator does not exist or is not running.
+✔  functions[us-central1-listBillingSummary]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/listBillingSummary).
+✔  functions[us-central1-staffGetStripeConfig]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffGetStripeConfig).
+✔  functions[us-central1-staffUpdateStripeConfig]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffUpdateStripeConfig).
+✔  functions[us-central1-staffValidateStripeConfig]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/staffValidateStripeConfig).
+✔  functions[us-central1-createAgentCheckoutSession]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/createAgentCheckoutSession).
+✔  functions[us-central1-createCheckoutSession]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/createCheckoutSession).
+✔  functions[us-central1-stripePortalWebhook]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/stripePortalWebhook).
+✔  functions[us-central1-backfillIsClosed]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/backfillIsClosed).
+
+[90m┌─────────────────────────────────────────────────────────────┐[39m
+[90m│[39m ✔  All emulators ready! It is now safe to connect your app. [90m│[39m
+[90m│[39m i  View Emulator UI at http://127.0.0.1:4000/               [90m│[39m
+[90m└─────────────────────────────────────────────────────────────┘[39m
+
+[90m┌────────────────[39m[90m┬────────────────[39m[90m┬─────────────────────────────────┐[39m
+[90m│[39m[33m Emulator       [39m[90m│[39m[33m Host:Port      [39m[90m│[39m[33m View in Emulator UI             [39m[90m│[39m
+[90m├────────────────[39m[90m┼────────────────[39m[90m┼─────────────────────────────────┤[39m
+[90m│[39m Authentication [90m│[39m 127.0.0.1:9099 [90m│[39m http://127.0.0.1:4000/auth      [90m│[39m
+[90m├────────────────[39m[90m┼────────────────[39m[90m┼─────────────────────────────────┤[39m
+[90m│[39m Functions      [90m│[39m 127.0.0.1:5001 [90m│[39m http://127.0.0.1:4000/functions [90m│[39m
+[90m├────────────────[39m[90m┼────────────────[39m[90m┼─────────────────────────────────┤[39m
+[90m│[39m Firestore      [90m│[39m 127.0.0.1:8085 [90m│[39m http://127.0.0.1:4000/firestore [90m│[39m
+[90m└────────────────[39m[90m┴────────────────[39m[90m┴─────────────────────────────────┘[39m
+  Emulator Hub host: 127.0.0.1 port: 4400
+  Other reserved ports: 4500, 9150
+
+Issues? Report them at https://github.com/firebase/firebase-tools/issues and attach the *-debug.log files.
+ 
+i  functions: Beginning execution of "us-central1-ensureUserDoc"
+i  functions: Finished "us-central1-ensureUserDoc" in 2.642658ms
+i  functions: Beginning execution of "us-central1-ensureUserDoc"
+>  {"uid":"seed-client-001","userCreated":false,"profileCreated":false,"severity":"INFO","message":"ensureUserDoc complete"}
+i  functions: Finished "us-central1-ensureUserDoc" in 151.715109ms
+i  functions: Beginning execution of "us-central1-emulatorGrantStaffRole"
+i  functions: Finished "us-central1-emulatorGrantStaffRole" in 2.196597ms
+i  functions: Beginning execution of "us-central1-emulatorGrantStaffRole"
+>  {"uid":"seed-client-001","roles":["staff"],"severity":"INFO","message":"emulatorGrantStaffRole complete"}
+i  functions: Finished "us-central1-emulatorGrantStaffRole" in 17.463616ms
+i  functions: Beginning execution of "us-central1-listEvents"
+i  functions: Finished "us-central1-listEvents" in 2.258852ms
+i  functions: Beginning execution of "us-central1-listEvents"
+i  functions: Finished "us-central1-listEvents" in 167.105633ms
+i  functions: Beginning execution of "us-central1-listBillingSummary"
+i  functions: Finished "us-central1-listBillingSummary" in 2.334214ms
+i  functions: Beginning execution of "us-central1-listBillingSummary"
+i  functions: Beginning execution of "us-central1-listIntegrationTokens"
+i  functions: Finished "us-central1-listIntegrationTokens" in 2.471148ms
+i  functions: Beginning execution of "us-central1-listIntegrationTokens"
+i  functions: Finished "us-central1-listBillingSummary" in 177.276765ms
+i  functions: Finished "us-central1-listIntegrationTokens" in 205.203626ms

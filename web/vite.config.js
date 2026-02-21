@@ -14,7 +14,9 @@ export default defineConfig(({ mode }) => {
   const network = resolveStudioBrainNetworkProfile();
   const defaultHost = network.host || "127.0.0.1";
   const profileHosts = network.allowedStudioBrainHosts || [];
-  const defaultAllowedHosts = Array.from(new Set(profileHosts.concat(parseCsvList(process.env.VITE_ALLOWED_HOSTS)));
+  const defaultAllowedHosts = Array.from(
+    new Set(profileHosts.concat(parseCsvList(process.env.VITE_ALLOWED_HOSTS)))
+  );
 
   const host = process.env.VITE_DEV_HOST || process.env.VITE_HOST || defaultHost;
   const allowedHosts = parseCsvList(process.env.VITE_ALLOWED_HOSTS).length > 0

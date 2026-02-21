@@ -297,7 +297,17 @@ function useKilnDashboardRows() {
       ? "Firing schedule unavailable."
       : "No firings scheduled yet";
 
-  return { rows, nextFiringLabel, statusNotice, useMock, permissionDenied, loading, reload, showRetry };
+  return {
+    rows,
+    nextFiringLabel,
+    statusNotice,
+    mockNotice,
+    useMock,
+    permissionDenied,
+    loading,
+    reload,
+    showRetry,
+  };
 }
 
 type Props = {
@@ -349,6 +359,7 @@ export default function DashboardView({
     rows: kilnRows,
     nextFiringLabel,
     statusNotice,
+    mockNotice,
     useMock,
     permissionDenied,
     showRetry,

@@ -5,7 +5,14 @@ import { resolve } from "node:path";
 import { chromium } from "playwright";
 
 const baseUrl = process.env.BASE_URL || "http://127.0.0.1:5173";
-const outDir = resolve("artifacts", "telemetry");
+const functionsBaseUrl =
+  process.env.FUNCTIONS_BASE_URL ||
+  "http://127.0.0.1:5001/monsoonfire-portal/us-central1";
+const outDir = process.env.TELEMETRY_OUT_DIR
+  ? resolve(process.env.TELEMETRY_OUT_DIR)
+  : resolve("artifacts", "telemetry", "after-seed");
+const seedUserEmail = process.env.SEED_USER_EMAIL || "seed.client@monsoonfire.local";
+const seedUserPassword = process.env.SEED_USER_PASSWORD || "SeedPass!123";
 
 async function sleep(ms) {
   return await new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
@@ -31,7 +38,7 @@ async function screenshot(page, name) {
 }
 
 async function openTelemetryPanel(page) {
-  const toggle = page.getByRole("button", { name: /Firestore telemetry/i });
+  const toggle = page.locator(".telemetry-toggle").first();
   await toggle.waitFor({ timeout: 20000 });
   const panelBody = page.locator(".telemetry-body");
   if (await panelBody.isVisible().catch(() => false)) return;
@@ -39,6 +46,49 @@ async function openTelemetryPanel(page) {
   if (await panelBody.isVisible().catch(() => false)) return;
   await toggle.click();
   await panelBody.waitFor({ timeout: 5000 });
+}
+
+async function ensureSignedIn(page, results) {
+  const signedOutCard = page.locator(".signed-out-card").first();
+  if (!await signedOutCard.isVisible().catch(() => false)) {
+    return true;
+  }
+
+  const emailInput = page.locator(".signed-out-email input[type='email']").first();
+  const passwordInput = page.locator(".signed-out-email input[type='password']").first();
+  const signInButton = page.locator(".signed-out-email button.primary").first();
+
+  if (await emailInput.isVisible().catch(() => false)) {
+    await emailInput.fill(seedUserEmail);
+  }
+  if (await passwordInput.isVisible().catch(() => false)) {
+    await passwordInput.fill(seedUserPassword);
+  }
+  if (await signInButton.isVisible().catch(() => false)) {
+    await signInButton.click();
+  }
+
+  const signedIn = await page.waitForFunction(
+    () => !document.querySelector(".signed-out-card"),
+    { timeout: 30000 }
+  ).then(() => true).catch(() => false);
+  if (signedIn) return true;
+
+  const emulatorSignIn = page.getByRole("button", { name: /Sign in \(emulator\)/i });
+  if (await emulatorSignIn.isVisible().catch(() => false)) {
+    await emulatorSignIn.click();
+    const fallbackSignedIn = await page.waitForFunction(
+      () => !document.querySelector(".signed-out-card"),
+      { timeout: 30000 }
+    ).then(() => true).catch(() => false);
+    if (fallbackSignedIn) {
+      results.notes.push("Used anonymous emulator sign-in fallback because seeded email sign-in did not complete in time.");
+      return true;
+    }
+  }
+
+  results.notes.push("Unable to complete sign-in for telemetry capture.");
+  return false;
 }
 
 async function navTo(page, label) {
@@ -92,52 +142,71 @@ async function navTo(page, label) {
   await sleep(1200);
 }
 
+async function grantStaffRoleForCurrentSession(page, results) {
+  const claimResult = await page.evaluate(async ({ endpoint }) => {
+    const runtimeWindow = window;
+    const getToken =
+      runtimeWindow.__mfGetIdToken ||
+      runtimeWindow.mfDebug?.getIdToken ||
+      null;
+
+    if (!getToken) {
+      return { ok: false, reason: "missing_token_helper" };
+    }
+
+    const token = await getToken();
+    if (!token || typeof token !== "string") {
+      return { ok: false, reason: "token_unavailable" };
+    }
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: "{}",
+    });
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      return {
+        ok: false,
+        reason: "http_error",
+        status: response.status,
+        payload,
+      };
+    }
+
+    try {
+      await getToken();
+    } catch {
+      // non-fatal
+    }
+
+    return {
+      ok: true,
+      payload,
+    };
+  }, { endpoint: `${functionsBaseUrl.replace(/\/+$/, "")}/emulatorGrantStaffRole` });
+
+  if (!claimResult.ok) {
+    results.notes.push(`Failed to grant staff role for telemetry session: ${JSON.stringify(claimResult)}`);
+    return false;
+  }
+
+  await sleep(1000);
+  await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
+  await sleep(1200);
+  return true;
+}
+
 async function attemptEnableStaffView(page, results) {
   const staffButton = page.getByRole("button", { name: /Staff/i }).first();
   if (await staffButton.isVisible().catch(() => false)) return true;
 
-  const idToken = await page.evaluate(async () => {
-    const runtimeWindow = window;
-    if (!runtimeWindow.mfDebug || typeof runtimeWindow.mfDebug.getIdToken !== "function") {
-      return "";
-    }
-    return await runtimeWindow.mfDebug.getIdToken();
-  });
-
-  if (!idToken) {
-    results.notes.push("Staff button unavailable and mfDebug token helper not found.");
-    return false;
-  }
-
-  const claimResult = await page.evaluate(async ({ token }) => {
-    const response = await fetch("http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:update?key=fake-api-key", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        idToken: token,
-        customAttributes: JSON.stringify({ staff: true, roles: ["staff"] }),
-        returnSecureToken: true,
-      }),
-    });
-    const payload = await response.json().catch(() => null);
-    return { ok: response.ok, payload };
-  }, { token: idToken });
-
-  if (!claimResult.ok) {
-    results.notes.push(`Failed to set staff claim in Auth emulator: ${JSON.stringify(claimResult.payload)}`);
-    return false;
-  }
-
-  const signOut = page.getByRole("button", { name: /Sign out/i }).first();
-  if (await signOut.isVisible().catch(() => false)) {
-    await signOut.click();
-    await sleep(1200);
-  }
-  const emulatorSignIn = page.getByRole("button", { name: /Sign in \\(emulator\\)/i });
-  if (await emulatorSignIn.isVisible().catch(() => false)) {
-    await emulatorSignIn.click();
-    await sleep(1800);
-  }
+  const granted = await grantStaffRoleForCurrentSession(page, results);
+  if (!granted) return false;
 
   return await staffButton.isVisible().catch(() => false);
 }
@@ -149,6 +218,8 @@ async function main() {
 
   const results = {
     baseUrl,
+    functionsBaseUrl,
+    seededLogin: seedUserEmail,
     capturedAt: new Date().toISOString(),
     samples: [],
     notes: [],
@@ -158,14 +229,13 @@ async function main() {
     await page.goto(baseUrl, { waitUntil: "networkidle", timeout: 45000 });
     await screenshot(page, "00-landing.png");
 
-    const emulatorSignIn = page.getByRole("button", { name: /Sign in \(emulator\)/i });
-    if (await emulatorSignIn.isVisible()) {
-      await emulatorSignIn.click();
-    } else {
-      results.notes.push("Emulator sign-in button was not visible; attempted to continue with existing session.");
+    const signedIn = await ensureSignedIn(page, results);
+    if (!signedIn) {
+      await writeFile(resolve(outDir, "telemetry-results.json"), JSON.stringify(results, null, 2));
+      throw new Error("Unable to establish a signed-in session.");
     }
 
-    await page.locator("main").waitFor({ timeout: 30000 });
+    await page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => null);
     await sleep(1200);
 
     await openTelemetryPanel(page);
@@ -186,27 +256,6 @@ async function main() {
     const threadItem = page.locator(".thread-item").first();
     if (await threadItem.isVisible().catch(() => false)) {
       await threadItem.click();
-    } else {
-      const newThreadButton = page.getByRole("button", { name: /Start new message/i });
-      if (await newThreadButton.isVisible().catch(() => false)) {
-        await newThreadButton.click();
-        const subjectInput = page.locator(".new-thread input[type='text']").first();
-        const bodyInput = page.locator(".new-thread textarea").first();
-        if (await subjectInput.isVisible().catch(() => false)) {
-          await subjectInput.fill("Telemetry test thread");
-        }
-        if (await bodyInput.isVisible().catch(() => false)) {
-          await bodyInput.fill("Telemetry probe message");
-        }
-        const sendNew = page.getByRole("button", { name: /Send new message/i });
-        if (await sendNew.isVisible().catch(() => false)) {
-          await sendNew.click();
-        }
-      }
-      await sleep(1200);
-      if (await threadItem.isVisible().catch(() => false)) {
-        await threadItem.click();
-      }
     }
     await sleep(1200);
     const threadOpened = await collectPanel(page);
@@ -289,8 +338,10 @@ async function main() {
     await writeFile(resolve(outDir, "telemetry-results.json"), JSON.stringify(results, null, 2));
 
     const mdLines = [
-      `# Telemetry evidence`,
+      "# Telemetry evidence",
       `- Base URL: ${baseUrl}`,
+      `- Functions URL: ${functionsBaseUrl}`,
+      `- Seeded login: ${seedUserEmail}`,
       `- Captured at: ${results.capturedAt}`,
       "",
       "## Samples",

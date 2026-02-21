@@ -122,7 +122,8 @@
     "epics:agentic:run:md": "node ./scripts/epic-hub-runner.mjs --epic 1-8",
     "epics:work:md": "node ./scripts/epic-hub.mjs work --markdown",
     "epics:json": "node ./scripts/epic-hub.mjs --json",
-    "epics:show": "node ./scripts/epic-hub.mjs show"
+    "epics:show": "node ./scripts/epic-hub.mjs show",
+    "audit:codex-mcp": "node scripts/audit-codex-mcp.mjs"
   },
   "dependencies": {
     "@openai/codex": "^0.91.0",

@@ -105,3 +105,42 @@ Full marketing-site UI/UX + accessibility pass for `monsoonfire.com` website (no
 - My Pieces initial/load-more (E/F): reads rose under seeded pagination flow (see evidence file)
 - Glaze Board idle (G): listener events observed with capped listeners
 - Staff before/after load (H/I): captured in evidence screenshots and markdown
+
+## 2026-02-21 final stabilization pass (fix-node-engine-and-capture-20260221)
+- Created branch: `fix-node-engine-and-capture-20260221`.
+- Standardized Node target for emulator/dev consistency:
+  - Added repo `.nvmrc` with `22`.
+  - Added root `package.json` engines: `"node": "22"` to match `functions/package.json`.
+  - nvm usage:
+    - `nvm install 22`
+    - `nvm use 22`
+- Optional Java helper added:
+  - `source ./scripts/use-java.sh`
+  - Sets `JAVA_HOME=~/.local/jre21-portable` and prepends `PATH`.
+- Improved deterministic telemetry capture for seeded messages flow:
+  - Added stable message test IDs in `MessagesView.tsx`:
+    - `messages-thread-list`
+    - `thread-item-<threadId>`
+    - `messages-message-list`
+    - `messages-load-older`
+  - Updated `scripts/capture-telemetry-evidence.mjs` to:
+    - target seeded thread ID (`seed-thread-client-staff` by default)
+    - assert initial message bubbles >= 50
+    - click `Load older messages (next 50)` via test ID
+    - assert message bubbles increase to at least 100
+- New capture output path:
+  - `artifacts/telemetry/after-seed-2/`
+- End-to-end rerun under Node 22 + Java 21 portable runtimes:
+  - Emulators started with `PATH=/home/wuff/.local/node22-portable/bin:/home/wuff/.local/jre21-portable/bin:$PATH`
+  - Functions emulator log confirms: `Using node@22 from host.`
+- Fixed Firestore rules regression blocking direct message list query in emulator:
+  - `firestore.rules` direct message read/update participant checks now use `request.auth.uid in resource.data.participantUids`.
+- Telemetry capture rerun succeeded with deterministic seeded thread and Load Older proof:
+  - `artifacts/telemetry/after-seed-2/03-thread-open.png` (initial 50 bubbles)
+  - `artifacts/telemetry/after-seed-2/04-load-older-1.png` (after click: 100 bubbles)
+  - `artifacts/telemetry/after-seed-2/telemetry-results.md`
+- Validation checks (Node 22 path):
+  - `npm --prefix functions run build` ✅
+  - `npm --prefix functions run lint` ✅
+  - `npm --prefix web run build` ✅
+  - `npm --prefix web run lint` ✅

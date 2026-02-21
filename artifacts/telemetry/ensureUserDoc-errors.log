@@ -2,11 +2,9 @@ i  emulators: Starting emulators: auth, functions, firestore
 ⚠  functions: The following emulators are not running, calls to these services from the Functions emulator will affect production: apphosting, database, hosting, pubsub, storage, dataconnect
 i  firestore: Firestore Emulator logging to firestore-debug.log
 ✔  firestore: Firestore Emulator UI websocket is running on 9150.
-(node:2764867) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
-(Use `node --trace-deprecation ...` to show where the warning was created)
 i  functions: Watching "/home/wuff/monsoonfire-portal/.worktrees/fix-ensureUserDoc-seed-staff-20260221/functions" for Cloud Functions...
-⚠  functions: Your requested "node" version "22" doesn't match your global version "25". Using node@25 from host.
-Serving at port 8614
+✔  functions: Using node@22 from host.
+Serving at port 8957
 
 ✔  functions: Loaded functions definitions from source: ensureUserDoc, emulatorGrantStaffRole, websiteKilnBoard, registerDeviceToken, unregisterDeviceToken, runNotificationFailureDrill, onKilnFiringUnloaded, processNotificationJob, processQueuedNotificationJobs, aggregateNotificationDeliveryMetrics, runNotificationMetricsAggregationNow, cleanupStaleDeviceTokens, apiV1, createReport, listMyReports, listMyReportAppeals, listReports, updateReportStatus, addInternalNote, takeContentAction, createReportAppeal, listReportAppeals, updateReportAppeal, cleanupCommunityReportArtifacts, getModerationPolicyCurrent, listModerationPolicies, staffUpsertModerationPolicy, staffPublishModerationPolicy, staffGetCommunitySafetyConfig, staffUpdateCommunitySafetyConfig, staffScanCommunityDraft, staffClearAgentClientCooldown, staffCreateAgentClient, staffListAgentClients, staffRotateAgentClientKey, staffUpdateAgentClientStatus, staffUpdateAgentClientProfile, staffListAgentClientAuditLogs, staffGetAgentServiceCatalog, staffUpdateAgentServiceCatalog, staffExportAgentDeniedEventsCsv, staffGetAgentOpsConfig, staffListAgentOperations, staffUpdateAgentOrderFulfillment, staffReviewAgentReservation, staffUpdateAgentOpsConfig, executeStudioBrainPilotAction, rollbackStudioBrainPilotAction, hello, githubLookup, staffUpdateUserProfile, createIntegrationToken, listIntegrationTokens, revokeIntegrationToken, createDelegatedAgentToken, listDelegations, revokeDelegation, listSecurityAuditEvents, helloPat, debugCalendarId, acceptFiringsCalendar, syncFiringsNow, syncFirings, createBatch, submitDraftBatch, pickedUpAndClose, continueJourney, shelveBatch, kilnLoad, kilnUnload, readyForPickup, normalizeTimelineEventTypes, createMaterialsCheckoutSession, listMaterialsProducts, seedMaterialsCatalog, stripeWebhook, importLibraryIsbns, createReservation, updateReservation, assignReservationStation, getJukeboxConfig, listTracks, listQueue, getJukeboxState, enqueueTrack, vote, requestSkip, adminUpsertTrack, adminSetConfig, adminAdvanceQueue, adminSetPlaybackState, adminSkipNowPlaying, adminClearQueue, listEvents, listEventSignups, getEvent, createEvent, publishEvent, staffSetEventStatus, signupForEvent, cancelEventSignup, claimEventOffer, checkInEvent, createEventCheckoutSession, eventStripeWebhook, sweepEventOffers, listBillingSummary, staffGetStripeConfig, staffUpdateStripeConfig, staffValidateStripeConfig, createAgentCheckoutSession, createCheckoutSession, stripePortalWebhook, backfillIsClosed.
 ✔  functions[us-central1-ensureUserDoc]: http function initialized (http://127.0.0.1:5001/monsoonfire-portal/us-central1/ensureUserDoc).
@@ -144,24 +142,36 @@ i  functions[us-central1-sweepEventOffers]: function ignored because the pubsub 
 Issues? Report them at https://github.com/firebase/firebase-tools/issues and attach the *-debug.log files.
  
 i  functions: Beginning execution of "us-central1-ensureUserDoc"
-i  functions: Finished "us-central1-ensureUserDoc" in 2.642658ms
+i  functions: Finished "us-central1-ensureUserDoc" in 3.289155ms
 i  functions: Beginning execution of "us-central1-ensureUserDoc"
 >  {"uid":"seed-client-001","userCreated":false,"profileCreated":false,"severity":"INFO","message":"ensureUserDoc complete"}
-i  functions: Finished "us-central1-ensureUserDoc" in 151.715109ms
+i  functions: Finished "us-central1-ensureUserDoc" in 168.571292ms
 i  functions: Beginning execution of "us-central1-emulatorGrantStaffRole"
-i  functions: Finished "us-central1-emulatorGrantStaffRole" in 2.196597ms
+i  functions: Finished "us-central1-emulatorGrantStaffRole" in 2.459641ms
 i  functions: Beginning execution of "us-central1-emulatorGrantStaffRole"
 >  {"uid":"seed-client-001","roles":["staff"],"severity":"INFO","message":"emulatorGrantStaffRole complete"}
-i  functions: Finished "us-central1-emulatorGrantStaffRole" in 17.463616ms
+i  functions: Finished "us-central1-emulatorGrantStaffRole" in 18.358527ms
 i  functions: Beginning execution of "us-central1-listEvents"
-i  functions: Finished "us-central1-listEvents" in 2.258852ms
+i  functions: Finished "us-central1-listEvents" in 5.070406ms
 i  functions: Beginning execution of "us-central1-listEvents"
-i  functions: Finished "us-central1-listEvents" in 167.105633ms
+i  functions: Finished "us-central1-listEvents" in 197.577628ms
 i  functions: Beginning execution of "us-central1-listBillingSummary"
-i  functions: Finished "us-central1-listBillingSummary" in 2.334214ms
+i  functions: Finished "us-central1-listBillingSummary" in 2.349607ms
 i  functions: Beginning execution of "us-central1-listBillingSummary"
 i  functions: Beginning execution of "us-central1-listIntegrationTokens"
-i  functions: Finished "us-central1-listIntegrationTokens" in 2.471148ms
+i  functions: Finished "us-central1-listIntegrationTokens" in 2.453452ms
 i  functions: Beginning execution of "us-central1-listIntegrationTokens"
-i  functions: Finished "us-central1-listBillingSummary" in 177.276765ms
-i  functions: Finished "us-central1-listIntegrationTokens" in 205.203626ms
+i  functions: Finished "us-central1-listBillingSummary" in 181.012426ms
+i  functions: Finished "us-central1-listIntegrationTokens" in 201.271548ms
+ 
+i  emulators: Received SIGINT (Ctrl-C) for the first time. Starting a clean shutdown.
+i  emulators: Please wait for a clean shutdown or send the SIGINT (Ctrl-C) signal again to stop right now.
+i  emulators: Shutting down emulators.
+i  ui: Stopping Emulator UI
+i  functions: Stopping Functions Emulator
+i  firestore: Stopping Firestore Emulator
+i  auth: Stopping Authentication Emulator
+i  eventarc: Stopping Eventarc Emulator
+i  tasks: Stopping Cloud Tasks Emulator
+i  hub: Stopping emulator hub
+i  logging: Stopping Logging Emulator

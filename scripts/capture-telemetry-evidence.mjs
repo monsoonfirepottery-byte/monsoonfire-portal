@@ -13,6 +13,7 @@ const outDir = process.env.TELEMETRY_OUT_DIR
   : resolve("artifacts", "telemetry", "after-seed");
 const seedUserEmail = process.env.SEED_USER_EMAIL || "seed.client@monsoonfire.local";
 const seedUserPassword = process.env.SEED_USER_PASSWORD || "SeedPass!123";
+const seededThreadId = process.env.SEED_THREAD_ID || "seed-thread-client-staff";
 
 async function sleep(ms) {
   return await new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
@@ -252,35 +253,60 @@ async function main() {
     results.samples.push({ step: "B_messages_view_open", telemetry: messagesBefore, screenshot: "02-messages-view.png" });
     await screenshot(page, "02-messages-view.png");
 
-    // C) Open a thread (or create one)
-    const threadItem = page.locator(".thread-item").first();
-    if (await threadItem.isVisible().catch(() => false)) {
-      await threadItem.click();
+    // C) Open seeded thread and verify default cap
+    await page.getByTestId("messages-thread-list").waitFor({ timeout: 30000 });
+    const seededThreadButton = page.getByTestId(`thread-item-${seededThreadId}`).first();
+    if (await seededThreadButton.isVisible().catch(() => false)) {
+      await seededThreadButton.click();
+    } else {
+      const firstThreadButton = page.locator("[data-testid^='thread-item-']").first();
+      if (!await firstThreadButton.isVisible().catch(() => false)) {
+        throw new Error("No direct message thread row is available to open.");
+      }
+      await firstThreadButton.click();
+      results.notes.push(`Seeded thread '${seededThreadId}' not found in thread list; used first available thread.`);
     }
-    await sleep(1200);
+    await page.getByTestId("messages-message-list").waitFor({ timeout: 30000 });
+    const initialMessageCount = await page.locator("[data-testid='messages-message-list'] .bubble").count();
+    if (initialMessageCount < 50) {
+      throw new Error(`Expected at least 50 messages in seeded thread; found ${initialMessageCount}.`);
+    }
+    await sleep(500);
     const threadOpened = await collectPanel(page);
-    results.samples.push({ step: "C_thread_open_initial", telemetry: threadOpened, screenshot: "03-thread-open.png" });
+    results.samples.push({
+      step: "C_thread_open_initial",
+      telemetry: { ...threadOpened, "Message bubbles": String(initialMessageCount) },
+      screenshot: "03-thread-open.png",
+    });
     await screenshot(page, "03-thread-open.png");
 
-    // D) Load older messages if available
-    const olderButton = page.getByRole("button", { name: /Load older messages/i });
-    if (await olderButton.isVisible().catch(() => false)) {
-      await olderButton.click();
-      await sleep(1000);
-      const olderOnce = await collectPanel(page);
-      results.samples.push({ step: "D_load_older_once", telemetry: olderOnce, screenshot: "04-load-older-1.png" });
-      await screenshot(page, "04-load-older-1.png");
-
-      if (await olderButton.isVisible().catch(() => false)) {
-        await olderButton.click();
-        await sleep(1000);
-        const olderTwice = await collectPanel(page);
-        results.samples.push({ step: "D_load_older_twice", telemetry: olderTwice, screenshot: "05-load-older-2.png" });
-        await screenshot(page, "05-load-older-2.png");
-      }
-    } else {
-      results.notes.push("Load older messages button not available with current local dataset.");
+    // D) Load older messages (required when seeded thread has >120 messages)
+    const olderButton = page.getByTestId("messages-load-older");
+    await olderButton.waitFor({ state: "visible", timeout: 30000 });
+    await olderButton.click();
+    await page.waitForFunction(
+      () => {
+        const list = document.querySelector("[data-testid='messages-message-list']");
+        if (!list) return false;
+        return list.querySelectorAll(".bubble").length >= 100;
+      },
+      undefined,
+      { timeout: 30000 }
+    );
+    const afterLoadOlderCount = await page.locator("[data-testid='messages-message-list'] .bubble").count();
+    if (afterLoadOlderCount <= initialMessageCount) {
+      throw new Error(
+        `Expected Load older to increase message count (before ${initialMessageCount}, after ${afterLoadOlderCount}).`
+      );
     }
+    await sleep(500);
+    const olderOnce = await collectPanel(page);
+    results.samples.push({
+      step: "D_load_older_once",
+      telemetry: { ...olderOnce, "Message bubbles": String(afterLoadOlderCount) },
+      screenshot: "04-load-older-1.png",
+    });
+    await screenshot(page, "04-load-older-1.png");
 
     // E) My Pieces initial
     await navTo(page, "My Pieces");

@@ -53,18 +53,17 @@ contract parity, deployment gates, smoke profiles, and mobile store-readiness ch
 
 | Domain | Authoritative Source | Derived/Validated By | Trust |
 |---|---|---|---|
-| Ubuntu server administration | `.codex/config.toml` (`mcp_servers.ubuntu*`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
-| Ubuntu server administration | `.codex/config.toml` (`mcp_servers.ubuntuServerAdministrationReference`, `mcp_servers.ubuntuServerInstallationGuide`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
-| Ubuntu server networking | `.codex/config.toml` (`mcp_servers.ubuntuNetworkingGuide`, `mcp_servers.ubuntuCloudInitGuide`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
-| Ubuntu server lifecycle policy | `.codex/config.toml` (`mcp_servers.ubuntuSecurityGuide`, `mcp_servers.ubuntuSystemdGuide`, `mcp_servers.ubuntuBackupGuide`, `mcp_servers.ubuntuFirewallGuide`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
-| Server operations tooling | `.codex/config.toml` (`mcp_servers.serverOperationsDocker`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
-| Home automation (Home Assistant base/connectors) | `.codex/config.toml` (`mcp_servers.homeAssistantMcpServer`, `mcp_servers.homeAssistantMcpServerAi`, `mcp_servers.homeAssistantMcpCommunityServer`, `mcp_servers.homeAssistantMcpServerDocs`, `mcp_servers.homeAssistantMcpIntegration`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
-| Home automation (Hubitat / cameras) | `.codex/config.toml` (`mcp_servers.hubitatMCP`, `mcp_servers.hubitatMakerAPI`, `mcp_servers.homeAssistantCameraIntegration`, `mcp_servers.homeAssistantOnvifIntegration`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
-| Home automation vendor integrations | `.codex/config.toml` (`mcp_servers.homeAssistantStreamIntegration`, `mcp_servers.homeAssistantFFmpegIntegration`, `mcp_servers.homeAssistantAqaraIntegration`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
-| Agent orchestration runtime | `.codex/config.toml` (`mcp_servers.agentOrchestrationKubernetes`, `mcp_servers.agentOrchestrationDocker`, `mcp_servers.agentOrchestrationAnsible`, `mcp_servers.agentOrchestrationJenkins`, `mcp_servers.agentOrchestrationNomad`, `mcp_servers.agentOrchestrationPodman`, `mcp_servers.serverOperationsAnsible`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
-| Agent orchestration control-plane references | `.codex/config.toml` (`mcp_servers.agentOrchestrationKubernetesDocs`, `mcp_servers.agentOrchestrationDockerDocs`, `mcp_servers.agentOrchestrationDockerComposeDocs`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
-| Apple Home / associated domains | `.codex/config.toml` (`mcp_servers.appleHomeDocumentation`, `mcp_servers.appleHomeKitAppStoreGuidance`, `mcp_servers.appleHomeAppSiteAssociation`, `mcp_servers.appleHomeKitAccess`, `mcp_servers.appleAssociatedDomains`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
-| Open-home ops/remote access docs | `.codex/config.toml` (`mcp_servers.serverOperationsSsh`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
+| OpenAI docs / MCP reference | `~/.codex/config.toml` (`mcp_servers.openai_docs`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
+| Docs research helpers | `~/.codex/config.toml` (`mcp_servers.context7_docs`, `mcp_servers.mcp_registry`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
+| Cloudflare managed MCP docs/browser rendering (OAuth behavior may be endpoint/client-version dependent: in `codex-cli 0.104.0`, `cloudflare_browser_rendering` may prompt OAuth while `cloudflare_docs` may return \"No authorization support detected\". Fallback: endpoint remains usable when no auth is required; otherwise wait for CLI support/fix.) | `~/.codex/config.toml` (`mcp_servers.cloudflare_docs`, `mcp_servers.cloudflare_browser_rendering`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
+| Ubuntu server administration/networking/lifecycle | `~/.codex/config.toml` (`mcp_servers.ubuntu_docs`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
+| Server operations tooling | `~/.codex/config.toml` (`mcp_servers.docker_mcp_server`, `mcp_servers.awx_docs`, `mcp_servers.ssh_mcp`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
+| Home automation (Home Assistant base/connectors) | `~/.codex/config.toml` (`mcp_servers.home_assistant_docs`, `mcp_servers.home_assistant_core`, `mcp_servers.home_assistant_ai`, `mcp_servers.home_assistant_community`, `mcp_servers.aqara_mcp`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
+| Home automation (Hubitat) | `~/.codex/config.toml` (`mcp_servers.hubitat_mcp`, `mcp_servers.hubitat_public`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
+| Agent orchestration runtime | `~/.codex/config.toml` (`mcp_servers.k8s_mcp_server`, `mcp_servers.ansible_docs`, `mcp_servers.jenkins_docs`, `mcp_servers.nomad_docs`, `mcp_servers.podman_docs`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
+| Agent orchestration control-plane references | `~/.codex/config.toml` (`mcp_servers.kubernetes_docs`, `mcp_servers.docker_docs`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
+| Apple Home / associated domains | `~/.codex/config.toml` (`mcp_servers.apple_fetch`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
+| Legacy MCP alias compatibility (strict index audit coverage) | `~/.codex/config.toml` (`mcp_servers.agentOrchestration*`, `mcp_servers.homeAssistant*`, `mcp_servers.ubuntu*`, `mcp_servers.serverOperations*`, `mcp_servers.hubitat*`, `mcp_servers.apple*`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
 
 ## 4) Evidence Evidence Bundle Outputs
 
@@ -97,3 +96,38 @@ contract parity, deployment gates, smoke profiles, and mobile store-readiness ch
 - `scripts/validate-well-known.mjs`: Mobile + Security
 - `scripts/mobile-store-readiness-gate.mjs`: Mobile + Product
 - `scripts/epic-hub.mjs`: Product + Ops Coordination
+
+## 7) MCP Key Migration Map (Old -> Canonical)
+
+| Old key | Canonical key |
+|---|---|
+| `mcp_servers.agentOrchestrationAnsible` | `mcp_servers.ansible_docs` |
+| `mcp_servers.agentOrchestrationDockerComposeDocs` | `mcp_servers.docker_docs` |
+| `mcp_servers.agentOrchestrationDockerDocs` | `mcp_servers.docker_docs` |
+| `mcp_servers.agentOrchestrationJenkins` | `mcp_servers.jenkins_docs` |
+| `mcp_servers.agentOrchestrationKubernetes` | `mcp_servers.k8s_mcp_server` |
+| `mcp_servers.agentOrchestrationKubernetesDocs` | `mcp_servers.kubernetes_docs` |
+| `mcp_servers.agentOrchestrationNomad` | `mcp_servers.nomad_docs` |
+| `mcp_servers.agentOrchestrationPodman` | `mcp_servers.podman_docs` |
+| `mcp_servers.homeAssistantMcpIntegration` | `mcp_servers.home_assistant_docs` |
+| `mcp_servers.homeAssistantCameraIntegration` | `mcp_servers.home_assistant_docs` |
+| `mcp_servers.homeAssistantOnvifIntegration` | `mcp_servers.home_assistant_docs` |
+| `mcp_servers.homeAssistantStreamIntegration` | `mcp_servers.home_assistant_docs` |
+| `mcp_servers.homeAssistantFFmpegIntegration` | `mcp_servers.home_assistant_docs` |
+| `mcp_servers.homeAssistantMcpServer` | `mcp_servers.home_assistant_core` |
+| `mcp_servers.homeAssistantMcpServerAi` | `mcp_servers.home_assistant_ai` |
+| `mcp_servers.homeAssistantMcpServerDocs` | `mcp_servers.home_assistant_ai` |
+| `mcp_servers.homeAssistantMcpCommunityServer` | `mcp_servers.home_assistant_community` |
+| `mcp_servers.homeAssistantAqaraIntegration` | `mcp_servers.aqara_mcp` |
+| `mcp_servers.ubuntuServerAdministrationReference` | `mcp_servers.ubuntu_docs` |
+| `mcp_servers.ubuntuServerInstallationGuide` | `mcp_servers.ubuntu_docs` |
+| `mcp_servers.ubuntuSecurityGuide` | `mcp_servers.ubuntu_docs` |
+| `mcp_servers.ubuntuNetworkingGuide` | `mcp_servers.ubuntu_docs` |
+| `mcp_servers.ubuntuCloudInitGuide` | `mcp_servers.ubuntu_docs` |
+| `mcp_servers.ubuntuFirewallGuide` | `mcp_servers.ubuntu_docs` |
+| `mcp_servers.ubuntuSystemdGuide` | `mcp_servers.ubuntu_docs` |
+| `mcp_servers.ubuntuBackupGuide` | `mcp_servers.ubuntu_docs` |
+| `mcp_servers.serverOperationsAnsible` | `mcp_servers.awx_docs` |
+| `mcp_servers.serverOperationsDocker` | `mcp_servers.docker_mcp_server` |
+| `mcp_servers.serverOperationsSsh` | `mcp_servers.ssh_mcp` |
+| `mcp_servers.openaiDeveloperDocs` | `mcp_servers.openai_docs` |

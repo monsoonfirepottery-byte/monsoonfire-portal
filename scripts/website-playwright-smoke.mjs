@@ -14,6 +14,23 @@ const defaultOutputRoot = resolve(repoRoot, "output", "playwright");
 const host = resolveStudioBrainNetworkProfile().host;
 const preferredPort = 4173;
 const localBaseUrl = `http://${host}:${preferredPort}`;
+const CONTRACT_DEFAULT_ENV = {
+  STUDIO_BRAIN_HOST: "127.0.0.1",
+  STUDIO_BRAIN_PORT: "8787",
+  PGHOST: "127.0.0.1",
+  PGPORT: "5433",
+  PGDATABASE: "monsoonfire_studio_os",
+  PGUSER: "postgres",
+  PGPASSWORD: "studiobrain-ci-placeholder",
+  REDIS_HOST: "127.0.0.1",
+  REDIS_PORT: "6379",
+  STUDIO_BRAIN_REDIS_STREAM_NAME: "studiobrain.events",
+  STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT: "http://127.0.0.1:9000",
+  STUDIO_BRAIN_ARTIFACT_STORE_BUCKET: "studiobrain-artifacts",
+  STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY: "studiobrain-ci-access",
+  STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY: "studiobrain-ci-secret",
+  STUDIO_BRAIN_SKILL_INSTALL_ROOT: "/tmp/studiobrain/skills",
+};
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -78,6 +95,19 @@ function assertStudioBrainContract() {
   if (report.warnings.length > 0) {
     process.stdout.write("website smoke: studio-brain env warnings\n");
     report.warnings.forEach((warning) => process.stdout.write(`  - ${warning}\n`));
+  }
+}
+
+function applyContractDefaults() {
+  const injected = [];
+  for (const [key, value] of Object.entries(CONTRACT_DEFAULT_ENV)) {
+    const current = process.env[key];
+    if (typeof current === "string" && current.trim().length > 0) continue;
+    process.env[key] = value;
+    injected.push(key);
+  }
+  if (injected.length > 0) {
+    process.stdout.write(`website smoke: injected contract defaults for ${injected.length} env keys\n`);
   }
 }
 
@@ -170,6 +200,7 @@ const assert = (condition, message) => {
 };
 
 const run = async () => {
+  applyContractDefaults();
   assertStudioBrainContract();
   assertStudioBrainIntegrity();
 

@@ -1,5 +1,7 @@
 {
   "scripts": {
+    "test:rules": "npx firebase-tools emulators:exec --config firebase.emulators.local.json --project monsoonfire-portal --only firestore \"node --test scripts/rules/directMessages.rules.test.mjs\"",
+    "verify:local": "npm run test:rules && npm --prefix functions run build && npm --prefix functions run lint && npm --prefix web run build && npm --prefix web run lint",
     "emulators:start": "node ./scripts/start-emulators.mjs",
     "seed:emulators": "FIREBASE_AUTH_EMULATOR_HOST=${FIREBASE_AUTH_EMULATOR_HOST:-127.0.0.1:9099} FIRESTORE_EMULATOR_HOST=${FIRESTORE_EMULATOR_HOST:-127.0.0.1:8085} node ./functions/scripts/seed-emulators.mjs",
     "bootstrap": "npm install && npm --prefix functions install && npm --prefix studio-brain install && npm --prefix web install",
@@ -134,6 +136,7 @@
     "firebase-functions": "^7.0.5"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
     "@axe-core/playwright": "^4.11.1",
     "@playwright/test": "^1.58.2",
     "playwright": "^1.58.2"

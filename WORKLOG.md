@@ -144,3 +144,19 @@ Full marketing-site UI/UX + accessibility pass for `monsoonfire.com` website (no
   - `npm --prefix functions run lint` ✅
   - `npm --prefix web run build` ✅
   - `npm --prefix web run lint` ✅
+
+## 2026-02-21 security/regression hardening pass (harden-rules-tests-devscripts-20260221)
+- Added Firestore Security Rules unit tests for direct messages:
+  - `scripts/rules/directMessages.rules.test.mjs`
+  - Covers participant/staff/anonymous ALLOW+Deny behavior for thread docs, message docs, thread query filtering, and constrained updates.
+- Added root scripts:
+  - `test:rules` runs rules tests via Firestore emulator using `firebase emulators:exec`.
+  - `verify:local` runs rules tests + functions/web build+lint.
+- Updated web dev ergonomics:
+  - `web` `dev` now runs Vite only.
+  - `web` `test:watch` runs Vitest watcher explicitly.
+  - `web` `test` now runs Vitest in run mode.
+- Added staff-aware direct message rule checks while preserving field-level write constraints.
+- Local verification run:
+  - `npm run verify:local` ✅
+  - Rules tests: 14/14 passing (`scripts/rules/directMessages.rules.test.mjs`).

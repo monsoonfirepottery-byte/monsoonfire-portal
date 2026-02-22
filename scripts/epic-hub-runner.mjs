@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, "..");
 const EPIC_HUB_PATH = resolve(REPO_ROOT, "scripts", "epic-hub.mjs");
-const DEFAULT_EPIC_SELECTION = "1-8";
+const DEFAULT_EPIC_SELECTION = "1-9";
 const DEFAULT_ARTIFACT_BASE = resolve(REPO_ROOT, "output", "epic-hub-runner");
 
 const args = parseArgs(process.argv.slice(2));
@@ -467,15 +467,15 @@ function parsePriority(raw) {
 function printUsage() {
   const examples = [
     "node ./scripts/epic-hub-runner.mjs",
-    "node ./scripts/epic-hub-runner.mjs --epic 1-8 --limit 40",
+    "node ./scripts/epic-hub-runner.mjs --epic 1-9 --limit 40",
     "node ./scripts/epic-hub-runner.mjs --epic 7 --owner ralph --jsonl",
   ];
 
   console.log("Epic Hub Runner");
-  console.log("Defaults to blocker chain: P1-EPIC-01 through P1-EPIC-08 (default --epic 1-8)");
+  console.log("Defaults to blocker chain: P1-EPIC-01 through P1-EPIC-09 (default --epic 1-9)");
   console.log("Usage: node ./scripts/epic-hub-runner.mjs [options]");
   console.log("Options:");
-  console.log("  --epic <range|name>   Epic filter (default: 1-8)");
+  console.log("  --epic <range|name>   Epic filter (default: 1-9)");
   console.log("  --owner <name>         Filter by ticket owner in resulting queue");
   console.log("  --limit <n>            Limit tasks in dispatch payload");
   console.log("  --mode <agentic>       Epic-hub mode to execute (default: agentic)");

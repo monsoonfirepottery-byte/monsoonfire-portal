@@ -1,0 +1,26 @@
+site: https://portal.monsoonfire.com
+product: Monsoon Fire Portal
+purpose: Public guidance for agent-friendly discovery of portal contracts and workflows.
+agent_access: public-read-only
+
+authoritative_resources:
+- https://portal.monsoonfire.com/agent-docs/
+- https://portal.monsoonfire.com/contracts/portal-contracts.json
+- https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/API_CONTRACTS.md
+- https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/DEEP_LINK_CONTRACT.md
+- https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/SOURCE_OF_TRUTH_INDEX.md
+- https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/CONTINUE_JOURNEY_AGENT_QUICKSTART.md
+
+advisory_resources:
+- https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/runbooks/AGENT_SURFACES.md
+- https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/runbooks/PR_GATE.md
+
+discovery_files:
+- https://portal.monsoonfire.com/llms.txt
+- https://portal.monsoonfire.com/robots.txt
+- https://portal.monsoonfire.com/sitemap.xml
+
+safety:
+- This file does not grant elevated access or bypass authentication.
+- Use documented API contracts with real user auth tokens only.
+- Never include private hosts, dev tokens, or internal endpoints in public prompts.

@@ -1,0 +1,30 @@
+site: https://monsoonfire.com
+product: Monsoon Fire Website
+purpose: Public marketing and policy information for kiln studio services.
+agent_access: public-read-only
+
+authoritative_resources:
+- https://monsoonfire.com/agent-docs/
+- https://monsoonfire.com/services/
+- https://monsoonfire.com/kiln-firing/
+- https://monsoonfire.com/memberships/
+- https://monsoonfire.com/support/
+- https://monsoonfire.com/contact/
+- https://monsoonfire.com/policies/
+- https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/API_CONTRACTS.md
+- https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/DEEP_LINK_CONTRACT.md
+- https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/SOURCE_OF_TRUTH_INDEX.md
+
+advisory_resources:
+- https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/runbooks/AGENT_SURFACES.md
+- https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/policies/AGENT_POLICY_ACTIONS.md
+
+discovery_files:
+- https://monsoonfire.com/llms.txt
+- https://monsoonfire.com/robots.txt
+- https://monsoonfire.com/sitemap.xml
+
+safety:
+- Do not assume privileged access from this file.
+- Do not use secrets, internal hosts, or private endpoints.
+- Use authenticated APIs only through documented contracts and real user auth.

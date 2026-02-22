@@ -18,7 +18,8 @@ Default `npm run pr:gate` runs these required checks:
 10. Platform-reference drift scan (`npm run audit:platform:refs:strict`) to catch non-essential OS/tooling assumptions outside host contracts.
 11. Source-of-truth contract matrix (`npm run source:truth:contract:strict`).
 12. Source-of-truth deployment matrix (`npm run source:truth:deployment -- --phase all --json --artifact output/source-of-truth-deployment-gates/pr-gate.json`).
-13. Well-known validation (`npm run well-known:validate:strict`).
+13. Agent-readable surfaces check (`npm run agent:surfaces:check`).
+14. Well-known validation (`npm run well-known:validate:strict`).
 
 For a clean local state, each onboarding run should pass host contract scan + smoke + status checks in sequence.
 Recommended sequence:
@@ -30,8 +31,9 @@ Recommended sequence:
 6. `npm run pr:gate -- --smoke`
 7. `npm run source:truth:contract:strict`
 8. `npm run source:truth:deployment -- --phase all --json --artifact output/source-of-truth-deployment-gates/pr-gate.json`
-9. `npm run well-known:validate:strict`
-10. `npm run audit:platform:refs:strict`
+9. `npm run agent:surfaces:check`
+10. `npm run well-known:validate:strict`
+11. `npm run audit:platform:refs:strict`
 
 ## Deployment gate recovery
 

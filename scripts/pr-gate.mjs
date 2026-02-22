@@ -21,6 +21,7 @@ const REQUIRED_NODE_ENTRYPOINTS = [
   "scripts/studio-stack-profile-snapshot.mjs",
   "scripts/studiobrain-status.mjs",
   "scripts/studiobrain-network-check.mjs",
+  "scripts/check-agent-surfaces.mjs",
   "website/scripts/serve.mjs",
   "website/scripts/deploy.mjs",
   "website/ncsitebuilder/scripts/serve.mjs",
@@ -126,6 +127,14 @@ const steps = [
     command: "node",
     args: ["./scripts/source-of-truth-index-audit.mjs", "--strict", "--json"],
     remediation: "Update docs/SOURCE_OF_TRUTH_INDEX.md and .codex/config.toml source entries before PR merge.",
+    required: true,
+  },
+  {
+    name: "agent-readable surfaces check",
+    kind: "command",
+    command: "node",
+    args: ["./scripts/check-agent-surfaces.mjs", "--strict", "--json"],
+    remediation: "Update website/portal llms.txt, ai.txt, agent docs, and public contracts artifact so checks pass without exposing sensitive data.",
     required: true,
   },
   {

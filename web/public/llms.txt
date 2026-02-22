@@ -1,0 +1,26 @@
+# Monsoon Fire Portal — llms.txt
+Updated: 2026-02-22
+Scope: Public discovery map for portal.monsoonfire.com.
+Safety: Discovery and documentation only; no privileged access is granted.
+
+## Start Here
+- [Authoritative] https://portal.monsoonfire.com/agent-docs/
+- [Authoritative] https://portal.monsoonfire.com/
+- [Authoritative] https://portal.monsoonfire.com/llms.txt
+- [Authoritative] https://portal.monsoonfire.com/ai.txt
+- [Authoritative] https://portal.monsoonfire.com/contracts/portal-contracts.json
+- [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/API_CONTRACTS.md
+- [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/DEEP_LINK_CONTRACT.md
+- [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/SOURCE_OF_TRUTH_INDEX.md
+- [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/CONTINUE_JOURNEY_AGENT_QUICKSTART.md
+- [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/runbooks/AGENT_SURFACES.md
+- [Advisory] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/runbooks/PR_GATE.md
+- [Advisory] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/policies/AGENT_POLICY_ACTIONS.md
+
+## Authority Model
+- Authoritative: Canonical contracts, runbooks, and portal discovery surfaces.
+- Advisory: Context and operational guidance that complements contracts.
+
+## Workflow Pointer
+- Continue Journey flow (batch lifecycle):
+  https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/CONTINUE_JOURNEY_AGENT_QUICKSTART.md

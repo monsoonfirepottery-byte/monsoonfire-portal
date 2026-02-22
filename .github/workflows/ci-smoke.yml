@@ -73,6 +73,9 @@ jobs:
       - name: Source-of-truth index strict audit
         run: npm run source:truth:index:strict
 
+      - name: Agent-readable surfaces check
+        run: npm run agent:surfaces:check
+
       - name: Studio stack profile snapshot
         run: npm run studio:stack:profile:snapshot:strict -- --artifact output/studio-stack-profile/latest.json
 

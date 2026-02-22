@@ -22,6 +22,8 @@ This folder contains the current integration references for the project.
   Canonical deep-link contract for web + native clients.
 - `docs/SOURCE_OF_TRUTH_INDEX.md`  
   Source-of-truth registry for contract/deployment gate wiring.
+- `docs/runbooks/AGENT_SURFACES.md`
+  Agent-readable surface maintenance runbook for website + portal discovery files.
 - `docs/MILESTONE_2026-01-19.md`  
   Milestone history and implementation notes.
 
@@ -52,14 +54,16 @@ This folder contains the current integration references for the project.
   Contract parity matrix for web/native/backend and API route drift.
 - `npm run source:truth:deployment`  
   Deployment target and profile matrix checks for staging/beta/production/store-readiness.
+- `npm run agent:surfaces:check`
+  Deterministic validation for website + portal `llms.txt`/`ai.txt`, public contract pointers, and leak-safe link surfaces.
 - `npm run smoke:phased`  
   Phase-aware smoke matrix validation.
 - `npm run mobile:store-readiness`  
   Deep-link + `.well-known` + mobile parity validation.
 - `npm run epics:agentic:run`  
-  Emit an agentic dispatch manifest for blocker epics `1-8` in JSONL for autonomous ticket execution.
+  Emit an agentic dispatch manifest for blocker epics `1-9` in JSONL for autonomous ticket execution.
 - `npm run epics:agentic:run:md`  
-  Emit the same agentic dispatch for blocker epics `1-8` as markdown artifacts under `output/epic-hub-runner/<run-id>/`.
+  Emit the same agentic dispatch for blocker epics `1-9` as markdown artifacts under `output/epic-hub-runner/<run-id>/`.
 
 ## iOS contract parity
 

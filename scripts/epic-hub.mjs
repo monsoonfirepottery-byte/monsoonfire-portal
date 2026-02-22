@@ -21,7 +21,7 @@ const workLimit = parsePositiveIntArg(args, "--limit");
 const generatedAt = new Date().toISOString();
 const markdownOutPath = outputMarkdownPath || resolve(ROOT, "output", `epic-hub-${generatedAt.slice(0, 10)}-${generatedAt.slice(11, 19).replace(/:/g, "-")}.md`);
 const EPIC_01_TO_08_PATH_PREFIX = "tickets/P1-EPIC-";
-const EPIC_01_TO_08_MAX = 8;
+const EPIC_01_TO_08_MAX = 9;
 
 if (!existsSync(TICKETS_DIR)) {
   fail(`Tickets folder not found at ${TICKETS_DIR}`);
@@ -359,7 +359,7 @@ function printResult({ command, epics, includeCompleted: includeDone, outputJson
     for (const epic of epics) {
       const summary = epicSummary(epic, includeDone);
       console.log(`${summary.title} (${summary.path})`);
-      const blockerHint = summary.blockedByEpic08 ? " | blocked-by-epics-01-to-08" : "";
+      const blockerHint = summary.blockedByEpic08 ? " | blocked-by-epics-01-to-09" : "";
       console.log(`  status=${summary.status}, priority=${summary.priority}, open=${summary.open}, done=${summary.done}, blocked=${summary.blocked}${blockerHint}`);
     }
   } else {
@@ -370,7 +370,7 @@ function printResult({ command, epics, includeCompleted: includeDone, outputJson
       console.log(`Status: ${summary.status}`);
       console.log(`Priority: ${summary.priority}`);
       if (summary.blockedByEpic08) {
-        console.log(`Blocked-by: ${summary.blockerEpicDependencies.join(", ") || "P1-EPIC-01 through P1-EPIC-08"}`);
+        console.log(`Blocked-by: ${summary.blockerEpicDependencies.join(", ") || "P1-EPIC-01 through P1-EPIC-09"}`);
       }
       console.log(`Progress: open ${summary.open} | blocked ${summary.blocked} | done ${summary.done}`);
       if (showEpicDetail) {

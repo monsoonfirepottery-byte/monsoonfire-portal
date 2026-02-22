@@ -5,6 +5,7 @@ Owner: Platform
 
 This file is the canonical registry for source-of-truth artifacts used by Epic-08 gates:
 contract parity, deployment gates, smoke profiles, and mobile store-readiness checks.
+It also tracks public agent-readable discovery surfaces for website and portal.
 
 ## 1) Contract Sources
 
@@ -16,6 +17,7 @@ contract parity, deployment gates, smoke profiles, and mobile store-readiness ch
 | Human-readable API doc | `docs/API_CONTRACTS.md` | `scripts/source-of-truth-contract-matrix.mjs` | derived |
 | Legacy endpoint behavior | `functions/src/index.ts` + `functions/src/apiV1.ts` | `scripts/source-of-truth-contract-matrix.mjs` | authoritative |
 | API docs/tests alignment | `functions/src/apiV1.ts` | `scripts/source-of-truth-contract-matrix.mjs` | authoritative |
+| Portal contracts static discovery artifact | `web/public/contracts/portal-contracts.json` | `scripts/check-agent-surfaces.mjs` | authoritative |
 | iOS API contract mirror | `ios/PortalContracts.swift` | `scripts/source-of-truth-contract-matrix.mjs` | derived |
 | Android API contract mirror | `android/app/src/main/java/com/monsoonfire/portal/reference/PortalContracts.kt` | `scripts/source-of-truth-contract-matrix.mjs` | derived |
 
@@ -47,6 +49,9 @@ contract parity, deployment gates, smoke profiles, and mobile store-readiness ch
 | Vite dev/proxy profile evidence | `web/vite.config.js`, `web/.env.local.example` | `scripts/studio-stack-profile-snapshot.mjs` | authoritative |
 | Firebase emulator contract profile evidence | `web/.env.local.example`, `scripts/validate-emulator-contract.mjs`, `scripts/studio-stack-profile-snapshot.mjs` | `docs/EMULATOR_RUNBOOK.md` | authoritative |
 | Website deploy target profile evidence | `website/scripts/deploy.mjs`, `website/scripts/serve.mjs` | `docs/EMULATOR_RUNBOOK.md` | authoritative |
+| Website agent-readable static surfaces | `website/llms.txt`, `website/ai.txt`, `website/agent-docs/index.html` | `scripts/check-agent-surfaces.mjs` | authoritative |
+| Website ncsitebuilder agent-readable static surfaces | `website/ncsitebuilder/llms.txt`, `website/ncsitebuilder/ai.txt`, `website/ncsitebuilder/agent-docs/index.html` | `scripts/check-agent-surfaces.mjs` | authoritative |
+| Portal agent-readable static surfaces | `web/public/llms.txt`, `web/public/ai.txt`, `web/public/agent-docs/index.html`, `web/public/robots.txt`, `web/public/sitemap.xml` | `scripts/check-agent-surfaces.mjs` | authoritative |
 | Network runtime contract and host state | `scripts/studiobrain-network-check.mjs`, `studio-brain/.env.network.profile`, `studio-brain/.env.local` | `scripts/studiobrain-network-check.mjs` | authoritative |
 
 ## 3) MCP & External Sources
@@ -78,11 +83,13 @@ contract parity, deployment gates, smoke profiles, and mobile store-readiness ch
 | Phased smoke evidence | `output/phased-smoke-gate/latest.json`, `output/phased-smoke-gate/staging/*.json`, `output/phased-smoke-gate/beta/*.json`, `output/phased-smoke-gate/production/*.json`, `output/phased-smoke-gate/store-readiness/*.json` | `scripts/phased-smoke-gate.mjs` |
 | PR gate | `artifacts/pr-gate.json` | `scripts/pr-gate.mjs` |
 | Source-of-truth index audit | `output/source-of-truth-index-audit/latest.json` | `scripts/source-of-truth-index-audit.mjs` |
+| Agent-readable surfaces check | `output/agent-surfaces-check/latest.json` | `scripts/check-agent-surfaces.mjs` |
 | Vite/Firebase stack profile snapshot | `output/studio-stack-profile/latest.json` | `scripts/studio-stack-profile-snapshot.mjs` |
 
 ## 5) Operator Runbooks
 
 - `docs/EMULATOR_RUNBOOK.md` (environment profile and emulator contract assumptions)
+- `docs/runbooks/AGENT_SURFACES.md`
 - `docs/runbooks/PR_GATE.md`
 - `docs/runbooks/PORTAL_PLAYWRIGHT_SMOKE.md`
 - `docs/runbooks/WEBSITE_PLAYWRIGHT_SMOKE.md`
@@ -95,6 +102,7 @@ contract parity, deployment gates, smoke profiles, and mobile store-readiness ch
 - `scripts/phased-smoke-gate.mjs`: Platform + QA + Mobile
 - `scripts/validate-well-known.mjs`: Mobile + Security
 - `scripts/mobile-store-readiness-gate.mjs`: Mobile + Product
+- `scripts/check-agent-surfaces.mjs`: Platform + Security + Docs
 - `scripts/epic-hub.mjs`: Product + Ops Coordination
 
 ## 7) MCP Key Migration Map (Old -> Canonical)

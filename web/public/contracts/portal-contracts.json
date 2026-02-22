@@ -1,0 +1,40 @@
+{
+  "artifact": "portal-contracts",
+  "version": "2026-02-22",
+  "status": "public-read-only",
+  "scope": "Contract discovery for portal.monsoonfire.com",
+  "authoritativeDocs": {
+    "apiContracts": "https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/API_CONTRACTS.md",
+    "deepLinkContract": "https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/DEEP_LINK_CONTRACT.md",
+    "sourceOfTruthIndex": "https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/SOURCE_OF_TRUTH_INDEX.md",
+    "continueJourneyQuickstart": "https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/CONTINUE_JOURNEY_AGENT_QUICKSTART.md"
+  },
+  "endpoints": [
+    {
+      "name": "createBatch",
+      "method": "POST",
+      "path": "/createBatch",
+      "auth": "bearer-id-token-required"
+    },
+    {
+      "name": "continueJourney",
+      "method": "POST",
+      "path": "/continueJourney",
+      "auth": "bearer-id-token-required",
+      "requiredBody": ["uid", "fromBatchId"]
+    },
+    {
+      "name": "pickedUpAndClose",
+      "method": "POST",
+      "path": "/pickedUpAndClose",
+      "auth": "bearer-id-token-required"
+    }
+  ],
+  "security": {
+    "notes": [
+      "No admin tokens are published in this artifact.",
+      "No private infrastructure URLs are exposed.",
+      "This artifact is for discovery and contract routing only."
+    ]
+  }
+}

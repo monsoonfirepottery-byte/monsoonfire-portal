@@ -194,7 +194,8 @@ export const websiteKilnBoard = onRequest({ region: REGION, cors: true }, async 
 
     kilnsSnap.forEach((docSnap) => {
       const raw = docSnap.data() as Record<string, unknown>;
-      const id = docSnap.id;
+      const rawId = docSnap.id;
+      const id = normalizeStation(rawId) || rawId.trim().toLowerCase();
       const name = normalizeStationName(id, safeString(raw.name, ""));
       const controller = safeString(raw.controller, DEFAULT_CONTROLLER);
       stationMap.set(id, {

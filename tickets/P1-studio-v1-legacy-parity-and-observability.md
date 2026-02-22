@@ -1,6 +1,6 @@
 # P1 — Reservation API v1 and legacy parity + observability
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 Priority: P1
 Owner: Functions Team
@@ -37,3 +37,9 @@ Today, parity is mostly expected rather than guaranteed, and there is limited tr
 - No regression where one route path permits updates that the other rejects.
 - All new parity paths are covered by automated tests and a basic smoke checklist.
 - Alerting points to route family when parity checks fail.
+
+## Completion Notes (2026-02-22)
+
+- Added parity regression tests for create/update/assign route families in `functions/src/apiV1.test.ts`.
+- Added route-family metadata propagation for reservation authz audit events in `functions/src/apiV1.ts`.
+- Added coverage asserting reservation authz logs include `metadata.routeFamily` for both `v1` and `legacy`.

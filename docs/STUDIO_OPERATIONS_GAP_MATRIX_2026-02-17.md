@@ -8,6 +8,18 @@ Scope: Pottery studio operations only (no classes/workshops/storefront features)
 - Community signal scan from `r/ceramics` and `r/pottery`.
 - Repo baseline from existing reservation/queue documentation and tickets.
 
+## Reservation API parity status update (2026-02-22)
+
+- Epic alignment: reservation mutation contract now defaults to `apiV1` routes with legacy transport wrappers only.
+- Compatibility window:
+  - Review date: `2026-05-15`
+  - Legacy sunset target: no earlier than `2026-06-30`
+- Route-family parity coverage now exists for:
+  - `reservations.create`
+  - `reservations.update`
+  - `reservations.assignStation`
+- Station input normalization now uses shared station config across create + board-capacity paths.
+
 ## Feature gap matrix
 
 - **Stage visibility + ETA confidence**
@@ -102,4 +114,3 @@ Scope: Pottery studio operations only (no classes/workshops/storefront features)
 - storefront/ecommerce catalog
 - private events workflows
 - hardware integrations outside existing staff/portal architecture
-

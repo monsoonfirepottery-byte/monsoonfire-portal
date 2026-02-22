@@ -1,6 +1,6 @@
 # P1 — Studio Reservation API v1 Parity and Compatibility Epic
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 Priority: P1
 Owner: Web + Functions Team
@@ -53,3 +53,16 @@ Define a single, explicit parity contract for reservation mutation endpoints and
 - Any incompatibility between legacy and v1 flows is documented and has an issue ticket assigned before release.
 - At least one automated parity test exists for each of create/update/assign.
 - Documentation for consumers clearly marks v1 as default and lists deprecating legacy routes.
+
+## Completion Notes (2026-02-22)
+
+- Added automated parity coverage for `reservations.create`, `reservations.update`, and `reservations.assignStation` in `functions/src/apiV1.test.ts`.
+- Enforced station-id normalization and validation in create flows and aligned persisted station fields (`kilnId` + `assignedStationId`) in:
+  - `functions/src/apiV1.ts`
+  - `functions/src/createReservation.ts`
+- Added route-family metadata coverage on reservation authz audit events for legacy vs v1 traceability in `functions/src/apiV1.ts`.
+- Refreshed contract/migration docs and client contract notes:
+  - `docs/SCHEMA_RESERVATIONS.md`
+  - `docs/STUDIO_OPERATIONS_GAP_MATRIX_2026-02-17.md`
+  - `web/src/api/portalContracts.ts`
+  - `web/src/api/portalApi.ts`

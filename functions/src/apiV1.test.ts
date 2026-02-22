@@ -372,6 +372,56 @@ function makeRequest(path: string, body: Record<string, unknown>, ctx: AuthConte
   return { method: "POST", path, body, __mfAuthContext: ctx };
 }
 
+function makeApiV1Request(params: {
+  path: string;
+  body: Record<string, unknown>;
+  ctx: AuthContext;
+  routeFamily?: "v1" | "legacy";
+  staffAuthUid?: string | null;
+}): shared.RequestLike {
+  const request: shared.RequestLike & { __routeFamily?: "legacy" } = {
+    method: "POST",
+    path: params.path,
+    body: params.body,
+    __mfAuthContext: params.ctx,
+  };
+  if (params.routeFamily === "legacy") {
+    request.__routeFamily = "legacy";
+  }
+  if (params.staffAuthUid) {
+    request.__mfAuth = {
+      uid: params.staffAuthUid,
+      staff: true,
+    };
+  }
+  return request;
+}
+
+function cloneState(state: MockDbState): MockDbState {
+  return JSON.parse(JSON.stringify(state)) as MockDbState;
+}
+
+function withoutRequestId(body: unknown): Record<string, unknown> {
+  if (!body || typeof body !== "object") return {};
+  const out = { ...(body as Record<string, unknown>) };
+  delete out.requestId;
+  return out;
+}
+
+async function invokeApiV1Route(state: MockDbState, request: shared.RequestLike) {
+  const response = createResponse();
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+  return {
+    status: response.status(),
+    body: response.body(),
+    headers: response.headers(),
+  };
+}
+
 test("toTimelineEventRow normalizes explicit fields and drops unknown fields", () => {
   const result = toTimelineEventRow("timeline-1", {
     type: "CREATE_BATCH",
@@ -1604,3 +1654,184 @@ for (const mode of delegatedFailureModes) {
     });
   }
 }
+
+test("reservations.create returns parity envelopes for v1 and legacy route families", async () => {
+  const payload = {
+    firingType: "glaze",
+    shelfEquivalent: 1,
+    kilnId: "reductionraku",
+  };
+
+  const v1 = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/reservations.create",
+      body: payload,
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+  const legacy = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/reservations.create",
+      body: payload,
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "legacy",
+    }),
+  );
+
+  assert.equal(v1.status, 200);
+  assert.equal(legacy.status, 200);
+  assert.equal(typeof v1.headers["x-request-id"], "string");
+  assert.equal(typeof legacy.headers["x-request-id"], "string");
+  assert.deepEqual(withoutRequestId(v1.body), withoutRequestId(legacy.body));
+});
+
+test("reservations.create rejects unknown station ids with parity across route families", async () => {
+  const payload = {
+    firingType: "bisque",
+    shelfEquivalent: 1,
+    kilnId: "ghost-kiln",
+  };
+
+  const v1 = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/reservations.create",
+      body: payload,
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+  const legacy = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/reservations.create",
+      body: payload,
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "legacy",
+    }),
+  );
+
+  assert.equal(v1.status, 400);
+  assert.equal(legacy.status, 400);
+  assert.deepEqual(withoutRequestId(v1.body), withoutRequestId(legacy.body));
+});
+
+test("reservations.update returns parity envelopes for v1 and legacy route families", async () => {
+  const baseState: MockDbState = {
+    reservations: {
+      "reservation-1": {
+        ownerUid: "owner-1",
+        status: "REQUESTED",
+        loadStatus: "queued",
+        assignedStationId: "studio-electric",
+        stageHistory: [],
+      },
+    },
+  };
+  const payload = {
+    reservationId: "reservation-1",
+    status: "CONFIRMED",
+  };
+
+  const v1 = await invokeApiV1Route(
+    cloneState(baseState),
+    makeApiV1Request({
+      path: "/v1/reservations.update",
+      body: payload,
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+  const legacy = await invokeApiV1Route(
+    cloneState(baseState),
+    makeApiV1Request({
+      path: "/v1/reservations.update",
+      body: payload,
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "legacy",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(v1.status, 200);
+  assert.equal(legacy.status, 200);
+  assert.deepEqual(withoutRequestId(v1.body), withoutRequestId(legacy.body));
+});
+
+test("reservations.assignStation rejects unknown station with parity across route families", async () => {
+  const baseState: MockDbState = {
+    reservations: {
+      "reservation-1": {
+        ownerUid: "owner-1",
+        status: "REQUESTED",
+        loadStatus: "queued",
+        stageHistory: [],
+      },
+    },
+  };
+  const payload = {
+    reservationId: "reservation-1",
+    assignedStationId: "ghost-station",
+  };
+
+  const v1 = await invokeApiV1Route(
+    cloneState(baseState),
+    makeApiV1Request({
+      path: "/v1/reservations.assignStation",
+      body: payload,
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+  const legacy = await invokeApiV1Route(
+    cloneState(baseState),
+    makeApiV1Request({
+      path: "/v1/reservations.assignStation",
+      body: payload,
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "legacy",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(v1.status, 400);
+  assert.equal(legacy.status, 400);
+  assert.deepEqual(withoutRequestId(v1.body), withoutRequestId(legacy.body));
+});
+
+test("reservation authz audit metadata includes routeFamily for legacy and v1", async () => {
+  await withStrictDelegation(async () => {
+    for (const routeFamily of ["v1", "legacy"] as const) {
+      const state: MockDbState = {};
+      const request = makeApiV1Request({
+        path: "/v1/reservations.create",
+        body: {
+          firingType: "glaze",
+          shelfEquivalent: 1,
+          ownerUid: "owner-1",
+        },
+        ctx: delegatedContext({
+          uid: "owner-1",
+          scopes: ["reservations:write"],
+          delegationId: "delegation-1",
+        }),
+        routeFamily,
+      });
+      const response = await invokeApiV1Route(state, request);
+      assert.equal(response.status, 403);
+
+      const auditEvents = getAuditEvents(state);
+      const event = auditEvents.find((row) => row.action === "reservations_create_authz");
+      if (!event) {
+        assert.fail(`Missing reservations_create_authz audit event: ${JSON.stringify(auditEvents)}`);
+      }
+      const metadata = event.metadata as Record<string, unknown> | undefined;
+      assert.equal(metadata?.routeFamily, routeFamily);
+    }
+  });
+});

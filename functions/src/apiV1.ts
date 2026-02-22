@@ -2112,7 +2112,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         allowStaff: true,
       });
       if (!reservationAuthz.ok) {
-        await logAuditEvent({
+        await logReservationAuditEvent({
           req,
           requestId,
           action: "reservations_create_authz",
@@ -2315,6 +2315,12 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Invalid photo path");
         return;
       }
+      const kilnIdInput = trimOrNull(body.kilnId);
+      const kilnId = kilnIdInput ? normalizeStationId(kilnIdInput) : null;
+      if (kilnIdInput && (!kilnId || !isValidStation(kilnId))) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Unknown station id.");
+        return;
+      }
 
       const dropOffQuantityPayload = dropOffQuantity;
 
@@ -2348,7 +2354,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         },
         linkedBatchId,
         wareType: trimOrNull(body.wareType),
-        kilnId: trimOrNull(body.kilnId),
+        kilnId,
+        assignedStationId: kilnId,
         kilnLabel: trimOrNull(body.kilnLabel),
         quantityTier: trimOrNull(body.quantityTier),
         quantityLabel: trimOrNull(body.quantityLabel),
@@ -2429,7 +2436,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         allowStaff: true,
       });
       if (!reservationAuthz.ok) {
-        await logAuditEvent({
+        await logReservationAuditEvent({
           req,
           requestId,
           action: "reservations_get_authz",
@@ -2475,7 +2482,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         allowStaff: true,
       });
       if (!reservationAuthz.ok) {
-        await logAuditEvent({
+        await logReservationAuditEvent({
           req,
           requestId,
           action: "reservations_list_authz",
@@ -2566,7 +2573,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         allowStaff: true,
       });
       if (!reservationAuthz.ok) {
-        await logAuditEvent({
+        await logReservationAuditEvent({
           req,
           requestId,
           action: "reservations_update_authz",
@@ -2757,7 +2764,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         allowStaff: true,
       });
       if (!reservationAuthz.ok) {
-        await logAuditEvent({
+        await logReservationAuditEvent({
           req,
           requestId,
           action: "reservations_assign_authz",

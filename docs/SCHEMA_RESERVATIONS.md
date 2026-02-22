@@ -139,45 +139,81 @@ Fields:
 }
 ```
 
-## Cloud Function: `createReservation`
+## Reservation Mutation API Contract (v1 default)
 
-POST `${BASE_URL}/createReservation`
+Primary mutation routes:
+- `POST ${BASE_URL}/apiV1/v1/reservations.create`
+- `POST ${BASE_URL}/apiV1/v1/reservations.update`
+- `POST ${BASE_URL}/apiV1/v1/reservations.assignStation`
+
+Legacy compatibility wrappers (transport boundary only):
+- `POST ${BASE_URL}/createReservation` -> forwards to `/v1/reservations.create`
+- `POST ${BASE_URL}/updateReservation` -> forwards to `/v1/reservations.update`
+- `POST ${BASE_URL}/assignReservationStation` -> forwards to `/v1/reservations.assignStation`
+
+Compatibility window:
+- Legacy wrappers remain supported during migration.
+- Review date: `2026-05-15`.
+- Sunset target: no earlier than `2026-06-30`.
+- Fallback behavior: if a legacy path fails in integration environments, call the matching v1 path with the same JSON payload and headers.
 
 Headers:
-- `Authorization: Bearer <ID_TOKEN>` (required; the function uses `verifyIdToken`).
+- `Authorization: Bearer <ID_TOKEN>` (required).
 - `Content-Type: application/json`.
+- `x-admin-token: <token>` only when using dev-admin mode in emulator/staff tooling flows.
 
-Body shape (see `web/src/api/portalContracts.ts`):
-```json
-{
-  "firingType": "bisque",
-  "shelfEquivalent": 1.0,
-  "preferredWindow": {
-    "earliestDate": "2026-02-05T08:00:00.000Z",
-    "latestDate": "2026-02-07T22:00:00.000Z"
-  },
-  "linkedBatchId": null
-}
-```
+Response envelope:
+- Success: `{ ok: true, requestId, data }`
+- Error: `{ ok: false, requestId, code, message, details }`
 
-The function validates the token, ensures earliest & latest dates are monotonic, normalizes shelf values, and writes the reservation with `status: REQUESTED`. It listens on `reservations` collection so the UI can stream updates.
+### Mutation field matrix
 
-### Response
-- `201 Created` with `{ reservationId, status: "REQUESTED" }` so the client can optimistically display the new record.
-- `401 Unauthorized` if the token is missing or invalid.
-- `400 Bad Request` when validation fails (invalid shelf size, non-monotonic window, or missing preferred window map).
+- `assignedStationId`
+  - Created from normalized `kilnId` during `reservations.create` when station input is provided.
+  - Updated by `reservations.assignStation`.
+  - Must be a canonical station id from `functions/src/reservationStationConfig.ts`.
+- `queueClass`
+  - Optional lane label set/updated by `reservations.assignStation`.
+  - Stored lowercased/trimmed.
+- `requiredResources`
+  - Optional structured routing metadata set by `reservations.assignStation`.
+  - Shape: `{ kilnProfile, rackCount, specialHandling[] }`.
+- `stageStatus`
+  - Snapshot of current workflow stage (`intake`, `queued`, `loaded`, `canceled`, etc.).
+  - Updated by mutation routes when stage-relevant values change.
+- `stageHistory`
+  - Append-only transition timeline used for auditability.
+  - Station assignment and status/load transitions append entries.
 
 ### Validation highlights
-- Token/UID: `ownerUid` is derived from the verified ID token and never overwritten by the request body.
-- Preferred window: `earliestDate` and `latestDate` are cast to Firestore `Timestamp`s, empty values convert to `null`, and `earliestDate` must be before or equal to `latestDate` if both are supplied.
-- Shelf equivalent: values outside the supported set (0.25, 0.5, 1.0) are rejected to keep capacity math sane.
-- Linked batch: optional string kept as `null` when omitted to keep Firestore happy.
-- In-flight guard: clients should disable submit buttons while the function runs; the backend currently rejects repeated near-duplicates with request-level controls.
+
+- `reservations.create`
+  - Validates preferred window ordering (`earliestDate <= latestDate`).
+  - Enforces owner auth (`ownerUid` cannot be impersonated by non-staff actors).
+  - Validates station input via shared station normalization; unknown station ids return `INVALID_ARGUMENT`.
+  - Persists canonical station ids for both `kilnId` and `assignedStationId`.
+- `reservations.update`
+  - Staff/dev only.
+  - Enforces allowed status transitions unless `force: true`.
+- `reservations.assignStation`
+  - Staff/dev only.
+  - Enforces known station ids and station capacity checks.
+  - Supports idempotent replay semantics when no net mutation occurs.
+
+### Contract drift checklist
+
+- Keep `web/src/api/portalContracts.ts` aligned with:
+  - v1 route names
+  - station id input expectations
+  - response envelope assumptions
+- Keep `functions/src/reservationStationConfig.ts` as the single station id normalization source.
+- Keep parity tests current in `functions/src/apiV1.test.ts` for create/update/assign route-family behavior.
 
 ## Security
 
 - Reservation documents are readable only by `ownerUid` (equal to `request.auth.uid`).
-- Creation requires the client to pass `ownerUid` matching their ID and writes the doc with `status: "REQUESTED"`.
+- Mutation routes require `Authorization: Bearer <ID_TOKEN>` and use actor authorization checks per route.
+- Staff/dev actors may act on behalf of members where policy allows; non-staff callers cannot impersonate another owner.
 
 ## Notes
 - Firestore rejects `undefined`; the function writes `null` for missing `preferredWindow` entries.

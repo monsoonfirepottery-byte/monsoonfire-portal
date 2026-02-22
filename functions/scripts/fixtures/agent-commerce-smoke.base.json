@@ -1,0 +1,22 @@
+{
+  "catalogPayload": {},
+  "quotePayload": {
+    "quantity": 1
+  },
+  "reservePayload": {},
+  "payPayload": {},
+  "orderGetPayload": {},
+  "statusPayload": {},
+  "staffTransitions": [
+    "scheduled",
+    "loaded",
+    "firing",
+    "cooling",
+    "ready"
+  ],
+  "staffTransitionPayload": {},
+  "reviewPayload": {
+    "decision": "approve",
+    "reason": "Automated smoke test approval"
+  }
+}

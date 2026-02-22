@@ -122,3 +122,10 @@ The JSON artifact includes:
 - `npm run studio:check:safe` — strict "all green" readiness for high-risk ops
 - `npm run studio:env:validate` — env-only check
 - `npm run guardrails:check` — stability guardrails (resource, log, artifact, volume posture)
+- `npm run test:journey:fast` — deterministic journey + Stripe negative regression lane
+- `npm run test:journey:deep` — expanded journey lane with optional strict agent smoke
+- `npm run test:stripe:negative` — Stripe negative-event contract tests only
+
+## Related planning docs
+- `docs/runbooks/JOURNEY_AND_STRIPE_TESTING_PLAN.md` — scenario matrix and phased rollout for journey + Stripe negative-outcome regression coverage.
+- `docs/runbooks/JOURNEY_TESTING_RUNBOOK.md` — execution, fixtures, and release evidence conventions for journey lanes.

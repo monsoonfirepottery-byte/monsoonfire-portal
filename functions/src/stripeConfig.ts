@@ -83,7 +83,15 @@ type StripeConfigResponse = {
   updatedByEmail: string | null;
 };
 
-type PaymentStatus = "checkout_created" | "checkout_completed" | "payment_succeeded" | "invoice_paid";
+type PaymentStatus =
+  | "checkout_created"
+  | "checkout_completed"
+  | "payment_succeeded"
+  | "invoice_paid"
+  | "payment_failed"
+  | "invoice_payment_failed"
+  | "charge_disputed"
+  | "charge_refunded";
 
 type PaymentUpdate = {
   paymentId: string;
@@ -105,13 +113,17 @@ type StripeWebhookReplayState = "process" | "duplicate_processed" | "duplicate_i
 type SupportedStripeWebhookEventType =
   | "checkout.session.completed"
   | "payment_intent.succeeded"
-  | "invoice.paid";
+  | "invoice.paid"
+  | "payment_intent.payment_failed"
+  | "invoice.payment_failed"
+  | "charge.dispute.created"
+  | "charge.refunded";
 
 type StripeWebhookEventContract = {
   paymentStatus: PaymentStatus;
-  orderStatus: "payment_pending" | "paid";
-  fulfillmentStatus: "queued" | "scheduled";
-  requestStatus: "accepted" | "in_progress";
+  orderStatus: "payment_pending" | "paid" | "payment_failed" | "disputed" | "refunded";
+  fulfillmentStatus: "queued" | "scheduled" | "on_hold";
+  requestStatus: "accepted" | "in_progress" | "ready";
 };
 
 type StripeWebhookModeResolution =
@@ -215,6 +227,30 @@ StripeWebhookEventContract
     orderStatus: "paid",
     fulfillmentStatus: "scheduled",
     requestStatus: "in_progress",
+  },
+  "payment_intent.payment_failed": {
+    paymentStatus: "payment_failed",
+    orderStatus: "payment_failed",
+    fulfillmentStatus: "queued",
+    requestStatus: "accepted",
+  },
+  "invoice.payment_failed": {
+    paymentStatus: "invoice_payment_failed",
+    orderStatus: "payment_failed",
+    fulfillmentStatus: "queued",
+    requestStatus: "accepted",
+  },
+  "charge.dispute.created": {
+    paymentStatus: "charge_disputed",
+    orderStatus: "disputed",
+    fulfillmentStatus: "on_hold",
+    requestStatus: "in_progress",
+  },
+  "charge.refunded": {
+    paymentStatus: "charge_refunded",
+    orderStatus: "refunded",
+    fulfillmentStatus: "queued",
+    requestStatus: "accepted",
   },
 };
 
@@ -375,17 +411,31 @@ async function readStripeAudit(limitRows: number): Promise<StripeAuditRow[]> {
 }
 
 function paymentStatusRank(status: PaymentStatus): number {
-  if (status === "invoice_paid") return 4;
-  if (status === "payment_succeeded") return 3;
-  if (status === "checkout_completed") return 2;
-  return 1;
+  if (status === "charge_refunded") return 80;
+  if (status === "charge_disputed") return 70;
+  if (status === "invoice_paid") return 60;
+  if (status === "payment_succeeded") return 50;
+  if (status === "checkout_completed") return 40;
+  if (status === "invoice_payment_failed") return 30;
+  if (status === "payment_failed") return 20;
+  return 10;
 }
 
-function mergePaymentStatus(current: string | null | undefined, next: PaymentStatus): PaymentStatus {
+export function mergePaymentStatus(current: string | null | undefined, next: PaymentStatus): PaymentStatus {
   if (!current) return next;
   const currentStatus = current as PaymentStatus;
   if (paymentStatusRank(next) > paymentStatusRank(currentStatus)) return next;
   return currentStatus;
+}
+
+export function deriveOrderLifecycleStatusFromWebhookTransition(
+  orderStatus: StripeWebhookEventContract["orderStatus"]
+): "payment_pending" | "paid" | "payment_required" | "exception" | "refunded" {
+  if (orderStatus === "paid") return "paid";
+  if (orderStatus === "payment_failed") return "payment_required";
+  if (orderStatus === "disputed") return "exception";
+  if (orderStatus === "refunded") return "refunded";
+  return "payment_pending";
 }
 
 function parseCheckoutSessionPayload(session: Stripe.Checkout.Session): PaymentUpdate {
@@ -474,6 +524,132 @@ function parseInvoicePayload(invoice: Stripe.Invoice): PaymentUpdate {
   };
 }
 
+function parsePaymentIntentFailedPayload(intent: Stripe.PaymentIntent): PaymentUpdate {
+  const amountTotal = typeof intent.amount === "number" ? intent.amount : null;
+  const currency = typeof intent.currency === "string" ? intent.currency : null;
+  const uid = safeString(intent.metadata?.uid) || null;
+  const orderId =
+    safeString(intent.metadata?.orderId) ||
+    safeString(intent.metadata?.agentOrderId) ||
+    null;
+  const reservationId =
+    safeString(intent.metadata?.reservationId) ||
+    safeString(intent.metadata?.agentReservationId) ||
+    null;
+  return {
+    paymentId: intent.id,
+    status: "payment_failed",
+    uid,
+    sessionId: safeString(intent.metadata?.checkoutSessionId) || null,
+    paymentIntentId: intent.id,
+    invoiceId: null,
+    orderId,
+    reservationId,
+    amountTotal,
+    currency,
+    sourceEventType: "payment_intent.payment_failed",
+  };
+}
+
+function parseInvoiceFailedPayload(invoice: Stripe.Invoice): PaymentUpdate {
+  const amountTotal = typeof invoice.amount_due === "number" ? invoice.amount_due : null;
+  const currency = typeof invoice.currency === "string" ? invoice.currency : null;
+  const uid = safeString(invoice.metadata?.uid) || null;
+  const orderId =
+    safeString(invoice.metadata?.orderId) ||
+    safeString(invoice.metadata?.agentOrderId) ||
+    null;
+  const reservationId =
+    safeString(invoice.metadata?.reservationId) ||
+    safeString(invoice.metadata?.agentReservationId) ||
+    null;
+  return {
+    paymentId: invoice.id,
+    status: "invoice_payment_failed",
+    uid,
+    sessionId: safeString(invoice.metadata?.checkoutSessionId) || null,
+    paymentIntentId:
+      typeof (invoice as unknown as { payment_intent?: unknown }).payment_intent === "string"
+        ? ((invoice as unknown as { payment_intent: string }).payment_intent)
+        : null,
+    invoiceId: invoice.id,
+    orderId,
+    reservationId,
+    amountTotal,
+    currency,
+    sourceEventType: "invoice.payment_failed",
+  };
+}
+
+function parseChargeRefundedPayload(charge: Stripe.Charge): PaymentUpdate {
+  const amountTotal =
+    typeof charge.amount_refunded === "number"
+      ? charge.amount_refunded
+      : typeof charge.amount === "number"
+        ? charge.amount
+        : null;
+  const currency = typeof charge.currency === "string" ? charge.currency : null;
+  const uid = safeString(charge.metadata?.uid) || null;
+  const orderId =
+    safeString(charge.metadata?.orderId) ||
+    safeString(charge.metadata?.agentOrderId) ||
+    null;
+  const reservationId =
+    safeString(charge.metadata?.reservationId) ||
+    safeString(charge.metadata?.agentReservationId) ||
+    null;
+  const paymentIntentId =
+    typeof charge.payment_intent === "string"
+      ? charge.payment_intent
+      : typeof charge.payment_intent === "object" && charge.payment_intent && typeof charge.payment_intent.id === "string"
+        ? charge.payment_intent.id
+        : null;
+  return {
+    paymentId: charge.id,
+    status: "charge_refunded",
+    uid,
+    sessionId: safeString(charge.metadata?.checkoutSessionId) || null,
+    paymentIntentId,
+    invoiceId: null,
+    orderId,
+    reservationId,
+    amountTotal,
+    currency,
+    sourceEventType: "charge.refunded",
+  };
+}
+
+function parseChargeDisputePayload(dispute: Stripe.Dispute): PaymentUpdate {
+  const amountTotal = typeof dispute.amount === "number" ? dispute.amount : null;
+  const currency = typeof dispute.currency === "string" ? dispute.currency : null;
+  const uid = safeString(dispute.metadata?.uid) || null;
+  const orderId =
+    safeString(dispute.metadata?.orderId) ||
+    safeString(dispute.metadata?.agentOrderId) ||
+    null;
+  const reservationId =
+    safeString(dispute.metadata?.reservationId) ||
+    safeString(dispute.metadata?.agentReservationId) ||
+    null;
+  const paymentIntentId =
+    typeof (dispute as unknown as { payment_intent?: unknown }).payment_intent === "string"
+      ? ((dispute as unknown as { payment_intent: string }).payment_intent)
+      : null;
+  return {
+    paymentId: dispute.id || safeString(dispute.charge) || `dispute_${Date.now()}`,
+    status: "charge_disputed",
+    uid,
+    sessionId: safeString(dispute.metadata?.checkoutSessionId) || null,
+    paymentIntentId,
+    invoiceId: null,
+    orderId,
+    reservationId,
+    amountTotal,
+    currency,
+    sourceEventType: "charge.dispute.created",
+  };
+}
+
 export function getStripeWebhookEventContract(eventType: string): StripeWebhookEventContract | null {
   if (eventType === "checkout.session.completed") {
     return STRIPE_WEBHOOK_EVENT_CONTRACTS["checkout.session.completed"];
@@ -484,10 +660,22 @@ export function getStripeWebhookEventContract(eventType: string): StripeWebhookE
   if (eventType === "invoice.paid") {
     return STRIPE_WEBHOOK_EVENT_CONTRACTS["invoice.paid"];
   }
+  if (eventType === "payment_intent.payment_failed") {
+    return STRIPE_WEBHOOK_EVENT_CONTRACTS["payment_intent.payment_failed"];
+  }
+  if (eventType === "invoice.payment_failed") {
+    return STRIPE_WEBHOOK_EVENT_CONTRACTS["invoice.payment_failed"];
+  }
+  if (eventType === "charge.dispute.created") {
+    return STRIPE_WEBHOOK_EVENT_CONTRACTS["charge.dispute.created"];
+  }
+  if (eventType === "charge.refunded") {
+    return STRIPE_WEBHOOK_EVENT_CONTRACTS["charge.refunded"];
+  }
   return null;
 }
 
-function getPaymentUpdateFromEvent(event: Stripe.Event): PaymentUpdate | null {
+export function derivePaymentUpdateFromStripeEvent(event: Stripe.Event): PaymentUpdate | null {
   const contract = getStripeWebhookEventContract(event.type);
   if (!contract) return null;
   let update: PaymentUpdate;
@@ -495,6 +683,14 @@ function getPaymentUpdateFromEvent(event: Stripe.Event): PaymentUpdate | null {
     update = parseCheckoutSessionPayload(event.data.object as Stripe.Checkout.Session);
   } else if (event.type === "payment_intent.succeeded") {
     update = parsePaymentIntentPayload(event.data.object as Stripe.PaymentIntent);
+  } else if (event.type === "payment_intent.payment_failed") {
+    update = parsePaymentIntentFailedPayload(event.data.object as Stripe.PaymentIntent);
+  } else if (event.type === "invoice.payment_failed") {
+    update = parseInvoiceFailedPayload(event.data.object as Stripe.Invoice);
+  } else if (event.type === "charge.dispute.created") {
+    update = parseChargeDisputePayload(event.data.object as Stripe.Dispute);
+  } else if (event.type === "charge.refunded") {
+    update = parseChargeRefundedPayload(event.data.object as Stripe.Charge);
   } else {
     update = parseInvoicePayload(event.data.object as Stripe.Invoice);
   }
@@ -1434,6 +1630,7 @@ async function applyPaymentUpdate(params: {
 
   const orderStatus = transition.orderStatus;
   const fulfillmentStatus = transition.fulfillmentStatus;
+  const lifecycleStatus = deriveOrderLifecycleStatusFromWebhookTransition(orderStatus);
   const batch = db.batch();
   for (const orderId of candidateOrderIds) {
     const orderRef = db.collection("agentOrders").doc(orderId);
@@ -1441,7 +1638,7 @@ async function applyPaymentUpdate(params: {
       orderRef,
       {
         paymentStatus: orderStatus,
-        status: orderStatus === "paid" ? "paid" : "payment_pending",
+        status: lifecycleStatus,
         fulfillmentStatus,
         stripeCheckoutSessionId: checkoutSessionId || null,
         stripePaymentIntentId: paymentIntentId || null,
@@ -1647,7 +1844,7 @@ export const stripePortalWebhook = onRequest(
 
     let update: PaymentUpdate;
     try {
-      const parsed = getPaymentUpdateFromEvent(event);
+      const parsed = derivePaymentUpdateFromStripeEvent(event);
       if (!parsed) {
         await eventRef.set({
           processingStartedAt: null,

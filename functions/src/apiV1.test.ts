@@ -1835,3 +1835,192 @@ test("reservation authz audit metadata includes routeFamily for legacy and v1", 
     }
   });
 });
+
+test("reservations.create rejects pickup or return delivery without address and instructions", async () => {
+  const response = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/reservations.create",
+      body: {
+        firingType: "bisque",
+        shelfEquivalent: 1,
+        addOns: {
+          pickupDeliveryRequested: true,
+        },
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 400);
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.code, "INVALID_ARGUMENT");
+  assert.match(String(body.message ?? ""), /Delivery address and instructions are required/i);
+});
+
+test("reservations.create accepts dropoff + pickup details when provided", async () => {
+  const response = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/reservations.create",
+      body: {
+        firingType: "bisque",
+        shelfEquivalent: 1,
+        dropOffProfile: {
+          id: "dropoff-many",
+          pieceCount: "many",
+          bisqueOnly: true,
+        },
+        addOns: {
+          pickupDeliveryRequested: true,
+          deliveryAddress: "123 Clay St, Phoenix, AZ",
+          deliveryInstructions: "Front desk",
+        },
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.ok, true);
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  assert.equal(data.status, "REQUESTED");
+});
+
+test("reservations.create rejects bisque-only profile for non-bisque firings", async () => {
+  const response = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/reservations.create",
+      body: {
+        firingType: "glaze",
+        shelfEquivalent: 1,
+        dropOffProfile: {
+          bisqueOnly: true,
+        },
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 400);
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.code, "INVALID_ARGUMENT");
+  assert.match(String(body.message ?? ""), /Bisque-only dropoff profile/i);
+});
+
+test("reservations.update blocks invalid lifecycle transition from cancelled back to confirmed", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-cancelled": {
+        ownerUid: "owner-1",
+        status: "CANCELLED",
+        loadStatus: "queued",
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.update",
+      body: {
+        reservationId: "reservation-cancelled",
+        status: "CONFIRMED",
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 409);
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.code, "CONFLICT");
+});
+
+test("reservations.update allows confirmed reservations to progress to loaded loadStatus", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-loaded": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "queued",
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.update",
+      body: {
+        reservationId: "reservation-loaded",
+        loadStatus: "loaded",
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  assert.equal(data.loadStatus, "loaded");
+  assert.equal(data.status, "CONFIRMED");
+});
+
+test("reservations.list excludes cancelled by default and includes it when requested", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-open": {
+        ownerUid: "owner-1",
+        status: "REQUESTED",
+        createdAt: { toMillis: () => 2 },
+      },
+      "reservation-cancelled": {
+        ownerUid: "owner-1",
+        status: "CANCELLED",
+        createdAt: { toMillis: () => 1 },
+      },
+    },
+  };
+
+  const defaultList = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.list",
+      body: {},
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+  assert.equal(defaultList.status, 200);
+  const defaultBody = defaultList.body as Record<string, unknown>;
+  const defaultRows = (((defaultBody.data ?? {}) as Record<string, unknown>).reservations ?? []) as Array<Record<string, unknown>>;
+  assert.equal(defaultRows.length, 1);
+  assert.equal(defaultRows[0]?.status, "REQUESTED");
+
+  const includeCancelledList = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.list",
+      body: {
+        includeCancelled: true,
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+  assert.equal(includeCancelledList.status, 200);
+  const includeBody = includeCancelledList.body as Record<string, unknown>;
+  const includeRows = (((includeBody.data ?? {}) as Record<string, unknown>).reservations ?? []) as Array<Record<string, unknown>>;
+  assert.equal(includeRows.length, 2);
+});

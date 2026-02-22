@@ -13,6 +13,7 @@
     "test:watch": "node ./node_modules/vitest/vitest.mjs --configLoader runner",
     "dev:all": "node ./scripts/dev.mjs",
     "check:messages-playwright": "node ./scripts/check-messages-playwright.mjs",
+    "check:reservations-journey-playwright": "node ./scripts/check-reservations-journey-playwright.mjs",
     "test:run": "node ./node_modules/vitest/vitest.mjs run --configLoader runner",
     "test:avatar": "node ./node_modules/vitest/vitest.mjs run src/lib/profileAvatars.test.ts --configLoader runner",
     "preview": "vite preview"

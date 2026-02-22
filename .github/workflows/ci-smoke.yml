@@ -70,6 +70,9 @@ jobs:
       - name: Automated validation suite (unit, CORS, accessibility, UI)
         run: npm run test:full
 
+      - name: Journey fast lane (deterministic)
+        run: npm run test:journey:fast
+
       - name: Source-of-truth index strict audit
         run: npm run source:truth:index:strict
 
@@ -85,6 +88,10 @@ jobs:
       - name: Portal Playwright deep smoke (manual)
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_deep_playwright == 'true' || github.event_name == 'schedule' }}
         run: npm run functions:smoke:cors -- --base-url https://us-central1-monsoonfire-portal.cloudfunctions.net --origin https://monsoonfire-portal.web.app && npm run test:automation:ui:deep
+
+      - name: Journey deep lane (manual/scheduled)
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_deep_playwright == 'true' || github.event_name == 'schedule' }}
+        run: npm run test:journey:deep
 
       - name: Upload portal smoke artifacts
         if: always()

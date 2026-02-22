@@ -4,7 +4,10 @@ import type Stripe from "stripe";
 
 import {
   classifyStripeWebhookReplayState,
+  deriveOrderLifecycleStatusFromWebhookTransition,
+  derivePaymentUpdateFromStripeEvent,
   getStripeWebhookEventContract,
+  mergePaymentStatus,
   resolveStripeWebhookMode,
   validateStripeConfigForPersist,
   validateStripeWebhookSecret,
@@ -199,5 +202,176 @@ test("getStripeWebhookEventContract exposes strict event mappings", () => {
   assert.equal(invoice?.paymentStatus, "invoice_paid");
   assert.equal(invoice?.orderStatus, "paid");
 
-  assert.equal(getStripeWebhookEventContract("charge.refunded"), null);
+  const paymentFailed = getStripeWebhookEventContract("payment_intent.payment_failed");
+  assert.equal(paymentFailed?.paymentStatus, "payment_failed");
+  assert.equal(paymentFailed?.orderStatus, "payment_failed");
+
+  const invoiceFailed = getStripeWebhookEventContract("invoice.payment_failed");
+  assert.equal(invoiceFailed?.paymentStatus, "invoice_payment_failed");
+  assert.equal(invoiceFailed?.orderStatus, "payment_failed");
+
+  const dispute = getStripeWebhookEventContract("charge.dispute.created");
+  assert.equal(dispute?.paymentStatus, "charge_disputed");
+  assert.equal(dispute?.orderStatus, "disputed");
+
+  const refunded = getStripeWebhookEventContract("charge.refunded");
+  assert.equal(refunded?.paymentStatus, "charge_refunded");
+  assert.equal(refunded?.orderStatus, "refunded");
+
+  assert.equal(getStripeWebhookEventContract("charge.dispute.closed"), null);
+});
+
+test("derivePaymentUpdateFromStripeEvent maps payment failure payloads", () => {
+  const paymentIntentEvent = {
+    id: "evt_pi_failed",
+    type: "payment_intent.payment_failed",
+    livemode: false,
+    data: {
+      object: {
+        id: "pi_123",
+        amount: 2400,
+        currency: "usd",
+        metadata: {
+          uid: "owner-1",
+          orderId: "order-1",
+          reservationId: "reservation-1",
+          checkoutSessionId: "cs_123",
+        },
+      },
+    },
+  } as unknown as Stripe.Event;
+
+  const out = derivePaymentUpdateFromStripeEvent(paymentIntentEvent);
+  assert.ok(out);
+  assert.equal(out?.status, "payment_failed");
+  assert.equal(out?.paymentId, "pi_123");
+  assert.equal(out?.paymentIntentId, "pi_123");
+  assert.equal(out?.orderId, "order-1");
+  assert.equal(out?.sourceEventType, "payment_intent.payment_failed");
+});
+
+test("derivePaymentUpdateFromStripeEvent maps invoice payment failure payloads", () => {
+  const invoiceEvent = {
+    id: "evt_invoice_failed",
+    type: "invoice.payment_failed",
+    livemode: false,
+    data: {
+      object: {
+        id: "in_123",
+        amount_due: 3600,
+        currency: "usd",
+        payment_intent: "pi_123",
+        metadata: {
+          uid: "owner-1",
+          orderId: "order-1",
+          reservationId: "reservation-1",
+          checkoutSessionId: "cs_123",
+        },
+      },
+    },
+  } as unknown as Stripe.Event;
+
+  const out = derivePaymentUpdateFromStripeEvent(invoiceEvent);
+  assert.ok(out);
+  assert.equal(out?.status, "invoice_payment_failed");
+  assert.equal(out?.paymentId, "in_123");
+  assert.equal(out?.paymentIntentId, "pi_123");
+  assert.equal(out?.invoiceId, "in_123");
+  assert.equal(out?.sourceEventType, "invoice.payment_failed");
+});
+
+test("derivePaymentUpdateFromStripeEvent maps dispute and refund payloads", () => {
+  const disputeEvent = {
+    id: "evt_dispute",
+    type: "charge.dispute.created",
+    livemode: false,
+    data: {
+      object: {
+        id: "dp_123",
+        amount: 5000,
+        currency: "usd",
+        charge: "ch_123",
+        payment_intent: "pi_123",
+        metadata: {
+          uid: "owner-1",
+          orderId: "order-1",
+        },
+      },
+    },
+  } as unknown as Stripe.Event;
+
+  const refundEvent = {
+    id: "evt_refund",
+    type: "charge.refunded",
+    livemode: false,
+    data: {
+      object: {
+        id: "ch_123",
+        amount: 5000,
+        amount_refunded: 5000,
+        currency: "usd",
+        payment_intent: "pi_123",
+        metadata: {
+          uid: "owner-1",
+          orderId: "order-1",
+          reservationId: "reservation-1",
+          checkoutSessionId: "cs_123",
+        },
+      },
+    },
+  } as unknown as Stripe.Event;
+
+  const disputeOut = derivePaymentUpdateFromStripeEvent(disputeEvent);
+  assert.ok(disputeOut);
+  assert.equal(disputeOut?.status, "charge_disputed");
+  assert.equal(disputeOut?.paymentIntentId, "pi_123");
+  assert.equal(disputeOut?.orderId, "order-1");
+
+  const refundOut = derivePaymentUpdateFromStripeEvent(refundEvent);
+  assert.ok(refundOut);
+  assert.equal(refundOut?.status, "charge_refunded");
+  assert.equal(refundOut?.paymentId, "ch_123");
+  assert.equal(refundOut?.amountTotal, 5000);
+  assert.equal(refundOut?.sourceEventType, "charge.refunded");
+});
+
+test("mergePaymentStatus is deterministic for out-of-order negative events", () => {
+  assert.equal(mergePaymentStatus("invoice_paid", "payment_failed"), "invoice_paid");
+  assert.equal(mergePaymentStatus("payment_succeeded", "charge_disputed"), "charge_disputed");
+  assert.equal(mergePaymentStatus("charge_disputed", "charge_refunded"), "charge_refunded");
+  assert.equal(mergePaymentStatus("charge_refunded", "invoice_paid"), "charge_refunded");
+});
+
+test("derivePaymentUpdateFromStripeEvent keeps partial refund amounts deterministic", () => {
+  const refundEvent = {
+    id: "evt_refund_partial",
+    type: "charge.refunded",
+    livemode: false,
+    data: {
+      object: {
+        id: "ch_partial",
+        amount: 5000,
+        amount_refunded: 1200,
+        currency: "usd",
+        payment_intent: "pi_123",
+        metadata: {
+          uid: "owner-1",
+          orderId: "order-1",
+        },
+      },
+    },
+  } as unknown as Stripe.Event;
+
+  const out = derivePaymentUpdateFromStripeEvent(refundEvent);
+  assert.ok(out);
+  assert.equal(out?.status, "charge_refunded");
+  assert.equal(out?.amountTotal, 1200);
+});
+
+test("deriveOrderLifecycleStatusFromWebhookTransition maps negative outcomes to actionable order status", () => {
+  assert.equal(deriveOrderLifecycleStatusFromWebhookTransition("payment_pending"), "payment_pending");
+  assert.equal(deriveOrderLifecycleStatusFromWebhookTransition("paid"), "paid");
+  assert.equal(deriveOrderLifecycleStatusFromWebhookTransition("payment_failed"), "payment_required");
+  assert.equal(deriveOrderLifecycleStatusFromWebhookTransition("disputed"), "exception");
+  assert.equal(deriveOrderLifecycleStatusFromWebhookTransition("refunded"), "refunded");
 });

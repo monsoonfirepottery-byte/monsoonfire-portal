@@ -90,6 +90,8 @@ It also tracks public agent-readable discovery surfaces for website and portal.
 
 - `docs/EMULATOR_RUNBOOK.md` (environment profile and emulator contract assumptions)
 - `docs/runbooks/AGENT_SURFACES.md`
+- `docs/runbooks/JOURNEY_AND_STRIPE_TESTING_PLAN.md`
+- `docs/runbooks/JOURNEY_TESTING_RUNBOOK.md`
 - `docs/runbooks/PR_GATE.md`
 - `docs/runbooks/PORTAL_PLAYWRIGHT_SMOKE.md`
 - `docs/runbooks/WEBSITE_PLAYWRIGHT_SMOKE.md`

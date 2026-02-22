@@ -1,6 +1,6 @@
 # P2 — Lint Debt Remediation and CI Enforcement
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Portal Team
@@ -27,6 +27,16 @@ Resolve high-signal lint blockers and enforce lint as a hard merge gate with tra
 1. `npm --prefix web run lint` and lint check for touched backend scope are clean or explicitly allowed.
 2. Merge pipeline blocks unresolved lint failures for the touched paths.
 3. Lint debt reduction is documented in ticket updates, including any remaining exceptions.
+
+## Execution Notes
+1. Lint checks verified clean locally:
+   - `npm --prefix web run lint`
+   - `npm --prefix functions run lint`
+2. CI hard-fail lint enforcement confirmed in:
+   - `.github/workflows/ci-smoke.yml`
+     - `Functions lint`
+     - `Web lint`
+3. No lint exceptions or allowlist expansion added in this pass.
 
 ## References
 - `web/package.json`

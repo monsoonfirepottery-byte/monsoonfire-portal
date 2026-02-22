@@ -3,6 +3,9 @@
 ## Build + CI Evidence
 - [x] `Smoke Tests` workflow pass ([run 21955700046](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/21955700046))
 - [x] `Lighthouse Audit` workflow pass ([run 21955700011](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/21955700011))
+- [x] Local LHCI reproducibility pass (2026-02-22, sandbox-safe chrome flags)
+  - portal: `npx @lhci/cli@0.15.1 collect --config=web/lighthouserc.json --settings.chromeFlags="--no-sandbox --disable-dev-shm-usage"` + assert
+  - website: `npx @lhci/cli@0.15.1 collect --config=website/lighthouserc.json --settings.chromeFlags="--no-sandbox --disable-dev-shm-usage"` + assert
 - [x] `iOS macOS Smoke` workflow pass ([run 21955699963](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/21955699963))
 - [x] `ios-build-gate` workflow pass ([run 21955700012](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/21955700012))
 - [x] `Android Compile Check` workflow pass ([run 21955700047](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/21955700047))
@@ -13,6 +16,7 @@
 - [x] Web tests pass (`npm --prefix web run test:run`)
 - [x] Web build pass (`npm --prefix web run build`)
 - [x] Web chunk budgets pass (`npm --prefix web run perf:chunks`)
+- [x] Functions cold-start profile snapshot captured (`npm run functions:profile:coldstart -- --runs 9`) -> `output/functions-coldstart-profile/latest.json`
 - [x] Alpha preflight script run (`node ./scripts/ps1-run.mjs scripts/alpha-preflight.ps1`) on head `62eba15dc593cb1c1422183e4d314238859dca51`
 
 ## Notification Reliability Evidence

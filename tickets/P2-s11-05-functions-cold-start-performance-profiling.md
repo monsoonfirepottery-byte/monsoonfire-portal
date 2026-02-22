@@ -1,6 +1,6 @@
 # P2 — Functions Cold-Start Performance Profiling
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Portal Team
@@ -27,6 +27,27 @@ Identify top cold-start contributors and produce an evidence-based mitigation pl
 1. Function latency snapshots include environment, timestamp, and reproducible query/run command.
 2. At least one optimization candidate is executed or explicitly deferred with rollback plan.
 3. No increase in auth failures or function error rate after the performance change set.
+
+## Execution Notes
+1. Added reproducible cold-start profiling command and artifact pipeline:
+   - `scripts/functions-coldstart-profile.mjs`
+   - `npm run functions:profile:coldstart -- --runs 9`
+   - artifact: `output/functions-coldstart-profile/latest.json`
+2. Optimization candidate executed:
+   - moved `apiV1` load in `functions/src/index.ts` from eager module import to lazy dynamic import (`dispatchApiV1`)
+   - compatibility wrappers (`apiV1`, legacy reservation routes) now resolve handler at request time
+3. Current local profiling snapshot (`generatedAt: 2026-02-22T07:09:24.471Z`, Linux x64, Node v25.6.1):
+   - `index` p95: `266.89ms`
+   - `apiV1` p95: `181.50ms`
+   - `events` p95: `205.96ms`
+   - `stripeConfig` p95: `194.62ms`
+   - `reports` p95: `167.06ms`
+   - composite reference (`index_plus_apiV1`) p95: `275.54ms`
+4. Regression checks after performance change:
+   - `npm --prefix functions run lint`
+   - `npm --prefix functions run test` (`118` tests passing)
+5. Rollback plan:
+   - revert `dispatchApiV1` lazy-loading in `functions/src/index.ts` to static import if any runtime route issue is observed.
 
 ## References
 - `functions/src`

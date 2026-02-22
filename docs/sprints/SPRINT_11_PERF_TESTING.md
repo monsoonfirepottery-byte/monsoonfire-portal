@@ -7,7 +7,7 @@ Goal: Lock performance budgets, pay down lint/test debt, and reduce operational 
 - Title: Web perf budgets and Lighthouse baseline
 - Swarm: `Swarm D`
 - Owner: TBD
-- State: `todo`
+- State: `done`
 - Dependencies: S10-04
 - Deliverables:
   - run Lighthouse CI against the deployed (or preview) portal
@@ -22,7 +22,7 @@ Goal: Lock performance budgets, pay down lint/test debt, and reduce operational 
 - Title: Bundle/chunk budget enforcement and route-level regressions
 - Swarm: `Swarm B`
 - Owner: TBD
-- State: `todo`
+- State: `done`
 - Dependencies: S11-01
 - Deliverables:
   - run `npm --prefix web run perf:chunks` and confirm budgets on CI
@@ -37,7 +37,7 @@ Goal: Lock performance budgets, pay down lint/test debt, and reduce operational 
 - Title: Expand automated tests for alpha-critical flows
 - Swarm: `Swarm A`
 - Owner: TBD
-- State: `todo`
+- State: `done`
 - Dependencies: S10-03
 - Deliverables:
   - add/verify Vitest coverage for: auth gating, functions client auth headers, in-flight guards, troubleshooting capture
@@ -51,7 +51,7 @@ Goal: Lock performance budgets, pay down lint/test debt, and reduce operational 
 - Title: Lint debt payoff and CI enforcement
 - Swarm: `Swarm D`
 - Owner: TBD
-- State: `todo`
+- State: `done`
 - Dependencies: S10-03
 - Deliverables:
   - run lint across root/web/functions and fix high-signal issues (unsafe async handlers, unused vars, unstable deps)
@@ -65,7 +65,7 @@ Goal: Lock performance budgets, pay down lint/test debt, and reduce operational 
 - Title: Functions performance and cold-start risk review
 - Swarm: `Swarm C`
 - Owner: TBD
-- State: `todo`
+- State: `done`
 - Dependencies: S10-06
 - Deliverables:
   - identify heaviest functions and measure p95 latency (prod logs or synthetic)
@@ -75,4 +75,3 @@ Goal: Lock performance budgets, pay down lint/test debt, and reduce operational 
 1. Measured latency numbers are recorded (before/after) with environment noted.
 2. No increase in error rate or auth failures after changes.
 3. Rollback plan exists for any perf-only changes.
-

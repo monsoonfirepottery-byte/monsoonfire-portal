@@ -23,6 +23,7 @@
     "deploy:namecheap:portal:live": "bash ./scripts/deploy-namecheap-portal-live.sh",
     "website:smoke:playwright": "node ./scripts/website-playwright-smoke.mjs",
     "functions:smoke:cors": "node ./scripts/functions-cors-smoke.mjs",
+    "functions:profile:coldstart": "node ./scripts/functions-coldstart-profile.mjs --artifact output/functions-coldstart-profile/latest.json",
     "cutover:checklist": "node ./scripts/run-external-cutover-checklist.mjs",
     "website:smoke:playwright:prod": "node ./scripts/website-playwright-smoke.mjs --base-url https://monsoonfire.com --output-dir output/playwright/prod",
     "website:smoke:playwright:install": "npx playwright install chromium",

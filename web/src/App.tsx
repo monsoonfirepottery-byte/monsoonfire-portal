@@ -406,6 +406,33 @@ function toStringArray(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === "string");
 }
 
+type TimestampWithMillis = { toMillis?: () => number };
+
+function readTimestampMillis(value: unknown): number | null {
+  if (!value || typeof value !== "object") return null;
+  const maybe = value as TimestampWithMillis;
+  if (typeof maybe.toMillis !== "function") return null;
+  try {
+    const millis = maybe.toMillis();
+    return Number.isFinite(millis) ? millis : null;
+  } catch {
+    return null;
+  }
+}
+
+function isDirectMessageThreadUnread(thread: DirectMessageThread, uid: string): boolean {
+  const lastMessageMillis = readTimestampMillis(thread.lastMessageAt);
+  if (lastMessageMillis === null) return false;
+  const lastReadMillis = readTimestampMillis(thread.lastReadAtByUid?.[uid]);
+  if (lastReadMillis === null) return true;
+  return lastMessageMillis > lastReadMillis;
+}
+
+function isAnnouncementUnreadForUser(announcement: Announcement, uid: string): boolean {
+  if (!Array.isArray(announcement.readBy)) return true;
+  return !announcement.readBy.includes(uid);
+}
+
 function getWelcomeNotificationBody(supportEmail: string) {
   return `Welcome to your Monsoon Fire portal. We're excited to be your partner. Use the Messages area in the app for questions, support requests, and studio updates. For any needs, contact us at ${supportEmail}.`;
 }
@@ -1263,22 +1290,21 @@ export default function App() {
       setUnreadMessages(0);
       return;
     }
-    const count = threads.reduce((total, thread) => {
-      const participants = Array.isArray(thread.participants)
-        ? (thread.participants as Array<{ uid?: string; hasUnread?: boolean }>)
-        : [];
-      const hasUnread = participants.some(
-        (participant) => participant.uid !== user.uid && participant.hasUnread === true
-      );
-      return total + (hasUnread ? 1 : 0);
-    }, 0);
+    const count = threads.reduce(
+      (total, thread) => total + (isDirectMessageThreadUnread(thread, user.uid) ? 1 : 0),
+      0
+    );
     setUnreadMessages(count);
   }, [threads, user]);
 
   useEffect(() => {
-    const unread = announcements.filter((item) => !item.isRead).length;
+    if (!user) {
+      setUnreadAnnouncements(0);
+      return;
+    }
+    const unread = announcements.filter((item) => isAnnouncementUnreadForUser(item, user.uid)).length;
     setUnreadAnnouncements(unread);
-  }, [announcements]);
+  }, [announcements, user]);
 
   useEffect(() => {
     const unread = notifications.filter((item) => !item.readAt).length;

@@ -1,6 +1,6 @@
 # P2 — Auth Role Documentation and Contract Sync
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Portal + Docs Team

@@ -1,6 +1,6 @@
 # P2 — Route Bundle Chunk Budgets
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Portal Team
@@ -27,6 +27,20 @@ Enforce route-level chunk size budgets in CI and make failure behavior explicit.
 1. CI detects chunk budget regressions for major routes.
 2. Routes with oversized first-load chunks have clear owner-defined fixes.
 3. No functional regressions in route transitions due to aggressive chunk boundaries.
+
+## Execution Notes
+1. Strengthened chunk-budget guardrails in `web/scripts/check-chunk-budgets.mjs`:
+   - enforced required major route chunk presence (dashboard, reservations, kiln, pieces, messages, materials, events, profile)
+   - retained hard byte budgets for critical vendor and route bundles
+   - added inline remediation guidance on failure output
+2. Added explicit remediation playbook:
+   - `docs/runbooks/PORTAL_CHUNK_BUDGET_REMEDIATION.md`
+3. Validation:
+   - `npm --prefix web run build`
+   - `npm --prefix web run perf:chunks`
+   - `npm --prefix web run test:run`
+4. CI enforcement confirmed in:
+   - `.github/workflows/ci-smoke.yml` (`Web chunk budgets` step)
 
 ## References
 - `web/scripts/check-chunk-budgets.mjs`

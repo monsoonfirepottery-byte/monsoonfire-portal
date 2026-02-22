@@ -1,6 +1,6 @@
 # P2 — Web Perf Budgets and Lighthouse Baseline
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Portal Team
@@ -27,6 +27,16 @@ Stand up baseline capture and budget enforcement with reproducible evidence arti
 1. Lighthouse workflow is reproducible and green when budgets are met.
 2. Budget thresholds are realistic and do not allow silent quality regressions.
 3. All baseline captures include run metadata and route list.
+
+## Execution Notes
+1. Workflow reproducibility and green evidence is tracked in:
+   - `docs/RELEASE_CANDIDATE_EVIDENCE.md` (`Lighthouse Audit` run link recorded)
+2. Local reproducibility command (Linux sandbox-safe flags):
+   - `CHROME_PATH="$(node -e "const pw=require('playwright'); console.log(pw.chromium.executablePath());")" npx @lhci/cli@0.15.1 collect --config=web/lighthouserc.json --settings.chromeFlags="--no-sandbox --disable-dev-shm-usage" && CHROME_PATH="$(node -e "const pw=require('playwright'); console.log(pw.chromium.executablePath());")" npx @lhci/cli@0.15.1 assert --config=web/lighthouserc.json`
+   - `CHROME_PATH="$(node -e "const pw=require('playwright'); console.log(pw.chromium.executablePath());")" npx @lhci/cli@0.15.1 collect --config=website/lighthouserc.json --settings.chromeFlags="--no-sandbox --disable-dev-shm-usage" && CHROME_PATH="$(node -e "const pw=require('playwright'); console.log(pw.chromium.executablePath());")" npx @lhci/cli@0.15.1 assert --config=website/lighthouserc.json`
+3. Budget and route targets are explicitly versioned in:
+   - `web/lighthouserc.json`
+   - `website/lighthouserc.json`
 
 ## References
 - `.github/workflows/lighthouse.yml`

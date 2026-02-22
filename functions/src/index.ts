@@ -28,7 +28,6 @@ import {
 } from "./authz";
 import { TimelineEventType } from "./timelineEventTypes";
 import { z } from "zod";
-import { handleApiV1 } from "./apiV1";
 import {
   staffGetCommunitySafetyConfig,
   staffScanCommunityDraft,
@@ -101,6 +100,11 @@ export {
 // -----------------------------
 const REGION = "us-central1";
 
+async function dispatchApiV1(req: any, res: any) {
+  const { handleApiV1 } = await import("./apiV1.js");
+  await handleApiV1(req, res);
+}
+
 function requestIdFromReq(req: any): string {
   const raw = req.headers?.["x-request-id"];
   if (typeof raw === "string" && raw.trim()) return raw.trim().slice(0, 128);
@@ -123,7 +127,7 @@ function legacyReservationCompatHandler(route: string) {
       configurable: true,
       enumerable: true,
     });
-    await handleApiV1(apiV1Req as Parameters<typeof handleApiV1>[0], res);
+    await dispatchApiV1(apiV1Req, res);
   });
 }
 
@@ -156,7 +160,9 @@ async function bestEffortEmitIntegrationEvent(params: {
   }
 }
 
-export const apiV1 = onRequest({ region: REGION, timeoutSeconds: 60 }, handleApiV1);
+export const apiV1 = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+  await dispatchApiV1(req, res);
+});
 export {
   createReport,
   listMyReports,

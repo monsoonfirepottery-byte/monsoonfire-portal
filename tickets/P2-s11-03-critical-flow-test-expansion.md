@@ -1,6 +1,6 @@
 # P2 — Critical Flow Test Expansion
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Portal Team
@@ -31,6 +31,21 @@ Extend reliable test coverage for alpha-critical portal flows and keep execution
 1. Alpha-critical flows have at least one happy-path and one failure-path test.
 2. No tests require live Firebase in normal CI runs.
 3. Coverage expansion remains stable and does not exceed agreed CI runtime budget.
+
+## Execution Notes
+1. Added focused tests for functions client auth/header behavior, error handling, and request snapshot/curl capture:
+   - `web/src/api/functionsClient.test.ts`
+2. Added guard-flow tests for account bootstrap request behavior (in-flight dedupe, retry budget suppression, auth/body contract):
+   - `web/src/api/ensureUserDoc.test.ts`
+3. Validation run (local):
+   - `npm --prefix web run lint`
+   - `npm --prefix web run test:run`
+4. Expanded suite remains deterministic and network-isolated; current web test total:
+   - `21` files / `105` tests passing locally
+5. Added scenarios cover both happy/failure paths for:
+   - auth headers and admin-token handling (`functionsClient`)
+   - failed function responses and troubleshooting snapshot behavior (`functionsClient`)
+   - bootstrap request in-flight dedupe and retry suppression (`ensureUserDoc`)
 
 ## References
 - `web/src/api/functionsClient.ts`

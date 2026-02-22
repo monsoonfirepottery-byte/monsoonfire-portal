@@ -14,6 +14,17 @@ const budgets = [
   // Current app shell carries route wiring and shared runtime used across most views.
   { prefix: "index-", maxBytes: 110_000 },
 ];
+const requiredRouteChunks = [
+  "DashboardView-",
+  "ReservationsView-",
+  "KilnLaunchView-",
+  "KilnScheduleView-",
+  "MyPiecesView-",
+  "MessagesView-",
+  "MaterialsView-",
+  "EventsView-",
+  "ProfileView-",
+];
 const MAX_TOTAL_JS_BYTES = 1_250_000;
 const MAX_TOTAL_CSS_BYTES = 190_000;
 
@@ -29,6 +40,13 @@ for (const budget of budgets) {
   const size = statSync(resolve(assetsDir, match)).size;
   if (size > budget.maxBytes) {
     failures.push(`${match}: ${size} bytes exceeds ${budget.maxBytes} bytes`);
+  }
+}
+
+for (const prefix of requiredRouteChunks) {
+  const present = files.some((name) => name.startsWith(prefix));
+  if (!present) {
+    failures.push(`Missing route chunk for prefix "${prefix}"`);
   }
 }
 
@@ -50,6 +68,10 @@ if (totalCssBytes > MAX_TOTAL_CSS_BYTES) {
 if (failures.length) {
   console.error("Chunk budget failures:");
   for (const failure of failures) console.error(`- ${failure}`);
+  console.error("\nRemediation playbook:");
+  console.error("1) Confirm route remains lazily imported from App shell.");
+  console.error("2) Split heavy route-only dependencies behind dynamic imports.");
+  console.error("3) Re-run `npm --prefix web run build && npm --prefix web run perf:chunks`.");
   process.exit(1);
 }
 

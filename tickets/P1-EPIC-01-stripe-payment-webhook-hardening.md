@@ -1,6 +1,6 @@
 # Epic: P1 — Stripe Payment/Webhook Hardening
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P1
 Owner: Functions + Security

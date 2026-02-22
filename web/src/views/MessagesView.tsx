@@ -309,10 +309,15 @@ export default function MessagesView({
       const messageId = createMessageId();
       const threadRef = doc(db, "directMessages", selectedThreadId);
       const toUids = selectedThread?.participantUids?.filter((uid) => uid !== user.uid) ?? [];
-      const toEmails = liveUsers
+      let toEmails = liveUsers
         .filter((liveUser) => toUids.includes(liveUser.id))
         .map((liveUser) => liveUser.email)
         .filter(Boolean) as string[];
+      const isSupportThread =
+        selectedThreadId.startsWith(SUPPORT_THREAD_PREFIX) || selectedThread?.kind === "support";
+      if (isSupportThread && toEmails.length === 0) {
+        toEmails = [supportEmail];
+      }
       const fromEmail = user.email || null;
       const previousMessageId = selectedThread?.lastMessageId || null;
       const references = selectedThread?.references || [];

@@ -62,9 +62,9 @@
     });
 
     nav.addEventListener('click', (event) => {
-      if (event.target && event.target.matches('a')) {
-        setMenuState(false);
-      }
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest('a')) setMenuState(false);
     });
 
     document.addEventListener('click', (event) => {

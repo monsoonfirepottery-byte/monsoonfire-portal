@@ -1,6 +1,6 @@
 # P2 — Epic Board Hygiene and Status Reconciliation
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: PM
@@ -31,3 +31,8 @@ Create a recurring procedure to keep epic board state, ticket status, and owners
 ## References
 - `docs/sprints/SWARM_BOARD.md:47`
 - `tickets/README.md`
+
+## Completion Notes (2026-02-22)
+1. Reconciled `docs/sprints/SWARM_BOARD.md` open-ticket section to remove completed entries and align status labels with canonical ticket states.
+2. Added reconciliation procedure document `docs/sprints/BOARD_RECONCILIATION_RUNBOOK.md` with monthly cadence and drift rules.
+3. Updated ticket metadata conventions in `tickets/README.md` and added repeatable board audit command via `scripts/backlog-hygiene-audit.mjs`.

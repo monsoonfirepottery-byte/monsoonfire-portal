@@ -1,9 +1,13 @@
 # Swarm Board
 
-Date: 2026-02-19  
+Date: 2026-02-22  
 Use this board for daily execution and ticket routing.
 
-## Current Focus (2026-02-19)
+## Current Focus (2026-02-22)
+- Epic 06 backlog hygiene pass executed on 2026-02-22:
+  - Audit artifact: `docs/sprints/EPIC_06_BACKLOG_AUDIT_2026-02-22.md`
+  - Reconciliation runbook: `docs/sprints/BOARD_RECONCILIATION_RUNBOOK.md`
+  - Scope filter applied: ignore tickets associated with closed epics and Epic 10/11 scope
 - Epic 07 Studiobrain cutover execution is complete:
   - Cutover decision: `GO` (executed on 2026-02-19)
   - Runtime target: `127.0.0.1:8787`
@@ -11,15 +15,9 @@ Use this board for daily execution and ticket routing.
 - P0 alpha closures (ship-stoppers):
   - `tickets/P0-alpha-drills-real-auth.md`: run live drill suite with real staff auth (production evidence)
   - `tickets/P1-prod-auth-oauth-provider-credentials.md`: create provider apps (Apple/Facebook/Microsoft) and paste IDs/secrets into Firebase Auth providers
-- Sprint 12 (Mobile translation risk register) is active, but mostly blocked on ops:
-  - S12-01: `in_progress` (code/docs done; DNS + Firebase console steps pending)
-    - `docs/AUTH_DOMAIN_SETUP.md`, `web/src/firebase.ts` (`VITE_AUTH_DOMAIN`)
-  - S12-02: `in_progress` (contract/templates done; real values + deploy pending)
-    - `docs/DEEP_LINK_CONTRACT.md`, `website/.well-known/*`
-  - S12-06: `done` (B-tier compile gate in CI)
-    - `.github/workflows/ios-build-gate.yml`, `ios-gate/`
-- Sprint 11 (Perf/testing) is next once P0 auth drills are complete:
-  - `docs/sprints/SPRINT_11_PERF_TESTING.md`
+- Sprint 12 (Mobile translation risk register) has shipped repo-side deliverables:
+  - S12-01 through S12-06 ticket files are `Completed`
+  - Remaining unblockers are external console operations for provider/domain configuration
 
 ## Active Sprints
 - Sprint 01: `docs/sprints/SPRINT_01_FOUNDATIONS.md`
@@ -47,28 +45,26 @@ Use this board for daily execution and ticket routing.
   - Sprint 11 perf/testing pass
   - Sprint 12: S12-04, S12-06
 
-## Open Tickets (Reality-Based)
-- `P1` (`done`): Epic 07 Studiobrain cutover execution (all go/no-go gates passed on 2026-02-19)
+## Open Tickets (Filtered, In Scope)
+- Scope filters:
+  - Ignore tickets associated with closed epics.
+  - Ignore Epic 10 and Epic 11 scope.
 - `P0` (`blocked`): `tickets/P0-alpha-drills-real-auth.md` (requires real production staff token path)
 - `P0` (`planned`): `tickets/P0-portal-hosting-cutover.md` (depends on DNS/hosting + signed OAuth domain completion)
 - `P0` (`todo`): `tickets/P0-security-advisories-dependency-remediation-2026-02-19.md` (root/functions/studio-brain high vulnerabilities to clear in next session)
 - `P1` (`blocked`): `tickets/P1-prod-auth-oauth-provider-credentials.md` (provider console/firebase console dependency)
-- `P1` (`done`): `tickets/S12-01-auth-domain-strategy.md`
-- `P1` (`done`): `tickets/S12-02-universal-links-and-callbacks.md`
-- `P2` (`todo`): `tickets/S12-03-push-lifecycle-and-telemetry-spec.md`
-- `P2` (`todo`): `tickets/S12-04-offline-retry-policy.md`
-- `P2` (`todo`): `tickets/S12-05-secure-storage-and-session-model.md`
-- `P2` (`done`): `tickets/P1-ios-build-gate-btier.md`
+- Note: completed S12 tickets were removed from this open-ticket section during the 2026-02-22 reconciliation pass.
 
 ## Reconciliation Cadence
 - Monthly:
   - Run `node ./scripts/epic-hub.mjs status`.
   - Run `node ./scripts/epic-hub.mjs next`.
+  - Run `node ./scripts/backlog-hygiene-audit.mjs --markdown --out docs/sprints/EPIC_06_BACKLOG_AUDIT_YYYY-MM-DD.md`.
   - Confirm every ticket in "Open Tickets" has:
     - an existing `tickets/*.md` file
     - `Parent Epic` metadata (if it is still active)
     - owner + priority
-  - Record follow-up entries in `docs/sprints/BOARD_RECONCILIATION_RUNBOOK.md`.
+  - Execute and log reconciliation outcomes in `docs/sprints/BOARD_RECONCILIATION_RUNBOOK.md`.
 
 ## Ops Blockers (Do Outside Repo)
 - DNS: provision `portal.monsoonfire.com` and (recommended) `auth.monsoonfire.com`

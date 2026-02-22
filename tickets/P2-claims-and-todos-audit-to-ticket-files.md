@@ -1,6 +1,6 @@
 # P2 — Claims and TODOs Audit to Ticket Files
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: PM + Engineering
@@ -31,3 +31,8 @@ Create a one-time audit to reconcile active TODOs into current markdown ticket f
 ## References
 - `docs/sprints/SWARM_BOARD.md:47`
 - `docs/ENGINEERING_TODOS.md`
+
+## Completion Notes (2026-02-22)
+1. Added automated audit script `scripts/backlog-hygiene-audit.mjs` to reconcile unresolved TODO entries and board-linked ticket references.
+2. Published audit artifact `docs/sprints/EPIC_06_BACKLOG_AUDIT_2026-02-22.md`.
+3. Confirmed `docs/ENGINEERING_TODOS.md` has no unresolved checkbox TODO entries requiring new ticket creation in this pass.

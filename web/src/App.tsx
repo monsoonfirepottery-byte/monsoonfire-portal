@@ -43,6 +43,7 @@ import { usePrefersReducedMotion } from "./hooks/usePrefersReducedMotion";
 import { UiSettingsProvider } from "./context/UiSettingsContext";
 import { PROFILE_DEFAULT_AVATAR_URL } from "./lib/profileAvatars";
 import { setTelemetryView, trackedGetDoc, trackedGetDocs } from "./lib/firestoreTelemetry";
+import { parseStaffRoleFromClaims } from "./auth/staffRole";
 import "./App.css";
 
 const BillingView = React.lazy(() => import("./views/BillingView"));
@@ -126,11 +127,6 @@ type NotificationItem = {
     kilnName?: string | null;
     firingType?: string | null;
   };
-};
-
-type StaffClaims = {
-  staff?: boolean;
-  roles?: string[];
 };
 
 const NAV_TOP_ITEMS: NavItem[] = [
@@ -1042,10 +1038,8 @@ export default function App() {
           nextUser
             .getIdTokenResult()
             .then((result) => {
-              const claims = (result.claims ?? {}) as StaffClaims;
-              const roles = Array.isArray(claims.roles) ? claims.roles : [];
-              const staff = claims.staff === true || roles.includes("staff");
-              setIsStaff(staff);
+              const parsedRole = parseStaffRoleFromClaims(result.claims ?? {});
+              setIsStaff(parsedRole.isStaff);
             })
             .catch(() => setIsStaff(false));
         }

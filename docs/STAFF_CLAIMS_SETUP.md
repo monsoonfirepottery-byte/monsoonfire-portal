@@ -6,6 +6,20 @@ Use Firebase custom claims to grant staff access in the portal.
 - Firebase CLI authenticated to the correct project.
 - User has signed in at least once so their auth record exists.
 
+## Role Contract (Authoritative)
+- Source parser: `web/src/auth/staffRole.ts`
+- Staff authority precedence:
+  1. `claims.admin === true` OR `claims.roles` contains `admin`
+  2. `claims.staff === true` OR `claims.roles` contains `staff`
+  3. Fallback role field (`admin`/`staff`/`member`) for merged member records only
+  4. Default `member`
+- Email/domain heuristics are not an authority source.
+
+## Client Coverage Map
+- `web/src/App.tsx`: determines staff navigation/entry points from parsed auth claims.
+- `web/src/views/ReservationsView.tsx`: gates staff workflow claim behavior and debug role metadata.
+- `web/src/views/StaffView.tsx`: requires either staff/admin claim or explicit emulator dev-admin token metadata.
+
 ## Studiobrain local staff bootstrap (recommended)
 1. Start the Auth emulator (and Firestore if needed).
 2. Run:
@@ -26,6 +40,9 @@ Use Firebase custom claims to grant staff access in the portal.
   - `VITE_ENABLE_DEV_ADMIN_TOKEN=true`
   - local functions base URL (`localhost`/`127.0.0.1`)
   - `ALLOW_DEV_ADMIN_TOKEN=true` on functions side
+- Compatibility window:
+  - Dev admin token metadata is accepted for local debugging only.
+  - Production/staging authority is claims-first.
 
 ## Verification checklist
 1. Open portal and sign in as the user.
@@ -42,3 +59,9 @@ Use this once your staff session is active:
    - `npm --prefix web run check:messages-playwright`
 3. A missing CC/BCC pass returns:
    - `PASS: no legacy CC/BCC fields rendered in new message form.`
+
+## Auth Role Reviewer Checklist
+1. Role-gated changes use `web/src/auth/staffRole.ts` instead of local role parsing.
+2. No email/domain-based role assumptions are introduced.
+3. Claim precedence in code and docs matches this file.
+4. Staff routes/actions show stable denied states for non-staff users.

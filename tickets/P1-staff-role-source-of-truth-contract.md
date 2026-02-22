@@ -1,6 +1,6 @@
 # P1 — Staff Role Source-of-Truth Contract
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P1
 Owner: Portal + Security

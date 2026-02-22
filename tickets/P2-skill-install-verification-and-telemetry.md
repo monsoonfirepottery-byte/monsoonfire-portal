@@ -1,6 +1,6 @@
 # P2 — Skill Install Verification and Telemetry
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Studio Brain Team
@@ -31,3 +31,12 @@ Add high-signal telemetry around every verification decision in the skill instal
 ## References
 - `studio-brain/docs/SKILL_SECURITY_MODEL.md:77`
 - `studio-brain/src/skills/ingestion.test.ts`
+
+## Completion Notes (2026-02-22)
+1. Instrumented install verification lifecycle events in `studio-brain/src/skills/ingestion.ts`:
+   - `skill_install_verification_started`
+   - `skill_install_verification_fallback`
+   - `skill_install_verification_failed`
+   - `skill_install_verification_success`
+2. Added telemetry-focused regression coverage in `studio-brain/src/skills/ingestion.test.ts`.
+3. Updated environment/doc contract for signature trust anchors in `studio-brain/src/config/env.ts`, `studio-brain/.env.contract.schema.json`, and `studio-brain/docs/ENVIRONMENT_REFERENCE.md`.

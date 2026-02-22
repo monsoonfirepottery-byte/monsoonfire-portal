@@ -26,9 +26,11 @@ The runtime is intentionally conservative and defaults to safe behavior.
    - `manifest.json` must include a matching checksum when `STUDIO_BRAIN_SKILL_REQUIRE_CHECKSUM=true`.
    - A checksum audit record is persisted as `installed/<name>/<version>/.install-audit.jsonl`.
 
-4. **Signature verification stub**
-   - `STUDIO_BRAIN_SKILL_REQUIRE_SIGNATURE` can be enabled to require a signature gate.
-   - Today it runs through a dedicated verification hook before install; you can plug key/chain logic in that hook while continuing to default-allow until policy hardens.
+4. **Trust-anchor signature verification**
+   - `STUDIO_BRAIN_SKILL_REQUIRE_SIGNATURE=true` enforces deny-default signature checks at install time.
+   - Trust anchors are provided via `STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS` (`keyId=secret` CSV or JSON map).
+   - Manifest signatures must provide `signatureAlgorithm`, `signatureKeyId`, and `signature`.
+   - Unsupported algorithms, unknown key ids, and missing signature metadata are rejected.
 
 5. **Isolated install location**
    - Skills install under `STUDIO_BRAIN_SKILL_INSTALL_ROOT` (default `/var/lib/studiobrain/skills`).
@@ -51,8 +53,9 @@ The runtime is intentionally conservative and defaults to safe behavior.
 
 1. Keep `STUDIO_BRAIN_SKILL_REQUIRE_PINNING=true`.
 1. Keep `STUDIO_BRAIN_SKILL_REQUIRE_CHECKSUM=true`.
+1. Keep `STUDIO_BRAIN_SKILL_REQUIRE_SIGNATURE=true` with non-placeholder `STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS`.
 1. Keep allowlists explicit for production pilots.
-1. Prefer a signed manifest extension in the registry payload and add a verifier before code exec.
+1. Rotate trust anchor keys on a scheduled cadence and retire stale key ids.
 1. Run with strict OS/container restrictions (network namespace/user sandboxing) before production rollout.
 
 ## Implementation map
@@ -64,7 +67,7 @@ The runtime is intentionally conservative and defaults to safe behavior.
 
 ## Improvement backlog
 
-1. Replace placeholder signature flow with registry-backed signing key material and trust anchor lookup.
+1. Add immutable trust-anchor distribution for multi-operator key rotation workflows.
 1. Add immutable artifact URL checks and reject redirect-based remote registry responses.
 1. Pin manifests to signed hash and store audit lines in the immutable operation log pipeline.
 1. Add per-skill execution allowlist by package identity and version, not only `command`.
@@ -74,6 +77,7 @@ The runtime is intentionally conservative and defaults to safe behavior.
 ## Quick incident checks
 
 1. If untrusted installs happen, verify `STUDIO_BRAIN_SKILL_REQUIRE_PINNING`, checksum policy, and allow/deny logic in `installSkill`.
+1. If signature failures occur, verify `STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS`, `signatureKeyId`, and `signatureAlgorithm`.
 1. If a skill reaches network egress, verify worker env flags and host allowlist in the sandbox launch path.
 1. If command usage escapes bounds, verify `STUDIO_BRAIN_SKILL_RUNTIME_ALLOWLIST` and worker command checks.
 1. If artifacts are suspect, compare `.install-audit.jsonl` entries against expected install manifests.

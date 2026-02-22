@@ -1,6 +1,6 @@
 # P2 — Add Core Firestore Converters
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Functions Team
@@ -31,3 +31,8 @@ Introduce converters for core business entities used in payment and inventory fl
 ## References
 - `functions/src/index.ts:2016`
 - `functions/src/materials.ts`
+
+## Completion Notes (2026-02-22)
+1. Added reusable converters for reservation, materials order/product, batch, integration events, and jukebox entities in `functions/src/firestoreConverters.ts`.
+2. Replaced raw snapshot casts with converter usage in `functions/src/index.ts` and `functions/src/materials.ts`.
+3. Added converter tests for malformed/null field handling in `functions/src/firestoreConverters.test.ts`.

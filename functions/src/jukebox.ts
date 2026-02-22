@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { onRequest } from "firebase-functions/v2/https";
 import { z } from "zod";
 import {
@@ -11,7 +10,15 @@ import {
   safeString,
   asInt,
   enforceRateLimit,
+  type RequestLike,
 } from "./shared";
+import {
+  parseJukeboxConfigDoc,
+  parseJukeboxQueueItemDoc,
+  parseJukeboxStateDoc,
+  parseJukeboxTrackDoc,
+  parseVoteValue,
+} from "./firestoreConverters";
 
 const REGION = "us-central1";
 
@@ -136,8 +143,9 @@ function isIpAllowed(ip: string, allowlist: string[]): boolean {
   return allowlist.some((cidr) => cidrContains(ip, cidr.trim()));
 }
 
-function getClientIp(req: any): string {
-  const header = req.headers["x-forwarded-for"];
+function getClientIp(req: RequestLike): string {
+  const headers = req.headers ?? {};
+  const header = headers["x-forwarded-for"];
   if (typeof header === "string" && header.trim()) {
     return normalizeIp(header.split(",")[0].trim());
   }
@@ -170,21 +178,7 @@ async function readConfig() {
       skipVoteThreshold: 3,
     };
   }
-  const data = snap.data() as any;
-  return {
-    enabled: data.enabled === true,
-    ipAllowlistCidrs: Array.isArray(data.ipAllowlistCidrs)
-      ? data.ipAllowlistCidrs.filter((entry: any) => typeof entry === "string")
-      : [],
-    geoCenter:
-      data.geoCenter && typeof data.geoCenter.lat === "number" && typeof data.geoCenter.lng === "number"
-        ? { lat: data.geoCenter.lat, lng: data.geoCenter.lng }
-        : null,
-    geoRadiusMeters: asInt(data.geoRadiusMeters, 0),
-    maxQueuePerUser: asInt(data.maxQueuePerUser, 2),
-    cooldownSeconds: asInt(data.cooldownSeconds, 120),
-    skipVoteThreshold: asInt(data.skipVoteThreshold, 3),
-  };
+  return parseJukeboxConfigDoc(snap.data());
 }
 
 function sanitizeConfig(config: Awaited<ReturnType<typeof readConfig>>, includeAllowlist: boolean) {
@@ -199,7 +193,7 @@ function sanitizeConfig(config: Awaited<ReturnType<typeof readConfig>>, includeA
   };
 }
 
-async function enforceStudioGate(req: any, geo: { lat: number; lng: number }) {
+async function enforceStudioGate(req: RequestLike, geo: { lat: number; lng: number }) {
   const config = await readConfig();
   if (!config.enabled) {
     return { ok: false as const, code: "disabled", message: "Studio jukebox is disabled." };
@@ -261,7 +255,7 @@ export const listTracks = onRequest({ region: REGION }, async (req, res) => {
 
   const snap = await tracksCol().orderBy("title", "asc").get();
   const tracks = snap.docs
-    .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as any) }))
+    .map((docSnap) => ({ id: docSnap.id, ...parseJukeboxTrackDoc(docSnap.data()) }))
     .filter((track) => track.isActive !== false || admin.ok)
     .map((track) => ({
       id: track.id,
@@ -315,7 +309,7 @@ export const enqueueTrack = onRequest({ region: REGION }, async (req, res) => {
     res.status(404).json({ ok: false, message: "Track not found" });
     return;
   }
-  const track = trackSnap.data() as any;
+  const track = parseJukeboxTrackDoc(trackSnap.data());
   if (track.isActive === false) {
     res.status(400).json({ ok: false, message: "Track is not active" });
     return;
@@ -331,7 +325,7 @@ export const enqueueTrack = onRequest({ region: REGION }, async (req, res) => {
     .get();
 
   const activeItems = existingSnap.docs.filter((docSnap) => {
-    const data = docSnap.data() as any;
+    const data = parseJukeboxQueueItemDoc(docSnap.data());
     return data.status === "queued" || data.status === "playing";
   });
 
@@ -340,8 +334,9 @@ export const enqueueTrack = onRequest({ region: REGION }, async (req, res) => {
     return;
   }
 
-  const mostRecent = existingSnap.docs[0]?.data() as any | undefined;
-  if (mostRecent?.requestedAt?.toMillis) {
+  const mostRecentRaw = existingSnap.docs[0]?.data();
+  const mostRecent = mostRecentRaw ? parseJukeboxQueueItemDoc(mostRecentRaw) : null;
+  if (mostRecent?.requestedAt) {
     const elapsed = Date.now() - mostRecent.requestedAt.toMillis();
     if (elapsed < config.cooldownSeconds * 1000) {
       res.status(429).json({ ok: false, message: "Please wait before adding another track." });
@@ -406,9 +401,9 @@ export const vote = onRequest({ region: REGION }, async (req, res) => {
     const itemSnap = await tx.get(itemRef);
     if (!itemSnap.exists) throw new Error("Queue item not found");
 
-    const item = itemSnap.data() as any;
+    const item = parseJukeboxQueueItemDoc(itemSnap.data());
     const voteSnap = await tx.get(voteRef);
-    const existing = voteSnap.exists ? (voteSnap.data() as any).value : null;
+    const existing = voteSnap.exists ? parseVoteValue((voteSnap.data() as Record<string, unknown>).value) : null;
 
     let votesUp = asInt(item.votesUp, 0);
     let votesDown = asInt(item.votesDown, 0);
@@ -473,9 +468,9 @@ export const requestSkip = onRequest({ region: REGION }, async (req, res) => {
     const itemSnap = await tx.get(itemRef);
     if (!itemSnap.exists) throw new Error("Queue item not found");
 
-    const item = itemSnap.data() as any;
+    const item = parseJukeboxQueueItemDoc(itemSnap.data());
     const voteSnap = await tx.get(voteRef);
-    const existing = voteSnap.exists ? (voteSnap.data() as any).value : null;
+    const existing = voteSnap.exists ? parseVoteValue((voteSnap.data() as Record<string, unknown>).value) : null;
 
     let votesDown = asInt(item.votesDown, 0);
     let votesUp = asInt(item.votesUp, 0);
@@ -532,7 +527,7 @@ export const adminUpsertTrack = onRequest({ region: REGION }, async (req, res) =
   const trackId = safeString(parsed.data.trackId);
   const ref = trackId ? tracksCol().doc(trackId) : tracksCol().doc();
 
-  const payload: any = {
+  const payload: Record<string, unknown> = {
     title: safeString(parsed.data.title),
     artist: safeString(parsed.data.artist) || null,
     sourceType: parsed.data.sourceType,
@@ -632,9 +627,9 @@ export const adminAdvanceQueue = onRequest({ region: REGION }, async (req, res) 
 
   await db.runTransaction(async (tx) => {
     const stateSnap = await tx.get(stateDoc());
-    const state = stateSnap.exists ? (stateSnap.data() as any) : {};
+    const state = stateSnap.exists ? parseJukeboxStateDoc(stateSnap.data()) : { nowPlayingItemId: null, isPlaying: false };
 
-    if (state?.nowPlayingItemId) {
+    if (state.nowPlayingItemId) {
       const prevRef = queueCol().doc(state.nowPlayingItemId);
       tx.set(
         prevRef,
@@ -696,7 +691,7 @@ export const adminSetPlaybackState = onRequest({ region: REGION }, async (req, r
     return;
   }
 
-  const payload: any = { updatedAt: nowTs() };
+  const payload: Record<string, unknown> = { updatedAt: nowTs() };
   if (parsed.data.nowPlayingItemId !== undefined) payload.nowPlayingItemId = parsed.data.nowPlayingItemId;
   if (parsed.data.isPlaying !== undefined) payload.isPlaying = parsed.data.isPlaying;
 
@@ -796,7 +791,7 @@ export const listQueue = onRequest({ region: REGION }, async (req, res) => {
   }
 
   const snap = await queueCol().orderBy("requestedAt", "asc").limit(100).get();
-  const items = snap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as any) }));
+  const items = snap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Record<string, unknown>) }));
   res.status(200).json({ ok: true, items });
 });
 
@@ -812,5 +807,3 @@ export const getJukeboxState = onRequest({ region: REGION }, async (req, res) =>
   const snap = await stateDoc().get();
   res.status(200).json({ ok: true, state: snap.exists ? snap.data() : null });
 });
-
-

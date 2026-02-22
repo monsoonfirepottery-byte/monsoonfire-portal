@@ -1,14 +1,13 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { db, nowTs, Timestamp } from "./shared";
+import { parseIntegrationEventDoc } from "./firestoreConverters";
 
 export type IntegrationEvent = {
   id: string;
   at: FirebaseFirestore.Timestamp;
   uid: string;
   type: string;
-  subject: Record<string, any>;
-  data: Record<string, any>;
+  subject: Record<string, unknown>;
+  data: Record<string, unknown>;
   cursor: number;
 };
 
@@ -17,16 +16,16 @@ type CursorDoc = {
   updatedAt?: Timestamp;
 };
 
-function asPlainObject(value: unknown): Record<string, any> {
+function asPlainObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  return value as Record<string, any>;
+  return value as Record<string, unknown>;
 }
 
 export async function emitIntegrationEvent(params: {
   uid: string;
   type: string;
-  subject?: Record<string, any>;
-  data?: Record<string, any>;
+  subject?: Record<string, unknown>;
+  data?: Record<string, unknown>;
 }): Promise<{ ok: true; eventId: string; cursor: number } | { ok: false; message: string }> {
   const { uid, type } = params;
   const subject = asPlainObject(params.subject);
@@ -85,19 +84,18 @@ export async function listIntegrationEvents(params: {
     .get();
 
   const events: IntegrationEvent[] = snap.docs.map((d) => {
-    const data = d.data() as any;
+    const data = parseIntegrationEventDoc(d.data(), uid);
     return {
       id: d.id,
       at: data.at ?? nowTs(),
-      uid: typeof data.uid === "string" ? data.uid : uid,
-      type: typeof data.type === "string" ? data.type : "unknown",
+      uid: data.uid,
+      type: data.type,
       subject: asPlainObject(data.subject),
       data: asPlainObject(data.data),
-      cursor: typeof data.cursor === "number" ? data.cursor : 0,
+      cursor: data.cursor,
     };
   });
 
   const nextCursor = events.length ? events[events.length - 1].cursor : cursor;
   return { ok: true, events, nextCursor };
 }
-

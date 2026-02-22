@@ -81,6 +81,7 @@ import {
 } from "./agentCommerce";
 export { ensureUserDoc, emulatorGrantStaffRole } from "./ensureUserDoc";
 import { emitIntegrationEvent } from "./integrationEvents";
+import { parseBatchDoc } from "./firestoreConverters";
 import { executeStudioBrainPilotAction, rollbackStudioBrainPilotAction } from "./v3Execution/pilotFirestoreAction";
 export { websiteKilnBoard } from "./websiteKilnBoard";
 export {
@@ -141,8 +142,8 @@ async function bestEffortEmitIntegrationEvent(params: {
     const evt = await emitIntegrationEvent({
       uid: params.uid,
       type: params.type,
-      subject: (params.subject ?? {}) as Record<string, any>,
-      data: (params.data ?? {}) as Record<string, any>,
+      subject: params.subject ?? {},
+      data: params.data ?? {},
     });
     if (!evt.ok) {
       logger.warn("emitIntegrationEvent failed", {
@@ -1841,7 +1842,7 @@ export const submitDraftBatch = onRequest(
       return;
     }
 
-    const data = snap.data() as any;
+    const data = parseBatchDoc(snap.data());
     if (data.ownerUid !== uid) {
       res.status(403).json({ ok: false, message: "Forbidden" });
       return;
@@ -1861,7 +1862,7 @@ export const submitDraftBatch = onRequest(
       type: TimelineEventType.SUBMIT_DRAFT,
       at: t,
       actorUid: uid,
-      actorName: data.ownerDisplayName ?? null,
+      actorName: data.ownerDisplayName,
       notes: safeString(parsed.data.notes) || "Submitted",
     });
 
@@ -1871,8 +1872,8 @@ export const submitDraftBatch = onRequest(
       subject: { batchId },
       data: {
         state: "SUBMITTED",
-        isClosed: Boolean(data.isClosed),
-        title: safeString(data.title),
+        isClosed: data.isClosed,
+        title: data.title,
       },
     });
 
@@ -2020,22 +2021,22 @@ export const continueJourney = onRequest(
       return;
     }
 
-    const from = fromSnap.data() as any;
+    const from = parseBatchDoc(fromSnap.data());
     if (from.ownerUid !== uid) {
       res.status(403).json({ ok: false, message: "Forbidden" });
       return;
     }
 
-    const rootId = safeString(from.journeyRootBatchId) || fromBatchId;
+    const rootId = from.journeyRootBatchId || fromBatchId;
 
     const newRef = batchesCol().doc();
     const t = nowTs();
 
     await newRef.set({
       ownerUid: uid,
-      ownerDisplayName: from.ownerDisplayName ?? null,
+      ownerDisplayName: from.ownerDisplayName,
       title: safeString(parsed.data.title) || `${from.title} (resubmission)`,
-      intakeMode: from.intakeMode ?? "SELF_SERVICE",
+      intakeMode: from.intakeMode,
       estimatedCostCents: 0,
       estimateNotes: null,
 
@@ -2054,7 +2055,7 @@ export const continueJourney = onRequest(
       type: TimelineEventType.CONTINUE_JOURNEY,
       at: t,
       actorUid: uid,
-      actorName: from.ownerDisplayName ?? null,
+      actorName: from.ownerDisplayName,
       notes: `Continued journey from ${fromBatchId}`,
       extra: { fromBatchId },
     });
@@ -2066,7 +2067,7 @@ export const continueJourney = onRequest(
       data: {
         state: "DRAFT",
         isClosed: false,
-        title: safeString(parsed.data.title) || safeString(from.title),
+        title: safeString(parsed.data.title) || from.title,
         journeyRootBatchId: rootId,
       },
     });
@@ -2447,7 +2448,7 @@ export const backfillIsClosed = onRequest(
     let updated = 0;
 
     snaps.forEach((docSnap) => {
-      const d = docSnap.data() as any;
+      const d = (docSnap.data() ?? {}) as Record<string, unknown>;
       if (typeof d.isClosed !== "boolean") {
         batch.set(docSnap.ref, { isClosed: false }, { merge: true });
         updated++;

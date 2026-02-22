@@ -79,6 +79,7 @@ Use this as the single source for runtime vars introduced by the backend-orchest
 | `STUDIO_BRAIN_SKILL_REQUIRE_PINNING` | Enforce `name@version` references | No | `true` |
 | `STUDIO_BRAIN_SKILL_REQUIRE_CHECKSUM` | Enforce manifest checksum check | No | `true` |
 | `STUDIO_BRAIN_SKILL_REQUIRE_SIGNATURE` | Enforce signature hook result | No | `false` |
+| `STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS` | Signature trust anchors (`keyId=secret` CSV or JSON map); required when signature enforcement is on | No | empty |
 | `STUDIO_BRAIN_SKILL_ALLOWLIST` | Comma list of allowed skill refs | No | empty |
 | `STUDIO_BRAIN_SKILL_DENYLIST` | Comma list of blocked skill refs | No | empty |
 

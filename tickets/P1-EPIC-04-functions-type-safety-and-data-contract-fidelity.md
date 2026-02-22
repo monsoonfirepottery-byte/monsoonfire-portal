@@ -1,6 +1,6 @@
 # Epic: P1 — Functions Type Safety and Data Contract Fidelity
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P1
 Owner: Functions Team
@@ -38,3 +38,8 @@ Replace unsafe data handling in high-risk backend paths with typed converters an
 1. Ticketed files have explicit domain contracts for reads/writes.
 2. Regression tests validate malformed payload handling.
 3. Review confirms no new `as any` in touched high-risk paths.
+
+## Completion Notes (2026-02-22)
+1. Added shared typed converters in `functions/src/firestoreConverters.ts` and parser coverage in `functions/src/firestoreConverters.test.ts`.
+2. Replaced unsafe casts in targeted high-risk handlers in `functions/src/index.ts`, `functions/src/integrationEvents.ts`, `functions/src/jukebox.ts`, and `functions/src/materials.ts`.
+3. Added CI guardrail script `functions/scripts/check-type-safety-guard.mjs` and wired it into `functions/package.json` `test` script.

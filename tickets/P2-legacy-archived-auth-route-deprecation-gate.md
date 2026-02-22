@@ -1,6 +1,6 @@
 # P2 — Legacy Archived Auth Route Deprecation Gate
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Functions Team
@@ -30,3 +30,8 @@ Retire or hard-gate legacy archived auth handling with explicit deployment check
 
 ## References
 - `functions/archive/index_old.ts:598`
+
+## Completion Notes (2026-02-22)
+1. Added environment-gated runtime block for archived routes in `functions/archive/index_old.ts` using `MF_ENABLE_ARCHIVED_FUNCTIONS`.
+2. Added CI/build guard script `functions/scripts/check-archive-deprecation-gate.mjs` and wired it into `functions/package.json` test pipeline.
+3. Captured deprecation warning telemetry for any explicit archived-route use and a clear `ARCHIVED_ROUTE_DISABLED` response for blocked attempts.

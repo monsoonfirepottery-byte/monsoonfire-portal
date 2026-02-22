@@ -1,6 +1,6 @@
 # P2 — Stripe Order and Payment State Contracts
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Functions Team

@@ -99,6 +99,125 @@ type PaymentUpdate = {
   sourceEventType: string;
 };
 
+type StripeWebhookModeSource = "env_override" | "config_doc" | "default_test";
+type StripeWebhookSecretSource = "secret_manager";
+type StripeWebhookReplayState = "process" | "duplicate_processed" | "duplicate_inflight";
+type SupportedStripeWebhookEventType =
+  | "checkout.session.completed"
+  | "payment_intent.succeeded"
+  | "invoice.paid";
+
+type StripeWebhookEventContract = {
+  paymentStatus: PaymentStatus;
+  orderStatus: "payment_pending" | "paid";
+  fulfillmentStatus: "queued" | "scheduled";
+  requestStatus: "accepted" | "in_progress";
+};
+
+type StripeWebhookModeResolution =
+  | {
+    ok: true;
+    mode: StripeMode;
+    modeSource: StripeWebhookModeSource;
+    envModeRaw: string;
+    configModeRaw: string;
+  }
+  | {
+    ok: false;
+    code: 500;
+    reasonCode: "WEBHOOK_MODE_INVALID";
+    message: string;
+    envModeRaw: string;
+  };
+
+type StripeWebhookSecretValidation =
+  | { ok: true; normalizedSecret: string }
+  | {
+    ok: false;
+    code: 500;
+    reasonCode:
+      | "WEBHOOK_SECRET_MISSING"
+      | "WEBHOOK_SECRET_FORMAT_INVALID"
+      | "WEBHOOK_SECRET_PLACEHOLDER";
+    message: string;
+  };
+
+type StripeWebhookVerifyContext = {
+  mode: StripeMode;
+  modeSource: StripeWebhookModeSource;
+  secretSource: StripeWebhookSecretSource;
+  secret: string;
+};
+
+type StripeWebhookVerifyResult =
+  | {
+    ok: true;
+    event: Stripe.Event;
+    mode: StripeMode;
+    modeSource: StripeWebhookModeSource;
+    secretSource: StripeWebhookSecretSource;
+  }
+  | {
+    ok: false;
+    code: number;
+    reasonCode:
+      | "WEBHOOK_SIGNATURE_INVALID"
+      | "WEBHOOK_LIVEMODE_MISMATCH";
+    message: string;
+    mode: StripeMode;
+    modeSource: StripeWebhookModeSource;
+    secretSource: StripeWebhookSecretSource;
+    eventLivemode: boolean | null;
+    expectedLivemode: boolean;
+  };
+
+type StripeWebhookContextResult =
+  | { ok: true; context: StripeWebhookVerifyContext }
+  | {
+    ok: false;
+    code: number;
+    reasonCode:
+      | "WEBHOOK_MODE_INVALID"
+      | "WEBHOOK_SECRET_MISSING"
+      | "WEBHOOK_SECRET_FORMAT_INVALID"
+      | "WEBHOOK_SECRET_PLACEHOLDER"
+      | "WEBHOOK_SECRET_UNAVAILABLE";
+    message: string;
+    mode: StripeMode | null;
+    modeSource: StripeWebhookModeSource | null;
+    secretSource: StripeWebhookSecretSource | null;
+    envModeRaw: string;
+    configModeRaw: string;
+  };
+
+const STRIPE_WEBHOOK_MODE_ENV = "STRIPE_WEBHOOK_MODE";
+const PLACEHOLDER_SECRET_MARKERS = ["placeholder", "changeme", "replace", "example", "todo"];
+const WEBHOOK_PROCESSING_LOCK_TTL_MS = 15 * 60 * 1000;
+
+const STRIPE_WEBHOOK_EVENT_CONTRACTS: Record<
+SupportedStripeWebhookEventType,
+StripeWebhookEventContract
+> = {
+  "checkout.session.completed": {
+    paymentStatus: "checkout_completed",
+    orderStatus: "payment_pending",
+    fulfillmentStatus: "queued",
+    requestStatus: "accepted",
+  },
+  "payment_intent.succeeded": {
+    paymentStatus: "payment_succeeded",
+    orderStatus: "paid",
+    fulfillmentStatus: "scheduled",
+    requestStatus: "in_progress",
+  },
+  "invoice.paid": {
+    paymentStatus: "invoice_paid",
+    orderStatus: "paid",
+    fulfillmentStatus: "scheduled",
+    requestStatus: "in_progress",
+  },
+};
+
 const STRIPE_CLIENTS: Partial<Record<StripeMode, Stripe>> = {};
 
 function getStripeClient(mode: StripeMode): Stripe {
@@ -355,17 +474,36 @@ function parseInvoicePayload(invoice: Stripe.Invoice): PaymentUpdate {
   };
 }
 
-function getPaymentUpdateFromEvent(event: Stripe.Event): PaymentUpdate | null {
-  if (event.type === "checkout.session.completed") {
-    return parseCheckoutSessionPayload(event.data.object as Stripe.Checkout.Session);
+export function getStripeWebhookEventContract(eventType: string): StripeWebhookEventContract | null {
+  if (eventType === "checkout.session.completed") {
+    return STRIPE_WEBHOOK_EVENT_CONTRACTS["checkout.session.completed"];
   }
-  if (event.type === "payment_intent.succeeded") {
-    return parsePaymentIntentPayload(event.data.object as Stripe.PaymentIntent);
+  if (eventType === "payment_intent.succeeded") {
+    return STRIPE_WEBHOOK_EVENT_CONTRACTS["payment_intent.succeeded"];
   }
-  if (event.type === "invoice.paid") {
-    return parseInvoicePayload(event.data.object as Stripe.Invoice);
+  if (eventType === "invoice.paid") {
+    return STRIPE_WEBHOOK_EVENT_CONTRACTS["invoice.paid"];
   }
   return null;
+}
+
+function getPaymentUpdateFromEvent(event: Stripe.Event): PaymentUpdate | null {
+  const contract = getStripeWebhookEventContract(event.type);
+  if (!contract) return null;
+  let update: PaymentUpdate;
+  if (event.type === "checkout.session.completed") {
+    update = parseCheckoutSessionPayload(event.data.object as Stripe.Checkout.Session);
+  } else if (event.type === "payment_intent.succeeded") {
+    update = parsePaymentIntentPayload(event.data.object as Stripe.PaymentIntent);
+  } else {
+    update = parseInvoicePayload(event.data.object as Stripe.Invoice);
+  }
+  if (update.status !== contract.paymentStatus) {
+    throw new Error(
+      `Stripe event contract mismatch (${event.type} expected ${contract.paymentStatus} got ${update.status})`
+    );
+  }
+  return update;
 }
 
 function requirePayScopeForContext(
@@ -380,23 +518,243 @@ function requirePayScopeForContext(
 
 type ConstructEventFn = (rawBody: Buffer, signature: string, secret: string) => Stripe.Event;
 
-export function constructWebhookEventWithMode(params: {
-  rawBody: Buffer;
-  signature: string;
-  construct: ConstructEventFn;
-  secretByMode: (mode: StripeMode) => string;
-}): { event: Stripe.Event; mode: StripeMode } {
-  const { rawBody, signature, construct, secretByMode } = params;
-  const attempts: Array<{ mode: StripeMode; message: string }> = [];
-  for (const mode of ["test", "live"] as StripeMode[]) {
+function normalizeModeInput(value: unknown): string {
+  return safeString(value).trim().toLowerCase();
+}
+
+export function resolveStripeWebhookMode(params: {
+  envModeRaw: string | null | undefined;
+  configModeRaw: string | null | undefined;
+}): StripeWebhookModeResolution {
+  const envModeRaw = normalizeModeInput(params.envModeRaw);
+  const configModeRaw = normalizeModeInput(params.configModeRaw);
+  if (envModeRaw) {
+    if (envModeRaw !== "test" && envModeRaw !== "live") {
+      return {
+        ok: false,
+        code: 500,
+        reasonCode: "WEBHOOK_MODE_INVALID",
+        message: `${STRIPE_WEBHOOK_MODE_ENV} must be "test" or "live"`,
+        envModeRaw,
+      };
+    }
+    return {
+      ok: true,
+      mode: envModeRaw as StripeMode,
+      modeSource: "env_override",
+      envModeRaw,
+      configModeRaw,
+    };
+  }
+  if (configModeRaw === "test" || configModeRaw === "live") {
+    return {
+      ok: true,
+      mode: configModeRaw as StripeMode,
+      modeSource: "config_doc",
+      envModeRaw,
+      configModeRaw,
+    };
+  }
+  return {
+    ok: true,
+    mode: "test",
+    modeSource: "default_test",
+    envModeRaw,
+    configModeRaw,
+  };
+}
+
+export function validateStripeWebhookSecret(params: {
+  mode: StripeMode;
+  secret: string;
+}): StripeWebhookSecretValidation {
+  const secret = safeString(params.secret).trim();
+  if (!secret) {
+    return {
+      ok: false,
+      code: 500,
+      reasonCode: "WEBHOOK_SECRET_MISSING",
+      message: `Stripe webhook secret missing for mode ${params.mode}`,
+    };
+  }
+  if (!secret.startsWith("whsec_") || secret.length < 12) {
+    return {
+      ok: false,
+      code: 500,
+      reasonCode: "WEBHOOK_SECRET_FORMAT_INVALID",
+      message: `Stripe webhook secret format invalid for mode ${params.mode}`,
+    };
+  }
+  const lowered = secret.toLowerCase();
+  if (PLACEHOLDER_SECRET_MARKERS.some((marker) => lowered.includes(marker))) {
+    return {
+      ok: false,
+      code: 500,
+      reasonCode: "WEBHOOK_SECRET_PLACEHOLDER",
+      message: `Stripe webhook secret appears to be a placeholder for mode ${params.mode}`,
+    };
+  }
+  return { ok: true, normalizedSecret: secret };
+}
+
+async function resolveStripeWebhookVerifyContext(): Promise<StripeWebhookContextResult> {
+  const envModeRaw = safeString(process.env[STRIPE_WEBHOOK_MODE_ENV]).trim();
+  let configModeRaw = "";
+  if (!envModeRaw) {
     try {
-      const event = construct(rawBody, signature, secretByMode(mode));
-      return { event, mode };
+      const configSnap = await db.doc(CONFIG_DOC_PATH).get();
+      const configData = (configSnap.data() ?? {}) as Record<string, unknown>;
+      configModeRaw = safeString(configData.mode).trim();
     } catch (err) {
-      attempts.push({ mode, message: err instanceof Error ? err.message : String(err) });
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        ok: false,
+        code: 500,
+        reasonCode: "WEBHOOK_MODE_INVALID",
+        message: `Unable to read webhook mode from ${CONFIG_DOC_PATH}: ${message}`,
+        mode: null,
+        modeSource: null,
+        secretSource: null,
+        envModeRaw,
+        configModeRaw,
+      };
     }
   }
-  throw new Error(`Unable to verify Stripe webhook signature (${attempts.map((entry) => `${entry.mode}: ${entry.message}`).join(" | ")})`);
+  const modeResolution = resolveStripeWebhookMode({ envModeRaw, configModeRaw });
+  if (!modeResolution.ok) {
+    return {
+      ok: false,
+      code: modeResolution.code,
+      reasonCode: modeResolution.reasonCode,
+      message: modeResolution.message,
+      mode: null,
+      modeSource: null,
+      secretSource: null,
+      envModeRaw: modeResolution.envModeRaw,
+      configModeRaw,
+    };
+  }
+  const { mode, modeSource } = modeResolution;
+  let secret: string;
+  try {
+    secret = getStripeWebhookSecret(mode);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      code: 500,
+      reasonCode: "WEBHOOK_SECRET_UNAVAILABLE",
+      message,
+      mode,
+      modeSource,
+      secretSource: "secret_manager",
+      envModeRaw: modeResolution.envModeRaw,
+      configModeRaw: modeResolution.configModeRaw,
+    };
+  }
+  const secretValidation = validateStripeWebhookSecret({ mode, secret });
+  if (!secretValidation.ok) {
+    return {
+      ok: false,
+      code: secretValidation.code,
+      reasonCode: secretValidation.reasonCode,
+      message: secretValidation.message,
+      mode,
+      modeSource,
+      secretSource: "secret_manager",
+      envModeRaw: modeResolution.envModeRaw,
+      configModeRaw: modeResolution.configModeRaw,
+    };
+  }
+  return {
+    ok: true,
+    context: {
+      mode,
+      modeSource,
+      secretSource: "secret_manager",
+      secret: secretValidation.normalizedSecret,
+    },
+  };
+}
+
+export function verifyStripeWebhookEvent(params: {
+  rawBody: Buffer;
+  signature: string;
+  context: StripeWebhookVerifyContext;
+  construct?: ConstructEventFn;
+}): StripeWebhookVerifyResult {
+  const construct = params.construct ?? ((rawBody, signature, secret) => Stripe.webhooks.constructEvent(rawBody, signature, secret));
+  let event: Stripe.Event;
+  try {
+    event = construct(params.rawBody, params.signature, params.context.secret);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      code: 400,
+      reasonCode: "WEBHOOK_SIGNATURE_INVALID",
+      message,
+      mode: params.context.mode,
+      modeSource: params.context.modeSource,
+      secretSource: params.context.secretSource,
+      eventLivemode: null,
+      expectedLivemode: params.context.mode === "live",
+    };
+  }
+
+  const eventLivemode = event.livemode === true;
+  const expectedLivemode = params.context.mode === "live";
+  if (eventLivemode !== expectedLivemode) {
+    return {
+      ok: false,
+      code: 400,
+      reasonCode: "WEBHOOK_LIVEMODE_MISMATCH",
+      message: `Stripe event livemode=${eventLivemode} does not match expected mode=${params.context.mode}`,
+      mode: params.context.mode,
+      modeSource: params.context.modeSource,
+      secretSource: params.context.secretSource,
+      eventLivemode,
+      expectedLivemode,
+    };
+  }
+
+  return {
+    ok: true,
+    event,
+    mode: params.context.mode,
+    modeSource: params.context.modeSource,
+    secretSource: params.context.secretSource,
+  };
+}
+
+export function classifyStripeWebhookReplayState(
+  existingEventData: Record<string, unknown> | null | undefined
+): StripeWebhookReplayState {
+  if (!existingEventData) return "process";
+  if (existingEventData.processedAt) return "duplicate_processed";
+  if (existingEventData.processingStartedAt) {
+    const startedAtRaw = existingEventData.processingStartedAt;
+    let startedAtMs: number | null = null;
+    if (typeof startedAtRaw === "string") {
+      const parsed = Date.parse(startedAtRaw);
+      startedAtMs = Number.isFinite(parsed) ? parsed : null;
+    } else if (
+      typeof startedAtRaw === "object" &&
+      startedAtRaw &&
+      typeof (startedAtRaw as { toMillis?: () => number }).toMillis === "function"
+    ) {
+      try {
+        startedAtMs = (startedAtRaw as { toMillis: () => number }).toMillis();
+      } catch {
+        startedAtMs = null;
+      }
+    }
+    if (startedAtMs !== null && Date.now() - startedAtMs > WEBHOOK_PROCESSING_LOCK_TTL_MS) {
+      return "process";
+    }
+    return "duplicate_inflight";
+  }
+  return "process";
 }
 
 export const staffGetStripeConfig = onRequest(
@@ -984,6 +1342,20 @@ async function applyPaymentUpdate(params: {
   eventType: string;
 }) {
   const { update, mode, eventId, eventType } = params;
+  const transition = getStripeWebhookEventContract(eventType);
+  if (!transition) {
+    throw new Error(`Unsupported Stripe webhook event transition (${eventType})`);
+  }
+  if (update.status !== transition.paymentStatus) {
+    throw new Error(
+      `Stripe transition mismatch (${eventType} expected ${transition.paymentStatus} got ${update.status})`
+    );
+  }
+  if (update.sourceEventType !== eventType) {
+    throw new Error(
+      `Stripe event source mismatch (${eventType} expected update source ${update.sourceEventType})`
+    );
+  }
   const paymentRef = db.collection("payments").doc(update.paymentId);
   const now = nowTs();
 
@@ -1060,14 +1432,8 @@ async function applyPaymentUpdate(params: {
 
   if (!candidateOrderIds.size) return;
 
-  const orderStatus =
-    update.status === "payment_succeeded" || update.status === "invoice_paid"
-      ? "paid"
-      : "payment_pending";
-  const fulfillmentStatus =
-    update.status === "payment_succeeded" || update.status === "invoice_paid"
-      ? "scheduled"
-      : "queued";
+  const orderStatus = transition.orderStatus;
+  const fulfillmentStatus = transition.fulfillmentStatus;
   const batch = db.batch();
   for (const orderId of candidateOrderIds) {
     const orderRef = db.collection("agentOrders").doc(orderId);
@@ -1108,7 +1474,7 @@ async function applyPaymentUpdate(params: {
     if (linkedRequests.empty) continue;
     const requestBatch = db.batch();
     for (const reqDoc of linkedRequests.docs) {
-      const nextRequestStatus = orderStatus === "paid" ? "in_progress" : "accepted";
+      const nextRequestStatus = transition.requestStatus;
       requestBatch.set(
         reqDoc.ref,
         {
@@ -1146,70 +1512,247 @@ export const stripePortalWebhook = onRequest(
     const signature = req.headers["stripe-signature"];
     const signatureValue = typeof signature === "string" ? signature : Array.isArray(signature) ? String(signature[0]) : "";
     if (!signatureValue) {
-      res.status(400).send("Missing stripe-signature header");
+      res.status(400).json({
+        received: false,
+        error: {
+          code: "WEBHOOK_SIGNATURE_MISSING",
+          message: "Missing stripe-signature header",
+        },
+      });
+      return;
+    }
+
+    if (!Buffer.isBuffer(req.rawBody) || !req.rawBody.length) {
+      res.status(400).json({
+        received: false,
+        error: {
+          code: "WEBHOOK_RAW_BODY_MISSING",
+          message: "Missing raw webhook body",
+        },
+      });
+      return;
+    }
+
+    const contextResult = await resolveStripeWebhookVerifyContext();
+    if (!contextResult.ok) {
+      logger.error("stripePortalWebhook verify-context failed", {
+        reasonCode: contextResult.reasonCode,
+        message: contextResult.message,
+        mode: contextResult.mode,
+        modeSource: contextResult.modeSource,
+        secretSource: contextResult.secretSource,
+        envModeRaw: contextResult.envModeRaw,
+        configModeRaw: contextResult.configModeRaw,
+      });
+      res.status(contextResult.code).json({
+        received: false,
+        error: {
+          code: contextResult.reasonCode,
+          message: contextResult.message,
+          mode: contextResult.mode,
+          modeSource: contextResult.modeSource,
+          secretSource: contextResult.secretSource,
+        },
+      });
+      return;
+    }
+
+    const verification = verifyStripeWebhookEvent({
+      rawBody: req.rawBody,
+      signature: signatureValue,
+      context: contextResult.context,
+    });
+    if (!verification.ok) {
+      logger.warn("stripePortalWebhook verify rejected", {
+        reasonCode: verification.reasonCode,
+        message: verification.message,
+        mode: verification.mode,
+        modeSource: verification.modeSource,
+        secretSource: verification.secretSource,
+        eventLivemode: verification.eventLivemode,
+        expectedLivemode: verification.expectedLivemode,
+      });
+      res.status(verification.code).json({
+        received: false,
+        error: {
+          code: verification.reasonCode,
+          message: verification.message,
+          mode: verification.mode,
+          modeSource: verification.modeSource,
+          secretSource: verification.secretSource,
+          livemode: verification.eventLivemode,
+          expectedLivemode: verification.expectedLivemode,
+        },
+      });
+      return;
+    }
+
+    const { event, mode, modeSource, secretSource } = verification;
+    const eventRef = db.collection("stripeWebhookEvents").doc(event.id);
+    const replayState = await db.runTransaction(async (tx) => {
+      const existing = await tx.get(eventRef);
+      const existingData = existing.exists ? (existing.data() as Record<string, unknown>) : null;
+      const nextState = classifyStripeWebhookReplayState(existingData);
+      if (nextState !== "process") return nextState;
+      tx.set(eventRef, {
+        id: event.id,
+        type: event.type,
+        mode,
+        modeSource,
+        secretSource,
+        livemode: event.livemode === true,
+        expectedLivemode: mode === "live",
+        receivedAt: nowTs(),
+        processingStartedAt: nowTs(),
+        processedAt: null,
+        ignored: false,
+        verifyStatus: "verified",
+        verifyReasonCode: "WEBHOOK_VERIFY_OK",
+      }, { merge: true });
+      return nextState;
+    });
+    if (replayState !== "process") {
+      logger.info("stripePortalWebhook duplicate", {
+        eventId: event.id,
+        type: event.type,
+        mode,
+        modeSource,
+        replayState,
+      });
+      res.status(200).json({
+        received: true,
+        duplicate: true,
+        replayState,
+      });
+      return;
+    }
+
+    const eventContract = getStripeWebhookEventContract(event.type);
+    if (!eventContract) {
+      await eventRef.set({
+        processedAt: nowTs(),
+        processingStartedAt: null,
+        ignored: true,
+        ignoreReason: "unsupported_event_type",
+      }, { merge: true });
+      logger.info("stripePortalWebhook ignored event", {
+        eventId: event.id,
+        type: event.type,
+        mode,
+        modeSource,
+      });
+      res.status(200).json({ received: true, ignored: true });
+      return;
+    }
+
+    let update: PaymentUpdate;
+    try {
+      const parsed = getPaymentUpdateFromEvent(event);
+      if (!parsed) {
+        await eventRef.set({
+          processingStartedAt: null,
+          failedAt: nowTs(),
+          failureCode: "WEBHOOK_EVENT_UNSUPPORTED",
+          failureMessage: `Unsupported Stripe event ${event.type}`,
+        }, { merge: true });
+        res.status(400).json({
+          received: false,
+          error: {
+            code: "WEBHOOK_EVENT_UNSUPPORTED",
+            message: `Unsupported Stripe event ${event.type}`,
+            mode,
+            modeSource,
+            secretSource,
+          },
+        });
+        return;
+      }
+      update = parsed;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("stripePortalWebhook parse failed", {
+        eventId: event.id,
+        type: event.type,
+        mode,
+        modeSource,
+        message,
+      });
+      await eventRef.set({
+        processingStartedAt: null,
+        failedAt: nowTs(),
+        failureCode: "WEBHOOK_EVENT_PARSE_FAILED",
+        failureMessage: message,
+      }, { merge: true });
+      res.status(500).json({
+        received: false,
+        error: {
+          code: "WEBHOOK_EVENT_PARSE_FAILED",
+          message,
+          mode,
+          modeSource,
+          secretSource,
+        },
+      });
       return;
     }
 
     try {
-      const constructed = constructWebhookEventWithMode({
-        rawBody: req.rawBody,
-        signature: signatureValue,
-        construct: (rawBody, sig, secret) => new Stripe("sk_test_placeholder").webhooks.constructEvent(rawBody, sig, secret),
-        secretByMode: (mode) => getStripeWebhookSecret(mode),
-      });
-      const { event, mode } = constructed;
-
-      const eventRef = db.collection("stripeWebhookEvents").doc(event.id);
-      const existing = await eventRef.get();
-      if (existing.exists && existing.data()?.processedAt) {
-        logger.info("stripePortalWebhook duplicate", { eventId: event.id, type: event.type, mode });
-        res.status(200).json({ received: true, duplicate: true });
-        return;
-      }
-
-      await eventRef.set({
-        id: event.id,
-        type: event.type,
-        mode,
-        livemode: event.livemode === true,
-        receivedAt: nowTs(),
-        processedAt: null,
-      }, { merge: true });
-
-      const update = getPaymentUpdateFromEvent(event);
-      if (!update) {
-        await eventRef.set({ processedAt: nowTs(), ignored: true }, { merge: true });
-        logger.info("stripePortalWebhook ignored event", { eventId: event.id, type: event.type, mode });
-        res.status(200).json({ received: true, ignored: true });
-        return;
-      }
-
       await applyPaymentUpdate({
         update,
         mode,
         eventId: event.id,
         eventType: event.type,
       });
-
-      await eventRef.set({
-        processedAt: nowTs(),
-        uid: update.uid,
-        paymentId: update.paymentId,
-        status: update.status,
-      }, { merge: true });
-
-      logger.info("stripePortalWebhook processed", {
-        eventId: event.id,
-        type: event.type,
-        uid: update.uid,
-        mode,
-      });
-
-      res.status(200).json({ received: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error("stripePortalWebhook failed", { message });
-      res.status(400).send("Webhook error");
+      logger.error("stripePortalWebhook apply failed", {
+        eventId: event.id,
+        type: event.type,
+        mode,
+        modeSource,
+        message,
+      });
+      await eventRef.set({
+        processingStartedAt: null,
+        failedAt: nowTs(),
+        failureCode: "WEBHOOK_APPLY_UPDATE_FAILED",
+        failureMessage: message,
+      }, { merge: true });
+      res.status(500).json({
+        received: false,
+        error: {
+          code: "WEBHOOK_APPLY_UPDATE_FAILED",
+          message,
+          mode,
+          modeSource,
+          secretSource,
+        },
+      });
+      return;
     }
+
+    await eventRef.set({
+      processedAt: nowTs(),
+      processingStartedAt: null,
+      uid: update.uid,
+      paymentId: update.paymentId,
+      status: update.status,
+      transitionOrderStatus: eventContract.orderStatus,
+      transitionFulfillmentStatus: eventContract.fulfillmentStatus,
+      transitionRequestStatus: eventContract.requestStatus,
+    }, { merge: true });
+
+    logger.info("stripePortalWebhook processed", {
+      eventId: event.id,
+      type: event.type,
+      uid: update.uid,
+      mode,
+      modeSource,
+      secretSource,
+      livemode: event.livemode === true,
+      expectedLivemode: mode === "live",
+    });
+
+    res.status(200).json({ received: true });
   }
 );

@@ -1,6 +1,6 @@
 # P2 — Reservation create station field normalization and capacity compatibility
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 Priority: P2
 Owner: Functions Team
@@ -31,3 +31,12 @@ This can produce inconsistent load accounting when stations are renamed/aliased 
 - Station capacity calculations in board and queue flows use the same normalized ID source.
 - Invalid/stale IDs return clear `INVALID_ARGUMENT`-style responses in API responses.
 - Legacy identifiers are safely mapped (not rejected silently) where policy allows.
+
+## Completion Notes (2026-02-22)
+
+- Replaced legacy kiln-id handling with shared station normalization/validation in:
+  - `functions/src/apiV1.ts`
+  - `functions/src/createReservation.ts`
+- Added create-path validation for unknown station ids with `INVALID_ARGUMENT` error envelope.
+- Persisted `assignedStationId` alongside normalized `kilnId` for create flows.
+- Normalized kiln doc ids in board rendering to avoid alias-driven station splits in `functions/src/websiteKilnBoard.ts`.

@@ -4,6 +4,8 @@
 export const V1_RESERVATION_CREATE_FN = "apiV1/v1/reservations.create";
 export const V1_RESERVATION_UPDATE_FN = "apiV1/v1/reservations.update";
 export const V1_RESERVATION_ASSIGN_STATION_FN = "apiV1/v1/reservations.assignStation";
+export const LEGACY_RESERVATION_COMPAT_REVIEW_DATE = "2026-05-15";
+export const LEGACY_RESERVATION_COMPAT_SUNSET_NOT_BEFORE = "2026-06-30";
 
 export type PortalFnName =
   | "createBatch"
@@ -128,6 +130,17 @@ export type ReservationPreferredWindow = {
   latestDate?: string | null;
 };
 
+export type ReservationStationId =
+  | "studio-kiln-a"
+  | "studio-kiln-b"
+  | "studio-electric"
+  | "reduction-raku";
+export type ReservationStationAlias = "reductionraku" | "reduction_raku";
+export type ReservationStationInput =
+  | ReservationStationId
+  | ReservationStationAlias
+  | (string & {});
+
 export type CreateReservationRequest = {
   firingType: "bisque" | "glaze" | "other";
   shelfEquivalent: number;
@@ -143,7 +156,8 @@ export type CreateReservationRequest = {
   clientRequestId?: string | null;
   ownerUid?: string | null;
   wareType?: string | null;
-  kilnId?: string | null;
+  // Legacy aliases are accepted and normalized server-side.
+  kilnId?: ReservationStationInput | null;
   kilnLabel?: string | null;
   quantityTier?: string | null;
   quantityLabel?: string | null;
@@ -205,7 +219,8 @@ export type UpdateReservationResponse = PortalApiOkEnvelope & {
 
 export type AssignReservationStationRequest = {
   reservationId: string;
-  assignedStationId: string;
+  // Legacy aliases are accepted and normalized server-side.
+  assignedStationId: ReservationStationInput;
   queueClass?: string | null;
   requiredResources?: {
     kilnProfile?: string | null;

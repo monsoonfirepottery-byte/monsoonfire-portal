@@ -13,17 +13,16 @@ import {
   makeIdempotencyId,
   safeString,
 } from "./shared";
+import { isKnownStationId, normalizeStationId } from "./reservationStationConfig";
 
 const REGION = "us-central1";
 
 type FiringType = "bisque" | "glaze" | "other";
 type WareType = "stoneware" | "earthenware" | "porcelain" | "mixed" | "other";
-type KilnId = "studio-electric" | "reduction-raku";
 type QuantityTier = "few" | "small" | "medium" | "large";
 
 const VALID_FIRING_TYPES: ReadonlySet<FiringType> = new Set(["bisque", "glaze", "other"] as const);
 const VALID_WARE_TYPES: ReadonlySet<WareType> = new Set(["stoneware", "earthenware", "porcelain", "mixed", "other"] as const);
-const VALID_KILN_IDS: ReadonlySet<KilnId> = new Set(["studio-electric", "reduction-raku"] as const);
 const VALID_QUANTITY_TIERS: ReadonlySet<QuantityTier> = new Set(["few", "small", "medium", "large"] as const);
 
 const reservationSchema = z.object({
@@ -300,7 +299,12 @@ export const createReservation = onRequest(
     const wareRaw = safeString(body.wareType).trim().toLowerCase();
     const wareType = VALID_WARE_TYPES.has(wareRaw as WareType) ? (wareRaw as WareType) : null;
     const kilnIdRaw = safeString(body.kilnId).trim();
-    const kilnId = VALID_KILN_IDS.has(kilnIdRaw as KilnId) ? (kilnIdRaw as KilnId) : null;
+    const normalizedKilnId = kilnIdRaw ? normalizeStationId(kilnIdRaw) : "";
+    if (kilnIdRaw && !isKnownStationId(normalizedKilnId)) {
+      res.status(400).json({ ok: false, code: "INVALID_ARGUMENT", message: "Unknown station id." });
+      return;
+    }
+    const kilnId = kilnIdRaw ? normalizedKilnId : null;
     const kilnLabelRaw = safeString(body.kilnLabel).trim();
     const kilnLabel = kilnLabelRaw ? kilnLabelRaw : null;
     const quantityTierRaw = safeString(body.quantityTier).trim();
@@ -423,6 +427,7 @@ export const createReservation = onRequest(
       linkedBatchId,
       wareType,
       kilnId,
+      assignedStationId: kilnId,
       kilnLabel,
       quantityTier,
       quantityLabel,
@@ -444,4 +449,3 @@ export const createReservation = onRequest(
       .json({ ok: true, reservationId: ref.id, status: "REQUESTED" });
   }
 );
-

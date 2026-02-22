@@ -1,6 +1,6 @@
 # P2 — Reservation contract and migration documentation refresh
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 Priority: P2
 Owner: Product + Web Team
@@ -36,3 +36,13 @@ This creates confusion for implementation, QA, and release readiness.
 - Migration path is clear for clients currently using legacy URLs.
 - No unresolved reference to deprecated route assumptions in schema docs.
 - Planned compatibility window is recorded with a review date.
+
+## Completion Notes (2026-02-22)
+
+- Updated reservation API docs to mark v1 mutation routes as canonical and legacy routes as compatibility wrappers with concrete review/sunset dates:
+  - `docs/SCHEMA_RESERVATIONS.md`
+- Added compatibility-window and parity status notes to:
+  - `docs/STUDIO_OPERATIONS_GAP_MATRIX_2026-02-17.md`
+- Updated client contract typing and compatibility notes in:
+  - `web/src/api/portalContracts.ts`
+  - `web/src/api/portalApi.ts`

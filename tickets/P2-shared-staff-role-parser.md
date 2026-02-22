@@ -1,6 +1,6 @@
 # P2 — Shared Staff Role Parser Refactor
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Portal Team

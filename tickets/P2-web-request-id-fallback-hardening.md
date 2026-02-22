@@ -1,6 +1,6 @@
 # P2 — Web Request-ID Fallback Hardening
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Portal Team

@@ -19,6 +19,7 @@ import { clearHandlerErrorLog, getHandlerErrorLog } from "../utils/handlerLog";
 import { resolveFunctionsBaseUrlResolution } from "../utils/functionsBaseUrl";
 import { isStudioBrainDegradedMode } from "../utils/studioBrainHealth";
 import { resolveStudioBrainBaseUrlResolution } from "../utils/studioBrain";
+import { parseStaffRole } from "../auth/staffRole";
 import PolicyModule from "./staff/PolicyModule";
 import StripeSettingsModule from "./staff/StripeSettingsModule";
 import ReportsModule from "./staff/ReportsModule";
@@ -300,13 +301,10 @@ function normalizeBatchState(status: string): string {
 }
 
 function memberRole(data: Record<string, unknown>): string {
-  const claims = data.claims as Record<string, unknown> | undefined;
-  if (claims?.staff === true) return "staff";
-  if (claims?.admin === true) return "admin";
-  const roles = Array.isArray(claims?.roles) ? claims?.roles : [];
-  if (roles.includes("staff")) return "staff";
-  if (roles.includes("admin")) return "admin";
-  return str(data.role, "member");
+  return parseStaffRole({
+    claims: data.claims,
+    fallbackRole: data.role,
+  }).role;
 }
 
 function maxMs(...values: number[]): number {
@@ -322,6 +320,13 @@ export default function StaffView({
   showEmulatorTools,
 }: Props) {
   const [moduleKey, setModuleKey] = useState<ModuleKey>("overview");
+  const hasDevAdminAuthority = devAdminEnabled && devAdminToken.trim().length > 0;
+  const hasStaffAuthority = isStaff || hasDevAdminAuthority;
+  const staffAuthorityLabel = isStaff
+    ? "Staff claim"
+    : hasDevAdminAuthority
+      ? "Dev admin token"
+      : "No staff authority";
   const isCockpitModule = moduleKey === "cockpit";
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
@@ -3630,6 +3635,20 @@ const lendingContent = (
     system: systemContent,
   }[moduleKey];
 
+  if (!hasStaffAuthority) {
+    return (
+      <section className="card staff-console-card" role="alert" aria-live="assertive">
+        <div className="card-title">Staff Console Access Required</div>
+        <p className="card-subtitle">
+          Staff actions are disabled because this session has no staff/admin claim and no dev admin token.
+        </p>
+        <div className="staff-note">
+          Sign in with a staff account, or in emulator-only mode provide a dev admin token.
+        </div>
+      </section>
+    );
+  }
+
   return (
     <div className="staff-console">
       <div className="staff-hero card card-3d">
@@ -3666,7 +3685,7 @@ const lendingContent = (
         <div className="staff-note">Data is lazy-loaded. Start with <strong>Load current module</strong> to keep reads controlled.</div>
         <div className="staff-meta">
           <div><span className="label">Signed in</span><strong>{user.displayName ?? "Staff"}</strong></div>
-          <div><span className="label">Role</span><strong>{isStaff ? "Staff claim" : "No staff claim"}</strong></div>
+          <div><span className="label">Role</span><strong>{staffAuthorityLabel}</strong></div>
           <div><span className="label">Email</span><strong>{user.email ?? "-"}</strong></div>
           <div><span className="label">UID</span><strong>{user.uid}</strong></div>
         </div>

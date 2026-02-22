@@ -1,6 +1,6 @@
 # P0 — Dependency Security Remediation: root/web/functions/studio-brain audit findings
 
-Status: Todo
+Status: Completed
 Date: 2026-02-19
 Priority: P0
 Owner: Engineering
@@ -72,3 +72,43 @@ High-severity `npm audit --omit=dev` findings are currently present across activ
 - Required evidence attached:
   - post-remediation audit outputs
   - any dependency change plan that required major-version bump/compatibility validation.
+
+## Resolution (2026-02-22)
+
+Remediation completed for the open GitHub Dependabot alerts observed on 2026-02-22:
+
+1) `studio-brain/package-lock.json`
+- `fast-xml-parser` advisories resolved:
+  - `GHSA-jmr7-xgp7-cmfj` (high)
+  - `GHSA-m7jm-9gc2-mpf2` (critical)
+- Change:
+  - Added `studio-brain/package.json` override:
+    - `"fast-xml-parser": "^5.3.6"`
+  - Reinstalled `studio-brain` lockfile.
+- Verified resolved tree:
+  - `minio@8.0.6 -> fast-xml-parser@5.3.7`
+  - `@google-cloud/storage@7.19.0 -> fast-xml-parser@5.3.7`
+
+2) `functions/package-lock.json`
+- `minimatch` advisory chain resolved:
+  - `GHSA-3ppc-4f35-3m26` (high)
+  - transitive chain: `glob` / `rimraf` / `gaxios`
+- Change:
+  - Added `functions/package.json` overrides:
+    - `"minimatch": "^10.2.2"`
+    - `"glob": "^13.0.6"`
+    - `"rimraf": "^6.1.3"`
+  - Reinstalled `functions` lockfile.
+- Verified resolved runtime chain:
+  - `googleapis -> google-auth-library -> gaxios -> rimraf@6.1.3 -> glob@13.0.6 -> minimatch@10.2.2`
+
+## Validation Evidence (2026-02-22)
+
+- `npm audit --omit=dev --json` (root): `0 vulnerabilities`
+- `npm audit --omit=dev --json --prefix web`: `0 vulnerabilities`
+- `npm audit --omit=dev --json --prefix functions`: `0 vulnerabilities`
+- `npm audit --omit=dev --json --prefix studio-brain`: `0 vulnerabilities`
+- `npm --prefix functions run build`: pass
+- `npm --prefix functions run test`: pass
+- `npm --prefix studio-brain run build`: pass
+- `npm --prefix studio-brain run test:infra`: pass

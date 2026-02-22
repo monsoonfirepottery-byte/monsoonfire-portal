@@ -3,6 +3,8 @@ import type { User } from "firebase/auth";
 import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
 import { connectStorageEmulator, getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
 import { createFunctionsClient, type LastRequest } from "../api/functionsClient";
+import { makeRequestId } from "../api/requestId";
+import { parseStaffRoleFromClaims } from "../auth/staffRole";
 import { db } from "../firebase";
 import {
   FULL_KILN_CUSTOM_PRICE,
@@ -88,7 +90,6 @@ type ImportMetaEnvShape = {
   VITE_STORAGE_EMULATOR_HOST?: string;
   VITE_STORAGE_EMULATOR_PORT?: string;
 };
-type StaffClaims = { staff?: boolean; roles?: string[] };
 const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
 const DEV_MODE = typeof import.meta !== "undefined" && Boolean(ENV.DEV);
 
@@ -149,14 +150,6 @@ function sanitizeDateInput(value: string) {
   if (!value) return null;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function makeClientRequestId() {
-  try {
-    return crypto.randomUUID();
-  } catch {
-    return `req_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
-  }
 }
 
 function getFileExtension(file: File) {
@@ -389,18 +382,14 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
       .getIdTokenResult()
       .then((result) => {
         if (cancelled) return;
-        const claims = (result?.claims ?? {}) as StaffClaims;
-        const roles = Array.isArray(claims.roles)
-          ? claims.roles.filter((role: unknown) => typeof role === "string")
-          : [];
-        const isStaffClaim = Boolean(claims.staff) || roles.includes("staff");
-        setHasStaffClaim(isStaffClaim);
+        const parsedRole = parseStaffRoleFromClaims(result?.claims ?? {});
+        setHasStaffClaim(parsedRole.isStaff);
         if (!DEV_MODE) return;
         setAuthDebug({
           uid: user.uid,
           isAnonymous: user.isAnonymous,
-          roles,
-          isStaff: isStaffClaim,
+          roles: parsedRole.roles,
+          isStaff: parsedRole.isStaff,
         });
       })
       .catch((error) => {
@@ -846,7 +835,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
 
     const latestDate = sanitizeDateInput(latest);
 
-    const requestId = submitRequestId ?? makeClientRequestId();
+    const requestId = submitRequestId ?? makeRequestId("req");
     if (!submitRequestId) {
       setSubmitRequestId(requestId);
     }
@@ -1815,4 +1804,3 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     </div>
   );
 }
-

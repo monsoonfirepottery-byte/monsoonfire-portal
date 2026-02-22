@@ -2,7 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type Stripe from "stripe";
 
-import { constructWebhookEventWithMode, validateStripeConfigForPersist } from "./stripeConfig";
+import {
+  classifyStripeWebhookReplayState,
+  getStripeWebhookEventContract,
+  resolveStripeWebhookMode,
+  validateStripeConfigForPersist,
+  validateStripeWebhookSecret,
+  verifyStripeWebhookEvent,
+} from "./stripeConfig";
 
 test("validateStripeConfigForPersist accepts valid config", () => {
   const config = validateStripeConfigForPersist({
@@ -54,25 +61,143 @@ test("validateStripeConfigForPersist rejects invalid publishable key prefix", ()
   );
 });
 
-test("constructWebhookEventWithMode tries test then live mode", () => {
-  const fakeEvent = { id: "evt_123", type: "checkout.session.completed" } as Stripe.Event;
-  const called: string[] = [];
-
-  const out = constructWebhookEventWithMode({
-    rawBody: Buffer.from("{}"),
-    signature: "sig",
-    construct: (_raw, _sig, secret) => {
-      called.push(secret);
-      if (secret === "whsec_test") {
-        throw new Error("bad test secret");
-      }
-      return fakeEvent;
-    },
-    secretByMode: (mode) => (mode === "test" ? "whsec_test" : "whsec_live"),
+test("resolveStripeWebhookMode prefers explicit env override", () => {
+  const out = resolveStripeWebhookMode({
+    envModeRaw: "live",
+    configModeRaw: "test",
   });
 
+  assert.equal(out.ok, true);
+  if (!out.ok) return;
   assert.equal(out.mode, "live");
-  assert.equal(out.event.id, "evt_123");
-  assert.deepEqual(called, ["whsec_test", "whsec_live"]);
+  assert.equal(out.modeSource, "env_override");
 });
 
+test("resolveStripeWebhookMode rejects invalid env override", () => {
+  const out = resolveStripeWebhookMode({
+    envModeRaw: "staging",
+    configModeRaw: "live",
+  });
+
+  assert.equal(out.ok, false);
+  if (out.ok) return;
+  assert.equal(out.reasonCode, "WEBHOOK_MODE_INVALID");
+});
+
+test("validateStripeWebhookSecret rejects placeholders", () => {
+  const out = validateStripeWebhookSecret({
+    mode: "live",
+    secret: "whsec_placeholder_do_not_use",
+  });
+  assert.equal(out.ok, false);
+  if (out.ok) return;
+  assert.equal(out.reasonCode, "WEBHOOK_SECRET_PLACEHOLDER");
+});
+
+test("verifyStripeWebhookEvent validates single selected mode without probing", () => {
+  const fakeEvent = {
+    id: "evt_123",
+    type: "payment_intent.succeeded",
+    livemode: true,
+    data: { object: {} },
+  } as Stripe.Event;
+  const called: string[] = [];
+
+  const out = verifyStripeWebhookEvent({
+    rawBody: Buffer.from("{}"),
+    signature: "sig_live",
+    context: {
+      mode: "live",
+      modeSource: "env_override",
+      secretSource: "secret_manager",
+      secret: "whsec_live_contract",
+    },
+    construct: (_raw, _sig, secret) => {
+      called.push(secret);
+      return fakeEvent;
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.deepEqual(called, ["whsec_live_contract"]);
+});
+
+test("verifyStripeWebhookEvent rejects invalid signature", () => {
+  const out = verifyStripeWebhookEvent({
+    rawBody: Buffer.from("{}"),
+    signature: "sig_bad",
+    context: {
+      mode: "test",
+      modeSource: "config_doc",
+      secretSource: "secret_manager",
+      secret: "whsec_test_contract",
+    },
+    construct: () => {
+      throw new Error("No signatures found matching the expected signature for payload");
+    },
+  });
+
+  assert.equal(out.ok, false);
+  if (out.ok) return;
+  assert.equal(out.reasonCode, "WEBHOOK_SIGNATURE_INVALID");
+  assert.equal(out.mode, "test");
+});
+
+test("verifyStripeWebhookEvent rejects livemode mismatch", () => {
+  const out = verifyStripeWebhookEvent({
+    rawBody: Buffer.from("{}"),
+    signature: "sig_live",
+    context: {
+      mode: "live",
+      modeSource: "config_doc",
+      secretSource: "secret_manager",
+      secret: "whsec_live_contract",
+    },
+    construct: () =>
+      ({
+        id: "evt_456",
+        type: "invoice.paid",
+        livemode: false,
+        data: { object: {} },
+      }) as Stripe.Event,
+  });
+
+  assert.equal(out.ok, false);
+  if (out.ok) return;
+  assert.equal(out.reasonCode, "WEBHOOK_LIVEMODE_MISMATCH");
+  assert.equal(out.expectedLivemode, true);
+  assert.equal(out.eventLivemode, false);
+});
+
+test("classifyStripeWebhookReplayState classifies processed and in-flight duplicates", () => {
+  assert.equal(classifyStripeWebhookReplayState(null), "process");
+  assert.equal(
+    classifyStripeWebhookReplayState({ processingStartedAt: new Date().toISOString() }),
+    "duplicate_inflight"
+  );
+  assert.equal(
+    classifyStripeWebhookReplayState({
+      processingStartedAt: new Date().toISOString(),
+      processedAt: new Date().toISOString(),
+    }),
+    "duplicate_processed"
+  );
+  assert.equal(
+    classifyStripeWebhookReplayState({
+      processingStartedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    }),
+    "process"
+  );
+});
+
+test("getStripeWebhookEventContract exposes strict event mappings", () => {
+  const checkout = getStripeWebhookEventContract("checkout.session.completed");
+  assert.equal(checkout?.paymentStatus, "checkout_completed");
+  assert.equal(checkout?.orderStatus, "payment_pending");
+
+  const invoice = getStripeWebhookEventContract("invoice.paid");
+  assert.equal(invoice?.paymentStatus, "invoice_paid");
+  assert.equal(invoice?.orderStatus, "paid");
+
+  assert.equal(getStripeWebhookEventContract("charge.refunded"), null);
+});

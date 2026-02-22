@@ -1,6 +1,6 @@
 # P2 — Remove Unsafe `as any` in High-Risk Function Paths
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Functions Team
@@ -32,3 +32,8 @@ Eliminate or narrow `as any` usage in high-risk functions and replace with safe 
 - `functions/src/integrationEvents.ts:88`
 - `functions/src/jukebox.ts:264`
 - `functions/src/materials.ts:688`
+
+## Completion Notes (2026-02-22)
+1. Replaced targeted unsafe casts with parser-backed reads in `functions/src/integrationEvents.ts`, `functions/src/jukebox.ts`, and `functions/src/materials.ts`.
+2. Tightened request/payload typing using `Record<string, unknown>` and typed request headers in touched paths.
+3. Added parser regression tests that validate fallback behavior for malformed documents.

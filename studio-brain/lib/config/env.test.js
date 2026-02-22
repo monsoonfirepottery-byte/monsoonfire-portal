@@ -45,6 +45,7 @@ function withPatchedEnv(patch, run) {
         PGPASSWORD: "super-secret",
         GOOGLE_APPLICATION_CREDENTIALS: "C:\\\\tmp\\\\service-account.json",
         STUDIO_BRAIN_ADMIN_TOKEN: "token",
+        STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS: "root-v1=anchor-secret",
         STUDIO_BRAIN_ENABLE_WRITE_EXECUTION: "false",
         STUDIO_BRAIN_REQUIRE_APPROVAL_FOR_EXTERNAL_WRITES: "true",
     }, () => {
@@ -54,6 +55,7 @@ function withPatchedEnv(patch, run) {
         strict_1.default.equal(safe.STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY, "[set]");
         strict_1.default.equal(safe.PGPASSWORD, "[redacted]");
         strict_1.default.equal(safe.GOOGLE_APPLICATION_CREDENTIALS, "[set]");
+        strict_1.default.equal(safe.STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS, "[set]");
     });
 });
 (0, node_test_1.default)("swarm infra defaults parse cleanly", () => {
@@ -107,5 +109,21 @@ function withPatchedEnv(patch, run) {
     }, () => {
         const env = (0, env_1.readEnv)();
         strict_1.default.equal(env.STUDIO_BRAIN_PG_QUERY_TIMEOUT_MS, 500);
+    });
+});
+(0, node_test_1.default)("signature policy requires trust anchors", () => {
+    withPatchedEnv({
+        STUDIO_BRAIN_SKILL_REQUIRE_SIGNATURE: "true",
+        STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS: "",
+    }, () => {
+        strict_1.default.throws(() => (0, env_1.readEnv)(), /STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS/);
+    });
+    withPatchedEnv({
+        STUDIO_BRAIN_SKILL_REQUIRE_SIGNATURE: "true",
+        STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS: "root-v1=anchor-secret",
+    }, () => {
+        const env = (0, env_1.readEnv)();
+        strict_1.default.equal(env.STUDIO_BRAIN_SKILL_REQUIRE_SIGNATURE, true);
+        strict_1.default.equal(env.STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS, "root-v1=anchor-secret");
     });
 });

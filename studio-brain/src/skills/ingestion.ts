@@ -5,16 +5,12 @@ import path from "node:path";
 import type { Logger } from "../config/logger";
 import type { SkillBundleSource, SkillManifest, SkillRegistryClient } from "./registry";
 import { parsePinnedSkillRef } from "./registry";
-
-export type SignatureVerificationResult = {
-  ok: boolean;
-  reason?: string;
-};
-
-export type SignatureVerifier = (input: {
-  manifest: SkillManifest;
-  sourcePath: string;
-}) => Promise<SignatureVerificationResult> | SignatureVerificationResult;
+import {
+  createSkillSignatureTrustAnchorVerifier,
+  type SignatureVerificationResult,
+  type SignatureVerifier,
+} from "./trustAnchor";
+export type { SignatureVerificationResult, SignatureVerifier } from "./trustAnchor";
 
 export type InstalledSkill = {
   name: string;
@@ -90,7 +86,11 @@ function createAuditLine(skill: SkillManifest, payload: {
   sourcePath: string;
   checksumExpected: string | undefined;
   checksumComputed: string;
+  checksumVerified: boolean;
+  requireChecksum: boolean;
   signatureVerified: boolean;
+  requireSignature: boolean;
+  signatureFallbackReason: string | null;
   requestedBy: string;
 }): string {
   return JSON.stringify({
@@ -100,7 +100,11 @@ function createAuditLine(skill: SkillManifest, payload: {
     sourcePath: payload.sourcePath,
     checksumExpected: payload.checksumExpected ?? null,
     checksumComputed: payload.checksumComputed,
+    checksumVerified: payload.checksumVerified,
+    requireChecksum: payload.requireChecksum,
     signatureVerified: payload.signatureVerified,
+    requireSignature: payload.requireSignature,
+    signatureFallbackReason: payload.signatureFallbackReason,
     requestedBy: payload.requestedBy,
   });
 }
@@ -109,8 +113,6 @@ function normalizeSignaturePolicy(plan: InstallationPlan): boolean {
   return plan.requireSignature;
 }
 
-const defaultSignatureVerifier: SignatureVerifier = async () => ({ ok: true });
-
 export type InstallationInput = {
   reference: string;
   registry: SkillRegistryClient;
@@ -118,43 +120,101 @@ export type InstallationInput = {
   installRoot: string;
   logger: Logger;
   signatureVerifier?: SignatureVerifier;
+  signatureTrustAnchors?: Record<string, string>;
 };
 
 export async function installSkill(input: InstallationInput): Promise<InstalledSkill> {
   const plan = input.plan;
-  const signatureVerifier = input.signatureVerifier ?? defaultSignatureVerifier;
+  const signatureVerifier =
+    input.signatureVerifier ??
+    createSkillSignatureTrustAnchorVerifier({
+      trustAnchors: input.signatureTrustAnchors ?? {},
+    });
   const ref = plan.requirePinned || input.reference.includes("@")
     ? parsePinnedSkillRef(input.reference)
     : { name: input.reference, version: "latest" };
   const identity = `${ref.name}@${ref.version}`;
+
+  input.logger.info("skill_install_verification_started", {
+    skill: identity,
+    requestedBy: plan.requestedBy,
+    requirePinned: plan.requirePinned,
+    requireChecksum: plan.requireChecksum,
+    requireSignature: plan.requireSignature,
+  });
+
   const decision = isAllowed(identity, plan.allowlist, plan.denylist);
   if (!decision.ok) {
+    input.logger.warn("skill_install_verification_failed", {
+      skill: identity,
+      stage: "policy",
+      reason: decision.reason ?? "INSTALL_POLICY_DENIED",
+    });
     throw new Error(`Skill install denied: ${decision.reason}`);
   }
 
   const bundle: SkillBundleSource = await input.registry.resolveSkill(ref);
   if (plan.requireChecksum && !bundle.manifest.checksum) {
+    input.logger.warn("skill_install_verification_failed", {
+      skill: identity,
+      stage: "checksum",
+      reason: "MISSING_CHECKSUM",
+    });
     throw new Error(`Missing checksum for ${identity}. Set STUDIO_BRAIN_SKILL_REQUIRE_CHECKSUM=false to override.`);
+  }
+  if (!plan.requireChecksum) {
+    input.logger.info("skill_install_verification_fallback", {
+      skill: identity,
+      stage: "checksum",
+      reason: "CHECKSUM_POLICY_DISABLED",
+    });
   }
 
   const checksumComputed = await checksumDirectoryTree(bundle.sourcePath);
   const checksumVerified = !!bundle.manifest.checksum && checksumComputed === bundle.manifest.checksum;
   if (plan.requireChecksum && !checksumVerified) {
+    input.logger.warn("skill_install_verification_failed", {
+      skill: identity,
+      stage: "checksum",
+      reason: "CHECKSUM_MISMATCH",
+    });
     throw new Error(`Checksum mismatch for ${identity}. expected=${bundle.manifest.checksum} computed=${checksumComputed}`);
   }
 
   const requireSignature = normalizeSignaturePolicy(plan);
-  const signatureCheck = requireSignature
-    ? await signatureVerifier({
-        manifest: bundle.manifest,
-        sourcePath: bundle.sourcePath,
-      })
-    : { ok: true };
-  if (!signatureCheck.ok) {
-    throw new Error(
-      `Signature verification failed for ${identity}` + (signatureCheck.reason ? `: ${signatureCheck.reason}` : "")
-    );
+  let signatureVerified = false;
+  let signatureFallbackReason: string | null = null;
+  if (requireSignature) {
+    const signatureCheck: SignatureVerificationResult = await signatureVerifier({
+      manifest: bundle.manifest,
+      sourcePath: bundle.sourcePath,
+    });
+    if (!signatureCheck.ok) {
+      const reason = signatureCheck.reason ?? "SIGNATURE_VERIFICATION_FAILED";
+      input.logger.warn("skill_install_verification_failed", {
+        skill: identity,
+        stage: "signature",
+        reason,
+      });
+      throw new Error(`Signature verification failed for ${identity}: ${reason}`);
+    }
+    signatureVerified = true;
+  } else {
+    signatureFallbackReason = "SIGNATURE_POLICY_DISABLED";
+    input.logger.info("skill_install_verification_fallback", {
+      skill: identity,
+      stage: "signature",
+      reason: signatureFallbackReason,
+    });
   }
+
+  input.logger.info("skill_install_verification_success", {
+    skill: identity,
+    checksumVerified,
+    signatureVerified,
+    requireChecksum: plan.requireChecksum,
+    requireSignature,
+  });
 
   const safeRunId = ref.version.replace(/[^a-zA-Z0-9._-]+/g, "-");
   const installPath = path.join(input.installRoot, ref.name, safeRunId);
@@ -165,7 +225,11 @@ export async function installSkill(input: InstallationInput): Promise<InstalledS
     sourcePath: bundle.sourcePath,
     checksumExpected: bundle.manifest.checksum,
     checksumComputed,
-    signatureVerified: signatureCheck.ok,
+    checksumVerified,
+    requireChecksum: plan.requireChecksum,
+    signatureVerified,
+    requireSignature,
+    signatureFallbackReason,
     requestedBy: plan.requestedBy,
   });
   await fs.appendFile(auditFile, `${audit}\n`, "utf8");
@@ -189,6 +253,7 @@ export async function installSkill(input: InstallationInput): Promise<InstalledS
     skill: `${ref.name}@${ref.version}`,
     installPath,
     checksumVerified,
+    signatureVerified,
   });
 
   return {
@@ -196,7 +261,7 @@ export async function installSkill(input: InstallationInput): Promise<InstalledS
     version: ref.version,
     installPath,
     checksumVerified,
-    signatureVerified: signatureCheck.ok,
+    signatureVerified,
   };
 }
 

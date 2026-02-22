@@ -8,12 +8,47 @@ setGlobalOptions({region: "us-central1"});
 admin.initializeApp();
 
 const adminToken = defineSecret("ADMIN_TOKEN");
+const ARCHIVED_ROUTE_ENABLE_ENV = "MF_ENABLE_ARCHIVED_FUNCTIONS";
+const archivedRoutesEnabled = process.env[ARCHIVED_ROUTE_ENABLE_ENV] === "true";
+
+function blockArchivedRoute(res: {
+  status: (code: number) => { json: (body: unknown) => void };
+}, route: string): boolean {
+  if (archivedRoutesEnabled) {
+    console.warn(JSON.stringify({
+      at: new Date().toISOString(),
+      severity: "WARN",
+      event: "archived_route_deprecated_used",
+      route,
+      enableFlag: ARCHIVED_ROUTE_ENABLE_ENV,
+      warning: "This route is deprecated and scheduled for permanent removal.",
+    }));
+    return false;
+  }
+
+  console.warn(JSON.stringify({
+    at: new Date().toISOString(),
+    severity: "WARN",
+    event: "archived_route_blocked",
+    route,
+    enableFlag: ARCHIVED_ROUTE_ENABLE_ENV,
+  }));
+  res.status(410).json({
+    ok: false,
+    code: "ARCHIVED_ROUTE_DISABLED",
+    message:
+      `Archived route '${route}' is disabled. Set ${ARCHIVED_ROUTE_ENABLE_ENV}=true only for break-glass migration.`,
+  });
+  return true;
+}
 
 export const hello = onRequest((_req, res) => {
+  if (blockArchivedRoute(res, "hello")) return;
   res.status(200).send("ok");
 });
 export const assignFiring = onRequest({secrets: [adminToken]}, async (req, res) => {
   try {
+    if (blockArchivedRoute(res, "assignFiring")) return;
     if (req.method !== "POST") {
       res.status(405).json({ok: false, message: "Use POST"});
       return;
@@ -88,6 +123,7 @@ export const assignFiring = onRequest({secrets: [adminToken]}, async (req, res) 
 
 export const kilnLoad = onRequest({secrets: [adminToken]}, async (req, res) => {
   try {
+    if (blockArchivedRoute(res, "kilnLoad")) return;
     if (req.method !== "POST") {
       res.status(405).json({ok: false, message: "Use POST"});
       return;
@@ -167,6 +203,7 @@ export const kilnLoad = onRequest({secrets: [adminToken]}, async (req, res) => {
 
 export const kilnUnload = onRequest({secrets: [adminToken]}, async (req, res) => {
   try {
+    if (blockArchivedRoute(res, "kilnUnload")) return;
     if (req.method !== "POST") {
       res.status(405).json({ok: false, message: "Use POST"});
       return;
@@ -246,6 +283,7 @@ export const kilnUnload = onRequest({secrets: [adminToken]}, async (req, res) =>
 
 export const shelveBatch = onRequest({secrets: [adminToken]}, async (req, res) => {
   try {
+    if (blockArchivedRoute(res, "shelveBatch")) return;
     if (req.method !== "POST") {
       res.status(405).json({ok: false, message: "Use POST"});
       return;
@@ -313,6 +351,7 @@ export const shelveBatch = onRequest({secrets: [adminToken]}, async (req, res) =
 
 export const readyForPickup = onRequest({secrets: [adminToken]}, async (req, res) => {
   try {
+    if (blockArchivedRoute(res, "readyForPickup")) return;
     if (req.method !== "POST") {
       res.status(405).json({ok: false, message: "Use POST"});
       return;
@@ -377,6 +416,7 @@ export const readyForPickup = onRequest({secrets: [adminToken]}, async (req, res
 
 export const pickedUpAndClose = onRequest({secrets: [adminToken]}, async (req, res) => {
   try {
+    if (blockArchivedRoute(res, "pickedUpAndClose")) return;
     if (req.method !== "POST") {
       res.status(405).json({ok: false, message: "Use POST"});
       return;
@@ -473,6 +513,7 @@ export const pickedUpAndClose = onRequest({secrets: [adminToken]}, async (req, r
 
 export const continueJourney = onRequest({secrets: [adminToken]}, async (req, res) => {
   try {
+    if (blockArchivedRoute(res, "continueJourney")) return;
     if (req.method !== "POST") {
       res.status(405).json({ok: false, message: "Use POST"});
       return;
@@ -590,6 +631,7 @@ export const continueJourney = onRequest({secrets: [adminToken]}, async (req, re
 
 export const createBatch = onRequest({secrets: [adminToken]}, async (req, res) => {
   try {
+    if (blockArchivedRoute(res, "createBatch")) return;
     if (req.method !== "POST") {
       res.status(405).json({ok: false, message: "Use POST"});
       return;

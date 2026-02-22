@@ -45,6 +45,7 @@ test("redactEnvForLogs masks sensitive fields", () => {
       PGPASSWORD: "super-secret",
       GOOGLE_APPLICATION_CREDENTIALS: "C:\\\\tmp\\\\service-account.json",
       STUDIO_BRAIN_ADMIN_TOKEN: "token",
+      STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS: "root-v1=anchor-secret",
       STUDIO_BRAIN_ENABLE_WRITE_EXECUTION: "false",
       STUDIO_BRAIN_REQUIRE_APPROVAL_FOR_EXTERNAL_WRITES: "true",
     },
@@ -55,6 +56,7 @@ test("redactEnvForLogs masks sensitive fields", () => {
       assert.equal(safe.STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY, "[set]");
       assert.equal(safe.PGPASSWORD, "[redacted]");
       assert.equal(safe.GOOGLE_APPLICATION_CREDENTIALS, "[set]");
+      assert.equal(safe.STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS, "[set]");
     }
   );
 });
@@ -134,6 +136,30 @@ test("query timeout env accepts bounded numeric values", () => {
     () => {
       const env = readEnv();
       assert.equal(env.STUDIO_BRAIN_PG_QUERY_TIMEOUT_MS, 500);
+    }
+  );
+});
+
+test("signature policy requires trust anchors", () => {
+  withPatchedEnv(
+    {
+      STUDIO_BRAIN_SKILL_REQUIRE_SIGNATURE: "true",
+      STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS: "",
+    },
+    () => {
+      assert.throws(() => readEnv(), /STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS/);
+    }
+  );
+
+  withPatchedEnv(
+    {
+      STUDIO_BRAIN_SKILL_REQUIRE_SIGNATURE: "true",
+      STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS: "root-v1=anchor-secret",
+    },
+    () => {
+      const env = readEnv();
+      assert.equal(env.STUDIO_BRAIN_SKILL_REQUIRE_SIGNATURE, true);
+      assert.equal(env.STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS, "root-v1=anchor-secret");
     }
   );
 });

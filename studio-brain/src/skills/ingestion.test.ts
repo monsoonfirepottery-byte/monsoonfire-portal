@@ -16,6 +16,25 @@ const logger: Logger = {
   error: () => {},
 };
 
+type CapturedLog = {
+  level: "debug" | "info" | "warn" | "error";
+  event: string;
+  meta: Record<string, unknown> | undefined;
+};
+
+function createCapturingLogger(): { logger: Logger; rows: CapturedLog[] } {
+  const rows: CapturedLog[] = [];
+  return {
+    logger: {
+      debug: (event, meta) => rows.push({ level: "debug", event, meta }),
+      info: (event, meta) => rows.push({ level: "info", event, meta }),
+      warn: (event, meta) => rows.push({ level: "warn", event, meta }),
+      error: (event, meta) => rows.push({ level: "error", event, meta }),
+    },
+    rows,
+  };
+}
+
 type SkillFixture = {
   rootPath: string;
   name: string;
@@ -160,6 +179,7 @@ test("skill install validates checksum and optional signature verifier", async (
   });
 
   assert.equal(checksumOptional.checksumVerified, false);
+  assert.equal(checksumOptional.signatureVerified, false);
 
   const manifestPath = path.join(fixture.rootPath, fixture.name, fixture.version, "manifest.json");
   const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8")) as Record<string, unknown>;
@@ -205,6 +225,93 @@ test("skill install validates checksum and optional signature verifier", async (
     signatureVerifier: () => ({ ok: false, reason: "disallowed signature" }),
   });
   await assert.rejects(rejected, /Signature verification failed/);
+
+  await fs.rm(fixture.rootPath, { recursive: true, force: true });
+  await fs.rm(fixture.installRoot, { recursive: true, force: true });
+});
+
+test("skill install deny-defaults when signature is required but trust evidence is missing", async () => {
+  const fixture = await buildFixture();
+  const registry = createLocalRegistryClient({ rootPath: fixture.rootPath });
+  const manifestPath = path.join(fixture.rootPath, fixture.name, fixture.version, "manifest.json");
+  const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8")) as Record<string, unknown>;
+  await fs.writeFile(
+    manifestPath,
+    JSON.stringify({
+      ...manifest,
+      checksum: await checksumDirectory(path.join(fixture.rootPath, fixture.name, fixture.version)),
+    }),
+    "utf8"
+  );
+
+  const rejected = installSkill({
+    reference: `${fixture.name}@${fixture.version}`,
+    registry,
+    plan: createInstallPlan({
+      requestor: "ops",
+      allowlist: [fixture.name],
+      denylist: [],
+      requirePinned: true,
+      requireChecksum: true,
+      requireSignature: true,
+    }),
+    installRoot: fixture.installRoot,
+    logger,
+  });
+
+  await assert.rejects(rejected, /MISSING_SIGNATURE_METADATA/);
+
+  await fs.rm(fixture.rootPath, { recursive: true, force: true });
+  await fs.rm(fixture.installRoot, { recursive: true, force: true });
+});
+
+test("skill install emits verification telemetry for fallback and failure outcomes", async () => {
+  const fixture = await buildFixture();
+  const registry = createLocalRegistryClient({ rootPath: fixture.rootPath });
+  const capture = createCapturingLogger();
+
+  await installSkill({
+    reference: `${fixture.name}@${fixture.version}`,
+    registry,
+    plan: createInstallPlan({
+      requestor: "ops",
+      allowlist: [fixture.name],
+      denylist: [],
+      requirePinned: true,
+      requireChecksum: false,
+      requireSignature: false,
+    }),
+    installRoot: fixture.installRoot,
+    logger: capture.logger,
+  });
+
+  const events = capture.rows.map((row) => row.event);
+  assert.ok(events.includes("skill_install_verification_started"));
+  assert.ok(events.includes("skill_install_verification_fallback"));
+  assert.ok(events.includes("skill_install_verification_success"));
+
+  capture.rows.length = 0;
+  await assert.rejects(
+    () =>
+      installSkill({
+        reference: `${fixture.name}@${fixture.version}`,
+        registry,
+        plan: createInstallPlan({
+          requestor: "ops",
+          allowlist: [],
+          denylist: [`${fixture.name}@${fixture.version}`],
+          requirePinned: true,
+          requireChecksum: false,
+          requireSignature: false,
+        }),
+        installRoot: fixture.installRoot,
+        logger: capture.logger,
+      }),
+    /install denied/
+  );
+
+  const failureEvents = capture.rows.map((row) => row.event);
+  assert.ok(failureEvents.includes("skill_install_verification_failed"));
 
   await fs.rm(fixture.rootPath, { recursive: true, force: true });
   await fs.rm(fixture.installRoot, { recursive: true, force: true });

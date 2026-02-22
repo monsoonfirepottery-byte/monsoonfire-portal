@@ -1,6 +1,6 @@
 # P1 — Studio Brain Skill Trust Anchor Hardening
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P1
 Owner: Studio Brain Team
@@ -32,3 +32,8 @@ Complete the trust-anchor step for skill source and signature checks before broa
 - `studio-brain/docs/SKILL_SECURITY_MODEL.md:29`
 - `studio-brain/docs/SKILL_SECURITY_MODEL.md:67`
 - `studio-brain/docs/SKILL_SECURITY_MODEL.md:70`
+
+## Completion Notes (2026-02-22)
+1. Implemented trust-anchor signature verifier with explicit rejection reasons in `studio-brain/src/skills/trustAnchor.ts`.
+2. Wired deny-default signature enforcement into install flow in `studio-brain/src/skills/ingestion.ts`.
+3. Added trust anchor parser/signature verification regression coverage in `studio-brain/src/skills/trustAnchor.test.ts` and updated security model docs in `studio-brain/docs/SKILL_SECURITY_MODEL.md`.

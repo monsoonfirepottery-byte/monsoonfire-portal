@@ -1,6 +1,6 @@
 # P2 — Type Safety Review and CI Guardrails
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: QA + Functions Team
@@ -30,3 +30,8 @@ Add lightweight review and CI guardrails to keep the typed contract cleanup from
 
 ## References
 - `functions/src/index.ts`
+
+## Completion Notes (2026-02-22)
+1. Added scripted guardrail in `functions/scripts/check-type-safety-guard.mjs` to fail on new `as any` in critical files.
+2. Wired guardrail into CI/test flow via `functions/package.json` `test` script.
+3. Verified guard + compile + tests pass with `npm --prefix functions run lint` and `npm --prefix functions test`.

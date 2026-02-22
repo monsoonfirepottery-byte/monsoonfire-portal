@@ -76,7 +76,7 @@ async function readFirestoreModel(projectId, scanLimitOverride) {
     const scanLimit = scanLimitOverride ?? env.STUDIO_BRAIN_SCAN_LIMIT;
     const queryTimeoutMs = env.STUDIO_BRAIN_FIRESTORE_QUERY_TIMEOUT_MS;
     const warnings = [];
-    const [batchesRead, reservationsRead, firingsRead, reportsRead, agentRequestsRead, ordersRead] = await Promise.all([
+    const [batchesRead, reservationsRead, firingsRead, reportsRead, agentRequestsRead, ordersRead,] = await Promise.all([
         safeReadCollection({
             name: "batches",
             fields: ["state"],

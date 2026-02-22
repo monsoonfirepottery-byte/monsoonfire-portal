@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { onRequest } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import Stripe from "stripe";
@@ -14,8 +12,13 @@ import {
   adminAuth,
   enforceRateLimit,
   parseBody,
+  type RequestLike,
 } from "./shared";
 import { z } from "zod";
+import {
+  parseMaterialProductDoc,
+  parseMaterialsOrderDoc,
+} from "./firestoreConverters";
 
 const REGION = "us-central1";
 const PRODUCTS_COL = "materialsProducts";
@@ -53,7 +56,7 @@ function getStripe(): Stripe {
   return stripeClient;
 }
 
-function getPortalBaseUrl(req: any): string {
+function getPortalBaseUrl(req: RequestLike): string {
   const configured = (process.env.PORTAL_BASE_URL ?? "").trim();
   if (configured) return configured.replace(/\/+$/, "");
 
@@ -72,21 +75,6 @@ function getPortalBaseUrl(req: any): string {
 
   return "";
 }
-
-type MaterialProductDoc = {
-  name?: string;
-  description?: string | null;
-  category?: string | null;
-  sku?: string | null;
-  priceCents?: number;
-  currency?: string;
-  stripePriceId?: string | null;
-  imageUrl?: string | null;
-  trackInventory?: boolean;
-  inventoryOnHand?: number;
-  inventoryReserved?: number;
-  active?: boolean;
-};
 
 type MaterialOrderItem = {
   productId: string;
@@ -157,9 +145,9 @@ export const listMaterialsProducts = onRequest({ region: REGION, cors: true }, a
 
     const products = snap.docs
       .map((docSnap) => {
-        const data = (docSnap.data() as MaterialProductDoc) ?? {};
-        const active = data.active !== false;
-        const trackInventory = data.trackInventory === true;
+        const data = parseMaterialProductDoc(docSnap.data());
+        const active = data.active;
+        const trackInventory = data.trackInventory;
         const inventoryOnHand = trackInventory ? asInt(data.inventoryOnHand, 0) : null;
         const inventoryReserved = trackInventory ? asInt(data.inventoryReserved, 0) : null;
         const inventoryAvailable =
@@ -169,14 +157,14 @@ export const listMaterialsProducts = onRequest({ region: REGION, cors: true }, a
 
         return {
           id: docSnap.id,
-          name: safeString(data.name),
-          description: data.description ?? null,
-          category: data.category ?? null,
-          sku: data.sku ?? null,
+          name: data.name,
+          description: data.description,
+          category: data.category,
+          sku: data.sku,
           priceCents: asInt(data.priceCents, 0),
           currency: normalizeCurrency(data.currency),
-          stripePriceId: data.stripePriceId ?? null,
-          imageUrl: data.imageUrl ?? null,
+          stripePriceId: data.stripePriceId,
+          imageUrl: data.imageUrl,
           trackInventory,
           inventoryOnHand,
           inventoryReserved,
@@ -187,9 +175,10 @@ export const listMaterialsProducts = onRequest({ region: REGION, cors: true }, a
       .filter((product) => (includeInactive ? true : product.active));
 
     res.status(200).json({ ok: true, products });
-  } catch (err: any) {
+  } catch (err: unknown) {
     logger.error("listMaterialsProducts failed", err);
-    res.status(500).json({ ok: false, message: err?.message ?? String(err) });
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ ok: false, message });
   }
 });
 
@@ -457,10 +446,10 @@ export const createMaterialsCheckoutSession = onRequest(
     const pickupNotes = safeString(parsed.data.pickupNotes).trim();
 
     const itemMap = new Map<string, number>();
-    rawItems.forEach((item: any) => {
-      const productId = safeString(item?.productId).trim();
+    rawItems.forEach((item) => {
+      const productId = safeString(item.productId).trim();
       if (!productId) return;
-      const quantity = Math.max(asInt(item?.quantity, 0), 0);
+      const quantity = Math.max(asInt(item.quantity, 0), 0);
       if (quantity <= 0) return;
       itemMap.set(productId, (itemMap.get(productId) ?? 0) + quantity);
     });
@@ -476,11 +465,11 @@ export const createMaterialsCheckoutSession = onRequest(
 
     try {
       const productSnaps = await db.getAll(...productRefs);
-      const productById = new Map<string, MaterialProductDoc>();
+      const productById = new Map<string, ReturnType<typeof parseMaterialProductDoc>>();
 
       productSnaps.forEach((snap) => {
         if (!snap.exists) return;
-        productById.set(snap.id, snap.data() as MaterialProductDoc);
+        productById.set(snap.id, parseMaterialProductDoc(snap.data()));
       });
 
       const missing = Array.from(itemMap.keys()).filter((id) => !productById.has(id));
@@ -498,7 +487,11 @@ export const createMaterialsCheckoutSession = onRequest(
       let totalCents = 0;
 
       for (const [productId, quantity] of itemMap.entries()) {
-        const product = productById.get(productId) ?? {};
+        const product = productById.get(productId);
+        if (!product) {
+          res.status(404).json({ ok: false, message: `Missing products: ${productId}` });
+          return;
+        }
         if (product.active === false) {
           res.status(400).json({ ok: false, message: `Product inactive: ${productId}` });
           return;
@@ -632,7 +625,7 @@ export const createMaterialsCheckoutSession = onRequest(
         orderId,
         checkoutUrl: session.url,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error("createMaterialsCheckoutSession failed", err);
       res.status(500).json({
         ok: false,
@@ -659,9 +652,10 @@ export const stripeWebhook = onRequest({ region: REGION, timeoutSeconds: 60 }, a
   try {
     const stripe = getStripe();
     event = stripe.webhooks.constructEvent(req.rawBody, signature, webhookSecret);
-  } catch (err: any) {
+  } catch (err: unknown) {
     logger.error("stripeWebhook signature verification failed", err);
-    res.status(400).send(`Webhook Error: ${err?.message ?? "Invalid signature"}`);
+    const message = err instanceof Error ? err.message : "Invalid signature";
+    res.status(400).send(`Webhook Error: ${message}`);
     return;
   }
 
@@ -685,10 +679,10 @@ export const stripeWebhook = onRequest({ region: REGION, timeoutSeconds: 60 }, a
           return;
         }
 
-        const order = orderSnap.data() as any;
+        const order = parseMaterialsOrderDoc(orderSnap.data());
         if (order.status === "paid") return;
 
-        const items = Array.isArray(order.items) ? order.items : [];
+        const items = order.items;
         const t = nowTs();
 
         tx.set(
@@ -703,15 +697,15 @@ export const stripeWebhook = onRequest({ region: REGION, timeoutSeconds: 60 }, a
         );
 
         for (const item of items) {
-          const productId = safeString(item?.productId).trim();
-          const quantity = Math.max(asInt(item?.quantity, 0), 0);
+          const productId = safeString(item.productId).trim();
+          const quantity = Math.max(asInt(item.quantity, 0), 0);
           if (!productId || quantity <= 0) continue;
 
           const productRef = db.collection(PRODUCTS_COL).doc(productId);
           const productSnap = await tx.get(productRef);
           if (!productSnap.exists) continue;
 
-          const product = productSnap.data() as MaterialProductDoc;
+          const product = parseMaterialProductDoc(productSnap.data());
           if (product.trackInventory !== true) continue;
 
           const onHand = asInt(product.inventoryOnHand, 0);
@@ -736,4 +730,3 @@ export const stripeWebhook = onRequest({ region: REGION, timeoutSeconds: 60 }, a
 
   res.status(200).json({ ok: true });
 });
-

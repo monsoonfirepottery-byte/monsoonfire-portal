@@ -1,6 +1,6 @@
 # Epic: P1 — Mock Data Governance and Production Hygiene
 
-Status: Planned
+Status: On Hold
 Date: 2026-02-18
 Priority: P1
 Owner: Portal + Functions Team

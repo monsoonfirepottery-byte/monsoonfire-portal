@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   FacebookAuthProvider,
   GoogleAuthProvider,
@@ -372,6 +372,21 @@ function clearSessionItem(key: string): void {
 
 function readLocalBoolean(key: string, fallback = false): boolean {
   return safeReadBoolean("localStorage", key, fallback);
+}
+
+type ErrorLike = {
+  code?: unknown;
+  message?: unknown;
+};
+
+function isPermissionDeniedError(error: unknown): boolean {
+  const payload = (error ?? {}) as ErrorLike;
+  const code = typeof payload.code === "string" ? payload.code.toLowerCase() : "";
+  const message = typeof payload.message === "string" ? payload.message.toLowerCase() : "";
+  return (
+    code.includes("permission-denied") ||
+    message.includes("missing or insufficient permissions")
+  );
 }
 
 const isNavKey = (value: string): value is NavKey =>
@@ -754,6 +769,7 @@ export default function App() {
     return readStoredEnhancedMotion(defaultValue);
   });
   const [motionAutoReduced, setMotionAutoReduced] = useState(false);
+  const profileThemeSyncBlockedRef = useRef(false);
 
   const authClient = auth;
   const isAuthEmulator =
@@ -788,7 +804,7 @@ export default function App() {
   const persistThemeName = async (next: PortalThemeName): Promise<void> => {
     setThemeName(next);
     writeStoredPortalTheme(next);
-    if (!user?.uid) return;
+    if (!user?.uid || profileThemeSyncBlockedRef.current) return;
     try {
       await setDoc(
         doc(db, "profiles", user.uid),
@@ -796,12 +812,23 @@ export default function App() {
         { merge: true }
       );
     } catch (error: unknown) {
-      // Keep theme switching resilient even if profile writes are denied or transiently unavailable.
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn("[profile] uiTheme sync failed", {
-        uid: user.uid,
-        message,
-      });
+      // Keep theme switching resilient even if profile writes are denied.
+      if (isPermissionDeniedError(error)) {
+        profileThemeSyncBlockedRef.current = true;
+        if (ENV.DEV) {
+          console.warn("[profile] uiTheme sync disabled for this session (permission denied).", {
+            uid: user.uid,
+          });
+        }
+        return;
+      }
+      if (ENV.DEV) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn("[profile] uiTheme sync failed", {
+          uid: user.uid,
+          message,
+        });
+      }
     }
   };
 
@@ -845,6 +872,10 @@ export default function App() {
   useEffect(() => {
     setAvatarLoadFailed(false);
   }, [user?.photoURL]);
+
+  useEffect(() => {
+    profileThemeSyncBlockedRef.current = false;
+  }, [user?.uid]);
 
   useEffect(() => {
     if (!user) return;

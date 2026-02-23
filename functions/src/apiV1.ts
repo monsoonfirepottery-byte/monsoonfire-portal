@@ -2791,7 +2791,17 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
 
       const admin = await requireAdmin(req);
       if (!admin.ok) {
-        jsonError(res, requestId, 401, "UNAUTHORIZED", admin.message);
+        await logReservationAuditEvent({
+          req,
+          requestId,
+          action: "reservations_lookup_arrival_admin_auth",
+          resourceType: "reservation",
+          resourceId: route,
+          result: "deny",
+          reasonCode: admin.code,
+          ctx,
+        });
+        jsonError(res, requestId, admin.httpStatus, admin.code, admin.message);
         return;
       }
 
@@ -3026,7 +3036,17 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
 
       const admin = await requireAdmin(req);
       if (!admin.ok) {
-        jsonError(res, requestId, 401, "UNAUTHORIZED", admin.message);
+        await logReservationAuditEvent({
+          req,
+          requestId,
+          action: "reservations_rotate_arrival_token_admin_auth",
+          resourceType: "reservation",
+          resourceId: route,
+          result: "deny",
+          reasonCode: admin.code,
+          ctx,
+        });
+        jsonError(res, requestId, admin.httpStatus, admin.code, admin.message);
         return;
       }
 
@@ -3154,11 +3174,12 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           requestId,
           action: "reservations_update_admin_auth",
           resourceType: "reservation",
+          resourceId: route,
           result: "deny",
-          reasonCode: admin.message,
+          reasonCode: admin.code,
           ctx,
         });
-        jsonError(res, requestId, 401, "UNAUTHORIZED", admin.message);
+        jsonError(res, requestId, admin.httpStatus, admin.code, admin.message);
         return;
       }
 
@@ -3381,11 +3402,12 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           requestId,
           action: "reservations_assign_station_admin_auth",
           resourceType: "reservation",
+          resourceId: route,
           result: "deny",
-          reasonCode: admin.message,
+          reasonCode: admin.code,
           ctx,
         });
-        jsonError(res, requestId, 401, "UNAUTHORIZED", admin.message);
+        jsonError(res, requestId, admin.httpStatus, admin.code, admin.message);
         return;
       }
 

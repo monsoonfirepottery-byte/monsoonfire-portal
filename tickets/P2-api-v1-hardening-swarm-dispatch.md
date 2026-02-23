@@ -60,7 +60,7 @@ Date: 2026-02-17
   - Focus: enforce audit coverage on delegated deny branches for owner-sensitive routes and validate with contract tests.
   - Completion note: owner-mismatch + strict-delegation deny assertions now include `actorMode`, `resourceType`, `reasonCode`, and delegated metadata (`delegationId`, `delegationAudience`, `agentClientId`) assertions.
 
-- **Swarm K (Authorization Route Regression)** ✅ **In Progress**
+- **Swarm K (Authorization Route Regression)** ✅ **Done**
   - Ticket: `tickets/P2-api-v1-authorization-route-regression.md`
   - Owner: TBD
   - Focus: non-owner route-level actor-mode and delegation ordering regressions on owner-sensitive endpoints.

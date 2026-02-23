@@ -762,9 +762,12 @@ async function getAuthDecoded(req: RequestLike): Promise<DecodedIdToken | null> 
 
 export async function requireAdmin(
   req: RequestLike
-): Promise<{ ok: true; mode: "staff" | "dev" } | { ok: false; message: string }> {
+): Promise<
+  { ok: true; mode: "staff" | "dev" } |
+  { ok: false; message: string; code: "UNAUTHENTICATED" | "FORBIDDEN"; httpStatus: 401 | 403 }
+> {
   const decoded = await getAuthDecoded(req);
-  if (!decoded) return { ok: false, message: "Unauthorized" };
+  if (!decoded) return { ok: false, message: "Unauthorized", code: "UNAUTHENTICATED", httpStatus: 401 };
 
   if (isStaffFromDecoded(decoded)) {
     return { ok: true, mode: "staff" };
@@ -778,7 +781,7 @@ export async function requireAdmin(
     }
   }
 
-  return { ok: false, message: "Unauthorized" };
+  return { ok: false, message: "Unauthorized", code: "FORBIDDEN", httpStatus: 403 };
 }
 
 type RateLimitState = {

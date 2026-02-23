@@ -394,6 +394,7 @@ function makeApiV1Request(params: {
   ctx: AuthContext;
   routeFamily?: "v1" | "legacy";
   staffAuthUid?: string | null;
+  authClaims?: Record<string, unknown> | null;
 }): shared.RequestLike {
   const request: shared.RequestLike & { __routeFamily?: "legacy" } = {
     method: "POST",
@@ -409,6 +410,8 @@ function makeApiV1Request(params: {
       uid: params.staffAuthUid,
       staff: true,
     };
+  } else if (params.authClaims) {
+    request.__mfAuth = params.authClaims;
   }
   return request;
 }
@@ -2019,7 +2022,7 @@ test("reservations.update blocks invalid lifecycle transition from cancelled bac
   assert.equal(body.code, "CONFLICT");
 });
 
-test("reservations.update rejects unauthorized non-staff firebase caller", async () => {
+test("reservations.update rejects unauthenticated admin mutation attempts", async () => {
   const state: MockDbState = {
     reservations: {
       "reservation-needs-staff": {
@@ -2046,8 +2049,54 @@ test("reservations.update rejects unauthorized non-staff firebase caller", async
 
   assert.equal(response.status, 401);
   const body = response.body as Record<string, unknown>;
-  assert.equal(body.code, "UNAUTHORIZED");
+  assert.equal(body.code, "UNAUTHENTICATED");
   assert.equal(body.message, "Unauthorized");
+  const event = getAuditEvents(state).find((row) => row.action === "reservations_update_admin_auth");
+  assert.ok(event, "expected reservations_update_admin_auth audit row");
+  assert.equal(event?.resourceType, "reservation");
+  assert.equal(event?.resourceId, "/v1/reservations.update");
+  assert.equal(event?.reasonCode, "UNAUTHENTICATED");
+  assert.equal(event?.result, "deny");
+  assert.equal(event?.requestId, body.requestId);
+});
+
+test("reservations.update rejects authenticated non-staff admin mutation attempts", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-needs-staff": {
+        ownerUid: "owner-1",
+        status: "REQUESTED",
+        loadStatus: "queued",
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.update",
+      body: {
+        reservationId: "reservation-needs-staff",
+        status: "CONFIRMED",
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+      authClaims: { uid: "owner-1", staff: false },
+    }),
+  );
+
+  assert.equal(response.status, 403);
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.code, "FORBIDDEN");
+  assert.equal(body.message, "Unauthorized");
+  const event = getAuditEvents(state).find((row) => row.action === "reservations_update_admin_auth");
+  assert.ok(event, "expected reservations_update_admin_auth audit row");
+  assert.equal(event?.resourceType, "reservation");
+  assert.equal(event?.resourceId, "/v1/reservations.update");
+  assert.equal(event?.reasonCode, "FORBIDDEN");
+  assert.equal(event?.result, "deny");
+  assert.equal(event?.requestId, body.requestId);
 });
 
 test("reservations.update returns not found when reservation does not exist", async () => {
@@ -2223,6 +2272,45 @@ test("reservations.lookupArrival returns reservation summary for staff", async (
   assert.equal(outstanding.needsArrivalCheckIn, true);
 });
 
+test("reservations.lookupArrival emits admin auth deny audit metadata", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-lookup-deny": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "queued",
+        arrivalStatus: "expected",
+        arrivalToken: "MF-ARR-DENY-1234",
+        arrivalTokenLookup: "MFARRDENY1234",
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.lookupArrival",
+      body: {
+        arrivalToken: "MF-ARR-DENY-1234",
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 401);
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.code, "UNAUTHENTICATED");
+  const event = getAuditEvents(state).find((row) => row.action === "reservations_lookup_arrival_admin_auth");
+  assert.ok(event, "expected reservations_lookup_arrival_admin_auth audit row");
+  assert.equal(event?.resourceType, "reservation");
+  assert.equal(event?.resourceId, "/v1/reservations.lookupArrival");
+  assert.equal(event?.reasonCode, "UNAUTHENTICATED");
+  assert.equal(event?.result, "deny");
+  assert.equal(event?.requestId, body.requestId);
+});
+
 test("reservations.checkIn allows owner check-in by reservation id", async () => {
   const state: MockDbState = {
     reservations: {
@@ -2317,4 +2405,43 @@ test("reservations.rotateArrivalToken reissues a deterministic token for staff",
   const data = (body.data ?? {}) as Record<string, unknown>;
   assert.equal(typeof data.arrivalToken, "string");
   assert.match(String(data.arrivalToken ?? ""), /^MF-ARR-/);
+});
+
+test("reservations.rotateArrivalToken returns forbidden for authenticated non-staff callers", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-rotate-deny": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "queued",
+        arrivalTokenVersion: 2,
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.rotateArrivalToken",
+      body: {
+        reservationId: "reservation-rotate-deny",
+        reason: "manual reset",
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+      authClaims: { uid: "owner-1", staff: false },
+    }),
+  );
+
+  assert.equal(response.status, 403);
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.code, "FORBIDDEN");
+  const event = getAuditEvents(state).find((row) => row.action === "reservations_rotate_arrival_token_admin_auth");
+  assert.ok(event, "expected reservations_rotate_arrival_token_admin_auth audit row");
+  assert.equal(event?.resourceType, "reservation");
+  assert.equal(event?.resourceId, "/v1/reservations.rotateArrivalToken");
+  assert.equal(event?.reasonCode, "FORBIDDEN");
+  assert.equal(event?.result, "deny");
+  assert.equal(event?.requestId, body.requestId);
 });

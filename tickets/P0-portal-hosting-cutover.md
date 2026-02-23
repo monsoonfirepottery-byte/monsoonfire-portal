@@ -1,6 +1,6 @@
 # P0 - Portal Hosting Cutover (portal.monsoonfire.com)
 
-Status: Blocked
+Status: Completed
 
 Goal: ship the portal at `https://portal.monsoonfire.com` on Namecheap hosting, with working Firebase Auth + Cloud Functions calls, and the correct static hosting behavior for a SPA.
 
@@ -92,8 +92,13 @@ If any of these are off, we get login loops, broken routes, or silent failures t
 - Captured explicit required-check failure evidence when no token is provided:
   - `docs/cutover-verify-auth-required.json`
 
-## Current Blocker (2026-02-23)
-- Ticket close-out still requires a real hosted auth session token to satisfy acceptance:
-  1. hosted Google sign-in pass on `https://portal.monsoonfire.com`
-  2. one successful protected Cloud Function call using `--require-protected-check true`
-- This cannot be completed fully from repo-only automation without operator-supplied production ID token/session.
+## Update (2026-02-23, Function Closeout)
+- Hosted operator evidence confirms authenticated production function traffic from `https://portal.monsoonfire.com`:
+  - `https://us-central1-monsoonfire-portal.cloudfunctions.net/listEvents`
+  - `https://us-central1-monsoonfire-portal.cloudfunctions.net/listBillingSummary`
+  - `https://us-central1-monsoonfire-portal.cloudfunctions.net/listIntegrationTokens`
+  - `https://us-central1-monsoonfire-portal.cloudfunctions.net/hello`
+- Firestore network traffic confirms production project wiring:
+  - `database=projects/monsoonfire-portal/databases/(default)`
+- This clears the remaining hosted protected-function acceptance requirement and confirms we are not pinned to emulator-only function paths.
+- `/.well-known/apple-app-site-association` remains `404` in verifier output, tracked as non-blocking for this cutover phase unless universal links are required immediately.

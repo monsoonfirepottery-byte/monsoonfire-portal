@@ -9,9 +9,6 @@ const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloud
 
 const inFlightBySession = new Map<string, Promise<EnsureUserDocResult>>();
 const sessionGuards = new Set<string>();
-const retryCountBySession = new Map<string, number>();
-
-const MAX_RETRIES_PER_SESSION = 1;
 const RETRY_COOLDOWN_MS = 30_000;
 
 export type EnsureUserDocResult = {
@@ -20,6 +17,7 @@ export type EnsureUserDocResult = {
   profileCreated: boolean;
   skipped?: boolean;
   retrySuppressed?: boolean;
+  retryAfterMs?: number;
   message?: string;
   code?: string;
 };
@@ -93,27 +91,16 @@ export async function ensureUserDocForSession(args: EnsureUserDocArgs): Promise<
     // Ignore storage availability issues.
   }
 
-  const retriesUsed = retryCountBySession.get(sessionKey) ?? 0;
-  if (retriesUsed > MAX_RETRIES_PER_SESSION) {
-    return {
-      ok: false,
-      userCreated: false,
-      profileCreated: false,
-      skipped: true,
-      retrySuppressed: true,
-      code: "RETRY_SUPPRESSED",
-      message: "ensureUserDoc retry budget exhausted for this session.",
-    };
-  }
-
   const retryAfterMs = readRetryCooldown(args.uid, projectId);
   if (retryAfterMs > Date.now()) {
+    const waitMs = Math.max(0, retryAfterMs - Date.now());
     return {
       ok: false,
       userCreated: false,
       profileCreated: false,
       skipped: true,
       retrySuppressed: true,
+      retryAfterMs: waitMs,
       code: "RETRY_COOLDOWN",
       message: "ensureUserDoc retry temporarily suppressed.",
     };
@@ -157,7 +144,6 @@ export async function ensureUserDocForSession(args: EnsureUserDocArgs): Promise<
         | null;
 
       if (!resp.ok || body?.ok !== true) {
-        retryCountBySession.set(sessionKey, retriesUsed + 1);
         writeRetryCooldown(args.uid, projectId, Date.now() + RETRY_COOLDOWN_MS);
 
         return {
@@ -170,7 +156,6 @@ export async function ensureUserDocForSession(args: EnsureUserDocArgs): Promise<
       }
 
       sessionGuards.add(sessionKey);
-      retryCountBySession.delete(sessionKey);
       clearRetryCooldown(args.uid, projectId);
 
       try {
@@ -186,7 +171,6 @@ export async function ensureUserDocForSession(args: EnsureUserDocArgs): Promise<
         profileCreated: body.profileCreated === true,
       };
     } catch (error: unknown) {
-      retryCountBySession.set(sessionKey, retriesUsed + 1);
       writeRetryCooldown(args.uid, projectId, Date.now() + RETRY_COOLDOWN_MS);
       return {
         ok: false,

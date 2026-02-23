@@ -32,18 +32,27 @@
   <body>
     <script>
       (function () {
+        if (typeof window === "undefined") return;
+        const hostname = window.location.hostname;
         const isLocalhost =
-          typeof window !== "undefined" &&
-          (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-        if (!isLocalhost || !("serviceWorker" in navigator)) return;
+          hostname === "localhost" || hostname === "127.0.0.1";
+        const isPortalProd = hostname === "portal.monsoonfire.com";
+        const shouldReset = isLocalhost || isPortalProd;
+        if (!shouldReset || !("serviceWorker" in navigator)) return;
 
-        const resetKey = "mf-dev-message-sw-reset";
+        const releaseToken = "2026-02-23-cache-reset-c";
+        const resetKey = isLocalhost ? "mf-dev-message-sw-reset" : `mf-prod-cache-reset:${releaseToken}`;
         let hadReset = false;
         try {
           hadReset = window.localStorage?.getItem?.(resetKey) === "1";
         } catch {
           hadReset = false;
         }
+
+        if (isPortalProd && hadReset) {
+          return;
+        }
+
         void (async () => {
           let didCleanup = false;
           try {
@@ -67,16 +76,27 @@
             // Ignore cache cleanup failures in development.
           }
 
-          if (didCleanup && !hadReset) {
+          if (!hadReset) {
             try {
               window.localStorage?.setItem?.(resetKey, "1");
             } catch {
               // Ignore localStorage persistence failures in restricted environments.
             }
-            window.location.reload();
+
+            if (isPortalProd) {
+              const next = new URL(window.location.href);
+              next.searchParams.set("mfv", releaseToken);
+              window.location.replace(next.toString());
+              return;
+            }
+
+            if (didCleanup) {
+              window.location.reload();
+              return;
+            }
           }
 
-          if (hadReset) {
+          if (isLocalhost && hadReset) {
             try {
               window.localStorage?.removeItem?.(resetKey);
             } catch {

@@ -73,6 +73,7 @@ export default defineConfig(({ mode }) => {
     plugins.push(
       VitePWA({
         registerType: "autoUpdate",
+        selfDestroying: true,
         includeAssets: ["apple-touch-icon.png"],
         manifest: {
           name: "Monsoon Fire Portal",

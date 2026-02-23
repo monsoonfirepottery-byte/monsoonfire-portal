@@ -5,6 +5,42 @@ import App from "./App.tsx";
 import RootErrorBoundary from "./components/RootErrorBoundary.tsx";
 import RuntimeHardeningChrome from "./components/RuntimeHardeningChrome.tsx";
 
+const CHUNK_RECOVERY_KEY = "mf:chunk-reload-at";
+const CHUNK_RECOVERY_MIN_INTERVAL_MS = 15_000;
+
+function readChunkRecoveryStamp(): number {
+  try {
+    const raw = window.sessionStorage.getItem(CHUNK_RECOVERY_KEY);
+    const parsed = Number(raw ?? "0");
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+    return parsed;
+  } catch {
+    return 0;
+  }
+}
+
+function writeChunkRecoveryStamp(value: number): void {
+  try {
+    window.sessionStorage.setItem(CHUNK_RECOVERY_KEY, String(value));
+  } catch {
+    // Ignore storage write failures.
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("vite:preloadError", (event) => {
+    const now = Date.now();
+    const lastAttemptAt = readChunkRecoveryStamp();
+    if (now - lastAttemptAt < CHUNK_RECOVERY_MIN_INTERVAL_MS) {
+      return;
+    }
+
+    writeChunkRecoveryStamp(now);
+    event.preventDefault();
+    window.location.reload();
+  });
+}
+
 const root = document.getElementById("root");
 if (!root) {
   const fallback = document.createElement("div");

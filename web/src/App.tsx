@@ -1098,7 +1098,10 @@ export default function App() {
       return;
     }
     let cancelled = false;
-    void (async () => {
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let retriedTransientFailure = false;
+
+    const runEnsureUserDoc = async () => {
       const projectId = authClient.app.options.projectId ?? "monsoonfire-portal";
       const result = await ensureUserDocForSession({
         uid: user.uid,
@@ -1107,14 +1110,38 @@ export default function App() {
         projectId,
       });
       if (cancelled) return;
+
+      const isTransientFailure =
+        result.code === "TOKEN_UNAVAILABLE" ||
+        result.code === "NETWORK_ERROR" ||
+        result.code === "RETRY_COOLDOWN";
+
       if (!result.ok) {
+        if (isTransientFailure && !retriedTransientFailure) {
+          retriedTransientFailure = true;
+          setBootstrapWarning("");
+          const retryDelayMs = Math.max(1_200, Math.min(result.retryAfterMs ?? 5_000, 15_000));
+          console.info("[bootstrap] ensureUserDoc deferred retry", {
+            uid: user.uid,
+            code: result.code ?? "unknown",
+            retryDelayMs,
+          });
+          retryTimer = setTimeout(() => {
+            if (cancelled) return;
+            void runEnsureUserDoc();
+          }, retryDelayMs);
+          return;
+        }
+
         const nextWarning = result.message
           ? `Account setup check failed: ${result.message}`
           : "Account setup check failed. Some personalization may be delayed.";
         setBootstrapWarning(nextWarning);
-        console.warn("[bootstrap] ensureUserDoc failed", {
+        const log = result.retrySuppressed ? console.info : console.warn;
+        log("[bootstrap] ensureUserDoc failed", {
           uid: user.uid,
           message: result.message ?? "unknown",
+          code: result.code ?? "unknown",
         });
         return;
       }
@@ -1126,9 +1153,14 @@ export default function App() {
           profileCreated: result.profileCreated,
         });
       }
-    })();
+    };
+
+    void runEnsureUserDoc();
     return () => {
       cancelled = true;
+      if (retryTimer !== null) {
+        clearTimeout(retryTimer);
+      }
     };
   }, [authClient.app.options.projectId, user]);
 

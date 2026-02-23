@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
-import { collection, getDocs, orderBy, query } from "firebase/firestore";
-import { db } from "../firebase";
 import "./SupportView.css";
 
 export type SupportRequestCategory =
@@ -62,7 +60,6 @@ const SUPPORT_FORM_CATEGORIES: SupportRequestCategory[] = [
   "Other",
 ];
 
-const FAQ_COLLECTION = "faqItems";
 const QUICK_ANSWER_COUNT = 5;
 const FALLBACK_FAQ_ENTRIES: FaqEntry[] = [
   {
@@ -138,6 +135,18 @@ const SEARCH_SYNONYMS: Record<string, string[]> = {
   urgent: ["emergency", "safety", "same-day"],
 };
 
+type ImportMetaEnvShape = {
+  VITE_FUNCTIONS_BASE_URL?: string;
+};
+
+const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
+const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
+
+function resolveFunctionsBaseUrl(input?: string): string {
+  const raw = (input ?? ENV.VITE_FUNCTIONS_BASE_URL ?? DEFAULT_FUNCTIONS_BASE_URL).trim();
+  return raw.replace(/\/+$/, "");
+}
+
 function normalizeCategory(value: unknown): SupportRequestCategory {
   if (typeof value === "string") {
     if (value === "Classes") return "Workshops";
@@ -189,6 +198,21 @@ function buildSearchTokens(value: string) {
   return Array.from(new Set(expanded));
 }
 
+function normalizeFaqApiEntries(input: unknown): FaqEntry[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((entry, index) => {
+      if (!entry || typeof entry !== "object") return null;
+      const record = entry as Record<string, unknown>;
+      const id =
+        typeof record.id === "string" && record.id.trim().length
+          ? record.id.trim()
+          : `faq_${index + 1}`;
+      return normalizeFaqEntry(id, record);
+    })
+    .filter((entry): entry is FaqEntry => Boolean(entry));
+}
+
 export default function SupportView({ user, supportEmail, onSubmit, status, isBusy }: Props) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<SupportCategory>("All");
@@ -208,11 +232,29 @@ export default function SupportView({ user, supportEmail, onSubmit, status, isBu
       setFaqError("");
       setFaqNotice("");
       try {
-        const faqQuery = query(collection(db, FAQ_COLLECTION), orderBy("rank", "asc"));
-        const snap = await getDocs(faqQuery);
-        const rows = snap.docs
-          .map((docSnap) => normalizeFaqEntry(docSnap.id, docSnap.data() as Record<string, unknown>))
-          .filter((entry): entry is FaqEntry => Boolean(entry));
+        const idToken = await user.getIdToken();
+        if (!idToken || !idToken.trim().length) {
+          throw new Error("ID token unavailable.");
+        }
+
+        const resp = await fetch(`${resolveFunctionsBaseUrl()}/listSupportFaq`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: "{}",
+        });
+
+        const payload = (await resp.json().catch(() => null)) as
+          | { ok?: boolean; entries?: unknown; message?: string }
+          | null;
+
+        if (!resp.ok || payload?.ok !== true) {
+          throw new Error(String(payload?.message ?? `HTTP ${resp.status}`));
+        }
+
+        const rows = normalizeFaqApiEntries(payload.entries);
         if (rows.length > 0) {
           setFaqEntries(rows);
         } else {
@@ -220,8 +262,6 @@ export default function SupportView({ user, supportEmail, onSubmit, status, isBu
           setFaqNotice("Live FAQ is still being published. Showing quick-start answers for now.");
         }
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn("[support] faq load failed; using fallback answers", { message });
         setFaqEntries(FALLBACK_FAQ_ENTRIES);
         setFaqNotice("Live FAQ is temporarily unavailable. Showing quick-start answers.");
       } finally {
@@ -229,7 +269,7 @@ export default function SupportView({ user, supportEmail, onSubmit, status, isBu
       }
     };
     void load();
-  }, []);
+  }, [user]);
 
   const searchTokens = useMemo(() => buildSearchTokens(search), [search]);
 

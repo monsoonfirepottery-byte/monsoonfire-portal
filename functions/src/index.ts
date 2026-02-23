@@ -80,6 +80,7 @@ import {
   staffUpdateAgentOpsConfig,
 } from "./agentCommerce";
 export { ensureUserDoc, emulatorGrantStaffRole } from "./ensureUserDoc";
+export { listSupportFaq } from "./supportFaq";
 import { emitIntegrationEvent } from "./integrationEvents";
 import { buildContinueJourneyContract } from "./continueJourneyContract";
 import { parseBatchDoc } from "./firestoreConverters";

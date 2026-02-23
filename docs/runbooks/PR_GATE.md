@@ -56,6 +56,9 @@ For daily cutover readiness on Studiobrain, keep an always-on heartbeat record:
 npm run reliability:once
 npm run reliability:watch
 npm run reliability:report
+npm run house:status
+npm run house:watch
+npm run house:report
 ```
 
 Suggested cadence:
@@ -65,6 +68,41 @@ Suggested cadence:
 Artifacts are written to `output/stability`:
 - `heartbeat-summary.json` (latest gate result)
 - `heartbeat-events.log` (append-only event trail)
+
+When a critical check fails, reliability hub now captures an incident bundle by default:
+- `output/incidents/<timestamp>/bundle.json`
+- `output/incidents/<timestamp>/bundle.sha256`
+- `output/incidents/latest.json`
+
+## Severity Model
+
+Use these levels for operator triage:
+
+1. `green` (`pass`): all critical checks passed.
+2. `yellow` (`warn`): non-critical checks failed; continue with caution and log follow-up.
+3. `red` (`fail`): at least one critical check failed; cutover/handoff is blocked until resolved.
+
+Default triage notes:
+
+1. `yellow`:
+   - run `npm run house:report`
+   - open a ticket or add a same-day note with artifact path
+2. `red`:
+   - run `npm run incident:bundle`
+   - attach bundle path + `output/stability/heartbeat-summary.json` to triage thread
+   - do not proceed with cutover PR merge
+
+## EoD Evidence Requirement
+
+Before end-of-day handoff on active Studiobrain work, capture and reference:
+
+1. `npm run house:status`
+2. `npm run house:report`
+3. `npm run incident:bundle` only if status is `red` (or if requested by QA)
+4. Artifact paths in handoff notes:
+   - `output/stability/heartbeat-summary.json`
+   - `output/stability/heartbeat-events.log`
+   - `output/incidents/latest.json` (if generated)
 
 ## Studiobrain cutover gate
 Use this for deterministic end-to-end readiness from a fresh Studiobrain workstation:

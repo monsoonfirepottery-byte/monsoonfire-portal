@@ -1,6 +1,6 @@
 # P1 — Studiobrain Home-Host Observability and Stability Tooling
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-18
 Priority: P1
 Owner: Platform + Studio Brain + QA
@@ -83,3 +83,17 @@ Establish lightweight, stable observability tooling and procedures for everyday 
   - Emulator contract
   - Studio health status gate
   - Optional preflight/smoke probes
+- Added one-command operator aliases:
+  - `npm run house:status`
+  - `npm run house:watch`
+  - `npm run house:report`
+- Added incident bundle baseline tooling:
+  - `scripts/studiobrain-incident-bundle.mjs`
+  - `npm run incident:bundle`
+  - outputs: `output/incidents/<timestamp>/bundle.json` + checksum
+- Added lightweight ops cockpit command surface:
+  - `scripts/ops-cockpit.mjs`
+  - `npm run ops:cockpit:start|status|stop|bundle|reset`
+- Reliability hub now auto-captures an incident bundle on critical failures (can be disabled with `--no-incident-bundle`).
+- Added severity model (`green/yellow/red`) and EoD evidence requirements to:
+  - `docs/runbooks/PR_GATE.md`

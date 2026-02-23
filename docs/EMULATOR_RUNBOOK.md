@@ -132,6 +132,10 @@ Attach the generated artifact path to handoff notes so release staff can replay 
   - `npm run reliability:once` (single pass)
   - `npm run reliability:watch -- --interval-ms 60000`
   - `npm run reliability:report`
+  - `npm run house:status`
+  - `npm run house:watch`
+  - `npm run house:report`
+  - `npm run incident:bundle` (capture diagnostics when status is red)
   
 Recommended clean-state definition:
 - host contract scan passes (`npm run studio:host:contract:scan:strict`)

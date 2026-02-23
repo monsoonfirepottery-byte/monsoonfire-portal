@@ -38,7 +38,7 @@ export async function runReliabilityHub(rawArgs = process.argv.slice(2), options
   ensureDirectory(artifactDir);
 
   let sequence = getSequence(summaryPath);
-  if (args.watch || args.maxIterations > 1) {
+  if (args.watch) {
     process.stdout.write(`reliability-hub watch enabled (${(args.intervalMs / 1000).toFixed(1)}s intervals)\n`);
   }
 
@@ -108,6 +108,28 @@ export async function runReliabilityHub(rawArgs = process.argv.slice(2), options
 
     writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
     appendFileSync(eventLogPath, `${JSON.stringify(event)}\n`, "utf8");
+
+    if (criticalFail && args.captureIncidentOnCriticalFail) {
+      const incidentBundle = captureIncidentBundle({
+        summaryPath,
+        eventLogPath,
+        incidentDir: args.incidentDir,
+      });
+      if (incidentBundle) {
+        summary.incidentBundle = incidentBundle;
+        writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+        appendFileSync(
+          eventLogPath,
+          `${JSON.stringify({
+            timestamp: runAt,
+            command: commandName,
+            sequence,
+            status,
+            incidentBundle,
+          })}\n`,
+        );
+      }
+    }
 
     if (args.json) {
       process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
@@ -715,6 +737,9 @@ function printSummary(summary) {
         (check.message ? ` - ${check.message}` : "") + "\n",
     );
   });
+  if (summary.incidentBundle?.bundlePath) {
+    process.stdout.write(`  incident bundle: ${summary.incidentBundle.bundlePath}\n`);
+  }
 }
 
 function printReport(args) {
@@ -761,6 +786,8 @@ function parseArgs(argv) {
     stopOnFailure: false,
     intervalMs: DEFAULT_INTERVAL_MS,
     maxIterations: Number.POSITIVE_INFINITY,
+    captureIncidentOnCriticalFail: true,
+    incidentDir: "output/incidents",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -844,6 +871,15 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (arg === "--no-incident-bundle") {
+      parsed.captureIncidentOnCriticalFail = false;
+      continue;
+    }
+    if (arg === "--incident-dir" && argv[index + 1]) {
+      parsed.incidentDir = argv[index + 1];
+      index += 1;
+      continue;
+    }
   }
 
   if (!Number.isInteger(parsed.maxIterations) || parsed.maxIterations < 1) {
@@ -872,6 +908,54 @@ function printUsage(commandName) {
   process.stdout.write("  --include-smoke         add optional portal + website smoke checks\n");
   process.stdout.write("  --fail-on-failure       exit with non-zero if final status is not pass\n");
   process.stdout.write("  --stop-on-failure       stop watch on first non-pass status and exit non-zero\n");
+  process.stdout.write("  --no-incident-bundle    skip automatic bundle generation on critical failures\n");
+  process.stdout.write("  --incident-dir <path>   output directory for incident bundles\n");
+}
+
+function captureIncidentBundle(params) {
+  const out = spawnSync(
+    "node",
+    [
+      "./scripts/studiobrain-incident-bundle.mjs",
+      "--json",
+      "--output-dir",
+      params.incidentDir,
+      "--summary",
+      params.summaryPath,
+      "--events",
+      params.eventLogPath,
+    ],
+    {
+      cwd: REPO_ROOT,
+      stdio: "pipe",
+      encoding: "utf8",
+      timeout: 30_000,
+    },
+  );
+  if (out.error) {
+    return {
+      ok: false,
+      error: out.error.message,
+    };
+  }
+
+  const output = `${out.stdout || ""}${out.stderr || ""}`.trim();
+  const parsed = safeJson(output);
+  if (out.status !== 0) {
+    return {
+      ok: false,
+      exitCode: out.status ?? 1,
+      error: output.slice(0, 600),
+    };
+  }
+
+  return {
+    ok: true,
+    bundlePath: parsed?.bundlePath || "",
+    checksumPath: parsed?.checksumPath || "",
+    checksumSha256: parsed?.checksumSha256 || "",
+    generatedAt: parsed?.generatedAt || "",
+  };
 }
 
 if (process.argv[1] === __filename) {

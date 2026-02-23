@@ -1,6 +1,6 @@
 # P1 — Website Studio Kiln Board API Sync
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -42,3 +42,24 @@ Make website kiln status cards reflect near-live studio workflow state from the 
 ## Dependencies
 - `tickets/P1-studio-queue-position-and-eta-band.md`
 - `tickets/P1-studio-reservation-stage-timeline-and-audit.md`
+
+## Completion Evidence (2026-02-23)
+- Public-safe kiln board endpoint is implemented and exported:
+  - `functions/src/websiteKilnBoard.ts`
+  - `functions/src/index.ts` export: `websiteKilnBoard`
+- Endpoint payload includes required board fields:
+  - kiln/controller labels
+  - next planned firing
+  - readiness/pickup summary
+  - queue summary + capacity + `lastUpdated`
+- Website board loader uses API-first with static fallback on both site variants:
+  - `website/assets/js/kiln-status.js`
+  - `website/ncsitebuilder/assets/js/kiln-status.js`
+  - fallback source: `/data/kiln-status.json`
+- Deterministic validation check added:
+  - script: `scripts/check-website-kiln-board.mjs`
+  - npm command: `npm run website:kiln-board:check`
+- Runbook added with cadence, mapping, and incident recovery:
+  - `docs/runbooks/WEBSITE_KILN_BOARD_SYNC.md`
+- Source-of-truth index updated to include kiln board runbook:
+  - `docs/SOURCE_OF_TRUTH_INDEX.md`

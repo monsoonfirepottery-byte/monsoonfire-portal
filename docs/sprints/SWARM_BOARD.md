@@ -50,7 +50,7 @@ Use this board for daily execution and ticket routing.
 - Scope filters:
   - Ignore tickets associated with closed epics.
 - `P0` (`blocked`): `tickets/P0-alpha-drills-real-auth.md` (requires real production staff token path)
-- `P0` (`planned`): `tickets/P0-portal-hosting-cutover.md` (depends on DNS/hosting + signed OAuth domain completion)
+- `P0` (`blocked`): `tickets/P0-portal-hosting-cutover.md` (requires hosted sign-in + protected function verification with real production ID token)
 - `P1` (`blocked`): `tickets/P1-prod-auth-oauth-provider-credentials.md` (provider console/firebase console dependency)
 - Note: completed S12 tickets were removed from this open-ticket section during the 2026-02-22 reconciliation pass; completed security advisory remediation row was removed during the 2026-02-23 pass.
 

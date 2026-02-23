@@ -81,5 +81,6 @@ These queries use single-field indexes only (no composite index expected).
 ## Notes
 
 - Do not write `undefined` into Firestore fields.
-- The Kiln Schedule view falls back to mock data if both collections are empty.
+- The Kiln Schedule view only uses mock fallback when `VITE_DASHBOARD_USE_MOCK_KILN_DATA=true`.
+- Outside development, mock fallback additionally requires `VITE_DASHBOARD_MOCK_KILN_DATA_ACK=ALLOW_NON_DEV_MOCK_DATA`.
 - Reminders are generated as downloadable `.ics` files client-side.

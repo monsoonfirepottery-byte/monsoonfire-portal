@@ -1,6 +1,6 @@
 # P1 — Studio Reservation Status & Lifecycle API
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -55,3 +55,22 @@ Current implementation details:
 ## Dependencies
 - `tickets/P1-studio-reservation-queue-ops-ui.md` (UI controls depend on this endpoint).
 - `tickets/P1-studio-notification-sla-journey.md` (notifications depend on reliable state transitions).
+- `tickets/P1-studio-reservation-stage-timeline-and-audit.md` (timeline/audit acceptance for status transitions).
+
+## Completion Evidence (2026-02-23)
+- Server routes are wired for both route families in `functions/src/index.ts` via legacy compatibility handlers:
+  - `updateReservation` -> `/v1/reservations.update`
+  - `assignReservationStation` -> `/v1/reservations.assignStation`
+- Reservation transition contracts and API client methods are in place:
+  - `web/src/api/portalContracts.ts` (`UpdateReservationRequest/Response`, station assignment contracts)
+  - `web/src/api/portalApi.ts` (`updateReservation`, `assignReservationStation`)
+- `KilnLaunchView` now uses server transition API for load-status changes (no direct Firestore status mutation path in this view):
+  - `web/src/views/KilnLaunchView.tsx`
+- Coverage now includes all required updateReservation cases:
+  - valid transition
+  - invalid transition
+  - unauthorized caller
+  - missing document
+  - file: `functions/src/apiV1.test.ts`
+- Validation run:
+  - `npm --prefix functions run build && node --test "functions/lib/apiV1.test.js"` (pass)

@@ -22,6 +22,20 @@ Owner: (TBD)
 5. **Studio notes** – read-only block showing staff context from `profileDoc.studioNotes`.
 6. **Kiln preferences & reminders** – highlight `preferredKilns` plus callouts for requested kiln preferences, membership upgrades, or reminder draft (e.g., ICS download for membership renewals / kiln slots) once that feature is fleshed out.
 7. **Support & quick actions** – CTA to open Support FAQ or request new service, plus evidence of outstanding reservations.
+8. **Reservation history & notification status** – show latest reservation status, queue/ETA band, last transition timestamp, and latest notification delivery state for reservation-related updates.
+
+## Reservation history & notification status (detail)
+- Profile should surface the most recent reservation timeline context:
+  - `status` + `loadStatus`
+  - `queuePositionHint` / `estimatedWindow` when present
+  - latest `stageStatus.at` + concise reason copy.
+- Notification status panel should include:
+  - latest reservation notification type sent (confirm/delay/ready reminder)
+  - delivery state summary (sent/pending/failed where available)
+  - next recommended user action copy.
+- Fallback behavior for legacy rows missing queue/timeline fields:
+  - show stable copy (`Status updated recently`, `ETA pending`)
+  - never show blank state.
 
 ## UX & resiliency
 - Keep forms guarded (disable submit while saving, show `Saving...` statuses, and display errors from Firestore clearly).

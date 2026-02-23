@@ -1,6 +1,6 @@
 # P1 — Reservation Stage Timeline and Audit Trail
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -43,3 +43,26 @@ Create a secure, auditable reservation timeline surface that tracks every lifecy
 ## Dependencies
 - `tickets/P1-studio-reservation-status-api.md`
 - `tickets/P1-studio-reservation-queue-ops-ui.md`
+
+## Completion Evidence (2026-02-23)
+- Transition guard + schema validation are implemented on `reservations.update`:
+  - allowed status transitions, load-status handling, and no-op guard
+  - stable error envelope for transition failures and missing records
+  - file: `functions/src/apiV1.ts`
+- Every accepted reservation mutation writes timeline metadata:
+  - `stageHistory` appends transition rows with `actorUid`, `actorRole`, `from/to`, `reason`, `notes`, `at`
+  - `stageStatus` snapshot updated in the same mutation path
+  - file: `functions/src/apiV1.ts`
+- API surface is typed and wired:
+  - contracts: `web/src/api/portalContracts.ts`
+  - client runtime: `web/src/api/portalApi.ts`
+- UI surfaces now consume timeline/state data:
+  - reservation cards show last status update time and latest stage note
+  - staff actions mutate through `PortalApi.updateReservation`
+  - kiln load transitions use the same update route path
+  - files: `web/src/views/ReservationsView.tsx`, `web/src/views/KilnLaunchView.tsx`
+- Schema docs include timeline semantics and mutation contract details:
+  - file: `docs/SCHEMA_RESERVATIONS.md`
+- Validation coverage:
+  - parity + transition blocking + auth + not-found for `reservations.update`
+  - file: `functions/src/apiV1.test.ts`

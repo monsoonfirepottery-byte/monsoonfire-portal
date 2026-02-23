@@ -1,6 +1,6 @@
 # P1 — Reservation Queue & Staff Workflow UI Controls
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -43,3 +43,34 @@ The repo’s own policy schema and docs describe scheduling windows and access w
 ## Dependencies
 - `tickets/P1-studio-reservation-status-api.md`
 - `tickets/P1-studio-notification-sla-journey.md`
+
+## Completion Evidence (2026-02-23)
+- Staff-facing status controls now exist in the reservation list UI with confirmation step + undo window:
+  - `CONFIRMED`, `WAITLISTED`, `CANCELLED`
+  - quick staff notes tied to each status mutation
+  - file: `web/src/views/ReservationsView.tsx`
+- Reservation status writes now flow through server API only:
+  - `portalApi.updateReservation(...)` in UI actions
+  - no ad-hoc direct Firestore status mutation in the reservation list flow
+  - file: `web/src/views/ReservationsView.tsx`
+- Queue context surfaced in list cards:
+  - queue position
+  - readiness band
+  - kiln capacity pressure indicator
+  - file: `web/src/views/ReservationsView.tsx`
+- Richer state surfaced:
+  - last status update timestamp
+  - latest status note snippet from stage history
+  - pickup/return add-on tags
+  - file: `web/src/views/ReservationsView.tsx`
+- Staff list filters added:
+  - `WAITLISTED`, `UPCOMING`, `READY`, `STAFF_HOLD`
+  - file: `web/src/views/ReservationsView.tsx`
+- Permissions parity messaging added when staff tools are unavailable due to auth/rules state.
+- Supporting type normalization and defaults updated:
+  - `web/src/lib/normalizers/reservations.ts`
+  - `web/src/views/ReservationsView.test.ts`
+- Validation runs:
+  - `npm --prefix web run test:run -- src/views/ReservationsView.test.ts` (pass)
+  - `npm --prefix web run build` (pass)
+  - `cd web && npx eslint src/views/ReservationsView.tsx src/lib/normalizers/reservations.ts src/views/ReservationsView.test.ts --max-warnings=0` (pass)

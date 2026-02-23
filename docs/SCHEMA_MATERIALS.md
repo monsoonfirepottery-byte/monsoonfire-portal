@@ -55,3 +55,7 @@ The seed script writes two sample products into `materialsProducts` for emulator
 ## Notes
 - Firestore rejects `undefined`; omit fields or use `null`.
 - Products are currently created via the `seedMaterialsCatalog` admin function, the seed script, or manual writes.
+- `seedMaterialsCatalog` now requires explicit `force=true` in every request.
+- Non-dev seeding is blocked by default unless both are true:
+  - environment flag `ALLOW_NON_DEV_SAMPLE_SEEDING=true`
+  - request acknowledgement `acknowledge=ALLOW_NON_DEV_SAMPLE_SEEDING` (or `NON_DEV_SAMPLE_SEEDING_ACK` override)

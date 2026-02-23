@@ -1,6 +1,6 @@
 # P1 — Reservation Queue Position and ETA Band Visibility
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -42,3 +42,24 @@ Expose fair, explainable queue placement and ETA windows with clear confidence b
 - `tickets/P1-studio-reservation-stage-timeline-and-audit.md`
 - `tickets/P1-studio-reservation-status-api.md`
 - `tickets/P1-studio-reservation-queue-ops-ui.md`
+
+## Completion Evidence (2026-02-23)
+- Server-side deterministic queue hints now computed per station in v1 reservation mutation flows:
+  - recompute on `reservations.create`, `reservations.update`, and `reservations.assignStation`
+  - writes `queuePositionHint` + `estimatedWindow { currentStart, currentEnd, updatedAt, slaState, confidence }`
+  - file: `functions/src/apiV1.ts`
+- Queue ranking rules are deterministic and include:
+  - status priority, rush/whole-kiln priority, no-show penalty, estimated size, createdAt, id tiebreaker
+  - file: `functions/src/apiV1.ts`
+- Reservation cards now show queue context + ETA/readiness band in client/staff UI:
+  - queue position (server hint first, client fallback)
+  - readiness/ETA band with confidence where available
+  - file: `web/src/views/ReservationsView.tsx`
+- Reservation model includes queue hint/ETA fields for UI normalization:
+  - file: `web/src/lib/normalizers/reservations.ts`
+- Schema docs updated to explicitly include `estimatedWindow.confidence` and queue ranking semantics:
+  - file: `docs/SCHEMA_RESERVATIONS.md`
+- Validation runs:
+  - `npm --prefix functions run build && node --test "functions/lib/apiV1.test.js"` (pass)
+  - `npm --prefix web run test:run -- src/views/ReservationsView.test.ts` (pass)
+  - `npm --prefix web run build` (pass)

@@ -92,8 +92,11 @@ It also tracks public agent-readable discovery surfaces for website and portal.
 - `docs/runbooks/AGENT_SURFACES.md`
 - `docs/runbooks/JOURNEY_AND_STRIPE_TESTING_PLAN.md`
 - `docs/runbooks/JOURNEY_TESTING_RUNBOOK.md`
+- `docs/runbooks/MOCK_DATA_GOVERNANCE.md`
 - `docs/runbooks/PR_GATE.md`
 - `docs/runbooks/PORTAL_PLAYWRIGHT_SMOKE.md`
+- `docs/runbooks/STUDIO_RESERVATION_OPERATIONS_PLAYBOOK.md`
+- `docs/runbooks/WEBSITE_KILN_BOARD_SYNC.md`
 - `docs/runbooks/WEBSITE_PLAYWRIGHT_SMOKE.md`
 - `docs/IOS_RUNBOOK.md`
 

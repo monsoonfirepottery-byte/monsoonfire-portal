@@ -1,6 +1,6 @@
 # P2 — Station-Aware Reservation Routing and Capacity Controls
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -47,3 +47,31 @@ Add a station-aware queue model so staff and members both get accurate, enforcea
 - `tickets/P1-studio-reservation-status-api.md`
 - `tickets/P1-studio-queue-position-and-eta-band.md`
 - `tickets/P1-studio-reservation-stage-timeline-and-audit.md`
+
+## Completion Evidence (2026-02-23)
+- Station-aware schema fields are defined and documented:
+  - `assignedStationId`, `requiredResources`, `queueClass`, `queueLaneHint`
+  - file: `docs/SCHEMA_RESERVATIONS.md`
+- Server-side station assignment constraints implemented:
+  - known station validation
+  - capacity conflict guard (`STATION_CAPACITY_EXCEEDED` -> conflict)
+  - deterministic station-aware queue hint recompute
+  - file: `functions/src/apiV1.ts`
+- UI support added in reservation staff controls:
+  - quick station assignment action
+  - lane input
+  - per-station capacity pressure badges
+  - lane + capacity filters
+  - file: `web/src/views/ReservationsView.tsx`
+- Lightweight station availability payload used by website/staff surfaces:
+  - public board endpoint aggregates per-station queue/capacity
+  - file: `functions/src/websiteKilnBoard.ts`
+- Station-level scenario added to automated guidance and tests:
+  - automated test: over-capacity station assignment conflict
+    - `functions/src/apiV1.test.ts`
+  - ops guidance: station capacity scenario in QA path
+    - `docs/runbooks/STUDIO_RESERVATION_OPERATIONS_PLAYBOOK.md`
+- Validation runs:
+  - `npm --prefix functions run build && node --test "functions/lib/apiV1.test.js"` (pass)
+  - `npm --prefix web run test:run -- src/views/ReservationsView.test.ts` (pass)
+  - `npm --prefix web run build` (pass)

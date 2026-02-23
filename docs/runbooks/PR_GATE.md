@@ -23,6 +23,7 @@ Default `npm run pr:gate` runs these required checks:
 15. Studio Brain status gate (`npm run studio:check:safe -- --json --no-evidence --no-host-scan`)
 16. Well-known validation (`npm run well-known:validate:strict`) (warning-level)
 17. Backup freshness check (`npm run backup:verify:freshness`) (warning-level)
+18. Reservation schema docs sync check (`npm run docs:reservations:check`) to ensure reservation fields remain documented in `docs/SCHEMA_RESERVATIONS.md`.
 
 `source:truth:index:strict` now treats local `~/.codex/config.toml` MCP-key gaps as advisory by default so PR gate remains deterministic across machines.
 To enforce local alias presence intentionally, run:

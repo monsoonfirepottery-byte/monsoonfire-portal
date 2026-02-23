@@ -1,6 +1,6 @@
 # P2 — Studio Reservation Operations Documentation & Playbook
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -53,3 +53,22 @@ This creates uneven behavior:
 - `tickets/P1-studio-reservation-status-api.md`
 - `tickets/P1-studio-notification-sla-journey.md`
 - `tickets/P2-studio-storage-hold-automation.md`
+
+## Completion Evidence (2026-02-23)
+- Reservation schema doc refreshed with lifecycle graph, queue/ETA semantics, and migration fallback notes:
+  - `docs/SCHEMA_RESERVATIONS.md`
+- Operational playbook added with:
+  - queue triage/cancellation/waitlist rules
+  - ETA shift escalation
+  - customer expectation copy
+  - QA end-to-end run path (intake -> confirm -> delay -> ready reminder -> storage escalation)
+  - `docs/runbooks/STUDIO_RESERVATION_OPERATIONS_PLAYBOOK.md`
+- Profile planning doc now includes reservation-history + notification-status section:
+  - `docs/PLAN_PROFILE.md`
+- Release-checklist artifact updated with reservation doc sync requirement:
+  - `docs/runbooks/PR_GATE.md`
+- Deterministic documentation check added:
+  - command: `npm run docs:reservations:check`
+  - script: `scripts/check-reservation-doc-sync.mjs`
+- Source-of-truth index updated with new runbooks:
+  - `docs/SOURCE_OF_TRUTH_INDEX.md`

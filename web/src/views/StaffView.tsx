@@ -311,6 +311,14 @@ function maxMs(...values: number[]): number {
   return values.reduce((acc, value) => (value > acc ? value : acc), 0);
 }
 
+function sanitizeLastRequest(request: LastRequest | null): LastRequest | null {
+  if (!request) return null;
+  return {
+    ...request,
+    payload: (request as { payloadRedacted?: unknown }).payloadRedacted ?? request.payload,
+  };
+}
+
 export default function StaffView({
   user,
   isStaff,
@@ -3598,8 +3606,8 @@ const lendingContent = (
           </div>
           <div className="staff-column">
             <div className="staff-subtitle">Last GitHub/Functions call</div>
-            <pre>{safeJsonStringify(lastReq)}</pre>
-            <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastReq))}>Copy call JSON</button>
+            <pre>{safeJsonStringify(sanitizeLastRequest(lastReq))}</pre>
+            <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(sanitizeLastRequest(lastReq)))}>Copy call JSON</button>
             <div className="staff-mini">curl hint</div>
             <pre>{lastReq?.curlExample ?? "(none)"}</pre>
             <button className="btn btn-ghost" onClick={() => void copy(lastReq?.curlExample ?? "")} disabled={!lastReq?.curlExample}>Copy curl hint</button>

@@ -32,6 +32,19 @@ export function safeStorageGetItem(area: StorageArea, key: string): string | nul
   return safeAction(area, (storage) => storage.getItem(key)) ?? null;
 }
 
+export function safeStorageReadJson<T>(area: StorageArea, key: string, fallback: T | null = null): T | null {
+  const raw = safeStorageGetItem(area, key);
+  if (!raw) return fallback;
+
+  try {
+    const parsed = JSON.parse(raw) as T;
+    return parsed;
+  } catch {
+    safeStorageRemoveItem(area, key);
+    return fallback;
+  }
+}
+
 export function safeStorageSetItem(area: StorageArea, key: string, value: string): void {
   safeAction(area, (storage) => {
     storage.setItem(key, value);

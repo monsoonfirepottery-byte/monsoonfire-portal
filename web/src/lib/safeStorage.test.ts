@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { safeReadBoolean, safeStorageGetItem, safeStorageRemoveItem, safeStorageSetItem } from "./safeStorage";
+import { safeReadBoolean, safeStorageGetItem, safeStorageReadJson, safeStorageRemoveItem, safeStorageSetItem } from "./safeStorage";
 
 type TestStorage = {
   store: Map<string, string>;
@@ -100,5 +100,47 @@ describe("safeStorage", () => {
 
     expect(() => safeStorageSetItem("localStorage", "mf_fail", "value")).not.toThrow();
     expect(() => safeStorageRemoveItem("localStorage", "mf_fail")).not.toThrow();
+  });
+
+  it("returns parsed JSON when storage value is valid", () => {
+    const testStorage = makeStorage();
+    const storage = testStorage as unknown as Storage;
+    storage.clear = () => {
+      testStorage.store.clear();
+    };
+    storage.key = () => null;
+    Object.defineProperty(storage, "length", {
+      configurable: true,
+      get: () => testStorage.store.size,
+    });
+    makeWindow(storage);
+
+    const valueKey = "mf_json_key";
+    safeStorageSetItem("localStorage", valueKey, JSON.stringify({ feature: "hardening" }));
+
+    const parsed = safeStorageReadJson<{ feature?: string }>("localStorage", valueKey);
+    expect(parsed).toEqual({ feature: "hardening" });
+    expect(typeof parsed?.feature).toBe("string");
+  });
+
+  it("returns fallback and clears key when JSON is malformed", () => {
+    const testStorage = makeStorage();
+    const storage = testStorage as unknown as Storage;
+    storage.clear = () => {
+      testStorage.store.clear();
+    };
+    storage.key = () => null;
+    Object.defineProperty(storage, "length", {
+      configurable: true,
+      get: () => testStorage.store.size,
+    });
+    makeWindow(storage);
+
+    const valueKey = "mf_json_bad";
+    testStorage.store.set(valueKey, "{ malformed json");
+
+    const parsed = safeStorageReadJson<{ feature?: string }>("localStorage", valueKey, null);
+    expect(parsed).toBeNull();
+    expect(testStorage.store.has(valueKey)).toBe(false);
   });
 });

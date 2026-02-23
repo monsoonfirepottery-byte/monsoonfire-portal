@@ -28,7 +28,7 @@ import { toVoidHandler } from "../utils/toVoidHandler";
 import { shortId, track } from "../lib/analytics";
 import RevealCard from "../components/RevealCard";
 import { useUiSettings } from "../context/UiSettingsContext";
-import { safeStorageGetItem, safeStorageRemoveItem } from "../lib/safeStorage";
+import { safeStorageReadJson, safeStorageRemoveItem } from "../lib/safeStorage";
 import "./ReservationsView.css";
 
 type StaffUserOption = {
@@ -500,28 +500,28 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const raw = safeStorageGetItem("sessionStorage", CHECKIN_PREFILL_KEY);
-    if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw) as {
-        linkedBatchId?: string;
-        firingType?: string;
-        pieceCode?: string;
-      };
-      if (parsed.linkedBatchId) {
-        setLinkedBatchId(parsed.linkedBatchId);
-      }
-      if (parsed.firingType === "bisque" || parsed.firingType === "glaze" || parsed.firingType === "other") {
-        setFiringType(parsed.firingType);
-      }
-      if (parsed.pieceCode) {
-        setPrefillNote(`Prefilled from ${parsed.pieceCode}.`);
-      }
-    } catch {
+    const parsed = safeStorageReadJson<{
+      linkedBatchId?: string;
+      firingType?: string;
+      pieceCode?: string;
+    }>("sessionStorage", CHECKIN_PREFILL_KEY, null);
+    if (!parsed) {
       setPrefillNote(null);
-    } finally {
       safeStorageRemoveItem("sessionStorage", CHECKIN_PREFILL_KEY);
+      return;
     }
+    if (parsed.linkedBatchId) {
+      setLinkedBatchId(parsed.linkedBatchId);
+    }
+    if (parsed.firingType === "bisque" || parsed.firingType === "glaze" || parsed.firingType === "other") {
+      setFiringType(parsed.firingType);
+    }
+    if (parsed.pieceCode) {
+      setPrefillNote(`Prefilled from ${parsed.pieceCode}.`);
+    } else {
+      setPrefillNote(null);
+    }
+    safeStorageRemoveItem("sessionStorage", CHECKIN_PREFILL_KEY);
   }, []);
 
   useEffect(() => {

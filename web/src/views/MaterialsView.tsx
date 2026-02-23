@@ -11,7 +11,7 @@ import { createFunctionsClient } from "../api/functionsClient";
 import { db } from "../firebase";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import { formatCents } from "../utils/format";
-import { safeStorageGetItem, safeStorageSetItem } from "../lib/safeStorage";
+import { safeStorageReadJson, safeStorageSetItem } from "../lib/safeStorage";
 import {
   checkoutErrorMessage,
   isConnectivityError,
@@ -126,16 +126,10 @@ function isAuthTokenError(error: unknown): boolean {
 }
 
 function readCachedCatalog(): CachedCatalog | null {
-  try {
-    const raw = safeStorageGetItem("localStorage", CATALOG_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as CachedCatalog;
-    if (!parsed?.cachedAt || !Array.isArray(parsed.products)) return null;
-    if (Date.now() - parsed.cachedAt > CATALOG_CACHE_TTL_MS) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
+  const parsed = safeStorageReadJson<CachedCatalog>("localStorage", CATALOG_CACHE_KEY, null);
+  if (!parsed || !parsed.cachedAt || !Array.isArray(parsed.products)) return null;
+  if (Date.now() - parsed.cachedAt > CATALOG_CACHE_TTL_MS) return null;
+  return parsed;
 }
 
 function writeCachedCatalog(products: MaterialProduct[]) {

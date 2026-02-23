@@ -125,7 +125,7 @@ Portal and website features handle healthy workflows well, but failure behavior 
 14. [x] Preserve and harden offline banner/retry experience. (Owner: Platform)
 15. [x] Keep top-level `ErrorBoundary` recovery path with safe-reset option and message path. (Owner: QA)
 16. [x] Add optional developer panel for request-level debug only in safe modes. (Owner: Platform)
-17. [ ] Add explicit localStorage/sessionStorage corruption fallback for critical settings. (Owner: QA)
+17. [x] Add explicit localStorage/sessionStorage corruption fallback for critical settings. (Owner: QA)
 18. [ ] Add chunk-load/runtime recovery path for website and portal where possible. (Owner: Platform)
 19. [ ] Add one end-to-end smoke case covering fail-open/restore path for offline->online. (Owner: QA)
 20. [ ] Publish a reliability evidence checklist (manual + deterministic checks). (Owner: QA)

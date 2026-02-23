@@ -36,7 +36,7 @@ import {
   trackedSetDoc,
   trackedUpdateDoc,
 } from "../lib/firestoreTelemetry";
-import { safeStorageGetItem, safeStorageSetItem } from "../lib/safeStorage";
+import { safeStorageReadJson, safeStorageSetItem } from "../lib/safeStorage";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./GlazeBoardView.css";
 
@@ -713,15 +713,10 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    try {
-      const raw = safeStorageGetItem("localStorage", FAVORITES_KEY);
-      if (!raw) return;
-      const parsed: unknown = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        setFavoriteComboIds(parsed.filter((id) => Number.isFinite(id)) as number[]);
-      }
-    } catch {
-      // Ignore malformed favorites.
+    const parsed = safeStorageReadJson<unknown[]>("localStorage", FAVORITES_KEY, []);
+    const safeIds = (parsed ?? []).filter((id): id is number => typeof id === "number");
+    if (safeIds.length > 0) {
+      setFavoriteComboIds(safeIds);
     }
   }, []);
 

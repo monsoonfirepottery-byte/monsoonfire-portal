@@ -18,6 +18,7 @@ const parseArgs = () => {
     host: null,
     networkProfile: null,
     skipNetworkCheck: false,
+    skipContractCheck: false,
   };
 
   for (let i = 0; i < args.length; i += 1) {
@@ -81,12 +82,17 @@ const parseArgs = () => {
       options.skipNetworkCheck = true;
       continue;
     }
+
+    if (arg === "--no-contract-check") {
+      options.skipContractCheck = true;
+      continue;
+    }
   }
 
   return options;
 };
 
-const loadDotenv = (filePath) => {
+const loadDotenv = (filePath, { overwrite = true } = {}) => {
   if (!existsSync(filePath)) {
     console.log(`No ${filePath} found. Using current process environment.`);
     return;
@@ -111,15 +117,20 @@ const loadDotenv = (filePath) => {
       return;
     }
 
+    if (!overwrite && typeof process.env[key] === "string" && process.env[key].trim().length > 0) {
+      return;
+    }
     process.env[key] = value;
   });
 };
 
-const { only, project, config, host, networkProfile, skipNetworkCheck } = parseArgs();
-const envFile = resolve(repoRoot, "functions", ".env.local");
+const { only, project, config, host, networkProfile, skipNetworkCheck, skipContractCheck } = parseArgs();
+const functionsEnvFile = resolve(repoRoot, "functions", ".env.local");
+const webEnvFile = resolve(repoRoot, "web", ".env.local");
 const resolvedConfig = resolve(repoRoot, config);
 
-loadDotenv(envFile);
+loadDotenv(functionsEnvFile, { overwrite: false });
+loadDotenv(webEnvFile, { overwrite: false });
 
 const network = resolveStudioBrainNetworkProfile({
   env: {
@@ -129,6 +140,10 @@ const network = resolveStudioBrainNetworkProfile({
 });
 const emulatorHost = host || network.emulatorHost;
 const warnings = network.warnings || [];
+const contractCheckEnv = {
+  ...process.env,
+  ...(networkProfile ? { STUDIO_BRAIN_NETWORK_PROFILE: networkProfile } : {}),
+};
 
 if (warnings.length > 0) {
   for (const warning of warnings) {
@@ -136,19 +151,30 @@ if (warnings.length > 0) {
   }
 }
 
-if (!skipNetworkCheck) {
-  const networkCheckEnv = {
-    ...process.env,
-    ...(networkProfile ? { STUDIO_BRAIN_NETWORK_PROFILE: networkProfile } : {}),
-  };
+if (!skipContractCheck) {
+  const contractCheck = spawnSync(
+    "node",
+    ["./scripts/validate-emulator-contract.mjs", "--strict"],
+    {
+      cwd: repoRoot,
+      stdio: "inherit",
+      env: contractCheckEnv,
+    },
+  );
+  if (contractCheck.status !== 0) {
+    console.error("Aborting emulator startup: emulator contract check failed.");
+    process.exit(contractCheck.status || 1);
+  }
+}
 
+if (!skipNetworkCheck) {
   const networkCheck = spawnSync(
     "node",
     ["./scripts/studiobrain-network-check.mjs", "--gate", "--write-state"],
     {
       cwd: repoRoot,
       stdio: "inherit",
-      env: networkCheckEnv,
+      env: contractCheckEnv,
     },
   );
   if (networkCheck.status !== 0) {

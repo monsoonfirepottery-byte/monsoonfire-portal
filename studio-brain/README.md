@@ -122,6 +122,36 @@ Notes:
 - Run dependency check before starting:
   - `npm run preflight`
 
+## Observability Bundle (Optional)
+- Start optional local observability profile + heartbeat snapshot:
+  - `npm run studio:observability:up`
+- Check current observability state:
+  - `npm run studio:observability:status`
+- Stop observability profile:
+  - `npm run studio:observability:down`
+- Reset local observability artifacts (destructive; requires acknowledgement):
+  - `npm run studio:observability:reset -- --yes-i-know --reason "maintenance-window"`
+
+## Local Proxy Bundle (Optional)
+- Start optional reverse proxy profile:
+  - `npm run studio:proxy:up`
+- Check proxy status and route map:
+  - `npm run studio:proxy:status`
+- Stop proxy profile:
+  - `npm run studio:proxy:down`
+
+Equivalent `studio-brain` local targets:
+- `make ops-up`
+- `make ops-status`
+- `make ops-down`
+- `make ops-reset`
+
+Primary artifacts:
+- `output/stability/heartbeat-summary.json`
+- `output/stability/heartbeat-events.log`
+- `output/incidents/latest.json` (when critical failures occur)
+- `output/otel/traces.jsonl` (OTEL collector file export)
+
 ## Soak / Perf
 - Start service: `npm start`
 - In another shell: `npm run soak`

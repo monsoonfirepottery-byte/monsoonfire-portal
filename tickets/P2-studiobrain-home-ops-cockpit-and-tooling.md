@@ -1,6 +1,6 @@
 # P2 — Home Ops Cockpit and Tooling for Studiobrain Stability
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Studio Brain
@@ -114,3 +114,25 @@ The cockpit should feel like a “studio ops desk”:
 - Ops cockpit compose profile and scripts are documented and runnable from a clean environment.
 - Dashboard + heartbeat + diagnostics artifacts are present and linked from the onboarding runbook.
 - The team can recover from one induced service fault using documented cockpit-driven recovery steps.
+
+## Work completed
+
+- Added lightweight cockpit command surface:
+  - `scripts/ops-cockpit.mjs`
+  - `npm run ops:cockpit:start|status|stop|bundle|reset`
+- Connected cockpit to existing reliability + incident flows:
+  - reads `output/stability/heartbeat-summary.json`
+  - bundles via `npm run incident:bundle`
+  - persists state in `output/ops-cockpit/`
+- Added runbook doc:
+  - `studio-brain/docs/OPS_DASHBOARD.md`
+- Updated setup docs:
+  - `studio-brain/docs/SWARM_BACKEND_SETUP.md` (command matrix + references)
+  - `docs/EMULATOR_RUNBOOK.md` and `docs/runbooks/PR_GATE.md` (ops/reliability artifact guidance)
+
+## Evidence
+
+1. `npm run ops:cockpit:start -- --json`
+2. `npm run ops:cockpit:status -- --json`
+3. `npm run ops:cockpit:bundle -- --json`
+4. `npm run ops:cockpit:stop -- --json`

@@ -1,6 +1,6 @@
 # P2 — Studio Brain Platform Reference Automation and Exemption Governance
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform
@@ -51,3 +51,8 @@ Turn the platform-reference audit into a repeatable workflow that surfaces drift
 - Automation is in place and documented.
 - Remediation workflow is no longer ad-hoc.
 - Non-essential Windows/wuff references are either removed or deliberately justified.
+
+## Evidence
+
+1. `npm run audit:platform:refs:strict`
+2. `npm run pr:gate -- --json` (platform reference drift step)

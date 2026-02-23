@@ -17,17 +17,19 @@ const DEFAULT_LOG_LIMIT_MB = parseMegabytes(process.env.STABILITY_GUARDRAILS_CON
 const DEFAULT_OUTPUT_LIMIT_MB = parseMegabytes(process.env.STABILITY_GUARDRAILS_OUTPUT_LIMIT_MB) || 512;
 const DEFAULT_CLEANUP_DAYS = Number(process.env.STABILITY_GUARDRAILS_CLEANUP_DAYS || "14");
 
-const args = parseArgs(process.argv.slice(2));
-const report = runGuardrails(args);
+if (isDirectExecution()) {
+  const args = parseArgs(process.argv.slice(2));
+  const report = runGuardrails(args);
 
-if (args.json) {
-  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-} else {
-  printTextReport(report);
-}
+  if (args.json) {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  } else {
+    printTextReport(report);
+  }
 
-if (report.status === "fail") {
-  process.exitCode = 1;
+  if (report.status === "fail") {
+    process.exitCode = 1;
+  }
 }
 
 function runGuardrails(options) {
@@ -651,6 +653,13 @@ function printTextReport(report) {
 
 function relativePath(path) {
   return path.startsWith(`${REPO_ROOT}/`) ? `.${path.substring(REPO_ROOT.length)}` : path;
+}
+
+function isDirectExecution() {
+  if (!process.argv[1]) {
+    return false;
+  }
+  return resolve(process.argv[1]) === __filename;
 }
 
 export { runGuardrails };

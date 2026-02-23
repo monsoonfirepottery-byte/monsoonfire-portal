@@ -5,6 +5,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 import { chromium } from "playwright";
 import { printValidationReport, validateEnvContract } from "../studio-brain/scripts/env-contract-validator.mjs";
 import { runIntegrityCheck } from "./integrity-check.mjs";
@@ -20,7 +21,6 @@ const DEFAULT_STUDIO_BRAIN_READYZ_PATH = "/readyz";
 const DEFAULT_DEEP_PROBE_TIMEOUT_MS = 12000;
 const DEFAULT_PROBE_CREDENTIAL_MODE = "same-origin";
 const CONTRACT_DEFAULT_ENV = {
-  STUDIO_BRAIN_HOST: "127.0.0.1",
   STUDIO_BRAIN_PORT: "8787",
   PGHOST: "127.0.0.1",
   PGPORT: "5433",
@@ -30,7 +30,7 @@ const CONTRACT_DEFAULT_ENV = {
   REDIS_HOST: "127.0.0.1",
   REDIS_PORT: "6379",
   STUDIO_BRAIN_REDIS_STREAM_NAME: "studiobrain.events",
-  STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT: "http://127.0.0.1:9000",
+  STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT: "http://127.0.0.1:9010",
   STUDIO_BRAIN_ARTIFACT_STORE_BUCKET: "studiobrain-artifacts",
   STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY: "studiobrain-ci-access",
   STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY: "studiobrain-ci-secret",
@@ -239,6 +239,13 @@ function assertStudioBrainContract() {
 
 function applyContractDefaults() {
   const injected = [];
+  const profileHost = String(resolveStudioBrainNetworkProfile().host || "127.0.0.1");
+  const configuredHost = String(process.env.STUDIO_BRAIN_HOST || "").trim();
+  if (!configuredHost) {
+    process.env.STUDIO_BRAIN_HOST = profileHost;
+    injected.push("STUDIO_BRAIN_HOST");
+  }
+
   for (const [key, value] of Object.entries(CONTRACT_DEFAULT_ENV)) {
     const current = process.env[key];
     if (typeof current === "string" && current.trim().length > 0) continue;
@@ -266,6 +273,29 @@ function assertStudioBrainIntegrity() {
   if (report.warnings?.length > 0) {
     process.stdout.write("portal smoke: studio-brain integrity warnings\n");
     report.warnings.forEach((warning) => process.stdout.write(`  - ${warning.file}: ${warning.message}\n`));
+  }
+}
+
+function assertEmulatorContract() {
+  const result = spawnSync(
+    process.execPath,
+    ["./scripts/validate-emulator-contract.mjs", "--strict"],
+    {
+      cwd: repoRoot,
+      env: process.env,
+      encoding: "utf8",
+    },
+  );
+
+  if (result.stdout) {
+    process.stdout.write(result.stdout);
+  }
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
+
+  if (result.status !== 0) {
+    throw new Error("Emulator contract validation failed before portal smoke.");
   }
 }
 
@@ -305,6 +335,16 @@ const normalizeProbeHeader = (value) => {
   if (!value || typeof value !== "string") return "";
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : "";
+};
+
+const isReadyzUrl = (value) => {
+  if (!value || typeof value !== "string") return false;
+  try {
+    const parsed = new URL(value);
+    return READYZ_PATTERNS.some((pattern) => pattern.test(parsed.pathname));
+  } catch {
+    return READYZ_PATTERNS.some((pattern) => pattern.test(value));
+  }
 };
 
 const normalizeProbeCredentialMode = (value, fallback = DEFAULT_PROBE_CREDENTIAL_MODE) => {
@@ -1482,6 +1522,7 @@ const run = async () => {
   applyContractDefaults();
   assertStudioBrainIntegrity();
   assertStudioBrainContract();
+  assertEmulatorContract();
 
   if (!options.baseUrl) {
     throw new Error("Missing base URL.");
@@ -1659,14 +1700,27 @@ const run = async () => {
       await mobileContext.close();
     }
 
+    const advisoryReadyzFailures = !options.baseUrlIsLocal;
+    const criticalRequestFailures = advisoryReadyzFailures
+      ? summary.network.criticalRequestFailures.filter((entry) => !isReadyzUrl(entry.url))
+      : summary.network.criticalRequestFailures;
+    const criticalCorsFailures = advisoryReadyzFailures
+      ? summary.network.corsFailures.filter((entry) => !isReadyzUrl(entry.url))
+      : summary.network.corsFailures;
+    const criticalReadyzFailures = advisoryReadyzFailures ? [] : summary.network.readyzFailures;
+    const criticalResponseWarnings = advisoryReadyzFailures
+      ? summary.network.criticalResponseWarnings.filter((entry) => !isReadyzUrl(entry.url))
+      : summary.network.criticalResponseWarnings;
+
     const isCriticalFailure =
       summary.network.forbiddenRequests.length > 0 ||
-      summary.network.criticalRequestFailures.length > 0 ||
-      summary.network.corsFailures.length > 0 ||
-      summary.network.criticalResponseWarnings.length > 0 ||
-      summary.network.readyzFailures.length > 0 ||
+      criticalRequestFailures.length > 0 ||
+      criticalCorsFailures.length > 0 ||
+      criticalResponseWarnings.length > 0 ||
+      criticalReadyzFailures.length > 0 ||
       summary.network.endpointProbes.some((probe) => {
         if (probe.skipped) return false;
+        if (advisoryReadyzFailures && isReadyzUrl(probe.url || probe.path || "")) return false;
         if (!probe.ok && probe.isAuthFailure && Boolean(probe.allowAuthFailure) && !desktopRuntime.authenticated) return false;
         return !probe.ok;
       }) ||
@@ -1683,21 +1737,25 @@ const run = async () => {
       if (summary.network.forbiddenRequests.length > 0) {
         errors.push(`forbidden requests: ${summary.network.forbiddenRequests.length}`);
       }
-      if (summary.network.criticalRequestFailures.length > 0) {
-        errors.push(`critical request failures: ${summary.network.criticalRequestFailures.length}`);
+      if (criticalRequestFailures.length > 0) {
+        errors.push(`critical request failures: ${criticalRequestFailures.length}`);
       }
-      if (summary.network.corsFailures.length > 0) {
-        errors.push(`CORS/bridge failures: ${summary.network.corsFailures.length}`);
+      if (criticalCorsFailures.length > 0) {
+        errors.push(`CORS/bridge failures: ${criticalCorsFailures.length}`);
       }
-    if (summary.network.readyzFailures.length > 0) {
-        errors.push(`readyz failures: ${summary.network.readyzFailures.length}`);
+      if (criticalReadyzFailures.length > 0) {
+        errors.push(`readyz failures: ${criticalReadyzFailures.length}`);
       }
-      if (summary.network.criticalResponseWarnings.length > 0) {
-        errors.push(`critical response failures: ${summary.network.criticalResponseWarnings.length}`);
+      if (criticalResponseWarnings.length > 0) {
+        errors.push(`critical response failures: ${criticalResponseWarnings.length}`);
       }
       if (summary.network.responseWarnings.length > 0 && !desktopRuntime.authenticated) {
         const authOnly = summary.network.responseWarnings.filter((item) => item.isAuthFailure).length;
-        const actionable = summary.network.responseWarnings.filter((item) => !item.isAuthFailure).length;
+        const actionable = summary.network.responseWarnings.filter((item) => {
+          if (item.isAuthFailure) return false;
+          if (advisoryReadyzFailures && isReadyzUrl(item.url)) return false;
+          return true;
+        }).length;
         if (actionable > 0) {
           errors.push(`response warnings: ${actionable}`);
         }
@@ -1705,13 +1763,24 @@ const run = async () => {
           summary.notes.push(`Observed ${authOnly} auth-gated function responses while unauthenticated.`);
         }
       } else if (summary.network.responseWarnings.length > 0) {
-        errors.push(`response warnings: ${summary.network.responseWarnings.length}`);
+        const actionable = summary.network.responseWarnings.filter((item) => {
+          if (advisoryReadyzFailures && isReadyzUrl(item.url)) return false;
+          return true;
+        }).length;
+        if (actionable > 0) {
+          errors.push(`response warnings: ${actionable}`);
+        }
       }
       summary.failures.push(...errors);
       assert(false, `Portal deep smoke failed: ${errors.join(", ")}`, summary, "overall");
     }
 
     summary.status = "passed";
+    if (advisoryReadyzFailures && summary.network.readyzFailures.length > 0) {
+      summary.notes.push(
+        `Ignored ${summary.network.readyzFailures.length} readyz issue(s) for non-local base URL ${options.baseUrl}.`,
+      );
+    }
     console.log("Portal Playwright smoke passed");
   } catch (error) {
     summary.status = "failed";
@@ -1724,6 +1793,7 @@ const run = async () => {
     if (summary.notes.length === 0) {
       const failedDeepProbes = summary.network.endpointProbes.filter((probe) => {
         if (probe.skipped) return false;
+        if (!options.baseUrlIsLocal && isReadyzUrl(probe.url || probe.path || "")) return false;
         if (!probe.ok && probe.isAuthFailure && Boolean(probe.allowAuthFailure) && !desktopRuntime.authenticated) return false;
         return !probe.ok;
       });

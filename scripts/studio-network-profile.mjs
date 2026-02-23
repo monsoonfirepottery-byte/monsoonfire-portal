@@ -6,7 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const DEFAULT_PROFILE_PATH = resolve(__dirname, "../studio-brain/.env.network.profile");
 
-const PROFILE_ALIASES = {
+const PROFILE_CONFIG = {
   local: {
     defaultHost: "127.0.0.1",
     allowedHosts: ["127.0.0.1", "localhost"],
@@ -27,6 +27,15 @@ const PROFILE_ALIASES = {
     allowedHosts: ["127.0.0.1", "localhost"],
     label: "CI/local ephemeral",
   },
+};
+
+const PROFILE_NORMALIZATION = {
+  local: "local",
+  "lan-static": "lan-static",
+  "lan-dhcp": "lan-dhcp",
+  "dhcp-host": "lan-dhcp",
+  dhcp: "lan-dhcp",
+  ci: "ci",
 };
 
 function parseEnvFile(filePath) {
@@ -71,16 +80,20 @@ function normalizePort(value, fallback) {
 
 function normalizeProfile(value) {
   const normalized = String(value || "").trim().toLowerCase();
-  return PROFILE_ALIASES[normalized] ? normalized : "local";
+  return PROFILE_NORMALIZATION[normalized] || "local";
 }
 
-function resolveHostSource({ requestedHost, profile, staticIp, requestedProfile, baseHost, networkFileHostFallback }) {
+function resolveHostSource({ requestedHost, profile, staticIp, dhcpHost, requestedProfile, baseHost, networkFileHostFallback }) {
   if (requestedHost) {
     return `env STUDIO_BRAIN_HOST = ${requestedHost}`;
   }
 
   if (profile === "lan-static" && staticIp) {
     return `STUDIO_BRAIN_STATIC_IP = ${staticIp}`;
+  }
+
+  if (profile === "lan-dhcp" && dhcpHost && baseHost === dhcpHost) {
+    return `STUDIO_BRAIN_DHCP_HOST = ${dhcpHost}`;
   }
 
   if (profile !== "local" && baseHost === networkFileHostFallback) {
@@ -111,8 +124,8 @@ export function resolveStudioBrainNetworkProfile(options = {}) {
     env.STUDIO_BRAIN_NETWORK_PROFILE || networkFile.STUDIO_BRAIN_NETWORK_PROFILE || "local",
   ).trim().toLowerCase();
   const normalizedProfile = normalizeProfile(requestedProfile);
-  const normalizedConfig = PROFILE_ALIASES[normalizedProfile];
-  const hasUnknownProfile = requestedProfile && requestedProfile !== normalizedProfile;
+  const normalizedConfig = PROFILE_CONFIG[normalizedProfile];
+  const hasUnknownProfile = requestedProfile && !PROFILE_NORMALIZATION[requestedProfile];
 
   const port = normalizePort(
     env.STUDIO_BRAIN_PORT ?? networkFile.STUDIO_BRAIN_PORT,
@@ -125,9 +138,12 @@ export function resolveStudioBrainNetworkProfile(options = {}) {
   const localHost = String(
     env.STUDIO_BRAIN_LOCAL_HOST || networkFile.STUDIO_BRAIN_LOCAL_HOST || "127.0.0.1",
   ).trim();
+  const dhcpHost = String(
+    env.STUDIO_BRAIN_DHCP_HOST || networkFile.STUDIO_BRAIN_DHCP_HOST || "",
+  ).trim();
 
   const profileHost = String(
-    env.STUDIO_BRAIN_LAN_HOST || networkFile.STUDIO_BRAIN_LAN_HOST || normalizedConfig.defaultHost,
+    (normalizedProfile === "lan-dhcp" && dhcpHost) ? dhcpHost : (env.STUDIO_BRAIN_LAN_HOST || networkFile.STUDIO_BRAIN_LAN_HOST || normalizedConfig.defaultHost),
   ).trim();
   const networkFileHostFallback = normalizedProfile === "local" ? localHost : profileHost;
   const resolvedHost = requestedHost
@@ -157,6 +173,7 @@ export function resolveStudioBrainNetworkProfile(options = {}) {
     requestedHost,
     profile: normalizedProfile,
     staticIp,
+    dhcpHost,
     requestedProfile: profileName,
     baseHost,
     networkFileHostFallback,
@@ -183,10 +200,6 @@ export function resolveStudioBrainNetworkProfile(options = {}) {
   if ((normalizedProfile === "lan-static" || normalizedProfile === "lan-dhcp") && isLoopback(baseHost)) {
     warnings.push(`Profile ${normalizedProfile} resolves to loopback host (${baseHost}); confirm this is intentional.`);
   }
-  if (!env.STUDIO_BRAIN_HOST && !networkFile.STUDIO_BRAIN_HOST) {
-    warnings.push(`STUDIO_BRAIN_HOST derived from profile: ${baseHost}`);
-  }
-
   return {
     requestedProfile: profileName,
     profile: normalizedProfile,

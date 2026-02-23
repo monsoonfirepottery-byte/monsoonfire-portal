@@ -19,6 +19,7 @@ const incidentsRoot = resolve(REPO_ROOT, args.outputDir);
 const bundleDir = resolve(incidentsRoot, bundleId);
 const bundlePath = resolve(bundleDir, "bundle.json");
 const checksumPath = resolve(bundleDir, "bundle.sha256");
+const archivePath = resolve(bundleDir, "bundle.tar.gz");
 const latestPath = resolve(incidentsRoot, "latest.json");
 
 mkdirSync(bundleDir, { recursive: true });
@@ -76,6 +77,11 @@ const checksum = createHash("sha256").update(serialized).digest("hex");
 
 writeFileSync(bundlePath, serialized, "utf8");
 writeFileSync(checksumPath, `${checksum}  bundle.json\n`, "utf8");
+const archive = createArchive({
+  bundleDir,
+  archivePath,
+  files: ["bundle.json", "bundle.sha256"],
+});
 writeFileSync(
   latestPath,
   `${JSON.stringify(
@@ -83,8 +89,11 @@ writeFileSync(
       generatedAt: bundleTimestamp,
       bundlePath: relativePath(bundlePath),
       checksumPath: relativePath(checksumPath),
+      archivePath: archive.ok ? relativePath(archivePath) : "",
       checksumSha256: checksum,
       status: heartbeatSummary?.status || "unknown",
+      archiveStatus: archive.ok ? "created" : "failed",
+      archiveError: archive.ok ? "" : archive.error,
     },
     null,
     2,
@@ -93,10 +102,12 @@ writeFileSync(
 );
 
 const output = {
-  status: "pass",
+  status: archive.ok ? "pass" : "warn",
   generatedAt: bundleTimestamp,
   bundlePath: relativePath(bundlePath),
   checksumPath: relativePath(checksumPath),
+  archivePath: archive.ok ? relativePath(archivePath) : "",
+  archiveError: archive.ok ? "" : archive.error,
   checksumSha256: checksum,
   heartbeatStatus: heartbeatSummary?.status || "unknown",
   diagnostics: {
@@ -112,6 +123,11 @@ if (args.json) {
   process.stdout.write("incident bundle: PASS\n");
   process.stdout.write(`  bundle: ${output.bundlePath}\n`);
   process.stdout.write(`  checksum: ${output.checksumPath}\n`);
+  if (output.archivePath) {
+    process.stdout.write(`  archive: ${output.archivePath}\n`);
+  } else if (output.archiveError) {
+    process.stdout.write(`  archive: unavailable (${output.archiveError})\n`);
+  }
   process.stdout.write(`  heartbeat status: ${output.heartbeatStatus}\n`);
 }
 
@@ -298,6 +314,22 @@ function runGit(args) {
   }
   const body = `${out.stdout || ""}${out.stderr || ""}`.trim();
   return body.slice(0, 4000);
+}
+
+function createArchive({ bundleDir, archivePath, files }) {
+  const result = spawnSync("tar", ["-czf", archivePath, "-C", bundleDir, ...files], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+  if (result.error) {
+    return { ok: false, error: result.error.message };
+  }
+  if (result.status !== 0) {
+    const combined = `${result.stdout || ""}${result.stderr || ""}`.trim();
+    return { ok: false, error: combined || `tar exited with code ${result.status}` };
+  }
+  return { ok: true, error: "" };
 }
 
 function collectArtifactReferences() {

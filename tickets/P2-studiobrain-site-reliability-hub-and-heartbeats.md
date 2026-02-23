@@ -1,6 +1,6 @@
 # P2 — Site Reliability Hub and Heartbeat Checks for Stable Home Residency
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + QA
@@ -74,6 +74,16 @@ Create a "Reliability Hub" that runs scheduled heartbeat checks and publishes a 
 - Expanded check surface to include required infra integrity validation:
   - `npm run integrity:check -- --strict --json`
 - Kept smoke probes optional by default; they can be enabled with `--include-preflight` or `--include-smoke`.
+- Added additional deterministic checks in heartbeat loop:
+  - runtime contract docs freshness (`npm run docs:contract:check`)
+  - backup freshness (`npm run backup:verify:freshness`)
+  - stack routing contract snapshot (`npm run studio:stack:profile:snapshot:strict`)
+- Verified pass-mode heartbeat with static LAN profile (`192.168.1.226`) and no critical failures.
+
+## Evidence
+
+1. `npm run reliability:once -- --json`
+2. `npm run reliability:report -- --json`
 
 ## Dependencies
 

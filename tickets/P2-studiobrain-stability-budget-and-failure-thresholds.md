@@ -1,6 +1,6 @@
 # P2 — Stability Budget and Failure Thresholds for Long-Running Loops
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Operations + Platform
@@ -55,3 +55,24 @@ Define explicit stability budgets and thresholds that force escalation before si
 ## Definition of Done
 
 - Failure behavior has defined upper bounds and operator escalation behavior.
+
+## Work completed
+
+- Added rolling stability-budget evaluation to `scripts/reliability-hub.mjs`:
+  - tracks failures, critical failures, and slow runs over a configurable window
+  - emits `stabilityBudget` in heartbeat summary/report payloads
+  - adds explicit `stability budget window` check entry in reliability results
+- Added budget thresholds with env/config support:
+  - `STUDIO_BRAIN_BUDGET_WINDOW_MINUTES`
+  - `STUDIO_BRAIN_BUDGET_MAX_FAILURES_PER_HOUR`
+  - `STUDIO_BRAIN_BUDGET_MAX_CRITICAL_FAILURES_PER_HOUR`
+  - `STUDIO_BRAIN_BUDGET_MAX_SLOW_RUNS_PER_HOUR`
+  - `STUDIO_BRAIN_BUDGET_MAX_RUN_DURATION_MS`
+- Added watch-loop auto-pause behavior on budget failure (toggle: `--no-auto-pause-budget`).
+- Updated operations tuning docs with budget defaults and escalation usage:
+  - `studio-brain/docs/OPS_TUNING.md`
+
+## Evidence
+
+1. `npm run reliability:once -- --json` (includes `stabilityBudget` and budget check line item)
+2. `npm run reliability:watch -- --interval-ms 60000` (auto-pause behavior on budget exceed)

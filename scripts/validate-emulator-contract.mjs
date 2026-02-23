@@ -1,8 +1,17 @@
 #!/usr/bin/env node
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
 
 const { argv, env, exit } = process;
 const args = new Set(argv.slice(2));
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+const envSource = resolveEnvSource();
+if (envSource.path) {
+  loadEnvFile(envSource.path);
+}
 
 const strictMode = args.has("--strict");
 const jsonMode = args.has("--json");
@@ -47,6 +56,51 @@ function addFinding(level, category, field, message, value = "") {
     return;
   }
   warnings.push(message);
+}
+
+function resolveEnvSource() {
+  const explicit = process.env.EMULATOR_CONTRACT_ENV_FILE;
+  if (explicit) {
+    const path = resolve(repoRoot, explicit);
+    return {
+      path: existsSync(path) ? path : null,
+      label: explicit,
+      source: "explicit",
+    };
+  }
+
+  const preferred = resolve(repoRoot, "web/.env.local");
+  if (existsSync(preferred)) {
+    return { path: preferred, label: "web/.env.local", source: "default" };
+  }
+
+  const fallback = resolve(repoRoot, "web/.env.local.example");
+  if (existsSync(fallback)) {
+    return { path: fallback, label: "web/.env.local.example", source: "fallback" };
+  }
+
+  return {
+    path: null,
+    label: "(process-env-only)",
+    source: "process-env-only",
+  };
+}
+
+function loadEnvFile(path) {
+  const text = readFileSync(path, "utf8");
+  text.split(/\r?\n/).forEach((rawLine) => {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) return;
+    const index = line.indexOf("=");
+    if (index === -1) return;
+    const key = line.slice(0, index).trim();
+    const value = line.slice(index + 1).trim();
+    if (!key) return;
+    if (typeof process.env[key] === "string" && process.env[key].trim().length > 0) {
+      return;
+    }
+    process.env[key] = value;
+  });
 }
 
 function normalize(value) {
@@ -218,7 +272,7 @@ function parseHost(raw, field, { required = false } = {}) {
 function parseFunctionsBaseUrl(raw) {
   const value = normalize(raw);
   if (!value) {
-    return;
+    return null;
   }
 
   let parsed;
@@ -235,14 +289,14 @@ function parseFunctionsBaseUrl(raw) {
         `VITE_FUNCTIONS_BASE_URL is not a valid URL: ${value}`,
         value,
       );
-      return;
+      return null;
     }
   }
 
   const host = normalizeHost(parsed.hostname);
   if (!host) {
     addFinding("error", "functions-base-url", "VITE_FUNCTIONS_BASE_URL", "VITE_FUNCTIONS_BASE_URL is missing a hostname.", value);
-    return;
+    return null;
   }
 
   if (isRemoteFlow && isLoopbackHost(host)) {
@@ -253,7 +307,12 @@ function parseFunctionsBaseUrl(raw) {
       `VITE_FUNCTIONS_BASE_URL is loopback (${host}) while profile is ${profile}; use a reachable host for remote profiles.`,
       host,
     );
-    return;
+    return {
+      host,
+      pathname: parsed.pathname,
+      isCloudFunctionsHost: host.endsWith(".cloudfunctions.net"),
+      value,
+    };
   }
 
   if (!isRemoteFlow && !isLoopbackHost(host) && profileHost && host !== profileHost) {
@@ -265,6 +324,13 @@ function parseFunctionsBaseUrl(raw) {
       host,
     );
   }
+
+  return {
+    host,
+    pathname: parsed.pathname,
+    isCloudFunctionsHost: host.endsWith(".cloudfunctions.net"),
+    value,
+  };
 }
 
 function parseTogglePlan() {
@@ -370,6 +436,8 @@ function validateToggleAlignment() {
 }
 
 function validateFunctions() {
+  let parsedBaseUrl = null;
+
   if (checks.useAuthEmulator || checks.useFirestoreEmulator) {
     checks.functionsBaseUrlConfigured = Boolean(env.VITE_FUNCTIONS_BASE_URL);
     if (!env.VITE_FUNCTIONS_BASE_URL) {
@@ -381,6 +449,42 @@ function validateFunctions() {
       );
       return;
     }
+
+    parsedBaseUrl = parseFunctionsBaseUrl(env.VITE_FUNCTIONS_BASE_URL);
+    if (!parsedBaseUrl) {
+      return;
+    }
+
+    if (parsedBaseUrl.isCloudFunctionsHost) {
+      addFinding(
+        "error",
+        "functions-base-url",
+        "VITE_FUNCTIONS_BASE_URL",
+        "Emulator mode is enabled but VITE_FUNCTIONS_BASE_URL points to cloudfunctions.net.",
+        parsedBaseUrl.value,
+      );
+    }
+
+    if (!isRemoteFlow && !isLoopbackHost(parsedBaseUrl.host)) {
+      addFinding(
+        "error",
+        "functions-base-url",
+        "VITE_FUNCTIONS_BASE_URL",
+        "Local emulator profile requires loopback VITE_FUNCTIONS_BASE_URL host.",
+        parsedBaseUrl.value,
+      );
+    }
+
+    if (!parsedBaseUrl.pathname.includes("/us-central1")) {
+      addFinding(
+        "warning",
+        "functions-base-url",
+        "VITE_FUNCTIONS_BASE_URL",
+        "Functions emulator URL usually includes `/us-central1`. Verify endpoint path contract.",
+        parsedBaseUrl.value,
+      );
+    }
+    return;
   }
 
   if (env.VITE_FUNCTIONS_BASE_URL) {
@@ -396,6 +500,7 @@ const hardFail = errors.length > 0 || (strictMode && warnings.length > 0);
 const payload = {
   status: hardFail ? "fail" : "pass",
   strict: strictMode,
+  envSource: envSource.label,
   profile,
   requestedProfile: network.requestedProfile,
   resolvedHost: profileHost,
@@ -409,6 +514,7 @@ if (jsonMode) {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
 } else {
   process.stdout.write(`emulator contract: ${payload.status.toUpperCase()}\n`);
+  process.stdout.write(`  env source: ${payload.envSource}\n`);
   process.stdout.write(`  profile: ${payload.profile} (${payload.requestedProfile})\n`);
   process.stdout.write(`  resolvedHost: ${payload.resolvedHost}\n`);
   process.stdout.write("  checks:\n");

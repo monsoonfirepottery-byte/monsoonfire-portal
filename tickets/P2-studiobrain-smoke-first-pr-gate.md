@@ -1,6 +1,6 @@
 # P2 — Smoke-First PR Gate for Studiobrain Cutover Changes
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: QA + Platform
@@ -64,3 +64,12 @@ Implement a deterministic smoke-first gate that runs contract, host, and depende
 - Added `npm run pr:gate` script in root `package.json`.
 - Added machine-readable artifact output to `artifacts/pr-gate.json` (overridable via `--artifact`).
 - Added runbook at `docs/runbooks/PR_GATE.md`.
+- Added runtime docs freshness and backup freshness checks:
+  - `npm run docs:contract:check`
+  - `npm run backup:verify:freshness`
+- Added required-entrypoint guard coverage for newly introduced tooling scripts.
+
+## Evidence
+
+1. `npm run pr:gate -- --json` (gate executes deterministic steps; current failure source is external source-index/MCP drift outside this ticket scope)
+2. `npm run reliability:once -- --json`

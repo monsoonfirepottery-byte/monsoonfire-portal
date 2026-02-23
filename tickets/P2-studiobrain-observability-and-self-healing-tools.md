@@ -1,6 +1,6 @@
 # P2 — Observability and Self-Healing Tools for Studiobrain Host
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Studio Brain
@@ -63,3 +63,27 @@ Add an optional, composable monitoring profile that gives Studio Brain operators
 - Alerts/health windows are mapped to concrete runbook responses.
 - Failure signals are reproducible by local fault injection (`start-stop` and endpoint fault tests).
 
+## Work completed
+
+- Added composable observability command surface:
+  - `scripts/studiobrain-observability-bundle.mjs`
+  - `npm run studio:observability:up|down|status|reset`
+  - `make ops-up|ops-down|ops-status|ops-reset` (`studio-brain/Makefile`)
+- Added optional OTEL collector profile wiring in `studio-brain/docker-compose.yml` and collector config in `studio-brain/docker/otel-collector.yaml`.
+- Wired OTEL output artifacts to local storage (`output/otel/traces.jsonl`) and validated collector startup.
+- Added routing contract evidence integration into reliability checks:
+  - `studio:stack:profile:snapshot:strict`
+  - `reliability:once` now includes stack routing contract.
+- Updated operational docs:
+  - `studio-brain/README.md`
+  - `studio-brain/docs/SWARM_BACKEND_SETUP.md`
+  - `studio-brain/docs/OPS_TUNING.md`
+  - `docs/metrics/STUDIO_OS_V3_SCORECARD.md`
+
+## Evidence
+
+1. `npm run studio:observability:up -- --json`
+2. `npm run studio:observability:status -- --json`
+3. `npm run studio:observability:down -- --json`
+4. `npm run studio:observability:reset -- --json`
+5. `npm run reliability:once -- --json`

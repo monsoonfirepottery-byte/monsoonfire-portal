@@ -1,6 +1,31 @@
 # P2 — Local Reverse Proxy and DNS for Stable Studiobrain Identity
 
-Status: Planned
+Status: Completed
+
+## Work completed
+
+- Added optional reverse-proxy compose profile at `studio-brain/docker-compose.proxy.yml` without changing direct-host defaults.
+- Added route-level proxy contract in `studio-brain/docker/Caddyfile.proxy`:
+  - `/studio/*` -> Studio Brain (`:8787`)
+  - `/functions/*` -> Functions emulator (`:5001`)
+  - `/portal/*` -> Portal Vite dev server (`:5173`)
+  - `/healthz` -> proxy health response
+- Added one-command proxy lifecycle script `scripts/studiobrain-proxy-bundle.mjs` with `up`, `status`, and `down` subcommands (including `--json` output).
+- Added operator command surfaces:
+  - `npm run studio:proxy:up|status|down`
+  - `make proxy-up|proxy-status|proxy-down`
+- Documented route map and optional LAN/static-host usage in:
+  - `studio-brain/docs/SWARM_BACKEND_SETUP.md`
+  - `docs/EMULATOR_RUNBOOK.md`
+  - `studio-brain/README.md`
+
+## Evidence
+
+1. `npm run studio:proxy:up -- --json`
+2. `npm run studio:proxy:status -- --json`
+3. `curl -fsS http://127.0.0.1:8788/healthz`
+4. `npm run studio:proxy:down -- --json`
+
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Studio Brain

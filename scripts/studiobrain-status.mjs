@@ -18,6 +18,26 @@ import { resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, "..");
+const STUDIO_BRAIN_ROOT = resolve(REPO_ROOT, "studio-brain");
+const NETWORK_PROFILE_ENV_KEYS = [
+  "STUDIO_BRAIN_NETWORK_PROFILE",
+  "STUDIO_BRAIN_LOCAL_HOST",
+  "STUDIO_BRAIN_LAN_HOST",
+  "STUDIO_BRAIN_DHCP_HOST",
+  "STUDIO_BRAIN_STATIC_IP",
+  "STUDIO_BRAIN_HOST",
+  "STUDIO_BRAIN_ALLOWED_HOSTS",
+];
+
+const preExistingEnvKeys = new Set(Object.keys(process.env));
+const envSource = resolveStatusEnvSource();
+if (envSource.path) {
+  loadEnvFile(envSource.path);
+  if (envSource.source === "fallback") {
+    clearFallbackNetworkProfileOverrides(preExistingEnvKeys);
+    hydrateFallbackNetworkHost();
+  }
+}
 
 const args = parseArgs(process.argv.slice(2));
 const network = resolveStudioBrainNetworkProfile();
@@ -41,6 +61,7 @@ const checks = buildChecks({
   endpointResults,
   snapshotReport,
   evidence,
+  includeEvidenceChecks: !args.skipEvidence,
 });
   const hardFailCount = checks.filter((entry) => entry.severity === "error" && !entry.ok).length;
   const warningCount = checks.filter((entry) => entry.severity === "warning" && !entry.ok).length;
@@ -49,6 +70,10 @@ const checks = buildChecks({
 const payload = {
   status,
   timestamp: new Date().toISOString(),
+  environment: {
+    envSource: envSource.label,
+    envMode: envSource.source,
+  },
   profile: {
     requestedProfile: network.requestedProfile,
     profile: network.profile,
@@ -120,6 +145,84 @@ if (args.artifactPath) {
 
 if ((args.gate && status === "fail") || (args.requireSafe && status !== "pass")) {
   process.exit(1);
+}
+
+function resolveStatusEnvSource() {
+  const explicit = process.env.STUDIO_BRAIN_ENV_FILE;
+  if (explicit) {
+    const explicitPath = resolve(STUDIO_BRAIN_ROOT, explicit);
+    return {
+      path: existsSync(explicitPath) ? explicitPath : null,
+      label: formatEnvPath(explicitPath),
+      source: "explicit",
+    };
+  }
+
+  const preferredPath = resolve(STUDIO_BRAIN_ROOT, ".env");
+  if (existsSync(preferredPath)) {
+    return { path: preferredPath, label: ".env", source: "default" };
+  }
+
+  const fallbackPath = resolve(STUDIO_BRAIN_ROOT, ".env.example");
+  if (existsSync(fallbackPath)) {
+    return { path: fallbackPath, label: ".env.example", source: "fallback" };
+  }
+
+  return { path: null, label: "(process-env-only)", source: "process-env-only" };
+}
+
+function loadEnvFile(filePath) {
+  const text = readFileSync(filePath, "utf8");
+  const lines = text.split(/\r?\n/);
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+    const key = trimmed.slice(0, separatorIndex).trim();
+    if (!key || Object.prototype.hasOwnProperty.call(process.env, key)) {
+      continue;
+    }
+    let value = trimmed.slice(separatorIndex + 1).trim();
+    if (
+      (value.startsWith("\"") && value.endsWith("\"")) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
+}
+
+function formatEnvPath(path) {
+  if (!path) return "(none)";
+  if (path.startsWith(`${STUDIO_BRAIN_ROOT}/`)) {
+    return path.slice(STUDIO_BRAIN_ROOT.length + 1);
+  }
+  return path;
+}
+
+function clearFallbackNetworkProfileOverrides(preloadKeys) {
+  for (const key of NETWORK_PROFILE_ENV_KEYS) {
+    if (!preloadKeys.has(key)) {
+      delete process.env[key];
+    }
+  }
+}
+
+function hydrateFallbackNetworkHost() {
+  const existingHost = String(process.env.STUDIO_BRAIN_HOST || "").trim();
+  if (existingHost.length > 0) {
+    return;
+  }
+  const profile = resolveStudioBrainNetworkProfile({ env: process.env });
+  if (profile.host) {
+    process.env.STUDIO_BRAIN_HOST = profile.host;
+  }
 }
 
 function resolveBaseUrl() {
@@ -282,11 +385,17 @@ async function probeEndpoint(plan) {
 
   const endpointUrl = `${baseUrl}${plan.path}`;
   const startedAt = Date.now();
+  const requestId = makeProbeRequestId(plan.name);
   const controller = new AbortController();
   const timeout = setAbortTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(endpointUrl, { signal: controller.signal });
+    const response = await fetch(endpointUrl, {
+      signal: controller.signal,
+      headers: {
+        "x-request-id": requestId,
+      },
+    });
     const bodyText = await response.text();
     clearTimeout(timeout);
     const payload = parseJson(bodyText);
@@ -294,6 +403,8 @@ async function probeEndpoint(plan) {
     const protocolOk = code >= 200 && code < 400;
     const expectation = plan.expect ? plan.expect(payload) : true;
     const ok = protocolOk && expectation;
+    const responseRequestId = response.headers.get("x-request-id") || "";
+    const responseTraceId = response.headers.get("x-trace-id") || "";
     return {
       name: plan.name,
       category: plan.category,
@@ -305,6 +416,12 @@ async function probeEndpoint(plan) {
       latencyMs: Date.now() - startedAt,
       body: bodyText.length > 0 ? bodyText.slice(0, 200) : "",
       payload,
+      correlation: {
+        requestId,
+        responseRequestId,
+        responseTraceId,
+        requestIdMatched: responseRequestId ? responseRequestId === requestId : null,
+      },
     };
   } catch (error) {
     clearTimeout(timeout);
@@ -319,8 +436,18 @@ async function probeEndpoint(plan) {
       latencyMs: Date.now() - startedAt,
       body: "",
       payload: null,
+      correlation: {
+        requestId,
+        responseRequestId: "",
+        responseTraceId: "",
+        requestIdMatched: null,
+      },
     };
   }
+}
+
+function makeProbeRequestId(name) {
+  return `status_${String(name || "probe")}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function runIntegrityReport(strict) {
@@ -445,6 +572,7 @@ function buildChecks({
   endpointResults,
   snapshotReport,
   evidence,
+  includeEvidenceChecks,
 }) {
   const checks = [];
   checks.push({
@@ -556,16 +684,18 @@ function buildChecks({
     details: snapshotReport.details,
   });
 
-  const smokeState = summarizeSmokeState(evidence);
-  checks.push({
-    name: "smoke/heartbeat evidence",
-    category: "evidence",
-    severity: "warning",
-    ok: smokeState.ok,
-    status: smokeState.ok ? "pass" : "warn",
-    message: smokeState.message,
-    details: smokeState.details,
-  });
+  if (includeEvidenceChecks) {
+    const smokeState = summarizeSmokeState(evidence);
+    checks.push({
+      name: "smoke/heartbeat evidence",
+      category: "evidence",
+      severity: "warning",
+      ok: smokeState.ok,
+      status: smokeState.ok ? "pass" : "warn",
+      message: smokeState.message,
+      details: smokeState.details,
+    });
+  }
 
   return checks;
 }

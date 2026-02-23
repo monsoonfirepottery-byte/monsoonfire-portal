@@ -1,6 +1,6 @@
 # P2 — Firebase Emulator Cleanup and Studiobrain Docs Alignment
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Functions
@@ -41,6 +41,19 @@ Simplify emulator workflow to a single studiobrain-first runbook with clear host
 ## Work completed
 
 - Added a canonical emulator host contract table to `docs/EMULATOR_RUNBOOK.md` for auth/firestore/functions/StudioBrain endpoints and LAN profile usage.
+- Standardized emulator bootstrap around Node-first entrypoints (`scripts/start-emulators.mjs`) with profile-aware host resolution.
+- Added strict emulator contract validation before bootstrap (`scripts/validate-emulator-contract.mjs --strict`).
+- Documented profile-aware command matrix and DHCP/static fallback guidance for Studiobrain LAN workflows.
+- Added backup + contract-doc maintenance command coverage in runbooks:
+  - `npm run backup:verify`
+  - `npm run backup:restore:drill`
+  - `npm run docs:contract:check`
+
+## Evidence
+
+1. `npm run studio:emulator:contract:check -- --strict --json`
+2. `npm run emulators:start -- --network-profile lan-static --only firestore,functions,auth`
+3. `npm run studio:stack:profile:snapshot:strict -- --json`
 
 ## Dependencies
 - `docs/EMULATOR_RUNBOOK.md`

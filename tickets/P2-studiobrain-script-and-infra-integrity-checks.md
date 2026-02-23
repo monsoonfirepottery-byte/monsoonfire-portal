@@ -1,6 +1,6 @@
 # P2 — Script and Infrastructure Integrity Checks for Studiobrain
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform
@@ -73,3 +73,10 @@ Add integrity manifests and validation checks for infra-critical files and start
   - `npm run integrity:check:strict`
   - `npm run integrity:update`
 - Documented integrity as part of PR gate and emulator onboarding (`docs/runbooks/PR_GATE.md`, `docs/EMULATOR_RUNBOOK.md`).
+- Added integrity-driven checks in reliability flow (`scripts/reliability-hub.mjs`) and refreshed manifests after gate changes (`npm run integrity:update`).
+
+## Evidence
+
+1. `npm run integrity:update`
+2. `npm run integrity:check:strict`
+3. `npm run reliability:once -- --json`

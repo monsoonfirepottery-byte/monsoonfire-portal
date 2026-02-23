@@ -1,0 +1,24 @@
+services:
+  studiobrain-proxy:
+    image: caddy:2.8-alpine
+    container_name: studiobrain_proxy
+    restart: unless-stopped
+    profiles: ["proxy"]
+    ports:
+      - "${STUDIO_PROXY_PORT:-8788}:80"
+    volumes:
+      - ./docker/Caddyfile.proxy:/etc/caddy/Caddyfile:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: 8m
+        max-file: "2"

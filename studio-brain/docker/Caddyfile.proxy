@@ -1,0 +1,32 @@
+{
+  auto_https off
+}
+
+:80 {
+  encode zstd gzip
+
+  @health path /healthz
+  handle @health {
+    respond "ok" 200
+  }
+
+  @studio path /studio /studio/*
+  handle @studio {
+    uri strip_prefix /studio
+    reverse_proxy host.docker.internal:8787
+  }
+
+  @functions path /functions /functions/*
+  handle @functions {
+    uri strip_prefix /functions
+    reverse_proxy host.docker.internal:5001
+  }
+
+  @portal path /portal /portal/*
+  handle @portal {
+    uri strip_prefix /portal
+    reverse_proxy host.docker.internal:5173
+  }
+
+  respond "route not found" 404
+}

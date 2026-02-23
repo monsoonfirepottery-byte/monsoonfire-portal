@@ -1,6 +1,6 @@
 # P2 — Host Network Profile Contract for Studiobrain
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Studio Brain
@@ -70,6 +70,16 @@ Define explicit network profiles and enforce their selection across all startup/
   - `scripts/studiobrain-status.mjs` uses profile-resolved defaults when `STUDIO_BRAIN_BASE_URL` is unset.
   - `scripts/pr-gate.mjs` now validates Studio Brain base URLs against resolved profile host allowlist.
   - `scripts/validate-emulator-contract.mjs` now enforces emulator host/port compatibility before gates.
+- Confirmed static LAN profile contract is active and documented:
+  - `STUDIO_BRAIN_NETWORK_PROFILE=lan-static`
+  - `STUDIO_BRAIN_STATIC_IP=192.168.1.226`
+- Added host-state persistence + drift checks in `scripts/studiobrain-network-check.mjs` and cutover runbooks.
+
+## Evidence
+
+1. `npm run studio:network:check -- --json --gate --strict --write-state`
+2. `npm run studio:stack:profile:snapshot:strict -- --json`
+3. `npm run reliability:once -- --json`
 
 ## Definition of Done
 

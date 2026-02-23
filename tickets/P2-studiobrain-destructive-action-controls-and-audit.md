@@ -1,6 +1,6 @@
 # P2 — Destructive Action Controls and Audit Trail
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Security
@@ -55,3 +55,22 @@ Add explicit confirmations, guardrails, and local audit logging for sensitive ac
 ## Definition of Done
 
 - Destructive actions are no longer silent or easily confused with routine operations.
+
+## Work completed
+
+- Added destructive action confirmation guardrails:
+  - `scripts/studiobrain-observability-bundle.mjs` (`reset` now requires `--yes-i-know`)
+  - `scripts/ops-cockpit.mjs` (`reset` now requires `--yes-i-know`)
+- Added optional operator reason capture for audit context:
+  - `--reason <text>`
+- Added immutable local audit trail for destructive/restart actions:
+  - `output/ops-audit/destructive-actions.log` (JSONL append-only entries)
+  - captures `timestamp`, `command`, `classification`, `status`, `reason`, `args`
+- Added rollback hints in command output for destructive paths.
+
+## Evidence
+
+1. `npm run studio:observability:reset -- --json` (blocked without confirmation)
+2. `npm run studio:observability:reset -- --json --yes-i-know --reason "verify-destructive-controls"`
+3. `npm run ops:cockpit:reset -- --json` (blocked without confirmation)
+4. `npm run ops:cockpit:reset -- --json --yes-i-know --reason "verify-destructive-controls"`

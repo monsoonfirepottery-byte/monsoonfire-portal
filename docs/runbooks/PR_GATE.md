@@ -8,19 +8,26 @@ Default `npm run pr:gate` runs these required checks:
 
 1. Required node entrypoints (`scripts/pr-gate.mjs` internal preflight)
 2. Studio Brain env contract validation (`npm --prefix studio-brain run env:validate -- --strict --json`)
-3. Studio Brain runtime integrity check (`npm run integrity:check`)
-4. Host profile consistency check for `STUDIO_BRAIN_HOST`, `STUDIO_BRAIN_PORT`, and `STUDIO_BRAIN_BASE_URL`
-5. Legacy host-contract scan (`npm run studio:host:contract:scan:strict`)
-6. Host-contract evidence capture (`npm run studio:host:contract:evidence`) with clean + intentional fail-mode proof
-7. Studio Brain network runtime contract (`node ./scripts/studiobrain-network-check.mjs --gate --strict --write-state`)
-8. Stability guardrails (`npm run guardrails:check -- --strict`)
-9. Studio Brain preflight (`npm --prefix studio-brain run preflight`)
-10. Studio Brain status gate (`npm run studio:check:safe -- --json`)
-11. Platform-reference drift scan (`npm run audit:platform:refs:strict`) to catch non-essential OS/tooling assumptions outside host contracts.
-12. Source-of-truth contract matrix (`npm run source:truth:contract:strict`).
-13. Source-of-truth deployment matrix (`npm run source:truth:deployment -- --phase all --json --artifact output/source-of-truth-deployment-gates/pr-gate.json`).
-14. Agent-readable surfaces check (`npm run agent:surfaces:check`).
-15. Well-known validation (`npm run well-known:validate:strict`).
+3. Host profile consistency check for `STUDIO_BRAIN_HOST`, `STUDIO_BRAIN_PORT`, and `STUDIO_BRAIN_BASE_URL`
+4. Platform-reference drift scan (`npm run audit:platform:refs:strict`) to catch non-essential OS/tooling assumptions outside host contracts.
+5. Studio Brain network runtime contract (`node ./scripts/studiobrain-network-check.mjs --gate --strict --write-state`)
+6. Stability guardrails (`npm run guardrails:check -- --strict`) (warning-level)
+7. Studio Brain emulator contract (`npm run studio:emulator:contract:check -- --strict --json`)
+8. Studio stack profile snapshot (`npm run studio:stack:profile:snapshot:strict -- --json --artifact output/studio-stack-profile/latest.json`)
+9. Source-of-truth contract matrix (`npm run source:truth:contract:strict`)
+10. Source-of-truth deployment matrix (`npm run source:truth:deployment -- --phase all --json --artifact output/source-of-truth-deployment-gates/pr-gate.json`)
+11. Source-of-truth index audit (`npm run source:truth:index:strict`)
+12. Runtime contract docs freshness (`npm run docs:contract:check`)
+13. Agent-readable surfaces check (`npm run agent:surfaces:check`)
+14. Studio Brain preflight (`npm --prefix studio-brain run preflight`)
+15. Studio Brain status gate (`npm run studio:check:safe -- --json --no-evidence --no-host-scan`)
+16. Well-known validation (`npm run well-known:validate:strict`) (warning-level)
+17. Backup freshness check (`npm run backup:verify:freshness`) (warning-level)
+
+`source:truth:index:strict` now treats local `~/.codex/config.toml` MCP-key gaps as advisory by default so PR gate remains deterministic across machines.
+To enforce local alias presence intentionally, run:
+- `npm run source:truth:index:strict -- --require-local-mcp-keys`
+- or set `SOURCE_OF_TRUTH_REQUIRE_LOCAL_MCP_KEYS=true`
 
 For a clean local state, each onboarding run should pass host contract scan + smoke + status checks in sequence.
 Recommended sequence:
@@ -74,6 +81,7 @@ Artifacts are written to `output/stability`:
 When a critical check fails, reliability hub now captures an incident bundle by default:
 - `output/incidents/<timestamp>/bundle.json`
 - `output/incidents/<timestamp>/bundle.sha256`
+- `output/incidents/<timestamp>/bundle.tar.gz`
 - `output/incidents/latest.json`
 
 ## Severity Model
@@ -117,6 +125,11 @@ Behavior:
 - Stops immediately on required-step failures (integrity, host contract, network gate, preflight, status, portal smoke).
 - Runs website smoke as a non-blocking optional check (captured in the artifact with status/warning metadata).
 - Writes a machine-readable artifact to `output/cutover-gate/summary.json` by default.
+
+Expected runtime:
+- `npm run studio:cutover:gate -- --no-smoke`: typically under 90 seconds.
+- `npm run studio:cutover:gate -- --portal-deep`: typically 2-6 minutes.
+- First-failure behavior is intentional; hard dependency failures should return quickly with remediation in step output.
 
 ## Extended smoke mode
 Run smoke mode for PR confidence:

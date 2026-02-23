@@ -28,8 +28,15 @@ const studioProfile = resolveStudioBrainNetworkProfile({
 const inheritedEnv = {
   ...process.env,
   ...(!process.env.VITE_DEV_HOST && { VITE_DEV_HOST: studioProfile.host }),
+  ...(!process.env.VITE_PORT && !process.env.PORT && { VITE_PORT: "5173" }),
   ...(!process.env.VITE_ALLOWED_HOSTS && {
     VITE_ALLOWED_HOSTS: studioProfile.allowedStudioBrainHosts.join(","),
+  }),
+  ...(!process.env.VITE_STUDIO_BRAIN_PROXY_TARGET && {
+    VITE_STUDIO_BRAIN_PROXY_TARGET: `http://${studioProfile.host}:8787`,
+  }),
+  ...(!process.env.VITE_FUNCTIONS_PROXY_TARGET && {
+    VITE_FUNCTIONS_PROXY_TARGET: `http://${studioProfile.host}:5001/monsoonfire-portal/us-central1`,
   }),
 };
 

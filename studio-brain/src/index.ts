@@ -74,7 +74,7 @@ async function main(): Promise<void> {
   const artifactStore: ArtifactStore = await createArtifactStore(
     {
       endpoint: env.STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT,
-      port: parseArtifactPort(env.STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT, 9000),
+      port: parseArtifactPort(env.STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT, 9010),
       useSSL: env.STUDIO_BRAIN_ARTIFACT_STORE_USE_SSL,
       accessKey: env.STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY,
       secretKey: env.STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY,

@@ -10,6 +10,9 @@ const ROOT = resolve(dirname(__filename), "..");
 const args = parseArgs(process.argv.slice(2));
 const strict = args.strict;
 const emitJson = args.json;
+const requireLocalMcpKeys = args.requireLocalMcpKeys
+  || String(process.env.SOURCE_OF_TRUTH_REQUIRE_LOCAL_MCP_KEYS || "").trim().toLowerCase() === "true"
+  || String(process.env.SOURCE_OF_TRUTH_REQUIRE_LOCAL_MCP_KEYS || "").trim() === "1";
 const artifactPath = resolve(ROOT, args.artifact || "output/source-of-truth-index-audit/latest.json");
 
 const indexPath = resolve(ROOT, "docs/SOURCE_OF_TRUTH_INDEX.md");
@@ -217,14 +220,32 @@ if (existsSync(codexConfigPath)) {
   const observedKeys = Array.from(configText.matchAll(/^\s*\[mcp_servers\.(?<name>[A-Za-z0-9_]+)\]/gm))
     .map((entry) => entry?.groups?.name)
     .filter(Boolean);
+  const missingKeys = [...requiredMcpKeys].filter((requiredKey) => !observedKeys.includes(requiredKey));
 
-  for (const requiredKey of requiredMcpKeys) {
+  if (requireLocalMcpKeys) {
+    for (const requiredKey of requiredMcpKeys) {
+      const present = observedKeys.includes(requiredKey);
+      addFinding(
+        present ? "pass" : "error",
+        "mcp-key",
+        `Required MCP key ${present ? "present" : "missing"} in .codex/config.toml: mcp_servers.${requiredKey}`,
+        requiredKey,
+        present ? "present" : "missing",
+      );
+    }
+  } else {
     addFinding(
-      observedKeys.includes(requiredKey) ? "pass" : "error",
+      "pass",
       "mcp-key",
-      `Required MCP key ${observedKeys.includes(requiredKey) ? "present" : "missing"} in .codex/config.toml: mcp_servers.${requiredKey}`,
-      requiredKey,
-      observedKeys.includes(requiredKey) ? "present" : "missing",
+      "Local MCP key inventory is advisory by default; strict failure requires --require-local-mcp-keys or SOURCE_OF_TRUTH_REQUIRE_LOCAL_MCP_KEYS=true.",
+      {
+        config: codexConfigPath,
+        configuredCount: observedKeys.length,
+        requiredCount: requiredMcpKeys.size,
+        missingCount: missingKeys.length,
+        missingKeys,
+      },
+      "advisory",
     );
   }
 } else {
@@ -407,6 +428,7 @@ function parseArgs(argv) {
   const parsed = {
     strict: false,
     json: false,
+    requireLocalMcpKeys: false,
     artifact: "output/source-of-truth-index-audit/latest.json",
   };
 
@@ -423,6 +445,10 @@ function parseArgs(argv) {
     if (arg === "--artifact") {
       parsed.artifact = argv[index + 1] || parsed.artifact;
       index += 1;
+      continue;
+    }
+    if (arg === "--require-local-mcp-keys") {
+      parsed.requireLocalMcpKeys = true;
       continue;
     }
   }

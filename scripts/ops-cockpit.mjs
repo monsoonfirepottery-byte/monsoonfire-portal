@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -12,11 +12,14 @@ const REPO_ROOT = resolve(__dirname, "..");
 const args = process.argv.slice(2);
 const command = args[0] || "status";
 const asJson = args.includes("--json");
+const confirmDestructive = args.includes("--yes-i-know");
+const destructiveReason = readArgValue(args, "--reason");
 
 const OPS_DIR = resolve(REPO_ROOT, "output", "ops-cockpit");
 const STATE_PATH = resolve(OPS_DIR, "state.json");
 const STATUS_PATH = resolve(OPS_DIR, "latest-status.json");
 const HEARTBEAT_SUMMARY_PATH = resolve(REPO_ROOT, "output", "stability", "heartbeat-summary.json");
+const AUDIT_LOG_PATH = resolve(REPO_ROOT, "output", "ops-audit", "destructive-actions.log");
 
 mkdirSync(OPS_DIR, { recursive: true });
 
@@ -103,6 +106,13 @@ function runStop() {
     command: "stop",
     status: "pass",
   });
+  recordDestructiveAudit({
+    action: "ops-cockpit-stop",
+    classification: "restart-only",
+    status: "pass",
+    reason: destructiveReason || "operator-request",
+    details: { enabled: false },
+  });
   output({
     status: "pass",
     command: "stop",
@@ -139,12 +149,40 @@ function runBundle() {
 }
 
 function runReset() {
+  if (!confirmDestructive) {
+    const message = "reset is data-destructive. Re-run with --yes-i-know and optional --reason <text>.";
+    recordDestructiveAudit({
+      action: "ops-cockpit-reset",
+      classification: "data-destructive",
+      status: "blocked",
+      reason: destructiveReason || "missing-confirmation",
+      details: { command, args: args.slice(1) },
+    });
+    output({
+      status: "fail",
+      command: "reset",
+      message,
+      rollbackHint: "Use `npm run ops:cockpit:start` to regenerate cockpit status.",
+    });
+    process.exit(1);
+  }
+
   if (existsSync(STATE_PATH)) rmSync(STATE_PATH, { force: true });
   if (existsSync(STATUS_PATH)) rmSync(STATUS_PATH, { force: true });
+  recordDestructiveAudit({
+    action: "ops-cockpit-reset",
+    classification: "data-destructive",
+    status: "pass",
+    reason: destructiveReason || "operator-request",
+    details: {
+      removed: [relativePath(STATE_PATH), relativePath(STATUS_PATH)],
+    },
+  });
   output({
     status: "pass",
     command: "reset",
     message: "ops-cockpit state reset",
+    rollbackHint: "Run `npm run ops:cockpit:start` to rebuild cockpit artifacts.",
   });
 }
 
@@ -260,14 +298,48 @@ function output(payload) {
   if (payload.message) {
     process.stdout.write(`  ${payload.message}\n`);
   }
+  if (payload.rollbackHint) {
+    process.stdout.write(`  rollback: ${payload.rollbackHint}\n`);
+  }
 }
 
 function printHelp() {
   process.stdout.write("Usage: node ./scripts/ops-cockpit.mjs <start|status|stop|bundle|reset> [flags]\n");
   process.stdout.write("Flags:\n");
   process.stdout.write("  --json\n");
+  process.stdout.write("  --yes-i-know    required for `reset`\n");
+  process.stdout.write("  --reason <text> optional audit reason for destructive actions\n");
   process.stdout.write("Examples:\n");
   process.stdout.write("  node ./scripts/ops-cockpit.mjs start\n");
   process.stdout.write("  node ./scripts/ops-cockpit.mjs status --json\n");
   process.stdout.write("  node ./scripts/ops-cockpit.mjs bundle\n");
+  process.stdout.write("  node ./scripts/ops-cockpit.mjs reset --yes-i-know --reason \"clear-local-state\"\n");
+}
+
+function readArgValue(argv, key) {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === key) {
+      return argv[index + 1] || "";
+    }
+    if (arg.startsWith(`${key}=`)) {
+      return arg.slice(`${key}=`.length);
+    }
+  }
+  return "";
+}
+
+function recordDestructiveAudit(entry) {
+  const payload = {
+    timestamp: new Date().toISOString(),
+    command: `ops-cockpit ${command}`,
+    classification: entry.classification,
+    action: entry.action,
+    status: entry.status,
+    reason: entry.reason || "",
+    args: args.slice(1),
+    details: entry.details || {},
+  };
+  mkdirSync(dirname(AUDIT_LOG_PATH), { recursive: true });
+  appendFileSync(AUDIT_LOG_PATH, `${JSON.stringify(payload)}\n`, "utf8");
 }

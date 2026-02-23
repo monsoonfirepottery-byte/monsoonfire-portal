@@ -1,6 +1,6 @@
 # P2 — Stable Host and URL Contract Matrix for Local Cutover
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Portal
@@ -41,6 +41,14 @@ Create a single authoritative local-host contract and enforce it in scripts and 
 
 - Added `docs/studiobrain-host-url-contract-matrix.md` as the canonical local/LAN host and endpoint matrix.
 - Connected the matrix to related tasks via `docs/EMULATOR_RUNBOOK.md` and environment examples.
+- Added explicit static LAN assignment tracking (`192.168.1.226`) and host source precedence guidance.
+- Added enforcement points through profile resolver, host scan, network checks, and stack-profile gate artifacts.
+
+## Evidence
+
+1. `npm run studio:host:contract:scan:strict`
+2. `npm run studio:network:check:gate -- --strict --write-state --json`
+3. `npm run studio:stack:profile:snapshot:strict -- --json --artifact output/studio-stack-profile/latest.json`
 
 ## Dependencies
 - `web/src/firebase.ts`

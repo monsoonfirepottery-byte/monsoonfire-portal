@@ -1,6 +1,6 @@
 # P2 — Incident Bundle Automation for Studiobrain Diagnostics
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: QA + Platform
@@ -56,3 +56,25 @@ Create a single command that composes a ready-to-share diagnostics bundle for an
 ## Definition of Done
 
 - Incident bundle command is available and documented with explicit postmortem handoff instructions.
+
+## Work completed
+
+- Added incident bundle command:
+  - `scripts/studiobrain-incident-bundle.mjs`
+  - `npm run incident:bundle`
+- Bundle now captures:
+  - network check, status card, integrity report
+  - heartbeat summary/events
+  - bounded git metadata and artifact pointers
+- Added redaction pass for sensitive fields before write.
+- Added deterministic output formats:
+  - `output/incidents/<timestamp>/bundle.json`
+  - `output/incidents/<timestamp>/bundle.sha256`
+  - `output/incidents/<timestamp>/bundle.tar.gz`
+  - `output/incidents/latest.json`
+- Wired reliability hub to auto-capture incident bundles on critical failures.
+
+## Evidence
+
+1. `npm run incident:bundle -- --json`
+2. `npm run reliability:once -- --json` (critical-failure capture path)

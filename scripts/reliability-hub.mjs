@@ -12,6 +12,7 @@ const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, "..");
 const DEFAULT_ARTIFACT_DIR = resolve(REPO_ROOT, "output", "stability");
 const DEFAULT_INTERVAL_MS = 60_000;
+const DEFAULT_BUDGET_WINDOW_MINUTES = 60;
 
 const COMMAND_SEVERITY = {
   PASS: "pass",
@@ -54,6 +55,19 @@ export async function runReliabilityHub(rawArgs = process.argv.slice(2), options
       checks.push(checkResult);
     }
 
+    const budgetResult = evaluateStabilityBudget({
+      runAt,
+      runDurationMs: Date.now() - startedAt,
+      checks,
+      eventLogPath,
+      windowMinutes: args.budgetWindowMinutes,
+      maxFailuresPerWindow: args.maxFailuresPerWindow,
+      maxCriticalFailuresPerWindow: args.maxCriticalFailuresPerWindow,
+      maxSlowRunsPerWindow: args.maxSlowRunsPerWindow,
+      maxRunDurationMs: args.maxRunDurationMs,
+    });
+    checks.push(buildBudgetCheck(budgetResult));
+
     const failCount = checks.filter((entry) => entry.status === COMMAND_SEVERITY.FAIL).length;
     const warnCount = checks.filter((entry) => entry.status === COMMAND_SEVERITY.WARN).length;
     const passCount = checks.length - failCount - warnCount;
@@ -87,6 +101,7 @@ export async function runReliabilityHub(rawArgs = process.argv.slice(2), options
         warn: warnCount,
         fail: failCount,
       },
+      stabilityBudget: budgetResult,
       failedChecks: checks
         .filter((entry) => entry.status !== COMMAND_SEVERITY.PASS)
         .map((entry) => ({
@@ -104,6 +119,7 @@ export async function runReliabilityHub(rawArgs = process.argv.slice(2), options
       status,
       failedChecks: summary.failedChecks,
       durationMs: summary.durationMs,
+      stabilityBudget: budgetResult,
     };
 
     writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
@@ -151,11 +167,19 @@ export async function runReliabilityHub(rawArgs = process.argv.slice(2), options
   let remaining = args.maxIterations || Number.POSITIVE_INFINITY;
   while (remaining > 0) {
     const report = await runResult();
+    const budgetBlocked = report.stabilityBudget?.status === "fail" && args.autoPauseOnBudget;
     if (args.failOnFailure && report.status !== "pass") {
       process.exitCode = 1;
       if (args.stopOnFailure) {
         break;
       }
+    }
+    if (budgetBlocked) {
+      process.stderr.write(
+        `reliability-hub: stability budget exceeded (${report.stabilityBudget.message}). auto-pausing watch loop.\n`,
+      );
+      process.exitCode = 1;
+      break;
     }
 
     remaining -= 1;
@@ -361,6 +385,74 @@ function buildChecks(profile, args) {
       },
     },
     {
+      name: "runtime contract docs freshness",
+      command: "npm",
+      args: ["run", "docs:contract:check"],
+      required: false,
+      severity: "warning",
+      parseOutput: ({ output, command, durationMs, statusCode, name }) => {
+        const parsed = safeJson({ output });
+        if (!parsed) {
+          return buildCheckFailure({
+            name,
+            severity: "warning",
+            required: false,
+            command,
+            durationMs,
+            status: COMMAND_SEVERITY.WARN,
+            message: "Unable to parse docs contract JSON output.",
+            output: truncateOutput(output),
+          });
+        }
+        const status = statusCode === 0 ? COMMAND_SEVERITY.PASS : COMMAND_SEVERITY.WARN;
+        return {
+          name,
+          severity: "warning",
+          required: false,
+          command,
+          status,
+          durationMs,
+          message: `docs contract ${parsed.status || (statusCode === 0 ? "pass" : "fail")}`,
+          output: truncateOutput(output),
+          parsed,
+        };
+      },
+    },
+    {
+      name: "backup freshness",
+      command: "npm",
+      args: ["run", "backup:verify:freshness"],
+      required: false,
+      severity: "warning",
+      parseOutput: ({ output, command, durationMs, statusCode, name }) => {
+        const parsed = safeJson({ output });
+        if (!parsed) {
+          return buildCheckFailure({
+            name,
+            severity: "warning",
+            required: false,
+            command,
+            durationMs,
+            status: COMMAND_SEVERITY.WARN,
+            message: "Unable to parse backup freshness JSON output.",
+            output: truncateOutput(output),
+          });
+        }
+        const status = statusCode === 0 ? COMMAND_SEVERITY.PASS : COMMAND_SEVERITY.WARN;
+        return {
+          name,
+          severity: "warning",
+          required: false,
+          command,
+          status,
+          durationMs,
+          message: `backup freshness ${parsed.status || (statusCode === 0 ? "pass" : "warn")}`,
+          output: truncateOutput(output),
+          parsed,
+        };
+      },
+    },
+    {
       name: "stability guardrails",
       command: "npm",
       args: ["run", "guardrails:check", "--", "--strict", "--json"],
@@ -503,9 +595,50 @@ function buildChecks(profile, args) {
       },
     },
     {
+      name: "studio stack routing contract",
+      command: "npm",
+      args: [
+        "run",
+        "studio:stack:profile:snapshot:strict",
+        "--",
+        "--json",
+        "--artifact",
+        "output/studio-stack-profile/latest.json",
+      ],
+      required: true,
+      severity: "critical",
+      parseOutput: ({ output, command, durationMs, name }) => {
+        const parsed = safeJson({ output });
+        if (!parsed) {
+          return buildCheckFailure({
+            name,
+            severity: "critical",
+            required: true,
+            status: COMMAND_SEVERITY.FAIL,
+            command,
+            durationMs,
+            message: "Unable to parse stack profile JSON output.",
+            output: truncateOutput(output),
+          });
+        }
+        const status = parsed.status === "pass" ? "pass" : "fail";
+        return {
+          name,
+          severity: "critical",
+          required: true,
+          command,
+          status: status === "pass" ? COMMAND_SEVERITY.PASS : COMMAND_SEVERITY.FAIL,
+          durationMs,
+          message: `stack profile ${status}`,
+          output: truncateOutput(output),
+          parsed,
+        };
+      },
+    },
+    {
       name: "studio-brain status gate",
       command: "npm",
-      args: ["run", "studio:check", "--", "--json", "--gate"],
+      args: ["run", "studio:check:safe", "--", "--json", "--no-evidence", "--no-host-scan"],
       required: true,
       severity: "critical",
       parseOutput: ({ output, command, durationMs, name }) => {
@@ -640,6 +773,131 @@ function buildChecks(profile, args) {
   return checks;
 }
 
+function buildBudgetCheck(budget) {
+  const statusMap = {
+    pass: COMMAND_SEVERITY.PASS,
+    warn: COMMAND_SEVERITY.WARN,
+    fail: COMMAND_SEVERITY.FAIL,
+  };
+  return {
+    name: "stability budget window",
+    severity: budget.status === "fail" ? "critical" : "warning",
+    required: false,
+    command: "internal/stability-budget",
+    status: statusMap[budget.status] || COMMAND_SEVERITY.WARN,
+    durationMs: 0,
+    message: budget.message,
+    output: JSON.stringify({
+      windowMinutes: budget.windowMinutes,
+      usage: budget.usage,
+      thresholds: budget.thresholds,
+    }),
+    extra: budget,
+  };
+}
+
+function evaluateStabilityBudget(input) {
+  const runAtMs = Date.parse(input.runAt);
+  const windowMs = Math.max(1, input.windowMinutes) * 60_000;
+  const cutoff = runAtMs - windowMs;
+  const previous = readRecentEvents(input.eventLogPath, cutoff);
+
+  const currentFailedChecks = input.checks.filter((entry) => entry.status !== COMMAND_SEVERITY.PASS);
+  const currentHasFailure = currentFailedChecks.some((entry) => entry.status === COMMAND_SEVERITY.FAIL);
+  const currentHasCriticalFailure = currentFailedChecks.some(
+    (entry) => entry.status === COMMAND_SEVERITY.FAIL && entry.severity === "critical",
+  );
+  const currentSlowRun = input.runDurationMs > input.maxRunDurationMs;
+
+  const priorFailures = previous.filter((entry) => entry.status === "fail").length;
+  const priorCriticalFailures = previous.filter((entry) =>
+    Array.isArray(entry.failedChecks) &&
+    entry.failedChecks.some((check) => check.status === "fail" && check.severity === "critical"),
+  ).length;
+  const priorSlowRuns = previous.filter((entry) =>
+    Number.isFinite(entry.durationMs) && Number(entry.durationMs) > input.maxRunDurationMs,
+  ).length;
+
+  const failures = priorFailures + (currentHasFailure ? 1 : 0);
+  const criticalFailures = priorCriticalFailures + (currentHasCriticalFailure ? 1 : 0);
+  const slowRuns = priorSlowRuns + (currentSlowRun ? 1 : 0);
+
+  const overFailure = failures > input.maxFailuresPerWindow;
+  const overCritical = criticalFailures > input.maxCriticalFailuresPerWindow;
+  const overSlow = slowRuns > input.maxSlowRunsPerWindow;
+
+  let status = "pass";
+  if (overFailure || overCritical || overSlow) {
+    status = "fail";
+  } else if (
+    failures >= Math.ceil(input.maxFailuresPerWindow * 0.8) ||
+    criticalFailures >= Math.ceil(input.maxCriticalFailuresPerWindow * 0.8) ||
+    slowRuns >= Math.ceil(input.maxSlowRunsPerWindow * 0.8)
+  ) {
+    status = "warn";
+  }
+
+  const offenders = currentFailedChecks.slice(0, 3).map((entry) => ({
+    name: entry.name,
+    severity: entry.severity,
+    status: entry.status,
+    message: entry.message,
+  }));
+
+  const message = status === "pass"
+    ? "within configured failure budget"
+    : status === "warn"
+      ? "approaching failure budget threshold"
+      : "failure budget exceeded";
+
+  return {
+    status,
+    message,
+    windowMinutes: input.windowMinutes,
+    thresholds: {
+      maxFailuresPerWindow: input.maxFailuresPerWindow,
+      maxCriticalFailuresPerWindow: input.maxCriticalFailuresPerWindow,
+      maxSlowRunsPerWindow: input.maxSlowRunsPerWindow,
+      maxRunDurationMs: input.maxRunDurationMs,
+    },
+    usage: {
+      failures,
+      criticalFailures,
+      slowRuns,
+      currentRunDurationMs: input.runDurationMs,
+    },
+    offenders,
+  };
+}
+
+function readRecentEvents(eventLogPath, cutoffMs) {
+  if (!existsSync(eventLogPath)) {
+    return [];
+  }
+  try {
+    const lines = readFileSync(eventLogPath, "utf8")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const events = [];
+    for (const line of lines) {
+      try {
+        const parsed = JSON.parse(line);
+        const timestampMs = Date.parse(parsed.timestamp || "");
+        if (!Number.isFinite(timestampMs) || timestampMs < cutoffMs) {
+          continue;
+        }
+        events.push(parsed);
+      } catch {
+        // ignore malformed lines in rolling event log
+      }
+    }
+    return events;
+  } catch {
+    return [];
+  }
+}
+
 function artifactDirForChecks() {
   return resolve(REPO_ROOT, "output", "stability", "smoke");
 }
@@ -731,6 +989,11 @@ function printSummary(summary) {
   process.stdout.write(`run: ${summary.sequence}\n`);
   process.stdout.write(`durationMs: ${summary.durationMs}\n`);
   process.stdout.write(`checks: pass=${summary.stats.pass}, warn=${summary.stats.warn}, fail=${summary.stats.fail}\n`);
+  if (summary.stabilityBudget) {
+    process.stdout.write(
+      `budget: ${summary.stabilityBudget.status.toUpperCase()} (${summary.stabilityBudget.usage.failures}/${summary.stabilityBudget.thresholds.maxFailuresPerWindow} failures in ${summary.stabilityBudget.windowMinutes}m)\n`,
+    );
+  }
   summary.checks.forEach((check) => {
     process.stdout.write(
       `  [${check.status.toUpperCase()}:${check.severity}] ${check.name}` +
@@ -762,6 +1025,11 @@ function printReport(args) {
   process.stdout.write(`\nReliability latest report (${summary.startedAt})\n`);
   process.stdout.write(`status: ${summary.status.toUpperCase()} (run ${summary.sequence})\n`);
   process.stdout.write(`checks: pass=${summary.stats.pass}, warn=${summary.stats.warn}, fail=${summary.stats.fail}\n`);
+  if (summary.stabilityBudget) {
+    process.stdout.write(
+      `budget: ${summary.stabilityBudget.status.toUpperCase()} (${summary.stabilityBudget.usage.failures}/${summary.stabilityBudget.thresholds.maxFailuresPerWindow} failures)\n`,
+    );
+  }
   process.stdout.write(`network: profile=${summary.network.profile} host=${summary.network.host}\n`);
   process.stdout.write(`artifact dir: ${artifactDir}\n`);
   if (summary.failedChecks.length > 0) {
@@ -788,6 +1056,18 @@ function parseArgs(argv) {
     maxIterations: Number.POSITIVE_INFINITY,
     captureIncidentOnCriticalFail: true,
     incidentDir: "output/incidents",
+    budgetWindowMinutes: Number.parseInt(
+      process.env.STUDIO_BRAIN_BUDGET_WINDOW_MINUTES || String(DEFAULT_BUDGET_WINDOW_MINUTES),
+      10,
+    ),
+    maxFailuresPerWindow: Number.parseInt(process.env.STUDIO_BRAIN_BUDGET_MAX_FAILURES_PER_HOUR || "3", 10),
+    maxCriticalFailuresPerWindow: Number.parseInt(
+      process.env.STUDIO_BRAIN_BUDGET_MAX_CRITICAL_FAILURES_PER_HOUR || "1",
+      10,
+    ),
+    maxSlowRunsPerWindow: Number.parseInt(process.env.STUDIO_BRAIN_BUDGET_MAX_SLOW_RUNS_PER_HOUR || "3", 10),
+    maxRunDurationMs: Number.parseInt(process.env.STUDIO_BRAIN_BUDGET_MAX_RUN_DURATION_MS || "30000", 10),
+    autoPauseOnBudget: true,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -880,6 +1160,35 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (arg === "--budget-window-minutes" && argv[index + 1]) {
+      parsed.budgetWindowMinutes = Number.parseInt(argv[index + 1], 10);
+      index += 1;
+      continue;
+    }
+    if (arg === "--budget-max-failures" && argv[index + 1]) {
+      parsed.maxFailuresPerWindow = Number.parseInt(argv[index + 1], 10);
+      index += 1;
+      continue;
+    }
+    if (arg === "--budget-max-critical-failures" && argv[index + 1]) {
+      parsed.maxCriticalFailuresPerWindow = Number.parseInt(argv[index + 1], 10);
+      index += 1;
+      continue;
+    }
+    if (arg === "--budget-max-slow-runs" && argv[index + 1]) {
+      parsed.maxSlowRunsPerWindow = Number.parseInt(argv[index + 1], 10);
+      index += 1;
+      continue;
+    }
+    if (arg === "--budget-max-run-duration-ms" && argv[index + 1]) {
+      parsed.maxRunDurationMs = Number.parseInt(argv[index + 1], 10);
+      index += 1;
+      continue;
+    }
+    if (arg === "--no-auto-pause-budget") {
+      parsed.autoPauseOnBudget = false;
+      continue;
+    }
   }
 
   if (!Number.isInteger(parsed.maxIterations) || parsed.maxIterations < 1) {
@@ -887,6 +1196,21 @@ function parseArgs(argv) {
   }
   if (!Number.isInteger(parsed.intervalMs) || parsed.intervalMs < 1_000) {
     parsed.intervalMs = DEFAULT_INTERVAL_MS;
+  }
+  if (!Number.isInteger(parsed.budgetWindowMinutes) || parsed.budgetWindowMinutes < 1) {
+    parsed.budgetWindowMinutes = DEFAULT_BUDGET_WINDOW_MINUTES;
+  }
+  if (!Number.isInteger(parsed.maxFailuresPerWindow) || parsed.maxFailuresPerWindow < 1) {
+    parsed.maxFailuresPerWindow = 3;
+  }
+  if (!Number.isInteger(parsed.maxCriticalFailuresPerWindow) || parsed.maxCriticalFailuresPerWindow < 1) {
+    parsed.maxCriticalFailuresPerWindow = 1;
+  }
+  if (!Number.isInteger(parsed.maxSlowRunsPerWindow) || parsed.maxSlowRunsPerWindow < 1) {
+    parsed.maxSlowRunsPerWindow = 3;
+  }
+  if (!Number.isInteger(parsed.maxRunDurationMs) || parsed.maxRunDurationMs < 1_000) {
+    parsed.maxRunDurationMs = 30_000;
   }
 
   return parsed;
@@ -910,6 +1234,12 @@ function printUsage(commandName) {
   process.stdout.write("  --stop-on-failure       stop watch on first non-pass status and exit non-zero\n");
   process.stdout.write("  --no-incident-bundle    skip automatic bundle generation on critical failures\n");
   process.stdout.write("  --incident-dir <path>   output directory for incident bundles\n");
+  process.stdout.write("  --budget-window-minutes <n>           rolling budget window size\n");
+  process.stdout.write("  --budget-max-failures <n>             max failed runs per budget window\n");
+  process.stdout.write("  --budget-max-critical-failures <n>    max critical failed runs per budget window\n");
+  process.stdout.write("  --budget-max-slow-runs <n>            max slow runs per budget window\n");
+  process.stdout.write("  --budget-max-run-duration-ms <n>      slow-run threshold\n");
+  process.stdout.write("  --no-auto-pause-budget                keep watch loop running after budget fail\n");
 }
 
 function captureIncidentBundle(params) {

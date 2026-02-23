@@ -120,10 +120,7 @@ export function validateEnvContract({ strict = false } = {}) {
     }
 
     try {
-      const parsed = parseValue(name, rawValue, meta);
-      if (parsed && meta.sensitive && strict) {
-        warnings.push(`${name} is configured and marked sensitive; validate via secret manager for production`);
-      }
+      parseValue(name, rawValue, meta);
       if (
         (isPlaceholderValue(rawValue) || hasTemplateVar(rawValue)) &&
         (strict || meta.sensitive || SENSITIVE_ENFORCED_VARS.has(name))

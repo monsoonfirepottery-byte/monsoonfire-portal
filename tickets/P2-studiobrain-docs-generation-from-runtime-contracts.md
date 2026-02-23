@@ -1,6 +1,6 @@
 # P2 — Docs-From-Contract Generation for Stable Runtime Docs
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Docs
@@ -54,3 +54,24 @@ Generate key runbook content from the same runtime contract to reduce duplicatio
 ## Definition of Done
 
 - Contract-driven docs generation reduces drift and maintenance load for environment assumptions.
+
+## Work completed
+
+- Added docs generator:
+  - `scripts/generate-runtime-docs.mjs`
+  - `npm run docs:contract`
+  - `npm run docs:contract:check`
+- Added generated runtime contract artifact:
+  - `docs/generated/studiobrain-runtime-contract.generated.md`
+- Added gate integration:
+  - `scripts/pr-gate.mjs` required step (`runtime contract docs freshness`)
+  - `scripts/reliability-hub.mjs` warning-level docs freshness check
+- Updated runbooks to include generation workflow:
+  - `docs/EMULATOR_RUNBOOK.md`
+  - `studio-brain/docs/SWARM_BACKEND_SETUP.md`
+
+## Evidence
+
+1. `npm run docs:contract -- --json`
+2. `npm run docs:contract:check`
+3. `npm run pr:gate -- --json` (step executes; overall gate may still fail on unrelated source-index drift)

@@ -47,8 +47,15 @@
 ### Stable local env across terminals
 1. Copy `functions/.env.local.example` to `functions/.env.local`.
 2. Copy `web/.env.local.example` to `web/.env.local`.
-3. Set local-only values (for example `ADMIN_TOKEN`, `ALLOW_DEV_ADMIN_TOKEN=true`).
-4. Start emulators via canonical command: `npm run emulators:start -- --only firestore,functions,auth`.
+3. Choose profile mode in `web/.env.local`:
+  - keep emulator toggles off for production-targeted local work, or
+  - enable emulator toggles and set host/base URLs for either loopback or LAN/static profile.
+4. Set local-only values (for example `ADMIN_TOKEN`, `ALLOW_DEV_ADMIN_TOKEN=true`).
+5. Verify env readiness before startup:
+  - `npm run studio:env:verify`
+6. Start emulators via canonical command: `npm run emulators:start -- --only firestore,functions,auth`.
+  - `scripts/start-emulators.mjs` now runs emulator contract validation first (`scripts/validate-emulator-contract.mjs --strict`), then network gate checks.
+  - Optional bypasses (debug only): `--no-contract-check`, `--no-network-check`.
   - Optional compatibility fallback: `node ./scripts/ps1-run.mjs scripts/start-emulators.ps1`.
 
 ## Emulator and UI contract matrix
@@ -71,6 +78,49 @@ When testing from another device, align host fields with the active Studiobrain 
 - `lan-dhcp`/`lan-static`: host values should use the LAN hostname (example: `studiobrain.local`) and `npm run studio:network:check` should reflect the active profile.
 
 This avoids losing env vars when opening a new terminal session.
+
+## Command matrix
+
+| Profile | Primary command | Purpose |
+| --- | --- | --- |
+| local loopback | `npm run emulators:start -- --network-profile local --only firestore,functions,auth` | Default local workstation flow |
+| deep local | `npm run emulators:start -- --network-profile local --only firestore,functions,auth` + `npm run portal:smoke:playwright:local:deep` | Local browser + deep endpoint probes |
+| CI | `npm run emulators:start -- --network-profile ci --only firestore,functions,auth` | Deterministic CI-hosted emulator profile |
+
+## Smoke matrix
+
+| Profile | Smoke command | Must verify |
+| --- | --- | --- |
+| local loopback | `npm run portal:smoke:playwright:local` | Portal renders, core API calls reachable |
+| deep local | `npm run portal:smoke:playwright:local:deep` | `/readyz` and deep API probes recorded |
+| production check | `npm run portal:smoke:playwright:prod` | No localhost leakage, production targets only |
+
+## Fallback rules when emulators are not running
+
+1. If emulator mode flags are enabled but emulator contract check fails, do not continue smoke until mismatch is fixed.
+2. If local emulators are intentionally unavailable, disable emulator flags in `web/.env.local`:
+   - `VITE_USE_AUTH_EMULATOR=false`
+   - `VITE_USE_FIRESTORE_EMULATOR=false`
+   - `VITE_USE_EMULATORS=false`
+3. Keep `VITE_FUNCTIONS_BASE_URL` pointed to a reachable non-loopback endpoint when running non-emulator flows.
+4. Re-run `npm run studio:emulator:contract:check:strict` before smoke.
+
+## Vite host and proxy smoke checklist
+
+Use this checklist before local portal smoke runs when host/profile settings changed:
+
+1. Start Vite on the canonical host/port contract:
+   - `npm --prefix web run dev`
+   - expected: `http://127.0.0.1:5173` (or profile-specific host with explicit `VITE_PORT`)
+2. Verify stack profile gate (host + proxy targets):
+   - `npm run studio:stack:profile:snapshot:strict -- --json`
+3. Verify Vite proxy rewrites are reaching backend targets (not Vite index fallback):
+   - `curl -i http://127.0.0.1:5173/__studio-brain/readyz`
+   - `curl -i http://127.0.0.1:5173/__functions/__proxy_contract_probe__`
+4. Run browser smoke against local Vite host with deep endpoint probes:
+   - `npm run portal:smoke:playwright:local:deep`
+
+Acceptable backend status codes for proxy checks depend on auth/runtime state (`200`, `401`, `403`, `404`, `5xx`), but responses should come from backend targets rather than the Vite HTML shell.
 
 ## Network profile health and host stability
 - Validate host identity and profile drift before smoke or deployment workflows:
@@ -96,6 +146,13 @@ This avoids losing env vars when opening a new terminal session.
   - `npm run studio:cutover:gate -- --no-smoke`
   - `npm run studio:cutover:gate -- --portal-deep` (or `npm run studio:cutover:gate -- --portal-deep --portal-base-url https://monsoonfire-portal.web.app` for production-aligned API target)
   - `npm run integrity:check`
+
+#### Expected runtime (cutover gate)
+- `npm run studio:cutover:gate -- --no-smoke`: usually 20-90 seconds when services are already up.
+- `npm run studio:cutover:gate -- --portal-deep`: usually 2-6 minutes depending on network and Playwright browser startup.
+- Degraded path expectation:
+  - blocking dependency failure (Postgres/Redis/MinIO/status gate) should fail in under 90 seconds.
+  - portal/website smoke failures typically surface in 1-4 minutes with artifacts in `output/cutover-gate/`.
 
 ### Stability resource guardrails
 
@@ -151,12 +208,14 @@ emulator startup, smoke, and status checks:
 
 - `local` (default): loopback for on-device work (`127.0.0.1`).
 - `lan-dhcp`: use `studiobrain.local` for remote LAN workflows when static IP is not guaranteed.
+- `dhcp-host`: alias of `lan-dhcp` when you want explicit fallback naming in profile files.
 - `lan-static`: hard-bind StudioBrain to `STUDIO_BRAIN_STATIC_IP`.
 
 ### DHCP-only host recovery
 1. Keep this in `studio-brain/.env.network.profile`:
-   - `STUDIO_BRAIN_NETWORK_PROFILE=lan-dhcp`
+   - `STUDIO_BRAIN_NETWORK_PROFILE=lan-dhcp` (or `dhcp-host`)
    - `STUDIO_BRAIN_LAN_HOST=studiobrain.local` (or your local hostname)
+   - optional explicit fallback: `STUDIO_BRAIN_DHCP_HOST=studiobrain.local`
 2. Run:
    - `npm run studio:network:check:write-state`
 3. If host drift is reported:
@@ -173,6 +232,7 @@ Use this when the LAN host should stay stable across reboots and router churn:
 2. Set ownership details in `studio-brain/.env.network.profile`:
    - `STUDIO_BRAIN_STATIC_IP=<reserved_ipv4>` (required)
    - `STUDIO_BRAIN_LAN_HOST=<dns_or_mdns_hostname>` (optional, for readability)
+   - current static LAN assignment: `192.168.1.226`
 3. Keep the static assignment ownership list current in operations docs:
    - Owner: primary platform operator
    - Review cadence: when router firmware or VLAN changes are made
@@ -214,6 +274,33 @@ Use this checklist before cutover reviews and when handing off the active Studio
    - `output/studio-network-check/pr-gate.json` or `output/studio-network-check/cutover-gate.json`
    - `output/studio-stack-profile/latest.json`
    - `output/host-contract-evidence/latest.json`
+
+## Backup And Restore Drill Commands
+
+Use these before major cutover handoffs or after infrastructure changes:
+
+```bash
+npm run backup:verify
+npm run backup:verify:freshness
+npm run backup:restore:drill
+```
+
+Artifacts:
+- `output/backups/<timestamp>/manifest.json`
+- `output/backups/<timestamp>/restore-drill-summary.json`
+- `output/backups/latest.json`
+
+## Runtime Contract Docs Generation
+
+Keep generated runtime docs in sync with env/network contract sources:
+
+```bash
+npm run docs:contract
+npm run docs:contract:check
+```
+
+Generated artifact:
+- `docs/generated/studiobrain-runtime-contract.generated.md`
 
 ## Required env for CORS allowlist
 - `ALLOWED_ORIGINS` should include portal domains and dev origin.

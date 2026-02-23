@@ -1,129 +1,241 @@
-# Swarm Backend Setup (Local Docker-first)
+# Swarm Backend Setup (Portable Stack Contract)
 
-This repository includes a production-lean, developer-friendly backend stack for swarm orchestration:
-- PostgreSQL (`postgres`) for state, events, and migrations.
-- Redis (`redis`) for queue/buffer operations.
-- MinIO (`minio`) for blob-style artifact storage.
-- Optional OpenTelemetry collector (`otel-collector`) when `--profile observability` is enabled.
+This guide defines the stable local contract for Studio Brain backend dependencies. The goal is reproducible startup from a clean checkout without machine-specific host edits.
 
-## Prerequisites
+## Stable stack contract
 
-- Node.js 20+ (for local app build/run)
-- Docker + Docker Compose v2
+| Service | Purpose | Host port -> container port | Health signal | Runtime env override |
+|---|---|---|---|---|
+| `postgres` | primary shared state | `${PGPORT:-5433}` -> `5432` | `pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-monsoonfire_studio_os}` | `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` |
+| `redis` | event bus + queue primitives | `${REDIS_PORT:-6379}` -> `6379` | `redis-cli ping` -> `PONG` | `REDIS_HOST`, `REDIS_PORT`, optional `REDIS_USERNAME` / `REDIS_PASSWORD` |
+| `minio` | artifact/object storage | `${MINIO_API_PORT:-9010}` -> `9000`, `${MINIO_CONSOLE_PORT:-9011}` -> `9001` | `GET /minio/health/live` (HTTP 200) | `STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT`, `STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY`, `STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY`, optional `MINIO_API_PORT`, `MINIO_CONSOLE_PORT` |
+| `otel-collector` (optional) | local telemetry sink | `4317`, `4318`, `8889` | collector process up | enable via compose profile `observability` |
 
-## 1) Prepare environment
+### Startup order (expected)
+
+1. `postgres`
+2. `redis`
+3. `minio`
+4. Studio Brain app (`npm run dev` / `npm start`)
+5. Optional `otel-collector` profile
+
+## From-zero sequence (clean checkout)
+
+1. Create local env file (recommended):
 
 ```bash
+cd studio-brain
 cp .env.example .env
-# Adjust values, especially:
-#   PG*, REDIS_*, STUDIO_BRAIN_ARTIFACT_STORE_*
 ```
 
-Recommended base values:
+`make dev-up` auto-falls back to `.env.example` if `.env` is missing, but `.env` is recommended for local overrides.
 
-- `STUDIO_BRAIN_SWARM_ORCHESTRATOR_ENABLED=true` (to include Redis stream event bus checks)
-- `STUDIO_BRAIN_SKILL_SANDBOX_ENABLED=true`
-- `STUDIO_BRAIN_VECTOR_STORE_ENABLED=true` (uses pgvector extension)
-
-## 2) Start stack
+2. Boot dependencies:
 
 ```bash
-make dev-up            # starts postgres/redis/minio
-npm run build          # compile once or whenever code changes
-npm run dev            # starts Studio Brain app
+make dev-up
 ```
 
-Optional:
+3. Validate compose and dependencies:
 
 ```bash
-make dev-up -- -p observability  # start optional collector profile
+make infra-validate
+npm run infra:deps
 ```
 
-## 3) Validate infrastructure
+4. Run preflight (env contract + Postgres + Redis + MinIO probes + guardrails):
 
 ```bash
-make infra-validate           # docker compose config + required service check
-npm run infra:deps            # compose check + backend healthcheck
+npm run preflight
 ```
 
-## 4) Architecture map for next contributors
-
-Core files for the new backend plumbing:
-
-1. `docker-compose.yml` -> services, ports, optional observability profile.
-1. `src/config/env.ts` -> required env + connectivity validation.
-1. `src/index.ts` -> startup order and dependency injection.
-1. `src/connectivity/*.ts` -> factories and health checks.
-1. `src/connectivity/healthcheck.ts` -> common status table format.
-1. `src/swarm/models.ts`, `src/swarm/store.ts`, `src/swarm/bus/eventBus.ts` -> swarm primitives.
-1. `src/swarm/orchestrator.ts` -> minimal loop + follow-up event emission.
-1. `src/skills/registry.ts`, `src/skills/ingestion.ts`, `src/skills/sandbox.ts` -> registry + install + execution boundary.
-1. `src/cli/healthcheck.ts` + `/health/dependencies` -> dependency visibility.
-1. `src/infra/*` + `src/skills/*test.ts` -> validation hooks and integration checks.
-1. `docs/ENVIRONMENT_REFERENCE.md` -> environment variable reference.
-1. `docs/SWARM_BACKEND_EXTEND_GUIDE.md` -> extension playbook for next changes.
-
-## 5) Healthcheck command and endpoint
-
-1. CLI `npm run healthcheck` (table output)
-1. CLI `npm run healthcheck:json` (JSON output)
-1. HTTP `GET /health/dependencies`
-
-`healthcheck` command and endpoint both report a table/object for:
-- PostgreSQL
-- Redis
-- Event bus
-- Artifact store
-- Vector store (when enabled)
-- Skill registry and sandbox
-
-Health status is strict: any `error` or `degraded` dependency marks the dependency check as unhealthy and returns a non-zero exit from `npm run healthcheck`.
-
-All HTTP responses include:
-- `x-request-id`
-- `x-trace-id`
-
-If you pass `traceparent`, it is echoed back as provided so downstream services can correlate request flow.
-
-## 6) Basic smoke path
-
-From a running service:
+5. Start the app:
 
 ```bash
-curl -sS http://127.0.0.1:8787/health/dependencies | jq .
+npm run dev
 ```
 
-If you want to run an end-to-end stack check in a scriptable manner, use
-`npm run test:infra` (requires docker services up and `STUDIO_BRAIN_INFRA_INTEGRATION=1`).
+## Observability bundle (optional)
 
-## 7) Reset and rerun
+Use this when the host is running for long sessions and you want one-command local visibility.
 
 ```bash
-make dev-reset   # interactive, destructive
+# from repo root
+npm run studio:observability:up
+npm run studio:observability:status
+npm run studio:observability:down
+npm run studio:observability:reset -- --yes-i-know --reason "maintenance-window"
+```
+
+From `studio-brain/` you can use Make targets:
+
+```bash
+make ops-up
+make ops-status
+make ops-down
+make ops-reset
+```
+
+What `ops-up` does:
+1. starts `otel-collector` with compose profile `observability`
+2. runs one reliability heartbeat snapshot
+3. writes fresh artifacts under `output/stability` and `output/otel`
+
+Expected runtime:
+- `ops-up`/`studio:observability:up`: usually 20-90 seconds when dependencies are already running
+- `ops-status`: usually under 5 seconds
+- `ops-reset`: usually under 20 seconds
+
+## Reverse proxy bundle (optional)
+
+Use this when you want route-based access from one local endpoint:
+
+```bash
+npm run studio:proxy:up
+npm run studio:proxy:status -- --json
+npm run studio:proxy:down
+```
+
+Default proxy URL: `http://<resolved-host>:8788`
+
+Route map:
+- `/studio/*` -> Studio Brain (`:8787`)
+- `/functions/*` -> Functions emulator (`:5001`)
+- `/portal/*` -> Vite portal dev server (`:5173`)
+
+## Host mapping for local vs LAN workflows
+
+Do not edit scripts for host changes. Use env values only.
+
+| Workflow | `PGHOST` | `REDIS_HOST` | `STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT` | Notes |
+|---|---|---|---|---|
+| Local on same machine | `127.0.0.1` | `127.0.0.1` | `http://127.0.0.1:9010` | default and recommended for single-host dev |
+| LAN to Studiobrain hostname | `studiobrain.local` | `studiobrain.local` | `http://studiobrain.local:9010` | requires LAN/DNS resolution to studiobrain host |
+| LAN to static IP | `<static-ip>` | `<static-ip>` | `http://<static-ip>:9010` | use when DNS hostname is unavailable |
+
+When hostname or DHCP context changes, update `.env` host values and re-run `npm run preflight`. No code edits should be required.
+
+## Health endpoints and checks
+
+1. Compose health checks:
+   - Postgres: `pg_isready`
+   - Redis: `redis-cli ping`
+   - MinIO: `http://127.0.0.1:9010/minio/health/live`
+2. Studio Brain checks:
+   - `npm run healthcheck`
+   - `GET /health/dependencies`
+3. Preflight quick diagnosis:
+   - `npm run preflight`
+   - shows PASS/FAIL per dependency with remediation steps
+
+## Routing contract checks
+
+Use these checks to verify portal + functions + website routing posture from the same host contract:
+
+```bash
+# strict host/profile + proxy alignment
+npm run studio:stack:profile:snapshot:strict -- --json --artifact output/studio-stack-profile/latest.json
+
+# single-shot reliability summary (status + contracts + endpoints)
+npm run reliability:once -- --json
+```
+
+## Recovery notes (migration and portability failures)
+
+### 1) Stale volumes
+
+Symptom:
+- service starts but auth/database state is inconsistent with current env values.
+
+Recovery:
+
+```bash
+make dev-down
+make dev-reset
+make dev-up
+```
+
+Then run `npm run preflight`.
+
+### 2) Credential mismatch
+
+Symptom:
+- Postgres or MinIO is reachable but app/auth checks fail.
+
+Recovery:
+1. Align `.env` with compose-backed values (`PG*`, `STUDIO_BRAIN_ARTIFACT_STORE_*`).
+2. Restart dependencies:
+
+```bash
 make dev-down
 make dev-up
 ```
 
-## 8) Safe defaults to keep in mind
+3. Re-run `npm run preflight` and `npm run healthcheck`.
 
-1. Redis stream bus is available when `STUDIO_BRAIN_SWARM_ORCHESTRATOR_ENABLED=true`.
-1. Vector store remains opt-in and uses pgvector when `STUDIO_BRAIN_VECTOR_STORE_ENABLED=true`.
-1. Skill sandboxing starts with denied egress by default.
-1. Skill installs are isolated under `STUDIO_BRAIN_SKILL_INSTALL_ROOT`.
-1. `healthcheck` can be run while only required dependencies are up; optional dependencies report disabled status.
+### 3) Port collision
 
-## Troubleshooting
+Symptom:
+- compose fails to bind ports (`5433`, `6379`, `9010`, `9011`).
 
-- **`healthcheck` fails on Postgres**: ensure compose db is up and `.env` values match `PG*` entries.
-- **Redis errors**: verify `REDIS_HOST`/`REDIS_PORT` and that Redis service is reachable.
-- **Object store fails on bucket**: remove stale MinIO creds and re-run with:
-  `STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY` / `STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY` matching compose values.
-- **Skill sandbox unavailable**: check `lib/skills/sandboxWorker.js` exists (`npm run build`) and node can spawn child processes.
+Recovery:
+1. Identify occupying process/service.
+2. Free the port, or remap host-side port in `docker-compose.yml` and matching env var (`PGPORT`, `REDIS_PORT`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`).
+3. If MinIO port changes, also update `STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT`.
+4. Re-run:
 
-## 9) Additional references
+```bash
+make infra-validate
+make dev-up
+npm run preflight
+```
 
-1. `docs/ENVIRONMENT_REFERENCE.md` for exact env vars and defaults.
-1. `docs/SWARM_BACKEND_EXTEND_GUIDE.md` for safe ways to add features.
-1. `docs/SWARM_BACKEND_ARCHITECTURE.md` for component relationships and data flow.
-1. `docs/SWARM_BACKEND_DECISIONS.md` for rationale and evolution options.
-1. `docs/INDEX.md` for a quick doc navigation map.
+### 4) Hostname or LAN drift
+
+Symptom:
+- local machine works but remote/LAN callers fail.
+
+Recovery:
+1. Update `.env` host values to current LAN hostname or static IP.
+2. Verify network profile in root tooling if needed.
+3. Re-run `npm run preflight` from `studio-brain`.
+
+## Operator quick commands
+
+```bash
+# dependencies only
+make dev-up
+
+# full dependency contract checks
+make infra-validate
+npm run infra:deps
+npm run preflight
+
+# app-level dependency report
+npm run healthcheck:json
+```
+
+## Backup And Contract Maintenance
+
+```bash
+# backup verification + restore drill
+npm run backup:verify
+npm run backup:restore:drill
+
+# generated contract docs
+npm run docs:contract
+npm run docs:contract:check
+```
+
+Artifacts:
+- `output/backups/<timestamp>/manifest.json`
+- `output/backups/<timestamp>/restore-drill-summary.json`
+- `docs/generated/studiobrain-runtime-contract.generated.md`
+
+## Related references
+
+1. `docs/ENVIRONMENT_REFERENCE.md`
+2. `docs/SWARM_BACKEND_ARCHITECTURE.md`
+3. `docs/SWARM_BACKEND_EXTEND_GUIDE.md`
+4. `docs/SWARM_BACKEND_DECISIONS.md`
+5. `docs/OPS_DASHBOARD.md`

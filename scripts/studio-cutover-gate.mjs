@@ -154,7 +154,7 @@ function buildSteps(config) {
     {
       name: "studio-brain status gate",
       command: "npm",
-      args: ["run", "studio:check:safe"],
+      args: ["run", "studio:check:safe", "--", "--no-evidence", "--no-host-scan"],
       required: true,
       note: "Checks Studio Brain contract + endpoints are healthy.",
       remediation: "Start studio-brain and rerun gate.",

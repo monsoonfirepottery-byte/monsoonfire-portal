@@ -1,15 +1,21 @@
 # P2 — LAN Discovery and DHCP Fallback for Studiobrain
 
-Status: In Progress
+Status: Completed
 
 ## Work completed
 
 - Added DHCP/static-host guidance to `docs/EMULATOR_RUNBOOK.md` with canonical commands and recovery steps for `lan-dhcp` and `lan-static`.
 - Kept PowerShell emulator shim as optional compatibility note while keeping Node-first command order explicit.
+- Added host-state drift persistence and warnings in `scripts/studiobrain-network-check.mjs` via `.studiobrain-host-state.json`.
+- Added cutover checklist updates for static-LAN governance (`192.168.1.226`) and DHCP fallback in `docs/EXTERNAL_CUTOVER_EXECUTION.md`.
+- Added reliability/runtime checks that consume the same host-resolution contract.
 
-## Blockers
+## Evidence
 
-- DHCP hostname persistence state file remains open design: this ticket currently relies on DNS/host resolution fallback behavior; stateful host-change drift detection is planned for follow-up ticket `P2-studiobrain-host-network-profile-contract` and `P2-studiobrain-site-reliability-hub-and-heartbeats`.
+1. `npm run studio:network:check:write-state -- --strict --json`
+2. `npm run studio:network:check:gate -- --strict --json`
+3. `npm run reliability:once -- --json`
+
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Studio Brain

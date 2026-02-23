@@ -1,6 +1,6 @@
 # P2 — Env Contract Schema and Runtime Validation for Studiobrain
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform
@@ -72,4 +72,10 @@ Create a single contract for environment/state assumptions and enforce it before
   - `scripts/studiobrain-status.mjs` is strict in gate mode (`--gate`) and when `STUDIO_BRAIN_STATUS_STRICT=true`.
   - `scripts/pr-gate.mjs` and `scripts/studio-cutover-gate.mjs` run `env:validate --strict --json`.
 - Placeholder and template-value detection has explicit sensitive-var enforcement in `studio-brain/src/config/env.ts` and `studio-brain/scripts/env-contract-validator.mjs`.
-- This ticket remains active for compatibility shims and remaining contract consumers (e.g., smoke harnesses and emulator bootstrap docs).
+- Contract checks now cover PR/reliability surfaces and block invalid env before merge-relevant flows.
+
+## Evidence
+
+1. `npm --prefix studio-brain run env:validate -- --strict --json`
+2. `npm run pr:gate -- --json` (env contract step)
+3. `npm run reliability:once -- --json` (env contract + status gate integration)

@@ -1,6 +1,6 @@
 # P2 — Structured Logs and Correlation IDs Across Studiobrain and Portal Paths
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Studio Brain
@@ -52,3 +52,22 @@ Standardize log structure and propagate request correlation identifiers across s
 
 - Structured logs are enabled by default for local/studiobrain runs.
 - Correlation IDs appear in both logs and smoke artifacts.
+
+## Work completed
+
+- Confirmed structured JSON logging is active in Studio Brain runtime path (`studio-brain/src/config/logger.ts`, server request logs).
+- Confirmed request ID propagation/echo in Studio Brain HTTP server (`x-request-id`, `x-trace-id` response headers).
+- Added explicit correlation capture in status probes:
+  - `scripts/studiobrain-status.mjs` now sends `x-request-id` for each endpoint probe and records:
+    - `requestId`
+    - `responseRequestId`
+    - `responseTraceId`
+    - `requestIdMatched`
+- Added parser-friendly correlation and audit guidance to ops docs:
+  - `studio-brain/docs/OPS_TUNING.md`
+
+## Evidence
+
+1. `npm run studio:check:safe -- --json --no-evidence --no-host-scan` (`endpoints[].correlation`)
+2. `npm run reliability:once -- --json` (status payload includes correlation data in parsed endpoint results)
+3. `npm run functions:cors:smoke` (request-id propagation in function probe headers)

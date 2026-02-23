@@ -1,6 +1,6 @@
 # P2 — Firebase Emulator Hosting and URL Contract for Studiobrain Cutover
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Functions + Portal
@@ -59,6 +59,25 @@ Create one canonical emulator host contract and ensure every run path (web, func
 - Added a canonical host/URL matrix and web onboarding section updates in `docs/EMULATOR_RUNBOOK.md`.
 - Added `web/.env.local.example` to standardize emulator/Functions/StudioBrain local contract setup on fresh checkouts.
 - Added a dedicated hard-fail validator command (`scripts/validate-emulator-contract.mjs`) and gated it in `scripts/pr-gate.mjs` and `scripts/studio-cutover-gate.mjs` with `npm run studio:emulator:contract:check:strict`.
+- Added stricter emulator URL validation in `scripts/validate-emulator-contract.mjs`:
+  - emulator mode now fails when `VITE_FUNCTIONS_BASE_URL` points to cloudfunctions production hosts
+  - local emulator profile now enforces loopback functions host
+  - warns when emulator URL is missing expected regional path shape (`/us-central1`)
+- Updated emulator startup to consume the same contract before boot:
+  - `scripts/start-emulators.mjs` now loads both `functions/.env.local` and `web/.env.local`
+  - runs `scripts/validate-emulator-contract.mjs --strict` before network/profile checks (can be bypassed with `--no-contract-check` for debugging)
+- Updated portal smoke preflight alignment:
+  - `scripts/portal-playwright-smoke.mjs` now runs strict emulator contract validation before smoke execution
+- Expanded local examples and docs for canonical emulator host values and profile command/smoke matrices:
+  - `functions/.env.local.example`
+  - `docs/EMULATOR_RUNBOOK.md`
+  - `docs/studiobrain-host-url-contract-matrix.md`
+
+### Evidence commands
+
+- `npm run studio:emulator:contract:check:strict`
+- `VITE_USE_AUTH_EMULATOR=true VITE_AUTH_EMULATOR_HOST=127.0.0.1 VITE_AUTH_EMULATOR_PORT=9099 VITE_FUNCTIONS_BASE_URL=https://us-central1-monsoonfire-portal.cloudfunctions.net node ./scripts/validate-emulator-contract.mjs --strict`
+  - confirms production URL leakage is blocked when emulator mode is enabled
 
 ## Dependencies
 

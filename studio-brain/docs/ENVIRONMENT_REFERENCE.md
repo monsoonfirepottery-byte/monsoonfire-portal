@@ -46,7 +46,7 @@ Use this as the single source for runtime vars introduced by the backend-orchest
 
 | Variable | Description | Required | Default |
 |---|---|---|---|
-| `STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT` | MinIO endpoint URL | No | `http://127.0.0.1:9000` |
+| `STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT` | MinIO endpoint URL | No | `http://127.0.0.1:9010` |
 | `STUDIO_BRAIN_ARTIFACT_STORE_BUCKET` | Bucket name | No | `studiobrain-artifacts` |
 | `STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY` | MinIO access key | No | `minioadmin` |
 | `STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY` | MinIO secret key | No | `minioadmin` |
@@ -119,3 +119,16 @@ Use this as the single source for runtime vars introduced by the backend-orchest
    - URL-formats for artifact endpoint, OTEL endpoint, optional remote registry base URL
    - bounded numeric ranges for timeouts and poll settings
 2. `redactEnvForLogs()` intentionally masks sensitive fields before logging.
+
+## Precedence and onboarding
+
+1. Runtime precedence for local tooling should be treated as:
+   - CLI args
+   - existing process environment
+   - `.env` / `.env.local` file values
+2. Recommended copy/update/verify flow before startup:
+   - `cp .env.example .env`
+   - update local secrets/tokens
+   - `npm run studio:env:verify` (from repo root)
+3. Redaction policy:
+   - logs and status surfaces should use redacted fields (`[set]`/`[redacted]`) for token/secret/password variables.

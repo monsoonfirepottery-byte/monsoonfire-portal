@@ -1,6 +1,6 @@
 # P2 — Vite Local Hosting and Proxy Migration to Studiobrain Workflows
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Portal
@@ -43,6 +43,23 @@ Migrate local Vite dev setup and proxy behavior to a studiobrain-first, host-sta
 
 - Added environment-driven Vite host/allowed-host configuration in `web/vite.config.js` (`VITE_DEV_HOST`, `VITE_ALLOWED_HOSTS`) to support Studio Brain LAN/stability workflows without code edits.
 - Extended `web/.env.local.example` with matching Vite host/allowed-host hints for onboarding.
+- Added deterministic Vite dev proxy contract in `web/vite.config.js`:
+  - `/__functions/*` -> env-derived Functions target
+  - `/__studio-brain/*` -> env-derived Studio Brain target
+  - explicit `VITE_PORT` + `strictPort` path for stable local startup behavior
+- Updated `web/scripts/dev.mjs` to inject profile-derived proxy defaults (`VITE_FUNCTIONS_PROXY_TARGET`, `VITE_STUDIO_BRAIN_PROXY_TARGET`) and canonical port when unset.
+- Expanded stack profile validation (`scripts/studio-stack-profile-snapshot.mjs`) to enforce:
+  - Vite dev port contract (`5173` default)
+  - Vite proxy target host policy for local vs LAN profiles
+  - remote profile rejection of loopback proxy targets
+- Added local deep-smoke command aliases in root `package.json`:
+  - `portal:smoke:playwright:local`
+  - `portal:smoke:playwright:local:deep`
+- Added Studiobrain-first dev script alias in `web/package.json`:
+  - `npm --prefix web run dev:studiobrain`
+- Updated host/runbook docs with Vite proxy contract and smoke checklist:
+  - `docs/studiobrain-host-url-contract-matrix.md`
+  - `docs/EMULATOR_RUNBOOK.md`
 
 ## Dependencies
 - `web/vite.config.js`

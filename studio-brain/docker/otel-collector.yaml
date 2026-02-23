@@ -11,12 +11,14 @@ processors:
   batch:
 
 exporters:
-  logging:
-    loglevel: info
+  debug:
+    verbosity: normal
+  file:
+    path: /var/log/otel/traces.jsonl
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug, file]

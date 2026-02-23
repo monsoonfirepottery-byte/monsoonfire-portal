@@ -1,6 +1,6 @@
 # P2 — Environment and Secret Hygiene for Studiobrain Cutover
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Security
@@ -78,3 +78,36 @@ Make environment setup explicit and safe on Studiobrain by separating local defa
   - `scripts/studiobrain-status.mjs`
   - `scripts/pr-gate.mjs`
   - `scripts/studio-cutover-gate.mjs`
+
+## Work completed
+
+- Standardized env precedence in emulator startup:
+  - `scripts/start-emulators.mjs`
+  - now uses `CLI args > process env > .env files` by loading `functions/.env.local` and `web/.env.local` without overriding already-exported env values.
+- Strengthened env validation usability on clean checkout:
+  - `studio-brain/scripts/validate-env-contract.mjs`
+  - now auto-loads `.env` (or `.env.example` fallback), so validation reflects real startup contracts instead of requiring manual export first.
+- Improved strict contract semantics:
+  - `studio-brain/scripts/env-contract-validator.mjs`
+  - strict mode now fails on placeholder/template values and contract mismatches, not merely because sensitive vars are present.
+- Added onboarding verification command chain:
+  - root `package.json`:
+    - `studio:env:validate:strict`
+    - `studio:env:verify`
+  - verifies env contract, emulator contract, and network profile gate before launch.
+- Extended emulator contract validator to read portal env file by default:
+  - `scripts/validate-emulator-contract.mjs`
+  - loads `web/.env.local` (fallback `web/.env.local.example`) and reports env source in output.
+- Updated portal env template to force explicit profile choice instead of implicit loopback assumptions:
+  - `web/.env.local.example`
+  - defaults to emulator toggles off; local-loopback and LAN/static profiles are documented as explicit uncommented paths.
+- Updated onboarding/runbook docs:
+  - `docs/EMULATOR_RUNBOOK.md`
+  - `studio-brain/docs/ENVIRONMENT_REFERENCE.md`
+
+### Evidence commands
+
+- `npm run studio:env:validate:strict` -> PASS
+- `npm run studio:emulator:contract:check:strict` -> PASS (`env source: web/.env.local.example`)
+- `npm run studio:env:verify` -> PASS
+- `npm run integrity:check:strict` -> PASS

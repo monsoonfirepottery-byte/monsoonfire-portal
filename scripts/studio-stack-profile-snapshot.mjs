@@ -43,11 +43,24 @@ const checks = [];
 const warnings = [];
 const errors = [];
 const isRemoteProfile = network.profile === "lan-dhcp" || network.profile === "lan-static";
+const defaultFunctionsProxyTarget = `http://${network.host}:5001/monsoonfire-portal/us-central1`;
+const defaultStudioBrainProxyTarget = `http://${network.host}:8787`;
 
 const vite = {
   devHost: webResolvedEnv.VITE_DEV_HOST || network.host || "127.0.0.1",
-  allowedHosts: splitCsv(webResolvedEnv.VITE_ALLOWED_HOSTS),
+  devPort: parsePort(webResolvedEnv.VITE_PORT || webResolvedEnv.PORT, 5173),
+  allowedHosts: splitCsv(webResolvedEnv.VITE_ALLOWED_HOSTS).length > 0
+    ? splitCsv(webResolvedEnv.VITE_ALLOWED_HOSTS)
+    : (network.allowedStudioBrainHosts || []),
   functionsBaseUrl: webResolvedEnv.VITE_FUNCTIONS_BASE_URL || "",
+  functionsProxyTarget:
+    webResolvedEnv.VITE_FUNCTIONS_PROXY_TARGET ||
+    webResolvedEnv.VITE_FUNCTIONS_BASE_URL ||
+    defaultFunctionsProxyTarget,
+  studioBrainProxyTarget:
+    webResolvedEnv.VITE_STUDIO_BRAIN_PROXY_TARGET ||
+    webResolvedEnv.VITE_STUDIO_BRAIN_BASE_URL ||
+    defaultStudioBrainProxyTarget,
   authEmulatorHost: webResolvedEnv.VITE_AUTH_EMULATOR_HOST || "",
   authEmulatorPort: webResolvedEnv.VITE_AUTH_EMULATOR_PORT || "",
   firestoreEmulatorHost: webResolvedEnv.VITE_FIRESTORE_EMULATOR_HOST || webResolvedEnv.FIRESTORE_EMULATOR_HOST || "",
@@ -156,6 +169,59 @@ const evaluateProfileBinding = () => {
   }
   if (!isRemoteProfile && isLoopbackHost(vite.devHost)) {
     add("pass", "vite-dev-host", "Local profile allows loopback Vite host.", vite.devHost);
+  }
+  if (vite.devPort < 1 || vite.devPort > 65535) {
+    add("error", "vite-dev-port", "Vite dev port must be a valid TCP port (1-65535).", String(vite.devPort));
+  } else if (vite.devPort !== 5173) {
+    add("warning", "vite-dev-port", "Vite dev port differs from canonical 5173 contract. Verify all smoke commands use this port.", String(vite.devPort));
+  } else {
+    add("pass", "vite-dev-port", "Vite dev port matches canonical contract.", String(vite.devPort));
+  }
+
+  if (isRemoteProfile && vite.allowedHosts.length === 0) {
+    add("error", "vite-allowed-hosts", "Remote profile requires VITE_ALLOWED_HOSTS (or profile-derived allowed hosts).");
+  }
+
+  const functionsProxyHost = normalizeUrlHost(vite.functionsProxyTarget);
+  if (!functionsProxyHost) {
+    add("error", "vite-functions-proxy", "Vite functions proxy target is missing or invalid.", vite.functionsProxyTarget);
+  } else if (isRemoteProfile && isLoopbackHost(functionsProxyHost)) {
+    add(
+      "error",
+      "vite-functions-proxy",
+      "Remote profile requires a non-loopback functions proxy target host.",
+      vite.functionsProxyTarget,
+    );
+  } else if (!isRemoteProfile && !isLoopbackHost(functionsProxyHost)) {
+    add(
+      "warning",
+      "vite-functions-proxy",
+      "Local profile uses non-loopback functions proxy target. Confirm this is intentional.",
+      vite.functionsProxyTarget,
+    );
+  } else {
+    add("pass", "vite-functions-proxy", "Functions proxy target aligns with profile host policy.", vite.functionsProxyTarget);
+  }
+
+  const studioBrainProxyHost = normalizeUrlHost(vite.studioBrainProxyTarget);
+  if (!studioBrainProxyHost) {
+    add("error", "vite-studio-proxy", "Vite Studio Brain proxy target is missing or invalid.", vite.studioBrainProxyTarget);
+  } else if (isRemoteProfile && isLoopbackHost(studioBrainProxyHost)) {
+    add(
+      "error",
+      "vite-studio-proxy",
+      "Remote profile requires a non-loopback Studio Brain proxy target host.",
+      vite.studioBrainProxyTarget,
+    );
+  } else if (!isRemoteProfile && !isLoopbackHost(studioBrainProxyHost)) {
+    add(
+      "warning",
+      "vite-studio-proxy",
+      "Local profile uses non-loopback Studio Brain proxy target. Confirm this is intentional.",
+      vite.studioBrainProxyTarget,
+    );
+  } else {
+    add("pass", "vite-studio-proxy", "Studio Brain proxy target aligns with profile host policy.", vite.studioBrainProxyTarget);
   }
 
   const functionsHost = normalizeUrlHost(vite.functionsBaseUrl);
@@ -313,6 +379,14 @@ function splitCsv(value) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function parsePort(value, fallback) {
+  const parsed = Number(String(value || "").trim());
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+    return fallback;
+  }
+  return parsed;
 }
 
 function parseEnvFile(filePath) {

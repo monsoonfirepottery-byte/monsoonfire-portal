@@ -3,21 +3,25 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { basename, dirname, resolve } from "node:path";
 import { existsSync, statSync } from "node:fs";
+import { resolveStudioBrainNetworkProfile } from "../../scripts/studio-network-profile.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const repoRoot = resolve(__dirname, "..");
 const env = process.env;
+const network = resolveStudioBrainNetworkProfile();
+const derivedServer = env.WEBSITE_DEPLOY_SERVER
+  || (env.WEBSITE_DEPLOY_USER ? `${env.WEBSITE_DEPLOY_USER}@${network.host}` : "");
 const defaults = {
-  server: env.WEBSITE_DEPLOY_SERVER || "",
+  server: derivedServer,
   port: Number.parseInt(env.WEBSITE_DEPLOY_PORT || "", 10) || 21098,
   remotePath: env.WEBSITE_DEPLOY_REMOTE_PATH || "public_html/",
   source: resolve(repoRoot, "ncsitebuilder"),
 };
 if (!env.WEBSITE_DEPLOY_SERVER) {
   process.stdout.write(
-    "Tip: set WEBSITE_DEPLOY_SERVER (for example user@studiobrain.local) before deploy.\n",
+    `Tip: set WEBSITE_DEPLOY_SERVER (or WEBSITE_DEPLOY_USER) for ${network.host} before deploy.\n`,
   );
 }
 

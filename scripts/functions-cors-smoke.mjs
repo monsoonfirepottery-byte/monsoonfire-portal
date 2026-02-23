@@ -3,12 +3,12 @@
 
 import { printValidationReport, validateEnvContract } from "../studio-brain/scripts/env-contract-validator.mjs";
 import { runIntegrityCheck } from "./integrity-check.mjs";
+import { resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
 
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
 const DEFAULT_WEB_ORIGIN = "https://monsoonfire-portal.web.app";
 const DEFAULT_TIMEOUT_MS = 12_000;
 const CONTRACT_DEFAULT_ENV = {
-  STUDIO_BRAIN_HOST: "127.0.0.1",
   STUDIO_BRAIN_PORT: "8787",
   PGHOST: "127.0.0.1",
   PGPORT: "5433",
@@ -18,7 +18,7 @@ const CONTRACT_DEFAULT_ENV = {
   REDIS_HOST: "127.0.0.1",
   REDIS_PORT: "6379",
   STUDIO_BRAIN_REDIS_STREAM_NAME: "studiobrain.events",
-  STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT: "http://127.0.0.1:9000",
+  STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT: "http://127.0.0.1:9010",
   STUDIO_BRAIN_ARTIFACT_STORE_BUCKET: "studiobrain-artifacts",
   STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY: "studiobrain-ci-access",
   STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY: "studiobrain-ci-secret",
@@ -101,6 +101,13 @@ function assertStudioBrainContract() {
 
 function applyContractDefaults() {
   const injected = [];
+  const profileHost = String(resolveStudioBrainNetworkProfile().host || "127.0.0.1");
+  const configuredHost = String(process.env.STUDIO_BRAIN_HOST || "").trim();
+  if (!configuredHost) {
+    process.env.STUDIO_BRAIN_HOST = profileHost;
+    injected.push("STUDIO_BRAIN_HOST");
+  }
+
   for (const [key, value] of Object.entries(CONTRACT_DEFAULT_ENV)) {
     const current = process.env[key];
     if (typeof current === "string" && current.trim().length > 0) continue;

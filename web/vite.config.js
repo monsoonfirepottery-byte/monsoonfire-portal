@@ -10,6 +10,23 @@ export default defineConfig(({ mode }) => {
       .split(",")
       .map((entry) => entry.trim())
       .filter(Boolean);
+  const normalizeUrl = (value) => {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) return "";
+    const normalized = /^[a-z][a-z\d+\-.]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+    try {
+      return new URL(normalized).toString().replace(/\/+$/, "");
+    } catch {
+      return "";
+    }
+  };
+  const parsePort = (value, fallback) => {
+    const parsed = Number(String(value || "").trim());
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+      return fallback;
+    }
+    return parsed;
+  };
 
   const network = resolveStudioBrainNetworkProfile();
   const defaultHost = network.host || "127.0.0.1";
@@ -19,9 +36,37 @@ export default defineConfig(({ mode }) => {
   );
 
   const host = process.env.VITE_DEV_HOST || process.env.VITE_HOST || defaultHost;
+  const port = parsePort(process.env.VITE_PORT || process.env.PORT, 5173);
   const allowedHosts = parseCsvList(process.env.VITE_ALLOWED_HOSTS).length > 0
     ? parseCsvList(process.env.VITE_ALLOWED_HOSTS)
     : defaultAllowedHosts;
+  const studioBrainProxyTarget = normalizeUrl(
+    process.env.VITE_STUDIO_BRAIN_PROXY_TARGET ||
+      process.env.VITE_STUDIO_BRAIN_BASE_URL ||
+      `http://${defaultHost}:8787`,
+  );
+  const functionsProxyTarget = normalizeUrl(
+    process.env.VITE_FUNCTIONS_PROXY_TARGET ||
+      process.env.VITE_FUNCTIONS_BASE_URL ||
+      `http://${defaultHost}:5001/monsoonfire-portal/us-central1`,
+  );
+  const proxy = {};
+  if (studioBrainProxyTarget) {
+    proxy["/__studio-brain"] = {
+      target: studioBrainProxyTarget,
+      changeOrigin: true,
+      secure: false,
+      rewrite: (path) => path.replace(/^\/__studio-brain/, "") || "/",
+    };
+  }
+  if (functionsProxyTarget) {
+    proxy["/__functions"] = {
+      target: functionsProxyTarget,
+      changeOrigin: true,
+      secure: false,
+      rewrite: (path) => path.replace(/^\/__functions/, "") || "/",
+    };
+  }
 
   const plugins = [react()];
   if (!isDev) {
@@ -49,8 +94,10 @@ export default defineConfig(({ mode }) => {
   return {
     server: {
       host,
+      port,
       allowedHosts,
       strictPort: true,
+      proxy,
       headers: {
         "Cache-Control": "no-store",
       },

@@ -5,6 +5,27 @@ Operator: micah
 Portal URL: https://portal.monsoonfire.com  
 Firebase project: monsoonfire-portal
 
+## 0) Studiobrain network profile contract
+- [x] Active network profile is static LAN (`lan-static`)
+- [x] Active static IP: `192.168.1.226`
+- [ ] `studio-brain/.env.network.profile` reflects current host contract:
+  - `STUDIO_BRAIN_NETWORK_PROFILE=lan-static`
+  - `STUDIO_BRAIN_STATIC_IP=192.168.1.226`
+  - optional fallback: `STUDIO_BRAIN_DHCP_HOST=<stable-hostname>`
+- [ ] Verify network profile gate before cutover commands:
+  - `npm run studio:network:check:gate -- --strict --write-state --json`
+- [ ] Verify stack profile snapshot for LAN-safe host wiring:
+  - `npm run studio:stack:profile:snapshot:strict -- --json`
+
+Rollback plan when static assignment is unavailable:
+- switch to DHCP-host fallback profile:
+  - `STUDIO_BRAIN_NETWORK_PROFILE=dhcp-host`
+  - `STUDIO_BRAIN_DHCP_HOST=studiobrain.local`
+- rerun:
+  - `npm run studio:network:check:gate -- --strict --write-state --json`
+- optional emergency override for one-off recovery:
+  - `STUDIO_BRAIN_HOST=<reachable_host_or_ip>`
+
 ## 1) DNS + hosting cutover
 - [ ] DNS A/CNAME for portal host points to target hosting
 - [ ] TLS/HTTPS valid and HTTP -> HTTPS redirect active

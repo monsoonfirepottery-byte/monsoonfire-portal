@@ -43,9 +43,91 @@ const checkoutSchema = z.object({
 
 const seedCatalogSchema = z.object({
   force: z.boolean().optional(),
+  acknowledge: z.string().trim().max(120).optional(),
+  reason: z.string().trim().min(8).max(240).optional(),
 });
 
 let stripeClient: Stripe | null = null;
+
+export const NON_DEV_MATERIALS_SEED_ACK = "ALLOW_NON_DEV_SAMPLE_SEEDING";
+const NON_DEV_MATERIALS_SEED_ENABLE_ENV = "ALLOW_NON_DEV_SAMPLE_SEEDING";
+const NON_DEV_MATERIALS_SEED_ACK_ENV = "NON_DEV_SAMPLE_SEEDING_ACK";
+
+type SeedCatalogInput = z.infer<typeof seedCatalogSchema>;
+
+export type SeedMaterialsCatalogPolicy = {
+  allowed: boolean;
+  source: "emulator" | "dev_runtime" | "non_dev_explicit" | "blocked";
+  environmentMode: string;
+  requiresForce: boolean;
+  requiresAcknowledgement: boolean;
+  reason: string;
+};
+
+function envBool(value: unknown): boolean {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on";
+}
+
+export function resolveSeedMaterialsCatalogPolicy(
+  input: SeedCatalogInput,
+  env: NodeJS.ProcessEnv = process.env,
+): SeedMaterialsCatalogPolicy {
+  const force = input.force === true;
+  const nodeEnv = String(env.NODE_ENV ?? "").trim().toLowerCase() || "unknown";
+  const functionsEmulator = envBool(env.FUNCTIONS_EMULATOR);
+  const devRuntime = functionsEmulator || (nodeEnv !== "production" && nodeEnv !== "unknown");
+
+  if (!force) {
+    return {
+      allowed: false,
+      source: "blocked",
+      environmentMode: nodeEnv,
+      requiresForce: true,
+      requiresAcknowledgement: !devRuntime,
+      reason: "Sample seeding requires explicit force=true.",
+    };
+  }
+
+  if (devRuntime) {
+    return {
+      allowed: true,
+      source: functionsEmulator ? "emulator" : "dev_runtime",
+      environmentMode: nodeEnv,
+      requiresForce: false,
+      requiresAcknowledgement: false,
+      reason: functionsEmulator
+        ? "Allowed in emulator runtime with explicit force=true."
+        : `Allowed in ${nodeEnv} runtime with explicit force=true.`,
+    };
+  }
+
+  const allowNonDevSeeding = envBool(env[NON_DEV_MATERIALS_SEED_ENABLE_ENV]);
+  const expectedAck =
+    String(env[NON_DEV_MATERIALS_SEED_ACK_ENV] ?? "").trim() || NON_DEV_MATERIALS_SEED_ACK;
+  const providedAck = String(input.acknowledge ?? "").trim();
+  const ackMatches = providedAck === expectedAck;
+
+  if (!allowNonDevSeeding || !ackMatches) {
+    return {
+      allowed: false,
+      source: "blocked",
+      environmentMode: nodeEnv,
+      requiresForce: false,
+      requiresAcknowledgement: true,
+      reason: `Non-dev sample seeding is blocked. Set ${NON_DEV_MATERIALS_SEED_ENABLE_ENV}=true and provide acknowledge=${expectedAck}.`,
+    };
+  }
+
+  return {
+    allowed: true,
+    source: "non_dev_explicit",
+    environmentMode: nodeEnv,
+    requiresForce: false,
+    requiresAcknowledgement: false,
+    reason: "Non-dev sample seeding explicitly enabled and acknowledged.",
+  };
+}
 
 function getStripe(): Stripe {
   const key = (process.env.STRIPE_SECRET_KEY ?? "").trim();
@@ -219,6 +301,31 @@ export const seedMaterialsCatalog = onRequest({ region: REGION }, async (req, re
     res.status(429).json({ ok: false, message: "Too many requests" });
     return;
   }
+
+  const policy = resolveSeedMaterialsCatalogPolicy(parsed.data);
+  if (!policy.allowed) {
+    logger.warn("seedMaterialsCatalog blocked by policy", {
+      uid: auth.uid,
+      source: policy.source,
+      environmentMode: policy.environmentMode,
+      reason: policy.reason,
+      requestForce: parsed.data.force === true,
+      requestReason: parsed.data.reason ?? null,
+    });
+    res.status(412).json({
+      ok: false,
+      message: policy.reason,
+    });
+    return;
+  }
+
+  logger.info("seedMaterialsCatalog policy allowed", {
+    uid: auth.uid,
+    source: policy.source,
+    environmentMode: policy.environmentMode,
+    requestForce: parsed.data.force === true,
+    requestReason: parsed.data.reason ?? null,
+  });
 
   const sampleProducts = [
     {
@@ -399,6 +506,16 @@ export const seedMaterialsCatalog = onRequest({ region: REGION }, async (req, re
   });
 
   await batch.commit();
+
+  logger.info("seedMaterialsCatalog completed", {
+    uid: auth.uid,
+    source: policy.source,
+    environmentMode: policy.environmentMode,
+    created,
+    updated,
+    total: sampleProducts.length,
+    requestReason: parsed.data.reason ?? null,
+  });
 
   res.status(200).json({
     ok: true,

@@ -36,9 +36,11 @@ async function withPatchedEnv(patch, run) {
         NODE_ENV: "production",
         STRIPE_MODE: "test",
         STUDIO_BRAIN_ALLOW_STRIPE_STUB: undefined,
+        STUDIO_BRAIN_STRIPE_READER_MODE: undefined,
     }, async () => {
         const model = await (0, stripeReader_1.readStripeModel)();
         strict_1.default.equal(model.mode, "stub");
+        strict_1.default.equal(model.requestedMode, "auto");
         strict_1.default.equal(model.unsettledPayments, 0);
         strict_1.default.equal(model.warnings?.length, 0);
     });
@@ -48,36 +50,55 @@ async function withPatchedEnv(patch, run) {
         NODE_ENV: "production",
         STRIPE_MODE: "live",
         STUDIO_BRAIN_ALLOW_STRIPE_STUB: undefined,
+        STUDIO_BRAIN_STRIPE_READER_MODE: "auto",
     }, async () => {
-        await strict_1.default.rejects(() => (0, stripeReader_1.readStripeModel)(), /stub fallback is blocked/);
+        await strict_1.default.rejects(() => (0, stripeReader_1.readStripeModel)(), /stripe reader blocked/);
+    });
+});
+(0, node_test_1.default)("readStripeModel blocks explicit stub mode in production live mode without override", async () => {
+    await withPatchedEnv({
+        NODE_ENV: "production",
+        STRIPE_MODE: "live",
+        STUDIO_BRAIN_STRIPE_READER_MODE: "stub",
+        STUDIO_BRAIN_ALLOW_STRIPE_STUB: undefined,
+    }, async () => {
+        await strict_1.default.rejects(() => (0, stripeReader_1.readStripeModel)(), /stub mode requested in production live mode without override/);
     });
 });
 (0, node_test_1.default)("readStripeModel allows explicit production stub override", async () => {
     await withPatchedEnv({
         NODE_ENV: "production",
         STRIPE_MODE: "live",
+        STUDIO_BRAIN_STRIPE_READER_MODE: "stub",
         STUDIO_BRAIN_ALLOW_STRIPE_STUB: "true",
     }, async () => {
         const model = await (0, stripeReader_1.readStripeModel)();
         strict_1.default.equal(model.mode, "stub");
+        strict_1.default.equal(model.requestedMode, "stub");
         strict_1.default.equal(model.warnings?.length, 2);
         strict_1.default.ok(model.warnings?.[0]?.includes("override enabled"));
     });
 });
-(0, node_test_1.default)("resolveStripeReaderPolicy returns live-read policy when production override is disabled", () => {
-    const originalNodeEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
-    try {
-        const policy = (0, stripeReader_1.resolveStripeReaderPolicy)({ stripeMode: "live", allowStubOverride: false });
-        strict_1.default.equal(policy.allowed, false);
-        strict_1.default.equal(policy.mode, "live_read");
-    }
-    finally {
-        if (originalNodeEnv === undefined) {
-            delete process.env.NODE_ENV;
-        }
-        else {
-            process.env.NODE_ENV = originalNodeEnv;
-        }
-    }
+(0, node_test_1.default)("resolveStripeReaderPolicy blocks live_read mode because it is not implemented", () => {
+    const policy = (0, stripeReader_1.resolveStripeReaderPolicy)({
+        nodeEnv: "production",
+        stripeMode: "live",
+        readerMode: "live_read",
+        allowStubOverride: false,
+    });
+    strict_1.default.equal(policy.allowed, false);
+    strict_1.default.equal(policy.mode, "live_read");
+    strict_1.default.equal(policy.requestedMode, "live_read");
+});
+(0, node_test_1.default)("resolveStripeReaderPolicy falls back to auto mode when configured mode is invalid", () => {
+    const policy = (0, stripeReader_1.resolveStripeReaderPolicy)({
+        nodeEnv: "development",
+        stripeMode: "test",
+        readerMode: "invalid_mode",
+        allowStubOverride: false,
+    });
+    strict_1.default.equal(policy.allowed, true);
+    strict_1.default.equal(policy.mode, "stub");
+    strict_1.default.equal(policy.requestedMode, "auto");
+    strict_1.default.equal(policy.warnings.some((entry) => entry.includes("invalid stripe reader mode")), true);
 });

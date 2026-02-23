@@ -7,11 +7,12 @@ import { db } from "../firebase";
 import { type PortalThemeName } from "../theme/themes";
 import { mockFirings, mockKilns } from "../data/kilnScheduleMock";
 import { useBatches } from "../hooks/useBatches";
-import { track } from "../lib/analytics";
+import { shortId, track } from "../lib/analytics";
 import { normalizeFiringDoc as normalizeFiringRow, normalizeKilnDoc as normalizeKilnRow } from "../lib/normalizers/kiln";
 import type { Kiln, KilnFiring } from "../types/kiln";
 import type { Announcement, DirectMessageThread } from "../types/messaging";
 import { formatMaybeTimestamp } from "../utils/format";
+import { DASHBOARD_MOCK_NON_DEV_ACK, resolveDashboardMockPolicy } from "./dashboardMockPolicy";
 
 const SAMPLE_WORKSHOPS = [
   {
@@ -43,7 +44,6 @@ const STATUS_LABELS: Record<string, string> = {
 
 const PRIMARY_KILN_NAME = "L&L eQ2827-3";
 const RAKU_KILN_NAME = "Reduction Raku Kiln";
-const ALLOW_DASHBOARD_MOCK_DATA = import.meta.env.DEV && String(import.meta.env.VITE_DASHBOARD_USE_MOCK_KILN_DATA).toLowerCase() === "true";
 
 type KilnRow = {
   id: string;
@@ -108,12 +108,14 @@ function inferFiringTypeLabel(value?: string) {
   return "Firing";
 }
 
-function useKilnDashboardRows() {
+function useKilnDashboardRows(actor: { uid?: string | null; email?: string | null }) {
   const [kilns, setKilns] = useState<Kiln[]>([]);
   const [firings, setFirings] = useState<KilnFiring[]>([]);
   const [loading, setLoading] = useState(true);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const isMountedRef = useRef(true);
+  const mockPolicy = useMemo(() => resolveDashboardMockPolicy(), []);
+  const blockedMockTrackedRef = useRef(false);
 
   const reload = useCallback(async () => {
     if (!isMountedRef.current) return;
@@ -157,13 +159,25 @@ function useKilnDashboardRows() {
   }, [reload]);
 
   const noData = !loading && !permissionDenied && kilns.length === 0 && firings.length === 0;
-  const useMock = ALLOW_DASHBOARD_MOCK_DATA && !permissionDenied && noData;
+  const useMock = mockPolicy.allowed && !permissionDenied && noData;
   const rawKilns = useMock ? mockKilns : kilns;
   const rawFirings = useMock ? mockFirings : firings;
   const showRetry = permissionDenied || (!loading && noData);
   const mockNotice = useMock
-    ? "Using sample kiln data for explicit dev-only dashboard mode. Configure backend data sources when available."
+    ? mockPolicy.source === "non_dev_acknowledged"
+      ? "Sample kiln data mode is active outside development via explicit acknowledgment. Configure backend kiln data to disable this temporary mode."
+      : "Using sample kiln data in explicit development-only dashboard mode. Configure backend data sources when available."
     : "";
+  const mockPolicyNotice =
+    mockPolicy.requested && !mockPolicy.allowed
+      ? `Mock kiln data request was blocked outside development. To override intentionally, set VITE_DASHBOARD_MOCK_KILN_DATA_ACK=${DASHBOARD_MOCK_NON_DEV_ACK}.`
+      : "";
+
+  const actorUid = shortId(actor.uid);
+  const actorEmailDomain =
+    typeof actor.email === "string" && actor.email.includes("@")
+      ? actor.email.split("@")[1] || null
+      : null;
 
   useEffect(() => {
     if (!useMock) return;
@@ -171,8 +185,34 @@ function useKilnDashboardRows() {
       reason: "no_data",
       permissionDenied,
       backendRecordCount: 0,
+      actorUid,
+      actorEmailDomain,
+      envMode: mockPolicy.environmentMode,
+      source: mockPolicy.source,
     });
-  }, [useMock, permissionDenied]);
+  }, [useMock, permissionDenied, actorEmailDomain, actorUid, mockPolicy.environmentMode, mockPolicy.source]);
+
+  useEffect(() => {
+    if (blockedMockTrackedRef.current) return;
+    if (!mockPolicy.requested || mockPolicy.allowed) return;
+    blockedMockTrackedRef.current = true;
+    track("dashboard_kiln_sample_fallback_blocked", {
+      actorUid,
+      actorEmailDomain,
+      envMode: mockPolicy.environmentMode,
+      source: mockPolicy.source,
+      requiresAcknowledgement: mockPolicy.requiresNonDevAcknowledgement,
+    });
+  }, [
+    actorEmailDomain,
+    actorUid,
+    mockPolicy.allowed,
+    mockPolicy.environmentMode,
+    mockPolicy.requested,
+    mockPolicy.requiresNonDevAcknowledgement,
+    mockPolicy.source,
+  ]);
+
   const statusNotice = permissionDenied
     ? "Unable to load kiln schedules. Permissions may not be configured yet."
     : noData
@@ -302,6 +342,7 @@ function useKilnDashboardRows() {
     nextFiringLabel,
     statusNotice,
     mockNotice,
+    mockPolicyNotice,
     useMock,
     permissionDenied,
     loading,
@@ -360,12 +401,11 @@ export default function DashboardView({
     nextFiringLabel,
     statusNotice,
     mockNotice,
-    useMock,
-    permissionDenied,
+    mockPolicyNotice,
     showRetry,
     loading: kilnLoading,
     reload: reloadKilns,
-  } = useKilnDashboardRows();
+  } = useKilnDashboardRows({ uid: user.uid, email: user.email ?? null });
   const queueFillCount = Math.min(8, Math.max(active.length, 0));
   const queueFillRatio = Math.min(1, queueFillCount / 8);
   const averageTurnaroundDays = useMemo(() => {
@@ -552,9 +592,9 @@ export default function DashboardView({
         <RevealCard className="card card-3d" index={4} enabled={motionEnabled}>
           <div className="card-title">Kilns firing now</div>
           {mockNotice ? <div className="notice">{mockNotice}</div> : null}
-          {useMock && permissionDenied ? (
+          {mockPolicyNotice ? (
             <div className="notice" role="status" aria-live="polite">
-              {statusNotice}
+              {mockPolicyNotice}
             </div>
           ) : null}
           <div className="list">

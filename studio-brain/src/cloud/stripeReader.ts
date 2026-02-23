@@ -3,12 +3,17 @@ export type StripeReadModel = {
   unsettledPayments: number;
   durationMs?: number;
   mode?: "stub" | "live_read";
+  requestedMode?: StripeReaderMode;
   warnings?: string[];
 };
+
+export type StripeReaderMode = "auto" | "stub" | "live_read";
 
 export type StripeReaderPolicy = {
   allowed: boolean;
   mode: "stub" | "live_read";
+  requestedMode: StripeReaderMode;
+  reason: string;
   warnings: string[];
 };
 
@@ -18,24 +23,96 @@ function parseBool(value: string | undefined): boolean {
   return normalized === "true" || normalized === "1" || normalized === "yes";
 }
 
+function parseMode(value: string | undefined): StripeReaderMode {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "stub") return "stub";
+  if (normalized === "live_read") return "live_read";
+  return "auto";
+}
+
 export function resolveStripeReaderPolicy(options: {
   stripeMode?: string;
   allowStubOverride?: boolean;
+  readerMode?: string;
+  nodeEnv?: string;
 } = {}): StripeReaderPolicy {
   const stripeMode = options.stripeMode ?? process.env.STRIPE_MODE ?? "test";
   const allowStubOverride =
     options.allowStubOverride ?? parseBool(process.env.STUDIO_BRAIN_ALLOW_STRIPE_STUB);
-  const production = process.env.NODE_ENV === "production";
+  const requestedMode = parseMode(options.readerMode ?? process.env.STUDIO_BRAIN_STRIPE_READER_MODE);
+  const rawRequestedMode = String(options.readerMode ?? process.env.STUDIO_BRAIN_STRIPE_READER_MODE ?? "").trim();
+  const nodeEnv = (options.nodeEnv ?? process.env.NODE_ENV ?? "").trim().toLowerCase();
+  const production = nodeEnv === "production";
+  const productionLive = stripeMode === "live" && production;
+  const warnings: string[] = [];
 
-  if (stripeMode !== "live" || !production) {
-    return { allowed: true, mode: "stub", warnings: [] };
+  if (rawRequestedMode && requestedMode === "auto") {
+    warnings.push(`invalid stripe reader mode '${rawRequestedMode}' defaulted to auto`);
+  }
+
+  if (requestedMode === "live_read") {
+    return {
+      allowed: false,
+      mode: "live_read",
+      requestedMode,
+      reason: "live-read mode requested, but Stripe live-read is not implemented",
+      warnings: [...warnings, "cloud functions remain the authoritative Stripe source of truth"],
+    };
+  }
+
+  if (requestedMode === "stub") {
+    if (!productionLive) {
+      return {
+        allowed: true,
+        mode: "stub",
+        requestedMode,
+        reason: "explicit stub mode allowed outside production live mode",
+        warnings,
+      };
+    }
+    if (allowStubOverride) {
+      return {
+        allowed: true,
+        mode: "stub",
+        requestedMode,
+        reason: "explicit production stub override enabled",
+        warnings: [
+          ...warnings,
+          "stripe stub override enabled for production live mode",
+          "cloud functions remain the authoritative Stripe source of truth",
+        ],
+      };
+    }
+    return {
+      allowed: false,
+      mode: "live_read",
+      requestedMode,
+      reason: "stub mode requested in production live mode without override",
+      warnings: [
+        ...warnings,
+        "set STUDIO_BRAIN_ALLOW_STRIPE_STUB=true only for emergency controlled fallback",
+      ],
+    };
+  }
+
+  if (!productionLive) {
+    return {
+      allowed: true,
+      mode: "stub",
+      requestedMode,
+      reason: "auto mode resolved to stub outside production live mode",
+      warnings,
+    };
   }
 
   if (allowStubOverride) {
     return {
       allowed: true,
       mode: "stub",
+      requestedMode,
+      reason: "auto mode resolved to stub via explicit production override",
       warnings: [
+        ...warnings,
         "stripe stub override enabled for production live mode",
         "cloud functions remain the authoritative Stripe source of truth",
       ],
@@ -45,7 +122,12 @@ export function resolveStripeReaderPolicy(options: {
   return {
     allowed: false,
     mode: "live_read",
-    warnings: ["production live mode requested but Stripe live-read is not implemented"],
+    requestedMode,
+    reason: "production live mode requested but Stripe live-read is not implemented",
+    warnings: [
+      ...warnings,
+      "configure STUDIO_BRAIN_STRIPE_READER_MODE=stub plus STUDIO_BRAIN_ALLOW_STRIPE_STUB=true for explicit temporary fallback",
+    ],
   };
 }
 
@@ -56,7 +138,7 @@ export async function readStripeModel(): Promise<StripeReadModel> {
   const policy = resolveStripeReaderPolicy();
 
   if (!policy.allowed) {
-    throw new Error("stripe stub fallback is blocked for production live mode");
+    throw new Error(`stripe reader blocked: ${policy.reason}`);
   }
 
   return {
@@ -64,6 +146,7 @@ export async function readStripeModel(): Promise<StripeReadModel> {
     unsettledPayments: 0,
     durationMs: Date.now() - startedAt,
     mode: policy.mode,
+    requestedMode: policy.requestedMode,
     warnings: policy.warnings,
   };
 }

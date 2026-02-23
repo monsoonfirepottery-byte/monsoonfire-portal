@@ -462,7 +462,9 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
 
     try {
       const resp = await client.postJson<SeedMaterialsCatalogResponse>("seedMaterialsCatalog", {
-        force: false,
+        force: true,
+        acknowledge: "ALLOW_NON_DEV_SAMPLE_SEEDING",
+        reason: "materials_view_staff_seed",
       });
       setStatus(`Sample catalog seeded (${resp.created} new, ${resp.updated} updated).`);
       const refreshed = await client.postJson<ListMaterialsProductsResponse>(

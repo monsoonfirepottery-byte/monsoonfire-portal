@@ -1,7 +1,7 @@
 # Epic: P1 — Mock Data Governance and Production Hygiene
 
-Status: On Hold
-Date: 2026-02-18
+Status: Completed
+Date: 2026-02-23
 Priority: P1
 Owner: Portal + Functions Team
 Type: Epic
@@ -38,3 +38,9 @@ Introduce explicit dev-only governance around mock data and stub readers, and ma
 1. All tickets in this epic are implemented or explicitly postponed.
 2. Team has a documented policy for temporary mock fallback windows.
 3. No hidden mock fallback remains in core production user journeys.
+
+## Completion Evidence
+1. Dashboard mock governance implemented with explicit non-dev acknowledgement policy and fallback telemetry in `web/src/views/DashboardView.tsx`.
+2. Materials seeding contract hardened with force + non-dev acknowledgement controls in `functions/src/materials.ts`.
+3. Studio-brain Stripe reader stub guardrails expanded with explicit mode policy in `studio-brain/src/cloud/stripeReader.ts`.
+4. Governance runbook added in `docs/runbooks/MOCK_DATA_GOVERNANCE.md`.

@@ -121,6 +121,7 @@ const EnvSchema = zod_1.z.object({
     GOOGLE_APPLICATION_CREDENTIALS: zod_1.z.string().optional(),
     STRIPE_MODE: zod_1.z.enum(["test", "live"]).default("test"),
     STUDIO_BRAIN_STRIPE_READ_ONLY: BoolFromString.default(true),
+    STUDIO_BRAIN_STRIPE_READER_MODE: zod_1.z.enum(["auto", "stub", "live_read"]).default("auto"),
 });
 function hasPlaceholderValue(value) {
     return PLACEHOLDER_MATCHERS.some((pattern) => pattern.test(value));
@@ -225,6 +226,7 @@ function redactEnvForLogs(env) {
         STUDIO_BRAIN_ALLOWED_TENANT_IDS: env.STUDIO_BRAIN_ALLOWED_TENANT_IDS,
         STUDIO_BRAIN_STRIPE_READ_ONLY: env.STUDIO_BRAIN_STRIPE_READ_ONLY,
         STRIPE_MODE: env.STRIPE_MODE,
+        STUDIO_BRAIN_STRIPE_READER_MODE: env.STUDIO_BRAIN_STRIPE_READER_MODE,
         FIREBASE_PROJECT_ID: env.FIREBASE_PROJECT_ID ?? null,
         GOOGLE_APPLICATION_CREDENTIALS: env.GOOGLE_APPLICATION_CREDENTIALS ? "[set]" : null,
         PGHOST: env.PGHOST,

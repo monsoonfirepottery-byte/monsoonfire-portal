@@ -1,7 +1,7 @@
 # P2 — Materials Sample Seeding Contract
 
-Status: Planned
-Date: 2026-02-18
+Status: Completed
+Date: 2026-02-23
 Priority: P2
 Owner: Functions Team
 Type: Ticket
@@ -30,3 +30,4 @@ Create a strict seeding contract and environment guardrails for sample material 
 
 ## References
 - `functions/src/materials.ts:234`
+- `functions/src/materials.test.ts:1`

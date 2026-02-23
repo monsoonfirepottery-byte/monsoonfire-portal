@@ -1,7 +1,7 @@
 # P1 — Dev-Only Mock Data Controls
 
-Status: Planned
-Date: 2026-02-18
+Status: Completed
+Date: 2026-02-23
 Priority: P1
 Owner: Portal Team
 Type: Ticket
@@ -31,3 +31,4 @@ Introduce explicit environment gating and policy for any data mock usage.
 ## References
 - `web/src/views/DashboardView.tsx:158`
 - `web/src/views/DashboardView.tsx:529`
+- `web/src/views/DashboardView.mockPolicy.test.ts:1`

@@ -134,6 +134,7 @@ const EnvSchema = z.object({
 
   STRIPE_MODE: z.enum(["test", "live"]).default("test"),
   STUDIO_BRAIN_STRIPE_READ_ONLY: BoolFromString.default(true),
+  STUDIO_BRAIN_STRIPE_READER_MODE: z.enum(["auto", "stub", "live_read"]).default("auto"),
 });
 
 export type BrainEnv = z.infer<typeof EnvSchema>;
@@ -254,6 +255,7 @@ export function redactEnvForLogs(env: BrainEnv): Record<string, string | number 
     STUDIO_BRAIN_ALLOWED_TENANT_IDS: env.STUDIO_BRAIN_ALLOWED_TENANT_IDS,
     STUDIO_BRAIN_STRIPE_READ_ONLY: env.STUDIO_BRAIN_STRIPE_READ_ONLY,
     STRIPE_MODE: env.STRIPE_MODE,
+    STUDIO_BRAIN_STRIPE_READER_MODE: env.STUDIO_BRAIN_STRIPE_READER_MODE,
     FIREBASE_PROJECT_ID: env.FIREBASE_PROJECT_ID ?? null,
     GOOGLE_APPLICATION_CREDENTIALS: env.GOOGLE_APPLICATION_CREDENTIALS ? "[set]" : null,
     PGHOST: env.PGHOST,

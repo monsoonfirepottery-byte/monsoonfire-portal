@@ -2981,7 +2981,7 @@ const loadEvents = useCallback(async () => {
             <div className="staff-kpi"><span>Receipts total</span><strong>{dollars(summary?.receiptsAmountCents ?? 0)}</strong></div>
           </div>
           <div className="staff-actions-row">
-            <button className="btn btn-secondary" disabled={!!busy} onClick={() => void run("seedMaterialsCatalog", async () => { await client.postJson("seedMaterialsCatalog", {}); await loadCommerce(); setStatus("seedMaterialsCatalog completed"); })}>Seed materials catalog</button>
+            <button className="btn btn-secondary" disabled={!!busy} onClick={() => void run("seedMaterialsCatalog", async () => { await client.postJson("seedMaterialsCatalog", { force: true, acknowledge: "ALLOW_NON_DEV_SAMPLE_SEEDING", reason: "staff_console_commerce_seed" }); await loadCommerce(); setStatus("seedMaterialsCatalog completed"); })}>Seed materials catalog</button>
             <input
               className="staff-member-search"
               placeholder="Search orders by id, status, notes"

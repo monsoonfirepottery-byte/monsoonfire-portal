@@ -111,13 +111,13 @@ Portal and website features handle healthy workflows well, but failure behavior 
 
 7. [x] Map auth/session expiry to explicit re-login support path and non-retry copy. (Owner: Platform)
 8. [ ] Prevent unbounded retry attempts from stale credentials (session-guard path per action). (Owner: QA)
-9. [ ] Add telemetry field for auth-expiry reason and support code handoff. (Owner: Security)
+9. [x] Add telemetry field for auth-expiry reason and support code handoff. (Owner: Security)
 
 ### D) Firestore and functions failure handling (4 tasks)
 
 10. [x] Detect index-required errors and route to runbook/help copy with support code. (Owner: Platform)
 11. [x] Keep Firestore reads tolerant of partial/missing doc fields. (Owner: Platform)
-12. [ ] Map common functions contract errors to actionable user copy for missing fields (`uid`, `fromBatchId`, malformed payload). (Owner: Platform)
+12. [x] Map common functions contract errors to actionable user copy for missing fields (`uid`, `fromBatchId`, malformed payload). (Owner: Platform)
 13. [ ] Handle idempotency/duplicate submit cases with in-flight guards and disabled primary action states. (Owner: QA)
 
 ### E) Network + runtime recovery (4 tasks)

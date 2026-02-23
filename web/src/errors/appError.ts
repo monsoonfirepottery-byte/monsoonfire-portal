@@ -16,6 +16,7 @@ export type AppErrorOptions = {
   userMessage?: string;
   debugMessage?: string;
   retryable?: boolean;
+  authFailureReason?: string;
 };
 
 type ErrorLike = {
@@ -33,6 +34,7 @@ export class AppError extends Error {
   retryable: boolean;
   statusCode?: number;
   code?: string;
+  authFailureReason?: string;
 
   constructor(input: {
     kind: AppErrorKind;
@@ -42,6 +44,7 @@ export class AppError extends Error {
     retryable: boolean;
     statusCode?: number;
     code?: string;
+    authFailureReason?: string;
   }) {
     super(input.userMessage);
     this.name = "AppError";
@@ -52,6 +55,7 @@ export class AppError extends Error {
     this.retryable = input.retryable;
     this.statusCode = input.statusCode;
     this.code = input.code;
+    this.authFailureReason = input.authFailureReason;
   }
 }
 
@@ -93,6 +97,17 @@ function isConnectivityMessage(rawMessage: string): boolean {
   );
 }
 
+function isChunkLoadMessage(rawMessage: string): boolean {
+  const lower = rawMessage.toLowerCase();
+  return (
+    lower.includes("loading chunk") ||
+    lower.includes("chunkloaderror") ||
+    lower.includes("failed to load chunk") ||
+    lower.includes("imported module") ||
+    lower.includes("dynamic import")
+  );
+}
+
 function isAuthMessage(rawMessage: string): boolean {
   const lower = rawMessage.toLowerCase();
   return (
@@ -105,6 +120,24 @@ function isAuthMessage(rawMessage: string): boolean {
     lower.includes("authorization header") ||
     lower.includes("session expired")
   );
+}
+
+function inferAuthFailureReason(rawMessage: string, statusCode?: number, code?: string): string | undefined {
+  const lower = rawMessage.toLowerCase();
+  if (!lower) return undefined;
+  if (code === "UNAUTHENTICATED" || code === "PERMISSION_DENIED") return "credential invalid";
+  if (statusCode !== 401 && statusCode !== 403) return undefined;
+
+  if (lower.includes("expired")) return "credential expired";
+  if (lower.includes("revoked") || lower.includes("disabled")) return "account access revoked";
+  if (lower.includes("permission denied") || lower.includes("forbidden") || lower.includes("unauthorized") || lower.includes("unauthenticated")) {
+    return "permission denied";
+  }
+  if (lower.includes("token") || lower.includes("id token") || lower.includes("auth")) {
+    return "credential invalid";
+  }
+
+  return "session issue";
 }
 
 function isContractMismatchMessage(rawMessage: string): boolean {
@@ -181,6 +214,14 @@ function inferKindFromSignals(input: {
 
   if (isConnectivityMessage(lowerMessage)) return "network";
 
+  if (
+    lowerCode === "invalid_argument" ||
+    lowerCode === "bad_request" ||
+    isContractMismatchMessage(lowerMessage)
+  ) {
+    return "functions";
+  }
+
   if (statusCode === 409 && !lowerCode) return "functions";
 
   if (typeof statusCode === "number") return "functions";
@@ -201,12 +242,14 @@ function inferRetryable(input: {
 
   const lowerMessage = input.debugMessage.toLowerCase();
   if (lowerMessage.includes("timed out") || lowerMessage.includes("timeout")) return true;
+  if (isChunkLoadMessage(lowerMessage)) return true;
 
   return false;
 }
 
 function buildUserMessage(input: {
   kind: AppErrorKind;
+  authFailureReason?: string;
   retryable: boolean;
   debugMessage: string;
   statusCode?: number;
@@ -214,16 +257,20 @@ function buildUserMessage(input: {
   const suffix = input.retryable
     ? "Try again."
     : "Contact support with this code if it continues.";
+  const authReasonText = input.authFailureReason ? ` (${input.authFailureReason})` : "";
 
   if (input.kind === "auth") {
     if (input.statusCode === 401 || input.statusCode === 403) {
-      return "Session expired or permissions changed. Sign in again, then retry.";
+      return `Session issue${authReasonText}. Sign in again, then retry.`;
     }
 
-    return "Session expired. Sign in again, then retry.";
+    return `Session issue${authReasonText}. Sign in again, then retry.`;
   }
 
   if (input.kind === "network") {
+    if (isChunkLoadMessage(input.debugMessage.toLowerCase())) {
+      return "A page module failed to load. Reload to recover from a network/code update interruption.";
+    }
     return "You appear to be offline or on a weak network. Reconnect, then try again.";
   }
 
@@ -251,7 +298,7 @@ function buildUserMessage(input: {
 
   if (input.kind === "functions") {
     if (input.statusCode === 400 && isContractMismatchMessage(input.debugMessage)) {
-      return "That request was rejected due to an input contract mismatch. Check required values and retry.";
+      return "That request was rejected due to an input contract mismatch. Check required values (uid / fromBatchId) and retry.";
     }
 
     if (input.statusCode === 409) {
@@ -274,9 +321,13 @@ export function toAppError(error: unknown, options: AppErrorOptions = {}): AppEr
   if (error instanceof AppError) return error;
 
   const asObj = getErrorLike(error);
-  const debugMessage = (options.debugMessage ?? asString(error)).trim() || "Request failed";
+  const rawDebugMessage =
+    options.debugMessage ??
+    (typeof asObj.message === "string" ? asObj.message : asString(error));
+  const debugMessage = rawDebugMessage.trim() || "Request failed";
   const statusCode = asStatusCode(options.statusCode ?? asObj.statusCode ?? asObj.status);
   const code = normalizeCode(options.code ?? asObj.code);
+  const authFailureReason = options.authFailureReason ?? inferAuthFailureReason(debugMessage, statusCode, code);
   const kind = inferKindFromSignals({
     code,
     statusCode,
@@ -293,6 +344,7 @@ export function toAppError(error: unknown, options: AppErrorOptions = {}): AppEr
     options.userMessage?.trim() ||
     buildUserMessage({
       kind,
+      authFailureReason,
       retryable,
       debugMessage,
       statusCode,
@@ -307,5 +359,6 @@ export function toAppError(error: unknown, options: AppErrorOptions = {}): AppEr
     retryable,
     statusCode,
     code,
+    authFailureReason,
   });
 }

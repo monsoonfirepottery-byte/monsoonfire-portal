@@ -14,6 +14,18 @@ describe("appError", () => {
     expect(err.userMessage.toLowerCase()).toContain("sign in");
   });
 
+  it("classifies token expiry as session issue with auth reason", () => {
+    const err = toAppError(new Error("Firebase ID token expired"), {
+      statusCode: 401,
+      requestId: "req_auth_expired_1",
+    });
+
+    expect(err.kind).toBe("auth");
+    expect(err.authFailureReason).toBe("credential expired");
+    expect(err.userMessage).toContain("Session issue");
+    expect(err.userMessage.toLowerCase()).toContain("expired");
+  });
+
   it("detects missing Firestore index errors", () => {
     expect(
       isMissingFirestoreIndexError(
@@ -30,6 +42,20 @@ describe("appError", () => {
     expect(err.userMessage.toLowerCase()).toContain("index");
   });
 
+  it("adds actionable contract-mismatch guidance", () => {
+    const err = toAppError(
+      { message: "Invalid argument: fromBatchId is required", code: "INVALID_ARGUMENT" },
+      {
+        statusCode: 400,
+        requestId: "req_contract_1",
+      }
+    );
+
+    expect(err.kind).toBe("functions");
+    expect(err.userMessage.toLowerCase()).toContain("uid");
+    expect(err.userMessage.toLowerCase()).toContain("frombatchid");
+  });
+
   it("marks network failures as retryable", () => {
     const err = toAppError(new Error("Failed to fetch"), {
       requestId: "req_net_1",
@@ -40,4 +66,3 @@ describe("appError", () => {
     expect(err.userMessage.toLowerCase()).toContain("offline");
   });
 });
-

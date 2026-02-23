@@ -168,6 +168,12 @@ export default function RuntimeHardeningChrome({ children }: Props) {
                 <pre>{JSON.stringify(lastRequest.payload, null, 2)}</pre>
                 <div className="runtime-request-subtitle">Response snippet</div>
                 <pre>{lastRequest.responseSnippet || "(empty)"}</pre>
+                {typeof lastRequest.authFailureReason === "string" && lastRequest.authFailureReason ? (
+                  <>
+                    <div className="runtime-request-subtitle">Auth failure reason</div>
+                    <pre>{lastRequest.authFailureReason}</pre>
+                  </>
+                ) : null}
                 {lastRequest.error ? (
                   <>
                     <div className="runtime-request-subtitle">Error</div>

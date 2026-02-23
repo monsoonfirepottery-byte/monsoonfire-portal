@@ -7,6 +7,7 @@ export type RequestTelemetry = {
   endpoint: string;
   method: string;
   payload: unknown;
+  authFailureReason?: string;
   status?: number;
   ok?: boolean;
   responseSnippet?: string;
@@ -76,4 +77,3 @@ export function subscribeRequestTelemetry(listener: Listener): () => void {
     listeners.delete(listener);
   };
 }
-

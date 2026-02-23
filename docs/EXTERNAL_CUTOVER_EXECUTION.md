@@ -1,30 +1,10 @@
 # External Cutover Execution Checklist
+Generated at: 2026-02-23T21:44:16.252Z
 
-Generated at: 2026-02-13T21:40:10Z  
-Operator: micah  
-Portal URL: https://portal.monsoonfire.com  
+Primary checklist is platform-neutral and uses compatibility-aware script entrypoints.
+
+Portal URL: https://portal.monsoonfire.com
 Firebase project: monsoonfire-portal
-
-## 0) Studiobrain network profile contract
-- [x] Active network profile is static LAN (`lan-static`)
-- [x] Active static IP: `192.168.1.226`
-- [ ] `studio-brain/.env.network.profile` reflects current host contract:
-  - `STUDIO_BRAIN_NETWORK_PROFILE=lan-static`
-  - `STUDIO_BRAIN_STATIC_IP=192.168.1.226`
-  - optional fallback: `STUDIO_BRAIN_DHCP_HOST=<stable-hostname>`
-- [ ] Verify network profile gate before cutover commands:
-  - `npm run studio:network:check:gate -- --strict --write-state --json`
-- [ ] Verify stack profile snapshot for LAN-safe host wiring:
-  - `npm run studio:stack:profile:snapshot:strict -- --json`
-
-Rollback plan when static assignment is unavailable:
-- switch to DHCP-host fallback profile:
-  - `STUDIO_BRAIN_NETWORK_PROFILE=dhcp-host`
-  - `STUDIO_BRAIN_DHCP_HOST=studiobrain.local`
-- rerun:
-  - `npm run studio:network:check:gate -- --strict --write-state --json`
-- optional emergency override for one-off recovery:
-  - `STUDIO_BRAIN_HOST=<reachable_host_or_ip>`
 
 ## 1) DNS + hosting cutover
 - [ ] DNS A/CNAME for portal host points to target hosting
@@ -33,9 +13,21 @@ Rollback plan when static assignment is unavailable:
 - [ ] Confirm `.well-known` files exist when needed
 
 Run verifier:
-- Execute verifier script (primary Node path): `node ./web/deploy/namecheap/verify-cutover.mjs --portal-url "https://portal.monsoonfire.com" --report-path "docs/cutover-verify.json"`
-- Compatibility shell form:
-  - `web/deploy/namecheap/verify-cutover -PortalUrl "https://portal.monsoonfire.com" -ReportPath "docs/cutover-verify.json"`
+- Execute the Node verifier (primary path):
+  - `node ./web/deploy/namecheap/verify-cutover.mjs --portal-url "https://portal.monsoonfire.com" --report-path "docs/cutover-verify.json"`
+- Execute authenticated protected-function verifier (required for cutover close-out):
+  - `PORTAL_CUTOVER_ID_TOKEN="<REAL_ID_TOKEN>" node ./web/deploy/namecheap/verify-cutover.mjs`
+    - `--portal-url "https://portal.monsoonfire.com"`
+    - `--report-path "docs/cutover-verify.json"`
+    - `--require-protected-check true`
+    - `--functions-base-url https://us-central1-monsoonfire-portal.cloudfunctions.net`
+    - `--protected-fn listMaterialsProducts`
+    - `--protected-body '{"includeInactive":false}'`
+  - Do not commit or log the raw token.
+- Compatibility fallback (legacy alias):
+  - `web/deploy/namecheap/verify-cutover`
+    - `-PortalUrl "https://portal.monsoonfire.com"`
+    - `-ReportPath "docs/cutover-verify.json"`
 
 ## 2) Firebase Auth baseline
 - [ ] Firebase Console -> Authentication -> Settings -> Authorized domains include:
@@ -53,9 +45,10 @@ Run verifier:
 - [ ] Redirect URIs copied from Firebase provider panels exactly
 
 Log entry helper:
-- Use `node ./scripts/ps1-run.mjs scripts/new-auth-provider-run-entry.ps1`
-- `-OutFile docs/PROD_AUTH_PROVIDER_RUN_LOG.md`
-- `-PortalUrl "https://portal.monsoonfire.com"`
+- Run from compatibility-friendly shell:
+  - `node ./scripts/ps1-run.mjs scripts/new-auth-provider-run-entry.ps1`
+  - `-OutFile docs/PROD_AUTH_PROVIDER_RUN_LOG.md`
+  - `-PortalUrl "https://portal.monsoonfire.com"`
 
 ## 4) Hosted auth verification
 - [ ] Google sign-in succeeds on hosted portal
@@ -65,6 +58,11 @@ Log entry helper:
 - [ ] No `auth/unauthorized-domain` errors
 - [ ] Popup blocked fallback works
 
+## 4b) Protected function verification from hosted auth context
+- [ ] Capture a valid user ID token from hosted sign-in session (no token in git)
+- [ ] Run authenticated verifier command (section 1)
+- [ ] Confirm report includes `protectedFunction` in passed checks
+
 ## 5) Notification drill execution (prod token required)
 - [ ] Append run template:
   - Run `node ./scripts/ps1-run.mjs scripts/new-drill-log-entry.ps1`
@@ -72,7 +70,7 @@ Log entry helper:
 - [ ] Run drills:
   - Execute `node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1`
   - Parameters:
-    - `-BaseUrl "https://us-central1-monsoonfire-portal.cloudfunctions.net"`
+    - `-BaseUrl https://us-central1-{PROJECT_ID}.cloudfunctions.net`
     - `-IdToken "<REAL_ID_TOKEN>"`
     - `-Uid "<REAL_UID>"`
     - `-OutputJson`
@@ -87,3 +85,5 @@ Log entry helper:
   - `tickets/P0-portal-hosting-cutover.md`
   - `tickets/P1-prod-auth-oauth-provider-credentials.md`
   - `tickets/P0-alpha-drills-real-auth.md`
+
+> Verifier execution intentionally skipped (--skip-verifier).

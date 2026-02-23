@@ -1,6 +1,6 @@
 # P0 - Portal Hosting Cutover (portal.monsoonfire.com)
 
-Status: Planned
+Status: Blocked
 
 Goal: ship the portal at `https://portal.monsoonfire.com` on Namecheap hosting, with working Firebase Auth + Cloud Functions calls, and the correct static hosting behavior for a SPA.
 
@@ -78,3 +78,22 @@ If any of these are off, we get login loops, broken routes, or silent failures t
   - Confirm hosted Google sign-in end-to-end.
   - Capture one successful protected Cloud Function call from hosted portal.
 - `/.well-known/apple-app-site-association` currently returns `404` (warning only unless universal links are required in this phase).
+
+## Update (2026-02-23)
+- Extended cutover verifier to support optional authenticated protected-function checks:
+  - `web/deploy/namecheap/verify-cutover.mjs`
+  - `web/deploy/namecheap/verify-cutover.ps1` (compat shim)
+- Updated deploy docs/checklist to include authenticated verification path and token-handling guardrails:
+  - `web/deploy/namecheap/README.md`
+  - `scripts/run-external-cutover-checklist.mjs`
+  - `docs/EXTERNAL_CUTOVER_EXECUTION.md`
+- Refreshed current static-route verifier evidence:
+  - `docs/cutover-verify.json` (currently failing because `/.well-known/apple-app-site-association` returns `404`)
+- Captured explicit required-check failure evidence when no token is provided:
+  - `docs/cutover-verify-auth-required.json`
+
+## Current Blocker (2026-02-23)
+- Ticket close-out still requires a real hosted auth session token to satisfy acceptance:
+  1. hosted Google sign-in pass on `https://portal.monsoonfire.com`
+  2. one successful protected Cloud Function call using `--require-protected-check true`
+- This cannot be completed fully from repo-only automation without operator-supplied production ID token/session.

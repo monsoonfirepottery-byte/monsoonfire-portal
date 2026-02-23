@@ -41,11 +41,11 @@
       "asset/assets/vendor-DuPUYBON.js has weak cache header: <missing>",
       "asset/assets/vendor-react-DPkGgiPW.js has weak cache header: <missing>",
       "rootCache missing cache-control header at https://portal.monsoonfire.com",
-      "deepCache missing cache-control header at https://portal.monsoonfire.com/reservations",
-      "protected function check skipped (set --id-token <token> or PORTAL_CUTOVER_ID_TOKEN=<token> in env)"
+      "deepCache missing cache-control header at https://portal.monsoonfire.com/reservations"
     ],
     "failures": [
-      "wellKnownRoute returned status 404"
+      "wellKnownRoute returned status 404",
+      "protected function check required but no id token provided (set --id-token <token> or PORTAL_CUTOVER_ID_TOKEN=<token> in env)"
     ]
   },
   "deepPath": "/reservations",
@@ -79,7 +79,7 @@
     }
   ],
   "protectedFunctionCheck": {
-    "required": false,
+    "required": true,
     "attempted": false,
     "endpoint": "https://us-central1-monsoonfire-portal.cloudfunctions.net/listMaterialsProducts",
     "functionName": "listMaterialsProducts",
@@ -92,5 +92,5 @@
     "message": "",
     "responseSnippet": ""
   },
-  "reportPath": "docs/cutover-verify.json"
+  "reportPath": "docs/cutover-verify-auth-required.json"
 }

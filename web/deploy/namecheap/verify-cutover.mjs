@@ -9,6 +9,9 @@ const repoRoot = resolve(dirname(__filename), "../..", "..");
 const DEFAULT_PORTAL_URL = "https://portal.monsoonfire.com";
 const DEFAULT_DEEP_PATH = "/reservations";
 const DEFAULT_WELL_KNOWN_PATH = "/.well-known/apple-app-site-association";
+const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
+const DEFAULT_PROTECTED_FUNCTION = "listMaterialsProducts";
+const DEFAULT_ID_TOKEN_ENV = "PORTAL_CUTOVER_ID_TOKEN";
 
 const CLI_ALIAS_MAP = {
   portalurl: "portalUrl",
@@ -19,6 +22,20 @@ const CLI_ALIAS_MAP = {
   wellKnownPath: "wellKnownPath",
   reportpath: "reportPath",
   reportPath: "reportPath",
+  timeoutms: "timeoutMs",
+  timeoutMs: "timeoutMs",
+  functionsbaseurl: "functionsBaseUrl",
+  functionsBaseUrl: "functionsBaseUrl",
+  protectedfn: "protectedFn",
+  protectedFn: "protectedFn",
+  protectedbody: "protectedBody",
+  protectedBody: "protectedBody",
+  idtoken: "idToken",
+  idToken: "idToken",
+  idtokenenv: "idTokenEnv",
+  idTokenEnv: "idTokenEnv",
+  requireprotectedcheck: "requireProtectedCheck",
+  requireProtectedCheck: "requireProtectedCheck",
 };
 
 const options = parseArgs(process.argv.slice(2));
@@ -48,6 +65,11 @@ async function runVerify(parsed) {
   const wellKnownPath = ensureLeadingSlash(parsed.wellKnownPath || DEFAULT_WELL_KNOWN_PATH);
   const reportPath = parsed.reportPath || "";
   const timeoutMs = parseInt(parsed.timeoutMs || "15000", 10) || 15000;
+  const functionsBaseUrl = normalizeBaseUrl(parsed.functionsBaseUrl || DEFAULT_FUNCTIONS_BASE_URL);
+  const protectedFn = normalizeFunctionName(parsed.protectedFn || DEFAULT_PROTECTED_FUNCTION);
+  const requireProtectedCheck = coerceBoolean(parsed.requireProtectedCheck);
+  const idTokenEnv = String(parsed.idTokenEnv || DEFAULT_ID_TOKEN_ENV).trim();
+  const idToken = String(parsed.idToken || process.env[idTokenEnv] || "").trim();
 
   const checks = [];
   const failures = [];
@@ -55,15 +77,15 @@ async function runVerify(parsed) {
   const warnings = [];
 
   const root = await requestWithTimeout({ url: portalUrl, timeoutMs });
-  checks.push(root);
+  checks.push(toReportCheck(root));
   evaluateResult("rootRoute", root, failures, passes);
 
   const deep = await requestWithTimeout({ url: `${portalUrl}${deepPath}`, timeoutMs });
-  checks.push(deep);
+  checks.push(toReportCheck(deep));
   evaluateResult("deepRoute", deep, failures, passes);
 
   const wellKnown = await requestWithTimeout({ url: `${portalUrl}${wellKnownPath}`, timeoutMs });
-  checks.push(wellKnown);
+  checks.push(toReportCheck(wellKnown));
   evaluateResult("wellKnownRoute", wellKnown, failures, passes, {
     requireBodyContains: "",
     allowNon200: false,
@@ -97,26 +119,93 @@ async function runVerify(parsed) {
     }
   }
 
-  const checkReport = {
+  checkHeaders("rootCache", root, root.path, failures, passes, warnings);
+  checkHeaders("deepCache", deep, deep.path, failures, passes, warnings);
+
+  const protectedFunctionCheck = {
+    required: requireProtectedCheck,
+    attempted: false,
+    endpoint: `${functionsBaseUrl}/${protectedFn}`,
+    functionName: protectedFn,
+    requestBody: null,
+    status: 0,
+    ok: false,
+    idTokenSource: "none",
+    message: "",
+    responseSnippet: "",
+  };
+
+  const protectedBodyResult = resolveProtectedBody(protectedFn, parsed.protectedBody);
+  if (!protectedBodyResult.ok) {
+    failures.push(`protected function payload parse failed: ${protectedBodyResult.error}`);
+  } else {
+    protectedFunctionCheck.requestBody = protectedBodyResult.body;
+  }
+
+  if (!idToken) {
+    const hint = `set --id-token <token> or ${idTokenEnv}=<token> in env`;
+    if (requireProtectedCheck) {
+      failures.push(`protected function check required but no id token provided (${hint})`);
+    } else {
+      warnings.push(`protected function check skipped (${hint})`);
+    }
+  } else if (protectedBodyResult.ok) {
+    protectedFunctionCheck.attempted = true;
+    protectedFunctionCheck.idTokenSource = parsed.idToken ? "cli" : `env:${idTokenEnv}`;
+    const protectedResult = await requestJsonWithTimeout({
+      url: protectedFunctionCheck.endpoint,
+      timeoutMs,
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${idToken}`,
+        origin: portalUrl,
+      },
+      body: JSON.stringify(protectedBodyResult.body),
+    });
+
+    protectedFunctionCheck.status = protectedResult.status;
+    protectedFunctionCheck.ok =
+      protectedResult.ok &&
+      protectedResult.status === 200 &&
+      protectedResult.json &&
+      typeof protectedResult.json === "object" &&
+      protectedResult.json.ok === true;
+    protectedFunctionCheck.message = protectedResult.error || "";
+    protectedFunctionCheck.responseSnippet = snippetFromValue(
+      protectedResult.json ?? protectedResult.body ?? "",
+      320,
+    );
+
+    if (protectedFunctionCheck.ok) {
+      passes.push("protectedFunction");
+    } else {
+      const reason =
+        protectedResult.error ||
+        `status=${protectedResult.status}, body=${protectedFunctionCheck.responseSnippet || "<empty>"}`;
+      failures.push(`protected function check failed (${reason})`);
+    }
+  }
+
+  const summary = {
+    ok: failures.length === 0,
+    passed: [...passes],
+    warnings: [...warnings],
+    failures: [...failures],
+  };
+
+  return {
+    ok: summary.ok,
     portalUrl,
     checks,
-    summary: {
-      ok: failures.length === 0,
-      passed: passes,
-      warnings: warnings,
-      failures,
-    },
+    summary,
     deepPath,
     wellKnownPath,
     sampleAssets,
     assetChecks,
+    protectedFunctionCheck,
     reportPath: parsed.reportPath || "",
   };
-
-  checkHeaders("rootCache", root, root.path, failures, passes);
-  checkHeaders("deepCache", deep, deep.path, failures, passes);
-
-  return checkReport;
 }
 
 function evaluateResult(name, result, failures, passes, options = {}) {
@@ -151,19 +240,25 @@ function evaluateResult(name, result, failures, passes, options = {}) {
   }
 }
 
-function checkHeaders(name, result, path, failures, passes) {
+function checkHeaders(name, result, path, failures, passes, warnings) {
   if (!result || !result.ok) {
     failures.push(`${name} skipped due upstream failure (${path})`);
     return;
   }
 
-  const cache = result.cacheControl || "<missing>";
+  const cache = (result.cacheControl || "").trim();
   if (name === "rootCache" || name === "deepCache") {
     if (!cache) {
-      failures.push(`${name} missing cache-control header at ${path}`);
+      warnings.push(`${name} missing cache-control header at ${path}`);
       return;
     }
-    passes.push(name);
+
+    if (isShortHtmlCacheHeader(cache)) {
+      passes.push(name);
+      return;
+    }
+
+    failures.push(`${name} cache-control is too aggressive for html (${path} -> ${cache})`);
     return;
   }
 
@@ -172,7 +267,26 @@ function checkHeaders(name, result, path, failures, passes) {
   }
 }
 
-async function requestWithTimeout({ url, timeoutMs }) {
+function isShortHtmlCacheHeader(rawHeader) {
+  const header = rawHeader.toLowerCase();
+  if (header.includes("no-cache") || header.includes("no-store") || header.includes("max-age=0")) {
+    return true;
+  }
+
+  const match = header.match(/max-age=(\d+)/);
+  if (!match) {
+    return false;
+  }
+
+  const maxAge = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(maxAge)) {
+    return false;
+  }
+
+  return maxAge <= 300;
+}
+
+async function requestWithTimeout({ url, timeoutMs, method = "GET", headers = {}, body = undefined }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -187,12 +301,15 @@ async function requestWithTimeout({ url, timeoutMs }) {
 
   try {
     const response = await fetch(url, {
+      method,
       signal: controller.signal,
       redirect: "follow",
       headers: {
         "user-agent": "monsoonfire-namecheap-cutover-checker/1.0",
         accept: "text/html,application/json,text/plain;q=0.9,*/*;q=0.8",
+        ...headers,
       },
+      body,
     });
     result.status = response.status;
     result.ok = response.ok;
@@ -205,6 +322,31 @@ async function requestWithTimeout({ url, timeoutMs }) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function requestJsonWithTimeout({ url, timeoutMs, method = "POST", headers = {}, body = "" }) {
+  const result = await requestWithTimeout({
+    url,
+    timeoutMs,
+    method,
+    headers: {
+      accept: "application/json,text/plain;q=0.9,*/*;q=0.8",
+      ...headers,
+    },
+    body,
+  });
+
+  let json = null;
+  try {
+    json = result.body ? JSON.parse(result.body) : null;
+  } catch {
+    json = null;
+  }
+
+  return {
+    ...result,
+    json,
+  };
 }
 
 function isStrongCacheHeader(rawHeader) {
@@ -246,12 +388,81 @@ function normalizeUrl(raw) {
   }
 }
 
+function normalizeBaseUrl(raw) {
+  return normalizeUrl(raw).replace(/\/+$/, "");
+}
+
 function ensureLeadingSlash(raw) {
   const path = String(raw || "").trim();
   if (!path.startsWith("/")) {
     return `/${path}`;
   }
   return path;
+}
+
+function normalizeFunctionName(raw) {
+  return String(raw || "")
+    .trim()
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "") || DEFAULT_PROTECTED_FUNCTION;
+}
+
+function coerceBoolean(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
+function resolveProtectedBody(functionName, rawBody) {
+  if (!rawBody) {
+    if (functionName === "listMaterialsProducts") {
+      return { ok: true, body: { includeInactive: false } };
+    }
+    return { ok: true, body: {} };
+  }
+
+  try {
+    const parsed = JSON.parse(rawBody);
+    if (!parsed || typeof parsed !== "object") {
+      return { ok: false, error: "protected body must be a JSON object" };
+    }
+    return { ok: true, body: parsed };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function snippetFromValue(value, maxLength = 300) {
+  const text =
+    typeof value === "string"
+      ? value
+      : (() => {
+          try {
+            return JSON.stringify(value);
+          } catch {
+            return String(value);
+          }
+        })();
+
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, maxLength)}...`;
+}
+
+function toReportCheck(result) {
+  const bodyText = result?.body || "";
+  return {
+    path: result?.path || "",
+    status: result?.status || 0,
+    ok: Boolean(result?.ok),
+    bodySnippet: snippetFromValue(bodyText, 320),
+    bodyLength: bodyText.length,
+    cacheControl: result?.cacheControl || "",
+    error: result?.error || "",
+  };
 }
 
 function parseArgs(argv) {
@@ -299,10 +510,13 @@ function printUsage() {
   const usage = [
     "Usage:",
     "  node ./web/deploy/namecheap/verify-cutover.mjs [--portal-url <url>] [--deep-path <path>] [--well-known-path <path>] [--report-path <path>]",
+    "    [--functions-base-url <url>] [--protected-fn <name>] [--protected-body <json>]",
+    "    [--id-token <token> | --id-token-env <ENV_VAR>] [--require-protected-check <true|false>]",
     "",
     "Examples:",
     "  node ./web/deploy/namecheap/verify-cutover.mjs",
     '  node ./web/deploy/namecheap/verify-cutover.mjs --portal-url https://portal.monsoonfire.com --report-path docs/cutover-verify.json',
+    "  PORTAL_CUTOVER_ID_TOKEN=<token> node ./web/deploy/namecheap/verify-cutover.mjs --require-protected-check true",
     "",
     "Compatibility legacy shell aliases are supported:",
     "  -PortalUrl <url> -ReportPath <path>",

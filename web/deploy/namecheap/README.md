@@ -65,6 +65,9 @@ The script:
 5. Run the preflight verifier:
   - Primary path:
     - `node ./web/deploy/namecheap/verify-cutover.mjs --portal-url https://portal.monsoonfire.com --report-path docs/cutover-verify.json`
+  - Optional protected-function auth verification (recommended close-out check):
+    - `PORTAL_CUTOVER_ID_TOKEN="<REAL_ID_TOKEN>" node ./web/deploy/namecheap/verify-cutover.mjs --portal-url https://portal.monsoonfire.com --report-path docs/cutover-verify.json --require-protected-check true --functions-base-url https://us-central1-monsoonfire-portal.cloudfunctions.net --protected-fn listMaterialsProducts --protected-body '{"includeInactive":false}'`
+    - Do not commit or log the raw ID token.
   - Compatibility fallback shim (optional):
     - `web/deploy/namecheap/verify-cutover -PortalUrl https://portal.monsoonfire.com -ReportPath docs/cutover-verify.json`
 
@@ -78,3 +81,4 @@ The script:
   - `/.well-known/*` can be read without SPA rewrite
   - cache headers on `index.html`
   - sample `/assets/*` files for long-lived cache hints (`immutable` or high `max-age`)
+  - optional protected function call with a provided ID token (`PORTAL_CUTOVER_ID_TOKEN` or `--id-token`)

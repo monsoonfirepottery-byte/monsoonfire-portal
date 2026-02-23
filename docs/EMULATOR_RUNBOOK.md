@@ -35,6 +35,7 @@
   - `STUDIO_BRAIN_STATIC_IP=<optional_static_ipv4_for_lan_static>`
   - `node ./scripts/start-emulators.mjs --network-profile lan-dhcp --only firestore,functions,auth`
 - Optional preflight before startup:
+  - `npm run studiobrain:network:check -- --json`
   - `npm run studio:network:check -- --json`
   - `npm run studio:network:check:write-state`
 - Equivalent direct command:
@@ -190,6 +191,23 @@ Recovery path when static governance breaks:
    - `npm run studio:network:check -- --json`
    - `npm run studio:network:check:write-state`
 4. Proceed with emulator + smoke commands under that profile.
+
+### Golden target profile checklist (PR review + pair handoff)
+
+Use this checklist before cutover reviews and when handing off the active Studiobrain host:
+
+1. Profile is explicit and intentional in `studio-brain/.env.network.profile`:
+   - `STUDIO_BRAIN_NETWORK_PROFILE=local|lan-dhcp|lan-static`
+2. Quick host contract check passes:
+   - `npm run studiobrain:network:check -- --json`
+3. Host state is persisted for drift detection:
+   - `npm run studiobrain:network:check:write-state -- --strict`
+4. Drift gate is green before smoke/cutover:
+   - `npm run studiobrain:network:check:gate -- --strict`
+5. If `lan-static` is selected, router reservation + `STUDIO_BRAIN_STATIC_IP` match the same IPv4.
+6. PR evidence includes:
+   - `output/studio-network-check/pr-gate.json` or `output/studio-network-check/cutover-gate.json`
+   - `output/studio-stack-profile/latest.json`
 
 ## Required env for CORS allowlist
 - `ALLOWED_ORIGINS` should include portal domains and dev origin.

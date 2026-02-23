@@ -1,6 +1,6 @@
 # P1 — Studiobrain Static Network Resilience and Host Identity Hardening
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-18
 Priority: P1
 Owner: Platform + Studio Brain
@@ -63,6 +63,11 @@ Create a deterministic host identity pattern (with documented fallback) that kee
 - PR gate now runs host-state check in strict mode (`--gate --strict --write-state`) prior to preflight.
 - Updated `docs/EMULATOR_RUNBOOK.md` with host check and persistence flow so onboarding includes state-aware host contract checks.
 - Added `.studiobrain-host-state.json` ignore rule to prevent accidental check-ins.
+- Added explicit quick-check aliases for handoff ergonomics:
+  - `npm run studiobrain:network:check`
+  - `npm run studiobrain:network:check:write-state`
+  - `npm run studiobrain:network:check:gate`
+- Added a "Golden target profile checklist" section to `docs/EMULATOR_RUNBOOK.md` for PR reviewers and pair handoff.
 
 ## Definition of Done
 

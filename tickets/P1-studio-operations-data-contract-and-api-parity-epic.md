@@ -1,6 +1,6 @@
 # Ticket: P1 — Studio Operations Data Contract & API Parity Epic
 
-Status: Planned
+Status: In Progress
 Created: 2026-02-17  
 Priority: P1  
 Owner: Web + Functions Team  
@@ -26,6 +26,21 @@ Create a single, explicit contract and API parity across:
 3. Add/align normalizer mapping for all fields in `docs/SCHEMA_RESERVATIONS.md`.
 4. Clarify which fields are optional vs required and defaults.
 5. Add operational notes for transition rules and actor permissions.
+
+## Tickets
+
+- `tickets/P1-studio-reservation-status-api.md`
+- `tickets/P1-studio-reservation-queue-ops-ui.md`
+- `tickets/P1-studio-reservation-stage-timeline-and-audit.md`
+- `tickets/P1-studio-queue-position-and-eta-band.md`
+- `tickets/P1-website-studio-kiln-status-sync-board.md`
+- `tickets/P2-studio-reservation-doc-and-playbook-gap.md`
+- `tickets/P2-studio-station-aware-routing-and-capacity-controls.md`
+- `tickets/P2-studio-arrival-checkin-and-qr-intake.md`
+
+## Unblock Notes
+
+- 2026-02-23: Epic moved from `Planned` to `In Progress` and linked to active reservation/queue/api parity tickets so `epic-hub` work queues can schedule execution.
 
 ## Acceptance Criteria
 

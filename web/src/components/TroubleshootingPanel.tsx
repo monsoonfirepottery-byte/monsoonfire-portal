@@ -51,7 +51,7 @@ export default function TroubleshootingPanel({ lastReq, curl, onStatus }: Props)
           </div>
 
           <div className="troubleshooting-subtitle-heading">Payload</div>
-          <pre className="mono troubleshooting-mono">{safeJsonStringify(lastReq.payload)}</pre>
+          <pre className="mono troubleshooting-mono">{safeJsonStringify(lastReq.payloadRedacted ?? lastReq.payload)}</pre>
 
           <div className="troubleshooting-subtitle-heading">Response</div>
           <pre className="mono troubleshooting-mono">{safeJsonStringify(lastReq.response)}</pre>

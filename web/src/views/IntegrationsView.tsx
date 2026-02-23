@@ -86,6 +86,14 @@ function hasScope(scopes: string[], key: string): boolean {
   return scopes.includes(key);
 }
 
+function sanitizeLastRequest(request: LastRequest | null) {
+  if (!request) return null;
+  return {
+    ...request,
+    payload: (request as { payloadRedacted?: unknown }).payloadRedacted ?? request.payload,
+  };
+}
+
 export default function IntegrationsView({
   user,
   functionsBaseUrl,
@@ -510,7 +518,7 @@ export default function IntegrationsView({
             <code>{lastRequest.requestId}</code>
           </div>
           <pre className="debug-pre">
-            <code>{JSON.stringify(lastRequest, null, 2)}</code>
+            <code>{JSON.stringify(sanitizeLastRequest(lastRequest), null, 2)}</code>
           </pre>
         </section>
       ) : null}

@@ -307,11 +307,13 @@ async function callFn<TReq, TResp>(
     clearTimeout(timeoutHandle);
 
     body = await readResponseBody(resp);
+    const responseSnippet = stringifyResponseSnippet(body);
 
     const metaDone: PortalApiMeta = {
       ...metaStart,
       status: resp.status,
       ok: resp.ok,
+      responseSnippet,
       response: body,
     };
 
@@ -339,7 +341,7 @@ async function callFn<TReq, TResp>(
         payload: redactTelemetryPayload(args.payload),
         status: resp.status,
         ok: false,
-        responseSnippet: stringifyResponseSnippet(body),
+        responseSnippet,
         error: `${appError.userMessage} (support code: ${appError.correlationId})`,
         curl: enriched.curlExample,
       });
@@ -355,7 +357,7 @@ async function callFn<TReq, TResp>(
       payload: redactTelemetryPayload(args.payload),
       status: resp.status,
       ok: true,
-      responseSnippet: stringifyResponseSnippet(body),
+      responseSnippet,
       curl: metaDone.curlExample,
     });
     return { data: body as TResp, meta: metaDone };
@@ -378,6 +380,7 @@ async function callFn<TReq, TResp>(
       status: resp?.status,
       ok: false,
       response: body,
+      responseSnippet: body === null ? undefined : stringifyResponseSnippet(body),
       error: msg,
       message: appError.userMessage,
     };

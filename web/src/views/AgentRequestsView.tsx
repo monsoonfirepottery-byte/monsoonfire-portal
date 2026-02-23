@@ -98,6 +98,14 @@ function normalizeRequest(row: Record<string, unknown>): RequestRecord {
   };
 }
 
+function sanitizeLastRequest(request: LastRequest | null) {
+  if (!request) return null;
+  return {
+    ...request,
+    payload: (request as { payloadRedacted?: unknown }).payloadRedacted ?? request.payload,
+  };
+}
+
 export default function AgentRequestsView({
   user,
   functionsBaseUrl,
@@ -448,7 +456,7 @@ export default function AgentRequestsView({
       {lastRequest ? (
         <details className="card card-3d requests-card requests-troubleshooting">
           <summary>Troubleshooting (last request)</summary>
-          <pre>{JSON.stringify(lastRequest, null, 2)}</pre>
+          <pre>{JSON.stringify(sanitizeLastRequest(lastRequest), null, 2)}</pre>
         </details>
       ) : null}
     </div>

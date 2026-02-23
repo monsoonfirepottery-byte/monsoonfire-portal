@@ -660,6 +660,7 @@ export type PortalApiMeta = {
 
   status?: number;
   ok?: boolean;
+  responseSnippet?: string;
 
   response?: unknown;
 

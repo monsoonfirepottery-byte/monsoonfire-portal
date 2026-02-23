@@ -28,10 +28,12 @@ export type LastRequest = {
   url: string;
   method: "POST";
   payload: unknown;
+  payloadRedacted?: unknown;
 
   status?: number;
   ok?: boolean;
   response?: unknown;
+  responseSnippet?: string;
   error?: string;
 
   /** Redacted curl suitable for sharing/logging. */
@@ -143,6 +145,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
     const url = `${base}/${path}`;
     const normalizedPayload = payload ?? {};
 
+    const redactedPayload = redactTelemetryPayload(normalizedPayload);
     const req: LastRequest = {
       atIso: new Date().toISOString(),
       requestId: makeRequestId(),
@@ -150,6 +153,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
       url,
       method: "POST",
       payload: normalizedPayload,
+      payloadRedacted: redactedPayload,
       curlExample: buildCurlRedacted(url, normalizedPayload),
     };
     publish(req);
@@ -159,7 +163,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
       source: "functions-client",
       endpoint: req.url,
       method: req.method,
-      payload: redactTelemetryPayload(req.payload),
+      payload: redactedPayload,
       curl: req.curlExample,
     });
 
@@ -215,7 +219,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
         source: "functions-client",
         endpoint: failed.url,
         method: failed.method,
-        payload: redactTelemetryPayload(failed.payload),
+        payload: redactedPayload,
         ok: false,
         error: `${appError.userMessage} (support code: ${appError.correlationId})`,
         curl: failed.curlExample,
@@ -231,6 +235,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
       status: resp.status,
       ok: resp.ok,
       response: body,
+      responseSnippet: stringifyResponseSnippet(body),
       curlExample: buildCurlRedacted(url, normalizedPayload),
     };
 
@@ -258,7 +263,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
         source: "functions-client",
         endpoint: updated.url,
         method: updated.method,
-        payload: redactTelemetryPayload(updated.payload),
+        payload: redactedPayload,
         status: updated.status,
         ok: false,
         responseSnippet: stringifyResponseSnippet(body),

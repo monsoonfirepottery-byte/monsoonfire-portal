@@ -1,6 +1,6 @@
 # P2 — Legacy Host Detection and Cutover Validation for Studiobrain Migration
 
-Status: Planned
+Status: Completed
 Date: 2026-02-18
 Priority: P2
 Owner: Platform + Studio Brain
@@ -72,3 +72,18 @@ Create a deterministic, reviewable validation step that detects host/URL drift b
 - Ticket closes only with documented evidence from one clean output run and one fail-mode capture (intentional regression fixture).
 - No new wildcard bypasses are added without explicit exception documentation and owner.
 
+## Work completed
+
+- Confirmed host-contract scanner implementation and gate wiring:
+  - `scripts/scan-studiobrain-host-contract.mjs`
+  - `npm run studio:host:contract:scan`
+  - `npm run studio:host:contract:scan:strict`
+  - integrated in `scripts/pr-gate.mjs` and `scripts/studio-cutover-gate.mjs`
+- Added deterministic evidence harness for clean + intentional fail-mode capture:
+  - `scripts/capture-host-contract-evidence.mjs`
+  - `npm run studio:host:contract:evidence`
+  - artifact: `output/host-contract-evidence/latest.json`
+- Added scanner exception metadata (owner + reason) for the evidence harness token fixture so the harness itself remains scannable without weakening production-path checks.
+- Updated runbooks to require host-contract evidence in onboarding/PR flows:
+  - `docs/EMULATOR_RUNBOOK.md`
+  - `docs/runbooks/PR_GATE.md`

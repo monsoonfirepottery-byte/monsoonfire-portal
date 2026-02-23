@@ -11,15 +11,16 @@ Default `npm run pr:gate` runs these required checks:
 3. Studio Brain runtime integrity check (`npm run integrity:check`)
 4. Host profile consistency check for `STUDIO_BRAIN_HOST`, `STUDIO_BRAIN_PORT`, and `STUDIO_BRAIN_BASE_URL`
 5. Legacy host-contract scan (`npm run studio:host:contract:scan:strict`)
-6. Studio Brain network runtime contract (`node ./scripts/studiobrain-network-check.mjs --gate --strict --write-state`)
-7. Stability guardrails (`npm run guardrails:check -- --strict`)
-8. Studio Brain preflight (`npm --prefix studio-brain run preflight`)
-9. Studio Brain status gate (`npm run studio:check:safe -- --json`)
-10. Platform-reference drift scan (`npm run audit:platform:refs:strict`) to catch non-essential OS/tooling assumptions outside host contracts.
-11. Source-of-truth contract matrix (`npm run source:truth:contract:strict`).
-12. Source-of-truth deployment matrix (`npm run source:truth:deployment -- --phase all --json --artifact output/source-of-truth-deployment-gates/pr-gate.json`).
-13. Agent-readable surfaces check (`npm run agent:surfaces:check`).
-14. Well-known validation (`npm run well-known:validate:strict`).
+6. Host-contract evidence capture (`npm run studio:host:contract:evidence`) with clean + intentional fail-mode proof
+7. Studio Brain network runtime contract (`node ./scripts/studiobrain-network-check.mjs --gate --strict --write-state`)
+8. Stability guardrails (`npm run guardrails:check -- --strict`)
+9. Studio Brain preflight (`npm --prefix studio-brain run preflight`)
+10. Studio Brain status gate (`npm run studio:check:safe -- --json`)
+11. Platform-reference drift scan (`npm run audit:platform:refs:strict`) to catch non-essential OS/tooling assumptions outside host contracts.
+12. Source-of-truth contract matrix (`npm run source:truth:contract:strict`).
+13. Source-of-truth deployment matrix (`npm run source:truth:deployment -- --phase all --json --artifact output/source-of-truth-deployment-gates/pr-gate.json`).
+14. Agent-readable surfaces check (`npm run agent:surfaces:check`).
+15. Well-known validation (`npm run well-known:validate:strict`).
 
 For a clean local state, each onboarding run should pass host contract scan + smoke + status checks in sequence.
 Recommended sequence:
@@ -28,12 +29,13 @@ Recommended sequence:
 3. `npm run studio:host:contract:scan:strict`
 4. `npm run guardrails:check`
 5. `npm run studio:status`
-6. `npm run pr:gate -- --smoke`
-7. `npm run source:truth:contract:strict`
-8. `npm run source:truth:deployment -- --phase all --json --artifact output/source-of-truth-deployment-gates/pr-gate.json`
-9. `npm run agent:surfaces:check`
-10. `npm run well-known:validate:strict`
-11. `npm run audit:platform:refs:strict`
+6. `npm run studio:host:contract:evidence`
+7. `npm run pr:gate -- --smoke`
+8. `npm run source:truth:contract:strict`
+9. `npm run source:truth:deployment -- --phase all --json --artifact output/source-of-truth-deployment-gates/pr-gate.json`
+10. `npm run agent:surfaces:check`
+11. `npm run well-known:validate:strict`
+12. `npm run audit:platform:refs:strict`
 
 ## Deployment gate recovery
 

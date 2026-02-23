@@ -92,6 +92,13 @@ const EXCEPTIONS = [
     reason: "Bundle guard script intentionally asserts no forbidden loopback artifacts in build output.",
   },
   {
+    path: /[\\/]scripts[\\/]capture-host-contract-evidence\.mjs$/,
+    ruleIds: ["studio-brain-loopback-runtime"],
+    owner: "platform@automation",
+    reason: "Evidence harness intentionally writes a temporary regression token to verify fail-mode detection.",
+    tokenPattern: /127\.0\.0\.1:8787/,
+  },
+  {
     path: /[\\/]web[\\/]src[\\/].+\.test\.[cm]?[jt]sx?$/,
     ruleIds: ["studio-brain-loopback-runtime", "studio-brain-base-url-fallback"],
     owner: "platform@web",

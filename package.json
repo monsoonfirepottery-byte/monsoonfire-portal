@@ -83,6 +83,7 @@
     "cutover:smoke": "node ./scripts/studio-cutover-gate.mjs",
     "studio:host:contract:scan": "node ./scripts/scan-studiobrain-host-contract.mjs",
     "studio:host:contract:scan:strict": "node ./scripts/scan-studiobrain-host-contract.mjs --strict",
+    "studio:host:contract:evidence": "node ./scripts/capture-host-contract-evidence.mjs --artifact output/host-contract-evidence/latest.json",
     "functions:type-safety:scan": "node ./scripts/check-functions-type-safety.mjs",
     "integrity:check": "node ./scripts/integrity-check.mjs",
     "integrity:check:strict": "node ./scripts/integrity-check.mjs --strict",

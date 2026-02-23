@@ -75,6 +75,7 @@ This avoids losing env vars when opening a new terminal session.
 ## Network profile health and host stability
 - Validate host identity and profile drift before smoke or deployment workflows:
   - `npm run studio:host:contract:scan:strict`
+  - `npm run studio:host:contract:evidence`
   - `npm run studio:emulator:contract:check:strict`
   - `npm run studio:network:check:gate -- --strict`
 
@@ -212,6 +213,7 @@ Use this checklist before cutover reviews and when handing off the active Studio
 6. PR evidence includes:
    - `output/studio-network-check/pr-gate.json` or `output/studio-network-check/cutover-gate.json`
    - `output/studio-stack-profile/latest.json`
+   - `output/host-contract-evidence/latest.json`
 
 ## Required env for CORS allowlist
 - `ALLOWED_ORIGINS` should include portal domains and dev origin.

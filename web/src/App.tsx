@@ -1437,7 +1437,8 @@ export default function App() {
         default:
           return;
       }
-      if (isAuthEmulator) {
+      const isProductionBuild = ENV.DEV !== true;
+      if (isAuthEmulator || isProductionBuild) {
         await signInWithRedirect(authClient, provider);
         return;
       }

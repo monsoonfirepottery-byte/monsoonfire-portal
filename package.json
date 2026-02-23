@@ -41,6 +41,8 @@
     "portal:smoke:playwright:local:deep": "node ./scripts/portal-playwright-smoke.mjs --base-url http://127.0.0.1:5173 --output-dir output/playwright/portal/local/deep --deep",
     "portal:smoke:playwright:prod": "node ./scripts/portal-playwright-smoke.mjs --base-url https://monsoonfire-portal.web.app --output-dir output/playwright/portal/prod",
     "portal:smoke:playwright:deep": "node ./scripts/portal-playwright-smoke.mjs --base-url https://monsoonfire-portal.web.app --output-dir output/playwright/portal/deep --deep",
+    "portal:scan:prod": "node ./scripts/portal-prod-console-scan.mjs --base-url https://portal.monsoonfire.com",
+    "portal:scan:prod:show": "node ./scripts/portal-prod-console-scan.mjs --base-url https://portal.monsoonfire.com --show",
     "portal:smoke:playwright:install": "npx playwright install chromium",
     "lint:policies": "node website/scripts/lint-policies.mjs",
     "test:web": "npm --prefix web run test:run",

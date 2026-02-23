@@ -64,6 +64,53 @@ const SUPPORT_FORM_CATEGORIES: SupportRequestCategory[] = [
 
 const FAQ_COLLECTION = "faqItems";
 const QUICK_ANSWER_COUNT = 5;
+const FALLBACK_FAQ_ENTRIES: FaqEntry[] = [
+  {
+    id: "fallback-pickup",
+    question: "How do pickup and drop-off work?",
+    answer:
+      "Use your portal timeline for status updates. When your pieces are marked ready, you can pick up during normal studio hours.",
+    category: "Pieces",
+    tags: ["pickup", "dropoff", "timeline", "ready"],
+    rank: 1,
+  },
+  {
+    id: "fallback-kiln",
+    question: "How can I check kiln timing?",
+    answer:
+      "Open Kiln Schedule and your piece timeline in the portal for the latest estimate. Timing can shift based on queue and load changes.",
+    category: "Kiln",
+    tags: ["kiln", "schedule", "timeline", "queue"],
+    rank: 2,
+  },
+  {
+    id: "fallback-membership",
+    question: "Can I change my membership plan?",
+    answer:
+      "Yes. Open Membership in the portal to review your current tier and available options, then submit a change request.",
+    category: "Membership",
+    tags: ["membership", "plan", "tier", "change"],
+    rank: 3,
+  },
+  {
+    id: "fallback-billing",
+    question: "Where can I find billing receipts?",
+    answer:
+      "Go to Billing in the portal for recent charges and invoice details. If you need a specific receipt, submit a support request.",
+    category: "Billing",
+    tags: ["billing", "receipt", "invoice", "payment"],
+    rank: 4,
+  },
+  {
+    id: "fallback-support",
+    question: "When should I submit a support request?",
+    answer:
+      "Use support requests for non-urgent studio questions. For urgent issues, email support directly so we can respond faster.",
+    category: "Studio",
+    tags: ["support", "urgent", "email", "help"],
+    rank: 5,
+  },
+];
 
 const SEARCH_SUGGESTIONS = [
   "pickup",
@@ -153,21 +200,30 @@ export default function SupportView({ user, supportEmail, onSubmit, status, isBu
   const [faqEntries, setFaqEntries] = useState<FaqEntry[]>([]);
   const [faqLoading, setFaqLoading] = useState(true);
   const [faqError, setFaqError] = useState("");
+  const [faqNotice, setFaqNotice] = useState("");
 
   useEffect(() => {
     const load = async () => {
       setFaqLoading(true);
       setFaqError("");
+      setFaqNotice("");
       try {
         const faqQuery = query(collection(db, FAQ_COLLECTION), orderBy("rank", "asc"));
         const snap = await getDocs(faqQuery);
         const rows = snap.docs
           .map((docSnap) => normalizeFaqEntry(docSnap.id, docSnap.data() as Record<string, unknown>))
           .filter((entry): entry is FaqEntry => Boolean(entry));
-        setFaqEntries(rows);
+        if (rows.length > 0) {
+          setFaqEntries(rows);
+        } else {
+          setFaqEntries(FALLBACK_FAQ_ENTRIES);
+          setFaqNotice("Live FAQ is still being published. Showing quick-start answers for now.");
+        }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        setFaqError(`FAQ failed: ${message}`);
+        console.warn("[support] faq load failed; using fallback answers", { message });
+        setFaqEntries(FALLBACK_FAQ_ENTRIES);
+        setFaqNotice("Live FAQ is temporarily unavailable. Showing quick-start answers.");
       } finally {
         setFaqLoading(false);
       }
@@ -321,6 +377,11 @@ export default function SupportView({ user, supportEmail, onSubmit, status, isBu
           {faqError ? (
             <div className="alert inline-alert" role="alert" aria-live="assertive">
               {faqError}
+            </div>
+          ) : null}
+          {faqNotice ? (
+            <div className="notice inline-alert" role="status" aria-live="polite">
+              {faqNotice}
             </div>
           ) : null}
           {faqLoading ? (

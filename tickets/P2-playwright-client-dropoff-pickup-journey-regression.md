@@ -1,6 +1,6 @@
 # P2 — Playwright Client Dropoff/Pickup Journey Regression
 
-Status: Blocked
+Status: Completed
 Date: 2026-02-22
 Priority: P2
 Owner: Portal + QA
@@ -44,7 +44,4 @@ Add deterministic Playwright journey checks for key client-facing lifecycle step
 
 - 2026-02-22: Added `web/scripts/check-reservations-journey-playwright.mjs` to validate pickup add-on delivery-address guardrails and capture screenshot artifacts.
 - 2026-02-22: Added optional deep-lane wiring in `scripts/run-journey-suite.mjs` (`portal reservations journey playwright (optional)` step).
-
-## Blocker
-
-- Requires deterministic CI credentials and seeded test-user environment (`PORTAL_CLIENT_PASSWORD`/`PORTAL_STAFF_PASSWORD` + stable portal target) before this can be promoted from optional to required deep-lane coverage.
+- 2026-02-23: Promoted deep-lane reservations Playwright coverage to required mode via `MF_REQUIRE_RESERVATIONS_PLAYWRIGHT=1`, with CI secret/target wiring in `.github/workflows/ci-smoke.yml`.

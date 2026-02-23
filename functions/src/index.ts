@@ -81,6 +81,7 @@ import {
 } from "./agentCommerce";
 export { ensureUserDoc, emulatorGrantStaffRole } from "./ensureUserDoc";
 import { emitIntegrationEvent } from "./integrationEvents";
+import { buildContinueJourneyContract } from "./continueJourneyContract";
 import { parseBatchDoc } from "./firestoreConverters";
 import { executeStudioBrainPilotAction, rollbackStudioBrainPilotAction } from "./v3Execution/pilotFirestoreAction";
 export { websiteKilnBoard } from "./websiteKilnBoard";
@@ -2027,52 +2028,36 @@ export const continueJourney = onRequest(
       return;
     }
 
-    const rootId = from.journeyRootBatchId || fromBatchId;
-
     const newRef = batchesCol().doc();
     const t = nowTs();
-
-    await newRef.set({
-      ownerUid: uid,
-      ownerDisplayName: from.ownerDisplayName,
-      title: safeString(parsed.data.title) || `${from.title} (resubmission)`,
-      intakeMode: from.intakeMode,
-      estimatedCostCents: 0,
-      estimateNotes: null,
-
-      state: "DRAFT" as BatchState,
-      isClosed: false,
-      createdAt: t,
-      updatedAt: t,
-      closedAt: null,
-
-      journeyRootBatchId: rootId,
-      journeyParentBatchId: fromBatchId,
+    const contract = buildContinueJourneyContract({
+      uid,
+      fromBatchId,
+      requestedTitle: safeString(parsed.data.title),
+      sourceBatch: {
+        title: from.title,
+        ownerDisplayName: from.ownerDisplayName,
+        intakeMode: from.intakeMode,
+        journeyRootBatchId: from.journeyRootBatchId,
+      },
+      at: t,
     });
+
+    await newRef.set(contract.newBatchDocument);
 
     await addTimelineEvent({
       batchId: newRef.id,
-      type: TimelineEventType.CONTINUE_JOURNEY,
-      at: t,
-      actorUid: uid,
-      actorName: from.ownerDisplayName,
-      notes: `Continued journey from ${fromBatchId}`,
-      extra: { fromBatchId },
+      ...contract.timelineEvent,
     });
 
     await bestEffortEmitIntegrationEvent({
       uid,
       type: "batch.updated",
-      subject: { batchId: newRef.id, fromBatchId },
-      data: {
-        state: "DRAFT",
-        isClosed: false,
-        title: safeString(parsed.data.title) || from.title,
-        journeyRootBatchId: rootId,
-      },
+      subject: { batchId: newRef.id, ...contract.integrationEventSubject },
+      data: contract.integrationEventData,
     });
 
-    res.status(200).json({ ok: true, batchId: newRef.id, rootId });
+    res.status(200).json({ ok: true, batchId: newRef.id, rootId: contract.rootId });
   }
 );
 

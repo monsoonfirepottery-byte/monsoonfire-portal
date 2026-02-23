@@ -39,14 +39,14 @@ This plan is the authoritative matrix for Epic 12.
 | J-006 | Journey | Unauthorized transition attempt | integration + emulator | permission failure and no state mutation | Existing |
 | J-007 | Continue journey | continueJourney success with `{uid, fromBatchId}` | unit + integration | response includes deterministic batch linkage fields | Implemented |
 | J-008 | Continue journey | continueJourney missing input | unit + integration | explicit validation error envelope | Existing |
-| J-009 | Continue journey | history/timeline sync after continuation | emulator | active/history/timeline remain consistent | In Progress |
+| J-009 | Continue journey | history/timeline sync after continuation | unit + contract | active/history/timeline linkage remains consistent | Implemented |
 | J-010 | Continue journey | ownership mismatch on continuation | integration | authz/ownership error with no data drift | Planned |
 | S-001 | Stripe negative | Invalid webhook signature | unit | request rejected with signature error code | Existing |
 | S-002 | Stripe negative | Livemode mismatch | unit | request rejected with livemode mismatch code | Existing |
 | S-003 | Stripe negative | payment_intent.payment_failed | unit + integration | mapped status/error outcome is explicit and deterministic | Implemented |
 | S-004 | Stripe negative | invoice.payment_failed | unit + integration | mapped status/error outcome is explicit and deterministic | Implemented |
 | S-005 | Stripe negative | charge.dispute.created | unit + integration | dispute state/audit markers asserted | Implemented |
-| S-006 | Stripe negative | charge.dispute.closed | unit + integration | resolution path state is deterministic | Gap |
+| S-006 | Stripe negative | charge.dispute.closed | unit + integration | resolution path state is deterministic with audit metadata | Implemented |
 | S-007 | Stripe negative | charge.refunded (full) | unit + integration | refund state transitions and totals validated | Implemented |
 | S-008 | Stripe negative | charge.refunded (partial) | unit + integration | partial refund accounting/status validated | Implemented (contract-level) |
 | S-009 | Stripe negative | replay duplicate webhook | unit + integration | duplicate processing is safely ignored/idempotent | Existing |
@@ -66,15 +66,15 @@ This plan is the authoritative matrix for Epic 12.
 1. Fast lane (PR blocking)
    - deterministic unit/integration subset for J-001, J-005, J-007, S-001, S-002, S-003
 2. Deep lane (scheduled/nightly)
-   - fast lane + full functions suite + web contract tests + optional credential-gated smoke/e2e steps
+   - fast lane + full functions suite + web contract tests + required reservations Playwright with CI credentials/seeds
 3. Promotion rule
    - deep-lane scenarios can be promoted into fast lane once stable and performant
 
 ## Immediate gaps to close
 
-1. Add runtime assertions for `continueJourney` post-conditions across active/history/timeline surfaces.
-2. Add dispute-resolution (`charge.dispute.closed`) policy simulation with explicit audit-trail assertions.
-3. Promote optional Playwright journey coverage to required deep-lane once deterministic CI credentials/seed data are available.
+1. Completed 2026-02-23: Added deterministic `continueJourney` post-condition contract helper/tests (`functions/src/continueJourneyContract.ts` + `.test.ts`) and wired contract checks into `scripts/check-continue-journey-contract.mjs`.
+2. Completed 2026-02-23: Added `charge.dispute.closed` event simulation plus dispute lifecycle metadata in audit trails (`functions/src/stripeConfig.ts` + `.test.ts`).
+3. Completed 2026-02-23: Promoted reservations Playwright deep-lane step from optional to required when `MF_REQUIRE_RESERVATIONS_PLAYWRIGHT=1`, with CI env wiring in `.github/workflows/ci-smoke.yml`.
 
 ## Command map (current)
 
@@ -87,7 +87,7 @@ This plan is the authoritative matrix for Epic 12.
    - `npm run test:journey:deep`
    - `npm run test:stripe:negative`
    - `npm run test:journey:contracts`
-   - optional deep step: set `MF_RUN_RESERVATIONS_PLAYWRIGHT=1` with `PORTAL_CLIENT_PASSWORD` to run reservations Playwright assertions
+   - required deep reservations step: set `MF_REQUIRE_RESERVATIONS_PLAYWRIGHT=1` with `PORTAL_URL` + `PORTAL_CLIENT_PASSWORD` (or `PORTAL_STAFF_PASSWORD`)
 
 ## Progress snapshot (2026-02-22)
 
@@ -107,3 +107,13 @@ This plan is the authoritative matrix for Epic 12.
    - `docs/runbooks/JOURNEY_TESTING_RUNBOOK.md`
 6. Added Stripe negative-outcome lifecycle status mapping hardening:
    - `functions/src/stripeConfig.ts`
+7. 2026-02-23 updates:
+   - Added continue-journey linkage/post-condition contract helper + tests:
+     - `functions/src/continueJourneyContract.ts`
+     - `functions/src/continueJourneyContract.test.ts`
+   - Added `charge.dispute.closed` handling and dispute lifecycle audit metadata:
+     - `functions/src/stripeConfig.ts`
+     - `functions/src/stripeConfig.test.ts`
+   - Promoted deep-lane reservations journey Playwright to deterministic required mode:
+     - `scripts/run-journey-suite.mjs`
+     - `.github/workflows/ci-smoke.yml`

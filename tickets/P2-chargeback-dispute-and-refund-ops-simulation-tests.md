@@ -1,6 +1,6 @@
 # P2 — Chargeback/Dispute and Refund Ops Simulation Tests
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-22
 Priority: P2
 Owner: Functions + Ops
@@ -45,4 +45,4 @@ Create deterministic simulation tests for dispute and refund operational outcome
 
 - 2026-02-22: Added deterministic Stripe negative-event contract parsing for dispute and refund flows, including partial-refund amount assertions.
 - 2026-02-22: Added lifecycle-status mapping tests for negative payment transitions.
-- Remaining: add explicit dispute-resolution (`charge.dispute.closed`) policy simulation and audit-trail validation assertions.
+- 2026-02-23: Added explicit dispute-resolution (`charge.dispute.closed`) simulation and dispute lifecycle audit metadata assertions (`functions/src/stripeConfig.ts`, `functions/src/stripeConfig.test.ts`).

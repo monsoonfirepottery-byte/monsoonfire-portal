@@ -18,11 +18,13 @@ const artifactPath = artifactArg
 const hasAgentToken = Boolean(
   (process.env.MF_AGENT_TOKEN || process.env.MF_PAT || process.env.PAT || "").trim()
 );
-const hasReservationsJourneyPlaywright = Boolean(
-  (process.env.MF_RUN_RESERVATIONS_PLAYWRIGHT || "").trim()
-) && Boolean(
+const reservationsPlaywrightEnabled = envEnabled("MF_RUN_RESERVATIONS_PLAYWRIGHT");
+const reservationsPlaywrightRequired = envEnabled("MF_REQUIRE_RESERVATIONS_PLAYWRIGHT");
+const hasReservationsJourneyCredentials = Boolean(
   (process.env.PORTAL_CLIENT_PASSWORD || process.env.PORTAL_STAFF_PASSWORD || "").trim()
 );
+const hasReservationsJourneyPlaywright =
+  reservationsPlaywrightEnabled && hasReservationsJourneyCredentials;
 
 const steps = buildSteps(mode);
 const summary = {
@@ -156,13 +158,14 @@ function buildSteps(currentMode) {
         required: true,
       },
       {
-        name: "portal reservations journey playwright (optional)",
+        name: "portal reservations journey playwright",
         command: "npm",
         args: ["--prefix", "web", "run", "check:reservations-journey-playwright"],
-        required: false,
-        optional: true,
+        required: reservationsPlaywrightRequired,
+        optional: !reservationsPlaywrightRequired,
         when: () => hasReservationsJourneyPlaywright,
-        skipReason: "Set MF_RUN_RESERVATIONS_PLAYWRIGHT=1 with PORTAL_CLIENT_PASSWORD (or PORTAL_STAFF_PASSWORD)",
+        skipReason:
+          "Set MF_RUN_RESERVATIONS_PLAYWRIGHT=1 with PORTAL_CLIENT_PASSWORD (or PORTAL_STAFF_PASSWORD) and a valid PORTAL_URL target",
       },
       {
         name: "agent commerce strict smoke",
@@ -193,4 +196,9 @@ function readArgValue(argv, name) {
   const index = argv.indexOf(name);
   if (index < 0) return null;
   return argv[index + 1] ?? null;
+}
+
+function envEnabled(name) {
+  const raw = (process.env[name] || "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
 }

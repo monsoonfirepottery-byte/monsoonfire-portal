@@ -18,6 +18,9 @@ checkFileContains("docs/API_CONTRACTS.md", /###\s*continueJourney[\s\S]*"uid":\s
 checkFileContains("docs/CONTINUE_JOURNEY_AGENT_QUICKSTART.md", /"uid":\s*"<firebase uid>"[\s\S]*"fromBatchId":\s*"<existing batch id>"/m, "Continue Journey quickstart includes canonical uid/fromBatchId body");
 checkFileContains("web/src/api/portalContracts.ts", /export type ContinueJourneyRequest = \{[\s\S]*uid:\s*string;[\s\S]*fromBatchId:\s*string;/m, "Portal contracts declare ContinueJourneyRequest uid + fromBatchId");
 checkFileContains("web/src/api/functionsClient.test.ts", /continueJourney[\s\S]*fromBatchId:\s*"batch_1"/m, "Functions client tests include continueJourney payload with fromBatchId");
+checkFileContains("functions/src/continueJourneyContract.ts", /state:\s*"DRAFT"[\s\S]*isClosed:\s*false[\s\S]*journeyRootBatchId:\s*rootId[\s\S]*journeyParentBatchId:\s*safeString\(input\.fromBatchId\)/m, "Continue Journey write contract enforces active-draft + lineage post-conditions");
+checkFileContains("functions/src/continueJourneyContract.ts", /type:\s*TimelineEventType\.CONTINUE_JOURNEY[\s\S]*extra:\s*\{\s*fromBatchId:\s*safeString\(input\.fromBatchId\)\s*\}/m, "Continue Journey write contract emits timeline linkage metadata");
+checkFileContains("functions/src/continueJourneyContract.test.ts", /buildContinueJourneyContract enforces draft\/lineage\/timeline post-conditions/, "Continue Journey post-condition tests exist for draft + history/timeline linkage");
 
 const errors = checks.filter((row) => row.severity === "error").length;
 const summary = {

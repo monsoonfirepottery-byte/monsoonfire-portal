@@ -34,15 +34,23 @@ Operational guide for running and maintaining journey + Stripe negative-outcome 
 1. Everything in fast lane.
 2. Full functions test suite.
 3. Web journey-related unit tests (`functionsClient` + reservations normalizer tests).
-4. Optional reservations Playwright guardrail check (runs when `MF_RUN_RESERVATIONS_PLAYWRIGHT=1` and `PORTAL_CLIENT_PASSWORD`/`PORTAL_STAFF_PASSWORD` is set).
+4. Reservations Playwright guardrail check:
+   - optional when `MF_RUN_RESERVATIONS_PLAYWRIGHT=1`
+   - required when `MF_REQUIRE_RESERVATIONS_PLAYWRIGHT=1`
+   - credentials required: `PORTAL_CLIENT_PASSWORD` or `PORTAL_STAFF_PASSWORD`
 5. Optional strict agent-commerce smoke (runs when `MF_AGENT_TOKEN`/`MF_PAT`/`PAT` is set).
 
-## Optional deep-lane flags
+## Deep-lane flags
 
 1. Enable reservations Playwright journey check:
    - `MF_RUN_RESERVATIONS_PLAYWRIGHT=1`
+   - `PORTAL_URL=<target>`
    - `PORTAL_CLIENT_PASSWORD=<password>` (or `PORTAL_STAFF_PASSWORD`)
-2. Enable strict agent commerce smoke:
+2. Promote reservations Playwright to required deep-lane coverage:
+   - `MF_REQUIRE_RESERVATIONS_PLAYWRIGHT=1`
+   - `PORTAL_URL=<target>`
+   - `PORTAL_CLIENT_PASSWORD=<password>` (or `PORTAL_STAFF_PASSWORD`)
+3. Enable strict agent commerce smoke:
    - `MF_AGENT_TOKEN=<token>` (or `MF_PAT` / `PAT`)
 
 ## Fixtures and seed governance
@@ -77,7 +85,7 @@ For release candidates, capture:
    - `output/journey-tests/continue-journey-contract.json`
    - `output/journey-tests/fixtures-check.json`
 3. Pass/fail summary and first failing scenario (if any).
-4. If deep lane optional steps were skipped (e.g., no token), explicitly note skip reason.
+4. If deep lane optional steps were skipped (e.g., no token for agent smoke), explicitly note skip reason.
 
 ## Failure triage
 

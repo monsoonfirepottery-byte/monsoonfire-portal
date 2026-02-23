@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type Stripe from "stripe";
 
 import {
+  buildStripePaymentAuditDetails,
   classifyStripeWebhookReplayState,
   deriveOrderLifecycleStatusFromWebhookTransition,
   derivePaymentUpdateFromStripeEvent,
@@ -214,11 +215,13 @@ test("getStripeWebhookEventContract exposes strict event mappings", () => {
   assert.equal(dispute?.paymentStatus, "charge_disputed");
   assert.equal(dispute?.orderStatus, "disputed");
 
+  const disputeClosed = getStripeWebhookEventContract("charge.dispute.closed");
+  assert.equal(disputeClosed?.paymentStatus, "charge_disputed");
+  assert.equal(disputeClosed?.orderStatus, "disputed");
+
   const refunded = getStripeWebhookEventContract("charge.refunded");
   assert.equal(refunded?.paymentStatus, "charge_refunded");
   assert.equal(refunded?.orderStatus, "refunded");
-
-  assert.equal(getStripeWebhookEventContract("charge.dispute.closed"), null);
 });
 
 test("derivePaymentUpdateFromStripeEvent maps payment failure payloads", () => {
@@ -326,6 +329,35 @@ test("derivePaymentUpdateFromStripeEvent maps dispute and refund payloads", () =
   assert.equal(disputeOut?.status, "charge_disputed");
   assert.equal(disputeOut?.paymentIntentId, "pi_123");
   assert.equal(disputeOut?.orderId, "order-1");
+  assert.equal(disputeOut?.disputeLifecycle, "opened");
+  assert.equal(disputeOut?.disputeStatus, null);
+
+  const disputeClosedEvent = {
+    id: "evt_dispute_closed",
+    type: "charge.dispute.closed",
+    livemode: false,
+    data: {
+      object: {
+        id: "dp_123",
+        amount: 5000,
+        currency: "usd",
+        charge: "ch_123",
+        payment_intent: "pi_123",
+        status: "won",
+        metadata: {
+          uid: "owner-1",
+          orderId: "order-1",
+        },
+      },
+    },
+  } as unknown as Stripe.Event;
+
+  const disputeClosedOut = derivePaymentUpdateFromStripeEvent(disputeClosedEvent);
+  assert.ok(disputeClosedOut);
+  assert.equal(disputeClosedOut?.status, "charge_disputed");
+  assert.equal(disputeClosedOut?.sourceEventType, "charge.dispute.closed");
+  assert.equal(disputeClosedOut?.disputeLifecycle, "closed");
+  assert.equal(disputeClosedOut?.disputeStatus, "won");
 
   const refundOut = derivePaymentUpdateFromStripeEvent(refundEvent);
   assert.ok(refundOut);
@@ -333,6 +365,8 @@ test("derivePaymentUpdateFromStripeEvent maps dispute and refund payloads", () =
   assert.equal(refundOut?.paymentId, "ch_123");
   assert.equal(refundOut?.amountTotal, 5000);
   assert.equal(refundOut?.sourceEventType, "charge.refunded");
+  assert.equal(refundOut?.disputeLifecycle, null);
+  assert.equal(refundOut?.disputeStatus, null);
 });
 
 test("mergePaymentStatus is deterministic for out-of-order negative events", () => {
@@ -374,4 +408,24 @@ test("deriveOrderLifecycleStatusFromWebhookTransition maps negative outcomes to 
   assert.equal(deriveOrderLifecycleStatusFromWebhookTransition("payment_failed"), "payment_required");
   assert.equal(deriveOrderLifecycleStatusFromWebhookTransition("disputed"), "exception");
   assert.equal(deriveOrderLifecycleStatusFromWebhookTransition("refunded"), "refunded");
+});
+
+test("buildStripePaymentAuditDetails includes dispute lifecycle metadata for triage", () => {
+  const out = buildStripePaymentAuditDetails({
+    orderId: "order_1",
+    paymentStatus: "disputed",
+    sourceEventType: "charge.dispute.closed",
+    eventId: "evt_1",
+    disputeStatus: "won",
+    disputeLifecycle: "closed",
+  });
+
+  assert.deepEqual(out, {
+    orderId: "order_1",
+    paymentStatus: "disputed",
+    sourceEventType: "charge.dispute.closed",
+    eventId: "evt_1",
+    disputeStatus: "won",
+    disputeLifecycle: "closed",
+  });
 });

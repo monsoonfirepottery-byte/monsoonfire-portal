@@ -105,6 +105,8 @@ type PaymentUpdate = {
   amountTotal: number | null;
   currency: string | null;
   sourceEventType: string;
+  disputeStatus: string | null;
+  disputeLifecycle: "opened" | "closed" | null;
 };
 
 type StripeWebhookModeSource = "env_override" | "config_doc" | "default_test";
@@ -117,6 +119,7 @@ type SupportedStripeWebhookEventType =
   | "payment_intent.payment_failed"
   | "invoice.payment_failed"
   | "charge.dispute.created"
+  | "charge.dispute.closed"
   | "charge.refunded";
 
 type StripeWebhookEventContract = {
@@ -241,6 +244,12 @@ StripeWebhookEventContract
     requestStatus: "accepted",
   },
   "charge.dispute.created": {
+    paymentStatus: "charge_disputed",
+    orderStatus: "disputed",
+    fulfillmentStatus: "on_hold",
+    requestStatus: "in_progress",
+  },
+  "charge.dispute.closed": {
     paymentStatus: "charge_disputed",
     orderStatus: "disputed",
     fulfillmentStatus: "on_hold",
@@ -438,6 +447,34 @@ export function deriveOrderLifecycleStatusFromWebhookTransition(
   return "payment_pending";
 }
 
+export function buildStripePaymentAuditDetails(params: {
+  orderId: string;
+  paymentStatus: StripeWebhookEventContract["orderStatus"];
+  sourceEventType: string;
+  eventId: string;
+  disputeStatus: string | null;
+  disputeLifecycle: "opened" | "closed" | null;
+}): {
+  orderId: string;
+  paymentStatus: StripeWebhookEventContract["orderStatus"];
+  sourceEventType: string;
+  eventId: string;
+  disputeStatus: string | null;
+  disputeLifecycle: "opened" | "closed" | null;
+} {
+  return {
+    orderId: safeString(params.orderId),
+    paymentStatus: params.paymentStatus,
+    sourceEventType: safeString(params.sourceEventType),
+    eventId: safeString(params.eventId),
+    disputeStatus: safeString(params.disputeStatus) || null,
+    disputeLifecycle:
+      params.disputeLifecycle === "opened" || params.disputeLifecycle === "closed"
+        ? params.disputeLifecycle
+        : null,
+  };
+}
+
 function parseCheckoutSessionPayload(session: Stripe.Checkout.Session): PaymentUpdate {
   const amountTotal = typeof session.amount_total === "number" ? session.amount_total : null;
   const currency = typeof session.currency === "string" ? session.currency : null;
@@ -464,6 +501,8 @@ function parseCheckoutSessionPayload(session: Stripe.Checkout.Session): PaymentU
     amountTotal,
     currency,
     sourceEventType: "checkout.session.completed",
+    disputeStatus: null,
+    disputeLifecycle: null,
   };
 }
 
@@ -491,6 +530,8 @@ function parsePaymentIntentPayload(intent: Stripe.PaymentIntent): PaymentUpdate 
     amountTotal,
     currency,
     sourceEventType: "payment_intent.succeeded",
+    disputeStatus: null,
+    disputeLifecycle: null,
   };
 }
 
@@ -521,6 +562,8 @@ function parseInvoicePayload(invoice: Stripe.Invoice): PaymentUpdate {
     amountTotal,
     currency,
     sourceEventType: "invoice.paid",
+    disputeStatus: null,
+    disputeLifecycle: null,
   };
 }
 
@@ -548,6 +591,8 @@ function parsePaymentIntentFailedPayload(intent: Stripe.PaymentIntent): PaymentU
     amountTotal,
     currency,
     sourceEventType: "payment_intent.payment_failed",
+    disputeStatus: null,
+    disputeLifecycle: null,
   };
 }
 
@@ -578,6 +623,8 @@ function parseInvoiceFailedPayload(invoice: Stripe.Invoice): PaymentUpdate {
     amountTotal,
     currency,
     sourceEventType: "invoice.payment_failed",
+    disputeStatus: null,
+    disputeLifecycle: null,
   };
 }
 
@@ -616,10 +663,15 @@ function parseChargeRefundedPayload(charge: Stripe.Charge): PaymentUpdate {
     amountTotal,
     currency,
     sourceEventType: "charge.refunded",
+    disputeStatus: null,
+    disputeLifecycle: null,
   };
 }
 
-function parseChargeDisputePayload(dispute: Stripe.Dispute): PaymentUpdate {
+function parseChargeDisputePayload(
+  dispute: Stripe.Dispute,
+  sourceEventType: "charge.dispute.created" | "charge.dispute.closed"
+): PaymentUpdate {
   const amountTotal = typeof dispute.amount === "number" ? dispute.amount : null;
   const currency = typeof dispute.currency === "string" ? dispute.currency : null;
   const uid = safeString(dispute.metadata?.uid) || null;
@@ -635,6 +687,8 @@ function parseChargeDisputePayload(dispute: Stripe.Dispute): PaymentUpdate {
     typeof (dispute as unknown as { payment_intent?: unknown }).payment_intent === "string"
       ? ((dispute as unknown as { payment_intent: string }).payment_intent)
       : null;
+  const disputeStatus = safeString((dispute as unknown as { status?: unknown }).status) || null;
+  const disputeLifecycle = sourceEventType === "charge.dispute.closed" ? "closed" : "opened";
   return {
     paymentId: dispute.id || safeString(dispute.charge) || `dispute_${Date.now()}`,
     status: "charge_disputed",
@@ -646,7 +700,9 @@ function parseChargeDisputePayload(dispute: Stripe.Dispute): PaymentUpdate {
     reservationId,
     amountTotal,
     currency,
-    sourceEventType: "charge.dispute.created",
+    sourceEventType,
+    disputeStatus,
+    disputeLifecycle,
   };
 }
 
@@ -669,6 +725,9 @@ export function getStripeWebhookEventContract(eventType: string): StripeWebhookE
   if (eventType === "charge.dispute.created") {
     return STRIPE_WEBHOOK_EVENT_CONTRACTS["charge.dispute.created"];
   }
+  if (eventType === "charge.dispute.closed") {
+    return STRIPE_WEBHOOK_EVENT_CONTRACTS["charge.dispute.closed"];
+  }
   if (eventType === "charge.refunded") {
     return STRIPE_WEBHOOK_EVENT_CONTRACTS["charge.refunded"];
   }
@@ -688,7 +747,15 @@ export function derivePaymentUpdateFromStripeEvent(event: Stripe.Event): Payment
   } else if (event.type === "invoice.payment_failed") {
     update = parseInvoiceFailedPayload(event.data.object as Stripe.Invoice);
   } else if (event.type === "charge.dispute.created") {
-    update = parseChargeDisputePayload(event.data.object as Stripe.Dispute);
+    update = parseChargeDisputePayload(
+      event.data.object as Stripe.Dispute,
+      "charge.dispute.created"
+    );
+  } else if (event.type === "charge.dispute.closed") {
+    update = parseChargeDisputePayload(
+      event.data.object as Stripe.Dispute,
+      "charge.dispute.closed"
+    );
   } else if (event.type === "charge.refunded") {
     update = parseChargeRefundedPayload(event.data.object as Stripe.Charge);
   } else {
@@ -1570,6 +1637,15 @@ async function applyPaymentUpdate(params: {
       stripeInvoiceId: (update.invoiceId ?? safeString(current?.stripeInvoiceId)) || null,
       amountTotal: typeof update.amountTotal === "number" ? update.amountTotal : (typeof current?.amountTotal === "number" ? current.amountTotal : null),
       currency: (update.currency ?? safeString(current?.currency)) || null,
+      stripeDisputeStatus:
+        (update.disputeStatus ?? safeString(current?.stripeDisputeStatus)) || null,
+      stripeDisputeLifecycle:
+        (update.disputeLifecycle ??
+          (safeString(current?.stripeDisputeLifecycle) === "opened" ||
+          safeString(current?.stripeDisputeLifecycle) === "closed"
+            ? (safeString(current?.stripeDisputeLifecycle) as "opened" | "closed")
+            : null)) ||
+        null,
       lastEventId: eventId,
       lastEventType: eventType,
       eventIds: FieldValue.arrayUnion(eventId),
@@ -1591,6 +1667,8 @@ async function applyPaymentUpdate(params: {
         stripeInvoiceId: nextPayload.stripeInvoiceId ?? null,
         amountTotal: nextPayload.amountTotal ?? null,
         currency: nextPayload.currency ?? null,
+        stripeDisputeStatus: nextPayload.stripeDisputeStatus ?? null,
+        stripeDisputeLifecycle: nextPayload.stripeDisputeLifecycle ?? null,
         source: "stripe_webhook",
         lastEventId: eventId,
         lastEventType: eventType,
@@ -1633,6 +1711,14 @@ async function applyPaymentUpdate(params: {
   const lifecycleStatus = deriveOrderLifecycleStatusFromWebhookTransition(orderStatus);
   const batch = db.batch();
   for (const orderId of candidateOrderIds) {
+    const paymentAuditDetails = buildStripePaymentAuditDetails({
+      orderId,
+      paymentStatus: orderStatus,
+      sourceEventType: eventType,
+      eventId,
+      disputeStatus: update.disputeStatus,
+      disputeLifecycle: update.disputeLifecycle,
+    });
     const orderRef = db.collection("agentOrders").doc(orderId);
     batch.set(
       orderRef,
@@ -1642,6 +1728,8 @@ async function applyPaymentUpdate(params: {
         fulfillmentStatus,
         stripeCheckoutSessionId: checkoutSessionId || null,
         stripePaymentIntentId: paymentIntentId || null,
+        stripeDisputeStatus: paymentAuditDetails.disputeStatus,
+        stripeDisputeLifecycle: paymentAuditDetails.disputeLifecycle,
         updatedAt: now,
         lastEventId: eventId,
         lastEventType: eventType,
@@ -1655,8 +1743,10 @@ async function applyPaymentUpdate(params: {
       orderId,
       paymentId: update.paymentId,
       status: orderStatus,
-      sourceEventType: eventType,
-      eventId,
+      sourceEventType: paymentAuditDetails.sourceEventType,
+      eventId: paymentAuditDetails.eventId,
+      disputeStatus: paymentAuditDetails.disputeStatus,
+      disputeLifecycle: paymentAuditDetails.disputeLifecycle,
       createdAt: now,
     });
   }
@@ -1671,6 +1761,14 @@ async function applyPaymentUpdate(params: {
     if (linkedRequests.empty) continue;
     const requestBatch = db.batch();
     for (const reqDoc of linkedRequests.docs) {
+      const paymentAuditDetails = buildStripePaymentAuditDetails({
+        orderId,
+        paymentStatus: orderStatus,
+        sourceEventType: eventType,
+        eventId,
+        disputeStatus: update.disputeStatus,
+        disputeLifecycle: update.disputeLifecycle,
+      });
       const nextRequestStatus = transition.requestStatus;
       requestBatch.set(
         reqDoc.ref,
@@ -1686,12 +1784,7 @@ async function applyPaymentUpdate(params: {
         type: "commission_payment_status_updated",
         actorUid: null,
         actorMode: "system",
-        details: {
-          orderId,
-          paymentStatus: orderStatus,
-          sourceEventType: eventType,
-          eventId,
-        },
+        details: paymentAuditDetails,
       });
     }
     await requestBatch.commit();
@@ -1934,6 +2027,8 @@ export const stripePortalWebhook = onRequest(
       uid: update.uid,
       paymentId: update.paymentId,
       status: update.status,
+      disputeStatus: update.disputeStatus,
+      disputeLifecycle: update.disputeLifecycle,
       transitionOrderStatus: eventContract.orderStatus,
       transitionFulfillmentStatus: eventContract.fulfillmentStatus,
       transitionRequestStatus: eventContract.requestStatus,

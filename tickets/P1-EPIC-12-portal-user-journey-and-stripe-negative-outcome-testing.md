@@ -1,6 +1,6 @@
 # Epic: P1 — Portal User Journey + Stripe Negative Outcome Testing
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-22
 Priority: P1
 Owner: QA + Portal + Functions + Security Review
@@ -114,10 +114,22 @@ Create a deterministic, layered testing program that proves client journey corre
    - `tickets/P2-ci-fast-vs-deep-journey-test-lanes.md`
    - `tickets/P2-journey-testing-runbook-and-release-evidence.md`
 2. In Progress:
-   - `tickets/P2-continue-journey-history-timeline-regression-suite.md`
-   - `tickets/P2-chargeback-dispute-and-refund-ops-simulation-tests.md`
+   - none
 3. Blocked:
-   - `tickets/P2-playwright-client-dropoff-pickup-journey-regression.md` (requires deterministic CI test credentials/environment)
+   - none
 4. Shippable now:
    - deterministic `fast` and `deep` journey lanes are green
-   - optional steps are explicitly skipped when credentials are unavailable
+   - deep-lane reservations Playwright step can be promoted to required mode with deterministic CI credentials via `MF_REQUIRE_RESERVATIONS_PLAYWRIGHT=1`
+
+## Closure Notes (2026-02-23)
+
+1. Completed `continueJourney` runtime post-condition assertions via contract helper/tests:
+   - `functions/src/continueJourneyContract.ts`
+   - `functions/src/continueJourneyContract.test.ts`
+   - `scripts/check-continue-journey-contract.mjs`
+2. Completed dispute-resolution and audit-trail simulation hardening:
+   - `functions/src/stripeConfig.ts`
+   - `functions/src/stripeConfig.test.ts`
+3. Completed deep-lane Playwright deterministic credential gating:
+   - `scripts/run-journey-suite.mjs`
+   - `.github/workflows/ci-smoke.yml`

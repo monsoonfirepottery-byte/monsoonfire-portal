@@ -1,6 +1,6 @@
 # P2 — Continue Journey + History/Timeline Regression Suite
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-22
 Priority: P2
 Owner: Portal + Functions
@@ -45,4 +45,4 @@ Automate `continueJourney` regression validation with assertions across related 
 
 - 2026-02-22: Added deterministic cross-surface contract consistency check (`scripts/check-continue-journey-contract.mjs`) and wired it into fast/deep journey lanes.
 - 2026-02-22: Verified continueJourney request contract usage in `web/src/api/functionsClient.test.ts`, `web/src/api/portalContracts.ts`, and docs.
-- Remaining: add dedicated runtime assertions for active/history/timeline post-conditions from continuation execution paths.
+- 2026-02-23: Added deterministic continue-journey post-condition contract helper + tests (`functions/src/continueJourneyContract.ts`, `functions/src/continueJourneyContract.test.ts`) covering draft state, lineage links, and timeline linkage metadata.

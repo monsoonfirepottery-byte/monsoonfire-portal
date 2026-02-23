@@ -91,6 +91,13 @@ jobs:
 
       - name: Journey deep lane (manual/scheduled)
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_deep_playwright == 'true' || github.event_name == 'schedule' }}
+        env:
+          MF_REQUIRE_RESERVATIONS_PLAYWRIGHT: "1"
+          PORTAL_URL: ${{ vars.PORTAL_JOURNEY_BASE_URL || 'https://monsoonfire-portal.web.app' }}
+          PORTAL_CLIENT_EMAIL: ${{ secrets.PORTAL_CLIENT_EMAIL }}
+          PORTAL_CLIENT_PASSWORD: ${{ secrets.PORTAL_CLIENT_PASSWORD }}
+          PORTAL_STAFF_EMAIL: ${{ secrets.PORTAL_STAFF_EMAIL }}
+          PORTAL_STAFF_PASSWORD: ${{ secrets.PORTAL_STAFF_PASSWORD }}
         run: npm run test:journey:deep
 
       - name: Upload portal smoke artifacts

@@ -2,9 +2,11 @@
 
 Window: Post-alpha (after Sprint 10 closure)  
 Goal: Lock performance budgets, pay down lint/test debt, and reduce operational risk from regressions.
+Canonical Mapping: `docs/sprints/SPRINT_10_11_GAP_MAPPING_2026-02-23.md`
 
 ## Ticket S11-01
 - Title: Web perf budgets and Lighthouse baseline
+- Canonical Ticket: `tickets/P2-s11-01-lighthouse-budgets-and-baseline.md`
 - Swarm: `Swarm D`
 - Owner: TBD
 - State: `done`
@@ -20,6 +22,7 @@ Goal: Lock performance budgets, pay down lint/test debt, and reduce operational 
 
 ## Ticket S11-02
 - Title: Bundle/chunk budget enforcement and route-level regressions
+- Canonical Ticket: `tickets/P2-s11-02-route-bundle-chunk-budgets.md`
 - Swarm: `Swarm B`
 - Owner: TBD
 - State: `done`
@@ -35,6 +38,7 @@ Goal: Lock performance budgets, pay down lint/test debt, and reduce operational 
 
 ## Ticket S11-03
 - Title: Expand automated tests for alpha-critical flows
+- Canonical Ticket: `tickets/P2-s11-03-critical-flow-test-expansion.md`
 - Swarm: `Swarm A`
 - Owner: TBD
 - State: `done`
@@ -49,6 +53,7 @@ Goal: Lock performance budgets, pay down lint/test debt, and reduce operational 
 
 ## Ticket S11-04
 - Title: Lint debt payoff and CI enforcement
+- Canonical Ticket: `tickets/P2-s11-04-lint-debt-remediation-and-ci-enforcement.md`
 - Swarm: `Swarm D`
 - Owner: TBD
 - State: `done`
@@ -63,6 +68,7 @@ Goal: Lock performance budgets, pay down lint/test debt, and reduce operational 
 
 ## Ticket S11-05
 - Title: Functions performance and cold-start risk review
+- Canonical Ticket: `tickets/P2-s11-05-functions-cold-start-performance-profiling.md`
 - Swarm: `Swarm C`
 - Owner: TBD
 - State: `done`

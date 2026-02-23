@@ -205,7 +205,6 @@ function buildReport(input) {
     generatedAt: input.generatedAt,
     filters: {
       ignoreClosedEpicChildren: true,
-      ignoreEpic10And11: true,
     },
     todoAudit: {
       unresolvedCount: todoRows.length,
@@ -228,13 +227,7 @@ function buildReport(input) {
 }
 
 function isExcludedTicket(ticket, epicIndex) {
-  if (/^S1[01]-/i.test(ticket.file)) {
-    return { excluded: true, reason: "SPRINT_10_11_TICKET" };
-  }
   const parentPath = ticket.parentEpic || "";
-  if (/EPIC-(10|11)\b/i.test(parentPath)) {
-    return { excluded: true, reason: "EPIC_10_11_PARENT" };
-  }
   if (!parentPath) return { excluded: false, reason: null };
   const parentDoc = epicIndex.get(parentPath);
   if (parentDoc && parentDoc.statusNormalized === "done") {
@@ -266,7 +259,6 @@ function renderMarkdown(report) {
   lines.push("");
   lines.push("## Scope Filters");
   lines.push("- Ignore tickets associated with closed epics.");
-  lines.push("- Ignore tickets associated with Epic 10 and Epic 11 scope.");
   lines.push("");
   lines.push("## Summary");
   lines.push(`- Unresolved TODO entries in \`docs/ENGINEERING_TODOS.md\`: ${report.todoAudit.unresolvedCount}`);

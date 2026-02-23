@@ -10,8 +10,7 @@ Keep `docs/sprints/SWARM_BOARD.md`, active ticket metadata, and epic hierarchy s
 ## Scope Rules
 
 1. Ignore tickets associated with closed epics.
-2. Ignore Epic 10 and Epic 11 scope during the current hygiene pass.
-3. Focus only on in-scope active statuses: `Planned`, `Open`, `In Progress`, `Blocked`, `Todo`, `On Hold`.
+2. Focus only on in-scope active statuses: `Planned`, `Open`, `In Progress`, `Blocked`, `Todo`, `On Hold`.
 
 ## Monthly Procedure
 

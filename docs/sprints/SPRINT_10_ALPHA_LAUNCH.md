@@ -2,9 +2,11 @@
 
 Window: Next quota refresh  
 Goal: Close alpha go/no-go evidence, run production drills with real auth, and prepare a clean release branch.
+Canonical Mapping: `docs/sprints/SPRINT_10_11_GAP_MAPPING_2026-02-23.md`
 
 ## Ticket S10-01
 - Title: Run live notification drill suite with real staff auth
+- Canonical Ticket: `tickets/P0-alpha-drills-real-auth.md`
 - Swarm: `Swarm A`
 - Owner: TBD
 - State: `todo`
@@ -20,6 +22,7 @@ Goal: Close alpha go/no-go evidence, run production drills with real auth, and p
 
 ## Ticket S10-02
 - Title: Complete release evidence pack and sign-off fields
+- Canonical Ticket: `tickets/P0-alpha-release-evidence-pack.md`
 - Swarm: `Swarm D`
 - Owner: TBD
 - State: `todo`
@@ -35,6 +38,7 @@ Goal: Close alpha go/no-go evidence, run production drills with real auth, and p
 
 ## Ticket S10-03
 - Title: Branch hygiene and release diff freeze
+- Canonical Ticket: `tickets/P1-release-branch-hygiene.md`
 - Swarm: `Swarm B`
 - Owner: TBD
 - State: `todo`
@@ -50,6 +54,7 @@ Goal: Close alpha go/no-go evidence, run production drills with real auth, and p
 
 ## Ticket S10-04
 - Title: Full CI gate run + remediation pass
+- Canonical Ticket: `tickets/P1-ci-gates-remediation.md`
 - Swarm: `Swarm D`
 - Owner: TBD
 - State: `todo`
@@ -65,6 +70,7 @@ Goal: Close alpha go/no-go evidence, run production drills with real auth, and p
 
 ## Ticket S10-05
 - Title: iOS runtime verification on macOS device/simulator
+- Canonical Ticket: `tickets/P1-ios-runtime-macos-verification.md`
 - Swarm: `Swarm C`
 - Owner: TBD
 - State: `todo`
@@ -80,6 +86,7 @@ Goal: Close alpha go/no-go evidence, run production drills with real auth, and p
 
 ## Ticket S10-06
 - Title: Dependency/security audit triage
+- Canonical Tickets: `tickets/P0-security-advisories-dependency-remediation-2026-02-19.md`, `tickets/P1-dependency-audit-triage.md`
 - Swarm: `Swarm A`
 - Owner: TBD
 - State: `todo`

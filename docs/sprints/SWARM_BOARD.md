@@ -1,13 +1,14 @@
 # Swarm Board
 
-Date: 2026-02-22  
+Date: 2026-02-23  
 Use this board for daily execution and ticket routing.
 
-## Current Focus (2026-02-22)
-- Epic 06 backlog hygiene pass executed on 2026-02-22:
-  - Audit artifact: `docs/sprints/EPIC_06_BACKLOG_AUDIT_2026-02-22.md`
+## Current Focus (2026-02-23)
+- Epic 06 backlog hygiene pass executed on 2026-02-23:
+  - Audit artifact: `docs/sprints/EPIC_06_BACKLOG_AUDIT_2026-02-23.md`
   - Reconciliation runbook: `docs/sprints/BOARD_RECONCILIATION_RUNBOOK.md`
-  - Scope filter applied: ignore tickets associated with closed epics and Epic 10/11 scope
+  - Sprint 10/11 mapping artifact: `docs/sprints/SPRINT_10_11_GAP_MAPPING_2026-02-23.md`
+  - Scope filter applied: ignore tickets associated with closed epics
 - Epic 07 Studiobrain cutover execution is complete:
   - Cutover decision: `GO` (executed on 2026-02-19)
   - Runtime target: `127.0.0.1:8787`
@@ -48,12 +49,10 @@ Use this board for daily execution and ticket routing.
 ## Open Tickets (Filtered, In Scope)
 - Scope filters:
   - Ignore tickets associated with closed epics.
-  - Ignore Epic 10 and Epic 11 scope.
 - `P0` (`blocked`): `tickets/P0-alpha-drills-real-auth.md` (requires real production staff token path)
 - `P0` (`planned`): `tickets/P0-portal-hosting-cutover.md` (depends on DNS/hosting + signed OAuth domain completion)
-- `P0` (`todo`): `tickets/P0-security-advisories-dependency-remediation-2026-02-19.md` (root/functions/studio-brain high vulnerabilities to clear in next session)
 - `P1` (`blocked`): `tickets/P1-prod-auth-oauth-provider-credentials.md` (provider console/firebase console dependency)
-- Note: completed S12 tickets were removed from this open-ticket section during the 2026-02-22 reconciliation pass.
+- Note: completed S12 tickets were removed from this open-ticket section during the 2026-02-22 reconciliation pass; completed security advisory remediation row was removed during the 2026-02-23 pass.
 
 ## Reconciliation Cadence
 - Monthly:

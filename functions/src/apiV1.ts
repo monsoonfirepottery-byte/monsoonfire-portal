@@ -500,6 +500,33 @@ const reservationsListSchema = z.object({
   includeCancelled: z.boolean().optional(),
 });
 
+const reservationsLookupArrivalSchema = z.object({
+  arrivalToken: z.string().min(4).max(120).trim(),
+});
+
+const reservationsRotateArrivalTokenSchema = z.object({
+  reservationId: z.string().min(1).max(160).trim(),
+  reason: z.string().max(240).optional().nullable(),
+});
+
+const reservationsCheckInSchema = z
+  .object({
+    reservationId: z.string().min(1).max(160).trim().optional(),
+    arrivalToken: z.string().min(4).max(120).trim().optional(),
+    note: z.string().max(500).optional().nullable(),
+    photoUrl: z.string().max(2000).optional().nullable(),
+    photoPath: z.string().max(500).optional().nullable(),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.reservationId && !value.arrivalToken) {
+      ctx.addIssue({
+        code: "custom",
+        path: [],
+        message: "Provide reservationId or arrivalToken.",
+      });
+    }
+  });
+
 const ALLOWED_RESERVATION_STATUSES = new Set<string>([
   "REQUESTED",
   "CONFIRMED",
@@ -742,6 +769,127 @@ function isCapacityRelevantLoadStatus(value: unknown): boolean {
   return normalized === "queued" || normalized === "loading" || normalized === "loaded";
 }
 
+function reservationQueuePriority(row: Record<string, unknown>) {
+  const status = normalizeReservationStatus(row.status) ?? "REQUESTED";
+  const statusPriority =
+    status === "CONFIRMED" ? 0 : status === "REQUESTED" ? 1 : status === "WAITLISTED" ? 2 : 3;
+  const addOns = row.addOns && typeof row.addOns === "object" ? (row.addOns as Record<string, unknown>) : {};
+  const rushPriority = addOns.rushRequested === true ? 0 : 1;
+  const wholeKilnPriority = addOns.wholeKilnRequested === true ? 0 : 1;
+  const noShowPenalty = arrivalWindowMissed(row, Date.now()) ? 1 : 0;
+  const sizePenalty = estimateHalfShelves(row);
+  const createdAtMs = parseReservationIsoDate(row.createdAt)?.getTime() ?? 0;
+  const idTie = safeString(row.id, "");
+  return {
+    statusPriority,
+    rushPriority,
+    wholeKilnPriority,
+    noShowPenalty,
+    sizePenalty,
+    createdAtMs,
+    idTie,
+  };
+}
+
+function queueWindowFromPosition(position: number): {
+  start: Timestamp;
+  end: Timestamp;
+  confidence: "high" | "medium" | "low";
+  slaState: "on_track" | "at_risk" | "delayed";
+} {
+  const slotIndex = Math.max(0, Math.floor((position - 1) / 2));
+  const startMs = Date.now() + slotIndex * 2 * 24 * 60 * 60 * 1000;
+  const endMs = startMs + 2 * 24 * 60 * 60 * 1000;
+  const confidence = position <= 2 ? "high" : position <= 5 ? "medium" : "low";
+  const slaState = confidence === "high" ? "on_track" : confidence === "medium" ? "at_risk" : "delayed";
+  return {
+    start: Timestamp.fromDate(new Date(startMs)),
+    end: Timestamp.fromDate(new Date(endMs)),
+    confidence,
+    slaState,
+  };
+}
+
+async function recomputeQueueHintsForStation(stationId: string | null): Promise<void> {
+  if (!stationId) return;
+  const snap = await db.collection("reservations").where("assignedStationId", "==", stationId).get();
+  const rows = snap.docs.map((docSnap) => ({
+    id: docSnap.id,
+    data: docSnap.data() as Record<string, unknown>,
+  }));
+  if (rows.length === 0) return;
+
+  const active = rows
+    .filter((row) => (normalizeReservationStatus(row.data.status) ?? "REQUESTED") !== "CANCELLED")
+    .sort((a, b) => {
+      const left = reservationQueuePriority({ ...a.data, id: a.id });
+      const right = reservationQueuePriority({ ...b.data, id: b.id });
+      if (left.statusPriority !== right.statusPriority) return left.statusPriority - right.statusPriority;
+      if (left.rushPriority !== right.rushPriority) return left.rushPriority - right.rushPriority;
+      if (left.wholeKilnPriority !== right.wholeKilnPriority) return left.wholeKilnPriority - right.wholeKilnPriority;
+      if (left.noShowPenalty !== right.noShowPenalty) return left.noShowPenalty - right.noShowPenalty;
+      if (left.sizePenalty !== right.sizePenalty) return left.sizePenalty - right.sizePenalty;
+      if (left.createdAtMs !== right.createdAtMs) return left.createdAtMs - right.createdAtMs;
+      return left.idTie.localeCompare(right.idTie);
+    });
+
+  const now = nowTs();
+  const activeIdToPosition = new Map<string, number>();
+  active.forEach((row, index) => {
+    activeIdToPosition.set(row.id, index + 1);
+  });
+
+  await Promise.all(
+    rows.map(async (row) => {
+      const position = activeIdToPosition.get(row.id) ?? null;
+      const reservationRef = db.collection("reservations").doc(row.id);
+      if (position === null) {
+        await reservationRef.set(
+          {
+            queuePositionHint: null,
+            estimatedWindow: {
+              currentStart: null,
+              currentEnd: null,
+              updatedAt: now,
+              slaState: "unknown",
+              confidence: null,
+            },
+          },
+          { merge: true }
+        );
+        return;
+      }
+
+      const window = queueWindowFromPosition(position);
+      await reservationRef.set(
+        {
+          queuePositionHint: position,
+          estimatedWindow: {
+            currentStart: window.start,
+            currentEnd: window.end,
+            updatedAt: now,
+            slaState: window.slaState,
+            confidence: window.confidence,
+          },
+        },
+        { merge: true }
+      );
+    })
+  );
+}
+
+async function recomputeQueueHintsForStationSafe(stationId: string | null, context: string): Promise<void> {
+  try {
+    await recomputeQueueHintsForStation(stationId);
+  } catch (error: unknown) {
+    logger.warn("reservation_queue_hint_recompute_failed", {
+      context,
+      stationId: stationId ?? null,
+      error: safeErrorMessage(error),
+    });
+  }
+}
+
 function toReservationRow(id: string, row: Record<string, unknown>) {
   const loadStatus = normalizeLoadStatus(row.loadStatus);
   const stageStatusRaw = row.stageStatus && typeof row.stageStatus === "object" ? row.stageStatus : null;
@@ -805,6 +953,7 @@ function toReservationRow(id: string, row: Record<string, unknown>) {
       currentEnd: parseReservationIsoDate(estimatedWindow.currentEnd),
       updatedAt: parseReservationIsoDate(estimatedWindow.updatedAt),
       slaState: safeString(estimatedWindow.slaState) || null,
+      confidence: safeString(estimatedWindow.confidence) || null,
     },
     pickupWindow: {
       requestedStart: parseReservationIsoDate(pickupWindow.requestedStart),
@@ -990,8 +1139,11 @@ const ROUTE_SCOPE_HINTS: Record<string, string | null> = {
   "/v1/agent.requests.linkBatch": "requests:write",
   "/v1/agent.requests.createCommissionOrder": "requests:write",
   "/v1/reservations.create": "reservations:write",
+  "/v1/reservations.checkIn": "reservations:write",
+  "/v1/reservations.rotateArrivalToken": "reservations:write",
   "/v1/reservations.update": "reservations:write",
   "/v1/reservations.assignStation": "reservations:write",
+  "/v1/reservations.lookupArrival": "reservations:read",
   "/v1/reservations.get": "reservations:read",
   "/v1/reservations.list": "reservations:read",
 };
@@ -1019,9 +1171,12 @@ const ALLOWED_API_V1_ROUTES = new Set<string>([
   "/v1/batches.list",
   "/v1/batches.timeline.list",
   "/v1/reservations.assignStation",
+  "/v1/reservations.checkIn",
   "/v1/reservations.create",
   "/v1/reservations.get",
   "/v1/reservations.list",
+  "/v1/reservations.lookupArrival",
+  "/v1/reservations.rotateArrivalToken",
   "/v1/reservations.update",
   "/v1/events.feed",
   "/v1/firings.listUpcoming",
@@ -1052,12 +1207,24 @@ const API_V1_ROUTE_AUTHZ_EVENTS: Record<string, { action: string; resourceType: 
     action: "reservations_create",
     resourceType: "reservation",
   },
+  "/v1/reservations.checkIn": {
+    action: "reservations_checkin",
+    resourceType: "reservation",
+  },
   "/v1/reservations.get": {
     action: "reservations_get",
     resourceType: "reservation",
   },
   "/v1/reservations.list": {
     action: "reservations_list",
+    resourceType: "reservation",
+  },
+  "/v1/reservations.lookupArrival": {
+    action: "reservations_lookup_arrival",
+    resourceType: "reservation",
+  },
+  "/v1/reservations.rotateArrivalToken": {
+    action: "reservations_rotate_arrival_token",
     resourceType: "reservation",
   },
   "/v1/reservations.update": {
@@ -1111,6 +1278,98 @@ function readStringArray(value: unknown): string[] {
     }
   }
   return out;
+}
+
+const ARRIVAL_TOKEN_PREFIX = "MF-ARR";
+const ARRIVAL_TOKEN_DEFAULT_WINDOW_MS = 36 * 60 * 60 * 1000;
+
+function fnv1a32(input: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function normalizeArrivalTokenLookup(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function formatArrivalTokenFromLookup(lookup: string): string {
+  const normalized = normalizeArrivalTokenLookup(lookup);
+  if (!normalized.startsWith("MFARR")) return "";
+  const body = normalized.slice("MFARR".length);
+  if (!body.length) return "";
+  if (body.length <= 4) return `${ARRIVAL_TOKEN_PREFIX}-${body}`;
+  return `${ARRIVAL_TOKEN_PREFIX}-${body.slice(0, 4)}-${body.slice(4, 8)}`;
+}
+
+function makeDeterministicArrivalToken(reservationId: string, version: number): string {
+  const compactId = reservationId
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(-4)
+    .padStart(4, "0");
+  const seed = `${reservationId}:${Math.max(1, Math.trunc(version))}`;
+  const hashChunk = fnv1a32(seed).toString(36).toUpperCase().slice(0, 4).padStart(4, "0");
+  return `${ARRIVAL_TOKEN_PREFIX}-${compactId}-${hashChunk}`;
+}
+
+function resolveArrivalTokenExpiryDate(row: Record<string, unknown>, nowDate: Date): Date {
+  const preferredWindow =
+    row.preferredWindow && typeof row.preferredWindow === "object"
+      ? (row.preferredWindow as Record<string, unknown>)
+      : {};
+  const preferredLatest = parseReservationIsoDate(preferredWindow.latestDate);
+  if (preferredLatest && preferredLatest.getTime() > nowDate.getTime()) {
+    return preferredLatest;
+  }
+  return new Date(nowDate.getTime() + ARRIVAL_TOKEN_DEFAULT_WINDOW_MS);
+}
+
+function arrivalWindowMissed(row: Record<string, unknown>, nowMs: number): boolean {
+  const status = safeString(row.arrivalStatus, "").toLowerCase();
+  if (status === "no_show" || status === "overdue") return true;
+  if (status !== "expected") return false;
+  const expiry = parseReservationIsoDate(row.arrivalTokenExpiresAt);
+  if (!expiry) return false;
+  return expiry.getTime() <= nowMs;
+}
+
+async function findReservationByArrivalToken(tokenInput: string): Promise<{
+  reservationId: string;
+  row: Record<string, unknown>;
+} | null> {
+  const tokenLookup = normalizeArrivalTokenLookup(tokenInput);
+  if (!tokenLookup.startsWith("MFARR") || tokenLookup.length < 8) return null;
+
+  const byLookupSnap = await db
+    .collection("reservations")
+    .where("arrivalTokenLookup", "==", tokenLookup)
+    .limit(2)
+    .get();
+
+  let docSnap = byLookupSnap.docs[0] ?? null;
+  if (!docSnap) {
+    const fallbackToken = formatArrivalTokenFromLookup(tokenLookup);
+    if (!fallbackToken) return null;
+    const byTokenSnap = await db
+      .collection("reservations")
+      .where("arrivalToken", "==", fallbackToken)
+      .limit(2)
+      .get();
+    docSnap = byTokenSnap.docs[0] ?? null;
+  }
+
+  if (!docSnap) return null;
+  const reservationId = docSnap.id;
+  const row = docSnap.data() as Record<string, unknown>;
+  return {
+    reservationId,
+    row,
+  };
 }
 
 type TimelineEventRow = {
@@ -2391,6 +2650,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         updatedAt: now,
       });
 
+      await recomputeQueueHintsForStationSafe(kilnId, "reservations.create");
+
       jsonOk(res, requestId, {
         reservationId: reservationRef.id,
         status: "REQUESTED",
@@ -2521,6 +2782,364 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       return;
     }
 
+    if (route === "/v1/reservations.lookupArrival") {
+      const scopeCheck = requireScopes(ctx, ["reservations:read"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+
+      const admin = await requireAdmin(req);
+      if (!admin.ok) {
+        jsonError(res, requestId, 401, "UNAUTHORIZED", admin.message);
+        return;
+      }
+
+      const parsed = parseBody(reservationsLookupArrivalSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const found = await findReservationByArrivalToken(parsed.data.arrivalToken);
+      if (!found) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Reservation not found for arrival token");
+        return;
+      }
+
+      const { reservationId, row } = found;
+      const ownerUid = safeString(row.ownerUid, "");
+      if (!ownerUid) {
+        jsonError(res, requestId, 500, "INTERNAL", "Reservation missing owner");
+        return;
+      }
+
+      const reservationAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid,
+        scope: "reservations:read",
+        resource: `reservation:${reservationId}`,
+        allowStaff: true,
+      });
+      if (!reservationAuthz.ok) {
+        await logReservationAuditEvent({
+          req,
+          requestId,
+          action: "reservations_lookup_arrival_authz",
+          resourceType: "reservation",
+          resourceId: reservationId,
+          ownerUid,
+          result: "deny",
+          reasonCode: reservationAuthz.code,
+          ctx,
+        });
+        jsonError(res, requestId, reservationAuthz.httpStatus, reservationAuthz.code, reservationAuthz.message);
+        return;
+      }
+
+      const arrivalStatus = safeString(row.arrivalStatus, "").toLowerCase();
+      const queuePositionHint = normalizeNumber(row.queuePositionHint);
+      const assignedStationId = normalizeStationId(row.assignedStationId);
+      const requiredResources = normalizeRequiredResources(row.requiredResources);
+
+      jsonOk(res, requestId, {
+        reservation: toReservationRow(reservationId, row),
+        outstandingRequirements: {
+          needsArrivalCheckIn: arrivalStatus !== "arrived",
+          needsStationAssignment: !assignedStationId,
+          needsQueuePlacement: typeof queuePositionHint !== "number",
+          needsResourceProfile: !requiredResources.kilnProfile,
+        },
+      });
+      return;
+    }
+
+    if (route === "/v1/reservations.checkIn") {
+      const scopeCheck = requireScopes(ctx, ["reservations:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(reservationsCheckInSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      let reservationId = trimOrNull(parsed.data.reservationId);
+      let reservationRef = reservationId ? db.collection("reservations").doc(reservationId) : null;
+      let reservationSnap = reservationRef ? await reservationRef.get() : null;
+
+      if (!reservationSnap?.exists) {
+        const foundByToken = await findReservationByArrivalToken(parsed.data.arrivalToken ?? "");
+        if (!foundByToken) {
+          jsonError(res, requestId, 404, "NOT_FOUND", "Reservation not found");
+          return;
+        }
+        reservationId = foundByToken.reservationId;
+        reservationRef = db.collection("reservations").doc(reservationId);
+        reservationSnap = await reservationRef.get();
+      }
+
+      if (!reservationSnap?.exists || !reservationRef || !reservationId) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Reservation not found");
+        return;
+      }
+
+      const row = reservationSnap.data() as Record<string, unknown>;
+      const ownerUid = safeString(row.ownerUid, "");
+      if (!ownerUid) {
+        jsonError(res, requestId, 500, "INTERNAL", "Reservation missing owner");
+        return;
+      }
+
+      const reservationAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid,
+        scope: "reservations:write",
+        resource: `reservation:${reservationId}`,
+        allowStaff: true,
+      });
+      if (!reservationAuthz.ok) {
+        await logReservationAuditEvent({
+          req,
+          requestId,
+          action: "reservations_checkin_authz",
+          resourceType: "reservation",
+          resourceId: reservationId,
+          ownerUid,
+          result: "deny",
+          reasonCode: reservationAuthz.code,
+          ctx,
+        });
+        jsonError(res, requestId, reservationAuthz.httpStatus, reservationAuthz.code, reservationAuthz.message);
+        return;
+      }
+
+      const status = normalizeReservationStatus(row.status) ?? "REQUESTED";
+      if (status === "CANCELLED") {
+        jsonError(res, requestId, 409, "CONFLICT", "Reservation is cancelled");
+        return;
+      }
+      if (status !== "CONFIRMED" && status !== "CONFIRMED_ARRIVED" && status !== "LOADED") {
+        jsonError(
+          res,
+          requestId,
+          409,
+          "CONFLICT",
+          "Only confirmed reservations can be checked in."
+        );
+        return;
+      }
+
+      const note = trimOrNull(parsed.data.note);
+      const photoUrl = trimOrNull(parsed.data.photoUrl);
+      const photoPath = trimOrNull(parsed.data.photoPath);
+      if (photoPath && !photoPath.startsWith(`checkins/${ownerUid}/`)) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Invalid photo path");
+        return;
+      }
+
+      const admin = await requireAdmin(req);
+      const actorRole =
+        admin.ok
+          ? admin.mode === "staff"
+            ? "staff"
+            : "dev"
+          : ctx.mode === "firebase"
+            ? "client"
+            : "client";
+
+      const now = nowTs();
+      const existingArrivalStatus = safeString(row.arrivalStatus, "").toLowerCase();
+      const alreadyArrived = existingArrivalStatus === "arrived";
+      const loadStatus = normalizeLoadStatus(row.loadStatus);
+      const lifecycleStage = stageForCurrentState(status, loadStatus);
+      const stageHistory = normalizeReservationStageHistory(row.stageHistory);
+      stageHistory.push({
+        fromStatus: status,
+        toStatus: status,
+        fromLoadStatus: loadStatus,
+        toLoadStatus: loadStatus,
+        fromStage: lifecycleStage,
+        toStage: lifecycleStage,
+        at: now,
+        actorUid: ctx.uid,
+        actorRole,
+        reason: parsed.data.arrivalToken ? "arrival_token_checkin" : "arrival_checkin",
+        notes: note,
+      });
+
+      const existingArrivalChecks = Array.isArray(row.arrivalCheckIns)
+        ? row.arrivalCheckIns
+        : [];
+      const arrivalCheckRecord = {
+        at: now,
+        byUid: ctx.uid,
+        byRole: actorRole,
+        via: parsed.data.arrivalToken ? "token" : "reservationId",
+        note: note || null,
+        photoUrl: photoUrl || null,
+        photoPath: photoPath || null,
+      };
+
+      await reservationRef.set(
+        {
+          arrivalStatus: "arrived",
+          arrivedAt: row.arrivedAt ?? now,
+          arrivalCheckIns: [...existingArrivalChecks, arrivalCheckRecord].slice(-40),
+          stageHistory: stageHistory.slice(-120),
+          stageStatus: {
+            stage: lifecycleStage,
+            at: now,
+            source: actorRole,
+            reason: parsed.data.arrivalToken ? "Arrival via token" : "Arrival check-in",
+            notes: note,
+            actorUid: ctx.uid,
+            actorRole,
+          },
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+
+      await recomputeQueueHintsForStationSafe(normalizeStationId(row.assignedStationId), "reservations.checkIn");
+
+      jsonOk(res, requestId, {
+        reservationId,
+        arrivalStatus: "arrived",
+        arrivedAt: row.arrivedAt ?? now,
+        idempotentReplay: alreadyArrived && !note && !photoUrl && !photoPath,
+      });
+      return;
+    }
+
+    if (route === "/v1/reservations.rotateArrivalToken") {
+      const scopeCheck = requireScopes(ctx, ["reservations:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+
+      const admin = await requireAdmin(req);
+      if (!admin.ok) {
+        jsonError(res, requestId, 401, "UNAUTHORIZED", admin.message);
+        return;
+      }
+
+      const parsed = parseBody(reservationsRotateArrivalTokenSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const reservationId = parsed.data.reservationId;
+      const reservationRef = db.collection("reservations").doc(reservationId);
+      const reservationSnap = await reservationRef.get();
+      if (!reservationSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Reservation not found");
+        return;
+      }
+
+      const row = reservationSnap.data() as Record<string, unknown>;
+      const ownerUid = safeString(row.ownerUid, "");
+      if (!ownerUid) {
+        jsonError(res, requestId, 500, "INTERNAL", "Reservation missing owner");
+        return;
+      }
+
+      const reservationAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid,
+        scope: "reservations:write",
+        resource: `reservation:${reservationId}`,
+        allowStaff: true,
+      });
+      if (!reservationAuthz.ok) {
+        await logReservationAuditEvent({
+          req,
+          requestId,
+          action: "reservations_rotate_arrival_token_authz",
+          resourceType: "reservation",
+          resourceId: reservationId,
+          ownerUid,
+          result: "deny",
+          reasonCode: reservationAuthz.code,
+          ctx,
+        });
+        jsonError(res, requestId, reservationAuthz.httpStatus, reservationAuthz.code, reservationAuthz.message);
+        return;
+      }
+
+      const status = normalizeReservationStatus(row.status) ?? "REQUESTED";
+      if (status === "CANCELLED") {
+        jsonError(res, requestId, 409, "CONFLICT", "Reservation is cancelled");
+        return;
+      }
+
+      const now = nowTs();
+      const currentVersionRaw = normalizeNumber(row.arrivalTokenVersion);
+      const currentVersion =
+        typeof currentVersionRaw === "number" ? Math.max(0, Math.trunc(currentVersionRaw)) : 0;
+      const nextVersion = currentVersion + 1;
+      const nextToken = makeDeterministicArrivalToken(reservationId, nextVersion);
+      const nextLookup = normalizeArrivalTokenLookup(nextToken);
+      const nextExpiry = Timestamp.fromDate(resolveArrivalTokenExpiryDate(row, new Date()));
+      const reason = trimOrNull(parsed.data.reason) || "Arrival token reissued";
+      const actorRole = admin.mode === "staff" ? "staff" : "dev";
+      const loadStatus = normalizeLoadStatus(row.loadStatus);
+      const lifecycleStage = stageForCurrentState(status, loadStatus);
+      const stageHistory = normalizeReservationStageHistory(row.stageHistory);
+      stageHistory.push({
+        fromStatus: status,
+        toStatus: status,
+        fromLoadStatus: loadStatus,
+        toLoadStatus: loadStatus,
+        fromStage: lifecycleStage,
+        toStage: lifecycleStage,
+        at: now,
+        actorUid: ctx.uid,
+        actorRole,
+        reason: "arrival_token_rotated",
+        notes: reason,
+      });
+
+      await reservationRef.set(
+        {
+          arrivalStatus: safeString(row.arrivalStatus, "").toLowerCase() === "arrived" ? "arrived" : "expected",
+          arrivalToken: nextToken,
+          arrivalTokenLookup: nextLookup,
+          arrivalTokenIssuedAt: now,
+          arrivalTokenExpiresAt: nextExpiry,
+          arrivalTokenVersion: nextVersion,
+          stageHistory: stageHistory.slice(-120),
+          stageStatus: {
+            stage: lifecycleStage,
+            at: now,
+            source: actorRole,
+            reason: "Arrival token rotated",
+            notes: reason,
+            actorUid: ctx.uid,
+            actorRole,
+          },
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+
+      jsonOk(res, requestId, {
+        reservationId,
+        arrivalToken: nextToken,
+        arrivalTokenExpiresAt: nextExpiry,
+        arrivalTokenVersion: nextVersion,
+      });
+      return;
+    }
+
     if (route === "/v1/reservations.update") {
       const scopeCheck = requireScopes(ctx, ["reservations:write"]);
       if (!scopeCheck.ok) {
@@ -2601,9 +3220,16 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           const row = snap.data() as Record<string, unknown>;
           const existingStatus = normalizeReservationStatus(row.status) ?? "REQUESTED";
           const existingLoadStatus = normalizeLoadStatus(row.loadStatus);
+          const assignedStationId = normalizeStationId(row.assignedStationId);
           const requestedStatus = parsed.data.status ?? existingStatus;
           const requestedLoadStatus = normalizeLoadStatus(parsed.data.loadStatus) ?? existingLoadStatus;
           const requestedNotes = parsed.data.staffNotes;
+          const currentArrivalToken = safeString(row.arrivalToken) || null;
+          const currentArrivalTokenVersionRaw = normalizeNumber(row.arrivalTokenVersion);
+          const currentArrivalTokenVersion =
+            typeof currentArrivalTokenVersionRaw === "number"
+              ? Math.max(0, Math.trunc(currentArrivalTokenVersionRaw))
+              : 0;
 
           const statusProvided = parsed.data.status != null;
           const loadProvided = parsed.data.loadStatus != null;
@@ -2623,9 +3249,31 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           const update: Record<string, unknown> = { updatedAt: now };
           const nextStatus = statusProvided ? requestedStatus : existingStatus;
           const nextLoadStatus = loadProvided ? requestedLoadStatus : existingLoadStatus;
+          let nextArrivalToken = currentArrivalToken;
+          let nextArrivalTokenExpiresAt: Timestamp | null = null;
 
           if (statusProvided) {
             update.status = nextStatus;
+          }
+
+          if (statusProvided && nextStatus === "CONFIRMED") {
+            const shouldIssueArrivalToken =
+              existingStatus !== "CONFIRMED" || !currentArrivalToken;
+            if (shouldIssueArrivalToken) {
+              const nextArrivalTokenVersion = currentArrivalTokenVersion + 1;
+              const issuedToken = makeDeterministicArrivalToken(reservationId, nextArrivalTokenVersion);
+              const tokenLookup = normalizeArrivalTokenLookup(issuedToken);
+              const expiryDate = resolveArrivalTokenExpiryDate(row, new Date());
+              nextArrivalToken = issuedToken;
+              nextArrivalTokenExpiresAt = Timestamp.fromDate(expiryDate);
+              update.arrivalStatus = "expected";
+              update.arrivedAt = null;
+              update.arrivalToken = issuedToken;
+              update.arrivalTokenLookup = tokenLookup;
+              update.arrivalTokenIssuedAt = now;
+              update.arrivalTokenExpiresAt = nextArrivalTokenExpiresAt;
+              update.arrivalTokenVersion = nextArrivalTokenVersion;
+            }
           }
 
           if (loadProvided) {
@@ -2677,14 +3325,21 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
             reservationId,
             status: requestedStatus,
             loadStatus: nextLoadStatus,
+            assignedStationId,
+            arrivalToken: nextArrivalToken,
+            arrivalTokenExpiresAt: nextArrivalTokenExpiresAt,
             idempotentReplay: false,
           };
         });
+
+        await recomputeQueueHintsForStationSafe(out.assignedStationId, "reservations.update");
 
         jsonOk(res, requestId, {
           reservationId: out.reservationId,
           status: out.status,
           loadStatus: out.loadStatus,
+          arrivalToken: out.arrivalToken,
+          arrivalTokenExpiresAt: out.arrivalTokenExpiresAt,
           idempotentReplay: out.idempotentReplay,
         });
       } catch (error: unknown) {
@@ -2930,6 +3585,17 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
             idempotentReplay: false,
           };
         });
+
+        await recomputeQueueHintsForStationSafe(out.assignedStationId, "reservations.assignStation");
+        if (
+          out.previousAssignedStationId &&
+          out.previousAssignedStationId !== out.assignedStationId
+        ) {
+          await recomputeQueueHintsForStationSafe(
+            out.previousAssignedStationId,
+            "reservations.assignStation.previous"
+          );
+        }
 
         jsonOk(res, requestId, {
           reservationId: out.reservationId,

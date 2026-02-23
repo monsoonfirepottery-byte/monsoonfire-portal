@@ -23,6 +23,7 @@ Fields:
   - `currentEnd` (timestamp | null)
   - `updatedAt` (timestamp | null)
   - `slaState` (`on_track` | `at_risk` | `delayed` | `unknown`)
+  - `confidence` (`high` | `medium` | `low` | null)
 - `loadStatus` (string | null) — queue placement state used by kiln view (`queued`, `loading`, `loaded`).
 - `queuePositionHint` (number | null) — optional display-only position proxy.
 - `queueClass` (string | null) — optional operational queue lane label (eg. `studio-kiln-a`, `studio-kiln-b`, `wheel-bay`).
@@ -60,14 +61,48 @@ Fields:
 - `arrivalStatus` (string | null) — operational arrival workflow state (`expected`, `arrived`, `overdue`, `no_show`).
 - `arrivedAt` (timestamp | null)
 - `arrivalToken` (string | null) — member-facing check-in code.
+- `arrivalTokenLookup` (string | null) — normalized uppercase token key for scanner-friendly lookup.
 - `arrivalTokenIssuedAt` (timestamp | null)
 - `arrivalTokenExpiresAt` (timestamp | null)
 - `arrivalTokenVersion` (number | null)
+- `arrivalCheckIns` (array<object> | null) — append-only arrival check-in events (`at`, `byUid`, `byRole`, `via`, `note`, `photoUrl`, `photoPath`).
 - `linkedBatchId` (string | null) — optional batch id for context.
 - `wareType`, `kilnId`, `kilnLabel`, `quantityTier`, `quantityLabel`, `dropOffProfile`, `dropOffQuantity`, `photoUrl`, `photoPath`, `notes`, `addOns` (map | null)
 - `createdByUid`, `createdByRole` (string | null)
 - `createdAt` (timestamp)
 - `updatedAt` (timestamp)
+
+## Arrival token + check-in policy
+
+- Arrival token issuance:
+  - Token is issued when reservation status transitions to `CONFIRMED`.
+  - Format is deterministic and human-readable: `MF-ARR-XXXX-XXXX`.
+  - Determinism seed: reservation id + `arrivalTokenVersion`.
+- Expiry rules:
+  - If a preferred latest arrival window exists and is in the future, token expiry aligns to that window.
+  - Otherwise token defaults to a short rolling window (36 hours from issuance).
+- Reissue/revocation:
+  - Staff can rotate tokens via `/v1/reservations.rotateArrivalToken`.
+  - Rotation increments `arrivalTokenVersion` and invalidates prior lookup keys.
+- Check-in paths:
+  - Member/owner check-in: `/v1/reservations.checkIn` with `reservationId`.
+  - Staff scanner/lookup: `/v1/reservations.lookupArrival` + `/v1/reservations.checkIn` with `arrivalToken`.
+
+## Status lifecycle graph (canonical)
+
+- Reservation status:
+  - `REQUESTED` -> `CONFIRMED`
+  - `REQUESTED` -> `WAITLISTED`
+  - `REQUESTED` -> `CANCELLED`
+  - `CONFIRMED` -> `WAITLISTED`
+  - `CONFIRMED` -> `CANCELLED`
+  - `WAITLISTED` -> `CONFIRMED`
+  - `WAITLISTED` -> `CANCELLED`
+  - `CANCELLED` is terminal unless an explicit force/admin migration path is used.
+- Load status:
+  - `queued` -> `loading` -> `loaded`
+  - `loaded` may be returned to `queued` by staff correction if needed.
+- Every accepted transition appends one `stageHistory` row and updates `stageStatus`.
 
 ### Sample document
 ```json
@@ -175,6 +210,12 @@ Response envelope:
 - `queueClass`
   - Optional lane label set/updated by `reservations.assignStation`.
   - Stored lowercased/trimmed.
+- `queuePositionHint`
+  - Server-computed deterministic queue position for the assigned station.
+  - Recomputed by reservation create/update/assign mutation flows.
+- `estimatedWindow`
+  - Server-computed queue ETA window for the assigned station queue.
+  - Includes `currentStart/currentEnd`, `slaState`, and `confidence`.
 - `requiredResources`
   - Optional structured routing metadata set by `reservations.assignStation`.
   - Shape: `{ kilnProfile, rackCount, specialHandling[] }`.
@@ -200,6 +241,19 @@ Response envelope:
   - Enforces known station ids and station capacity checks.
   - Supports idempotent replay semantics when no net mutation occurs.
 
+### Queue ranking rules (server-computed)
+
+Queue hints are derived server-side per station using a deterministic sort key:
+1. reservation lifecycle priority (`CONFIRMED` -> `REQUESTED` -> `WAITLISTED` -> `CANCELLED`)
+2. rush priority (`addOns.rushRequested`)
+3. whole-kiln priority (`addOns.wholeKilnRequested`)
+4. no-show/overdue penalty (`arrivalStatus`)
+5. estimated size penalty (`estimatedHalfShelves` fallback chain)
+6. created time (`createdAt`)
+7. stable id tiebreaker (`reservationId`)
+
+This keeps queue hint ordering consistent across clients and prevents UI-only ordering drift.
+
 ### Contract drift checklist
 
 - Keep `web/src/api/portalContracts.ts` aligned with:
@@ -217,6 +271,11 @@ Response envelope:
 
 ## Notes
 - Firestore rejects `undefined`; the function writes `null` for missing `preferredWindow` entries.
+- Migration fallback for pre-field reservations:
+  - Missing `status` => treat as `REQUESTED`.
+  - Missing `loadStatus` => treat as `queued`.
+  - Missing `stageStatus`/`stageHistory` => show stable fallback copy and use `updatedAt`.
+  - Missing `estimatedWindow`/`queuePositionHint` => use server recompute when next mutation occurs; UI may show fallback ETA text.
 - `assignedStationId`, `requiredResources`, `queueClass`, `queueLaneHint`, `arrivalStatus`, and `arrivalToken*` are included as operational expansion targets to support station-aware capacity, station-specific fairness, and member-assisted check-in.
 - `stageStatus`, `estimatedWindow`, `pickupWindow`, and `storageStatus` are included as expansion targets, currently implemented through phased tickets (P1/P2).
 - The client-side view orders results by `createdAt desc`; a composite index may be required if additional filters are added later.

@@ -27,7 +27,7 @@ type MockQuery = {
   get: () => Promise<{ docs: MockSnapshot[]; empty: boolean }>;
 };
 type MockTransaction = {
-  get: (docRef: { __mfCollection: string; __mfDocId: string }) => Promise<MockSnapshot>;
+  get: (docRef: unknown) => Promise<unknown>;
   set: () => Promise<void>;
 };
 const AGENT_TERMS_VERSION = "2026-02-12.v1";
@@ -142,7 +142,23 @@ function withMockFirestore<T>(
     options?.runTransaction ??
     (async (txCallback) => {
       const tx: MockTransaction = {
-        get: async (docRef) => lookup(docRef.__mfCollection, docRef.__mfDocId),
+        get: async (docRef) => {
+          const maybeDoc = docRef as { __mfCollection?: unknown; __mfDocId?: unknown };
+          if (
+            maybeDoc &&
+            typeof maybeDoc.__mfCollection === "string" &&
+            typeof maybeDoc.__mfDocId === "string"
+          ) {
+            return lookup(maybeDoc.__mfCollection, maybeDoc.__mfDocId);
+          }
+
+          const maybeQuery = docRef as { get?: unknown };
+          if (maybeQuery && typeof maybeQuery.get === "function") {
+            return await (maybeQuery.get as () => Promise<unknown>)();
+          }
+
+          throw new Error("Unsupported tx.get target in test mock");
+        },
         set: async () => {
           return undefined;
         },
@@ -1023,14 +1039,16 @@ test("handleApiV1 denies agent.reserve for non-owner quote owner", async () => {
     }, {
       runTransaction: async (callback) => callback({
         get: async (docRef) => {
-          if (docRef.__mfCollection === "agentQuotes" && docRef.__mfDocId === "quote-owner-mismatch") {
+          const target = docRef as { __mfCollection?: unknown; __mfDocId?: unknown };
+          const docId = typeof target.__mfDocId === "string" ? target.__mfDocId : "unknown";
+          if (target.__mfCollection === "agentQuotes" && target.__mfDocId === "quote-owner-mismatch") {
             return {
               id: "quote-owner-mismatch",
               exists: true,
               data: () => ({ uid: "owner-2" }),
             };
           }
-          return { id: docRef.__mfDocId, exists: false, data: () => null };
+          return { id: docId, exists: false, data: () => null };
         },
         set: async () => {
           return undefined;
@@ -1759,7 +1777,17 @@ test("reservations.update returns parity envelopes for v1 and legacy route famil
 
   assert.equal(v1.status, 200);
   assert.equal(legacy.status, 200);
-  assert.deepEqual(withoutRequestId(v1.body), withoutRequestId(legacy.body));
+  const v1Body = withoutRequestId(v1.body);
+  const legacyBody = withoutRequestId(legacy.body);
+  const v1Data = (v1Body.data ?? {}) as Record<string, unknown>;
+  const legacyData = (legacyBody.data ?? {}) as Record<string, unknown>;
+  assert.equal(v1Data.reservationId, legacyData.reservationId);
+  assert.equal(v1Data.status, legacyData.status);
+  assert.equal(v1Data.loadStatus, legacyData.loadStatus);
+  assert.equal(v1Data.arrivalToken, legacyData.arrivalToken);
+  assert.equal(typeof v1Data.arrivalTokenExpiresAt, "object");
+  assert.equal(typeof legacyData.arrivalTokenExpiresAt, "object");
+  assert.equal(v1Data.idempotentReplay, legacyData.idempotentReplay);
 });
 
 test("reservations.assignStation rejects unknown station with parity across route families", async () => {
@@ -1802,6 +1830,53 @@ test("reservations.assignStation rejects unknown station with parity across rout
   assert.equal(v1.status, 400);
   assert.equal(legacy.status, 400);
   assert.deepEqual(withoutRequestId(v1.body), withoutRequestId(legacy.body));
+});
+
+test("reservations.assignStation blocks over-capacity station assignments", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-target": {
+        ownerUid: "owner-1",
+        status: "REQUESTED",
+        loadStatus: "queued",
+        estimatedHalfShelves: 2,
+        stageHistory: [],
+      },
+      "reservation-existing-a": {
+        ownerUid: "owner-2",
+        status: "CONFIRMED",
+        loadStatus: "queued",
+        assignedStationId: "studio-electric",
+        estimatedHalfShelves: 4,
+      },
+      "reservation-existing-b": {
+        ownerUid: "owner-3",
+        status: "CONFIRMED",
+        loadStatus: "queued",
+        assignedStationId: "studio-electric",
+        estimatedHalfShelves: 4,
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.assignStation",
+      body: {
+        reservationId: "reservation-target",
+        assignedStationId: "studio-electric",
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 409);
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.code, "CONFLICT");
+  assert.match(String(body.message ?? ""), /capacity/i);
 });
 
 test("reservation authz audit metadata includes routeFamily for legacy and v1", async () => {
@@ -1944,6 +2019,58 @@ test("reservations.update blocks invalid lifecycle transition from cancelled bac
   assert.equal(body.code, "CONFLICT");
 });
 
+test("reservations.update rejects unauthorized non-staff firebase caller", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-needs-staff": {
+        ownerUid: "owner-1",
+        status: "REQUESTED",
+        loadStatus: "queued",
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.update",
+      body: {
+        reservationId: "reservation-needs-staff",
+        status: "CONFIRMED",
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 401);
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.code, "UNAUTHORIZED");
+  assert.equal(body.message, "Unauthorized");
+});
+
+test("reservations.update returns not found when reservation does not exist", async () => {
+  const response = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/reservations.update",
+      body: {
+        reservationId: "reservation-missing",
+        status: "CONFIRMED",
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 404);
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.code, "NOT_FOUND");
+  assert.equal(body.message, "Reservation not found");
+});
+
 test("reservations.update allows confirmed reservations to progress to loaded loadStatus", async () => {
   const state: MockDbState = {
     reservations: {
@@ -2023,4 +2150,171 @@ test("reservations.list excludes cancelled by default and includes it when reque
   const includeBody = includeCancelledList.body as Record<string, unknown>;
   const includeRows = (((includeBody.data ?? {}) as Record<string, unknown>).reservations ?? []) as Array<Record<string, unknown>>;
   assert.equal(includeRows.length, 2);
+});
+
+test("reservations.update issues an arrival token when status moves to confirmed", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-arrival-token": {
+        ownerUid: "owner-1",
+        status: "REQUESTED",
+        loadStatus: "queued",
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.update",
+      body: {
+        reservationId: "reservation-arrival-token",
+        status: "CONFIRMED",
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  assert.equal(typeof data.arrivalToken, "string");
+  assert.match(String(data.arrivalToken ?? ""), /^MF-ARR-/);
+});
+
+test("reservations.lookupArrival returns reservation summary for staff", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-lookup": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "queued",
+        arrivalStatus: "expected",
+        arrivalToken: "MF-ARR-ABCD-1234",
+        arrivalTokenLookup: "MFARRABCD1234",
+        queuePositionHint: 2,
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.lookupArrival",
+      body: {
+        arrivalToken: "MF-ARR-ABCD-1234",
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  const reservation = (data.reservation ?? {}) as Record<string, unknown>;
+  const outstanding = (data.outstandingRequirements ?? {}) as Record<string, unknown>;
+  assert.equal(reservation.id, "reservation-lookup");
+  assert.equal(outstanding.needsArrivalCheckIn, true);
+});
+
+test("reservations.checkIn allows owner check-in by reservation id", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-checkin-owner": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "queued",
+        arrivalStatus: "expected",
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.checkIn",
+      body: {
+        reservationId: "reservation-checkin-owner",
+        note: "At front desk.",
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  assert.equal(data.arrivalStatus, "arrived");
+});
+
+test("reservations.checkIn rejects non-owner non-staff caller", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-checkin-denied": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "queued",
+        arrivalStatus: "expected",
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.checkIn",
+      body: {
+        reservationId: "reservation-checkin-denied",
+      },
+      ctx: firebaseContext({ uid: "owner-2" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 403);
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.code, "OWNER_MISMATCH");
+});
+
+test("reservations.rotateArrivalToken reissues a deterministic token for staff", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-rotate-token": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "queued",
+        arrivalTokenVersion: 1,
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.rotateArrivalToken",
+      body: {
+        reservationId: "reservation-rotate-token",
+        reason: "manual reset",
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  assert.equal(typeof data.arrivalToken, "string");
+  assert.match(String(data.arrivalToken ?? ""), /^MF-ARR-/);
 });

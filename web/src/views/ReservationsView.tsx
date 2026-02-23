@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import type { User } from "firebase/auth";
 import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
 import { connectStorageEmulator, getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
 import { createFunctionsClient, type LastRequest } from "../api/functionsClient";
+import { createPortalApi } from "../api/portalApi";
 import { makeRequestId } from "../api/requestId";
 import { parseStaffRoleFromClaims } from "../auth/staffRole";
 import { db } from "../firebase";
@@ -36,6 +37,10 @@ type StaffUserOption = {
   displayName: string;
   email?: string | null;
 };
+
+type StaffQueueStatus = "REQUESTED" | "CONFIRMED" | "WAITLISTED" | "CANCELLED";
+type ReservationFilter = "ALL" | "WAITLISTED" | "UPCOMING" | "READY" | "STAFF_HOLD";
+type CapacityFilter = "ALL" | "HIGH" | "NORMAL";
 
 const FIRING_OPTIONS = [
   { id: "bisque", label: "Bisque fire" },
@@ -81,6 +86,20 @@ const KILN_OPTIONS = [
 ] as const;
 
 const CHECKIN_PREFILL_KEY = "mf_checkin_prefill";
+const KILN_CAPACITY_HALF_SHELVES = 8;
+const STATUS_ACTIONS: Array<{ status: StaffQueueStatus; label: string; tone: "primary" | "ghost" | "danger" }> = [
+  { status: "CONFIRMED", label: "Confirm", tone: "primary" },
+  { status: "WAITLISTED", label: "Waitlist", tone: "ghost" },
+  { status: "CANCELLED", label: "Cancel", tone: "danger" },
+];
+const RESERVATION_FILTERS: Array<{ id: ReservationFilter; label: string }> = [
+  { id: "ALL", label: "All" },
+  { id: "WAITLISTED", label: "Waitlisted" },
+  { id: "UPCOMING", label: "Upcoming" },
+  { id: "READY", label: "Ready" },
+  { id: "STAFF_HOLD", label: "Staff hold" },
+];
+const STAFF_UNDO_WINDOW_MS = 20_000;
 
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
@@ -118,6 +137,137 @@ function formatPreferredWindow(record: ReservationRecord): string {
   const latest = record.preferredWindow?.latestDate?.toDate?.();
   if (!latest) return "Flexible";
   return `Need by: ${formatDateTime(latest)}`;
+}
+
+function toReservationStatus(value: unknown): StaffQueueStatus {
+  const upper = typeof value === "string" ? value.trim().toUpperCase() : "";
+  if (upper === "CONFIRMED" || upper === "WAITLISTED" || upper === "CANCELLED") return upper;
+  return "REQUESTED";
+}
+
+function toReservationLoadStatus(value: unknown): "queued" | "loading" | "loaded" {
+  const lower = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (lower === "loading" || lower === "loaded") return lower;
+  return "queued";
+}
+
+function toHalfShelves(record: ReservationRecord): number {
+  if (typeof record.estimatedHalfShelves === "number" && Number.isFinite(record.estimatedHalfShelves)) {
+    return Math.max(1, Math.ceil(record.estimatedHalfShelves));
+  }
+  if (typeof record.footprintHalfShelves === "number" && Number.isFinite(record.footprintHalfShelves)) {
+    return Math.max(1, Math.ceil(record.footprintHalfShelves));
+  }
+  if (typeof record.shelfEquivalent === "number" && Number.isFinite(record.shelfEquivalent)) {
+    return Math.max(1, Math.ceil(record.shelfEquivalent * 2));
+  }
+  return 1;
+}
+
+function getTimestampMs(value: unknown): number {
+  if (!value || typeof value !== "object") return 0;
+  const candidate = value as { toDate?: () => Date; seconds?: number };
+  if (typeof candidate.toDate === "function") {
+    const date = candidate.toDate();
+    return Number.isFinite(date.getTime()) ? date.getTime() : 0;
+  }
+  if (typeof candidate.seconds === "number" && Number.isFinite(candidate.seconds)) {
+    return Math.floor(candidate.seconds * 1000);
+  }
+  return 0;
+}
+
+function hasStaffHoldTag(record: ReservationRecord): boolean {
+  const staffNotes = typeof record.staffNotes === "string" ? record.staffNotes.toLowerCase() : "";
+  const generalNotes = typeof record.notes?.general === "string" ? record.notes.general.toLowerCase() : "";
+  const reason =
+    typeof record.stageStatus?.reason === "string" ? record.stageStatus.reason.toLowerCase() : "";
+  return staffNotes.includes("hold") || generalNotes.includes("hold") || reason.includes("hold");
+}
+
+function normalizeArrivalStatus(value: unknown): "expected" | "arrived" | "overdue" | "no_show" | null {
+  const lower = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (lower === "expected" || lower === "arrived" || lower === "overdue" || lower === "no_show") {
+    return lower;
+  }
+  return null;
+}
+
+function isMemberArrivalCheckInEligible(record: ReservationRecord): boolean {
+  const status = toReservationStatus(record.status);
+  if (status !== "CONFIRMED") return false;
+  const arrivalStatus = normalizeArrivalStatus(record.arrivalStatus);
+  return arrivalStatus !== "arrived";
+}
+
+function formatArrivalStatusLabel(record: ReservationRecord): string {
+  const arrivalStatus = normalizeArrivalStatus(record.arrivalStatus);
+  if (arrivalStatus === "arrived") {
+    const arrivedAt = record.arrivedAt?.toDate?.();
+    return arrivedAt ? `Arrived ${formatDateTime(arrivedAt)}` : "Arrived";
+  }
+  if (arrivalStatus === "overdue") return "Arrival overdue";
+  if (arrivalStatus === "no_show") return "No-show risk";
+  if (arrivalStatus === "expected") {
+    const expiresAt = record.arrivalTokenExpiresAt?.toDate?.();
+    return expiresAt ? `Expected by ${formatDateTime(expiresAt)}` : "Arrival expected";
+  }
+  return "Arrival not set";
+}
+
+function getReadinessBand(record: ReservationRecord): string {
+  const status = toReservationStatus(record.status);
+  const loadStatus = toReservationLoadStatus(record.loadStatus);
+  const latest = record.preferredWindow?.latestDate?.toDate?.();
+  const etaStart = record.estimatedWindow?.currentStart ?? null;
+  const etaEnd = record.estimatedWindow?.currentEnd ?? null;
+  const confidence = typeof record.estimatedWindow?.confidence === "string"
+    ? record.estimatedWindow.confidence
+    : null;
+  const etaWindowCopy =
+    etaStart && etaEnd
+      ? `${formatDateTime(etaStart)} - ${formatDateTime(etaEnd)}${confidence ? ` (${confidence} confidence)` : ""}`
+      : null;
+  const transitionReason =
+    typeof record.stageStatus?.reason === "string" && record.stageStatus.reason.trim()
+      ? record.stageStatus.reason.trim()
+      : null;
+
+  if (status === "CANCELLED") return "Cancelled";
+  if (loadStatus === "loaded") return "Ready for pickup planning";
+  if (loadStatus === "loading") return "Loading in progress";
+  if (etaWindowCopy) {
+    return transitionReason ? `ETA ${etaWindowCopy} · ${transitionReason}` : `ETA ${etaWindowCopy}`;
+  }
+  if (status === "WAITLISTED") {
+    return latest ? `Waitlisted · target ${formatDateTime(latest)}` : "Waitlisted · target TBD";
+  }
+  return latest ? `Target by ${formatDateTime(latest)}` : "Flexible target window";
+}
+
+function latestStageNote(record: ReservationRecord): string | null {
+  const history = Array.isArray(record.stageHistory) ? record.stageHistory : [];
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const raw = history[i];
+    if (!raw || typeof raw !== "object") continue;
+    const notes = (raw as { notes?: unknown }).notes;
+    if (typeof notes === "string" && notes.trim()) return notes.trim();
+  }
+  return null;
+}
+
+function getCapacityPressure(usedHalfShelves: number) {
+  const ratio = usedHalfShelves / KILN_CAPACITY_HALF_SHELVES;
+  if (ratio >= 1) return { label: "At capacity", tone: "high" as const };
+  if (ratio >= 0.75) return { label: "High pressure", tone: "high" as const };
+  if (ratio >= 0.45) return { label: "Moderate pressure", tone: "medium" as const };
+  return { label: "Light pressure", tone: "low" as const };
+}
+
+function normalizeStationValue(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  return trimmed.length ? trimmed : null;
 }
 
 const USD_FORMATTER = new Intl.NumberFormat("en-US", {
@@ -174,6 +324,26 @@ type Props = {
 type KilnOption = (typeof KILN_OPTIONS)[number] & {
   status?: string | null;
   isOffline?: boolean;
+};
+
+type PendingStatusAction = {
+  reservationId: string;
+  currentStatus: StaffQueueStatus;
+  nextStatus: StaffQueueStatus;
+};
+
+type UndoStatusAction = {
+  reservationId: string;
+  previousStatus: StaffQueueStatus;
+  previousStaffNotes: string | null;
+  expiresAt: number;
+};
+
+type ArrivalLookupOutstanding = {
+  needsArrivalCheckIn?: boolean;
+  needsStationAssignment?: boolean;
+  needsQueuePlacement?: boolean;
+  needsResourceProfile?: boolean;
 };
 
 export default function ReservationsView({ user, isStaff, adminToken }: Props) {
@@ -244,6 +414,26 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     path?: string;
   } | null>(null);
   const [devCopyStatus, setDevCopyStatus] = useState("");
+  const [reservationFilter, setReservationFilter] = useState<ReservationFilter>("ALL");
+  const [laneFilter, setLaneFilter] = useState<string>("all");
+  const [capacityFilter, setCapacityFilter] = useState<CapacityFilter>("ALL");
+  const [staffNotesByReservationId, setStaffNotesByReservationId] = useState<Record<string, string>>({});
+  const [stationDraftByReservationId, setStationDraftByReservationId] = useState<Record<string, string>>({});
+  const [queueClassDraftByReservationId, setQueueClassDraftByReservationId] = useState<Record<string, string>>(
+    {}
+  );
+  const [staffActionBusyId, setStaffActionBusyId] = useState<string | null>(null);
+  const [staffActionMessage, setStaffActionMessage] = useState("");
+  const [pendingStatusAction, setPendingStatusAction] = useState<PendingStatusAction | null>(null);
+  const [undoStatusAction, setUndoStatusAction] = useState<UndoStatusAction | null>(null);
+  const [staffToolsUnavailable, setStaffToolsUnavailable] = useState("");
+  const [arrivalBusyId, setArrivalBusyId] = useState<string | null>(null);
+  const [arrivalMessage, setArrivalMessage] = useState("");
+  const [arrivalNoteByReservationId, setArrivalNoteByReservationId] = useState<Record<string, string>>({});
+  const [arrivalLookupToken, setArrivalLookupToken] = useState("");
+  const [arrivalLookupBusy, setArrivalLookupBusy] = useState(false);
+  const [arrivalLookupResult, setArrivalLookupResult] = useState<ReservationRecord | null>(null);
+  const [arrivalLookupOutstanding, setArrivalLookupOutstanding] = useState<ArrivalLookupOutstanding | null>(null);
 
   const targetOwnerUid = mode === "staff" ? staffTargetUid : user.uid;
   const kilnOptions: KilnOption[] = useMemo(() => {
@@ -376,6 +566,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
       }),
     [user, adminToken]
   );
+  const portalApi = useMemo(() => createPortalApi({ baseUrl: resolveFunctionsBaseUrl() }), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -414,7 +605,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     };
   }, [user]);
 
-  const captureDevError = (context: string, error: unknown, path?: string) => {
+  const captureDevError = useCallback((context: string, error: unknown, path?: string) => {
     if (!DEV_MODE) return;
     const detail = {
       context,
@@ -424,7 +615,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     };
     setDevError(detail);
     console.error("Check-in debug error:", detail);
-  };
+  }, []);
 
   useEffect(() => {
     if (!photoFile) {
@@ -559,7 +750,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         setStaffUsers([]);
         captureDevError("staff-users", err, "users");
       });
-  }, [hasStaffClaim]);
+  }, [hasStaffClaim, captureDevError]);
 
   useEffect(() => {
     const kilnsQuery = query(collection(db, "kilns"), orderBy("name", "asc"), limit(25));
@@ -578,7 +769,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         setKilnStatusByName({});
         captureDevError("kilns", err, "kilns");
       });
-  }, []);
+  }, [captureDevError]);
 
   useEffect(() => {
     if (!selectedKiln?.isOffline) return;
@@ -592,49 +783,56 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     }
   }, [selectedKiln?.id, firingType]);
 
-  useEffect(() => {
+  const loadReservations = useCallback(async () => {
     const ownerUid = targetOwnerUid;
     if (!ownerUid) {
       setReservations([]);
       setLoading(false);
-      return undefined;
+      return;
     }
 
     setLoading(true);
     setListError("");
+    setStaffToolsUnavailable("");
 
-    const reservationsQuery = query(
-      collection(db, "reservations"),
-      where("ownerUid", "==", ownerUid),
-      orderBy("createdAt", "desc")
-    );
-
-    getDocs(reservationsQuery)
-      .then((snap) => {
-        const rows: ReservationRecord[] = snap.docs.map((docSnap) =>
-          normalizeReservationRecord(docSnap.id, docSnap.data() as Partial<ReservationRecord>)
-        );
-        setReservations(rows);
-      })
-      .catch((err) => {
-        const errObj = err as { message?: unknown; code?: unknown } | null | undefined;
-        const message =
-          typeof errObj?.message === "string" ? errObj.message : "Unable to load check-ins.";
-        const code = typeof errObj?.code === "string" ? errObj.code : "";
-        const isPermission =
-          code.includes("permission-denied") ||
-          String(message).toLowerCase().includes("missing or insufficient permissions");
-        if (!isPermission) {
-          setListError(`Check-ins failed: ${message}`);
-        } else {
-          setListError("");
+    try {
+      const reservationsQuery = query(
+        collection(db, "reservations"),
+        where("ownerUid", "==", ownerUid),
+        orderBy("createdAt", "desc")
+      );
+      const snap = await getDocs(reservationsQuery);
+      const rows: ReservationRecord[] = snap.docs.map((docSnap) =>
+        normalizeReservationRecord(docSnap.id, docSnap.data() as Partial<ReservationRecord>)
+      );
+      setReservations(rows);
+    } catch (err: unknown) {
+      const errObj = err as { message?: unknown; code?: unknown } | null | undefined;
+      const message =
+        typeof errObj?.message === "string" ? errObj.message : "Unable to load check-ins.";
+      const code = typeof errObj?.code === "string" ? errObj.code : "";
+      const isPermission =
+        code.includes("permission-denied") ||
+        String(message).toLowerCase().includes("missing or insufficient permissions");
+      if (isPermission) {
+        setListError("");
+        if (hasStaffClaim || isStaff) {
+          setStaffToolsUnavailable(
+            "Staff queue tools are unavailable right now due to permissions. Retry after claims sync, or contact support with code RES-STAFF-PERM."
+          );
         }
-        captureDevError("reservations", err, "reservations");
-      })
-      .finally(() => setLoading(false));
+      } else {
+        setListError(`Check-ins failed: ${message}`);
+      }
+      captureDevError("reservations", err, "reservations");
+    } finally {
+      setLoading(false);
+    }
+  }, [targetOwnerUid, hasStaffClaim, isStaff, captureDevError]);
 
-    return undefined;
-  }, [targetOwnerUid]);
+  useEffect(() => {
+    void loadReservations();
+  }, [loadReservations]);
 
   const sortedReservations = useMemo(() => {
     return [...reservations].sort((a, b) => {
@@ -648,6 +846,125 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
       (reservation) => reservation.firingType === "bisque" && reservation.linkedBatchId
     );
   }, [sortedReservations]);
+  const activeQueueReservations = useMemo(
+    () =>
+      sortedReservations
+        .filter((reservation) => toReservationStatus(reservation.status) !== "CANCELLED")
+        .sort((a, b) => getTimestampMs(a.createdAt) - getTimestampMs(b.createdAt)),
+    [sortedReservations]
+  );
+  const queuePositionByReservationId = useMemo(() => {
+    const out: Record<string, number> = {};
+    activeQueueReservations.forEach((reservation, index) => {
+      out[reservation.id] = index + 1;
+    });
+    return out;
+  }, [activeQueueReservations]);
+  const kilnHalfShelvesInQueue = useMemo(
+    () => activeQueueReservations.reduce((sum, reservation) => sum + toHalfShelves(reservation), 0),
+    [activeQueueReservations]
+  );
+  const capacityPressure = useMemo(
+    () => getCapacityPressure(kilnHalfShelvesInQueue),
+    [kilnHalfShelvesInQueue]
+  );
+  const stationUsage = useMemo(() => {
+    const usageByStation = new Map<string, number>();
+    activeQueueReservations.forEach((reservation) => {
+      const stationId =
+        normalizeStationValue(reservation.assignedStationId) ??
+        normalizeStationValue(reservation.kilnId);
+      if (!stationId) return;
+      const next = (usageByStation.get(stationId) ?? 0) + toHalfShelves(reservation);
+      usageByStation.set(stationId, next);
+    });
+    return usageByStation;
+  }, [activeQueueReservations]);
+  const laneOptions = useMemo(() => {
+    const lanes = new Set<string>();
+    reservations.forEach((reservation) => {
+      const lane = normalizeStationValue(reservation.queueClass);
+      if (lane) lanes.add(lane);
+    });
+    return Array.from(lanes).sort((a, b) => a.localeCompare(b));
+  }, [reservations]);
+  useEffect(() => {
+    if (laneFilter === "all") return;
+    if (laneOptions.includes(laneFilter)) return;
+    setLaneFilter("all");
+  }, [laneFilter, laneOptions]);
+  const filterCounts = useMemo(() => {
+    const counts: Record<ReservationFilter, number> = {
+      ALL: sortedReservations.length,
+      WAITLISTED: 0,
+      UPCOMING: 0,
+      READY: 0,
+      STAFF_HOLD: 0,
+    };
+    sortedReservations.forEach((reservation) => {
+      const status = toReservationStatus(reservation.status);
+      const loadStatus = toReservationLoadStatus(reservation.loadStatus);
+      const ready = loadStatus === "loaded";
+      const hold = hasStaffHoldTag(reservation);
+      if (status === "WAITLISTED") counts.WAITLISTED += 1;
+      if (status !== "CANCELLED" && !ready && status !== "WAITLISTED") counts.UPCOMING += 1;
+      if (ready) counts.READY += 1;
+      if (hold) counts.STAFF_HOLD += 1;
+    });
+    return counts;
+  }, [sortedReservations]);
+  const filteredReservations = useMemo(() => {
+    return sortedReservations.filter((reservation) => {
+      const status = toReservationStatus(reservation.status);
+      const loadStatus = toReservationLoadStatus(reservation.loadStatus);
+      const ready = loadStatus === "loaded";
+      const hold = hasStaffHoldTag(reservation);
+      const lane = normalizeStationValue(reservation.queueClass);
+      if (laneFilter !== "all" && lane !== laneFilter) {
+        return false;
+      }
+
+      if (capacityFilter !== "ALL") {
+        const stationId =
+          normalizeStationValue(reservation.assignedStationId) ??
+          normalizeStationValue(reservation.kilnId);
+        const stationLoad = stationId ? stationUsage.get(stationId) ?? 0 : 0;
+        const stationRatio = stationLoad / KILN_CAPACITY_HALF_SHELVES;
+        const isHighPressure = stationRatio >= 0.75;
+        if (capacityFilter === "HIGH" && !isHighPressure) return false;
+        if (capacityFilter === "NORMAL" && isHighPressure) return false;
+      }
+
+      switch (reservationFilter) {
+      case "WAITLISTED":
+        return status === "WAITLISTED";
+      case "UPCOMING":
+        return status !== "CANCELLED" && !ready && status !== "WAITLISTED";
+      case "READY":
+        return ready;
+      case "STAFF_HOLD":
+        return hold;
+      case "ALL":
+      default:
+        return true;
+      }
+    });
+  }, [sortedReservations, reservationFilter, laneFilter, capacityFilter, stationUsage]);
+
+  useEffect(() => {
+    if (!undoStatusAction) return;
+    const waitMs = undoStatusAction.expiresAt - Date.now();
+    if (waitMs <= 0) {
+      setUndoStatusAction(null);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setUndoStatusAction((current) =>
+        current?.expiresAt === undoStatusAction.expiresAt ? null : current
+      );
+    }, waitMs);
+    return () => window.clearTimeout(timer);
+  }, [undoStatusAction]);
 
   const debugPacket = useMemo(() => {
     if (!DEV_MODE) return null;
@@ -695,6 +1012,251 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
 
   const toggleNotesTag = (tag: string) => {
     setNotesTags((prev) => (prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag]));
+  };
+
+  const setStaffNotesDraft = (reservationId: string, value: string) => {
+    setStaffNotesByReservationId((prev) => ({
+      ...prev,
+      [reservationId]: value,
+    }));
+  };
+
+  const setArrivalNoteDraft = (reservationId: string, value: string) => {
+    setArrivalNoteByReservationId((prev) => ({
+      ...prev,
+      [reservationId]: value,
+    }));
+  };
+
+  const setStationDraft = (reservationId: string, value: string) => {
+    setStationDraftByReservationId((prev) => ({
+      ...prev,
+      [reservationId]: value,
+    }));
+  };
+
+  const setQueueClassDraft = (reservationId: string, value: string) => {
+    setQueueClassDraftByReservationId((prev) => ({
+      ...prev,
+      [reservationId]: value,
+    }));
+  };
+
+  const assignStationForReservation = async (reservation: ReservationRecord) => {
+    if (staffActionBusyId) return;
+    const stationId =
+      normalizeStationValue(stationDraftByReservationId[reservation.id]) ??
+      normalizeStationValue(reservation.assignedStationId) ??
+      normalizeStationValue(reservation.kilnId);
+    if (!stationId) {
+      setStaffActionMessage("Select a station before assigning.");
+      return;
+    }
+    const laneDraft = (queueClassDraftByReservationId[reservation.id] ?? "").trim().toLowerCase();
+    setStaffActionBusyId(reservation.id);
+    setStaffActionMessage("");
+    try {
+      const idToken = await user.getIdToken();
+      const result = await portalApi.assignReservationStation({
+        idToken,
+        adminToken,
+        payload: {
+          reservationId: reservation.id,
+          assignedStationId: stationId,
+          queueClass: laneDraft || null,
+        },
+      });
+      const data = result.data ?? {};
+      const used = typeof data.stationUsedAfter === "number" ? data.stationUsedAfter : null;
+      const capacity = typeof data.stationCapacity === "number" ? data.stationCapacity : null;
+      const capacityCopy =
+        used !== null && capacity !== null ? ` (${used}/${capacity} half shelves)` : "";
+      setStaffActionMessage(`Station assigned to ${stationId}${capacityCopy}.`);
+      await loadReservations();
+    } catch (error: unknown) {
+      setStaffActionMessage(`Station assignment failed: ${getErrorMessage(error)}`);
+    } finally {
+      setStaffActionBusyId(null);
+    }
+  };
+
+  const requestStatusAction = (reservationId: string, currentStatus: unknown, nextStatus: StaffQueueStatus) => {
+    setStaffActionMessage("");
+    setPendingStatusAction({
+      reservationId,
+      currentStatus: toReservationStatus(currentStatus),
+      nextStatus,
+    });
+  };
+
+  const applyStatusAction = async () => {
+    if (!pendingStatusAction || staffActionBusyId) return;
+    setStaffActionBusyId(pendingStatusAction.reservationId);
+    setStaffActionMessage("");
+    setStaffToolsUnavailable("");
+    try {
+      const idToken = await user.getIdToken();
+      const notesDraft = (staffNotesByReservationId[pendingStatusAction.reservationId] ?? "").trim();
+      const response = await portalApi.updateReservation({
+        idToken,
+        adminToken,
+        payload: {
+          reservationId: pendingStatusAction.reservationId,
+          status: pendingStatusAction.nextStatus,
+          staffNotes: notesDraft || null,
+        },
+      });
+      const responseData = (response.data ?? {}) as { arrivalToken?: unknown };
+      const arrivalTokenIssued =
+        typeof responseData.arrivalToken === "string" ? responseData.arrivalToken : null;
+      setUndoStatusAction({
+        reservationId: pendingStatusAction.reservationId,
+        previousStatus: pendingStatusAction.currentStatus,
+        previousStaffNotes: notesDraft || null,
+        expiresAt: Date.now() + STAFF_UNDO_WINDOW_MS,
+      });
+      setStaffActionMessage(
+        `Reservation moved to ${pendingStatusAction.nextStatus}. Undo is available for ${Math.floor(
+          STAFF_UNDO_WINDOW_MS / 1000
+        )} seconds.${arrivalTokenIssued ? ` Arrival code: ${arrivalTokenIssued}` : ""}`
+      );
+      setPendingStatusAction(null);
+      await loadReservations();
+    } catch (error: unknown) {
+      const message = getErrorMessage(error) || "Unable to update reservation.";
+      const lower = message.toLowerCase();
+      if (lower.includes("unauthorized") || lower.includes("forbidden") || lower.includes("permission")) {
+        setStaffToolsUnavailable(
+          "Staff queue tools are unavailable right now due to permissions. Retry after claims sync, or contact support with code RES-STAFF-AUTH."
+        );
+      }
+      setStaffActionMessage(`Status update failed: ${message}`);
+    } finally {
+      setStaffActionBusyId(null);
+    }
+  };
+
+  const undoLastStatusAction = async () => {
+    if (!undoStatusAction || staffActionBusyId) return;
+    if (Date.now() > undoStatusAction.expiresAt) {
+      setUndoStatusAction(null);
+      return;
+    }
+    setStaffActionBusyId(undoStatusAction.reservationId);
+    setStaffActionMessage("");
+    try {
+      const idToken = await user.getIdToken();
+      await portalApi.updateReservation({
+        idToken,
+        adminToken,
+        payload: {
+          reservationId: undoStatusAction.reservationId,
+          status: undoStatusAction.previousStatus,
+          staffNotes: undoStatusAction.previousStaffNotes,
+        },
+      });
+      setStaffActionMessage("Last status change was reverted.");
+      setUndoStatusAction(null);
+      await loadReservations();
+    } catch (error: unknown) {
+      setStaffActionMessage(`Undo failed: ${getErrorMessage(error)}`);
+    } finally {
+      setStaffActionBusyId(null);
+    }
+  };
+
+  const checkInArrivalForReservation = async (reservation: ReservationRecord) => {
+    if (arrivalBusyId) return;
+    const draftNote = (arrivalNoteByReservationId[reservation.id] ?? "").trim();
+    setArrivalBusyId(reservation.id);
+    setArrivalMessage("");
+    try {
+      const envelope = await client.postJson<{
+        data?: {
+          idempotentReplay?: boolean;
+        };
+      }>("apiV1/v1/reservations.checkIn", {
+        reservationId: reservation.id,
+        note: draftNote || null,
+      });
+      const replay = envelope?.data?.idempotentReplay === true;
+      setArrivalMessage(
+        replay
+          ? "Arrival was already recorded. You’re all set."
+          : "Arrival check-in saved. Staff can now stage your reservation."
+      );
+      setArrivalNoteByReservationId((prev) => {
+        const next = { ...prev };
+        delete next[reservation.id];
+        return next;
+      });
+      await loadReservations();
+    } catch (error: unknown) {
+      setArrivalMessage(`Arrival check-in failed: ${getErrorMessage(error)}`);
+    } finally {
+      setArrivalBusyId(null);
+    }
+  };
+
+  const lookupArrivalTokenForStaff = async () => {
+    const token = arrivalLookupToken.trim();
+    if (!token || arrivalLookupBusy) return;
+    setArrivalLookupBusy(true);
+    setArrivalMessage("");
+    setArrivalLookupResult(null);
+    setArrivalLookupOutstanding(null);
+    try {
+      const envelope = await client.postJson<{
+        data?: {
+          reservation?: Partial<ReservationRecord> & { id?: string };
+          outstandingRequirements?: ArrivalLookupOutstanding;
+        };
+      }>("apiV1/v1/reservations.lookupArrival", {
+        arrivalToken: token,
+      });
+      const reservationRaw = envelope?.data?.reservation ?? null;
+      if (!reservationRaw?.id) {
+        throw new Error("Lookup returned no reservation.");
+      }
+      setArrivalLookupResult(
+        normalizeReservationRecord(
+          String(reservationRaw.id),
+          reservationRaw as Partial<ReservationRecord>
+        )
+      );
+      setArrivalLookupOutstanding(envelope?.data?.outstandingRequirements ?? null);
+      setArrivalMessage("Arrival code matched successfully.");
+    } catch (error: unknown) {
+      setArrivalMessage(`Arrival lookup failed: ${getErrorMessage(error)}`);
+    } finally {
+      setArrivalLookupBusy(false);
+    }
+  };
+
+  const rotateArrivalTokenForReservation = async (reservation: ReservationRecord) => {
+    if (staffActionBusyId) return;
+    setStaffActionBusyId(reservation.id);
+    setStaffActionMessage("");
+    try {
+      const envelope = await client.postJson<{
+        data?: {
+          arrivalToken?: string;
+        };
+      }>("apiV1/v1/reservations.rotateArrivalToken", {
+        reservationId: reservation.id,
+        reason: "manual_staff_reissue",
+      });
+      const nextToken =
+        envelope?.data?.arrivalToken && typeof envelope.data.arrivalToken === "string"
+          ? envelope.data.arrivalToken
+          : "new code issued";
+      setStaffActionMessage(`Arrival code reissued: ${nextToken}`);
+      await loadReservations();
+    } catch (error: unknown) {
+      setStaffActionMessage(`Arrival code reissue failed: ${getErrorMessage(error)}`);
+    } finally {
+      setStaffActionBusyId(null);
+    }
   };
 
   const anyAddOnsSelected =
@@ -1704,59 +2266,384 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
       </RevealCard>
 
       <RevealCard as="section" className="card card-3d reservation-list" index={3} enabled={motionEnabled}>
-        <div className="card-title">Your check-ins</div>
+        <div className="reservation-list-header">
+          <div>
+            <div className="card-title">Your check-ins</div>
+            <p className="reservation-list-meta">
+              Queue pressure:{" "}
+              <span className={`queue-pressure tone-${capacityPressure.tone}`}>
+                {capacityPressure.label}
+              </span>{" "}
+              · {kilnHalfShelvesInQueue}/{KILN_CAPACITY_HALF_SHELVES} half shelves planned
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost reservation-refresh"
+            onClick={toVoidHandler(loadReservations)}
+            disabled={loading}
+          >
+            {loading ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
+        {isStaff ? (
+          <>
+            <div className="reservation-filter-row" role="tablist" aria-label="Reservation filters">
+              {RESERVATION_FILTERS.map((filter) => (
+                <button
+                  key={filter.id}
+                  type="button"
+                  className={`reservation-filter-chip ${reservationFilter === filter.id ? "active" : ""}`}
+                  onClick={() => setReservationFilter(filter.id)}
+                  aria-pressed={reservationFilter === filter.id}
+                >
+                  {filter.label} <span>{filterCounts[filter.id]}</span>
+                </button>
+              ))}
+            </div>
+            <div className="reservation-ops-filters">
+              <label>
+                Lane
+                <select value={laneFilter} onChange={(event) => setLaneFilter(event.target.value)}>
+                  <option value="all">All lanes</option>
+                  {laneOptions.map((lane) => (
+                    <option key={lane} value={lane}>
+                      {lane}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Capacity
+                <select
+                  value={capacityFilter}
+                  onChange={(event) => setCapacityFilter(event.target.value as CapacityFilter)}
+                >
+                  <option value="ALL">All</option>
+                  <option value="HIGH">High pressure</option>
+                  <option value="NORMAL">Normal pressure</option>
+                </select>
+              </label>
+            </div>
+            <div className="arrival-lookup-panel">
+              <div className="arrival-lookup-title">Arrival code lookup</div>
+              <div className="arrival-lookup-row">
+                <input
+                  type="text"
+                  value={arrivalLookupToken}
+                  onChange={(event) => setArrivalLookupToken(event.target.value)}
+                  placeholder="MF-ARR-XXXX-XXXX"
+                />
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={toVoidHandler(lookupArrivalTokenForStaff)}
+                  disabled={arrivalLookupBusy || (isStaff && !hasStaffClaim)}
+                >
+                  {arrivalLookupBusy ? "Looking up..." : "Lookup"}
+                </button>
+              </div>
+              {arrivalLookupResult ? (
+                <div className="arrival-lookup-result">
+                  <div>
+                    <strong>{arrivalLookupResult.id}</strong> · {toReservationStatus(arrivalLookupResult.status)}
+                  </div>
+                  <div>
+                    Queue #{arrivalLookupResult.queuePositionHint ?? "—"} · {formatArrivalStatusLabel(arrivalLookupResult)}
+                  </div>
+                  <div>
+                    Outstanding:
+                    {arrivalLookupOutstanding?.needsArrivalCheckIn ? " check-in" : ""}
+                    {arrivalLookupOutstanding?.needsStationAssignment ? " station assignment" : ""}
+                    {arrivalLookupOutstanding?.needsQueuePlacement ? " queue placement" : ""}
+                    {arrivalLookupOutstanding?.needsResourceProfile ? " resource profile" : ""}
+                    {!arrivalLookupOutstanding?.needsArrivalCheckIn &&
+                    !arrivalLookupOutstanding?.needsStationAssignment &&
+                    !arrivalLookupOutstanding?.needsQueuePlacement &&
+                    !arrivalLookupOutstanding?.needsResourceProfile
+                      ? " none"
+                      : ""}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </>
+        ) : null}
+        {isStaff && !hasStaffClaim ? (
+          <div className="notice">
+            Staff mode is active, but this account does not currently have a staff claim in token
+            metadata. Queue controls stay read-only until claims sync completes.
+          </div>
+        ) : null}
+        {staffToolsUnavailable ? <div className="alert">{staffToolsUnavailable}</div> : null}
+        {staffActionMessage ? <div className="notice">{staffActionMessage}</div> : null}
+        {arrivalMessage ? <div className="notice">{arrivalMessage}</div> : null}
+        {undoStatusAction ? (
+          <div className="reservation-undo">
+            <span>
+              Undo available for reservation <code>{undoStatusAction.reservationId}</code>.
+            </span>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={toVoidHandler(undoLastStatusAction)}
+              disabled={staffActionBusyId !== null}
+            >
+              Undo
+            </button>
+          </div>
+        ) : null}
         {listError ? <div className="alert">{listError}</div> : null}
         {loading ? (
           <div className="empty-state">Loading check-ins...</div>
-        ) : sortedReservations.length === 0 ? (
+        ) : filteredReservations.length === 0 ? (
           <div className="empty-state">No check-ins yet.</div>
         ) : (
           <div className="reservation-grid">
-            {sortedReservations.map((reservation) => (
-              <article className="reservation-card" key={reservation.id}>
-                <header className="reservation-card-header">
-                  <h3>{reservation.firingType}</h3>
-                  <span className={`status-pill status-${reservation.status.toLowerCase()}`}>
-                    {reservation.status}
-                  </span>
-                </header>
-                <div className="reservation-row">
-                  <span>Clay: {reservation.wareType || "—"}</span>
-                  <span>Kiln: {reservation.kilnLabel || "—"}</span>
-                </div>
-                <div className="reservation-row">
-                  <span>
-                    Space:{" "}
-                    {reservation.estimatedHalfShelves != null
-                      ? formatHalfShelfCount(reservation.estimatedHalfShelves)
-                      : `${reservation.shelfEquivalent} shelf`}
-                  </span>
-                  <span>Created: {formatDateTime(reservation.createdAt)}</span>
-                </div>
-                <div className="reservation-row">
-                  <span>
-                    {reservation.useVolumePricing && reservation.volumeIn3
-                      ? `Volume: ${reservation.volumeIn3} in^3`
-                      : `Footprint: ${reservation.footprintHalfShelves ?? "—"} half shelf`}
-                  </span>
-                  <span>
-                    {reservation.estimatedCost != null ? `Est. ${formatUsd(reservation.estimatedCost)}` : " "}
-                  </span>
-                </div>
-                <div className="reservation-row">
-                  <span>Window: {formatPreferredWindow(reservation)}</span>
-                  <span>
-                    Updated: {formatDateTime(reservation.updatedAt)}
-                    {reservation.linkedBatchId ? ` · Ref ${reservation.linkedBatchId}` : ""}
-                  </span>
-                </div>
-                {reservation.photoUrl ? (
-                  <div className="reservation-photo">
-                    <img src={reservation.photoUrl} alt="Checked-in work" />
+            {filteredReservations.map((reservation) => {
+              const status = toReservationStatus(reservation.status);
+              const loadStatus = toReservationLoadStatus(reservation.loadStatus);
+              const serverQueuePosition =
+                typeof reservation.queuePositionHint === "number" &&
+                Number.isFinite(reservation.queuePositionHint)
+                  ? Math.max(1, Math.round(reservation.queuePositionHint))
+                  : null;
+              const queuePosition = serverQueuePosition ?? queuePositionByReservationId[reservation.id] ?? null;
+              const stationId =
+                normalizeStationValue(reservation.assignedStationId) ??
+                normalizeStationValue(reservation.kilnId);
+              const stationLoad = stationId ? stationUsage.get(stationId) ?? 0 : 0;
+              const stationPressure = getCapacityPressure(stationLoad);
+              const queueLane = normalizeStationValue(reservation.queueClass);
+              const readinessBand = getReadinessBand(reservation);
+              const statusChangedAt = reservation.stageStatus?.at ?? reservation.updatedAt;
+              const latestNote = latestStageNote(reservation);
+              const isPendingCard = pendingStatusAction?.reservationId === reservation.id;
+              const pendingFromStatus = isPendingCard ? pendingStatusAction?.currentStatus ?? status : status;
+              const pendingToStatus = isPendingCard ? pendingStatusAction?.nextStatus ?? status : status;
+              const notesDraft =
+                staffNotesByReservationId[reservation.id] ??
+                (typeof reservation.staffNotes === "string" ? reservation.staffNotes : "");
+              const arrivalNoteDraft = arrivalNoteByReservationId[reservation.id] ?? "";
+              const arrivalStatus = normalizeArrivalStatus(reservation.arrivalStatus);
+              const memberCanCheckIn = !isStaff && isMemberArrivalCheckInEligible(reservation);
+              const stationDraft =
+                stationDraftByReservationId[reservation.id] ??
+                stationId ??
+                "";
+              const queueClassValue =
+                queueClassDraftByReservationId[reservation.id] ??
+                queueLane ??
+                "";
+              return (
+                <article className="reservation-card" key={reservation.id}>
+                  <header className="reservation-card-header">
+                    <h3>{reservation.firingType}</h3>
+                    <div className="reservation-status-pills">
+                      <span className={`status-pill status-${status.toLowerCase()}`}>{status}</span>
+                      <span className={`status-pill status-load-${loadStatus}`}>{loadStatus}</span>
+                    </div>
+                  </header>
+                  <div className="reservation-row">
+                    <span>Clay: {reservation.wareType || "—"}</span>
+                    <span>Kiln: {reservation.kilnLabel || "—"}</span>
                   </div>
-                ) : null}
-              </article>
-            ))}
+                  <div className="reservation-row">
+                    <span>
+                      Space:{" "}
+                      {reservation.estimatedHalfShelves != null
+                        ? formatHalfShelfCount(reservation.estimatedHalfShelves)
+                        : `${reservation.shelfEquivalent} shelf`}
+                    </span>
+                    <span>Created: {formatDateTime(reservation.createdAt)}</span>
+                  </div>
+                  <div className="reservation-row">
+                    <span>
+                      {reservation.useVolumePricing && reservation.volumeIn3
+                        ? `Volume: ${reservation.volumeIn3} in^3`
+                        : `Footprint: ${reservation.footprintHalfShelves ?? "—"} half shelf`}
+                    </span>
+                    <span>
+                      {reservation.estimatedCost != null ? `Est. ${formatUsd(reservation.estimatedCost)}` : " "}
+                    </span>
+                  </div>
+                  <div className="reservation-row">
+                    <span>Queue position: {queuePosition ?? "—"}</span>
+                    <span>{readinessBand}</span>
+                  </div>
+                  <div className="reservation-row">
+                    <span>
+                      Station: {stationId ?? "unassigned"}
+                      {queueLane ? ` · lane ${queueLane}` : ""}
+                    </span>
+                    <span className={`queue-pressure tone-${stationPressure.tone}`}>
+                      {stationPressure.label} ({stationLoad}/{KILN_CAPACITY_HALF_SHELVES})
+                    </span>
+                  </div>
+                  <div className="reservation-row">
+                    <span>Window: {formatPreferredWindow(reservation)}</span>
+                    <span>
+                      Status updated: {formatDateTime(statusChangedAt)}
+                      {reservation.linkedBatchId ? ` · Ref ${reservation.linkedBatchId}` : ""}
+                    </span>
+                  </div>
+                  <div className="reservation-row">
+                    <span>Arrival: {formatArrivalStatusLabel(reservation)}</span>
+                    <span>
+                      {reservation.arrivalToken ? `Code ${reservation.arrivalToken}` : "Code pending confirmation"}
+                    </span>
+                  </div>
+                  {memberCanCheckIn ? (
+                    <div className="reservation-arrival-actions">
+                      <label>
+                        Arrival note (optional)
+                        <input
+                          type="text"
+                          value={arrivalNoteDraft}
+                          onChange={(event) =>
+                            setArrivalNoteDraft(reservation.id, event.target.value)
+                          }
+                          placeholder="Front desk, parking lot, etc."
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="reservation-action primary"
+                        onClick={toVoidHandler(() => checkInArrivalForReservation(reservation))}
+                        disabled={arrivalBusyId !== null || arrivalStatus === "arrived"}
+                      >
+                        {arrivalBusyId === reservation.id
+                          ? "Checking in..."
+                          : arrivalStatus === "arrived"
+                            ? "Checked in"
+                            : "I'm here"}
+                      </button>
+                    </div>
+                  ) : null}
+                  {latestNote ? (
+                    <div className="reservation-note-history">
+                      Latest status note: <strong>{latestNote}</strong>
+                    </div>
+                  ) : null}
+                  {reservation.addOns?.pickupDeliveryRequested || reservation.addOns?.returnDeliveryRequested ? (
+                    <div className="reservation-addons-inline">
+                      {reservation.addOns?.pickupDeliveryRequested ? (
+                        <span className="reservation-addon-pill">Pickup delivery</span>
+                      ) : null}
+                      {reservation.addOns?.returnDeliveryRequested ? (
+                        <span className="reservation-addon-pill">Return delivery</span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {isStaff ? (
+                    <div className="reservation-staff-tools">
+                      <label>
+                        Staff notes
+                        <textarea
+                          value={notesDraft}
+                          onChange={(event) =>
+                            setStaffNotesDraft(reservation.id, event.target.value)
+                          }
+                          placeholder="Optional handoff note for this status update"
+                          rows={2}
+                        />
+                      </label>
+                      <div className="reservation-station-controls">
+                        <label>
+                          Station
+                          <select
+                            value={stationDraft}
+                            onChange={(event) =>
+                              setStationDraft(reservation.id, event.target.value)
+                            }
+                          >
+                            <option value="">Unassigned</option>
+                            {kilnOptions.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.label}
+                                {option.status ? ` (${option.status})` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          Lane
+                          <input
+                            type="text"
+                            value={queueClassValue}
+                            onChange={(event) =>
+                              setQueueClassDraft(reservation.id, event.target.value)
+                            }
+                            placeholder="studio-kiln-a"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="reservation-action ghost"
+                          onClick={toVoidHandler(() => assignStationForReservation(reservation))}
+                          disabled={staffActionBusyId !== null || (isStaff && !hasStaffClaim)}
+                        >
+                          Assign station
+                        </button>
+                      </div>
+                      <div className="reservation-staff-actions">
+                        <button
+                          type="button"
+                          className="reservation-action ghost"
+                          onClick={toVoidHandler(() => rotateArrivalTokenForReservation(reservation))}
+                          disabled={staffActionBusyId !== null || (isStaff && !hasStaffClaim)}
+                        >
+                          Reissue arrival code
+                        </button>
+                        {STATUS_ACTIONS.filter((action) => action.status !== status).map((action) => (
+                          <button
+                            key={action.status}
+                            type="button"
+                            className={`reservation-action ${action.tone}`}
+                            onClick={() => requestStatusAction(reservation.id, status, action.status)}
+                            disabled={staffActionBusyId !== null || (isStaff && !hasStaffClaim)}
+                          >
+                            {action.label}
+                          </button>
+                        ))}
+                      </div>
+                      {isPendingCard ? (
+                        <div className="reservation-action-confirm">
+                          <p>
+                            Change status from <strong>{pendingFromStatus}</strong> to{" "}
+                            <strong>{pendingToStatus}</strong>? This writes an audit
+                            trail and refreshes queue order immediately.
+                          </p>
+                          <div className="reservation-confirm-actions">
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              onClick={toVoidHandler(applyStatusAction)}
+                              disabled={staffActionBusyId !== null}
+                            >
+                              Confirm change
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={() => setPendingStatusAction(null)}
+                              disabled={staffActionBusyId !== null}
+                            >
+                              Keep current status
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {reservation.photoUrl ? (
+                    <div className="reservation-photo">
+                      <img src={reservation.photoUrl} alt="Checked-in work" />
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
           </div>
         )}
       </RevealCard>

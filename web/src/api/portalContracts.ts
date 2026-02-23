@@ -214,6 +214,8 @@ export type UpdateReservationResponse = PortalApiOkEnvelope & {
   reservationId?: string;
   status?: string;
   loadStatus?: string;
+  arrivalToken?: string | null;
+  arrivalTokenExpiresAt?: unknown;
   idempotentReplay?: boolean;
 };
 
@@ -254,6 +256,8 @@ export type CreateMaterialsCheckoutSessionRequest = {
 
 export type SeedMaterialsCatalogRequest = {
   force?: boolean;
+  acknowledge?: string;
+  reason?: string;
 };
 
 export type ListEventsRequest = {

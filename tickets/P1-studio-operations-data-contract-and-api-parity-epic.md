@@ -1,6 +1,6 @@
 # Ticket: P1 — Studio Operations Data Contract & API Parity Epic
 
-Status: In Progress
+Status: Completed
 Created: 2026-02-17  
 Priority: P1  
 Owner: Web + Functions Team  
@@ -41,6 +41,7 @@ Create a single, explicit contract and API parity across:
 ## Unblock Notes
 
 - 2026-02-23: Epic moved from `Planned` to `In Progress` and linked to active reservation/queue/api parity tickets so `epic-hub` work queues can schedule execution.
+- 2026-02-23: Final remaining child ticket (`P2-studio-arrival-checkin-and-qr-intake.md`) completed with arrival token issuance, staff lookup, and member check-in paths; epic closed.
 
 ## Acceptance Criteria
 

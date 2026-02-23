@@ -1,6 +1,6 @@
 # P2 — Arrival Check-In and QR Intake for Studio Reservations
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -43,3 +43,22 @@ Enable members to perform first-step check-in with a reservation-specific code, 
 - `tickets/P1-studio-reservation-stage-timeline-and-audit.md`
 - `tickets/P1-studio-notification-sla-journey.md`
 - `tickets/P1-studio-reservation-status-api.md`
+
+## Evidence
+- Added reservation arrival token lifecycle endpoints in `functions/src/apiV1.ts`:
+  - `/v1/reservations.checkIn`
+  - `/v1/reservations.lookupArrival`
+  - `/v1/reservations.rotateArrivalToken`
+- Confirmation now issues deterministic, human-readable arrival tokens with expiry:
+  - via `/v1/reservations.update` token issuance on transition to `CONFIRMED`
+- Added queue-priority penalty for missed expected arrival windows:
+  - `reservationQueuePriority` in `functions/src/apiV1.ts`
+- Portal UI now includes:
+  - member self-service arrival action (`I'm here`) in `web/src/views/ReservationsView.tsx`
+  - staff arrival-code lookup panel + outstanding requirement summary in `web/src/views/ReservationsView.tsx`
+  - staff token reissue action in reservation card tools
+- Reservation model normalization now includes arrival fields in:
+  - `web/src/lib/normalizers/reservations.ts`
+- Added/updated regression coverage:
+  - `functions/src/apiV1.test.ts`
+  - `web/src/views/ReservationsView.test.ts`

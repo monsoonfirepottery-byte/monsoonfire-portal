@@ -789,11 +789,20 @@ export default function App() {
     setThemeName(next);
     writeStoredPortalTheme(next);
     if (!user?.uid) return;
-    await setDoc(
-      doc(db, "profiles", user.uid),
-      { uiTheme: next, updatedAt: serverTimestamp() },
-      { merge: true }
-    );
+    try {
+      await setDoc(
+        doc(db, "profiles", user.uid),
+        { uiTheme: next, updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+    } catch (error: unknown) {
+      // Keep theme switching resilient even if profile writes are denied or transiently unavailable.
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[profile] uiTheme sync failed", {
+        uid: user.uid,
+        message,
+      });
+    }
   };
 
   const shellStyle: React.CSSProperties = {

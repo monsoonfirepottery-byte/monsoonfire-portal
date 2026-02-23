@@ -80,6 +80,9 @@ export default function RuntimeHardeningChrome({ children }: Props) {
     };
 
     const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      // We surface this in-app via RuntimeHardeningChrome; prevent duplicate "Uncaught (in promise)"
+      // console spam once captured.
+      event.preventDefault();
       setRuntimeError(
         toAppError(event.reason, {
           retryable: true,

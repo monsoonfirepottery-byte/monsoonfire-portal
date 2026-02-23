@@ -108,6 +108,80 @@ describe("functionsClient", () => {
     expect(real).toContain("x-admin-token: admin-token-456");
   });
 
+  it("deduplicates identical in-flight requests", async () => {
+    let resolveFetch: ((value: Response) => void) | null = null;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        })
+    );
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const client = createFunctionsClient({
+      baseUrl: "https://example.test/functions",
+      getIdToken: async () => "id-token-123",
+    });
+
+    const opA = client.postJson<{ ok: boolean; value: number }>("continueJourney", {
+      uid: "user_1",
+      fromBatchId: "batch_1",
+    });
+    const opB = client.postJson<{ ok: boolean; value: number }>("continueJourney", {
+      uid: "user_1",
+      fromBatchId: "batch_1",
+    });
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    if (!resolveFetch) throw new Error("fetch resolver missing");
+    resolveFetch(jsonResponse({ ok: true, value: 7 }));
+
+    await expect(opA).resolves.toEqual({ ok: true, value: 7 });
+    await expect(opB).resolves.toEqual({ ok: true, value: 7 });
+  });
+
+  it("suppresses repeated auth retries when the stale token has not changed", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ ok: false, message: "Token expired" }, 401));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const client = createFunctionsClient({
+      baseUrl: "https://example.test/functions",
+      getIdToken: async () => "id-token-expired",
+    });
+
+    await expect(client.postJson("createBatch", { uid: "user_1" })).rejects.toThrow(/sign in/i);
+    await expect(client.postJson("createBatch", { uid: "user_1" })).rejects.toThrow(/sign in/i);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows retries again when auth token changes", async () => {
+    let currentToken = "id-token-expired";
+    const fetchMock = vi.fn(async () => {
+      if (currentToken === "id-token-expired") {
+        return jsonResponse({ ok: false, message: "Token expired" }, 401);
+      }
+      return jsonResponse({ ok: true, value: 3 });
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const client = createFunctionsClient({
+      baseUrl: "https://example.test/functions",
+      getIdToken: async () => currentToken,
+    });
+
+    await expect(client.postJson("createBatch", { uid: "user_1" })).rejects.toThrow(/sign in/i);
+    currentToken = "id-token-fresh";
+    await expect(client.postJson<{ ok: boolean; value: number }>("createBatch", { uid: "user_1" })).resolves.toEqual({
+      ok: true,
+      value: 3,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("marks request timeout as retryable network failure", async () => {
     const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
       return new Promise<never>((_, reject) => {

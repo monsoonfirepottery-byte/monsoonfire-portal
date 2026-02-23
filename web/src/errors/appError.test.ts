@@ -65,4 +65,15 @@ describe("appError", () => {
     expect(err.retryable).toBe(true);
     expect(err.userMessage.toLowerCase()).toContain("offline");
   });
+
+  it("gives recovery guidance for chunk-load runtime failures", () => {
+    const err = toAppError(new Error("Loading chunk 17 failed"), {
+      requestId: "req_chunk_1",
+    });
+
+    expect(err.kind).toBe("network");
+    expect(err.retryable).toBe(true);
+    expect(err.userMessage.toLowerCase()).toContain("module");
+    expect(err.userMessage.toLowerCase()).toContain("reload");
+  });
 });

@@ -1416,6 +1416,66 @@ const takeScreenshot = async (page, outputDir, fileName, summary, label) => {
   summary.screenshots.push({ label, path });
 };
 
+const runOfflineRecoverySmoke = async (page, context, outputDir, summary) => {
+  const hasOfflineBanner = () => {
+    const nodes = document.querySelectorAll(".error-banner, .site-runtime-banner");
+    for (const node of nodes) {
+      const text = String(node.textContent || "").toLowerCase();
+      if (
+        text.includes("offline mode detected") ||
+        text.includes("you are offline") ||
+        text.includes("you appear to be offline")
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  await context.setOffline(true);
+  try {
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("offline"));
+    });
+    await page.waitForFunction(hasOfflineBanner, null, { timeout: 7000 });
+    await takeScreenshot(
+      page,
+      outputDir,
+      "portal-01b-offline-banner.png",
+      summary,
+      "offline recovery banner"
+    );
+  } finally {
+    await context.setOffline(false);
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+  }
+
+  await page.waitForFunction(() => {
+    const nodes = document.querySelectorAll(".error-banner, .site-runtime-banner");
+    for (const node of nodes) {
+      const text = String(node.textContent || "").toLowerCase();
+      if (
+        text.includes("offline mode detected") ||
+        text.includes("you are offline") ||
+        text.includes("you appear to be offline")
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }, null, { timeout: 7000 });
+
+  await takeScreenshot(
+    page,
+    outputDir,
+    "portal-01c-online-recovered.png",
+    summary,
+    "offline recovery restored"
+  );
+};
+
 const run = async () => {
   const options = parseOptions(process.argv.slice(2));
   const summary = createSummary(options);
@@ -1456,6 +1516,10 @@ const run = async () => {
       await desktopPage.goto(options.baseUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
       await desktopPage.waitForTimeout(800);
       await takeScreenshot(desktopPage, options.outputDir, "portal-01-home-desktop.png", summary, "desktop home");
+    });
+
+    await check(summary, "offline-to-online recovery", async () => {
+      await runOfflineRecoverySmoke(desktopPage, desktopContext, options.outputDir, summary);
     });
 
     if (desktopRuntime.detectedStudioBrainBaseUrl) {

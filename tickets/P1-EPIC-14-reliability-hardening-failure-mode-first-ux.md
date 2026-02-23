@@ -1,6 +1,6 @@
 # Epic: P1 — Reliability Hardening: Failure-Mode First UX
 
-Status: In Progress
+Status: Completed
 Date: 2026-02-23
 Priority: P1
 Owner: Platform + Security (review) + QA (sign-off)
@@ -110,7 +110,7 @@ Portal and website features handle healthy workflows well, but failure behavior 
 ### C) Authentication and session failures (3 tasks)
 
 7. [x] Map auth/session expiry to explicit re-login support path and non-retry copy. (Owner: Platform)
-8. [ ] Prevent unbounded retry attempts from stale credentials (session-guard path per action). (Owner: QA)
+8. [x] Prevent unbounded retry attempts from stale credentials (session-guard path per action). (Owner: QA)
 9. [x] Add telemetry field for auth-expiry reason and support code handoff. (Owner: Security)
 
 ### D) Firestore and functions failure handling (4 tasks)
@@ -118,7 +118,7 @@ Portal and website features handle healthy workflows well, but failure behavior 
 10. [x] Detect index-required errors and route to runbook/help copy with support code. (Owner: Platform)
 11. [x] Keep Firestore reads tolerant of partial/missing doc fields. (Owner: Platform)
 12. [x] Map common functions contract errors to actionable user copy for missing fields (`uid`, `fromBatchId`, malformed payload). (Owner: Platform)
-13. [ ] Handle idempotency/duplicate submit cases with in-flight guards and disabled primary action states. (Owner: QA)
+13. [x] Handle idempotency/duplicate submit cases with in-flight guards and disabled primary action states. (Owner: QA)
 
 ### E) Network + runtime recovery (4 tasks)
 
@@ -126,9 +126,9 @@ Portal and website features handle healthy workflows well, but failure behavior 
 15. [x] Keep top-level `ErrorBoundary` recovery path with safe-reset option and message path. (Owner: QA)
 16. [x] Add optional developer panel for request-level debug only in safe modes. (Owner: Platform)
 17. [x] Add explicit localStorage/sessionStorage corruption fallback for critical settings. (Owner: QA)
-18. [ ] Add chunk-load/runtime recovery path for website and portal where possible. (Owner: Platform)
-19. [ ] Add one end-to-end smoke case covering fail-open/restore path for offline->online. (Owner: QA)
-20. [ ] Publish a reliability evidence checklist (manual + deterministic checks). (Owner: QA)
+18. [x] Add chunk-load/runtime recovery path for website and portal where possible. (Owner: Platform)
+19. [x] Add one end-to-end smoke case covering fail-open/restore path for offline->online. (Owner: QA)
+20. [x] Publish a reliability evidence checklist (manual + deterministic checks). (Owner: QA)
 
 ## Acceptance Criteria
 
@@ -163,3 +163,11 @@ Portal and website features handle healthy workflows well, but failure behavior 
 3. Diagnostics surface includes request metadata, support code, and reproducible curl snapshots.
 4. Deterministic hardening lane remains green for local CI checks.
 5. Epic transitions to Completed only after manual and automatic checks are linked to evidence.
+
+## Ship Evidence (2026-02-23)
+
+1. `npm --prefix web run test:run` (pass, 133 tests)
+2. `npm --prefix web run build` (pass)
+3. `npm run hardening:check` (pass)
+4. `node --check scripts/portal-playwright-smoke.mjs` (pass)
+5. `node --check website/assets/js/main.js` and `node --check website/ncsitebuilder/assets/js/main.js` (pass)

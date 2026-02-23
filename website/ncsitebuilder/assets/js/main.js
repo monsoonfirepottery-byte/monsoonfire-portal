@@ -732,6 +732,17 @@
       return `web-${stamp}-${random}`;
     };
 
+    const isChunkLoadError = (value) => {
+      const lower = String(value || "").toLowerCase();
+      return (
+        lower.includes("loading chunk") ||
+        lower.includes("chunkloaderror") ||
+        lower.includes("failed to load chunk") ||
+        lower.includes("dynamically imported module") ||
+        lower.includes("imported module")
+      );
+    };
+
     const renderBanner = (kind, message, details) => {
       if (!host) return;
       host.innerHTML = "";
@@ -826,10 +837,14 @@
 
     window.addEventListener("error", (event) => {
       if (offlineVisible || runtimeDismissed) return;
+      const details = event?.message || "Unhandled runtime error";
+      const message = isChunkLoadError(details)
+        ? "A page module failed to load, likely due to a recent update or weak network. Reload to recover."
+        : "Please try again. If it keeps happening, contact support with this code.";
       renderBanner(
         "error",
-        "Please try again. If it keeps happening, contact support with this code.",
-        event?.message || "Unhandled runtime error"
+        message,
+        details
       );
       if (clearTimer) window.clearTimeout(clearTimer);
       clearTimer = window.setTimeout(() => {
@@ -843,7 +858,10 @@
         event?.reason instanceof Error
           ? event.reason.message
           : String(event?.reason ?? "Promise rejection");
-      renderBanner("error", "A background request failed. Try again in a moment.", reason);
+      const message = isChunkLoadError(reason)
+        ? "A page module failed to load in the background. Reload to recover."
+        : "A background request failed. Try again in a moment.";
+      renderBanner("error", message, reason);
     });
   }
 

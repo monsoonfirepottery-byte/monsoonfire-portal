@@ -212,7 +212,7 @@ function inferKindFromSignals(input: {
     return "firestore";
   }
 
-  if (isConnectivityMessage(lowerMessage)) return "network";
+  if (isConnectivityMessage(lowerMessage) || isChunkLoadMessage(lowerMessage)) return "network";
 
   if (
     lowerCode === "invalid_argument" ||

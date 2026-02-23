@@ -215,6 +215,12 @@ function nowIso() {
 }
 
 const makeRequestId = createRequestId;
+const PORTAL_AUTH_RETRY_SUPPRESS_MS = 45_000;
+const portalInFlightByAction = new Map<string, Promise<unknown>>();
+const portalAuthRetryGuardByRoute = new Map<
+  string,
+  { tokenSignature: string; blockedUntilMs: number; reason: string }
+>();
 
 function safeStringifyJson(value: unknown): string {
   try {
@@ -222,6 +228,23 @@ function safeStringifyJson(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function makeTokenSignature(token: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < token.length; index += 1) {
+    hash ^= token.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `sig_${(hash >>> 0).toString(16)}`;
+}
+
+function makePortalActionKey(route: string, payload: unknown): string {
+  return `${route}::${safeStringifyJson(payload)}`;
+}
+
+function makePortalRetryKey(route: string): string {
+  return `POST:${route.toLowerCase()}`;
 }
 
 function buildCurlExample(url: string, payload: unknown, includeAdminToken: boolean): string {
@@ -260,146 +283,227 @@ async function callFn<TReq, TResp>(
   args: PortalApiCallArgs<TReq>
 ): Promise<PortalApiCallResult<TResp>> {
   const route = LEGACY_RESERVATION_FN_PATHS[fn] ?? fn;
-  const url = `${baseUrl.replace(/\/$/, "")}/${route}`;
-  const requestId = makeRequestId();
+  const actionKey = makePortalActionKey(route, args.payload ?? {});
+  const existingInFlight = portalInFlightByAction.get(actionKey) as
+    | Promise<PortalApiCallResult<TResp>>
+    | undefined;
+  if (existingInFlight) {
+    return existingInFlight;
+  }
 
-  const metaStart: PortalApiMeta = {
-    atIso: nowIso(),
-    requestId,
-    fn,
-    url,
-    payload: args.payload,
-    curlExample: buildCurlExample(url, args.payload, !!args.adminToken),
-  };
-  publishRequestTelemetry({
-    atIso: metaStart.atIso,
-    requestId,
-    source: "portal-api",
-    endpoint: url,
-    method: "POST",
-    payload: redactTelemetryPayload(args.payload),
-    curl: metaStart.curlExample,
-  });
+  const run = async (): Promise<PortalApiCallResult<TResp>> => {
+    const url = `${baseUrl.replace(/\/$/, "")}/${route}`;
+    const requestId = makeRequestId();
+    const retryGuardKey = makePortalRetryKey(route);
+    const tokenSignature = makeTokenSignature(args.idToken);
 
-  let resp: Response | null = null;
-  let body: unknown = null;
-  let didTimeout = false;
-  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-  const requestTimeoutMs = args.requestTimeoutMs ?? 10_000;
-
-  try {
-    const abortController = new AbortController();
-    timeoutHandle = setTimeout(() => {
-      didTimeout = true;
-      abortController.abort("request-timeout");
-    }, requestTimeoutMs);
-
-    resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${args.idToken}`,
-        ...(args.adminToken ? { "x-admin-token": args.adminToken } : {}),
-      },
-      body: JSON.stringify(args.payload ?? {}),
-      signal: abortController.signal,
-    });
-    clearTimeout(timeoutHandle);
-
-    body = await readResponseBody(resp);
-    const responseSnippet = stringifyResponseSnippet(body);
-
-    const metaDone: PortalApiMeta = {
-      ...metaStart,
-      status: resp.status,
-      ok: resp.ok,
-      responseSnippet,
-      response: body,
+    const metaStart: PortalApiMeta = {
+      atIso: nowIso(),
+      requestId,
+      fn,
+      url,
+      payload: args.payload,
+      curlExample: buildCurlExample(url, args.payload, !!args.adminToken),
     };
+    publishRequestTelemetry({
+      atIso: metaStart.atIso,
+      requestId,
+      source: "portal-api",
+      endpoint: url,
+      method: "POST",
+      payload: redactTelemetryPayload(args.payload),
+      curl: metaStart.curlExample,
+    });
 
-    if (!resp.ok) {
-      const msg = getErrorMessage(body);
-      const code = getErrorCode(body);
-      const appError = toAppError(body, {
+    const retryGuard = portalAuthRetryGuardByRoute.get(retryGuardKey);
+    if (
+      retryGuard &&
+      retryGuard.tokenSignature === tokenSignature &&
+      retryGuard.blockedUntilMs > Date.now()
+    ) {
+      const appError = toAppError("Auth retry suppressed due to unchanged stale credentials.", {
         requestId,
-        statusCode: resp.status,
-        code,
-        debugMessage: msg,
+        kind: "auth",
+        retryable: false,
+        authFailureReason: retryGuard.reason,
+        debugMessage: `Retry blocked for ${route} while stale credential is unchanged.`,
       });
-      const enriched: PortalApiMeta = {
-        ...metaDone,
-        error: msg,
+      const metaSuppressed: PortalApiMeta = {
+        ...metaStart,
+        status: 401,
+        ok: false,
+        error: appError.debugMessage,
         message: appError.userMessage,
-        ...(code ? { code } : {}),
       };
       publishRequestTelemetry({
-        atIso: enriched.atIso,
+        atIso: metaSuppressed.atIso,
         requestId,
         source: "portal-api",
         endpoint: url,
         method: "POST",
         payload: redactTelemetryPayload(args.payload),
-        ...(appError.authFailureReason ? { authFailureReason: appError.authFailureReason } : {}),
-        status: resp.status,
+        ...(appError.authFailureReason
+          ? { authFailureReason: appError.authFailureReason }
+          : {}),
+        status: 401,
         ok: false,
-        responseSnippet,
         error: `${appError.userMessage} (support code: ${appError.correlationId})`,
-        curl: enriched.curlExample,
+        curl: metaSuppressed.curlExample,
       });
-      throw new PortalApiError(appError.userMessage, enriched, appError);
+      throw new PortalApiError(appError.userMessage, metaSuppressed, appError);
     }
 
-    publishRequestTelemetry({
-      atIso: metaDone.atIso,
-      requestId,
-      source: "portal-api",
-      endpoint: url,
-      method: "POST",
-      payload: redactTelemetryPayload(args.payload),
-      status: resp.status,
-      ok: true,
-      responseSnippet,
-      curl: metaDone.curlExample,
-    });
-    return { data: body as TResp, meta: metaDone };
-  } catch (error: unknown) {
-    if (error instanceof PortalApiError) throw error;
-    if (timeoutHandle) clearTimeout(timeoutHandle);
+    let resp: Response | null = null;
+    let body: unknown = null;
+    let didTimeout = false;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    const requestTimeoutMs = args.requestTimeoutMs ?? 10_000;
 
-    const msg = didTimeout
-      ? `Request timeout after ${requestTimeoutMs}ms`
-      : error instanceof Error
-        ? error.message
-        : String(error ?? "Request failed");
-    const appError = toAppError(error, {
-      requestId,
-      statusCode: resp?.status,
-      debugMessage: msg,
-    });
-    const metaFail: PortalApiMeta = {
-      ...metaStart,
-      status: resp?.status,
-      ok: false,
-      response: body,
-      responseSnippet: body === null ? undefined : stringifyResponseSnippet(body),
-      error: msg,
-      message: appError.userMessage,
-    };
-    publishRequestTelemetry({
-      atIso: metaFail.atIso,
-      requestId,
-      source: "portal-api",
-      endpoint: url,
-      method: "POST",
-      payload: redactTelemetryPayload(args.payload),
-      ...(appError.authFailureReason ? { authFailureReason: appError.authFailureReason } : {}),
-      status: resp?.status,
-      ok: false,
-      responseSnippet: stringifyResponseSnippet(body),
-      error: `${appError.userMessage} (support code: ${appError.correlationId})`,
-      curl: metaFail.curlExample,
-    });
-    throw new PortalApiError(appError.userMessage, metaFail, appError);
+    try {
+      const abortController = new AbortController();
+      timeoutHandle = setTimeout(() => {
+        didTimeout = true;
+        abortController.abort("request-timeout");
+      }, requestTimeoutMs);
+
+      resp = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${args.idToken}`,
+          ...(args.adminToken ? { "x-admin-token": args.adminToken } : {}),
+        },
+        body: JSON.stringify(args.payload ?? {}),
+        signal: abortController.signal,
+      });
+      clearTimeout(timeoutHandle);
+
+      body = await readResponseBody(resp);
+      const responseSnippet = stringifyResponseSnippet(body);
+
+      const metaDone: PortalApiMeta = {
+        ...metaStart,
+        status: resp.status,
+        ok: resp.ok,
+        responseSnippet,
+        response: body,
+      };
+
+      if (!resp.ok) {
+        const msg = getErrorMessage(body);
+        const code = getErrorCode(body);
+        const appError = toAppError(body, {
+          requestId,
+          statusCode: resp.status,
+          code,
+          debugMessage: msg,
+        });
+        if (appError.kind === "auth") {
+          portalAuthRetryGuardByRoute.set(retryGuardKey, {
+            tokenSignature,
+            blockedUntilMs: Date.now() + PORTAL_AUTH_RETRY_SUPPRESS_MS,
+            reason: appError.authFailureReason ?? "credential invalid",
+          });
+        }
+        const enriched: PortalApiMeta = {
+          ...metaDone,
+          error: msg,
+          message: appError.userMessage,
+          ...(code ? { code } : {}),
+        };
+        publishRequestTelemetry({
+          atIso: enriched.atIso,
+          requestId,
+          source: "portal-api",
+          endpoint: url,
+          method: "POST",
+          payload: redactTelemetryPayload(args.payload),
+          ...(appError.authFailureReason
+            ? { authFailureReason: appError.authFailureReason }
+            : {}),
+          status: resp.status,
+          ok: false,
+          responseSnippet,
+          error: `${appError.userMessage} (support code: ${appError.correlationId})`,
+          curl: enriched.curlExample,
+        });
+        throw new PortalApiError(appError.userMessage, enriched, appError);
+      }
+
+      const existingGuard = portalAuthRetryGuardByRoute.get(retryGuardKey);
+      if (existingGuard && existingGuard.tokenSignature === tokenSignature) {
+        portalAuthRetryGuardByRoute.delete(retryGuardKey);
+      }
+
+      publishRequestTelemetry({
+        atIso: metaDone.atIso,
+        requestId,
+        source: "portal-api",
+        endpoint: url,
+        method: "POST",
+        payload: redactTelemetryPayload(args.payload),
+        status: resp.status,
+        ok: true,
+        responseSnippet,
+        curl: metaDone.curlExample,
+      });
+      return { data: body as TResp, meta: metaDone };
+    } catch (error: unknown) {
+      if (error instanceof PortalApiError) throw error;
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+
+      const msg = didTimeout
+        ? `Request timeout after ${requestTimeoutMs}ms`
+        : error instanceof Error
+          ? error.message
+          : String(error ?? "Request failed");
+      const appError = toAppError(error, {
+        requestId,
+        statusCode: resp?.status,
+        debugMessage: msg,
+      });
+      if (appError.kind === "auth") {
+        portalAuthRetryGuardByRoute.set(retryGuardKey, {
+          tokenSignature,
+          blockedUntilMs: Date.now() + PORTAL_AUTH_RETRY_SUPPRESS_MS,
+          reason: appError.authFailureReason ?? "credential invalid",
+        });
+      }
+      const metaFail: PortalApiMeta = {
+        ...metaStart,
+        status: resp?.status,
+        ok: false,
+        response: body,
+        responseSnippet: body === null ? undefined : stringifyResponseSnippet(body),
+        error: msg,
+        message: appError.userMessage,
+      };
+      publishRequestTelemetry({
+        atIso: metaFail.atIso,
+        requestId,
+        source: "portal-api",
+        endpoint: url,
+        method: "POST",
+        payload: redactTelemetryPayload(args.payload),
+        ...(appError.authFailureReason
+          ? { authFailureReason: appError.authFailureReason }
+          : {}),
+        status: resp?.status,
+        ok: false,
+        responseSnippet: stringifyResponseSnippet(body),
+        error: `${appError.userMessage} (support code: ${appError.correlationId})`,
+        curl: metaFail.curlExample,
+      });
+      throw new PortalApiError(appError.userMessage, metaFail, appError);
+    }
+  };
+
+  const runPromise = run();
+  portalInFlightByAction.set(actionKey, runPromise as Promise<unknown>);
+  try {
+    return await runPromise;
+  } finally {
+    portalInFlightByAction.delete(actionKey);
   }
 }
 

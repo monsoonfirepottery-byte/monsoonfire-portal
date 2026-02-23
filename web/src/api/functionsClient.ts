@@ -81,6 +81,24 @@ async function readResponseBody(resp: Response): Promise<unknown> {
 }
 
 const makeRequestId = createRequestId;
+const AUTH_RETRY_SUPPRESS_MS = 45_000;
+
+function makeTokenSignature(token: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < token.length; index += 1) {
+    hash ^= token.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `sig_${(hash >>> 0).toString(16)}`;
+}
+
+function makeRouteRetryKey(path: string): string {
+  return `POST:${path.toLowerCase()}`;
+}
+
+function makeInFlightActionKey(path: string, payload: unknown): string {
+  return `${path}::${safeJsonStringify(payload)}`;
+}
 
 export function buildCurlRedacted(url: string, payload?: unknown) {
   const headerArgs = [
@@ -131,6 +149,11 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
   let lastReq: LastRequest | null = null;
   let lastIdToken: string | null = null;
   const requestTimeoutMs = config.requestTimeoutMs ?? 10_000;
+  const inFlightByAction = new Map<string, Promise<unknown>>();
+  const authRetryGuardByRoute = new Map<
+    string,
+    { tokenSignature: string; blockedUntilMs: number; reason: string }
+  >();
 
   const redactDefault = config.redactCurlByDefault ?? true;
 
@@ -144,119 +167,199 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
     const path = fn.replace(/^\/+/, "");
     const url = `${base}/${path}`;
     const normalizedPayload = payload ?? {};
-
-    const redactedPayload = redactTelemetryPayload(normalizedPayload);
-    const req: LastRequest = {
-      atIso: new Date().toISOString(),
-      requestId: makeRequestId(),
-      fn: path,
-      url,
-      method: "POST",
-      payload: normalizedPayload,
-      payloadRedacted: redactedPayload,
-      curlExample: buildCurlRedacted(url, normalizedPayload),
-    };
-    publish(req);
-    publishRequestTelemetry({
-      atIso: req.atIso,
-      requestId: req.requestId,
-      source: "functions-client",
-      endpoint: req.url,
-      method: req.method,
-      payload: redactedPayload,
-      curl: req.curlExample,
-    });
-
-    const idToken = await config.getIdToken();
-    lastIdToken = idToken;
-
-    const adminToken = config.getAdminToken?.();
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${idToken}`,
-    };
-    if (adminToken && adminToken.trim()) headers["x-admin-token"] = adminToken.trim();
-
-    let resp: Response;
-    let didTimeout = false;
-    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-
-    try {
-      const abortController = new AbortController();
-      timeoutHandle = setTimeout(() => {
-        didTimeout = true;
-        abortController.abort("request-timeout");
-      }, requestTimeoutMs);
-
-      resp = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(normalizedPayload),
-        signal: abortController.signal,
-      });
-      clearTimeout(timeoutHandle);
-    } catch (error: unknown) {
-      if (timeoutHandle) clearTimeout(timeoutHandle);
-      let debugMessage = error instanceof Error ? error.message : String(error);
-      if (didTimeout) {
-        debugMessage = `Request timeout after ${requestTimeoutMs}ms`;
-      }
-      const appError = toAppError(error, {
-        requestId: req.requestId,
-        kind: "network",
-        debugMessage,
-      });
-
-      const failed: LastRequest = {
-        ...req,
-        ok: false,
-        error: appError.debugMessage,
-      };
-      publish(failed);
-      publishRequestTelemetry({
-        atIso: failed.atIso,
-        requestId: failed.requestId,
-        source: "functions-client",
-        endpoint: failed.url,
-        method: failed.method,
-        payload: redactedPayload,
-        ...(appError.authFailureReason ? { authFailureReason: appError.authFailureReason } : {}),
-        ok: false,
-        error: `${appError.userMessage} (support code: ${appError.correlationId})`,
-        curl: failed.curlExample,
-      });
-      throw appError;
+    const actionKey = makeInFlightActionKey(path, normalizedPayload);
+    const existingInFlight = inFlightByAction.get(actionKey) as Promise<TResp> | undefined;
+    if (existingInFlight) {
+      return existingInFlight;
     }
-    if (timeoutHandle) clearTimeout(timeoutHandle);
 
-    const body = await readResponseBody(resp);
-
-    const updated: LastRequest = {
-      ...req,
-      status: resp.status,
-      ok: resp.ok,
-      response: body,
-      responseSnippet: stringifyResponseSnippet(body),
-      curlExample: buildCurlRedacted(url, normalizedPayload),
-    };
-
-    if (!resp.ok) {
-      const messageFromBody =
-        typeof body === "object" && body
-          ? (body as { message?: unknown; error?: unknown })
-          : null;
-      const msg =
-        (typeof messageFromBody?.message === "string" && messageFromBody.message) ||
-        (typeof messageFromBody?.error === "string" && messageFromBody.error) ||
-        (typeof body === "string" ? body : `HTTP ${resp.status}`);
-
-      const appError = toAppError(body, {
+    const run = async (): Promise<TResp> => {
+      const redactedPayload = redactTelemetryPayload(normalizedPayload);
+      const req: LastRequest = {
+        atIso: new Date().toISOString(),
+        requestId: makeRequestId(),
+        fn: path,
+        url,
+        method: "POST",
+        payload: normalizedPayload,
+        payloadRedacted: redactedPayload,
+        curlExample: buildCurlRedacted(url, normalizedPayload),
+      };
+      publish(req);
+      publishRequestTelemetry({
+        atIso: req.atIso,
         requestId: req.requestId,
-        statusCode: resp.status,
-        debugMessage: String(msg),
+        source: "functions-client",
+        endpoint: req.url,
+        method: req.method,
+        payload: redactedPayload,
+        curl: req.curlExample,
       });
 
-      updated.error = appError.debugMessage;
+      const idToken = await config.getIdToken();
+      lastIdToken = idToken;
+      const routeRetryKey = makeRouteRetryKey(path);
+      const tokenSignature = makeTokenSignature(idToken);
+      const retryGuard = authRetryGuardByRoute.get(routeRetryKey);
+      if (
+        retryGuard &&
+        retryGuard.tokenSignature === tokenSignature &&
+        retryGuard.blockedUntilMs > Date.now()
+      ) {
+        const appError = toAppError("Auth retry suppressed due to unchanged stale credentials.", {
+          requestId: req.requestId,
+          kind: "auth",
+          retryable: false,
+          authFailureReason: retryGuard.reason,
+          debugMessage: `Retry blocked for ${path} while stale credential is unchanged.`,
+        });
+        const failed: LastRequest = {
+          ...req,
+          status: 401,
+          ok: false,
+          error: appError.debugMessage,
+        };
+        publish(failed);
+        publishRequestTelemetry({
+          atIso: failed.atIso,
+          requestId: failed.requestId,
+          source: "functions-client",
+          endpoint: failed.url,
+          method: failed.method,
+          payload: redactedPayload,
+          ...(appError.authFailureReason
+            ? { authFailureReason: appError.authFailureReason }
+            : {}),
+          status: failed.status,
+          ok: false,
+          error: `${appError.userMessage} (support code: ${appError.correlationId})`,
+          curl: failed.curlExample,
+        });
+        throw appError;
+      }
+
+      const adminToken = config.getAdminToken?.();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`,
+      };
+      if (adminToken && adminToken.trim()) headers["x-admin-token"] = adminToken.trim();
+
+      let resp: Response;
+      let didTimeout = false;
+      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+      try {
+        const abortController = new AbortController();
+        timeoutHandle = setTimeout(() => {
+          didTimeout = true;
+          abortController.abort("request-timeout");
+        }, requestTimeoutMs);
+
+        resp = await fetch(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(normalizedPayload),
+          signal: abortController.signal,
+        });
+        clearTimeout(timeoutHandle);
+      } catch (error: unknown) {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+        let debugMessage = error instanceof Error ? error.message : String(error);
+        if (didTimeout) {
+          debugMessage = `Request timeout after ${requestTimeoutMs}ms`;
+        }
+        const appError = toAppError(error, {
+          requestId: req.requestId,
+          kind: "network",
+          debugMessage,
+        });
+
+        const failed: LastRequest = {
+          ...req,
+          ok: false,
+          error: appError.debugMessage,
+        };
+        publish(failed);
+        publishRequestTelemetry({
+          atIso: failed.atIso,
+          requestId: failed.requestId,
+          source: "functions-client",
+          endpoint: failed.url,
+          method: failed.method,
+          payload: redactedPayload,
+          ...(appError.authFailureReason
+            ? { authFailureReason: appError.authFailureReason }
+            : {}),
+          ok: false,
+          error: `${appError.userMessage} (support code: ${appError.correlationId})`,
+          curl: failed.curlExample,
+        });
+        throw appError;
+      }
+
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+
+      const body = await readResponseBody(resp);
+
+      const updated: LastRequest = {
+        ...req,
+        status: resp.status,
+        ok: resp.ok,
+        response: body,
+        responseSnippet: stringifyResponseSnippet(body),
+        curlExample: buildCurlRedacted(url, normalizedPayload),
+      };
+
+      if (!resp.ok) {
+        const messageFromBody =
+          typeof body === "object" && body
+            ? (body as { message?: unknown; error?: unknown })
+            : null;
+        const msg =
+          (typeof messageFromBody?.message === "string" && messageFromBody.message) ||
+          (typeof messageFromBody?.error === "string" && messageFromBody.error) ||
+          (typeof body === "string" ? body : `HTTP ${resp.status}`);
+
+        const appError = toAppError(body, {
+          requestId: req.requestId,
+          statusCode: resp.status,
+          debugMessage: String(msg),
+        });
+        if (appError.kind === "auth") {
+          authRetryGuardByRoute.set(routeRetryKey, {
+            tokenSignature,
+            blockedUntilMs: Date.now() + AUTH_RETRY_SUPPRESS_MS,
+            reason: appError.authFailureReason ?? "credential invalid",
+          });
+        }
+
+        updated.error = appError.debugMessage;
+        publish(updated);
+        publishRequestTelemetry({
+          atIso: updated.atIso,
+          requestId: updated.requestId,
+          source: "functions-client",
+          endpoint: updated.url,
+          method: updated.method,
+          payload: redactedPayload,
+          ...(appError.authFailureReason
+            ? { authFailureReason: appError.authFailureReason }
+            : {}),
+          status: updated.status,
+          ok: false,
+          responseSnippet: stringifyResponseSnippet(body),
+          error: `${appError.userMessage} (support code: ${appError.correlationId})`,
+          curl: updated.curlExample,
+        });
+        throw appError;
+      }
+
+      const existingGuard = authRetryGuardByRoute.get(routeRetryKey);
+      if (existingGuard && existingGuard.tokenSignature === tokenSignature) {
+        authRetryGuardByRoute.delete(routeRetryKey);
+      }
+
       publish(updated);
       publishRequestTelemetry({
         atIso: updated.atIso,
@@ -264,31 +367,22 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
         source: "functions-client",
         endpoint: updated.url,
         method: updated.method,
-        payload: redactedPayload,
-        ...(appError.authFailureReason ? { authFailureReason: appError.authFailureReason } : {}),
+        payload: redactTelemetryPayload(updated.payload),
         status: updated.status,
-        ok: false,
+        ok: true,
         responseSnippet: stringifyResponseSnippet(body),
-        error: `${appError.userMessage} (support code: ${appError.correlationId})`,
         curl: updated.curlExample,
       });
-      throw appError;
-    }
+      return body as TResp;
+    };
 
-    publish(updated);
-    publishRequestTelemetry({
-      atIso: updated.atIso,
-      requestId: updated.requestId,
-      source: "functions-client",
-      endpoint: updated.url,
-      method: updated.method,
-      payload: redactTelemetryPayload(updated.payload),
-      status: updated.status,
-      ok: true,
-      responseSnippet: stringifyResponseSnippet(body),
-      curl: updated.curlExample,
-    });
-    return body as TResp;
+    const runPromise = run();
+    inFlightByAction.set(actionKey, runPromise as Promise<unknown>);
+    try {
+      return await runPromise;
+    } finally {
+      inFlightByAction.delete(actionKey);
+    }
   }
 
   function getLastRequest() {

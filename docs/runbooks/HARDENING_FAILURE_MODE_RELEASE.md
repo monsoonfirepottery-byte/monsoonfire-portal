@@ -3,7 +3,7 @@
 ## Purpose
 
 Provide a deterministic evidence workflow for the reliability-hardening controls introduced under
-`P1-EPIC-13` so we can ship safely without relying on brittle manual checks.
+`P1-EPIC-14` so we can ship safely without relying on brittle manual checks.
 
 ## Scope
 
@@ -18,6 +18,7 @@ Run these checks before release:
 
 ```bash
 npm run hardening:check
+npm --prefix web run build
 ```
 
 Optional:
@@ -25,23 +26,36 @@ Optional:
 ```bash
 npm --prefix web run test:run
 npm run pr:gate
+npm run portal:smoke:playwright -- --output-dir output/playwright/portal/hardening
 ```
 
 ## Evidence Checklist
 
 1. **Error model behavior**
    - `web/src/errors/appError.test.ts` passes.
-   - `Auth`, `network`, and `firestore` messages are calm and include support codes.
+   - `Auth`, `network`, `chunk-load`, and `firestore` messages are calm and include support codes.
 2. **Request diagnostics**
    - `web/src/lib/requestTelemetry.test.ts` passes.
    - Last request capture and curl rendering remain redacted for user-facing panels.
-3. **Storage resilience**
+   - Auth failure reasons are captured when session/token errors occur.
+3. **Retry + duplicate-submit guardrails**
+   - `web/src/api/functionsClient.test.ts` passes, including:
+     - dedupe for identical in-flight requests
+     - stale-credential retry suppression
+     - retry recovery after token refresh
+4. **Storage resilience**
    - `web/src/lib/safeStorage.test.ts` passes (no throw on read/write/remove failures).
-4. **Client runtime behavior**
+5. **Client runtime behavior**
    - Manual smoke walk:
      - trigger offline mode and confirm banner/retry path is visible.
      - trigger recoverable function error and confirm support code appears.
+     - trigger chunk-load style runtime error and confirm reload guidance appears.
      - confirm blank-screen recovery path from `RootErrorBoundary`.
+6. **End-to-end offline recovery smoke**
+   - `portal-playwright-smoke` includes the `offline-to-online recovery` check.
+   - Verify screenshots:
+     - `portal-01b-offline-banner.png`
+     - `portal-01c-online-recovered.png`
 
 ## Operator Notes
 

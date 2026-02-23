@@ -1,4 +1,6 @@
 (() => {
+  const RUNTIME_BANNER_HOST_ID = "mf-runtime-banner-host";
+  const RUNTIME_BANNER_STYLE_ID = "mf-runtime-banner-style";
   const normalizePath = (value) => {
     if (!value) return '/';
     const cleaned = value.replace(/index\.html?$/i, '');
@@ -14,6 +16,139 @@
     skipLink.textContent = 'Skip to main content';
     body.insertBefore(skipLink, body.firstChild);
   }
+
+  const runtimeHost = body ? ensureRuntimeBannerHost(body) : null;
+  if (runtimeHost) {
+    ensureRuntimeBannerStyles();
+  }
+  let offlineVisible = false;
+  let runtimeDismissed = false;
+  let clearRuntimeTimer = null;
+
+  const createSupportCode = () => {
+    const stamp = Date.now().toString(36);
+    const random = Math.random().toString(36).slice(2, 8);
+    return `web-${stamp}-${random}`;
+  };
+
+  const renderRuntimeBanner = (kind, message, details) => {
+    if (!runtimeHost) return;
+    runtimeHost.innerHTML = '';
+
+    const banner = document.createElement('section');
+    banner.className = `site-runtime-banner ${kind === 'error' ? 'is-error' : 'is-offline'}`;
+    banner.setAttribute('role', 'status');
+    banner.setAttribute('aria-live', 'polite');
+
+    const code = createSupportCode();
+    const title = document.createElement('strong');
+    title.className = 'site-runtime-title';
+    title.textContent =
+      kind === 'error'
+        ? 'Something went wrong while loading this page.'
+        : 'You appear to be offline.';
+
+    const copy = document.createElement('p');
+    copy.className = 'site-runtime-copy';
+    copy.textContent = message;
+
+    const support = document.createElement('p');
+    support.className = 'site-runtime-support';
+    support.textContent = `Support code: ${code}`;
+
+    const actions = document.createElement('div');
+    actions.className = 'site-runtime-actions';
+
+    const retryButton = document.createElement('button');
+    retryButton.type = 'button';
+    retryButton.textContent = 'Try again';
+    retryButton.addEventListener('click', () => {
+      window.location.reload();
+    });
+    actions.appendChild(retryButton);
+
+    if (kind === 'error') {
+      const dismissButton = document.createElement('button');
+      dismissButton.type = 'button';
+      dismissButton.className = 'site-runtime-dismiss';
+      dismissButton.textContent = 'Dismiss';
+      dismissButton.addEventListener('click', () => {
+        runtimeDismissed = true;
+        runtimeHost.innerHTML = '';
+      });
+      actions.appendChild(dismissButton);
+    }
+
+    banner.appendChild(title);
+    banner.appendChild(copy);
+    banner.appendChild(support);
+    banner.appendChild(actions);
+
+    if (details) {
+      const info = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = 'Technical details';
+      const pre = document.createElement('pre');
+      pre.textContent = String(details);
+      info.appendChild(summary);
+      info.appendChild(pre);
+      banner.appendChild(info);
+    }
+
+    runtimeHost.appendChild(banner);
+  };
+
+  const showOfflineBanner = () => {
+    offlineVisible = true;
+    renderRuntimeBanner(
+      'offline',
+      'Reconnect to continue browsing. Your existing page content is still available.',
+      null
+    );
+  };
+
+  const clearOfflineBanner = () => {
+    offlineVisible = false;
+    if (!runtimeHost) return;
+    runtimeHost.innerHTML = '';
+  };
+
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    showOfflineBanner();
+  }
+
+  window.addEventListener('online', () => {
+    clearOfflineBanner();
+  });
+
+  window.addEventListener('offline', () => {
+    showOfflineBanner();
+  });
+
+  window.addEventListener('error', (event) => {
+    if (offlineVisible || runtimeDismissed) return;
+    renderRuntimeBanner(
+      'error',
+      'Please try again. If it keeps happening, contact support with this code.',
+      event?.message || 'Unhandled runtime error'
+    );
+    if (clearRuntimeTimer) {
+      window.clearTimeout(clearRuntimeTimer);
+    }
+    clearRuntimeTimer = window.setTimeout(() => {
+      if (runtimeHost && !offlineVisible) runtimeHost.innerHTML = '';
+    }, 12000);
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    if (offlineVisible || runtimeDismissed) return;
+    const reason = event?.reason instanceof Error ? event.reason.message : String(event?.reason ?? 'Promise rejection');
+    renderRuntimeBanner(
+      'error',
+      'A background request failed. Try again in a moment.',
+      reason
+    );
+  });
 
   const contactTitleNodes = Array.from(document.querySelectorAll('.footer .footer-title'));
   contactTitleNodes.forEach((titleNode) => {
@@ -199,4 +334,35 @@
     };
     setInterval(tick, 4500);
   });
+
+  function ensureRuntimeBannerHost(rootBody) {
+    let host = document.getElementById(RUNTIME_BANNER_HOST_ID);
+    if (host) return host;
+    host = document.createElement('div');
+    host.id = RUNTIME_BANNER_HOST_ID;
+    host.className = 'site-runtime-banner-host';
+    rootBody.insertBefore(host, rootBody.firstChild);
+    return host;
+  }
+
+  function ensureRuntimeBannerStyles() {
+    if (document.getElementById(RUNTIME_BANNER_STYLE_ID)) return;
+    const style = document.createElement("style");
+    style.id = RUNTIME_BANNER_STYLE_ID;
+    style.textContent = `
+      .site-runtime-banner-host{position:sticky;top:0;z-index:160;display:grid;gap:8px;padding:8px 12px 0}
+      .site-runtime-banner{border-radius:12px;border:1px solid var(--border);background:var(--surface,#fff);color:var(--ink-900,#1b1a17);box-shadow:var(--shadow-1);padding:10px 12px}
+      .site-runtime-banner.is-offline{border-color:rgba(180,79,53,.45);background:rgba(180,79,53,.1)}
+      .site-runtime-banner.is-error{border-color:rgba(183,64,42,.54);background:rgba(183,64,42,.12)}
+      .site-runtime-title{display:block;font-family:var(--font-ui,inherit);font-size:var(--text-sm,14px)}
+      .site-runtime-copy{margin:5px 0 0;font-size:var(--text-sm,14px)}
+      .site-runtime-support{margin:6px 0 0;font-size:var(--text-xs,12px)}
+      .site-runtime-actions{margin-top:8px;display:flex;gap:8px;flex-wrap:wrap}
+      .site-runtime-actions button{min-height:36px;border:1px solid var(--border);border-radius:9px;background:rgba(255,255,255,.85);color:inherit;font-family:var(--font-ui,inherit);font-size:var(--text-xs,12px);padding:6px 10px;cursor:pointer}
+      .site-runtime-dismiss{background:transparent;text-decoration:underline}
+      .site-runtime-banner details{margin-top:8px}
+      .site-runtime-banner pre{margin:6px 0 0;border:1px solid var(--border);border-radius:9px;background:rgba(255,255,255,.72);padding:8px;max-height:120px;overflow:auto;font-size:var(--text-xs,12px);white-space:pre-wrap;word-break:break-word}
+    `;
+    document.head.appendChild(style);
+  }
 })();

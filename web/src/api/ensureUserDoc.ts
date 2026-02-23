@@ -1,3 +1,5 @@
+import { safeStorageGetItem, safeStorageRemoveItem, safeStorageSetItem } from "../lib/safeStorage";
+
 type ImportMetaEnvShape = {
   VITE_FUNCTIONS_BASE_URL?: string;
 };
@@ -44,8 +46,7 @@ function retryCooldownKey(uid: string, projectId: string): string {
 
 function readRetryCooldown(uid: string, projectId: string): number {
   try {
-    if (typeof localStorage === "undefined") return 0;
-    const raw = localStorage.getItem(retryCooldownKey(uid, projectId));
+    const raw = safeStorageGetItem("localStorage", retryCooldownKey(uid, projectId));
     const parsed = Number(raw ?? "0");
     if (!Number.isFinite(parsed)) return 0;
     return parsed;
@@ -56,8 +57,7 @@ function readRetryCooldown(uid: string, projectId: string): number {
 
 function writeRetryCooldown(uid: string, projectId: string, value: number) {
   try {
-    if (typeof localStorage === "undefined") return;
-    localStorage.setItem(retryCooldownKey(uid, projectId), String(value));
+    safeStorageSetItem("localStorage", retryCooldownKey(uid, projectId), String(value));
   } catch {
     // Ignore localStorage failures.
   }
@@ -65,8 +65,7 @@ function writeRetryCooldown(uid: string, projectId: string, value: number) {
 
 function clearRetryCooldown(uid: string, projectId: string) {
   try {
-    if (typeof localStorage === "undefined") return;
-    localStorage.removeItem(retryCooldownKey(uid, projectId));
+    safeStorageRemoveItem("localStorage", retryCooldownKey(uid, projectId));
   } catch {
     // Ignore localStorage failures.
   }
@@ -85,12 +84,10 @@ export async function ensureUserDocForSession(args: EnsureUserDocArgs): Promise<
   }
 
   try {
-    if (typeof localStorage !== "undefined") {
-      const key = bootstrapSuccessKey(args.uid, projectId);
-      if (localStorage.getItem(key) === "1") {
-        sessionGuards.add(sessionKey);
-        return { ok: true, userCreated: false, profileCreated: false, skipped: true };
-      }
+    const key = bootstrapSuccessKey(args.uid, projectId);
+    if (safeStorageGetItem("localStorage", key) === "1") {
+      sessionGuards.add(sessionKey);
+      return { ok: true, userCreated: false, profileCreated: false, skipped: true };
     }
   } catch {
     // Ignore storage availability issues.
@@ -177,9 +174,7 @@ export async function ensureUserDocForSession(args: EnsureUserDocArgs): Promise<
       clearRetryCooldown(args.uid, projectId);
 
       try {
-        if (typeof localStorage !== "undefined") {
-          localStorage.setItem(bootstrapSuccessKey(args.uid, projectId), "1");
-        }
+        safeStorageSetItem("localStorage", bootstrapSuccessKey(args.uid, projectId), "1");
       } catch {
         // Ignore storage availability issues.
       }

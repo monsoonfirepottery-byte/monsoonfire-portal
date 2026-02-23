@@ -55,6 +55,13 @@ import {
   V1_RESERVATION_UPDATE_FN,
 } from "./portalContracts";
 import { makeRequestId as createRequestId } from "./requestId";
+import type { AppError } from "../errors/appError";
+import { toAppError } from "../errors/appError";
+import {
+  publishRequestTelemetry,
+  redactTelemetryPayload,
+  stringifyResponseSnippet,
+} from "../lib/requestTelemetry";
 
 /**
  * Re-export canonical contracts so existing imports keep working,
@@ -111,6 +118,7 @@ type PortalApiCallArgs<TReq> = {
   idToken: string;
   adminToken?: string;
   payload: TReq;
+  requestTimeoutMs?: number;
 };
 
 type PortalApiCallResult<TResp> = {
@@ -120,11 +128,13 @@ type PortalApiCallResult<TResp> = {
 
 export class PortalApiError extends Error {
   meta: PortalApiMeta;
+  appError?: AppError;
 
-  constructor(message: string, meta: PortalApiMeta) {
+  constructor(message: string, meta: PortalApiMeta, appError?: AppError) {
     super(message);
     this.name = "PortalApiError";
     this.meta = meta;
+    this.appError = appError;
   }
 }
 
@@ -183,6 +193,7 @@ export type PortalApi = {
 
 type CreatePortalApiOptions = {
   baseUrl?: string;
+  requestTimeoutMs?: number;
 };
 
 const DEFAULT_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
@@ -260,11 +271,29 @@ async function callFn<TReq, TResp>(
     payload: args.payload,
     curlExample: buildCurlExample(url, args.payload, !!args.adminToken),
   };
+  publishRequestTelemetry({
+    atIso: metaStart.atIso,
+    requestId,
+    source: "portal-api",
+    endpoint: url,
+    method: "POST",
+    payload: redactTelemetryPayload(args.payload),
+    curl: metaStart.curlExample,
+  });
 
   let resp: Response | null = null;
   let body: unknown = null;
+  let didTimeout = false;
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  const requestTimeoutMs = args.requestTimeoutMs ?? 10_000;
 
   try {
+    const abortController = new AbortController();
+    timeoutHandle = setTimeout(() => {
+      didTimeout = true;
+      abortController.abort("request-timeout");
+    }, requestTimeoutMs);
+
     resp = await fetch(url, {
       method: "POST",
       headers: {
@@ -273,7 +302,9 @@ async function callFn<TReq, TResp>(
         ...(args.adminToken ? { "x-admin-token": args.adminToken } : {}),
       },
       body: JSON.stringify(args.payload ?? {}),
+      signal: abortController.signal,
     });
+    clearTimeout(timeoutHandle);
 
     body = await readResponseBody(resp);
 
@@ -287,29 +318,83 @@ async function callFn<TReq, TResp>(
     if (!resp.ok) {
       const msg = getErrorMessage(body);
       const code = getErrorCode(body);
+      const appError = toAppError(body, {
+        requestId,
+        statusCode: resp.status,
+        code,
+        debugMessage: msg,
+      });
       const enriched: PortalApiMeta = {
         ...metaDone,
         error: msg,
-        message: msg,
+        message: appError.userMessage,
         ...(code ? { code } : {}),
       };
-      throw new PortalApiError(msg, enriched);
+      publishRequestTelemetry({
+        atIso: enriched.atIso,
+        requestId,
+        source: "portal-api",
+        endpoint: url,
+        method: "POST",
+        payload: redactTelemetryPayload(args.payload),
+        status: resp.status,
+        ok: false,
+        responseSnippet: stringifyResponseSnippet(body),
+        error: `${appError.userMessage} (support code: ${appError.correlationId})`,
+        curl: enriched.curlExample,
+      });
+      throw new PortalApiError(appError.userMessage, enriched, appError);
     }
 
+    publishRequestTelemetry({
+      atIso: metaDone.atIso,
+      requestId,
+      source: "portal-api",
+      endpoint: url,
+      method: "POST",
+      payload: redactTelemetryPayload(args.payload),
+      status: resp.status,
+      ok: true,
+      responseSnippet: stringifyResponseSnippet(body),
+      curl: metaDone.curlExample,
+    });
     return { data: body as TResp, meta: metaDone };
   } catch (error: unknown) {
     if (error instanceof PortalApiError) throw error;
+    if (timeoutHandle) clearTimeout(timeoutHandle);
 
-    const msg = error instanceof Error ? error.message : "Request failed";
+    const msg = didTimeout
+      ? `Request timeout after ${requestTimeoutMs}ms`
+      : error instanceof Error
+        ? error.message
+        : String(error ?? "Request failed");
+    const appError = toAppError(error, {
+      requestId,
+      statusCode: resp?.status,
+      debugMessage: msg,
+    });
     const metaFail: PortalApiMeta = {
       ...metaStart,
       status: resp?.status,
       ok: false,
       response: body,
       error: msg,
-      message: msg,
+      message: appError.userMessage,
     };
-    throw new PortalApiError(msg, metaFail);
+    publishRequestTelemetry({
+      atIso: metaFail.atIso,
+      requestId,
+      source: "portal-api",
+      endpoint: url,
+      method: "POST",
+      payload: redactTelemetryPayload(args.payload),
+      status: resp?.status,
+      ok: false,
+      responseSnippet: stringifyResponseSnippet(body),
+      error: `${appError.userMessage} (support code: ${appError.correlationId})`,
+      curl: metaFail.curlExample,
+    });
+    throw new PortalApiError(appError.userMessage, metaFail, appError);
   }
 }
 
@@ -319,23 +404,30 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
     (typeof import.meta !== "undefined" && ENV.VITE_FUNCTIONS_BASE_URL
       ? String(ENV.VITE_FUNCTIONS_BASE_URL)
       : DEFAULT_BASE_URL);
+  const requestTimeoutMs = options.requestTimeoutMs ?? 10_000;
 
   return {
     baseUrl,
 
     async createBatch(args) {
-      return await callFn<CreateBatchRequest, CreateBatchResponse>(baseUrl, "createBatch", args);
+      return await callFn<CreateBatchRequest, CreateBatchResponse>(baseUrl, "createBatch", {
+        ...args,
+        requestTimeoutMs,
+      });
     },
 
     async pickedUpAndClose(args) {
-      return await callFn<PickedUpAndCloseRequest, PickedUpAndCloseResponse>(baseUrl, "pickedUpAndClose", args);
+      return await callFn<PickedUpAndCloseRequest, PickedUpAndCloseResponse>(baseUrl, "pickedUpAndClose", {
+        ...args,
+        requestTimeoutMs,
+      });
     },
 
     async createReservation(args) {
       return await callFn<CreateReservationRequest, CreateReservationResponse>(
         baseUrl,
         RESERVATION_CREATE_FN,
-        args
+        { ...args, requestTimeoutMs }
       );
     },
 
@@ -343,7 +435,7 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
       return await callFn<UpdateReservationRequest, UpdateReservationResponse>(
         baseUrl,
         RESERVATION_UPDATE_FN,
-        args
+        { ...args, requestTimeoutMs }
       );
     },
 
@@ -351,19 +443,22 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
       return await callFn<AssignReservationStationRequest, AssignReservationStationResponse>(
         baseUrl,
         RESERVATION_ASSIGN_STATION_FN,
-        args
+        { ...args, requestTimeoutMs }
       );
     },
 
     async continueJourney(args) {
-      return await callFn<ContinueJourneyRequest, ContinueJourneyResponse>(baseUrl, "continueJourney", args);
+      return await callFn<ContinueJourneyRequest, ContinueJourneyResponse>(baseUrl, "continueJourney", {
+        ...args,
+        requestTimeoutMs,
+      });
     },
 
     async listMaterialsProducts(args) {
       return await callFn<ListMaterialsProductsRequest, ListMaterialsProductsResponse>(
         baseUrl,
         "listMaterialsProducts",
-        args
+        { ...args, requestTimeoutMs }
       );
     },
 
@@ -371,7 +466,7 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
       return await callFn<CreateMaterialsCheckoutSessionRequest, CreateMaterialsCheckoutSessionResponse>(
         baseUrl,
         "createMaterialsCheckoutSession",
-        args
+        { ...args, requestTimeoutMs }
       );
     },
 
@@ -379,60 +474,87 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
       return await callFn<SeedMaterialsCatalogRequest, SeedMaterialsCatalogResponse>(
         baseUrl,
         "seedMaterialsCatalog",
-        args
+        { ...args, requestTimeoutMs }
       );
     },
 
     async listEvents(args) {
-      return await callFn<ListEventsRequest, ListEventsResponse>(baseUrl, "listEvents", args);
+      return await callFn<ListEventsRequest, ListEventsResponse>(baseUrl, "listEvents", {
+        ...args,
+        requestTimeoutMs,
+      });
     },
 
     async listEventSignups(args) {
-      return await callFn<ListEventSignupsRequest, ListEventSignupsResponse>(baseUrl, "listEventSignups", args);
+      return await callFn<ListEventSignupsRequest, ListEventSignupsResponse>(baseUrl, "listEventSignups", {
+        ...args,
+        requestTimeoutMs,
+      });
     },
 
     async listBillingSummary(args) {
       return await callFn<ListBillingSummaryRequest, BillingSummaryResponse>(
         baseUrl,
         "listBillingSummary",
-        args
+        { ...args, requestTimeoutMs }
       );
     },
 
     async getEvent(args) {
 
-      return await callFn<GetEventRequest, GetEventResponse>(baseUrl, "getEvent", args);
+      return await callFn<GetEventRequest, GetEventResponse>(baseUrl, "getEvent", {
+        ...args,
+        requestTimeoutMs,
+      });
     },
 
     async createEvent(args) {
-      return await callFn<CreateEventRequest, CreateEventResponse>(baseUrl, "createEvent", args);
+      return await callFn<CreateEventRequest, CreateEventResponse>(baseUrl, "createEvent", {
+        ...args,
+        requestTimeoutMs,
+      });
     },
 
     async publishEvent(args) {
-      return await callFn<PublishEventRequest, PublishEventResponse>(baseUrl, "publishEvent", args);
+      return await callFn<PublishEventRequest, PublishEventResponse>(baseUrl, "publishEvent", {
+        ...args,
+        requestTimeoutMs,
+      });
     },
 
     async signupForEvent(args) {
-      return await callFn<SignupForEventRequest, SignupForEventResponse>(baseUrl, "signupForEvent", args);
+      return await callFn<SignupForEventRequest, SignupForEventResponse>(baseUrl, "signupForEvent", {
+        ...args,
+        requestTimeoutMs,
+      });
     },
 
     async cancelEventSignup(args) {
-      return await callFn<CancelEventSignupRequest, CancelEventSignupResponse>(baseUrl, "cancelEventSignup", args);
+      return await callFn<CancelEventSignupRequest, CancelEventSignupResponse>(baseUrl, "cancelEventSignup", {
+        ...args,
+        requestTimeoutMs,
+      });
     },
 
     async claimEventOffer(args) {
-      return await callFn<ClaimEventOfferRequest, ClaimEventOfferResponse>(baseUrl, "claimEventOffer", args);
+      return await callFn<ClaimEventOfferRequest, ClaimEventOfferResponse>(baseUrl, "claimEventOffer", {
+        ...args,
+        requestTimeoutMs,
+      });
     },
 
     async checkInEvent(args) {
-      return await callFn<CheckInEventRequest, CheckInEventResponse>(baseUrl, "checkInEvent", args);
+      return await callFn<CheckInEventRequest, CheckInEventResponse>(baseUrl, "checkInEvent", {
+        ...args,
+        requestTimeoutMs,
+      });
     },
 
     async createEventCheckoutSession(args) {
       return await callFn<CreateEventCheckoutSessionRequest, CreateEventCheckoutSessionResponse>(
         baseUrl,
         "createEventCheckoutSession",
-        args
+        { ...args, requestTimeoutMs }
       );
     },
   };

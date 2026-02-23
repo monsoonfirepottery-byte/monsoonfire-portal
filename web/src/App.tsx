@@ -43,6 +43,7 @@ import { usePrefersReducedMotion } from "./hooks/usePrefersReducedMotion";
 import { UiSettingsProvider } from "./context/UiSettingsContext";
 import { PROFILE_DEFAULT_AVATAR_URL } from "./lib/profileAvatars";
 import { setTelemetryView, trackedGetDoc, trackedGetDocs } from "./lib/firestoreTelemetry";
+import { safeReadBoolean, safeStorageGetItem, safeStorageRemoveItem, safeStorageSetItem } from "./lib/safeStorage";
 import { parseStaffRoleFromClaims } from "./auth/staffRole";
 import "./App.css";
 
@@ -344,6 +345,34 @@ const WELCOME_MESSAGE_SUBJECT = "Welcome to Monsoon Fire Support";
 const WELCOME_NOTIFICATION_TITLE = "Welcome to your Monsoon Fire portal";
 
 const NAV_SECTION_KEYS: NavSectionKey[] = ["kilnRentals", "studioResources", "community"];
+
+function readLocalItem(key: string): string | null {
+  return safeStorageGetItem("localStorage", key);
+}
+
+function writeLocalItem(key: string, value: string): void {
+  safeStorageSetItem("localStorage", key, value);
+}
+
+function clearLocalItem(key: string): void {
+  safeStorageRemoveItem("localStorage", key);
+}
+
+function readSessionItem(key: string): string | null {
+  return safeStorageGetItem("sessionStorage", key);
+}
+
+function writeSessionItem(key: string, value: string): void {
+  safeStorageSetItem("sessionStorage", key, value);
+}
+
+function clearSessionItem(key: string): void {
+  safeStorageRemoveItem("sessionStorage", key);
+}
+
+function readLocalBoolean(key: string, fallback = false): boolean {
+  return safeReadBoolean("localStorage", key, fallback);
+}
 
 const isNavKey = (value: string): value is NavKey =>
   Object.prototype.hasOwnProperty.call(NAV_LABELS, value);
@@ -671,25 +700,25 @@ export default function App() {
     if (typeof window === "undefined") return "dashboard";
     const path = window.location.pathname;
     if (path === "/glazes" || path === "/community/glazes") return "glazes";
-    const saved = localStorage.getItem(LOCAL_NAV_KEY);
+    const saved = readLocalItem(LOCAL_NAV_KEY);
     if (saved && isNavKey(saved)) return saved;
     return "dashboard";
   });
   const [navCollapsed, setNavCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
-    return localStorage.getItem(LOCAL_NAV_COLLAPSED_KEY) === "1";
+    return readLocalBoolean(LOCAL_NAV_COLLAPSED_KEY);
   });
   const [openSection, setOpenSection] = useState<NavSectionKey | null>(() => {
     if (typeof window === "undefined") return NAV_SECTIONS[0]?.key ?? null;
-    const saved = localStorage.getItem(LOCAL_NAV_SECTION_KEY);
+    const saved = readLocalItem(LOCAL_NAV_SECTION_KEY);
     if (saved && isNavSectionKey(saved)) return saved;
-    const savedNav = localStorage.getItem(LOCAL_NAV_KEY);
+    const savedNav = readLocalItem(LOCAL_NAV_KEY);
     if (savedNav && isNavKey(savedNav)) return getSectionForNav(savedNav);
     return NAV_SECTIONS[0]?.key ?? null;
   });
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     if (typeof window === "undefined") return SIDEBAR_DEFAULT_WIDTH;
-    const raw = localStorage.getItem(LOCAL_NAV_WIDTH_KEY);
+    const raw = readLocalItem(LOCAL_NAV_WIDTH_KEY);
     const parsed = Number.parseInt(raw ?? "", 10);
     if (Number.isFinite(parsed)) {
       return clampSidebarWidth(parsed, window.innerWidth);
@@ -836,7 +865,7 @@ export default function App() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    localStorage.setItem(LOCAL_NAV_WIDTH_KEY, String(clampedSidebarWidth));
+    writeLocalItem(LOCAL_NAV_WIDTH_KEY, String(clampedSidebarWidth));
   }, [clampedSidebarWidth]);
 
   useEffect(() => {
@@ -930,17 +959,17 @@ export default function App() {
 
   useEffect(() => {
     if (!DEV_ADMIN_TOKEN_ENABLED || !DEV_ADMIN_TOKEN_PERSIST_ENABLED) {
-      sessionStorage.removeItem(SESSION_ADMIN_TOKEN_KEY);
+      clearSessionItem(SESSION_ADMIN_TOKEN_KEY);
       return;
     }
-    const saved = sessionStorage.getItem(SESSION_ADMIN_TOKEN_KEY);
+    const saved = readSessionItem(SESSION_ADMIN_TOKEN_KEY);
     if (saved) {
       setDevAdminToken(saved);
     }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_NAV_KEY, nav);
+    writeLocalItem(LOCAL_NAV_KEY, nav);
     if (typeof window === "undefined") return;
     if (nav === "glazes") {
       window.history.replaceState({}, "", "/glazes");
@@ -950,26 +979,26 @@ export default function App() {
   }, [nav]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_NAV_COLLAPSED_KEY, navCollapsed ? "1" : "0");
+    writeLocalItem(LOCAL_NAV_COLLAPSED_KEY, navCollapsed ? "1" : "0");
   }, [navCollapsed]);
 
   useEffect(() => {
     if (!openSection) {
-      localStorage.removeItem(LOCAL_NAV_SECTION_KEY);
+      clearLocalItem(LOCAL_NAV_SECTION_KEY);
       return;
     }
-    localStorage.setItem(LOCAL_NAV_SECTION_KEY, openSection);
+    writeLocalItem(LOCAL_NAV_SECTION_KEY, openSection);
   }, [openSection]);
 
   useEffect(() => {
     if (!DEV_ADMIN_TOKEN_ENABLED || !DEV_ADMIN_TOKEN_PERSIST_ENABLED) {
-      sessionStorage.removeItem(SESSION_ADMIN_TOKEN_KEY);
+      clearSessionItem(SESSION_ADMIN_TOKEN_KEY);
       return;
     }
     if (devAdminToken) {
-      sessionStorage.setItem(SESSION_ADMIN_TOKEN_KEY, devAdminToken);
+      writeSessionItem(SESSION_ADMIN_TOKEN_KEY, devAdminToken);
     } else {
-      sessionStorage.removeItem(SESSION_ADMIN_TOKEN_KEY);
+      clearSessionItem(SESSION_ADMIN_TOKEN_KEY);
     }
   }, [devAdminToken]);
 
@@ -981,11 +1010,11 @@ export default function App() {
       if (typeof window !== "undefined") {
         const link = window.location.href;
         if (isSignInWithEmailLink(authClient, link)) {
-          const storedEmail = localStorage.getItem(EMAIL_LINK_KEY);
+          const storedEmail = readLocalItem(EMAIL_LINK_KEY);
           if (storedEmail) {
             try {
               await signInWithEmailLink(authClient, storedEmail, link);
-              localStorage.removeItem(EMAIL_LINK_KEY);
+              clearLocalItem(EMAIL_LINK_KEY);
               if (!cancelled) setEmailLinkPending(false);
             } catch (_err: unknown) {
               if (!cancelled) {
@@ -1189,7 +1218,7 @@ export default function App() {
     if (!("serviceWorker" in navigator)) return;
     const resetKey = "mf-dev-message-sw-reset";
     void (async () => {
-      const hadReset = window.localStorage.getItem(resetKey) === "1";
+      const hadReset = readLocalBoolean(resetKey);
       let didCleanup = false;
       try {
         const registrations = await navigator.serviceWorker.getRegistrations();
@@ -1215,10 +1244,10 @@ export default function App() {
       }
 
       if (didCleanup && !hadReset) {
-        window.localStorage.setItem(resetKey, "1");
+        writeLocalItem(resetKey, "1");
         window.location.reload();
       } else if (hadReset) {
-        window.localStorage.removeItem(resetKey);
+        clearLocalItem(resetKey);
       }
     })();
   }, []);
@@ -1432,7 +1461,7 @@ export default function App() {
         handleCodeInApp: true,
       };
       await sendSignInLinkToEmail(authClient, trimmedEmail, actionCodeSettings);
-      localStorage.setItem(EMAIL_LINK_KEY, trimmedEmail);
+      writeLocalItem(EMAIL_LINK_KEY, trimmedEmail);
       setAuthStatus("Check your email for your sign-in link.");
     } catch (error: unknown) {
       setAuthStatus(getErrorMessage(error) || "Unable to send sign-in link.");
@@ -1454,7 +1483,7 @@ export default function App() {
     });
     try {
       const result = await signInWithEmailLink(authClient, trimmedEmail, window.location.href);
-      localStorage.removeItem(EMAIL_LINK_KEY);
+      clearLocalItem(EMAIL_LINK_KEY);
       setEmailLinkPending(false);
       if (result?.user) {
         track("auth_sign_in_success", {

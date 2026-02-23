@@ -28,6 +28,7 @@ import { toVoidHandler } from "../utils/toVoidHandler";
 import { shortId, track } from "../lib/analytics";
 import RevealCard from "../components/RevealCard";
 import { useUiSettings } from "../context/UiSettingsContext";
+import { safeStorageGetItem, safeStorageRemoveItem } from "../lib/safeStorage";
 import "./ReservationsView.css";
 
 type StaffUserOption = {
@@ -499,7 +500,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const raw = sessionStorage.getItem(CHECKIN_PREFILL_KEY);
+    const raw = safeStorageGetItem("sessionStorage", CHECKIN_PREFILL_KEY);
     if (!raw) return;
     try {
       const parsed = JSON.parse(raw) as {
@@ -519,7 +520,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     } catch {
       setPrefillNote(null);
     } finally {
-      sessionStorage.removeItem(CHECKIN_PREFILL_KEY);
+      safeStorageRemoveItem("sessionStorage", CHECKIN_PREFILL_KEY);
     }
   }, []);
 

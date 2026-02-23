@@ -38,7 +38,12 @@
         if (!isLocalhost || !("serviceWorker" in navigator)) return;
 
         const resetKey = "mf-dev-message-sw-reset";
-        const hadReset = window.localStorage.getItem(resetKey) === "1";
+        let hadReset = false;
+        try {
+          hadReset = window.localStorage?.getItem?.(resetKey) === "1";
+        } catch {
+          hadReset = false;
+        }
         void (async () => {
           let didCleanup = false;
           try {
@@ -63,12 +68,20 @@
           }
 
           if (didCleanup && !hadReset) {
-            window.localStorage.setItem(resetKey, "1");
+            try {
+              window.localStorage?.setItem?.(resetKey, "1");
+            } catch {
+              // Ignore localStorage persistence failures in restricted environments.
+            }
             window.location.reload();
           }
 
           if (hadReset) {
-            window.localStorage.removeItem(resetKey);
+            try {
+              window.localStorage?.removeItem?.(resetKey);
+            } catch {
+              // Ignore localStorage cleanup failures in restricted environments.
+            }
           }
         })();
       })();

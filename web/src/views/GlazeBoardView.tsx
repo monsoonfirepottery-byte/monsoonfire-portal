@@ -36,6 +36,7 @@ import {
   trackedSetDoc,
   trackedUpdateDoc,
 } from "../lib/firestoreTelemetry";
+import { safeStorageGetItem, safeStorageSetItem } from "../lib/safeStorage";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./GlazeBoardView.css";
 
@@ -713,7 +714,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const raw = window.localStorage.getItem(FAVORITES_KEY);
+      const raw = safeStorageGetItem("localStorage", FAVORITES_KEY);
       if (!raw) return;
       const parsed: unknown = JSON.parse(raw);
       if (Array.isArray(parsed)) {
@@ -726,7 +727,7 @@ export default function GlazeBoardView({ user, isStaff }: Props) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(favoriteComboIds));
+    safeStorageSetItem("localStorage", FAVORITES_KEY, JSON.stringify(favoriteComboIds));
   }, [favoriteComboIds]);
 
   const selectedTileTags = useMemo(() => {

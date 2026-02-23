@@ -36,3 +36,238 @@ img {
   max-width: 100%;
   display: block;
 }
+
+.runtime-hardening-shell {
+  min-height: 100vh;
+}
+
+.error-banner {
+  margin: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(180, 79, 53, 0.45);
+  background: rgba(180, 79, 53, 0.1);
+  color: var(--text, #1b1a17);
+}
+
+.error-banner-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.error-banner-copy {
+  margin-top: 6px;
+  font-size: 14px;
+}
+
+.error-banner-support {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.error-banner-actions {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.error-banner-btn {
+  border: 1px solid rgba(180, 79, 53, 0.5);
+  background: rgba(255, 255, 255, 0.72);
+  color: inherit;
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.error-banner-dismiss {
+  border-color: transparent;
+  background: transparent;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.error-banner-debug {
+  margin-top: 10px;
+}
+
+.error-banner-debug summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.error-banner-debug pre {
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  border: 1px solid var(--border, rgba(27, 26, 23, 0.18));
+  background: var(--surface-2, rgba(255, 255, 255, 0.7));
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.runtime-hardening-tools {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 3000;
+  width: min(360px, calc(100vw - 28px));
+  display: grid;
+  gap: 8px;
+}
+
+.runtime-hardening-toggle {
+  justify-self: end;
+  border: 1px solid var(--border, rgba(27, 26, 23, 0.2));
+  background: rgba(255, 255, 255, 0.95);
+  color: inherit;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(27, 26, 23, 0.14);
+}
+
+.runtime-request-panel {
+  border: 1px solid var(--border, rgba(27, 26, 23, 0.2));
+  background: rgba(255, 255, 255, 0.97);
+  border-radius: 12px;
+  box-shadow: 0 10px 22px rgba(27, 26, 23, 0.16);
+  overflow: hidden;
+}
+
+.runtime-request-panel summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 10px 12px;
+  background: rgba(180, 79, 53, 0.08);
+}
+
+.runtime-request-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.runtime-request-body {
+  padding: 10px 12px;
+  max-height: 52vh;
+  overflow: auto;
+}
+
+.runtime-request-grid {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 6px 10px;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.runtime-request-subtitle {
+  margin-top: 8px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.runtime-request-body pre {
+  margin: 0;
+  padding: 8px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(27, 26, 23, 0.2));
+  background: var(--surface-2, rgba(255, 255, 255, 0.7));
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.runtime-request-actions {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.runtime-request-actions button {
+  border: 1px solid var(--border, rgba(27, 26, 23, 0.2));
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 8px;
+  padding: 7px 9px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.runtime-request-copy-status {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text, #1b1a17);
+}
+
+.runtime-request-empty {
+  padding: 12px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.root-error-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: var(--bg, #f7f1e8);
+}
+
+.root-error-card {
+  width: min(620px, 100%);
+  border-radius: 14px;
+  padding: 16px;
+  border: 1px solid var(--border, rgba(27, 26, 23, 0.2));
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.root-error-card h1 {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.root-error-actions {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.root-error-btn {
+  border: 1px solid rgba(180, 79, 53, 0.4);
+  background: rgba(180, 79, 53, 0.12);
+  color: var(--text, #1b1a17);
+  border-radius: 9px;
+  padding: 8px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.root-error-btn.secondary {
+  border-color: var(--border, rgba(27, 26, 23, 0.2));
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.root-error-meta {
+  margin-bottom: 0;
+  font-size: 12px;
+}
+
+.root-mount-fallback {
+  margin: 24px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(180, 79, 53, 0.4);
+  background: rgba(180, 79, 53, 0.1);
+}

@@ -11,6 +11,7 @@ import { createFunctionsClient } from "../api/functionsClient";
 import { db } from "../firebase";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import { formatCents } from "../utils/format";
+import { safeStorageGetItem, safeStorageSetItem } from "../lib/safeStorage";
 import {
   checkoutErrorMessage,
   isConnectivityError,
@@ -126,7 +127,7 @@ function isAuthTokenError(error: unknown): boolean {
 
 function readCachedCatalog(): CachedCatalog | null {
   try {
-    const raw = localStorage.getItem(CATALOG_CACHE_KEY);
+    const raw = safeStorageGetItem("localStorage", CATALOG_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CachedCatalog;
     if (!parsed?.cachedAt || !Array.isArray(parsed.products)) return null;
@@ -143,7 +144,7 @@ function writeCachedCatalog(products: MaterialProduct[]) {
     products,
   };
   try {
-    localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify(payload));
+    safeStorageSetItem("localStorage", CATALOG_CACHE_KEY, JSON.stringify(payload));
   } catch {
     // ignore cache write failures
   }

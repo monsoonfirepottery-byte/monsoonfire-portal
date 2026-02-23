@@ -3,6 +3,7 @@ import {
   getFirestoreTelemetrySnapshot,
   resetFirestoreTelemetry,
 } from "../lib/firestoreTelemetry";
+import { safeStorageGetItem, safeStorageSetItem } from "../lib/safeStorage";
 
 type Props = {
   enabled: boolean;
@@ -14,11 +15,7 @@ const COLLAPSED_KEY = "mf_firestore_telemetry_collapsed";
 
 export default function FirestoreTelemetryPanel({ enabled }: Props) {
   const [collapsed, setCollapsed] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(COLLAPSED_KEY) === "1";
-    } catch {
-      return false;
-    }
+    return safeStorageGetItem("localStorage", COLLAPSED_KEY) === "1";
   });
   const [snapshot, setSnapshot] = useState<Snapshot>(() => getFirestoreTelemetrySnapshot());
 
@@ -31,11 +28,7 @@ export default function FirestoreTelemetryPanel({ enabled }: Props) {
   }, [enabled]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(COLLAPSED_KEY, collapsed ? "1" : "0");
-    } catch {
-      // Ignore storage failures.
-    }
+    safeStorageSetItem("localStorage", COLLAPSED_KEY, collapsed ? "1" : "0");
   }, [collapsed]);
 
   const heaviestViews = useMemo(

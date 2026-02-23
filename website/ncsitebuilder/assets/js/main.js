@@ -3,6 +3,8 @@
     theme: "mf:websiteTheme",
     accessibility: "mf:websiteAccessibility",
   };
+  const RUNTIME_BANNER_HOST_ID = "mf-runtime-banner-host";
+  const RUNTIME_BANNER_STYLE_ID = "mf-runtime-banner-style";
   const legacyPortalHost = "monsoonfire.kilnfire.com";
   const portalHost = "portal.monsoonfire.com";
   const root = document.documentElement;
@@ -186,6 +188,7 @@
   ensureLandmarks();
   ensureAccessibilityStatementLink();
   normalizePortalLinks();
+  setupRuntimeHardeningBanner();
   syncCurrentNavState();
   setupMenuToggle();
   setupHeaderScrollState();
@@ -713,6 +716,166 @@
     const pathname = extractPathname(href);
     if (!pathname) return "";
     return stripPreviewPrefix(pathname).toLowerCase();
+  }
+
+  function setupRuntimeHardeningBanner() {
+    if (!body) return;
+    const host = ensureRuntimeBannerHost(body);
+    ensureRuntimeBannerStyles();
+    let offlineVisible = false;
+    let runtimeDismissed = false;
+    let clearTimer = null;
+
+    const createSupportCode = () => {
+      const stamp = Date.now().toString(36);
+      const random = Math.random().toString(36).slice(2, 8);
+      return `web-${stamp}-${random}`;
+    };
+
+    const renderBanner = (kind, message, details) => {
+      if (!host) return;
+      host.innerHTML = "";
+
+      const banner = document.createElement("section");
+      banner.className = `site-runtime-banner ${kind === "error" ? "is-error" : "is-offline"}`;
+      banner.setAttribute("role", "status");
+      banner.setAttribute("aria-live", "polite");
+
+      const title = document.createElement("strong");
+      title.className = "site-runtime-title";
+      title.textContent =
+        kind === "error"
+          ? "Something went wrong while loading this page."
+          : "You appear to be offline.";
+      banner.appendChild(title);
+
+      const copy = document.createElement("p");
+      copy.className = "site-runtime-copy";
+      copy.textContent = message;
+      banner.appendChild(copy);
+
+      const support = document.createElement("p");
+      support.className = "site-runtime-support";
+      support.textContent = `Support code: ${createSupportCode()}`;
+      banner.appendChild(support);
+
+      const actions = document.createElement("div");
+      actions.className = "site-runtime-actions";
+
+      const retryButton = document.createElement("button");
+      retryButton.type = "button";
+      retryButton.textContent = "Try again";
+      retryButton.addEventListener("click", () => {
+        window.location.reload();
+      });
+      actions.appendChild(retryButton);
+
+      if (kind === "error") {
+        const dismissButton = document.createElement("button");
+        dismissButton.type = "button";
+        dismissButton.className = "site-runtime-dismiss";
+        dismissButton.textContent = "Dismiss";
+        dismissButton.addEventListener("click", () => {
+          runtimeDismissed = true;
+          host.innerHTML = "";
+        });
+        actions.appendChild(dismissButton);
+      }
+
+      banner.appendChild(actions);
+
+      if (details) {
+        const info = document.createElement("details");
+        const summary = document.createElement("summary");
+        summary.textContent = "Technical details";
+        const pre = document.createElement("pre");
+        pre.textContent = String(details);
+        info.appendChild(summary);
+        info.appendChild(pre);
+        banner.appendChild(info);
+      }
+
+      host.appendChild(banner);
+    };
+
+    const showOfflineBanner = () => {
+      offlineVisible = true;
+      renderBanner(
+        "offline",
+        "Reconnect to continue browsing. Existing page content is still available.",
+        null
+      );
+    };
+
+    const clearOfflineBanner = () => {
+      offlineVisible = false;
+      host.innerHTML = "";
+    };
+
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      showOfflineBanner();
+    }
+
+    window.addEventListener("online", () => {
+      clearOfflineBanner();
+    });
+
+    window.addEventListener("offline", () => {
+      showOfflineBanner();
+    });
+
+    window.addEventListener("error", (event) => {
+      if (offlineVisible || runtimeDismissed) return;
+      renderBanner(
+        "error",
+        "Please try again. If it keeps happening, contact support with this code.",
+        event?.message || "Unhandled runtime error"
+      );
+      if (clearTimer) window.clearTimeout(clearTimer);
+      clearTimer = window.setTimeout(() => {
+        if (!offlineVisible) host.innerHTML = "";
+      }, 12000);
+    });
+
+    window.addEventListener("unhandledrejection", (event) => {
+      if (offlineVisible || runtimeDismissed) return;
+      const reason =
+        event?.reason instanceof Error
+          ? event.reason.message
+          : String(event?.reason ?? "Promise rejection");
+      renderBanner("error", "A background request failed. Try again in a moment.", reason);
+    });
+  }
+
+  function ensureRuntimeBannerHost(rootBody) {
+    let host = document.getElementById(RUNTIME_BANNER_HOST_ID);
+    if (host) return host;
+    host = document.createElement("div");
+    host.id = RUNTIME_BANNER_HOST_ID;
+    host.className = "site-runtime-banner-host";
+    rootBody.insertBefore(host, rootBody.firstChild);
+    return host;
+  }
+
+  function ensureRuntimeBannerStyles() {
+    if (document.getElementById(RUNTIME_BANNER_STYLE_ID)) return;
+    const style = document.createElement("style");
+    style.id = RUNTIME_BANNER_STYLE_ID;
+    style.textContent = `
+      .site-runtime-banner-host{position:sticky;top:0;z-index:160;display:grid;gap:8px;padding:8px 12px 0}
+      .site-runtime-banner{border-radius:12px;border:1px solid var(--border);background:var(--surface,#fff);color:var(--ink-900,#1b1a17);box-shadow:var(--shadow-1);padding:10px 12px}
+      .site-runtime-banner.is-offline{border-color:rgba(180,79,53,.45);background:rgba(180,79,53,.1)}
+      .site-runtime-banner.is-error{border-color:rgba(183,64,42,.54);background:rgba(183,64,42,.12)}
+      .site-runtime-title{display:block;font-family:var(--font-ui,inherit);font-size:var(--text-sm,14px)}
+      .site-runtime-copy{margin:5px 0 0;font-size:var(--text-sm,14px)}
+      .site-runtime-support{margin:6px 0 0;font-size:var(--text-xs,12px)}
+      .site-runtime-actions{margin-top:8px;display:flex;gap:8px;flex-wrap:wrap}
+      .site-runtime-actions button{min-height:36px;border:1px solid var(--border);border-radius:9px;background:rgba(255,255,255,.85);color:inherit;font-family:var(--font-ui,inherit);font-size:var(--text-xs,12px);padding:6px 10px;cursor:pointer}
+      .site-runtime-dismiss{background:transparent;text-decoration:underline}
+      .site-runtime-banner details{margin-top:8px}
+      .site-runtime-banner pre{margin:6px 0 0;border:1px solid var(--border);border-radius:9px;background:rgba(255,255,255,.72);padding:8px;max-height:120px;overflow:auto;font-size:var(--text-xs,12px);white-space:pre-wrap;word-break:break-word}
+    `;
+    document.head.appendChild(style);
   }
 
   function safeRead(key) {

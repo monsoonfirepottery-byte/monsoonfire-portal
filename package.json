@@ -47,6 +47,7 @@
     "test:unit": "npm run test:all",
     "test:full": "npm run test:automation",
     "test:all": "npm run test:functions && npm run test:studio-brain && npm run test:web",
+    "hardening:check": "npm --prefix web run test:run -- src/errors/appError.test.ts src/lib/requestTelemetry.test.ts src/lib/safeStorage.test.ts src/api/functionsClient.test.ts",
     "test:automation:unit": "npm run test:all",
     "studio-brain:auth-probe": "node ./scripts/test-studio-brain-auth.mjs",
     "test:automation:gateway": "npm run functions:smoke:cors",

@@ -20,6 +20,8 @@ import { shortId, track } from "../lib/analytics";
 import RevealCard from "../components/RevealCard";
 import { useUiSettings } from "../context/UiSettingsContext";
 import { trackedAddDoc, trackedGetDocs, trackedUpdateDoc } from "../lib/firestoreTelemetry";
+import { safeStorageSetItem } from "../lib/safeStorage";
+import { requestErrorMessage } from "../utils/userFacingErrors";
 
 const PIECES_PAGE_SIZE = 25;
 const BATCHES_PAGE_SIZE = 5;
@@ -731,20 +733,29 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
       });
       return newId ?? batchId;
     } catch (error: unknown) {
+      const message = requestErrorMessage(error);
       if (error instanceof PortalApiError) {
         setMeta(error.meta);
-        setStatus(`Continue journey failed: ${error.message}`);
+        if (error.appError?.kind === "auth") {
+          setStatus(`Continue journey failed: Session expired. Please sign in again, then retry. ${message}`);
+        } else {
+          setStatus(`Continue journey failed: ${message}`);
+        }
         track("continue_journey_error", {
           uid: shortId(user.uid),
           batchId: shortId(batchId),
-          message: error.message.slice(0, 160),
+          message: message.slice(0, 160),
         });
       } else {
-        setStatus(`Continue journey failed: ${getErrorMessage(error)}`);
+        if (error instanceof Error && error.message.toLowerCase().includes("auth")) {
+          setStatus(`Continue journey failed: Session expired. Please sign in again, then retry. ${message}`);
+        } else {
+          setStatus(`Continue journey failed: ${message}`);
+        }
         track("continue_journey_error", {
           uid: shortId(user.uid),
           batchId: shortId(batchId),
-          message: getErrorMessage(error).slice(0, 160),
+          message: message.slice(0, 160),
         });
       }
       return null;
@@ -764,7 +775,8 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
     if (!nextBatchId) return;
 
     try {
-      sessionStorage.setItem(
+      safeStorageSetItem(
+        "sessionStorage",
         CHECKIN_PREFILL_KEY,
         JSON.stringify({
           linkedBatchId: nextBatchId,
@@ -1054,8 +1066,11 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
                       <button
                         className="btn btn-ghost"
                         onClick={toVoidHandler(() => handleSendToNextFiring(selectedPiece))}
+                        disabled={isBusy(`continue:${selectedPiece.batchId}`)}
                       >
-                        Send to next firing
+                        {isBusy(`continue:${selectedPiece.batchId}`)
+                          ? "Preparing next firing..."
+                          : "Send to next firing"}
                       </button>
                     ) : null}
                   </div>

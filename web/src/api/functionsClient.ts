@@ -13,6 +13,12 @@
  * - A separate helper can generate a real curl string if needed.
  */
 import { makeRequestId as createRequestId } from "./requestId";
+import { toAppError } from "../errors/appError";
+import {
+  publishRequestTelemetry,
+  redactTelemetryPayload,
+  stringifyResponseSnippet,
+} from "../lib/requestTelemetry";
 
 export type LastRequest = {
   atIso: string;
@@ -20,6 +26,7 @@ export type LastRequest = {
 
   fn: string;
   url: string;
+  method: "POST";
   payload: unknown;
 
   status?: number;
@@ -35,6 +42,7 @@ export type FunctionsClientConfig = {
   baseUrl: string;
   getIdToken: () => Promise<string>;
   getAdminToken?: () => string | undefined;
+  requestTimeoutMs?: number;
 
   onLastRequest?: (req: LastRequest) => void;
 
@@ -120,6 +128,7 @@ export type FunctionsClient = {
 export function createFunctionsClient(config: FunctionsClientConfig): FunctionsClient {
   let lastReq: LastRequest | null = null;
   let lastIdToken: string | null = null;
+  const requestTimeoutMs = config.requestTimeoutMs ?? 10_000;
 
   const redactDefault = config.redactCurlByDefault ?? true;
 
@@ -132,16 +141,27 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
     const base = config.baseUrl.replace(/\/+$/, "");
     const path = fn.replace(/^\/+/, "");
     const url = `${base}/${path}`;
+    const normalizedPayload = payload ?? {};
 
     const req: LastRequest = {
       atIso: new Date().toISOString(),
       requestId: makeRequestId(),
       fn: path,
       url,
-      payload: payload ?? {},
-      curlExample: buildCurlRedacted(url, payload ?? {}),
+      method: "POST",
+      payload: normalizedPayload,
+      curlExample: buildCurlRedacted(url, normalizedPayload),
     };
     publish(req);
+    publishRequestTelemetry({
+      atIso: req.atIso,
+      requestId: req.requestId,
+      source: "functions-client",
+      endpoint: req.url,
+      method: req.method,
+      payload: redactTelemetryPayload(req.payload),
+      curl: req.curlExample,
+    });
 
     const idToken = await config.getIdToken();
     lastIdToken = idToken;
@@ -153,11 +173,56 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
     };
     if (adminToken && adminToken.trim()) headers["x-admin-token"] = adminToken.trim();
 
-    const resp = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload ?? {}),
-    });
+    let resp: Response;
+    let didTimeout = false;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+    try {
+      const abortController = new AbortController();
+      timeoutHandle = setTimeout(() => {
+        didTimeout = true;
+        abortController.abort("request-timeout");
+      }, requestTimeoutMs);
+
+      resp = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(normalizedPayload),
+        signal: abortController.signal,
+      });
+      clearTimeout(timeoutHandle);
+    } catch (error: unknown) {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      let debugMessage = error instanceof Error ? error.message : String(error);
+      if (didTimeout) {
+        debugMessage = `Request timeout after ${requestTimeoutMs}ms`;
+      }
+      const appError = toAppError(error, {
+        requestId: req.requestId,
+        kind: "network",
+        debugMessage,
+      });
+
+      const failed: LastRequest = {
+        ...req,
+        ok: false,
+        error: appError.debugMessage,
+      };
+      publish(failed);
+      publishRequestTelemetry({
+        atIso: failed.atIso,
+        requestId: failed.requestId,
+        source: "functions-client",
+        endpoint: failed.url,
+        method: failed.method,
+        payload: redactTelemetryPayload(failed.payload),
+        ok: false,
+        error: `${appError.userMessage} (support code: ${appError.correlationId})`,
+        curl: failed.curlExample,
+      });
+      throw appError;
+    }
+    if (timeoutHandle) clearTimeout(timeoutHandle);
 
     const body = await readResponseBody(resp);
 
@@ -166,7 +231,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
       status: resp.status,
       ok: resp.ok,
       response: body,
-      curlExample: buildCurlRedacted(url, payload ?? {}),
+      curlExample: buildCurlRedacted(url, normalizedPayload),
     };
 
     if (!resp.ok) {
@@ -179,12 +244,43 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
         (typeof messageFromBody?.error === "string" && messageFromBody.error) ||
         (typeof body === "string" ? body : `HTTP ${resp.status}`);
 
-      updated.error = String(msg);
+      const appError = toAppError(body, {
+        requestId: req.requestId,
+        statusCode: resp.status,
+        debugMessage: String(msg),
+      });
+
+      updated.error = appError.debugMessage;
       publish(updated);
-      throw new Error(String(msg));
+      publishRequestTelemetry({
+        atIso: updated.atIso,
+        requestId: updated.requestId,
+        source: "functions-client",
+        endpoint: updated.url,
+        method: updated.method,
+        payload: redactTelemetryPayload(updated.payload),
+        status: updated.status,
+        ok: false,
+        responseSnippet: stringifyResponseSnippet(body),
+        error: `${appError.userMessage} (support code: ${appError.correlationId})`,
+        curl: updated.curlExample,
+      });
+      throw appError;
     }
 
     publish(updated);
+    publishRequestTelemetry({
+      atIso: updated.atIso,
+      requestId: updated.requestId,
+      source: "functions-client",
+      endpoint: updated.url,
+      method: updated.method,
+      payload: redactTelemetryPayload(updated.payload),
+      status: updated.status,
+      ok: true,
+      responseSnippet: stringifyResponseSnippet(body),
+      curl: updated.curlExample,
+    });
     return body as TResp;
   }
 

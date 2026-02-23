@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { User } from "firebase/auth";
 import { createFunctionsClient } from "../api/functionsClient";
+import { safeStorageGetItem, safeStorageSetItem } from "../lib/safeStorage";
 import "./CommunityView.css";
 
 type ValueChip = {
@@ -347,7 +348,7 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
   const [hiddenCards, setHiddenCards] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try {
-      const raw = window.localStorage.getItem(HIDDEN_CARDS_KEY);
+      const raw = safeStorageGetItem("localStorage", HIDDEN_CARDS_KEY);
       if (!raw) return [];
       const parsed: unknown = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
@@ -460,7 +461,7 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
   const persistHidden = (next: string[]) => {
     setHiddenCards(next);
     try {
-      window.localStorage.setItem(HIDDEN_CARDS_KEY, JSON.stringify(next));
+      safeStorageSetItem("localStorage", HIDDEN_CARDS_KEY, JSON.stringify(next));
     } catch {
       // ignore local storage failures
     }

@@ -1,3 +1,4 @@
+import { safeStorageGetItem, safeStorageSetItem } from "../lib/safeStorage";
 const HANDLER_LOG_KEY = "mf_handler_error_log_v1";
 const MAX_ENTRIES = 100;
 
@@ -13,10 +14,9 @@ function getErrorMessage(error: unknown): string {
 }
 
 function readEntries(): HandlerLogEntry[] {
-  if (typeof window === "undefined") return [];
+  const raw = safeStorageGetItem("localStorage", HANDLER_LOG_KEY);
+  if (!raw) return [];
   try {
-    const raw = window.localStorage.getItem(HANDLER_LOG_KEY);
-    if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((entry): entry is HandlerLogEntry => {
@@ -34,12 +34,7 @@ function readEntries(): HandlerLogEntry[] {
 }
 
 function writeEntries(entries: HandlerLogEntry[]) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(HANDLER_LOG_KEY, JSON.stringify(entries.slice(-MAX_ENTRIES)));
-  } catch {
-    // ignore storage failures
-  }
+  safeStorageSetItem("localStorage", HANDLER_LOG_KEY, JSON.stringify(entries.slice(-MAX_ENTRIES)));
 }
 
 export function logHandlerError(error: unknown, label = "ui-handler"): void {

@@ -5,6 +5,7 @@ import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
 
 import { db } from "../firebase";
 import type { Batch } from "../types/domain";
+import { isMissingFirestoreIndexError, toAppError } from "../errors/appError";
 
 type Result = {
   active: Batch[];
@@ -72,7 +73,14 @@ export function useBatches(user: User | null): Result {
         );
       } catch (err: unknown) {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : String(err));
+        const appError = toAppError(err, { kind: "firestore" });
+        if (isMissingFirestoreIndexError(err)) {
+          setError(
+            `${appError.userMessage} See docs/runbooks/FIRESTORE_INDEX_TROUBLESHOOTING.md (support code: ${appError.correlationId}).`
+          );
+          return;
+        }
+        setError(`${appError.userMessage} (support code: ${appError.correlationId})`);
       }
     };
 

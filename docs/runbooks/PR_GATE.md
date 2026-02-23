@@ -117,6 +117,7 @@ The JSON artifact includes:
 - If a command fails because services are not running, start services and re-run from the top.
 
 ## Related commands
+- `npm run hardening:check` — deterministic hardening regression tests (errors + request telemetry + local storage safety + function client checks)
 - `npm run studio:status` — quick health and contract state
 - `npm run studio:check` — status gate for blockable checks
 - `npm run studio:check:safe` — strict "all green" readiness for high-risk ops

@@ -16,7 +16,7 @@ import type {
 } from "../api/portalContracts";
 import { createFunctionsClient } from "../api/functionsClient";
 import { formatCents, formatDateTime } from "../utils/format";
-import { checkoutErrorMessage } from "../utils/userFacingErrors";
+import { checkoutErrorMessage, requestErrorMessage } from "../utils/userFacingErrors";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./EventsView.css";
 
@@ -315,7 +315,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       setStatus(nextStatus);
       await refreshAll();
     } catch (error: unknown) {
-      setStatus(getErrorMessage(error));
+      setStatus(requestErrorMessage(error));
     } finally {
       setActionBusy(false);
     }
@@ -333,7 +333,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       setStatus("Your spot has been released. Thanks for letting us know.");
       await refreshAll();
     } catch (error: unknown) {
-      setStatus(getErrorMessage(error));
+      setStatus(requestErrorMessage(error));
     } finally {
       setActionBusy(false);
     }
@@ -351,7 +351,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       setStatus("Offer claimed! You're confirmed.");
       await refreshAll();
     } catch (error: unknown) {
-      setStatus(getErrorMessage(error));
+      setStatus(requestErrorMessage(error));
     } finally {
       setActionBusy(false);
     }
@@ -370,7 +370,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       setStatus("Checked in! You can add extras and pay after you're settled.");
       await refreshAll();
     } catch (error: unknown) {
-      setStatus(getErrorMessage(error));
+      setStatus(requestErrorMessage(error));
     } finally {
       setActionBusy(false);
     }
@@ -427,7 +427,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         await loadDetail(selectedId);
       }
     } catch (error: unknown) {
-      setStatus(getErrorMessage(error));
+      setStatus(requestErrorMessage(error));
     } finally {
       setRosterBusyIds((prev) => {
         const next = { ...prev };

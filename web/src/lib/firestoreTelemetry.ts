@@ -7,6 +7,7 @@ import {
   setDoc,
   updateDoc,
 } from "firebase/firestore";
+import { safeStorageSetItem } from "./safeStorage";
 
 type CounterBucket = {
   reads: number;
@@ -64,21 +65,18 @@ function getOrCreateBucket(view: string): CounterBucket {
 }
 
 function persistSummary() {
-  if (typeof localStorage === "undefined") return;
   const now = Date.now();
   if (now - lastPersistAtMs < 2000) return;
   lastPersistAtMs = now;
 
+  const summary = {
+    atIso: new Date(now).toISOString(),
+    currentView,
+    sessionTotals,
+    perView: Array.from(perView.entries()),
+  };
   try {
-    localStorage.setItem(
-      SUMMARY_STORAGE_KEY,
-      JSON.stringify({
-        atIso: new Date(now).toISOString(),
-        currentView,
-        sessionTotals,
-        perView: Array.from(perView.entries()),
-      })
-    );
+    safeStorageSetItem("localStorage", SUMMARY_STORAGE_KEY, JSON.stringify(summary));
   } catch {
     // Ignore local storage errors.
   }

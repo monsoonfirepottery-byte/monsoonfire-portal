@@ -184,3 +184,9 @@ Full marketing-site UI/UX + accessibility pass for `monsoonfire.com` website (no
 - Verification:
   - `rg -n "portal\\.monsoonfire\\.com" website/ncsitebuilder` confirms only intentional literal remains in JS guard constant (no hardcoded outbound portal links).
   - `npm run test:e2e`: 18 passed, 1 failed (pre-existing home-page console 404 noise from local static smoke path); new kilnfire-host regression test passed.
+  - `npm run deploy:namecheap:website` blocked on missing `WEBSITE_DEPLOY_SERVER`; completed deploy manually with:
+    - `scp -i ~/.ssh/namecheap-portal -P 21098 -r website/ncsitebuilder monsggbd@66.29.137.142:public_html/`
+    - `ssh -i ~/.ssh/namecheap-portal -p 21098 monsggbd@66.29.137.142 "cd public_html && cp -a ncsitebuilder/. . && rm -rf ncsitebuilder"`
+  - Post-deploy production smoke:
+    - `BASE_URL=https://monsoonfire.com npx playwright test -c website/playwright.config.mjs -g "portal entry links stay on kilnfire host"` passed.
+    - `BASE_URL=https://monsoonfire.com npm run test:e2e` passed (19/19).

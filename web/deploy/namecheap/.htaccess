@@ -1,8 +1,11 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
+  # Compatibility fallback: some shared hosts do not serve dot-prefixed folders directly.
+  RewriteRule ^\.well-known/(.+)$ well-known/$1 [L,NC]
+
   # Never rewrite well-known association files (universal links, etc).
-  RewriteRule ^\.well-known/ - [L]
+  RewriteRule ^well-known/ - [L]
 
   # Never rewrite hashed asset requests. Missing files should 404, not return index.html.
   RewriteRule ^assets/ - [L]

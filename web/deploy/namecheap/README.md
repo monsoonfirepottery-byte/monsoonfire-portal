@@ -51,6 +51,7 @@ If you already have the build on disk and do not need to rebuild:
 The script:
 - copies `web/dist` to a temporary staging directory,
 - copies `web/deploy/namecheap/.htaccess` into staging root,
+- mirrors `website/.well-known/*` into both `/.well-known/*` and `/well-known/*` in staging,
 - `rsync --delete`s into the destination, and
 - runs the optional cutover verifier (`--verify`).
 
@@ -61,7 +62,7 @@ The script:
    - This template now includes a compatibility rewrite for hosts that do not serve hidden `.well-known` paths directly.
 3. If using universal links/app links:
   - Ensure `/.well-known/` and `/well-known/` can be read and return the same JSON payload.
-  - `web/build` now emits both directories for deploy safety.
+  - Copy the canonical files from `website/.well-known/` into both directories on the host.
 5. Run the preflight verifier:
   - Primary path:
     - `node ./web/deploy/namecheap/verify-cutover.mjs --portal-url https://portal.monsoonfire.com --report-path docs/cutover-verify.json`

@@ -168,3 +168,19 @@ Full marketing-site UI/UX + accessibility pass for `monsoonfire.com` website (no
 - Promoted stable latest snapshot from `artifacts/telemetry/after-seed-2/`.
 - Updated `.gitignore` and `COST_NOTES.md` with regeneration + promotion workflow.
 - Fresh checkout: run `npm run verify:bootstrap`
+
+## 2026-02-24 website cutover hotfix (kilnfire-link-repoint)
+- Incident summary:
+  - Production `monsoonfire.com` login/portal links were resolving to `portal.monsoonfire.com` before portal cutover readiness.
+  - Requirement is to keep website portal entrypoints on Kilnfire (`https://monsoonfire.kilnfire.com`) until portal exits beta.
+- Root cause:
+  - `website/ncsitebuilder/assets/js/main.js` runtime `normalizePortalLinks()` rewrote `monsoonfire.kilnfire.com` links to `portal.monsoonfire.com`.
+- Fixes shipped (website-only, no portal code changes):
+  - Updated runtime normalization in `website/ncsitebuilder/assets/js/main.js` to rewrite in the safe direction (`portal.monsoonfire.com` -> `monsoonfire.kilnfire.com`).
+  - Updated FAQ portal CTA in `website/ncsitebuilder/data/faq.json` from `https://portal.monsoonfire.com` to `https://monsoonfire.kilnfire.com`.
+  - Added regression coverage in `website/tests/marketing-site.spec.mjs`:
+    - New test ensures key marketing pages contain zero links to `portal.monsoonfire.com`.
+    - Updated outbound-link smoke selector to require live channels plus Kilnfire host links.
+- Verification:
+  - `rg -n "portal\\.monsoonfire\\.com" website/ncsitebuilder` confirms only intentional literal remains in JS guard constant (no hardcoded outbound portal links).
+  - `npm run test:e2e`: 18 passed, 1 failed (pre-existing home-page console 404 noise from local static smoke path); new kilnfire-host regression test passed.

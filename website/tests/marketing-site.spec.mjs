@@ -14,6 +14,18 @@ const majorPages = [
   { path: "policies/", label: "policies", requiredSelector: "main#main" },
 ];
 
+const portalEntryPages = [
+  "./",
+  "services/",
+  "kiln-firing/",
+  "faq/",
+  "support/",
+  "contact/",
+  "policies/",
+  "memberships/",
+  "supplies/",
+];
+
 const axePages = ["./", "kiln-firing/", "support/", "contact/", "policies/"];
 
 const ignoredConsoleErrorPatterns = [
@@ -61,8 +73,16 @@ test.describe("marketing smoke coverage", () => {
 
   test("community hub includes key outbound links", async ({ page }) => {
     await page.goto("faq/", { waitUntil: "networkidle" });
-    const links = page.locator('a[href*="discord"], a[href*="instagram"], a[href*="mailto:"], a[href*="portal.monsoonfire.com"], a[href*="kilnfire.com"]');
+    const links = page.locator('a[href*="discord"], a[href*="instagram"], a[href*="mailto:"], a[href*="kilnfire.com"]');
     expect(await links.count()).toBeGreaterThan(0);
+  });
+
+  test("portal entry links stay on kilnfire host", async ({ page }) => {
+    for (const pagePath of portalEntryPages) {
+      await page.goto(pagePath, { waitUntil: "networkidle" });
+      const legacyPortalLinks = page.locator('a[href*="portal.monsoonfire.com"]');
+      expect(await legacyPortalLinks.count(), `Legacy portal host found on ${pagePath}`).toBe(0);
+    }
   });
 });
 

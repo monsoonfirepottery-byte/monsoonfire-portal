@@ -5,8 +5,8 @@
   };
   const RUNTIME_BANNER_HOST_ID = "mf-runtime-banner-host";
   const RUNTIME_BANNER_STYLE_ID = "mf-runtime-banner-style";
-  const legacyPortalHost = "monsoonfire.kilnfire.com";
-  const portalHost = "portal.monsoonfire.com";
+  const kilnfirePortalHost = "monsoonfire.kilnfire.com";
+  const betaPortalHost = "portal.monsoonfire.com";
   const root = document.documentElement;
   const body = document.body;
   const header = document.querySelector(".site-header");
@@ -52,8 +52,9 @@
       }
       try {
         const parsed = new URL(href, window.location.origin);
-        if (parsed.hostname === legacyPortalHost) {
-          parsed.hostname = portalHost;
+        // Keep live website links pointed at Kilnfire until portal cutover is complete.
+        if (parsed.hostname === betaPortalHost) {
+          parsed.hostname = kilnfirePortalHost;
           link.setAttribute("href", parsed.toString());
         }
       } catch {
@@ -583,7 +584,7 @@
       if (!href) return null;
       const cleanedPath = resolveLocalPathForLabel(href);
       const cleanedUrl = href.toLowerCase();
-      if (cleanedUrl.includes(legacyPortalHost) || cleanedUrl.includes(portalHost)) return "login";
+      if (cleanedUrl.includes(kilnfirePortalHost) || cleanedUrl.includes(betaPortalHost)) return "login";
       if (cleanedUrl.startsWith("mailto:")) return "email";
       if (cleanedUrl.startsWith("tel:")) return "phone";
       if (cleanedUrl.includes("discord")) return "discord";

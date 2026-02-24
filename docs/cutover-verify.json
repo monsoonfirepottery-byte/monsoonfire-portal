@@ -8,7 +8,7 @@
       "ok": true,
       "bodySnippet": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <link rel=\"icon\" type=\"image/png\" href=\"/pwa-192.png\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <link rel=\"dns-prefetch\" href=\"//firestore.googleapis.com\" />\n    <link rel=\"dns-prefetch\" href=\"//identity...",
       "bodyLength": 4695,
-      "cacheControl": "",
+      "cacheControl": "no-cache",
       "error": ""
     },
     {
@@ -17,7 +17,7 @@
       "ok": true,
       "bodySnippet": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <link rel=\"icon\" type=\"image/png\" href=\"/pwa-192.png\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <link rel=\"dns-prefetch\" href=\"//firestore.googleapis.com\" />\n    <link rel=\"dns-prefetch\" href=\"//identity...",
       "bodyLength": 4695,
-      "cacheControl": "",
+      "cacheControl": "no-cache",
       "error": ""
     },
     {
@@ -35,14 +35,14 @@
     "passed": [
       "rootRoute",
       "deepRoute",
-      "wellKnownRoute"
+      "wellKnownRoute",
+      "asset/assets/index-D2ivivKQ.js",
+      "asset/assets/vendor-DuPUYBON.js",
+      "asset/assets/vendor-react-DPkGgiPW.js",
+      "rootCache",
+      "deepCache"
     ],
     "warnings": [
-      "asset/assets/index-D2ivivKQ.js has weak cache header: <missing>",
-      "asset/assets/vendor-DuPUYBON.js has weak cache header: <missing>",
-      "asset/assets/vendor-react-DPkGgiPW.js has weak cache header: <missing>",
-      "rootCache missing cache-control header at https://portal.monsoonfire.com",
-      "deepCache missing cache-control header at https://portal.monsoonfire.com/reservations",
       "protected function check skipped (set --id-token <token> or PORTAL_CUTOVER_ID_TOKEN=<token> in env)"
     ],
     "failures": []
@@ -58,22 +58,22 @@
     {
       "path": "/assets/index-D2ivivKQ.js",
       "status": 200,
-      "cacheControl": "",
-      "hasCacheHeader": false,
+      "cacheControl": "public, max-age=31536000, immutable",
+      "hasCacheHeader": true,
       "ok": true
     },
     {
       "path": "/assets/vendor-DuPUYBON.js",
       "status": 200,
-      "cacheControl": "",
-      "hasCacheHeader": false,
+      "cacheControl": "public, max-age=31536000, immutable",
+      "hasCacheHeader": true,
       "ok": true
     },
     {
       "path": "/assets/vendor-react-DPkGgiPW.js",
       "status": 200,
-      "cacheControl": "",
-      "hasCacheHeader": false,
+      "cacheControl": "public, max-age=31536000, immutable",
+      "hasCacheHeader": true,
       "ok": true
     }
   ],

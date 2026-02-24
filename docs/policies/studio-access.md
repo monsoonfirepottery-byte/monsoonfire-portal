@@ -47,6 +47,7 @@ reservation windows, and equipment access under the support channel.
 - Visit information, check-in instructions, and any day-visit constraints are shared in
   the portal before arrival.
 - Members must check in on arrival and follow posted access windows.
+- Repeated no-shows and late arrivals are logged to reservation queue fairness records and may reduce queue priority until resolved.
 - New users and special equipment use may require staff supervision.
 - Guests are not automatic. Guest access is only allowed with prior studio approval.
 - Users are expected to leave stations tidy and return shared tools as found.
@@ -73,4 +74,4 @@ Support responses should cite:
 - current access instructions
 - whether staff supervision applies to requested tools
 - how to request guest exceptions
-
+- if applicable, the current fairness status (`no-show` / `late-arrival` counters and active overrides)

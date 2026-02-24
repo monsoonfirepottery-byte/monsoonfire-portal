@@ -47,12 +47,24 @@ portal workflows.
 - Estimated completion windows are provided as guidance and may shift due to safety,
   staffing, or technical delays.
 - Urgent reschedule requests are handled case-by-case with operational priority checks.
+- Pickup coordination uses explicit pickup-window states:
+  - `open` (staff offered),
+  - `confirmed` (member accepted),
+  - `missed` / `expired` (window missed or elapsed),
+  - `completed` (pickup closed).
+- Member pickup-window reschedules are capped to one request by default before staff-only override.
+- Queue fairness policy applies deterministic penalties:
+  - no-show evidence: `+2` points
+  - late-arrival evidence: `+1` point
+  - staff override boost can offset penalty points when documented with reason and expiry.
+- Fairness actions must include a staff reason and write an audit evidence row to `reservationQueueFairnessAudit`.
 
 ## Implementation in portal
 
 - Require clear required fields (clay body, glaze notes, target schedule window).
 - Record estimated/actual firing window and send delay notices on status changes.
 - Keep previous and active batches visible in timeline/history views.
+- Track pickup-window status and misses in reservation records for queue fairness and storage escalation.
 
 ## Enforcement
 
@@ -65,4 +77,7 @@ Support should include:
 - what changed since last published estimate
 - the current estimated window range
 - any recommended alternative windows
-
+- explicit copy lines:
+  - `Updated estimate: ...`
+  - `Last change reason: ...`
+  - `Suggested next update window: ...`

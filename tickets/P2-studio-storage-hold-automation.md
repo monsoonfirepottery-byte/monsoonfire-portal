@@ -1,6 +1,6 @@
 # P2 — Reservation Storage Hold Automation
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -42,3 +42,33 @@ Without hold logic, retention becomes manual and hard to audit, especially when 
 ## Dependencies
 - `tickets/P1-studio-notification-sla-journey.md`
 - `tickets/P1-studio-reservation-status-api.md`
+
+## Completion Evidence (2026-02-23)
+- Storage policy metadata is now persisted and maintained on reservation documents:
+  - `readyForPickupAt`
+  - `pickupReminderCount`
+  - `lastReminderAt`
+  - `pickupReminderFailureCount`
+  - `lastReminderFailureAt`
+  - `storageStatus`
+  - `storageNoticeHistory`
+  - files: `functions/src/apiV1.ts`, `functions/src/createReservation.ts`, `functions/src/notifications.ts`
+- Scheduled hold evaluator implemented:
+  - `evaluateReservationStorageHolds` runs hourly and advances reminder/escalation states (`active`, `reminder_pending`, `hold_pending`, `stored_by_policy`)
+  - queues pickup reminder jobs at policy thresholds and records audit rows
+  - files: `functions/src/notifications.ts`, `functions/src/index.ts`
+- Staff triage list/filter and card visibility shipped in portal:
+  - new `Storage risk` filter
+  - triage summary strip (entering hold, stored by policy, reminder failures, approaching cap)
+  - storage status chips + warning affordances + notice history timeline
+  - files: `web/src/views/ReservationsView.tsx`, `web/src/views/ReservationsView.css`, `web/src/lib/normalizers/reservations.ts`
+- Escalation and reminder events are audit-visible:
+  - `reservationStorageAudit` records policy transitions, reminders, and reminder failures
+  - file: `functions/src/notifications.ts`
+- Policy/docs aligned with runtime behavior:
+  - files: `docs/policies/storage-abandoned-work.md`, `docs/SCHEMA_RESERVATIONS.md`, `docs/EMAIL_NOTIFICATIONS.md`
+- Validation runs:
+  - `npm --prefix functions run build`
+  - `node --test "functions/lib/apiV1.test.js"`
+  - `npm --prefix web run build`
+  - `npm --prefix web run test:run -- src/views/ReservationsView.test.ts`

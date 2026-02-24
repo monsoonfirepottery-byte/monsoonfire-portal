@@ -20,10 +20,18 @@ const REGION = "us-central1";
 type FiringType = "bisque" | "glaze" | "other";
 type WareType = "stoneware" | "earthenware" | "porcelain" | "mixed" | "other";
 type QuantityTier = "few" | "small" | "medium" | "large";
+type ReservationPieceStatus = "awaiting_placement" | "loaded" | "fired" | "ready" | "picked_up";
 
 const VALID_FIRING_TYPES: ReadonlySet<FiringType> = new Set(["bisque", "glaze", "other"] as const);
 const VALID_WARE_TYPES: ReadonlySet<WareType> = new Set(["stoneware", "earthenware", "porcelain", "mixed", "other"] as const);
 const VALID_QUANTITY_TIERS: ReadonlySet<QuantityTier> = new Set(["few", "small", "medium", "large"] as const);
+const VALID_PIECE_STATUSES: ReadonlySet<ReservationPieceStatus> = new Set([
+  "awaiting_placement",
+  "loaded",
+  "fired",
+  "ready",
+  "picked_up",
+] as const);
 
 const reservationSchema = z.object({
   firingType: z.enum(["bisque", "glaze", "other"]).optional(),
@@ -77,6 +85,22 @@ const reservationSchema = z.object({
       label: z.string().optional().nullable(),
       pieceRange: z.string().optional().nullable(),
     })
+    .optional()
+    .nullable(),
+  pieces: z
+    .array(
+      z.object({
+        pieceId: z.string().max(120).optional().nullable(),
+        pieceLabel: z.string().max(200).optional().nullable(),
+        pieceCount: z.number().int().min(1).max(500).optional().nullable(),
+        piecePhotoUrl: z.string().max(2000).optional().nullable(),
+        pieceStatus: z
+          .enum(["awaiting_placement", "loaded", "fired", "ready", "picked_up"])
+          .optional()
+          .nullable(),
+      })
+    )
+    .max(250)
     .optional()
     .nullable(),
   addOns: z
@@ -143,6 +167,77 @@ function applyConservativeBump(input: { heightInches: number | null; footprintHa
     return Math.max(tiers, 3);
   }
   return tiers;
+}
+
+function normalizePieceCodeInput(value: unknown): string | null {
+  const trimmed = safeString(value).trim().toUpperCase();
+  if (!trimmed) return null;
+  const cleaned = trimmed.replace(/[^A-Z0-9_-]/g, "");
+  return cleaned.length ? cleaned.slice(0, 120) : null;
+}
+
+function reservationPieceCode(reservationId: string, sourceIndex: number, labelHint?: string | null): string {
+  const normalizedReservationId = safeString(reservationId).trim();
+  const baseId = normalizedReservationId
+    .replace(/[^A-Za-z0-9]/g, "")
+    .toUpperCase()
+    .slice(0, 6)
+    .padEnd(6, "X");
+  const label = (labelHint ?? "").toLowerCase();
+  const suffix = makeIdempotencyId("piece", normalizedReservationId || "reservation", `${sourceIndex}:${label}`)
+    .replace("piece-", "")
+    .slice(0, 6)
+    .toUpperCase();
+  const ordinal = String(sourceIndex + 1).padStart(2, "0");
+  return `MF-RES-${baseId}-${ordinal}${suffix}`;
+}
+
+function normalizePieceStatus(value: unknown): ReservationPieceStatus {
+  const normalized = safeString(value).trim().toLowerCase();
+  if (VALID_PIECE_STATUSES.has(normalized as ReservationPieceStatus)) {
+    return normalized as ReservationPieceStatus;
+  }
+  return "awaiting_placement";
+}
+
+function normalizeReservationPiecesInput(value: unknown, reservationId: string) {
+  if (!Array.isArray(value)) return [];
+  const out: Array<{
+    pieceId: string;
+    pieceLabel: string | null;
+    pieceCount: number;
+    piecePhotoUrl: string | null;
+    pieceStatus: ReservationPieceStatus;
+  }> = [];
+  const seen = new Set<string>();
+  value.forEach((row, index) => {
+    if (!row || typeof row !== "object") return;
+    const source = row as Record<string, unknown>;
+    const pieceLabel = safeString(source.pieceLabel).trim() || null;
+    const piecePhotoUrl = safeString(source.piecePhotoUrl).trim() || null;
+    const countRaw = Number(source.pieceCount);
+    const pieceCount =
+      Number.isFinite(countRaw) && countRaw > 0
+        ? Math.max(1, Math.min(500, Math.round(countRaw)))
+        : 1;
+    const explicitPieceId = normalizePieceCodeInput(source.pieceId);
+    if (!explicitPieceId && !pieceLabel && !piecePhotoUrl) return;
+    let pieceId = explicitPieceId ?? reservationPieceCode(reservationId, index, pieceLabel);
+    let duplicateBump = 0;
+    while (seen.has(pieceId)) {
+      duplicateBump += 1;
+      pieceId = reservationPieceCode(reservationId, index + duplicateBump, pieceLabel);
+    }
+    seen.add(pieceId);
+    out.push({
+      pieceId,
+      pieceLabel,
+      pieceCount,
+      piecePhotoUrl,
+      pieceStatus: normalizePieceStatus(source.pieceStatus),
+    });
+  });
+  return out.slice(0, 250);
 }
 
 export const createReservation = onRequest(
@@ -400,6 +495,7 @@ export const createReservation = onRequest(
       deliveryAddress: safeString(addOnsInput?.deliveryAddress).trim() || null,
       deliveryInstructions: safeString(addOnsInput?.deliveryInstructions).trim() || null,
     };
+    const piecesPayload = normalizeReservationPiecesInput(body.pieces, ref.id);
 
     if ((addOnsPayload.pickupDeliveryRequested || addOnsPayload.returnDeliveryRequested)
       && (!addOnsPayload.deliveryAddress || !addOnsPayload.deliveryInstructions)) {
@@ -436,8 +532,29 @@ export const createReservation = onRequest(
       photoUrl,
       photoPath,
       notes: notesPayload,
+      pieces: piecesPayload,
       notesHistory,
       addOns: addOnsPayload,
+      pickupWindow: {
+        requestedStart: null,
+        requestedEnd: null,
+        confirmedStart: null,
+        confirmedEnd: null,
+        status: "open",
+        confirmedAt: null,
+        completedAt: null,
+        missedCount: 0,
+        rescheduleCount: 0,
+        lastMissedAt: null,
+        lastRescheduleRequestedAt: null,
+      },
+      storageStatus: "active",
+      readyForPickupAt: null,
+      pickupReminderCount: 0,
+      lastReminderAt: null,
+      pickupReminderFailureCount: 0,
+      lastReminderFailureAt: null,
+      storageNoticeHistory: [],
       createdByUid: requesterUid,
       createdByRole,
       createdAt: now,

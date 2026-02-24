@@ -107,6 +107,15 @@ const FALLBACK_FAQ_ENTRIES: FaqEntry[] = [
     tags: ["support", "urgent", "email", "help"],
     rank: 5,
   },
+  {
+    id: "fallback-continuity",
+    question: "How do I keep a copy of my reservation history?",
+    answer:
+      "Open Support and request a continuity export if you need a full JSON/CSV archive. Your portal history remains visible in My Pieces and reservation timelines while your account stays active.",
+    category: "Account",
+    tags: ["continuity", "export", "history", "backup", "json", "csv"],
+    rank: 6,
+  },
 ];
 
 const SEARCH_SUGGESTIONS = [
@@ -116,6 +125,7 @@ const SEARCH_SUGGESTIONS = [
   "billing receipt",
   "workshop waitlist",
   "studio storage",
+  "continuity export",
 ];
 
 const SEARCH_SYNONYMS: Record<string, string[]> = {
@@ -131,6 +141,8 @@ const SEARCH_SYNONYMS: Record<string, string[]> = {
   workshops: ["workshop", "class", "lesson"],
   waitlist: ["wait list", "full"],
   storage: ["shelf", "shelving", "pickup"],
+  continuity: ["export", "backup", "history", "records"],
+  export: ["continuity", "backup", "json", "csv"],
   account: ["email", "profile", "signin", "sign-in"],
   urgent: ["emergency", "safety", "same-day"],
 };

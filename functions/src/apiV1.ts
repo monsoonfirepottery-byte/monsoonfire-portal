@@ -472,6 +472,22 @@ const reservationCreateSchema = z.object({
     })
     .optional()
     .nullable(),
+  pieces: z
+    .array(
+      z.object({
+        pieceId: z.string().max(120).optional().nullable(),
+        pieceLabel: z.string().max(200).optional().nullable(),
+        pieceCount: z.number().int().min(1).max(500).optional().nullable(),
+        piecePhotoUrl: z.string().max(2000).optional().nullable(),
+        pieceStatus: z
+          .enum(["awaiting_placement", "loaded", "fired", "ready", "picked_up"])
+          .optional()
+          .nullable(),
+      })
+    )
+    .max(250)
+    .optional()
+    .nullable(),
   addOns: z
     .object({
       rushRequested: z.boolean().optional().nullable(),
@@ -536,6 +552,14 @@ const ALLOWED_RESERVATION_STATUSES = new Set<string>([
   "LOADED",
 ]);
 
+const ALLOWED_RESERVATION_PIECE_STATUSES = new Set<string>([
+  "awaiting_placement",
+  "loaded",
+  "fired",
+  "ready",
+  "picked_up",
+]);
+
 const ALLOWED_STATUS_TRANSITIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ["REQUESTED", new Set(["REQUESTED", "CONFIRMED", "WAITLISTED", "CANCELLED"])],
   ["CONFIRMED", new Set(["CONFIRMED", "WAITLISTED", "CANCELLED", "LOADED"])],
@@ -565,6 +589,77 @@ const reservationUpdateSchema = z
     }
   });
 
+const reservationsPickupWindowSchema = z
+  .object({
+    reservationId: z.string().min(1).max(160).trim(),
+    action: z.enum([
+      "staff_set_open_window",
+      "member_confirm_window",
+      "member_request_reschedule",
+      "staff_mark_missed",
+      "staff_mark_completed",
+    ]),
+    confirmedStart: z.union([z.string(), z.number(), z.date()]).optional().nullable(),
+    confirmedEnd: z.union([z.string(), z.number(), z.date()]).optional().nullable(),
+    requestedStart: z.union([z.string(), z.number(), z.date()]).optional().nullable(),
+    requestedEnd: z.union([z.string(), z.number(), z.date()]).optional().nullable(),
+    note: z.string().max(500).optional().nullable(),
+    force: z.boolean().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.action === "staff_set_open_window") {
+      if (!value.confirmedStart || !value.confirmedEnd) {
+        ctx.addIssue({
+          code: "custom",
+          path: [],
+          message: "Provide confirmedStart and confirmedEnd for staff_set_open_window.",
+        });
+      }
+    }
+    if (value.action === "member_request_reschedule") {
+      if (!value.requestedStart || !value.requestedEnd) {
+        ctx.addIssue({
+          code: "custom",
+          path: [],
+          message: "Provide requestedStart and requestedEnd for member_request_reschedule.",
+        });
+      }
+    }
+  });
+
+const reservationsQueueFairnessSchema = z
+  .object({
+    reservationId: z.string().min(1).max(160).trim(),
+    action: z.enum([
+      "record_no_show",
+      "record_late_arrival",
+      "set_override_boost",
+      "clear_override",
+    ]),
+    reason: z.string().max(500).optional().nullable(),
+    boostPoints: z.number().int().min(0).max(20).optional().nullable(),
+    overrideUntil: z.union([z.string(), z.number(), z.date()]).optional().nullable(),
+  })
+  .superRefine((value, ctx) => {
+    const reason = safeString(value.reason).trim();
+    if (!reason) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["reason"],
+        message: "Reason is required for fairness actions.",
+      });
+    }
+    if (value.action === "set_override_boost") {
+      if (typeof value.boostPoints !== "number") {
+        ctx.addIssue({
+          code: "custom",
+          path: ["boostPoints"],
+          message: "boostPoints is required for set_override_boost.",
+        });
+      }
+    }
+  });
+
 const reservationsAssignStationSchema = z.object({
   reservationId: z.string().min(1).max(160).trim(),
   assignedStationId: z.string().min(1).max(120).trim(),
@@ -580,8 +675,25 @@ const reservationsAssignStationSchema = z.object({
     .nullable(),
 });
 
+const reservationsExportContinuitySchema = z.object({
+  ownerUid: z.string().min(1).max(160).trim().optional().nullable(),
+  includeCsv: z.boolean().optional(),
+  limit: z.number().int().min(1).max(1000).optional(),
+});
+
 type ReservationStatus = "REQUESTED" | "CONFIRMED" | "WAITLISTED" | "CANCELLED" | string;
 type ReservationLoadStatus = "queued" | "loading" | "loaded" | null;
+type ReservationPieceStatus = "awaiting_placement" | "loaded" | "fired" | "ready" | "picked_up";
+type ReservationStorageStatus = "active" | "reminder_pending" | "hold_pending" | "stored_by_policy";
+type ReservationPickupWindowStatus = "open" | "confirmed" | "missed" | "expired" | "completed";
+
+type ReservationPieceEntry = {
+  pieceId: string;
+  pieceLabel: string | null;
+  pieceCount: number;
+  piecePhotoUrl: string | null;
+  pieceStatus: ReservationPieceStatus;
+};
 
 type ReservationStageHistoryEntry = {
   fromStatus: string | null;
@@ -596,6 +708,74 @@ type ReservationStageHistoryEntry = {
   reason: string;
   notes: string | null;
 };
+
+type ReservationStorageNoticeEntry = {
+  at: unknown;
+  kind: string;
+  detail: string | null;
+  status: ReservationStorageStatus | null;
+  reminderOrdinal: number | null;
+  reminderCount: number | null;
+  failureCode: string | null;
+};
+
+type ReservationPickupWindowEntry = {
+  requestedStart: Date | null;
+  requestedEnd: Date | null;
+  confirmedStart: Date | null;
+  confirmedEnd: Date | null;
+  status: ReservationPickupWindowStatus | null;
+  confirmedAt: Date | null;
+  completedAt: Date | null;
+  missedCount: number;
+  rescheduleCount: number;
+  lastMissedAt: Date | null;
+  lastRescheduleRequestedAt: Date | null;
+};
+
+type ReservationQueueFairnessEntry = {
+  noShowCount: number;
+  lateArrivalCount: number;
+  overrideBoost: number;
+  overrideReason: string | null;
+  overrideUntil: Date | null;
+  updatedAt: Date | null;
+  updatedByUid: string | null;
+  updatedByRole: "staff" | "dev" | "system" | null;
+  lastPolicyNote: string | null;
+  lastEvidenceId: string | null;
+};
+
+type ReservationQueueFairnessPolicyEntry = {
+  noShowCount: number;
+  lateArrivalCount: number;
+  penaltyPoints: number;
+  effectivePenaltyPoints: number;
+  overrideBoostApplied: number;
+  reasonCodes: string[];
+  policyVersion: string;
+  computedAt: Timestamp;
+};
+
+const RESERVATION_QUEUE_FAIRNESS_POLICY_VERSION = "2026-02-24.v1";
+const RESERVATION_QUEUE_FAIRNESS_NO_SHOW_PENALTY = 2;
+const RESERVATION_QUEUE_FAIRNESS_LATE_PENALTY = 1;
+const RESERVATION_CONTINUITY_EXPORT_SCHEMA_VERSION = "2026-02-24.v1";
+
+const RESERVATION_STORAGE_STATUS_VALUES: ReadonlySet<ReservationStorageStatus> = new Set([
+  "active",
+  "reminder_pending",
+  "hold_pending",
+  "stored_by_policy",
+]);
+
+const RESERVATION_PICKUP_WINDOW_STATUS_VALUES: ReadonlySet<ReservationPickupWindowStatus> = new Set([
+  "open",
+  "confirmed",
+  "missed",
+  "expired",
+  "completed",
+]);
 
 function normalizeReservationStatus(value: unknown): ReservationStatus | null {
   if (typeof value !== "string") return null;
@@ -621,6 +801,74 @@ function normalizeQueueClass(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const next = value.trim().toLowerCase();
   return next.length ? next : null;
+}
+
+function normalizeReservationPieceStatus(value: unknown): ReservationPieceStatus {
+  const normalized = safeString(value).trim().toLowerCase();
+  if (ALLOWED_RESERVATION_PIECE_STATUSES.has(normalized)) {
+    return normalized as ReservationPieceStatus;
+  }
+  return "awaiting_placement";
+}
+
+function normalizePieceCodeInput(value: unknown): string | null {
+  const trimmed = safeString(value).trim().toUpperCase();
+  if (!trimmed) return null;
+  const cleaned = trimmed.replace(/[^A-Z0-9_-]/g, "");
+  if (!cleaned) return null;
+  return cleaned.slice(0, 120);
+}
+
+function reservationPieceCode(reservationId: string, sourceIndex: number, labelHint?: string | null): string {
+  const normalizedReservationId = safeString(reservationId).trim();
+  const baseId = normalizedReservationId
+    .replace(/[^A-Za-z0-9]/g, "")
+    .toUpperCase()
+    .slice(0, 6)
+    .padEnd(6, "X");
+  const label = (labelHint ?? "").toLowerCase();
+  const suffix = makeIdempotencyId("piece", normalizedReservationId || "reservation", `${sourceIndex}:${label}`)
+    .replace("piece-", "")
+    .slice(0, 6)
+    .toUpperCase();
+  const ordinal = String(sourceIndex + 1).padStart(2, "0");
+  return `MF-RES-${baseId}-${ordinal}${suffix}`;
+}
+
+function normalizeReservationPiecesInput(value: unknown, reservationId: string): ReservationPieceEntry[] {
+  if (!Array.isArray(value)) return [];
+  const out: ReservationPieceEntry[] = [];
+  const seen = new Set<string>();
+  value.forEach((row, index) => {
+    if (!row || typeof row !== "object") return;
+    const source = row as Record<string, unknown>;
+    const pieceLabel = trimOrNull(source.pieceLabel);
+    const piecePhotoUrl = trimOrNull(source.piecePhotoUrl);
+    const rawCount = normalizeNumber(source.pieceCount, 1);
+    const pieceCount = typeof rawCount === "number" ? clampNumber(Math.round(rawCount), 1, 500) : 1;
+    const explicitPieceId = normalizePieceCodeInput(source.pieceId);
+
+    if (!explicitPieceId && !pieceLabel && !piecePhotoUrl) {
+      return;
+    }
+
+    let pieceId = explicitPieceId ?? reservationPieceCode(reservationId, index, pieceLabel);
+    let duplicateBump = 0;
+    while (seen.has(pieceId)) {
+      duplicateBump += 1;
+      pieceId = reservationPieceCode(reservationId, index + duplicateBump, pieceLabel);
+    }
+    seen.add(pieceId);
+
+    out.push({
+      pieceId,
+      pieceLabel: pieceLabel ?? null,
+      pieceCount,
+      piecePhotoUrl: piecePhotoUrl ?? null,
+      pieceStatus: normalizeReservationPieceStatus(source.pieceStatus),
+    });
+  });
+  return out.slice(0, 250);
 }
 
 function parseReservationIsoDate(value: unknown): Date | null {
@@ -697,11 +945,203 @@ function normalizeReservationStageHistory(raw: unknown): ReservationStageHistory
   return out.slice(-120);
 }
 
+function normalizeReservationStorageStatus(value: unknown): ReservationStorageStatus | null {
+  const normalized = safeString(value).trim().toLowerCase();
+  if (RESERVATION_STORAGE_STATUS_VALUES.has(normalized as ReservationStorageStatus)) {
+    return normalized as ReservationStorageStatus;
+  }
+  return null;
+}
+
+function normalizeReservationPickupWindowStatus(value: unknown): ReservationPickupWindowStatus | null {
+  const normalized = safeString(value).trim().toLowerCase();
+  if (RESERVATION_PICKUP_WINDOW_STATUS_VALUES.has(normalized as ReservationPickupWindowStatus)) {
+    return normalized as ReservationPickupWindowStatus;
+  }
+  return null;
+}
+
+function normalizeReservationPickupWindow(value: unknown): ReservationPickupWindowEntry {
+  const source = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const missedCountRaw = normalizeNumber(source.missedCount);
+  const rescheduleCountRaw = normalizeNumber(source.rescheduleCount);
+  return {
+    requestedStart: parseReservationIsoDate(source.requestedStart),
+    requestedEnd: parseReservationIsoDate(source.requestedEnd),
+    confirmedStart: parseReservationIsoDate(source.confirmedStart),
+    confirmedEnd: parseReservationIsoDate(source.confirmedEnd),
+    status: normalizeReservationPickupWindowStatus(source.status),
+    confirmedAt: parseReservationIsoDate(source.confirmedAt),
+    completedAt: parseReservationIsoDate(source.completedAt),
+    missedCount:
+      typeof missedCountRaw === "number" && missedCountRaw >= 0
+        ? Math.max(0, Math.round(missedCountRaw))
+        : 0,
+    rescheduleCount:
+      typeof rescheduleCountRaw === "number" && rescheduleCountRaw >= 0
+        ? Math.max(0, Math.round(rescheduleCountRaw))
+        : 0,
+    lastMissedAt: parseReservationIsoDate(source.lastMissedAt),
+    lastRescheduleRequestedAt: parseReservationIsoDate(source.lastRescheduleRequestedAt),
+  };
+}
+
+function toPickupWindowWrite(window: ReservationPickupWindowEntry): Record<string, unknown> {
+  return {
+    requestedStart: window.requestedStart ? Timestamp.fromDate(window.requestedStart) : null,
+    requestedEnd: window.requestedEnd ? Timestamp.fromDate(window.requestedEnd) : null,
+    confirmedStart: window.confirmedStart ? Timestamp.fromDate(window.confirmedStart) : null,
+    confirmedEnd: window.confirmedEnd ? Timestamp.fromDate(window.confirmedEnd) : null,
+    status: window.status ?? "open",
+    confirmedAt: window.confirmedAt ? Timestamp.fromDate(window.confirmedAt) : null,
+    completedAt: window.completedAt ? Timestamp.fromDate(window.completedAt) : null,
+    missedCount: Math.max(0, Math.round(window.missedCount)),
+    rescheduleCount: Math.max(0, Math.round(window.rescheduleCount)),
+    lastMissedAt: window.lastMissedAt ? Timestamp.fromDate(window.lastMissedAt) : null,
+    lastRescheduleRequestedAt: window.lastRescheduleRequestedAt
+      ? Timestamp.fromDate(window.lastRescheduleRequestedAt)
+      : null,
+  };
+}
+
+function pushReservationStorageNotice(
+  history: ReservationStorageNoticeEntry[],
+  notice: Omit<ReservationStorageNoticeEntry, "at"> & { at?: unknown }
+): ReservationStorageNoticeEntry[] {
+  const next = [...history];
+  next.push({
+    at: notice.at ?? nowTs(),
+    kind: notice.kind,
+    detail: notice.detail ?? null,
+    status: notice.status ?? null,
+    reminderOrdinal: notice.reminderOrdinal ?? null,
+    reminderCount: notice.reminderCount ?? null,
+    failureCode: notice.failureCode ?? null,
+  });
+  return next.slice(-80);
+}
+
+function normalizeReservationStorageNoticeHistory(raw: unknown): ReservationStorageNoticeEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ReservationStorageNoticeEntry[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const source = row as Record<string, unknown>;
+    const kind = safeString(source.kind).trim();
+    if (!kind) continue;
+    const reminderOrdinalRaw = normalizeNumber(source.reminderOrdinal);
+    const reminderCountRaw = normalizeNumber(source.reminderCount);
+    out.push({
+      at: source.at ?? nowTs(),
+      kind,
+      detail: safeString(source.detail).trim() || null,
+      status: normalizeReservationStorageStatus(source.status),
+      reminderOrdinal:
+        typeof reminderOrdinalRaw === "number" && reminderOrdinalRaw > 0
+          ? Math.max(1, Math.round(reminderOrdinalRaw))
+          : null,
+      reminderCount:
+        typeof reminderCountRaw === "number" && reminderCountRaw >= 0
+          ? Math.max(0, Math.round(reminderCountRaw))
+          : null,
+      failureCode: safeString(source.failureCode).trim() || null,
+    });
+  }
+  return out.slice(-80);
+}
+
 function normalizeReservationWindow(value: unknown): { earliestDate: Date | null; latestDate: Date | null } {
   const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
   return {
     earliestDate: parseReservationIsoDate(raw.earliestDate),
     latestDate: parseReservationIsoDate(raw.latestDate),
+  };
+}
+
+function normalizeReservationQueueFairness(value: unknown): ReservationQueueFairnessEntry {
+  const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const noShowCountRaw = normalizeNumber(raw.noShowCount);
+  const lateArrivalCountRaw = normalizeNumber(raw.lateArrivalCount);
+  const overrideBoostRaw = normalizeNumber(raw.overrideBoost);
+  const updatedByRoleRaw = safeString(raw.updatedByRole).trim().toLowerCase();
+  const updatedByRole: "staff" | "dev" | "system" | null =
+    updatedByRoleRaw === "staff" || updatedByRoleRaw === "dev" || updatedByRoleRaw === "system"
+      ? updatedByRoleRaw
+      : null;
+  return {
+    noShowCount:
+      typeof noShowCountRaw === "number" ? Math.max(0, Math.round(noShowCountRaw)) : 0,
+    lateArrivalCount:
+      typeof lateArrivalCountRaw === "number" ? Math.max(0, Math.round(lateArrivalCountRaw)) : 0,
+    overrideBoost:
+      typeof overrideBoostRaw === "number" ? Math.max(0, Math.round(overrideBoostRaw)) : 0,
+    overrideReason: trimOrNull(raw.overrideReason),
+    overrideUntil: parseReservationIsoDate(raw.overrideUntil),
+    updatedAt: parseReservationIsoDate(raw.updatedAt),
+    updatedByUid: trimOrNull(raw.updatedByUid),
+    updatedByRole,
+    lastPolicyNote: trimOrNull(raw.lastPolicyNote),
+    lastEvidenceId: trimOrNull(raw.lastEvidenceId),
+  };
+}
+
+function toReservationQueueFairnessWrite(
+  entry: ReservationQueueFairnessEntry
+): Record<string, unknown> {
+  return {
+    noShowCount: Math.max(0, Math.round(entry.noShowCount)),
+    lateArrivalCount: Math.max(0, Math.round(entry.lateArrivalCount)),
+    overrideBoost: Math.max(0, Math.round(entry.overrideBoost)),
+    overrideReason: entry.overrideReason ?? null,
+    overrideUntil: entry.overrideUntil ? Timestamp.fromDate(entry.overrideUntil) : null,
+    updatedAt: entry.updatedAt ? Timestamp.fromDate(entry.updatedAt) : nowTs(),
+    updatedByUid: entry.updatedByUid ?? null,
+    updatedByRole: entry.updatedByRole ?? null,
+    lastPolicyNote: entry.lastPolicyNote ?? null,
+    lastEvidenceId: entry.lastEvidenceId ?? null,
+  };
+}
+
+function activeQueueFairnessOverrideBoost(
+  fairness: ReservationQueueFairnessEntry,
+  nowMs: number
+): number {
+  if (fairness.overrideBoost <= 0) return 0;
+  if (!fairness.overrideUntil) return fairness.overrideBoost;
+  return fairness.overrideUntil.getTime() >= nowMs ? fairness.overrideBoost : 0;
+}
+
+function buildReservationQueueFairnessPolicy(
+  row: Record<string, unknown>,
+  nowMs: number
+): ReservationQueueFairnessPolicyEntry {
+  const fairness = normalizeReservationQueueFairness(row.queueFairness);
+  const reasonCodes: string[] = [];
+  const noShowCount = fairness.noShowCount;
+  const lateArrivalCount = fairness.lateArrivalCount;
+  if (noShowCount > 0) {
+    reasonCodes.push(noShowCount >= 2 ? "repeat_no_show" : "no_show");
+  }
+  if (lateArrivalCount > 0) {
+    reasonCodes.push("late_arrival");
+  }
+  const penaltyPoints =
+    noShowCount * RESERVATION_QUEUE_FAIRNESS_NO_SHOW_PENALTY +
+    lateArrivalCount * RESERVATION_QUEUE_FAIRNESS_LATE_PENALTY;
+  const overrideBoostApplied = activeQueueFairnessOverrideBoost(fairness, nowMs);
+  if (overrideBoostApplied > 0) {
+    reasonCodes.push("staff_override_boost");
+  }
+  const effectivePenaltyPoints = Math.max(0, penaltyPoints - overrideBoostApplied);
+  return {
+    noShowCount,
+    lateArrivalCount,
+    penaltyPoints,
+    effectivePenaltyPoints,
+    overrideBoostApplied,
+    reasonCodes,
+    policyVersion: RESERVATION_QUEUE_FAIRNESS_POLICY_VERSION,
+    computedAt: Timestamp.fromDate(new Date(nowMs)),
   };
 }
 
@@ -776,7 +1216,8 @@ function reservationQueuePriority(row: Record<string, unknown>) {
   const addOns = row.addOns && typeof row.addOns === "object" ? (row.addOns as Record<string, unknown>) : {};
   const rushPriority = addOns.rushRequested === true ? 0 : 1;
   const wholeKilnPriority = addOns.wholeKilnRequested === true ? 0 : 1;
-  const noShowPenalty = arrivalWindowMissed(row, Date.now()) ? 1 : 0;
+  const queueFairnessPolicy = buildReservationQueueFairnessPolicy(row, Date.now());
+  const fairnessPenalty = queueFairnessPolicy.effectivePenaltyPoints;
   const sizePenalty = estimateHalfShelves(row);
   const createdAtMs = parseReservationIsoDate(row.createdAt)?.getTime() ?? 0;
   const idTie = safeString(row.id, "");
@@ -784,7 +1225,7 @@ function reservationQueuePriority(row: Record<string, unknown>) {
     statusPriority,
     rushPriority,
     wholeKilnPriority,
-    noShowPenalty,
+    fairnessPenalty,
     sizePenalty,
     createdAtMs,
     idTie,
@@ -827,7 +1268,7 @@ async function recomputeQueueHintsForStation(stationId: string | null): Promise<
       if (left.statusPriority !== right.statusPriority) return left.statusPriority - right.statusPriority;
       if (left.rushPriority !== right.rushPriority) return left.rushPriority - right.rushPriority;
       if (left.wholeKilnPriority !== right.wholeKilnPriority) return left.wholeKilnPriority - right.wholeKilnPriority;
-      if (left.noShowPenalty !== right.noShowPenalty) return left.noShowPenalty - right.noShowPenalty;
+      if (left.fairnessPenalty !== right.fairnessPenalty) return left.fairnessPenalty - right.fairnessPenalty;
       if (left.sizePenalty !== right.sizePenalty) return left.sizePenalty - right.sizePenalty;
       if (left.createdAtMs !== right.createdAtMs) return left.createdAtMs - right.createdAtMs;
       return left.idTie.localeCompare(right.idTie);
@@ -843,10 +1284,15 @@ async function recomputeQueueHintsForStation(stationId: string | null): Promise<
     rows.map(async (row) => {
       const position = activeIdToPosition.get(row.id) ?? null;
       const reservationRef = db.collection("reservations").doc(row.id);
+      const fairnessPolicy = buildReservationQueueFairnessPolicy(row.data, Date.now());
       if (position === null) {
         await reservationRef.set(
           {
             queuePositionHint: null,
+            queueFairnessPolicy: {
+              ...fairnessPolicy,
+              computedAt: now,
+            },
             estimatedWindow: {
               currentStart: null,
               currentEnd: null,
@@ -864,6 +1310,10 @@ async function recomputeQueueHintsForStation(stationId: string | null): Promise<
       await reservationRef.set(
         {
           queuePositionHint: position,
+          queueFairnessPolicy: {
+            ...fairnessPolicy,
+            computedAt: now,
+          },
           estimatedWindow: {
             currentStart: window.start,
             currentEnd: window.end,
@@ -895,10 +1345,17 @@ function toReservationRow(id: string, row: Record<string, unknown>) {
   const stageStatusRaw = row.stageStatus && typeof row.stageStatus === "object" ? row.stageStatus : null;
   const stageStatus = stageStatusRaw ? (stageStatusRaw as Record<string, unknown>) : null;
   const stageHistory = normalizeReservationStageHistory(row.stageHistory);
+  const storageNoticeHistory = normalizeReservationStorageNoticeHistory(row.storageNoticeHistory);
   const preferredWindow = normalizeReservationWindow(row.preferredWindow);
   const estimatedWindow = row.estimatedWindow && typeof row.estimatedWindow === "object" ? (row.estimatedWindow as Record<string, unknown>) : {};
   const pickupWindow = row.pickupWindow && typeof row.pickupWindow === "object" ? (row.pickupWindow as Record<string, unknown>) : {};
   const requiredResources = row.requiredResources && typeof row.requiredResources === "object" ? row.requiredResources : null;
+  const queueFairness = normalizeReservationQueueFairness(row.queueFairness);
+  const queueFairnessPolicyRaw =
+    row.queueFairnessPolicy && typeof row.queueFairnessPolicy === "object"
+      ? (row.queueFairnessPolicy as Record<string, unknown>)
+      : {};
+  const pieces = normalizeReservationPiecesInput(row.pieces, id);
 
   return {
     id,
@@ -928,10 +1385,37 @@ function toReservationRow(id: string, row: Record<string, unknown>) {
     photoUrl: safeString(row.photoUrl) || null,
     photoPath: safeString(row.photoPath) || null,
     notes: row.notes ? (row.notes as Record<string, unknown>) : null,
+    pieces,
     notesHistory: Array.isArray(row.notesHistory) ? row.notesHistory : null,
     addOns: row.addOns ? (row.addOns as Record<string, unknown>) : null,
     loadStatus,
     queuePositionHint: normalizeNumber(row.queuePositionHint),
+    queueFairness: {
+      noShowCount: queueFairness.noShowCount,
+      lateArrivalCount: queueFairness.lateArrivalCount,
+      overrideBoost: queueFairness.overrideBoost,
+      overrideReason: queueFairness.overrideReason,
+      overrideUntil: queueFairness.overrideUntil,
+      updatedAt: queueFairness.updatedAt,
+      updatedByUid: queueFairness.updatedByUid,
+      updatedByRole: queueFairness.updatedByRole,
+      lastPolicyNote: queueFairness.lastPolicyNote,
+      lastEvidenceId: queueFairness.lastEvidenceId,
+    },
+    queueFairnessPolicy: {
+      noShowCount: normalizeNumber(queueFairnessPolicyRaw.noShowCount),
+      lateArrivalCount: normalizeNumber(queueFairnessPolicyRaw.lateArrivalCount),
+      penaltyPoints: normalizeNumber(queueFairnessPolicyRaw.penaltyPoints),
+      effectivePenaltyPoints: normalizeNumber(queueFairnessPolicyRaw.effectivePenaltyPoints),
+      overrideBoostApplied: normalizeNumber(queueFairnessPolicyRaw.overrideBoostApplied),
+      reasonCodes: Array.isArray(queueFairnessPolicyRaw.reasonCodes)
+        ? queueFairnessPolicyRaw.reasonCodes
+            .map((value) => safeString(value).trim())
+            .filter((value) => value.length > 0)
+        : [],
+      policyVersion: safeString(queueFairnessPolicyRaw.policyVersion) || null,
+      computedAt: parseReservationIsoDate(queueFairnessPolicyRaw.computedAt),
+    },
     queueClass: safeString(row.queueClass) || null,
     queueLaneHint: safeString(row.queueLaneHint) || null,
     assignedStationId: safeString(row.assignedStationId) || null,
@@ -960,12 +1444,21 @@ function toReservationRow(id: string, row: Record<string, unknown>) {
       requestedEnd: parseReservationIsoDate(pickupWindow.requestedEnd),
       confirmedStart: parseReservationIsoDate(pickupWindow.confirmedStart),
       confirmedEnd: parseReservationIsoDate(pickupWindow.confirmedEnd),
-      status: safeString(pickupWindow.status) || null,
+      status: normalizeReservationPickupWindowStatus(pickupWindow.status),
+      confirmedAt: parseReservationIsoDate(pickupWindow.confirmedAt),
+      completedAt: parseReservationIsoDate(pickupWindow.completedAt),
+      missedCount: normalizeNumber(pickupWindow.missedCount),
+      rescheduleCount: normalizeNumber(pickupWindow.rescheduleCount),
+      lastMissedAt: parseReservationIsoDate(pickupWindow.lastMissedAt),
+      lastRescheduleRequestedAt: parseReservationIsoDate(pickupWindow.lastRescheduleRequestedAt),
     },
-    storageStatus: safeString(row.storageStatus) || null,
+    storageStatus: normalizeReservationStorageStatus(row.storageStatus),
     readyForPickupAt: parseReservationIsoDate(row.readyForPickupAt),
     pickupReminderCount: normalizeNumber(row.pickupReminderCount),
     lastReminderAt: parseReservationIsoDate(row.lastReminderAt),
+    pickupReminderFailureCount: normalizeNumber(row.pickupReminderFailureCount),
+    lastReminderFailureAt: parseReservationIsoDate(row.lastReminderFailureAt),
+    storageNoticeHistory,
     arrivalStatus: safeString(row.arrivalStatus) || null,
     arrivedAt: parseReservationIsoDate(row.arrivedAt),
     arrivalToken: safeString(row.arrivalToken) || null,
@@ -1141,11 +1634,14 @@ const ROUTE_SCOPE_HINTS: Record<string, string | null> = {
   "/v1/reservations.create": "reservations:write",
   "/v1/reservations.checkIn": "reservations:write",
   "/v1/reservations.rotateArrivalToken": "reservations:write",
+  "/v1/reservations.pickupWindow": "reservations:write",
+  "/v1/reservations.queueFairness": "reservations:write",
   "/v1/reservations.update": "reservations:write",
   "/v1/reservations.assignStation": "reservations:write",
   "/v1/reservations.lookupArrival": "reservations:read",
   "/v1/reservations.get": "reservations:read",
   "/v1/reservations.list": "reservations:read",
+  "/v1/reservations.exportContinuity": "reservations:read",
 };
 const ALLOWED_API_V1_ROUTES = new Set<string>([
   "/v1/hello",
@@ -1175,8 +1671,11 @@ const ALLOWED_API_V1_ROUTES = new Set<string>([
   "/v1/reservations.create",
   "/v1/reservations.get",
   "/v1/reservations.list",
+  "/v1/reservations.exportContinuity",
   "/v1/reservations.lookupArrival",
   "/v1/reservations.rotateArrivalToken",
+  "/v1/reservations.pickupWindow",
+  "/v1/reservations.queueFairness",
   "/v1/reservations.update",
   "/v1/events.feed",
   "/v1/firings.listUpcoming",
@@ -1219,12 +1718,24 @@ const API_V1_ROUTE_AUTHZ_EVENTS: Record<string, { action: string; resourceType: 
     action: "reservations_list",
     resourceType: "reservation",
   },
+  "/v1/reservations.exportContinuity": {
+    action: "reservations_export_continuity",
+    resourceType: "reservation",
+  },
   "/v1/reservations.lookupArrival": {
     action: "reservations_lookup_arrival",
     resourceType: "reservation",
   },
   "/v1/reservations.rotateArrivalToken": {
     action: "reservations_rotate_arrival_token",
+    resourceType: "reservation",
+  },
+  "/v1/reservations.pickupWindow": {
+    action: "reservations_pickup_window",
+    resourceType: "reservation",
+  },
+  "/v1/reservations.queueFairness": {
+    action: "reservations_queue_fairness",
     resourceType: "reservation",
   },
   "/v1/reservations.update": {
@@ -1280,6 +1791,31 @@ function readStringArray(value: unknown): string[] {
   return out;
 }
 
+function toIsoString(value: unknown): string | null {
+  const parsed = parseReservationIsoDate(value);
+  return parsed ? parsed.toISOString() : null;
+}
+
+function csvCell(value: unknown): string {
+  if (value == null) return "";
+  const scalar =
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+      ? String(value)
+      : JSON.stringify(value);
+  const escaped = scalar.replace(/"/g, "\"\"");
+  return `"${escaped}"`;
+}
+
+function buildCsv(columns: readonly string[], rows: Array<Record<string, unknown>>): string {
+  const header = columns.map((column) => csvCell(column)).join(",");
+  const lines = rows.map((row) =>
+    columns.map((column) => csvCell(row[column] ?? null)).join(",")
+  );
+  return `${[header, ...lines].join("\n")}\n`;
+}
+
 const ARRIVAL_TOKEN_PREFIX = "MF-ARR";
 const ARRIVAL_TOKEN_DEFAULT_WINDOW_MS = 36 * 60 * 60 * 1000;
 
@@ -1327,15 +1863,6 @@ function resolveArrivalTokenExpiryDate(row: Record<string, unknown>, nowDate: Da
     return preferredLatest;
   }
   return new Date(nowDate.getTime() + ARRIVAL_TOKEN_DEFAULT_WINDOW_MS);
-}
-
-function arrivalWindowMissed(row: Record<string, unknown>, nowMs: number): boolean {
-  const status = safeString(row.arrivalStatus, "").toLowerCase();
-  if (status === "no_show" || status === "overdue") return true;
-  if (status !== "expected") return false;
-  const expiry = parseReservationIsoDate(row.arrivalTokenExpiresAt);
-  if (!expiry) return false;
-  return expiry.getTime() <= nowMs;
 }
 
 async function findReservationByArrivalToken(tokenInput: string): Promise<{
@@ -2593,6 +3120,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         : null;
 
       const addOnsPayload = addOns;
+      const piecesPayload = normalizeReservationPiecesInput(body.pieces, reservationRef.id);
 
       await reservationRef.set({
         ownerUid,
@@ -2623,6 +3151,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         photoUrl,
         photoPath,
         notes: notesPayload,
+        pieces: piecesPayload,
         notesHistory: notesPayload
           ? [
               {
@@ -2644,6 +3173,26 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           actorRole: isStaff ? "staff" : ctx.mode === "firebase" ? "client" : "dev",
         },
         stageHistory: [],
+        pickupWindow: {
+          requestedStart: null,
+          requestedEnd: null,
+          confirmedStart: null,
+          confirmedEnd: null,
+          status: "open",
+          confirmedAt: null,
+          completedAt: null,
+          missedCount: 0,
+          rescheduleCount: 0,
+          lastMissedAt: null,
+          lastRescheduleRequestedAt: null,
+        },
+        storageStatus: "active",
+        readyForPickupAt: null,
+        pickupReminderCount: 0,
+        lastReminderAt: null,
+        pickupReminderFailureCount: 0,
+        lastReminderFailureAt: null,
+        storageNoticeHistory: [],
         createdByUid: ctx.uid,
         createdByRole: isStaff ? "staff" : ctx.mode === "firebase" ? "client" : "dev",
         createdAt: now,
@@ -2779,6 +3328,379 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         .slice(0, limit);
 
       jsonOk(res, requestId, { ownerUid: targetOwnerUid, reservations });
+      return;
+    }
+
+    if (route === "/v1/reservations.exportContinuity") {
+      const scopeCheck = requireScopes(ctx, ["reservations:read"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(reservationsExportContinuitySchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const targetOwnerUid = trimOrNull(parsed.data.ownerUid) ?? ctx.uid;
+      const rowLimit = parsed.data.limit ?? 300;
+      const includeCsv = parsed.data.includeCsv !== false;
+
+      const reservationAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid: targetOwnerUid,
+        scope: "reservations:read",
+        resource: `owner:${targetOwnerUid}:continuity-export`,
+        allowStaff: true,
+      });
+      if (!reservationAuthz.ok) {
+        await logReservationAuditEvent({
+          req,
+          requestId,
+          action: "reservations_export_continuity_authz",
+          resourceType: "reservation",
+          resourceId: targetOwnerUid,
+          ownerUid: targetOwnerUid,
+          result: "deny",
+          reasonCode: reservationAuthz.code,
+          ctx,
+        });
+        jsonError(res, requestId, reservationAuthz.httpStatus, reservationAuthz.code, reservationAuthz.message);
+        return;
+      }
+
+      const reservationsSnap = await db
+        .collection("reservations")
+        .where("ownerUid", "==", targetOwnerUid)
+        .orderBy("createdAt", "desc")
+        .limit(Math.min(1000, rowLimit))
+        .get();
+
+      const reservations = reservationsSnap.docs.map((docSnap) =>
+        toReservationRow(docSnap.id, docSnap.data() as Record<string, unknown>)
+      );
+
+      const stageHistoryRows: Array<Record<string, unknown>> = [];
+      const pieceRows: Array<Record<string, unknown>> = [];
+      const storageActionRows: Array<Record<string, unknown>> = [];
+      const reservationRows = reservations.map((reservation) => {
+        const notes = readObjectOrEmpty(reservation.notes);
+        const stageHistory = Array.isArray(reservation.stageHistory) ? reservation.stageHistory : [];
+        const pieces = Array.isArray(reservation.pieces) ? reservation.pieces : [];
+        const storageNoticeHistory = Array.isArray(reservation.storageNoticeHistory)
+          ? reservation.storageNoticeHistory
+          : [];
+
+        stageHistory.forEach((entry, index) => {
+          const row = readObjectOrEmpty(entry);
+          stageHistoryRows.push({
+            reservationId: reservation.id,
+            index,
+            at: toIsoString(row.at),
+            fromStage: readStringOrNull(row.fromStage),
+            toStage: readStringOrNull(row.toStage),
+            fromStatus: readStringOrNull(row.fromStatus),
+            toStatus: readStringOrNull(row.toStatus),
+            fromLoadStatus: readStringOrNull(row.fromLoadStatus),
+            toLoadStatus: readStringOrNull(row.toLoadStatus),
+            actorUid: readStringOrNull(row.actorUid),
+            actorRole: readStringOrNull(row.actorRole),
+            reason: readStringOrNull(row.reason),
+            notes: readStringOrNull(row.notes),
+          });
+        });
+
+        pieces.forEach((entry, index) => {
+          const row = readObjectOrEmpty(entry);
+          pieceRows.push({
+            reservationId: reservation.id,
+            index,
+            pieceId: readStringOrNull(row.pieceId),
+            pieceLabel: readStringOrNull(row.pieceLabel),
+            pieceCount: normalizeNumber(row.pieceCount),
+            pieceStatus: readStringOrNull(row.pieceStatus),
+            hasPhoto: Boolean(readStringOrNull(row.piecePhotoUrl)),
+          });
+        });
+
+        storageNoticeHistory.forEach((entry, index) => {
+          const row = readObjectOrEmpty(entry);
+          storageActionRows.push({
+            reservationId: reservation.id,
+            index,
+            at: toIsoString(row.at),
+            kind: readStringOrNull(row.kind),
+            detail: readStringOrNull(row.detail),
+            status: readStringOrNull(row.status),
+            reminderOrdinal: normalizeNumber(row.reminderOrdinal),
+            reminderCount: normalizeNumber(row.reminderCount),
+            failureCode: readStringOrNull(row.failureCode),
+          });
+        });
+
+        return {
+          reservationId: reservation.id,
+          status: reservation.status,
+          loadStatus: reservation.loadStatus ?? null,
+          firingType: reservation.firingType,
+          shelfEquivalent: reservation.shelfEquivalent,
+          estimatedHalfShelves: normalizeNumber(reservation.estimatedHalfShelves),
+          queuePositionHint: normalizeNumber(reservation.queuePositionHint),
+          queueClass: reservation.queueClass ?? null,
+          assignedStationId: reservation.assignedStationId ?? null,
+          pickupWindowStatus: readStringOrNull(readObjectOrEmpty(reservation.pickupWindow).status),
+          storageStatus: reservation.storageStatus ?? null,
+          arrivalStatus: reservation.arrivalStatus ?? null,
+          stageHistoryCount: stageHistory.length,
+          pieceRowCount: pieces.length,
+          storageActionCount: storageNoticeHistory.length,
+          hasPhoto: Boolean(reservation.photoUrl),
+          notesGeneralPresent: Boolean(trimOrNull(notes.general)),
+          createdAt: toIsoString(reservation.createdAt),
+          updatedAt: toIsoString(reservation.updatedAt),
+        };
+      });
+
+      const warnings: string[] = [];
+      const readCollectionSafe = async (
+        label: string,
+        fn: () => Promise<{ docs: Array<{ id: string; data: () => Record<string, unknown> }> }>
+      ): Promise<{ docs: Array<{ id: string; data: () => Record<string, unknown> }> } | null> => {
+        try {
+          return await fn();
+        } catch (error: unknown) {
+          warnings.push(`${label}: ${safeErrorMessage(error)}`);
+          return null;
+        }
+      };
+
+      const [storageAuditSnap, queueFairnessAuditSnap, notificationSnap] = await Promise.all([
+        readCollectionSafe("reservationStorageAudit", () =>
+          db
+            .collection("reservationStorageAudit")
+            .where("uid", "==", targetOwnerUid)
+            .limit(Math.min(1000, rowLimit * 4))
+            .get()
+        ),
+        readCollectionSafe("reservationQueueFairnessAudit", () =>
+          db
+            .collection("reservationQueueFairnessAudit")
+            .where("ownerUid", "==", targetOwnerUid)
+            .limit(Math.min(1000, rowLimit * 4))
+            .get()
+        ),
+        readCollectionSafe("users.notifications", () =>
+          db
+            .collection("users")
+            .doc(targetOwnerUid)
+            .collection("notifications")
+            .limit(Math.min(1000, rowLimit * 4))
+            .get()
+        ),
+      ]);
+
+      const storageAuditRows = (storageAuditSnap?.docs ?? []).map((docSnap) => {
+        const row = docSnap.data() as Record<string, unknown>;
+        return {
+          auditId: docSnap.id,
+          reservationId: readStringOrNull(row.reservationId),
+          action: readStringOrNull(row.action),
+          reason: readStringOrNull(row.reason),
+          fromStatus: readStringOrNull(row.fromStatus),
+          toStatus: readStringOrNull(row.toStatus),
+          reminderOrdinal: normalizeNumber(row.reminderOrdinal),
+          reminderCount: normalizeNumber(row.reminderCount),
+          failureCode: readStringOrNull(row.failureCode),
+          requestId: readStringOrNull(row.requestId),
+          at: toIsoString(row.at),
+          createdAt: toIsoString(row.createdAt),
+        };
+      });
+
+      const queueFairnessAuditRows = (queueFairnessAuditSnap?.docs ?? []).map((docSnap) => {
+        const row = docSnap.data() as Record<string, unknown>;
+        const policy = readObjectOrEmpty(row.queueFairnessPolicy);
+        return {
+          evidenceId: docSnap.id,
+          reservationId: readStringOrNull(row.reservationId),
+          action: readStringOrNull(row.action),
+          reason: readStringOrNull(row.reason),
+          actorUid: readStringOrNull(row.actorUid),
+          actorRole: readStringOrNull(row.actorRole),
+          policyVersion: readStringOrNull(policy.policyVersion),
+          effectivePenaltyPoints: normalizeNumber(policy.effectivePenaltyPoints),
+          requestId: readStringOrNull(row.requestId),
+          createdAt: toIsoString(row.createdAt),
+        };
+      });
+
+      const notificationRows = (notificationSnap?.docs ?? []).map((docSnap) => {
+        const row = docSnap.data() as Record<string, unknown>;
+        return {
+          notificationId: docSnap.id,
+          title: readStringOrNull(row.title),
+          body: readStringOrNull(row.body),
+          kind: readStringOrNull(row.kind),
+          createdAt: toIsoString(row.createdAt),
+          readAt: toIsoString(row.readAt),
+          status: readStringOrNull(row.status),
+        };
+      });
+
+      const csvBundle = includeCsv
+        ? {
+            reservations: buildCsv(
+              [
+                "reservationId",
+                "status",
+                "loadStatus",
+                "firingType",
+                "shelfEquivalent",
+                "estimatedHalfShelves",
+                "queuePositionHint",
+                "queueClass",
+                "assignedStationId",
+                "pickupWindowStatus",
+                "storageStatus",
+                "arrivalStatus",
+                "stageHistoryCount",
+                "pieceRowCount",
+                "storageActionCount",
+                "hasPhoto",
+                "notesGeneralPresent",
+                "createdAt",
+                "updatedAt",
+              ],
+              reservationRows
+            ),
+            stageHistory: buildCsv(
+              [
+                "reservationId",
+                "index",
+                "at",
+                "fromStage",
+                "toStage",
+                "fromStatus",
+                "toStatus",
+                "fromLoadStatus",
+                "toLoadStatus",
+                "actorUid",
+                "actorRole",
+                "reason",
+                "notes",
+              ],
+              stageHistoryRows
+            ),
+            pieces: buildCsv(
+              ["reservationId", "index", "pieceId", "pieceLabel", "pieceCount", "pieceStatus", "hasPhoto"],
+              pieceRows
+            ),
+            storageActions: buildCsv(
+              [
+                "reservationId",
+                "index",
+                "at",
+                "kind",
+                "detail",
+                "status",
+                "reminderOrdinal",
+                "reminderCount",
+                "failureCode",
+              ],
+              storageActionRows
+            ),
+            storageAudit: buildCsv(
+              [
+                "auditId",
+                "reservationId",
+                "action",
+                "reason",
+                "fromStatus",
+                "toStatus",
+                "reminderOrdinal",
+                "reminderCount",
+                "failureCode",
+                "requestId",
+                "at",
+                "createdAt",
+              ],
+              storageAuditRows
+            ),
+            queueFairnessAudit: buildCsv(
+              [
+                "evidenceId",
+                "reservationId",
+                "action",
+                "reason",
+                "actorUid",
+                "actorRole",
+                "policyVersion",
+                "effectivePenaltyPoints",
+                "requestId",
+                "createdAt",
+              ],
+              queueFairnessAuditRows
+            ),
+            notifications: buildCsv(
+              ["notificationId", "title", "body", "kind", "status", "createdAt", "readAt"],
+              notificationRows
+            ),
+          }
+        : null;
+
+      const exportGeneratedAt = new Date().toISOString();
+      const summary = {
+        reservations: reservationRows.length,
+        stageHistory: stageHistoryRows.length,
+        pieces: pieceRows.length,
+        storageActions: storageActionRows.length,
+        storageAudit: storageAuditRows.length,
+        queueFairnessAudit: queueFairnessAuditRows.length,
+        notifications: notificationRows.length,
+      };
+      const signatureSource = JSON.stringify({
+        requestId,
+        ownerUid: targetOwnerUid,
+        generatedAt: exportGeneratedAt,
+        schemaVersion: RESERVATION_CONTINUITY_EXPORT_SCHEMA_VERSION,
+        summary,
+      });
+      const signature = `mfexp_${fnv1a32(signatureSource).toString(16).padStart(8, "0")}`;
+      const artifactId = `mf-continuity-${targetOwnerUid}-${exportGeneratedAt
+        .replace(/[-:.TZ]/g, "")
+        .slice(0, 14)}`;
+
+      jsonOk(res, requestId, {
+        exportHeader: {
+          artifactId,
+          ownerUid: targetOwnerUid,
+          generatedAt: exportGeneratedAt,
+          schemaVersion: RESERVATION_CONTINUITY_EXPORT_SCHEMA_VERSION,
+          format: includeCsv ? ["json", "csv"] : ["json"],
+          signature,
+          requestId,
+        },
+        redactionRules: [
+          "piecePhotoUrl values are not exported; only hasPhoto flags are included.",
+          "reservation notes are summarized as presence flags (notesGeneralPresent).",
+          "arrival tokens are not exported.",
+        ],
+        summary,
+        warnings,
+        jsonBundle: {
+          reservations: reservationRows,
+          stageHistory: stageHistoryRows,
+          pieces: pieceRows,
+          storageActions: storageActionRows,
+          storageAudit: storageAuditRows,
+          queueFairnessAudit: queueFairnessAuditRows,
+          notifications: notificationRows,
+        },
+        csvBundle,
+      });
       return;
     }
 
@@ -3160,6 +4082,693 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       return;
     }
 
+    if (route === "/v1/reservations.pickupWindow") {
+      const scopeCheck = requireScopes(ctx, ["reservations:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(reservationsPickupWindowSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const action = parsed.data.action;
+      const staffOnlyAction =
+        action === "staff_set_open_window" ||
+        action === "staff_mark_missed" ||
+        action === "staff_mark_completed";
+
+      const reservationId = parsed.data.reservationId;
+      const reservationRef = db.collection("reservations").doc(reservationId);
+      const reservationSnap = await reservationRef.get();
+      if (!reservationSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Reservation not found");
+        return;
+      }
+
+      const row = reservationSnap.data() as Record<string, unknown>;
+      const ownerUid = safeString(row.ownerUid, "");
+      if (!ownerUid) {
+        jsonError(res, requestId, 500, "INTERNAL", "Reservation missing owner");
+        return;
+      }
+
+      const admin = await requireAdmin(req);
+      if (staffOnlyAction && !admin.ok) {
+        await logReservationAuditEvent({
+          req,
+          requestId,
+          action: "reservations_pickup_window_admin_auth",
+          resourceType: "reservation",
+          resourceId: reservationId,
+          ownerUid,
+          result: "deny",
+          reasonCode: admin.code,
+          ctx,
+          metadata: {
+            pickupWindowAction: action,
+          },
+        });
+        jsonError(res, requestId, admin.httpStatus, admin.code, admin.message);
+        return;
+      }
+
+      const reservationAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid,
+        scope: "reservations:write",
+        resource: `reservation:${reservationId}`,
+        allowStaff: true,
+      });
+      if (!reservationAuthz.ok) {
+        await logReservationAuditEvent({
+          req,
+          requestId,
+          action: "reservations_pickup_window_authz",
+          resourceType: "reservation",
+          resourceId: reservationId,
+          ownerUid,
+          result: "deny",
+          reasonCode: reservationAuthz.code,
+          ctx,
+          metadata: {
+            pickupWindowAction: action,
+          },
+        });
+        jsonError(res, requestId, reservationAuthz.httpStatus, reservationAuthz.code, reservationAuthz.message);
+        return;
+      }
+
+      if (!staffOnlyAction && !admin.ok && ctx.uid !== ownerUid) {
+        await logReservationAuditEvent({
+          req,
+          requestId,
+          action: "reservations_pickup_window_owner_required",
+          resourceType: "reservation",
+          resourceId: reservationId,
+          ownerUid,
+          result: "deny",
+          reasonCode: "FORBIDDEN",
+          ctx,
+          metadata: {
+            pickupWindowAction: action,
+          },
+        });
+        jsonError(res, requestId, 403, "FORBIDDEN", "Only the reservation owner can perform this action.");
+        return;
+      }
+
+      try {
+        const now = nowTs();
+        const nowDate = now.toDate();
+        const actorRole =
+          admin.ok
+            ? admin.mode === "staff"
+              ? "staff"
+              : "dev"
+            : "client";
+        const note = trimOrNull(parsed.data.note);
+        const force = parsed.data.force === true;
+
+        const out = await db.runTransaction(async (tx) => {
+          const snap = await tx.get(reservationRef);
+          if (!snap.exists) {
+            throw new Error("RESERVATION_NOT_FOUND");
+          }
+          const row = snap.data() as Record<string, unknown>;
+          const status = normalizeReservationStatus(row.status) ?? "REQUESTED";
+          const loadStatus = normalizeLoadStatus(row.loadStatus);
+          if (status === "CANCELLED") {
+            throw new Error("RESERVATION_CANCELLED");
+          }
+          if (loadStatus !== "loaded" && !force) {
+            throw new Error("PICKUP_WINDOW_REQUIRES_LOADED");
+          }
+
+          const pickupWindow = normalizeReservationPickupWindow(row.pickupWindow);
+          const storageHistory = normalizeReservationStorageNoticeHistory(row.storageNoticeHistory);
+          const updates: Record<string, unknown> = { updatedAt: now };
+          let storageHistoryNext = [...storageHistory];
+          let storageStatus = normalizeReservationStorageStatus(row.storageStatus) ?? "active";
+          let transitionReason = "";
+          let idempotentReplay = false;
+
+          const ensureWindowRange = (startDate: Date | null, endDate: Date | null) => {
+            if (!startDate || !endDate || endDate.getTime() <= startDate.getTime()) {
+              throw new Error("INVALID_PICKUP_WINDOW_RANGE");
+            }
+          };
+
+          const storageNotice = (kind: string, detail: string, statusOverride?: ReservationStorageStatus | null) => {
+            storageHistoryNext = pushReservationStorageNotice(storageHistoryNext, {
+              at: now,
+              kind,
+              detail,
+              status: statusOverride ?? storageStatus,
+              reminderOrdinal: null,
+              reminderCount: null,
+              failureCode: null,
+            });
+          };
+
+          if (action === "staff_set_open_window") {
+            const confirmedStart = parseReservationIsoDate(parsed.data.confirmedStart);
+            const confirmedEnd = parseReservationIsoDate(parsed.data.confirmedEnd);
+            ensureWindowRange(confirmedStart, confirmedEnd);
+
+            const wasOpen =
+              pickupWindow.status === "open" &&
+              pickupWindow.confirmedStart?.getTime() === confirmedStart?.getTime() &&
+              pickupWindow.confirmedEnd?.getTime() === confirmedEnd?.getTime();
+            if (wasOpen) {
+              idempotentReplay = true;
+            } else {
+              pickupWindow.confirmedStart = confirmedStart;
+              pickupWindow.confirmedEnd = confirmedEnd;
+              pickupWindow.requestedStart = pickupWindow.requestedStart ?? confirmedStart;
+              pickupWindow.requestedEnd = pickupWindow.requestedEnd ?? confirmedEnd;
+              pickupWindow.status = "open";
+              pickupWindow.confirmedAt = null;
+              pickupWindow.completedAt = null;
+              transitionReason = "pickup_window_opened";
+              storageNotice(
+                "pickup_window_opened",
+                "Pickup window is available. Please confirm a pickup slot."
+              );
+            }
+          } else if (action === "member_confirm_window") {
+            if (pickupWindow.status !== "open" && !force) {
+              throw new Error("PICKUP_WINDOW_NOT_OPEN");
+            }
+            ensureWindowRange(pickupWindow.confirmedStart, pickupWindow.confirmedEnd);
+            if (!force && pickupWindow.confirmedEnd && pickupWindow.confirmedEnd.getTime() < nowDate.getTime()) {
+              pickupWindow.status = "expired";
+              storageNotice(
+                "pickup_window_expired",
+                "Pickup window expired before confirmation."
+              );
+              throw new Error("PICKUP_WINDOW_EXPIRED");
+            }
+
+            pickupWindow.status = "confirmed";
+            pickupWindow.confirmedAt = nowDate;
+            transitionReason = "pickup_window_confirmed";
+            storageNotice(
+              "pickup_window_confirmed",
+              "Pickup window confirmed by member."
+            );
+          } else if (action === "member_request_reschedule") {
+            const priorRescheduleEvents = storageHistoryNext.filter(
+              (entry) => entry.kind === "pickup_window_reschedule_requested"
+            ).length;
+            const effectiveRescheduleCount = Math.max(
+              pickupWindow.rescheduleCount,
+              priorRescheduleEvents
+            );
+            if (effectiveRescheduleCount >= 1 && !force) {
+              throw new Error("PICKUP_WINDOW_RESCHEDULE_LIMIT");
+            }
+            const requestedStart = parseReservationIsoDate(parsed.data.requestedStart);
+            const requestedEnd = parseReservationIsoDate(parsed.data.requestedEnd);
+            ensureWindowRange(requestedStart, requestedEnd);
+
+            pickupWindow.requestedStart = requestedStart;
+            pickupWindow.requestedEnd = requestedEnd;
+            pickupWindow.confirmedStart = null;
+            pickupWindow.confirmedEnd = null;
+            pickupWindow.confirmedAt = null;
+            pickupWindow.status = "open";
+            pickupWindow.rescheduleCount = effectiveRescheduleCount + 1;
+            pickupWindow.lastRescheduleRequestedAt = nowDate;
+            transitionReason = "pickup_window_reschedule_requested";
+            storageNotice(
+              "pickup_window_reschedule_requested",
+              "Member requested one pickup-window reschedule."
+            );
+          } else if (action === "staff_mark_missed") {
+            if (
+              !force &&
+              pickupWindow.confirmedEnd &&
+              pickupWindow.confirmedEnd.getTime() > nowDate.getTime()
+            ) {
+              throw new Error("PICKUP_WINDOW_NOT_ELAPSED");
+            }
+            pickupWindow.status = "missed";
+            pickupWindow.missedCount += 1;
+            pickupWindow.lastMissedAt = nowDate;
+            pickupWindow.confirmedAt = null;
+            transitionReason = "pickup_window_missed";
+
+            if (pickupWindow.missedCount >= 2) {
+              storageStatus = "stored_by_policy";
+              updates.storageStatus = storageStatus;
+              storageNotice(
+                "stored_by_policy",
+                "Reservation exceeded pickup-window misses and moved to stored-by-policy.",
+                storageStatus
+              );
+            } else {
+              storageStatus = "hold_pending";
+              updates.storageStatus = storageStatus;
+              storageNotice(
+                "pickup_window_missed",
+                "Pickup window was missed. Reservation moved to hold-pending for follow-up.",
+                storageStatus
+              );
+            }
+          } else if (action === "staff_mark_completed") {
+            pickupWindow.status = "completed";
+            pickupWindow.completedAt = nowDate;
+            pickupWindow.confirmedAt = pickupWindow.confirmedAt ?? nowDate;
+            transitionReason = "pickup_window_completed";
+            storageStatus = "active";
+            updates.storageStatus = storageStatus;
+            updates.readyForPickupAt = null;
+            updates.pickupReminderCount = 0;
+            updates.lastReminderAt = null;
+            updates.pickupReminderFailureCount = 0;
+            updates.lastReminderFailureAt = null;
+            storageNotice(
+              "pickup_window_completed",
+              "Pickup completed and storage reminder counters reset.",
+              storageStatus
+            );
+          } else {
+            throw new Error("UNSUPPORTED_PICKUP_WINDOW_ACTION");
+          }
+
+          if (!transitionReason) {
+            transitionReason = "pickup_window_updated";
+          }
+
+          const history = normalizeReservationStageHistory(row.stageHistory);
+          const lifecycleStage = stageForCurrentState(status, loadStatus);
+          history.push({
+            fromStatus: status,
+            toStatus: status,
+            fromLoadStatus: loadStatus,
+            toLoadStatus: loadStatus,
+            fromStage: lifecycleStage,
+            toStage: lifecycleStage,
+            at: now,
+            actorUid: ctx.uid,
+            actorRole,
+            reason: transitionReason,
+            notes: note,
+          });
+          updates.stageHistory = history.slice(-120);
+          updates.stageStatus = {
+            stage: lifecycleStage,
+            at: now,
+            source: actorRole,
+            reason: transitionReason,
+            notes: note,
+            actorUid: ctx.uid,
+            actorRole,
+          };
+          updates.pickupWindow = toPickupWindowWrite(pickupWindow);
+          updates.storageNoticeHistory = storageHistoryNext.slice(-80);
+
+          tx.set(reservationRef, updates, { merge: true });
+          return {
+            reservationId,
+            pickupWindow,
+            storageStatus,
+            idempotentReplay,
+          };
+        });
+
+        jsonOk(res, requestId, {
+          reservationId: out.reservationId,
+          pickupWindowStatus: out.pickupWindow.status,
+          pickupWindow: {
+            requestedStart: out.pickupWindow.requestedStart,
+            requestedEnd: out.pickupWindow.requestedEnd,
+            confirmedStart: out.pickupWindow.confirmedStart,
+            confirmedEnd: out.pickupWindow.confirmedEnd,
+            status: out.pickupWindow.status,
+            confirmedAt: out.pickupWindow.confirmedAt,
+            completedAt: out.pickupWindow.completedAt,
+            missedCount: out.pickupWindow.missedCount,
+            rescheduleCount: out.pickupWindow.rescheduleCount,
+            lastMissedAt: out.pickupWindow.lastMissedAt,
+            lastRescheduleRequestedAt: out.pickupWindow.lastRescheduleRequestedAt,
+          },
+          storageStatus: out.storageStatus,
+          idempotentReplay: out.idempotentReplay,
+        });
+      } catch (error: unknown) {
+        const message = safeErrorMessage(error);
+        if (message === "RESERVATION_NOT_FOUND") {
+          jsonError(res, requestId, 404, "NOT_FOUND", "Reservation not found");
+          return;
+        }
+        if (message === "RESERVATION_CANCELLED") {
+          jsonError(res, requestId, 409, "CONFLICT", "Reservation is cancelled");
+          return;
+        }
+        if (message === "PICKUP_WINDOW_REQUIRES_LOADED") {
+          jsonError(
+            res,
+            requestId,
+            409,
+            "CONFLICT",
+            "Reservation must be loaded before pickup window actions."
+          );
+          return;
+        }
+        if (message === "INVALID_PICKUP_WINDOW_RANGE") {
+          jsonError(
+            res,
+            requestId,
+            400,
+            "INVALID_ARGUMENT",
+            "Pickup window requires a valid start/end range."
+          );
+          return;
+        }
+        if (message === "PICKUP_WINDOW_NOT_OPEN") {
+          jsonError(res, requestId, 409, "CONFLICT", "Pickup window is not open for confirmation.");
+          return;
+        }
+        if (message === "PICKUP_WINDOW_EXPIRED") {
+          jsonError(res, requestId, 409, "CONFLICT", "Pickup window has already expired.");
+          return;
+        }
+        if (message === "PICKUP_WINDOW_RESCHEDULE_LIMIT") {
+          jsonError(
+            res,
+            requestId,
+            409,
+            "CONFLICT",
+            "Reschedule request limit reached for this reservation."
+          );
+          return;
+        }
+        if (message === "PICKUP_WINDOW_NOT_ELAPSED") {
+          jsonError(
+            res,
+            requestId,
+            409,
+            "CONFLICT",
+            "Pickup window has not elapsed yet. Use force=true for manual override."
+          );
+          return;
+        }
+        if (message === "UNSUPPORTED_PICKUP_WINDOW_ACTION") {
+          jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Unsupported pickup-window action.");
+          return;
+        }
+        throw error;
+      }
+      return;
+    }
+
+    if (route === "/v1/reservations.queueFairness") {
+      const scopeCheck = requireScopes(ctx, ["reservations:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(reservationsQueueFairnessSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const reservationId = parsed.data.reservationId;
+      const action = parsed.data.action;
+      const reason = trimOrNull(parsed.data.reason);
+
+      const admin = await requireAdmin(req);
+      if (!admin.ok) {
+        await logReservationAuditEvent({
+          req,
+          requestId,
+          action: "reservations_queue_fairness_admin_auth",
+          resourceType: "reservation",
+          resourceId: reservationId,
+          result: "deny",
+          reasonCode: admin.code,
+          ctx,
+          metadata: {
+            fairnessAction: action,
+          },
+        });
+        jsonError(res, requestId, admin.httpStatus, admin.code, admin.message);
+        return;
+      }
+
+      const reservationRef = db.collection("reservations").doc(reservationId);
+      const reservationSnap = await reservationRef.get();
+      if (!reservationSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Reservation not found");
+        return;
+      }
+
+      const existing = reservationSnap.data() as Record<string, unknown>;
+      const ownerUid = safeString(existing.ownerUid, "");
+      if (!ownerUid) {
+        jsonError(res, requestId, 500, "INTERNAL", "Reservation missing owner");
+        return;
+      }
+
+      const reservationAuthz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid,
+        scope: "reservations:write",
+        resource: `reservation:${reservationId}`,
+        allowStaff: true,
+      });
+      if (!reservationAuthz.ok) {
+        await logReservationAuditEvent({
+          req,
+          requestId,
+          action: "reservations_queue_fairness_authz",
+          resourceType: "reservation",
+          resourceId: reservationId,
+          ownerUid,
+          result: "deny",
+          reasonCode: reservationAuthz.code,
+          ctx,
+          metadata: {
+            fairnessAction: action,
+          },
+        });
+        jsonError(res, requestId, reservationAuthz.httpStatus, reservationAuthz.code, reservationAuthz.message);
+        return;
+      }
+
+      try {
+        const now = nowTs();
+        const nowDate = now.toDate();
+        const actorRole = admin.mode === "staff" ? "staff" : "dev";
+
+        const out = await db.runTransaction(async (tx) => {
+          const snap = await tx.get(reservationRef);
+          if (!snap.exists) {
+            throw new Error("RESERVATION_NOT_FOUND");
+          }
+          const row = snap.data() as Record<string, unknown>;
+          const status = normalizeReservationStatus(row.status) ?? "REQUESTED";
+          const loadStatus = normalizeLoadStatus(row.loadStatus);
+          if (status === "CANCELLED") {
+            throw new Error("RESERVATION_CANCELLED");
+          }
+
+          const queueFairness = normalizeReservationQueueFairness(row.queueFairness);
+          const previousQueueFairness =
+            row.queueFairness && typeof row.queueFairness === "object"
+              ? (row.queueFairness as Record<string, unknown>)
+              : null;
+          let transitionReason = "";
+
+          if (action === "record_no_show") {
+            queueFairness.noShowCount += 1;
+            transitionReason = "queue_fairness_no_show_recorded";
+          } else if (action === "record_late_arrival") {
+            queueFairness.lateArrivalCount += 1;
+            transitionReason = "queue_fairness_late_arrival_recorded";
+          } else if (action === "set_override_boost") {
+            const boostPoints = clampNumber(Math.round(parsed.data.boostPoints ?? 0), 0, 20);
+            const overrideUntil = parseReservationIsoDate(parsed.data.overrideUntil);
+            if (parsed.data.overrideUntil != null && !overrideUntil) {
+              throw new Error("INVALID_OVERRIDE_UNTIL");
+            }
+            queueFairness.overrideBoost = boostPoints;
+            queueFairness.overrideReason = reason;
+            queueFairness.overrideUntil = overrideUntil;
+            transitionReason = "queue_fairness_override_set";
+          } else if (action === "clear_override") {
+            queueFairness.overrideBoost = 0;
+            queueFairness.overrideReason = null;
+            queueFairness.overrideUntil = null;
+            transitionReason = "queue_fairness_override_cleared";
+          } else {
+            throw new Error("UNSUPPORTED_QUEUE_FAIRNESS_ACTION");
+          }
+
+          queueFairness.updatedAt = nowDate;
+          queueFairness.updatedByUid = ctx.uid;
+          queueFairness.updatedByRole = actorRole;
+          queueFairness.lastPolicyNote = reason;
+
+          const fairnessWrite = toReservationQueueFairnessWrite(queueFairness);
+          const fairnessPolicy = buildReservationQueueFairnessPolicy(
+            {
+              ...row,
+              queueFairness: queueFairness,
+            },
+            nowDate.getTime()
+          );
+          const fairnessPolicyWrite = {
+            ...fairnessPolicy,
+            computedAt: now,
+          };
+
+          const lifecycleStage = stageForCurrentState(status, loadStatus);
+          const stageHistory = normalizeReservationStageHistory(row.stageHistory);
+          stageHistory.push({
+            fromStatus: status,
+            toStatus: status,
+            fromLoadStatus: loadStatus,
+            toLoadStatus: loadStatus,
+            fromStage: lifecycleStage,
+            toStage: lifecycleStage,
+            at: now,
+            actorUid: ctx.uid,
+            actorRole,
+            reason: transitionReason,
+            notes: reason,
+          });
+
+          const fairnessStaffNote = `[fairness:${action}] ${reason ?? "policy action recorded"}`;
+          const existingStaffNotes = trimOrNull(row.staffNotes);
+          const combinedStaffNotes = existingStaffNotes
+            ? `${existingStaffNotes}\n${fairnessStaffNote}`
+            : fairnessStaffNote;
+
+          const evidenceId = makeIdempotencyId(
+            "reservation-fairness",
+            reservationId,
+            `${action}:${requestId}`
+          );
+
+          tx.set(
+            reservationRef,
+            {
+              queueFairness: fairnessWrite,
+              queueFairnessPolicy: fairnessPolicyWrite,
+              stageHistory: stageHistory.slice(-120),
+              stageStatus: {
+                stage: lifecycleStage,
+                at: now,
+                source: actorRole,
+                reason: transitionReason,
+                notes: reason,
+                actorUid: ctx.uid,
+                actorRole,
+              },
+              staffNotes: combinedStaffNotes.slice(-1500),
+              updatedAt: now,
+            },
+            { merge: true }
+          );
+          tx.set(
+            db.collection("reservationQueueFairnessAudit").doc(evidenceId),
+            {
+              reservationId,
+              ownerUid,
+              action,
+              reason,
+              actorUid: ctx.uid,
+              actorRole,
+              route,
+              requestId,
+              createdAt: now,
+              queueFairness: fairnessWrite,
+              queueFairnessPolicy: fairnessPolicyWrite,
+              previousQueueFairness,
+            },
+            { merge: true }
+          );
+
+          return {
+            reservationId,
+            assignedStationId: normalizeStationId(row.assignedStationId),
+            action,
+            evidenceId,
+            queueFairness,
+            queueFairnessPolicy: fairnessPolicyWrite,
+          };
+        });
+
+        await recomputeQueueHintsForStationSafe(
+          out.assignedStationId,
+          "reservations.queueFairness"
+        );
+
+        jsonOk(res, requestId, {
+          reservationId: out.reservationId,
+          action: out.action,
+          evidenceId: out.evidenceId,
+          queueFairness: {
+            noShowCount: out.queueFairness.noShowCount,
+            lateArrivalCount: out.queueFairness.lateArrivalCount,
+            overrideBoost: out.queueFairness.overrideBoost,
+            overrideReason: out.queueFairness.overrideReason,
+            overrideUntil: out.queueFairness.overrideUntil,
+            updatedAt: out.queueFairness.updatedAt,
+            updatedByUid: out.queueFairness.updatedByUid,
+            updatedByRole: out.queueFairness.updatedByRole,
+            lastPolicyNote: out.queueFairness.lastPolicyNote,
+          },
+          queueFairnessPolicy: {
+            noShowCount: out.queueFairnessPolicy.noShowCount,
+            lateArrivalCount: out.queueFairnessPolicy.lateArrivalCount,
+            penaltyPoints: out.queueFairnessPolicy.penaltyPoints,
+            effectivePenaltyPoints: out.queueFairnessPolicy.effectivePenaltyPoints,
+            overrideBoostApplied: out.queueFairnessPolicy.overrideBoostApplied,
+            reasonCodes: out.queueFairnessPolicy.reasonCodes,
+            policyVersion: out.queueFairnessPolicy.policyVersion,
+            computedAt: out.queueFairnessPolicy.computedAt,
+          },
+        });
+      } catch (error: unknown) {
+        const message = safeErrorMessage(error);
+        if (message === "RESERVATION_NOT_FOUND") {
+          jsonError(res, requestId, 404, "NOT_FOUND", "Reservation not found");
+          return;
+        }
+        if (message === "RESERVATION_CANCELLED") {
+          jsonError(res, requestId, 409, "CONFLICT", "Reservation is cancelled");
+          return;
+        }
+        if (message === "INVALID_OVERRIDE_UNTIL") {
+          jsonError(
+            res,
+            requestId,
+            400,
+            "INVALID_ARGUMENT",
+            "overrideUntil must be a valid date/time."
+          );
+          return;
+        }
+        if (message === "UNSUPPORTED_QUEUE_FAIRNESS_ACTION") {
+          jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Unsupported queue fairness action.");
+          return;
+        }
+        throw error;
+      }
+      return;
+    }
+
     if (route === "/v1/reservations.update") {
       const scopeCheck = requireScopes(ctx, ["reservations:write"]);
       if (!scopeCheck.ok) {
@@ -3299,6 +4908,37 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
 
           if (loadProvided) {
             update.loadStatus = nextLoadStatus;
+            if (nextLoadStatus === "loaded" && existingLoadStatus !== "loaded") {
+              const storageHistory = normalizeReservationStorageNoticeHistory(row.storageNoticeHistory);
+              storageHistory.push({
+                at: now,
+                kind: "pickup_ready",
+                detail: "Reservation load completed and pickup policy timer started.",
+                status: "active",
+                reminderOrdinal: null,
+                reminderCount: 0,
+                failureCode: null,
+              });
+              update.readyForPickupAt = now;
+              update.storageStatus = "active";
+              update.pickupReminderCount = 0;
+              update.lastReminderAt = null;
+              update.pickupReminderFailureCount = 0;
+              update.lastReminderFailureAt = null;
+              update.storageNoticeHistory = storageHistory.slice(-80);
+
+              const pickupWindow = normalizeReservationPickupWindow(row.pickupWindow);
+              if (!pickupWindow.status || pickupWindow.status === "expired" || pickupWindow.status === "missed") {
+                pickupWindow.status = "open";
+              }
+              if (!pickupWindow.confirmedStart && pickupWindow.requestedStart) {
+                pickupWindow.confirmedStart = pickupWindow.requestedStart;
+              }
+              if (!pickupWindow.confirmedEnd && pickupWindow.requestedEnd) {
+                pickupWindow.confirmedEnd = pickupWindow.requestedEnd;
+              }
+              update.pickupWindow = toPickupWindowWrite(pickupWindow);
+            }
           }
 
           if (notesProvided) {

@@ -1,6 +1,6 @@
 # P2 — No-Show and Queue Fairness Policy
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -39,3 +39,36 @@ Introduce policy-driven fairness controls that reduce congestion, reduce repeate
 ## Dependencies
 - `tickets/P1-studio-queue-position-and-eta-band.md`
 - `tickets/P1-studio-reservation-stage-timeline-and-audit.md`
+
+## Completion Evidence (2026-02-24)
+- Policy-backed fairness controls shipped in API:
+  - new route `apiV1/v1/reservations.queueFairness` with actions:
+    - `record_no_show`
+    - `record_late_arrival`
+    - `set_override_boost`
+    - `clear_override`
+  - requires staff/dev admin auth and reservation authz
+  - writes fairness evidence rows to `reservationQueueFairnessAudit`
+  - recomputes queue hints after fairness updates
+  - file: `functions/src/apiV1.ts`
+- Deterministic queue scoring now uses computed fairness policy:
+  - `queueFairnessPolicy.effectivePenaltyPoints` participates in station queue ordering
+  - policy version + reason codes persisted per reservation
+  - file: `functions/src/apiV1.ts`
+- Staff portal fairness controls added:
+  - per-reservation no-show / late-arrival recording
+  - override boost with optional expiry
+  - fairness reason required for each action
+  - fairness summary strip and audit collection pointer in staff queue view
+  - files: `web/src/views/ReservationsView.tsx`, `web/src/views/ReservationsView.css`
+- Client normalization + contract surfaces updated:
+  - queue fairness request/response contracts
+  - portal API method for fairness route
+  - reservation normalizer supports `queueFairness` and `queueFairnessPolicy`
+  - files: `web/src/api/portalContracts.ts`, `web/src/api/portalApi.ts`, `web/src/lib/normalizers/reservations.ts`
+- Docs + runbook updated to reflect policy and operations:
+  - files: `docs/SCHEMA_RESERVATIONS.md`, `docs/policies/firing-scheduling.md`, `docs/policies/studio-access.md`, `docs/runbooks/STUDIO_RESERVATION_OPERATIONS_PLAYBOOK.md`
+- Validation coverage added:
+  - fairness mutation and override behavior tests
+  - staff-admin auth enforcement + audit deny test
+  - file: `functions/src/apiV1.test.ts`

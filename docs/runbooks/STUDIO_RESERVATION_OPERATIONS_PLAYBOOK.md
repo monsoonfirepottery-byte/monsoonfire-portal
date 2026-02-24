@@ -14,12 +14,41 @@ All status/load changes should be made through `PortalApi.updateReservation` so 
 
 ## Queue triage rules (staff)
 1. Use server queue hints (`queuePositionHint`, `estimatedWindow`) as default ordering guidance.
-2. Prioritize safety and kiln fit first, then urgency (`rushRequested`, whole-kiln), then age.
+2. Prioritize safety and kiln fit first, then urgency (`rushRequested`, whole-kiln), then fairness penalty, then age.
 3. Move to `WAITLISTED` when:
    - capacity is exceeded,
    - required station/resources are unavailable,
    - safety/quality constraints require deferral.
 4. Use `staffNotes` on each status change when triage rationale is not obvious.
+
+## Queue fairness controls (staff)
+1. Use `apiV1/v1/reservations.queueFairness` for fairness actions:
+   - `record_no_show`
+   - `record_late_arrival`
+   - `set_override_boost`
+   - `clear_override`
+2. Every fairness action requires a written reason.
+3. Policy weighting is deterministic:
+   - no-show: `+2` penalty points
+   - late arrival: `+1` penalty point
+   - active override boost offsets penalty points.
+4. Evidence is written to `reservationQueueFairnessAudit` and linked on reservation cards.
+5. Do not apply fairness penalties without clear supporting evidence (pickup miss, arrival record, staff note).
+
+## Offline queue fallback (staff kiosk)
+1. Staff queue writes are offline-safe in portal reservation tools:
+   - status transitions,
+   - station assignment,
+   - pickup-window staff actions,
+   - fairness policy actions.
+2. When offline/unreliable:
+   - actions are queued locally with `queueRevision`, actor uid, and request payload.
+   - UI shows sync state (`pending`, `synced`, `failed`) and queue length.
+3. Recovery behavior:
+   - queued actions replay automatically when online returns,
+   - `failed` actions require manual correction (stale/conflict/permission cases),
+   - operators can run `Sync now` and `Clear failed` in the panel.
+4. Do not clear failed actions until the reservation card state is verified and corrected manually.
 
 ## Cancellation and waitlist policy
 1. `CANCELLED` is terminal for normal operations.
@@ -56,6 +85,31 @@ Storage escalation:
 1. Mention hold status and notice history.
 2. Share latest action date.
 3. Provide recovery/collection path.
+
+## Continuity export and restore
+1. Use `apiV1/v1/reservations.exportContinuity` for owner-scoped continuity bundles.
+2. Minimum export set:
+   - reservations,
+   - stageHistory,
+   - piece rows,
+   - storage notice/actions,
+   - storage audit rows,
+   - queue fairness audit rows,
+   - user notification history.
+3. Artifact requirements:
+   - JSON bundle and optional CSV bundle,
+   - schema version in export header,
+   - deterministic signature (`mfexp_*`),
+   - redaction notes (no arrival tokens, no raw piece photo URLs).
+4. Portal operator path:
+   - open Reservations view,
+   - use `Export continuity bundle`,
+   - attach generated artifact id in incident/work ticket.
+5. Restore checklist after outage/incident:
+   - verify reservation counts and latest `updatedAt` against exported summary,
+   - verify stage-history tail and storage notice history for affected reservations,
+   - verify fairness evidence parity in `reservationQueueFairnessAudit`,
+   - verify customer notification timeline in `users/{uid}/notifications`.
 
 ## QA end-to-end path
 Run this path in release validation:

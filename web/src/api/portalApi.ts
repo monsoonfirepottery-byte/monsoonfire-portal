@@ -13,6 +13,12 @@ import type {
   UpdateReservationResponse as ContractsUpdateReservationResponse,
   AssignReservationStationRequest as ContractsAssignReservationStationRequest,
   AssignReservationStationResponse as ContractsAssignReservationStationResponse,
+  ReservationPickupWindowRequest as ContractsReservationPickupWindowRequest,
+  ReservationPickupWindowResponse as ContractsReservationPickupWindowResponse,
+  ReservationQueueFairnessRequest as ContractsReservationQueueFairnessRequest,
+  ReservationQueueFairnessResponse as ContractsReservationQueueFairnessResponse,
+  ReservationExportContinuityRequest as ContractsReservationExportContinuityRequest,
+  ReservationExportContinuityResponse as ContractsReservationExportContinuityResponse,
   PickedUpAndCloseRequest as ContractsPickedUpAndCloseRequest,
   PickedUpAndCloseResponse as ContractsPickedUpAndCloseResponse,
   ListMaterialsProductsRequest as ContractsListMaterialsProductsRequest,
@@ -52,6 +58,9 @@ import {
   getErrorMessage,
   V1_RESERVATION_ASSIGN_STATION_FN,
   V1_RESERVATION_CREATE_FN,
+  V1_RESERVATION_PICKUP_WINDOW_FN,
+  V1_RESERVATION_QUEUE_FAIRNESS_FN,
+  V1_RESERVATION_EXPORT_CONTINUITY_FN,
   V1_RESERVATION_UPDATE_FN,
 } from "./portalContracts";
 import { makeRequestId as createRequestId } from "./requestId";
@@ -82,6 +91,12 @@ export type UpdateReservationRequest = ContractsUpdateReservationRequest;
 export type UpdateReservationResponse = ContractsUpdateReservationResponse;
 export type AssignReservationStationRequest = ContractsAssignReservationStationRequest;
 export type AssignReservationStationResponse = ContractsAssignReservationStationResponse;
+export type ReservationPickupWindowRequest = ContractsReservationPickupWindowRequest;
+export type ReservationPickupWindowResponse = ContractsReservationPickupWindowResponse;
+export type ReservationQueueFairnessRequest = ContractsReservationQueueFairnessRequest;
+export type ReservationQueueFairnessResponse = ContractsReservationQueueFairnessResponse;
+export type ReservationExportContinuityRequest = ContractsReservationExportContinuityRequest;
+export type ReservationExportContinuityResponse = ContractsReservationExportContinuityResponse;
 
 export type ListMaterialsProductsRequest = ContractsListMaterialsProductsRequest;
 export type ListMaterialsProductsResponse = ContractsListMaterialsProductsResponse;
@@ -154,6 +169,15 @@ export type PortalApi = {
   assignReservationStation(
     args: PortalApiCallArgs<AssignReservationStationRequest>
   ): Promise<PortalApiCallResult<AssignReservationStationResponse>>;
+  updateReservationPickupWindow(
+    args: PortalApiCallArgs<ReservationPickupWindowRequest>
+  ): Promise<PortalApiCallResult<ReservationPickupWindowResponse>>;
+  updateReservationQueueFairness(
+    args: PortalApiCallArgs<ReservationQueueFairnessRequest>
+  ): Promise<PortalApiCallResult<ReservationQueueFairnessResponse>>;
+  exportReservationContinuity(
+    args: PortalApiCallArgs<ReservationExportContinuityRequest>
+  ): Promise<PortalApiCallResult<ReservationExportContinuityResponse>>;
   continueJourney(
     args: PortalApiCallArgs<ContinueJourneyRequest>
   ): Promise<PortalApiCallResult<ContinueJourneyResponse>>;
@@ -200,6 +224,9 @@ const DEFAULT_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.
 const RESERVATION_CREATE_FN = V1_RESERVATION_CREATE_FN;
 const RESERVATION_UPDATE_FN = V1_RESERVATION_UPDATE_FN;
 const RESERVATION_ASSIGN_STATION_FN = V1_RESERVATION_ASSIGN_STATION_FN;
+const RESERVATION_PICKUP_WINDOW_FN = V1_RESERVATION_PICKUP_WINDOW_FN;
+const RESERVATION_QUEUE_FAIRNESS_FN = V1_RESERVATION_QUEUE_FAIRNESS_FN;
+const RESERVATION_EXPORT_CONTINUITY_FN = V1_RESERVATION_EXPORT_CONTINUITY_FN;
 // Back-compat aliases for older callers.
 // Compatibility review date: 2026-05-15. Do not sunset before: 2026-06-30.
 const LEGACY_RESERVATION_FN_PATHS: Partial<Record<PortalFnName, string>> = {
@@ -552,6 +579,30 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
       return await callFn<AssignReservationStationRequest, AssignReservationStationResponse>(
         baseUrl,
         RESERVATION_ASSIGN_STATION_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async updateReservationPickupWindow(args) {
+      return await callFn<ReservationPickupWindowRequest, ReservationPickupWindowResponse>(
+        baseUrl,
+        RESERVATION_PICKUP_WINDOW_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async updateReservationQueueFairness(args) {
+      return await callFn<ReservationQueueFairnessRequest, ReservationQueueFairnessResponse>(
+        baseUrl,
+        RESERVATION_QUEUE_FAIRNESS_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async exportReservationContinuity(args) {
+      return await callFn<ReservationExportContinuityRequest, ReservationExportContinuityResponse>(
+        baseUrl,
+        RESERVATION_EXPORT_CONTINUITY_FN,
         { ...args, requestTimeoutMs }
       );
     },

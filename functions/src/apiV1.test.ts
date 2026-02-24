@@ -1961,9 +1961,41 @@ test("reservations.create accepts dropoff + pickup details when provided", async
     }),
   );
 
-  assert.equal(response.status, 200);
+  assert.equal(response.status, 200, JSON.stringify(response.body));
   const body = response.body as Record<string, unknown>;
   assert.equal(body.ok, true);
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  assert.equal(data.status, "REQUESTED");
+});
+
+test("reservations.create accepts optional piece rows in request payload", async () => {
+  const response = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/reservations.create",
+      body: {
+        firingType: "glaze",
+        shelfEquivalent: 1,
+        pieces: [
+          {
+            pieceId: "custom-01",
+            pieceLabel: "Tall vase",
+            pieceCount: 1,
+            pieceStatus: "loaded",
+          },
+          {
+            pieceLabel: "Mug set",
+            pieceCount: 4,
+          },
+        ],
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const body = response.body as Record<string, unknown>;
   const data = (body.data ?? {}) as Record<string, unknown>;
   assert.equal(data.status, "REQUESTED");
 });
@@ -2153,6 +2185,271 @@ test("reservations.update allows confirmed reservations to progress to loaded lo
   assert.equal(data.status, "CONFIRMED");
 });
 
+test("reservations.pickupWindow lets staff open window and member confirm it", async () => {
+  const baseState: MockDbState = {
+    reservations: {
+      "reservation-pickup-open-confirm": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "loaded",
+        stageHistory: [],
+      },
+    },
+  };
+
+  const openResponse = await invokeApiV1Route(
+    cloneState(baseState),
+    makeApiV1Request({
+      path: "/v1/reservations.pickupWindow",
+      body: {
+        reservationId: "reservation-pickup-open-confirm",
+        action: "staff_set_open_window",
+        confirmedStart: "2099-02-24T18:00:00.000Z",
+        confirmedEnd: "2099-02-24T20:00:00.000Z",
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+  assert.equal(openResponse.status, 200);
+  const openData = (((openResponse.body as Record<string, unknown>).data ?? {}) as Record<string, unknown>);
+  assert.equal(openData.pickupWindowStatus, "open");
+
+  const confirmState: MockDbState = {
+    reservations: {
+      "reservation-pickup-open-confirm": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "loaded",
+        pickupWindow: {
+          status: "open",
+          confirmedStart: "2099-02-24T18:00:00.000Z",
+          confirmedEnd: "2099-02-24T20:00:00.000Z",
+        },
+        stageHistory: [],
+      },
+    },
+  };
+  const confirmResponse = await invokeApiV1Route(
+    confirmState,
+    makeApiV1Request({
+      path: "/v1/reservations.pickupWindow",
+      body: {
+        reservationId: "reservation-pickup-open-confirm",
+        action: "member_confirm_window",
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+  assert.equal(confirmResponse.status, 200, JSON.stringify(confirmResponse.body));
+  const confirmData = (((confirmResponse.body as Record<string, unknown>).data ?? {}) as Record<string, unknown>);
+  assert.equal(confirmData.pickupWindowStatus, "confirmed");
+});
+
+test("reservations.pickupWindow enforces one reschedule request without force", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-pickup-reschedule": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "loaded",
+        pickupWindow: {
+          status: "open",
+          confirmedStart: "2099-02-24T18:00:00.000Z",
+          confirmedEnd: "2099-02-24T20:00:00.000Z",
+          rescheduleCount: 1,
+        },
+        stageHistory: [],
+      },
+    },
+  };
+
+  const secondResponse = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.pickupWindow",
+      body: {
+        reservationId: "reservation-pickup-reschedule",
+        action: "member_request_reschedule",
+        requestedStart: "2099-02-26T18:00:00.000Z",
+        requestedEnd: "2099-02-26T20:00:00.000Z",
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(secondResponse.status, 409, JSON.stringify(secondResponse.body));
+  const secondBody = secondResponse.body as Record<string, unknown>;
+  assert.equal(secondBody.code, "CONFLICT");
+});
+
+test("reservations.pickupWindow escalates to stored_by_policy after repeated missed windows", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-pickup-missed": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "loaded",
+        pickupWindow: {
+          status: "confirmed",
+          confirmedStart: "2026-02-20T18:00:00.000Z",
+          confirmedEnd: "2026-02-20T20:00:00.000Z",
+          missedCount: 1,
+        },
+        storageStatus: "active",
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.pickupWindow",
+      body: {
+        reservationId: "reservation-pickup-missed",
+        action: "staff_mark_missed",
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  assert.equal(data.storageStatus, "stored_by_policy");
+});
+
+test("reservations.queueFairness records no-show evidence and updates policy penalty", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-fairness-no-show": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "queued",
+        assignedStationId: "studio-electric",
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.queueFairness",
+      body: {
+        reservationId: "reservation-fairness-no-show",
+        action: "record_no_show",
+        reason: "Missed confirmed pickup window.",
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  const queueFairness = (data.queueFairness ?? {}) as Record<string, unknown>;
+  const queueFairnessPolicy = (data.queueFairnessPolicy ?? {}) as Record<string, unknown>;
+  assert.equal(queueFairness.noShowCount, 1);
+  assert.equal(queueFairness.lateArrivalCount, 0);
+  assert.equal(queueFairnessPolicy.penaltyPoints, 2);
+  assert.equal(queueFairnessPolicy.effectivePenaltyPoints, 2);
+  assert.ok(typeof data.evidenceId === "string" && String(data.evidenceId).length > 0);
+});
+
+test("reservations.queueFairness override boost reduces effective penalty", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-fairness-override": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "queued",
+        queueFairness: {
+          noShowCount: 1,
+          lateArrivalCount: 0,
+        },
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.queueFairness",
+      body: {
+        reservationId: "reservation-fairness-override",
+        action: "set_override_boost",
+        reason: "Urgent memorial delivery approved by staff.",
+        boostPoints: 2,
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  const queueFairness = (data.queueFairness ?? {}) as Record<string, unknown>;
+  const queueFairnessPolicy = (data.queueFairnessPolicy ?? {}) as Record<string, unknown>;
+  const reasonCodes = Array.isArray(queueFairnessPolicy.reasonCodes)
+    ? (queueFairnessPolicy.reasonCodes as unknown[])
+    : [];
+  assert.equal(queueFairness.overrideBoost, 2);
+  assert.equal(queueFairnessPolicy.penaltyPoints, 2);
+  assert.equal(queueFairnessPolicy.effectivePenaltyPoints, 0);
+  assert.equal(queueFairnessPolicy.overrideBoostApplied, 2);
+  assert.ok(reasonCodes.includes("staff_override_boost"));
+});
+
+test("reservations.queueFairness rejects non-staff caller and emits admin auth deny audit", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-fairness-deny": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "queued",
+        stageHistory: [],
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.queueFairness",
+      body: {
+        reservationId: "reservation-fairness-deny",
+        action: "record_late_arrival",
+        reason: "Arrived after confirmed slot.",
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 401);
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.code, "UNAUTHENTICATED");
+  const event = getAuditEvents(state).find((row) => row.action === "reservations_queue_fairness_admin_auth");
+  assert.ok(event, "expected reservations_queue_fairness_admin_auth audit row");
+  assert.equal(event?.resourceType, "reservation");
+  assert.equal(event?.resourceId, "reservation-fairness-deny");
+  assert.equal(event?.reasonCode, "UNAUTHENTICATED");
+  assert.equal(event?.result, "deny");
+  assert.equal(event?.requestId, body.requestId);
+});
+
 test("reservations.list excludes cancelled by default and includes it when requested", async () => {
   const state: MockDbState = {
     reservations: {
@@ -2199,6 +2496,129 @@ test("reservations.list excludes cancelled by default and includes it when reque
   const includeBody = includeCancelledList.body as Record<string, unknown>;
   const includeRows = (((includeBody.data ?? {}) as Record<string, unknown>).reservations ?? []) as Array<Record<string, unknown>>;
   assert.equal(includeRows.length, 2);
+});
+
+test("reservations.exportContinuity returns signed continuity bundle for owner", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-export-1": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "loaded",
+        firingType: "glaze",
+        shelfEquivalent: 1,
+        stageHistory: [
+          {
+            fromStage: "intake",
+            toStage: "loaded",
+            reason: "status:CONFIRMED->CONFIRMED",
+            at: "2026-02-24T18:00:00.000Z",
+          },
+        ],
+        pieces: [
+          {
+            pieceId: "MF-RES-ABCD12-01AAAA",
+            pieceLabel: "Mug set",
+            pieceCount: 4,
+            pieceStatus: "loaded",
+          },
+        ],
+        storageNoticeHistory: [
+          {
+            at: "2026-02-24T19:00:00.000Z",
+            kind: "pickup_ready",
+            detail: "Pickup ready",
+            status: "active",
+          },
+        ],
+        createdAt: "2026-02-24T17:00:00.000Z",
+        updatedAt: "2026-02-24T20:00:00.000Z",
+      },
+    },
+    reservationStorageAudit: {
+      "storage-audit-1": {
+        reservationId: "reservation-export-1",
+        uid: "owner-1",
+        action: "pickup_ready",
+        reason: "test",
+        at: "2026-02-24T19:00:00.000Z",
+        createdAt: "2026-02-24T19:00:01.000Z",
+      },
+    },
+    reservationQueueFairnessAudit: {
+      "fairness-audit-1": {
+        reservationId: "reservation-export-1",
+        ownerUid: "owner-1",
+        action: "record_late_arrival",
+        reason: "late arrival",
+        actorUid: "staff-1",
+        actorRole: "staff",
+        requestId: "req_test",
+        createdAt: "2026-02-24T19:10:00.000Z",
+        queueFairnessPolicy: {
+          policyVersion: "2026-02-24.v1",
+          effectivePenaltyPoints: 1,
+        },
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.exportContinuity",
+      body: {
+        ownerUid: "owner-1",
+        includeCsv: true,
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  const exportHeader = (data.exportHeader ?? {}) as Record<string, unknown>;
+  const summary = (data.summary ?? {}) as Record<string, unknown>;
+  const csvBundle = (data.csvBundle ?? {}) as Record<string, unknown>;
+  const jsonBundle = (data.jsonBundle ?? {}) as Record<string, unknown>;
+  assert.equal(exportHeader.ownerUid, "owner-1");
+  assert.equal(exportHeader.schemaVersion, "2026-02-24.v1");
+  assert.ok(typeof exportHeader.signature === "string" && String(exportHeader.signature).startsWith("mfexp_"));
+  assert.equal(summary.reservations, 1);
+  assert.equal(summary.storageAudit, 1);
+  assert.equal(summary.queueFairnessAudit, 1);
+  assert.ok(typeof csvBundle.reservations === "string" && String(csvBundle.reservations).includes("reservationId"));
+  assert.ok(Array.isArray(jsonBundle.reservations));
+});
+
+test("reservations.exportContinuity blocks non-owner non-staff access", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-export-deny": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "queued",
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.exportContinuity",
+      body: {
+        ownerUid: "owner-1",
+      },
+      ctx: firebaseContext({ uid: "owner-2" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 403);
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.code, "OWNER_MISMATCH");
 });
 
 test("reservations.update issues an arrival token when status moves to confirmed", async () => {

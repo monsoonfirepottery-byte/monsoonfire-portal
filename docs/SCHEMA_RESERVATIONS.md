@@ -26,6 +26,26 @@ Fields:
   - `confidence` (`high` | `medium` | `low` | null)
 - `loadStatus` (string | null) — queue placement state used by kiln view (`queued`, `loading`, `loaded`).
 - `queuePositionHint` (number | null) — optional display-only position proxy.
+- `queueFairness` (map | null) — staff-managed fairness evidence counters and overrides.
+  - `noShowCount` (number)
+  - `lateArrivalCount` (number)
+  - `overrideBoost` (number)
+  - `overrideReason` (string | null)
+  - `overrideUntil` (timestamp | null)
+  - `updatedAt` (timestamp | null)
+  - `updatedByUid` (string | null)
+  - `updatedByRole` (`staff` | `dev` | `system` | null)
+  - `lastPolicyNote` (string | null)
+  - `lastEvidenceId` (string | null)
+- `queueFairnessPolicy` (map | null) — server-computed fairness policy projection used for queue ordering.
+  - `noShowCount` (number)
+  - `lateArrivalCount` (number)
+  - `penaltyPoints` (number)
+  - `effectivePenaltyPoints` (number)
+  - `overrideBoostApplied` (number)
+  - `reasonCodes` (array<string>)
+  - `policyVersion` (string)
+  - `computedAt` (timestamp | null)
 - `queueClass` (string | null) — optional operational queue lane label (eg. `studio-kiln-a`, `studio-kiln-b`, `wheel-bay`).
 - `queueLaneHint` (string | null) — optional human-readable lane reason (eg. `station-a-only`, `large-batch-eligible`).
 - `assignedStationId` (string | null) — primary station/kiln assignment selected by staff.
@@ -52,12 +72,34 @@ Fields:
   - `confirmedStart` (timestamp | null)
   - `confirmedEnd` (timestamp | null)
   - `status` (`open` | `confirmed` | `missed` | `expired` | `completed`)
+  - `confirmedAt` (timestamp | null)
+  - `completedAt` (timestamp | null)
+  - `missedCount` (number | null)
+  - `rescheduleCount` (number | null)
+  - `lastMissedAt` (timestamp | null)
+  - `lastRescheduleRequestedAt` (timestamp | null)
 - `storageStatus` (string | null) — `active`, `reminder_pending`, `hold_pending`, `stored_by_policy`
 - `readyForPickupAt` (timestamp | null)
 - `pickupReminderCount` (number | null)
 - `lastReminderAt` (timestamp | null)
+- `pickupReminderFailureCount` (number | null)
+- `lastReminderFailureAt` (timestamp | null)
+- `storageNoticeHistory` (array<map> | null) — date-ordered notice and escalation trail
+  - `at` (timestamp)
+  - `kind` (`pickup_ready` | `pickup_reminder_1` | `pickup_reminder_2` | `pickup_reminder_3` | `pickup_window_opened` | `pickup_window_confirmed` | `pickup_window_missed` | `pickup_window_completed` | `hold_pending` | `stored_by_policy` | `reminder_failed`)
+  - `detail` (string | null)
+  - `status` (`active` | `reminder_pending` | `hold_pending` | `stored_by_policy` | null)
+  - `reminderOrdinal` (number | null)
+  - `reminderCount` (number | null)
+  - `failureCode` (string | null)
 - `staffNotes` (string | null)
 - `notesHistory` (array<object> | null)
+- `pieces` (array<map> | null) — optional piece-level traceability rows
+  - `pieceId` (string) — deterministic code (`MF-RES-...`) or explicit user-provided code.
+  - `pieceLabel` (string | null)
+  - `pieceCount` (number, min 1)
+  - `piecePhotoUrl` (string | null)
+  - `pieceStatus` (`awaiting_placement` | `loaded` | `fired` | `ready` | `picked_up`)
 - `arrivalStatus` (string | null) — operational arrival workflow state (`expected`, `arrived`, `overdue`, `no_show`).
 - `arrivedAt` (timestamp | null)
 - `arrivalToken` (string | null) — member-facing check-in code.
@@ -157,17 +199,35 @@ Fields:
       "notes": null
     }
   ],
+  "pieces": [
+    {
+      "pieceId": "MF-RES-H3T5XX-01A91F",
+      "pieceLabel": "Mug set",
+      "pieceCount": 4,
+      "piecePhotoUrl": null,
+      "pieceStatus": "awaiting_placement"
+    }
+  ],
   "pickupWindow": {
     "requestedStart": null,
     "requestedEnd": null,
     "confirmedStart": null,
     "confirmedEnd": null,
-    "status": "open"
+    "status": "open",
+    "confirmedAt": null,
+    "completedAt": null,
+    "missedCount": 0,
+    "rescheduleCount": 0,
+    "lastMissedAt": null,
+    "lastRescheduleRequestedAt": null
   },
   "storageStatus": "active",
   "readyForPickupAt": null,
   "pickupReminderCount": 0,
   "lastReminderAt": null,
+  "pickupReminderFailureCount": 0,
+  "lastReminderFailureAt": null,
+  "storageNoticeHistory": [],
   "linkedBatchId": "H3T5...",
   "createdAt": "2026-02-01T02:30:00Z",
   "updatedAt": "2026-02-01T02:30:00Z"
@@ -180,6 +240,9 @@ Primary mutation routes:
 - `POST ${BASE_URL}/apiV1/v1/reservations.create`
 - `POST ${BASE_URL}/apiV1/v1/reservations.update`
 - `POST ${BASE_URL}/apiV1/v1/reservations.assignStation`
+- `POST ${BASE_URL}/apiV1/v1/reservations.pickupWindow`
+- `POST ${BASE_URL}/apiV1/v1/reservations.queueFairness`
+- `POST ${BASE_URL}/apiV1/v1/reservations.exportContinuity` (owner/staff export artifact)
 
 Legacy compatibility wrappers (transport boundary only):
 - `POST ${BASE_URL}/createReservation` -> forwards to `/v1/reservations.create`
@@ -247,12 +310,34 @@ Queue hints are derived server-side per station using a deterministic sort key:
 1. reservation lifecycle priority (`CONFIRMED` -> `REQUESTED` -> `WAITLISTED` -> `CANCELLED`)
 2. rush priority (`addOns.rushRequested`)
 3. whole-kiln priority (`addOns.wholeKilnRequested`)
-4. no-show/overdue penalty (`arrivalStatus`)
+4. fairness penalty (`queueFairnessPolicy.effectivePenaltyPoints`)
 5. estimated size penalty (`estimatedHalfShelves` fallback chain)
 6. created time (`createdAt`)
 7. stable id tiebreaker (`reservationId`)
 
 This keeps queue hint ordering consistent across clients and prevents UI-only ordering drift.
+
+### Continuity export contract
+
+`reservations.exportContinuity` returns:
+- `exportHeader`:
+  - `artifactId`
+  - `ownerUid`
+  - `generatedAt`
+  - `schemaVersion`
+  - `signature` (`mfexp_*`)
+  - `requestId`
+- `summary` counts by dataset.
+- `jsonBundle`:
+  - `reservations`
+  - `stageHistory`
+  - `pieces`
+  - `storageActions`
+  - `storageAudit`
+  - `queueFairnessAudit`
+  - `notifications`
+- optional `csvBundle` for the same logical datasets.
+- `redactionRules` documenting excluded sensitive data (for example arrival tokens and raw piece-photo URLs).
 
 ### Contract drift checklist
 
@@ -276,6 +361,8 @@ This keeps queue hint ordering consistent across clients and prevents UI-only or
   - Missing `loadStatus` => treat as `queued`.
   - Missing `stageStatus`/`stageHistory` => show stable fallback copy and use `updatedAt`.
   - Missing `estimatedWindow`/`queuePositionHint` => use server recompute when next mutation occurs; UI may show fallback ETA text.
+  - Missing `pieces` => treat as no piece-level traceability rows.
 - `assignedStationId`, `requiredResources`, `queueClass`, `queueLaneHint`, `arrivalStatus`, and `arrivalToken*` are included as operational expansion targets to support station-aware capacity, station-specific fairness, and member-assisted check-in.
 - `stageStatus`, `estimatedWindow`, `pickupWindow`, and `storageStatus` are included as expansion targets, currently implemented through phased tickets (P1/P2).
+- `pieces` remains optional for intake compatibility; server-generated piece IDs are only created when piece rows are provided.
 - The client-side view orders results by `createdAt desc`; a composite index may be required if additional filters are added later.

@@ -1,6 +1,6 @@
 # P2 — Offline-Resilient Staff Queue Workflow Sync
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -43,3 +43,33 @@ Introduce an offline-capable workflow for staff queue operations so status chang
 ## Dependencies
 - `tickets/P1-studio-reservation-status-api.md`
 - `tickets/P1-studio-reservation-stage-timeline-and-audit.md`
+
+## Completion Evidence (2026-02-24)
+- Offline-safe queue actions implemented in portal Reservations staff tools:
+  - status transition updates,
+  - station assignment updates,
+  - pickup-window staff actions,
+  - queue fairness actions.
+  - file: `web/src/views/ReservationsView.tsx`
+- Local persisted action queue shipped:
+  - storage key: `mf_staff_queue_offline_actions_v1`
+  - payload includes action type, reservation id, actor uid/role, queue revision, correlation id, and request payload.
+  - file: `web/src/views/ReservationsView.tsx`
+- Retry + conflict handling added:
+  - network/offline failures are queued and retried with jitter,
+  - stale/conflict/permission failures are marked `failed` for manual correction,
+  - unresolved failures remain visible until corrected/cleared.
+  - file: `web/src/views/ReservationsView.tsx`
+- Connection-state UX added:
+  - online/offline state indicator
+  - queue counts (`queued`, `pending`, `failed`)
+  - sync controls (`Sync now`, `Clear failed`)
+  - user-facing warning/notice messaging during offline mode
+  - files: `web/src/views/ReservationsView.tsx`, `web/src/views/ReservationsView.css`
+- Server-side reconciliation guards leveraged and documented:
+  - station assignment route returns idempotent replay on no-op requests
+  - pickup-window and queue-fairness routes include action guards/conflict checks
+  - route-level request handling remains deterministic under retries
+  - file: `functions/src/apiV1.ts`
+- Operational playbook updated with offline fallback procedure and correction workflow:
+  - file: `docs/runbooks/STUDIO_RESERVATION_OPERATIONS_PLAYBOOK.md`

@@ -1,6 +1,6 @@
 # P2 — Data Portability, Export, and Continuity Controls
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -43,3 +43,35 @@ Guarantee predictable data continuity for studio records and member workflow dat
 - `tickets/P1-studio-reservation-status-api.md`
 - `tickets/P1-studio-reservation-stage-timeline-and-audit.md`
 - `tickets/P2-studio-piece-traceability-with-piece-codes.md`
+
+## Completion Evidence (2026-02-24)
+- Continuity export API contract shipped:
+  - route: `POST /apiV1/v1/reservations.exportContinuity`
+  - owner/staff authz with scope checks
+  - export header includes `artifactId`, `schemaVersion`, `generatedAt`, `signature (mfexp_*)`, and `requestId`
+  - supports JSON bundle plus optional CSV bundle
+  - file: `functions/src/apiV1.ts`
+- Continuity export contract tests added:
+  - owner export happy-path
+  - non-owner deny path
+  - file: `functions/src/apiV1.test.ts`
+- Member/staff continuity UX added in portal:
+  - Reservations view now exposes `Export continuity bundle`
+  - downloads JSON + CSV artifacts from API response
+  - file: `web/src/views/ReservationsView.tsx`
+- Member-visible continuity guidance added:
+  - support FAQ fallback includes continuity/export answer and search synonyms
+  - file: `web/src/views/SupportView.tsx`
+- Data continuity docs/runbook updated:
+  - continuity export contract and dataset list in schema docs
+  - offline + continuity recovery checks in operations runbook
+  - media-reference retention guidance in storage policy
+  - files:
+    - `docs/SCHEMA_RESERVATIONS.md`
+    - `docs/runbooks/STUDIO_RESERVATION_OPERATIONS_PLAYBOOK.md`
+    - `docs/policies/storage-abandoned-work.md`
+- Automated high-risk history preservation is now explicit in continuity scope:
+  - status transitions: `stageHistory` / `stageStatus`
+  - notifications sent: `users/{uid}/notifications` (exported in continuity bundle)
+  - piece metadata (including photo-presence marker): `pieces` / `hasPhoto` in export
+  - files: `functions/src/apiV1.ts`, `web/src/views/ReservationsView.tsx`

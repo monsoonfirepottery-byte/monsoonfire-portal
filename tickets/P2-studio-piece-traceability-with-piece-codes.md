@@ -1,6 +1,6 @@
 # P2 — Piece-Level Traceability for Reservation Intake
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -46,3 +46,28 @@ Market competitors and community requests both point toward piece-level workflow
 ## Dependencies
 - `tickets/P1-studio-reservation-status-api.md`
 - `tickets/P1-studio-notification-sla-journey.md`
+
+## Completion Evidence (2026-02-23)
+- Reservation payload + schema now support optional piece rows:
+  - `pieces[]` with `pieceId`, `pieceLabel`, `pieceCount`, `piecePhotoUrl`, `pieceStatus`
+  - files: `functions/src/apiV1.ts`, `functions/src/createReservation.ts`, `web/src/api/portalContracts.ts`, `web/src/lib/normalizers/reservations.ts`
+- Deterministic piece-code generation implemented server-side:
+  - auto-generated format: `MF-RES-...` when `pieceId` is omitted
+  - collision-safe fallback logic included
+  - files: `functions/src/apiV1.ts`, `functions/src/createReservation.ts`
+- Intake UI now includes piece-level workflow:
+  - repeatable piece rows
+  - bulk paste import (`label,count` per line)
+  - piece-count vs shelf-estimate validation guard
+  - file: `web/src/views/ReservationsView.tsx`
+- Piece lookup and deep-link support added in reservation list:
+  - search by piece code
+  - automatic scroll/highlight to matching reservation card
+  - files: `web/src/views/ReservationsView.tsx`, `web/src/views/ReservationsView.css`
+- Schema docs updated with piece lifecycle + sample payload:
+  - file: `docs/SCHEMA_RESERVATIONS.md`
+- Validation runs:
+  - `npm --prefix functions run build` (pass)
+  - `node --test "functions/lib/apiV1.test.js"` (pass)
+  - `npm --prefix web run build` (pass)
+  - `npm --prefix web run test:run -- src/views/ReservationsView.test.ts` (pass)

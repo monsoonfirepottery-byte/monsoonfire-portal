@@ -1,6 +1,6 @@
 # P1 — Reservation Notification SLA and Delay Journey
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -52,3 +52,34 @@ Community feedback similarly shows pain around missing "where is my work" update
 - `tickets/P1-studio-reservation-status-api.md`
 - `tickets/P1-studio-reservation-queue-ops-ui.md`
 - `tickets/P2-studio-reservation-doc-and-playbook-gap.md`
+
+## Completion Evidence (2026-02-23)
+- Reservation lifecycle notification trigger is now wired in functions:
+  - `onReservationLifecycleUpdated` listens to `reservations/{reservationId}` changes and enqueues:
+    - status transition notifications (`confirmed`, `waitlisted`, `cancelled`)
+    - ETA shift notifications
+    - ready-for-pickup notifications when load reaches `loaded`
+    - delayed ETA follow-up jobs
+  - file: `functions/src/notifications.ts`
+- Delayed ETA escalation cadence implemented:
+  - initial follow-up scheduled at `+12h` on delayed shift
+  - recurring follow-up scheduled at `+24h` while reservation remains delayed
+  - follow-ups auto-skip when reservation is no longer delayed/cancelled/loaded
+  - file: `functions/src/notifications.ts`
+- Reservation notifications now use explicit customer-facing copy lines:
+  - `Updated estimate: ...`
+  - `Last change reason: ...`
+  - `Suggested next update window: ...`
+  - in-app/email/push content generation:
+    - file: `functions/src/notifications.ts`
+  - portal reservation cards:
+    - files: `web/src/views/ReservationsView.tsx`, `web/src/views/ReservationsView.css`
+- Preferences and safety gates applied:
+  - global notification/channel prefs (`users/{uid}/prefs/notifications`)
+  - reservation opt-in (`profiles/{uid}.notifyReservations`, default true)
+  - file: `functions/src/notifications.ts`
+- Policy/doc alignment updates:
+  - support language in scheduling policy updated with explicit copy labels
+    - file: `docs/policies/firing-scheduling.md`
+  - notification doc updated with reservation flow + cadence behavior
+    - file: `docs/EMAIL_NOTIFICATIONS.md`

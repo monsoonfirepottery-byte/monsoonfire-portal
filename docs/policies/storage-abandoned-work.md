@@ -48,6 +48,29 @@ pickup windows.
 - Extended storage beyond policy windows can move into priority storage tiers or removal
   workflow.
 
+## Automated reminder cadence (portal enforcement)
+
+- `readyForPickupAt` starts when a reservation reaches loaded/pickup-ready state.
+- Reminder 1: ~72 hours after `readyForPickupAt`.
+- Reminder 2: ~120 hours after `readyForPickupAt`.
+- Reminder 3 (final): ~168 hours after `readyForPickupAt`.
+- `storageStatus` escalation:
+  - `active` -> `reminder_pending` once reminders start.
+  - `hold_pending` around ~240 hours.
+  - `stored_by_policy` around ~336 hours (14 days), with staff review required before any disposal action.
+- Pickup-window miss handling:
+  - if a confirmed/open pickup window elapses, status auto-marks `missed`,
+  - first miss moves reservation to `hold_pending`,
+  - repeated misses escalate to `stored_by_policy` without requiring manual queue edits.
+- Every notice/escalation writes an immutable-style entry to `storageNoticeHistory`
+  plus audit rows in `reservationStorageAudit`.
+- Reminder failures are tracked (`pickupReminderFailureCount`, `lastReminderFailureAt`) so
+  no failed attempt is silent.
+- Media reference retention:
+  - piece photo URLs are treated as operational metadata and may expire/rotate at storage layer,
+  - continuity exports include `hasPhoto` markers and piece IDs/labels/counts without exposing raw photo URLs,
+  - staff incident notes should reference reservation/piece IDs rather than relying on direct media URL longevity.
+
 ## Implementation in portal
 
 - Surface pickup due dates and storage warnings in status views.
@@ -66,4 +89,3 @@ Support should confirm:
 - last known status and hold period
 - whether storage notices were delivered
 - collection options and potential fees if applicable
-

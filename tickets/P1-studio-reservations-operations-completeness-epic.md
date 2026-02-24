@@ -1,6 +1,6 @@
 # P1 — Studio Reservations Operations Completeness (Reservations, Queue, Notifications)
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -77,3 +77,15 @@ Create a reliable studio reservation operations loop that supports:
 ### Tracking
 - Owner recommendation: run one ticket design review per slice, then execute with a queue of one.
 - Supporting analysis: `docs/STUDIO_OPERATIONS_GAP_MATRIX_2026-02-17.md`
+
+### Completion summary (2026-02-24)
+- All scoped dependency tickets are now completed, including:
+  - `tickets/P2-studio-notification-channel-and-fallback-controls.md`
+  - `tickets/P2-studio-offline-staff-kiosk-workflow-sync.md`
+  - `tickets/P2-studio-data-portability-and-backup-risks.md`
+- Reservation operations loop now covers:
+  - lifecycle/status transitions,
+  - queue fairness + pickup-window operations,
+  - storage hold/reminder automation,
+  - continuity export/recovery procedures,
+  - multi-channel notifications with SMS hard-failure email fallback.

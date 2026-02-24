@@ -1,6 +1,6 @@
 # P2 — Notification Channel Strategy and Delivery Fallback Controls
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -43,3 +43,39 @@ Build a predictable communications layer for stage and pickup updates that suppo
 ## Dependencies
 - `tickets/P1-studio-notification-sla-journey.md`
 - `tickets/P1-studio-reservation-status-api.md`
+
+## Progress So Far (2026-02-23)
+- Reservation notification routing already enforces:
+  - per-user global prefs
+  - channel toggles (`inApp`, `email`, `push`)
+  - quiet-hours scheduling
+  - dedupe via deterministic `dedupeKey` + `notificationJobs/{hash}`
+  - files: `functions/src/notifications.ts`
+- Dead-letter + retry path exists:
+  - retry with exponential backoff
+  - final failures copied to `notificationJobDeadLetters`
+  - delivery attempts captured in `notificationDeliveryAttempts`
+  - files: `functions/src/notifications.ts`
+- Pickup-window + storage escalation notifications were expanded:
+  - open-window reminders
+  - pre-expiry reminders
+  - missed-window escalation reminders
+  - files: `functions/src/notifications.ts`, `web/src/views/ReservationsView.tsx`
+
+## Completion Evidence (2026-02-24)
+- SMS provider contract is now implemented in the notification pipeline:
+  - runtime modes: `disabled`, `mock`, `twilio`
+  - env contract: `NOTIFICATION_SMS_PROVIDER`, `NOTIFICATION_SMS_MOCK_MODE`, `NOTIFICATION_SMS_FROM_E164`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`
+  - files: `functions/src/notifications.ts`, `functions/.env.local.example`, `docs/EMAIL_NOTIFICATIONS.md`
+- Hard-failure fallback is now enforced:
+  - hard SMS provider 4xx recipient failures trigger same-job email fallback attempt
+  - fallback outcomes are captured (`sent`, `missing_email`, `failed`)
+  - file: `functions/src/notifications.ts`
+- Notification job channel contracts now include `sms` consistently:
+  - drill schema and persisted job channels updated
+  - reservation routing + channel enable checks include sms
+  - files: `functions/src/notifications.ts`, `web/src/api/portalContracts.ts`
+- Delivery observability expanded:
+  - SMS attempt telemetry writes to `notificationDeliveryAttempts` (`channel: "sms"`)
+  - provider metadata and fallback status markers are persisted for triage
+  - files: `functions/src/notifications.ts`, `docs/NOTIFICATION_ONCALL_RUNBOOK.md`

@@ -105,6 +105,7 @@ foreach ($mode in $modes) {
       push = $true
       inApp = $false
       email = $false
+      sms = $false
     }
     forceRunNow = $true
   } | ConvertTo-Json -Depth 5

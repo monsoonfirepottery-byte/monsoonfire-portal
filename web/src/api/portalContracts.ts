@@ -4,6 +4,9 @@
 export const V1_RESERVATION_CREATE_FN = "apiV1/v1/reservations.create";
 export const V1_RESERVATION_UPDATE_FN = "apiV1/v1/reservations.update";
 export const V1_RESERVATION_ASSIGN_STATION_FN = "apiV1/v1/reservations.assignStation";
+export const V1_RESERVATION_PICKUP_WINDOW_FN = "apiV1/v1/reservations.pickupWindow";
+export const V1_RESERVATION_QUEUE_FAIRNESS_FN = "apiV1/v1/reservations.queueFairness";
+export const V1_RESERVATION_EXPORT_CONTINUITY_FN = "apiV1/v1/reservations.exportContinuity";
 export const LEGACY_RESERVATION_COMPAT_REVIEW_DATE = "2026-05-15";
 export const LEGACY_RESERVATION_COMPAT_SUNSET_NOT_BEFORE = "2026-06-30";
 
@@ -17,6 +20,9 @@ export type PortalFnName =
   | typeof V1_RESERVATION_CREATE_FN
   | typeof V1_RESERVATION_UPDATE_FN
   | typeof V1_RESERVATION_ASSIGN_STATION_FN
+  | typeof V1_RESERVATION_PICKUP_WINDOW_FN
+  | typeof V1_RESERVATION_QUEUE_FAIRNESS_FN
+  | typeof V1_RESERVATION_EXPORT_CONTINUITY_FN
   | "listMaterialsProducts"
   | "createMaterialsCheckoutSession"
   | "seedMaterialsCatalog"
@@ -130,6 +136,21 @@ export type ReservationPreferredWindow = {
   latestDate?: string | null;
 };
 
+export type ReservationPieceStatus =
+  | "awaiting_placement"
+  | "loaded"
+  | "fired"
+  | "ready"
+  | "picked_up";
+
+export type ReservationPieceInput = {
+  pieceId?: string | null;
+  pieceLabel?: string | null;
+  pieceCount?: number | null;
+  piecePhotoUrl?: string | null;
+  pieceStatus?: ReservationPieceStatus | null;
+};
+
 export type ReservationStationId =
   | "studio-kiln-a"
   | "studio-kiln-b"
@@ -182,6 +203,7 @@ export type CreateReservationRequest = {
     clayBody?: string | null;
     glazeNotes?: string | null;
   } | null;
+  pieces?: ReservationPieceInput[] | null;
   addOns?: {
     rushRequested?: boolean;
     wholeKilnRequested?: boolean;
@@ -217,6 +239,110 @@ export type UpdateReservationResponse = PortalApiOkEnvelope & {
   arrivalToken?: string | null;
   arrivalTokenExpiresAt?: unknown;
   idempotentReplay?: boolean;
+};
+
+export type PickupWindowStatus = "open" | "confirmed" | "missed" | "expired" | "completed";
+
+export type ReservationPickupWindowAction =
+  | "staff_set_open_window"
+  | "member_confirm_window"
+  | "member_request_reschedule"
+  | "staff_mark_missed"
+  | "staff_mark_completed";
+
+export type ReservationPickupWindowRequest = {
+  reservationId: string;
+  action: ReservationPickupWindowAction;
+  confirmedStart?: string | null;
+  confirmedEnd?: string | null;
+  requestedStart?: string | null;
+  requestedEnd?: string | null;
+  note?: string | null;
+  force?: boolean;
+};
+
+export type ReservationPickupWindowResponse = PortalApiOkEnvelope & {
+  reservationId?: string;
+  pickupWindowStatus?: PickupWindowStatus | null;
+  pickupWindow?: {
+    requestedStart?: string | null;
+    requestedEnd?: string | null;
+    confirmedStart?: string | null;
+    confirmedEnd?: string | null;
+    status?: PickupWindowStatus | null;
+    confirmedAt?: string | null;
+    completedAt?: string | null;
+    missedCount?: number | null;
+    rescheduleCount?: number | null;
+    lastMissedAt?: string | null;
+    lastRescheduleRequestedAt?: string | null;
+  } | null;
+  storageStatus?: string | null;
+  idempotentReplay?: boolean;
+};
+
+export type ReservationQueueFairnessAction =
+  | "record_no_show"
+  | "record_late_arrival"
+  | "set_override_boost"
+  | "clear_override";
+
+export type ReservationQueueFairnessRequest = {
+  reservationId: string;
+  action: ReservationQueueFairnessAction;
+  reason: string;
+  boostPoints?: number | null;
+  overrideUntil?: string | null;
+};
+
+export type ReservationQueueFairnessResponse = PortalApiOkEnvelope & {
+  reservationId?: string;
+  action?: ReservationQueueFairnessAction | string;
+  evidenceId?: string | null;
+  queueFairness?: {
+    noShowCount?: number | null;
+    lateArrivalCount?: number | null;
+    overrideBoost?: number | null;
+    overrideReason?: string | null;
+    overrideUntil?: string | null;
+    updatedAt?: string | null;
+    updatedByUid?: string | null;
+    updatedByRole?: "staff" | "dev" | "system" | null | string;
+    lastPolicyNote?: string | null;
+  } | null;
+  queueFairnessPolicy?: {
+    noShowCount?: number | null;
+    lateArrivalCount?: number | null;
+    penaltyPoints?: number | null;
+    effectivePenaltyPoints?: number | null;
+    overrideBoostApplied?: number | null;
+    reasonCodes?: string[];
+    policyVersion?: string | null;
+    computedAt?: string | null;
+  } | null;
+};
+
+export type ReservationExportContinuityRequest = {
+  ownerUid?: string | null;
+  includeCsv?: boolean;
+  limit?: number;
+};
+
+export type ReservationExportContinuityResponse = PortalApiOkEnvelope & {
+  exportHeader?: {
+    artifactId?: string;
+    ownerUid?: string;
+    generatedAt?: string;
+    schemaVersion?: string;
+    format?: string[];
+    signature?: string;
+    requestId?: string;
+  } | null;
+  redactionRules?: string[];
+  summary?: Record<string, number>;
+  warnings?: string[];
+  jsonBundle?: Record<string, unknown>;
+  csvBundle?: Record<string, string> | null;
 };
 
 export type AssignReservationStationRequest = {
@@ -363,6 +489,7 @@ export type RunNotificationFailureDrillRequest = {
     inApp?: boolean;
     email?: boolean;
     push?: boolean;
+    sms?: boolean;
   };
   forceRunNow?: boolean;
 };

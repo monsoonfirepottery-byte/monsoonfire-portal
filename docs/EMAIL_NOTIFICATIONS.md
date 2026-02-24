@@ -36,6 +36,30 @@ The notification job processor writes:
 If you replace the extension with a different provider, keep the `mail` collection
 or update `functions/src/notifications.ts`.
 
+## SMS provider contract
+SMS delivery is implemented in `functions/src/notifications.ts` with an explicit runtime mode:
+- `NOTIFICATION_SMS_PROVIDER=disabled` (default, safe no-send)
+- `NOTIFICATION_SMS_PROVIDER=mock` (deterministic CI/dev behavior, no external calls)
+- `NOTIFICATION_SMS_PROVIDER=twilio` (live provider)
+
+Required runtime variables for live Twilio sends:
+- `NOTIFICATION_SMS_FROM_E164` (sender number, E.164 format)
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+
+Optional mock runtime variable:
+- `NOTIFICATION_SMS_MOCK_MODE=success|auth|provider_4xx|provider_5xx|network`
+
+Phone lookup order for SMS:
+1. Firebase Auth user phone (`adminAuth.getUser(uid).phoneNumber`)
+2. Profile fallback fields (`profiles/{uid}.phoneE164`, `phone`, `mobilePhone`)
+
+All SMS attempt telemetry is written to `notificationDeliveryAttempts` with:
+- `channel: "sms"`
+- provider metadata (`provider`, `providerCode`)
+- hashed phone marker (`phoneHash`)
+- optional fallback status fields when SMS hard-failure email fallback is triggered
+
 ## Recipient Routing Segments
 Notification routing in `functions/src/notifications.ts` now supports audience segments:
 - `members`: include only non-staff accounts.
@@ -44,9 +68,22 @@ Notification routing in `functions/src/notifications.ts` now supports audience s
 
 Current kiln unload flow uses `members` by default, which prevents staff-only users from receiving member unload notifications.
 
+Reservation notification flow now emits customer-facing jobs for:
+- status transitions (`CONFIRMED`, `WAITLISTED`, `CANCELLED`)
+- ETA/estimate window shifts
+- ready-for-pickup (`loadStatus=loaded`)
+- pickup/storage reminders (72h, 120h, 168h cadence after ready-for-pickup)
+- delayed ETA follow-ups (12h initial reminder, then 24h cadence while still delayed)
+
+Reservation sends respect both:
+- `users/{uid}/prefs/notifications` global/channel toggles
+- `profiles/{uid}.notifyReservations` (defaults to `true` when unset)
+
 Fallback behavior:
 - If recipient claim lookup fails, that user is treated as non-staff.
 - If no eligible recipients remain after filtering, no jobs are queued for that segment.
+- If SMS hard-fails with provider 4xx recipient errors (for example invalid/opted-out phone), email fallback is attempted in the same job.
+- SMS throttling/network/provider 5xx failures remain retryable and do not auto-convert to hard-failure fallback.
 
 ## Push telemetry baseline
 - Push-enabled jobs now emit telemetry docs in `notificationDeliveryAttempts`.

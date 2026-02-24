@@ -3472,9 +3472,9 @@ const lendingContent = (
     try {
       const resp = await client.postJson<{ ok?: boolean; jobId?: string }>("runNotificationFailureDrill", {
         uid: user.uid,
-        mode: "invalidToken",
+        mode: "auth",
         forceRunNow: true,
-        channels: { inApp: false, email: false, push: true },
+        channels: { inApp: false, email: false, push: true, sms: false },
       });
       upsertSystemCheck({
         key: "notification_drill",

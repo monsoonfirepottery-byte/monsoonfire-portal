@@ -10,6 +10,20 @@ import { z } from "zod";
 const REGION = "us-central1";
 const JOB_MAX_ATTEMPTS = 5;
 const JOB_BASE_RETRY_MS = 60_000;
+const SMS_MESSAGE_MAX_CHARS = 1200;
+const RESERVATION_DELAY_FOLLOW_UP_INITIAL_MS = 12 * 60 * 60 * 1000;
+const RESERVATION_DELAY_FOLLOW_UP_REPEAT_MS = 24 * 60 * 60 * 1000;
+const RESERVATION_STORAGE_REMINDER_SCHEDULE_MS = [
+  72 * 60 * 60 * 1000,
+  120 * 60 * 60 * 1000,
+  168 * 60 * 60 * 1000,
+] as const;
+const RESERVATION_STORAGE_HOLD_PENDING_MS = 10 * 24 * 60 * 60 * 1000;
+const RESERVATION_STORAGE_STORED_BY_POLICY_MS = 14 * 24 * 60 * 60 * 1000;
+const RESERVATION_STORAGE_HISTORY_MAX = 60;
+
+type ReservationStorageStatus = "active" | "reminder_pending" | "hold_pending" | "stored_by_policy";
+type ReservationPickupWindowStatus = "open" | "confirmed" | "missed" | "expired" | "completed";
 
 function asRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -45,6 +59,7 @@ const runNotificationDrillSchema = z.object({
       inApp: z.boolean().optional(),
       email: z.boolean().optional(),
       push: z.boolean().optional(),
+      sms: z.boolean().optional(),
     })
     .optional(),
   forceRunNow: z.boolean().optional(),
@@ -205,6 +220,7 @@ export const runNotificationFailureDrill = onRequest({ region: REGION }, async (
       inApp: input.channels?.inApp ?? false,
       email: input.channels?.email ?? false,
       push: input.channels?.push ?? true,
+      sms: input.channels?.sms ?? false,
     },
     payload,
     attemptCount: 0,
@@ -250,21 +266,62 @@ type NotificationPayload = {
   batchIds?: string[];
   pieceIds?: string[];
   drillMode?: "auth" | "provider_4xx" | "provider_5xx" | "network" | "success";
+  reservationId?: string | null;
+  reservationStatus?: string | null;
+  previousReservationStatus?: string | null;
+  reservationLoadStatus?: string | null;
+  previousReservationLoadStatus?: string | null;
+  eventKind?:
+    | "confirmed"
+    | "waitlisted"
+    | "cancelled"
+    | "estimate_shift"
+    | "pickup_ready"
+    | "delay_follow_up"
+    | "pickup_reminder";
+  reason?: string | null;
+  estimateWindowLabel?: string | null;
+  suggestedNextUpdateAtIso?: string | null;
+  previousWindowStartIso?: string | null;
+  previousWindowEndIso?: string | null;
+  currentWindowStartIso?: string | null;
+  currentWindowEndIso?: string | null;
+  delayEpisodeId?: string | null;
+  delayFollowUpOrdinal?: number | null;
+  storageStatus?: ReservationStorageStatus | null;
+  previousStorageStatus?: ReservationStorageStatus | null;
+  reminderOrdinal?: number | null;
+  reminderCount?: number | null;
+  readyForPickupAtIso?: string | null;
+  policyWindowLabel?: string | null;
 };
 
 type NotificationAudienceSegment = "all" | "members" | "staff";
 
 type NotificationJob = {
-  type: "KILN_UNLOADED";
+  type:
+    | "KILN_UNLOADED"
+    | "RESERVATION_STATUS"
+    | "RESERVATION_ETA_SHIFT"
+    | "RESERVATION_READY_PICKUP"
+    | "RESERVATION_DELAY_FOLLOW_UP"
+    | "RESERVATION_PICKUP_REMINDER";
   createdAt: Timestamp;
   runAfter?: Timestamp | null;
   uid: string;
-  channels: { inApp: boolean; email: boolean; push: boolean };
+  channels: { inApp: boolean; email: boolean; push: boolean; sms: boolean };
   payload: NotificationPayload;
   attemptCount: number;
   lastError?: string;
   status: "queued" | "processing" | "done" | "failed" | "skipped";
 };
+
+type NotificationErrorClass =
+  | "provider_4xx"
+  | "provider_5xx"
+  | "network"
+  | "auth"
+  | "unknown";
 
 const DEFAULT_PREFS: NotificationPrefs = {
   enabled: true,
@@ -493,6 +550,434 @@ function shouldNotify(
   return true;
 }
 
+type ReservationEstimatedWindowSnapshot = {
+  currentStart: Timestamp | null;
+  currentEnd: Timestamp | null;
+  updatedAt: Timestamp | null;
+  slaState: string | null;
+  confidence: string | null;
+};
+
+type ReservationStorageNoticeEntry = {
+  at: Timestamp | null;
+  kind: string;
+  detail: string | null;
+  status: ReservationStorageStatus | null;
+  reminderOrdinal: number | null;
+  reminderCount: number | null;
+  failureCode: string | null;
+};
+
+type ReservationPickupWindowSnapshot = {
+  requestedStart: Timestamp | null;
+  requestedEnd: Timestamp | null;
+  confirmedStart: Timestamp | null;
+  confirmedEnd: Timestamp | null;
+  status: ReservationPickupWindowStatus | null;
+  confirmedAt: Timestamp | null;
+  completedAt: Timestamp | null;
+  missedCount: number;
+  rescheduleCount: number;
+  lastMissedAt: Timestamp | null;
+  lastRescheduleRequestedAt: Timestamp | null;
+};
+
+type ReservationNotificationSnapshot = {
+  ownerUid: string;
+  status: string | null;
+  loadStatus: string | null;
+  createdAt: Timestamp | null;
+  updatedAt: Timestamp | null;
+  estimatedWindow: ReservationEstimatedWindowSnapshot;
+  stageReason: string | null;
+  stageNotes: string | null;
+  staffNotes: string | null;
+  storageStatus: ReservationStorageStatus | null;
+  readyForPickupAt: Timestamp | null;
+  pickupReminderCount: number;
+  lastReminderAt: Timestamp | null;
+  pickupReminderFailureCount: number;
+  lastReminderFailureAt: Timestamp | null;
+  storageNoticeHistory: ReservationStorageNoticeEntry[];
+  pickupWindow: ReservationPickupWindowSnapshot;
+};
+
+type ReservationNotificationRouting = {
+  prefs: NotificationPrefs;
+  notifyReservations: boolean;
+  channels: {
+    inApp: boolean;
+    email: boolean;
+    push: boolean;
+    sms: boolean;
+  };
+};
+
+function parseTimestampValue(value: unknown): Timestamp | null {
+  if (!value) return null;
+  if (value instanceof Timestamp) return value;
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    return Timestamp.fromDate(value);
+  }
+  if (asRecord(value) && typeof value.toDate === "function") {
+    try {
+      const asDate = value.toDate();
+      if (asDate instanceof Date && Number.isFinite(asDate.getTime())) {
+        return Timestamp.fromDate(asDate);
+      }
+    } catch {
+      return null;
+    }
+  }
+  if (asRecord(value) && typeof value.seconds === "number") {
+    const seconds = Number(value.seconds);
+    const nanos =
+      typeof value.nanoseconds === "number" && Number.isFinite(value.nanoseconds)
+        ? Math.max(0, Number(value.nanoseconds))
+        : 0;
+    if (!Number.isFinite(seconds)) return null;
+    const millis = Math.trunc(seconds * 1000 + nanos / 1_000_000);
+    return Timestamp.fromMillis(millis);
+  }
+  if (typeof value === "string" && value.trim()) {
+    const asDate = new Date(value);
+    if (Number.isFinite(asDate.getTime())) {
+      return Timestamp.fromDate(asDate);
+    }
+  }
+  return null;
+}
+
+function tsIso(value: Timestamp | null): string | null {
+  if (!value) return null;
+  try {
+    return value.toDate().toISOString();
+  } catch {
+    return null;
+  }
+}
+
+function tsMillis(value: Timestamp | null): number | null {
+  if (!value) return null;
+  try {
+    return value.toMillis();
+  } catch {
+    return null;
+  }
+}
+
+function normalizeReservationStatusValue(value: unknown): string | null {
+  const normalized = safeString(value).trim().toUpperCase();
+  if (!normalized) return null;
+  if (normalized === "CANCELED") return "CANCELLED";
+  return normalized;
+}
+
+function normalizeReservationLoadStatusValue(value: unknown): string | null {
+  const normalized = safeString(value).trim().toLowerCase();
+  return normalized || null;
+}
+
+function normalizeReservationStorageStatusValue(value: unknown): ReservationStorageStatus | null {
+  const normalized = safeString(value).trim().toLowerCase();
+  if (
+    normalized === "active" ||
+    normalized === "reminder_pending" ||
+    normalized === "hold_pending" ||
+    normalized === "stored_by_policy"
+  ) {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizeReservationPickupWindowStatusValue(value: unknown): ReservationPickupWindowStatus | null {
+  const normalized = safeString(value).trim().toLowerCase();
+  if (
+    normalized === "open" ||
+    normalized === "confirmed" ||
+    normalized === "missed" ||
+    normalized === "expired" ||
+    normalized === "completed"
+  ) {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizeReminderCount(value: unknown): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return Math.max(0, Math.trunc(parsed));
+}
+
+function normalizeStorageNoticeHistory(raw: unknown): ReservationStorageNoticeEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const rows: ReservationStorageNoticeEntry[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const source = row as Record<string, unknown>;
+    const kind = safeString(source.kind).trim();
+    if (!kind) continue;
+    rows.push({
+      at: parseTimestampValue(source.at),
+      kind,
+      detail: safeString(source.detail).trim() || null,
+      status: normalizeReservationStorageStatusValue(source.status),
+      reminderOrdinal: normalizeReminderCount(source.reminderOrdinal) || null,
+      reminderCount: normalizeReminderCount(source.reminderCount) || null,
+      failureCode: safeString(source.failureCode).trim() || null,
+    });
+  }
+  return rows.slice(-RESERVATION_STORAGE_HISTORY_MAX);
+}
+
+function normalizeStorageNoticeForWrite(entry: ReservationStorageNoticeEntry): Record<string, unknown> {
+  return {
+    at: entry.at ?? nowTs(),
+    kind: entry.kind,
+    detail: entry.detail ?? null,
+    status: entry.status ?? null,
+    reminderOrdinal: entry.reminderOrdinal ?? null,
+    reminderCount: entry.reminderCount ?? null,
+    failureCode: entry.failureCode ?? null,
+  };
+}
+
+function normalizePickupWindowForWrite(window: ReservationPickupWindowSnapshot): Record<string, unknown> {
+  return {
+    requestedStart: window.requestedStart ?? null,
+    requestedEnd: window.requestedEnd ?? null,
+    confirmedStart: window.confirmedStart ?? null,
+    confirmedEnd: window.confirmedEnd ?? null,
+    status: window.status ?? "open",
+    confirmedAt: window.confirmedAt ?? null,
+    completedAt: window.completedAt ?? null,
+    missedCount: Math.max(0, Math.trunc(window.missedCount)),
+    rescheduleCount: Math.max(0, Math.trunc(window.rescheduleCount)),
+    lastMissedAt: window.lastMissedAt ?? null,
+    lastRescheduleRequestedAt: window.lastRescheduleRequestedAt ?? null,
+  };
+}
+
+function parseReservationSnapshot(value: Record<string, unknown> | undefined): ReservationNotificationSnapshot {
+  const estimatedWindow = asRecord(value?.estimatedWindow)
+    ? (value.estimatedWindow as Record<string, unknown>)
+    : {};
+  const stageStatus = asRecord(value?.stageStatus)
+    ? (value.stageStatus as Record<string, unknown>)
+    : {};
+  const pickupWindow = asRecord(value?.pickupWindow)
+    ? (value.pickupWindow as Record<string, unknown>)
+    : {};
+
+  return {
+    ownerUid: safeString(value?.ownerUid),
+    status: normalizeReservationStatusValue(value?.status),
+    loadStatus: normalizeReservationLoadStatusValue(value?.loadStatus),
+    createdAt: parseTimestampValue(value?.createdAt),
+    updatedAt: parseTimestampValue(value?.updatedAt),
+    estimatedWindow: {
+      currentStart: parseTimestampValue(estimatedWindow.currentStart),
+      currentEnd: parseTimestampValue(estimatedWindow.currentEnd),
+      updatedAt: parseTimestampValue(estimatedWindow.updatedAt),
+      slaState: safeString(estimatedWindow.slaState).trim().toLowerCase() || null,
+      confidence: safeString(estimatedWindow.confidence).trim().toLowerCase() || null,
+    },
+    stageReason: safeString(stageStatus.reason).trim() || null,
+    stageNotes: safeString(stageStatus.notes).trim() || null,
+    staffNotes: safeString(value?.staffNotes).trim() || null,
+    storageStatus: normalizeReservationStorageStatusValue(value?.storageStatus),
+    readyForPickupAt: parseTimestampValue(value?.readyForPickupAt),
+    pickupReminderCount: normalizeReminderCount(value?.pickupReminderCount),
+    lastReminderAt: parseTimestampValue(value?.lastReminderAt),
+    pickupReminderFailureCount: normalizeReminderCount(value?.pickupReminderFailureCount),
+    lastReminderFailureAt: parseTimestampValue(value?.lastReminderFailureAt),
+    storageNoticeHistory: normalizeStorageNoticeHistory(value?.storageNoticeHistory),
+    pickupWindow: {
+      requestedStart: parseTimestampValue(pickupWindow.requestedStart),
+      requestedEnd: parseTimestampValue(pickupWindow.requestedEnd),
+      confirmedStart: parseTimestampValue(pickupWindow.confirmedStart),
+      confirmedEnd: parseTimestampValue(pickupWindow.confirmedEnd),
+      status: normalizeReservationPickupWindowStatusValue(pickupWindow.status),
+      confirmedAt: parseTimestampValue(pickupWindow.confirmedAt),
+      completedAt: parseTimestampValue(pickupWindow.completedAt),
+      missedCount: normalizeReminderCount(pickupWindow.missedCount),
+      rescheduleCount: normalizeReminderCount(pickupWindow.rescheduleCount),
+      lastMissedAt: parseTimestampValue(pickupWindow.lastMissedAt),
+      lastRescheduleRequestedAt: parseTimestampValue(pickupWindow.lastRescheduleRequestedAt),
+    },
+  };
+}
+
+function currentStorageStatus(snapshot: ReservationNotificationSnapshot): ReservationStorageStatus {
+  return snapshot.storageStatus ?? "active";
+}
+
+function storageStatusForElapsed(params: {
+  elapsedMs: number;
+  reminderCount: number;
+}): ReservationStorageStatus {
+  const elapsedMs = Math.max(0, params.elapsedMs);
+  if (elapsedMs >= RESERVATION_STORAGE_STORED_BY_POLICY_MS) return "stored_by_policy";
+  if (elapsedMs >= RESERVATION_STORAGE_HOLD_PENDING_MS) return "hold_pending";
+  if (params.reminderCount > 0) return "reminder_pending";
+  return "active";
+}
+
+function nextDueReminderOrdinal(params: {
+  elapsedMs: number;
+  currentCount: number;
+}): number | null {
+  const nextOrdinal = Math.max(1, params.currentCount + 1);
+  if (nextOrdinal > RESERVATION_STORAGE_REMINDER_SCHEDULE_MS.length) return null;
+  const thresholdMs = RESERVATION_STORAGE_REMINDER_SCHEDULE_MS[nextOrdinal - 1];
+  if (params.elapsedMs < thresholdMs) return null;
+  return nextOrdinal;
+}
+
+function storagePolicyWindowLabel(reminderOrdinal: number): string {
+  const nextThreshold = RESERVATION_STORAGE_REMINDER_SCHEDULE_MS[reminderOrdinal] ?? RESERVATION_STORAGE_HOLD_PENDING_MS;
+  const nextHours = Math.round(nextThreshold / (60 * 60 * 1000));
+  if (reminderOrdinal >= 3) {
+    return "Final reminder window. Reservation moves to storage hold soon if pickup is still pending.";
+  }
+  return `Next storage policy checkpoint is around ${nextHours} hours after pickup-ready status.`;
+}
+
+function pushStorageNotice(
+  history: ReservationStorageNoticeEntry[],
+  notice: Omit<ReservationStorageNoticeEntry, "at"> & { at?: Timestamp | null }
+): ReservationStorageNoticeEntry[] {
+  const next = [...history];
+  next.push({
+    at: notice.at ?? nowTs(),
+    kind: notice.kind,
+    detail: notice.detail ?? null,
+    status: notice.status ?? null,
+    reminderOrdinal: notice.reminderOrdinal ?? null,
+    reminderCount: notice.reminderCount ?? null,
+    failureCode: notice.failureCode ?? null,
+  });
+  return next.slice(-RESERVATION_STORAGE_HISTORY_MAX);
+}
+
+async function writeReservationStorageAudit(params: {
+  reservationId: string;
+  uid: string;
+  action: string;
+  reason: string;
+  at?: Timestamp | null;
+  fromStatus?: ReservationStorageStatus | null;
+  toStatus?: ReservationStorageStatus | null;
+  reminderOrdinal?: number | null;
+  reminderCount?: number | null;
+  requestId?: string | null;
+  failureCode?: string | null;
+}): Promise<void> {
+  const at = params.at ?? nowTs();
+  const auditId = hashId(
+    [
+      params.reservationId,
+      params.action,
+      safeString(params.requestId) || "none",
+      tsIso(at) ?? String(Date.now()),
+      safeString(params.reason),
+      String(params.reminderOrdinal ?? ""),
+      String(params.reminderCount ?? ""),
+    ].join(":")
+  );
+  await db.collection("reservationStorageAudit").doc(auditId).set(
+    {
+      reservationId: params.reservationId,
+      uid: params.uid,
+      action: params.action,
+      reason: params.reason,
+      fromStatus: params.fromStatus ?? null,
+      toStatus: params.toStatus ?? null,
+      reminderOrdinal: params.reminderOrdinal ?? null,
+      reminderCount: params.reminderCount ?? null,
+      requestId: params.requestId ?? null,
+      failureCode: params.failureCode ?? null,
+      at,
+      createdAt: nowTs(),
+    },
+    { merge: true }
+  );
+}
+
+function reservationEstimatedWindowChanged(
+  before: ReservationEstimatedWindowSnapshot,
+  after: ReservationEstimatedWindowSnapshot
+): boolean {
+  return (
+    tsMillis(before.currentStart) !== tsMillis(after.currentStart) ||
+    tsMillis(before.currentEnd) !== tsMillis(after.currentEnd) ||
+    before.slaState !== after.slaState ||
+    before.confidence !== after.confidence
+  );
+}
+
+function reservationEstimatedWindowLabel(window: ReservationEstimatedWindowSnapshot): string | null {
+  const startIso = tsIso(window.currentStart);
+  const endIso = tsIso(window.currentEnd);
+  if (startIso && endIso) return `${startIso} -> ${endIso}`;
+  if (startIso) return `from ${startIso}`;
+  if (endIso) return `until ${endIso}`;
+  return null;
+}
+
+function buildReservationReason(
+  after: ReservationNotificationSnapshot,
+  fallback: string
+): string {
+  return after.stageReason ?? after.stageNotes ?? after.staffNotes ?? fallback;
+}
+
+function suggestedReservationUpdateIso(
+  after: ReservationNotificationSnapshot,
+  delayMode: "none" | "initial" | "follow_up"
+): string | null {
+  const anchor = after.estimatedWindow.updatedAt ?? after.updatedAt;
+  if (!anchor) return null;
+  const baseMs = anchor.toMillis();
+  const offsetMs =
+    delayMode === "initial"
+      ? RESERVATION_DELAY_FOLLOW_UP_INITIAL_MS
+      : delayMode === "follow_up"
+        ? RESERVATION_DELAY_FOLLOW_UP_REPEAT_MS
+        : 24 * 60 * 60 * 1000;
+  return new Date(baseMs + offsetMs).toISOString();
+}
+
+async function readReservationNotifyPreference(uid: string): Promise<boolean> {
+  const snap = await db.collection("profiles").doc(uid).get();
+  if (!snap.exists) return true;
+  const data = snap.data() as Record<string, unknown> | undefined;
+  if (!data) return true;
+  return typeof data.notifyReservations === "boolean" ? data.notifyReservations : true;
+}
+
+function hasEnabledChannels(channels: { inApp: boolean; email: boolean; push: boolean; sms: boolean }): boolean {
+  return channels.inApp || channels.email || channels.push || channels.sms;
+}
+
+async function readReservationRouting(uid: string): Promise<ReservationNotificationRouting> {
+  const prefs = await readPrefs(uid);
+  const notifyReservations = await readReservationNotifyPreference(uid);
+  const channels = {
+    inApp: prefs.channels.inApp,
+    email: prefs.channels.email,
+    push: prefs.channels.push,
+    sms: prefs.channels.sms,
+  };
+  return {
+    prefs,
+    notifyReservations,
+    channels,
+  };
+}
+
 async function createJob(job: NotificationJob): Promise<void> {
   const jobId = hashId(job.payload.dedupeKey);
   const ref = db.collection("notificationJobs").doc(jobId);
@@ -507,6 +992,67 @@ async function createJob(job: NotificationJob): Promise<void> {
     }
     throw error;
   }
+}
+
+async function enqueueReservationNotificationJob(params: {
+  uid: string;
+  type:
+    | "RESERVATION_STATUS"
+    | "RESERVATION_ETA_SHIFT"
+    | "RESERVATION_READY_PICKUP"
+    | "RESERVATION_DELAY_FOLLOW_UP"
+    | "RESERVATION_PICKUP_REMINDER";
+  payload: NotificationPayload;
+  routing?: ReservationNotificationRouting | null;
+  runAfter?: Timestamp | null;
+}): Promise<void> {
+  const routing = params.routing ?? (await readReservationRouting(params.uid));
+  const runAfterDate =
+    params.runAfter !== undefined
+      ? null
+      : resolveRunAfter(new Date(), routing.prefs);
+  const runAfter = params.runAfter !== undefined
+    ? params.runAfter
+    : runAfterDate
+      ? Timestamp.fromDate(runAfterDate)
+      : null;
+  const baseJob: NotificationJob = {
+    type: params.type,
+    createdAt: nowTs(),
+    runAfter,
+    uid: params.uid,
+    channels: routing.channels,
+    payload: params.payload,
+    attemptCount: 0,
+    status: "queued",
+  };
+
+  if (!routing.notifyReservations) {
+    await createJob({
+      ...baseJob,
+      status: "skipped",
+      lastError: "RESERVATION_PREF_DISABLED",
+    });
+    return;
+  }
+  if (!routing.prefs.enabled) {
+    await createJob({
+      ...baseJob,
+      status: "skipped",
+      lastError: "PREFS_DISABLED",
+    });
+    return;
+  }
+  if (!hasEnabledChannels(routing.channels)) {
+    await createJob({
+      ...baseJob,
+      status: "skipped",
+      lastError: "NO_CHANNELS_ENABLED",
+    });
+    return;
+  }
+
+  await createJob(baseJob);
 }
 
 async function enqueueNotifications(params: {
@@ -558,6 +1104,7 @@ async function enqueueNotifications(params: {
         inApp: prefs.channels.inApp,
         email: prefs.channels.email,
         push: prefs.channels.push,
+        sms: prefs.channels.sms,
       },
       payload,
       attemptCount: 0,
@@ -658,27 +1205,440 @@ export const onKilnFiringUnloaded = onDocumentWritten(
   }
 );
 
-async function writeInAppNotification(job: NotificationJob): Promise<{ created: boolean }> {
-  const notificationId = hashId(job.payload.dedupeKey);
-  const ref = db
-    .collection("users")
-    .doc(job.uid)
-    .collection("notifications")
-    .doc(notificationId);
+export const onReservationLifecycleUpdated = onDocumentWritten(
+  { region: REGION, document: "reservations/{reservationId}" },
+  async (event) => {
+    const beforeRaw = event.data?.before.data() as Record<string, unknown> | undefined;
+    const afterRaw = event.data?.after.data() as Record<string, unknown> | undefined;
+    if (!afterRaw) return;
 
-  const title = job.payload.kilnName
-    ? `Kiln unloaded: ${job.payload.kilnName}`
-    : "Kiln unloaded";
-  const body = job.payload.firingType
-    ? `Your ${job.payload.firingType} firing is unloaded. We will confirm details together at pickup.`
-    : "Your firing is unloaded. We will confirm details together at pickup.";
+    const reservationId = event.params.reservationId;
+    const before = parseReservationSnapshot(beforeRaw);
+    const after = parseReservationSnapshot(afterRaw);
+    const uid = after.ownerUid;
 
-  try {
-    await ref.create({
-      type: "KILN_UNLOADED",
+    if (!uid) {
+      logger.warn("Reservation notification skipped: missing owner", {
+        reservationId,
+      });
+      return;
+    }
+
+    const routing = await readReservationRouting(uid);
+    const updatedAtMs = tsMillis(after.updatedAt) ?? Date.now();
+    const updatedAtIso = tsIso(after.updatedAt) ?? new Date(updatedAtMs).toISOString();
+
+    const statusChanged = before.status !== after.status;
+    const loadChanged = before.loadStatus !== after.loadStatus;
+    const windowChanged = reservationEstimatedWindowChanged(before.estimatedWindow, after.estimatedWindow);
+    const pickupWindowStatusChanged = before.pickupWindow.status !== after.pickupWindow.status;
+    const becameLoaded =
+      (after.loadStatus === "loaded" && before.loadStatus !== "loaded") ||
+      (after.status === "LOADED" && before.status !== "LOADED");
+
+    const currentWindowStartIso = tsIso(after.estimatedWindow.currentStart);
+    const currentWindowEndIso = tsIso(after.estimatedWindow.currentEnd);
+    const previousWindowStartIso = tsIso(before.estimatedWindow.currentStart);
+    const previousWindowEndIso = tsIso(before.estimatedWindow.currentEnd);
+    const estimateWindowLabel = reservationEstimatedWindowLabel(after.estimatedWindow);
+    const pickupWindowEndIso = tsIso(after.pickupWindow.confirmedEnd);
+    const delayEpisodeId =
+      tsIso(after.estimatedWindow.updatedAt) ?? updatedAtIso;
+    const suggestedInitialDelayIso = suggestedReservationUpdateIso(after, "initial");
+
+    if (
+      statusChanged &&
+      (after.status === "CONFIRMED" || after.status === "WAITLISTED" || after.status === "CANCELLED")
+    ) {
+      const eventKind =
+        after.status === "CONFIRMED"
+          ? "confirmed"
+          : after.status === "WAITLISTED"
+            ? "waitlisted"
+            : "cancelled";
+      const reason = buildReservationReason(after, `Reservation moved to ${after.status}.`);
+      await enqueueReservationNotificationJob({
+        uid,
+        type: "RESERVATION_STATUS",
+        routing,
+        payload: {
+          dedupeKey: `RESERVATION_STATUS:${reservationId}:${before.status ?? "unknown"}:${after.status}:${updatedAtMs}`,
+          firingId: reservationId,
+          reservationId,
+          reservationStatus: after.status,
+          previousReservationStatus: before.status,
+          reservationLoadStatus: after.loadStatus,
+          previousReservationLoadStatus: before.loadStatus,
+          eventKind,
+          reason,
+          estimateWindowLabel,
+          suggestedNextUpdateAtIso:
+            after.status === "CANCELLED" ? null : suggestedReservationUpdateIso(after, "none"),
+          previousWindowStartIso,
+          previousWindowEndIso,
+          currentWindowStartIso,
+          currentWindowEndIso,
+        },
+      });
+    }
+
+    if (
+      windowChanged &&
+      (after.status === "CONFIRMED" || after.status === "WAITLISTED")
+    ) {
+      const reason = buildReservationReason(
+        after,
+        "Estimated firing window shifted based on live queue and kiln availability."
+      );
+      await enqueueReservationNotificationJob({
+        uid,
+        type: "RESERVATION_ETA_SHIFT",
+        routing,
+        payload: {
+          dedupeKey: `RESERVATION_ETA_SHIFT:${reservationId}:${previousWindowStartIso ?? "null"}:${previousWindowEndIso ?? "null"}:${currentWindowStartIso ?? "null"}:${currentWindowEndIso ?? "null"}:${after.estimatedWindow.slaState ?? "unknown"}`,
+          firingId: reservationId,
+          reservationId,
+          reservationStatus: after.status,
+          previousReservationStatus: before.status,
+          reservationLoadStatus: after.loadStatus,
+          previousReservationLoadStatus: before.loadStatus,
+          eventKind: "estimate_shift",
+          reason,
+          estimateWindowLabel,
+          suggestedNextUpdateAtIso:
+            after.estimatedWindow.slaState === "delayed"
+              ? suggestedInitialDelayIso
+              : suggestedReservationUpdateIso(after, "none"),
+          previousWindowStartIso,
+          previousWindowEndIso,
+          currentWindowStartIso,
+          currentWindowEndIso,
+          delayEpisodeId,
+        },
+      });
+
+      if (after.estimatedWindow.slaState === "delayed") {
+        const baseRunAfter = new Date(Date.now() + RESERVATION_DELAY_FOLLOW_UP_INITIAL_MS);
+        const resolvedRunAfter = resolveRunAfter(baseRunAfter, routing.prefs) ?? baseRunAfter;
+        const runAfter = Timestamp.fromDate(resolvedRunAfter);
+        await enqueueReservationNotificationJob({
+          uid,
+          type: "RESERVATION_DELAY_FOLLOW_UP",
+          routing,
+          runAfter,
+          payload: {
+            dedupeKey: `RESERVATION_DELAY_FOLLOW_UP:${reservationId}:${delayEpisodeId}:1`,
+            firingId: reservationId,
+            reservationId,
+            reservationStatus: after.status,
+            previousReservationStatus: before.status,
+            reservationLoadStatus: after.loadStatus,
+            previousReservationLoadStatus: before.loadStatus,
+            eventKind: "delay_follow_up",
+            reason: buildReservationReason(
+              after,
+              "Your reservation remains delayed while we work through active kiln constraints."
+            ),
+            estimateWindowLabel,
+            suggestedNextUpdateAtIso: tsIso(runAfter),
+            previousWindowStartIso,
+            previousWindowEndIso,
+            currentWindowStartIso,
+            currentWindowEndIso,
+            delayEpisodeId,
+            delayFollowUpOrdinal: 1,
+          },
+        });
+      }
+    }
+
+    if (pickupWindowStatusChanged && after.pickupWindow.status === "open") {
+      const readyForPickupAt = after.readyForPickupAt ?? after.updatedAt ?? nowTs();
+      await enqueueReservationNotificationJob({
+        uid,
+        type: "RESERVATION_PICKUP_REMINDER",
+        routing,
+        payload: {
+          dedupeKey: `RESERVATION_PICKUP_WINDOW_OPEN:${reservationId}:${updatedAtMs}`,
+          firingId: reservationId,
+          reservationId,
+          reservationStatus: after.status,
+          previousReservationStatus: before.status,
+          reservationLoadStatus: after.loadStatus,
+          previousReservationLoadStatus: before.loadStatus,
+          eventKind: "pickup_reminder",
+          reason: buildReservationReason(
+            after,
+            "Pickup window is now open. Please confirm your collection window."
+          ),
+          storageStatus: currentStorageStatus(after),
+          previousStorageStatus: currentStorageStatus(before),
+          reminderCount: after.pickupReminderCount,
+          readyForPickupAtIso: tsIso(readyForPickupAt),
+          policyWindowLabel: pickupWindowEndIso
+            ? `Pickup window closes around ${formatIsoForUser(pickupWindowEndIso)}.`
+            : "Pickup window is open. Confirm as soon as possible.",
+          estimateWindowLabel,
+          suggestedNextUpdateAtIso: pickupWindowEndIso ?? null,
+        },
+      });
+
+      if (after.pickupWindow.confirmedEnd) {
+        const preExpiryDate = new Date(
+          after.pickupWindow.confirmedEnd.toMillis() - 24 * 60 * 60 * 1000
+        );
+        if (preExpiryDate.getTime() > Date.now()) {
+          const resolvedRunAfter = resolveRunAfter(preExpiryDate, routing.prefs) ?? preExpiryDate;
+          const runAfter = Timestamp.fromDate(resolvedRunAfter);
+          await enqueueReservationNotificationJob({
+            uid,
+            type: "RESERVATION_PICKUP_REMINDER",
+            routing,
+            runAfter,
+            payload: {
+              dedupeKey: `RESERVATION_PICKUP_WINDOW_PRE_EXPIRY:${reservationId}:${after.pickupWindow.confirmedEnd.toMillis()}`,
+              firingId: reservationId,
+              reservationId,
+              reservationStatus: after.status,
+              previousReservationStatus: before.status,
+              reservationLoadStatus: after.loadStatus,
+              previousReservationLoadStatus: before.loadStatus,
+              eventKind: "pickup_reminder",
+              reason: buildReservationReason(
+                after,
+                "Pickup window reminder: your selected collection window is closing soon."
+              ),
+              storageStatus: currentStorageStatus(after),
+              previousStorageStatus: currentStorageStatus(before),
+              reminderCount: after.pickupReminderCount,
+              readyForPickupAtIso: tsIso(readyForPickupAt),
+              policyWindowLabel: "Pickup window closes in about 24 hours.",
+              estimateWindowLabel,
+              suggestedNextUpdateAtIso: tsIso(runAfter),
+            },
+          });
+        }
+      }
+    }
+
+    if (becameLoaded || (loadChanged && after.loadStatus === "loaded")) {
+      const reason = buildReservationReason(
+        after,
+        "Reservation load is complete and ready for pickup planning."
+      );
+      const readyForPickupAt = after.readyForPickupAt ?? after.updatedAt ?? nowTs();
+      await enqueueReservationNotificationJob({
+        uid,
+        type: "RESERVATION_READY_PICKUP",
+        routing,
+        payload: {
+          dedupeKey: `RESERVATION_READY_PICKUP:${reservationId}:${updatedAtMs}`,
+          firingId: reservationId,
+          reservationId,
+          reservationStatus: after.status,
+          previousReservationStatus: before.status,
+          reservationLoadStatus: after.loadStatus,
+          previousReservationLoadStatus: before.loadStatus,
+          eventKind: "pickup_ready",
+          reason,
+          storageStatus: "active",
+          previousStorageStatus: currentStorageStatus(before),
+          reminderCount: 0,
+          readyForPickupAtIso: tsIso(readyForPickupAt),
+          policyWindowLabel: "Pickup-ready notice sent. Storage reminders begin after 72 hours.",
+          estimateWindowLabel,
+          suggestedNextUpdateAtIso: null,
+          previousWindowStartIso,
+          previousWindowEndIso,
+          currentWindowStartIso,
+          currentWindowEndIso,
+        },
+      });
+
+      const nextHistory = pushStorageNotice(after.storageNoticeHistory, {
+        at: nowTs(),
+        kind: "pickup_ready",
+        detail: reason,
+        status: "active",
+        reminderOrdinal: null,
+        reminderCount: 0,
+        failureCode: null,
+      });
+      await db.collection("reservations").doc(reservationId).set(
+        {
+          readyForPickupAt,
+          storageStatus: "active",
+          pickupReminderCount: 0,
+          lastReminderAt: null,
+          pickupReminderFailureCount: 0,
+          lastReminderFailureAt: null,
+          storageNoticeHistory: nextHistory.map(normalizeStorageNoticeForWrite),
+          updatedAt: nowTs(),
+        },
+        { merge: true }
+      );
+      await writeReservationStorageAudit({
+        reservationId,
+        uid,
+        action: "pickup_ready",
+        reason,
+        fromStatus: currentStorageStatus(before),
+        toStatus: "active",
+        reminderCount: 0,
+      });
+    }
+  }
+);
+
+function formatIsoForUser(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const asDate = new Date(iso);
+  if (!Number.isFinite(asDate.getTime())) return null;
+  return asDate.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatReservationEstimateLine(payload: NotificationPayload): string {
+  const startLabel = formatIsoForUser(payload.currentWindowStartIso ?? null);
+  const endLabel = formatIsoForUser(payload.currentWindowEndIso ?? null);
+  if (startLabel && endLabel) {
+    return `Updated estimate: ${startLabel} - ${endLabel}.`;
+  }
+  if (payload.estimateWindowLabel) {
+    return `Updated estimate: ${payload.estimateWindowLabel}.`;
+  }
+  return "Updated estimate: We'll keep this current as queue conditions change.";
+}
+
+function formatReservationReasonLine(payload: NotificationPayload): string {
+  const reason = safeString(payload.reason).trim();
+  if (reason) return `Last change reason: ${reason}.`;
+  return "Last change reason: queue and kiln availability were recalculated.";
+}
+
+function formatReservationNextUpdateLine(payload: NotificationPayload): string {
+  const policyWindowLabel = safeString(payload.policyWindowLabel).trim();
+  if (policyWindowLabel) {
+    return policyWindowLabel;
+  }
+  const next = formatIsoForUser(payload.suggestedNextUpdateAtIso ?? null);
+  if (next) return `Suggested next update window: around ${next}.`;
+  return "Suggested next update window: within 24 hours or sooner if conditions change.";
+}
+
+function buildReservationNotificationCopy(job: NotificationJob): {
+  title: string;
+  body: string;
+  subject: string;
+  messageType: string;
+} {
+  const eventKind = job.payload.eventKind;
+  const estimateLine = formatReservationEstimateLine(job.payload);
+  const reasonLine = formatReservationReasonLine(job.payload);
+  const nextLine = formatReservationNextUpdateLine(job.payload);
+
+  if (eventKind === "confirmed") {
+    return {
+      title: "Reservation confirmed",
+      subject: "Reservation confirmed",
+      messageType: "RESERVATION_CONFIRMED",
+      body: ["Your reservation is confirmed.", estimateLine, reasonLine, nextLine].join(" "),
+    };
+  }
+  if (eventKind === "waitlisted") {
+    return {
+      title: "Reservation waitlisted",
+      subject: "Reservation moved to waitlist",
+      messageType: "RESERVATION_WAITLISTED",
+      body: ["Your reservation is currently waitlisted.", estimateLine, reasonLine, nextLine].join(" "),
+    };
+  }
+  if (eventKind === "cancelled") {
+    return {
+      title: "Reservation cancelled",
+      subject: "Reservation cancelled",
+      messageType: "RESERVATION_CANCELLED",
+      body: [
+        "Your reservation has been cancelled.",
+        reasonLine,
+        `Contact support with code ${hashId(job.payload.dedupeKey).slice(0, 8)} if this looks wrong.`,
+      ].join(" "),
+    };
+  }
+  if (eventKind === "pickup_ready") {
+    return {
+      title: "Ready for pickup",
+      subject: "Reservation ready for pickup",
+      messageType: "RESERVATION_READY_PICKUP",
+      body: ["Your reservation is ready for pickup planning.", reasonLine, nextLine].join(" "),
+    };
+  }
+  if (eventKind === "delay_follow_up") {
+    return {
+      title: "Reservation delay update",
+      subject: "Reservation delay follow-up",
+      messageType: "RESERVATION_DELAY_FOLLOW_UP",
+      body: ["Your reservation is still delayed.", estimateLine, reasonLine, nextLine].join(" "),
+    };
+  }
+  if (eventKind === "pickup_reminder") {
+    return {
+      title: "Pickup reminder",
+      subject: "Reservation pickup reminder",
+      messageType: "RESERVATION_PICKUP_REMINDER",
+      body: [
+        "Your reservation is still waiting for pickup.",
+        reasonLine,
+        nextLine,
+        `Contact support with code ${hashId(job.payload.dedupeKey).slice(0, 8)} if you need help scheduling pickup.`,
+      ].join(" "),
+    };
+  }
+  return {
+    title: "Reservation estimate updated",
+    subject: "Reservation estimate updated",
+    messageType: "RESERVATION_ESTIMATE_SHIFT",
+    body: ["Your reservation estimate has changed.", estimateLine, reasonLine, nextLine].join(" "),
+  };
+}
+
+function buildJobContent(job: NotificationJob): {
+  inAppType: string;
+  title: string;
+  body: string;
+  subject: string;
+  textBody: string;
+  sourceKind: "firing" | "reservation";
+  sourceId: string;
+  data: Record<string, unknown>;
+  pushType: string;
+} {
+  if (job.type === "KILN_UNLOADED") {
+    const title = job.payload.kilnName
+      ? `Kiln unloaded: ${job.payload.kilnName}`
+      : "Kiln unloaded";
+    const body = job.payload.firingType
+      ? `Your ${job.payload.firingType} firing is unloaded. We will confirm details together at pickup.`
+      : "Your firing is unloaded. We will confirm details together at pickup.";
+    const firingLabel = job.payload.firingType ? ` (${job.payload.firingType})` : "";
+    const textBody = [
+      "Your firing has been unloaded.",
+      `Firing${firingLabel}`,
+      "We will confirm everything together at pickup.",
+    ].join("\n");
+    return {
+      inAppType: "KILN_UNLOADED",
       title,
       body,
-      createdAt: nowTs(),
+      subject: title,
+      textBody,
+      sourceKind: "firing",
+      sourceId: job.payload.firingId,
+      pushType: "KILN_UNLOADED",
       data: {
         firingId: job.payload.firingId,
         kilnId: job.payload.kilnId ?? null,
@@ -687,8 +1647,63 @@ async function writeInAppNotification(job: NotificationJob): Promise<{ created: 
         batchIds: job.payload.batchIds ?? [],
         pieceIds: job.payload.pieceIds ?? [],
       },
+    };
+  }
+
+  const reservationCopy = buildReservationNotificationCopy(job);
+  return {
+    inAppType: reservationCopy.messageType,
+    title: reservationCopy.title,
+    body: reservationCopy.body,
+    subject: reservationCopy.subject,
+    textBody: reservationCopy.body,
+    sourceKind: "reservation",
+    sourceId: job.payload.reservationId ?? job.payload.firingId,
+    pushType: reservationCopy.messageType,
+    data: {
+      reservationId: job.payload.reservationId ?? null,
+      reservationStatus: job.payload.reservationStatus ?? null,
+      previousReservationStatus: job.payload.previousReservationStatus ?? null,
+      reservationLoadStatus: job.payload.reservationLoadStatus ?? null,
+      previousReservationLoadStatus: job.payload.previousReservationLoadStatus ?? null,
+      eventKind: job.payload.eventKind ?? null,
+      reason: job.payload.reason ?? null,
+      estimateWindowLabel: job.payload.estimateWindowLabel ?? null,
+      suggestedNextUpdateAtIso: job.payload.suggestedNextUpdateAtIso ?? null,
+      previousWindowStartIso: job.payload.previousWindowStartIso ?? null,
+      previousWindowEndIso: job.payload.previousWindowEndIso ?? null,
+      currentWindowStartIso: job.payload.currentWindowStartIso ?? null,
+      currentWindowEndIso: job.payload.currentWindowEndIso ?? null,
+      delayEpisodeId: job.payload.delayEpisodeId ?? null,
+      delayFollowUpOrdinal: job.payload.delayFollowUpOrdinal ?? null,
+      storageStatus: job.payload.storageStatus ?? null,
+      previousStorageStatus: job.payload.previousStorageStatus ?? null,
+      reminderOrdinal: job.payload.reminderOrdinal ?? null,
+      reminderCount: job.payload.reminderCount ?? null,
+      readyForPickupAtIso: job.payload.readyForPickupAtIso ?? null,
+      policyWindowLabel: job.payload.policyWindowLabel ?? null,
+    },
+  };
+}
+
+async function writeInAppNotification(job: NotificationJob): Promise<{ created: boolean }> {
+  const notificationId = hashId(job.payload.dedupeKey);
+  const ref = db
+    .collection("users")
+    .doc(job.uid)
+    .collection("notifications")
+    .doc(notificationId);
+  const content = buildJobContent(job);
+
+  try {
+    await ref.create({
+      type: content.inAppType,
+      title: content.title,
+      body: content.body,
+      createdAt: nowTs(),
+      data: content.data,
       dedupeKey: job.payload.dedupeKey,
-      source: { kind: "firing", id: job.payload.firingId },
+      source: { kind: content.sourceKind, id: content.sourceId },
       status: "created",
     });
     return { created: true };
@@ -715,27 +1730,19 @@ async function readUserEmail(uid: string): Promise<string | null> {
 async function writeEmailNotification(job: NotificationJob, email: string): Promise<{ created: boolean }> {
   const mailId = hashId(`${job.payload.dedupeKey}:email`);
   const ref = db.collection("mail").doc(mailId);
-  const subject = job.payload.kilnName
-    ? `Kiln unloaded: ${job.payload.kilnName}`
-    : "Kiln unloaded";
-  const firingLabel = job.payload.firingType ? ` (${job.payload.firingType})` : "";
-  const textBody = [
-    "Your firing has been unloaded.",
-    `Firing${firingLabel}`,
-    "We will confirm everything together at pickup.",
-  ].join("\n");
+  const content = buildJobContent(job);
 
   try {
     await ref.create({
       to: email,
       message: {
-        subject,
-        text: textBody,
+        subject: content.subject,
+        text: content.textBody,
       },
       data: {
-        firingId: job.payload.firingId,
-        kilnId: job.payload.kilnId ?? null,
-        firingType: job.payload.firingType ?? null,
+        ...content.data,
+        sourceKind: content.sourceKind,
+        sourceId: content.sourceId,
       },
       createdAt: nowTs(),
     });
@@ -749,6 +1756,424 @@ async function writeEmailNotification(job: NotificationJob, email: string): Prom
     }
     throw error;
   }
+}
+
+type SmsProviderMode = "disabled" | "mock" | "twilio";
+type SmsMockMode = "success" | "auth" | "provider_4xx" | "provider_5xx" | "network";
+type SmsNotificationResult =
+  | { outcome: "sent"; provider: string }
+  | { outcome: "skipped"; reason: string }
+  | { outcome: "hard_failed"; reason: string; providerCode?: string | null };
+
+type TwilioSmsSendResponse = {
+  ok: boolean;
+  status: number;
+  sid: string | null;
+  twilioStatus: string | null;
+  providerCode: string | null;
+  providerMessage: string | null;
+};
+
+function normalizeE164(raw: unknown): string | null {
+  const source = safeString(raw).trim();
+  if (!source) return null;
+  const compact = source.replace(/[\s()-]+/g, "");
+  const normalized = compact.startsWith("00") ? `+${compact.slice(2)}` : compact;
+  if (!/^\+[1-9]\d{7,14}$/.test(normalized)) return null;
+  return normalized;
+}
+
+function getSmsProviderMode(): SmsProviderMode {
+  const raw = safeString(process.env.NOTIFICATION_SMS_PROVIDER).trim().toLowerCase();
+  if (raw === "twilio") return "twilio";
+  if (raw === "mock") return "mock";
+  return "disabled";
+}
+
+function getSmsMockMode(): SmsMockMode {
+  const raw = safeString(process.env.NOTIFICATION_SMS_MOCK_MODE).trim().toLowerCase();
+  if (
+    raw === "auth" ||
+    raw === "provider_4xx" ||
+    raw === "provider_5xx" ||
+    raw === "network" ||
+    raw === "success"
+  ) {
+    return raw;
+  }
+  return "success";
+}
+
+function getTwilioAccountSid(): string {
+  return safeString(process.env.TWILIO_ACCOUNT_SID).trim();
+}
+
+function getTwilioAuthToken(): string {
+  return safeString(process.env.TWILIO_AUTH_TOKEN).trim();
+}
+
+function getSmsFromE164(): string {
+  return normalizeE164(process.env.NOTIFICATION_SMS_FROM_E164) ?? "";
+}
+
+function classifySmsHttpStatus(status: number): NotificationErrorClass {
+  if (status === 401 || status === 403) return "auth";
+  if (status === 408 || status === 429) return "network";
+  if (status >= 500) return "provider_5xx";
+  if (status >= 400) return "provider_4xx";
+  return "unknown";
+}
+
+function isTwilioHardFailure(status: number, providerCode: string | null): boolean {
+  if (status < 400 || status >= 500) return false;
+  if (status === 408 || status === 429) return false;
+  const hardCodes = new Set(["21211", "21610", "21612", "21614"]);
+  return providerCode ? hardCodes.has(providerCode) : false;
+}
+
+function normalizeSmsBody(raw: string): string {
+  return raw.replace(/\s+/g, " ").trim().slice(0, SMS_MESSAGE_MAX_CHARS);
+}
+
+async function readUserPhoneE164(uid: string): Promise<string | null> {
+  try {
+    const user = await adminAuth.getUser(uid);
+    const authPhone = normalizeE164(user.phoneNumber);
+    if (authPhone) return authPhone;
+  } catch {
+    // fall through to profile fallback
+  }
+
+  try {
+    const profileSnap = await db.collection("profiles").doc(uid).get();
+    if (!profileSnap.exists) return null;
+    const data = profileSnap.data() as Record<string, unknown> | undefined;
+    if (!data) return null;
+    return (
+      normalizeE164(data.phoneE164) ??
+      normalizeE164(data.phone) ??
+      normalizeE164(data.mobilePhone) ??
+      null
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function writeSmsAttemptTelemetry(params: {
+  job: NotificationJob;
+  status: "sent" | "skipped" | "failed";
+  reason: string;
+  provider?: string;
+  providerCode?: string | null;
+  phoneE164?: string | null;
+  accepted?: number;
+  rejected?: number;
+  fallbackChannel?: "email" | null;
+  fallbackStatus?: "sent" | "missing_email" | "failed" | null;
+}): Promise<void> {
+  const {
+    job,
+    status,
+    reason,
+    provider,
+    providerCode,
+    phoneE164,
+    accepted,
+    rejected,
+    fallbackChannel,
+    fallbackStatus,
+  } = params;
+  const attemptId = hashId(
+    `${job.payload.dedupeKey}:sms:${status}:${reason}:${providerCode ?? "none"}:${fallbackStatus ?? "none"}`
+  );
+  await db.collection("notificationDeliveryAttempts").doc(attemptId).set(
+    {
+      uid: job.uid,
+      channel: "sms",
+      type: job.type,
+      firingId: job.payload.firingId,
+      reservationId: job.payload.reservationId ?? null,
+      status,
+      reason,
+      provider: provider ?? null,
+      providerCode: providerCode ?? null,
+      phoneHash: phoneE164 ? hashId(phoneE164) : null,
+      accepted: accepted ?? null,
+      rejected: rejected ?? null,
+      fallbackChannel: fallbackChannel ?? null,
+      fallbackStatus: fallbackStatus ?? null,
+      createdAt: nowTs(),
+      dedupeKey: job.payload.dedupeKey,
+    },
+    { merge: true }
+  );
+}
+
+async function sendSmsViaTwilio(input: {
+  toE164: string;
+  body: string;
+}): Promise<TwilioSmsSendResponse> {
+  const accountSid = getTwilioAccountSid();
+  const authToken = getTwilioAuthToken();
+  const fromE164 = getSmsFromE164();
+  if (!accountSid || !authToken || !fromE164) {
+    throw new Error("SMS_CONFIG: Twilio credentials or sender number not configured");
+  }
+
+  const auth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages.json`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: `Basic ${auth}`,
+    },
+    body: new URLSearchParams({
+      To: input.toE164,
+      From: fromE164,
+      Body: input.body,
+    }).toString(),
+  });
+  const rawBody = await response.text();
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    const json = JSON.parse(rawBody);
+    if (asRecord(json)) parsed = json;
+  } catch {
+    parsed = null;
+  }
+  return {
+    ok: response.ok,
+    status: response.status,
+    sid: safeString(parsed?.sid) || null,
+    twilioStatus: safeString(parsed?.status) || null,
+    providerCode: safeString(parsed?.code) || null,
+    providerMessage: safeString(parsed?.message) || safeString(rawBody).slice(0, 240) || null,
+  };
+}
+
+async function sendSmsNotification(job: NotificationJob): Promise<SmsNotificationResult> {
+  const phoneE164 = await readUserPhoneE164(job.uid);
+  if (!phoneE164) {
+    await writeSmsAttemptTelemetry({
+      job,
+      status: "skipped",
+      reason: "PHONE_MISSING",
+      provider: getSmsProviderMode(),
+      accepted: 0,
+      rejected: 0,
+    });
+    return { outcome: "skipped", reason: "PHONE_MISSING" };
+  }
+
+  const providerMode = getSmsProviderMode();
+  const drillMode = job.payload.drillMode;
+  if (drillMode) {
+    if (drillMode === "provider_4xx") {
+      await writeSmsAttemptTelemetry({
+        job,
+        status: "failed",
+        reason: "DRILL_PROVIDER_4XX",
+        provider: providerMode,
+        providerCode: "DRILL_PROVIDER_4XX",
+        phoneE164,
+        accepted: 0,
+        rejected: 1,
+      });
+      return {
+        outcome: "hard_failed",
+        reason: "DRILL_PROVIDER_4XX",
+        providerCode: "DRILL_PROVIDER_4XX",
+      };
+    }
+    if (drillMode === "auth") {
+      await writeSmsAttemptTelemetry({
+        job,
+        status: "failed",
+        reason: "DRILL_AUTH",
+        provider: providerMode,
+        providerCode: "DRILL_AUTH",
+        phoneE164,
+        accepted: 0,
+        rejected: 1,
+      });
+      throw new Error("SMS provider failed: 401 DRILL_AUTH");
+    }
+    if (drillMode === "provider_5xx") {
+      await writeSmsAttemptTelemetry({
+        job,
+        status: "failed",
+        reason: "DRILL_PROVIDER_5XX",
+        provider: providerMode,
+        providerCode: "DRILL_PROVIDER_5XX",
+        phoneE164,
+        accepted: 0,
+        rejected: 1,
+      });
+      throw new Error("SMS provider failed: 503 DRILL_PROVIDER_5XX");
+    }
+    if (drillMode === "network") {
+      await writeSmsAttemptTelemetry({
+        job,
+        status: "failed",
+        reason: "DRILL_NETWORK",
+        provider: providerMode,
+        providerCode: "DRILL_NETWORK",
+        phoneE164,
+        accepted: 0,
+        rejected: 1,
+      });
+      throw new Error("SMS provider failed: network DRILL_NETWORK");
+    }
+    if (drillMode === "success") {
+      await writeSmsAttemptTelemetry({
+        job,
+        status: "sent",
+        reason: "DRILL_SUCCESS_SIMULATED",
+        provider: providerMode,
+        phoneE164,
+        accepted: 1,
+        rejected: 0,
+      });
+      return { outcome: "sent", provider: providerMode };
+    }
+  }
+
+  if (providerMode === "disabled") {
+    await writeSmsAttemptTelemetry({
+      job,
+      status: "skipped",
+      reason: "SMS_PROVIDER_DISABLED",
+      provider: providerMode,
+      phoneE164,
+      accepted: 0,
+      rejected: 0,
+    });
+    return { outcome: "skipped", reason: "SMS_PROVIDER_DISABLED" };
+  }
+
+  const content = buildJobContent(job);
+  const smsBody = normalizeSmsBody(content.textBody);
+  if (!smsBody) {
+    await writeSmsAttemptTelemetry({
+      job,
+      status: "skipped",
+      reason: "SMS_BODY_EMPTY",
+      provider: providerMode,
+      phoneE164,
+      accepted: 0,
+      rejected: 0,
+    });
+    return { outcome: "skipped", reason: "SMS_BODY_EMPTY" };
+  }
+
+  if (providerMode === "mock") {
+    const mockMode = getSmsMockMode();
+    if (mockMode === "success") {
+      await writeSmsAttemptTelemetry({
+        job,
+        status: "sent",
+        reason: "SMS_MOCK_SENT",
+        provider: providerMode,
+        phoneE164,
+        accepted: 1,
+        rejected: 0,
+      });
+      return { outcome: "sent", provider: providerMode };
+    }
+    if (mockMode === "provider_4xx") {
+      await writeSmsAttemptTelemetry({
+        job,
+        status: "failed",
+        reason: "SMS_MOCK_PROVIDER_4XX",
+        provider: providerMode,
+        providerCode: "SMS_MOCK_PROVIDER_4XX",
+        phoneE164,
+        accepted: 0,
+        rejected: 1,
+      });
+      return {
+        outcome: "hard_failed",
+        reason: "SMS_MOCK_PROVIDER_4XX",
+        providerCode: "SMS_MOCK_PROVIDER_4XX",
+      };
+    }
+    if (mockMode === "auth") {
+      await writeSmsAttemptTelemetry({
+        job,
+        status: "failed",
+        reason: "SMS_MOCK_AUTH",
+        provider: providerMode,
+        providerCode: "SMS_MOCK_AUTH",
+        phoneE164,
+        accepted: 0,
+        rejected: 1,
+      });
+      throw new Error("SMS provider failed: 401 SMS_MOCK_AUTH");
+    }
+    if (mockMode === "provider_5xx") {
+      await writeSmsAttemptTelemetry({
+        job,
+        status: "failed",
+        reason: "SMS_MOCK_PROVIDER_5XX",
+        provider: providerMode,
+        providerCode: "SMS_MOCK_PROVIDER_5XX",
+        phoneE164,
+        accepted: 0,
+        rejected: 1,
+      });
+      throw new Error("SMS provider failed: 503 SMS_MOCK_PROVIDER_5XX");
+    }
+    await writeSmsAttemptTelemetry({
+      job,
+      status: "failed",
+      reason: "SMS_MOCK_NETWORK",
+      provider: providerMode,
+      providerCode: "SMS_MOCK_NETWORK",
+      phoneE164,
+      accepted: 0,
+      rejected: 1,
+    });
+    throw new Error("SMS provider failed: network SMS_MOCK_NETWORK");
+  }
+
+  const twilioResult = await sendSmsViaTwilio({ toE164: phoneE164, body: smsBody });
+  if (!twilioResult.ok) {
+    const statusClass = classifySmsHttpStatus(twilioResult.status);
+    const providerReason = `${twilioResult.status}:${twilioResult.providerCode ?? "no_code"}:${twilioResult.providerMessage ?? "error"}`.slice(0, 180);
+    const hardFailure = statusClass === "provider_4xx" && isTwilioHardFailure(twilioResult.status, twilioResult.providerCode);
+    await writeSmsAttemptTelemetry({
+      job,
+      status: "failed",
+      reason: hardFailure ? `SMS_HARD_FAIL:${providerReason}` : `SMS_FAIL:${providerReason}`,
+      provider: "twilio",
+      providerCode: twilioResult.providerCode,
+      phoneE164,
+      accepted: 0,
+      rejected: 1,
+    });
+    if (hardFailure) {
+      return {
+        outcome: "hard_failed",
+        reason: providerReason,
+        providerCode: twilioResult.providerCode,
+      };
+    }
+    throw new Error(`SMS provider failed (${statusClass}): ${providerReason}`);
+  }
+
+  await writeSmsAttemptTelemetry({
+    job,
+    status: "sent",
+    reason: "SMS_PROVIDER_SENT",
+    provider: "twilio",
+    providerCode: twilioResult.twilioStatus,
+    phoneE164,
+    accepted: 1,
+    rejected: 0,
+  });
+  return { outcome: "sent", provider: "twilio" };
 }
 
 type DeviceTokenRecord = {
@@ -823,6 +2248,7 @@ async function writePushAttemptTelemetry(params: {
       channel: "push",
       type: job.type,
       firingId: job.payload.firingId,
+      reservationId: job.payload.reservationId ?? null,
       tokenHashes,
       status,
       reason,
@@ -834,23 +2260,27 @@ async function writePushAttemptTelemetry(params: {
       dedupeKey: job.payload.dedupeKey,
     },
     { merge: true }
-  );
+);
 }
 
 function buildPushBody(job: NotificationJob): { title: string; body: string; data: Record<string, string> } {
-  const title = job.payload.kilnName ? `Kiln unloaded: ${job.payload.kilnName}` : "Kiln unloaded";
-  const body = job.payload.firingType
-    ? `Your ${job.payload.firingType} firing is unloaded.`
-    : "Your firing is unloaded.";
+  const content = buildJobContent(job);
+  const sourceKind = content.sourceKind;
+  const sourceId = content.sourceId;
   return {
-    title,
-    body,
+    title: content.title,
+    body: content.body,
     data: {
-      type: "KILN_UNLOADED",
+      type: content.pushType,
       firingId: job.payload.firingId,
       kilnId: job.payload.kilnId ?? "",
       kilnName: job.payload.kilnName ?? "",
       firingType: job.payload.firingType ?? "",
+      reservationId: job.payload.reservationId ?? "",
+      reservationStatus: job.payload.reservationStatus ?? "",
+      eventKind: job.payload.eventKind ?? "",
+      sourceKind,
+      sourceId,
     },
   };
 }
@@ -1030,25 +2460,27 @@ async function sendPushNotification(job: NotificationJob): Promise<void> {
   }
 }
 
-type NotificationErrorClass =
-  | "provider_4xx"
-  | "provider_5xx"
-  | "network"
-  | "auth"
-  | "unknown";
-
 function classifyNotificationError(err: unknown): NotificationErrorClass {
   const text = safeString(
     asRecord(err) && "message" in err && err.message ? err.message : err
   ).toLowerCase();
   if (text.includes("401") || text.includes("403") || text.includes("unauthorized")) return "auth";
-  if (text.includes(" 4") || text.includes("400") || text.includes("404") || text.includes("429")) {
-    return "provider_4xx";
+  if (
+    text.includes("network") ||
+    text.includes("timed out") ||
+    text.includes("fetch") ||
+    text.includes("408") ||
+    text.includes("429") ||
+    text.includes("rate limit")
+  ) {
+    return "network";
   }
   if (text.includes(" 5") || text.includes("500") || text.includes("502") || text.includes("503")) {
     return "provider_5xx";
   }
-  if (text.includes("network") || text.includes("timed out") || text.includes("fetch")) return "network";
+  if (text.includes(" 4") || text.includes("400") || text.includes("404")) {
+    return "provider_4xx";
+  }
   return "unknown";
 }
 
@@ -1086,6 +2518,131 @@ async function writeDeadLetter(params: {
   );
 }
 
+function isReservationJobType(type: NotificationJob["type"]): boolean {
+  return type !== "KILN_UNLOADED";
+}
+
+async function scheduleNextReservationDelayFollowUp(
+  job: NotificationJob,
+  routing: ReservationNotificationRouting
+): Promise<void> {
+  if (job.type !== "RESERVATION_DELAY_FOLLOW_UP" || job.payload.eventKind !== "delay_follow_up") {
+    return;
+  }
+  const reservationId = safeString(job.payload.reservationId).trim();
+  if (!reservationId) return;
+
+  const reservationSnap = await db.collection("reservations").doc(reservationId).get();
+  if (!reservationSnap.exists) return;
+  const reservation = parseReservationSnapshot(reservationSnap.data() as Record<string, unknown>);
+  if (reservation.status === "CANCELLED" || reservation.loadStatus === "loaded") return;
+  if (reservation.estimatedWindow.slaState !== "delayed") return;
+  if (!routing.notifyReservations || !routing.prefs.enabled || !hasEnabledChannels(routing.channels)) {
+    return;
+  }
+
+  const currentOrdinalRaw =
+    typeof job.payload.delayFollowUpOrdinal === "number"
+      ? Math.max(1, Math.trunc(job.payload.delayFollowUpOrdinal))
+      : 1;
+  const nextOrdinal = currentOrdinalRaw + 1;
+  if (nextOrdinal > 14) return;
+
+  const delayEpisodeId =
+    safeString(job.payload.delayEpisodeId).trim() ||
+    tsIso(reservation.estimatedWindow.updatedAt) ||
+    tsIso(reservation.updatedAt) ||
+    String(Date.now());
+  const baseRunAfter = new Date(Date.now() + RESERVATION_DELAY_FOLLOW_UP_REPEAT_MS);
+  const resolvedRunAfter = resolveRunAfter(baseRunAfter, routing.prefs) ?? baseRunAfter;
+  const runAfter = Timestamp.fromDate(resolvedRunAfter);
+
+  await enqueueReservationNotificationJob({
+    uid: job.uid,
+    type: "RESERVATION_DELAY_FOLLOW_UP",
+    routing,
+    runAfter,
+    payload: {
+      dedupeKey: `RESERVATION_DELAY_FOLLOW_UP:${reservationId}:${delayEpisodeId}:${nextOrdinal}`,
+      firingId: reservationId,
+      reservationId,
+      reservationStatus: reservation.status,
+      previousReservationStatus: job.payload.reservationStatus ?? null,
+      reservationLoadStatus: reservation.loadStatus,
+      previousReservationLoadStatus: job.payload.reservationLoadStatus ?? null,
+      eventKind: "delay_follow_up",
+      reason: buildReservationReason(
+        reservation,
+        "Your reservation remains delayed while we work through active kiln constraints."
+      ),
+      estimateWindowLabel: reservationEstimatedWindowLabel(reservation.estimatedWindow),
+      suggestedNextUpdateAtIso: tsIso(runAfter),
+      previousWindowStartIso: job.payload.currentWindowStartIso ?? null,
+      previousWindowEndIso: job.payload.currentWindowEndIso ?? null,
+      currentWindowStartIso: tsIso(reservation.estimatedWindow.currentStart),
+      currentWindowEndIso: tsIso(reservation.estimatedWindow.currentEnd),
+      delayEpisodeId,
+      delayFollowUpOrdinal: nextOrdinal,
+    },
+  });
+}
+
+async function recordReservationReminderFailure(
+  job: NotificationJob,
+  errorClass: NotificationErrorClass,
+  rawMessage: string
+): Promise<void> {
+  if (job.type !== "RESERVATION_PICKUP_REMINDER") return;
+  const reservationId = safeString(job.payload.reservationId).trim();
+  if (!reservationId) return;
+  const uid = safeString(job.uid).trim();
+  if (!uid) return;
+  const reminderOrdinal =
+    typeof job.payload.reminderOrdinal === "number"
+      ? Math.max(1, Math.trunc(job.payload.reminderOrdinal))
+      : null;
+  const now = nowTs();
+
+  const reservationRef = db.collection("reservations").doc(reservationId);
+  const nextFailureCount = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(reservationRef);
+    if (!snap.exists) return null;
+    const reservation = parseReservationSnapshot(snap.data() as Record<string, unknown>);
+    const nextHistory = pushStorageNotice(reservation.storageNoticeHistory, {
+      at: now,
+      kind: "reminder_failed",
+      detail: rawMessage.slice(0, 280),
+      status: currentStorageStatus(reservation),
+      reminderOrdinal,
+      reminderCount: reservation.pickupReminderCount,
+      failureCode: errorClass,
+    });
+    const nextFailureCount = reservation.pickupReminderFailureCount + 1;
+    tx.set(
+      reservationRef,
+      {
+        pickupReminderFailureCount: nextFailureCount,
+        lastReminderFailureAt: now,
+        storageNoticeHistory: nextHistory.map(normalizeStorageNoticeForWrite),
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+    return nextFailureCount;
+  });
+
+  if (nextFailureCount == null) return;
+  await writeReservationStorageAudit({
+    reservationId,
+    uid,
+    action: "pickup_reminder_failed",
+    reason: rawMessage.slice(0, 280),
+    reminderOrdinal,
+    reminderCount: typeof nextFailureCount === "number" ? nextFailureCount : null,
+    failureCode: errorClass,
+  });
+}
+
 async function processJob(ref: DocumentReference): Promise<void> {
   const snap = await ref.get();
   if (!snap.exists) return;
@@ -1109,25 +2666,193 @@ async function processJob(ref: DocumentReference): Promise<void> {
 
   const errors: string[] = [];
   try {
-    if (job.channels?.inApp) {
-      await writeInAppNotification(job);
-    }
-
-    if (job.channels?.email) {
-      const email = await readUserEmail(job.uid);
-      if (!email) {
-        errors.push("EMAIL_MISSING");
-        logger.warn("Email notification skipped: no email", {
-          uid: job.uid,
-          jobId: ref.id,
-        });
-      } else {
-        await writeEmailNotification(job, email);
+    let reservationRouting: ReservationNotificationRouting | null = null;
+    if (isReservationJobType(job.type)) {
+      reservationRouting = await readReservationRouting(job.uid);
+      if (!reservationRouting.notifyReservations || !reservationRouting.prefs.enabled) {
+        await ref.set(
+          {
+            status: "skipped",
+            lastError: !reservationRouting.notifyReservations
+              ? "RESERVATION_PREF_DISABLED"
+              : "PREFS_DISABLED",
+          },
+          { merge: true }
+        );
+        return;
+      }
+      if (!hasEnabledChannels(reservationRouting.channels)) {
+        await ref.set(
+          {
+            status: "skipped",
+            lastError: "NO_CHANNELS_ENABLED",
+          },
+          { merge: true }
+        );
+        return;
       }
     }
 
-    if (job.channels?.push) {
+    if (job.type === "RESERVATION_DELAY_FOLLOW_UP" || job.type === "RESERVATION_PICKUP_REMINDER") {
+      const reservationId = safeString(job.payload.reservationId).trim();
+      if (!reservationId) {
+        await ref.set(
+          {
+            status: "skipped",
+            lastError: "RESERVATION_ID_MISSING",
+          },
+          { merge: true }
+        );
+        return;
+      }
+      const reservationSnap = await db.collection("reservations").doc(reservationId).get();
+      if (!reservationSnap.exists) {
+        await ref.set(
+          {
+            status: "skipped",
+            lastError: "RESERVATION_NOT_FOUND",
+          },
+          { merge: true }
+        );
+        return;
+      }
+      const reservation = parseReservationSnapshot(
+        reservationSnap.data() as Record<string, unknown>
+      );
+      if (job.type === "RESERVATION_DELAY_FOLLOW_UP") {
+        const stillDelayed =
+          reservation.estimatedWindow.slaState === "delayed" &&
+          reservation.status !== "CANCELLED" &&
+          reservation.loadStatus !== "loaded";
+        if (!stillDelayed) {
+          await ref.set(
+            {
+              status: "skipped",
+              lastError: "RESERVATION_NO_LONGER_DELAYED",
+            },
+            { merge: true }
+          );
+          return;
+        }
+      }
+      if (job.type === "RESERVATION_PICKUP_REMINDER") {
+        const reminderOrdinal =
+          typeof job.payload.reminderOrdinal === "number"
+            ? Math.max(1, Math.trunc(job.payload.reminderOrdinal))
+            : null;
+        const pickupEligible =
+          reservation.loadStatus === "loaded" &&
+          reservation.status !== "CANCELLED";
+        if (!pickupEligible) {
+          await ref.set(
+            {
+              status: "skipped",
+              lastError: "RESERVATION_NOT_READY_FOR_PICKUP",
+            },
+            { merge: true }
+          );
+          return;
+        }
+        if (currentStorageStatus(reservation) === "stored_by_policy") {
+          await ref.set(
+            {
+              status: "skipped",
+              lastError: "RESERVATION_STORAGE_FINALIZED",
+            },
+            { merge: true }
+          );
+          return;
+        }
+        if (reminderOrdinal && reservation.pickupReminderCount >= reminderOrdinal) {
+          await ref.set(
+            {
+              status: "skipped",
+              lastError: "REMINDER_ALREADY_RECORDED",
+            },
+            { merge: true }
+          );
+          return;
+        }
+      }
+    }
+
+    const channels = reservationRouting ? reservationRouting.channels : job.channels;
+    const resolvedChannels = {
+      inApp: Boolean(channels?.inApp),
+      email: Boolean(channels?.email),
+      push: Boolean(channels?.push),
+      sms: Boolean(channels?.sms),
+    };
+
+    if (resolvedChannels.inApp) {
+      await writeInAppNotification(job);
+    }
+
+    let smsFallbackTriggered = false;
+    if (resolvedChannels.sms) {
+      const smsResult = await sendSmsNotification(job);
+      if (smsResult.outcome === "hard_failed") {
+        smsFallbackTriggered = true;
+        errors.push(`SMS_HARD_FAIL:${smsResult.reason.slice(0, 120)}`);
+      } else if (smsResult.outcome === "skipped") {
+        errors.push(`SMS_SKIPPED:${smsResult.reason}`);
+      }
+    }
+
+    if (resolvedChannels.email || smsFallbackTriggered) {
+      const email = await readUserEmail(job.uid);
+      if (!email) {
+        if (smsFallbackTriggered) {
+          errors.push("SMS_FALLBACK_EMAIL_MISSING");
+          await writeSmsAttemptTelemetry({
+            job,
+            status: "failed",
+            reason: "SMS_FALLBACK_EMAIL_MISSING",
+            fallbackChannel: "email",
+            fallbackStatus: "missing_email",
+          });
+        } else {
+          errors.push("EMAIL_MISSING");
+        }
+        logger.warn("Email notification skipped: no email", {
+          uid: job.uid,
+          jobId: ref.id,
+          fallback: smsFallbackTriggered,
+        });
+      } else {
+        try {
+          await writeEmailNotification(job, email);
+          if (smsFallbackTriggered) {
+            errors.push("SMS_FALLBACK_EMAIL_SENT");
+            await writeSmsAttemptTelemetry({
+              job,
+              status: "sent",
+              reason: "SMS_FALLBACK_EMAIL_SENT",
+              fallbackChannel: "email",
+              fallbackStatus: "sent",
+            });
+          }
+        } catch (error: unknown) {
+          if (smsFallbackTriggered) {
+            await writeSmsAttemptTelemetry({
+              job,
+              status: "failed",
+              reason: `SMS_FALLBACK_EMAIL_FAILED:${errorMessage(error).slice(0, 120)}`,
+              fallbackChannel: "email",
+              fallbackStatus: "failed",
+            });
+          }
+          throw error;
+        }
+      }
+    }
+
+    if (resolvedChannels.push) {
       await sendPushNotification(job);
+    }
+
+    if (reservationRouting) {
+      await scheduleNextReservationDelayFollowUp(job, reservationRouting);
     }
 
     await ref.set(
@@ -1165,6 +2890,7 @@ async function processJob(ref: DocumentReference): Promise<void> {
       },
       { merge: true }
     );
+    await recordReservationReminderFailure(job, errorClass, rawMessage);
     await writeDeadLetter({
       ref,
       job,
@@ -1208,6 +2934,239 @@ export const processQueuedNotificationJobs = onSchedule(
         logger.error("Queued notification job failed", { jobId: ref.id, error: err });
       }
     }
+  }
+);
+
+function pickupReminderReason(reminderOrdinal: number): string {
+  if (reminderOrdinal >= 3) {
+    return "Final pickup reminder: reservation is nearing storage-hold policy thresholds.";
+  }
+  if (reminderOrdinal === 2) {
+    return "Second pickup reminder: reservation is still awaiting pickup scheduling.";
+  }
+  return "Pickup reminder: reservation has been ready for collection for several days.";
+}
+
+export const evaluateReservationStorageHolds = onSchedule(
+  { region: REGION, schedule: "every 60 minutes" },
+  async () => {
+    const now = nowTs();
+    const nowMs = now.toMillis();
+    const snap = await db
+      .collection("reservations")
+      .where("loadStatus", "==", "loaded")
+      .limit(200)
+      .get();
+
+    let scanned = 0;
+    let updatedReservations = 0;
+    let reminderJobs = 0;
+    let statusTransitions = 0;
+
+    for (const docSnap of snap.docs) {
+      const reservationId = docSnap.id;
+      const reservation = parseReservationSnapshot(docSnap.data() as Record<string, unknown>);
+      const uid = safeString(reservation.ownerUid).trim();
+      if (!uid) continue;
+      if (reservation.status === "CANCELLED") continue;
+      if (reservation.pickupWindow.status === "completed") continue;
+      scanned += 1;
+
+      const readyAnchor = reservation.readyForPickupAt ?? reservation.updatedAt ?? reservation.createdAt;
+      if (!readyAnchor) continue;
+
+      const elapsedMs = Math.max(0, nowMs - readyAnchor.toMillis());
+      const previousStorageStatus = currentStorageStatus(reservation);
+      let nextStorageStatus = previousStorageStatus;
+      let nextReminderCount = reservation.pickupReminderCount;
+      let nextHistory = reservation.storageNoticeHistory;
+      const updates: Record<string, unknown> = {};
+      let autoMissApplied = false;
+
+      if (!reservation.readyForPickupAt) {
+        updates.readyForPickupAt = readyAnchor;
+      }
+
+      const pickupWindowStatus = reservation.pickupWindow.status;
+      const pickupWindowEndMs = tsMillis(reservation.pickupWindow.confirmedEnd);
+      if (
+        (pickupWindowStatus === "open" || pickupWindowStatus === "confirmed") &&
+        pickupWindowEndMs !== null &&
+        pickupWindowEndMs <= nowMs
+      ) {
+        const nextMissedCount = reservation.pickupWindow.missedCount + 1;
+        const missedStatus: ReservationStorageStatus =
+          nextMissedCount >= 2 ? "stored_by_policy" : "hold_pending";
+        const missReason =
+          nextMissedCount >= 2
+            ? "Pickup window was missed again and reservation moved to stored-by-policy."
+            : "Pickup window elapsed and reservation moved to hold-pending.";
+        updates.pickupWindow = normalizePickupWindowForWrite({
+          ...reservation.pickupWindow,
+          status: "missed",
+          confirmedAt: null,
+          completedAt: null,
+          missedCount: nextMissedCount,
+          lastMissedAt: now,
+        });
+        updates.storageStatus = missedStatus;
+        nextStorageStatus = missedStatus;
+        autoMissApplied = true;
+        if (previousStorageStatus !== missedStatus) {
+          statusTransitions += 1;
+        }
+        nextHistory = pushStorageNotice(nextHistory, {
+          at: now,
+          kind: "pickup_window_missed",
+          detail: missReason,
+          status: missedStatus,
+          reminderOrdinal: null,
+          reminderCount: nextReminderCount,
+          failureCode: null,
+        });
+        await writeReservationStorageAudit({
+          reservationId,
+          uid,
+          action: "pickup_window_missed",
+          reason: missReason,
+          fromStatus: previousStorageStatus,
+          toStatus: missedStatus,
+          reminderCount: nextReminderCount,
+        });
+        const routing = await readReservationRouting(uid);
+        await enqueueReservationNotificationJob({
+          uid,
+          type: "RESERVATION_PICKUP_REMINDER",
+          routing,
+          payload: {
+            dedupeKey: `RESERVATION_PICKUP_WINDOW_MISSED:${reservationId}:${pickupWindowEndMs}:${nextMissedCount}`,
+            firingId: reservationId,
+            reservationId,
+            reservationStatus: reservation.status,
+            reservationLoadStatus: reservation.loadStatus,
+            eventKind: "pickup_reminder",
+            reason: missReason,
+            storageStatus: missedStatus,
+            previousStorageStatus,
+            reminderCount: nextReminderCount,
+            readyForPickupAtIso: tsIso(readyAnchor),
+            policyWindowLabel: "Pickup window missed. Staff follow-up is now required.",
+            suggestedNextUpdateAtIso: null,
+          },
+        });
+        reminderJobs += 1;
+      }
+
+      const dueReminderOrdinal = nextDueReminderOrdinal({
+        elapsedMs,
+        currentCount: reservation.pickupReminderCount,
+      });
+
+      if (dueReminderOrdinal && !autoMissApplied) {
+        const reason = pickupReminderReason(dueReminderOrdinal);
+        const routing = await readReservationRouting(uid);
+        const reminderStatus: ReservationStorageStatus =
+          dueReminderOrdinal >= 3 ? "hold_pending" : "reminder_pending";
+        await enqueueReservationNotificationJob({
+          uid,
+          type: "RESERVATION_PICKUP_REMINDER",
+          routing,
+          payload: {
+            dedupeKey: `RESERVATION_PICKUP_REMINDER:${reservationId}:${tsIso(readyAnchor) ?? readyAnchor.toMillis()}:${dueReminderOrdinal}`,
+            firingId: reservationId,
+            reservationId,
+            reservationStatus: reservation.status,
+            reservationLoadStatus: reservation.loadStatus,
+            eventKind: "pickup_reminder",
+            reason,
+            storageStatus: reminderStatus,
+            previousStorageStatus: previousStorageStatus,
+            reminderOrdinal: dueReminderOrdinal,
+            reminderCount: dueReminderOrdinal,
+            readyForPickupAtIso: tsIso(readyAnchor),
+            policyWindowLabel: storagePolicyWindowLabel(dueReminderOrdinal),
+            suggestedNextUpdateAtIso: null,
+          },
+        });
+        reminderJobs += 1;
+
+        nextReminderCount = Math.max(nextReminderCount, dueReminderOrdinal);
+        nextStorageStatus = reminderStatus;
+        updates.pickupReminderCount = nextReminderCount;
+        updates.lastReminderAt = now;
+        updates.storageStatus = nextStorageStatus;
+        nextHistory = pushStorageNotice(nextHistory, {
+          at: now,
+          kind: `pickup_reminder_${dueReminderOrdinal}`,
+          detail: reason,
+          status: nextStorageStatus,
+          reminderOrdinal: dueReminderOrdinal,
+          reminderCount: nextReminderCount,
+          failureCode: null,
+        });
+        await writeReservationStorageAudit({
+          reservationId,
+          uid,
+          action: "pickup_reminder_enqueued",
+          reason,
+          fromStatus: previousStorageStatus,
+          toStatus: nextStorageStatus,
+          reminderOrdinal: dueReminderOrdinal,
+          reminderCount: nextReminderCount,
+        });
+      }
+
+      const policyStatus = storageStatusForElapsed({
+        elapsedMs,
+        reminderCount: nextReminderCount,
+      });
+      if (policyStatus !== nextStorageStatus) {
+        const fromStatus = nextStorageStatus;
+        nextStorageStatus = policyStatus;
+        updates.storageStatus = policyStatus;
+        statusTransitions += 1;
+        const transitionDetail =
+          policyStatus === "stored_by_policy"
+            ? "Reservation reached storage policy threshold and is marked stored by policy."
+            : policyStatus === "hold_pending"
+              ? "Reservation entered storage hold pending status."
+              : "Reservation storage status returned to active.";
+        nextHistory = pushStorageNotice(nextHistory, {
+          at: now,
+          kind: policyStatus,
+          detail: transitionDetail,
+          status: policyStatus,
+          reminderOrdinal: null,
+          reminderCount: nextReminderCount,
+          failureCode: null,
+        });
+        await writeReservationStorageAudit({
+          reservationId,
+          uid,
+          action: "storage_status_transition",
+          reason: transitionDetail,
+          fromStatus,
+          toStatus: policyStatus,
+          reminderCount: nextReminderCount,
+        });
+      }
+
+      if (Object.keys(updates).length === 0) {
+        continue;
+      }
+
+      updates.storageNoticeHistory = nextHistory.map(normalizeStorageNoticeForWrite);
+      updates.updatedAt = now;
+      await docSnap.ref.set(updates, { merge: true });
+      updatedReservations += 1;
+    }
+
+    logger.info("reservation_storage_hold_evaluation_complete", {
+      scanned,
+      updatedReservations,
+      reminderJobs,
+      statusTransitions,
+    });
   }
 );
 

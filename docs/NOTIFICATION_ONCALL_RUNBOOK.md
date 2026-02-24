@@ -18,8 +18,18 @@ Mobile lifecycle assumptions are defined in `docs/MOBILE_PUSH_LIFECYCLE_AND_TELE
 1. Read `notificationMetrics/delivery_24h` and capture `statusCounts`, `reasonCounts`, `providerCounts`.
 2. Query last 50 docs from `notificationJobDeadLetters` and identify dominant `errorClass`.
 3. If dominant class is `auth`, rotate relay key and verify `APNS_RELAY_KEY` runtime environment configuration.
-4. If dominant class is `provider_5xx` or `network`, confirm relay health and reduce traffic burst if needed.
-5. If dominant class is `provider_4xx`, inspect provider codes and validate token invalidation behavior.
+4. If dominant class is `provider_5xx` or `network`, confirm relay/SMS provider health and reduce traffic burst if needed.
+5. If dominant class is `provider_4xx`, inspect provider codes:
+   - push: validate token invalidation behavior.
+   - sms: validate recipient phone quality and confirm hard-failure email fallback telemetry (`fallbackStatus`).
+
+## SMS runtime checks
+- Confirm `NOTIFICATION_SMS_PROVIDER` is set as intended (`disabled`, `mock`, or `twilio`).
+- For Twilio mode, verify:
+  - `NOTIFICATION_SMS_FROM_E164`
+  - `TWILIO_ACCOUNT_SID`
+  - `TWILIO_AUTH_TOKEN`
+- Confirm `notificationDeliveryAttempts` contains recent `channel: "sms"` rows with expected status mix.
 
 ## Drill endpoint (staff-gated)
 Manual aggregation trigger:
@@ -59,7 +69,7 @@ Drill runner script:
 
 ## Immediate mitigations
 - Keep queue processing enabled; retry/backoff is automatic up to max attempts.
-- For persistent provider failures, temporarily disable push channel in user prefs and rely on in-app/email.
+- For persistent provider failures, temporarily disable push/sms channels in user prefs and rely on in-app/email.
 - If relay credential issues are confirmed, rotate secret and redeploy functions.
 
 ## Escalation matrix

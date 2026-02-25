@@ -85,9 +85,11 @@
 
             if (isPortalProd) {
               const next = new URL(window.location.href);
-              next.searchParams.set("mfv", releaseToken);
-              window.location.replace(next.toString());
-              return;
+              if (next.searchParams.get("mfv") !== releaseToken) {
+                next.searchParams.set("mfv", releaseToken);
+                window.location.replace(next.toString());
+                return;
+              }
             }
 
             if (didCleanup) {

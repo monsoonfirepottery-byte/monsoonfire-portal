@@ -1,0 +1,37 @@
+{
+  "timestampUtc": "2026-02-25T01:25:19Z",
+  "issue": "Production Google sign-in looped back to signed-out screen; URL reset to mfv release token.",
+  "changes": [
+    {
+      "file": "web/src/App.tsx",
+      "summary": "Switched provider auth to popup-first across environments with redirect fallback for popup-blocked/unsupported cases."
+    },
+    {
+      "file": "web/index.html",
+      "summary": "Hardened cache-reset script to avoid re-replacing URL when mfv already equals release token."
+    }
+  ],
+  "verification": {
+    "buildWeb": {
+      "command": "npm run build:web",
+      "status": "pass"
+    },
+    "webLint": {
+      "command": "npm --prefix web run lint",
+      "status": "fail",
+      "note": "Pre-existing unrelated lint error in web/src/views/SupportView.tsx:276 (unused caught error variable)."
+    },
+    "deploy": {
+      "command": "npm run deploy:namecheap:portal:live -- --no-build --verify",
+      "status": "pass",
+      "note": "Verifier PASS for https://portal.monsoonfire.com"
+    },
+    "prodPopupSmoke": {
+      "command": "playwright headless check for Continue with Google",
+      "status": "pass",
+      "popupOpened": true,
+      "popupUrlHost": "monsoonfire-portal.firebaseapp.com",
+      "returnUrl": "https://portal.monsoonfire.com/?mfv=2026-02-23-cache-reset-c"
+    }
+  }
+}

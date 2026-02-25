@@ -1437,11 +1437,6 @@ export default function App() {
         default:
           return;
       }
-      const isProductionBuild = ENV.DEV !== true;
-      if (isAuthEmulator || isProductionBuild) {
-        await signInWithRedirect(authClient, provider);
-        return;
-      }
       try {
         const result = await signInWithPopup(authClient, provider);
         if (result?.user) {
@@ -1457,10 +1452,14 @@ export default function App() {
         // Popups can be blocked (mobile Safari, aggressive privacy settings). Redirect is a reliable fallback.
         const code = getErrorCode(error);
         const shouldFallbackToRedirect =
+          code === "auth/cancelled-popup-request" ||
           code === "auth/popup-blocked" ||
           code === "auth/popup-closed-by-user" ||
           code === "auth/operation-not-supported-in-this-environment";
         if (shouldFallbackToRedirect) {
+          if (!isAuthEmulator) {
+            setAuthStatus("Continuing sign-in in redirect mode...");
+          }
           await signInWithRedirect(authClient, provider);
           return;
         }

@@ -190,3 +190,18 @@ Full marketing-site UI/UX + accessibility pass for `monsoonfire.com` website (no
   - Post-deploy production smoke:
     - `BASE_URL=https://monsoonfire.com npx playwright test -c website/playwright.config.mjs -g "portal entry links stay on kilnfire host"` passed.
     - `BASE_URL=https://monsoonfire.com npm run test:e2e` passed (19/19).
+
+## 2026-02-25 board reconciliation + website deploy hardening
+- Reconciled active board state to remove stale portal cutover blocker entry:
+  - Updated `docs/sprints/SWARM_BOARD.md` open-ticket rows to align with ticket statuses.
+  - Generated fresh audit artifact: `docs/sprints/EPIC_06_BACKLOG_AUDIT_2026-02-25.md`.
+  - Verification: `node ./scripts/backlog-hygiene-audit.mjs` reports `board rows with status drift: 0`.
+- Hardened website deploy ergonomics for Namecheap production workflow:
+  - Added SSH key support to canonical deploy script:
+    - `website/scripts/deploy.mjs` now supports `--key` / `--identity` plus env defaults (`WEBSITE_DEPLOY_KEY`, `WEBSITE_DEPLOY_IDENTITY`).
+  - Added production wrapper command:
+    - `scripts/deploy-namecheap-website.mjs` (defaults server/key/port/source; delegates to canonical deploy script).
+  - Updated root script:
+    - `npm run deploy:namecheap:website` now uses `scripts/deploy-namecheap-website.mjs`.
+  - Updated compatibility shim:
+    - `website/deploy.ps1` now forwards optional key argument/env.

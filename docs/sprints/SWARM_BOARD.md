@@ -1,11 +1,11 @@
 # Swarm Board
 
-Date: 2026-02-23  
+Date: 2026-02-25  
 Use this board for daily execution and ticket routing.
 
-## Current Focus (2026-02-23)
-- Epic 06 backlog hygiene pass executed on 2026-02-23:
-  - Audit artifact: `docs/sprints/EPIC_06_BACKLOG_AUDIT_2026-02-23.md`
+## Current Focus (2026-02-25)
+- Epic 06 backlog hygiene pass executed on 2026-02-25:
+  - Audit artifact: `docs/sprints/EPIC_06_BACKLOG_AUDIT_2026-02-25.md`
   - Reconciliation runbook: `docs/sprints/BOARD_RECONCILIATION_RUNBOOK.md`
   - Sprint 10/11 mapping artifact: `docs/sprints/SPRINT_10_11_GAP_MAPPING_2026-02-23.md`
   - Scope filter applied: ignore tickets associated with closed epics
@@ -16,6 +16,8 @@ Use this board for daily execution and ticket routing.
 - P0 alpha closures (ship-stoppers):
   - `tickets/P0-alpha-drills-real-auth.md`: run live drill suite with real staff auth (production evidence)
   - `tickets/P1-prod-auth-oauth-provider-credentials.md`: create provider apps (Apple/Facebook/Microsoft) and paste IDs/secrets into Firebase Auth providers
+- Ticket reconciliation update:
+  - `tickets/P0-portal-hosting-cutover.md` is `Completed` and removed from the open-ticket queue.
 - Sprint 12 (Mobile translation risk register) has shipped repo-side deliverables:
   - S12-01 through S12-06 ticket files are `Completed`
   - Remaining unblockers are external console operations for provider/domain configuration
@@ -50,9 +52,8 @@ Use this board for daily execution and ticket routing.
 - Scope filters:
   - Ignore tickets associated with closed epics.
 - `P0` (`blocked`): `tickets/P0-alpha-drills-real-auth.md` (requires real production staff token path)
-- `P0` (`blocked`): `tickets/P0-portal-hosting-cutover.md` (requires hosted sign-in + protected function verification with real production ID token)
 - `P1` (`blocked`): `tickets/P1-prod-auth-oauth-provider-credentials.md` (provider console/firebase console dependency)
-- Note: completed S12 tickets were removed from this open-ticket section during the 2026-02-22 reconciliation pass; completed security advisory remediation row was removed during the 2026-02-23 pass.
+- Note: completed S12 tickets were removed from this open-ticket section during the 2026-02-22 reconciliation pass; the portal hosting cutover row was removed during the 2026-02-25 reconciliation pass.
 
 ## Reconciliation Cadence
 - Monthly:
@@ -66,10 +67,9 @@ Use this board for daily execution and ticket routing.
   - Execute and log reconciliation outcomes in `docs/sprints/BOARD_RECONCILIATION_RUNBOOK.md`.
 
 ## Ops Blockers (Do Outside Repo)
-- DNS: provision `portal.monsoonfire.com` and (recommended) `auth.monsoonfire.com`
-- Firebase Auth: add authorized domains (at minimum `portal.monsoonfire.com`, plus `auth.monsoonfire.com` if used)
-- OAuth providers: create apps in Apple/Microsoft/Facebook consoles and paste IDs/secrets into Firebase Auth provider settings
-- Portal hosting: ensure `/.well-known/*` files are served from the portal origin (not the marketing root)
+- OAuth providers: finish Apple/Facebook provider app setup and paste credentials into Firebase Auth provider settings
+- Firebase Auth domains: confirm required production authorized domains remain configured
+- Production drill execution: obtain a real staff Firebase ID token and run the live drill evidence capture window
 
 ## Daily Verification Pass
 Run on all active branches/tickets:

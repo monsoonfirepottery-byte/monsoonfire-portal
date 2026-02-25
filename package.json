@@ -18,7 +18,7 @@
     "deploy:namecheap:auto": "bash ./scripts/deploy-namecheap-portal-live.sh",
     "deploy:namecheap:verify": "bash ./scripts/deploy-namecheap-portal-live.sh --verify",
     "deploy:namecheap:portal": "npm run deploy:namecheap -- --remote-path portal/ --verify --portal-url https://portal.monsoonfire.com",
-    "deploy:namecheap:website": "node ./website/scripts/deploy.mjs --source ./website/ncsitebuilder",
+    "deploy:namecheap:website": "node ./scripts/deploy-namecheap-website.mjs",
     "deploy:namecheap:portal:quick": "npm run deploy:namecheap:portal -- --no-build",
     "deploy:namecheap:portal:live": "bash ./scripts/deploy-namecheap-portal-live.sh",
     "website:smoke:playwright": "node ./scripts/website-playwright-smoke.mjs",

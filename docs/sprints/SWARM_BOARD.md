@@ -14,7 +14,7 @@ Use this board for daily execution and ticket routing.
   - Runtime target: `127.0.0.1:8787`
   - Gate evidence: `artifacts/pr-gate.json`, `output/stability/heartbeat-summary.json`, `output/cutover-gate/summary.json`
 - P0 alpha closures (ship-stoppers):
-  - `tickets/P0-alpha-drills-real-auth.md`: run live drill suite with real staff auth (production evidence)
+  - `tickets/P0-alpha-drills-real-auth.md`: completed on 2026-02-25 with authenticated production drill evidence
   - `tickets/P1-prod-auth-oauth-provider-credentials.md`: create provider apps (Apple/Facebook/Microsoft) and paste IDs/secrets into Firebase Auth providers
 - Ticket reconciliation update:
   - `tickets/P0-portal-hosting-cutover.md` is `Completed` and removed from the open-ticket queue.
@@ -51,9 +51,8 @@ Use this board for daily execution and ticket routing.
 ## Open Tickets (Filtered, In Scope)
 - Scope filters:
   - Ignore tickets associated with closed epics.
-- `P0` (`blocked`): `tickets/P0-alpha-drills-real-auth.md` (requires real production staff token path)
 - `P1` (`blocked`): `tickets/P1-prod-auth-oauth-provider-credentials.md` (provider console/firebase console dependency)
-- Note: completed S12 tickets were removed from this open-ticket section during the 2026-02-22 reconciliation pass; the portal hosting cutover row was removed during the 2026-02-25 reconciliation pass.
+- Note: completed S12 tickets were removed from this open-ticket section during the 2026-02-22 reconciliation pass; the portal hosting cutover row was removed during the 2026-02-25 reconciliation pass; the P0 alpha drills row was removed after production auth drill completion on 2026-02-25.
 
 ## Reconciliation Cadence
 - Monthly:
@@ -69,7 +68,6 @@ Use this board for daily execution and ticket routing.
 ## Ops Blockers (Do Outside Repo)
 - OAuth providers: finish Apple/Facebook provider app setup and paste credentials into Firebase Auth provider settings
 - Firebase Auth domains: confirm required production authorized domains remain configured
-- Production drill execution: obtain a real staff Firebase ID token and run the live drill evidence capture window
 
 ## Daily Verification Pass
 Run on all active branches/tickets:

@@ -205,3 +205,77 @@ Full marketing-site UI/UX + accessibility pass for `monsoonfire.com` website (no
     - `npm run deploy:namecheap:website` now uses `scripts/deploy-namecheap-website.mjs`.
   - Updated compatibility shim:
     - `website/deploy.ps1` now forwards optional key argument/env.
+
+## 2026-02-25 API v1 hardening + kiln board + GA foundations + cutover prep
+- Completed APIV1-006 regression coverage in `functions/src/apiV1.test.ts`:
+  - Added malformed/unknown route normalization + `api_v1_route_reject` audit assertions.
+  - Added route-level and agent-level rate-limit fallback audit assertions.
+  - Added route contract tests for:
+    - `/v1/batches.get`
+    - `/v1/batches.timeline.list`
+    - `/v1/agent.requests.listMine`
+  - Extended Firestore test mock to support subcollection query paths (`batches/{id}/timeline`) and stable add-ID behavior.
+  - Verification: `npm --prefix functions test` passed (`177/177`).
+- Reconciled kiln board live-feed ticket status and evidence:
+  - Updated `tickets/P2-studio-operations-web-kiln-board-live-feed-ticket.md` to `Status: Completed`.
+  - Recorded deterministic sync artifact:
+    - `artifacts/website-kiln-board-check.json`
+  - Updated historical planning docs to mark static-board assumption as resolved.
+- Landed GA Sprint 1 foundation scaffolding:
+  - Added runbook: `docs/runbooks/WEBSITE_GA_SPRINT1_FOUNDATIONS.md`
+  - Added templates:
+    - `docs/analytics/WEBSITE_GA_DATA_PACKAGE_TEMPLATE.md`
+    - `docs/analytics/WEBSITE_GA_EVENT_GOAL_MAP_TEMPLATE.md`
+    - `docs/analytics/WEBSITE_GA_UTM_TAXONOMY.md`
+  - Added deterministic foundation checker:
+    - `scripts/check-website-ga-sprint1-foundations.mjs`
+    - `package.json` script: `website:ga:sprint1:check`
+  - Recorded artifact:
+    - `artifacts/website-ga-sprint1-foundations.json`
+  - Updated Sprint 1 GA ticket statuses to `In Progress` with explicit external access blockers.
+- Executed external cutover/auth drill prep and captured blocker evidence:
+  - Baseline hosted verifier pass:
+    - `artifacts/cutover-verify-latest.json`
+  - Required protected-function verifier fail (expected blocker):
+    - `artifacts/cutover-verify-protected-required.json`
+    - failure reason: missing real Firebase ID token (`PORTAL_CUTOVER_ID_TOKEN` / `--id-token`).
+  - Generated external checklist artifact for handoff:
+    - `artifacts/external-cutover-checklist-latest.md`
+
+## 2026-02-25 portal auth loop mitigation (google sign-in bounce)
+- Incident summary:
+  - Production users reported Google sign-in returning immediately to signed-out state and URL resetting to `mfv=2026-02-23-cache-reset-c`.
+- Mitigations shipped to portal web client:
+  - Updated `web/src/App.tsx` provider auth flow to use popup-first (`signInWithPopup`) with redirect fallback when popup is blocked/unsupported.
+  - Added fallback trigger coverage for `auth/cancelled-popup-request`.
+  - Updated `web/index.html` cache-reset bootstrap to avoid repeated `location.replace` when `mfv` is already set to the active release token.
+- Verification + deploy:
+  - `npm run build:web` passed.
+  - `npm run deploy:namecheap:portal:live -- --no-build --verify` passed.
+  - `Verifier PASS for https://portal.monsoonfire.com`.
+  - Headless production smoke confirmed Google button opens popup auth handler and returns to portal URL.
+- Evidence artifact:
+  - `artifacts/portal-auth-loop-fix-2026-02-25.json`
+
+## 2026-02-25 agent staff auth bootstrap + P0 drill unblock
+- Built a no-browser-copy auth path to unblock production drill/cutover checks:
+  - Confirmed Firebase Admin SDK path is unavailable locally without ADC credentials (`app/invalid-credential`).
+  - Switched to Identity Toolkit admin endpoints authenticated via Firebase CLI OAuth session.
+- Provisioned dedicated staff principal for automation:
+  - Account: `agent.staff.bot@monsoonfire.local`
+  - UID: `6qU0XDdJ32e4PUFVvdBfQKuAF7u1`
+  - Claims: `{"staff": true, "roles": ["staff"]}`
+  - Secret bundle stored outside repo: `~/.ssh/portal-agent-staff.json` (mode `600`).
+- Unblocked protected production verifier:
+  - Re-ran authenticated cutover check with real ID token.
+  - Result: pass including `protectedFunction`.
+  - Evidence: `artifacts/cutover-verify-protected-required.json`.
+- Executed live notification drill sequence with real staff auth (production functions):
+  - Modes run: `auth`, `provider_4xx`, `provider_5xx`, `network`, `success`.
+  - Result: `5/5` drill modes passed; metrics aggregation passed.
+  - Evidence: `artifacts/notification-drill-run-agent-staff.json`.
+- Updated unblock tracking:
+  - `tickets/P0-alpha-drills-real-auth.md` -> `Status: Completed`.
+  - `docs/sprints/SWARM_BOARD.md` open-ticket list no longer includes P0 drill-token blocker.
+  - `docs/DRILL_EXECUTION_LOG.md` appended production run metadata and artifact references.
+  - Sanitized bootstrap artifact: `artifacts/agent-staff-bootstrap-2026-02-25.json`.

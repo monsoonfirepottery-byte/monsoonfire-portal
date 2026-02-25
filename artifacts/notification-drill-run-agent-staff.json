@@ -1,0 +1,90 @@
+{
+  "generatedAtUtc": "2026-02-25T01:49:43.809Z",
+  "startedAtUtc": "2026-02-25T01:49:37.903Z",
+  "baseUrl": "https://us-central1-monsoonfire-portal.cloudfunctions.net",
+  "actor": {
+    "uid": "6qU0XDdJ32e4PUFVvdBfQKuAF7u1",
+    "email": "agent.staff.bot@monsoonfire.local"
+  },
+  "drillModes": [
+    "auth",
+    "provider_4xx",
+    "provider_5xx",
+    "network",
+    "success"
+  ],
+  "drills": [
+    {
+      "mode": "auth",
+      "status": 200,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "jobId": "ea2304d1310e0b91ec55605dc9f97e30afa5a81d8f332674ec2030d152005da6",
+        "uid": "6qU0XDdJ32e4PUFVvdBfQKuAF7u1",
+        "mode": "auth"
+      }
+    },
+    {
+      "mode": "provider_4xx",
+      "status": 200,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "jobId": "efb1dcee546eb39f8b76521b6de0831f75f740deecbfbf48c3591f0d8b2d1694",
+        "uid": "6qU0XDdJ32e4PUFVvdBfQKuAF7u1",
+        "mode": "provider_4xx"
+      }
+    },
+    {
+      "mode": "provider_5xx",
+      "status": 200,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "jobId": "944c7694143d29c8b1288f2597e6a074426f81b9c19584f0d4c0c8dbc8fcf759",
+        "uid": "6qU0XDdJ32e4PUFVvdBfQKuAF7u1",
+        "mode": "provider_5xx"
+      }
+    },
+    {
+      "mode": "network",
+      "status": 200,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "jobId": "df423492f5624200a508fff99c0d5d1941e6c006e006289f09f5cd9c1811c64a",
+        "uid": "6qU0XDdJ32e4PUFVvdBfQKuAF7u1",
+        "mode": "network"
+      }
+    },
+    {
+      "mode": "success",
+      "status": 200,
+      "ok": true,
+      "response": {
+        "ok": true,
+        "jobId": "d8e1e5a073bb5bad13f8608bfc15ff0446b45e8ef2307dd78ef2d3243a9a7f31",
+        "uid": "6qU0XDdJ32e4PUFVvdBfQKuAF7u1",
+        "mode": "success"
+      }
+    }
+  ],
+  "metrics": {
+    "status": 200,
+    "ok": true,
+    "body": {
+      "ok": true,
+      "windowHours": 24,
+      "totalAttempts": 0,
+      "statusCounts": {},
+      "reasonCounts": {},
+      "providerCounts": {}
+    }
+  },
+  "summary": {
+    "drillPassCount": 5,
+    "drillFailCount": 0,
+    "metricsOk": true
+  }
+}

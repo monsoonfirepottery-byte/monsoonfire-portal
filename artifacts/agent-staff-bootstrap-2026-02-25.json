@@ -1,0 +1,37 @@
+{
+  "generatedAtUtc": "2026-02-25T01:50:00Z",
+  "projectId": "monsoonfire-portal",
+  "account": {
+    "email": "agent.staff.bot@monsoonfire.local",
+    "uid": "6qU0XDdJ32e4PUFVvdBfQKuAF7u1",
+    "displayName": "Portal Agent Staff",
+    "claims": {
+      "staff": true,
+      "roles": [
+        "staff"
+      ]
+    }
+  },
+  "provisioning": {
+    "method": "identitytoolkit_v3_admin_endpoints_via_firebase_cli_oauth",
+    "createEndpoint": "signupNewUser",
+    "claimEndpoint": "setAccountInfo",
+    "tokenMintEndpoint": "accounts:signInWithPassword"
+  },
+  "verification": {
+    "tokenClaims": {
+      "iss": "https://securetoken.google.com/monsoonfire-portal",
+      "aud": "monsoonfire-portal",
+      "staff": true,
+      "roles": [
+        "staff"
+      ]
+    },
+    "protectedVerifierReport": "artifacts/cutover-verify-protected-required.json",
+    "drillReport": "artifacts/notification-drill-run-agent-staff.json"
+  },
+  "notes": [
+    "Secrets are stored outside repo in ~/.ssh/portal-agent-staff.json (chmod 600).",
+    "No raw tokens or passwords are included in this artifact."
+  ]
+}

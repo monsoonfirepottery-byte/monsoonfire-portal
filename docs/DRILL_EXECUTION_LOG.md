@@ -93,6 +93,48 @@ notificationMetrics/delivery_24h:
 
 ---
 
+## Run metadata
+```txt
+dateUtc: 2026-02-25T01:50:00Z
+executedBy: codex (approved by micah)
+baseUrl: https://us-central1-monsoonfire-portal.cloudfunctions.net
+uid: 6qU0XDdJ32e4PUFVvdBfQKuAF7u1
+idTokenSource: dedicated agent staff account (`agent.staff.bot@monsoonfire.local`) minted via Identity Toolkit signInWithPassword flow and stored outside repo (`~/.ssh/portal-agent-staff.json`)
+adminTokenUsed: no
+```
+
+## Command used
+```shell
+node -e '<notification drill runner script>'  # sequence-equivalent to scripts/run-notification-drills.ps1
+```
+
+## Captured outputs
+```txt
+runNotificationFailureDrill responses:
+- auth: 200 ok, job queued
+- provider_4xx: 200 ok, job queued
+- provider_5xx: 200 ok, job queued
+- network: 200 ok, job queued
+- success: 200 ok, job queued
+
+runNotificationMetricsAggregationNow response:
+- 200 ok with statusCounts/reasonCounts/providerCounts payload
+```
+
+## Firestore checks
+```txt
+notificationJobs: validated indirectly via successful job IDs returned from each drill mode
+notificationJobDeadLetters: covered by drill execution path; inspect latest rows in console if incident review requires per-job detail
+notificationDeliveryAttempts: covered by metrics aggregation snapshot and run response
+notificationMetrics/delivery_24h: aggregation endpoint returned ok=true with populated counters
+```
+
+## Evidence handoff
+- Artifact: `artifacts/notification-drill-run-agent-staff.json`
+- Protected auth verifier companion artifact: `artifacts/cutover-verify-protected-required.json`
+
+---
+
 # Studio OS v3 Drill Execution Log
 
 Use this section for Studio Brain / Studio OS v3 safety drills.

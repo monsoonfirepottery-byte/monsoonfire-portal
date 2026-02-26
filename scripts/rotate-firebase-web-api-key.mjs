@@ -106,13 +106,28 @@ async function main() {
 
     const createOutput = run("gcloud", createArgs);
     const created = JSON.parse(createOutput);
-
-    if (!created?.name || !created?.keyString) {
-      throw new Error("gcloud did not return both key name and keyString while creating API key.");
+    if (!created?.name) {
+      throw new Error("gcloud did not return key resource name while creating API key.");
     }
 
     newKeyResource = String(created.name);
-    newKeyValue = String(created.keyString);
+    newKeyValue = created?.keyString ? String(created.keyString) : "";
+
+    if (!newKeyValue) {
+      const keyStringOutput = run("gcloud", [
+        "services",
+        "api-keys",
+        "get-key-string",
+        newKeyResource,
+        `--project=${projectId}`,
+        "--format=json",
+      ]);
+      const keyStringPayload = JSON.parse(keyStringOutput);
+      if (!keyStringPayload?.keyString) {
+        throw new Error("gcloud did not return keyString after key creation.");
+      }
+      newKeyValue = String(keyStringPayload.keyString);
+    }
 
     console.log(`::add-mask::${newKeyValue}`);
 

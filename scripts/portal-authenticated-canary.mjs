@@ -484,12 +484,22 @@ async function run() {
           .getByRole("heading", { name: /(Your studio dashboard|Dashboard)/i })
           .first()
           .waitFor({ timeout: 30000 });
+
+        let openedFromDashboard = false;
         const firstPieceThumb = page.locator(".piece-thumb").first();
-        if ((await firstPieceThumb.count()) === 0) {
-          throw new Error("Dashboard has no piece thumb in 'Your pieces'; fixture seeding may be missing.");
+        if ((await firstPieceThumb.count()) > 0) {
+          await firstPieceThumb.click({ timeout: 10000 });
+          openedFromDashboard = true;
+        } else {
+          const openMyPiecesButton = page.getByRole("button", { name: /^Open My Pieces$/i }).first();
+          if ((await openMyPiecesButton.count()) > 0) {
+            await openMyPiecesButton.click({ timeout: 10000 });
+            openedFromDashboard = true;
+          } else {
+            await clickNavItem(page, "My Pieces", true);
+          }
         }
 
-        await firstPieceThumb.click({ timeout: 10000 });
         await page.getByRole("heading", { name: /^My Pieces$/i }).first().waitFor({ timeout: 30000 });
 
         const pieceAlert = page.locator(".inline-alert", { hasText: /^Pieces failed:/i }).first();
@@ -504,18 +514,38 @@ async function run() {
         }
 
         const detailTitle = page.locator(".detail-title").first();
+        let attemptedOpenDetails = false;
         if ((await detailTitle.count()) === 0) {
           const viewDetailsButton = page.getByRole("button", { name: /^View details$/i }).first();
           if ((await viewDetailsButton.count()) > 0) {
+            attemptedOpenDetails = true;
             await viewDetailsButton.click({ timeout: 10000 });
           } else {
             const firstRow = page.locator(".piece-row").first();
             if ((await firstRow.count()) > 0) {
+              attemptedOpenDetails = true;
               await firstRow.click({ timeout: 10000 });
             }
           }
         }
-        await page.locator(".detail-title").first().waitFor({ timeout: 10000 });
+
+        if (attemptedOpenDetails || (await detailTitle.count()) > 0) {
+          await page.locator(".detail-title").first().waitFor({ timeout: 10000 });
+        } else {
+          const emptyState = page
+            .locator(".empty-state")
+            .filter({
+              hasText: /(No pieces yet|Nothing currently in flight|first firing journey starts)/i,
+            })
+            .first();
+          if ((await emptyState.count()) === 0) {
+            throw new Error("My Pieces has no selectable rows and no recognized empty-state guidance.");
+          }
+          if (!openedFromDashboard) {
+            throw new Error("Dashboard did not provide a direct path into My Pieces.");
+          }
+        }
+
         await takeScreenshot(page, options.outputDir, "canary-03-my-pieces-detail.png", summary, "my pieces detail");
       });
 

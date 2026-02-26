@@ -9,6 +9,11 @@ import { resolve } from "node:path";
 const DEFAULT_PROJECT_ID = "monsoonfire-portal";
 const LEGACY_RELEASE_ID = "cloud.firestore";
 const DEFAULT_DB_RELEASE_ID = "cloud.firestore/default";
+const GOOGLE_OAUTH_TOKEN_ENDPOINT = "https://www.googleapis.com/oauth2/v3/token";
+// Firebase CLI OAuth client values (mirrors firebase-tools defaults).
+const FIREBASE_CLI_OAUTH_CLIENT_ID =
+  "563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com";
+const FIREBASE_CLI_OAUTH_CLIENT_SECRET = "j9iVZfS8kkCEFUPaAeJV0sAi";
 
 function parseArgs(argv) {
   const options = {
@@ -64,24 +69,90 @@ async function loadFirebaseCliToken() {
   const raw = await readFile(configPath, "utf8");
   const parsed = JSON.parse(raw);
   const accessToken = parsed?.tokens?.access_token;
+  const refreshToken = parsed?.tokens?.refresh_token;
   const expiresAtMs =
     typeof parsed?.tokens?.expires_at === "number" ? parsed.tokens.expires_at : Number.NaN;
 
-  if (!accessToken || typeof accessToken !== "string") {
-    throw new Error("Missing firebase-tools access token. Run `firebase login` and retry.");
+  if (
+    (!accessToken || typeof accessToken !== "string") &&
+    (!refreshToken || typeof refreshToken !== "string")
+  ) {
+    throw new Error("Missing firebase-tools credentials. Run `firebase login` and retry.");
   }
 
   return {
     configPath,
     accessToken,
+    refreshToken,
     expiresAtMs,
     source: "firebase-tools-config",
+  };
+}
+
+function looksLikeRefreshToken(token) {
+  return token.startsWith("1//");
+}
+
+async function exchangeRefreshToken(refreshToken, source) {
+  const form = new URLSearchParams({
+    refresh_token: refreshToken,
+    client_id: FIREBASE_CLI_OAUTH_CLIENT_ID,
+    client_secret: FIREBASE_CLI_OAUTH_CLIENT_SECRET,
+    grant_type: "refresh_token",
+  });
+
+  const resp = await fetch(GOOGLE_OAUTH_TOKEN_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: form.toString(),
+  });
+
+  const text = await resp.text();
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = { raw: text.slice(0, 600) };
+  }
+
+  const expiresInSec =
+    typeof json?.expires_in === "number"
+      ? json.expires_in
+      : typeof json?.expires_in === "string"
+        ? Number.parseInt(json.expires_in, 10)
+        : Number.NaN;
+
+  if (!resp.ok || typeof json?.access_token !== "string") {
+    const details =
+      typeof json?.error === "string"
+        ? json.error
+        : typeof json?.error_description === "string"
+          ? json.error_description
+          : "token exchange failed";
+    throw new Error(`Unable to exchange refresh token (${source}): ${details}`);
+  }
+
+  return {
+    accessToken: json.access_token,
+    expiresAtMs: Number.isFinite(expiresInSec) ? Date.now() + expiresInSec * 1000 : Number.NaN,
   };
 }
 
 async function resolveAccessToken(options) {
   const directToken = String(options.accessToken || "").trim();
   if (directToken) {
+    if (looksLikeRefreshToken(directToken)) {
+      const exchanged = await exchangeRefreshToken(directToken, "env-or-arg");
+      return {
+        configPath: null,
+        accessToken: exchanged.accessToken,
+        expiresAtMs: exchanged.expiresAtMs,
+        source: "env-refresh-token",
+      };
+    }
+
     return {
       configPath: null,
       accessToken: directToken,
@@ -90,7 +161,31 @@ async function resolveAccessToken(options) {
     };
   }
 
-  return await loadFirebaseCliToken();
+  const cliToken = await loadFirebaseCliToken();
+  if (typeof cliToken.refreshToken === "string" && cliToken.refreshToken) {
+    try {
+      const exchanged = await exchangeRefreshToken(
+        cliToken.refreshToken,
+        "firebase-tools-config"
+      );
+      return {
+        configPath: cliToken.configPath,
+        accessToken: exchanged.accessToken,
+        expiresAtMs: exchanged.expiresAtMs,
+        source: "firebase-tools-refresh-token",
+      };
+    } catch (error) {
+      if (cliToken.accessToken && typeof cliToken.accessToken === "string") {
+        return {
+          ...cliToken,
+          source: "firebase-tools-config-access-fallback",
+        };
+      }
+      throw error;
+    }
+  }
+
+  return cliToken;
 }
 
 async function requestRulesApi({ accessToken, path, method = "GET", body = null }) {

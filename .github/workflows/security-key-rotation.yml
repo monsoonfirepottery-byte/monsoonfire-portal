@@ -35,10 +35,8 @@ on:
         options:
           - "false"
           - "true"
-  secret_scanning_alert:
-    types:
-      - created
-      - reopened
+  schedule:
+    - cron: "*/30 * * * *"
 
 permissions:
   contents: read
@@ -57,6 +55,9 @@ jobs:
 
       - name: Derive rotation plan from trigger
         id: gate
+        env:
+          ALERT_READ_TOKEN: ${{ secrets.SECRET_SCANNING_READ_TOKEN }}
+          AUTOMATION_TOKEN: ${{ secrets.SECURITY_AUTOMATION_GH_TOKEN }}
         shell: bash
         run: |
           node <<'EOF'
@@ -81,21 +82,48 @@ jobs:
             dryRun = String(inputs.dry_run || 'false');
             disablePrevious = String(inputs.disable_previous || 'true');
             resolveAlert = String(inputs.resolve_alert || 'false');
-          } else if (eventName === 'secret_scanning_alert') {
-            const alert = payload.secret_scanning_alert || {};
-            const action = String(payload.action || 'unknown');
-            const secretType = String(alert.secret_type || '');
-
-            if (secretType === 'google_api_key') {
-              rotate = true;
-              reason = `secret_scanning_alert:${action}`;
-              alertNumber = String(alert.number || '');
-              dryRun = 'false';
-              disablePrevious = 'true';
-              resolveAlert = 'true';
-            } else {
+          } else if (eventName === 'schedule') {
+            const token = (process.env.ALERT_READ_TOKEN || process.env.AUTOMATION_TOKEN || '').trim();
+            if (!token) {
               rotate = false;
-              reason = `secret_scanning_alert:${action}:ignored-secret-type-${secretType}`;
+              reason = 'scheduled-poll-skipped-missing-alert-read-token';
+            } else {
+              const repo = process.env.GITHUB_REPOSITORY;
+              const url = `https://api.github.com/repos/${repo}/secret-scanning/alerts?state=open&per_page=100`;
+              const response = await fetch(url, {
+                headers: {
+                  Accept: 'application/vnd.github+json',
+                  Authorization: `Bearer ${token}`,
+                  'X-GitHub-Api-Version': '2022-11-28',
+                },
+              });
+
+              if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`Failed to list secret-scanning alerts (${response.status}): ${text}`);
+              }
+
+              const alerts = await response.json();
+              const googleAlerts = Array.isArray(alerts)
+                ? alerts.filter((alert) => String(alert.secret_type) === 'google_api_key' && String(alert.state) === 'open')
+                : [];
+
+              if (googleAlerts.length > 0) {
+                const newest = googleAlerts.sort((a, b) => {
+                  const ad = new Date(a.created_at || 0).getTime();
+                  const bd = new Date(b.created_at || 0).getTime();
+                  return bd - ad;
+                })[0];
+                rotate = true;
+                reason = 'scheduled-open-google-api-alert';
+                alertNumber = String(newest.number || '');
+                dryRun = 'false';
+                disablePrevious = 'true';
+                resolveAlert = 'true';
+              } else {
+                rotate = false;
+                reason = 'scheduled-poll-no-open-google-api-alerts';
+              }
             }
           } else {
             rotate = false;

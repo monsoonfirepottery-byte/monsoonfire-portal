@@ -51,16 +51,6 @@ jobs:
   rotate-firebase-web-key:
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    env:
-      EVENT_NAME: ${{ github.event_name }}
-      EVENT_ACTION: ${{ github.event.action || '' }}
-      EVENT_SECRET_TYPE: ${{ github.event.secret_scanning_alert.secret_type || '' }}
-      EVENT_ALERT_NUMBER: ${{ github.event.secret_scanning_alert.number || '' }}
-      INPUT_REASON: ${{ github.event.inputs.reason || '' }}
-      INPUT_ALERT_NUMBER: ${{ github.event.inputs.alert_number || '' }}
-      INPUT_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
-      INPUT_DISABLE_PREVIOUS: ${{ github.event.inputs.disable_previous || 'true' }}
-      INPUT_RESOLVE_ALERT: ${{ github.event.inputs.resolve_alert || 'false' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -69,45 +59,61 @@ jobs:
         id: gate
         shell: bash
         run: |
-          set -euo pipefail
+          node <<'EOF'
+          const fs = require('node:fs');
 
-          rotate="false"
-          reason=""
-          alert_number=""
-          dry_run="false"
-          disable_previous="true"
-          resolve_alert="false"
+          const eventName = process.env.GITHUB_EVENT_NAME;
+          const eventPath = process.env.GITHUB_EVENT_PATH;
+          const payload = JSON.parse(fs.readFileSync(eventPath, 'utf8'));
 
-          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            rotate="true"
-            reason="${INPUT_REASON:-manual-rotation}"
-            alert_number="${INPUT_ALERT_NUMBER}"
-            dry_run="${INPUT_DRY_RUN}"
-            disable_previous="${INPUT_DISABLE_PREVIOUS}"
-            resolve_alert="${INPUT_RESOLVE_ALERT}"
-          elif [[ "${EVENT_NAME}" == "secret_scanning_alert" ]]; then
-            if [[ "${EVENT_SECRET_TYPE}" == "google_api_key" ]]; then
-              rotate="true"
-              reason="secret_scanning_alert:${EVENT_ACTION}"
-              alert_number="${EVENT_ALERT_NUMBER}"
-              dry_run="false"
-              disable_previous="true"
-              resolve_alert="true"
-            else
-              rotate="false"
-              reason="secret_scanning_alert:${EVENT_ACTION}:ignored-secret-type-${EVENT_SECRET_TYPE}"
-            fi
-          else
-            rotate="false"
-            reason="unsupported-trigger-${EVENT_NAME}"
-          fi
+          let rotate = false;
+          let reason = '';
+          let alertNumber = '';
+          let dryRun = 'false';
+          let disablePrevious = 'true';
+          let resolveAlert = 'false';
 
-          echo "rotate=${rotate}" >> "$GITHUB_OUTPUT"
-          echo "reason=${reason}" >> "$GITHUB_OUTPUT"
-          echo "alert_number=${alert_number}" >> "$GITHUB_OUTPUT"
-          echo "dry_run=${dry_run}" >> "$GITHUB_OUTPUT"
-          echo "disable_previous=${disable_previous}" >> "$GITHUB_OUTPUT"
-          echo "resolve_alert=${resolve_alert}" >> "$GITHUB_OUTPUT"
+          if (eventName === 'workflow_dispatch') {
+            const inputs = payload.inputs || {};
+            rotate = true;
+            reason = String(inputs.reason || 'manual-rotation');
+            alertNumber = String(inputs.alert_number || '');
+            dryRun = String(inputs.dry_run || 'false');
+            disablePrevious = String(inputs.disable_previous || 'true');
+            resolveAlert = String(inputs.resolve_alert || 'false');
+          } else if (eventName === 'secret_scanning_alert') {
+            const alert = payload.secret_scanning_alert || {};
+            const action = String(payload.action || 'unknown');
+            const secretType = String(alert.secret_type || '');
+
+            if (secretType === 'google_api_key') {
+              rotate = true;
+              reason = `secret_scanning_alert:${action}`;
+              alertNumber = String(alert.number || '');
+              dryRun = 'false';
+              disablePrevious = 'true';
+              resolveAlert = 'true';
+            } else {
+              rotate = false;
+              reason = `secret_scanning_alert:${action}:ignored-secret-type-${secretType}`;
+            }
+          } else {
+            rotate = false;
+            reason = `unsupported-trigger-${eventName}`;
+          }
+
+          const outFile = process.env.GITHUB_OUTPUT;
+          const lines = [
+            `rotate=${rotate ? 'true' : 'false'}`,
+            `reason=${reason}`,
+            `alert_number=${alertNumber}`,
+            `dry_run=${dryRun}`,
+            `disable_previous=${disablePrevious}`,
+            `resolve_alert=${resolveAlert}`,
+          ];
+
+          fs.appendFileSync(outFile, `${lines.join('\n')}\n`, 'utf8');
+          EOF
 
       - name: Rotation skipped
         if: ${{ steps.gate.outputs.rotate != 'true' }}

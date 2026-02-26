@@ -13,9 +13,59 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: npm --prefix web ci && npm --prefix web run build
+      - name: Build web bundle with validated Firebase API key
+        shell: bash
         env:
-          VITE_FIREBASE_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
+          FIREBASE_WEB_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
+          PORTAL_FIREBASE_API_KEY: ${{ secrets.PORTAL_FIREBASE_API_KEY }}
+          FALLBACK_FIREBASE_API_KEY: "AIzaSyC7ynej0nGJas9me9M5oW6jHfLsWe5gHbU"
+        run: |
+          set -euo pipefail
+
+          validate_api_key() {
+            local candidate="$1"
+
+            if [ -z "$candidate" ]; then
+              return 1
+            fi
+            if [[ ! "$candidate" =~ ^AIza[0-9A-Za-z_-]{20,}$ ]]; then
+              return 1
+            fi
+
+            local status
+            status=$(curl -sS -o /tmp/firebase-key-probe.json -w "%{http_code}" \
+              -H "content-type: application/json" \
+              -d '{"email":"nobody@example.com","password":"invalid","returnSecureToken":true}' \
+              "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${candidate}" || true)
+
+            if [ "$status" != "400" ]; then
+              return 1
+            fi
+            if grep -qi "API key not valid" /tmp/firebase-key-probe.json; then
+              return 1
+            fi
+            if grep -qi "API_KEY_INVALID" /tmp/firebase-key-probe.json; then
+              return 1
+            fi
+            return 0
+          }
+
+          SELECTED_FIREBASE_API_KEY=""
+          for candidate in "$FIREBASE_WEB_API_KEY" "$PORTAL_FIREBASE_API_KEY" "$FALLBACK_FIREBASE_API_KEY"; do
+            if validate_api_key "$candidate"; then
+              SELECTED_FIREBASE_API_KEY="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$SELECTED_FIREBASE_API_KEY" ]; then
+            echo "No valid Firebase web API key candidate resolved for web build." >&2
+            exit 1
+          fi
+
+          export VITE_FIREBASE_API_KEY="$SELECTED_FIREBASE_API_KEY"
+          npm --prefix web ci
+          npm --prefix web run build
       - uses: FirebaseExtended/action-hosting-deploy@092436dca3ec6dacb231d965ae56f7ff6c09f258
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}

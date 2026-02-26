@@ -4,10 +4,14 @@ title = "Monsoon Fire gitleaks config"
 useDefault = true
 
 [allowlist]
-description = "Known allowlist entries for non-secret client identifiers and generated intelligence artifacts."
+description = "Known allowlist entries for non-secret client identifiers, generated intelligence artifacts, and test fixture noise."
 regexes = [
   '''AIzaSyC7ynej0nGJas9me9M5oW6jHfLsWe5gHbU'''
 ]
 paths = [
-  '''^output/'''
+  '''^output/''',
+  '''^PROJECT_SNAPSHOT\.md$''',
+  '''^functions/src/apiV1\.test\.ts$''',
+  '''^studio-brain/src/config/env\.test\.ts$''',
+  '''^studio-brain/lib/config/env\.test\.js$'''
 ]

@@ -1,0 +1,121 @@
+name: Security Key Rotation
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Incident reason or ticket reference.
+        required: true
+        default: manual-rotation
+      alert_number:
+        description: Optional GitHub secret-scanning alert number to resolve.
+        required: false
+        default: ""
+      dry_run:
+        description: Run without creating/disabling keys or updating secrets.
+        required: false
+        default: "false"
+      disable_previous:
+        description: Disable previous key resource after update.
+        required: false
+        default: "true"
+      resolve_alert:
+        description: Resolve provided alert number as revoked.
+        required: false
+        default: "false"
+  schedule:
+    - cron: "17 * * * *"
+
+permissions:
+  contents: read
+  security-events: read
+
+concurrency:
+  group: security-key-rotation
+  cancel-in-progress: false
+
+jobs:
+  assess:
+    runs-on: ubuntu-latest
+    outputs:
+      rotate: ${{ steps.plan.outputs.rotate }}
+      reason: ${{ steps.plan.outputs.reason }}
+      alert_number: ${{ steps.plan.outputs.alert_number }}
+      dry_run: ${{ steps.plan.outputs.dry_run }}
+      disable_previous: ${{ steps.plan.outputs.disable_previous }}
+      resolve_alert: ${{ steps.plan.outputs.resolve_alert }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build rotation plan
+        id: plan
+        env:
+          SECURITY_AUTOMATION_GH_TOKEN: ${{ secrets.SECURITY_AUTOMATION_GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node ./scripts/assess-key-rotation-plan.mjs
+
+  rotate-firebase-web-key:
+    needs: assess
+    if: ${{ needs.assess.outputs.rotate == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required automation secrets
+        if: ${{ needs.assess.outputs.dry_run != 'true' }}
+        env:
+          SECURITY_AUTOMATION_GH_TOKEN: ${{ secrets.SECURITY_AUTOMATION_GH_TOKEN }}
+          FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
+        run: |
+          set -euo pipefail
+          [[ -n "${SECURITY_AUTOMATION_GH_TOKEN}" ]] || { echo "Missing SECURITY_AUTOMATION_GH_TOKEN"; exit 1; }
+          [[ -n "${FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL}" ]] || { echo "Missing FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL"; exit 1; }
+
+      - name: Authenticate to Google Cloud
+        if: ${{ needs.assess.outputs.dry_run != 'true' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
+
+      - name: Setup gcloud
+        if: ${{ needs.assess.outputs.dry_run != 'true' }}
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: monsoonfire-portal
+
+      - name: Rotate Firebase Web API key
+        env:
+          GH_TOKEN: ${{ secrets.SECURITY_AUTOMATION_GH_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GCP_PROJECT_ID: monsoonfire-portal
+          ROTATION_REASON: ${{ needs.assess.outputs.reason }}
+          ALERT_NUMBER: ${{ needs.assess.outputs.alert_number }}
+          RESOLVE_ALERT: ${{ needs.assess.outputs.resolve_alert }}
+          DRY_RUN: ${{ needs.assess.outputs.dry_run }}
+          ROTATE_DISABLE_PREVIOUS: ${{ needs.assess.outputs.disable_previous }}
+          PREVIOUS_KEY_RESOURCE: ${{ secrets.FIREBASE_WEB_API_KEY_RESOURCE }}
+          WEB_KEY_ALLOWED_REFERRERS: ${{ vars.WEB_KEY_ALLOWED_REFERRERS }}
+          WEB_KEY_API_TARGETS: ${{ vars.WEB_KEY_API_TARGETS }}
+          WEB_KEY_SECRET_NAME: FIREBASE_WEB_API_KEY
+          WEB_KEY_RESOURCE_SECRET_NAME: FIREBASE_WEB_API_KEY_RESOURCE
+        run: node ./scripts/rotate-firebase-web-api-key.mjs
+
+      - name: Upload key rotation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-key-rotation
+          path: output/security/key-rotation-*.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+  no-rotation-required:
+    needs: assess
+    if: ${{ needs.assess.outputs.rotate != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain skip
+        run: echo "No key rotation needed. Reason=${{ needs.assess.outputs.reason }}"

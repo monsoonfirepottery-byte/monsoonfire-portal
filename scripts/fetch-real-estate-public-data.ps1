@@ -12,6 +12,17 @@ function Save-Json {
   $Data | ConvertTo-Json -Depth 20 | Set-Content -Path $Path -Encoding UTF8
 }
 
+function Sanitize-TextContent {
+  param([string]$Content)
+
+  if ([string]::IsNullOrEmpty($Content)) { return $Content }
+
+  $sanitized = $Content
+  # Redact Google API key tokens that may appear in third-party HTML snapshots.
+  $sanitized = [regex]::Replace($sanitized, "AIza[0-9A-Za-z\-_]{35}", "AIzaREDACTED")
+  return $sanitized
+}
+
 function Resolve-SourceUrl {
   param([pscustomobject]$Source)
 
@@ -166,7 +177,8 @@ function Invoke-SourceFetch {
           Save-Json -Data $data -Path $DestinationPath
         } elseif ([string]$Source.mode -eq "text") {
           $resp = Invoke-WebRequest -Method Get -Uri ([string]$plan.url) -TimeoutSec 60 -Headers $plan.headers
-          [string]$resp.Content | Set-Content -Path $DestinationPath -Encoding UTF8
+          $sanitized = Sanitize-TextContent -Content ([string]$resp.Content)
+          [string]$sanitized | Set-Content -Path $DestinationPath -Encoding UTF8
         } else {
           throw "Unsupported mode: $($Source.mode)"
         }

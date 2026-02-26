@@ -1,0 +1,127 @@
+name: Daily Security Scan
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "20 9 * * *"
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: daily-security-scan
+  cancel-in-progress: false
+
+jobs:
+  secrets-and-alerts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SECRET_SCANNING_READ_TOKEN: ${{ secrets.SECRET_SCANNING_READ_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install gitleaks
+        run: |
+          GITLEAKS_VERSION="8.24.3"
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo install gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Run gitleaks on repository tree
+        run: |
+          mkdir -p output/security
+          gitleaks dir . \
+            --config .gitleaks.toml \
+            --redact \
+            --report-format sarif \
+            --report-path output/security/gitleaks.sarif
+
+      - name: Upload gitleaks SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: output/security/gitleaks.sarif
+
+      - name: Secret-scanning baseline token check
+        if: ${{ env.SECRET_SCANNING_READ_TOKEN == '' }}
+        run: echo '::warning::Skipping secret-scanning baseline enforcement. Add SECRET_SCANNING_READ_TOKEN with read access to secret scanning alerts to enable this gate.'
+
+      - name: Enforce secret-scanning baseline
+        if: ${{ env.SECRET_SCANNING_READ_TOKEN != '' }}
+        env:
+          GITHUB_TOKEN: ${{ env.SECRET_SCANNING_READ_TOKEN }}
+        run: node ./scripts/check-secret-scanning-baseline.mjs
+
+      - name: Upload secret scan artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-secret-scan
+          path: output/security
+          if-no-files-found: warn
+          retention-days: 14
+
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run npm audit (root/web/functions/studio-brain)
+        shell: bash
+        run: |
+          mkdir -p output/security
+          npm audit --package-lock-only --omit=dev --audit-level=high --json > output/security/npm-audit-root.json || true
+          npm --prefix web audit --package-lock-only --omit=dev --audit-level=high --json > output/security/npm-audit-web.json || true
+          npm --prefix functions audit --package-lock-only --omit=dev --audit-level=high --json > output/security/npm-audit-functions.json || true
+          npm --prefix studio-brain audit --package-lock-only --omit=dev --audit-level=high --json > output/security/npm-audit-studio-brain.json || true
+
+      - name: Fail on high or critical vulnerabilities
+        run: |
+          node <<'EOF'
+          const fs = require("node:fs");
+          const reports = [
+            ["root", "output/security/npm-audit-root.json"],
+            ["web", "output/security/npm-audit-web.json"],
+            ["functions", "output/security/npm-audit-functions.json"],
+            ["studio-brain", "output/security/npm-audit-studio-brain.json"],
+          ];
+
+          let fail = false;
+
+          for (const [name, file] of reports) {
+            const raw = fs.readFileSync(file, "utf8");
+            const parsed = JSON.parse(raw);
+            const vulns = parsed?.metadata?.vulnerabilities || {};
+            const high = Number(vulns.high || 0);
+            const critical = Number(vulns.critical || 0);
+            const total = Number(vulns.total || 0);
+
+            console.log(`${name}: total=${total} high=${high} critical=${critical}`);
+            if (high > 0 || critical > 0) fail = true;
+          }
+
+          if (fail) {
+            console.error("High/critical vulnerabilities detected in npm audit.");
+            process.exit(1);
+          }
+          EOF
+
+      - name: Upload dependency audit artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-dependency-audit
+          path: output/security/npm-audit-*.json
+          if-no-files-found: warn
+          retention-days: 14

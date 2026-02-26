@@ -4,6 +4,8 @@ import { connectFirestoreEmulator, initializeFirestore } from "firebase/firestor
 
 type ImportMetaEnvShape = {
   DEV?: boolean;
+  PROD?: boolean;
+  VITE_FIREBASE_API_KEY?: string;
   VITE_AUTH_DOMAIN?: string;
   VITE_DEBUG_TOOLS?: string;
   VITE_USE_EMULATORS?: string;
@@ -22,8 +24,17 @@ const AUTH_DOMAIN =
     ? String(ENV.VITE_AUTH_DOMAIN)
     : DEFAULT_AUTH_DOMAIN;
 
+const FIREBASE_API_KEY =
+  typeof import.meta !== "undefined" && ENV.VITE_FIREBASE_API_KEY
+    ? String(ENV.VITE_FIREBASE_API_KEY)
+    : "";
+
+if (!FIREBASE_API_KEY && typeof window !== "undefined") {
+  console.error("Missing VITE_FIREBASE_API_KEY. Set it in web/.env.local for local dev and GitHub secrets for CI deploy builds.");
+}
+
 const firebaseConfig = {
-  apiKey: "AIzaREDACTED",
+  apiKey: FIREBASE_API_KEY || "MISSING_VITE_FIREBASE_API_KEY",
   authDomain: AUTH_DOMAIN,
   projectId: "monsoonfire-portal",
   storageBucket: "monsoonfire-portal.firebasestorage.app",

@@ -29,6 +29,16 @@ jobs:
       - name: Install root deps
         run: npm ci
 
+      - name: Enforce Firestore rules release drift check
+        env:
+          FIREBASE_RULES_API_TOKEN: ${{ secrets.FIREBASE_RULES_API_TOKEN }}
+        run: |
+          if [ -z "$FIREBASE_RULES_API_TOKEN" ]; then
+            echo "Missing required secret: FIREBASE_RULES_API_TOKEN" >&2
+            exit 1
+          fi
+          npm run firestore:rules:sync:check
+
       - name: Setup Java for Firestore emulator
         uses: actions/setup-java@v4
         with:

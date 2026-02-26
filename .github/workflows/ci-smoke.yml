@@ -55,6 +55,17 @@ jobs:
       - name: Install studio-brain deps
         run: npm ci --prefix studio-brain
 
+      - name: Rules + index drift blocker
+        env:
+          FIREBASE_RULES_API_TOKEN: ${{ secrets.FIREBASE_RULES_API_TOKEN }}
+        run: |
+          if [ -z "$FIREBASE_RULES_API_TOKEN" ]; then
+            echo "Missing required secret: FIREBASE_RULES_API_TOKEN" >&2
+            exit 1
+          fi
+          npm run firestore:rules:sync:check
+          node ./scripts/firestore-index-contract-guard.mjs --strict --json --no-github --report output/qa/firestore-index-contract-guard-ci.json
+
       - name: Functions lint
         run: npm --prefix functions run lint
 
@@ -141,6 +152,15 @@ jobs:
         with:
           name: portal-virtual-staff-regression-ci
           path: output/qa/portal-virtual-staff-regression-ci.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload rules/index drift artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firestore-rules-index-drift-ci
+          path: output/qa/firestore-index-contract-guard-ci.json
           if-no-files-found: ignore
           retention-days: 7
 

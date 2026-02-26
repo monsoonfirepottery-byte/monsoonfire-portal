@@ -21,6 +21,7 @@ Purpose: define the active automation guardrails for portal functionality, UX co
   - Messages load without index/precondition failures
   - Ware Check-in loads without check-in/index failures
 - Includes dual-theme contrast sweep by default.
+- Runs every 30 minutes and escalates after 2 consecutive failures via rolling issue automation.
 
 3. Firestore index contract guard (`.github/workflows/firestore-index-contract-guard.yml`)
 - Checks required composite indexes in `firestore.indexes.json`.
@@ -46,13 +47,32 @@ Purpose: define the active automation guardrails for portal functionality, UX co
   - notification target (admin token when available)
 - Validates fixture existence and cleans stale fixtures by TTL.
 
+7. Branch divergence guard (`.github/workflows/branch-divergence-guard.yml`)
+- Monitors `main` and `codex/*` for non-fast-forward rewrites.
+- Opens/updates alert issue when force-push/divergence is detected.
+
+8. Credential health guard (`.github/workflows/portal-credential-health.yml`)
+- Validates required deploy/auth secrets are present.
+- Probes staff sign-in, agent refresh-token exchange, and Firestore Rules API token health.
+- Posts rolling status comments for early incident visibility.
+
+9. Rules + index drift blocker (`.github/workflows/rules-index-drift-blocker.yml`)
+- Blocks PRs when cloud Firestore rules release mapping drifts.
+- Blocks PRs when required Firestore composite indexes are missing.
+
 ## Local commands
 
 ```bash
 npm run portal:pr:functional:gate
 npm run portal:canary:auth
+npm run portal:canary:escalate
 npm run portal:theme:contrast
 npm run portal:index:guard
+npm run rules:index:drift:blocker
+npm run deploy:preflight
+npm run deploy:evidence:pack
+npm run branch:divergence:guard
+npm run secrets:health:check
 npm run portal:fixture:steward
 npm run portal:promotion:gate
 ```
@@ -63,4 +83,5 @@ npm run portal:promotion:gate
 - `PORTAL_STAFF_PASSWORD`
 - `PORTAL_AGENT_STAFF_CREDENTIALS_JSON`
 - `FIREBASE_RULES_API_TOKEN`
+- `PORTAL_FIREBASE_API_KEY` (optional override; default project web API key is used when unset)
 - `FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL` (recommended for notification fixture seeding)

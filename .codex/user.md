@@ -30,6 +30,8 @@
 <!-- codex-interaction:auto:start -->
 ### Automated Structural Addenda
 
-- Last structural update: n/a
-- No active automated addenda.
+- Last structural update: 2026-02-26-PM
+- Active rules:
+- [USER_PROMPT_STRUCTURE] Require `Objective`, `Constraints`, `Non-goals`, and `Definition of Done` in implementation prompts.
+- [USER_SCOPE_FENCE] Explicitly list in-scope and out-of-scope surfaces to prevent scope creep.
 <!-- codex-interaction:auto:end -->

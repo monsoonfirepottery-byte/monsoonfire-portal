@@ -33,6 +33,9 @@
 <!-- codex-interaction:auto:start -->
 ### Automated Structural Addenda
 
-- Last structural update: n/a
-- No active automated addenda.
+- Last structural update: 2026-02-26-PM
+- Active rules:
+- [AGENT_RETRY_STOP_TWO] After two identical tool failures, stop blind retries and switch strategy with a classified failure note.
+- [AGENT_SCOPE_LOCK] Reject out-of-scope edits unless explicitly requested by user constraints.
+- [AGENT_STRUCTURED_PR_NOTES] PR updates must include friction evidence, structural rationale, risk assessment, and QA observation guidance.
 <!-- codex-interaction:auto:end -->

@@ -43,34 +43,46 @@
   "lastRecommendations": [],
   "recommendationOutcomes": [],
   "interactionInterrogation": {
-    "lastRunAtIso": "2026-02-26T06:56:07.413Z",
-    "lastRunId": "2026-02-25-PM",
-    "lastPatternIds": [],
-    "lastTopRecommendations": [],
-    "lastImpactScore": 100,
+    "lastRunAtIso": "2026-02-26T23:02:54.832Z",
+    "lastRunId": "2026-02-26-PM",
+    "lastPatternIds": [
+      "skill-density-spike"
+    ],
+    "lastTopRecommendations": [
+      "skill-density-spike"
+    ],
+    "lastImpactScore": 73,
     "recentImpactScores": [
       100,
-      100
+      100,
+      73
     ],
     "activeRuleIds": {
-      "user": [],
-      "agents": []
+      "user": [
+        "USER_PROMPT_STRUCTURE",
+        "USER_SCOPE_FENCE"
+      ],
+      "agents": [
+        "AGENT_RETRY_STOP_TWO",
+        "AGENT_SCOPE_LOCK",
+        "AGENT_STRUCTURED_PR_NOTES"
+      ]
     },
-    "lastRuleUpdateRunId": "n/a",
-    "lastStructuralEditAtIso": "",
+    "lastRuleUpdateRunId": "2026-02-26-PM",
+    "lastStructuralEditAtIso": "2026-02-26T23:02:54.832Z",
     "lastSkillDensity": {
-      "firestore": 0,
+      "firestore": 2,
       "cloudFunctions": 0,
-      "schedulingLogic": 0,
-      "metadataConfig": 0,
+      "schedulingLogic": 3,
+      "metadataConfig": 46,
       "tooling": 0,
-      "workflowPolicy": 0,
-      "automation": 0
+      "workflowPolicy": 2,
+      "automation": 8
     },
     "lastToolFailureRate24": 0,
     "lastErrorClusterCount": 0,
-    "lastHighChurnCount": 0,
-    "lastCiFailureRepeats": 0,
+    "lastHighChurnCount": 5,
+    "lastCiFailureRepeats": 6,
     "followThroughHistory": [
       {
         "runId": "2026-02-25-PM",
@@ -81,11 +93,23 @@
         "runId": "2026-02-25-PM",
         "generatedAtIso": "2026-02-26T06:56:07.413Z",
         "outcomes": []
+      },
+      {
+        "runId": "2026-02-26-PM",
+        "generatedAtIso": "2026-02-26T23:02:54.832Z",
+        "outcomes": []
       }
     ]
   },
   "sharedCoordination": {
-    "automationPrByRunId": {},
+    "automationPrByRunId": {
+      "2026-02-26-PM": {
+        "url": "",
+        "branch": "codex/interaction-improve/2026-02-26-PM",
+        "source": "interaction",
+        "updatedAtIso": "2026-02-26T23:02:54.832Z"
+      }
+    },
     "lastStructuralEditAtIso": ""
   },
   "lastHighChurnCount24": 0,

@@ -92,8 +92,6 @@ async function main() {
   let alertResolved = false;
 
   if (!dryRun) {
-    run("gcloud", ["services", "enable", "apikeys.googleapis.com", `--project=${projectId}`]);
-
     const createArgs = [
       "services",
       "api-keys",

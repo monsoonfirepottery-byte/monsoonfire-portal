@@ -68,7 +68,6 @@ async function resolveCreateResult(createOutput, projectId) {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const opOutput = run("gcloud", [
       "services",
-      "api-keys",
       "operations",
       "describe",
       operationName,

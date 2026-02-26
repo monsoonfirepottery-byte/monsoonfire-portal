@@ -5,8 +5,8 @@ This repo includes automated Firebase Web API key rotation for secret incidents.
 ## Workflow
 - File: `.github/workflows/security-key-rotation.yml`
 - Triggers:
-  - `secret_scanning_alert` (`created`, `reopened`) for `google_api_key`
   - `workflow_dispatch` for manual emergency rotation
+  - `schedule` hourly polling for new open `google_api_key` alerts
 
 ## What rotation does
 1. Creates a new Google API key in project `monsoonfire-portal` with browser/API restrictions.
@@ -38,7 +38,7 @@ This repo includes automated Firebase Web API key rotation for secret incidents.
 4. Use `dry_run=true` first if validating permissions and configuration.
 
 ## Guardrails
-- Rotation does nothing for non-`google_api_key` secret alert events.
+- Scheduled rotation ignores baseline alert IDs already tracked in `.github/security/secret-scanning-baseline.json`.
 - Rotation fails fast if required automation secrets are missing.
 - New key values are masked in workflow logs.
 - The script never writes key values to repo files.

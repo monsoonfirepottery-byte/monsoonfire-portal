@@ -8,179 +8,94 @@ on:
         required: true
         default: manual-rotation
       alert_number:
-        description: Optional GitHub secret-scanning alert number to resolve after rotation.
+        description: Optional GitHub secret-scanning alert number to resolve.
         required: false
         default: ""
       dry_run:
         description: Run without creating/disabling keys or updating secrets.
-        required: true
+        required: false
         default: "false"
-        type: choice
-        options:
-          - "false"
-          - "true"
       disable_previous:
-        description: Disable previous key resource after new key is persisted.
-        required: true
+        description: Disable previous key resource after update.
+        required: false
         default: "true"
-        type: choice
-        options:
-          - "true"
-          - "false"
       resolve_alert:
-        description: Resolve provided alert_number as revoked.
-        required: true
+        description: Resolve provided alert number as revoked.
+        required: false
         default: "false"
-        type: choice
-        options:
-          - "false"
-          - "true"
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "17 * * * *"
 
 permissions:
   contents: read
+  security-events: read
 
 concurrency:
   group: security-key-rotation
   cancel-in-progress: false
 
 jobs:
+  assess:
+    runs-on: ubuntu-latest
+    outputs:
+      rotate: ${{ steps.plan.outputs.rotate }}
+      reason: ${{ steps.plan.outputs.reason }}
+      alert_number: ${{ steps.plan.outputs.alert_number }}
+      dry_run: ${{ steps.plan.outputs.dry_run }}
+      disable_previous: ${{ steps.plan.outputs.disable_previous }}
+      resolve_alert: ${{ steps.plan.outputs.resolve_alert }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build rotation plan
+        id: plan
+        env:
+          SECURITY_AUTOMATION_GH_TOKEN: ${{ secrets.SECURITY_AUTOMATION_GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node ./scripts/assess-key-rotation-plan.mjs
+
   rotate-firebase-web-key:
+    needs: assess
+    if: ${{ needs.assess.outputs.rotate == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Derive rotation plan from trigger
-        id: gate
-        env:
-          ALERT_READ_TOKEN: ${{ secrets.SECRET_SCANNING_READ_TOKEN }}
-          AUTOMATION_TOKEN: ${{ secrets.SECURITY_AUTOMATION_GH_TOKEN }}
-        shell: bash
-        run: |
-          node <<'EOF'
-          const fs = require('node:fs');
-
-          const eventName = process.env.GITHUB_EVENT_NAME;
-          const eventPath = process.env.GITHUB_EVENT_PATH;
-          const payload = JSON.parse(fs.readFileSync(eventPath, 'utf8'));
-
-          let rotate = false;
-          let reason = '';
-          let alertNumber = '';
-          let dryRun = 'false';
-          let disablePrevious = 'true';
-          let resolveAlert = 'false';
-
-          if (eventName === 'workflow_dispatch') {
-            const inputs = payload.inputs || {};
-            rotate = true;
-            reason = String(inputs.reason || 'manual-rotation');
-            alertNumber = String(inputs.alert_number || '');
-            dryRun = String(inputs.dry_run || 'false');
-            disablePrevious = String(inputs.disable_previous || 'true');
-            resolveAlert = String(inputs.resolve_alert || 'false');
-          } else if (eventName === 'schedule') {
-            const token = (process.env.ALERT_READ_TOKEN || process.env.AUTOMATION_TOKEN || '').trim();
-            if (!token) {
-              rotate = false;
-              reason = 'scheduled-poll-skipped-missing-alert-read-token';
-            } else {
-              const repo = process.env.GITHUB_REPOSITORY;
-              const url = `https://api.github.com/repos/${repo}/secret-scanning/alerts?state=open&per_page=100`;
-              const response = await fetch(url, {
-                headers: {
-                  Accept: 'application/vnd.github+json',
-                  Authorization: `Bearer ${token}`,
-                  'X-GitHub-Api-Version': '2022-11-28',
-                },
-              });
-
-              if (!response.ok) {
-                const text = await response.text();
-                throw new Error(`Failed to list secret-scanning alerts (${response.status}): ${text}`);
-              }
-
-              const alerts = await response.json();
-              const googleAlerts = Array.isArray(alerts)
-                ? alerts.filter((alert) => String(alert.secret_type) === 'google_api_key' && String(alert.state) === 'open')
-                : [];
-
-              if (googleAlerts.length > 0) {
-                const newest = googleAlerts.sort((a, b) => {
-                  const ad = new Date(a.created_at || 0).getTime();
-                  const bd = new Date(b.created_at || 0).getTime();
-                  return bd - ad;
-                })[0];
-                rotate = true;
-                reason = 'scheduled-open-google-api-alert';
-                alertNumber = String(newest.number || '');
-                dryRun = 'false';
-                disablePrevious = 'true';
-                resolveAlert = 'true';
-              } else {
-                rotate = false;
-                reason = 'scheduled-poll-no-open-google-api-alerts';
-              }
-            }
-          } else {
-            rotate = false;
-            reason = `unsupported-trigger-${eventName}`;
-          }
-
-          const outFile = process.env.GITHUB_OUTPUT;
-          const lines = [
-            `rotate=${rotate ? 'true' : 'false'}`,
-            `reason=${reason}`,
-            `alert_number=${alertNumber}`,
-            `dry_run=${dryRun}`,
-            `disable_previous=${disablePrevious}`,
-            `resolve_alert=${resolveAlert}`,
-          ];
-
-          fs.appendFileSync(outFile, `${lines.join('\n')}\n`, 'utf8');
-          EOF
-
-      - name: Rotation skipped
-        if: ${{ steps.gate.outputs.rotate != 'true' }}
-        run: echo "No key rotation required for this event. Reason: ${{ steps.gate.outputs.reason }}"
-
       - name: Validate required automation secrets
-        if: ${{ steps.gate.outputs.rotate == 'true' && steps.gate.outputs.dry_run != 'true' }}
+        if: ${{ needs.assess.outputs.dry_run != 'true' }}
         env:
           SECURITY_AUTOMATION_GH_TOKEN: ${{ secrets.SECURITY_AUTOMATION_GH_TOKEN }}
           FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
-        shell: bash
         run: |
           set -euo pipefail
           [[ -n "${SECURITY_AUTOMATION_GH_TOKEN}" ]] || { echo "Missing SECURITY_AUTOMATION_GH_TOKEN"; exit 1; }
           [[ -n "${FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL}" ]] || { echo "Missing FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL"; exit 1; }
 
       - name: Authenticate to Google Cloud
-        if: ${{ steps.gate.outputs.rotate == 'true' && steps.gate.outputs.dry_run != 'true' }}
+        if: ${{ needs.assess.outputs.dry_run != 'true' }}
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
 
       - name: Setup gcloud
-        if: ${{ steps.gate.outputs.rotate == 'true' && steps.gate.outputs.dry_run != 'true' }}
+        if: ${{ needs.assess.outputs.dry_run != 'true' }}
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: monsoonfire-portal
 
       - name: Rotate Firebase Web API key
-        if: ${{ steps.gate.outputs.rotate == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.SECURITY_AUTOMATION_GH_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GCP_PROJECT_ID: monsoonfire-portal
-          ROTATION_REASON: ${{ steps.gate.outputs.reason }}
-          ALERT_NUMBER: ${{ steps.gate.outputs.alert_number }}
-          RESOLVE_ALERT: ${{ steps.gate.outputs.resolve_alert }}
-          DRY_RUN: ${{ steps.gate.outputs.dry_run }}
-          ROTATE_DISABLE_PREVIOUS: ${{ steps.gate.outputs.disable_previous }}
+          ROTATION_REASON: ${{ needs.assess.outputs.reason }}
+          ALERT_NUMBER: ${{ needs.assess.outputs.alert_number }}
+          RESOLVE_ALERT: ${{ needs.assess.outputs.resolve_alert }}
+          DRY_RUN: ${{ needs.assess.outputs.dry_run }}
+          ROTATE_DISABLE_PREVIOUS: ${{ needs.assess.outputs.disable_previous }}
           PREVIOUS_KEY_RESOURCE: ${{ secrets.FIREBASE_WEB_API_KEY_RESOURCE }}
           WEB_KEY_ALLOWED_REFERRERS: ${{ vars.WEB_KEY_ALLOWED_REFERRERS }}
           WEB_KEY_API_TARGETS: ${{ vars.WEB_KEY_API_TARGETS }}
@@ -196,3 +111,11 @@ jobs:
           path: output/security/key-rotation-*.json
           if-no-files-found: ignore
           retention-days: 30
+
+  no-rotation-required:
+    needs: assess
+    if: ${{ needs.assess.outputs.rotate != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain skip
+        run: echo "No key rotation needed. Reason=${{ needs.assess.outputs.reason }}"

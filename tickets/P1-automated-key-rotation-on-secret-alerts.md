@@ -5,8 +5,8 @@ Automate response when a secret-scanning incident suggests compromised Google AP
 
 ## Scope
 - Add `Security Key Rotation` workflow triggered by:
-  - `secret_scanning_alert` (created/reopened) for `google_api_key`
   - manual `workflow_dispatch`
+  - hourly `schedule` that polls secret-scanning alerts and rotates only for new open `google_api_key` alerts outside baseline
 - Create script to:
   - issue new restricted Firebase web API key,
   - update GitHub secrets,

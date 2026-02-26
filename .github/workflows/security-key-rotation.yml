@@ -1,0 +1,164 @@
+name: Security Key Rotation
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Incident reason or ticket reference.
+        required: true
+        default: manual-rotation
+      alert_number:
+        description: Optional GitHub secret-scanning alert number to resolve after rotation.
+        required: false
+        default: ""
+      dry_run:
+        description: Run without creating/disabling keys or updating secrets.
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      disable_previous:
+        description: Disable previous key resource after new key is persisted.
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      resolve_alert:
+        description: Resolve provided alert_number as revoked.
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+  secret_scanning_alert:
+    types:
+      - created
+      - reopened
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-key-rotation
+  cancel-in-progress: false
+
+jobs:
+  rotate-firebase-web-key:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      EVENT_NAME: ${{ github.event_name }}
+      EVENT_ACTION: ${{ github.event.action || '' }}
+      EVENT_SECRET_TYPE: ${{ github.event.secret_scanning_alert.secret_type || '' }}
+      EVENT_ALERT_NUMBER: ${{ github.event.secret_scanning_alert.number || '' }}
+      INPUT_REASON: ${{ github.event.inputs.reason || '' }}
+      INPUT_ALERT_NUMBER: ${{ github.event.inputs.alert_number || '' }}
+      INPUT_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+      INPUT_DISABLE_PREVIOUS: ${{ github.event.inputs.disable_previous || 'true' }}
+      INPUT_RESOLVE_ALERT: ${{ github.event.inputs.resolve_alert || 'false' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derive rotation plan from trigger
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rotate="false"
+          reason=""
+          alert_number=""
+          dry_run="false"
+          disable_previous="true"
+          resolve_alert="false"
+
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            rotate="true"
+            reason="${INPUT_REASON:-manual-rotation}"
+            alert_number="${INPUT_ALERT_NUMBER}"
+            dry_run="${INPUT_DRY_RUN}"
+            disable_previous="${INPUT_DISABLE_PREVIOUS}"
+            resolve_alert="${INPUT_RESOLVE_ALERT}"
+          elif [[ "${EVENT_NAME}" == "secret_scanning_alert" ]]; then
+            if [[ "${EVENT_SECRET_TYPE}" == "google_api_key" ]]; then
+              rotate="true"
+              reason="secret_scanning_alert:${EVENT_ACTION}"
+              alert_number="${EVENT_ALERT_NUMBER}"
+              dry_run="false"
+              disable_previous="true"
+              resolve_alert="true"
+            else
+              rotate="false"
+              reason="secret_scanning_alert:${EVENT_ACTION}:ignored-secret-type-${EVENT_SECRET_TYPE}"
+            fi
+          else
+            rotate="false"
+            reason="unsupported-trigger-${EVENT_NAME}"
+          fi
+
+          echo "rotate=${rotate}" >> "$GITHUB_OUTPUT"
+          echo "reason=${reason}" >> "$GITHUB_OUTPUT"
+          echo "alert_number=${alert_number}" >> "$GITHUB_OUTPUT"
+          echo "dry_run=${dry_run}" >> "$GITHUB_OUTPUT"
+          echo "disable_previous=${disable_previous}" >> "$GITHUB_OUTPUT"
+          echo "resolve_alert=${resolve_alert}" >> "$GITHUB_OUTPUT"
+
+      - name: Rotation skipped
+        if: ${{ steps.gate.outputs.rotate != 'true' }}
+        run: echo "No key rotation required for this event. Reason: ${{ steps.gate.outputs.reason }}"
+
+      - name: Validate required automation secrets
+        if: ${{ steps.gate.outputs.rotate == 'true' && steps.gate.outputs.dry_run != 'true' }}
+        env:
+          SECURITY_AUTOMATION_GH_TOKEN: ${{ secrets.SECURITY_AUTOMATION_GH_TOKEN }}
+          FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${SECURITY_AUTOMATION_GH_TOKEN}" ]] || { echo "Missing SECURITY_AUTOMATION_GH_TOKEN"; exit 1; }
+          [[ -n "${FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL}" ]] || { echo "Missing FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL"; exit 1; }
+
+      - name: Authenticate to Google Cloud
+        if: ${{ steps.gate.outputs.rotate == 'true' && steps.gate.outputs.dry_run != 'true' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
+
+      - name: Setup gcloud
+        if: ${{ steps.gate.outputs.rotate == 'true' && steps.gate.outputs.dry_run != 'true' }}
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: monsoonfire-portal
+
+      - name: Rotate Firebase Web API key
+        if: ${{ steps.gate.outputs.rotate == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.SECURITY_AUTOMATION_GH_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GCP_PROJECT_ID: monsoonfire-portal
+          ROTATION_REASON: ${{ steps.gate.outputs.reason }}
+          ALERT_NUMBER: ${{ steps.gate.outputs.alert_number }}
+          RESOLVE_ALERT: ${{ steps.gate.outputs.resolve_alert }}
+          DRY_RUN: ${{ steps.gate.outputs.dry_run }}
+          ROTATE_DISABLE_PREVIOUS: ${{ steps.gate.outputs.disable_previous }}
+          PREVIOUS_KEY_RESOURCE: ${{ secrets.FIREBASE_WEB_API_KEY_RESOURCE }}
+          WEB_KEY_ALLOWED_REFERRERS: ${{ vars.WEB_KEY_ALLOWED_REFERRERS }}
+          WEB_KEY_API_TARGETS: ${{ vars.WEB_KEY_API_TARGETS }}
+          WEB_KEY_SECRET_NAME: FIREBASE_WEB_API_KEY
+          WEB_KEY_RESOURCE_SECRET_NAME: FIREBASE_WEB_API_KEY_RESOURCE
+        run: node ./scripts/rotate-firebase-web-api-key.mjs
+
+      - name: Upload key rotation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-key-rotation
+          path: output/security/key-rotation-*.json
+          if-no-files-found: ignore
+          retention-days: 30

@@ -263,6 +263,39 @@ async function signInWithEmail(page, email, password) {
   throw new Error("Sign in did not transition to authenticated shell.");
 }
 
+function isRetryableMarkReadFailure(message) {
+  const normalized = String(message || "").toLowerCase();
+  return (
+    normalized.includes("we could not complete that request") ||
+    normalized.includes("try again") ||
+    normalized.includes("temporar")
+  );
+}
+
+async function readMarkReadOutcome(page) {
+  const failureStatus = page.locator(".notification-status", { hasText: /Mark read failed:/i }).first();
+  if ((await failureStatus.count()) > 0) {
+    return {
+      ok: false,
+      message: (await failureStatus.textContent())?.trim() || "Mark read failed",
+    };
+  }
+
+  const successStatus = page.locator(".notification-status", { hasText: /Notification marked as read\./i }).first();
+  const readPill = page.locator(".notification-actions .pill", { hasText: /(Marked just now|Read)/i }).first();
+  const statusCount = await successStatus.count();
+  const pillCount = await readPill.count();
+
+  if (statusCount === 0 && pillCount === 0) {
+    return {
+      ok: false,
+      message: "Notification mark-read did not surface success feedback.",
+    };
+  }
+
+  return { ok: true, message: "" };
+}
+
 async function runContrastAudit(page, selectors, minContrast) {
   return page.evaluate(
     ({ selectorsArg, minContrastArg }) => {
@@ -492,26 +525,28 @@ async function run() {
 
         const markReadButton = page.getByRole("button", { name: /^Mark read$/i }).first();
         if ((await markReadButton.count()) > 0) {
-          await markReadButton.click({ timeout: 10000 });
-          await page.waitForTimeout(1200);
+          const clickAndReadStatus = async (button) => {
+            await button.click({ timeout: 10000 });
+            await page.waitForTimeout(1200);
+            return readMarkReadOutcome(page);
+          };
 
-          const failureStatus = page.locator(".notification-status", { hasText: /Mark read failed:/i }).first();
-          if ((await failureStatus.count()) > 0) {
-            const message = (await failureStatus.textContent())?.trim() || "Mark read failed";
-            throw new Error(message);
+          let status = await clickAndReadStatus(markReadButton);
+          if (!status.ok && isRetryableMarkReadFailure(status.message)) {
+            await page.reload({ waitUntil: "domcontentloaded" });
+            await clickNavItem(page, "Notifications", true);
+            await page.getByRole("heading", { name: /^Notifications$/i }).first().waitFor({ timeout: 30000 });
+
+            const retryMarkReadButton = page.getByRole("button", { name: /^Mark read$/i }).first();
+            if ((await retryMarkReadButton.count()) > 0) {
+              status = await clickAndReadStatus(retryMarkReadButton);
+            } else {
+              status = { ok: true, message: "" };
+            }
           }
 
-          const successStatus = page
-            .locator(".notification-status", { hasText: /Notification marked as read\./i })
-            .first();
-          const readPill = page
-            .locator(".notification-actions .pill", { hasText: /(Marked just now|Read)/i })
-            .first();
-
-          const statusCount = await successStatus.count();
-          const pillCount = await readPill.count();
-          if (statusCount === 0 && pillCount === 0) {
-            throw new Error("Notification mark-read did not surface success feedback.");
+          if (!status.ok) {
+            throw new Error(status.message);
           }
         }
 

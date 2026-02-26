@@ -18,7 +18,6 @@ jobs:
         env:
           FIREBASE_WEB_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
           PORTAL_FIREBASE_API_KEY: ${{ secrets.PORTAL_FIREBASE_API_KEY }}
-          FALLBACK_FIREBASE_API_KEY: "AIzaSyC7ynej0nGJas9me9M5oW6jHfLsWe5gHbU"
         run: |
           set -euo pipefail
 
@@ -51,7 +50,7 @@ jobs:
           }
 
           SELECTED_FIREBASE_API_KEY=""
-          for candidate in "$FIREBASE_WEB_API_KEY" "$PORTAL_FIREBASE_API_KEY" "$FALLBACK_FIREBASE_API_KEY"; do
+          for candidate in "$PORTAL_FIREBASE_API_KEY" "$FIREBASE_WEB_API_KEY"; do
             if validate_api_key "$candidate"; then
               SELECTED_FIREBASE_API_KEY="$candidate"
               break

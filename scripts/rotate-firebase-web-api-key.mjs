@@ -54,7 +54,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function resolveCreateResult(createOutput, projectId) {
+async function resolveCreateResult(createOutput, projectId, displayName) {
   const created = JSON.parse(createOutput);
   const operationName = String(created?.name || "");
   if (!operationName) {
@@ -66,35 +66,33 @@ async function resolveCreateResult(createOutput, projectId) {
   }
 
   for (let attempt = 0; attempt < 120; attempt += 1) {
-    const opOutput = run("gcloud", [
+    const listOutput = run("gcloud", [
       "services",
-      "operations",
-      "describe",
-      operationName,
+      "api-keys",
+      "list",
       `--project=${projectId}`,
       "--format=json",
+      `--filter=displayName=${displayName}`,
     ]);
-    const operation = JSON.parse(opOutput);
+    const keys = JSON.parse(listOutput);
 
-    if (operation?.done === true) {
-      if (operation?.error) {
-        throw new Error(
-          `API key create operation failed: ${JSON.stringify(operation.error)}`
-        );
-      }
-
-      const response = operation?.response || {};
-      if (!response?.name) {
-        throw new Error("API key create operation completed without key resource name.");
-      }
-
-      return response;
+    if (Array.isArray(keys) && keys.length > 0) {
+      const latest = [...keys]
+        .filter((key) => key?.name)
+        .sort((a, b) => {
+          const ad = new Date(a.createTime || 0).getTime();
+          const bd = new Date(b.createTime || 0).getTime();
+          return bd - ad;
+        })[0];
+      if (latest?.name) return latest;
     }
 
     await sleep(5000);
   }
 
-  throw new Error(`Timed out waiting for API key create operation ${operationName} to complete.`);
+  throw new Error(
+    `Timed out waiting for key resource to appear for operation ${operationName} (displayName=${displayName}).`
+  );
 }
 
 async function main() {
@@ -152,7 +150,7 @@ async function main() {
     for (const service of apiTargets) createArgs.push(`--api-target=service=${service}`);
 
     const createOutput = run("gcloud", createArgs);
-    const created = await resolveCreateResult(createOutput, projectId);
+    const created = await resolveCreateResult(createOutput, projectId, displayName);
     if (!created?.name) {
       throw new Error("gcloud did not return key resource name while creating API key.");
     }

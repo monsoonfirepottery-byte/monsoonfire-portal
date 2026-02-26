@@ -17,6 +17,8 @@ jobs:
   secrets-and-alerts:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      SECRET_SCANNING_READ_TOKEN: ${{ secrets.SECRET_SCANNING_READ_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,13 +47,13 @@ jobs:
           sarif_file: output/security/gitleaks.sarif
 
       - name: Secret-scanning baseline token check
-        if: ${{ secrets.SECRET_SCANNING_READ_TOKEN == '' }}
+        if: ${{ env.SECRET_SCANNING_READ_TOKEN == '' }}
         run: echo '::warning::Skipping secret-scanning baseline enforcement. Add SECRET_SCANNING_READ_TOKEN with read access to secret scanning alerts to enable this gate.'
 
       - name: Enforce secret-scanning baseline
-        if: ${{ secrets.SECRET_SCANNING_READ_TOKEN != '' }}
+        if: ${{ env.SECRET_SCANNING_READ_TOKEN != '' }}
         env:
-          GITHUB_TOKEN: ${{ secrets.SECRET_SCANNING_READ_TOKEN }}
+          GITHUB_TOKEN: ${{ env.SECRET_SCANNING_READ_TOKEN }}
         run: node ./scripts/check-secret-scanning-baseline.mjs
 
       - name: Upload secret scan artifacts

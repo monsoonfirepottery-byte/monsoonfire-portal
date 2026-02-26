@@ -87,6 +87,7 @@ jobs:
           fi
 
           echo "Using Firebase API key source: $SELECTED_SOURCE"
+          echo "VITE_FIREBASE_API_KEY=$SELECTED_FIREBASE_API_KEY" >> "$GITHUB_ENV"
           export VITE_FIREBASE_API_KEY="$SELECTED_FIREBASE_API_KEY"
           npm --prefix web ci
           npm --prefix web run build

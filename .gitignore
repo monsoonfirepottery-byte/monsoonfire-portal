@@ -23,13 +23,13 @@ functions/lib/
 
 # Local automation artifacts
 output/
+output/real-estate/public-data/
 
 # Local temp
 tmp-firebase.json
 memory/
 exports/
 *.jsonl
-/.studiobrain-host-state.json
 *openai*export*
 
 # Env / secrets
@@ -43,9 +43,3 @@ secrets/
 # OS
 .DS_Store
 Thumbs.db
-
-# Telemetry artifacts (track only stable lightweight summaries)
-artifacts/telemetry/**
-!artifacts/telemetry/
-!artifacts/telemetry/latest-telemetry-results.md
-!artifacts/telemetry/latest-telemetry-results.json

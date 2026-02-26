@@ -14,6 +14,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: npm --prefix web ci && npm --prefix web run build
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
       - uses: FirebaseExtended/action-hosting-deploy@092436dca3ec6dacb231d965ae56f7ff6c09f258
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}

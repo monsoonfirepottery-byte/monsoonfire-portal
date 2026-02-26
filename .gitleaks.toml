@@ -1,0 +1,10 @@
+title = "Monsoon Fire gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known public Firebase client API key."
+regexes = [
+  '''AIzaSyC7ynej0nGJas9me9M5oW6jHfLsWe5gHbU'''
+]

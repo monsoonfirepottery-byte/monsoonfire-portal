@@ -6,7 +6,7 @@ on:
       base_url:
         description: "Portal base URL"
         required: false
-        default: "https://portal.monsoonfire.com"
+        default: "https://monsoonfire-portal.web.app"
   schedule:
     # Every 30 minutes for early regression detection.
     - cron: "*/30 * * * *"
@@ -47,7 +47,7 @@ jobs:
           if [ -n "${{ github.event.inputs.base_url }}" ]; then
             echo "value=${{ github.event.inputs.base_url }}" >> "$GITHUB_OUTPUT"
           else
-            echo "value=https://portal.monsoonfire.com" >> "$GITHUB_OUTPUT"
+            echo "value=https://monsoonfire-portal.web.app" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run authenticated canary (functional + theme)

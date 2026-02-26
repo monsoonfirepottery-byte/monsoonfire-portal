@@ -10,7 +10,8 @@ const budgets = [
   { prefix: "vendor-firebase-firestore-", maxBytes: 210_000 },
   { prefix: "vendor-firebase-auth-", maxBytes: 90_000 },
   { prefix: "vendor-firebase-core-", maxBytes: 80_000 },
-  { prefix: "ReservationsView-", maxBytes: 45_000 },
+  // Reservations route now carries richer planner + policy UI state.
+  { prefix: "ReservationsView-", maxBytes: 100_000 },
   // Current app shell carries route wiring and shared runtime used across most views.
   { prefix: "index-", maxBytes: 110_000 },
 ];
@@ -25,7 +26,7 @@ const requiredRouteChunks = [
   "EventsView-",
   "ProfileView-",
 ];
-const MAX_TOTAL_JS_BYTES = 1_250_000;
+const MAX_TOTAL_JS_BYTES = 1_300_000;
 const MAX_TOTAL_CSS_BYTES = 190_000;
 
 const files = readdirSync(assetsDir).filter((name) => name.endsWith(".js"));

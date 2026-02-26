@@ -2,43 +2,85 @@
 
 /* eslint-disable no-console */
 
-import { spawnSync } from "node:child_process";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
 const __filename = fileURLToPath(import.meta.url);
-const repoRoot = resolve(__filename, "..", "..");
+const repoRoot = resolve(dirname(__filename), "..");
 
-function runRg(pattern, targets) {
-  const result = spawnSync(
-    "rg",
-    ["-n", pattern, ...targets, "--glob", "!**/node_modules/**"],
-    {
-      cwd: repoRoot,
-      encoding: "utf8",
+function compilePattern(pattern) {
+  return new RegExp(pattern, "i");
+}
+
+function readTarget(relativePath) {
+  const absolutePath = resolve(repoRoot, relativePath);
+  try {
+    return readFileSync(absolutePath, "utf8");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not read ${relativePath}: ${message}`);
+  }
+}
+
+function listTargetFiles(relativePath) {
+  const absolutePath = resolve(repoRoot, relativePath);
+  let stats;
+  try {
+    stats = statSync(absolutePath);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not stat ${relativePath}: ${message}`);
+  }
+  if (stats.isFile()) {
+    return [relativePath];
+  }
+  if (!stats.isDirectory()) {
+    return [];
+  }
+
+  const entries = readdirSync(absolutePath, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    if (entry.name === "node_modules") continue;
+    const childPath = `${relativePath}/${entry.name}`;
+    if (entry.isDirectory()) {
+      files.push(...listTargetFiles(childPath));
+      continue;
     }
-  );
-  return {
-    code: result.status ?? 1,
-    stdout: String(result.stdout || "").trim(),
-    stderr: String(result.stderr || "").trim(),
-  };
+    if (entry.isFile()) {
+      files.push(childPath);
+    }
+  }
+  return files;
+}
+
+function findMatches(pattern, targets) {
+  const matcher = compilePattern(pattern);
+  const matches = [];
+  for (const target of targets) {
+    const files = listTargetFiles(target);
+    for (const file of files) {
+      if (matcher.test(readTarget(file))) {
+        matches.push(file);
+      }
+    }
+  }
+  return matches;
 }
 
 function assertNoMatches(label, pattern, targets) {
-  const result = runRg(pattern, targets);
-  if (result.code === 1) return;
-  if (result.code !== 0) {
-    throw new Error(`${label}: rg failed (${result.stderr || "unknown error"})`);
+  const matches = findMatches(pattern, targets);
+  if (matches.length === 0) {
+    return;
   }
-  throw new Error(`${label}: found disallowed matches\n${result.stdout}`);
+  throw new Error(`${label}: found disallowed matches in ${matches.join(", ")}`);
 }
 
 function assertHasMatches(label, pattern, targets) {
-  const result = runRg(pattern, targets);
-  if (result.code === 0 && result.stdout.length > 0) return;
-  if (result.code !== 0 && result.code !== 1) {
-    throw new Error(`${label}: rg failed (${result.stderr || "unknown error"})`);
+  const matches = findMatches(pattern, targets);
+  if (matches.length > 0) {
+    return;
   }
   throw new Error(`${label}: expected at least one match for pattern ${pattern}`);
 }

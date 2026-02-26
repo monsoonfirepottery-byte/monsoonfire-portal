@@ -23,6 +23,7 @@ REMOTE_PATH="$DEFAULT_REMOTE_PATH"
 PORTAL_URL="$DEFAULT_PORTAL_URL"
 NO_BUILD="false"
 VERIFY="true"
+PROMOTION_GATE="true"
 
 EXTRA_ARGS=()
 
@@ -65,6 +66,14 @@ while [[ $# -gt 0 ]]; do
       VERIFY="true"
       shift
       ;;
+    --promotion-gate)
+      PROMOTION_GATE="true"
+      shift
+      ;;
+    --skip-promotion-gate)
+      PROMOTION_GATE="false"
+      shift
+      ;;
     -h|--help)
       cat <<'EOF'
 Usage:
@@ -79,6 +88,8 @@ Options:
   --no-build                 skip web build (assumes web/dist already exists)
   --skip-verify              run deploy without running verifier
   --verify                   force verifier (default)
+  --skip-promotion-gate      skip automated post-deploy promotion gate
+  --promotion-gate           force automated post-deploy promotion gate (default)
   --help                     show this help
 
 Pass-through args:
@@ -106,6 +117,12 @@ fi
 
 if [[ "$VERIFY" == "true" ]]; then
   COMMAND+=(--verify)
+fi
+
+if [[ "$PROMOTION_GATE" == "false" ]]; then
+  COMMAND+=(--skip-promotion-gate)
+else
+  COMMAND+=(--promotion-gate)
 fi
 
 if [[ ${#EXTRA_ARGS[@]} -gt 0 ]]; then

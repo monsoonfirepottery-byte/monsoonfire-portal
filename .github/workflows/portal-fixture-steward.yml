@@ -1,0 +1,73 @@
+name: Portal Fixture Steward
+
+on:
+  workflow_dispatch:
+    inputs:
+      ttl_days:
+        description: "Fixture TTL days"
+        required: false
+        default: "21"
+  schedule:
+    # 06:55 America/Phoenix (MST year-round) = 13:55 UTC
+    - cron: "55 13 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portal-fixture-steward
+  cancel-in-progress: false
+
+jobs:
+  fixture-steward:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Resolve TTL
+        id: ttl
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.ttl_days }}" ]; then
+            echo "value=${{ github.event.inputs.ttl_days }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=21" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Seed + validate + cleanup QA fixtures
+        env:
+          PORTAL_AGENT_STAFF_CREDENTIALS_JSON: ${{ secrets.PORTAL_AGENT_STAFF_CREDENTIALS_JSON }}
+          FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
+        run: |
+          if [ -z "$PORTAL_AGENT_STAFF_CREDENTIALS_JSON" ]; then
+            echo "Missing required secret PORTAL_AGENT_STAFF_CREDENTIALS_JSON" >&2
+            exit 1
+          fi
+          node ./scripts/portal-fixture-steward.mjs \
+            --ttl-days "${{ steps.ttl.outputs.value }}" \
+            --report output/qa/portal-fixture-steward.json \
+            --state .codex/fixture-steward-state.json \
+            --json
+
+      - name: Upload fixture steward artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-fixture-steward-${{ github.run_id }}
+          path: |
+            output/qa/portal-fixture-steward.json
+            .codex/fixture-steward-state.json
+          if-no-files-found: ignore
+          retention-days: 14

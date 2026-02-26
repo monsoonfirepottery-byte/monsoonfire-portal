@@ -1,0 +1,76 @@
+name: Portal Daily Authenticated Canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Portal base URL"
+        required: false
+        default: "https://portal.monsoonfire.com"
+  schedule:
+    # 06:40 America/Phoenix (MST year-round) = 13:40 UTC
+    - cron: "40 13 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portal-daily-authenticated-canary
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Resolve base URL
+        id: base_url
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.base_url }}" ]; then
+            echo "value=${{ github.event.inputs.base_url }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=https://portal.monsoonfire.com" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run authenticated canary (functional + theme)
+        env:
+          PORTAL_STAFF_EMAIL: ${{ secrets.PORTAL_STAFF_EMAIL }}
+          PORTAL_STAFF_PASSWORD: ${{ secrets.PORTAL_STAFF_PASSWORD }}
+        run: |
+          if [ -z "$PORTAL_STAFF_EMAIL" ] || [ -z "$PORTAL_STAFF_PASSWORD" ]; then
+            echo "Missing required secrets PORTAL_STAFF_EMAIL / PORTAL_STAFF_PASSWORD" >&2
+            exit 1
+          fi
+          node ./scripts/portal-authenticated-canary.mjs \
+            --base-url "${{ steps.base_url.outputs.value }}" \
+            --output-dir output/qa/portal-authenticated-canary \
+            --report output/qa/portal-authenticated-canary.json \
+            --json
+
+      - name: Upload canary artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-authenticated-canary-${{ github.run_id }}
+          path: |
+            output/qa/portal-authenticated-canary.json
+            output/qa/portal-authenticated-canary
+          if-no-files-found: ignore
+          retention-days: 14

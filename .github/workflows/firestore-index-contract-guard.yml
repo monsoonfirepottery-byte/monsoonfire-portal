@@ -1,0 +1,67 @@
+name: Firestore Index Contract Guard
+
+on:
+  workflow_dispatch:
+    inputs:
+      strict:
+        description: "Fail run when required indexes are missing"
+        required: false
+        default: true
+        type: boolean
+  schedule:
+    # 06:20 and 15:20 America/Phoenix (MST year-round) = 13:20 and 22:20 UTC
+    - cron: "20 13 * * *"
+    - cron: "20 22 * * *"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: firestore-index-contract-guard
+  cancel-in-progress: false
+
+jobs:
+  index-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Run Firestore index guard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          STRICT="--strict"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.strict }}" != "true" ]; then
+            STRICT="--no-strict"
+          fi
+
+          node ./scripts/firestore-index-contract-guard.mjs \
+            --apply \
+            ${STRICT} \
+            --json \
+            --report output/qa/firestore-index-contract-guard.json
+
+      - name: Upload index guard artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firestore-index-contract-guard-${{ github.run_id }}
+          path: |
+            output/qa/firestore-index-contract-guard.json
+            .codex/index-guard-log.md
+          if-no-files-found: ignore
+          retention-days: 14

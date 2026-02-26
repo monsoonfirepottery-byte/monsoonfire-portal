@@ -1,0 +1,92 @@
+name: Portal Theme Contrast Regression
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Portal base URL"
+        required: false
+        default: "https://portal.monsoonfire.com"
+      min_contrast:
+        description: "Minimum contrast ratio threshold"
+        required: false
+        default: "4.2"
+  schedule:
+    # 15:40 America/Phoenix (MST year-round) = 22:40 UTC
+    - cron: "40 22 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portal-theme-contrast-regression
+  cancel-in-progress: false
+
+jobs:
+  theme-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Resolve base URL
+        id: base_url
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.base_url }}" ]; then
+            echo "value=${{ github.event.inputs.base_url }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=https://portal.monsoonfire.com" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve min contrast
+        id: min_contrast
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.min_contrast }}" ]; then
+            echo "value=${{ github.event.inputs.min_contrast }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=4.2" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run theme-only contrast sweep
+        env:
+          PORTAL_STAFF_EMAIL: ${{ secrets.PORTAL_STAFF_EMAIL }}
+          PORTAL_STAFF_PASSWORD: ${{ secrets.PORTAL_STAFF_PASSWORD }}
+        run: |
+          if [ -z "$PORTAL_STAFF_EMAIL" ] || [ -z "$PORTAL_STAFF_PASSWORD" ]; then
+            echo "Missing required secrets PORTAL_STAFF_EMAIL / PORTAL_STAFF_PASSWORD" >&2
+            exit 1
+          fi
+          node ./scripts/portal-authenticated-canary.mjs \
+            --theme-only \
+            --base-url "${{ steps.base_url.outputs.value }}" \
+            --min-contrast "${{ steps.min_contrast.outputs.value }}" \
+            --output-dir output/qa/portal-theme-contrast \
+            --report output/qa/portal-theme-contrast.json \
+            --json
+
+      - name: Upload theme artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-theme-contrast-${{ github.run_id }}
+          path: |
+            output/qa/portal-theme-contrast.json
+            output/qa/portal-theme-contrast
+          if-no-files-found: ignore
+          retention-days: 14

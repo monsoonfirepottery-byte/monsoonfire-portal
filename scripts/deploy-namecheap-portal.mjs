@@ -10,13 +10,14 @@ const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, "..");
 
 const defaults = {
-  server: process.env.WEBSITE_DEPLOY_SERVER || "",
+  server: process.env.WEBSITE_DEPLOY_SERVER || "monsggbd@66.29.137.142",
   port: Number.parseInt(process.env.WEBSITE_DEPLOY_PORT || "", 10) || 21098,
   key: process.env.WEBSITE_DEPLOY_KEY || "~/.ssh/namecheap-portal",
   remotePath: process.env.WEBSITE_DEPLOY_REMOTE_PATH || "portal/",
   portalUrl: process.env.PORTAL_DEPLOY_URL || "https://portal.monsoonfire.com",
   noBuild: false,
   verify: false,
+  promotionGate: true,
   verifyArgs: [],
 };
 
@@ -90,6 +91,23 @@ try {
       label: "Running cutover verification",
     });
   }
+
+  if (options.promotionGate) {
+    run(
+      "node",
+      [
+        resolve(repoRoot, "scripts", "post-deploy-promotion-gate.mjs"),
+        "--base-url",
+        options.portalUrl,
+        "--report",
+        resolve(repoRoot, "output", "qa", "namecheap-post-deploy-promotion-gate.json"),
+        "--json",
+      ],
+      {
+        label: "Running post-deploy promotion gate",
+      }
+    );
+  }
 } finally {
   rmSync(stageRoot, { recursive: true, force: true });
 }
@@ -141,6 +159,14 @@ function parseArgs(argv) {
       parsed.verify = false;
       continue;
     }
+    if (arg === "--promotion-gate") {
+      parsed.promotionGate = true;
+      continue;
+    }
+    if (arg === "--skip-promotion-gate") {
+      parsed.promotionGate = false;
+      continue;
+    }
     parsed.verifyArgs.push(arg);
   }
   return parsed;
@@ -180,7 +206,7 @@ function printHelp() {
     "Usage: node ./scripts/deploy-namecheap-portal.mjs [options]\n" +
       "\n" +
       "Options:\n" +
-      "  --server <user@host>       required (or WEBSITE_DEPLOY_SERVER)\n" +
+      "  --server <user@host>       default: monsggbd@66.29.137.142\n" +
       "  --port <ssh-port>          default: 21098\n" +
       "  --key <private-key-path>   default: ~/.ssh/namecheap-portal\n" +
       "  --remote-path <path>       default: portal/\n" +
@@ -188,6 +214,8 @@ function printHelp() {
       "  --no-build                 skip web build\n" +
       "  --verify                   run cutover verifier after sync\n" +
       "  --skip-verify              skip verifier (default unless --verify passed)\n" +
+      "  --promotion-gate           run automated promotion gate after deploy (default)\n" +
+      "  --skip-promotion-gate      skip promotion gate automation\n" +
       "  --help                     show this help\n" +
       "\n" +
       "Any unknown args are forwarded to verify-cutover when --verify is enabled.\n"

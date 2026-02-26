@@ -15,6 +15,7 @@ import {
   normalizeStationId,
   getStationCapacity,
 } from "./reservationStationConfig";
+import { isCommunityShelfIntakeMode } from "./intakeMode";
 
 const REGION = "us-central1";
 
@@ -26,6 +27,7 @@ const MAX_ACTIVE_RESERVATIONS_FOR_BOARD = 500;
 type BoardReservationRow = {
   status: string;
   loadStatus: string | null;
+  intakeMode: string | null;
   assignedStationId: string | null;
   kilnId: string | null;
   shelfEquivalent: number | null;
@@ -237,6 +239,7 @@ export const websiteKilnBoard = onRequest({ region: REGION, cors: true }, async 
       const row: BoardReservationRow = {
         status,
         loadStatus: normalizeLoadStatus(raw.loadStatus),
+        intakeMode: typeof raw.intakeMode === "string" ? raw.intakeMode : null,
         assignedStationId: stationId,
         kilnId: normalizeStation(raw.kilnId),
         shelfEquivalent: asNumber(raw.shelfEquivalent),
@@ -244,6 +247,7 @@ export const websiteKilnBoard = onRequest({ region: REGION, cors: true }, async 
         estimatedHalfShelves: asNumber(raw.estimatedHalfShelves),
         tiers: asNumber(raw.tiers),
       };
+      if (isCommunityShelfIntakeMode(row.intakeMode)) return;
 
       const entry =
         stationMap.get(stationId) ??

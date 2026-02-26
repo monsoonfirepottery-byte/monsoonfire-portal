@@ -1,4 +1,5 @@
 import { asInt, safeString, Timestamp } from "./shared";
+import { normalizeIntakeMode } from "./intakeMode";
 
 function asRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -173,7 +174,7 @@ export function parseBatchDoc(value: unknown): ParsedBatchDoc {
     ownerUid: asStringOrFallback(row.ownerUid, ""),
     ownerDisplayName: asStringOrNull(row.ownerDisplayName),
     title: asStringOrFallback(row.title, "Untitled batch"),
-    intakeMode: asStringOrFallback(row.intakeMode, "SELF_SERVICE"),
+    intakeMode: normalizeIntakeMode(row.intakeMode),
     journeyRootBatchId: asStringOrNull(row.journeyRootBatchId),
     isClosed: asBoolean(row.isClosed),
   };

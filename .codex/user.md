@@ -1,0 +1,35 @@
+# Codex User Interaction Contract
+
+## Prompt Shape (Required)
+
+- Include `Objective` in one sentence.
+- Include explicit `Constraints` (security, branch policy, environment limits).
+- Include `Non-goals` to prevent scope creep.
+- Include `Definition of Done` with observable checks.
+
+## Scope Boundary Rules
+
+- Prefer targeted requests over broad rewrites.
+- Explicitly list pages/services in scope.
+- Call out excluded files or systems when needed.
+
+## Non-Negotiables
+
+- No direct push to `main`.
+- No secrets in prompts, logs, or payload examples.
+- Production safety takes priority over speed when risk is unclear.
+- Guardrails and contracts outrank stylistic preferences.
+
+## Preferred Output Contract
+
+- Short status of what changed.
+- Files touched.
+- Behavior impact and risk callout.
+- Copyable QA checklist when behavior changed.
+
+<!-- codex-interaction:auto:start -->
+### Automated Structural Addenda
+
+- Last structural update: n/a
+- No active automated addenda.
+<!-- codex-interaction:auto:end -->

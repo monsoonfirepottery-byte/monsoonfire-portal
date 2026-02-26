@@ -17,6 +17,12 @@ Status: Active
   - Ticket: `tickets/P3-website-support-faq-progressive-disclosure.md`
 
 ## Next up
+- [ ] Pair on check-in form UX + feature pass with staff feedback.
+  - Scope: walk through current check-in form together, capture feedback, and convert requested behavior/feature changes into implementable tickets with acceptance criteria.
+  - Include: shorter default flow, clearer field intent, and any new submission-time safeguards requested during review.
+- [ ] Define and publish Community Shelf retention + eligibility policy.
+  - Policy draft should define default retention in months (with storage-pressure override), target turnaround measured in weeks, and explicit size cap (not eligible when a piece exceeds half of a half shelf).
+  - Decision needed: add an optional low-probability overflow lane (working name: "pray for a miracle") or keep hard ineligibility for oversize pieces.
 - [x] Deploy website changes to production and clear strict prod smoke parity.
   - Ticket: `tickets/P2-website-prod-smoke-parity-deploy.md`
 - [x] Investigate and remediate `npm audit` high severity vulnerability in `web/` dependencies.

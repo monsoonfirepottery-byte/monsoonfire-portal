@@ -1,7 +1,6 @@
 export const HALF_SHELF_BISQUE_PRICE = 15;
 export const HALF_SHELF_GLAZE_PRICE = 25;
 export const FULL_KILN_CUSTOM_PRICE = 85;
-export const VOLUME_PRICE_PER_IN3 = 0.03;
 export const DELIVERY_PRICE_PER_TRIP = 25;
 export const RUSH_REQUEST_PRICE = 20;
 export const WAX_RESIST_ASSIST_PRICE = 10;
@@ -56,16 +55,8 @@ export function computeEstimatedCost(input: {
   kilnType: string | null | undefined;
   firingType: FiringType;
   estimatedHalfShelves: number | null | undefined;
-  useVolumePricing: boolean;
-  volumeIn3: number | null | undefined;
 }): number | null {
   if (input.firingType === "other") return null;
-
-  if (input.useVolumePricing) {
-    const volume = Number(input.volumeIn3);
-    if (!Number.isFinite(volume) || volume <= 0) return null;
-    return volume * VOLUME_PRICE_PER_IN3;
-  }
 
   const shelves = Number(input.estimatedHalfShelves);
   if (!Number.isFinite(shelves) || shelves <= 0) return null;

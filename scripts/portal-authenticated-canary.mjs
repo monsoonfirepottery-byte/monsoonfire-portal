@@ -146,7 +146,7 @@ async function takeScreenshot(page, outputDir, fileName, summary, label) {
 }
 
 async function clickNavItem(page, label, required = true) {
-  const button = page.getByRole("button", { name: new RegExp(`^${regexSafe(label)}$`, "i") }).first();
+  const button = page.getByRole("button", { name: new RegExp(regexSafe(label), "i") }).first();
   if ((await button.count()) === 0) {
     if (required) throw new Error(`Nav button not found: ${label}`);
     return false;
@@ -158,7 +158,7 @@ async function clickNavItem(page, label, required = true) {
 
 async function clickNavSubItem(page, sectionLabel, itemLabel, required = true) {
   const sectionButton = page
-    .getByRole("button", { name: new RegExp(`^${regexSafe(sectionLabel)}$`, "i") })
+    .getByRole("button", { name: new RegExp(regexSafe(sectionLabel), "i") })
     .first();
 
   if ((await sectionButton.count()) === 0) {
@@ -173,9 +173,7 @@ async function clickNavSubItem(page, sectionLabel, itemLabel, required = true) {
   }
 
   const itemButton = page
-    .locator(".nav-subitem", {
-      has: page.locator(".nav-subtext", { hasText: new RegExp(`^${regexSafe(itemLabel)}$`, "i") }),
-    })
+    .locator(".nav-subitem", { hasText: new RegExp(regexSafe(itemLabel), "i") })
     .first();
 
   if ((await itemButton.count()) === 0) {
@@ -449,6 +447,10 @@ async function run() {
     if (!options.themeOnly) {
       await check(summary, "dashboard piece click-through opens my pieces detail", async () => {
         await clickNavItem(page, "Dashboard", true);
+        await page
+          .getByRole("heading", { name: /(Your studio dashboard|Dashboard)/i })
+          .first()
+          .waitFor({ timeout: 30000 });
         const firstPieceThumb = page.locator(".piece-thumb").first();
         if ((await firstPieceThumb.count()) === 0) {
           throw new Error("Dashboard has no piece thumb in 'Your pieces'; fixture seeding may be missing.");
@@ -470,9 +472,14 @@ async function run() {
 
         const detailTitle = page.locator(".detail-title").first();
         if ((await detailTitle.count()) === 0) {
-          const firstRow = page.locator(".list-row").first();
-          if ((await firstRow.count()) > 0) {
-            await firstRow.click({ timeout: 10000 });
+          const viewDetailsButton = page.getByRole("button", { name: /^View details$/i }).first();
+          if ((await viewDetailsButton.count()) > 0) {
+            await viewDetailsButton.click({ timeout: 10000 });
+          } else {
+            const firstRow = page.locator(".piece-row").first();
+            if ((await firstRow.count()) > 0) {
+              await firstRow.click({ timeout: 10000 });
+            }
           }
         }
         await page.locator(".detail-title").first().waitFor({ timeout: 10000 });
@@ -564,7 +571,10 @@ async function run() {
           label: "Dashboard",
           navigate: async () => {
             await clickNavItem(page, "Dashboard", true);
-            await page.getByRole("heading", { name: /^Dashboard$/i }).first().waitFor({ timeout: 30000 });
+            await page
+              .getByRole("heading", { name: /(Your studio dashboard|Dashboard)/i })
+              .first()
+              .waitFor({ timeout: 30000 });
           },
         },
         {
@@ -592,6 +602,8 @@ async function run() {
 
       for (const theme of ["light", "dark"]) {
         await check(summary, `theme contrast sweep (${theme})`, async () => {
+          // Theme switch control lives on Dashboard; always normalize there first.
+          await pages[0].navigate();
           await ensureTheme(page, theme);
 
           for (const pageConfig of pages) {

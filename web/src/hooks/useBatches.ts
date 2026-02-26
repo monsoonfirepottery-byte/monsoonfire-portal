@@ -34,9 +34,18 @@ export function useBatches(user: User | null): Result {
   useEffect(() => {
     let cancelled = false;
 
-    if (!user) return;
+    if (!user) {
+      setActive([]);
+      setHistory([]);
+      setError("");
+      return;
+    }
 
     const uid = user.uid;
+
+    setActive([]);
+    setHistory([]);
+    setError("");
 
     const load = async () => {
       try {
@@ -54,23 +63,52 @@ export function useBatches(user: User | null): Result {
           orderBy("closedAt", "desc")
         );
 
-        const [snapActive, snapHistory] = await Promise.all([getDocs(qActive), getDocs(qHistory)]);
+        const [activeResult, historyResult] = await Promise.allSettled([getDocs(qActive), getDocs(qHistory)]);
 
         if (cancelled) return;
-        setError("");
-        setActive(
-          snapActive.docs.map((d) => ({
-            id: d.id,
-            ...(d.data() as Partial<Batch>),
-          }))
-        );
+        const activeRows =
+          activeResult.status === "fulfilled"
+            ? activeResult.value.docs.map((d) => ({
+                id: d.id,
+                ...(d.data() as Partial<Batch>),
+              }))
+            : [];
+        const historyRows =
+          historyResult.status === "fulfilled"
+            ? historyResult.value.docs.map((d) => ({
+                id: d.id,
+                ...(d.data() as Partial<Batch>),
+              }))
+            : [];
 
-        setHistory(
-          snapHistory.docs.map((d) => ({
-            id: d.id,
-            ...(d.data() as Partial<Batch>),
-          }))
+        setActive(activeRows);
+        setHistory(historyRows);
+
+        const failures = [activeResult, historyResult].filter(
+          (result): result is PromiseRejectedResult => result.status === "rejected"
         );
+        if (failures.length === 0) {
+          setError("");
+          return;
+        }
+
+        const firstError = failures[0]?.reason;
+        const appError = toAppError(firstError, { kind: "firestore" });
+        if (isMissingFirestoreIndexError(firstError)) {
+          setError(
+            `${appError.userMessage} See docs/runbooks/FIRESTORE_INDEX_TROUBLESHOOTING.md (support code: ${appError.correlationId}).`
+          );
+          return;
+        }
+
+        if (activeRows.length > 0 || historyRows.length > 0) {
+          setError(
+            `Some check-ins could not be loaded. ${appError.userMessage} (support code: ${appError.correlationId})`
+          );
+          return;
+        }
+
+        setError(`${appError.userMessage} (support code: ${appError.correlationId})`);
       } catch (err: unknown) {
         if (cancelled) return;
         const appError = toAppError(err, { kind: "firestore" });
@@ -80,6 +118,8 @@ export function useBatches(user: User | null): Result {
           );
           return;
         }
+        setActive([]);
+        setHistory([]);
         setError(`${appError.userMessage} (support code: ${appError.correlationId})`);
       }
     };

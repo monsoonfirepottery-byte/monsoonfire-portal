@@ -1,0 +1,81 @@
+name: Codex PR Green Daily
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Apply mode (reruns + rolling issue updates)
+        required: false
+        default: false
+        type: boolean
+      force:
+        description: Force run even when runId already processed
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    # 07:10 America/Phoenix (MST year-round) = 14:10 UTC
+    - cron: "10 14 * * *"
+
+permissions:
+  contents: write
+  actions: write
+  pull-requests: read
+  issues: write
+
+concurrency:
+  group: codex-automation-global
+  cancel-in-progress: false
+
+jobs:
+  codex-pr-green:
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Configure bot git identity
+        run: |
+          git config user.name "codex-automation[bot]"
+          git config user.email "codex-automation[bot]@users.noreply.github.com"
+
+      - name: Run PR Green automation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          MODE="--apply"
+          FORCE=""
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.apply }}" != "true" ]; then
+            MODE="--dry-run"
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
+            FORCE="--force"
+          fi
+
+          node ./scripts/codex/daily-pr-green.mjs ${MODE} --json ${FORCE}
+
+      - name: Upload PR Green artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-pr-green-${{ github.run_id }}
+          path: |
+            .codex/pr-green-log.md
+            .codex/improvement-state.json
+            .codex/toolcalls.ndjson
+          if-no-files-found: ignore
+          retention-days: 7

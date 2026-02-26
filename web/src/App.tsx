@@ -549,8 +549,8 @@ function useLiveUsers(user: User | null, canLoad: boolean) {
         const snap = await trackedGetDocs("messages:liveUsers", usersQuery);
         if (canceled) return;
         const rows: LiveUser[] = snap.docs.map((docSnap) => ({
-          id: docSnap.id,
           ...(docSnap.data() as Partial<LiveUser>),
+          id: docSnap.id,
         }));
         setUsers(rows.filter((liveUser) => liveUser.id !== user.uid && liveUser.isActive !== false));
       } catch (error: unknown) {
@@ -613,8 +613,8 @@ function useDirectMessages(user: User | null, canLoad: boolean) {
         }
         if (canceled) return;
         const rows = snap.docs.map((docSnap) => ({
-          id: docSnap.id,
           ...(docSnap.data() as Partial<DirectMessageThread>),
+          id: docSnap.id,
         })) as DirectMessageThread[];
 
         if (usedNoIndexFallback) {
@@ -672,8 +672,8 @@ function useAnnouncements(user: User | null, canLoad: boolean) {
         const snap = await trackedGetDocs("messages:announcements", announcementsQuery);
         if (canceled) return;
         const rows: Announcement[] = snap.docs.map((docSnap) => ({
-          id: docSnap.id,
           ...(docSnap.data() as Partial<Announcement>),
+          id: docSnap.id,
         }));
         setAnnouncements(rows);
       } catch (error: unknown) {
@@ -719,8 +719,8 @@ function useNotifications(user: User | null, canLoad: boolean) {
         const snap = await trackedGetDocs("notifications:list", notificationsQuery);
         if (canceled) return;
         const rows = snap.docs.map((docSnap) => ({
-          id: docSnap.id,
           ...(docSnap.data() as Record<string, unknown>),
+          id: docSnap.id,
         }));
         setNotifications(rows as NotificationItem[]);
       } catch (error: unknown) {

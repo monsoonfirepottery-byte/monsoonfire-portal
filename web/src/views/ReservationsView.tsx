@@ -9,17 +9,15 @@ import { parseStaffRoleFromClaims } from "../auth/staffRole";
 import { db } from "../firebase";
 import {
   FULL_KILN_CUSTOM_PRICE,
-  HALF_SHELF_BISQUE_PRICE,
-  HALF_SHELF_GLAZE_PRICE,
   DELIVERY_PRICE_PER_TRIP,
   RUSH_REQUEST_PRICE,
   WAX_RESIST_ASSIST_PRICE,
   GLAZE_SANITY_CHECK_PRICE,
-  VOLUME_PRICE_PER_IN3,
   applyHalfKilnPriceBreak,
   computeDeliveryCost,
   computeEstimatedCost,
 } from "../lib/pricing";
+import { normalizeIntakeMode, type IntakeMode } from "../lib/intakeMode";
 import {
   normalizeReservationRecord,
   type ReservationRecord,
@@ -48,6 +46,28 @@ const FIRING_OPTIONS = [
   { id: "glaze", label: "Glaze fire" },
   { id: "other", label: "Other / ask us" },
 ] as const;
+
+const INTAKE_MODE_OPTIONS: Array<{
+  id: IntakeMode;
+  label: string;
+  detail: string;
+}> = [
+  {
+    id: "SHELF_PURCHASE",
+    label: "Per-shelf purchase",
+    detail: "Pay for the half-shelves your work uses.",
+  },
+  {
+    id: "WHOLE_KILN",
+    label: "Whole kiln",
+    detail: "Dedicated kiln load and queue priority.",
+  },
+  {
+    id: "COMMUNITY_SHELF",
+    label: "Community shelf",
+    detail: "Free placement when space remains and permission is granted.",
+  },
+];
 
 const WARE_TYPES = [
   { id: "stoneware", label: "Stoneware" },
@@ -150,6 +170,17 @@ function getErrorCode(error: unknown): string | undefined {
   if (typeof value.code === "string") return value.code;
   if (typeof value.name === "string") return value.name;
   return undefined;
+}
+
+function isMissingIndexError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const value = error as { code?: unknown; message?: unknown };
+  const code = typeof value.code === "string" ? value.code.toLowerCase() : "";
+  const message = typeof value.message === "string" ? value.message.toLowerCase() : "";
+  return (
+    code.includes("failed-precondition") &&
+    (message.includes("requires an index") || message.includes("missing firestore composite index"))
+  );
 }
 
 function asTrimmedString(value: unknown): string {
@@ -755,17 +786,16 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
   const [wareType, setWareType] = useState("stoneware");
   const [kilnId, setKilnId] = useState("studio-electric");
   const [firingType, setFiringType] = useState<(typeof FIRING_OPTIONS)[number]["id"]>("bisque");
+  const [intakeMode, setIntakeMode] = useState<IntakeMode>("SHELF_PURCHASE");
+  const [communityShelfInfoOpen, setCommunityShelfInfoOpen] = useState(false);
+  const [communityShelfConfirmOpen, setCommunityShelfConfirmOpen] = useState(false);
+  const [communityShelfPreviousMode, setCommunityShelfPreviousMode] =
+    useState<IntakeMode>("SHELF_PURCHASE");
   const [footprintHalfShelves, setFootprintHalfShelves] = useState(1);
   const [showMoreFootprints, setShowMoreFootprints] = useState(false);
   const [hasTallPieces, setHasTallPieces] = useState(false);
   const [tiers, setTiers] = useState<number | null>(1);
   const [estimatedHalfShelves, setEstimatedHalfShelves] = useState<number | null>(1);
-  const [useVolumePricing, setUseVolumePricing] = useState(false);
-  const [volumeMode, setVolumeMode] = useState<"total" | "dimensions">("total");
-  const [volumeIn3, setVolumeIn3] = useState<number | null>(null);
-  const [volumeLengthIn, setVolumeLengthIn] = useState<number | null>(null);
-  const [volumeWidthIn, setVolumeWidthIn] = useState<number | null>(null);
-  const [volumeHeightIn, setVolumeHeightIn] = useState<number | null>(null);
   const [fitsOnOneLayer, setFitsOnOneLayer] = useState<"yes" | "no" | null>(null);
 
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -782,7 +812,6 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
   const [rushRequested, setRushRequested] = useState(false);
   const [waxResistAssistRequested, setWaxResistAssistRequested] = useState(false);
   const [glazeSanityCheckRequested, setGlazeSanityCheckRequested] = useState(false);
-  const [wholeKilnRequested, setWholeKilnRequested] = useState(false);
   const [pickupDeliveryRequested, setPickupDeliveryRequested] = useState(false);
   const [returnDeliveryRequested, setReturnDeliveryRequested] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState("");
@@ -905,19 +934,18 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     return safeFootprint + (hasTallPieces ? 1 : 0);
   }, [footprintHalfShelves, hasTallPieces]);
   const computedCost = useMemo(() => {
+    if (intakeMode === "COMMUNITY_SHELF") return 0;
+    if (intakeMode === "WHOLE_KILN") return FULL_KILN_CUSTOM_PRICE;
     const base = computeEstimatedCost({
       kilnType: selectedKiln?.id ?? null,
       firingType,
       estimatedHalfShelves: computedHalfShelves,
-      useVolumePricing,
-      volumeIn3,
     });
-    if (useVolumePricing) return base;
     return applyHalfKilnPriceBreak({
       estimatedHalfShelves: computedHalfShelves,
       estimatedCost: base,
     }).estimatedCost;
-  }, [selectedKiln?.id, firingType, computedHalfShelves, useVolumePricing, volumeIn3]);
+  }, [selectedKiln?.id, firingType, computedHalfShelves, intakeMode]);
   const shelfEquivalent = useMemo(() => {
     if (!Number.isFinite(estimatedHalfShelves)) return 1;
     return Math.max(0.25, (estimatedHalfShelves ?? 1) / 2);
@@ -931,26 +959,12 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
   const firingLabel =
     firingType === "bisque" ? "Bisque" : firingType === "glaze" ? "Glaze" : "Other";
   const kilnLabel = selectedKiln?.label ?? "Select kiln";
-  const comparisonLabel = `${formatUsd(HALF_SHELF_BISQUE_PRICE)} bisque / ${formatUsd(
-    HALF_SHELF_GLAZE_PRICE
-  )} glaze`;
-  const volumeCost = useMemo(() => {
-    if (!useVolumePricing || !Number.isFinite(volumeIn3)) return null;
-    return (volumeIn3 as number) * VOLUME_PRICE_PER_IN3;
-  }, [useVolumePricing, volumeIn3]);
-  const volumeNudgeThreshold =
-    selectedKiln?.id === "reduction-raku"
-      ? HALF_SHELF_GLAZE_PRICE
-      : firingType === "bisque"
-      ? HALF_SHELF_BISQUE_PRICE
-      : HALF_SHELF_GLAZE_PRICE;
-  const showVolumeNudge = volumeCost != null && volumeCost >= volumeNudgeThreshold;
-  const baseHalfShelfPrice =
-    selectedKiln?.id === "reduction-raku" || firingType === "glaze"
-      ? HALF_SHELF_GLAZE_PRICE
-      : HALF_SHELF_BISQUE_PRICE;
-  const showVolumeToggle =
-    computedCost != null && computedCost < baseHalfShelfPrice && !useVolumePricing;
+  const intakeModeLabel =
+    intakeMode === "COMMUNITY_SHELF"
+      ? "Community shelf"
+      : intakeMode === "WHOLE_KILN"
+        ? "Whole kiln"
+        : "Per-shelf purchase";
   const deliveryTrips = (pickupDeliveryRequested ? 1 : 0) + (returnDeliveryRequested ? 1 : 0);
   const deliveryCost = computeDeliveryCost(deliveryTrips);
   const estimatedCostWithDelivery =
@@ -963,19 +977,17 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
       ? estimatedCostWithDelivery + (glazeAccessCost ?? 0) + rushCost + waxResistCost + glazeSanityCost
       : estimatedCostWithDelivery;
   const priceBreakApplied = useMemo(() => {
-    if (useVolumePricing) return false;
+    if (intakeMode !== "SHELF_PURCHASE") return false;
     const base = computeEstimatedCost({
       kilnType: selectedKiln?.id ?? null,
       firingType,
       estimatedHalfShelves: computedHalfShelves,
-      useVolumePricing,
-      volumeIn3,
     });
     return applyHalfKilnPriceBreak({
       estimatedHalfShelves: computedHalfShelves,
       estimatedCost: base,
     }).priceBreakApplied;
-  }, [selectedKiln?.id, firingType, computedHalfShelves, useVolumePricing, volumeIn3]);
+  }, [selectedKiln?.id, firingType, computedHalfShelves, intakeMode]);
 
   const client = useMemo(
     () =>
@@ -1303,14 +1315,17 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
   }, [computedHalfShelves]);
 
   useEffect(() => {
-    if (!useVolumePricing) {
-      setVolumeMode("total");
-      setVolumeIn3(null);
-      setVolumeLengthIn(null);
-      setVolumeWidthIn(null);
-      setVolumeHeightIn(null);
-    }
-  }, [useVolumePricing]);
+    if (intakeMode !== "COMMUNITY_SHELF") return;
+    setRushRequested(false);
+    setWaxResistAssistRequested(false);
+    setGlazeSanityCheckRequested(false);
+    setPickupDeliveryRequested(false);
+    setReturnDeliveryRequested(false);
+    setDeliveryAddress("");
+    setDeliveryInstructions("");
+    setUseStudioGlazes(false);
+    setGlazeAccessCost(null);
+  }, [intakeMode]);
 
   useEffect(() => {
     if (!useStudioGlazes) {
@@ -1323,25 +1338,6 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     }
     setGlazeAccessCost(estimatedHalfShelvesRounded * 3);
   }, [useStudioGlazes, estimatedHalfShelvesRounded]);
-
-  useEffect(() => {
-    if (!useVolumePricing || volumeMode !== "dimensions") return;
-    const length = Number(volumeLengthIn);
-    const width = Number(volumeWidthIn);
-    const height = Number(volumeHeightIn);
-    if (!Number.isFinite(length) || !Number.isFinite(width) || !Number.isFinite(height)) {
-      setVolumeIn3(null);
-      return;
-    }
-    if (length <= 0 || width <= 0 || height <= 0) {
-      setVolumeIn3(null);
-      return;
-    }
-    const nextVolume = length * width * height;
-    if (nextVolume !== volumeIn3) {
-      setVolumeIn3(nextVolume);
-    }
-  }, [useVolumePricing, volumeMode, volumeLengthIn, volumeWidthIn, volumeHeightIn, volumeIn3]);
 
   useEffect(() => {
     if (totalEstimate == null) return;
@@ -1381,16 +1377,6 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     }
     safeStorageRemoveItem("sessionStorage", CHECKIN_PREFILL_KEY);
   }, []);
-
-  useEffect(() => {
-    if (footprintHalfShelves > 4 && !wholeKilnRequested) {
-      setWholeKilnRequested(true);
-      return;
-    }
-    if (footprintHalfShelves <= 4 && wholeKilnRequested) {
-      setWholeKilnRequested(false);
-    }
-  }, [footprintHalfShelves, wholeKilnRequested]);
 
   useEffect(() => {
     if (footprintHalfShelves > 3) {
@@ -1463,15 +1449,30 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     setStaffToolsUnavailable("");
 
     try {
-      const reservationsQuery = query(
-        collection(db, "reservations"),
-        where("ownerUid", "==", ownerUid),
-        orderBy("createdAt", "desc")
-      );
-      const snap = await getDocs(reservationsQuery);
+      let snap;
+      try {
+        const reservationsQuery = query(
+          collection(db, "reservations"),
+          where("ownerUid", "==", ownerUid),
+          orderBy("createdAt", "desc")
+        );
+        snap = await getDocs(reservationsQuery);
+      } catch (error: unknown) {
+        if (!isMissingIndexError(error)) {
+          throw error;
+        }
+        const fallbackQuery = query(collection(db, "reservations"), where("ownerUid", "==", ownerUid), limit(500));
+        snap = await getDocs(fallbackQuery);
+      }
       const rows: ReservationRecord[] = snap.docs.map((docSnap) =>
         normalizeReservationRecord(docSnap.id, docSnap.data() as Partial<ReservationRecord>)
       );
+      rows.sort((left, right) => {
+        const leftMs = getTimestampMs(left.createdAt ?? left.updatedAt);
+        const rightMs = getTimestampMs(right.createdAt ?? right.updatedAt);
+        if (leftMs !== rightMs) return rightMs - leftMs;
+        return right.id.localeCompare(left.id);
+      });
       setReservations(rows);
     } catch (err: unknown) {
       const errObj = err as { message?: unknown; code?: unknown } | null | undefined;
@@ -2644,7 +2645,6 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     rushRequested ||
     waxResistAssistRequested ||
     glazeSanityCheckRequested ||
-    wholeKilnRequested ||
     pickupDeliveryRequested ||
     returnDeliveryRequested;
 
@@ -2691,16 +2691,14 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     setWareType("stoneware");
     setKilnId("studio-electric");
     setFiringType("bisque");
+    setIntakeMode("SHELF_PURCHASE");
+    setCommunityShelfInfoOpen(false);
+    setCommunityShelfConfirmOpen(false);
+    setCommunityShelfPreviousMode("SHELF_PURCHASE");
     setFootprintHalfShelves(1);
     setHasTallPieces(false);
     setTiers(1);
     setEstimatedHalfShelves(1);
-    setUseVolumePricing(false);
-    setVolumeMode("total");
-    setVolumeIn3(null);
-    setVolumeLengthIn(null);
-    setVolumeWidthIn(null);
-    setVolumeHeightIn(null);
     setFitsOnOneLayer(null);
     setPhotoFile(null);
     setPhotoPreviewUrl(null);
@@ -2714,7 +2712,6 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     setRushRequested(false);
     setWaxResistAssistRequested(false);
     setGlazeSanityCheckRequested(false);
-    setWholeKilnRequested(false);
     setPickupDeliveryRequested(false);
     setReturnDeliveryRequested(false);
     setDeliveryAddress("");
@@ -2726,6 +2723,38 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     setDevError(null);
     setDevCopyStatus("");
   };
+
+  const beginCommunityShelfFlow = useCallback(() => {
+    setCommunityShelfPreviousMode(intakeMode);
+    setCommunityShelfInfoOpen(true);
+    setCommunityShelfConfirmOpen(false);
+  }, [intakeMode]);
+
+  const cancelCommunityShelfFlow = useCallback(() => {
+    setIntakeMode(communityShelfPreviousMode);
+    setCommunityShelfInfoOpen(false);
+    setCommunityShelfConfirmOpen(false);
+  }, [communityShelfPreviousMode]);
+
+  const confirmCommunityShelfFlow = useCallback(() => {
+    setIntakeMode("COMMUNITY_SHELF");
+    setCommunityShelfInfoOpen(false);
+    setCommunityShelfConfirmOpen(false);
+  }, []);
+
+  const chooseIntakeMode = useCallback(
+    (nextMode: IntakeMode) => {
+      if (nextMode === "COMMUNITY_SHELF") {
+        if (intakeMode === "COMMUNITY_SHELF") return;
+        beginCommunityShelfFlow();
+        return;
+      }
+      setCommunityShelfInfoOpen(false);
+      setCommunityShelfConfirmOpen(false);
+      setIntakeMode(nextMode);
+    },
+    [beginCommunityShelfFlow, intakeMode]
+  );
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2759,11 +2788,6 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
 
     if (!Number.isFinite(footprintHalfShelves) || footprintHalfShelves < 1) {
       setFormError("Tell us roughly how much table space you need.");
-      return;
-    }
-
-    if (useVolumePricing && (!volumeIn3 || volumeIn3 <= 0)) {
-      setFormError("Add a volume estimate so we can guide tiny-run pricing.");
       return;
     }
 
@@ -2832,18 +2856,17 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
       const safeEstimatedHalfShelves = Number.isFinite(estimatedHalfShelves)
         ? Math.round(estimatedHalfShelves as number)
         : null;
-      const safeEstimatedCost = Number.isFinite(totalEstimate)
-        ? (totalEstimate as number)
-        : null;
+      const safeEstimatedCost =
+        intakeMode === "COMMUNITY_SHELF" ? 0 : Number.isFinite(totalEstimate) ? (totalEstimate as number) : null;
+      const isCommunityShelf = intakeMode === "COMMUNITY_SHELF";
       const payload = {
+        intakeMode,
         firingType,
         shelfEquivalent,
         footprintHalfShelves: Number.isFinite(footprintHalfShelves) ? footprintHalfShelves : null,
         heightInches: hasTallPieces ? derivedHeightInches : null,
         tiers: Number.isFinite(tiers) ? tiers : null,
         estimatedHalfShelves: safeEstimatedHalfShelves,
-        useVolumePricing,
-        volumeIn3: Number.isFinite(volumeIn3) ? volumeIn3 : null,
         estimatedCost: safeEstimatedCost,
         preferredWindow: {
           latestDate: latestDate ? latestDate.toISOString() : null,
@@ -2863,14 +2886,14 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         },
         pieces: normalizedPieces.length ? normalizedPieces : null,
         addOns: {
-          rushRequested,
-          waxResistAssistRequested,
-          glazeSanityCheckRequested,
-          wholeKilnRequested,
-          pickupDeliveryRequested,
-          returnDeliveryRequested,
-          useStudioGlazes,
-          glazeAccessCost: useStudioGlazes ? glazeAccessCost : null,
+          rushRequested: !isCommunityShelf && rushRequested,
+          waxResistAssistRequested: !isCommunityShelf && waxResistAssistRequested,
+          glazeSanityCheckRequested: !isCommunityShelf && glazeSanityCheckRequested,
+          wholeKilnRequested: intakeMode === "WHOLE_KILN",
+          pickupDeliveryRequested: !isCommunityShelf && pickupDeliveryRequested,
+          returnDeliveryRequested: !isCommunityShelf && returnDeliveryRequested,
+          useStudioGlazes: !isCommunityShelf && useStudioGlazes,
+          glazeAccessCost: !isCommunityShelf && useStudioGlazes ? glazeAccessCost : null,
           deliveryAddress: deliveryAddress.trim() || null,
           deliveryInstructions: deliveryInstructions.trim() || null,
         },
@@ -3038,8 +3061,8 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
               </div>
             </div>
 
-            <div className="checkin-step">
-              <div className="checkin-step-title">2. Snap a photo of the work (optional)</div>
+            <details className="checkin-step checkin-optional-step">
+              <summary className="checkin-step-title">2. Snap a photo of the work (optional)</summary>
               <div className="photo-upload">
                 <label className="photo-frame">
                   <input
@@ -3059,7 +3082,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
                 </label>
                 {photoStatus ? <div className="photo-status">{photoStatus}</div> : null}
               </div>
-            </div>
+            </details>
 
             <div className="checkin-step">
               <div className="checkin-step-title">3. Pick the kiln + firing</div>
@@ -3109,8 +3132,34 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
               ) : null}
             </div>
 
+            <div className="checkin-step">
+              <div className="checkin-step-title">4. Choose your pricing path</div>
+              <div className="option-grid">
+                {INTAKE_MODE_OPTIONS.map((option) => (
+                  <button
+                    type="button"
+                    key={option.id}
+                    className={`option-card compact ${intakeMode === option.id ? "selected" : ""}`}
+                    onClick={() => chooseIntakeMode(option.id)}
+                    aria-pressed={intakeMode === option.id}
+                  >
+                    <span className="option-title">{option.label}</span>
+                    <span className="option-meta">{option.detail}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="form-helper">
+                We bill by shelf space or whole kiln only. We do not bill by kiln volume.
+              </p>
+              {intakeMode === "COMMUNITY_SHELF" ? (
+                <div className="notice inline-alert">
+                  Community shelf is free, lowest priority, and excluded from firing triggers.
+                </div>
+              ) : null}
+            </div>
+
             <div className="checkin-step estimator-step">
-              <div className="checkin-step-title">4. Space + cost estimate</div>
+              <div className="checkin-step-title">5. Space + cost estimate</div>
               <div className="estimator-grid">
                 <div className="estimator-controls">
                 <div className="estimator-block">
@@ -3200,114 +3249,6 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
                     </div>
                   ) : null}
 
-                  {showVolumeToggle || useVolumePricing ? (
-                    <div className="estimator-block">
-                      <button
-                        type="button"
-                        className={`tiny-toggle ${useVolumePricing ? "active" : ""}`}
-                        onClick={() => setUseVolumePricing((prev) => !prev)}
-                        aria-expanded={useVolumePricing}
-                        aria-pressed={useVolumePricing}
-                      >
-                        Tiny run? Price by volume instead
-                      </button>
-                      {useVolumePricing ? (
-                      <div className="tiny-run-panel">
-                        <div className="segmented volume-mode-toggle">
-                          <button
-                            type="button"
-                            className={volumeMode === "total" ? "active" : ""}
-                            onClick={() => setVolumeMode("total")}
-                          >
-                            Total volume
-                          </button>
-                          <button
-                            type="button"
-                            className={volumeMode === "dimensions" ? "active" : ""}
-                            onClick={() => setVolumeMode("dimensions")}
-                          >
-                            L × W × H
-                          </button>
-                        </div>
-                        {volumeMode === "total" ? (
-                          <label>
-                            Total volume (in^3)
-                            <input
-                              type="number"
-                              min="1"
-                              step="1"
-                              value={volumeIn3 ?? ""}
-                              onChange={(event) =>
-                                setVolumeIn3(event.target.value ? Number(event.target.value) : null)
-                              }
-                            />
-                          </label>
-                        ) : (
-                          <div className="volume-dimensions">
-                            <label>
-                              Length (in)
-                              <input
-                                type="number"
-                                min="1"
-                                step="0.5"
-                                value={volumeLengthIn ?? ""}
-                                onChange={(event) =>
-                                  setVolumeLengthIn(
-                                    event.target.value ? Number(event.target.value) : null
-                                  )
-                                }
-                              />
-                            </label>
-                            <label>
-                              Width (in)
-                              <input
-                                type="number"
-                                min="1"
-                                step="0.5"
-                                value={volumeWidthIn ?? ""}
-                                onChange={(event) =>
-                                  setVolumeWidthIn(
-                                    event.target.value ? Number(event.target.value) : null
-                                  )
-                                }
-                              />
-                            </label>
-                            <label>
-                              Height (in)
-                              <input
-                                type="number"
-                                min="1"
-                                step="0.5"
-                                value={volumeHeightIn ?? ""}
-                                onChange={(event) =>
-                                  setVolumeHeightIn(
-                                    event.target.value ? Number(event.target.value) : null
-                                  )
-                                }
-                              />
-                            </label>
-                          </div>
-                        )}
-                        <p className="form-helper">
-                          Best for 1–3 small pieces. We&apos;ll help you decide in person.
-                        </p>
-                        <div className="tiny-run-compare">
-                          Half-shelf would be {comparisonLabel}.
-                        </div>
-                        {volumeCost != null ? (
-                          <div className="tiny-run-cost">
-                            Volume estimate: {formatUsd(volumeCost)}
-                          </div>
-                        ) : null}
-                        {showVolumeNudge ? (
-                          <div className="notice inline-alert">
-                            At this size, a half-shelf is usually simpler.
-                          </div>
-                        ) : null}
-                      </div>
-                      ) : null}
-                    </div>
-                  ) : null}
                 </div>
 
                 <div className="estimator-side">
@@ -3361,12 +3302,15 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
                   <div className="estimate-summary-header">
                     <div className="estimate-label">Estimate summary</div>
                     <span className="estimate-chip soft">Reviewed with you in person</span>
-                    {wholeKilnRequested ? (
+                    {intakeMode === "WHOLE_KILN" ? (
                       <span className="estimate-chip">
                         Whole kiln: {formatUsd(FULL_KILN_CUSTOM_PRICE)}
                       </span>
                     ) : null}
-                    {priceBreakApplied ? (
+                    {intakeMode === "COMMUNITY_SHELF" ? (
+                      <span className="estimate-chip">Community shelf: {formatUsd(0)}</span>
+                    ) : null}
+                    {intakeMode === "SHELF_PURCHASE" && priceBreakApplied ? (
                       <span className="estimate-chip">Whole kiln option</span>
                     ) : null}
                     {selectedKiln?.id === "reduction-raku" ? (
@@ -3388,7 +3332,9 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
                     {animateEstimate ? <span className="estimate-updated">updated</span> : null}
                   </div>
                   <div className="estimate-reassure">
-                    You only pay for what survives the firing. We confirm everything in person. You won’t be overcharged.
+                    {intakeMode === "COMMUNITY_SHELF"
+                      ? "Community shelf pieces are free, lowest priority, and only placed with shelf-owner permission."
+                      : "You only pay for what survives the firing. We confirm everything in person. You won’t be overcharged."}
                   </div>
                   {estimatedCostWithDelivery != null &&
                   (useStudioGlazes ||
@@ -3431,7 +3377,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
                     </div>
                   ) : null}
                   <div className="estimate-meta">
-                    Based on: {kilnLabel} · {firingLabel} ·{" "}
+                    Based on: {kilnLabel} · {firingLabel} · {intakeModeLabel} ·{" "}
                     {formatHalfShelfCount(estimatedHalfShelvesRounded)}
                   </div>
                   <div className="estimate-hint">Most people start here.</div>
@@ -3461,15 +3407,21 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
                     <div className="estimate-note">Price break starts at 4 half shelves.</div>
                   ) : null}
                   <div className="estimate-disclaimer">
-                    Estimate only. Final charge after check-in review + measurement.
+                    Estimate only. Final charge after check-in review + shelf-space confirmation.
                   </div>
                   </aside>
                 </div>
               </div>
             </div>
 
-            <div className="checkin-step">
-              <div className="checkin-step-title">5. Helpful extras (optional)</div>
+            <details className="checkin-step checkin-optional-step">
+              <summary className="checkin-step-title">6. Helpful extras (optional)</summary>
+              {intakeMode === "COMMUNITY_SHELF" ? (
+                <div className="notice inline-alert">
+                  Community shelf stays free. Paid add-ons are unavailable for this intake mode.
+                </div>
+              ) : null}
+              <fieldset className="addon-fieldset" disabled={intakeMode === "COMMUNITY_SHELF"}>
               <div className="addon-section">
                 <div className="addon-subtitle">Studio glaze access</div>
                 <div className="addon-grid">
@@ -3535,19 +3487,6 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
                     </span>
                     <span className="addon-tag">{formatUsd(GLAZE_SANITY_CHECK_PRICE)}</span>
                   </label>
-                  {estimatedHalfShelvesRounded < 4 ? (
-                    <label className="addon-toggle">
-                      <input
-                        type="checkbox"
-                        checked={wholeKilnRequested}
-                        onChange={(event) => setWholeKilnRequested(event.target.checked)}
-                      />
-                      <span className="addon-text">
-                        <span className="addon-title">Whole kiln request</span>
-                      </span>
-                      <span className="addon-tag">{formatUsd(FULL_KILN_CUSTOM_PRICE)}</span>
-                    </label>
-                  ) : null}
                   <label className="addon-toggle">
                     <input
                       type="checkbox"
@@ -3595,7 +3534,6 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
                 {(rushRequested ||
                   waxResistAssistRequested ||
                   glazeSanityCheckRequested ||
-                  wholeKilnRequested ||
                   pickupDeliveryRequested ||
                   returnDeliveryRequested) &&
                 totalEstimate != null ? (
@@ -3606,10 +3544,11 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
               {anyAddOnsSelected && totalEstimate != null ? (
                 <div className="addon-total">New estimate: {formatUsd(totalEstimate)}</div>
               ) : null}
-            </div>
+              </fieldset>
+            </details>
 
-            <div className="checkin-step">
-              <div className="checkin-step-title">6. Piece details (optional)</div>
+            <details className="checkin-step checkin-optional-step">
+              <summary className="checkin-step-title">7. Piece details (optional)</summary>
               <p className="form-helper">
                 Add per-piece labels or codes so staff can quickly locate your work at pickup.
               </p>
@@ -3708,10 +3647,10 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
                   Leave code blank to auto-generate an `MF-RES-...` identifier server-side.
                 </span>
               </div>
-            </div>
+            </details>
 
-            <div className="checkin-step">
-              <div className="checkin-step-title">7. Notes (optional)</div>
+            <details className="checkin-step checkin-optional-step">
+              <summary className="checkin-step-title">8. Notes (optional)</summary>
               <div className="notes-grid">
                 <label>
                   General notes
@@ -3762,13 +3701,17 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
               <p className="form-helper">
                 Add anything that helps the studio load and fire safely.
               </p>
-            </div>
+            </details>
 
             {formError ? <div className="alert card card-3d form-error">{formError}</div> : null}
             {formStatus ? <div className="notice card card-3d form-status">{formStatus}</div> : null}
 
             <div className="submit-note">We&apos;ll confirm space + pricing together at drop-off.</div>
-            <button type="submit" className="btn btn-primary checkin-submit-btn" disabled={isSaving}>
+            <button
+              type="submit"
+              className="btn btn-primary checkin-submit-btn"
+              disabled={isSaving || communityShelfInfoOpen || communityShelfConfirmOpen}
+            >
               {isSaving ? (
                 "Submitting..."
               ) : (
@@ -3778,6 +3721,54 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
                 </>
               )}
             </button>
+            {communityShelfInfoOpen ? (
+              <div className="intake-modal-backdrop" role="presentation">
+                <div className="intake-modal" role="dialog" aria-modal="true" aria-label="Community shelf policy">
+                  <h3>Community shelf policy</h3>
+                  <p>
+                    Community shelf check-ins are free ({formatUsd(0)}), placed last, and only added
+                    when space remains on a purchased shelf with that owner&apos;s permission.
+                  </p>
+                  <p>
+                    Community shelf wares never trigger firing schedules and do not move a firing date
+                    sooner.
+                  </p>
+                  <div className="intake-modal-actions">
+                    <button type="button" className="btn btn-ghost" onClick={cancelCommunityShelfFlow}>
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => {
+                        setCommunityShelfInfoOpen(false);
+                        setCommunityShelfConfirmOpen(true);
+                      }}
+                    >
+                      Continue
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            {communityShelfConfirmOpen ? (
+              <div className="intake-modal-backdrop" role="presentation">
+                <div className="intake-modal" role="dialog" aria-modal="true" aria-label="Confirm community shelf">
+                  <h3>Proceed with Community Shelf?</h3>
+                  <p>
+                    This marks the check-in as free and lowest-priority placement.
+                  </p>
+                  <div className="intake-modal-actions">
+                    <button type="button" className="btn btn-ghost" onClick={cancelCommunityShelfFlow}>
+                      Cancel
+                    </button>
+                    <button type="button" className="btn btn-primary" onClick={confirmCommunityShelfFlow}>
+                      Proceed with Community Shelf
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </form>
         )}
       </RevealCard>
@@ -4161,6 +4152,16 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
                 queueFairnessOverrideUntilByReservationId[reservation.id] ??
                 toDateTimeInputValue(queueOverrideUntil);
               const queueFairnessBusy = queueFairnessBusyId === reservation.id;
+              const reservationIntakeMode = normalizeIntakeMode(
+                reservation.intakeMode,
+                reservation.addOns?.wholeKilnRequested ? "WHOLE_KILN" : "SHELF_PURCHASE"
+              );
+              const reservationIntakeLabel =
+                reservationIntakeMode === "COMMUNITY_SHELF"
+                  ? "Community shelf"
+                  : reservationIntakeMode === "WHOLE_KILN"
+                    ? "Whole kiln"
+                    : "Per-shelf purchase";
               return (
                 <article
                   id={`reservation-${reservation.id}`}
@@ -4193,13 +4194,11 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
                   </div>
                   <div className="reservation-row">
                     <span>
-                      {reservation.useVolumePricing && reservation.volumeIn3
-                        ? `Volume: ${reservation.volumeIn3} in^3`
-                        : `Footprint: ${reservation.footprintHalfShelves ?? "—"} half shelf`}
+                      {`Footprint: ${reservation.footprintHalfShelves ?? "—"} half shelf`}
                     </span>
-                    <span>
-                      {reservation.estimatedCost != null ? `Est. ${formatUsd(reservation.estimatedCost)}` : " "}
-                    </span>
+                    <span>{`Mode: ${reservationIntakeLabel}${
+                      reservation.estimatedCost != null ? ` · Est. ${formatUsd(reservation.estimatedCost)}` : ""
+                    }`}</span>
                   </div>
                   <div className="reservation-row">
                     <span>Queue position: {queuePosition ?? "—"}</span>

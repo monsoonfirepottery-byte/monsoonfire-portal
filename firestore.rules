@@ -70,19 +70,20 @@ service cloud.firestore {
     }
 
     function isBatchOwner(batchId) {
+      let batchDoc = get(/databases/$(database)/documents/batches/$(batchId));
       return isSignedIn()
-        && exists(/databases/$(database)/documents/batches/$(batchId))
+        && batchDoc != null
         && (
-          get(/databases/$(database)/documents/batches/$(batchId)).data.ownerUid == request.auth.uid
+          batchDoc.data.ownerUid == request.auth.uid
           || (
-            get(/databases/$(database)/documents/batches/$(batchId)).data.editors is list
-            && get(/databases/$(database)/documents/batches/$(batchId)).data.editors.hasAny([request.auth.uid])
+            batchDoc.data.editors is list
+            && batchDoc.data.editors.hasAny([request.auth.uid])
           )
         );
     }
 
     function canReadBatch(batchId) {
-      return isBatchOwner(batchId) || isStaff();
+      return isStaff() || isBatchOwner(batchId);
     }
 
     function isThreadParticipant(threadId) {
@@ -109,6 +110,16 @@ service cloud.firestore {
       match /timeline/{eventId} {
         allow read: if canReadBatch(batchId);
         allow write: if false;
+      }
+
+      // Keep nested piece subtree match explicit so read access is evaluated for
+      // both piece docs and their nested detail collections.
+      match /pieces/{pieceId} {
+        allow read: if canReadBatch(batchId);
+
+        match /{document=**} {
+          allow read: if canReadBatch(batchId);
+        }
       }
     }
 
@@ -522,8 +533,16 @@ service cloud.firestore {
     match /users/{userId}/notifications/{notificationId} {
       allow read: if isOwner(userId);
       allow update: if isOwner(userId)
-        && changedKeysOnly(["readAt"])
-        && request.resource.data.readAt is timestamp;
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["readAt", "updatedAt"])
+        && (
+          !request.resource.data.keys().hasAny(["readAt"])
+          || request.resource.data.readAt is timestamp
+          || request.resource.data.readAt == null
+        )
+        && (
+          !request.resource.data.keys().hasAny(["updatedAt"])
+          || request.resource.data.updatedAt is timestamp
+        );
       allow create, delete: if false;
     }
 

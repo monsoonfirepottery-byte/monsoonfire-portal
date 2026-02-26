@@ -1,0 +1,95 @@
+{
+  "ok": true,
+  "portalUrl": "https://portal.monsoonfire.com",
+  "checks": [
+    {
+      "path": "https://portal.monsoonfire.com",
+      "status": 200,
+      "ok": true,
+      "bodySnippet": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <link rel=\"icon\" type=\"image/png\" href=\"/pwa-192.png\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <link rel=\"dns-prefetch\" href=\"//firestore.googleapis.com\" />\n    <link rel=\"dns-prefetch\" href=\"//identity...",
+      "bodyLength": 4695,
+      "cacheControl": "no-cache",
+      "error": ""
+    },
+    {
+      "path": "https://portal.monsoonfire.com/reservations",
+      "status": 200,
+      "ok": true,
+      "bodySnippet": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <link rel=\"icon\" type=\"image/png\" href=\"/pwa-192.png\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <link rel=\"dns-prefetch\" href=\"//firestore.googleapis.com\" />\n    <link rel=\"dns-prefetch\" href=\"//identity...",
+      "bodyLength": 4695,
+      "cacheControl": "no-cache",
+      "error": ""
+    },
+    {
+      "path": "https://portal.monsoonfire.com/.well-known/apple-app-site-association",
+      "status": 200,
+      "ok": true,
+      "bodySnippet": "{\n  \"applinks\": {\n    \"apps\": [],\n    \"details\": [\n      {\n        \"appID\": \"TEAMID.com.monsoonfire.portal.reference\",\n        \"paths\": [\n          \"/materials*\",\n          \"/events*\",\n          \"/kiln*\",\n          \"/pieces*\",\n          \"/notifications*\"\n        ]\n      }\n    ]\n  }\n}\n",
+      "bodyLength": 285,
+      "cacheControl": "",
+      "error": ""
+    }
+  ],
+  "summary": {
+    "ok": true,
+    "passed": [
+      "rootRoute",
+      "deepRoute",
+      "wellKnownRoute",
+      "asset/assets/index-D2ivivKQ.js",
+      "asset/assets/vendor-DuPUYBON.js",
+      "asset/assets/vendor-react-DPkGgiPW.js",
+      "rootCache",
+      "deepCache"
+    ],
+    "warnings": [
+      "protected function check skipped (set --id-token <token> or PORTAL_CUTOVER_ID_TOKEN=<token> in env)"
+    ],
+    "failures": []
+  },
+  "deepPath": "/reservations",
+  "wellKnownPath": "/.well-known/apple-app-site-association",
+  "sampleAssets": [
+    "/assets/index-D2ivivKQ.js",
+    "/assets/vendor-DuPUYBON.js",
+    "/assets/vendor-react-DPkGgiPW.js"
+  ],
+  "assetChecks": [
+    {
+      "path": "/assets/index-D2ivivKQ.js",
+      "status": 200,
+      "cacheControl": "public, max-age=31536000, immutable",
+      "hasCacheHeader": true,
+      "ok": true
+    },
+    {
+      "path": "/assets/vendor-DuPUYBON.js",
+      "status": 200,
+      "cacheControl": "public, max-age=31536000, immutable",
+      "hasCacheHeader": true,
+      "ok": true
+    },
+    {
+      "path": "/assets/vendor-react-DPkGgiPW.js",
+      "status": 200,
+      "cacheControl": "public, max-age=31536000, immutable",
+      "hasCacheHeader": true,
+      "ok": true
+    }
+  ],
+  "protectedFunctionCheck": {
+    "required": false,
+    "attempted": false,
+    "endpoint": "https://us-central1-monsoonfire-portal.cloudfunctions.net/listMaterialsProducts",
+    "functionName": "listMaterialsProducts",
+    "requestBody": {
+      "includeInactive": false
+    },
+    "status": 0,
+    "ok": false,
+    "idTokenSource": "none",
+    "message": "",
+    "responseSnippet": ""
+  },
+  "reportPath": "artifacts/cutover-verify-latest.json"
+}

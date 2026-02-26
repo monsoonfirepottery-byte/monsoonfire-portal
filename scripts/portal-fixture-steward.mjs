@@ -376,7 +376,8 @@ async function main() {
 
   const firestoreToken = adminToken || idToken;
   const now = new Date();
-  const batchClientRequestId = `${options.prefix}-batch-${runDate.compact}`;
+  const runNonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const batchClientRequestId = `${options.prefix}-batch-${runDate.compact}-${runNonce}`;
 
   const createBatchResp = await requestJson(`${options.functionsBaseUrl}/createBatch`, {
     method: "POST",
@@ -406,11 +407,11 @@ async function main() {
     throw new Error("createBatch response did not include a batchId.");
   }
 
-  const pieceId = `${options.prefix}-piece-${runDate.compact}`;
-  const announcementId = `${options.prefix}-studio-update-${runDate.compact}`;
-  const notificationId = `${options.prefix}-notification-${runDate.compact}`;
-  const threadId = `${options.prefix}-thread-${runDate.compact}`;
-  const messageId = `${options.prefix}-message-${runDate.compact}`;
+  const pieceId = `${options.prefix}-piece-${runDate.compact}-${runNonce}`;
+  const announcementId = `${options.prefix}-studio-update-${runDate.compact}-${runNonce}`;
+  const notificationId = `${options.prefix}-notification-${runDate.compact}-${runNonce}`;
+  const threadId = `${options.prefix}-thread-${runDate.compact}-${runNonce}`;
+  const messageId = `${options.prefix}-message-${runDate.compact}-${runNonce}`;
 
   summary.seeded = {
     uid,

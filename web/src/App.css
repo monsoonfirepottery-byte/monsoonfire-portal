@@ -3653,6 +3653,12 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  min-width: 0;
+}
+
+.view-root {
+  width: 100%;
+  min-width: 0;
 }
 
 .nav-toggle-row {

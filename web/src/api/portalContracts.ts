@@ -9,6 +9,7 @@ export const V1_RESERVATION_QUEUE_FAIRNESS_FN = "apiV1/v1/reservations.queueFair
 export const V1_RESERVATION_EXPORT_CONTINUITY_FN = "apiV1/v1/reservations.exportContinuity";
 export const LEGACY_RESERVATION_COMPAT_REVIEW_DATE = "2026-05-15";
 export const LEGACY_RESERVATION_COMPAT_SUNSET_NOT_BEFORE = "2026-06-30";
+export type IntakeMode = "SHELF_PURCHASE" | "WHOLE_KILN" | "COMMUNITY_SHELF";
 
 export type PortalFnName =
   | "createBatch"
@@ -120,8 +121,7 @@ export type CreateBatchRequest = {
   // Important: Firestore rejects undefined; omit fields or use null if needed.
   kilnName?: string | null;
 
-  // "STAFF_HANDOFF" is the current web UI default; keep it stringly for forward compatibility.
-  intakeMode: string;
+  intakeMode: IntakeMode | (string & {});
 
   estimatedCostCents: number;
 
@@ -163,14 +163,13 @@ export type ReservationStationInput =
   | (string & {});
 
 export type CreateReservationRequest = {
+  intakeMode?: IntakeMode | (string & {});
   firingType: "bisque" | "glaze" | "other";
   shelfEquivalent: number;
   footprintHalfShelves?: number | null;
   heightInches?: number | null;
   tiers?: number | null;
   estimatedHalfShelves?: number | null;
-  useVolumePricing?: boolean;
-  volumeIn3?: number | null;
   estimatedCost?: number | null;
   preferredWindow?: ReservationPreferredWindow;
   linkedBatchId?: string | null;

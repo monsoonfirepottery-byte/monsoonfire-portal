@@ -85,6 +85,23 @@ jobs:
       - name: Source-of-truth deployment gate matrix
         run: node ./scripts/source-of-truth-deployment-gates.mjs --phase all --strict --json --artifact output/source-of-truth-deployment-gates/ci-smoke.json
 
+      - name: Virtual staff backend regression (non-PR)
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          FIREBASE_RULES_API_TOKEN: ${{ secrets.FIREBASE_RULES_API_TOKEN }}
+          PORTAL_AGENT_STAFF_CREDENTIALS_JSON: ${{ secrets.PORTAL_AGENT_STAFF_CREDENTIALS_JSON }}
+        run: |
+          if [ -z "$FIREBASE_RULES_API_TOKEN" ] || [ -z "$PORTAL_AGENT_STAFF_CREDENTIALS_JSON" ]; then
+            echo "Skipping virtual staff backend regression (missing FIREBASE_RULES_API_TOKEN or PORTAL_AGENT_STAFF_CREDENTIALS_JSON)."
+            exit 0
+          fi
+          npm run portal:regression:virtual-staff -- \
+            --project monsoonfire-portal \
+            --base-url https://portal.monsoonfire.com \
+            --skip-ui-smoke \
+            --report output/qa/portal-virtual-staff-regression-ci.json \
+            --json
+
       - name: Portal Playwright deep smoke (manual)
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_deep_playwright == 'true' || github.event_name == 'schedule' }}
         run: npm run functions:smoke:cors -- --base-url https://us-central1-monsoonfire-portal.cloudfunctions.net --origin https://monsoonfire-portal.web.app && npm run test:automation:ui:deep
@@ -115,6 +132,15 @@ jobs:
         with:
           name: portal-playwright-smoke-deep
           path: output/playwright/portal/deep
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload virtual staff backend regression artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-virtual-staff-regression-ci
+          path: output/qa/portal-virtual-staff-regression-ci.json
           if-no-files-found: ignore
           retention-days: 7
 

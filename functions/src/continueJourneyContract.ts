@@ -1,4 +1,5 @@
 import { safeString, type Timestamp } from "./shared";
+import { normalizeIntakeMode } from "./intakeMode";
 import { TimelineEventType } from "./timelineEventTypes";
 
 type ContinueJourneySourceBatch = {
@@ -49,7 +50,7 @@ export function buildContinueJourneyContract(
       ownerUid: safeString(input.uid),
       ownerDisplayName: input.sourceBatch.ownerDisplayName,
       title: nextTitle,
-      intakeMode: safeString(input.sourceBatch.intakeMode) || "SELF_SERVICE",
+      intakeMode: normalizeIntakeMode(input.sourceBatch.intakeMode),
       estimatedCostCents: 0,
       estimateNotes: null,
       state: "DRAFT",

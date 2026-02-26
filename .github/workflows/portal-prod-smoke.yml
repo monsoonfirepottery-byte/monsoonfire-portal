@@ -56,12 +56,48 @@ jobs:
             echo "value=https://monsoonfire-portal.web.app" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Virtual staff backend regression gate
+        env:
+          FIREBASE_RULES_API_TOKEN: ${{ secrets.FIREBASE_RULES_API_TOKEN }}
+          PORTAL_AGENT_STAFF_CREDENTIALS_JSON: ${{ secrets.PORTAL_AGENT_STAFF_CREDENTIALS_JSON }}
+        run: |
+          if [ -z "$FIREBASE_RULES_API_TOKEN" ]; then
+            echo "Missing required secret: FIREBASE_RULES_API_TOKEN" >&2
+            exit 1
+          fi
+          if [ -z "$PORTAL_AGENT_STAFF_CREDENTIALS_JSON" ]; then
+            echo "Missing required secret: PORTAL_AGENT_STAFF_CREDENTIALS_JSON" >&2
+            exit 1
+          fi
+          npm run portal:regression:virtual-staff -- \
+            --project monsoonfire-portal \
+            --base-url "${{ steps.base_url.outputs.value }}" \
+            --skip-ui-smoke \
+            --report output/qa/portal-virtual-staff-regression-prod.json \
+            --json
+
       - name: Run portal production smoke
-        run: node ./scripts/portal-playwright-smoke.mjs --base-url "${{ steps.base_url.outputs.value }}" --output-dir output/playwright/prod-ci
+        env:
+          PORTAL_STAFF_EMAIL: ${{ secrets.PORTAL_STAFF_EMAIL }}
+          PORTAL_STAFF_PASSWORD: ${{ secrets.PORTAL_STAFF_PASSWORD }}
+        run: |
+          ARGS=(--base-url "${{ steps.base_url.outputs.value }}" --output-dir output/playwright/prod-ci)
+          if [ -n "$PORTAL_STAFF_EMAIL" ] && [ -n "$PORTAL_STAFF_PASSWORD" ]; then
+            ARGS+=(--with-auth --staff-email "$PORTAL_STAFF_EMAIL" --staff-password "$PORTAL_STAFF_PASSWORD")
+          fi
+          node ./scripts/portal-playwright-smoke.mjs "${ARGS[@]}"
 
       - name: Run portal production deep smoke
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_deep_smoke == 'true' }}
-        run: node ./scripts/portal-playwright-smoke.mjs --base-url "${{ steps.base_url.outputs.value }}" --deep --output-dir output/playwright/prod-ci/deep
+        env:
+          PORTAL_STAFF_EMAIL: ${{ secrets.PORTAL_STAFF_EMAIL }}
+          PORTAL_STAFF_PASSWORD: ${{ secrets.PORTAL_STAFF_PASSWORD }}
+        run: |
+          ARGS=(--base-url "${{ steps.base_url.outputs.value }}" --deep --output-dir output/playwright/prod-ci/deep)
+          if [ -n "$PORTAL_STAFF_EMAIL" ] && [ -n "$PORTAL_STAFF_PASSWORD" ]; then
+            ARGS+=(--with-auth --staff-email "$PORTAL_STAFF_EMAIL" --staff-password "$PORTAL_STAFF_PASSWORD")
+          fi
+          node ./scripts/portal-playwright-smoke.mjs "${ARGS[@]}"
 
       - name: Upload production portal smoke artifacts
         if: always()
@@ -71,5 +107,14 @@ jobs:
           path: |
             output/playwright/prod-ci
             output/playwright/prod-ci/deep
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload virtual staff regression report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-virtual-staff-regression
+          path: output/qa/portal-virtual-staff-regression-prod.json
           if-no-files-found: ignore
           retention-days: 14

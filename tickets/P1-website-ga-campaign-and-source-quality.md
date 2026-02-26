@@ -1,6 +1,6 @@
 # Website GA campaign and acquisition quality
 
-Status: Planned
+Status: In Progress
 Priority: P1
 Severity: Sev2
 Component: website
@@ -39,3 +39,13 @@ Normalize acquisition metadata and prioritize high-intent traffic sources, while
 1. Open 3 marketing links from each major channel in incognito and verify tracked parameters in query string.
 1. Confirm GA source/medium captures appear correctly on next-session start.
 1. Verify conversion events are attributed to the expected campaign row.
+
+## Unblock update (2026-02-25)
+- Added UTM/source taxonomy foundation doc and runbook alignment:
+  - `docs/analytics/WEBSITE_GA_UTM_TAXONOMY.md`
+  - `docs/runbooks/WEBSITE_GA_SPRINT1_FOUNDATIONS.md`
+- Added deterministic foundations check command:
+  - `npm run website:ga:sprint1:check`
+  - artifact: `artifacts/website-ga-sprint1-foundations.json`
+- Remaining blocker:
+  - campaign attribution validation requires live GA acquisition data exports.

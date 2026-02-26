@@ -1,0 +1,65 @@
+{
+  "ok": true,
+  "strict": true,
+  "failed": 0,
+  "checks": [
+    {
+      "ok": true,
+      "key": "function_surface",
+      "message": "website kiln board function exposes public payload keys",
+      "details": {
+        "path": "functions/src/websiteKilnBoard.ts"
+      }
+    },
+    {
+      "ok": true,
+      "key": "loader:website/assets/js/kiln-status.js",
+      "message": "loader supports API + static fallback",
+      "details": {
+        "path": "website/assets/js/kiln-status.js"
+      }
+    },
+    {
+      "ok": true,
+      "key": "loader:website/ncsitebuilder/assets/js/kiln-status.js",
+      "message": "loader supports API + static fallback",
+      "details": {
+        "path": "website/ncsitebuilder/assets/js/kiln-status.js"
+      }
+    },
+    {
+      "ok": true,
+      "key": "json-top:website/data/kiln-status.json",
+      "message": "fallback json has lastUpdated + kiln rows",
+      "details": {
+        "path": "website/data/kiln-status.json"
+      }
+    },
+    {
+      "ok": true,
+      "key": "json-shape:website/data/kiln-status.json",
+      "message": "fallback json kiln rows include required fields",
+      "details": {
+        "path": "website/data/kiln-status.json",
+        "kilnCount": 1
+      }
+    },
+    {
+      "ok": true,
+      "key": "json-top:website/ncsitebuilder/data/kiln-status.json",
+      "message": "fallback json has lastUpdated + kiln rows",
+      "details": {
+        "path": "website/ncsitebuilder/data/kiln-status.json"
+      }
+    },
+    {
+      "ok": true,
+      "key": "json-shape:website/ncsitebuilder/data/kiln-status.json",
+      "message": "fallback json kiln rows include required fields",
+      "details": {
+        "path": "website/ncsitebuilder/data/kiln-status.json",
+        "kilnCount": 1
+      }
+    }
+  ]
+}

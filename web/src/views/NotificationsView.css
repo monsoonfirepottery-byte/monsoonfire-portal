@@ -13,6 +13,12 @@
   gap: 16px;
 }
 
+.notification-status {
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 13px;
+}
+
 .notification-card {
   display: flex;
   gap: 16px;
@@ -20,9 +26,18 @@
   justify-content: space-between;
 }
 
+.notification-card.read {
+  border-color: var(--border);
+}
+
 .notification-card.unread {
   border-color: rgba(186, 120, 86, 0.45);
   box-shadow: 0 12px 24px rgba(120, 78, 48, 0.12);
+}
+
+.notification-card.read-recent {
+  border-color: rgba(60, 147, 107, 0.45);
+  box-shadow: 0 12px 24px rgba(36, 112, 79, 0.14);
 }
 
 .notification-body {
@@ -75,4 +90,21 @@
     flex-direction: row;
     flex-wrap: wrap;
   }
+}
+
+html[data-portal-theme="memoria"] .notifications-page .notification-card.read-recent {
+  border-color: rgba(162, 206, 179, 0.62);
+  box-shadow: 0 12px 24px rgba(6, 18, 13, 0.42);
+}
+
+html[data-portal-theme="memoria"] .notifications-page .notification-title {
+  color: rgba(244, 248, 255, 0.96);
+}
+
+html[data-portal-theme="memoria"] .notifications-page .notification-text {
+  color: rgba(221, 231, 245, 0.92);
+}
+
+html[data-portal-theme="memoria"] .notifications-page .notification-meta {
+  color: rgba(191, 205, 223, 0.9);
 }

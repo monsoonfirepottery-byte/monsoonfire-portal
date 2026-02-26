@@ -1,6 +1,6 @@
 # GA data package: extraction template and access protocol
 
-Status: Planned
+Status: In Progress
 Priority: P1
 Severity: Sev3
 Component: website
@@ -55,3 +55,13 @@ Create a repeatable GA data handoff so every analyst session has a complete base
 2. Normalize into one file format and upload to shared location.
 3. Reconcile totals with GA property homepage overview totals.
 4. Flag all anomalies for follow-up in `P1-website-ga-event-and-goal-instrumentation-completeness.md`.
+
+## Unblock update (2026-02-25)
+- Landed shared Sprint 1 data package template and runbook scaffolding:
+  - `docs/analytics/WEBSITE_GA_DATA_PACKAGE_TEMPLATE.md`
+  - `docs/runbooks/WEBSITE_GA_SPRINT1_FOUNDATIONS.md`
+- Added deterministic foundations check command:
+  - `npm run website:ga:sprint1:check`
+  - artifact: `artifacts/website-ga-sprint1-foundations.json`
+- Remaining blocker:
+  - direct GA property export access is required to produce the baseline package artifact.

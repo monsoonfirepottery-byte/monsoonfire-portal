@@ -1,3 +1,5 @@
+import { normalizeIntakeMode, type IntakeMode } from "../intakeMode";
+
 export type ReservationStatus = "REQUESTED" | "CONFIRMED" | "WAITLISTED" | "CANCELLED" | string;
 
 export type ReservationPieceRecord = {
@@ -18,8 +20,7 @@ export type ReservationRecord = {
   heightInches?: number | null;
   tiers?: number | null;
   estimatedHalfShelves?: number | null;
-  useVolumePricing?: boolean;
-  volumeIn3?: number | null;
+  intakeMode?: IntakeMode | string | null;
   estimatedCost?: number | null;
   preferredWindow?: {
     latestDate?: { toDate?: () => Date } | null;
@@ -176,8 +177,12 @@ export function normalizeReservationRecord(
     heightInches: raw.heightInches ?? null,
     tiers: raw.tiers ?? null,
     estimatedHalfShelves: raw.estimatedHalfShelves ?? null,
-    useVolumePricing: raw.useVolumePricing ?? false,
-    volumeIn3: raw.volumeIn3 ?? null,
+    intakeMode: normalizeIntakeMode(
+      raw.intakeMode,
+      (raw.addOns as { wholeKilnRequested?: boolean } | null | undefined)?.wholeKilnRequested === true
+        ? "WHOLE_KILN"
+        : "SHELF_PURCHASE"
+    ),
     estimatedCost: raw.estimatedCost ?? null,
     preferredWindow: raw.preferredWindow ?? null,
     linkedBatchId: raw.linkedBatchId ?? null,

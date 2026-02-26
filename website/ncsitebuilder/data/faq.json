@@ -41,7 +41,7 @@
   },
   {
     "question": "What are your kiln prices?",
-    "answer": "<p>Half shelf is roughly the footprint of a carry-on suitcase laid flat.</p><ul><li>Full kiln/custom fire: $60</li><li>Half shelf bisque: $15</li><li>Half shelf glaze: $25</li><li>By volume: $0.03 per cubic inch</li><li>Delivery: $25 per trip</li></ul>",
+    "answer": "<p>Half shelf is roughly the footprint of a carry-on suitcase laid flat. We bill by shelf space or whole-kiln reservation only; we do not bill by kiln volume.</p><ul><li>Full kiln/custom fire: $60</li><li>Half shelf bisque: $15</li><li>Half shelf glaze: $25</li><li>Community shelf: $0 (lowest priority, space permitting, with shelf-owner permission, and excluded from firing triggers)</li><li>Delivery: $25 per trip</li></ul>",
     "tags": ["kiln", "pricing", "payments"]
   },
   {

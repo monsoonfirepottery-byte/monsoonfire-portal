@@ -93,14 +93,13 @@ struct ReservationPreferredWindow: Codable {
 }
 
 struct CreateReservationRequest: Codable {
+    let intakeMode: String?
     let firingType: String
     let shelfEquivalent: Double
     let footprintHalfShelves: Double?
     let heightInches: Double?
     let tiers: Int?
     let estimatedHalfShelves: Double?
-    let useVolumePricing: Bool?
-    let volumeIn3: Double?
     let estimatedCost: Double?
     let preferredWindow: ReservationPreferredWindow?
     let linkedBatchId: String?

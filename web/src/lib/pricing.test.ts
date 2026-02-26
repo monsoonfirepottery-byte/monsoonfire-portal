@@ -4,7 +4,6 @@ import {
   HALF_SHELF_GLAZE_PRICE,
   DELIVERY_PRICE_PER_TRIP,
   FULL_KILN_CUSTOM_PRICE,
-  VOLUME_PRICE_PER_IN3,
   applyHalfKilnPriceBreak,
   applyConservativeBump,
   computeDeliveryCost,
@@ -43,8 +42,6 @@ describe("pricing helpers", () => {
         kilnType: "studio-electric",
         firingType: "bisque",
         estimatedHalfShelves: shelves,
-        useVolumePricing: false,
-        volumeIn3: null,
       })
     ).toBe(shelves * HALF_SHELF_BISQUE_PRICE);
     expect(
@@ -52,8 +49,6 @@ describe("pricing helpers", () => {
         kilnType: "studio-electric",
         firingType: "glaze",
         estimatedHalfShelves: shelves,
-        useVolumePricing: false,
-        volumeIn3: null,
       })
     ).toBe(shelves * HALF_SHELF_GLAZE_PRICE);
     expect(
@@ -61,22 +56,8 @@ describe("pricing helpers", () => {
         kilnType: "reduction-raku",
         firingType: "bisque",
         estimatedHalfShelves: shelves,
-        useVolumePricing: false,
-        volumeIn3: null,
       })
     ).toBe(shelves * HALF_SHELF_GLAZE_PRICE);
-  });
-
-  test("computeEstimatedCost supports volume pricing", () => {
-    expect(
-      computeEstimatedCost({
-        kilnType: "studio-electric",
-        firingType: "bisque",
-        estimatedHalfShelves: 1,
-        useVolumePricing: true,
-        volumeIn3: 100,
-      })
-    ).toBe(100 * VOLUME_PRICE_PER_IN3);
   });
 
   test("computeEstimatedCost returns null for other firing", () => {
@@ -85,8 +66,6 @@ describe("pricing helpers", () => {
         kilnType: "studio-electric",
         firingType: "other",
         estimatedHalfShelves: 2,
-        useVolumePricing: false,
-        volumeIn3: null,
       })
     ).toBeNull();
   });

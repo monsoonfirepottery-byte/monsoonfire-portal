@@ -1,0 +1,122 @@
+{
+  "lastRunAtIso": "2026-02-26T07:07:04.069Z",
+  "lastRunId": "2026-02-26-AM",
+  "lastSeenCommitSha": "d023aee92ff778e3250696f63381d49c6b9d80a4",
+  "rolling7Day": {
+    "errorCounts": {},
+    "ciFailures": 46,
+    "churnFiles": {
+      "package.json": 19,
+      "WORKLOG.md": 11,
+      "web/src/App.tsx": 10,
+      "docs/runbooks/PR_GATE.md": 7,
+      "docs/sprints/SWARM_BOARD.md": 6,
+      "functions/src/index.ts": 6,
+      "web/src/api/portalApi.ts": 6,
+      "functions/src/apiV1.test.ts": 5,
+      "web/src/views/ReservationsView.tsx": 5,
+      "web/src/views/StaffView.tsx": 5,
+      "package-lock.json": 5,
+      "website/ncsitebuilder/assets/js/main.js": 4,
+      "functions/src/apiV1.ts": 4,
+      "web/src/api/portalContracts.ts": 4,
+      "docs/SOURCE_OF_TRUTH_INDEX.md": 4,
+      "docs/EMULATOR_RUNBOOK.md": 4,
+      "tickets/P1-EPIC-14-reliability-hardening-failure-mode-first-ux.md": 4,
+      "web/src/api/functionsClient.ts": 4,
+      "web/src/views/DashboardView.tsx": 3,
+      "web/src/views/MyPiecesView.tsx": 3,
+      "web/index.html": 3,
+      "docs/cutover-verify.json": 3,
+      "web/deploy/namecheap/.htaccess": 3,
+      "web/deploy/namecheap/README.md": 3,
+      "docs/SCHEMA_RESERVATIONS.md": 3,
+      "web/src/views/SupportView.tsx": 3,
+      "functions/.env.local.example": 3,
+      "studio-brain/.env.contract.schema.json": 3,
+      "studio-brain/lib/config/env.js": 3,
+      "studio-brain/src/config/env.ts": 3
+    },
+    "ticketsCreated": 0,
+    "ticketsClosed": 0
+  },
+  "lastRecommendations": [],
+  "recommendationOutcomes": [],
+  "interactionInterrogation": {
+    "lastRunAtIso": "2026-02-26T06:56:07.413Z",
+    "lastRunId": "2026-02-25-PM",
+    "lastPatternIds": [],
+    "lastTopRecommendations": [],
+    "lastImpactScore": 100,
+    "recentImpactScores": [
+      100,
+      100
+    ],
+    "activeRuleIds": {
+      "user": [],
+      "agents": []
+    },
+    "lastRuleUpdateRunId": "n/a",
+    "lastStructuralEditAtIso": "",
+    "lastSkillDensity": {
+      "firestore": 0,
+      "cloudFunctions": 0,
+      "schedulingLogic": 0,
+      "metadataConfig": 0,
+      "tooling": 0,
+      "workflowPolicy": 0,
+      "automation": 0
+    },
+    "lastToolFailureRate24": 0,
+    "lastErrorClusterCount": 0,
+    "lastHighChurnCount": 0,
+    "lastCiFailureRepeats": 0,
+    "followThroughHistory": [
+      {
+        "runId": "2026-02-25-PM",
+        "generatedAtIso": "2026-02-26T06:54:55.210Z",
+        "outcomes": []
+      },
+      {
+        "runId": "2026-02-25-PM",
+        "generatedAtIso": "2026-02-26T06:56:07.413Z",
+        "outcomes": []
+      }
+    ]
+  },
+  "sharedCoordination": {
+    "automationPrByRunId": {},
+    "lastStructuralEditAtIso": ""
+  },
+  "lastHighChurnCount24": 0,
+  "improvementImpactScores": [
+    100,
+    100,
+    100,
+    100
+  ],
+  "skillDensityLast": {
+    "firestore": 0,
+    "cloudFunctions": 0,
+    "schedulingLogic": 0,
+    "metadataConfig": 0,
+    "tooling": 0,
+    "workflowPolicy": 0,
+    "automation": 0
+  },
+  "prGreenDaily": {
+    "lastRunAtIso": "2026-02-26T07:13:56.409Z",
+    "lastRunId": "2026-02-26-PR-GREEN",
+    "rerunRunIds": [],
+    "rerunHistory": [],
+    "lastSummary": {
+      "prsAnalyzed": 1,
+      "prsGreen": 1,
+      "prsPending": 0,
+      "prsBlocked": 0,
+      "failingChecks": 0,
+      "pendingChecks": 0,
+      "healthScore": 100
+    }
+  }
+}

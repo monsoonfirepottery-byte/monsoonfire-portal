@@ -121,14 +121,13 @@ struct ReservationsCheckInView: View {
         }
 
         let payload = CreateReservationRequest(
+            intakeMode: "SHELF_PURCHASE",
             firingType: firingType,
             shelfEquivalent: shelf,
             footprintHalfShelves: nil,
             heightInches: nil,
             tiers: nil,
             estimatedHalfShelves: nil,
-            useVolumePricing: nil,
-            volumeIn3: nil,
             estimatedCost: nil,
             preferredWindow: ReservationPreferredWindow(
                 earliestDate: preferredEarliestDate.isEmpty ? nil : preferredEarliestDate,

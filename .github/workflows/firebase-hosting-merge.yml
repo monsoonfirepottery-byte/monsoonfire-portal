@@ -31,13 +31,27 @@ jobs:
               return 1
             fi
 
-            local status
-            status=$(curl -sS -o /tmp/firebase-key-probe.json -w "%{http_code}" \
+            local config_status
+            config_status=$(curl -sS -o /tmp/firebase-key-config.json -w "%{http_code}" \
+              "https://www.googleapis.com/identitytoolkit/v3/relyingparty/getProjectConfig?key=${candidate}" || true)
+
+            if [ "$config_status" != "200" ]; then
+              return 1
+            fi
+            if ! grep -q "\"portal.monsoonfire.com\"" /tmp/firebase-key-config.json; then
+              return 1
+            fi
+            if ! grep -q "\"monsoonfire-portal.firebaseapp.com\"" /tmp/firebase-key-config.json; then
+              return 1
+            fi
+
+            local sign_in_status
+            sign_in_status=$(curl -sS -o /tmp/firebase-key-probe.json -w "%{http_code}" \
               -H "content-type: application/json" \
               -d '{"email":"nobody@example.com","password":"invalid","returnSecureToken":true}' \
               "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${candidate}" || true)
 
-            if [ "$status" != "400" ]; then
+            if [ "$sign_in_status" != "400" ]; then
               return 1
             fi
             if grep -qi "API key not valid" /tmp/firebase-key-probe.json; then
@@ -50,9 +64,19 @@ jobs:
           }
 
           SELECTED_FIREBASE_API_KEY=""
-          for candidate in "$PORTAL_FIREBASE_API_KEY" "$FIREBASE_WEB_API_KEY"; do
+          SELECTED_SOURCE=""
+
+          for source in "portal" "firebase_web"; do
+            candidate=""
+            if [ "$source" = "portal" ]; then
+              candidate="$PORTAL_FIREBASE_API_KEY"
+            else
+              candidate="$FIREBASE_WEB_API_KEY"
+            fi
+
             if validate_api_key "$candidate"; then
               SELECTED_FIREBASE_API_KEY="$candidate"
+              SELECTED_SOURCE="$source"
               break
             fi
           done
@@ -62,6 +86,7 @@ jobs:
             exit 1
           fi
 
+          echo "Using Firebase API key source: $SELECTED_SOURCE"
           export VITE_FIREBASE_API_KEY="$SELECTED_FIREBASE_API_KEY"
           npm --prefix web ci
           npm --prefix web run build

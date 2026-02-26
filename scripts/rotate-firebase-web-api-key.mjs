@@ -50,6 +50,54 @@ function timestampSlug(date = new Date()) {
   return iso.replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function resolveCreateResult(createOutput, projectId) {
+  const created = JSON.parse(createOutput);
+  const operationName = String(created?.name || "");
+  if (!operationName) {
+    throw new Error("gcloud did not return a name while creating API key.");
+  }
+
+  if (!operationName.startsWith("operations/")) {
+    return created;
+  }
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const opOutput = run("gcloud", [
+      "services",
+      "api-keys",
+      "operations",
+      "describe",
+      operationName,
+      `--project=${projectId}`,
+      "--format=json",
+    ]);
+    const operation = JSON.parse(opOutput);
+
+    if (operation?.done === true) {
+      if (operation?.error) {
+        throw new Error(
+          `API key create operation failed: ${JSON.stringify(operation.error)}`
+        );
+      }
+
+      const response = operation?.response || {};
+      if (!response?.name) {
+        throw new Error("API key create operation completed without key resource name.");
+      }
+
+      return response;
+    }
+
+    await sleep(3000);
+  }
+
+  throw new Error(`Timed out waiting for API key create operation ${operationName} to complete.`);
+}
+
 async function main() {
   const dryRun = parseBool(process.env.DRY_RUN, false);
   const resolveAlert = parseBool(process.env.RESOLVE_ALERT, false);
@@ -105,7 +153,7 @@ async function main() {
     for (const service of apiTargets) createArgs.push(`--api-target=service=${service}`);
 
     const createOutput = run("gcloud", createArgs);
-    const created = JSON.parse(createOutput);
+    const created = await resolveCreateResult(createOutput, projectId);
     if (!created?.name) {
       throw new Error("gcloud did not return key resource name while creating API key.");
     }

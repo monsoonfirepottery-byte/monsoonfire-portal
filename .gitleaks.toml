@@ -4,7 +4,10 @@ title = "Monsoon Fire gitleaks config"
 useDefault = true
 
 [allowlist]
-description = "Known public Firebase client API key."
+description = "Known allowlist entries for non-secret client identifiers and generated intelligence artifacts."
 regexes = [
   '''AIzaSyC7ynej0nGJas9me9M5oW6jHfLsWe5gHbU'''
+]
+paths = [
+  '''^output/'''
 ]

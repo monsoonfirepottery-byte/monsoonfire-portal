@@ -57,6 +57,11 @@ type Props = {
   user: User;
   adminToken?: string;
   isStaff: boolean;
+  focusTarget?: {
+    batchId: string;
+    pieceId?: string;
+  } | null;
+  onFocusTargetConsumed?: () => void;
   onOpenCheckin?: () => void;
 };
 
@@ -76,6 +81,13 @@ type PieceDoc = {
   updatedAt?: unknown;
   clientRating?: number | null;
   clientRatingUpdatedAt?: unknown;
+};
+
+type BatchRow = {
+  id: string;
+  title?: string;
+  ownerUid?: string;
+  editors?: unknown;
 };
 
 type PieceNoteStream = "client" | "studio";
@@ -160,6 +172,21 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function isPermissionDeniedError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  const code =
+    typeof error === "object" &&
+    error !== null &&
+    typeof (error as { code?: unknown }).code === "string"
+      ? ((error as { code: string }).code || "").toLowerCase()
+      : "";
+  return (
+    code.includes("permission-denied") ||
+    message.includes("missing or insufficient permissions") ||
+    message.includes("permission denied")
+  );
+}
+
 function normalizeAuditDoc(id: string, raw: Partial<PieceAuditEvent>): PieceAuditEvent {
   return {
     id,
@@ -219,7 +246,14 @@ function StarRating({ value, onSelect, disabled, pulse }: StarRatingProps) {
   );
 }
 
-export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin }: Props) {
+export default function MyPiecesView({
+  user,
+  adminToken,
+  isStaff,
+  focusTarget,
+  onFocusTargetConsumed,
+  onOpenCheckin,
+}: Props) {
   const { themeName, portalMotion } = useUiSettings();
   const motionEnabled = themeName === "memoria" && portalMotion === "enhanced";
   const { active, history, error } = useBatches(user);
@@ -236,6 +270,7 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
   const [pieces, setPieces] = useState<PieceDoc[]>([]);
   const [piecesLoading, setPiecesLoading] = useState(false);
   const [piecesError, setPiecesError] = useState("");
+  const [piecesWarning, setPiecesWarning] = useState("");
   const [selectedPieceKey, setSelectedPieceKey] = useState<string | null>(null);
   const [selectedPieceTab, setSelectedPieceTab] = useState<"client" | "studio" | "photos" | "audit">(
     "client"
@@ -302,17 +337,20 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
   }, [searchQuery, sortBy]);
 
   useEffect(() => {
+    let cancelled = false;
+
     if (!user) {
       setPieces([]);
+      setPiecesError("");
+      setPiecesWarning("");
+      setPiecesLoading(false);
       return;
     }
 
     const loadPieces = async () => {
-      const busyKey = "loadPieces";
-      if (isBusy(busyKey)) return;
-      setBusy(busyKey, true);
       setPiecesLoading(true);
       setPiecesError("");
+      setPiecesWarning("");
 
       try {
         const batches =
@@ -321,56 +359,159 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
             : piecesFilter === "history"
               ? history
               : [...active, ...history];
+        if (cancelled) return;
         if (batches.length === 0) {
           setPieces([]);
+          setPiecesWarning("");
           return;
         }
-        const visibleBatches = batches.slice(0, batchWindow);
+        const readableBatches = batches.filter((batch) => {
+          if (isStaff) return true;
+          const row = batch as BatchRow;
+          const ownerUid = typeof row.ownerUid === "string" ? row.ownerUid : "";
+          const editors = Array.isArray(row.editors)
+            ? row.editors.filter((entry): entry is string => typeof entry === "string")
+            : [];
+          return ownerUid === user.uid || editors.includes(user.uid);
+        });
 
-        const rows = await Promise.all(
-          visibleBatches.map(async (batch) => {
-            const piecesQuery = query(
-              collection(db, "batches", batch.id, "pieces"),
-              orderBy("updatedAt", "desc"),
-              limit(BATCH_PIECES_QUERY_LIMIT)
+        if (readableBatches.length === 0) {
+          setPieces([]);
+          setPiecesWarning("");
+          setPiecesError("No readable check-ins were found for this account.");
+          return;
+        }
+
+        const visibleBatches = readableBatches.slice(0, batchWindow);
+        const fetchRows = async () =>
+          await Promise.allSettled(
+            visibleBatches.map(async (batch) => {
+              const byUpdatedDesc = query(
+                collection(db, "batches", batch.id, "pieces"),
+                orderBy("updatedAt", "desc"),
+                limit(BATCH_PIECES_QUERY_LIMIT)
+              );
+              try {
+                const snap = await trackedGetDocs("pieces:list", byUpdatedDesc);
+                return snap.docs.map((docSnap) => {
+                  const data = docSnap.data() as Partial<PieceDoc>;
+                  const batchTitle =
+                    typeof batch.title === "string" && batch.title.trim() ? batch.title : "Check-in";
+                  return {
+                    id: docSnap.id,
+                    key: `${batch.id}:${docSnap.id}`,
+                    batchId: batch.id,
+                    batchTitle,
+                    batchIsHistory: historyBatchIds.has(batch.id),
+                    pieceCode: data.pieceCode ?? "",
+                    shortDesc: data.shortDesc ?? "",
+                    ownerName: data.ownerName ?? "",
+                    stage: normalizeStage(data.stage),
+                    wareCategory: normalizeWareCategory(data.wareCategory),
+                    isArchived: data.isArchived === true,
+                    createdAt: data.createdAt,
+                    updatedAt: data.updatedAt,
+                    clientRating: typeof data.clientRating === "number" ? data.clientRating : null,
+                    clientRatingUpdatedAt: data.clientRatingUpdatedAt ?? null,
+                  } as PieceDoc;
+                });
+              } catch (error: unknown) {
+                if (!isPermissionDeniedError(error)) {
+                  throw error;
+                }
+
+                // Fallback without orderBy for edge cases where older docs break ordered reads.
+                const fallbackQuery = query(
+                  collection(db, "batches", batch.id, "pieces"),
+                  limit(BATCH_PIECES_QUERY_LIMIT)
+                );
+                const snap = await trackedGetDocs("pieces:list", fallbackQuery);
+                return snap.docs.map((docSnap) => {
+                  const data = docSnap.data() as Partial<PieceDoc>;
+                  const batchTitle =
+                    typeof batch.title === "string" && batch.title.trim() ? batch.title : "Check-in";
+                  return {
+                    id: docSnap.id,
+                    key: `${batch.id}:${docSnap.id}`,
+                    batchId: batch.id,
+                    batchTitle,
+                    batchIsHistory: historyBatchIds.has(batch.id),
+                    pieceCode: data.pieceCode ?? "",
+                    shortDesc: data.shortDesc ?? "",
+                    ownerName: data.ownerName ?? "",
+                    stage: normalizeStage(data.stage),
+                    wareCategory: normalizeWareCategory(data.wareCategory),
+                    isArchived: data.isArchived === true,
+                    createdAt: data.createdAt,
+                    updatedAt: data.updatedAt,
+                    clientRating: typeof data.clientRating === "number" ? data.clientRating : null,
+                    clientRatingUpdatedAt: data.clientRatingUpdatedAt ?? null,
+                  } as PieceDoc;
+                });
+              }
+            })
+          );
+
+        let rows = await fetchRows();
+        let successfulRows = rows
+          .filter((result): result is PromiseFulfilledResult<PieceDoc[]> => result.status === "fulfilled")
+          .flatMap((result) => result.value);
+        let failedRows = rows
+          .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+          .map((result): unknown => result.reason);
+
+        const deniedOnlyInitial =
+          failedRows.length > 0 && failedRows.every((reason) => isPermissionDeniedError(reason));
+        if (successfulRows.length === 0 && deniedOnlyInitial) {
+          try {
+            await user.getIdToken(true);
+            rows = await fetchRows();
+            successfulRows = rows
+              .filter((result): result is PromiseFulfilledResult<PieceDoc[]> => result.status === "fulfilled")
+              .flatMap((result) => result.value);
+            failedRows = rows
+              .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+              .map((result): unknown => result.reason);
+          } catch {
+            // If refresh fails we surface the original permission state below.
+          }
+        }
+
+        if (cancelled) return;
+        setPieces(successfulRows);
+
+        if (failedRows.length > 0) {
+          const deniedOnly = failedRows.every((reason) => isPermissionDeniedError(reason));
+          if (successfulRows.length > 0) {
+            setPiecesWarning(
+              deniedOnly
+                ? `Some check-ins could not be loaded due to permissions (${failedRows.length}/${visibleBatches.length}).`
+                : `Some check-ins could not be loaded (${failedRows.length}/${visibleBatches.length}).`
             );
-            const snap = await trackedGetDocs("pieces:list", piecesQuery);
-            return snap.docs.map((docSnap) => {
-              const data = docSnap.data() as Partial<PieceDoc>;
-              const batchTitle =
-                typeof batch.title === "string" && batch.title.trim() ? batch.title : "Check-in";
-              return {
-                id: docSnap.id,
-                key: `${batch.id}:${docSnap.id}`,
-                batchId: batch.id,
-                batchTitle,
-                batchIsHistory: historyBatchIds.has(batch.id),
-                pieceCode: data.pieceCode ?? "",
-                shortDesc: data.shortDesc ?? "",
-                ownerName: data.ownerName ?? "",
-                stage: normalizeStage(data.stage),
-                wareCategory: normalizeWareCategory(data.wareCategory),
-                isArchived: data.isArchived === true,
-                createdAt: data.createdAt,
-                updatedAt: data.updatedAt,
-                clientRating: typeof data.clientRating === "number" ? data.clientRating : null,
-                clientRatingUpdatedAt: data.clientRatingUpdatedAt ?? null,
-              } as PieceDoc;
-            });
-          })
-        );
-
-        setPieces(rows.flat());
+            setPiecesError("");
+          } else {
+            setPiecesWarning("");
+            setPiecesError(`Pieces failed: ${getErrorMessage(failedRows[0])}`);
+          }
+        } else {
+          setPiecesWarning("");
+        }
       } catch (error: unknown) {
+        if (cancelled) return;
+        setPiecesWarning("");
         setPiecesError(`Pieces failed: ${getErrorMessage(error)}`);
       } finally {
-        setPiecesLoading(false);
-        setBusy(busyKey, false);
+        if (!cancelled) {
+          setPiecesLoading(false);
+        }
       }
     };
 
     void loadPieces();
-  }, [user, active, history, historyBatchIds, isBusy, setBusy, piecesFilter, batchWindow]);
+    return () => {
+      cancelled = true;
+    };
+  }, [user, isStaff, active, history, historyBatchIds, piecesFilter, batchWindow]);
 
   const selectedPiece = useMemo(
     () => pieces.find((piece) => piece.key === selectedPieceKey) ?? null,
@@ -384,6 +525,37 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
   }, [pieces, selectedPieceKey]);
 
   useEffect(() => {
+    if (!focusTarget || piecesLoading) return;
+
+    const targetBatchId = typeof focusTarget.batchId === "string" ? focusTarget.batchId.trim() : "";
+    const targetPieceId = typeof focusTarget.pieceId === "string" ? focusTarget.pieceId.trim() : "";
+
+    const exactMatch =
+      targetBatchId && targetPieceId
+        ? pieces.find((piece) => piece.batchId === targetBatchId && piece.id === targetPieceId) ?? null
+        : null;
+
+    let nextSelected = exactMatch;
+    if (!nextSelected && targetBatchId) {
+      const batchMatches = pieces.filter((piece) => piece.batchId === targetBatchId);
+      if (batchMatches.length > 0) {
+        nextSelected = [...batchMatches].sort((left, right) => toMillis(right.updatedAt) - toMillis(left.updatedAt))[0];
+      }
+    }
+    if (!nextSelected && targetPieceId) {
+      nextSelected = pieces.find((piece) => piece.id === targetPieceId) ?? null;
+    }
+
+    if (nextSelected) {
+      setSelectedPieceKey(nextSelected.key);
+      setSelectedPieceTab("client");
+    }
+    onFocusTargetConsumed?.();
+  }, [focusTarget, onFocusTargetConsumed, pieces, piecesLoading]);
+
+  useEffect(() => {
+    let cancelled = false;
+
     if (!selectedPiece) {
       setClientNotes([]);
       setStudioNotes([]);
@@ -395,9 +567,6 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
     }
 
     const loadPieceDetails = async () => {
-      const busyKey = `loadPiece:${selectedPiece.key}`;
-      if (isBusy(busyKey)) return;
-      setBusy(busyKey, true);
       setPieceDetailLoading(true);
       setPieceDetailError("");
 
@@ -423,39 +592,59 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
           limit(MEDIA_LOAD_LIMIT)
         );
 
-        const [clientSnap, studioSnap, auditSnap, mediaSnap] = await Promise.all([
+        const [clientResult, studioResult, auditResult, mediaResult] = await Promise.allSettled([
           trackedGetDocs("pieces:detail", clientQuery),
           trackedGetDocs("pieces:detail", studioQuery),
           trackedGetDocs("pieces:detail", auditQuery),
           trackedGetDocs("pieces:detail", mediaQuery),
         ]);
 
+        if (cancelled) return;
+        const clientSnap = clientResult.status === "fulfilled" ? clientResult.value : null;
+        const studioSnap = studioResult.status === "fulfilled" ? studioResult.value : null;
+        const auditSnap = auditResult.status === "fulfilled" ? auditResult.value : null;
+        const mediaSnap = mediaResult.status === "fulfilled" ? mediaResult.value : null;
+
         setClientNotes(
-          clientSnap.docs.map((docSnap) =>
+          (clientSnap?.docs ?? []).map((docSnap) =>
             buildNoteDoc({ id: docSnap.id, ...(docSnap.data() as Partial<PieceNote>) })
           )
         );
         setStudioNotes(
-          studioSnap.docs.map((docSnap) =>
+          (studioSnap?.docs ?? []).map((docSnap) =>
             buildNoteDoc({ id: docSnap.id, ...(docSnap.data() as Partial<PieceNote>) })
           )
         );
         setAuditEvents(
-          auditSnap.docs.map((docSnap) =>
+          (auditSnap?.docs ?? []).map((docSnap) =>
             normalizeAuditDoc(docSnap.id, docSnap.data() as Partial<PieceAuditEvent>)
           )
         );
         setMediaItems(
-          mediaSnap.docs.map((docSnap) =>
+          (mediaSnap?.docs ?? []).map((docSnap) =>
             normalizeMediaDoc(docSnap.id, docSnap.data() as Partial<PieceMedia>)
           )
         );
+
+        const detailFailures = [clientResult, studioResult, auditResult, mediaResult].filter(
+          (result): result is PromiseRejectedResult => result.status === "rejected"
+        );
+        if (detailFailures.length > 0) {
+          const deniedOnly = detailFailures.every((result) => isPermissionDeniedError(result.reason));
+          setPieceDetailError(
+            deniedOnly
+              ? "Some piece detail sections are unavailable due to permissions."
+              : "Some piece detail sections could not be loaded."
+          );
+        }
+
         track("timeline_load_success", {
           uid: shortId(user.uid),
           batchId: shortId(selectedPiece.batchId),
-          eventCount: auditSnap.size,
+          eventCount: auditSnap?.size ?? 0,
         });
       } catch (error: unknown) {
+        if (cancelled) return;
         setPieceDetailError(`Piece detail failed: ${getErrorMessage(error)}`);
         track("timeline_load_error", {
           uid: shortId(user.uid),
@@ -463,13 +652,17 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
           message: getErrorMessage(error).slice(0, 160),
         });
       } finally {
-        setPieceDetailLoading(false);
-        setBusy(busyKey, false);
+        if (!cancelled) {
+          setPieceDetailLoading(false);
+        }
       }
     };
 
     void loadPieceDetails();
-  }, [detailRefreshKey, isBusy, selectedPiece, setBusy, user.uid]);
+    return () => {
+      cancelled = true;
+    };
+  }, [detailRefreshKey, selectedPiece, user.uid]);
 
   const filteredPieces = useMemo(() => {
     let list = pieces;
@@ -919,6 +1112,7 @@ export default function MyPiecesView({ user, adminToken, isStaff, onOpenCheckin 
               renderPiecesEmptyState()
             ) : (
               <div className="pieces-list">
+                {piecesWarning ? <div className="alert inline-alert">{piecesWarning}</div> : null}
                 <div className="piece-meta">
                   Showing {visiblePieces.length} of {filteredPieces.length} pieces.
                 </div>

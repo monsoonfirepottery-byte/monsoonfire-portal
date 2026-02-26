@@ -83,21 +83,33 @@ function withMockFirestore<T>(
     runTransaction: db.runTransaction,
   };
 
+  const getCollectionRows = (collectionPath: string): Record<string, DbValue> => {
+    const rows = state[collectionPath] ?? {};
+    if (!Object.prototype.hasOwnProperty.call(state, collectionPath)) {
+      state[collectionPath] = rows;
+    }
+    return rows;
+  };
+
+  const addCounters = new Map<string, number>();
+  const nextGeneratedId = (collectionPath: string): string => {
+    const nextValue = (addCounters.get(collectionPath) ?? 0) + 1;
+    addCounters.set(collectionPath, nextValue);
+    const prefix = collectionPath.split("/").join("_");
+    return `${prefix}-${nextValue}`;
+  };
+
   const lookup = (collectionName: string, id: string): MockSnapshot => {
-    const rows = state[collectionName] ?? {};
+    const rows = getCollectionRows(collectionName);
     const row = Object.prototype.hasOwnProperty.call(rows, id) ? rows[id] : null;
     return createSnapshot(id, row);
   };
 
-  db.collection = (collectionName) => {
-    const rows = state[collectionName] ?? {};
-    if (!Object.prototype.hasOwnProperty.call(state, collectionName)) {
-      state[collectionName] = rows;
-    }
-    let addId = 1;
+  const createCollectionRef = (collectionName: string) => {
+    const rows = getCollectionRows(collectionName);
     return {
-      add: async (_doc) => {
-        const generatedId = `${collectionName}-${addId++}`;
+      add: async (_doc: Record<string, unknown>) => {
+        const generatedId = nextGeneratedId(collectionName);
         rows[generatedId] = _doc;
         return { id: generatedId };
       },
@@ -110,14 +122,12 @@ function withMockFirestore<T>(
           set: async () => {
             return undefined;
           },
-          collection: (_sub: string) => ({
-            add: async () => ({ id: `${id}-${_sub}` }),
-          }),
+          collection: (sub: string) => createCollectionRef(`${collectionName}/${id}/${sub}`),
         };
       },
       where: () => createCollectionQuery(rows),
       orderBy: () => createCollectionQuery(rows),
-      limit: (limit) => createCollectionQuery(rows, limit),
+      limit: (limit: number) => createCollectionQuery(rows, limit),
       get: async () => {
         const docs = listSnapshots(rows);
         return { docs, empty: docs.length === 0 };
@@ -125,9 +135,13 @@ function withMockFirestore<T>(
     };
   };
 
+  db.collection = (collectionName) => createCollectionRef(collectionName);
+
   db.doc = (path: string) => {
-    const [collectionName = "", docId = ""] = path.split("/");
-    const rows = state[collectionName] ?? {};
+    const parts = path.split("/").filter((part) => part.length > 0);
+    const docId = parts.at(-1) ?? "";
+    const collectionName = parts.slice(0, -1).join("/");
+    const rows = getCollectionRows(collectionName);
     const raw = Object.prototype.hasOwnProperty.call(rows, docId) ? rows[docId] : null;
     return {
       get: async () => createSnapshot(docId, raw),
@@ -612,8 +626,8 @@ test("handleApiV1 normalizes trailing slash for known routes", async () => {
   assert.equal(body.ok, true);
 });
 
-test("handleApiV1 rejects unknown route paths", async () => {
-  const request = makeRequest("/v1/nonexistent", {}, patContext());
+test("handleApiV1 normalizes missing leading slash for known routes", async () => {
+  const request = makeRequest("v1/hello", {}, patContext());
   const response = createResponse();
 
   await withMockedRateLimit(async () =>
@@ -622,23 +636,259 @@ test("handleApiV1 rejects unknown route paths", async () => {
     }),
   );
 
-  assert.equal(response.status(), 404);
-  const body = response.body() as { code: string; message: string };
-  assert.equal(body.code, "NOT_FOUND");
-  assert.equal(body.message, "Unknown route");
+  assert.equal(response.status(), 200);
+  const body = response.body() as { ok: boolean };
+  assert.equal(body.ok, true);
 });
 
-test("handleApiV1 continues when route-level rate limit check throws", async () => {
-  const request = makeRequest("/v1/hello", {}, patContext());
-  const response = createResponse();
+test("handleApiV1 rejects unknown and malformed route paths with route audit events", async () => {
+  const scenarios = [
+    { path: "/v1/nonexistent", normalizedRoute: "/v1/nonexistent" },
+    { path: "/v1/", normalizedRoute: "/v1" },
+    { path: "/v1//hello", normalizedRoute: "/v1//hello" },
+  ] as const;
 
-  await withMockedRateLimitPlan(["throw"], async () =>
-    withMockFirestore({}, async () => {
+  for (const scenario of scenarios) {
+    const request = makeRequest(scenario.path, {}, patContext());
+    const response = createResponse();
+    const state: MockDbState = {};
+
+    await withMockedRateLimit(async () =>
+      withMockFirestore(state, async () => {
+        await handleApiV1(request, response.res);
+      }),
+    );
+
+    assert.equal(response.status(), 404);
+    const body = response.body() as { code: string; message: string; details?: Record<string, unknown> };
+    assert.equal(body.code, "NOT_FOUND");
+    assert.equal(body.message, "Unknown route");
+    assert.equal(body.details?.route, scenario.normalizedRoute);
+
+    const event = getAuditEvents(state).find((row) => row.action === "api_v1_route_reject");
+    assert.ok(event, `expected route reject audit event for ${scenario.path}`);
+    assert.equal(event?.resourceType, "api_v1_route");
+    assert.equal(event?.resourceId, scenario.normalizedRoute);
+    assert.equal(event?.reasonCode, "ROUTE_NOT_FOUND");
+    const metadata = (event?.metadata ?? {}) as Record<string, unknown>;
+    assert.equal(metadata.routeFamily, "v1");
+  }
+});
+
+test("handleApiV1 dispatches /v1/batches.get with stable response contract", async () => {
+  const request = makeRequest("/v1/batches.get", { batchId: "batch-1" }, patContext({ scopes: ["batches:read"] }));
+  const response = createResponse();
+  const state: MockDbState = {
+    batches: {
+      "batch-1": {
+        ownerUid: "owner-1",
+        title: "Summer test",
+        isClosed: false,
+        hidden: undefined as unknown,
+        nested: { secret: "keep" },
+        experimentalFlag: true,
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
       await handleApiV1(request, response.res);
     }),
   );
 
   assert.equal(response.status(), 200);
+  const body = response.body() as { ok: boolean; data: { batch: Record<string, unknown> } };
+  assert.equal(body.ok, true);
+  assert.deepEqual(Object.keys(body.data.batch).sort(), ["experimentalFlag", "id", "isClosed", "nested", "ownerUid", "title"]);
+  assert.equal(body.data.batch.id, "batch-1");
+  assert.equal(body.data.batch.ownerUid, "owner-1");
+  assert.equal(body.data.batch.title, "Summer test");
+  assert.equal(body.data.batch.isClosed, false);
+  assert.deepEqual(body.data.batch.nested, { secret: "keep" });
+  assert.equal(body.data.batch.experimentalFlag, true);
+  assert.equal("hidden" in body.data.batch, false);
+});
+
+test("handleApiV1 dispatches /v1/batches.timeline.list with projected timeline rows", async () => {
+  const request = makeRequest("/v1/batches.timeline.list", { batchId: "batch-1", limit: 5 }, patContext({ scopes: ["timeline:read"] }));
+  const response = createResponse();
+  const state: MockDbState = {
+    batches: {
+      "batch-1": {
+        ownerUid: "owner-1",
+      },
+    },
+    "batches/batch-1/timeline": {
+      "evt-new": {
+        type: "LOAD",
+        at: { seconds: 300 },
+        actorUid: "owner-1",
+        actorName: 7,
+        notes: "Ready",
+        kilnId: "kiln-1",
+        kilnName: undefined as unknown,
+        photos: ["before.jpg", 2, "after.jpg"],
+        pieceState: { stage: "queued" },
+        internalOnly: "hidden",
+      },
+      "evt-old": {
+        type: 99,
+        at: null,
+        actorUid: null,
+        actorName: "Helper",
+        notes: null,
+        kilnId: null,
+        kilnName: null,
+        photos: "bad",
+        pieceState: undefined as unknown,
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  assert.deepEqual(withoutRequestId(response.body()), {
+    ok: true,
+    data: {
+      batchId: "batch-1",
+      events: [
+        {
+          id: "evt-new",
+          type: "LOAD",
+          at: { seconds: 300 },
+          actorUid: "owner-1",
+          actorName: null,
+          notes: "Ready",
+          kilnId: "kiln-1",
+          kilnName: null,
+          photos: ["before.jpg", "after.jpg"],
+          pieceState: { stage: "queued" },
+        },
+        {
+          id: "evt-old",
+          type: null,
+          at: null,
+          actorUid: null,
+          actorName: "Helper",
+          notes: null,
+          kilnId: null,
+          kilnName: null,
+          photos: [],
+          pieceState: null,
+        },
+      ],
+    },
+  });
+});
+
+test("handleApiV1 dispatches /v1/agent.requests.listMine with projected rows and hidden unknown fields", async () => {
+  const request = makeRequest(
+    "/v1/agent.requests.listMine",
+    { includeClosed: false, limit: 10 },
+    patContext({ scopes: ["requests:read"] }),
+  );
+  const response = createResponse();
+  const state = withPatTermsAcceptance({
+    agentRequests: {
+      "request-open": {
+        createdByUid: "owner-1",
+        createdByMode: "pat",
+        createdByTokenId: "pat-token",
+        title: "Need test firing",
+        summary: "cone 6",
+        notes: null,
+        kind: "firing",
+        status: "triaged",
+        linkedBatchId: 3,
+        logistics: { mode: "pickup", hidden: "nope" },
+        constraints: { rush: true },
+        metadata: { source: "portal" },
+        staff: {
+          assignedToUid: "staff-1",
+          triagedAt: { seconds: 200 },
+          internalNotes: "watch cone ramp",
+        },
+        commissionOrderId: null,
+        commissionPaymentStatus: "checkout_pending",
+        createdAt: { seconds: 100 },
+        updatedAt: { seconds: 300 },
+        internalOnly: "hide-me",
+      },
+      "request-closed": {
+        createdByUid: "owner-1",
+        title: "already done",
+        status: "cancelled",
+        updatedAt: { seconds: 400 },
+      },
+    },
+  });
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  assert.deepEqual(withoutRequestId(response.body()), {
+    ok: true,
+    data: {
+      requests: [
+        {
+          id: "request-open",
+          createdByUid: "owner-1",
+          createdByMode: "pat",
+          createdByTokenId: "pat-token",
+          title: "Need test firing",
+          summary: "cone 6",
+          notes: null,
+          kind: "firing",
+          status: "triaged",
+          linkedBatchId: null,
+          logisticsMode: "pickup",
+          createdAt: { seconds: 100 },
+          updatedAt: { seconds: 300 },
+          staffAssignedToUid: "staff-1",
+          staffTriagedAt: { seconds: 200 },
+          staffInternalNotes: "watch cone ramp",
+          constraints: { rush: true },
+          metadata: { source: "portal" },
+          commissionOrderId: null,
+          commissionPaymentStatus: "checkout_pending",
+        },
+      ],
+    },
+  });
+  const body = response.body() as { data: { requests: Array<Record<string, unknown>> } };
+  assert.equal("internalOnly" in body.data.requests[0], false);
+});
+
+test("handleApiV1 continues when route-level rate limit check throws", async () => {
+  const request = makeRequest("/v1/hello", {}, patContext());
+  const response = createResponse();
+  const state: MockDbState = {};
+
+  await withMockedRateLimitPlan(["throw"], async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const event = getAuditEvents(state).find((row) => row.action === "api_v1_route_rate_limit_fallback");
+  assert.ok(event);
+  assert.equal(event?.resourceId, "/v1/hello");
+  assert.equal(event?.reasonCode, "RATE_LIMIT_CHECK_ERROR");
+  const metadata = (event?.metadata ?? {}) as Record<string, unknown>;
+  assert.equal(metadata.scope, "route");
+  assert.equal(metadata.route, "/v1/hello");
+  assert.equal(metadata.actorMode, "pat");
 });
 
 test("handleApiV1 continues when agent actor rate limit check throws", async () => {
@@ -655,6 +905,13 @@ test("handleApiV1 continues when agent actor rate limit check throws", async () 
   assert.equal(response.status(), 200);
   const body = response.body() as { ok: boolean };
   assert.equal(body.ok, true);
+  const event = getAuditEvents(state).find((row) => row.action === "api_v1_agent_rate_limit_fallback");
+  assert.ok(event);
+  assert.equal(event?.resourceId, "/v1/agent.catalog");
+  assert.equal(event?.reasonCode, "RATE_LIMIT_CHECK_ERROR");
+  const metadata = (event?.metadata ?? {}) as Record<string, unknown>;
+  assert.equal(metadata.scope, "agent");
+  assert.equal(metadata.actorKey, "actor:owner-1");
 });
 
 test("delegated owner mismatch on agent.status emits authz audit event", async () => {
@@ -1882,6 +2139,49 @@ test("reservations.assignStation blocks over-capacity station assignments", asyn
   assert.match(String(body.message ?? ""), /capacity/i);
 });
 
+test("reservations.assignStation excludes community shelf from capacity checks", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-target": {
+        ownerUid: "owner-1",
+        status: "REQUESTED",
+        loadStatus: "queued",
+        estimatedHalfShelves: 2,
+        stageHistory: [],
+      },
+      "reservation-community": {
+        ownerUid: "owner-2",
+        status: "CONFIRMED",
+        loadStatus: "queued",
+        assignedStationId: "studio-electric",
+        intakeMode: "COMMUNITY_SHELF",
+        estimatedHalfShelves: 8,
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.assignStation",
+      body: {
+        reservationId: "reservation-target",
+        assignedStationId: "studio-electric",
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.ok, true);
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  assert.equal(data.assignedStationId, "studio-electric");
+  assert.equal(data.stationUsedAfter, 2);
+});
+
 test("reservation authz audit metadata includes routeFamily for legacy and v1", async () => {
   await withStrictDelegation(async () => {
     for (const routeFamily of ["v1", "legacy"] as const) {
@@ -2496,6 +2796,62 @@ test("reservations.list excludes cancelled by default and includes it when reque
   const includeBody = includeCancelledList.body as Record<string, unknown>;
   const includeRows = (((includeBody.data ?? {}) as Record<string, unknown>).reservations ?? []) as Array<Record<string, unknown>>;
   assert.equal(includeRows.length, 2);
+});
+
+test("notifications.markRead marks owner notification as read", async () => {
+  const state: MockDbState = {
+    "users/owner-1/notifications": {
+      "notification-1": {
+        title: "Kiln update",
+        body: "Ready for pickup.",
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/notifications.markRead",
+      body: {
+        notificationId: "notification-1",
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const body = response.body as Record<string, unknown>;
+  const data = ((body.data ?? {}) as Record<string, unknown>) ?? {};
+  assert.equal(data.ownerUid, "owner-1");
+  assert.equal(data.notificationId, "notification-1");
+});
+
+test("notifications.markRead rejects owner mismatch for non-staff caller", async () => {
+  const state: MockDbState = {
+    "users/owner-2/notifications": {
+      "notification-2": {
+        title: "Studio note",
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/notifications.markRead",
+      body: {
+        ownerUid: "owner-2",
+        notificationId: "notification-2",
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 403);
+  const body = response.body as Record<string, unknown>;
+  assert.equal(body.code, "OWNER_MISMATCH");
 });
 
 test("reservations.exportContinuity returns signed continuity bundle for owner", async () => {

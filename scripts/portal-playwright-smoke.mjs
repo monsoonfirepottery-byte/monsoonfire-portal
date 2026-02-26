@@ -1394,6 +1394,69 @@ const clickNavItem = async (page, label, summaryLabel = label, required = false)
   return true;
 };
 
+const clickNavSubItem = async (page, sectionLabel, itemLabel, summaryLabel = itemLabel, required = false) => {
+  const sectionButton = page
+    .locator("button.nav-section-title", { hasText: new RegExp(`^${regexSafe(sectionLabel)}$`, "i") })
+    .first();
+  const sectionCount = await sectionButton.count();
+  if (sectionCount === 0) {
+    if (!required) return false;
+    throw new Error(`${sectionLabel} nav section not available.`);
+  }
+
+  const controlsId = await sectionButton.getAttribute("aria-controls");
+  const expanded = (await sectionButton.getAttribute("aria-expanded")) === "true";
+  if (!expanded) {
+    await sectionButton.click({ timeout: 12000 });
+    await page.waitForTimeout(350);
+  }
+
+  const button = controlsId
+    ? page
+        .locator(`#${controlsId}`)
+        .locator("button", { hasText: new RegExp(`^${regexSafe(itemLabel)}$`, "i") })
+        .first()
+    : page.getByRole("button", { name: new RegExp(`^${regexSafe(itemLabel)}$`, "i") }).first();
+
+  const count = await button.count();
+  if (count === 0) {
+    if (!required) return false;
+    throw new Error(`${summaryLabel} nav item not available.`);
+  }
+
+  await button.click({ timeout: 12000 });
+  await page.waitForTimeout(700);
+  return true;
+};
+
+const getThemeToggle = (page, label) =>
+  page.getByRole("button", { name: new RegExp(`^Switch to ${regexSafe(label)} theme$`, "i") }).first();
+
+const ensureTheme = async (page, targetTheme) => {
+  if (targetTheme !== "light" && targetTheme !== "dark") {
+    throw new Error(`Unsupported theme target: ${targetTheme}`);
+  }
+
+  const nextThemeLabel = targetTheme === "dark" ? "light" : "dark";
+  const alreadyAtTarget = getThemeToggle(page, nextThemeLabel);
+  if ((await alreadyAtTarget.count()) > 0) {
+    return;
+  }
+
+  const switchToggle = getThemeToggle(page, targetTheme);
+  if ((await switchToggle.count()) === 0) {
+    throw new Error(`Theme toggle not available for target: ${targetTheme}`);
+  }
+
+  await switchToggle.click({ timeout: 12000 });
+  await page.waitForTimeout(550);
+
+  const confirm = getThemeToggle(page, nextThemeLabel);
+  if ((await confirm.count()) === 0) {
+    throw new Error(`Theme switch did not complete for target: ${targetTheme}`);
+  }
+};
+
 const waitForAuthReady = async (page) => {
   const signOut = page.getByRole("button", { name: /^Sign out$/i }).first();
   const signedOutCard = page.locator(".signed-out-card");
@@ -1418,7 +1481,9 @@ const signInWithEmail = async (page, email, password, summary) => {
 
     const emailInput = signedOutCard.locator("input[type='email']").first();
     const passwordInput = signedOutCard.locator("input[type='password']").first();
-    const submit = signedOutCard.getByRole("button", { name: /^Sign in$/i });
+    const submitPrimary = signedOutCard.locator("button.primary").first();
+    const submitFallback = signedOutCard.getByRole("button", { name: /^Sign in$/i }).first();
+    const submit = (await submitPrimary.count()) > 0 ? submitPrimary : submitFallback;
 
     await emailInput.waitFor({ timeout: 10000 });
     await emailInput.fill(email);
@@ -1612,6 +1677,30 @@ const run = async () => {
         await takeScreenshot(desktopPage, options.outputDir, "portal-02-dashboard-desktop.png", summary, "desktop dashboard");
       });
 
+      await check(summary, "dashboard theme consistency (light + dark)", async () => {
+        await clickNavItem(desktopPage, "Dashboard", "Dashboard", false);
+        await ensureTheme(desktopPage, "light");
+        await takeScreenshot(
+          desktopPage,
+          options.outputDir,
+          "portal-02a-dashboard-light-theme.png",
+          summary,
+          "desktop dashboard light theme"
+        );
+
+        await ensureTheme(desktopPage, "dark");
+        await takeScreenshot(
+          desktopPage,
+          options.outputDir,
+          "portal-02b-dashboard-dark-theme.png",
+          summary,
+          "desktop dashboard dark theme"
+        );
+
+        // Restore default before continuing other checks.
+        await ensureTheme(desktopPage, "light");
+      });
+
       const houseAvailable = await clickNavItem(desktopPage, "House", "House", false);
       if (houseAvailable) {
         await check(summary, "house renders", async () => {
@@ -1638,6 +1727,46 @@ const run = async () => {
       await check(summary, "support renders", async () => {
         await clickNavItem(desktopPage, "Support", "Support", false);
         await takeScreenshot(desktopPage, options.outputDir, "portal-06-support-desktop.png", summary, "desktop support");
+      });
+
+      await check(summary, "my pieces renders", async () => {
+        const opened = await clickNavSubItem(
+          desktopPage,
+          "Studio & Resources",
+          "My Pieces",
+          "My Pieces",
+          false
+        );
+        if (!opened) {
+          throw new Error("My Pieces nav item not available.");
+        }
+
+        const heading = desktopPage.getByRole("heading", { name: /^My Pieces$/i }).first();
+        await heading.waitFor({ timeout: 30000 });
+
+        const loading = desktopPage.locator(".empty-state", { hasText: /^Loading pieces\.\.\.$/i }).first();
+        if ((await loading.count()) > 0) {
+          await loading.waitFor({ state: "hidden", timeout: 15000 }).catch(() => {});
+        }
+
+        const hardError = desktopPage.locator(".inline-alert", { hasText: /^Pieces failed:/i }).first();
+        if ((await hardError.count()) > 0) {
+          const message = (await hardError.textContent())?.trim() || "Pieces failed.";
+          throw new Error(`My Pieces blocking error: ${message}`);
+        }
+
+        const permissionText = desktopPage.locator("text=Missing or insufficient permissions.").first();
+        if ((await permissionText.count()) > 0) {
+          throw new Error("My Pieces shows permission denied text.");
+        }
+
+        await takeScreenshot(
+          desktopPage,
+          options.outputDir,
+          "portal-06b-my-pieces-desktop.png",
+          summary,
+          "desktop my pieces"
+        );
       });
     }
 

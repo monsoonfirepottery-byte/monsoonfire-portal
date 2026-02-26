@@ -1,0 +1,103 @@
+name: Portal Daily Authenticated Canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Portal base URL"
+        required: false
+        default: "https://portal.monsoonfire.com"
+  schedule:
+    # Every 30 minutes for early regression detection.
+    - cron: "*/30 * * * *"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: portal-daily-authenticated-canary
+  cancel-in-progress: true
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Resolve base URL
+        id: base_url
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.base_url }}" ]; then
+            echo "value=${{ github.event.inputs.base_url }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=https://portal.monsoonfire.com" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run authenticated canary (functional + theme)
+        id: canary
+        continue-on-error: true
+        env:
+          PORTAL_STAFF_EMAIL: ${{ secrets.PORTAL_STAFF_EMAIL }}
+          PORTAL_STAFF_PASSWORD: ${{ secrets.PORTAL_STAFF_PASSWORD }}
+        run: |
+          if [ -z "$PORTAL_STAFF_EMAIL" ] || [ -z "$PORTAL_STAFF_PASSWORD" ]; then
+            echo "Missing required secrets PORTAL_STAFF_EMAIL / PORTAL_STAFF_PASSWORD" >&2
+            exit 1
+          fi
+          node ./scripts/portal-authenticated-canary.mjs \
+            --base-url "${{ steps.base_url.outputs.value }}" \
+            --output-dir output/qa/portal-authenticated-canary \
+            --report output/qa/portal-authenticated-canary.json \
+            --json
+
+      - name: Escalate after consecutive failures
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node ./scripts/portal-canary-escalation.mjs \
+            --workflow-name "Portal Daily Authenticated Canary" \
+            --branch "${{ github.ref_name }}" \
+            --threshold 2 \
+            --current-conclusion "${{ steps.canary.outcome }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --canary-report output/qa/portal-authenticated-canary.json \
+            --report output/qa/portal-authenticated-canary-escalation.json \
+            --json
+
+      - name: Upload canary artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-authenticated-canary-${{ github.run_id }}
+          path: |
+            output/qa/portal-authenticated-canary.json
+            output/qa/portal-authenticated-canary-escalation.json
+            output/qa/portal-authenticated-canary
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Fail job when canary fails
+        if: steps.canary.outcome != 'success'
+        run: |
+          echo "Authenticated canary failed." >&2
+          exit 1

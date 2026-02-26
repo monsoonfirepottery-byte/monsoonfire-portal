@@ -1,0 +1,14 @@
+{
+  "fixtures": [
+    {
+      "runDate": "2026-02-26",
+      "uid": "6qU0XDdJ32e4PUFVvdBfQKuAF7u1",
+      "batchId": "batch-e879c1f6e209a9dc7d75",
+      "pieceId": "qa-fixture-piece-20260226-mm36az6u-twette",
+      "announcementId": "qa-fixture-studio-update-20260226-mm36az6u-twette",
+      "notificationId": "qa-fixture-notification-20260226-mm36az6u-twette",
+      "threadId": "qa-fixture-thread-20260226-mm36az6u-twette",
+      "messageId": "qa-fixture-message-20260226-mm36az6u-twette"
+    }
+  ]
+}

@@ -32,6 +32,10 @@ import {
   normalizeStationId as normalizeKnownStationId,
   type ReservationStationId,
 } from "./reservationStationConfig";
+import {
+  normalizeIntakeMode,
+  type IntakeMode,
+} from "./intakeMode";
 
 function boolEnv(name: string, fallback = false): boolean {
   const raw = process.env[name];
@@ -318,7 +322,7 @@ type BatchSummary = {
   ownerUid: string | null;
   ownerDisplayName: string | null;
   title: string | null;
-  intakeMode: string | null;
+  intakeMode: string;
   estimatedCostCents: number | null;
   kilnName: string | null;
   estimateNotes: string | null;
@@ -361,7 +365,7 @@ function toBatchSummary(id: string, data: BatchDoc): BatchSummary {
     ownerUid: typeof data?.ownerUid === "string" ? data.ownerUid : null,
     ownerDisplayName: typeof data?.ownerDisplayName === "string" ? data.ownerDisplayName : null,
     title: typeof data?.title === "string" ? data.title : null,
-    intakeMode: typeof data?.intakeMode === "string" ? data.intakeMode : null,
+    intakeMode: normalizeIntakeMode(data?.intakeMode),
     estimatedCostCents: typeof data?.estimatedCostCents === "number" ? data.estimatedCostCents : null,
     kilnName: typeof data?.kilnName === "string" ? data.kilnName : data?.kilnName === null ? null : null,
     estimateNotes:
@@ -405,6 +409,7 @@ const firingsListUpcomingSchema = z.object({
 });
 
 const reservationCreateSchema = z.object({
+  intakeMode: z.string().optional(),
   firingType: z
     .enum(["bisque", "glaze", "other"])
     .optional()
@@ -419,8 +424,6 @@ const reservationCreateSchema = z.object({
   heightInches: z.number().optional(),
   tiers: z.number().optional(),
   estimatedHalfShelves: z.number().optional(),
-  useVolumePricing: z.boolean().optional(),
-  volumeIn3: z.number().optional(),
   estimatedCost: z.number().optional(),
   preferredWindow: z
     .object({
@@ -514,6 +517,11 @@ const reservationsListSchema = z.object({
   limit: z.number().int().min(1).max(250).optional(),
   status: z.string().optional().nullable(),
   includeCancelled: z.boolean().optional(),
+});
+
+const notificationsMarkReadSchema = z.object({
+  notificationId: z.string().min(1).max(240).trim(),
+  ownerUid: z.string().min(1).optional().nullable(),
 });
 
 const reservationsLookupArrivalSchema = z.object({
@@ -1209,19 +1217,36 @@ function isCapacityRelevantLoadStatus(value: unknown): boolean {
   return normalized === "queued" || normalized === "loading" || normalized === "loaded";
 }
 
+function normalizeReservationIntakeMode(row: Record<string, unknown>): IntakeMode {
+  const intakeMode = normalizeIntakeMode(row.intakeMode);
+  if (intakeMode === "WHOLE_KILN" || intakeMode === "COMMUNITY_SHELF") {
+    return intakeMode;
+  }
+  const addOns = row.addOns && typeof row.addOns === "object" ? (row.addOns as Record<string, unknown>) : {};
+  if (addOns.wholeKilnRequested === true) return "WHOLE_KILN";
+  return "SHELF_PURCHASE";
+}
+
+function isCommunityShelfReservationRow(row: Record<string, unknown>): boolean {
+  return normalizeReservationIntakeMode(row) === "COMMUNITY_SHELF";
+}
+
 function reservationQueuePriority(row: Record<string, unknown>) {
+  const intakeMode = normalizeReservationIntakeMode(row);
+  const communityPriority = intakeMode === "COMMUNITY_SHELF" ? 1 : 0;
   const status = normalizeReservationStatus(row.status) ?? "REQUESTED";
   const statusPriority =
     status === "CONFIRMED" ? 0 : status === "REQUESTED" ? 1 : status === "WAITLISTED" ? 2 : 3;
   const addOns = row.addOns && typeof row.addOns === "object" ? (row.addOns as Record<string, unknown>) : {};
   const rushPriority = addOns.rushRequested === true ? 0 : 1;
-  const wholeKilnPriority = addOns.wholeKilnRequested === true ? 0 : 1;
+  const wholeKilnPriority = intakeMode === "WHOLE_KILN" ? 0 : 1;
   const queueFairnessPolicy = buildReservationQueueFairnessPolicy(row, Date.now());
   const fairnessPenalty = queueFairnessPolicy.effectivePenaltyPoints;
   const sizePenalty = estimateHalfShelves(row);
   const createdAtMs = parseReservationIsoDate(row.createdAt)?.getTime() ?? 0;
   const idTie = safeString(row.id, "");
   return {
+    communityPriority,
     statusPriority,
     rushPriority,
     wholeKilnPriority,
@@ -1265,6 +1290,9 @@ async function recomputeQueueHintsForStation(stationId: string | null): Promise<
     .sort((a, b) => {
       const left = reservationQueuePriority({ ...a.data, id: a.id });
       const right = reservationQueuePriority({ ...b.data, id: b.id });
+      if (left.communityPriority !== right.communityPriority) {
+        return left.communityPriority - right.communityPriority;
+      }
       if (left.statusPriority !== right.statusPriority) return left.statusPriority - right.statusPriority;
       if (left.rushPriority !== right.rushPriority) return left.rushPriority - right.rushPriority;
       if (left.wholeKilnPriority !== right.wholeKilnPriority) return left.wholeKilnPriority - right.wholeKilnPriority;
@@ -1361,14 +1389,13 @@ function toReservationRow(id: string, row: Record<string, unknown>) {
     id,
     ownerUid: safeString(row.ownerUid),
     status: safeString(row.status, "REQUESTED"),
+    intakeMode: normalizeReservationIntakeMode(row),
     firingType: safeString(row.firingType, "other"),
     shelfEquivalent: normalizeNumber(row.shelfEquivalent, 1) as number,
     footprintHalfShelves: normalizeNumber(row.footprintHalfShelves),
     heightInches: normalizeNumber(row.heightInches),
     tiers: normalizeNumber(row.tiers),
     estimatedHalfShelves: normalizeNumber(row.estimatedHalfShelves),
-    useVolumePricing: row.useVolumePricing === true,
-    volumeIn3: normalizeNumber(row.volumeIn3),
     estimatedCost: normalizeNumber(row.estimatedCost),
     preferredWindow: {
       earliestDate: preferredWindow.earliestDate ?? null,
@@ -1642,6 +1669,7 @@ const ROUTE_SCOPE_HINTS: Record<string, string | null> = {
   "/v1/reservations.get": "reservations:read",
   "/v1/reservations.list": "reservations:read",
   "/v1/reservations.exportContinuity": "reservations:read",
+  "/v1/notifications.markRead": null,
 };
 const ALLOWED_API_V1_ROUTES = new Set<string>([
   "/v1/hello",
@@ -1672,6 +1700,7 @@ const ALLOWED_API_V1_ROUTES = new Set<string>([
   "/v1/reservations.get",
   "/v1/reservations.list",
   "/v1/reservations.exportContinuity",
+  "/v1/notifications.markRead",
   "/v1/reservations.lookupArrival",
   "/v1/reservations.rotateArrivalToken",
   "/v1/reservations.pickupWindow",
@@ -1770,6 +1799,11 @@ function readTimestampSeconds(value: unknown): number {
   return typeof (value as { seconds?: unknown } | undefined)?.seconds === "number"
     ? Number((value as { seconds: number }).seconds)
     : 0;
+}
+
+function readTimestampMs(value: unknown): number {
+  const parsed = parseReservationIsoDate(value);
+  return parsed ? parsed.getTime() : 0;
 }
 
 function readStringOrNull(value: unknown): string | null {
@@ -3000,6 +3034,11 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           ? footprintHalfShelves * resolvedTiers
           : null);
 
+      const intakeMode = normalizeIntakeMode(
+        body.intakeMode,
+        body.addOns?.wholeKilnRequested === true ? "WHOLE_KILN" : "SHELF_PURCHASE"
+      );
+
       const shelfInput = normalizeNumber(body.shelfEquivalent, 1);
       const shelfEquivalent =
         typeof resolvedEstimatedHalfShelves === "number"
@@ -3066,17 +3105,22 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           : null;
 
       const addOnsInput = body.addOns ?? {};
+      const isCommunityShelf = intakeMode === "COMMUNITY_SHELF";
       const addOns = {
-        rushRequested: addOnsInput.rushRequested === true,
-        wholeKilnRequested: addOnsInput.wholeKilnRequested === true,
-        pickupDeliveryRequested: addOnsInput.pickupDeliveryRequested === true,
-        returnDeliveryRequested: addOnsInput.returnDeliveryRequested === true,
-        useStudioGlazes: addOnsInput.useStudioGlazes === true,
-        glazeAccessCost: resolvedEstimatedHalfShelves && resolvedEstimatedHalfShelves > 0 && addOnsInput.useStudioGlazes === true
+        rushRequested: !isCommunityShelf && addOnsInput.rushRequested === true,
+        wholeKilnRequested: intakeMode === "WHOLE_KILN",
+        pickupDeliveryRequested: !isCommunityShelf && addOnsInput.pickupDeliveryRequested === true,
+        returnDeliveryRequested: !isCommunityShelf && addOnsInput.returnDeliveryRequested === true,
+        useStudioGlazes: !isCommunityShelf && addOnsInput.useStudioGlazes === true,
+        glazeAccessCost:
+          !isCommunityShelf &&
+          resolvedEstimatedHalfShelves &&
+          resolvedEstimatedHalfShelves > 0 &&
+          addOnsInput.useStudioGlazes === true
           ? resolvedEstimatedHalfShelves * 3
           : null,
-        waxResistAssistRequested: addOnsInput.waxResistAssistRequested === true,
-        glazeSanityCheckRequested: addOnsInput.glazeSanityCheckRequested === true,
+        waxResistAssistRequested: !isCommunityShelf && addOnsInput.waxResistAssistRequested === true,
+        glazeSanityCheckRequested: !isCommunityShelf && addOnsInput.glazeSanityCheckRequested === true,
         deliveryAddress: trimOrNull(addOnsInput.deliveryAddress),
         deliveryInstructions: trimOrNull(addOnsInput.deliveryInstructions),
       };
@@ -3121,20 +3165,26 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
 
       const addOnsPayload = addOns;
       const piecesPayload = normalizeReservationPiecesInput(body.pieces, reservationRef.id);
+      const estimatedCostInput = normalizeNumber(body.estimatedCost);
+      const estimatedCost =
+        intakeMode === "COMMUNITY_SHELF"
+          ? 0
+          : typeof estimatedCostInput === "number" && estimatedCostInput > 0
+            ? estimatedCostInput
+            : null;
 
       await reservationRef.set({
         ownerUid,
         status: "REQUESTED",
         loadStatus: "queued",
+        intakeMode,
         firingType,
         shelfEquivalent: Number(shelfEquivalent),
         footprintHalfShelves,
         heightInches,
         tiers: resolvedTiers,
         estimatedHalfShelves: resolvedEstimatedHalfShelves,
-        useVolumePricing: body.useVolumePricing === true,
-        volumeIn3: normalizeNumber(body.volumeIn3),
-        estimatedCost: normalizeNumber(body.estimatedCost),
+        estimatedCost,
         preferredWindow: {
           earliestDate: earliestDate ? Timestamp.fromDate(earliestDate) : null,
           latestDate: latestDate ? Timestamp.fromDate(latestDate) : null,
@@ -3307,12 +3357,20 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         return;
       }
 
-      const snap = await db
-        .collection("reservations")
-        .where("ownerUid", "==", targetOwnerUid)
-        .orderBy("createdAt", "desc")
-        .limit(500)
-        .get();
+      let snap;
+      try {
+        snap = await db
+          .collection("reservations")
+          .where("ownerUid", "==", targetOwnerUid)
+          .orderBy("createdAt", "desc")
+          .limit(500)
+          .get();
+      } catch (error: unknown) {
+        if (!isMissingIndexError(error)) {
+          throw error;
+        }
+        snap = await db.collection("reservations").where("ownerUid", "==", targetOwnerUid).limit(500).get();
+      }
 
       const reservations = snap.docs
         .map((rowSnap) => toReservationRow(rowSnap.id, rowSnap.data() as Record<string, unknown>))
@@ -3325,9 +3383,57 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           }
           return true;
         })
+        .sort((a, b) => {
+          const byCreatedAt = readTimestampMs(b.createdAt) - readTimestampMs(a.createdAt);
+          if (byCreatedAt !== 0) return byCreatedAt;
+          return String(b.id ?? "").localeCompare(String(a.id ?? ""));
+        })
         .slice(0, limit);
 
       jsonOk(res, requestId, { ownerUid: targetOwnerUid, reservations });
+      return;
+    }
+
+    if (route === "/v1/notifications.markRead") {
+      const parsed = parseBody(notificationsMarkReadSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const targetOwnerUid = trimOrNull(parsed.data.ownerUid) ?? ctx.uid;
+      const authz = await assertActorAuthorized({
+        req,
+        ctx,
+        ownerUid: targetOwnerUid,
+        scope: null,
+        resource: `owner:${targetOwnerUid}:notifications`,
+        allowStaff: true,
+      });
+      if (!authz.ok) {
+        jsonError(res, requestId, authz.httpStatus, authz.code, authz.message);
+        return;
+      }
+
+      const notificationId = parsed.data.notificationId;
+      const notificationRef = db
+        .collection("users")
+        .doc(targetOwnerUid)
+        .collection("notifications")
+        .doc(notificationId);
+      const notificationSnap = await notificationRef.get();
+      if (!notificationSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Notification not found");
+        return;
+      }
+
+      const readAt = nowTs();
+      await notificationRef.set({ readAt }, { merge: true });
+      jsonOk(res, requestId, {
+        ownerUid: targetOwnerUid,
+        notificationId,
+        readAt,
+      });
       return;
     }
 
@@ -3445,6 +3551,10 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           reservationId: reservation.id,
           status: reservation.status,
           loadStatus: reservation.loadStatus ?? null,
+          intakeMode: normalizeIntakeMode(
+            reservation.intakeMode,
+            reservation.addOns?.wholeKilnRequested ? "WHOLE_KILN" : "SHELF_PURCHASE"
+          ),
           firingType: reservation.firingType,
           shelfEquivalent: reservation.shelfEquivalent,
           estimatedHalfShelves: normalizeNumber(reservation.estimatedHalfShelves),
@@ -3557,6 +3667,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
                 "reservationId",
                 "status",
                 "loadStatus",
+                "intakeMode",
                 "firingType",
                 "shelfEquivalent",
                 "estimatedHalfShelves",
@@ -5159,11 +5270,14 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
                 const rowStatus = normalizeReservationStatus(raw.status);
                 if (rowStatus === "CANCELLED") return 0;
                 if (!isCapacityRelevantLoadStatus(raw.loadStatus)) return 0;
+                if (isCommunityShelfReservationRow(raw)) return 0;
                 return estimateHalfShelves(raw);
               })
               .reduce((total, each) => total + each, 0);
 
-            stationUsedAfter += estimateHalfShelves(row);
+            if (!isCommunityShelfReservationRow(row)) {
+              stationUsedAfter += estimateHalfShelves(row);
+            }
 
             if (stationUsedAfter > stationCapacity) {
               throw new Error("STATION_CAPACITY_EXCEEDED");
@@ -5232,10 +5346,13 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
                 const rowStatus = normalizeReservationStatus(raw.status);
                 if (rowStatus === "CANCELLED") return 0;
                 if (!isCapacityRelevantLoadStatus(raw.loadStatus)) return 0;
+                if (isCommunityShelfReservationRow(raw)) return 0;
                 return estimateHalfShelves(raw);
               })
               .reduce((total, each) => total + each, 0);
-            stationUsedAfter += estimateHalfShelves(row);
+            if (!isCommunityShelfReservationRow(row)) {
+              stationUsedAfter += estimateHalfShelves(row);
+            }
           }
 
           return {

@@ -1,6 +1,6 @@
 # 30-day GA optimization roadmap (priority execution plan)
 
-Status: Planned
+Status: In Progress
 Priority: P1
 Severity: Sev2
 Component: website
@@ -19,6 +19,18 @@ Within 30 days, stabilize measurement, identify top drop-offs, and ship 3 high-c
   - Canonical event/goal mapping approved
   - Campaign tags standardized for active outbound traffic
   - Baseline report in shared location
+
+Sprint 1 update (2026-02-25):
+- Foundation templates and execution runbook are now in-repo:
+  - `docs/runbooks/WEBSITE_GA_SPRINT1_FOUNDATIONS.md`
+  - `docs/analytics/WEBSITE_GA_DATA_PACKAGE_TEMPLATE.md`
+  - `docs/analytics/WEBSITE_GA_EVENT_GOAL_MAP_TEMPLATE.md`
+  - `docs/analytics/WEBSITE_GA_UTM_TAXONOMY.md`
+- Deterministic foundation check + artifact path added:
+  - `npm run website:ga:sprint1:check`
+  - `artifacts/website-ga-sprint1-foundations.json`
+- Remaining blocker for Sprint 1 completion:
+  - real GA property export access + baseline report handoff from owner environment.
 
 ## Sprint 2 (Days 8-14): Funnel recovery
 - Deliver:

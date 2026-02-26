@@ -26,6 +26,7 @@ import {
   logAuditEvent,
   readAuthFeatureFlags,
 } from "./authz";
+import { normalizeIntakeMode } from "./intakeMode";
 import { TimelineEventType } from "./timelineEventTypes";
 import { z } from "zod";
 import {
@@ -232,7 +233,6 @@ function getGoogleCalendarCredsJson(): string | null {
 // -----------------------------
 // Types (lightweight)
 // -----------------------------
-type IntakeMode = "STAFF_HANDOFF" | "SELF_SERVICE";
 
 type BatchState =
   | "DRAFT"
@@ -254,7 +254,7 @@ const createBatchSchema = z.object({
   ownerUid: z.string().min(1),
   ownerDisplayName: z.string().optional().nullable(),
   title: z.string().min(1),
-  intakeMode: z.string().min(1),
+  intakeMode: z.string().optional().nullable(),
   estimatedCostCents: z.number().int().nonnegative(),
   kilnName: z.string().optional().nullable(),
   estimateNotes: z.string().optional().nullable(),
@@ -1726,7 +1726,7 @@ export const createBatch = onRequest(
     const ownerUid = safeString(parsed.data.ownerUid);
     const ownerDisplayName = safeString(parsed.data.ownerDisplayName);
     const title = safeString(parsed.data.title);
-    const intakeMode = safeString(parsed.data.intakeMode) as IntakeMode;
+    const intakeMode = normalizeIntakeMode(parsed.data.intakeMode);
     const estimatedCostCents = asInt(parsed.data.estimatedCostCents, 0);
     const kilnName = safeString(parsed.data.kilnName);
     const estimateNotes = safeString(parsed.data.estimateNotes || parsed.data.notes);
@@ -1760,7 +1760,7 @@ export const createBatch = onRequest(
       ownerDisplayName: ownerDisplayName || null,
       editors,
       title,
-      intakeMode: intakeMode || "STAFF_HANDOFF",
+      intakeMode,
       estimatedCostCents,
       kilnName: kilnName || null,
       estimateNotes: estimateNotes || null,

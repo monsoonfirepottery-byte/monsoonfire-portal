@@ -14,6 +14,7 @@ import {
   safeString,
 } from "./shared";
 import { isKnownStationId, normalizeStationId } from "./reservationStationConfig";
+import { normalizeIntakeMode } from "./intakeMode";
 
 const REGION = "us-central1";
 
@@ -34,14 +35,13 @@ const VALID_PIECE_STATUSES: ReadonlySet<ReservationPieceStatus> = new Set([
 ] as const);
 
 const reservationSchema = z.object({
+  intakeMode: z.string().optional(),
   firingType: z.enum(["bisque", "glaze", "other"]).optional(),
   shelfEquivalent: z.number().optional(),
   footprintHalfShelves: z.number().optional(),
   heightInches: z.number().optional(),
   tiers: z.number().optional(),
   estimatedHalfShelves: z.number().optional(),
-  useVolumePricing: z.boolean().optional(),
-  volumeIn3: z.number().optional(),
   estimatedCost: z.number().optional(),
   preferredWindow: z
     .object({
@@ -320,6 +320,11 @@ export const createReservation = onRequest(
         ? footprintHalfShelves * resolvedTiers
         : null);
 
+    const intakeMode = normalizeIntakeMode(
+      body.intakeMode,
+      body.addOns?.wholeKilnRequested === true ? "WHOLE_KILN" : "SHELF_PURCHASE"
+    );
+
     const shelfValue = Number(body.shelfEquivalent);
     const shelfEquivalentFallback =
       Number.isFinite(shelfValue) && shelfValue > 0 ? shelfValue : 1;
@@ -412,12 +417,13 @@ export const createReservation = onRequest(
     const photoUrl = photoUrlRaw ? photoUrlRaw : null;
     const photoPathRaw = safeString(body.photoPath).trim();
     const photoPath = photoPathRaw ? photoPathRaw : null;
-    const useVolumePricing = body.useVolumePricing === true;
-    const volumeIn3Raw = Number(body.volumeIn3);
-    const volumeIn3 = Number.isFinite(volumeIn3Raw) && volumeIn3Raw > 0 ? volumeIn3Raw : null;
     const estimatedCostRaw = Number(body.estimatedCost);
     const estimatedCost =
-      Number.isFinite(estimatedCostRaw) && estimatedCostRaw > 0 ? estimatedCostRaw : null;
+      intakeMode === "COMMUNITY_SHELF"
+        ? 0
+        : Number.isFinite(estimatedCostRaw) && estimatedCostRaw > 0
+          ? estimatedCostRaw
+          : null;
 
     if (photoPath && !photoPath.startsWith(`checkins/${ownerUid}/`)) {
       res.status(400).json({ ok: false, message: "Invalid photo path" });
@@ -479,18 +485,19 @@ export const createReservation = onRequest(
     const addOnsInput = body.addOns ?? {};
     const estimatedHalfShelves = Number(body.estimatedHalfShelves);
     const safeHalfShelves = Number.isFinite(estimatedHalfShelves) ? estimatedHalfShelves : 0;
+    const isCommunityShelf = intakeMode === "COMMUNITY_SHELF";
     const glazeAccessCost =
-      addOnsInput?.useStudioGlazes === true && safeHalfShelves > 0
+      !isCommunityShelf && addOnsInput?.useStudioGlazes === true && safeHalfShelves > 0
         ? safeHalfShelves * 3
         : null;
     const addOnsPayload = {
-      rushRequested: addOnsInput?.rushRequested === true,
-      waxResistAssistRequested: addOnsInput?.waxResistAssistRequested === true,
-      glazeSanityCheckRequested: addOnsInput?.glazeSanityCheckRequested === true,
-      wholeKilnRequested: addOnsInput?.wholeKilnRequested === true,
-      pickupDeliveryRequested: addOnsInput?.pickupDeliveryRequested === true,
-      returnDeliveryRequested: addOnsInput?.returnDeliveryRequested === true,
-      useStudioGlazes: addOnsInput?.useStudioGlazes === true,
+      rushRequested: !isCommunityShelf && addOnsInput?.rushRequested === true,
+      waxResistAssistRequested: !isCommunityShelf && addOnsInput?.waxResistAssistRequested === true,
+      glazeSanityCheckRequested: !isCommunityShelf && addOnsInput?.glazeSanityCheckRequested === true,
+      wholeKilnRequested: intakeMode === "WHOLE_KILN",
+      pickupDeliveryRequested: !isCommunityShelf && addOnsInput?.pickupDeliveryRequested === true,
+      returnDeliveryRequested: !isCommunityShelf && addOnsInput?.returnDeliveryRequested === true,
+      useStudioGlazes: !isCommunityShelf && addOnsInput?.useStudioGlazes === true,
       glazeAccessCost,
       deliveryAddress: safeString(addOnsInput?.deliveryAddress).trim() || null,
       deliveryInstructions: safeString(addOnsInput?.deliveryInstructions).trim() || null,
@@ -510,14 +517,13 @@ export const createReservation = onRequest(
       ownerUid,
       status: "REQUESTED",
       loadStatus: "queued",
+      intakeMode,
       firingType,
       shelfEquivalent,
       footprintHalfShelves: footprintHalfShelves ?? null,
       heightInches,
       tiers: resolvedTiers ?? null,
       estimatedHalfShelves: resolvedEstimatedHalfShelves ?? null,
-      useVolumePricing,
-      volumeIn3,
       estimatedCost,
       preferredWindow: windowPayload,
       linkedBatchId,

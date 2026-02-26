@@ -243,7 +243,7 @@ async function seedBatchesAndPieces(nowMs) {
         ownerDisplayName: seedUsers.client.displayName,
         title: `Seed Check-in ${batchIndex}`,
         status: statuses[batchIndex % statuses.length],
-        intakeMode: "SELF_SERVICE",
+        intakeMode: "SHELF_PURCHASE",
         isClosed,
         createdAt: ts(updatedAtMs - 2 * 60 * 60 * 1000),
         updatedAt: ts(updatedAtMs),

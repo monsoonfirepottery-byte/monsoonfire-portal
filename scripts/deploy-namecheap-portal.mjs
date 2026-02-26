@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,14 +10,26 @@ const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, "..");
 
 const defaults = {
-  server: process.env.WEBSITE_DEPLOY_SERVER || "",
+  server: process.env.WEBSITE_DEPLOY_SERVER || "monsggbd@66.29.137.142",
   port: Number.parseInt(process.env.WEBSITE_DEPLOY_PORT || "", 10) || 21098,
   key: process.env.WEBSITE_DEPLOY_KEY || "~/.ssh/namecheap-portal",
   remotePath: process.env.WEBSITE_DEPLOY_REMOTE_PATH || "portal/",
   portalUrl: process.env.PORTAL_DEPLOY_URL || "https://portal.monsoonfire.com",
   noBuild: false,
   verify: false,
+  promotionGate: true,
+  preflight: true,
+  autoRollback: true,
+  rollbackVerify: true,
+  evidencePack: true,
   verifyArgs: [],
+  preflightReport: resolve(repoRoot, "output", "qa", "deploy-preflight.json"),
+  cutoverVerifyReport: resolve(repoRoot, "output", "qa", "post-deploy-cutover-verify.json"),
+  promotionReport: resolve(repoRoot, "output", "qa", "post-deploy-promotion-gate.json"),
+  rollbackReport: resolve(repoRoot, "output", "qa", "post-deploy-rollback.json"),
+  rollbackVerifyReport: resolve(repoRoot, "output", "qa", "post-deploy-rollback-verify.json"),
+  evidenceJson: resolve(repoRoot, "artifacts", "deploy-evidence-latest.json"),
+  evidenceMd: resolve(repoRoot, "artifacts", "deploy-evidence-latest.md"),
 };
 
 const options = parseArgs(process.argv.slice(2));
@@ -55,19 +67,53 @@ for (const fileName of requiredWellKnownFiles) {
   }
 }
 
-if (!options.noBuild) {
-  run("npm", ["--prefix", "web", "run", "build"], {
-    label: "Building web/dist",
-  });
-}
-if (!existsSync(webDist)) {
-  fail(`Missing build output: ${webDist}`);
-}
-
 const stageRoot = mkdtempSync(join(tmpdir(), "mf-namecheap-portal-"));
 const stageDir = resolve(stageRoot, "staging");
+const rollbackBackupDir = resolve(stageRoot, "rollback-backup");
+
+let deploymentError = null;
+let promotionGateFailure = null;
+let rollbackSummary = {
+  status: "not_needed",
+  triggeredBy: "",
+  rollbackApplied: false,
+  rollbackExitCode: 0,
+  rollbackVerify: {
+    attempted: false,
+    exitCode: 0,
+  },
+  details: "",
+};
 
 try {
+  if (options.preflight) {
+    const preflightArgs = [
+      resolve(repoRoot, "scripts", "deploy-preflight.mjs"),
+      "--target",
+      "namecheap-portal",
+      "--json",
+      "--report",
+      options.preflightReport,
+    ];
+    if (!options.promotionGate) {
+      preflightArgs.push("--skip-promotion-gate");
+    }
+
+    run("node", preflightArgs, {
+      label: "Running deploy preflight",
+    });
+  }
+
+  if (!options.noBuild) {
+    run("npm", ["--prefix", "web", "run", "build"], {
+      label: "Building web/dist",
+    });
+  }
+
+  if (!existsSync(webDist)) {
+    fail(`Missing build output: ${webDist}`);
+  }
+
   cpSync(webDist, stageDir, { recursive: true });
   cpSync(htaccessTemplate, resolve(stageDir, ".htaccess"));
   // Use website/.well-known as the single source and mirror both paths for host compatibility.
@@ -75,7 +121,32 @@ try {
   cpSync(wellKnownSourceDir, resolve(stageDir, "well-known"), { recursive: true });
 
   const sshTransport = `ssh -i ${keyPath} -p ${String(options.port)} -o StrictHostKeyChecking=accept-new`;
+  const remotePathWithSlash = ensureTrailingSlash(options.remotePath);
   const remoteTarget = `${options.server}:${options.remotePath}`;
+
+  run("ssh", [
+    "-i",
+    keyPath,
+    "-p",
+    String(options.port),
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    options.server,
+    `mkdir -p ${shellQuote(options.remotePath)}`,
+  ], {
+    label: "Ensuring remote deploy path exists",
+  });
+
+  if (options.autoRollback && options.promotionGate) {
+    mkdirSync(rollbackBackupDir, { recursive: true });
+    run(
+      "rsync",
+      ["-az", "--delete", "-e", sshTransport, `${options.server}:${remotePathWithSlash}`, `${rollbackBackupDir}/`],
+      {
+        label: "Capturing pre-deploy rollback snapshot",
+      }
+    );
+  }
 
   run(
     "rsync",
@@ -85,13 +156,147 @@ try {
 
   if (options.verify) {
     const verifyScript = resolve(repoRoot, "web", "deploy", "namecheap", "verify-cutover.mjs");
-    const verifyArgs = ["--portal-url", options.portalUrl, ...options.verifyArgs];
+    const verifyArgs = [
+      "--portal-url",
+      options.portalUrl,
+      "--report-path",
+      options.cutoverVerifyReport,
+      ...options.verifyArgs,
+    ];
     run("node", [verifyScript, ...verifyArgs], {
       label: "Running cutover verification",
     });
   }
+
+  if (options.promotionGate) {
+    const promotionResult = run(
+      "node",
+      [
+        resolve(repoRoot, "scripts", "post-deploy-promotion-gate.mjs"),
+        "--base-url",
+        options.portalUrl,
+        "--report",
+        options.promotionReport,
+        "--json",
+      ],
+      {
+        label: "Running post-deploy promotion gate",
+        allowFailure: true,
+      }
+    );
+
+    if (!promotionResult.ok) {
+      promotionGateFailure = {
+        exitCode: promotionResult.status,
+      };
+      rollbackSummary = {
+        status: "required",
+        triggeredBy: "promotion-gate-failure",
+        rollbackApplied: false,
+        rollbackExitCode: 0,
+        rollbackVerify: {
+          attempted: false,
+          exitCode: 0,
+        },
+        details: "Promotion gate failed after deploy.",
+      };
+
+      if (options.autoRollback) {
+        const rollbackResult = run(
+          "rsync",
+          ["-az", "--delete", "-e", sshTransport, `${rollbackBackupDir}/`, remoteTarget],
+          {
+            label: "Auto-rollback: restoring pre-deploy snapshot",
+            allowFailure: true,
+          }
+        );
+
+        rollbackSummary.rollbackApplied = rollbackResult.ok;
+        rollbackSummary.rollbackExitCode = rollbackResult.status;
+        rollbackSummary.status = rollbackResult.ok ? "rolled_back" : "rollback_failed";
+        rollbackSummary.details = rollbackResult.ok
+          ? "Rollback applied because promotion gate failed."
+          : "Rollback attempted but failed.";
+
+        if (rollbackResult.ok && options.rollbackVerify) {
+          rollbackSummary.rollbackVerify.attempted = true;
+          const rollbackVerifyScript = resolve(repoRoot, "web", "deploy", "namecheap", "verify-cutover.mjs");
+          const rollbackVerifyResult = run(
+            "node",
+            [
+              rollbackVerifyScript,
+              "--portal-url",
+              options.portalUrl,
+              "--report-path",
+              options.rollbackVerifyReport,
+            ],
+            {
+              label: "Auto-rollback: running post-rollback verification",
+              allowFailure: true,
+            }
+          );
+
+          rollbackSummary.rollbackVerify.exitCode = rollbackVerifyResult.status;
+          if (!rollbackVerifyResult.ok) {
+            rollbackSummary.status = "rollback_failed";
+            rollbackSummary.details = "Rollback restored files but post-rollback verification failed.";
+          }
+        }
+      } else {
+        rollbackSummary.status = "skipped";
+        rollbackSummary.details = "Promotion gate failed and auto-rollback is disabled.";
+      }
+
+      writeJson(options.rollbackReport, {
+        timestampIso: new Date().toISOString(),
+        portalUrl: options.portalUrl,
+        server: options.server,
+        remotePath: options.remotePath,
+        promotionGate: promotionGateFailure,
+        rollback: rollbackSummary,
+      });
+
+      throw new Error(
+        rollbackSummary.status === "rolled_back"
+          ? "Post-deploy promotion gate failed; auto-rollback has been applied."
+          : "Post-deploy promotion gate failed; rollback could not be safely completed."
+      );
+    }
+  }
+} catch (error) {
+  deploymentError = error instanceof Error ? error : new Error(String(error));
 } finally {
+  if (options.evidencePack) {
+    const evidenceArgs = [
+      resolve(repoRoot, "scripts", "deploy-evidence-pack.mjs"),
+      "--target",
+      "namecheap-portal",
+      "--base-url",
+      options.portalUrl,
+      "--output-json",
+      options.evidenceJson,
+      "--output-md",
+      options.evidenceMd,
+      "--json",
+    ];
+    if (!options.promotionGate) {
+      evidenceArgs.push("--skip-promotion-gate");
+    }
+    if (!options.verify) {
+      evidenceArgs.push("--skip-cutover-verify");
+    }
+
+    run("node", evidenceArgs, {
+      label: "Generating deploy evidence pack",
+      allowFailure: true,
+    });
+  }
+
   rmSync(stageRoot, { recursive: true, force: true });
+}
+
+if (deploymentError) {
+  fail(deploymentError.message);
 }
 
 process.stdout.write("Namecheap portal deploy complete.\n");
@@ -141,9 +346,90 @@ function parseArgs(argv) {
       parsed.verify = false;
       continue;
     }
+    if (arg === "--promotion-gate") {
+      parsed.promotionGate = true;
+      continue;
+    }
+    if (arg === "--skip-promotion-gate") {
+      parsed.promotionGate = false;
+      continue;
+    }
+    if (arg === "--preflight") {
+      parsed.preflight = true;
+      continue;
+    }
+    if (arg === "--skip-preflight") {
+      parsed.preflight = false;
+      continue;
+    }
+    if (arg === "--auto-rollback") {
+      parsed.autoRollback = true;
+      continue;
+    }
+    if (arg === "--skip-auto-rollback") {
+      parsed.autoRollback = false;
+      continue;
+    }
+    if (arg === "--rollback-verify") {
+      parsed.rollbackVerify = true;
+      continue;
+    }
+    if (arg === "--skip-rollback-verify") {
+      parsed.rollbackVerify = false;
+      continue;
+    }
+    if (arg === "--evidence-pack") {
+      parsed.evidencePack = true;
+      continue;
+    }
+    if (arg === "--skip-evidence-pack") {
+      parsed.evidencePack = false;
+      continue;
+    }
+    if (arg === "--preflight-report") {
+      parsed.preflightReport = resolve(process.cwd(), readValue(argv, i, arg));
+      i += 1;
+      continue;
+    }
+    if (arg === "--cutover-verify-report") {
+      parsed.cutoverVerifyReport = resolve(process.cwd(), readValue(argv, i, arg));
+      i += 1;
+      continue;
+    }
+    if (arg === "--promotion-report") {
+      parsed.promotionReport = resolve(process.cwd(), readValue(argv, i, arg));
+      i += 1;
+      continue;
+    }
+    if (arg === "--rollback-report") {
+      parsed.rollbackReport = resolve(process.cwd(), readValue(argv, i, arg));
+      i += 1;
+      continue;
+    }
+    if (arg === "--rollback-verify-report") {
+      parsed.rollbackVerifyReport = resolve(process.cwd(), readValue(argv, i, arg));
+      i += 1;
+      continue;
+    }
+    if (arg === "--evidence-json") {
+      parsed.evidenceJson = resolve(process.cwd(), readValue(argv, i, arg));
+      i += 1;
+      continue;
+    }
+    if (arg === "--evidence-md") {
+      parsed.evidenceMd = resolve(process.cwd(), readValue(argv, i, arg));
+      i += 1;
+      continue;
+    }
+
     parsed.verifyArgs.push(arg);
   }
   return parsed;
+}
+
+function ensureTrailingSlash(value) {
+  const raw = String(value || "");
+  return raw.endsWith("/") ? raw : `${raw}/`;
 }
 
 function readValue(argv, idx, name) {
@@ -162,17 +448,40 @@ function expandHome(pathValue) {
   return pathValue;
 }
 
+function shellQuote(raw) {
+  return `'${String(raw).replace(/'/g, "'\"'\"'")}'`;
+}
+
 function run(command, args, options = {}) {
   if (options.label) {
     process.stdout.write(`${options.label}...\n`);
   }
   const result = spawnSync(command, args, { stdio: "inherit", shell: false });
+
   if (result.error) {
-    fail(`${command} failed: ${result.error.message}`);
+    if (options.allowFailure) {
+      return {
+        ok: false,
+        status: 1,
+      };
+    }
+    throw new Error(`${command} failed: ${result.error.message}`);
   }
-  if (result.status !== 0) {
-    process.exit(result.status || 1);
+
+  const status = typeof result.status === "number" ? result.status : 1;
+  if (status !== 0 && !options.allowFailure) {
+    throw new Error(`${command} exited with status ${status}`);
   }
+
+  return {
+    ok: status === 0,
+    status,
+  };
+}
+
+function writeJson(path, payload) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
 function printHelp() {
@@ -180,7 +489,7 @@ function printHelp() {
     "Usage: node ./scripts/deploy-namecheap-portal.mjs [options]\n" +
       "\n" +
       "Options:\n" +
-      "  --server <user@host>       required (or WEBSITE_DEPLOY_SERVER)\n" +
+      "  --server <user@host>       default: monsggbd@66.29.137.142\n" +
       "  --port <ssh-port>          default: 21098\n" +
       "  --key <private-key-path>   default: ~/.ssh/namecheap-portal\n" +
       "  --remote-path <path>       default: portal/\n" +
@@ -188,6 +497,16 @@ function printHelp() {
       "  --no-build                 skip web build\n" +
       "  --verify                   run cutover verifier after sync\n" +
       "  --skip-verify              skip verifier (default unless --verify passed)\n" +
+      "  --promotion-gate           run automated promotion gate after deploy (default)\n" +
+      "  --skip-promotion-gate      skip promotion gate automation\n" +
+      "  --preflight                run deploy preflight checks (default)\n" +
+      "  --skip-preflight           skip deploy preflight checks\n" +
+      "  --auto-rollback            restore pre-deploy snapshot if promotion gate fails (default)\n" +
+      "  --skip-auto-rollback       disable automatic rollback on promotion-gate failure\n" +
+      "  --rollback-verify          verify after rollback (default)\n" +
+      "  --skip-rollback-verify     skip rollback verification\n" +
+      "  --evidence-pack            generate deploy evidence pack (default)\n" +
+      "  --skip-evidence-pack       skip deploy evidence pack generation\n" +
       "  --help                     show this help\n" +
       "\n" +
       "Any unknown args are forwarded to verify-cutover when --verify is enabled.\n"

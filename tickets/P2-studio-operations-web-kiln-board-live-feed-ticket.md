@@ -1,6 +1,6 @@
 # Ticket: P2 — Studio Website Kiln Board Live Feed
 
-Status: Planned
+Status: Completed
 Created: 2026-02-17  
 Priority: P2  
 Owner: Website Team  
@@ -44,3 +44,17 @@ Replace static source with live data from existing operational stores/functions.
 
 - Manual status file update process removed from deployment runbook.
 - Visual board and underlying API payload pass manual QA scenario set.
+
+## Completion Evidence (2026-02-25)
+
+- Live kiln board endpoint is active and exported:
+  - `functions/src/websiteKilnBoard.ts`
+  - `functions/src/index.ts` (`websiteKilnBoard`)
+- Website loaders are API-first with resilience fallback:
+  - `website/assets/js/kiln-status.js`
+  - `website/ncsitebuilder/assets/js/kiln-status.js`
+- Deterministic sync check is passing and now tracked in artifacts:
+  - `scripts/check-website-kiln-board.mjs`
+  - `artifacts/website-kiln-board-check.json`
+- Operational runbook documents cadence, payload map, and incident recovery:
+  - `docs/runbooks/WEBSITE_KILN_BOARD_SYNC.md`

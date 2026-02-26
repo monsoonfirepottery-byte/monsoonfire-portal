@@ -79,6 +79,9 @@ Codex, treat this file as your **ground truth** for how to work here: what matte
 ### Blank screen is severity-1
 - App must not white-screen. Keep an ErrorBoundary near the top-level UI when touching App shell.
 
+### Completion claims require visual verification
+- Agents must not report a bug/task as “done” until a direct visual check confirms the UI behavior in the target surface (local, staging, or production). Evidence does not need to be saved, but the check must be performed.
+
 ### Safety rails by default
 - Disable double-submit
 - In-flight guards for network actions

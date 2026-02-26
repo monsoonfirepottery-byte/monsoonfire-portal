@@ -57,7 +57,8 @@ Doc/plan debt:
 ### Epic B: Studio board and operations UX parity
 - Owner: Website + Studio operations dashboard
 - Why now:
-  - Current kiln-status board is static and manual, while core data is available in Firestore/functions.
+  - Current kiln-status board was static/manual at planning time, while core data was already in Firestore/functions.
+  - Update (2026-02-25): live-feed cutover is now implemented; remaining work is operations QA and stale-state controls.
 - Includes:
   - Replace static JSON status board with dynamic source feed.
   - Add polling or push path for live kiln load status updates.
@@ -93,7 +94,7 @@ New tickets to create:
 
 1. Implement API v1 endpoints + doc updates (Epic A) to remove implementation uncertainty.
 2. Expand reservation normalization schema mapping (Epic A).
-3. Replace static kiln-status board with live feed (Epic B).
+3. Keep kiln-status board live-feed parity healthy via sync checks/runbook (Epic B).
 4. Add notification SLA/ETA confidence on status transitions (Epic C).
 5. Add GA event instrumentation and dashboard (Epic D).
 
@@ -104,4 +105,3 @@ New tickets to create:
 - Kiln board updates without code or JSON manual file changes.
 - At least one closed-loop funnel report runs from production logs/analytics each month.
 - Clear reduction in “manual status inquiry” signals in customer support or feedback logs.
-

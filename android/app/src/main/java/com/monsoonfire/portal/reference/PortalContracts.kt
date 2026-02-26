@@ -186,8 +186,7 @@ data class NotificationFailureDrillChannels(
 )
 
 @Serializable
-data class RunNotificationMetricsAggregationNowRequest(
-)
+class RunNotificationMetricsAggregationNowRequest
 
 @Serializable
 data class EventAddOnInput(

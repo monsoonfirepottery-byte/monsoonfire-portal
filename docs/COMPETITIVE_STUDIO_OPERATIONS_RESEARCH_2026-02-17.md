@@ -104,7 +104,8 @@ Focus: reservation status flow, queue fairness, piece tracking, pickup, staff wo
 - no production `updateReservation` endpoint path currently serving staff lifecycle transitions
 - no full transition audit + timeline trail on reservation state updates
 - no robust client-facing queue position/ETA band in reservation cards
-- website kiln board is static/manual via `website/data/kiln-status.json`
+- website kiln board was static/manual via `website/data/kiln-status.json` at scan time
+  - Update (2026-02-25): now API-first via `functions/src/websiteKilnBoard.ts` with static fallback for resilience.
 - explicit no-show/fairness controls not present in reservation queue flow
 
 ### Existing foundation to build from

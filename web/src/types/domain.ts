@@ -18,8 +18,8 @@ export type Batch = {
 
   // naming / status
   title?: string;
-  status?: string; // e.g. "STAFF_HANDOFF"
-  intakeMode?: "STAFF_HANDOFF" | "KILNFIRE_PIECES" | string;
+  status?: string; // e.g. "SHELF_PURCHASE"
+  intakeMode?: "SHELF_PURCHASE" | "WHOLE_KILN" | "COMMUNITY_SHELF" | string;
 
   // pricing (some paths used priceCents, some used estimatedCostCents)
   priceCents?: number;

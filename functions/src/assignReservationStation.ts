@@ -12,6 +12,7 @@ import {
   type RequestLike,
 } from "./shared";
 import { getStationCapacity, isKnownStationId, normalizeStationId } from "./reservationStationConfig";
+import { isCommunityShelfIntakeMode } from "./intakeMode";
 
 const REGION = "us-central1";
 
@@ -95,6 +96,10 @@ function isCapacityRelevantLoadStatus(value: unknown): boolean {
   const normalized = normalizeQueueClass(value);
   if (normalized === null) return true;
   return normalized === "queued" || normalized === "loading" || normalized === "loaded";
+}
+
+function isCommunityShelfReservationRow(value: Record<string, unknown>): boolean {
+  return isCommunityShelfIntakeMode(value.intakeMode);
 }
 
 function asNonNegativeNumber(value: unknown): number | null {
@@ -248,11 +253,12 @@ export const assignReservationStation = onRequest(
                 isCapacityRelevantLoadStatus(raw.loadStatus);
               if (!isActive) return 0;
               if (!isCapacityRelevantLoadStatus(raw.loadStatus)) return 0;
+              if (isCommunityShelfReservationRow(raw)) return 0;
               return estimateHalfShelves(raw);
             })
             .reduce((total, each) => total + each, 0);
 
-          const incomingHalfShelves = estimateHalfShelves(data);
+          const incomingHalfShelves = isCommunityShelfReservationRow(data) ? 0 : estimateHalfShelves(data);
           if (stationUsedAfter + incomingHalfShelves > stationCapacity) {
             throw new Error("STATION_CAPACITY_EXCEEDED");
           }
@@ -310,10 +316,11 @@ export const assignReservationStation = onRequest(
               const raw = docSnap.data() as Record<string, unknown>;
               const isActive = normalizeQueueClass(raw.status) !== "cancelled";
               if (!isActive) return 0;
+              if (isCommunityShelfReservationRow(raw)) return 0;
               return isCapacityRelevantLoadStatus(raw.loadStatus) ? estimateHalfShelves(raw) : 0;
             })
             .reduce((total, each) => total + each, 0);
-          const incomingHalfShelves = estimateHalfShelves(data);
+          const incomingHalfShelves = isCommunityShelfReservationRow(data) ? 0 : estimateHalfShelves(data);
           stationUsedAfter += incomingHalfShelves;
         }
 

@@ -37,7 +37,7 @@ describe("ensureUserDocForSession", () => {
 
     const { ensureUserDocForSession } = await loadEnsureUserDocModule();
     const args = {
-      uid: "user_1",
+      uid: "user_inflight",
       projectId: "project_1",
       baseUrl: "https://example.test/functions",
       getIdToken: async () => "id-token-123",
@@ -66,7 +66,7 @@ describe("ensureUserDocForSession", () => {
 
     const { ensureUserDocForSession } = await loadEnsureUserDocModule();
     const result = await ensureUserDocForSession({
-      uid: "user_1",
+      uid: "user_headers",
       projectId: "project_1",
       baseUrl: "https://example.test/functions/",
       getIdToken: async () => "id-token-123",
@@ -90,7 +90,7 @@ describe("ensureUserDocForSession", () => {
 
     const { ensureUserDocForSession } = await loadEnsureUserDocModule();
     const args = {
-      uid: "user_1",
+      uid: "user_cooldown",
       projectId: "project_1",
       baseUrl: "https://example.test/functions",
       getIdToken: async () => "id-token-123",

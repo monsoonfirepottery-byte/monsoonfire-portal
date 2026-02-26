@@ -1,0 +1,60 @@
+name: Portal PR Functional Gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portal-pr-functional-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  functional-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Enforce Firestore rules release drift check
+        env:
+          FIREBASE_RULES_API_TOKEN: ${{ secrets.FIREBASE_RULES_API_TOKEN }}
+        run: |
+          if [ -z "$FIREBASE_RULES_API_TOKEN" ]; then
+            echo "Missing required secret: FIREBASE_RULES_API_TOKEN" >&2
+            exit 1
+          fi
+          npm run firestore:rules:sync:check
+
+      - name: Setup Java for Firestore emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Emulator-backed functional authz + index gate
+        run: node ./scripts/portal-pr-functional-gate.mjs --json --report output/qa/portal-pr-functional-gate.json
+
+      - name: Upload PR functional artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-pr-functional-gate-${{ github.run_id }}
+          path: |
+            output/qa/portal-pr-functional-gate.json
+            output/qa/firestore-index-contract-guard-pr.json
+          if-no-files-found: ignore
+          retention-days: 7

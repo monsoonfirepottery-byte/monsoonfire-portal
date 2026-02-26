@@ -1,6 +1,6 @@
 # Website GA event and goal instrumentation completeness
 
-Status: Planned
+Status: In Progress
 Priority: P1
 Severity: Sev2
 Component: website
@@ -43,3 +43,13 @@ Audit all key pages and interactions against a single analytics event contract s
 1. Click each mapped CTA in staging and confirm events/funnel entries match expected names.
 1. Submit one full inquiry flow and one partial flow to validate end-to-end event sequence.
 1. Confirm no JavaScript runtime warning surfaces when event tags are disabled.
+
+## Unblock update (2026-02-25)
+- Added shared event/goal mapping template and runbook guidance:
+  - `docs/analytics/WEBSITE_GA_EVENT_GOAL_MAP_TEMPLATE.md`
+  - `docs/runbooks/WEBSITE_GA_SPRINT1_FOUNDATIONS.md`
+- Added deterministic foundations check command:
+  - `npm run website:ga:sprint1:check`
+  - artifact: `artifacts/website-ga-sprint1-foundations.json`
+- Remaining blocker:
+  - validating real-time GA event ingestion still requires production property access.

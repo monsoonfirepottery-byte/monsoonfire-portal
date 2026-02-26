@@ -13,7 +13,7 @@ test("buildContinueJourneyContract enforces draft/lineage/timeline post-conditio
     sourceBatch: {
       title: "Bisque set",
       ownerDisplayName: "Alex",
-      intakeMode: "SELF_SERVICE",
+      intakeMode: "SHELF_PURCHASE",
       journeyRootBatchId: "batch_root",
     },
     at: Timestamp.fromMillis(1700000000000),
@@ -54,6 +54,6 @@ test("buildContinueJourneyContract uses source id as root when missing and honor
   assert.equal(out.rootId, "batch_a");
   assert.equal(out.newBatchDocument["journeyRootBatchId"], "batch_a");
   assert.equal(out.newBatchDocument["title"], "Glaze cycle 2");
-  assert.equal(out.newBatchDocument["intakeMode"], "SELF_SERVICE");
+  assert.equal(out.newBatchDocument["intakeMode"], "SHELF_PURCHASE");
   assert.equal(out.integrationEventData["title"], "Glaze cycle 2");
 });

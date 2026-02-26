@@ -1,0 +1,48 @@
+name: Branch Divergence Guard
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Every 6 hours to detect non-fast-forward branch rewrites quickly.
+    - cron: "35 */6 * * *"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: branch-divergence-guard
+  cancel-in-progress: false
+
+jobs:
+  divergence-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run branch divergence guard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node ./scripts/branch-divergence-guard.mjs \
+            --json \
+            --report output/qa/branch-divergence-guard.json
+
+      - name: Upload branch guard artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: branch-divergence-guard-${{ github.run_id }}
+          path: output/qa/branch-divergence-guard.json
+          if-no-files-found: ignore
+          retention-days: 14

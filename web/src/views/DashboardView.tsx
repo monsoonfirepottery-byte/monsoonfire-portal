@@ -366,7 +366,7 @@ type Props = {
   onOpenGlazeBoard: () => void;
   onOpenCommunity: () => void;
   onOpenMessages: () => void;
-  onOpenPieces: () => void;
+  onOpenPieces: (target?: { batchId: string; pieceId?: string }) => void;
 };
 
 export default function DashboardView({
@@ -541,21 +541,23 @@ export default function DashboardView({
                     .map((word) => word[0]?.toUpperCase())
                     .join("");
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={piece.id}
                       className="piece-thumb"
-                      aria-label={`${title} preview`}
+                      aria-label={`Open ${title} in My Pieces`}
                       title={title}
                       data-index={index + 1}
+                      onClick={() => onOpenPieces({ batchId: piece.id })}
                     >
                       {initials || "•"}
-                    </div>
+                    </button>
                   );
                 })}
               </div>
             </div>
           )}
-          <button className="btn btn-ghost dashboard-link" onClick={onOpenPieces}>
+          <button className="btn btn-ghost dashboard-link" onClick={() => onOpenPieces()}>
             Open My Pieces
           </button>
         </RevealCard>
@@ -708,7 +710,7 @@ export default function DashboardView({
                 : `${archivedCount} piece${archivedCount === 1 ? "" : "s"} archived.`}
             </div>
           </div>
-          <button className="btn btn-ghost" onClick={onOpenPieces}>
+          <button className="btn btn-ghost" onClick={() => onOpenPieces()}>
             View archived pieces
           </button>
         </RevealCard>

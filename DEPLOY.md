@@ -46,3 +46,19 @@ Notes:
 ## 5) Alerts / Follow-Up
 - Watch Firebase logs for `websiteKilnBoard` errors during first few minutes.
 - If endpoint degrades, inspect Cloud Function logs in Firebase Console.
+
+## 6) Namecheap Portal Deploy Defaults
+- Primary portal deploy command:
+  - `npm run deploy:namecheap:portal`
+- Default SSH target is now configured in deploy tooling:
+  - `monsggbd@66.29.137.142:21098`
+- Post-deploy promotion gate now runs by default after sync:
+  - Authenticated portal canary
+  - Virtual staff backend regression
+  - Firestore index contract guard
+  - Override only when intentionally needed: `--skip-promotion-gate`
+- Optional overrides (if infra changes):
+  - `WEBSITE_DEPLOY_SERVER`
+  - `WEBSITE_DEPLOY_PORT`
+  - `WEBSITE_DEPLOY_KEY`
+  - `WEBSITE_DEPLOY_REMOTE_PATH`

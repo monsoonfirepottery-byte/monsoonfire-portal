@@ -10,6 +10,7 @@ import type { User } from "firebase/auth";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { db } from "../firebase";
 import { createPortalApi } from "../api/portalApi";
+import { normalizeIntakeMode } from "../lib/intakeMode";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./KilnLaunchView.css";
 
@@ -18,14 +19,13 @@ type LoadStatus = "queued" | "loading" | "loaded";
 type ReservationQueueItem = {
   id: string;
   ownerUid: string;
+  intakeMode?: string | null;
   firingType?: string | null;
   shelfEquivalent?: number | null;
   footprintHalfShelves?: number | null;
   heightInches?: number | null;
   tiers?: number | null;
   estimatedHalfShelves?: number | null;
-  useVolumePricing?: boolean;
-  volumeIn3?: number | null;
   kilnId?: string | null;
   status?: string | null;
   loadStatus?: string | null;
@@ -49,6 +49,7 @@ type QueueEntry = ReservationQueueItem & {
   halfShelves: number;
   loadStatus: LoadStatus;
   firingBucket: "bisque" | "glaze";
+  intakeMode: "SHELF_PURCHASE" | "WHOLE_KILN" | "COMMUNITY_SHELF";
 };
 
 type KilnLaunchViewProps = {
@@ -115,11 +116,11 @@ function getQueueMeta(item: QueueEntry) {
   const parts: string[] = [];
   const ware = formatWareLabel(item.wareType);
   if (ware) parts.push(ware);
-  if (item.useVolumePricing && item.volumeIn3) {
-    parts.push(`${item.volumeIn3} in^3`);
-  } else if (item.dropOffQuantity?.pieceRange) {
+  if (item.dropOffQuantity?.pieceRange) {
     parts.push(item.dropOffQuantity.pieceRange);
   }
+  if (item.intakeMode === "WHOLE_KILN") parts.push("Whole kiln");
+  if (item.intakeMode === "COMMUNITY_SHELF") parts.push("Community shelf");
   parts.push(item.firingBucket === "glaze" ? "Glaze" : "Bisque");
   return parts.join(" · ") || "Member check-in";
 }
@@ -176,6 +177,7 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
         return {
           id: docSnap.id,
           ownerUid: data.ownerUid ?? "",
+          intakeMode: typeof data.intakeMode === "string" ? data.intakeMode : null,
           firingType: data.firingType ?? null,
           shelfEquivalent: typeof data.shelfEquivalent === "number" ? data.shelfEquivalent : null,
           footprintHalfShelves:
@@ -184,8 +186,6 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
           tiers: typeof data.tiers === "number" ? data.tiers : null,
           estimatedHalfShelves:
             typeof data.estimatedHalfShelves === "number" ? data.estimatedHalfShelves : null,
-          useVolumePricing: data.useVolumePricing === true,
-          volumeIn3: typeof data.volumeIn3 === "number" ? data.volumeIn3 : null,
           kilnId: data.kilnId ?? null,
           status: data.status ?? null,
           loadStatus: data.loadStatus ?? null,
@@ -223,6 +223,7 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
     () =>
       activeReservations.map((item) => ({
         ...item,
+        intakeMode: normalizeIntakeMode(item.intakeMode, item.addOns?.wholeKilnRequested ? "WHOLE_KILN" : "SHELF_PURCHASE"),
         loadStatus: normalizeLoadStatus(item.loadStatus),
         halfShelves:
           item.estimatedHalfShelves != null
@@ -233,17 +234,27 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
     [activeReservations]
   );
 
-  const queuedEntries = useMemo(
-    () => queueEntries.filter((item) => item.loadStatus === "queued"),
+  const communityShelfEntries = useMemo(
+    () => queueEntries.filter((item) => item.intakeMode === "COMMUNITY_SHELF"),
     [queueEntries]
+  );
+
+  const schedulingEntries = useMemo(
+    () => queueEntries.filter((item) => item.intakeMode !== "COMMUNITY_SHELF"),
+    [queueEntries]
+  );
+
+  const queuedEntries = useMemo(
+    () => schedulingEntries.filter((item) => item.loadStatus === "queued"),
+    [schedulingEntries]
   );
   const loadingEntries = useMemo(
-    () => queueEntries.filter((item) => item.loadStatus === "loading"),
-    [queueEntries]
+    () => schedulingEntries.filter((item) => item.loadStatus === "loading"),
+    [schedulingEntries]
   );
   const loadedEntries = useMemo(
-    () => queueEntries.filter((item) => item.loadStatus === "loaded"),
-    [queueEntries]
+    () => schedulingEntries.filter((item) => item.loadStatus === "loaded"),
+    [schedulingEntries]
   );
 
   const bisqueQueue = useMemo(
@@ -405,6 +416,11 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
 
       {error ? <div className="kiln-launch-error">{error}</div> : null}
       {actionStatus ? <div className="kiln-launch-status">{actionStatus}</div> : null}
+      {communityShelfEntries.length > 0 ? (
+        <div className="kiln-launch-status">
+          Community shelf check-ins: {communityShelfEntries.length} (tracked separately; excluded from firing thresholds).
+        </div>
+      ) : null}
 
       <div className="kiln-launch-grid">
         <section className="kiln-launch-panel">

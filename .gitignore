@@ -30,6 +30,8 @@ tmp-firebase.json
 memory/
 exports/
 *.jsonl
+/.codex/toolcalls.ndjson
+/.studiobrain-host-state.json
 *openai*export*
 
 # Env / secrets

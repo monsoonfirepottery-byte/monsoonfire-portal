@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
-import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { Timestamp, doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
+import { createFunctionsClient } from "../api/functionsClient";
+import { resolveFunctionsBaseUrl } from "../utils/functionsBaseUrl";
 import { formatDateTime } from "../utils/format";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./NotificationsView.css";
@@ -37,6 +39,27 @@ function coerceDate(value: unknown): Date | null {
   return null;
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isPermissionDeniedError(error: unknown): boolean {
+  const text = String(error instanceof Error ? error.message : error ?? "").toLowerCase();
+  if (
+    text.includes("permission-denied") ||
+    text.includes("permission denied") ||
+    text.includes("missing or insufficient permissions")
+  ) {
+    return true;
+  }
+
+  if (!error || typeof error !== "object") return false;
+  const payload = error as { code?: unknown; message?: unknown };
+  const code = typeof payload.code === "string" ? payload.code.toLowerCase() : "";
+  const message = typeof payload.message === "string" ? payload.message.toLowerCase() : "";
+  return code.includes("permission-denied") || message.includes("missing or insufficient permissions");
+}
+
 export default function NotificationsView({
   user,
   notifications,
@@ -45,18 +68,75 @@ export default function NotificationsView({
   onOpenFirings,
 }: Props) {
   const [markingId, setMarkingId] = useState<string | null>(null);
+  const [optimisticReadIds, setOptimisticReadIds] = useState<string[]>([]);
+  const [lastMarkedId, setLastMarkedId] = useState<string | null>(null);
+  const [markStatus, setMarkStatus] = useState<{ tone: "notice" | "alert"; message: string } | null>(
+    null
+  );
+  const functionsBaseUrl = useMemo(() => resolveFunctionsBaseUrl(), []);
+  const client = useMemo(
+    () =>
+      createFunctionsClient({
+        baseUrl: functionsBaseUrl,
+        getIdToken: async () => await user.getIdToken(),
+      }),
+    [functionsBaseUrl, user]
+  );
+
+  const optimisticReadSet = useMemo(() => new Set(optimisticReadIds), [optimisticReadIds]);
 
   const unreadCount = useMemo(
-    () => notifications.filter((item) => !item.readAt).length,
-    [notifications]
+    () => notifications.filter((item) => !item.readAt && !optimisticReadSet.has(item.id)).length,
+    [notifications, optimisticReadSet]
+  );
+
+  useEffect(() => {
+    if (!lastMarkedId) return;
+    const timeoutId = window.setTimeout(() => {
+      setLastMarkedId((current) => (current === lastMarkedId ? null : current));
+    }, 2600);
+    return () => window.clearTimeout(timeoutId);
+  }, [lastMarkedId]);
+
+  const applyMarkedReadState = useCallback((notificationId: string) => {
+    setOptimisticReadIds((current) =>
+      current.includes(notificationId) ? current : [...current, notificationId]
+    );
+    setLastMarkedId(notificationId);
+    setMarkStatus({ tone: "notice", message: "Notification marked as read." });
+  }, []);
+
+  const markReadViaApi = useCallback(
+    async (notificationId: string) => {
+      await client.postJson("apiV1/v1/notifications.markRead", {
+        notificationId,
+      });
+    },
+    [client]
   );
 
   const handleMarkRead = async (notificationId: string) => {
-    if (!user || markingId) return;
+    if (!user || markingId || optimisticReadSet.has(notificationId)) return;
     setMarkingId(notificationId);
     try {
       const ref = doc(db, "users", user.uid, "notifications", notificationId);
-      await updateDoc(ref, { readAt: serverTimestamp() });
+      await updateDoc(ref, { readAt: Timestamp.now() });
+      applyMarkedReadState(notificationId);
+    } catch (error: unknown) {
+      if (isPermissionDeniedError(error)) {
+        try {
+          await markReadViaApi(notificationId);
+          applyMarkedReadState(notificationId);
+          return;
+        } catch (fallbackError: unknown) {
+          setMarkStatus({
+            tone: "alert",
+            message: `Mark read failed: ${getErrorMessage(fallbackError)}`,
+          });
+          return;
+        }
+      }
+      setMarkStatus({ tone: "alert", message: `Mark read failed: ${getErrorMessage(error)}` });
     } finally {
       setMarkingId(null);
     }
@@ -86,6 +166,15 @@ export default function NotificationsView({
       ) : null}
 
       {error ? <div className="card card-3d alert">{error}</div> : null}
+      {markStatus ? (
+        <div
+          className={`inline-alert notification-status ${markStatus.tone}`}
+          role={markStatus.tone === "alert" ? "alert" : "status"}
+          aria-live="polite"
+        >
+          {markStatus.message}
+        </div>
+      ) : null}
 
       <div className="notifications-list">
         {notifications.length === 0 ? (
@@ -94,6 +183,7 @@ export default function NotificationsView({
           notifications.map((item) => {
             const createdAt = coerceDate(item.createdAt);
             const readAt = coerceDate(item.readAt);
+            const isRead = Boolean(readAt) || optimisticReadSet.has(item.id);
             const firingLabel =
               item.data?.kilnName || item.data?.firingType ? (
                 <span className="chip subtle">
@@ -105,7 +195,9 @@ export default function NotificationsView({
             return (
               <article
                 key={item.id}
-                className={`card card-3d notification-card ${readAt ? "read" : "unread"}`}
+                className={`card card-3d notification-card ${isRead ? "read" : "unread"} ${
+                  lastMarkedId === item.id ? "read-recent" : ""
+                }`}
               >
                 <div className="notification-body">
                   <div className="notification-title">{item.title ?? "Studio update"}</div>
@@ -119,7 +211,7 @@ export default function NotificationsView({
                   <button className="btn btn-ghost" onClick={onOpenFirings}>
                     View firings
                   </button>
-                  {!readAt ? (
+                  {!isRead ? (
                     <button
                       className="btn btn-secondary"
                       disabled={markingId === item.id}
@@ -128,7 +220,7 @@ export default function NotificationsView({
                       {markingId === item.id ? "Marking..." : "Mark read"}
                     </button>
                   ) : (
-                    <span className="pill subtle">Read</span>
+                    <span className="pill subtle">{lastMarkedId === item.id ? "Marked just now" : "Read"}</span>
                   )}
                 </div>
               </article>

@@ -119,6 +119,7 @@ node ./scripts/portal-playwright-smoke.mjs --base-url https://staging.example.co
 - `npm run test:automation:deep` (full automated suite + explicit production CORS base and deep portal probes)
 - `npm run test:automation:bundle` (web build + localhost Studio Brain bundle leak guard)
 - `npm run test:automation:ui:deep` (deep portal Playwright probes only)
+- `npm run portal:regression:virtual-staff:prod` (rules release drift + My Pieces authz + Notifications mark-read authz + optional smoke in one command)
 
 ## Failure triage
 - `forbidden requests`:
@@ -140,9 +141,14 @@ node ./scripts/portal-playwright-smoke.mjs --base-url https://staging.example.co
 
 ## Current portal checks
 - `/` + dashboard
+- Dashboard theme consistency (`light` + `dark`) with explicit screenshots in both modes
 - `House`
 - `Staff` when present for current auth
 - `Messages`
 - `Support`
 - Mobile shell + basic dashboard touchpoint
 - Deep mode: explicit endpoint probes for staff and studio-brain critical paths with auth-aware failure scoring
+
+## Non-staff QA loop
+For full release readiness (functionality + smoke + UX), use:
+- [Portal QA Loop - Non-Staff Pages](/home/wuff/monsoonfire-portal/docs/runbooks/PORTAL_QA_LOOP_NON_STAFF.md)

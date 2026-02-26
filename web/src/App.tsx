@@ -130,6 +130,11 @@ type NotificationItem = {
   };
 };
 
+type PieceFocusTarget = {
+  batchId: string;
+  pieceId?: string;
+};
+
 const NAV_TOP_ITEMS: NavItem[] = [
   { key: "dashboard", label: "Dashboard" },
 ];
@@ -389,6 +394,13 @@ function isPermissionDeniedError(error: unknown): boolean {
   );
 }
 
+function isMissingIndexError(error: unknown): boolean {
+  const payload = (error ?? {}) as ErrorLike;
+  const code = typeof payload.code === "string" ? payload.code.toLowerCase() : "";
+  const message = typeof payload.message === "string" ? payload.message.toLowerCase() : "";
+  return code.includes("failed-precondition") && message.includes("requires an index");
+}
+
 const isNavKey = (value: string): value is NavKey =>
   Object.prototype.hasOwnProperty.call(NAV_LABELS, value);
 
@@ -537,8 +549,8 @@ function useLiveUsers(user: User | null, canLoad: boolean) {
         const snap = await trackedGetDocs("messages:liveUsers", usersQuery);
         if (canceled) return;
         const rows: LiveUser[] = snap.docs.map((docSnap) => ({
-          id: docSnap.id,
           ...(docSnap.data() as Partial<LiveUser>),
+          id: docSnap.id,
         }));
         setUsers(rows.filter((liveUser) => liveUser.id !== user.uid && liveUser.isActive !== false));
       } catch (error: unknown) {
@@ -576,18 +588,46 @@ function useDirectMessages(user: User | null, canLoad: boolean) {
 
     const load = async () => {
       try {
+        let snap;
+        let usedNoIndexFallback = false;
+        const threadsCollection = collection(db, "directMessages");
         const threadsQuery = query(
-          collection(db, "directMessages"),
+          threadsCollection,
           where("participantUids", "array-contains", user.uid),
           orderBy("lastMessageAt", "desc"),
           limit(50)
         );
-        const snap = await trackedGetDocs("messages:threads", threadsQuery);
+        try {
+          snap = await trackedGetDocs("messages:threads", threadsQuery);
+        } catch (error: unknown) {
+          if (!isMissingIndexError(error)) {
+            throw error;
+          }
+          usedNoIndexFallback = true;
+          const fallbackQuery = query(
+            threadsCollection,
+            where("participantUids", "array-contains", user.uid),
+            limit(120)
+          );
+          snap = await trackedGetDocs("messages:threads:no-index-fallback", fallbackQuery);
+        }
         if (canceled) return;
-        const rows: DirectMessageThread[] = snap.docs.map((docSnap) => ({
-          id: docSnap.id,
+        const rows = snap.docs.map((docSnap) => ({
           ...(docSnap.data() as Partial<DirectMessageThread>),
-        }));
+          id: docSnap.id,
+        })) as DirectMessageThread[];
+
+        if (usedNoIndexFallback) {
+          rows.sort((a, b) => {
+            const left = readTimestampMillis(a.lastMessageAt) ?? 0;
+            const right = readTimestampMillis(b.lastMessageAt) ?? 0;
+            return right - left;
+          });
+          setThreads(rows.slice(0, 50));
+          setError("");
+          return;
+        }
+
         setThreads(rows);
       } catch (error: unknown) {
         if (!canceled) setError(`Direct messages failed: ${getErrorMessage(error)}`);
@@ -632,8 +672,8 @@ function useAnnouncements(user: User | null, canLoad: boolean) {
         const snap = await trackedGetDocs("messages:announcements", announcementsQuery);
         if (canceled) return;
         const rows: Announcement[] = snap.docs.map((docSnap) => ({
-          id: docSnap.id,
           ...(docSnap.data() as Partial<Announcement>),
+          id: docSnap.id,
         }));
         setAnnouncements(rows);
       } catch (error: unknown) {
@@ -679,8 +719,8 @@ function useNotifications(user: User | null, canLoad: boolean) {
         const snap = await trackedGetDocs("notifications:list", notificationsQuery);
         if (canceled) return;
         const rows = snap.docs.map((docSnap) => ({
-          id: docSnap.id,
           ...(docSnap.data() as Record<string, unknown>),
+          id: docSnap.id,
         }));
         setNotifications(rows as NotificationItem[]);
       } catch (error: unknown) {
@@ -749,6 +789,7 @@ export default function App() {
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [supportStatus, setSupportStatus] = useState("");
   const [supportBusy, setSupportBusy] = useState(false);
+  const [piecesFocusTarget, setPiecesFocusTarget] = useState<PieceFocusTarget | null>(null);
   const [bootstrapWarning, setBootstrapWarning] = useState("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [themeName, setThemeName] = useState<PortalThemeName>(() => readStoredPortalTheme());
@@ -1112,7 +1153,10 @@ export default function App() {
             })
             .catch(() => setIsStaff(false));
         }
-        if (!nextUser) setNav("dashboard");
+        if (!nextUser) {
+          setPiecesFocusTarget(null);
+          setNav("dashboard");
+        }
       });
     };
 
@@ -1363,8 +1407,8 @@ export default function App() {
     user,
     isStaff && nav === "messages"
   );
-  const shouldLoadMessages = nav === "messages";
-  const shouldLoadAnnouncements = nav === "messages";
+  const shouldLoadMessages = nav === "messages" || nav === "dashboard";
+  const shouldLoadAnnouncements = nav === "messages" || nav === "dashboard";
   const { threads, loading: threadsLoading, error: threadsError } = useDirectMessages(
     user,
     shouldLoadMessages
@@ -1701,6 +1745,15 @@ export default function App() {
     setMobileNavOpen(false);
   };
 
+  const openPieces = useCallback((target?: PieceFocusTarget) => {
+    setPiecesFocusTarget(target ?? null);
+    setNav("pieces");
+  }, []);
+
+  const handlePiecesFocusConsumed = useCallback(() => {
+    setPiecesFocusTarget(null);
+  }, []);
+
   const renderView = (key: NavKey) => {
       if (!user) {
         return (
@@ -1738,7 +1791,7 @@ export default function App() {
             onOpenGlazeBoard={() => setNav("glazes")}
             onOpenCommunity={() => setNav("community")}
             onOpenMessages={() => setNav("messages")}
-            onOpenPieces={() => setNav("pieces")}
+            onOpenPieces={openPieces}
           />
         );
       case "pieces":
@@ -1747,6 +1800,8 @@ export default function App() {
             user={user}
             adminToken={devAdminTokenValue}
             isStaff={staffUi}
+            focusTarget={piecesFocusTarget}
+            onFocusTargetConsumed={handlePiecesFocusConsumed}
             onOpenCheckin={() => setNav("reservations")}
           />
         );
@@ -1818,7 +1873,7 @@ export default function App() {
       case "studioResources":
         return (
           <StudioResourcesView
-            onOpenPieces={() => setNav("pieces")}
+            onOpenPieces={() => openPieces()}
             onOpenMaterials={() => setNav("materials")}
             onOpenMembership={() => setNav("membership")}
             onOpenBilling={() => setNav("billing")}

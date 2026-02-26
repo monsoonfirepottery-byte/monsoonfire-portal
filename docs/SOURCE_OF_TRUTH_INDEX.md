@@ -82,6 +82,7 @@ It also tracks public agent-readable discovery surfaces for website and portal.
 | Store readiness | `output/mobile-store-readiness/latest.json` | `scripts/mobile-store-readiness-gate.mjs` |
 | Phased smoke evidence | `output/phased-smoke-gate/latest.json`, `output/phased-smoke-gate/staging/*.json`, `output/phased-smoke-gate/beta/*.json`, `output/phased-smoke-gate/production/*.json`, `output/phased-smoke-gate/store-readiness/*.json` | `scripts/phased-smoke-gate.mjs` |
 | PR gate | `artifacts/pr-gate.json` | `scripts/pr-gate.mjs` |
+| Website GA Sprint 1 foundations check | `artifacts/website-ga-sprint1-foundations.json` | `scripts/check-website-ga-sprint1-foundations.mjs` |
 | Source-of-truth index audit | `output/source-of-truth-index-audit/latest.json` | `scripts/source-of-truth-index-audit.mjs` |
 | Agent-readable surfaces check | `output/agent-surfaces-check/latest.json` | `scripts/check-agent-surfaces.mjs` |
 | Vite/Firebase stack profile snapshot | `output/studio-stack-profile/latest.json` | `scripts/studio-stack-profile-snapshot.mjs` |
@@ -96,6 +97,7 @@ It also tracks public agent-readable discovery surfaces for website and portal.
 - `docs/runbooks/PR_GATE.md`
 - `docs/runbooks/PORTAL_PLAYWRIGHT_SMOKE.md`
 - `docs/runbooks/STUDIO_RESERVATION_OPERATIONS_PLAYBOOK.md`
+- `docs/runbooks/WEBSITE_GA_SPRINT1_FOUNDATIONS.md`
 - `docs/runbooks/WEBSITE_KILN_BOARD_SYNC.md`
 - `docs/runbooks/WEBSITE_PLAYWRIGHT_SMOKE.md`
 - `docs/IOS_RUNBOOK.md`

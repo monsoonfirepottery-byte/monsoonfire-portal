@@ -65,7 +65,7 @@ async function resolveCreateResult(createOutput, projectId) {
     return created;
   }
 
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
     const opOutput = run("gcloud", [
       "services",
       "operations",
@@ -91,7 +91,7 @@ async function resolveCreateResult(createOutput, projectId) {
       return response;
     }
 
-    await sleep(3000);
+    await sleep(5000);
   }
 
   throw new Error(`Timed out waiting for API key create operation ${operationName} to complete.`);

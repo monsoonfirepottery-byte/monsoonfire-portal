@@ -10,7 +10,7 @@ import { spawnSync } from "node:child_process";
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
 
-const DEFAULT_BASE_URL = "https://portal.monsoonfire.com";
+const DEFAULT_BASE_URL = "https://monsoonfire-portal.web.app";
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "post-deploy-promotion-gate.json");
 
 function parseArgs(argv) {

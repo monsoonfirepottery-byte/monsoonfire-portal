@@ -10,7 +10,7 @@ import { chromium } from "playwright";
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
 
-const DEFAULT_BASE_URL = "https://portal.monsoonfire.com";
+const DEFAULT_BASE_URL = "https://monsoonfire-portal.web.app";
 const DEFAULT_OUTPUT_DIR = resolve(repoRoot, "output", "qa", "portal-authenticated-canary");
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "portal-authenticated-canary.json");
 

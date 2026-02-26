@@ -43,7 +43,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - name: Emulator-backed functional authz + index gate
         run: node ./scripts/portal-pr-functional-gate.mjs --json --report output/qa/portal-pr-functional-gate.json

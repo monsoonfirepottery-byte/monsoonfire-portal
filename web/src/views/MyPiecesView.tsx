@@ -458,7 +458,7 @@ export default function MyPiecesView({
           .flatMap((result) => result.value);
         let failedRows = rows
           .filter((result): result is PromiseRejectedResult => result.status === "rejected")
-          .map((result) => result.reason);
+          .map((result): unknown => result.reason);
 
         const deniedOnlyInitial =
           failedRows.length > 0 && failedRows.every((reason) => isPermissionDeniedError(reason));
@@ -471,7 +471,7 @@ export default function MyPiecesView({
               .flatMap((result) => result.value);
             failedRows = rows
               .filter((result): result is PromiseRejectedResult => result.status === "rejected")
-              .map((result) => result.reason);
+              .map((result): unknown => result.reason);
           } catch {
             // If refresh fails we surface the original permission state below.
           }
@@ -511,7 +511,7 @@ export default function MyPiecesView({
     return () => {
       cancelled = true;
     };
-  }, [user, active, history, historyBatchIds, piecesFilter, batchWindow]);
+  }, [user, isStaff, active, history, historyBatchIds, piecesFilter, batchWindow]);
 
   const selectedPiece = useMemo(
     () => pieces.find((piece) => piece.key === selectedPieceKey) ?? null,

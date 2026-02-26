@@ -273,7 +273,7 @@ export default function SupportView({ user, supportEmail, onSubmit, status, isBu
           setFaqEntries(FALLBACK_FAQ_ENTRIES);
           setFaqNotice("Live FAQ is still being published. Showing quick-start answers for now.");
         }
-      } catch (error: unknown) {
+      } catch {
         setFaqEntries(FALLBACK_FAQ_ENTRIES);
         setFaqNotice("Live FAQ is temporarily unavailable. Showing quick-start answers.");
       } finally {

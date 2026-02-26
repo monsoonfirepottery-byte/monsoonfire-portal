@@ -40,6 +40,12 @@ jobs:
             functions/package-lock.json
             studio-brain/package-lock.json
 
+      - name: Setup Java for emulator tasks
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
       - name: Install root deps
         run: npm ci
 

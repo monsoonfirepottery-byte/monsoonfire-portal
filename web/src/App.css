@@ -555,6 +555,8 @@
 }
 
 .piece-thumb {
+  appearance: none;
+  -webkit-appearance: none;
   width: 46px;
   height: 46px;
   border-radius: 14px;
@@ -564,6 +566,20 @@
   place-items: center;
   font-weight: 700;
   color: var(--accent);
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.16s ease, border-color 0.16s ease;
+}
+
+.piece-thumb:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-strong);
+}
+
+.piece-thumb:focus-visible {
+  outline: 2px solid var(--focus-ring, rgba(180, 79, 53, 0.45));
+  outline-offset: 2px;
 }
 
 .snapshot-grid {

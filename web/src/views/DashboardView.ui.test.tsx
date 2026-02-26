@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { User } from "firebase/auth";
 import DashboardView from "./DashboardView";
+import type { Batch } from "../types/domain";
 
 type MockQuery = { path: string };
 type MockDoc = { id: string; data: Record<string, unknown> };
@@ -12,6 +13,11 @@ type Snapshot = { docs: { id: string; data: () => Record<string, unknown> }[] };
 type GetDocsMock = (queryRef: MockQuery) => Promise<Snapshot>;
 let getDocsMock: GetDocsMock;
 let getDocsCalls: MockQuery[] = [];
+let useBatchesState: { active: Batch[]; history: Batch[]; error: string } = {
+  active: [],
+  history: [],
+  error: "",
+};
 
 function getQueryPath(queryRef: MockQuery | undefined) {
   return queryRef?.path;
@@ -50,6 +56,10 @@ vi.mock("firebase/firestore", () => {
     getDocs: (queryRef: MockQuery) => getDocsMock(queryRef),
   };
 });
+
+vi.mock("../hooks/useBatches", () => ({
+  useBatches: () => useBatchesState,
+}));
 
 function setupGetDocsPermissionThenSuccess() {
   getDocsCalls = [];
@@ -125,6 +135,7 @@ function createUser(): User {
 
 beforeEach(() => {
   setupGetDocsPermissionThenSuccess();
+  useBatchesState = { active: [], history: [], error: "" };
 });
 
 afterEach(() => {
@@ -198,5 +209,47 @@ describe("DashboardView kiln reload", () => {
     expect(await screen.findByText("No kiln status available yet.")).toBeDefined();
     expect(screen.queryByText(/Using sample kiln data/i)).toBeNull();
     expect(screen.queryByText("L&L eQ2827-3")).toBeNull();
+  });
+
+  it("opens My Pieces with focus target when preview chip is clicked", async () => {
+    setupGetDocsEmptySuccess();
+    const user = createUser();
+    const onOpenPieces = vi.fn();
+    useBatchesState = {
+      active: [
+        {
+          id: "batch-focus",
+          title: "QA target batch",
+          status: "GREENWARE",
+          isClosed: false,
+        },
+      ],
+      history: [],
+      error: "",
+    };
+
+    render(
+      <DashboardView
+        user={user}
+        name="Maker"
+        themeName="portal"
+        threads={[]}
+        announcements={[]}
+        onThemeChange={vi.fn()}
+        onOpenKilnRentals={vi.fn()}
+        onOpenCheckin={vi.fn()}
+        onOpenQueues={vi.fn()}
+        onOpenFirings={vi.fn()}
+        onOpenStudioResources={vi.fn()}
+        onOpenGlazeBoard={vi.fn()}
+        onOpenCommunity={vi.fn()}
+        onOpenMessages={vi.fn()}
+        onOpenPieces={onOpenPieces}
+      />
+    );
+
+    const previewButton = await screen.findByRole("button", { name: /Open QA target batch in My Pieces/i });
+    fireEvent.click(previewButton);
+    expect(onOpenPieces).toHaveBeenCalledWith({ batchId: "batch-focus" });
   });
 });

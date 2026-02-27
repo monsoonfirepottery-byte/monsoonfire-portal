@@ -43,34 +43,53 @@
   "lastRecommendations": [],
   "recommendationOutcomes": [],
   "interactionInterrogation": {
-    "lastRunAtIso": "2026-02-26T06:56:07.413Z",
-    "lastRunId": "2026-02-25-PM",
-    "lastPatternIds": [],
-    "lastTopRecommendations": [],
+    "lastRunAtIso": "2026-02-27T22:54:32.112Z",
+    "lastRunId": "2026-02-27-PM",
+    "lastPatternIds": [
+      "workflow-restatement-cluster",
+      "churn-driven-guardrails",
+      "skill-density-spike"
+    ],
+    "lastTopRecommendations": [
+      "workflow-restatement-cluster",
+      "churn-driven-guardrails",
+      "skill-density-spike"
+    ],
     "lastImpactScore": 100,
     "recentImpactScores": [
+      100,
       100,
       100
     ],
     "activeRuleIds": {
-      "user": [],
-      "agents": []
+      "user": [
+        "USER_BRANCH_POLICY",
+        "USER_OUTPUT_CONTRACT",
+        "USER_PROMPT_STRUCTURE",
+        "USER_SCOPE_FENCE"
+      ],
+      "agents": [
+        "AGENT_BRANCH_ENFORCEMENT",
+        "AGENT_RETRY_STOP_TWO",
+        "AGENT_SCOPE_LOCK",
+        "AGENT_STRUCTURED_PR_NOTES"
+      ]
     },
-    "lastRuleUpdateRunId": "n/a",
-    "lastStructuralEditAtIso": "",
+    "lastRuleUpdateRunId": "2026-02-27-PM",
+    "lastStructuralEditAtIso": "2026-02-27T22:54:32.112Z",
     "lastSkillDensity": {
-      "firestore": 0,
+      "firestore": 5,
       "cloudFunctions": 0,
-      "schedulingLogic": 0,
-      "metadataConfig": 0,
+      "schedulingLogic": 4,
+      "metadataConfig": 39,
       "tooling": 0,
-      "workflowPolicy": 0,
-      "automation": 0
+      "workflowPolicy": 5,
+      "automation": 21
     },
     "lastToolFailureRate24": 0,
-    "lastErrorClusterCount": 0,
-    "lastHighChurnCount": 0,
-    "lastCiFailureRepeats": 0,
+    "lastErrorClusterCount": 2,
+    "lastHighChurnCount": 4,
+    "lastCiFailureRepeats": 2,
     "followThroughHistory": [
       {
         "runId": "2026-02-25-PM",
@@ -81,11 +100,23 @@
         "runId": "2026-02-25-PM",
         "generatedAtIso": "2026-02-26T06:56:07.413Z",
         "outcomes": []
+      },
+      {
+        "runId": "2026-02-27-PM",
+        "generatedAtIso": "2026-02-27T22:54:32.112Z",
+        "outcomes": []
       }
     ]
   },
   "sharedCoordination": {
-    "automationPrByRunId": {},
+    "automationPrByRunId": {
+      "2026-02-27-PM": {
+        "url": "",
+        "branch": "codex/interaction-improve/2026-02-27-PM",
+        "source": "interaction",
+        "updatedAtIso": "2026-02-27T22:54:32.112Z"
+      }
+    },
     "lastStructuralEditAtIso": ""
   },
   "lastHighChurnCount24": 0,

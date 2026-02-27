@@ -224,6 +224,54 @@ type SystemCheckRecord = {
   atMs: number;
   details: string;
 };
+type AutomationWorkflowSource = {
+  key: string;
+  label: string;
+  workflowFile: string;
+  outputHint: string;
+};
+type AutomationIssueSource = {
+  key: string;
+  title: string;
+  issueNumber: number;
+  purpose: string;
+};
+type AutomationWorkflowRun = {
+  key: string;
+  label: string;
+  workflowFile: string;
+  outputHint: string;
+  runId: number;
+  runUrl: string;
+  status: string;
+  conclusion: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+  headSha: string;
+  event: string;
+  isStale: boolean;
+  error: string;
+};
+type AutomationIssueThread = {
+  key: string;
+  title: string;
+  issueNumber: number;
+  issueUrl: string;
+  purpose: string;
+  state: string;
+  updatedAtMs: number;
+  latestCommentAtMs: number;
+  latestCommentUrl: string;
+  latestCommentPreview: string;
+  error: string;
+};
+type AutomationDashboardState = {
+  loading: boolean;
+  loadedAtMs: number;
+  error: string;
+  workflows: AutomationWorkflowRun[];
+  issues: AutomationIssueThread[];
+};
 type StudioBrainStatus = {
   checkedAt: string;
   mode: "ok" | "degraded" | "offline";
@@ -256,6 +304,76 @@ const MODULES: Array<{ key: ModuleKey; label: string }> = [
   { key: "system", label: "System" },
 ];
 
+const GITHUB_REPO_OWNER = "monsoonfirepottery-byte";
+const GITHUB_REPO_NAME = "monsoonfire-portal";
+const GITHUB_REPO_SLUG = `${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}`;
+const GITHUB_API_BASE = `https://api.github.com/repos/${GITHUB_REPO_SLUG}`;
+const AUTOMATION_STALE_MS = 36 * 60 * 60 * 1000;
+const AUTOMATION_WORKFLOW_SOURCES: AutomationWorkflowSource[] = [
+  {
+    key: "automationHealth",
+    label: "Automation Health Daily",
+    workflowFile: "portal-automation-health-daily.yml",
+    outputHint: "health dashboard + issue loop artifacts",
+  },
+  {
+    key: "automationWeeklyDigest",
+    label: "Automation Weekly Digest",
+    workflowFile: "portal-automation-weekly-digest.yml",
+    outputHint: "weekly trend markdown/json digest",
+  },
+  {
+    key: "canary",
+    label: "Daily Authenticated Canary",
+    workflowFile: "portal-daily-authenticated-canary.yml",
+    outputHint: "canary report + adaptive feedback profile",
+  },
+  {
+    key: "indexGuard",
+    label: "Firestore Index Guard",
+    workflowFile: "firestore-index-contract-guard.yml",
+    outputHint: "index guard + auto-remediation profile",
+  },
+  {
+    key: "promotionGate",
+    label: "Post-Deploy Promotion Gate",
+    workflowFile: "portal-post-deploy-promotion-gate.yml",
+    outputHint: "promotion gate + adaptive scope profile",
+  },
+  {
+    key: "prodSmoke",
+    label: "Production Smoke",
+    workflowFile: "portal-prod-smoke.yml",
+    outputHint: "smoke run + retry-memory profile",
+  },
+  {
+    key: "prFunctional",
+    label: "PR Functional Gate",
+    workflowFile: "portal-pr-functional-gate.yml",
+    outputHint: "emulator gate + remediation profile",
+  },
+];
+const AUTOMATION_ISSUE_SOURCES: AutomationIssueSource[] = [
+  {
+    key: "thresholdTuning",
+    title: "Portal Automation Threshold Tuning (Rolling)",
+    issueNumber: 115,
+    purpose: "loop threshold recommendations",
+  },
+  {
+    key: "weeklyDigest",
+    title: "Portal Automation Weekly Digest (Rolling)",
+    issueNumber: 116,
+    purpose: "weekly trend digest for loops",
+  },
+  {
+    key: "canaryRolling",
+    title: "Portal Authenticated Canary Failures (Rolling)",
+    issueNumber: 85,
+    purpose: "canary incident history and directives",
+  },
+];
+
 function str(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
@@ -278,6 +396,30 @@ function toTsMs(value: unknown): number {
     }
   }
   return 0;
+}
+
+function toIsoMs(value: unknown): number {
+  if (typeof value !== "string") return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function shortText(value: string, max = 220): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  if (normalized.length <= max) return normalized;
+  return `${normalized.slice(0, Math.max(0, max - 3)).trim()}...`;
+}
+
+function commentPreview(body: string): string {
+  const lines = body
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !line.startsWith("##"));
+  if (lines.length === 0) return "";
+  const bullet = lines.find((line) => line.startsWith("- "));
+  return shortText((bullet || lines[0]).replace(/^-\s+/, ""));
 }
 
 function when(ms: number): string {
@@ -433,6 +575,13 @@ export default function StaffView({
     totalFailed?: number;
     successRate?: number;
   } | null>(null);
+  const [automationDashboard, setAutomationDashboard] = useState<AutomationDashboardState>({
+    loading: false,
+    loadedAtMs: 0,
+    error: "",
+    workflows: [],
+    issues: [],
+  });
 
   const functionsBaseUrlResolution = useMemo(() => resolveFunctionsBaseUrlResolution(), []);
   const studioBrainResolution = useMemo(() => resolveStudioBrainBaseUrlResolution(), []);
@@ -871,6 +1020,26 @@ export default function StaffView({
       authMismatch: hasFunctionsAuthMismatch,
     };
   }, [hasFunctionsAuthMismatch, latestErrors.length, overviewAlerts, reportOps.open, systemChecks]);
+  const automationKpis = useMemo(() => {
+    const workflowRows = automationDashboard.workflows;
+    const monitored = workflowRows.length;
+    const healthy = workflowRows.filter((item) => item.conclusion === "success").length;
+    const failing = workflowRows.filter((item) => item.conclusion === "failure").length;
+    const inProgress = workflowRows.filter((item) => item.status === "in_progress" || item.status === "queued").length;
+    const stale = workflowRows.filter((item) => item.isStale).length;
+    const threads = automationDashboard.issues.length;
+    const threadErrors = automationDashboard.issues.filter((item) => Boolean(item.error)).length;
+    return {
+      monitored,
+      healthy,
+      failing,
+      inProgress,
+      stale,
+      threads,
+      threadErrors,
+      loadedAtMs: automationDashboard.loadedAtMs,
+    };
+  }, [automationDashboard]);
 
   const memberRoleCounts = useMemo(() => {
     const staffCount = users.filter((u) => u.role === "staff").length;
@@ -1600,8 +1769,168 @@ const loadEvents = useCallback(async () => {
     });
   }, [qTrace]);
 
+  const loadAutomationHealthDashboard = useCallback(async () => {
+    type GithubWorkflowRunsResponse = {
+      workflow_runs?: Array<{
+        id?: number;
+        html_url?: string;
+        status?: string;
+        conclusion?: string | null;
+        created_at?: string;
+        updated_at?: string;
+        head_sha?: string;
+        event?: string;
+      }>;
+    };
+    type GithubIssueResponse = {
+      number?: number;
+      title?: string;
+      html_url?: string;
+      state?: string;
+      updated_at?: string;
+    };
+    type GithubIssueComment = {
+      body?: string;
+      html_url?: string;
+      created_at?: string;
+    };
+
+    setAutomationDashboard((prev) => ({
+      ...prev,
+      loading: true,
+      error: "",
+    }));
+
+    const headers = {
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    };
+    const readJson = async <T,>(url: string): Promise<T> => {
+      const response = await fetch(url, { headers });
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        throw new Error(`GitHub API ${response.status}: ${shortText(detail, 120) || response.statusText || "request failed"}`);
+      }
+      return (await response.json()) as T;
+    };
+
+    const now = Date.now();
+    try {
+      const workflows = await Promise.all(
+        AUTOMATION_WORKFLOW_SOURCES.map(async (source): Promise<AutomationWorkflowRun> => {
+          try {
+            const url = `${GITHUB_API_BASE}/actions/workflows/${encodeURIComponent(source.workflowFile)}/runs?branch=main&per_page=1`;
+            const payload = await readJson<GithubWorkflowRunsResponse>(url);
+            const run = Array.isArray(payload.workflow_runs) ? payload.workflow_runs[0] : null;
+            const createdAtMs = toIsoMs(run?.created_at);
+            const updatedAtMs = toIsoMs(run?.updated_at);
+            const status = str(run?.status, "unknown");
+            const conclusion = str(run?.conclusion, "");
+            return {
+              key: source.key,
+              label: source.label,
+              workflowFile: source.workflowFile,
+              outputHint: source.outputHint,
+              runId: num(run?.id, 0),
+              runUrl: str(run?.html_url, ""),
+              status,
+              conclusion,
+              createdAtMs,
+              updatedAtMs,
+              headSha: str(run?.head_sha, ""),
+              event: str(run?.event, ""),
+              isStale: createdAtMs > 0 ? now - createdAtMs > AUTOMATION_STALE_MS : true,
+              error: "",
+            };
+          } catch (error: unknown) {
+            return {
+              key: source.key,
+              label: source.label,
+              workflowFile: source.workflowFile,
+              outputHint: source.outputHint,
+              runId: 0,
+              runUrl: "",
+              status: "error",
+              conclusion: "",
+              createdAtMs: 0,
+              updatedAtMs: 0,
+              headSha: "",
+              event: "",
+              isStale: true,
+              error: error instanceof Error ? error.message : String(error),
+            };
+          }
+        })
+      );
+
+      const issues = await Promise.all(
+        AUTOMATION_ISSUE_SOURCES.map(async (source): Promise<AutomationIssueThread> => {
+          try {
+            const issueUrl = `${GITHUB_API_BASE}/issues/${source.issueNumber}`;
+            const issue = await readJson<GithubIssueResponse>(issueUrl);
+            const comments = await readJson<GithubIssueComment[]>(
+              `${GITHUB_API_BASE}/issues/${source.issueNumber}/comments?per_page=100`
+            );
+            const latestComment = Array.isArray(comments) && comments.length > 0 ? comments[comments.length - 1] : null;
+            return {
+              key: source.key,
+              title: source.title,
+              issueNumber: num(issue.number, source.issueNumber),
+              issueUrl: str(issue.html_url, ""),
+              purpose: source.purpose,
+              state: str(issue.state, "unknown"),
+              updatedAtMs: toIsoMs(issue.updated_at),
+              latestCommentAtMs: toIsoMs(latestComment?.created_at),
+              latestCommentUrl: str(latestComment?.html_url, ""),
+              latestCommentPreview: commentPreview(str(latestComment?.body, "")),
+              error: "",
+            };
+          } catch (error: unknown) {
+            return {
+              key: source.key,
+              title: source.title,
+              issueNumber: source.issueNumber,
+              issueUrl: "",
+              purpose: source.purpose,
+              state: "error",
+              updatedAtMs: 0,
+              latestCommentAtMs: 0,
+              latestCommentUrl: "",
+              latestCommentPreview: "",
+              error: error instanceof Error ? error.message : String(error),
+            };
+          }
+        })
+      );
+
+      setAutomationDashboard({
+        loading: false,
+        loadedAtMs: Date.now(),
+        error: "",
+        workflows,
+        issues,
+      });
+    } catch (error: unknown) {
+      setAutomationDashboard((prev) => ({
+        ...prev,
+        loading: false,
+        loadedAtMs: Date.now(),
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    }
+  }, []);
+
   const loadAll = useCallback(async () => {
-    const tasks: Array<Promise<unknown>> = [loadUsers(), loadBatches(), loadFirings(), loadLending(), loadEvents(), loadReportOps(), loadStudioBrainStatus()];
+    const tasks: Array<Promise<unknown>> = [
+      loadUsers(),
+      loadBatches(),
+      loadFirings(),
+      loadLending(),
+      loadEvents(),
+      loadReportOps(),
+      loadStudioBrainStatus(),
+      loadAutomationHealthDashboard(),
+    ];
     if (!hasFunctionsAuthMismatch) {
       tasks.push(loadCommerce(), loadSystemStats());
     } else {
@@ -1613,14 +1942,23 @@ const loadEvents = useCallback(async () => {
     }
     await Promise.allSettled(tasks);
     if (selectedEventId) await loadSignups(selectedEventId);
-  }, [hasFunctionsAuthMismatch, loadBatches, loadCommerce, loadEvents, loadFirings, loadLending, loadReportOps, loadSignups, loadStudioBrainStatus, loadSystemStats, loadUsers, selectedEventId]);
+  }, [hasFunctionsAuthMismatch, loadAutomationHealthDashboard, loadBatches, loadCommerce, loadEvents, loadFirings, loadLending, loadReportOps, loadSignups, loadStudioBrainStatus, loadSystemStats, loadUsers, selectedEventId]);
 
   const loadModule = useCallback(
     async (target: ModuleKey) => {
       switch (target) {
         case "cockpit":
         case "overview":
-          await Promise.allSettled([loadUsers(), loadBatches(), loadFirings(), loadEvents(), loadLending(), loadReportOps(), loadStudioBrainStatus()]);
+          await Promise.allSettled([
+            loadUsers(),
+            loadBatches(),
+            loadFirings(),
+            loadEvents(),
+            loadLending(),
+            loadReportOps(),
+            loadStudioBrainStatus(),
+            loadAutomationHealthDashboard(),
+          ]);
           if (!hasFunctionsAuthMismatch) {
             await Promise.allSettled([loadCommerce(), loadSystemStats()]);
           }
@@ -1673,6 +2011,7 @@ const loadEvents = useCallback(async () => {
       loadCommerce,
       loadEvents,
       loadFirings,
+      loadAutomationHealthDashboard,
       loadLending,
       loadReportOps,
       loadSignups,
@@ -3112,7 +3451,7 @@ const loadEvents = useCallback(async () => {
             disabled={Boolean(busy)}
             onClick={() =>
               void run("refreshCockpit", async () => {
-                await Promise.all([loadReportOps(), loadSystemStats()]);
+                await Promise.allSettled([loadReportOps(), loadSystemStats(), loadAutomationHealthDashboard()]);
                 setStatus("Refreshed cockpit telemetry");
               })
             }
@@ -3137,6 +3476,137 @@ const loadEvents = useCallback(async () => {
           <button className="btn btn-ghost btn-small" onClick={() => setModuleKey("agentOps")}>Open Agent ops module</button>
           <button className="btn btn-ghost btn-small" onClick={() => setModuleKey("governance")}>Open Governance module</button>
           <button className="btn btn-ghost btn-small" onClick={() => setModuleKey("reports")}>Open Reports module</button>
+        </div>
+        <div className="staff-subtitle">Automation health dashboard</div>
+        <div className="staff-kpi-grid">
+          <div className="staff-kpi"><span>Monitored workflows</span><strong>{automationKpis.monitored}</strong></div>
+          <div className="staff-kpi"><span>Healthy</span><strong>{automationKpis.healthy}</strong></div>
+          <div className="staff-kpi"><span>Failing</span><strong>{automationKpis.failing}</strong></div>
+          <div className="staff-kpi"><span>In progress</span><strong>{automationKpis.inProgress}</strong></div>
+          <div className="staff-kpi"><span>Stale workflows</span><strong>{automationKpis.stale}</strong></div>
+          <div className="staff-kpi"><span>Rolling threads</span><strong>{automationKpis.threads}</strong></div>
+        </div>
+        <div className="staff-actions-row">
+          <button
+            className="btn btn-secondary btn-small"
+            disabled={Boolean(busy) || automationDashboard.loading}
+            onClick={() => void run("refreshAutomationHealth", loadAutomationHealthDashboard)}
+          >
+            {automationDashboard.loading ? "Refreshing..." : "Refresh automation dashboard"}
+          </button>
+          <a
+            className="btn btn-ghost btn-small"
+            href={`https://github.com/${GITHUB_REPO_SLUG}/actions/workflows/portal-automation-health-daily.yml`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open daily workflow
+          </a>
+          <a
+            className="btn btn-ghost btn-small"
+            href={`https://github.com/${GITHUB_REPO_SLUG}/actions/workflows/portal-automation-weekly-digest.yml`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open weekly digest
+          </a>
+        </div>
+        {automationDashboard.error ? (
+          <div className="staff-note staff-note-error">
+            Automation dashboard fetch error: {automationDashboard.error}
+          </div>
+        ) : null}
+        <div className="staff-mini">
+          Source: GitHub Actions + rolling issues for <code>{GITHUB_REPO_SLUG}</code>.
+          {automationKpis.loadedAtMs ? ` Last refresh ${when(automationKpis.loadedAtMs)}.` : " Not loaded yet."}
+        </div>
+        <div className="staff-table-wrap">
+          <table className="staff-table">
+            <thead>
+              <tr>
+                <th>Workflow</th>
+                <th>Status</th>
+                <th>Conclusion</th>
+                <th>Last run</th>
+                <th>Output</th>
+              </tr>
+            </thead>
+            <tbody>
+              {automationDashboard.workflows.length === 0 ? (
+                <tr><td colSpan={5}>No automation workflow status loaded yet.</td></tr>
+              ) : (
+                automationDashboard.workflows.map((workflow) => (
+                  <tr key={workflow.key}>
+                    <td>
+                      <div>{workflow.label}</div>
+                      <div className="staff-mini"><code>{workflow.workflowFile}</code></div>
+                      <div className="staff-mini">{workflow.outputHint}</div>
+                      {workflow.error ? <div className="staff-mini">{workflow.error}</div> : null}
+                    </td>
+                    <td><span className="pill">{workflow.status || "-"}</span></td>
+                    <td>
+                      <span className="pill">
+                        {workflow.conclusion || (workflow.status === "queued" || workflow.status === "in_progress" ? "running" : "unknown")}
+                      </span>
+                    </td>
+                    <td>
+                      {workflow.createdAtMs ? when(workflow.createdAtMs) : "-"}
+                      {workflow.isStale ? <div className="staff-mini">stale</div> : null}
+                    </td>
+                    <td>
+                      {workflow.runUrl ? (
+                        <a href={workflow.runUrl} target="_blank" rel="noreferrer">Run</a>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="staff-subtitle">Rolling output threads</div>
+        <div className="staff-table-wrap">
+          <table className="staff-table">
+            <thead>
+              <tr>
+                <th>Thread</th>
+                <th>State</th>
+                <th>Updated</th>
+                <th>Latest output preview</th>
+              </tr>
+            </thead>
+            <tbody>
+              {automationDashboard.issues.length === 0 ? (
+                <tr><td colSpan={4}>No rolling issue threads loaded yet.</td></tr>
+              ) : (
+                automationDashboard.issues.map((issue) => (
+                  <tr key={issue.key}>
+                    <td>
+                      {issue.issueUrl ? (
+                        <a href={issue.issueUrl} target="_blank" rel="noreferrer">{issue.title}</a>
+                      ) : (
+                        issue.title
+                      )}
+                      <div className="staff-mini">#{issue.issueNumber} · {issue.purpose}</div>
+                      {issue.error ? <div className="staff-mini">{issue.error}</div> : null}
+                    </td>
+                    <td><span className="pill">{issue.state || "-"}</span></td>
+                    <td>{issue.updatedAtMs ? when(issue.updatedAtMs) : "-"}</td>
+                    <td>
+                      {issue.latestCommentPreview || "-"}
+                      {issue.latestCommentUrl ? (
+                        <div className="staff-mini">
+                          <a href={issue.latestCommentUrl} target="_blank" rel="noreferrer">Open latest comment</a>
+                        </div>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
       <div className="card staff-console-card">{agentOpsContent}</div>

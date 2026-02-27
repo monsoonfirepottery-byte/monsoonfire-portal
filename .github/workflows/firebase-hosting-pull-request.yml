@@ -11,6 +11,8 @@ jobs:
   build_and_preview:
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
+    env:
+      IS_DEPENDABOT_PR: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
     steps:
       - uses: actions/checkout@v4
       - name: Build web bundle with validated Firebase API key
@@ -18,6 +20,7 @@ jobs:
         env:
           FIREBASE_WEB_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
           PORTAL_FIREBASE_API_KEY: ${{ secrets.PORTAL_FIREBASE_API_KEY }}
+          IS_DEPENDABOT_PR: ${{ env.IS_DEPENDABOT_PR }}
         run: |
           set -euo pipefail
 
@@ -82,8 +85,14 @@ jobs:
           done
 
           if [ -z "$SELECTED_FIREBASE_API_KEY" ]; then
-            echo "No valid Firebase web API key candidate resolved for web build." >&2
-            exit 1
+            if [ "$IS_DEPENDABOT_PR" = "true" ]; then
+              SELECTED_FIREBASE_API_KEY="AIzaSyDependabotCiFallback0000000000000"
+              SELECTED_SOURCE="dependabot-fallback"
+              echo "Dependabot PR detected; using compile-only Firebase API key fallback."
+            else
+              echo "No valid Firebase web API key candidate resolved for web build." >&2
+              exit 1
+            fi
           fi
 
           echo "Using Firebase API key source: $SELECTED_SOURCE"
@@ -91,8 +100,14 @@ jobs:
           export VITE_FIREBASE_API_KEY="$SELECTED_FIREBASE_API_KEY"
           npm --prefix web ci
           npm --prefix web run build
-      - uses: FirebaseExtended/action-hosting-deploy@092436dca3ec6dacb231d965ae56f7ff6c09f258
+      - name: Deploy preview channel
+        if: ${{ env.IS_DEPENDABOT_PR != 'true' }}
+        uses: FirebaseExtended/action-hosting-deploy@092436dca3ec6dacb231d965ae56f7ff6c09f258
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
           projectId: monsoonfire-portal
+
+      - name: Skip preview deploy for Dependabot PRs
+        if: ${{ env.IS_DEPENDABOT_PR == 'true' }}
+        run: echo "Dependabot PR detected; skipping Firebase preview deploy step."

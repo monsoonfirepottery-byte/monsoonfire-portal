@@ -25,6 +25,8 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      IS_DEPENDABOT_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -61,7 +63,8 @@ jobs:
       - name: Install studio-brain deps
         run: npm ci --prefix studio-brain
 
-      - name: Rules + index drift blocker
+      - name: Rules release drift check
+        if: ${{ env.IS_DEPENDABOT_PR != 'true' }}
         env:
           FIREBASE_RULES_API_TOKEN: ${{ secrets.FIREBASE_RULES_API_TOKEN }}
         run: |
@@ -70,7 +73,13 @@ jobs:
             exit 1
           fi
           npm run firestore:rules:sync:check
-          node ./scripts/firestore-index-contract-guard.mjs --strict --json --no-github --report output/qa/firestore-index-contract-guard-ci.json
+
+      - name: Skip rules release drift check for Dependabot PRs
+        if: ${{ env.IS_DEPENDABOT_PR == 'true' }}
+        run: echo "Dependabot PR detected; skipping secret-backed firestore rules sync check."
+
+      - name: Index drift blocker
+        run: node ./scripts/firestore-index-contract-guard.mjs --strict --json --no-github --report output/qa/firestore-index-contract-guard-ci.json
 
       - name: Functions lint
         run: npm --prefix functions run lint

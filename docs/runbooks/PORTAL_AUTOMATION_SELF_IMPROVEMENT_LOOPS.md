@@ -24,6 +24,11 @@ This runbook covers the loops added around:
 2. Repeated-signature issue loop (`scripts/portal-automation-issue-loop.mjs`)
 - Reads the daily dashboard.
 - Detects repeated failure signatures (count >= 2 by default).
+- Applies noise controls before opening work:
+  - global cap (`--max-issues`, default 6)
+  - per-workflow cap (`--max-per-workflow`, default 2)
+  - dedupe by normalized signature family
+  - generic placeholder signature suppression unless explicitly enabled
 - Creates/updates focused GitHub issues with evidence and remediation guidance.
 - Updates rolling tuning threads, including canary feedback directives.
 

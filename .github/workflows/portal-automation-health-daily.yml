@@ -77,7 +77,8 @@ jobs:
             ${MODE} \
             --dashboard output/qa/portal-automation-health-dashboard.json \
             --repeated-threshold 2 \
-            --max-issues 12 \
+            --max-issues 6 \
+            --max-per-workflow 2 \
             --report-json output/qa/portal-automation-issue-loop.json \
             --report-markdown output/qa/portal-automation-issue-loop.md \
             --json

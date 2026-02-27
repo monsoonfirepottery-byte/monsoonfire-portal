@@ -14,7 +14,8 @@ const DEFAULT_DASHBOARD_PATH = resolve(repoRoot, "output", "qa", "portal-automat
 const DEFAULT_REPORT_JSON_PATH = resolve(repoRoot, "output", "qa", "portal-automation-issue-loop.json");
 const DEFAULT_REPORT_MARKDOWN_PATH = resolve(repoRoot, "output", "qa", "portal-automation-issue-loop.md");
 const DEFAULT_REPEATED_THRESHOLD = 2;
-const DEFAULT_MAX_ISSUES = 12;
+const DEFAULT_MAX_ISSUES = 6;
+const DEFAULT_MAX_PER_WORKFLOW = 2;
 const TUNING_ROLLING_ISSUE = "Portal Automation Threshold Tuning (Rolling)";
 const CANARY_ROLLING_ISSUE = "Portal Authenticated Canary Failures (Rolling)";
 
@@ -26,6 +27,8 @@ function parseArgs(argv) {
     apply: false,
     repeatedThreshold: DEFAULT_REPEATED_THRESHOLD,
     maxIssues: DEFAULT_MAX_ISSUES,
+    maxPerWorkflow: DEFAULT_MAX_PER_WORKFLOW,
+    includeGenericSignatures: false,
     asJson: false,
   };
 
@@ -43,6 +46,10 @@ function parseArgs(argv) {
     }
     if (arg === "--json") {
       options.asJson = true;
+      continue;
+    }
+    if (arg === "--include-generic-signatures") {
+      options.includeGenericSignatures = true;
       continue;
     }
 
@@ -77,6 +84,13 @@ function parseArgs(argv) {
       const value = Number(next);
       if (!Number.isFinite(value) || value < 1) throw new Error("--max-issues must be >= 1");
       options.maxIssues = Math.min(30, Math.round(value));
+      index += 1;
+      continue;
+    }
+    if (arg === "--max-per-workflow") {
+      const value = Number(next);
+      if (!Number.isFinite(value) || value < 1) throw new Error("--max-per-workflow must be >= 1");
+      options.maxPerWorkflow = Math.min(10, Math.round(value));
       index += 1;
       continue;
     }
@@ -116,6 +130,13 @@ function issueTitleForSignature(signature) {
   const label = String(signature.label || signature.key || "repeated failure").trim();
   const shortened = label.length > 120 ? `${label.slice(0, 117).trim()}...` : label;
   return `Portal Automation Repeated Failure: ${signature.workflowLabel} / ${shortened}`;
+}
+
+function slugify(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 function short(text, max = 220) {
@@ -158,6 +179,35 @@ function findIssueByTitle(repoSlug, title) {
   }
 }
 
+function findIssueBySignatureKey(repoSlug, signatureKey) {
+  if (!signatureKey) return null;
+  const list = runGh(
+    [
+      "issue",
+      "list",
+      "--repo",
+      repoSlug,
+      "--state",
+      "open",
+      "--search",
+      `"Signature-Key: ${signatureKey}" in:body`,
+      "--limit",
+      "10",
+      "--json",
+      "number,title,url,updatedAt",
+    ],
+    { allowFailure: true }
+  );
+  if (!list.ok) return null;
+  try {
+    const parsed = JSON.parse(list.stdout || "[]");
+    if (!Array.isArray(parsed)) return null;
+    return parsed[0] || null;
+  } catch {
+    return null;
+  }
+}
+
 function ensureLabel(repoSlug, name, color, description, enabled) {
   if (!enabled) return;
   runGh(
@@ -167,6 +217,7 @@ function ensureLabel(repoSlug, name, color, description, enabled) {
 }
 
 function createIssueBody(signature, dashboard) {
+  const signatureKey = `${signature.workflowKey}::${signature.key}`;
   const lines = [];
   lines.push(`# ${signature.workflowLabel}`);
   lines.push("");
@@ -192,7 +243,9 @@ function createIssueBody(signature, dashboard) {
   lines.push("## Source");
   lines.push("");
   lines.push(`- Dashboard: \`output/qa/portal-automation-health-dashboard.json\``);
-  lines.push(`- Signature key: \`${signature.workflowKey}::${signature.key}\``);
+  lines.push(`- Signature key: \`${signatureKey}\``);
+  lines.push("");
+  lines.push(`Signature-Key: ${signatureKey}`);
   lines.push("");
   return lines.join("\n");
 }
@@ -260,6 +313,93 @@ function parseDashboard(jsonText) {
   return parsed;
 }
 
+function toTimestamp(value) {
+  const parsed = Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isGenericSignature(signature) {
+  const key = String(signature?.key || "");
+  const label = String(signature?.label || "");
+  return key.endsWith("run.failure-generic") || /without parsed signature/i.test(label);
+}
+
+function signatureGroupKey(signature) {
+  const workflowKey = String(signature?.workflowKey || "workflow");
+  const label = String(signature?.label || "").toLowerCase();
+  const normalized = label
+    .replace(/^canary historical failures:\s*/i, "")
+    .replace(/^canary failed check:\s*/i, "")
+    .replace(/^canary runtime error:\s*/i, "")
+    .replace(/^smoke historical failures:\s*/i, "")
+    .replace(/^smoke failed check:\s*/i, "")
+    .replace(/^promotion gate failed step:\s*/i, "")
+    .replace(/^pr functional failed step:\s*/i, "")
+    .replace(/^pr functional priority failure:\s*/i, "")
+    .trim();
+  const keyPart = normalized ? slugify(normalized) : slugify(String(signature?.key || "unknown"));
+  return `${workflowKey}::${keyPart}`;
+}
+
+function signaturePriorityScore(signature) {
+  const key = String(signature?.key || "");
+  const count = Number(signature?.count || 0);
+  const createdAtBonus = Math.max(0, Math.floor(toTimestamp(signature?.createdAt) / 1000000000000));
+  let score = count * 10;
+  if (key.includes(".signal.")) score += 6;
+  if (key.includes(".check.")) score += 3;
+  if (key.includes(".error.")) score -= 2;
+  if (key.endsWith("run.failure-generic")) score -= 8;
+  score += createdAtBonus;
+  return score;
+}
+
+function selectSignatures(rawSignatures, options) {
+  const withThreshold = (Array.isArray(rawSignatures) ? rawSignatures : []).filter(
+    (entry) => Number(entry?.count || 0) >= options.repeatedThreshold
+  );
+  const filtered = withThreshold.filter(
+    (entry) => options.includeGenericSignatures || !isGenericSignature(entry)
+  );
+  const dedupe = new Map();
+  for (const signature of filtered) {
+    const group = signatureGroupKey(signature);
+    const candidate = {
+      ...signature,
+      priorityScore: signaturePriorityScore(signature),
+      groupKey: group,
+    };
+    const existing = dedupe.get(group);
+    if (!existing || candidate.priorityScore > existing.priorityScore) {
+      dedupe.set(group, candidate);
+    }
+  }
+
+  const ranked = Array.from(dedupe.values()).sort((a, b) => {
+    if (b.priorityScore !== a.priorityScore) return b.priorityScore - a.priorityScore;
+    if (Number(b.count || 0) !== Number(a.count || 0)) return Number(b.count || 0) - Number(a.count || 0);
+    return toTimestamp(b.createdAt) - toTimestamp(a.createdAt);
+  });
+
+  const selected = [];
+  const perWorkflow = new Map();
+  for (const signature of ranked) {
+    if (selected.length >= options.maxIssues) break;
+    const workflowKey = String(signature.workflowKey || "workflow");
+    const used = Number(perWorkflow.get(workflowKey) || 0);
+    if (used >= options.maxPerWorkflow) continue;
+    selected.push(signature);
+    perWorkflow.set(workflowKey, used + 1);
+  }
+
+  return {
+    selected,
+    eligibleCount: withThreshold.length,
+    filteredCount: filtered.length,
+    dedupedCount: ranked.length,
+  };
+}
+
 function buildMarkdown(report) {
   const lines = [];
   lines.push("# Portal Automation Issue Loop");
@@ -312,6 +452,7 @@ async function main() {
     dashboardPath: options.dashboardPath,
     signatureThreshold: options.repeatedThreshold,
     maxIssues: options.maxIssues,
+    maxPerWorkflow: options.maxPerWorkflow,
     signatureActions: [],
     rollingUpdates: [],
     notes: [],
@@ -332,21 +473,31 @@ async function main() {
   ensureLabel(repoSlug, "portal-qa", "0e8a16", "Portal QA automation", options.apply);
   ensureLabel(repoSlug, "self-improvement", "5319e7", "Self-improving feedback loops", options.apply);
 
-  const signatures = Array.isArray(dashboard.repeatedFailureSignatures)
-    ? dashboard.repeatedFailureSignatures
-        .filter((entry) => Number(entry?.count || 0) >= options.repeatedThreshold)
-        .slice(0, options.maxIssues)
-    : [];
+  const signatureSelection = selectSignatures(dashboard.repeatedFailureSignatures, options);
+  const signatures = signatureSelection.selected;
+  report.signatureSelection = {
+    eligibleCount: signatureSelection.eligibleCount,
+    filteredCount: signatureSelection.filteredCount,
+    dedupedCount: signatureSelection.dedupedCount,
+    selectedCount: signatures.length,
+  };
+  if (signatureSelection.eligibleCount > signatures.length) {
+    report.notes.push(
+      `Signature selection reduced issue volume (${signatureSelection.eligibleCount} eligible -> ${signatures.length} selected).`
+    );
+  }
 
   for (const signature of signatures) {
     const title = issueTitleForSignature(signature);
-    const existing = findIssueByTitle(repoSlug, title);
+    const signatureKey = `${signature.workflowKey}::${signature.key}`;
+    const existing = findIssueBySignatureKey(repoSlug, signatureKey) || findIssueByTitle(repoSlug, title);
     const action = {
       action: existing ? "update-issue" : "create-issue",
       title,
-      signatureKey: `${signature.workflowKey}::${signature.key}`,
+      signatureKey,
       result: options.apply ? "pending" : "dry-run",
       url: existing?.url || "",
+      priorityScore: Number(signature.priorityScore || 0),
     };
 
     if (!options.apply) {

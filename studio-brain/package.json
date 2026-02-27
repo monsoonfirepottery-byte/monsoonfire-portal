@@ -25,13 +25,13 @@
   "dependencies": {
     "minio": "^8.0.3",
     "dotenv": "^16.4.7",
-    "firebase-admin": "^13.6.0",
+    "firebase-admin": "^13.7.0",
     "redis": "^4.7.0",
-    "pg": "^8.13.1",
+    "pg": "^8.19.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/node": "^22.13.4",
+    "@types/node": "^22.19.13",
     "@types/pg": "^8.11.11",
     "typescript": "^5.7.3"
   },

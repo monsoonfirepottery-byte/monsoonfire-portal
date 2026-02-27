@@ -50,6 +50,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CODEX_REPORT_MENTION: ${{ vars.CODEX_REPORT_MENTION }}
         run: |
           set -euo pipefail
 

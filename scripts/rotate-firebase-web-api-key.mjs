@@ -134,6 +134,7 @@ async function main() {
   let newKeyResource = `projects/${projectId}/locations/global/keys/dry-run-${timestampSlug()}`;
   let newKeyValue = `dry-run-${timestampSlug()}`;
   let previousDisabled = false;
+  let previousKeyAction = "left enabled (no previous resource configured)";
   let alertResolved = false;
 
   if (!dryRun) {
@@ -189,16 +190,36 @@ async function main() {
     );
 
     if (disablePrevious && previousResource && previousResource !== newKeyResource) {
-      run("gcloud", ["services", "api-keys", "disable", previousResource, `--project=${projectId}`]);
-      previousDisabled = true;
+      try {
+        run("gcloud", [
+          "services",
+          "api-keys",
+          "delete",
+          previousResource,
+          `--project=${projectId}`,
+          "--quiet",
+        ]);
+        previousDisabled = true;
+        previousKeyAction = "revoked";
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (/not found|NOT_FOUND/i.test(message)) {
+          previousDisabled = true;
+          previousKeyAction = "already absent";
+        } else {
+          throw error;
+        }
+      }
+    } else if (!disablePrevious && previousResource) {
+      previousKeyAction = "left enabled (rotation policy disabled)";
+    } else if (previousResource && previousResource === newKeyResource) {
+      previousKeyAction = "left enabled (same resource reused)";
     }
 
     if (resolveAlert && alertNumber) {
       const comment =
         `Automated rotation completed (${displayName}). New key issued with browser/API restrictions, ` +
-        `GitHub secret ${secretName} updated, and previous key ${
-          previousDisabled ? "disabled" : "left enabled (no previous resource configured)"
-        }.`;
+        `GitHub secret ${secretName} updated, and previous key ${previousKeyAction}.`;
       run(
         "gh",
         [
@@ -234,6 +255,7 @@ async function main() {
     newKeyResource,
     previousKeyResource: previousResource || null,
     previousDisabled,
+    previousKeyAction,
     allowedReferrers,
     apiTargets,
     disablePrevious,

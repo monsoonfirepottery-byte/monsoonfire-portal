@@ -1563,6 +1563,31 @@ const ensureTheme = async (page, targetTheme) => {
   }
 };
 
+const waitForStaffConsole = async (page, timeoutMs = 30000) => {
+  const startedAt = Date.now();
+  const consoleHeading = page.getByRole("heading", { name: /^Staff Console$/i }).first();
+  const consoleTitle = page.locator(".staff-console .card-title", { hasText: /^Staff Console$/i }).first();
+  const accessRequiredTitle = page
+    .locator(".card.staff-console-card .card-title", { hasText: /^Staff Console Access Required$/i })
+    .first();
+
+  while (Date.now() - startedAt <= timeoutMs) {
+    if ((await consoleHeading.count()) > 0 && (await consoleHeading.isVisible().catch(() => false))) {
+      return;
+    }
+    if ((await consoleTitle.count()) > 0 && (await consoleTitle.isVisible().catch(() => false))) {
+      return;
+    }
+    if ((await accessRequiredTitle.count()) > 0 && (await accessRequiredTitle.isVisible().catch(() => false))) {
+      throw new Error("Staff page rendered access-required state; account is missing staff/admin claim.");
+    }
+
+    await page.waitForTimeout(250);
+  }
+
+  throw new Error("Staff page did not render Staff Console title before timeout.");
+};
+
 const waitForAuthReady = async (page) => {
   const signOut = page.getByRole("button", { name: /^Sign out$/i }).first();
   const signedOutCard = page.locator(".signed-out-card");
@@ -1832,8 +1857,7 @@ const run = async () => {
       const staffAvailable = await clickNavItem(desktopPage, "Staff", "Staff", false);
       if (staffAvailable) {
         await check(summary, "staff renders", async () => {
-          const staffHeading = desktopPage.getByRole("heading", { name: /^Staff Console$/i }).first();
-          await staffHeading.waitFor({ timeout: 30000 });
+          await waitForStaffConsole(desktopPage, 30000);
           await takeScreenshot(desktopPage, options.outputDir, "portal-04-staff-desktop.png", summary, "desktop staff");
         });
       }
@@ -1907,8 +1931,7 @@ const run = async () => {
       const staffAvailable = await clickNavItem(desktopPage, "Staff", "Staff", false);
       if (staffAvailable) {
         await check(summary, "staff view renders in deep mode", async () => {
-          const staffHeading = desktopPage.getByRole("heading", { name: /^Staff Console$/i }).first();
-          await staffHeading.waitFor({ timeout: 30000 });
+          await waitForStaffConsole(desktopPage, 30000);
           await takeScreenshot(desktopPage, options.outputDir, "portal-07-staff-deep.png", summary, "deep staff");
         });
       }

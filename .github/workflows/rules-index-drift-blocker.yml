@@ -15,6 +15,8 @@ jobs:
   drift-blocker:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      IS_DEPENDABOT_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,7 +31,8 @@ jobs:
       - name: Install root deps
         run: npm ci
 
-      - name: Run rules + index drift blocker
+      - name: Enforce Firestore rules release drift check
+        if: ${{ env.IS_DEPENDABOT_PR != 'true' }}
         env:
           FIREBASE_RULES_API_TOKEN: ${{ secrets.FIREBASE_RULES_API_TOKEN }}
         run: |
@@ -39,6 +42,13 @@ jobs:
           fi
 
           npm run firestore:rules:sync:check
+
+      - name: Skip Firestore rules release drift check for Dependabot PRs
+        if: ${{ env.IS_DEPENDABOT_PR == 'true' }}
+        run: echo "Dependabot PR detected; skipping secret-backed firestore rules sync check."
+
+      - name: Run index drift blocker
+        run: |
           node ./scripts/firestore-index-contract-guard.mjs \
             --strict \
             --json \

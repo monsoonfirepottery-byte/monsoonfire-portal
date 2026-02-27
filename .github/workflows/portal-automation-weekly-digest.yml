@@ -1,0 +1,82 @@
+name: Portal Automation Weekly Digest
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Apply mode (post digest comment)"
+        required: false
+        default: true
+        type: boolean
+      lookback_days:
+        description: "Lookback days for trend digest"
+        required: false
+        default: 7
+        type: number
+  schedule:
+    # Mondays 08:10 America/Phoenix (MST year-round) = 15:10 UTC
+    - cron: "10 15 * * 1"
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: portal-automation-weekly-digest
+  cancel-in-progress: false
+
+jobs:
+  portal-automation-weekly-digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Build weekly digest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          MODE="--apply"
+          LOOKBACK_DAYS="7"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ inputs.apply }}" != "true" ]; then
+              MODE="--dry-run"
+            fi
+            if [ -n "${{ inputs.lookback_days }}" ]; then
+              LOOKBACK_DAYS="${{ inputs.lookback_days }}"
+            fi
+          fi
+
+          node ./scripts/portal-automation-weekly-digest.mjs \
+            ${MODE} \
+            --workflow-name "Portal Automation Health Daily" \
+            --branch "${{ github.ref_name }}" \
+            --lookback-days "${LOOKBACK_DAYS}" \
+            --run-limit 25 \
+            --report-json output/qa/portal-automation-weekly-digest.json \
+            --report-markdown output/qa/portal-automation-weekly-digest.md \
+            --json
+
+      - name: Upload weekly digest artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-automation-weekly-digest-${{ github.run_id }}
+          path: |
+            output/qa/portal-automation-weekly-digest.json
+            output/qa/portal-automation-weekly-digest.md
+          if-no-files-found: ignore
+          retention-days: 21

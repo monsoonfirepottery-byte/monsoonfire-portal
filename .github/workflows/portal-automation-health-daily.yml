@@ -1,0 +1,97 @@
+name: Portal Automation Health Daily
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Apply mode (create/update issues and rolling comments)"
+        required: false
+        default: true
+        type: boolean
+      lookback_hours:
+        description: "Lookback hours for dashboard aggregation"
+        required: false
+        default: 48
+        type: number
+  schedule:
+    # Every 6 hours to keep 24-48h tuning current.
+    - cron: "15 */6 * * *"
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: portal-automation-health-daily
+  cancel-in-progress: false
+
+jobs:
+  portal-automation-health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Build portal automation health dashboard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LOOKBACK_HOURS="48"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.lookback_hours }}" ]; then
+            LOOKBACK_HOURS="${{ inputs.lookback_hours }}"
+          fi
+
+          node ./scripts/portal-automation-health-dashboard.mjs \
+            --branch "${{ github.ref_name }}" \
+            --lookback-hours "${LOOKBACK_HOURS}" \
+            --run-limit 30 \
+            --report-json output/qa/portal-automation-health-dashboard.json \
+            --report-markdown output/qa/portal-automation-health-dashboard.md \
+            --threshold-report output/qa/portal-loop-threshold-tuning.json \
+            --json
+
+      - name: Run issue automation loop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          MODE="--apply"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.apply }}" != "true" ]; then
+            MODE="--dry-run"
+          fi
+
+          node ./scripts/portal-automation-issue-loop.mjs \
+            ${MODE} \
+            --dashboard output/qa/portal-automation-health-dashboard.json \
+            --repeated-threshold 2 \
+            --max-issues 12 \
+            --report-json output/qa/portal-automation-issue-loop.json \
+            --report-markdown output/qa/portal-automation-issue-loop.md \
+            --json
+
+      - name: Upload portal automation health artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-automation-health-dashboard-${{ github.run_id }}
+          path: |
+            output/qa/portal-automation-health-dashboard.json
+            output/qa/portal-automation-health-dashboard.md
+            output/qa/portal-loop-threshold-tuning.json
+            output/qa/portal-automation-issue-loop.json
+            output/qa/portal-automation-issue-loop.md
+          if-no-files-found: ignore
+          retention-days: 21

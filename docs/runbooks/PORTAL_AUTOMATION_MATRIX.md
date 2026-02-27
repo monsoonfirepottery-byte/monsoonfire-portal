@@ -61,6 +61,16 @@ Purpose: define the active automation guardrails for portal functionality, UX co
 - Blocks PRs when cloud Firestore rules release mapping drifts.
 - Blocks PRs when required Firestore composite indexes are missing.
 
+10. Portal automation health dashboard (`.github/workflows/portal-automation-health-daily.yml`)
+- Aggregates latest 24-48h workflow evidence across canary/index/promotion/smoke/PR-functional loops.
+- Publishes daily JSON + markdown health artifacts.
+- Emits threshold tuning recommendations and opens/updates repeated-signature issues.
+
+11. Portal automation weekly digest (`.github/workflows/portal-automation-weekly-digest.yml`)
+- Computes trend deltas from daily dashboard artifacts.
+- Tracks pass-rate movement, top flaky signatures, and new remediation candidates.
+- Posts rolling weekly digest updates for planning and prioritization.
+
 ## Local commands
 
 ```bash
@@ -76,6 +86,11 @@ npm run branch:divergence:guard
 npm run secrets:health:check
 npm run portal:fixture:steward
 npm run portal:promotion:gate
+npm run portal:automation:dashboard
+npm run portal:automation:issues
+npm run portal:automation:issues:apply
+npm run portal:automation:weekly-digest
+npm run portal:automation:weekly-digest:apply
 ```
 
 `portal:canary:auth` and `portal:theme:contrast` auto-resolve staff credentials from:
@@ -90,3 +105,7 @@ npm run portal:promotion:gate
 - `FIREBASE_RULES_API_TOKEN`
 - `PORTAL_FIREBASE_API_KEY` (optional override; default project web API key is used when unset)
 - `FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL` (recommended for notification fixture seeding)
+
+## Related runbook
+
+- `docs/runbooks/PORTAL_AUTOMATION_SELF_IMPROVEMENT_LOOPS.md`

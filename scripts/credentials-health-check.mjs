@@ -17,6 +17,12 @@ const DEFAULT_API_KEY = "AIzaSyC7ynej0nGJas9me9M5oW6jHfLsWe5gHbU";
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "credential-health-check.json");
 const ROLLING_ISSUE_TITLE = "Portal Credential Health (Rolling)";
 
+function parseBoolEnv(value, fallback = false) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
 function parseArgs(argv) {
   const options = {
     projectId: String(process.env.PORTAL_PROJECT_ID || DEFAULT_PROJECT_ID).trim(),
@@ -27,6 +33,7 @@ function parseArgs(argv) {
     includeGithub: true,
     reportPath: DEFAULT_REPORT_PATH,
     timeoutMs: 15000,
+    rulesProbeRequired: parseBoolEnv(process.env.CREDENTIAL_HEALTH_RULES_PROBE_REQUIRED, true),
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -336,7 +343,8 @@ function buildIssueComment(summary) {
   lines.push("");
   lines.push("### Probes");
   for (const probe of summary.probes) {
-    lines.push(`- ${probe.label}: ${probe.status}${probe.detail ? ` (${probe.detail})` : ""}`);
+    const requiredSuffix = probe.required === false ? " (optional)" : "";
+    lines.push(`- ${probe.label}${requiredSuffix}: ${probe.status}${probe.detail ? ` (${probe.detail})` : ""}`);
   }
   lines.push("");
   if (summary.runUrl) {
@@ -395,6 +403,7 @@ async function main() {
     const expIso = idToken ? decodeJwtExp(idToken) : null;
     summary.probes.push({
       label: "staff email/password sign-in",
+      required: true,
       status: signinResp.ok && idToken ? "passed" : "failed",
       detail: signinResp.ok && idToken
         ? `Sign-in token minted${expIso ? ` (exp ${expIso})` : ""}.`
@@ -403,6 +412,7 @@ async function main() {
   } else {
     summary.probes.push({
       label: "staff email/password sign-in",
+      required: true,
       status: "failed",
       detail: "Skipped probe because staff credentials or API key are missing.",
     });
@@ -426,6 +436,7 @@ async function main() {
     const expIso = idToken ? decodeJwtExp(idToken) : null;
     summary.probes.push({
       label: "agent refresh-token exchange",
+      required: true,
       status: tokenResp.ok && idToken ? "passed" : "failed",
       detail: tokenResp.ok && idToken
         ? `Refresh token exchange succeeded${expIso ? ` (exp ${expIso})` : ""}.`
@@ -434,6 +445,7 @@ async function main() {
   } else {
     summary.probes.push({
       label: "agent refresh-token exchange",
+      required: true,
       status: "failed",
       detail: "Skipped probe because agent credentials or API key are missing.",
     });
@@ -452,6 +464,7 @@ async function main() {
 
     summary.probes.push({
       label: "rules API token probe",
+      required: options.rulesProbeRequired,
       status: rulesResp.ok ? "passed" : "failed",
       detail: rulesResp.ok
         ? "Rules API release read succeeded."
@@ -460,13 +473,14 @@ async function main() {
   } else {
     summary.probes.push({
       label: "rules API token probe",
+      required: options.rulesProbeRequired,
       status: "failed",
       detail: "Skipped probe because FIREBASE_RULES_API_TOKEN is missing.",
     });
   }
 
   const requiredCheckFailed = summary.checks.some((check) => check.required && check.status === "failed");
-  const probeFailed = summary.probes.some((probe) => probe.status === "failed");
+  const probeFailed = summary.probes.some((probe) => (probe.required ?? true) && probe.status === "failed");
   summary.status = requiredCheckFailed || probeFailed ? "failed" : "passed";
 
   if (options.apply && options.includeGithub) {

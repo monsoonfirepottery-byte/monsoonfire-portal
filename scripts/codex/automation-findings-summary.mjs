@@ -211,6 +211,11 @@ function fetchLatestWorkflowRun(repoSlug, workflowName) {
   return response.data[0];
 }
 
+function parseIssueNumberFromUrl(issueUrl) {
+  const match = String(issueUrl || "").match(/\/issues\/(\d+)$/);
+  return match ? Number(match[1]) : null;
+}
+
 async function ensureGhLabel(repoSlug, name, color, description, enabled) {
   if (!enabled) return;
   runGh(
@@ -382,8 +387,17 @@ async function main() {
       );
       if (createIssue.ok) {
         digestIssueUrl = createIssue.stdout.trim();
+        const issueNumber = parseIssueNumberFromUrl(digestIssueUrl);
+        if (issueNumber) {
+          digestIssue = {
+            number: issueNumber,
+            url: digestIssueUrl,
+          };
+        }
       }
-      digestIssue = findIssueByTitle(repoSlug, summaryIssueTitle);
+      if (!digestIssue) {
+        digestIssue = findIssueByTitle(repoSlug, summaryIssueTitle);
+      }
     }
 
     if (digestIssue?.number) {

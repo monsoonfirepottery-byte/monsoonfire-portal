@@ -12,6 +12,7 @@ on:
     - cron: "*/30 * * * *"
 
 permissions:
+  actions: read
   contents: read
   issues: write
 
@@ -50,6 +51,59 @@ jobs:
             echo "value=https://monsoonfire-portal.web.app" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Build canary feedback profile
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node ./scripts/portal-canary-feedback-loop.mjs \
+            --workflow-name "Portal Daily Authenticated Canary" \
+            --branch "${{ github.ref_name }}" \
+            --run-id "${{ github.run_id }}" \
+            --limit 12 \
+            --recovery-window 2 \
+            --report output/qa/portal-authenticated-canary-feedback.json \
+            --json
+
+      - name: Build fixture self-healing profile
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node ./scripts/portal-fixture-self-healing-loop.mjs \
+            --workflow-name "Portal Daily Authenticated Canary" \
+            --branch "${{ github.ref_name }}" \
+            --run-id "${{ github.run_id }}" \
+            --limit 12 \
+            --report output/qa/portal-fixture-self-healing.json \
+            --json
+
+      - name: Optional pre-canary fixture self-heal
+        continue-on-error: true
+        env:
+          PORTAL_AGENT_STAFF_CREDENTIALS_JSON: ${{ secrets.PORTAL_AGENT_STAFF_CREDENTIALS_JSON }}
+          FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
+          PORTAL_FIREBASE_API_KEY: ${{ secrets.PORTAL_FIREBASE_API_KEY || secrets.FIREBASE_WEB_API_KEY }}
+        run: |
+          SHOULD_SEED="$(node -e 'const fs=require("fs");try{const p=JSON.parse(fs.readFileSync("output/qa/portal-fixture-self-healing.json","utf8"));process.stdout.write(p?.feedback?.shouldSeedFixturesBeforeCanary?"true":"false")}catch{process.stdout.write("false")}')"
+          if [ "$SHOULD_SEED" != "true" ]; then
+            echo "No fixture self-healing seed required."
+            exit 0
+          fi
+
+          if [ -z "$PORTAL_AGENT_STAFF_CREDENTIALS_JSON" ]; then
+            echo "Fixture self-healing requested but PORTAL_AGENT_STAFF_CREDENTIALS_JSON is unavailable; skipping." >&2
+            exit 0
+          fi
+
+          node ./scripts/portal-fixture-steward.mjs \
+            --ttl-days 14 \
+            --report output/qa/pre-canary-fixture-self-heal.json \
+            --state .codex/pre-canary-fixture-state.json \
+            --json
+
       - name: Run authenticated canary (functional + theme)
         id: canary
         continue-on-error: true
@@ -62,6 +116,7 @@ jobs:
             --base-url "${{ steps.base_url.outputs.value }}" \
             --output-dir output/qa/portal-authenticated-canary \
             --report output/qa/portal-authenticated-canary.json \
+            --feedback output/qa/portal-authenticated-canary-feedback.json \
             --json
 
       - name: Escalate after consecutive failures
@@ -88,8 +143,12 @@ jobs:
           name: portal-authenticated-canary-${{ github.run_id }}
           path: |
             output/qa/portal-authenticated-canary.json
+            output/qa/portal-authenticated-canary-feedback.json
+            output/qa/portal-fixture-self-healing.json
+            output/qa/pre-canary-fixture-self-heal.json
             output/qa/portal-authenticated-canary-escalation.json
             output/qa/portal-authenticated-canary
+            .codex/pre-canary-fixture-state.json
           if-no-files-found: ignore
           retention-days: 14
 

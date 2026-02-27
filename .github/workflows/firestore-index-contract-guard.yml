@@ -14,6 +14,7 @@ on:
     - cron: "20 22 * * *"
 
 permissions:
+  actions: read
   contents: read
   issues: write
 
@@ -39,6 +40,21 @@ jobs:
       - name: Install root deps
         run: npm ci
 
+      - name: Build index auto-remediation profile
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node ./scripts/firestore-index-auto-remediation-loop.mjs \
+            --workflow-name "Firestore Index Contract Guard" \
+            --branch "${{ github.ref_name }}" \
+            --run-id "${{ github.run_id }}" \
+            --limit 12 \
+            --report output/qa/firestore-index-auto-remediation.json \
+            --emit-patched-indexes output/qa/firestore.indexes.auto-remediation.json \
+            --json
+
       - name: Run Firestore index guard
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -53,7 +69,25 @@ jobs:
             --apply \
             ${STRICT} \
             --json \
+            --feedback output/qa/firestore-index-auto-remediation.json \
             --report output/qa/firestore-index-contract-guard.json
+
+      - name: Refresh index auto-remediation profile with current run
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node ./scripts/firestore-index-auto-remediation-loop.mjs \
+            --workflow-name "Firestore Index Contract Guard" \
+            --branch "${{ github.ref_name }}" \
+            --run-id "${{ github.run_id }}" \
+            --limit 12 \
+            --report output/qa/firestore-index-auto-remediation.json \
+            --emit-patched-indexes output/qa/firestore.indexes.auto-remediation.json \
+            --current-report output/qa/firestore-index-contract-guard.json \
+            --json
 
       - name: Upload index guard artifacts
         if: always()
@@ -62,6 +96,8 @@ jobs:
           name: firestore-index-contract-guard-${{ github.run_id }}
           path: |
             output/qa/firestore-index-contract-guard.json
+            output/qa/firestore-index-auto-remediation.json
+            output/qa/firestore.indexes.auto-remediation.json
             .codex/index-guard-log.md
           if-no-files-found: ignore
           retention-days: 14

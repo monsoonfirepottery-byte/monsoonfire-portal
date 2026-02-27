@@ -58,6 +58,7 @@ function parseArgs(argv) {
     includeGithub: true,
     projectId: process.env.PORTAL_PROJECT_ID || "monsoonfire-portal",
     reportPath: resolve(repoRoot, "output", "qa", "firestore-index-contract-guard.json"),
+    feedbackPath: String(process.env.FIRESTORE_INDEX_GUARD_FEEDBACK || "").trim(),
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -101,6 +102,11 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (arg === "--feedback") {
+      options.feedbackPath = resolve(process.cwd(), String(next).trim());
+      index += 1;
+      continue;
+    }
   }
 
   return options;
@@ -112,6 +118,16 @@ async function pathExists(path) {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function readJsonSafe(path) {
+  if (!(await pathExists(path))) return null;
+  try {
+    const raw = await readFile(path, "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
   }
 }
 
@@ -353,6 +369,7 @@ function buildRollingComment(summary) {
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const startedAt = Date.now();
+  const feedbackProfile = options.feedbackPath ? await readJsonSafe(options.feedbackPath) : null;
 
   const raw = await readFile(indexesPath, "utf8");
   const parsed = JSON.parse(raw);
@@ -372,7 +389,25 @@ async function main() {
     apply: options.apply,
     rollingIssueUrl: "",
     ticketUrl: "",
+    feedback: {
+      enabled: Boolean(options.feedbackPath),
+      loaded: Boolean(feedbackProfile),
+      path: options.feedbackPath || "",
+      suggestedApplyMode: Boolean(feedbackProfile?.feedback?.shouldEnableApplyMode),
+      suggestedKeepStrictMode:
+        typeof feedbackProfile?.feedback?.shouldKeepStrictMode === "boolean"
+          ? feedbackProfile.feedback.shouldKeepStrictMode
+          : true,
+      candidateMissingIds: Array.isArray(feedbackProfile?.feedback?.candidateMissingIds)
+        ? feedbackProfile.feedback.candidateMissingIds
+        : [],
+    },
+    notes: [],
   };
+
+  if (summary.feedback.enabled && !summary.feedback.loaded) {
+    summary.notes.push(`Feedback profile missing or invalid at ${summary.feedback.path}.`);
+  }
 
   if (options.apply && options.includeGithub) {
     const repoSlug = parseRepoSlug();

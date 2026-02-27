@@ -2,7 +2,7 @@
 
 /* eslint-disable no-console */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -20,6 +20,12 @@ function parseArgs(argv) {
     includeVirtualStaff: true,
     includeThemeSweep: true,
     includeIndexGuard: true,
+    feedbackPath: String(process.env.PORTAL_PROMOTION_FEEDBACK_PATH || "").trim(),
+    userOverrides: {
+      includeVirtualStaff: false,
+      includeThemeSweep: false,
+      includeIndexGuard: false,
+    },
     asJson: false,
   };
 
@@ -45,16 +51,27 @@ function parseArgs(argv) {
 
     if (arg === "--skip-virtual-staff") {
       options.includeVirtualStaff = false;
+      options.userOverrides.includeVirtualStaff = true;
       continue;
     }
 
     if (arg === "--skip-theme-sweep") {
       options.includeThemeSweep = false;
+      options.userOverrides.includeThemeSweep = true;
       continue;
     }
 
     if (arg === "--skip-index-guard") {
       options.includeIndexGuard = false;
+      options.userOverrides.includeIndexGuard = true;
+      continue;
+    }
+
+    if (arg === "--feedback") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --feedback");
+      options.feedbackPath = resolve(process.cwd(), String(next).trim());
+      index += 1;
       continue;
     }
 
@@ -65,6 +82,16 @@ function parseArgs(argv) {
   }
 
   return options;
+}
+
+async function readJsonSafe(path) {
+  if (!path) return null;
+  try {
+    const raw = await readFile(path, "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
 
 function truncate(value, max = 16000) {
@@ -110,8 +137,21 @@ function printHuman(summary) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  const feedbackProfile = await readJsonSafe(options.feedbackPath);
   const startedAtIso = new Date().toISOString();
   const steps = [];
+
+  if (feedbackProfile?.feedback && typeof feedbackProfile.feedback === "object") {
+    if (!options.userOverrides.includeThemeSweep && typeof feedbackProfile.feedback.includeThemeSweep === "boolean") {
+      options.includeThemeSweep = feedbackProfile.feedback.includeThemeSweep;
+    }
+    if (!options.userOverrides.includeVirtualStaff && typeof feedbackProfile.feedback.includeVirtualStaff === "boolean") {
+      options.includeVirtualStaff = feedbackProfile.feedback.includeVirtualStaff;
+    }
+    if (!options.userOverrides.includeIndexGuard && typeof feedbackProfile.feedback.includeIndexGuard === "boolean") {
+      options.includeIndexGuard = feedbackProfile.feedback.includeIndexGuard;
+    }
+  }
 
   const canaryArgs = [
     "./scripts/portal-authenticated-canary.mjs",
@@ -165,6 +205,17 @@ async function main() {
     startedAtIso,
     finishedAtIso: new Date().toISOString(),
     reportPath: options.reportPath,
+    feedback: {
+      enabled: Boolean(options.feedbackPath),
+      loaded: Boolean(feedbackProfile),
+      profilePath: options.feedbackPath || "",
+      riskLevel: String(feedbackProfile?.feedback?.riskLevel || "unknown"),
+      applied: {
+        includeThemeSweep: options.includeThemeSweep,
+        includeVirtualStaff: options.includeVirtualStaff,
+        includeIndexGuard: options.includeIndexGuard,
+      },
+    },
     steps,
   };
 

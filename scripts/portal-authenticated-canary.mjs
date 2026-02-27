@@ -15,6 +15,9 @@ const DEFAULT_BASE_URL = "https://monsoonfire-portal.web.app";
 const DEFAULT_OUTPUT_DIR = resolve(repoRoot, "output", "qa", "portal-authenticated-canary");
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "portal-authenticated-canary.json");
 const DEFAULT_STAFF_CREDENTIALS_PATH = resolve(homedir(), ".ssh", "portal-agent-staff.json");
+const DEFAULT_MY_PIECES_READY_TIMEOUT_MS = 18000;
+const DEFAULT_MY_PIECES_RELOAD_RETRY_COUNT = 1;
+const DEFAULT_MARK_READ_RETRY_COUNT = 1;
 
 function parseArgs(argv) {
   const options = {
@@ -33,6 +36,7 @@ function parseArgs(argv) {
     functionalOnly: false,
     themeOnly: false,
     minContrast: 4.2,
+    feedbackPath: String(process.env.PORTAL_CANARY_FEEDBACK_PATH || "").trim(),
     asJson: false,
   };
 
@@ -133,6 +137,14 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--feedback") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --feedback");
+      options.feedbackPath = resolve(process.cwd(), String(next).trim());
+      index += 1;
+      continue;
+    }
+
     if (arg === "--json") {
       options.asJson = true;
       continue;
@@ -153,6 +165,93 @@ async function pathExists(path) {
   } catch {
     return false;
   }
+}
+
+function clampInteger(value, min, max, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  const rounded = Math.round(parsed);
+  if (rounded < min) return min;
+  if (rounded > max) return max;
+  return rounded;
+}
+
+function parsePatternList(value) {
+  if (!Array.isArray(value)) return [];
+  const normalized = value
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .filter((item) => item.length <= 120)
+    .slice(0, 20);
+  return Array.from(new Set(normalized));
+}
+
+async function resolveCanaryFeedbackProfile(feedbackPath) {
+  const profile = {
+    loaded: false,
+    sourcePath: String(feedbackPath || "").trim(),
+    sourceRunCount: 0,
+    agenticDirectiveCount: 0,
+    myPiecesReadyTimeoutMs: DEFAULT_MY_PIECES_READY_TIMEOUT_MS,
+    myPiecesReloadRetryCount: DEFAULT_MY_PIECES_RELOAD_RETRY_COUNT,
+    markReadRetryCount: DEFAULT_MARK_READ_RETRY_COUNT,
+    myPiecesEmptyStatePatterns: [],
+    warnings: [],
+  };
+
+  if (!profile.sourcePath) return profile;
+  if (!(await pathExists(profile.sourcePath))) {
+    profile.warnings.push(`Feedback profile not found at ${profile.sourcePath}; using defaults.`);
+    return profile;
+  }
+
+  let parsed;
+  try {
+    const raw = await readFile(profile.sourcePath, "utf8");
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    profile.warnings.push(
+      `Feedback profile parse failed (${error instanceof Error ? error.message : String(error)}); using defaults.`
+    );
+    return profile;
+  }
+
+  const feedbackRoot = parsed?.feedback && typeof parsed.feedback === "object" ? parsed.feedback : parsed;
+
+  profile.myPiecesReadyTimeoutMs = clampInteger(
+    feedbackRoot?.myPiecesReadyTimeoutMs,
+    12000,
+    45000,
+    DEFAULT_MY_PIECES_READY_TIMEOUT_MS
+  );
+  profile.myPiecesReloadRetryCount = clampInteger(
+    feedbackRoot?.myPiecesReloadRetryCount,
+    0,
+    3,
+    DEFAULT_MY_PIECES_RELOAD_RETRY_COUNT
+  );
+  profile.markReadRetryCount = clampInteger(
+    feedbackRoot?.markReadRetryCount,
+    0,
+    3,
+    DEFAULT_MARK_READ_RETRY_COUNT
+  );
+  profile.myPiecesEmptyStatePatterns = parsePatternList(feedbackRoot?.myPiecesEmptyStatePatterns);
+  profile.sourceRunCount = clampInteger(
+    feedbackRoot?.sourceRunCount ?? parsed?.sourceRunCount,
+    0,
+    200,
+    0
+  );
+  profile.agenticDirectiveCount = clampInteger(
+    feedbackRoot?.agenticDirectiveCount ?? parsed?.agenticDirectiveCount,
+    0,
+    200,
+    0
+  );
+
+  profile.loaded = true;
+  return profile;
 }
 
 function parseStaffCredentialPayload(raw) {
@@ -256,6 +355,12 @@ async function check(summary, label, run) {
   }
 }
 
+function addWarning(summary, message) {
+  const text = String(message || "").trim();
+  if (!text) return;
+  summary.warnings.push(text);
+}
+
 async function takeScreenshot(page, outputDir, fileName, summary, label) {
   const path = resolve(outputDir, fileName);
   await page.screenshot({ path, fullPage: true });
@@ -301,6 +406,111 @@ async function clickNavSubItem(page, sectionLabel, itemLabel, required = true) {
   await itemButton.click({ timeout: 10000 });
   await page.waitForTimeout(700);
   return true;
+}
+
+async function collectMyPiecesState(page, extraEmptyStatePatterns = []) {
+  return page.evaluate(({ patterns }) => {
+    const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
+
+    const isVisible = (node) => {
+      if (!(node instanceof HTMLElement)) return false;
+      const style = window.getComputedStyle(node);
+      if (style.display === "none" || style.visibility === "hidden") return false;
+      if (Number(style.opacity || "1") < 0.05) return false;
+      const rect = node.getBoundingClientRect();
+      return rect.width > 2 && rect.height > 2;
+    };
+
+    const textOf = (node) => normalize(node?.textContent || "");
+    const visibleText = (selector) =>
+      Array.from(document.querySelectorAll(selector))
+        .filter((node) => isVisible(node))
+        .map((node) => textOf(node))
+        .filter(Boolean);
+
+    const emptyStates = visibleText(".empty-state");
+    const nonLoadingEmptyStates = emptyStates.filter((text) => !/^Loading pieces\.\.\.$/i.test(text));
+    const inlineAlerts = visibleText(".inline-alert");
+    const headings = visibleText("h1, h2, h3");
+
+    const piecesFailedMessage = inlineAlerts.find((text) => /^Pieces failed:/i.test(text)) || "";
+    const bodyText = textOf(document.body);
+
+    const countVisible = (selector) =>
+      Array.from(document.querySelectorAll(selector)).filter((node) => isVisible(node)).length;
+
+    const viewDetailsCount = Array.from(document.querySelectorAll("button")).filter((node) => {
+      if (!isVisible(node)) return false;
+      return /^View details$/i.test(textOf(node));
+    }).length;
+
+    const customPatterns = Array.isArray(patterns)
+      ? patterns
+          .map((item) => String(item || "").trim().toLowerCase())
+          .filter(Boolean)
+          .slice(0, 20)
+      : [];
+
+    const hasRecognizedEmptyGuidance = nonLoadingEmptyStates.some((text) =>
+      /(No pieces yet|Nothing currently in flight|first firing journey starts|No pieces in this view|No pieces found|No results)/i.test(text)
+    );
+    const hasCustomEmptyStateGuidance = nonLoadingEmptyStates.some((text) => {
+      const lower = text.toLowerCase();
+      return customPatterns.some((pattern) => lower.includes(pattern));
+    });
+
+    return {
+      myPiecesHeadingVisible: headings.some((text) => /^My Pieces$/i.test(text)),
+      rowCount: countVisible(".piece-row"),
+      pieceThumbCount: countVisible(".piece-thumb"),
+      detailTitleCount: countVisible(".detail-title"),
+      viewDetailsCount,
+      loadingVisible: emptyStates.some((text) => /^Loading pieces\.\.\.$/i.test(text)),
+      nonLoadingEmptyStateCount: nonLoadingEmptyStates.length,
+      nonLoadingEmptyStates: nonLoadingEmptyStates.slice(0, 3),
+      hasRecognizedEmptyGuidance: hasRecognizedEmptyGuidance || hasCustomEmptyStateGuidance,
+      piecesFailedMessage,
+      permissionDenied: /Missing or insufficient permissions\./i.test(bodyText),
+    };
+  }, { patterns: extraEmptyStatePatterns });
+}
+
+async function waitForMyPiecesReadyState(page, timeoutMs = DEFAULT_MY_PIECES_READY_TIMEOUT_MS, extraEmptyStatePatterns = []) {
+  const deadline = Date.now() + timeoutMs;
+  let state = await collectMyPiecesState(page, extraEmptyStatePatterns);
+
+  while (Date.now() < deadline) {
+    if (
+      state.piecesFailedMessage ||
+      state.permissionDenied ||
+      state.detailTitleCount > 0 ||
+      state.rowCount > 0 ||
+      state.viewDetailsCount > 0 ||
+      state.nonLoadingEmptyStateCount > 0
+    ) {
+      return state;
+    }
+
+    await page.waitForTimeout(state.loadingVisible ? 350 : 500);
+    state = await collectMyPiecesState(page, extraEmptyStatePatterns);
+  }
+
+  return state;
+}
+
+function formatMyPiecesStateForError(state) {
+  const previews = (state.nonLoadingEmptyStates || []).join(" | ");
+  return (
+    `headingVisible=${String(state.myPiecesHeadingVisible)}; ` +
+    `rows=${state.rowCount}; ` +
+    `pieceThumbs=${state.pieceThumbCount}; ` +
+    `viewDetailsButtons=${state.viewDetailsCount}; ` +
+    `detailTitles=${state.detailTitleCount}; ` +
+    `loadingVisible=${String(state.loadingVisible)}; ` +
+    `emptyStates=${state.nonLoadingEmptyStateCount}; ` +
+    `recognizedEmptyGuidance=${String(state.hasRecognizedEmptyGuidance)}; ` +
+    `emptyStatePreview=${previews || "none"}`
+  );
 }
 
 async function detailsIsOpen(detailsLocator) {
@@ -664,6 +874,7 @@ async function run() {
   const options = parseArgs(process.argv.slice(2));
 
   const credentialResolution = await resolveStaffCredentials(options);
+  const feedbackProfile = await resolveCanaryFeedbackProfile(options.feedbackPath);
   options.staffEmail = credentialResolution.staffEmail;
   options.staffPassword = credentialResolution.staffPassword;
 
@@ -697,14 +908,28 @@ async function run() {
       attemptedSources: credentialResolution.attemptedSources,
       warnings: credentialResolution.warnings,
     },
+    feedback: {
+      enabled: Boolean(options.feedbackPath),
+      loaded: feedbackProfile.loaded,
+      profilePath: feedbackProfile.sourcePath || "",
+      sourceRunCount: feedbackProfile.sourceRunCount,
+      agenticDirectiveCount: feedbackProfile.agenticDirectiveCount,
+      myPiecesReadyTimeoutMs: feedbackProfile.myPiecesReadyTimeoutMs,
+      myPiecesReloadRetryCount: feedbackProfile.myPiecesReloadRetryCount,
+      markReadRetryCount: feedbackProfile.markReadRetryCount,
+      myPiecesEmptyStatePatterns: feedbackProfile.myPiecesEmptyStatePatterns,
+    },
     checks: [],
     errors: [],
+    warnings: [],
     screenshots: [],
     contrast: {
       light: [],
       dark: [],
     },
   };
+
+  feedbackProfile.warnings.forEach((warning) => addWarning(summary, warning));
 
   const browser = await chromium.launch({ headless: options.headless });
 
@@ -732,74 +957,133 @@ async function run() {
 
     if (!options.themeOnly) {
       await check(summary, "dashboard piece click-through opens my pieces detail", async () => {
-        await clickNavItem(page, "Dashboard", true);
-        await page
-          .getByRole("heading", { name: /(Your studio dashboard|Dashboard)/i })
-          .first()
-          .waitFor({ timeout: 30000 });
+        try {
+          await clickNavItem(page, "Dashboard", true);
+          await page
+            .getByRole("heading", { name: /(Your studio dashboard|Dashboard)/i })
+            .first()
+            .waitFor({ timeout: 30000 });
 
-        let openedFromDashboard = false;
-        const firstPieceThumb = page.locator(".piece-thumb").first();
-        if ((await firstPieceThumb.count()) > 0) {
-          await firstPieceThumb.click({ timeout: 10000 });
-          openedFromDashboard = true;
-        } else {
-          const openMyPiecesButton = page.getByRole("button", { name: /^Open My Pieces$/i }).first();
-          if ((await openMyPiecesButton.count()) > 0) {
-            await openMyPiecesButton.click({ timeout: 10000 });
-            openedFromDashboard = true;
-          } else {
-            await clickNavItem(page, "My Pieces", true);
-          }
-        }
+          let openedFromDashboard = false;
+          let routeUsed = "sidebar-nav";
 
-        await page.getByRole("heading", { name: /^My Pieces$/i }).first().waitFor({ timeout: 30000 });
-
-        const pieceAlert = page.locator(".inline-alert", { hasText: /^Pieces failed:/i }).first();
-        if ((await pieceAlert.count()) > 0) {
-          const message = (await pieceAlert.textContent())?.trim() || "Pieces failed";
-          throw new Error(message);
-        }
-
-        const permissionError = page.locator("text=Missing or insufficient permissions.").first();
-        if ((await permissionError.count()) > 0) {
-          throw new Error("My Pieces still shows permission denied text.");
-        }
-
-        const detailTitle = page.locator(".detail-title").first();
-        let attemptedOpenDetails = false;
-        if ((await detailTitle.count()) === 0) {
-          const viewDetailsButton = page.getByRole("button", { name: /^View details$/i }).first();
-          if ((await viewDetailsButton.count()) > 0) {
-            attemptedOpenDetails = true;
-            await viewDetailsButton.click({ timeout: 10000 });
-          } else {
-            const firstRow = page.locator(".piece-row").first();
-            if ((await firstRow.count()) > 0) {
-              attemptedOpenDetails = true;
-              await firstRow.click({ timeout: 10000 });
+          const firstPieceThumb = page.locator(".piece-thumb").first();
+          if ((await firstPieceThumb.count()) > 0) {
+            try {
+              await firstPieceThumb.click({ timeout: 10000 });
+              openedFromDashboard = true;
+              routeUsed = "dashboard-piece-thumb";
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              addWarning(summary, `Could not click dashboard piece thumb; falling back. ${message}`);
             }
           }
-        }
 
-        if (attemptedOpenDetails || (await detailTitle.count()) > 0) {
-          await page.locator(".detail-title").first().waitFor({ timeout: 10000 });
-        } else {
-          const emptyState = page
-            .locator(".empty-state")
-            .filter({
-              hasText: /(No pieces yet|Nothing currently in flight|first firing journey starts)/i,
-            })
-            .first();
-          if ((await emptyState.count()) === 0) {
-            throw new Error("My Pieces has no selectable rows and no recognized empty-state guidance.");
-          }
           if (!openedFromDashboard) {
-            throw new Error("Dashboard did not provide a direct path into My Pieces.");
+            const openMyPiecesButton = page.getByRole("button", { name: /^Open My Pieces$/i }).first();
+            if ((await openMyPiecesButton.count()) > 0) {
+              await openMyPiecesButton.click({ timeout: 10000 });
+              openedFromDashboard = true;
+              routeUsed = "dashboard-open-my-pieces-button";
+            } else {
+              await clickNavItem(page, "My Pieces", true);
+            }
           }
-        }
 
-        await takeScreenshot(page, options.outputDir, "canary-03-my-pieces-detail.png", summary, "my pieces detail");
+          await page.getByRole("heading", { name: /^My Pieces$/i }).first().waitFor({ timeout: 30000 });
+
+          let myPiecesState = await waitForMyPiecesReadyState(
+            page,
+            feedbackProfile.myPiecesReadyTimeoutMs,
+            feedbackProfile.myPiecesEmptyStatePatterns
+          );
+          if (myPiecesState.piecesFailedMessage) {
+            throw new Error(myPiecesState.piecesFailedMessage);
+          }
+          if (myPiecesState.permissionDenied) {
+            throw new Error("My Pieces still shows permission denied text.");
+          }
+
+          const detailTitle = page.locator(".detail-title").first();
+          let attemptedOpenDetails = false;
+          if ((await detailTitle.count()) === 0) {
+            const viewDetailsButton = page.getByRole("button", { name: /^View details$/i }).first();
+            if ((await viewDetailsButton.count()) > 0) {
+              attemptedOpenDetails = true;
+              await viewDetailsButton.click({ timeout: 10000 });
+            } else {
+              const firstRow = page.locator(".piece-row").first();
+              if ((await firstRow.count()) > 0) {
+                attemptedOpenDetails = true;
+                await firstRow.click({ timeout: 10000 });
+              }
+            }
+          }
+
+          if (attemptedOpenDetails || (await detailTitle.count()) > 0) {
+            await page.locator(".detail-title").first().waitFor({ timeout: 10000 });
+          } else {
+            let reloadAttempts = 0;
+            while (
+              myPiecesState.nonLoadingEmptyStateCount === 0 &&
+              reloadAttempts < feedbackProfile.myPiecesReloadRetryCount
+            ) {
+              await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
+              await clickNavItem(page, "My Pieces", true);
+              await page.getByRole("heading", { name: /^My Pieces$/i }).first().waitFor({ timeout: 30000 });
+              myPiecesState = await waitForMyPiecesReadyState(
+                page,
+                feedbackProfile.myPiecesReadyTimeoutMs,
+                feedbackProfile.myPiecesEmptyStatePatterns
+              );
+              reloadAttempts += 1;
+
+              if (myPiecesState.piecesFailedMessage) {
+                throw new Error(myPiecesState.piecesFailedMessage);
+              }
+              if (myPiecesState.permissionDenied) {
+                throw new Error("My Pieces still shows permission denied text.");
+              }
+            }
+
+            if (myPiecesState.nonLoadingEmptyStateCount === 0) {
+              throw new Error(
+                `My Pieces did not surface rows, details, or an empty state after retry. ` +
+                  `route=${routeUsed}; ${formatMyPiecesStateForError(myPiecesState)}`
+              );
+            }
+
+            if (!myPiecesState.hasRecognizedEmptyGuidance) {
+              addWarning(
+                summary,
+                `My Pieces empty-state text is unrecognized but non-empty. ` +
+                  `route=${routeUsed}; ${formatMyPiecesStateForError(myPiecesState)}`
+              );
+            }
+
+            if (!openedFromDashboard) {
+              addWarning(
+                summary,
+                `Dashboard did not provide a direct My Pieces entry point; used ${routeUsed} fallback.`
+              );
+            }
+          }
+
+          await takeScreenshot(page, options.outputDir, "canary-03-my-pieces-detail.png", summary, "my pieces detail");
+        } catch (error) {
+          try {
+            await takeScreenshot(
+              page,
+              options.outputDir,
+              "canary-03-my-pieces-failure.png",
+              summary,
+              "my pieces failure"
+            );
+          } catch {
+            // Ignore screenshot failures; preserve original check error.
+          }
+          throw error;
+        }
       });
 
       await check(summary, "notifications mark read gives user feedback", async () => {
@@ -815,7 +1099,12 @@ async function run() {
           };
 
           let status = await clickAndReadStatus(markReadButton);
-          if (!status.ok && isRetryableMarkReadFailure(status.message)) {
+          let retriesUsed = 0;
+          while (
+            !status.ok &&
+            isRetryableMarkReadFailure(status.message) &&
+            retriesUsed < feedbackProfile.markReadRetryCount
+          ) {
             await page.reload({ waitUntil: "domcontentloaded" });
             await clickNavItem(page, "Notifications", true);
             await page.getByRole("heading", { name: /^Notifications$/i }).first().waitFor({ timeout: 30000 });
@@ -826,6 +1115,7 @@ async function run() {
             } else {
               status = { ok: true, message: "" };
             }
+            retriesUsed += 1;
           }
 
           if (!status.ok) {
@@ -1004,6 +1294,9 @@ async function run() {
     process.stdout.write(`baseUrl: ${summary.baseUrl}\n`);
     summary.checks.forEach((checkItem) => {
       process.stdout.write(`- ${checkItem.label}: ${checkItem.status}${checkItem.message ? ` (${checkItem.message})` : ""}\n`);
+    });
+    summary.warnings.forEach((warning) => {
+      process.stdout.write(`! warning: ${warning}\n`);
     });
     process.stdout.write(`report: ${options.reportPath}\n`);
   }

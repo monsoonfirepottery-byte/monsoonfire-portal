@@ -2,7 +2,7 @@
 
 /* eslint-disable no-console */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -20,6 +20,7 @@ const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloud
 const DEFAULT_STUDIO_BRAIN_READYZ_PATH = "/readyz";
 const DEFAULT_DEEP_PROBE_TIMEOUT_MS = 12000;
 const DEFAULT_PROBE_CREDENTIAL_MODE = "same-origin";
+const DEFAULT_SMOKE_RETRY_COOLDOWN_MS = 350;
 const CONTRACT_DEFAULT_ENV = {
   STUDIO_BRAIN_PORT: "8787",
   PGHOST: "127.0.0.1",
@@ -831,6 +832,7 @@ const parseOptions = (argv) => {
       process.env.PORTAL_SMOKE_PROBE_CREDENTIAL_MODE || "",
       DEFAULT_PROBE_CREDENTIAL_MODE
     ),
+    feedbackPath: String(process.env.PORTAL_SMOKE_FEEDBACK_PATH || "").trim(),
     runMobile: normalizeBoolean(process.env.PORTAL_SMOKE_MOBILE, true),
     headless: normalizeBoolean(process.env.PORTAL_SMOKE_HEADLESS, true),
   };
@@ -922,6 +924,14 @@ const parseOptions = (argv) => {
       continue;
     }
 
+    if (arg === "--feedback") {
+      const next = argv[i + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --feedback");
+      options.feedbackPath = resolve(process.cwd(), next);
+      i += 1;
+      continue;
+    }
+
     if (arg === "--no-mobile") {
       options.runMobile = false;
       continue;
@@ -934,6 +944,60 @@ const parseOptions = (argv) => {
   }
 
   return options;
+};
+
+const readJsonSafe = async (path) => {
+  if (!path) return null;
+  try {
+    const raw = await readFile(path, "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+const resolveSmokeFeedbackProfile = async (path) => {
+  const profile = {
+    enabled: Boolean(path),
+    loaded: false,
+    path: String(path || "").trim(),
+    defaultCheckRetryCount: 0,
+    maxRetryCount: 2,
+    retryCooldownMs: DEFAULT_SMOKE_RETRY_COOLDOWN_MS,
+    checkRetries: {},
+  };
+
+  if (!profile.path) return profile;
+  const parsed = await readJsonSafe(profile.path);
+  if (!parsed) return profile;
+
+  const root = parsed?.feedback && typeof parsed.feedback === "object" ? parsed.feedback : parsed;
+  const parseRetry = (value, fallback) => {
+    const asNumber = Number(value);
+    if (!Number.isFinite(asNumber)) return fallback;
+    return Math.max(0, Math.min(3, Math.round(asNumber)));
+  };
+  const parseCooldown = (value, fallback) => {
+    const asNumber = Number(value);
+    if (!Number.isFinite(asNumber)) return fallback;
+    return Math.max(100, Math.min(5000, Math.round(asNumber)));
+  };
+
+  profile.defaultCheckRetryCount = parseRetry(root?.defaultCheckRetryCount, 0);
+  profile.maxRetryCount = parseRetry(root?.maxRetryCount, 2);
+  profile.retryCooldownMs = parseCooldown(root?.retryCooldownMs, DEFAULT_SMOKE_RETRY_COOLDOWN_MS);
+  if (root?.checkRetries && typeof root.checkRetries === "object") {
+    const cleaned = {};
+    for (const [label, value] of Object.entries(root.checkRetries)) {
+      const key = String(label || "").trim();
+      if (!key) continue;
+      cleaned[key] = Math.min(profile.maxRetryCount, parseRetry(value, 0));
+    }
+    profile.checkRetries = cleaned;
+  }
+
+  profile.loaded = true;
+  return profile;
 };
 
 const hasMatch = (value, patterns) => patterns.some((pattern) => pattern.test(value));
@@ -974,6 +1038,15 @@ const createSummary = (options) => ({
   screenshots: [],
   notes: [],
   failures: [],
+  feedback: {
+    enabled: Boolean(options.feedbackPath),
+    loaded: false,
+    profilePath: options.feedbackPath || "",
+    defaultCheckRetryCount: 0,
+    maxRetryCount: 2,
+    retryCooldownMs: DEFAULT_SMOKE_RETRY_COOLDOWN_MS,
+    checkRetries: {},
+  },
 });
 
 const assert = (condition, message, summary, label) => {
@@ -984,14 +1057,47 @@ const assert = (condition, message, summary, label) => {
 };
 
 const check = async (summary, label, fn) => {
-  try {
-    await fn();
-    summary.checks.push({ label, status: "passed" });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    summary.checks.push({ label, status: "failed", error: message });
-    throw error;
+  const feedback = summary.feedback || {};
+  const perCheckRetry = Number(feedback.checkRetries?.[label]);
+  const defaultRetry = Number(feedback.defaultCheckRetryCount || 0);
+  const maxRetry = Number(feedback.maxRetryCount || 2);
+  const retries = Math.max(0, Math.min(maxRetry, Number.isFinite(perCheckRetry) ? perCheckRetry : defaultRetry));
+  const cooldownMs = Math.max(100, Number(feedback.retryCooldownMs || DEFAULT_SMOKE_RETRY_COOLDOWN_MS));
+
+  let lastError = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      await fn();
+      summary.checks.push({
+        label,
+        status: "passed",
+        attempts: attempt + 1,
+        retried: attempt > 0,
+      });
+      if (attempt > 0) {
+        summary.notes.push(`Recovered flaky check "${label}" after ${attempt} retry attempt(s).`);
+      }
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) {
+        const message = error instanceof Error ? error.message : String(error);
+        summary.notes.push(`Retrying check "${label}" after attempt ${attempt + 1}: ${message}`);
+        await new Promise((resolveAttempt) => setTimeout(resolveAttempt, cooldownMs));
+        continue;
+      }
+    }
   }
+
+  const message = lastError instanceof Error ? lastError.message : String(lastError);
+  summary.checks.push({
+    label,
+    status: "failed",
+    error: message,
+    attempts: retries + 1,
+    retried: retries > 0,
+  });
+  throw lastError;
 };
 
 const withRequestInstrumentation = (page, summary, runtime = { authenticated: false, enforceLocalhostPolicy: true }) => {
@@ -1583,7 +1689,20 @@ const runOfflineRecoverySmoke = async (page, context, outputDir, summary) => {
 
 const run = async () => {
   const options = parseOptions(process.argv.slice(2));
+  const feedbackProfile = await resolveSmokeFeedbackProfile(options.feedbackPath);
   const summary = createSummary(options);
+  summary.feedback = {
+    enabled: feedbackProfile.enabled,
+    loaded: feedbackProfile.loaded,
+    profilePath: feedbackProfile.path,
+    defaultCheckRetryCount: feedbackProfile.defaultCheckRetryCount,
+    maxRetryCount: feedbackProfile.maxRetryCount,
+    retryCooldownMs: feedbackProfile.retryCooldownMs,
+    checkRetries: feedbackProfile.checkRetries,
+  };
+  if (feedbackProfile.enabled && !feedbackProfile.loaded) {
+    summary.notes.push(`Smoke feedback profile missing or invalid at ${feedbackProfile.path}; using default retry policy.`);
+  }
   applyContractDefaults();
   assertStudioBrainIntegrity();
   assertStudioBrainContract();

@@ -19,6 +19,7 @@ on:
       - completed
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -57,6 +58,20 @@ jobs:
             echo "value=https://monsoonfire-portal.web.app" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Build promotion gate feedback profile
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node ./scripts/post-deploy-promotion-feedback-loop.mjs \
+            --workflow-name "Portal Post-Deploy Promotion Gate" \
+            --branch "${{ github.ref_name }}" \
+            --run-id "${{ github.run_id }}" \
+            --limit 12 \
+            --report output/qa/post-deploy-promotion-feedback.json \
+            --json
+
       - name: Run post-deploy promotion gate
         env:
           PORTAL_STAFF_EMAIL: ${{ secrets.PORTAL_STAFF_EMAIL }}
@@ -73,6 +88,7 @@ jobs:
           ARGS=(
             --base-url "${{ steps.base_url.outputs.value }}"
             --report output/qa/post-deploy-promotion-gate.json
+            --feedback output/qa/post-deploy-promotion-feedback.json
             --json
           )
 
@@ -89,6 +105,7 @@ jobs:
           name: portal-post-deploy-promotion-gate-${{ github.run_id }}
           path: |
             output/qa/post-deploy-promotion-gate.json
+            output/qa/post-deploy-promotion-feedback.json
             output/qa/post-deploy-authenticated-canary.json
             output/qa/post-deploy-canary
             output/qa/post-deploy-virtual-staff-regression.json

@@ -19,6 +19,7 @@ on:
     - cron: "0 18 * * 2"
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -56,6 +57,20 @@ jobs:
             echo "value=https://monsoonfire-portal.web.app" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Build production smoke feedback profile
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node ./scripts/portal-prod-smoke-feedback-loop.mjs \
+            --workflow-name "Portal Production Smoke" \
+            --branch "${{ github.ref_name }}" \
+            --run-id "${{ github.run_id }}" \
+            --limit 12 \
+            --report output/qa/portal-prod-smoke-feedback.json \
+            --json
+
       - name: Virtual staff backend regression gate
         env:
           FIREBASE_RULES_API_TOKEN: ${{ secrets.FIREBASE_RULES_API_TOKEN }}
@@ -82,9 +97,9 @@ jobs:
           PORTAL_STAFF_PASSWORD: ${{ secrets.PORTAL_STAFF_PASSWORD }}
         run: |
           if [ -n "$PORTAL_STAFF_EMAIL" ] && [ -n "$PORTAL_STAFF_PASSWORD" ]; then
-            node ./scripts/portal-playwright-smoke.mjs --base-url "${{ steps.base_url.outputs.value }}" --output-dir output/playwright/prod-ci --with-auth --staff-email "$PORTAL_STAFF_EMAIL" --staff-password "$PORTAL_STAFF_PASSWORD"
+            node ./scripts/portal-playwright-smoke.mjs --base-url "${{ steps.base_url.outputs.value }}" --output-dir output/playwright/prod-ci --feedback output/qa/portal-prod-smoke-feedback.json --with-auth --staff-email "$PORTAL_STAFF_EMAIL" --staff-password "$PORTAL_STAFF_PASSWORD"
           else
-            node ./scripts/portal-playwright-smoke.mjs --base-url "${{ steps.base_url.outputs.value }}" --output-dir output/playwright/prod-ci
+            node ./scripts/portal-playwright-smoke.mjs --base-url "${{ steps.base_url.outputs.value }}" --output-dir output/playwright/prod-ci --feedback output/qa/portal-prod-smoke-feedback.json
           fi
 
       - name: Run portal production deep smoke
@@ -94,9 +109,9 @@ jobs:
           PORTAL_STAFF_PASSWORD: ${{ secrets.PORTAL_STAFF_PASSWORD }}
         run: |
           if [ -n "$PORTAL_STAFF_EMAIL" ] && [ -n "$PORTAL_STAFF_PASSWORD" ]; then
-            node ./scripts/portal-playwright-smoke.mjs --base-url "${{ steps.base_url.outputs.value }}" --deep --output-dir output/playwright/prod-ci/deep --with-auth --staff-email "$PORTAL_STAFF_EMAIL" --staff-password "$PORTAL_STAFF_PASSWORD"
+            node ./scripts/portal-playwright-smoke.mjs --base-url "${{ steps.base_url.outputs.value }}" --deep --output-dir output/playwright/prod-ci/deep --feedback output/qa/portal-prod-smoke-feedback.json --with-auth --staff-email "$PORTAL_STAFF_EMAIL" --staff-password "$PORTAL_STAFF_PASSWORD"
           else
-            node ./scripts/portal-playwright-smoke.mjs --base-url "${{ steps.base_url.outputs.value }}" --deep --output-dir output/playwright/prod-ci/deep
+            node ./scripts/portal-playwright-smoke.mjs --base-url "${{ steps.base_url.outputs.value }}" --deep --output-dir output/playwright/prod-ci/deep --feedback output/qa/portal-prod-smoke-feedback.json
           fi
 
       - name: Upload production portal smoke artifacts
@@ -116,5 +131,14 @@ jobs:
         with:
           name: portal-virtual-staff-regression
           path: output/qa/portal-virtual-staff-regression-prod.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload production smoke feedback profile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-prod-smoke-feedback
+          path: output/qa/portal-prod-smoke-feedback.json
           if-no-files-found: ignore
           retention-days: 14

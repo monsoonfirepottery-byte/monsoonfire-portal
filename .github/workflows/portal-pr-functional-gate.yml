@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -52,8 +53,22 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Build PR functional feedback profile
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node ./scripts/portal-pr-functional-feedback-loop.mjs \
+            --workflow-name "Portal PR Functional Gate" \
+            --branch "${{ github.ref_name }}" \
+            --run-id "${{ github.run_id }}" \
+            --limit 20 \
+            --report output/qa/portal-pr-functional-feedback.json \
+            --json
+
       - name: Emulator-backed functional authz + index gate
-        run: node ./scripts/portal-pr-functional-gate.mjs --json --report output/qa/portal-pr-functional-gate.json
+        run: node ./scripts/portal-pr-functional-gate.mjs --json --feedback output/qa/portal-pr-functional-feedback.json --report output/qa/portal-pr-functional-gate.json
 
       - name: Upload PR functional artifacts
         if: always()
@@ -62,6 +77,7 @@ jobs:
           name: portal-pr-functional-gate-${{ github.run_id }}
           path: |
             output/qa/portal-pr-functional-gate.json
+            output/qa/portal-pr-functional-feedback.json
             output/qa/firestore-index-contract-guard-pr.json
           if-no-files-found: ignore
           retention-days: 7

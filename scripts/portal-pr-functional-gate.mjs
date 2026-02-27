@@ -2,7 +2,7 @@
 
 /* eslint-disable no-console */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -24,6 +24,7 @@ function parseArgs(argv) {
   const options = {
     projectId: process.env.PORTAL_PROJECT_ID || DEFAULT_PROJECT_ID,
     reportPath: process.env.PORTAL_PR_FUNCTIONAL_GATE_REPORT || DEFAULT_REPORT_PATH,
+    feedbackPath: String(process.env.PORTAL_PR_FUNCTIONAL_FEEDBACK_PATH || "").trim(),
     asJson: false,
   };
 
@@ -47,6 +48,14 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--feedback") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --feedback");
+      options.feedbackPath = resolve(process.cwd(), String(next).trim());
+      index += 1;
+      continue;
+    }
+
     if (arg === "--json") {
       options.asJson = true;
       continue;
@@ -56,13 +65,23 @@ function parseArgs(argv) {
   return options;
 }
 
+async function readJsonSafe(path) {
+  if (!path) return null;
+  try {
+    const raw = await readFile(path, "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 function truncate(value, max = 16000) {
   if (typeof value !== "string") return "";
   if (value.length <= max) return value;
   return `${value.slice(0, max)}\n...[truncated ${value.length - max} chars]`;
 }
 
-function runStep(label, command, args, env = {}) {
+function runStep(label, command, args, env = {}, remediation = "") {
   const startedAt = Date.now();
   const result = spawnSync(command, args, {
     cwd: repoRoot,
@@ -82,6 +101,7 @@ function runStep(label, command, args, env = {}) {
     status,
     exitCode,
     durationMs,
+    remediation,
     command: [command, ...args].join(" "),
     stdout: truncate(result.stdout || ""),
     stderr: truncate(result.stderr || ""),
@@ -93,13 +113,23 @@ function printHuman(summary) {
   process.stdout.write(`project: ${summary.projectId}\n`);
   summary.steps.forEach((step) => {
     process.stdout.write(`- ${step.label}: ${step.status} (${step.durationMs}ms, exit=${step.exitCode})\n`);
+    if (step.status === "failed" && step.remediation) {
+      process.stdout.write(`  remediation: ${step.remediation}\n`);
+    }
   });
   process.stdout.write(`report: ${summary.reportPath}\n`);
 }
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  const feedbackProfile = await readJsonSafe(options.feedbackPath);
   const startedAtIso = new Date().toISOString();
+  const stepRemediation =
+    feedbackProfile?.feedback && typeof feedbackProfile.feedback.stepRemediation === "object"
+      ? feedbackProfile.feedback.stepRemediation
+      : {};
+
+  const remediationFor = (label) => String(stepRemediation[label] || "").trim();
 
   const testCommand = `node --test ${RULE_TESTS.join(" ")}`;
 
@@ -115,7 +145,7 @@ async function main() {
       "--only",
       "firestore",
       testCommand,
-    ])
+    ], {}, remediationFor("firestore emulator functional rules suite"))
   );
 
   steps.push(
@@ -126,7 +156,7 @@ async function main() {
       "--no-github",
       "--report",
       "output/qa/firestore-index-contract-guard-pr.json",
-    ])
+    ], {}, remediationFor("firestore index contract guard"))
   );
 
   const failedSteps = steps.filter((step) => step.status === "failed");
@@ -139,6 +169,14 @@ async function main() {
     startedAtIso,
     finishedAtIso,
     reportPath: options.reportPath,
+    feedback: {
+      enabled: Boolean(options.feedbackPath),
+      loaded: Boolean(feedbackProfile),
+      profilePath: options.feedbackPath || "",
+      priorityFailureSteps: Array.isArray(feedbackProfile?.feedback?.priorityFailureSteps)
+        ? feedbackProfile.feedback.priorityFailureSteps
+        : [],
+    },
     checks: {
       seededFixtures: "Deterministic fixtures are seeded by each rules test before assertions.",
       requiredSuites: RULE_TESTS,

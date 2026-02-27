@@ -180,6 +180,8 @@
     "codex:pr-green:daily": "node ./scripts/codex/daily-pr-green.mjs --dry-run --json",
     "codex:pr-green:daily:persist": "node ./scripts/codex/daily-pr-green.mjs --dry-run --persist-dry-run --json",
     "codex:pr-green:apply": "node ./scripts/codex/daily-pr-green.mjs --apply --json",
+    "codex:findings:summary": "node ./scripts/codex/automation-findings-summary.mjs --dry-run --json",
+    "codex:findings:summary:apply": "node ./scripts/codex/automation-findings-summary.mjs --apply --json",
     "branch:divergence:guard": "node ./scripts/branch-divergence-guard.mjs --json",
     "secrets:health:check": "node ./scripts/credentials-health-check.mjs --json",
     "portal:pr:functional:gate": "node ./scripts/portal-pr-functional-gate.mjs --json",

@@ -1,0 +1,72 @@
+name: Codex Automation Findings Summary
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Apply mode (post digest comment to rolling issue)
+        required: false
+        default: true
+        type: boolean
+  workflow_run:
+    workflows:
+      - Codex Self Improvement
+      - Codex Interaction Interrogation
+      - Codex PR Green Daily
+    types:
+      - completed
+  schedule:
+    # 07:45 America/Phoenix (MST year-round) = 14:45 UTC
+    - cron: "45 14 * * *"
+    # 16:45 America/Phoenix (MST year-round) = 23:45 UTC
+    - cron: "45 23 * * *"
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: codex-automation-global
+  cancel-in-progress: false
+
+jobs:
+  codex-findings-summary:
+    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion != 'skipped' && github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run automation findings summary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          MODE="--apply"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.apply }}" != "true" ]; then
+            MODE="--dry-run"
+          fi
+
+          node ./scripts/codex/automation-findings-summary.mjs ${MODE} --json
+
+      - name: Upload automation findings summary artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-automation-findings-summary-${{ github.run_id }}
+          path: |
+            output/qa/codex-automation-findings-summary.md
+            output/qa/codex-automation-findings-summary.json
+          if-no-files-found: ignore
+          retention-days: 7

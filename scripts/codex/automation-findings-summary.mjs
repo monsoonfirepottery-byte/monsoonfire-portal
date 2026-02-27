@@ -129,6 +129,12 @@ function parseRepoSlug() {
   return match ? match[1] : "";
 }
 
+function normalizeMention(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  return raw.startsWith("@") ? raw : `@${raw}`;
+}
+
 function uniqueList(values) {
   const seen = new Set();
   const output = [];
@@ -235,9 +241,19 @@ async function ensureGhLabel(repoSlug, name, color, description, enabled) {
   );
 }
 
-function createSummaryComment({ generatedAtIso, sourceSummaries, okCount, needsAttentionCount, notes }) {
+function createSummaryComment({
+  generatedAtIso,
+  sourceSummaries,
+  okCount,
+  needsAttentionCount,
+  notes,
+  mentionTarget,
+}) {
   const lines = [];
   lines.push(`## ${generatedAtIso} (Automation Findings Digest)`);
+  if (mentionTarget) {
+    lines.push(`cc ${mentionTarget}`);
+  }
   lines.push("");
   lines.push("### Overall");
   lines.push(`- Sources monitored: ${sourceSummaries.length}`);
@@ -279,6 +295,8 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const generatedAtIso = new Date().toISOString();
   const repoSlug = parseRepoSlug();
+  const repoOwner = repoSlug.includes("/") ? repoSlug.split("/")[0] : "";
+  const mentionTarget = normalizeMention(process.env.CODEX_REPORT_MENTION || repoOwner);
   const notes = [];
 
   const githubAvailable = Boolean(repoSlug) && runGh(["auth", "status"], { allowFailure: true }).ok;
@@ -339,6 +357,7 @@ async function main() {
     okCount,
     needsAttentionCount,
     notes,
+    mentionTarget,
   });
 
   const report = {
@@ -353,6 +372,7 @@ async function main() {
     },
     sources: sourceSummaries,
     notes,
+    mentionTarget: mentionTarget || null,
     artifacts: {
       markdown: relative(repoRoot, markdownArtifactPath),
       json: relative(repoRoot, jsonArtifactPath),

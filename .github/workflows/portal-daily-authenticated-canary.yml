@@ -56,11 +56,8 @@ jobs:
         env:
           PORTAL_STAFF_EMAIL: ${{ secrets.PORTAL_STAFF_EMAIL }}
           PORTAL_STAFF_PASSWORD: ${{ secrets.PORTAL_STAFF_PASSWORD }}
+          PORTAL_AGENT_STAFF_CREDENTIALS_JSON: ${{ secrets.PORTAL_AGENT_STAFF_CREDENTIALS_JSON }}
         run: |
-          if [ -z "$PORTAL_STAFF_EMAIL" ] || [ -z "$PORTAL_STAFF_PASSWORD" ]; then
-            echo "Missing required secrets PORTAL_STAFF_EMAIL / PORTAL_STAFF_PASSWORD" >&2
-            exit 1
-          fi
           node ./scripts/portal-authenticated-canary.mjs \
             --base-url "${{ steps.base_url.outputs.value }}" \
             --output-dir output/qa/portal-authenticated-canary \

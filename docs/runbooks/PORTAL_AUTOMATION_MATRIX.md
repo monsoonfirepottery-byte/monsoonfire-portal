@@ -20,6 +20,7 @@ Purpose: define the active automation guardrails for portal functionality, UX co
   - Notifications mark-read feedback
   - Messages load without index/precondition failures
   - Ware Check-in loads without check-in/index failures
+  - Ware Check-in optional sections stay collapsed by default and preserve values after expand/collapse (`canary-06b-ware-checkin-optional-sections.png`).
 - Includes dual-theme contrast sweep by default.
 - Runs every 30 minutes and escalates after 2 consecutive failures via rolling issue automation.
 
@@ -77,11 +78,15 @@ npm run portal:fixture:steward
 npm run portal:promotion:gate
 ```
 
+`portal:canary:auth` and `portal:theme:contrast` auto-resolve staff credentials from:
+- `PORTAL_STAFF_EMAIL` + `PORTAL_STAFF_PASSWORD`
+- `PORTAL_AGENT_STAFF_CREDENTIALS_JSON` (expects `email` + `password`)
+- `PORTAL_AGENT_STAFF_CREDENTIALS` (or default `~/.ssh/portal-agent-staff.json`)
+
 ## Required secrets (CI)
 
-- `PORTAL_STAFF_EMAIL`
-- `PORTAL_STAFF_PASSWORD`
-- `PORTAL_AGENT_STAFF_CREDENTIALS_JSON`
+- `PORTAL_AGENT_STAFF_CREDENTIALS_JSON` (required for backend regression and credential health probes; can also satisfy canary auth when it includes `email` + `password`)
+- `PORTAL_STAFF_EMAIL` + `PORTAL_STAFF_PASSWORD` (canary fallback when JSON payload does not include email/password fields)
 - `FIREBASE_RULES_API_TOKEN`
 - `PORTAL_FIREBASE_API_KEY` (optional override; default project web API key is used when unset)
 - `FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL` (recommended for notification fixture seeding)

@@ -2,7 +2,8 @@
 
 /* eslint-disable no-console */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -13,6 +14,7 @@ const repoRoot = resolve(dirname(__filename), "..");
 const DEFAULT_BASE_URL = "https://monsoonfire-portal.web.app";
 const DEFAULT_OUTPUT_DIR = resolve(repoRoot, "output", "qa", "portal-authenticated-canary");
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "portal-authenticated-canary.json");
+const DEFAULT_STAFF_CREDENTIALS_PATH = resolve(homedir(), ".ssh", "portal-agent-staff.json");
 
 function parseArgs(argv) {
   const options = {
@@ -21,6 +23,10 @@ function parseArgs(argv) {
     reportPath: process.env.PORTAL_CANARY_REPORT || DEFAULT_REPORT_PATH,
     staffEmail: String(process.env.PORTAL_STAFF_EMAIL || "").trim(),
     staffPassword: String(process.env.PORTAL_STAFF_PASSWORD || "").trim(),
+    credentialsPath:
+      process.env.PORTAL_AGENT_STAFF_CREDENTIALS ||
+      DEFAULT_STAFF_CREDENTIALS_PATH,
+    credentialsJson: String(process.env.PORTAL_AGENT_STAFF_CREDENTIALS_JSON || "").trim(),
     requireAuth: true,
     headless: true,
     runThemeSweep: true,
@@ -74,6 +80,22 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--credentials") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --credentials");
+      options.credentialsPath = resolve(process.cwd(), String(next).trim());
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--credentials-json") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --credentials-json");
+      options.credentialsJson = String(next).trim();
+      index += 1;
+      continue;
+    }
+
     if (arg === "--no-require-auth") {
       options.requireAuth = false;
       continue;
@@ -122,6 +144,101 @@ function parseArgs(argv) {
 
 function regexSafe(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function pathExists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function parseStaffCredentialPayload(raw) {
+  if (!raw || typeof raw !== "object") return { email: "", password: "" };
+  return {
+    email: String(raw.email ?? raw.staffEmail ?? "").trim(),
+    password: String(raw.password ?? raw.staffPassword ?? "").trim(),
+  };
+}
+
+async function resolveStaffCredentials(options) {
+  let staffEmail = String(options.staffEmail || "").trim();
+  let staffPassword = String(options.staffPassword || "").trim();
+
+  const resolution = {
+    source: staffEmail || staffPassword ? "PORTAL_STAFF_EMAIL / PORTAL_STAFF_PASSWORD" : "",
+    attemptedSources: [],
+    warnings: [],
+  };
+
+  const applyCandidate = (payload, sourceLabel) => {
+    const candidate = parseStaffCredentialPayload(payload);
+    const missing = [];
+    if (!candidate.email) missing.push("email");
+    if (!candidate.password) missing.push("password");
+
+    if (missing.length > 0) {
+      resolution.warnings.push(`${sourceLabel} missing ${missing.join(" and ")}.`);
+    }
+
+    let consumed = false;
+    if (!staffEmail && candidate.email) {
+      staffEmail = candidate.email;
+      consumed = true;
+    }
+    if (!staffPassword && candidate.password) {
+      staffPassword = candidate.password;
+      consumed = true;
+    }
+
+    if (consumed && !resolution.source) {
+      resolution.source = sourceLabel;
+    }
+  };
+
+  if ((!staffEmail || !staffPassword) && options.credentialsJson) {
+    const label = "PORTAL_AGENT_STAFF_CREDENTIALS_JSON";
+    resolution.attemptedSources.push(label);
+    try {
+      const parsed = JSON.parse(options.credentialsJson);
+      applyCandidate(parsed, label);
+    } catch (error) {
+      resolution.warnings.push(
+        `${label} parse failed (${error instanceof Error ? error.message : String(error)}).`
+      );
+    }
+  }
+
+  if ((!staffEmail || !staffPassword) && options.credentialsPath) {
+    const path = resolve(process.cwd(), options.credentialsPath);
+    resolution.attemptedSources.push(path);
+
+    if (await pathExists(path)) {
+      try {
+        const raw = await readFile(path, "utf8");
+        const parsed = JSON.parse(raw);
+        applyCandidate(parsed, `credentials file: ${path}`);
+      } catch (error) {
+        resolution.warnings.push(
+          `Credential file parse failed at ${path} (${error instanceof Error ? error.message : String(error)}).`
+        );
+      }
+    } else {
+      resolution.warnings.push(`Credential file not found at ${path}.`);
+    }
+  }
+
+  if (!resolution.source && staffEmail && staffPassword) {
+    resolution.source = "resolved";
+  }
+
+  return {
+    staffEmail,
+    staffPassword,
+    ...resolution,
+  };
 }
 
 async function ensureDir(path) {
@@ -184,6 +301,119 @@ async function clickNavSubItem(page, sectionLabel, itemLabel, required = true) {
   await itemButton.click({ timeout: 10000 });
   await page.waitForTimeout(700);
   return true;
+}
+
+async function detailsIsOpen(detailsLocator) {
+  return detailsLocator.evaluate((node) => {
+    if (!(node instanceof HTMLDetailsElement)) return false;
+    return node.open;
+  });
+}
+
+async function setDetailsOpen(detailsLocator, shouldOpen, label) {
+  const current = await detailsIsOpen(detailsLocator);
+  if (current === shouldOpen) return;
+
+  const summary = detailsLocator.locator("summary").first();
+  if ((await summary.count()) === 0) {
+    throw new Error(`Details summary not found for ${label}`);
+  }
+
+  await summary.click({ timeout: 10000 });
+  await detailsLocator.waitFor({ timeout: 10000 });
+  await new Promise((resolve) => setTimeout(resolve, 250));
+
+  const next = await detailsIsOpen(detailsLocator);
+  if (next !== shouldOpen) {
+    throw new Error(`Could not ${shouldOpen ? "open" : "close"} details for ${label}`);
+  }
+}
+
+async function verifyCheckInOptionalSections(page) {
+  const form = page.locator(".checkin-form").first();
+  await form.waitFor({ timeout: 15000 });
+
+  const optionalSteps = form.locator("details.checkin-optional-step");
+  const optionalCount = await optionalSteps.count();
+  if (optionalCount < 4) {
+    throw new Error(`Expected at least 4 optional check-in sections, found ${optionalCount}.`);
+  }
+
+  const photoStep = optionalSteps.nth(0);
+  const extrasStep = optionalSteps.nth(1);
+  const pieceStep = optionalSteps.nth(2);
+  const notesStep = optionalSteps.nth(3);
+
+  const checks = [
+    { label: "photo", locator: photoStep },
+    { label: "extras", locator: extrasStep },
+    { label: "piece details", locator: pieceStep },
+    { label: "notes", locator: notesStep },
+  ];
+
+  for (const check of checks) {
+    if (await detailsIsOpen(check.locator)) {
+      throw new Error(`Optional check-in section should start collapsed: ${check.label}`);
+    }
+  }
+
+  await setDetailsOpen(photoStep, true, "photo optional section");
+  const photoPlaceholder = photoStep.locator(".photo-placeholder").first();
+  if ((await photoPlaceholder.count()) === 0) {
+    throw new Error("Photo optional section did not render expected placeholder content.");
+  }
+  await setDetailsOpen(photoStep, false, "photo optional section");
+
+  await setDetailsOpen(extrasStep, true, "extras optional section");
+  const firstAddonToggle = extrasStep.locator('input[type="checkbox"]').first();
+  if ((await firstAddonToggle.count()) === 0) {
+    throw new Error("Extras optional section is missing addon toggles.");
+  }
+  await firstAddonToggle.check({ timeout: 10000 });
+  if (!(await firstAddonToggle.isChecked())) {
+    throw new Error("Extras optional toggle did not check.");
+  }
+  await firstAddonToggle.uncheck({ timeout: 10000 });
+  await setDetailsOpen(extrasStep, false, "extras optional section");
+
+  await setDetailsOpen(pieceStep, true, "piece details optional section");
+  const pieceLabelValue = "Canary piece row persistence";
+  const pieceCodeValue = "MF-CANARY-001";
+  const pieceCodeInput = pieceStep.getByLabel("Piece code").first();
+  const pieceLabelInput = pieceStep.getByLabel("Piece label").first();
+  await pieceCodeInput.fill(pieceCodeValue);
+  await pieceLabelInput.fill(pieceLabelValue);
+  await setDetailsOpen(pieceStep, false, "piece details optional section");
+  await setDetailsOpen(pieceStep, true, "piece details optional section");
+  const persistedPieceLabel = await pieceLabelInput.inputValue();
+  if (persistedPieceLabel !== pieceLabelValue) {
+    throw new Error("Piece details optional section did not preserve typed piece label.");
+  }
+
+  await setDetailsOpen(notesStep, true, "notes optional section");
+  const noteText = "Canary note persistence check";
+  const notesInput = notesStep.getByLabel("General notes").first();
+  await notesInput.fill(noteText);
+
+  const moreDetails = notesStep.locator("details.notes-details").first();
+  await setDetailsOpen(moreDetails, true, "notes more-details section");
+  const firstTag = notesStep.getByRole("button", { name: /^Fragile handles$/i }).first();
+  await firstTag.click({ timeout: 10000 });
+  const tagSelected = await firstTag.getAttribute("aria-pressed");
+  if (tagSelected !== "true") {
+    throw new Error("Notes tag selection did not persist pressed state after click.");
+  }
+
+  await setDetailsOpen(notesStep, false, "notes optional section");
+  await setDetailsOpen(notesStep, true, "notes optional section");
+  const persistedNoteText = await notesInput.inputValue();
+  if (persistedNoteText !== noteText) {
+    throw new Error("Notes optional section did not preserve general notes text after collapse/reopen.");
+  }
+  const persistedTagSelected = await firstTag.getAttribute("aria-pressed");
+  if (persistedTagSelected !== "true") {
+    throw new Error("Notes optional section did not preserve note-tag selection after collapse/reopen.");
+  }
 }
 
 function getThemeToggle(page, label) {
@@ -432,8 +662,25 @@ async function assertNoPermissionOrIndexError(page, labelPrefixes) {
 
 async function run() {
   const options = parseArgs(process.argv.slice(2));
+
+  const credentialResolution = await resolveStaffCredentials(options);
+  options.staffEmail = credentialResolution.staffEmail;
+  options.staffPassword = credentialResolution.staffPassword;
+
   if (options.requireAuth && (!options.staffEmail || !options.staffPassword)) {
-    throw new Error("Authenticated canary requires staff credentials (PORTAL_STAFF_EMAIL / PORTAL_STAFF_PASSWORD).");
+    const attempted = credentialResolution.attemptedSources.length
+      ? ` Attempted: ${credentialResolution.attemptedSources.join(", ")}.`
+      : "";
+    const warnings = credentialResolution.warnings.length
+      ? ` ${credentialResolution.warnings.join(" ")}`
+      : "";
+    throw new Error(
+      `Authenticated canary requires staff credentials (email + password). ` +
+        `Provide PORTAL_STAFF_EMAIL/PORTAL_STAFF_PASSWORD, ` +
+        `or supply PORTAL_AGENT_STAFF_CREDENTIALS_JSON / --credentials-json ` +
+        `or --credentials <path> (default ${DEFAULT_STAFF_CREDENTIALS_PATH}).` +
+        `${attempted}${warnings}`
+    );
   }
 
   await ensureDir(options.outputDir);
@@ -444,6 +691,12 @@ async function run() {
     startedAtIso: new Date().toISOString(),
     finishedAtIso: "",
     reportPath: options.reportPath,
+    auth: {
+      requireAuth: options.requireAuth,
+      credentialSource: credentialResolution.source || "unresolved",
+      attemptedSources: credentialResolution.attemptedSources,
+      warnings: credentialResolution.warnings,
+    },
     checks: [],
     errors: [],
     screenshots: [],
@@ -609,6 +862,19 @@ async function run() {
 
         await assertNoPermissionOrIndexError(page, ["Check-ins failed:"]);
         await takeScreenshot(page, options.outputDir, "canary-06-ware-checkin.png", summary, "ware check-in");
+      });
+
+      await check(summary, "ware check-in optional sections stay collapsed by default and preserve values", async () => {
+        await clickNavSubItem(page, "Kiln Rentals", "Ware Check-in", true);
+        await page.getByRole("heading", { name: /^Ware Check-in$/i }).first().waitFor({ timeout: 30000 });
+        await verifyCheckInOptionalSections(page);
+        await takeScreenshot(
+          page,
+          options.outputDir,
+          "canary-06b-ware-checkin-optional-sections.png",
+          summary,
+          "ware check-in optional sections"
+        );
       });
     }
 

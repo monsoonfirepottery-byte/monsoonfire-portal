@@ -65,10 +65,6 @@ jobs:
           PORTAL_AGENT_STAFF_CREDENTIALS_JSON: ${{ secrets.PORTAL_AGENT_STAFF_CREDENTIALS_JSON }}
           PORTAL_FIREBASE_API_KEY: ${{ secrets.PORTAL_FIREBASE_API_KEY || secrets.FIREBASE_WEB_API_KEY }}
         run: |
-          if [ -z "$PORTAL_STAFF_EMAIL" ] || [ -z "$PORTAL_STAFF_PASSWORD" ]; then
-            echo "Missing required secrets PORTAL_STAFF_EMAIL / PORTAL_STAFF_PASSWORD" >&2
-            exit 1
-          fi
           if [ -z "$FIREBASE_RULES_API_TOKEN" ] || [ -z "$PORTAL_AGENT_STAFF_CREDENTIALS_JSON" ]; then
             echo "Missing required backend regression secrets FIREBASE_RULES_API_TOKEN / PORTAL_AGENT_STAFF_CREDENTIALS_JSON" >&2
             exit 1

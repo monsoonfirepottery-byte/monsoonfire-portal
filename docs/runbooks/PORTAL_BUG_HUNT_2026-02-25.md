@@ -377,6 +377,8 @@ Fix status:
 - Mitigated in code on 2026-02-26:
   - Converted optional sections into collapsed `<details>` blocks by default.
   - Added clear Show/Hide affordance for optional sections.
+- Guardrail added on 2026-02-27:
+  - Authenticated portal canary now verifies optional sections are collapsed by default and that values persist after expand/collapse in Ware Check-in (`scripts/portal-authenticated-canary.mjs`, screenshot `canary-06b-ware-checkin-optional-sections.png`).
 
 Validation checklist:
 - [ ] Open Check-ins form and confirm optional sections are collapsed by default.

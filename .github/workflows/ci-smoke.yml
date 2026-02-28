@@ -30,6 +30,25 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          GITLEAKS_VERSION="8.24.3"
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo install gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Gitleaks strict scan (repository tree)
+        run: |
+          mkdir -p output/security
+          gitleaks dir . \
+            --config .gitleaks.toml \
+            --redact \
+            --report-format json \
+            --report-path output/security/gitleaks-ci-dir.json
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -111,12 +130,20 @@ jobs:
       - name: Source-of-truth deployment gate matrix
         run: node ./scripts/source-of-truth-deployment-gates.mjs --phase all --strict --json --artifact output/source-of-truth-deployment-gates/ci-smoke.json
 
+      - name: Resolve Firebase API key (non-PR)
+        if: ${{ github.event_name != 'pull_request' }}
+        id: firebase_api_key
+        env:
+          PORTAL_FIREBASE_API_KEY: ${{ secrets.PORTAL_FIREBASE_API_KEY }}
+          FIREBASE_WEB_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
+        run: node ./scripts/resolve-firebase-api-key.mjs --github-output --json
+
       - name: Virtual staff backend regression (non-PR)
         if: ${{ github.event_name != 'pull_request' }}
         env:
           FIREBASE_RULES_API_TOKEN: ${{ secrets.FIREBASE_RULES_API_TOKEN }}
           PORTAL_AGENT_STAFF_CREDENTIALS_JSON: ${{ secrets.PORTAL_AGENT_STAFF_CREDENTIALS_JSON }}
-          PORTAL_FIREBASE_API_KEY: ${{ secrets.PORTAL_FIREBASE_API_KEY || secrets.FIREBASE_WEB_API_KEY }}
+          PORTAL_FIREBASE_API_KEY: ${{ steps.firebase_api_key.outputs.firebase_api_key }}
         run: |
           if [ -z "$FIREBASE_RULES_API_TOKEN" ] || [ -z "$PORTAL_AGENT_STAFF_CREDENTIALS_JSON" ]; then
             echo "Skipping virtual staff backend regression (missing FIREBASE_RULES_API_TOKEN or PORTAL_AGENT_STAFF_CREDENTIALS_JSON)."
@@ -177,6 +204,15 @@ jobs:
         with:
           name: firestore-rules-index-drift-ci
           path: output/qa/firestore-index-contract-guard-ci.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload gitleaks CI artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-ci
+          path: output/security/gitleaks-ci-dir.json
           if-no-files-found: ignore
           retention-days: 7
 

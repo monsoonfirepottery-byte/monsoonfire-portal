@@ -3,20 +3,19 @@
 /* eslint-disable no-console */
 
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { resolve } from "node:path";
 
-const DEFAULT_API_KEY = "AIzaSyC7ynej0nGJas9me9M5oW6jHfLsWe5gHbU";
 const DEFAULT_PROJECT_ID = "monsoonfire-portal";
 const DEFAULT_NOTIFICATION_ID = "welcome-messaging-infra";
+const DEFAULT_CREDENTIALS_PATH = resolve(process.cwd(), "secrets", "portal", "portal-agent-staff.json");
 
 function parseArgs(argv) {
   const options = {
-    apiKey: process.env.PORTAL_FIREBASE_API_KEY || DEFAULT_API_KEY,
+    apiKey: String(process.env.PORTAL_FIREBASE_API_KEY || "").trim(),
     projectId: process.env.PORTAL_PROJECT_ID || DEFAULT_PROJECT_ID,
     credentialsPath:
       process.env.PORTAL_AGENT_STAFF_CREDENTIALS ||
-      resolve(homedir(), ".ssh", "portal-agent-staff.json"),
+      DEFAULT_CREDENTIALS_PATH,
     notificationId: process.env.PORTAL_NOTIFICATION_PROBE_ID || DEFAULT_NOTIFICATION_ID,
     asJson: false,
   };
@@ -61,6 +60,10 @@ function parseArgs(argv) {
       options.asJson = true;
       continue;
     }
+  }
+
+  if (!options.apiKey) {
+    throw new Error("Missing PORTAL_FIREBASE_API_KEY (or pass --api-key).");
   }
 
   return options;

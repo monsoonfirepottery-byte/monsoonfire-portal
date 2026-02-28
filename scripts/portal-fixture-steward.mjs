@@ -6,27 +6,26 @@ import { createSign } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { access } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
 
-const DEFAULT_API_KEY = "AIzaREDACTED";
 const DEFAULT_PROJECT_ID = "monsoonfire-portal";
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "portal-fixture-steward.json");
 const DEFAULT_STATE_PATH = resolve(repoRoot, ".codex", "fixture-steward-state.json");
+const DEFAULT_CREDENTIALS_PATH = resolve(repoRoot, "secrets", "portal", "portal-agent-staff.json");
 
 function parseArgs(argv) {
   const options = {
-    apiKey: process.env.PORTAL_FIREBASE_API_KEY || DEFAULT_API_KEY,
+    apiKey: String(process.env.PORTAL_FIREBASE_API_KEY || "").trim(),
     projectId: process.env.PORTAL_PROJECT_ID || DEFAULT_PROJECT_ID,
     functionsBaseUrl: process.env.PORTAL_FUNCTIONS_BASE_URL || DEFAULT_FUNCTIONS_BASE_URL,
     credentialsPath:
       process.env.PORTAL_AGENT_STAFF_CREDENTIALS ||
-      resolve(homedir(), ".ssh", "portal-agent-staff.json"),
+      DEFAULT_CREDENTIALS_PATH,
     credentialsJson: String(process.env.PORTAL_AGENT_STAFF_CREDENTIALS_JSON || "").trim(),
     reportPath: process.env.PORTAL_FIXTURE_STEWARD_REPORT || DEFAULT_REPORT_PATH,
     statePath: process.env.PORTAL_FIXTURE_STEWARD_STATE || DEFAULT_STATE_PATH,
@@ -109,6 +108,10 @@ function parseArgs(argv) {
       options.asJson = true;
       continue;
     }
+  }
+
+  if (!options.apiKey) {
+    throw new Error("Missing PORTAL_FIREBASE_API_KEY (or pass --api-key).");
   }
 
   return options;
@@ -410,6 +413,7 @@ async function main() {
   const pieceId = `${options.prefix}-piece-${runDate.compact}-${runNonce}`;
   const announcementId = `${options.prefix}-studio-update-${runDate.compact}-${runNonce}`;
   const notificationId = `${options.prefix}-notification-${runDate.compact}-${runNonce}`;
+  const workshopEventId = `${options.prefix}-workshop-${runDate.compact}-${runNonce}`;
   const threadId = `${options.prefix}-thread-${runDate.compact}-${runNonce}`;
   const messageId = `${options.prefix}-message-${runDate.compact}-${runNonce}`;
 
@@ -420,6 +424,7 @@ async function main() {
     pieceId,
     announcementId,
     notificationId,
+    workshopEventId,
     threadId,
     messageId,
   };
@@ -451,6 +456,46 @@ async function main() {
       authorUid: uid,
       authorName: displayName,
       readBy: [],
+    }),
+  });
+
+  const workshopStartAt = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+  const workshopEndAt = new Date(workshopStartAt.getTime() + 2 * 60 * 60 * 1000);
+  upsertResults.push({
+    step: "upsert workshop event",
+    response: await fireUpsert(options.projectId, firestoreToken, `events/${workshopEventId}`, {
+      title: `QA Fixture Workshop ${runDate.dateKey}`,
+      summary: "Seeded workshop fixture for deterministic canary coverage.",
+      description:
+        "QA fixture workshop. Used by staff/event canaries to verify workshop rails and deterministic content availability.",
+      location: "Monsoon Fire Studio",
+      timezone: "America/Phoenix",
+      startAt: workshopStartAt,
+      endAt: workshopEndAt,
+      capacity: 12,
+      priceCents: 1800,
+      currency: "USD",
+      includesFiring: true,
+      firingDetails: "Bisque + glaze discussion included",
+      policyCopy:
+        "Fixture policy: attendance-only billing for canary verification. Cancel anytime up to 3 hours before start.",
+      addOns: [],
+      waitlistEnabled: true,
+      offerClaimWindowHours: 12,
+      cancelCutoffHours: 3,
+      status: "published",
+      ticketedCount: 0,
+      offeredCount: 0,
+      checkedInCount: 0,
+      waitlistCount: 0,
+      fixture: {
+        seededBy: "portal-fixture-steward",
+        runDate: runDate.dateKey,
+        prefix: options.prefix,
+      },
+      createdAt: now,
+      updatedAt: now,
+      publishedAt: now,
     }),
   });
 
@@ -523,8 +568,10 @@ async function main() {
 
     if (!ok) {
       const message = result.response.json?.error?.message || result.response.json?.raw || "unknown error";
-      if (result.step === "upsert notification" && !summary.usedAdminToken) {
-        summary.warnings.push(`Notification fixture seed skipped without admin token: ${truncate(String(message), 280)}`);
+      if ((result.step === "upsert notification" || result.step === "upsert workshop event") && !summary.usedAdminToken) {
+        summary.warnings.push(
+          `${result.step === "upsert notification" ? "Notification" : "Workshop"} fixture seed skipped without admin token: ${truncate(String(message), 280)}`
+        );
       } else {
         throw new Error(`${result.step} failed (${result.response.status}): ${truncate(String(message), 280)}`);
       }
@@ -537,6 +584,7 @@ async function main() {
     { key: "thread", path: `directMessages/${threadId}` },
     { key: "message", path: `directMessages/${threadId}/messages/${messageId}` },
     { key: "notification", path: `users/${uid}/notifications/${notificationId}` },
+    { key: "workshopEvent", path: `events/${workshopEventId}` },
   ];
 
   for (const checkItem of validations) {
@@ -550,9 +598,9 @@ async function main() {
     });
 
     if (!passed) {
-      if (checkItem.key === "notification" && !summary.usedAdminToken) {
+      if ((checkItem.key === "notification" || checkItem.key === "workshopEvent") && !summary.usedAdminToken) {
         summary.warnings.push(
-          `Notification fixture validation skipped without admin token (status ${response.status}).`
+          `${checkItem.key === "notification" ? "Notification" : "Workshop"} fixture validation skipped without admin token (status ${response.status}).`
         );
       } else {
         throw new Error(`Fixture validation failed for ${checkItem.key} (${response.status}).`);
@@ -570,6 +618,7 @@ async function main() {
     pieceId,
     announcementId,
     notificationId,
+    workshopEventId,
     threadId,
     messageId,
   };
@@ -599,9 +648,10 @@ async function main() {
       `directMessages/${fixture.threadId}`,
       `users/${fixture.uid}/notifications/${fixture.notificationId}`,
       `announcements/${fixture.announcementId}`,
+      fixture.workshopEventId ? `events/${fixture.workshopEventId}` : null,
       `batches/${fixture.batchId}/pieces/${fixture.pieceId}`,
       `batches/${fixture.batchId}`,
-    ];
+    ].filter(Boolean);
 
     let cleanupOk = true;
     for (const path of stalePaths) {

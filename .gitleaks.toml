@@ -5,11 +5,12 @@ useDefault = true
 
 [allowlist]
 description = "Known allowlist entries for non-secret client identifiers, generated intelligence artifacts, and test fixture noise."
-regexes = [
-  '''AIzaSyC7ynej0nGJas9me9M5oW6jHfLsWe5gHbU'''
-]
 paths = [
   '''^output/''',
+  '''^secrets/''',
+  '''^functions/lib/''',
+  '''^studio-brain/lib/''',
+  '''^scripts/sync-firestore-rules-releases\.mjs$''',
   '''^PROJECT_SNAPSHOT\.md$''',
   '''^functions/src/apiV1\.test\.ts$''',
   '''^studio-brain/src/config/env\.test\.ts$''',

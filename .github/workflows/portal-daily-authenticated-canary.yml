@@ -51,6 +51,13 @@ jobs:
             echo "value=https://monsoonfire-portal.web.app" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Resolve Firebase API key
+        id: firebase_api_key
+        env:
+          PORTAL_FIREBASE_API_KEY: ${{ secrets.PORTAL_FIREBASE_API_KEY }}
+          FIREBASE_WEB_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
+        run: node ./scripts/resolve-firebase-api-key.mjs --github-output --json
+
       - name: Build canary feedback profile
         continue-on-error: true
         env:
@@ -85,7 +92,7 @@ jobs:
         env:
           PORTAL_AGENT_STAFF_CREDENTIALS_JSON: ${{ secrets.PORTAL_AGENT_STAFF_CREDENTIALS_JSON }}
           FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
-          PORTAL_FIREBASE_API_KEY: ${{ secrets.PORTAL_FIREBASE_API_KEY || secrets.FIREBASE_WEB_API_KEY }}
+          PORTAL_FIREBASE_API_KEY: ${{ steps.firebase_api_key.outputs.firebase_api_key }}
         run: |
           SHOULD_SEED="$(node -e 'const fs=require("fs");try{const p=JSON.parse(fs.readFileSync("output/qa/portal-fixture-self-healing.json","utf8"));process.stdout.write(p?.feedback?.shouldSeedFixturesBeforeCanary?"true":"false")}catch{process.stdout.write("false")}')"
           if [ "$SHOULD_SEED" != "true" ]; then

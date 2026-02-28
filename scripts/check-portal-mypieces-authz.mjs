@@ -3,21 +3,20 @@
 /* eslint-disable no-console */
 
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { resolve } from "node:path";
 
-const DEFAULT_API_KEY = "AIzaSyC7ynej0nGJas9me9M5oW6jHfLsWe5gHbU";
 const DEFAULT_PROJECT_ID = "monsoonfire-portal";
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
+const DEFAULT_CREDENTIALS_PATH = resolve(process.cwd(), "secrets", "portal", "portal-agent-staff.json");
 
 function parseArgs(argv) {
   const options = {
-    apiKey: process.env.PORTAL_FIREBASE_API_KEY || DEFAULT_API_KEY,
+    apiKey: String(process.env.PORTAL_FIREBASE_API_KEY || "").trim(),
     projectId: process.env.PORTAL_PROJECT_ID || DEFAULT_PROJECT_ID,
     functionsBaseUrl: process.env.PORTAL_FUNCTIONS_BASE_URL || DEFAULT_FUNCTIONS_BASE_URL,
     credentialsPath:
       process.env.PORTAL_AGENT_STAFF_CREDENTIALS ||
-      resolve(homedir(), ".ssh", "portal-agent-staff.json"),
+      DEFAULT_CREDENTIALS_PATH,
     asJson: false,
   };
 
@@ -61,6 +60,10 @@ function parseArgs(argv) {
       options.asJson = true;
       continue;
     }
+  }
+
+  if (!options.apiKey) {
+    throw new Error("Missing PORTAL_FIREBASE_API_KEY (or pass --api-key).");
   }
 
   return options;

@@ -105,7 +105,10 @@ async function main() {
   const rotationReason = process.env.ROTATION_REASON?.trim() || "unspecified";
   const alertNumber = process.env.ALERT_NUMBER?.trim() || "";
   const displayPrefix = process.env.WEB_KEY_DISPLAY_NAME_PREFIX?.trim() || "monsoonfire-portal-web";
-  const secretName = process.env.WEB_KEY_SECRET_NAME?.trim() || "FIREBASE_WEB_API_KEY";
+  const primarySecretName = process.env.WEB_KEY_SECRET_NAME?.trim() || "FIREBASE_WEB_API_KEY";
+  const secretNames = Array.from(
+    new Set(parseCsv(process.env.WEB_KEY_SECRET_NAMES, [primarySecretName, "PORTAL_FIREBASE_API_KEY"]))
+  ).filter(Boolean);
   const resourceSecretName = process.env.WEB_KEY_RESOURCE_SECRET_NAME?.trim() || "FIREBASE_WEB_API_KEY_RESOURCE";
 
   const allowedReferrers = parseCsv(process.env.WEB_KEY_ALLOWED_REFERRERS, [
@@ -126,6 +129,9 @@ async function main() {
 
   if (!dryRun) {
     requireEnv("GH_TOKEN");
+  }
+  if (secretNames.length === 0) {
+    throw new Error("No target web key secret names resolved. Set WEB_KEY_SECRET_NAMES.");
   }
 
   const previousResource = (process.env.PREVIOUS_KEY_RESOURCE || "").trim();
@@ -177,11 +183,13 @@ async function main() {
 
     console.log(`::add-mask::${newKeyValue}`);
 
-    run(
-      "gh",
-      ["secret", "set", secretName, "-R", repo],
-      { stdin: newKeyValue, env: { ...process.env, GH_TOKEN: process.env.GH_TOKEN } }
-    );
+    for (const secretName of secretNames) {
+      run(
+        "gh",
+        ["secret", "set", secretName, "-R", repo],
+        { stdin: newKeyValue, env: { ...process.env, GH_TOKEN: process.env.GH_TOKEN } }
+      );
+    }
 
     run(
       "gh",
@@ -219,7 +227,7 @@ async function main() {
     if (resolveAlert && alertNumber) {
       const comment =
         `Automated rotation completed (${displayName}). New key issued with browser/API restrictions, ` +
-        `GitHub secret ${secretName} updated, and previous key ${previousKeyAction}.`;
+        `GitHub secrets ${secretNames.join(", ")} updated, and previous key ${previousKeyAction}.`;
       run(
         "gh",
         [
@@ -249,7 +257,8 @@ async function main() {
     alertNumber: alertNumber || null,
     resolveAlert,
     alertResolved,
-    secretName,
+    secretName: primarySecretName,
+    secretNames,
     resourceSecretName,
     displayName,
     newKeyResource,

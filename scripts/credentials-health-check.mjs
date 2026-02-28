@@ -13,7 +13,6 @@ const repoRoot = resolve(dirname(__filename), "..");
 
 const DEFAULT_PROJECT_ID = "monsoonfire-portal";
 const DEFAULT_BASE_URL = "https://portal.monsoonfire.com";
-const DEFAULT_API_KEY = "AIzaSyC7ynej0nGJas9me9M5oW6jHfLsWe5gHbU";
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "credential-health-check.json");
 const ROLLING_ISSUE_TITLE = "Portal Credential Health (Rolling)";
 
@@ -27,7 +26,7 @@ function parseArgs(argv) {
   const options = {
     projectId: String(process.env.PORTAL_PROJECT_ID || DEFAULT_PROJECT_ID).trim(),
     baseUrl: String(process.env.PORTAL_CANARY_BASE_URL || DEFAULT_BASE_URL).trim(),
-    apiKey: String(process.env.PORTAL_FIREBASE_API_KEY || DEFAULT_API_KEY).trim(),
+    apiKey: String(process.env.PORTAL_FIREBASE_API_KEY || "").trim(),
     asJson: false,
     apply: true,
     includeGithub: true,
@@ -380,7 +379,7 @@ async function main() {
   addCheck(summary, "staff email is configured", staffEmail.length > 0, staffEmail ? "PORTAL_STAFF_EMAIL detected." : "PORTAL_STAFF_EMAIL missing.");
   addCheck(summary, "staff password is configured", staffPassword.length > 0, staffPassword ? "PORTAL_STAFF_PASSWORD detected." : "PORTAL_STAFF_PASSWORD missing.");
   addCheck(summary, "rules API token is configured", rulesToken.length > 0, rulesToken ? "FIREBASE_RULES_API_TOKEN detected." : "FIREBASE_RULES_API_TOKEN missing.");
-  addCheck(summary, "Firebase Web API key is resolved", options.apiKey.length > 0, options.apiKey ? "PORTAL_FIREBASE_API_KEY resolved." : "PORTAL_FIREBASE_API_KEY missing.", false);
+  addCheck(summary, "Firebase Web API key is configured", options.apiKey.length > 0, options.apiKey ? "PORTAL_FIREBASE_API_KEY detected." : "PORTAL_FIREBASE_API_KEY missing.");
 
   const agentCreds = await resolveAgentCredentialSource(summary);
 

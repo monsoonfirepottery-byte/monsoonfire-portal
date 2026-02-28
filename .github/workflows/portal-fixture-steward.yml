@@ -46,13 +46,25 @@ jobs:
             echo "value=21" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Resolve Firebase API key
+        id: firebase_api_key
+        env:
+          PORTAL_FIREBASE_API_KEY: ${{ secrets.PORTAL_FIREBASE_API_KEY }}
+          FIREBASE_WEB_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
+        run: node ./scripts/resolve-firebase-api-key.mjs --github-output --json
+
       - name: Seed + validate + cleanup QA fixtures
         env:
           PORTAL_AGENT_STAFF_CREDENTIALS_JSON: ${{ secrets.PORTAL_AGENT_STAFF_CREDENTIALS_JSON }}
           FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
+          PORTAL_FIREBASE_API_KEY: ${{ steps.firebase_api_key.outputs.firebase_api_key }}
         run: |
           if [ -z "$PORTAL_AGENT_STAFF_CREDENTIALS_JSON" ]; then
             echo "Missing required secret PORTAL_AGENT_STAFF_CREDENTIALS_JSON" >&2
+            exit 1
+          fi
+          if [ -z "$PORTAL_FIREBASE_API_KEY" ]; then
+            echo "Missing resolved PORTAL_FIREBASE_API_KEY." >&2
             exit 1
           fi
           node ./scripts/portal-fixture-steward.mjs \

@@ -72,16 +72,24 @@ jobs:
             --report output/qa/post-deploy-promotion-feedback.json \
             --json
 
+      - name: Resolve Firebase API key
+        id: firebase_api_key
+        env:
+          PORTAL_FIREBASE_API_KEY: ${{ secrets.PORTAL_FIREBASE_API_KEY }}
+          FIREBASE_WEB_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
+        run: node ./scripts/resolve-firebase-api-key.mjs --github-output --json
+
       - name: Run post-deploy promotion gate
         env:
           PORTAL_STAFF_EMAIL: ${{ secrets.PORTAL_STAFF_EMAIL }}
           PORTAL_STAFF_PASSWORD: ${{ secrets.PORTAL_STAFF_PASSWORD }}
           FIREBASE_RULES_API_TOKEN: ${{ secrets.FIREBASE_RULES_API_TOKEN }}
+          FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
           PORTAL_AGENT_STAFF_CREDENTIALS_JSON: ${{ secrets.PORTAL_AGENT_STAFF_CREDENTIALS_JSON }}
-          PORTAL_FIREBASE_API_KEY: ${{ secrets.PORTAL_FIREBASE_API_KEY || secrets.FIREBASE_WEB_API_KEY }}
+          PORTAL_FIREBASE_API_KEY: ${{ steps.firebase_api_key.outputs.firebase_api_key }}
         run: |
-          if [ -z "$FIREBASE_RULES_API_TOKEN" ] || [ -z "$PORTAL_AGENT_STAFF_CREDENTIALS_JSON" ]; then
-            echo "Missing required backend regression secrets FIREBASE_RULES_API_TOKEN / PORTAL_AGENT_STAFF_CREDENTIALS_JSON" >&2
+          if [ -z "$FIREBASE_RULES_API_TOKEN" ] || [ -z "$PORTAL_AGENT_STAFF_CREDENTIALS_JSON" ] || [ -z "$FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL" ]; then
+            echo "Missing required backend regression secrets FIREBASE_RULES_API_TOKEN / PORTAL_AGENT_STAFF_CREDENTIALS_JSON / FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL" >&2
             exit 1
           fi
 
@@ -109,6 +117,7 @@ jobs:
             output/qa/post-deploy-authenticated-canary.json
             output/qa/post-deploy-canary
             output/qa/post-deploy-virtual-staff-regression.json
+            output/qa/post-deploy-index-deploy.json
             output/qa/post-deploy-index-guard.json
           if-no-files-found: ignore
           retention-days: 14

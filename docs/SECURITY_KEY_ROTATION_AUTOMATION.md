@@ -10,7 +10,7 @@ This repo includes automated Firebase Web API key rotation for secret incidents.
 
 ## What rotation does
 1. Creates a new Google API key in project `monsoonfire-portal` with browser/API restrictions.
-2. Updates GitHub secret `FIREBASE_WEB_API_KEY` used by web deploy builds.
+2. Updates GitHub secrets `FIREBASE_WEB_API_KEY` and `PORTAL_FIREBASE_API_KEY`.
 3. Updates GitHub secret `FIREBASE_WEB_API_KEY_RESOURCE` with the new resource name.
 4. Optionally disables the previous key resource (default enabled).
 5. Optionally resolves the triggering secret-scanning alert as `revoked`.
@@ -30,6 +30,9 @@ This repo includes automated Firebase Web API key rotation for secret incidents.
   - Comma-separated browser referrers. If omitted, script defaults are used.
 - `WEB_KEY_API_TARGETS`
   - Comma-separated API services. If omitted, script defaults are used.
+- `WEB_KEY_SECRET_NAMES`
+  - Comma-separated GitHub secret names to update with the new key value.
+  - Default: `FIREBASE_WEB_API_KEY,PORTAL_FIREBASE_API_KEY`.
 
 ## Manual emergency usage
 1. Run `Security Key Rotation` via `workflow_dispatch`.

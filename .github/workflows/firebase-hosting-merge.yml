@@ -13,82 +13,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build web bundle with validated Firebase API key
-        shell: bash
+      - name: Resolve Firebase API key
+        id: firebase_api_key
         env:
           FIREBASE_WEB_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
           PORTAL_FIREBASE_API_KEY: ${{ secrets.PORTAL_FIREBASE_API_KEY }}
+        run: node ./scripts/resolve-firebase-api-key.mjs --github-output --json
+      - name: Build web bundle with validated Firebase API key
+        shell: bash
+        env:
+          VITE_FIREBASE_API_KEY: ${{ steps.firebase_api_key.outputs.firebase_api_key }}
         run: |
           set -euo pipefail
-
-          validate_api_key() {
-            local candidate="$1"
-
-            if [ -z "$candidate" ]; then
-              return 1
-            fi
-            if [[ ! "$candidate" =~ ^AIza[0-9A-Za-z_-]{20,}$ ]]; then
-              return 1
-            fi
-
-            local config_status
-            config_status=$(curl -sS -o /tmp/firebase-key-config.json -w "%{http_code}" \
-              "https://www.googleapis.com/identitytoolkit/v3/relyingparty/getProjectConfig?key=${candidate}" || true)
-
-            if [ "$config_status" != "200" ]; then
-              return 1
-            fi
-            if ! grep -q "\"portal.monsoonfire.com\"" /tmp/firebase-key-config.json; then
-              return 1
-            fi
-            if ! grep -q "\"monsoonfire-portal.firebaseapp.com\"" /tmp/firebase-key-config.json; then
-              return 1
-            fi
-
-            local sign_in_status
-            sign_in_status=$(curl -sS -o /tmp/firebase-key-probe.json -w "%{http_code}" \
-              -H "content-type: application/json" \
-              -d '{"email":"nobody@example.com","password":"invalid","returnSecureToken":true}' \
-              "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${candidate}" || true)
-
-            if [ "$sign_in_status" != "400" ]; then
-              return 1
-            fi
-            if grep -qi "API key not valid" /tmp/firebase-key-probe.json; then
-              return 1
-            fi
-            if grep -qi "API_KEY_INVALID" /tmp/firebase-key-probe.json; then
-              return 1
-            fi
-            return 0
-          }
-
-          SELECTED_FIREBASE_API_KEY=""
-          SELECTED_SOURCE=""
-
-          for source in "portal" "firebase_web"; do
-            candidate=""
-            if [ "$source" = "portal" ]; then
-              candidate="$PORTAL_FIREBASE_API_KEY"
-            else
-              candidate="$FIREBASE_WEB_API_KEY"
-            fi
-
-            if validate_api_key "$candidate"; then
-              SELECTED_FIREBASE_API_KEY="$candidate"
-              SELECTED_SOURCE="$source"
-              break
-            fi
-          done
-
-          if [ -z "$SELECTED_FIREBASE_API_KEY" ]; then
-            echo "No valid Firebase web API key candidate resolved for web build." >&2
-            exit 1
-          fi
-
-          echo "Using Firebase API key source: $SELECTED_SOURCE"
-          echo "VITE_FIREBASE_API_KEY=$SELECTED_FIREBASE_API_KEY" >> "$GITHUB_ENV"
-          export VITE_FIREBASE_API_KEY="$SELECTED_FIREBASE_API_KEY"
+          echo "Using Firebase API key source: ${{ steps.firebase_api_key.outputs.firebase_api_key_source }}"
           npm --prefix web ci
           npm --prefix web run build
       - uses: FirebaseExtended/action-hosting-deploy@092436dca3ec6dacb231d965ae56f7ff6c09f258

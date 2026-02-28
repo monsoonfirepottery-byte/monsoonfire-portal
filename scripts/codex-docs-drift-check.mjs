@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { delimiter, dirname, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { compareSemver, resolveCodexCliCandidates } from "./lib/codex-cli-utils.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -48,85 +49,17 @@ function parseArgs(rawArgs) {
   return parsed;
 }
 
-function compareSemver(left, right) {
-  const toParts = (value) => String(value || "").split(".").map((part) => Number(part));
-  const a = toParts(left);
-  const b = toParts(right);
-  for (let index = 0; index < 3; index += 1) {
-    const diff = (a[index] || 0) - (b[index] || 0);
-    if (diff === 0) continue;
-    return diff > 0 ? 1 : -1;
-  }
-  return 0;
-}
-
-function parseVersionOutput(rawOutput) {
-  const match = String(rawOutput || "").match(/(\d+\.\d+\.\d+)/);
-  return match ? match[1] : null;
-}
-
-function readInstalledCodexVersions() {
-  const candidates = [];
-
-  const readVersion = (label, pathOverride) => {
-    try {
-      const output = execSync("codex --version", {
-        cwd: REPO_ROOT,
-        encoding: "utf8",
-        env: pathOverride ? { ...process.env, PATH: pathOverride } : process.env,
-        stdio: ["ignore", "pipe", "ignore"],
-      }).trim();
-      const version = parseVersionOutput(output);
-      if (!version) return;
-      if (candidates.some((entry) => entry.version === version && entry.source === label)) return;
-      candidates.push({ source: label, version, raw: output });
-    } catch {
-      // ignored: not all execution contexts have both binaries resolvable
-    }
-  };
-
-  readVersion("active-path", null);
-
-  const sanitizedPath = String(process.env.PATH || "")
-    .split(delimiter)
-    .filter((segment) => !/[\\/]node_modules[\\/]\.bin/.test(segment))
-    .join(delimiter);
-  if (sanitizedPath && sanitizedPath !== String(process.env.PATH || "")) {
-    readVersion("non-local-path", sanitizedPath);
-  }
-
-  return candidates;
-}
-
-function selectBestInstalledVersion(candidates) {
-  if (!Array.isArray(candidates) || candidates.length === 0) return null;
-  const sorted = [...candidates].sort((left, right) => compareSemver(right.version, left.version));
-  return sorted[0]?.version || null;
-}
-
-function readInstalledCodexVersion() {
-  try {
-    const candidates = readInstalledCodexVersions();
-    return {
-      selected: selectBestInstalledVersion(candidates),
-      candidates,
-    };
-  } catch {
-    return {
-      selected: null,
-      candidates: [],
-    };
-  }
-}
-
-function createReport(strict, artifactPath, versionResult) {
+function createReport(strict, artifactPath, codexResolution) {
+  const preferred = codexResolution.preferred || null;
   return {
     schema: "codex-docs-drift-v1",
     generatedAt: new Date().toISOString(),
     strict,
     artifactPath,
-    installedCodexCliVersion: versionResult.selected,
-    detectedCodexCliVersions: versionResult.candidates,
+    installedCodexCliVersion: preferred?.version || null,
+    installedCodexCliBinary: preferred?.path || null,
+    detectedCodexCliVersions: codexResolution.versionSet,
+    detectedCodexCliCandidates: codexResolution.candidates,
     status: "pass",
     findings: [],
     summary: {
@@ -233,6 +166,7 @@ function scanFile(report, filePath, installedVersion) {
 function printHumanSummary(report) {
   process.stdout.write("Codex docs drift check\n");
   process.stdout.write(`  installed codex-cli: ${report.installedCodexCliVersion || "unknown"}\n`);
+  process.stdout.write(`  installed codex binary: ${report.installedCodexCliBinary || "unknown"}\n`);
   process.stdout.write(`  files scanned: ${report.summary.filesScanned}\n`);
   process.stdout.write(`  errors: ${report.summary.errors}\n`);
   process.stdout.write(`  warnings: ${report.summary.warnings}\n`);
@@ -242,16 +176,32 @@ function printHumanSummary(report) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const artifactPath = resolve(REPO_ROOT, args.artifact);
-  const versionResult = readInstalledCodexVersion();
-  const installedVersion = versionResult.selected;
-  const report = createReport(args.strict, artifactPath, versionResult);
+  const codexResolution = resolveCodexCliCandidates(REPO_ROOT);
+  const installedVersion = codexResolution.preferred?.version || null;
+  const report = createReport(args.strict, artifactPath, codexResolution);
 
   if (!installedVersion) {
     pushFinding(
       report,
       "warning",
       "codex-version-read",
-      "Unable to read installed Codex CLI version from `codex --version`.",
+      "Unable to read installed Codex CLI version from an available `codex` binary.",
+      {
+        candidatesChecked: codexResolution.candidates.map((candidate) => candidate.path),
+      },
+    );
+  }
+
+  if (codexResolution.hasVersionAmbiguity) {
+    pushFinding(
+      report,
+      "warning",
+      "codex-version-ambiguity",
+      `Multiple Codex CLI versions detected in PATH (${codexResolution.versionSet.join(", ")}). Prefer repo-local node_modules/.bin/codex for deterministic harness behavior.`,
+      {
+        preferred: codexResolution.preferred,
+        candidates: codexResolution.candidates,
+      },
     );
   }
 

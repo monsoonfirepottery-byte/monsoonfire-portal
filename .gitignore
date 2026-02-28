@@ -27,9 +27,11 @@ output/real-estate/public-data/
 
 # Local temp
 tmp-firebase.json
+# Codex local memory pipeline (local-only workspace)
 memory/
 exports/
 *.jsonl
+/.tmp/
 /.codex/toolcalls.ndjson
 /.studiobrain-host-state.json
 *openai*export*

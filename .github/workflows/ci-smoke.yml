@@ -124,6 +124,12 @@ jobs:
       - name: Codex docs drift strict audit
         run: npm run codex:docs:drift:strict
 
+      - name: Ephemeral artifact tracking guard
+        run: npm run guard:ephemeral:artifacts
+
+      - name: Codex doctor
+        run: npm run codex:doctor
+
       - name: Agent-readable surfaces check
         run: npm run agent:surfaces:check
 

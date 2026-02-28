@@ -21,6 +21,7 @@ Use `scripts/codex-mcp.sh` from repo root:
 ```
 
 What it does:
+- Prefers repo-local `node_modules/.bin/codex` when present to avoid global/local binary ambiguity.
 - Runs `codex --profile <profile> -c 'mcp_servers.<id>.enabled=true' ... mcp list`
 - Includes read-only smoke checks for `docs` and `cloudflare`
 
@@ -51,6 +52,31 @@ Use strict mode in CI-sensitive flows:
 ```bash
 npm run codex:docs:drift:strict
 ```
+
+## Codex Doctor
+Run a bundled harness health check (CLI resolution, docs drift, MCP audit, local memory layout, and ephemeral artifact guard):
+
+```bash
+npm run codex:doctor
+```
+
+Use strict mode when you want warnings to fail:
+
+```bash
+npm run codex:doctor:strict
+```
+
+## Local Memory Pipeline (Ignored Workspace)
+For local-only `memory/proposed -> memory/accepted` flow inside this repo:
+
+```bash
+npm run codex:memory:init
+npm run codex:memory:status
+npm run codex:memory:propose -- --statement "..."
+npm run codex:memory:accept -- --id <memory-id>
+```
+
+This workspace is intentionally git-ignored (`memory/`, `*.jsonl`).
 
 ## Codex CLI 0.106+ Notes
 - Legacy `model_providers` and `models` table blocks are deprecated in `~/.codex/config.toml`.

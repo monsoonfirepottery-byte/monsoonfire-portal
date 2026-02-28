@@ -8,6 +8,8 @@ MCP operator wrapper:
 - This script forces the intended servers on each run with:
   -c 'mcp_servers.<id>.enabled=true'
 - Keep top-level MCP defaults disabled in ~/.codex/config.toml.
+- Codex CLI 0.106+ expects top-level model config (`model`, optional `model_provider`);
+  legacy `[model_providers.*]` / `[models.*]` blocks are deprecated.
 BANNER
 }
 
@@ -61,8 +63,8 @@ smoke_cloudflare() {
     cat <<'KNOWN_ISSUES'
 WARN: cloudflare smoke call failed.
 KNOWN_ISSUES:
-- OAuth regression #11465 behavior in codex-cli 0.104.0:
-  codex mcp login cloudflare_docs may fail with
+- Current auth capability can still mark `cloudflare_docs` as unsupported.
+  If so, `codex mcp login cloudflare_docs` may return:
   \"No authorization support detected\".
 - Profile enablement flakiness (#9325 pattern):
   continue to force servers with CLI overrides for this run.

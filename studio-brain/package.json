@@ -23,7 +23,7 @@
     "rebuild": "npm run build && node lib/cli/rebuild.js"
   },
   "dependencies": {
-    "minio": "^8.0.3",
+    "minio": "^8.0.7",
     "dotenv": "^16.4.7",
     "firebase-admin": "^13.7.0",
     "redis": "^4.7.0",

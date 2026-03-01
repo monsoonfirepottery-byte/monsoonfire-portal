@@ -3888,7 +3888,7 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   border-bottom: 1px solid var(--border);
   display: flex;
   flex-direction: row;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   overflow: visible;
   z-index: 5;
@@ -3910,24 +3910,33 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
 .app-shell.dock-top .sidebar nav {
   display: flex;
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
+  align-content: center;
   gap: 8px;
-  overflow-x: auto;
-  overflow-y: visible;
+  overflow: visible;
   padding-right: 0;
-  flex: 1;
+  flex: 1 1 560px;
+  min-width: 0;
 }
 
 .app-shell.dock-top .nav-primary,
 .app-shell.dock-top .nav-bottom {
   flex-direction: row;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
+}
+
+.app-shell.dock-top .nav-primary {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .app-shell.dock-top .nav-bottom {
   margin-top: 0;
   margin-left: auto;
+  justify-content: flex-end;
 }
 
 .app-shell.dock-top .nav-section {
@@ -3936,6 +3945,10 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   align-items: center;
   position: relative;
   gap: 0;
+}
+
+.app-shell.dock-top .nav-section.open {
+  z-index: 50;
 }
 
 .app-shell.dock-top .nav-section-title {

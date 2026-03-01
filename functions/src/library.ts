@@ -793,11 +793,11 @@ function isTrustedCoverSource(provider: CoverQualityProvider, parsedUrl: URL): b
 function hasLowConfidenceCoverPattern(normalizedUrl: string, parsedUrl: URL): boolean {
   const fullPath = `${parsedUrl.pathname}${parsedUrl.search}`.toLowerCase();
   const lowConfidencePatterns: RegExp[] = [
-    /(?:^|[\/._-])(no[-_ ]?(?:cover|image)|missing[-_ ]?(?:cover|image)|default[-_ ]?(?:cover|image)|placeholder)(?:$|[\/._-])/i,
+    /(?:^|[/._-])(no[-_ ]?(?:cover|image)|missing[-_ ]?(?:cover|image)|default[-_ ]?(?:cover|image)|placeholder)(?:$|[/._-])/i,
     /\b(first[-_ ]?page|inside[-_ ]?page|table[-_ ]?of[-_ ]?contents|spine|back[-_ ]?cover)\b/i,
     /\b(sample|preview|excerpt|reader|lookinside|flipbook)\b/i,
-    /[\?&](?:page|pg|leaf|sheet)=\d+/i,
-    /[\?&](?:view|content)=(?:toc|sample|preview|excerpt|inside|spine|back)/i,
+    /[?&](?:page|pg|leaf|sheet)=\d+/i,
+    /[?&](?:view|content)=(?:toc|sample|preview|excerpt|inside|spine|back)/i,
     /\/b\/(?:id|isbn)\/\d+-s\.(?:jpe?g|png|webp)$/i,
   ];
 

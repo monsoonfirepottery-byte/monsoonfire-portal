@@ -31,10 +31,27 @@ jobs:
       - name: Install root deps
         run: npm ci
 
+      - name: Authenticate to Google Cloud (rules checks)
+        if: ${{ env.IS_DEPENDABOT_PR != 'true' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
+
+      - name: Setup gcloud (rules checks)
+        if: ${{ env.IS_DEPENDABOT_PR != 'true' }}
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: monsoonfire-portal
+
+      - name: Mint Rules API access token (rules checks)
+        if: ${{ env.IS_DEPENDABOT_PR != 'true' }}
+        id: rules_token
+        run: echo "access_token=$(gcloud auth print-access-token)" >> "$GITHUB_OUTPUT"
+
       - name: Enforce Firestore rules release drift check
         if: ${{ env.IS_DEPENDABOT_PR != 'true' }}
         env:
-          FIREBASE_RULES_API_TOKEN: ${{ secrets.FIREBASE_RULES_API_TOKEN }}
+          FIREBASE_RULES_API_TOKEN: ${{ steps.rules_token.outputs.access_token || secrets.FIREBASE_RULES_API_TOKEN }}
         run: |
           if [ -z "$FIREBASE_RULES_API_TOKEN" ]; then
             echo "Missing required secret: FIREBASE_RULES_API_TOKEN" >&2

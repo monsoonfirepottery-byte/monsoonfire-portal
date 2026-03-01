@@ -9,7 +9,7 @@ on:
         default: false
         type: boolean
       epic_selection:
-        description: Epic selector for backlog dispatch (example: 1-20)
+        description: "Epic selector for backlog dispatch (example: 1-20)"
         required: false
         default: "1-20"
         type: string

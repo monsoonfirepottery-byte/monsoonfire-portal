@@ -79,11 +79,25 @@ jobs:
           FIREBASE_WEB_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
         run: node ./scripts/resolve-firebase-api-key.mjs --github-output --json
 
+      - name: Authenticate to Google Cloud (promotion gate)
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
+
+      - name: Setup gcloud (promotion gate)
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: monsoonfire-portal
+
+      - name: Mint Rules API access token (promotion gate)
+        id: rules_token
+        run: echo "access_token=$(gcloud auth print-access-token)" >> "$GITHUB_OUTPUT"
+
       - name: Run post-deploy promotion gate
         env:
           PORTAL_STAFF_EMAIL: ${{ secrets.PORTAL_STAFF_EMAIL }}
           PORTAL_STAFF_PASSWORD: ${{ secrets.PORTAL_STAFF_PASSWORD }}
-          FIREBASE_RULES_API_TOKEN: ${{ secrets.FIREBASE_RULES_API_TOKEN }}
+          FIREBASE_RULES_API_TOKEN: ${{ steps.rules_token.outputs.access_token || secrets.FIREBASE_RULES_API_TOKEN }}
           FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
           PORTAL_AGENT_STAFF_CREDENTIALS_JSON: ${{ secrets.PORTAL_AGENT_STAFF_CREDENTIALS_JSON }}
           PORTAL_FIREBASE_API_KEY: ${{ steps.firebase_api_key.outputs.firebase_api_key }}

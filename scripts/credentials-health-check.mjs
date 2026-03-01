@@ -19,7 +19,7 @@ const ROLLING_ISSUE_TITLE = "Portal Credential Health (Rolling)";
 const GOOGLE_OAUTH_TOKEN_ENDPOINT = "https://www.googleapis.com/oauth2/v3/token";
 const FIREBASE_CLI_OAUTH_CLIENT_ID =
   "563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com";
-const FIREBASE_CLI_OAUTH_CLIENT_SECRET = "j9iVZfS8kkCEFUPaAeJV0sAi";
+const FIREBASE_CLI_OAUTH_CLIENT_SECRET = String(process.env.FIREBASE_CLI_OAUTH_CLIENT_SECRET || "").trim();
 
 function parseBoolEnv(value, fallback = false) {
   if (value === undefined || value === null || value === "") return fallback;
@@ -291,9 +291,11 @@ async function exchangeRefreshToken(refreshToken, source) {
   const form = new URLSearchParams({
     refresh_token: refreshToken,
     client_id: FIREBASE_CLI_OAUTH_CLIENT_ID,
-    client_secret: FIREBASE_CLI_OAUTH_CLIENT_SECRET,
     grant_type: "refresh_token",
   });
+  if (FIREBASE_CLI_OAUTH_CLIENT_SECRET) {
+    form.set("client_secret", FIREBASE_CLI_OAUTH_CLIENT_SECRET);
+  }
 
   const response = await fetch(GOOGLE_OAUTH_TOKEN_ENDPOINT, {
     method: "POST",
@@ -338,16 +340,16 @@ async function resolveRulesApiToken() {
   }
 
   const cli = await loadFirebaseCliTokens();
-  if (cli.refreshToken) {
-    return {
-      source: "firebase_tools_refresh_token",
-      token: await exchangeRefreshToken(cli.refreshToken, "firebase_tools_refresh_token"),
-    };
-  }
   if (cli.accessToken) {
     return {
       source: "firebase_tools_access_token",
       token: cli.accessToken,
+    };
+  }
+  if (cli.refreshToken) {
+    return {
+      source: "firebase_tools_refresh_token",
+      token: await exchangeRefreshToken(cli.refreshToken, "firebase_tools_refresh_token"),
     };
   }
 

@@ -17,6 +17,7 @@ const DEFAULT_STAFF_CREDENTIALS_PATH = resolve(repoRoot, "secrets", "portal", "p
 const DEFAULT_MY_PIECES_READY_TIMEOUT_MS = 18000;
 const DEFAULT_MY_PIECES_RELOAD_RETRY_COUNT = 1;
 const DEFAULT_MARK_READ_RETRY_COUNT = 1;
+const THEME_SWEEP_TARGETS = ["light", "dark", "mono"];
 
 function parseArgs(argv) {
   const options = {
@@ -613,7 +614,38 @@ function getThemeToggle(page, label) {
   return page.getByRole("button", { name: new RegExp(`^Switch to ${regexSafe(label)} theme$`, "i") }).first();
 }
 
+async function openProfileView(page) {
+  const profileButton = page.getByRole("button", { name: /^Open profile$/i }).first();
+  if ((await profileButton.count()) > 0) {
+    await profileButton.click({ timeout: 10000 });
+    await page.waitForTimeout(650);
+    return;
+  }
+  await clickNavItem(page, "Profile", true);
+}
+
+async function setThemeFromProfile(page, themeValue) {
+  await openProfileView(page);
+  const themeSelect = page.getByLabel(/^Theme$/i).first();
+  if ((await themeSelect.count()) === 0) {
+    throw new Error("Theme selector not found on Profile page.");
+  }
+
+  await themeSelect.selectOption(themeValue);
+  await page.waitForFunction(
+    (expectedTheme) => document.documentElement.getAttribute("data-portal-theme") === expectedTheme,
+    themeValue,
+    { timeout: 10000 }
+  );
+  await page.waitForTimeout(450);
+}
+
 async function ensureTheme(page, targetTheme) {
+  if (targetTheme === "mono") {
+    await setThemeFromProfile(page, "mono");
+    return;
+  }
+
   if (targetTheme !== "light" && targetTheme !== "dark") {
     throw new Error(`Unsupported theme target: ${targetTheme}`);
   }
@@ -909,6 +941,7 @@ async function run() {
     contrast: {
       light: [],
       dark: [],
+      mono: [],
     },
   };
 
@@ -1281,7 +1314,7 @@ async function run() {
         },
       ];
 
-      for (const theme of ["light", "dark"]) {
+      for (const theme of THEME_SWEEP_TARGETS) {
         await check(summary, `theme contrast sweep (${theme})`, async () => {
           // Theme switch control lives on Dashboard; always normalize there first.
           await pages[0].navigate();

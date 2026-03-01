@@ -121,6 +121,9 @@ jobs:
       - name: Source-of-truth index strict audit
         run: npm run source:truth:index:strict
 
+      - name: Install Codex CLI (pinned)
+        run: npm install --global @openai/codex@0.106.0
+
       - name: Codex docs drift strict audit
         run: npm run codex:docs:drift:strict
 

@@ -97,6 +97,7 @@ jobs:
             --base-url "${{ steps.base_url.outputs.value }}"
             --report output/qa/post-deploy-promotion-gate.json
             --feedback output/qa/post-deploy-promotion-feedback.json
+            --soft-fail-permission-denied
             --json
           )
 

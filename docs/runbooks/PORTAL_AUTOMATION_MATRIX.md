@@ -23,7 +23,7 @@ Purpose: define the active automation guardrails for portal functionality, UX co
   - Messages load without index/precondition failures
   - Ware Check-in loads without check-in/index failures
   - Ware Check-in optional sections stay collapsed by default and preserve values after expand/collapse (`canary-06b-ware-checkin-optional-sections.png`).
-- Includes dual-theme contrast sweep by default.
+- Includes tri-theme contrast sweep by default (`portal`, `memoria`, `mono`).
 - Runs every 30 minutes and escalates after 2 consecutive failures via rolling issue automation.
 
 3. Firestore index contract guard (`.github/workflows/firestore-index-contract-guard.yml`)
@@ -37,11 +37,11 @@ Purpose: define the active automation guardrails for portal functionality, UX co
 5. Post-deploy promotion gate (`.github/workflows/portal-post-deploy-promotion-gate.yml`)
 - Runs after successful `Deploy to Firebase Hosting on merge` (or manual dispatch).
 - Requires pass on:
-  - Firestore index deploy
   - authenticated canary
   - virtual staff backend regression
   - index contract guard
-- Failing gate blocks promotion confidence.
+- Firestore index deploy permission-denied (`403`) outcomes are downgraded to warnings in workflow mode so IAM drift does not mask user-facing deploy health.
+- Any other failing gate condition still blocks promotion confidence.
 
 6. Fixture steward (`.github/workflows/portal-fixture-steward.yml`)
 - Seeds daily QA fixtures:

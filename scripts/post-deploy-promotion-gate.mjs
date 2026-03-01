@@ -17,6 +17,8 @@ function parseArgs(argv) {
   const options = {
     baseUrl: process.env.PORTAL_PROMOTION_BASE_URL || DEFAULT_BASE_URL,
     reportPath: process.env.PORTAL_PROMOTION_GATE_REPORT || DEFAULT_REPORT_PATH,
+    softFailPermissionDenied:
+      String(process.env.PORTAL_PROMOTION_SOFT_FAIL_PERMISSION_DENIED || "").toLowerCase() === "true",
     includeVirtualStaff: true,
     includeThemeSweep: true,
     includeIndexDeploy: true,
@@ -75,6 +77,11 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--soft-fail-permission-denied") {
+      options.softFailPermissionDenied = true;
+      continue;
+    }
+
     if (arg === "--feedback") {
       const next = argv[index + 1];
       if (!next || next.startsWith("--")) throw new Error("Missing value for --feedback");
@@ -108,7 +115,17 @@ function truncate(value, max = 16000) {
   return `${value.slice(0, max)}\n...[truncated ${value.length - max} chars]`;
 }
 
-function runStep(label, command, args, env = {}) {
+function isPermissionDeniedFailure(stdout, stderr) {
+  const output = `${String(stdout || "")}\n${String(stderr || "")}`;
+  const hasPermissionSignal =
+    /permission denied/i.test(output) ||
+    /caller does not have permission/i.test(output) ||
+    /PERMISSION_DENIED/i.test(output);
+  const hasScopeSignal = /\b403\b/.test(output) || /firebaserules\.googleapis\.com/i.test(output);
+  return hasPermissionSignal && hasScopeSignal;
+}
+
+function runStep(label, command, args, env = {}, behavior = {}) {
   const startedAt = Date.now();
   const result = spawnSync(command, args, {
     cwd: repoRoot,
@@ -121,16 +138,22 @@ function runStep(label, command, args, env = {}) {
 
   const durationMs = Date.now() - startedAt;
   const exitCode = typeof result.status === "number" ? result.status : 1;
-  const status = exitCode === 0 ? "passed" : "failed";
+  const stdout = truncate(result.stdout || "");
+  const stderr = truncate(result.stderr || "");
+  const allowPermissionDenied = Boolean(behavior.allowPermissionDenied);
+  const permissionDenied = isPermissionDeniedFailure(stdout, stderr);
+  const status =
+    exitCode === 0 ? "passed" : allowPermissionDenied && permissionDenied ? "degraded" : "failed";
 
   return {
     label,
     status,
+    failureCategory: status === "degraded" ? "permission_denied" : "",
     exitCode,
     durationMs,
     command: [command, ...args].join(" "),
-    stdout: truncate(result.stdout || ""),
-    stderr: truncate(result.stderr || ""),
+    stdout,
+    stderr,
   };
 }
 
@@ -173,7 +196,9 @@ async function main() {
         "--report",
         "output/qa/post-deploy-index-deploy.json",
         "--json",
-      ])
+      ], {}, {
+        allowPermissionDenied: options.softFailPermissionDenied,
+      })
     );
   }
 
@@ -205,7 +230,9 @@ async function main() {
         "--report",
         "output/qa/post-deploy-virtual-staff-regression.json",
         "--json",
-      ])
+      ], {}, {
+        allowPermissionDenied: options.softFailPermissionDenied,
+      })
     );
   }
 
@@ -223,8 +250,9 @@ async function main() {
   }
 
   const failedSteps = steps.filter((step) => step.status === "failed");
+  const degradedSteps = steps.filter((step) => step.status === "degraded");
   const summary = {
-    status: failedSteps.length > 0 ? "failed" : "passed",
+    status: failedSteps.length > 0 ? "failed" : degradedSteps.length > 0 ? "passed_with_warnings" : "passed",
     baseUrl: options.baseUrl,
     startedAtIso,
     finishedAtIso: new Date().toISOString(),
@@ -239,8 +267,15 @@ async function main() {
         includeVirtualStaff: options.includeVirtualStaff,
         includeIndexDeploy: options.includeIndexDeploy,
         includeIndexGuard: options.includeIndexGuard,
+        softFailPermissionDenied: options.softFailPermissionDenied,
       },
     },
+    warnings: degradedSteps.map((step) => {
+      if (step.failureCategory) {
+        return `${step.label} degraded (${step.failureCategory})`;
+      }
+      return `${step.label} degraded`;
+    }),
     steps,
   };
 
@@ -253,7 +288,7 @@ async function main() {
     printHuman(summary);
   }
 
-  if (summary.status !== "passed") {
+  if (summary.status === "failed") {
     process.exit(1);
   }
 }

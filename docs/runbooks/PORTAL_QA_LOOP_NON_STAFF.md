@@ -41,12 +41,12 @@ Optional deep probe:
 - Text contrast remains readable in `portal`, `mono`, and `memoria` themes.
 - Loading and error copy is stable (no flashing or bounce loops).
 - Interaction latency feels responsive (no obvious stuck controls).
-- Automated consistency checks must execute both themes each run (light + dark) for dashboard baseline.
+- Automated consistency checks must execute all supported themes each run (`portal`, `memoria`, `mono`) for dashboard baseline.
 
 ## Page Matrix (Non-Staff)
 | Area | Route/View | Smoke check | Functionality check | UX check |
 | --- | --- | --- | --- | --- |
-| Dashboard | `dashboard` | Hero and cards render | `Open My Pieces` and `Message the studio` nav actions work | Studio updates and chiplets are legible in both themes |
+| Dashboard | `dashboard` | Hero and cards render | `Open My Pieces` and `Message the studio` nav actions work | Studio updates and chiplets are legible in all supported themes |
 | Kiln Rentals | `kilnRentals` | Overview card renders | Primary CTA opens check-in/queue flow | Queue labels readable on mobile and desktop |
 | Ware Check-in | `reservations` | Form renders | Submit-path validation + success path for shelf purchase, whole kiln, and community shelf (including two-step confirm/cancel) | Field errors are readable and anchored near inputs |
 | View the Queues | `kilnLaunch` | Queue lane loads | Filter/tab switches update content | Queue status colors and labels remain clear |
@@ -70,5 +70,5 @@ Optional deep probe:
 A deploy is considered successful only when:
 1. Gate commands pass.
 2. No P1/P2 regressions remain in non-staff pages.
-3. UX benchmark is met for both themes.
+3. UX benchmark is met for all supported themes.
 4. Legacy Requests fallback behavior is verified in the authenticated canary evidence.

@@ -3888,7 +3888,7 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   border-bottom: 1px solid var(--border);
   display: flex;
   flex-direction: row;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
   overflow: visible;
   z-index: 5;
@@ -3910,13 +3910,12 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
 .app-shell.dock-top .sidebar nav {
   display: flex;
   flex-direction: row;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  align-content: center;
   gap: 8px;
   overflow: visible;
   padding-right: 0;
-  flex: 1 1 560px;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -3924,12 +3923,12 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
 .app-shell.dock-top .nav-bottom {
   flex-direction: row;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
 }
 
 .app-shell.dock-top .nav-primary {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
 }
 
@@ -3937,6 +3936,15 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   margin-top: 0;
   margin-left: auto;
   justify-content: flex-end;
+  flex: 0 0 auto;
+}
+
+.app-shell.dock-top .sidebar nav button {
+  min-height: 40px;
+  padding: 8px 11px;
+  border-radius: 10px;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 .app-shell.dock-top .nav-section {
@@ -3952,11 +3960,15 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
 }
 
 .app-shell.dock-top .nav-section-title {
-  font-size: 13px;
+  font-size: 12px;
   letter-spacing: 0.01em;
   text-transform: none;
-  min-height: 40px;
-  padding: 8px 12px;
+}
+
+.app-shell.dock-top .nav-top-item,
+.app-shell.dock-top .nav-bottom > button {
+  font-size: 12px;
+  letter-spacing: 0.01em;
 }
 
 .app-shell.dock-top .nav-section-items {

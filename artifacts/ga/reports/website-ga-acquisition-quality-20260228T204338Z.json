@@ -1,0 +1,103 @@
+{
+  "generatedAtUtc": "2026-02-28T20:43:38.970Z",
+  "baselineDir": "/home/wuff/monsoonfire-portal/artifacts/ga/baseline/2026-02-28",
+  "baselineSnapshot": "2026-02-28",
+  "missingRequiredExports": [],
+  "acquisition": {
+    "top10": [
+      {
+        "sourceMedium": "direct / (none)",
+        "sourceType": "direct",
+        "sessions": 410,
+        "goalConversions": 9,
+        "conversionRatePct": 2.2,
+        "assistedRevenue": 1500,
+        "performance": "steady",
+        "remediationHint": "Maintain and monitor."
+      },
+      {
+        "sourceMedium": "google / organic",
+        "sourceType": "organic",
+        "sessions": 342,
+        "goalConversions": 14,
+        "conversionRatePct": 4.09,
+        "assistedRevenue": 7200,
+        "performance": "high_intent",
+        "remediationHint": "Maintain and monitor."
+      },
+      {
+        "sourceMedium": "instagram / paid_social",
+        "sourceType": "paid_social",
+        "sessions": 188,
+        "goalConversions": 5,
+        "conversionRatePct": 2.66,
+        "assistedRevenue": 2400,
+        "performance": "steady",
+        "remediationHint": "Maintain and monitor."
+      },
+      {
+        "sourceMedium": "newsletter / email",
+        "sourceType": "email",
+        "sessions": 121,
+        "goalConversions": 7,
+        "conversionRatePct": 5.79,
+        "assistedRevenue": 3600,
+        "performance": "high_intent",
+        "remediationHint": "Maintain and monitor."
+      },
+      {
+        "sourceMedium": "partner_directory / referral",
+        "sourceType": "referral",
+        "sessions": 79,
+        "goalConversions": 3,
+        "conversionRatePct": 3.8,
+        "assistedRevenue": 1200,
+        "performance": "high_intent",
+        "remediationHint": "Maintain and monitor."
+      }
+    ],
+    "sourceTypeSummary": [
+      {
+        "sourceType": "direct",
+        "sessions": 410,
+        "goalConversions": 9,
+        "conversionRatePct": 2.2,
+        "assistedRevenue": 1500,
+        "rowCount": 1
+      },
+      {
+        "sourceType": "organic",
+        "sessions": 342,
+        "goalConversions": 14,
+        "conversionRatePct": 4.09,
+        "assistedRevenue": 7200,
+        "rowCount": 1
+      },
+      {
+        "sourceType": "paid_social",
+        "sessions": 188,
+        "goalConversions": 5,
+        "conversionRatePct": 2.66,
+        "assistedRevenue": 2400,
+        "rowCount": 1
+      },
+      {
+        "sourceType": "email",
+        "sessions": 121,
+        "goalConversions": 7,
+        "conversionRatePct": 5.79,
+        "assistedRevenue": 3600,
+        "rowCount": 1
+      },
+      {
+        "sourceType": "referral",
+        "sessions": 79,
+        "goalConversions": 3,
+        "conversionRatePct": 3.8,
+        "assistedRevenue": 1200,
+        "rowCount": 1
+      }
+    ],
+    "totalRows": 5
+  }
+}

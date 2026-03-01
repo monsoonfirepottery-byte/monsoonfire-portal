@@ -29,6 +29,15 @@ All reports include:
   - content-specific actions (disable/unpublish/replace/flag)
   - includes before/after summaries in action + audit metadata
 
+## Policy parity contract
+- Reports moderation enforcement resolves active policy from:
+  - `config/moderationPolicy.activeVersion`
+  - `moderationPolicyVersions/{version}`
+- Community UI policy label resolves from `getModerationPolicyCurrent`.
+- Website policy pages resolve from generated `website/data/policies.json`, sourced from `docs/policies/*.md`.
+- `community-conduct` version must match between website generated policy data and active moderation policy version.
+- Verification workflow: `docs/runbooks/POLICY_SINGLE_SOURCE_OF_TRUTH_WEBSITE_PORTAL_REPORTS.md`.
+
 ## Firestore data model
 - `communityReports/{reportId}`
   - reporter identity, status, category, severity, target refs/snapshot, timestamps

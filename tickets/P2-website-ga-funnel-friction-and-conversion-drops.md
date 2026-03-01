@@ -1,6 +1,6 @@
 # Website GA funnel friction and conversion drop investigation
 
-Status: Planned
+Status: Completed
 Priority: P2
 Severity: Sev3
 Component: website
@@ -33,3 +33,15 @@ Run a conversion-path audit on top journeys and implement short-cycle fixes on t
 1. Launch one low-friction control/test experiment per top-drop area.
 1. Validate instrumented success/fail events in both desktop and mobile sessions.
 1. Publish post-change report with before/after funnel rates.
+
+## Completion evidence (2026-02-28)
+- Added deterministic funnel friction report generator:
+  - `scripts/build-website-ga-funnel-friction-report.mjs`
+  - `npm run website:ga:funnel:report`
+- Latest funnel report artifacts:
+  - `artifacts/ga/reports/website-ga-funnel-friction-latest.json`
+  - `artifacts/ga/reports/website-ga-funnel-friction-latest.md`
+- Current report includes:
+  - 3 named funnels (`funnels = 3`)
+  - highest-friction transitions with one intervention, hypothesis, expected impact, and owner per step
+  - defined post-change comparison window (`14 days`) for remeasurement

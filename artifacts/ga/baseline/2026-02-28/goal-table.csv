@@ -1,0 +1,4 @@
+goal_name,funnel_steps,completion_rate,device_category,top_referrers
+quote_start,landing_cta > form_open,23.17,mobile,google / organic
+quote_complete,form_submit,9.04,mobile,google / organic
+contact_intent,alt_contact,4.87,desktop,newsletter / email

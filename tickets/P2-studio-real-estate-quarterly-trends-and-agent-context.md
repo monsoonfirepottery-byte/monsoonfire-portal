@@ -1,6 +1,6 @@
 # P2 - Studio Real-Estate Quarterly Trends and Agent Context Pack
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -40,3 +40,12 @@ Turn historical market-watch snapshots into quarterly trend reports and a machin
 - `tickets/P2-studio-real-estate-market-watch-and-expansion-fit.md`
 - `docs/REAL_ESTATE_MARKET_WATCH.md`
 - `scripts/build-real-estate-quarterly-context.ps1`
+
+## Completion evidence (2026-02-28)
+1. Quarterly trend builder is implemented in `scripts/build-real-estate-quarterly-context.ps1`.
+2. Cadence orchestrator and memory handoff are implemented in `scripts/run-real-estate-quarterly-cadence.ps1`.
+3. Required artifacts exist:
+   - `output/real-estate/market-watch-history.csv`
+   - `output/real-estate/real-estate-quarterly-report-2026-Q1.md`
+   - `output/real-estate/agent-swarm-context-2026-Q1.json`
+4. Runbook commands and output contracts are documented in `docs/REAL_ESTATE_MARKET_WATCH.md`.

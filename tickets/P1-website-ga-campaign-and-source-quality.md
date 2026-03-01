@@ -1,6 +1,6 @@
 # Website GA campaign and acquisition quality
 
-Status: In Progress
+Status: Completed
 Priority: P1
 Severity: Sev2
 Component: website
@@ -49,3 +49,26 @@ Normalize acquisition metadata and prioritize high-intent traffic sources, while
   - artifact: `artifacts/website-ga-sprint1-foundations.json`
 - Remaining blocker:
   - campaign attribution validation requires live GA acquisition data exports.
+
+## Progress update (2026-02-28)
+- Added acquisition quality report automation from exported baseline CSVs:
+  - `scripts/build-website-ga-baseline-report.mjs`
+  - `npm run website:ga:baseline:report`
+- Report output now standardizes top-10 `source/medium` rollups with sessions, conversion rate, and assisted revenue when available:
+  - `artifacts/ga/reports/website-ga-acquisition-quality-latest.json`
+  - `artifacts/ga/reports/website-ga-acquisition-quality-latest.md`
+
+## Completion evidence (2026-02-28)
+- Added campaign touchpoint auto-tagging (`utm_source`, `utm_medium`, `utm_campaign`) for known outbound campaign hosts:
+  - `website/assets/js/main.js`
+  - `website/ncsitebuilder/assets/js/main.js`
+- Added deterministic campaign-link audit + remediation artifact:
+  - `scripts/audit-website-ga-campaign-links.mjs`
+  - `npm run website:ga:campaign:audit -- --strict`
+- Latest acquisition/campaign evidence:
+  - `artifacts/ga/reports/website-ga-campaign-link-audit-latest.json`
+  - `artifacts/ga/reports/website-ga-campaign-link-audit-latest.md`
+  - `artifacts/ga/reports/website-ga-acquisition-quality-latest.json`
+  - `artifacts/ga/reports/website-ga-acquisition-quality-latest.md`
+- Current strict audit result:
+  - `effectiveCoveragePct = 100` (minimum required `80`)

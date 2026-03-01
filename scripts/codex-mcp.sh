@@ -1,6 +1,46 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+LOCAL_CODEX_BIN="${REPO_ROOT}/node_modules/.bin/codex"
+CODEX_BIN=""
+CODEX_SOURCE=""
+CODEX_VERSION=""
+
+resolve_codex_bin() {
+  if [[ -n "${CODEX_BIN_OVERRIDE:-}" ]]; then
+    CODEX_BIN="${CODEX_BIN_OVERRIDE}"
+    CODEX_SOURCE="override"
+  elif command -v codex >/dev/null 2>&1; then
+    CODEX_BIN="$(command -v codex)"
+    CODEX_SOURCE="global-path"
+  elif [[ -x "${LOCAL_CODEX_BIN}" ]]; then
+    CODEX_BIN="${LOCAL_CODEX_BIN}"
+    CODEX_SOURCE="repo-local-fallback"
+  else
+    cat >&2 <<'NO_CODEX'
+ERROR: Unable to find a usable Codex CLI binary.
+Install dependencies with:
+  npm ci
+Or set CODEX_BIN_OVERRIDE=/absolute/path/to/codex and retry.
+NO_CODEX
+    exit 1
+  fi
+
+  CODEX_VERSION="$("${CODEX_BIN}" --version 2>/dev/null | head -n 1 || true)"
+  if [[ "${CODEX_SOURCE}" == "repo-local-fallback" ]]; then
+    cat >&2 <<WARN_LOCAL
+WARN: Falling back to repo-local Codex binary (${LOCAL_CODEX_BIN}).
+WARN: Install Codex globally (or place it on PATH) to keep this harness global-first.
+WARN_LOCAL
+  fi
+}
+
+codex_cmd() {
+  "${CODEX_BIN}" "$@"
+}
+
 print_banner() {
   cat <<'BANNER'
 MCP operator wrapper:
@@ -8,7 +48,10 @@ MCP operator wrapper:
 - This script forces the intended servers on each run with:
   -c 'mcp_servers.<id>.enabled=true'
 - Keep top-level MCP defaults disabled in ~/.codex/config.toml.
+- Codex CLI 0.106+ expects top-level model config (`model`, optional `model_provider`);
+  legacy `[model_providers.*]` / `[models.*]` blocks are deprecated.
 BANNER
+  echo "- Resolved Codex CLI: ${CODEX_BIN} (${CODEX_SOURCE}${CODEX_VERSION:+, ${CODEX_VERSION}})"
 }
 
 usage() {
@@ -28,7 +71,7 @@ run_list_with_overrides() {
   shift
   local server_ids=("$@")
 
-  local cmd=(codex --profile "$profile")
+  local cmd=("${CODEX_BIN}" --profile "$profile")
   local server_id
   for server_id in "${server_ids[@]}"; do
     cmd+=(-c "mcp_servers.${server_id}.enabled=true")
@@ -41,7 +84,7 @@ run_list_with_overrides() {
 
 smoke_docs() {
   echo "==> docs profile smoke (read-only MCP call)"
-  if ! codex \
+  if ! codex_cmd \
     --profile docs_research \
     -c 'mcp_servers.openai_docs.enabled=true' \
     -c 'mcp_servers.context7_docs.enabled=true' \
@@ -53,7 +96,7 @@ smoke_docs() {
 
 smoke_cloudflare() {
   echo "==> cloudflare profile smoke (read-only MCP call)"
-  if ! codex \
+  if ! codex_cmd \
     --profile cloudflare \
     -c 'mcp_servers.cloudflare_docs.enabled=true' \
     -c 'mcp_servers.cloudflare_browser_rendering.enabled=true' \
@@ -61,8 +104,8 @@ smoke_cloudflare() {
     cat <<'KNOWN_ISSUES'
 WARN: cloudflare smoke call failed.
 KNOWN_ISSUES:
-- OAuth regression #11465 behavior in codex-cli 0.104.0:
-  codex mcp login cloudflare_docs may fail with
+- Current auth capability can still mark `cloudflare_docs` as unsupported.
+  If so, `codex mcp login cloudflare_docs` may return:
   \"No authorization support detected\".
 - Profile enablement flakiness (#9325 pattern):
   continue to force servers with CLI overrides for this run.
@@ -79,10 +122,11 @@ KNOWN_ISSUES
 }
 
 subcommand="${1:-}"
+resolve_codex_bin
 case "$subcommand" in
   list)
     print_banner
-    codex mcp list
+    codex_cmd mcp list
     ;;
   docs)
     print_banner

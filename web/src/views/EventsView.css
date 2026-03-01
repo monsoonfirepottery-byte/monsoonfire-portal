@@ -2,6 +2,8 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  --events-accent-soft: rgba(180, 79, 53, 0.16);
+  --events-accent-glow: rgba(180, 79, 53, 0.28);
 }
 
 .events-page .summary-label {
@@ -28,7 +30,9 @@
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
   gap: 20px;
   align-items: center;
-  background: var(--bg-2);
+  background:
+    radial-gradient(circle at 78% -20%, var(--events-accent-soft), transparent 45%),
+    var(--bg-2);
   border: 1px solid var(--border);
   border-radius: 18px;
   padding: 16px;
@@ -97,6 +101,220 @@
   gap: 8px;
 }
 
+.workshop-request-card {
+  display: grid;
+  gap: 12px;
+}
+
+.workshop-request-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.workshop-request-field {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.workshop-request-field input,
+.workshop-request-field select,
+.workshop-request-field textarea {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.workshop-request-field textarea {
+  resize: vertical;
+}
+
+.workshop-request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.workshop-request-status {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.workshop-request-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.workshop-request-tracker {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.workshop-request-tracker-list {
+  display: grid;
+  gap: 8px;
+}
+
+.workshop-request-tracker-item {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.workshop-request-tracker-meta {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+}
+
+.workshop-rails-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--border);
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)),
+    var(--surface-2);
+}
+
+.workshop-context-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.workshop-technique-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.workshop-curation-admin {
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  display: grid;
+  gap: 10px;
+}
+
+.workshop-curation-title {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.workshop-no-match {
+  border-radius: 14px;
+  border: 1px dashed var(--border);
+  padding: 12px;
+  background: rgba(180, 79, 53, 0.08);
+  display: grid;
+  gap: 10px;
+}
+
+.workshop-rails-list {
+  display: grid;
+  gap: 14px;
+}
+
+.workshop-rail {
+  display: grid;
+  gap: 10px;
+}
+
+.workshop-rail-head {
+  display: grid;
+  gap: 4px;
+}
+
+.workshop-rail-title {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.workshop-rail-copy {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.workshop-rail-scroll {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(220px, 1fr);
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scroll-snap-type: x proximity;
+}
+
+.rail-event-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+  display: grid;
+  gap: 8px;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition: transform 0.2s ease, border 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rail-event-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--events-accent-glow);
+}
+
+.rail-event-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--events-accent-glow), var(--shadow-soft);
+}
+
+.rail-event-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rail-event-title {
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.rail-event-price {
+  color: var(--accent-2);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.rail-event-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.rail-event-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .events-layout {
   display: grid;
   grid-template-columns: minmax(0, 320px) minmax(0, 1fr) minmax(0, 340px);
@@ -110,6 +328,15 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  animation: events-rise 0.4s ease both;
+}
+
+.events-detail {
+  animation-delay: 0.03s;
+}
+
+.events-staff {
+  animation-delay: 0.06s;
 }
 
 .events-cards {
@@ -127,13 +354,14 @@
   cursor: pointer;
   display: grid;
   gap: 10px;
-  transition: transform 0.2s ease, border 0.2s ease, background 0.2s ease;
+  transition: transform 0.22s ease, border 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
   box-shadow: var(--shadow-soft);
 }
 
 .event-card:hover {
   transform: translateY(-1px);
   background: var(--surface-3);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 }
 
 .event-card.active {
@@ -232,6 +460,203 @@
 .policy-title {
   font-weight: 600;
   margin-bottom: 6px;
+}
+
+.section-title {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.community-signals-panel,
+.learning-pathway-panel,
+.staff-intel-panel {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  display: grid;
+  gap: 12px;
+}
+
+.community-kpi-grid,
+.staff-intel-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.momentum-meter {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.momentum-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.35s ease;
+}
+
+.momentum-meter.momentum-steady > span {
+  background: linear-gradient(90deg, rgba(132, 144, 167, 0.9), rgba(164, 177, 200, 0.9));
+}
+
+.momentum-meter.momentum-medium > span {
+  background: linear-gradient(90deg, rgba(184, 137, 78, 0.95), rgba(213, 166, 98, 0.95));
+}
+
+.momentum-meter.momentum-high > span {
+  background: linear-gradient(90deg, rgba(180, 79, 53, 0.95), rgba(214, 112, 82, 0.95));
+}
+
+.community-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.buddy-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.community-presence-copy {
+  margin-top: -4px;
+}
+
+.community-loop-strip {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.workshop-showcase-flow {
+  display: grid;
+  gap: 8px;
+}
+
+.pathway-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.pathway-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: var(--surface);
+  display: grid;
+  gap: 6px;
+}
+
+.pathway-title {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.pathway-copy {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pathway-link {
+  font-size: 12px;
+  color: var(--accent-2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.pathway-link:hover {
+  color: var(--accent);
+}
+
+.demand-cluster-list {
+  display: grid;
+  gap: 10px;
+}
+
+.demand-cluster-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.request-triage-clusters {
+  display: grid;
+  gap: 10px;
+}
+
+.request-triage-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.request-triage-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.request-triage-list {
+  display: grid;
+  gap: 8px;
+}
+
+.request-triage-row {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.request-triage-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.request-triage-actions select {
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.demand-cluster-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.demand-cluster-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .ticket-card {
@@ -418,6 +843,17 @@
   font-size: 13px;
 }
 
+@keyframes events-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 1100px) {
   .events-layout {
     grid-template-columns: 1fr;
@@ -434,6 +870,25 @@
   .events-admin-toggle {
     grid-column: span 1;
   }
+
+  .workshop-rail-scroll {
+    grid-auto-columns: minmax(180px, 1fr);
+  }
+
+  .workshop-request-tracker-item,
+  .request-triage-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .workshop-request-tracker-meta {
+    justify-items: start;
+  }
+
+  .request-triage-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -442,6 +897,20 @@
   }
 
   .events-chip {
+    transition: none;
+  }
+
+  .rail-event-card {
+    transition: none;
+  }
+
+  .events-list,
+  .events-detail,
+  .events-staff {
+    animation: none;
+  }
+
+  .momentum-meter > span {
     transition: none;
   }
 }
@@ -458,7 +927,18 @@ html[data-portal-theme="memoria"] .events-page .events-hero,
 html[data-portal-theme="memoria"] .events-page .events-list .card,
 html[data-portal-theme="memoria"] .events-page .events-detail .card,
 html[data-portal-theme="memoria"] .events-page .events-staff .card,
-html[data-portal-theme="memoria"] .events-page .event-card {
+html[data-portal-theme="memoria"] .events-page .event-card,
+html[data-portal-theme="memoria"] .events-page .workshop-rails-card,
+html[data-portal-theme="memoria"] .events-page .rail-event-card,
+html[data-portal-theme="memoria"] .events-page .community-signals-panel,
+html[data-portal-theme="memoria"] .events-page .learning-pathway-panel,
+html[data-portal-theme="memoria"] .events-page .staff-intel-panel,
+html[data-portal-theme="memoria"] .events-page .pathway-card,
+html[data-portal-theme="memoria"] .events-page .demand-cluster-card,
+html[data-portal-theme="memoria"] .events-page .workshop-request-tracker,
+html[data-portal-theme="memoria"] .events-page .workshop-request-tracker-item,
+html[data-portal-theme="memoria"] .events-page .request-triage-card,
+html[data-portal-theme="memoria"] .events-page .request-triage-row {
   border-color: rgba(153, 174, 207, 0.36);
   background:
     linear-gradient(168deg, rgba(30, 42, 62, 0.9), rgba(20, 29, 44, 0.92)),
@@ -468,7 +948,9 @@ html[data-portal-theme="memoria"] .events-page .event-card {
 
 html[data-portal-theme="memoria"] .events-page .events-hero-meta > div,
 html[data-portal-theme="memoria"] .events-page .detail-grid > div,
-html[data-portal-theme="memoria"] .events-page .roster-row {
+html[data-portal-theme="memoria"] .events-page .roster-row,
+html[data-portal-theme="memoria"] .events-page .momentum-meter,
+html[data-portal-theme="memoria"] .events-page .workshop-no-match {
   border-color: rgba(154, 176, 212, 0.34);
   background: linear-gradient(170deg, rgba(34, 46, 67, 0.86), rgba(23, 33, 50, 0.9));
 }
@@ -480,7 +962,10 @@ html[data-portal-theme="memoria"] .events-page .detail-summary,
 html[data-portal-theme="memoria"] .events-page .detail-meta,
 html[data-portal-theme="memoria"] .events-page .summary-label,
 html[data-portal-theme="memoria"] .events-page .roster-meta,
-html[data-portal-theme="memoria"] .events-page .roster-status {
+html[data-portal-theme="memoria"] .events-page .roster-status,
+html[data-portal-theme="memoria"] .events-page .workshop-rail-copy,
+html[data-portal-theme="memoria"] .events-page .pathway-copy,
+html[data-portal-theme="memoria"] .events-page .demand-cluster-metrics {
   color: rgba(223, 232, 247, 0.72);
 }
 

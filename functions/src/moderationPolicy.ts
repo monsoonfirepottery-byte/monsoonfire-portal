@@ -1,6 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { z } from "zod";
 import { applyCors, db, nowTs, parseBody, requireAdmin, requireAuthUid, safeString } from "./shared";
+import { websiteCommunityConductFallbackPolicy } from "./policySourceOfTruth";
 
 const REGION = "us-central1";
 const POLICY_CONFIG_PATH = "config/moderationPolicy";
@@ -30,6 +31,10 @@ const listPoliciesSchema = z.object({
   includeArchived: z.boolean().optional(),
   limit: z.number().int().min(1).max(100).optional(),
 });
+
+type PolicyListRow = {
+  id: string;
+} & Record<string, unknown>;
 
 async function writePolicyAudit(params: {
   actorUid: string;
@@ -63,16 +68,29 @@ export const getModerationPolicyCurrent = onRequest({ region: REGION, timeoutSec
     return;
   }
 
+  const fallbackPolicy = websiteCommunityConductFallbackPolicy();
   const configSnap = await db.doc(POLICY_CONFIG_PATH).get();
   const activeVersion = safeString(configSnap.data()?.activeVersion);
   if (!activeVersion) {
-    res.status(200).json({ ok: true, policy: null });
+    await writePolicyAudit({
+      actorUid: auth.uid,
+      action: "read_current_policy",
+      version: fallbackPolicy.version,
+      metadata: { source: "website_fallback_no_active_version" },
+    });
+    res.status(200).json({ ok: true, policy: fallbackPolicy });
     return;
   }
 
   const versionSnap = await db.collection(POLICY_VERSIONS_COL).doc(activeVersion).get();
   if (!versionSnap.exists) {
-    res.status(200).json({ ok: true, policy: null });
+    await writePolicyAudit({
+      actorUid: auth.uid,
+      action: "read_current_policy",
+      version: fallbackPolicy.version,
+      metadata: { source: "website_fallback_missing_active_doc", requestedActiveVersion: activeVersion },
+    });
+    res.status(200).json({ ok: true, policy: fallbackPolicy });
     return;
   }
 
@@ -118,20 +136,44 @@ export const listModerationPolicies = onRequest({ region: REGION, timeoutSeconds
   const { includeArchived = false, limit = 40 } = parsed.data;
   const snap = await db.collection(POLICY_VERSIONS_COL).orderBy("updatedAt", "desc").limit(limit).get();
   const policies = snap.docs
-    .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Record<string, unknown>) }))
+    .map(
+      (docSnap) =>
+        ({
+          id: docSnap.id,
+          ...(docSnap.data() as Record<string, unknown>),
+        }) as PolicyListRow
+    )
     .filter((row) => {
-      const record = row as Record<string, unknown>;
-      return includeArchived || safeString(record.status) !== "archived";
+      return includeArchived || safeString(row.status) !== "archived";
     });
 
   const configSnap = await db.doc(POLICY_CONFIG_PATH).get();
-  const activeVersion = safeString(configSnap.data()?.activeVersion);
+  const configuredActiveVersion = safeString(configSnap.data()?.activeVersion);
+  let activeVersion = configuredActiveVersion;
+  const fallbackPolicy = websiteCommunityConductFallbackPolicy();
+
+  const hasConfiguredActiveDoc =
+    activeVersion.length > 0 &&
+    policies.some((row) => safeString(row.version || row.id) === activeVersion);
+  const shouldInjectFallback = activeVersion.length === 0 || !hasConfiguredActiveDoc;
+  if (shouldInjectFallback) {
+    const hasFallback = policies.some((row) => safeString(row.version || row.id) === fallbackPolicy.version);
+    if (!hasFallback) {
+      policies.unshift(fallbackPolicy as PolicyListRow);
+    }
+    activeVersion = fallbackPolicy.version;
+  }
 
   await writePolicyAudit({
     actorUid: auth.uid,
     action: "list_policies",
     version: activeVersion || null,
-    metadata: { includeArchived, limit },
+    metadata: {
+      includeArchived,
+      limit,
+      configuredActiveVersion: configuredActiveVersion || null,
+      fallbackInjected: shouldInjectFallback,
+    },
   });
 
   res.status(200).json({ ok: true, activeVersion: activeVersion || null, policies });

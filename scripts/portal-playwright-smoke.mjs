@@ -21,6 +21,23 @@ const DEFAULT_STUDIO_BRAIN_READYZ_PATH = "/readyz";
 const DEFAULT_DEEP_PROBE_TIMEOUT_MS = 12000;
 const DEFAULT_PROBE_CREDENTIAL_MODE = "same-origin";
 const DEFAULT_SMOKE_RETRY_COOLDOWN_MS = 350;
+const DASHBOARD_THEME_SWEEP = [
+  {
+    theme: "portal",
+    screenshot: "portal-02a-dashboard-light-theme.png",
+    label: "desktop dashboard light theme",
+  },
+  {
+    theme: "memoria",
+    screenshot: "portal-02b-dashboard-dark-theme.png",
+    label: "desktop dashboard dark theme",
+  },
+  {
+    theme: "mono",
+    screenshot: "portal-02c-dashboard-mono-theme.png",
+    label: "desktop dashboard mono theme",
+  },
+];
 const CONTRACT_DEFAULT_ENV = {
   STUDIO_BRAIN_PORT: "8787",
   PGHOST: "127.0.0.1",
@@ -1535,31 +1552,59 @@ const clickNavSubItem = async (page, sectionLabel, itemLabel, summaryLabel = ite
   return true;
 };
 
-const getThemeToggle = (page, label) =>
-  page.getByRole("button", { name: new RegExp(`^Switch to ${regexSafe(label)} theme$`, "i") }).first();
-
 const ensureTheme = async (page, targetTheme) => {
-  if (targetTheme !== "light" && targetTheme !== "dark") {
+  if (targetTheme !== "portal" && targetTheme !== "memoria" && targetTheme !== "mono") {
     throw new Error(`Unsupported theme target: ${targetTheme}`);
   }
 
-  const nextThemeLabel = targetTheme === "dark" ? "light" : "dark";
-  const alreadyAtTarget = getThemeToggle(page, nextThemeLabel);
-  if ((await alreadyAtTarget.count()) > 0) {
+  const currentTheme = await page.evaluate(() => document.documentElement.getAttribute("data-portal-theme") || "");
+  if (currentTheme === targetTheme) {
     return;
   }
 
-  const switchToggle = getThemeToggle(page, targetTheme);
-  if ((await switchToggle.count()) === 0) {
-    throw new Error(`Theme toggle not available for target: ${targetTheme}`);
+  const profileButton = page.getByRole("button", { name: /^Open profile$/i }).first();
+  if ((await profileButton.count()) > 0) {
+    await profileButton.click({ timeout: 12000 });
+    await page.waitForTimeout(650);
+  } else {
+    await clickNavItem(page, "Profile", "Profile", true);
   }
 
-  await switchToggle.click({ timeout: 12000 });
-  await page.waitForTimeout(550);
+  await page.locator(".profile-form").first().waitFor({ timeout: 12000 });
 
-  const confirm = getThemeToggle(page, nextThemeLabel);
-  if ((await confirm.count()) === 0) {
-    throw new Error(`Theme switch did not complete for target: ${targetTheme}`);
+  let themeSelect = page.getByLabel(/^Theme$/i).first();
+  if ((await themeSelect.count()) === 0) {
+    themeSelect = page
+      .locator("select")
+      .filter({ has: page.locator(`option[value="${targetTheme}"]`) })
+      .first();
+  }
+
+  await themeSelect.waitFor({ timeout: 10000 });
+  if ((await themeSelect.count()) === 0) {
+    throw new Error("Theme selector not found on Profile page.");
+  }
+
+  await themeSelect.selectOption(targetTheme);
+  await page.waitForFunction(
+    (expectedTheme) => document.documentElement.getAttribute("data-portal-theme") === expectedTheme,
+    targetTheme,
+    { timeout: 12000 }
+  );
+  await page.waitForTimeout(550);
+};
+
+const captureDashboardThemeSweep = async (page, options, summary) => {
+  for (const target of DASHBOARD_THEME_SWEEP) {
+    await ensureTheme(page, target.theme);
+    await clickNavItem(page, "Dashboard", "Dashboard", true);
+    await takeScreenshot(
+      page,
+      options.outputDir,
+      target.screenshot,
+      summary,
+      target.label
+    );
   }
 };
 
@@ -1821,28 +1866,13 @@ const run = async () => {
         await takeScreenshot(desktopPage, options.outputDir, "portal-02-dashboard-desktop.png", summary, "desktop dashboard");
       });
 
-      await check(summary, "dashboard theme consistency (light + dark)", async () => {
+      await check(summary, "dashboard theme consistency (portal + memoria + mono)", async () => {
         await clickNavItem(desktopPage, "Dashboard", "Dashboard", false);
-        await ensureTheme(desktopPage, "light");
-        await takeScreenshot(
-          desktopPage,
-          options.outputDir,
-          "portal-02a-dashboard-light-theme.png",
-          summary,
-          "desktop dashboard light theme"
-        );
-
-        await ensureTheme(desktopPage, "dark");
-        await takeScreenshot(
-          desktopPage,
-          options.outputDir,
-          "portal-02b-dashboard-dark-theme.png",
-          summary,
-          "desktop dashboard dark theme"
-        );
+        await captureDashboardThemeSweep(desktopPage, options, summary);
 
         // Restore default before continuing other checks.
-        await ensureTheme(desktopPage, "light");
+        await ensureTheme(desktopPage, "portal");
+        await clickNavItem(desktopPage, "Dashboard", "Dashboard", false);
       });
 
       const houseAvailable = await clickNavItem(desktopPage, "House", "House", false);

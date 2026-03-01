@@ -1,6 +1,6 @@
 # P2 — API V1 Response Contract Regression Tests
 
-Status: Planned
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -35,4 +35,22 @@ Given the endpoint count and sensitive operations in `functions/src/apiV1.ts`, r
 
 ## References
 - `functions/src/apiV1.ts`
-- `functions/src/tests/apiV1.test.ts` (new)
+- `functions/src/apiV1.test.ts`
+
+## Completion evidence (2026-02-28)
+- Route allowlist + malformed path regression tests exist and pass in:
+  - `functions/src/apiV1.test.ts`
+  - cases include:
+    - unknown/malformed route rejection with `api_v1_route_reject` audit assertions
+    - trailing slash + missing leading slash normalization
+- Route dispatch + payload contract tests exist and pass for:
+  - `/v1/batches.get`
+  - `/v1/batches.timeline.list`
+  - `/v1/agent.requests.listMine` (unknown-field exclusion assertions)
+- Rate-limit thrown-path fallback behavior is covered and passing for:
+  - route-level rate limit failure
+  - actor-level rate limit failure
+- Verification run executed:
+  - `npm --prefix functions run build`
+  - `node --test functions/lib/apiV1.test.js`
+  - result: `115` tests passed, `0` failed

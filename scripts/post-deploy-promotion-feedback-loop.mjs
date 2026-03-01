@@ -196,6 +196,7 @@ function analyze(records) {
     feedback: {
       includeThemeSweep,
       includeVirtualStaff: true,
+      includeIndexDeploy: true,
       includeIndexGuard: true,
       riskLevel,
       reasons: [
@@ -226,6 +227,7 @@ async function main() {
     feedback: {
       includeThemeSweep: true,
       includeVirtualStaff: true,
+      includeIndexDeploy: true,
       includeIndexGuard: true,
       riskLevel: "low",
       reasons: [],

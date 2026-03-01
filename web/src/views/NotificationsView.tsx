@@ -60,6 +60,56 @@ function isPermissionDeniedError(error: unknown): boolean {
   return code.includes("permission-denied") || message.includes("missing or insufficient permissions");
 }
 
+function isAuthRelatedError(error: unknown): boolean {
+  const text = String(error instanceof Error ? error.message : error ?? "").toLowerCase();
+  if (
+    text.includes("unauthenticated") ||
+    text.includes("auth/id-token-expired") ||
+    text.includes("auth/id-token-revoked") ||
+    text.includes("token expired") ||
+    text.includes("session expired")
+  ) {
+    return true;
+  }
+
+  if (!error || typeof error !== "object") return false;
+  const payload = error as { code?: unknown; message?: unknown };
+  const code = typeof payload.code === "string" ? payload.code.toLowerCase() : "";
+  const message = typeof payload.message === "string" ? payload.message.toLowerCase() : "";
+  return (
+    code.includes("unauthenticated") ||
+    message.includes("unauthenticated") ||
+    message.includes("token expired") ||
+    message.includes("session expired")
+  );
+}
+
+function isGenericMarkReadFailure(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("we could not complete that request") ||
+    normalized.includes("contact support with this code") ||
+    normalized.includes("try again")
+  );
+}
+
+function isRouteResolutionError(error: unknown): boolean {
+  const text = String(error instanceof Error ? error.message : error ?? "").toLowerCase();
+  if (text.includes("unknown route") || text.includes("route_not_found") || text.includes("http 404")) {
+    return true;
+  }
+
+  if (!error || typeof error !== "object") return false;
+  const payload = error as { statusCode?: unknown; status?: unknown; code?: unknown };
+  const statusCode = typeof payload.statusCode === "number"
+    ? payload.statusCode
+    : typeof payload.status === "number"
+      ? payload.status
+      : null;
+  const code = typeof payload.code === "string" ? payload.code.toLowerCase() : "";
+  return statusCode === 404 || code.includes("not_found") || code.includes("route_not_found");
+}
+
 export default function NotificationsView({
   user,
   notifications,
@@ -108,35 +158,93 @@ export default function NotificationsView({
 
   const markReadViaApi = useCallback(
     async (notificationId: string) => {
-      await client.postJson("apiV1/v1/notifications.markRead", {
+      const payload = {
         notificationId,
-      });
+        ownerUid: user.uid,
+      };
+      const routeCandidates = [
+        "apiV1/v1/notifications.markRead",
+        "v1/notifications.markRead",
+      ] as const;
+
+      let fallbackError: unknown = null;
+      for (const route of routeCandidates) {
+        try {
+          await client.postJson(route, payload);
+          return;
+        } catch (error: unknown) {
+          fallbackError = error;
+          if (isRouteResolutionError(error)) {
+            continue;
+          }
+          throw error;
+        }
+      }
+
+      throw fallbackError ?? new Error("notifications.markRead fallback failed");
     },
-    [client]
+    [client, user.uid]
+  );
+
+  const markReadViaFirestore = useCallback(
+    async (notificationId: string, forceRefreshToken = false) => {
+      if (forceRefreshToken) {
+        await user.getIdToken(true);
+      }
+      const ref = doc(db, "users", user.uid, "notifications", notificationId);
+      await updateDoc(ref, { readAt: Timestamp.now(), updatedAt: Timestamp.now() });
+    },
+    [user]
   );
 
   const handleMarkRead = async (notificationId: string) => {
     if (!user || markingId || optimisticReadSet.has(notificationId)) return;
     setMarkingId(notificationId);
+    let primaryErrorMessage = "";
     try {
-      const ref = doc(db, "users", user.uid, "notifications", notificationId);
-      await updateDoc(ref, { readAt: Timestamp.now() });
+      await markReadViaFirestore(notificationId);
       applyMarkedReadState(notificationId);
     } catch (error: unknown) {
-      if (isPermissionDeniedError(error)) {
+      primaryErrorMessage = getErrorMessage(error);
+      if (isPermissionDeniedError(error) || isAuthRelatedError(error)) {
         try {
-          await markReadViaApi(notificationId);
+          await markReadViaFirestore(notificationId, true);
           applyMarkedReadState(notificationId);
           return;
-        } catch (fallbackError: unknown) {
+        } catch (retryError: unknown) {
+          primaryErrorMessage = getErrorMessage(retryError);
+        }
+      }
+
+      try {
+        await markReadViaApi(notificationId);
+        applyMarkedReadState(notificationId);
+        return;
+      } catch (fallbackError: unknown) {
+        const fallbackMessage = getErrorMessage(fallbackError);
+        const usePrimaryMessage =
+          primaryErrorMessage &&
+          isGenericMarkReadFailure(fallbackMessage) &&
+          !isGenericMarkReadFailure(primaryErrorMessage);
+
+        if (usePrimaryMessage) {
           setMarkStatus({
             tone: "alert",
-            message: `Mark read failed: ${getErrorMessage(fallbackError)}`,
+            message: `Mark read failed: ${primaryErrorMessage}`,
           });
           return;
         }
+        setMarkStatus({
+          tone: "alert",
+          message: `Mark read failed: ${fallbackMessage}`,
+        });
+        return;
       }
-      setMarkStatus({ tone: "alert", message: `Mark read failed: ${getErrorMessage(error)}` });
+
+      setMarkStatus({
+        tone: "alert",
+        message: `Mark read failed: ${primaryErrorMessage || getErrorMessage(error)}`,
+      });
     } finally {
       setMarkingId(null);
     }

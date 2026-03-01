@@ -39,7 +39,7 @@ type WorkflowProof = {
 const COMMUNITY_VALUES: ValueChip[] = [
   {
     title: "Find your people",
-    detail: "Studio can be solitary; this is where help and motivation show up.",
+    detail: "Studio can feel solitary. This is where quick help and steady momentum show up.",
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="8" cy="10" r="3" fill="none" stroke="currentColor" strokeWidth="2" />
@@ -56,7 +56,7 @@ const COMMUNITY_VALUES: ValueChip[] = [
   },
   {
     title: "Learn without pressure",
-    detail: "No class, no grades — just quick demos and real tips.",
+    detail: "No grades, no performance mode. Just practical demos and honest advice.",
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path
@@ -77,8 +77,8 @@ const COMMUNITY_VALUES: ValueChip[] = [
     ),
   },
   {
-    title: "Stay motivated between firings",
-    detail: "Keep momentum while the kilns do their slow work.",
+    title: "Keep momentum between firings",
+    detail: "Stay in your making rhythm while the kilns do their slow work.",
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path
@@ -136,33 +136,33 @@ const WORKFLOW_PROOFS: WorkflowProof[] = [
 const COMMUNITY_EVENTS: CommunityEvent[] = [
   {
     title: "Shop Nights",
-    detail: "Low-key studio hangs after hours with a little gameplay mixed in.",
-    outcome: "What you’ll get: motivation and a reason to finish the piece.",
+    detail: "Low-key after-hours studio hangs with a little gameplay mixed in.",
+    outcome: "You’ll leave with more motivation and one more piece finished.",
   },
   {
     title: "Watch Nights",
-    detail: "Pottery docs and artist talks with quick “try this next session” takeaways.",
-    outcome: "What you’ll get: workflow ideas and a new glazing move.",
+    detail: "Pottery docs and artist talks, plus quick “try this next session” takeaways.",
+    outcome: "You’ll leave with fresh workflow ideas and at least one new move to test.",
   },
   {
     title: "Clay Challenges",
-    detail: "Timed prompts that make muscle memory show up fast.",
-    outcome: "What you’ll get: centering reps and faster throwing.",
+    detail: "Timed prompts that build muscle memory fast.",
+    outcome: "You’ll get extra centering reps and faster throwing confidence.",
   },
   {
     title: "Make & Mend",
-    detail: "Fix, patch, reclaim, and play with surfaces together.",
-    outcome: "What you’ll get: repair tricks and less wasted clay.",
+    detail: "Fix, patch, reclaim, and experiment with surfaces together.",
+    outcome: "You’ll learn repair tricks and waste less clay.",
   },
   {
     title: "Skill Swaps",
     detail: "Short member demos on glazing, trimming, and workflow hacks.",
-    outcome: "What you’ll get: troubleshooting and better consistency.",
+    outcome: "You’ll get troubleshooting shortcuts and better consistency.",
   },
   {
     title: "Office Hours",
     detail: "Bring one workflow bottleneck and get direct staff feedback.",
-    outcome: "What you’ll get: faster fixes on pricing, batching, or kiln planning.",
+    outcome: "You’ll get faster fixes on pricing, batching, or kiln planning.",
   },
 ];
 
@@ -184,7 +184,7 @@ const MEMBER_QUOTES: MemberQuote[] = [
 const SUGGESTED_VIDEOS: VideoLink[] = [
   {
     title: "How to center clay",
-    reason: "Most reliable beginner centering walkthrough to build your first stable throws.",
+    reason: "A reliable beginner walkthrough for your first stable throws.",
     url: "https://www.youtube.com/watch?v=-YCGK33c0xs",
     favorite: true,
   },
@@ -195,12 +195,12 @@ const SUGGESTED_VIDEOS: VideoLink[] = [
   },
   {
     title: "How to open up and form the base",
-    reason: "Good for early-stage shaping and avoiding uneven bases.",
+    reason: "Helpful for early shaping and avoiding uneven bases.",
     url: "https://www.youtube.com/watch?v=HF5IAJ0x2g0",
   },
   {
     title: "Trimming tips and tricks",
-    reason: "Clean bottoms and safer handling at the leather-hard stage.",
+    reason: "For cleaner bottoms and safer handling at the leather-hard stage.",
     url: "https://www.youtube.com/watch?v=XhlJLVL-Zg8",
   },
 ];
@@ -584,10 +584,10 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
       <div className="community-layout">
         <div className="community-column">
           <section className="card card-3d community-hero">
-            <h2 className="card-title">Why community?</h2>
+            <h2 className="card-title">Why this community works</h2>
             <p className="community-copy">
-              You can absolutely work solo. Community just makes the hard parts easier: decisions,
-              motivation, and the quiet “is this normal?” questions.
+              You can absolutely make solo. Community just makes the hard parts easier: decisions,
+              momentum, and the quiet "is this normal?" questions that can stall a whole session.
             </p>
             <div className="community-values">
               {COMMUNITY_VALUES.map((value) => (
@@ -605,10 +605,10 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
           </section>
 
           <section className="card card-3d community-friction">
-            <h2 className="card-title">Workflow-first ways to plug in</h2>
+            <h2 className="card-title">Ways to plug in and keep making</h2>
             <p className="community-copy">
-              This is not a social club. It is a working community built to help ceramic artists
-              produce consistently, sell confidently, and make income on their own terms.
+              This is a working community for ceramic artists who want consistent output, better
+              margins, and more confidence in what they ship.
             </p>
             <div className="community-proof-grid">
               {WORKFLOW_PROOFS.map((proof, index) => {
@@ -641,8 +641,8 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
           <section className="card card-3d community-main">
             <h2 className="card-title">Community events & gatherings</h2>
             <p className="community-copy">
-              Low-pressure meetups with real payoffs. Come to learn, finish, and keep the momentum
-              going between firings.
+              Low-pressure meetups with practical payoff. Come to learn, finish work, and keep your
+              momentum going between firings.
             </p>
             <div className="community-event-chips">
               <button className="community-event-chip" onClick={onOpenWorkshops}>
@@ -677,8 +677,8 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
           <section className="card card-3d community-library">
             <h2 className="card-title">Lending library</h2>
             <p className="community-copy">
-              Borrow books, films, and studio references for short-term inspiration. Staff approvals
-              keep the checkout flow smooth.
+              Borrow books, films, and studio references to support what you're making right now.
+              Staff approvals keep checkout fast and predictable.
             </p>
             <button className="btn btn-primary" onClick={onOpenLendingLibrary}>
               Browse lending library
@@ -686,8 +686,8 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
           </section>
         </div>
 
-        <aside className="community-sidebar">
-          <section className="card card-3d community-report-history">
+        <aside className="community-sidebar" data-community-sidebar="true">
+          <section className="card card-3d community-report-history" data-community-report-history="true">
             <div className="community-card-head">
               <h2 className="card-title">Your reports</h2>
               <button
@@ -703,7 +703,7 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
               </button>
             </div>
             <p className="community-copy">
-              Track report receipts and moderation status updates.
+              See what you flagged, what changed, and what still needs follow-up.
             </p>
             {reportHistoryError ? <div className="staff-note">{reportHistoryError}</div> : null}
             {!reportHistoryError && reportHistory.length === 0 ? (
@@ -715,13 +715,18 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
                   <article className="community-report-item" key={item.id}>
                     <div className="community-report-item-head">
                       <strong>{item.title}</strong>
-                      <span className={`community-report-status status-${item.status}`}>{item.status}</span>
+                      <span
+                        className={`community-report-status status-${item.status}`}
+                        data-community-chiplet="status"
+                      >
+                        {item.status}
+                      </span>
                     </div>
                     <div className="community-report-item-meta">
                       {item.category.replace("_", " ")} · {item.targetType.replace("_", " ")} · {formatWhen(item.createdAtMs)}
                     </div>
                     {appealsByReport[item.id] ? (
-                      <div className="community-report-appeal-chip">
+                      <div className="community-report-appeal-chip" data-community-chiplet="appeal">
                         Appeal: {appealsByReport[item.id].status.replace("_", " ")}
                       </div>
                     ) : null}
@@ -757,7 +762,7 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
           <section className="card card-3d community-videos">
             <h2 className="card-title">Suggested videos</h2>
             <p className="community-copy">
-              Picked for what we’re doing this month. Swap these links anytime.
+              Curated for what people are practicing this month. Rotate links anytime.
             </p>
             <div className="video-list">
               {SUGGESTED_VIDEOS.map((video, index) => {
@@ -769,7 +774,7 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
                     <div className="video-title">
                       {video.title}
                       {video.favorite && index === 0 ? (
-                        <span className="video-badge">Studio favorite</span>
+                        <span className="video-badge" data-community-chiplet="video-badge">Studio favorite</span>
                       ) : null}
                     </div>
                     <div className="video-skill">{video.reason}</div>

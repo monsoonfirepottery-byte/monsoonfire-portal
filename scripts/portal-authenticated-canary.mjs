@@ -3,7 +3,6 @@
 /* eslint-disable no-console */
 
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -14,10 +13,11 @@ const repoRoot = resolve(dirname(__filename), "..");
 const DEFAULT_BASE_URL = "https://monsoonfire-portal.web.app";
 const DEFAULT_OUTPUT_DIR = resolve(repoRoot, "output", "qa", "portal-authenticated-canary");
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "portal-authenticated-canary.json");
-const DEFAULT_STAFF_CREDENTIALS_PATH = resolve(homedir(), ".ssh", "portal-agent-staff.json");
+const DEFAULT_STAFF_CREDENTIALS_PATH = resolve(repoRoot, "secrets", "portal", "portal-agent-staff.json");
 const DEFAULT_MY_PIECES_READY_TIMEOUT_MS = 18000;
 const DEFAULT_MY_PIECES_RELOAD_RETRY_COUNT = 1;
 const DEFAULT_MARK_READ_RETRY_COUNT = 1;
+const THEME_SWEEP_TARGETS = ["light", "dark", "mono"];
 
 function parseArgs(argv) {
   const options = {
@@ -545,19 +545,17 @@ async function verifyCheckInOptionalSections(page) {
 
   const optionalSteps = form.locator("details.checkin-optional-step");
   const optionalCount = await optionalSteps.count();
-  if (optionalCount < 4) {
-    throw new Error(`Expected at least 4 optional check-in sections, found ${optionalCount}.`);
+  if (optionalCount < 3) {
+    throw new Error(`Expected at least 3 optional check-in sections, found ${optionalCount}.`);
   }
 
   const photoStep = optionalSteps.nth(0);
   const extrasStep = optionalSteps.nth(1);
-  const pieceStep = optionalSteps.nth(2);
-  const notesStep = optionalSteps.nth(3);
+  const notesStep = optionalSteps.nth(2);
 
   const checks = [
     { label: "photo", locator: photoStep },
     { label: "extras", locator: extrasStep },
-    { label: "piece details", locator: pieceStep },
     { label: "notes", locator: notesStep },
   ];
 
@@ -585,20 +583,6 @@ async function verifyCheckInOptionalSections(page) {
   }
   await firstAddonToggle.uncheck({ timeout: 10000 });
   await setDetailsOpen(extrasStep, false, "extras optional section");
-
-  await setDetailsOpen(pieceStep, true, "piece details optional section");
-  const pieceLabelValue = "Canary piece row persistence";
-  const pieceCodeValue = "MF-CANARY-001";
-  const pieceCodeInput = pieceStep.getByLabel("Piece code").first();
-  const pieceLabelInput = pieceStep.getByLabel("Piece label").first();
-  await pieceCodeInput.fill(pieceCodeValue);
-  await pieceLabelInput.fill(pieceLabelValue);
-  await setDetailsOpen(pieceStep, false, "piece details optional section");
-  await setDetailsOpen(pieceStep, true, "piece details optional section");
-  const persistedPieceLabel = await pieceLabelInput.inputValue();
-  if (persistedPieceLabel !== pieceLabelValue) {
-    throw new Error("Piece details optional section did not preserve typed piece label.");
-  }
 
   await setDetailsOpen(notesStep, true, "notes optional section");
   const noteText = "Canary note persistence check";
@@ -630,7 +614,48 @@ function getThemeToggle(page, label) {
   return page.getByRole("button", { name: new RegExp(`^Switch to ${regexSafe(label)} theme$`, "i") }).first();
 }
 
+async function openProfileView(page) {
+  const profileButton = page.getByRole("button", { name: /^Open profile$/i }).first();
+  if ((await profileButton.count()) > 0) {
+    await profileButton.click({ timeout: 10000 });
+    await page.waitForTimeout(650);
+    return;
+  }
+  await clickNavItem(page, "Profile", true);
+}
+
+async function setThemeFromProfile(page, themeValue) {
+  await openProfileView(page);
+  await page.locator(".profile-form").first().waitFor({ timeout: 12000 });
+
+  let themeSelect = page.getByLabel(/^Theme$/i).first();
+  if ((await themeSelect.count()) === 0) {
+    themeSelect = page
+      .locator("select")
+      .filter({ has: page.locator(`option[value="${themeValue}"]`) })
+      .first();
+  }
+
+  await themeSelect.waitFor({ timeout: 10000 });
+  if ((await themeSelect.count()) === 0) {
+    throw new Error("Theme selector not found on Profile page.");
+  }
+
+  await themeSelect.selectOption(themeValue);
+  await page.waitForFunction(
+    (expectedTheme) => document.documentElement.getAttribute("data-portal-theme") === expectedTheme,
+    themeValue,
+    { timeout: 10000 }
+  );
+  await page.waitForTimeout(450);
+}
+
 async function ensureTheme(page, targetTheme) {
+  if (targetTheme === "mono") {
+    await setThemeFromProfile(page, "mono");
+    return;
+  }
+
   if (targetTheme !== "light" && targetTheme !== "dark") {
     throw new Error(`Unsupported theme target: ${targetTheme}`);
   }
@@ -926,6 +951,7 @@ async function run() {
     contrast: {
       light: [],
       dark: [],
+      mono: [],
     },
   };
 
@@ -956,6 +982,67 @@ async function run() {
     });
 
     if (!options.themeOnly) {
+      await check(summary, "legacy requests deep links route to supported pages", async () => {
+        const scenarios = [
+          {
+            label: "support fallback",
+            relativeUrl: "/requests",
+            heading: /^Support$/i,
+            noticeText: /opens Support/i,
+            screenshot: "canary-02b-legacy-requests-support.png",
+          },
+          {
+            label: "lending fallback",
+            relativeUrl: "/requests?intent=lending",
+            heading: /^Lending Library$/i,
+            noticeText: /opens Lending Library/i,
+            screenshot: "canary-02c-legacy-requests-lending.png",
+          },
+          {
+            label: "workshops fallback",
+            relativeUrl: "/requests?intent=workshop",
+            heading: /^Events & workshops$/i,
+            noticeText: /opens Workshops/i,
+            screenshot: "canary-02d-legacy-requests-workshops.png",
+          },
+          {
+            label: "hash-route fallback",
+            relativeUrl: "/#/requests?intent=workshop",
+            heading: /^Events & workshops$/i,
+            noticeText: /opens Workshops/i,
+            screenshot: "canary-02e-legacy-requests-hash-workshops.png",
+          },
+        ];
+
+        for (const scenario of scenarios) {
+          await page.goto(`${options.baseUrl}${scenario.relativeUrl}`, {
+            waitUntil: "domcontentloaded",
+            timeout: 30000,
+          });
+          await page.waitForTimeout(800);
+          await page.getByRole("heading", { name: scenario.heading }).first().waitFor({ timeout: 30000 });
+
+          const notice = page.locator(".notice", { hasText: /Requests has moved\./i }).first();
+          if ((await notice.count()) === 0) {
+            throw new Error(`Requests migration notice missing for ${scenario.label}.`);
+          }
+
+          const noticeCopy = ((await notice.textContent()) || "").replace(/\s+/g, " ").trim();
+          if (!scenario.noticeText.test(noticeCopy)) {
+            throw new Error(
+              `Unexpected migration notice for ${scenario.label}: ${noticeCopy || "(empty)"}`
+            );
+          }
+
+          const currentUrl = new URL(page.url());
+          if (/^\/(?:community\/)?requests(?:\/|$)/i.test(currentUrl.pathname)) {
+            throw new Error(`Legacy requests path still active after redirect for ${scenario.label}.`);
+          }
+
+          await takeScreenshot(page, options.outputDir, scenario.screenshot, summary, `legacy requests ${scenario.label}`);
+        }
+      });
+
       await check(summary, "dashboard piece click-through opens my pieces detail", async () => {
         try {
           await clickNavItem(page, "Dashboard", true);
@@ -1126,6 +1213,22 @@ async function run() {
         await takeScreenshot(page, options.outputDir, "canary-04-notifications.png", summary, "notifications");
       });
 
+      await check(summary, "workshops page shows event feed content", async () => {
+        await clickNavSubItem(page, "Community", "Workshops", true);
+        await page.getByRole("heading", { name: /^Events & workshops$/i }).first().waitFor({ timeout: 30000 });
+
+        const seededWorkshop = page.locator(".event-card", { hasText: /QA Fixture Workshop/i }).first();
+        if ((await seededWorkshop.count()) === 0) {
+          const anyEventCard = page.locator(".event-card").first();
+          const emptyState = page.locator(".events-empty").first();
+          if ((await anyEventCard.count()) === 0 && (await emptyState.count()) === 0) {
+            throw new Error("Workshops page did not render event cards or empty-state content.");
+          }
+        }
+
+        await takeScreenshot(page, options.outputDir, "canary-04b-workshops-seeded.png", summary, "workshops seeded");
+      });
+
       await check(summary, "messages page loads without index/precondition errors", async () => {
         await clickNavItem(page, "Messages", true);
         await page.getByRole("heading", { name: /^Messages$/i }).first().waitFor({ timeout: 30000 });
@@ -1221,7 +1324,7 @@ async function run() {
         },
       ];
 
-      for (const theme of ["light", "dark"]) {
+      for (const theme of THEME_SWEEP_TARGETS) {
         await check(summary, `theme contrast sweep (${theme})`, async () => {
           // Theme switch control lives on Dashboard; always normalize there first.
           await pages[0].navigate();

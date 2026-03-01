@@ -580,6 +580,86 @@
         .replace(/^_+|_+$/g, "");
     };
 
+    const normalizeUrlHost = (hostname) => String(hostname || "").toLowerCase().replace(/^www\./, "");
+    const canonicalCampaignHosts = [kilnfirePortalHost, betaPortalHost, "instagram.com", "discord.com", "discord.gg", "phoenixcenterforthearts.org"];
+
+    const isCampaignHost = (hostname) => {
+      const normalizedHost = normalizeUrlHost(hostname);
+      return canonicalCampaignHosts.some((host) => normalizedHost === host || normalizedHost.endsWith(`.${host}`));
+    };
+
+    const deriveUtmCampaign = (label, location) => {
+      const pathKey = normalizeLabel(stripPreviewPrefix(window.location.pathname).replace(/^\/+|\/+$/g, "").replace(/\//g, "_")) || "home";
+      const labelKey = normalizeLabel(label) || "cta";
+      const locationKey = normalizeLabel(location) || "body";
+      return `${pathKey}_${labelKey}_${locationKey}_2026q1`;
+    };
+
+    const annotateCampaignHref = (link, href, label, location) => {
+      if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) {
+        return {
+          href,
+          autoTagged: false,
+          utm: {
+            source: null,
+            medium: null,
+            campaign: null,
+          },
+        };
+      }
+
+      try {
+        const parsed = new URL(href, window.location.origin);
+        if (parsed.origin === window.location.origin || !isCampaignHost(parsed.hostname)) {
+          return {
+            href,
+            autoTagged: false,
+            utm: {
+              source: parsed.searchParams.get("utm_source"),
+              medium: parsed.searchParams.get("utm_medium"),
+              campaign: parsed.searchParams.get("utm_campaign"),
+            },
+          };
+        }
+
+        let mutated = false;
+        const ensureParam = (key, value) => {
+          if (parsed.searchParams.get(key)) return;
+          parsed.searchParams.set(key, value);
+          mutated = true;
+        };
+
+        ensureParam("utm_source", "monsoonfire_website");
+        ensureParam("utm_medium", "referral");
+        ensureParam("utm_campaign", deriveUtmCampaign(label, location));
+
+        const finalHref = parsed.toString();
+        if (mutated && link) {
+          link.setAttribute("href", finalHref);
+        }
+
+        return {
+          href: finalHref,
+          autoTagged: mutated,
+          utm: {
+            source: parsed.searchParams.get("utm_source"),
+            medium: parsed.searchParams.get("utm_medium"),
+            campaign: parsed.searchParams.get("utm_campaign"),
+          },
+        };
+      } catch {
+        return {
+          href,
+          autoTagged: false,
+          utm: {
+            source: null,
+            medium: null,
+            campaign: null,
+          },
+        };
+      }
+    };
+
     const resolveCtaLabel = (href) => {
       if (!href) return null;
       const cleanedPath = resolveLocalPathForLabel(href);
@@ -624,19 +704,35 @@
       return "internal";
     };
 
+    const resolveDeviceClass = () => window.matchMedia("(max-width: 820px)").matches ? "mobile" : "desktop";
+
+    const emitCanonicalEvent = (eventName, details) => {
+      if (typeof window.gtag !== "function") return;
+      window.gtag("event", eventName, {
+        page: stripPreviewPrefix(window.location.pathname),
+        page_path: stripPreviewPrefix(window.location.pathname),
+        locale: document.documentElement.lang || "en",
+        device: resolveDeviceClass(),
+        ...details,
+      });
+    };
+
     document.addEventListener("click", (event) => {
       const link = event.target && event.target.closest ? event.target.closest("a") : null;
       if (!link || typeof window.gtag !== "function") return;
-      const href = link.getAttribute("href") || "";
-      if (!href || href.startsWith("javascript:")) return;
+      const originalHref = link.getAttribute("href") || "";
+      if (!originalHref || originalHref.startsWith("javascript:")) return;
 
-      const linkType = resolveLinkType(href);
+      const linkType = resolveLinkType(originalHref);
       const isButton = link.classList.contains("button") || link.classList.contains("nav-portal");
+      const isPrimaryButton = link.classList.contains("button-primary");
       const location = resolveLocation(link);
       const explicitLabel = link.getAttribute("data-cta");
       const textLabel = normalizeLabel(explicitLabel || link.getAttribute("aria-label") || link.textContent.trim());
-      const label = resolveCtaLabel(href) || textLabel;
+      const label = resolveCtaLabel(originalHref) || textLabel;
       if (!label) return;
+      const hrefWithCampaign = annotateCampaignHref(link, originalHref, label, location);
+      const trackedHref = hrefWithCampaign.href;
 
       const category = location === "nav" ? "navigation" : isButton ? "cta" : linkType === "outbound" || linkType === "email" || linkType === "phone" ? "outbound" : "link";
 
@@ -644,11 +740,55 @@
         event_category: category,
         event_label: label,
         link_text: link.textContent.trim(),
-        link_url: href,
+        link_url: trackedHref,
         link_type: linkType,
         link_location: location,
         page_path: stripPreviewPrefix(window.location.pathname),
+        utm_source: hrefWithCampaign.utm.source,
+        utm_medium: hrefWithCampaign.utm.medium,
+        utm_campaign: hrefWithCampaign.utm.campaign,
+        campaign_autotag_applied: hrefWithCampaign.autoTagged,
       });
+
+      const canonicalPayload = {
+        source: hrefWithCampaign.utm.source || "direct",
+        campaign: hrefWithCampaign.utm.campaign || "unattributed",
+        trigger_surface: location,
+        event_label: label,
+        link_type: linkType,
+        link_url: trackedHref,
+      };
+
+      if (isPrimaryButton) {
+        emitCanonicalEvent("cta_primary_click", {
+          ...canonicalPayload,
+          goal_name: "quote_start",
+          funnel_step: "landing_cta",
+        });
+      }
+
+      const loweredHref = trackedHref.toLowerCase();
+      if (linkType === "email") {
+        emitCanonicalEvent("contact_email_click", {
+          ...canonicalPayload,
+          goal_name: "contact_intent",
+          funnel_step: "alt_contact",
+        });
+      }
+      if (linkType === "phone") {
+        emitCanonicalEvent("contact_phone_click", {
+          ...canonicalPayload,
+          goal_name: "contact_intent",
+          funnel_step: "alt_contact",
+        });
+      }
+      if (loweredHref.includes("whatsapp") || loweredHref.includes("wa.me")) {
+        emitCanonicalEvent("whatsapp_click", {
+          ...canonicalPayload,
+          goal_name: "contact_intent",
+          funnel_step: "alt_contact",
+        });
+      }
     });
   }
 

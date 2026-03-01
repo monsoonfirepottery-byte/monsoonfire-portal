@@ -55,6 +55,7 @@
   - `npm run studio:env:verify`
 6. Start emulators via canonical command: `npm run emulators:start -- --only firestore,functions,auth`.
   - `scripts/start-emulators.mjs` now runs emulator contract validation first (`scripts/validate-emulator-contract.mjs --strict`), then network gate checks.
+  - Host bindings are applied through a generated runtime Firebase config file so startup is compatible with Firebase CLI builds that do not support `firebase emulators:start --host`.
   - Optional bypasses (debug only): `--no-contract-check`, `--no-network-check`.
   - Optional compatibility fallback: `node ./scripts/ps1-run.mjs scripts/start-emulators.ps1`.
 

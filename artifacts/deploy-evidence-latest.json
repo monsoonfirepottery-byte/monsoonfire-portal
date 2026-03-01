@@ -1,0 +1,261 @@
+{
+  "generatedAtIso": "2026-03-01T01:30:24.542Z",
+  "target": "namecheap-portal",
+  "baseUrl": "https://portal.monsoonfire.com",
+  "status": "passed",
+  "strict": true,
+  "git": {
+    "sha": "3cb498386d9bf3e05166dc57ca043138df33573c",
+    "branch": "main"
+  },
+  "artifacts": [
+    {
+      "id": "deployPreflight",
+      "label": "Deploy preflight",
+      "required": false,
+      "path": "/home/wuff/monsoonfire-portal/output/qa/deploy-preflight.json",
+      "relativePath": "output/qa/deploy-preflight.json",
+      "exists": true,
+      "status": "passed",
+      "payload": {
+        "status": "passed",
+        "target": "namecheap-portal",
+        "requirePromotionGate": false,
+        "runAtIso": "2026-03-01T01:30:07.577Z",
+        "reportPath": "/home/wuff/monsoonfire-portal/output/qa/deploy-preflight.json",
+        "checks": [
+          {
+            "label": "deploy target server is configured",
+            "status": "passed",
+            "required": true,
+            "detail": "Resolved server: monsggbd@66.29.137.142",
+            "hint": "Set WEBSITE_DEPLOY_SERVER or pass --server at deploy time."
+          },
+          {
+            "label": "deploy SSH port is valid",
+            "status": "passed",
+            "required": true,
+            "detail": "Resolved port: 21098",
+            "hint": "Set WEBSITE_DEPLOY_PORT to an integer between 1 and 65535."
+          },
+          {
+            "label": "deploy SSH key exists",
+            "status": "passed",
+            "required": true,
+            "detail": "Resolved key path: /home/wuff/.ssh/namecheap-portal",
+            "hint": "Set WEBSITE_DEPLOY_KEY to a valid private key path."
+          },
+          {
+            "label": "remote deploy path is configured",
+            "status": "passed",
+            "required": true,
+            "detail": "Resolved remote path: portal/",
+            "hint": "Set WEBSITE_DEPLOY_REMOTE_PATH when changing remote location."
+          },
+          {
+            "label": "firebase web api key is configured or resolvable",
+            "status": "passed",
+            "required": true,
+            "detail": "Firebase web API key source: firebase-tools-apps:sdkconfig.",
+            "hint": "Set VITE_FIREBASE_API_KEY, PORTAL_FIREBASE_API_KEY, or FIREBASE_WEB_API_KEY, or ensure firebase-tools access to apps:sdkconfig."
+          },
+          {
+            "label": "namecheap .htaccess template exists",
+            "status": "passed",
+            "required": true,
+            "detail": "/home/wuff/monsoonfire-portal/web/deploy/namecheap/.htaccess",
+            "hint": "Restore web/deploy/namecheap/.htaccess before deploy."
+          },
+          {
+            "label": ".well-known asset exists (apple-app-site-association)",
+            "status": "passed",
+            "required": true,
+            "detail": "/home/wuff/monsoonfire-portal/website/.well-known/apple-app-site-association",
+            "hint": "Restore required .well-known file before deploy."
+          },
+          {
+            "label": ".well-known asset exists (assetlinks.json)",
+            "status": "passed",
+            "required": true,
+            "detail": "/home/wuff/monsoonfire-portal/website/.well-known/assetlinks.json",
+            "hint": "Restore required .well-known file before deploy."
+          }
+        ],
+        "totals": {
+          "checks": 8,
+          "requiredFailures": 0,
+          "optionalFailures": 0
+        },
+        "strict": true
+      }
+    },
+    {
+      "id": "cutoverVerify",
+      "label": "Cutover verify",
+      "required": true,
+      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-cutover-verify.json",
+      "relativePath": "output/qa/post-deploy-cutover-verify.json",
+      "exists": true,
+      "status": "passed",
+      "payload": {
+        "ok": true,
+        "portalUrl": "https://portal.monsoonfire.com",
+        "checks": [
+          {
+            "path": "https://portal.monsoonfire.com",
+            "status": 200,
+            "ok": true,
+            "bodySnippet": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <link rel=\"icon\" type=\"image/png\" href=\"/pwa-192.png\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <link rel=\"dns-prefetch\" href=\"//firestore.googleapis.com\" />\n    <link rel=\"dns-prefetch\" href=\"//identity...",
+            "bodyLength": 4784,
+            "cacheControl": "no-cache",
+            "error": ""
+          },
+          {
+            "path": "https://portal.monsoonfire.com/reservations",
+            "status": 200,
+            "ok": true,
+            "bodySnippet": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <link rel=\"icon\" type=\"image/png\" href=\"/pwa-192.png\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <link rel=\"dns-prefetch\" href=\"//firestore.googleapis.com\" />\n    <link rel=\"dns-prefetch\" href=\"//identity...",
+            "bodyLength": 4784,
+            "cacheControl": "no-cache",
+            "error": ""
+          },
+          {
+            "path": "https://portal.monsoonfire.com/.well-known/apple-app-site-association",
+            "status": 200,
+            "ok": true,
+            "bodySnippet": "{\n  \"applinks\": {\n    \"apps\": [],\n    \"details\": [\n      {\n        \"appID\": \"TEAMID.com.monsoonfire.portal.reference\",\n        \"paths\": [\n          \"/materials*\",\n          \"/events*\",\n          \"/kiln*\",\n          \"/pieces*\",\n          \"/notifications*\"\n        ]\n      }\n    ]\n  }\n}\n",
+            "bodyLength": 285,
+            "cacheControl": "",
+            "error": ""
+          }
+        ],
+        "summary": {
+          "ok": true,
+          "passed": [
+            "rootRoute",
+            "deepRoute",
+            "wellKnownRoute",
+            "asset/assets/index-BFQAx18p.js",
+            "asset/assets/vendor-DuPUYBON.js",
+            "asset/assets/vendor-react-DPkGgiPW.js",
+            "rootCache",
+            "deepCache"
+          ],
+          "warnings": [
+            "protected function check skipped (set --id-token <token> or PORTAL_CUTOVER_ID_TOKEN=<token> in env)"
+          ],
+          "failures": []
+        },
+        "deepPath": "/reservations",
+        "wellKnownPath": "/.well-known/apple-app-site-association",
+        "sampleAssets": [
+          "/assets/index-BFQAx18p.js",
+          "/assets/vendor-DuPUYBON.js",
+          "/assets/vendor-react-DPkGgiPW.js"
+        ],
+        "assetChecks": [
+          {
+            "path": "/assets/index-BFQAx18p.js",
+            "status": 200,
+            "cacheControl": "public, max-age=31536000, immutable",
+            "hasCacheHeader": true,
+            "ok": true
+          },
+          {
+            "path": "/assets/vendor-DuPUYBON.js",
+            "status": 200,
+            "cacheControl": "public, max-age=31536000, immutable",
+            "hasCacheHeader": true,
+            "ok": true
+          },
+          {
+            "path": "/assets/vendor-react-DPkGgiPW.js",
+            "status": 200,
+            "cacheControl": "public, max-age=31536000, immutable",
+            "hasCacheHeader": true,
+            "ok": true
+          }
+        ],
+        "protectedFunctionCheck": {
+          "required": false,
+          "attempted": false,
+          "endpoint": "https://us-central1-monsoonfire-portal.cloudfunctions.net/listMaterialsProducts",
+          "functionName": "listMaterialsProducts",
+          "requestBody": {
+            "includeInactive": false
+          },
+          "status": 0,
+          "ok": false,
+          "idTokenSource": "none",
+          "message": "",
+          "responseSnippet": ""
+        },
+        "reportPath": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-cutover-verify.json"
+      }
+    },
+    {
+      "id": "promotionGate",
+      "label": "Post-deploy promotion gate",
+      "required": false,
+      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-promotion-gate.json",
+      "relativePath": "output/qa/post-deploy-promotion-gate.json",
+      "exists": false,
+      "status": "missing",
+      "payload": null
+    },
+    {
+      "id": "postDeployCanary",
+      "label": "Post-deploy authenticated canary",
+      "required": false,
+      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-authenticated-canary.json",
+      "relativePath": "output/qa/post-deploy-authenticated-canary.json",
+      "exists": false,
+      "status": "missing",
+      "payload": null
+    },
+    {
+      "id": "postDeployVirtualStaff",
+      "label": "Post-deploy virtual staff regression",
+      "required": false,
+      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-virtual-staff-regression.json",
+      "relativePath": "output/qa/post-deploy-virtual-staff-regression.json",
+      "exists": false,
+      "status": "missing",
+      "payload": null
+    },
+    {
+      "id": "postDeployIndexGuard",
+      "label": "Post-deploy Firestore index guard",
+      "required": false,
+      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-index-guard.json",
+      "relativePath": "output/qa/post-deploy-index-guard.json",
+      "exists": false,
+      "status": "missing",
+      "payload": null
+    },
+    {
+      "id": "rollback",
+      "label": "Auto rollback report",
+      "required": false,
+      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-rollback.json",
+      "relativePath": "output/qa/post-deploy-rollback.json",
+      "exists": false,
+      "status": "missing",
+      "payload": null
+    },
+    {
+      "id": "rollbackVerify",
+      "label": "Post-rollback verify",
+      "required": false,
+      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-rollback-verify.json",
+      "relativePath": "output/qa/post-deploy-rollback-verify.json",
+      "exists": false,
+      "status": "missing",
+      "payload": null
+    }
+  ],
+  "output": {
+    "json": "/home/wuff/monsoonfire-portal/artifacts/deploy-evidence-latest.json",
+    "markdown": "/home/wuff/monsoonfire-portal/artifacts/deploy-evidence-latest.md"
+  }
+}

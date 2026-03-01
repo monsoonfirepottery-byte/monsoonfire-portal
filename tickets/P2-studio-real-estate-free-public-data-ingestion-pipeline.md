@@ -1,6 +1,6 @@
 # P2 - Free/Public Real-Estate Data Ingestion Pipeline
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -37,3 +37,10 @@ Implement a repeatable free/public data pipeline from source pull to staged sign
 - `scripts/build-real-estate-macro-context.ps1`
 - `scripts/run-real-estate-agentic-research.ps1`
 - `docs/REAL_ESTATE_MARKET_WATCH.md`
+
+## Completion evidence (2026-02-28)
+1. Public pull pipeline is implemented in `scripts/fetch-real-estate-public-data.ps1` with manifest output and auth-adapter support.
+2. Staging adapters and manual-drop template generation are implemented in `scripts/build-real-estate-public-signal-staging.ps1`.
+3. Macro context generation is implemented in `scripts/build-real-estate-macro-context.ps1`.
+4. Staged signals feed structured scoring (`scripts/run-real-estate-public-signals.ps1`) and downstream research (`scripts/run-real-estate-agentic-research.ps1`).
+5. Existing artifacts show completed pipeline runs under `output/real-estate/public-data/`, `output/real-estate/staging/public-signals/`, and `output/real-estate/public-signals-*.json`.

@@ -1,6 +1,6 @@
 # P2 - Studio Real-Estate Agentic Research and Distress Scanner
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -40,3 +40,12 @@ Add a local agentic research workflow that continuously searches West Valley/Pho
 - `docs/REAL_ESTATE_MARKET_WATCH.md`
 - `scripts/run-real-estate-agentic-research.ps1`
 - `tickets/P2-studio-real-estate-market-watch-and-expansion-fit.md`
+
+## Completion evidence (2026-02-28)
+1. Agentic research scanner is implemented in `scripts/run-real-estate-agentic-research.ps1` with configurable queries and distress scoring.
+2. Distress model includes reduction/foreclosure/auction/motivated-seller/sublease pressure signals plus public-signal integration.
+3. Outputs are generated as JSON, markdown, and swarm context packs:
+   - `output/real-estate/agentic-research-*.json`
+   - `output/real-estate/agentic-research-*.md`
+   - `output/real-estate/agent-swarm-research-context-*.json`
+4. Workflow and command usage are documented in `docs/REAL_ESTATE_MARKET_WATCH.md`.

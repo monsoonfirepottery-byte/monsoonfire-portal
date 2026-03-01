@@ -7,6 +7,16 @@ export const V1_RESERVATION_ASSIGN_STATION_FN = "apiV1/v1/reservations.assignSta
 export const V1_RESERVATION_PICKUP_WINDOW_FN = "apiV1/v1/reservations.pickupWindow";
 export const V1_RESERVATION_QUEUE_FAIRNESS_FN = "apiV1/v1/reservations.queueFairness";
 export const V1_RESERVATION_EXPORT_CONTINUITY_FN = "apiV1/v1/reservations.exportContinuity";
+export const V1_LIBRARY_ITEMS_LIST_FN = "apiV1/v1/library.items.list";
+export const V1_LIBRARY_ITEMS_GET_FN = "apiV1/v1/library.items.get";
+export const V1_LIBRARY_DISCOVERY_GET_FN = "apiV1/v1/library.discovery.get";
+export const V1_LIBRARY_ITEMS_IMPORT_ISBNS_FN = "apiV1/v1/library.items.importIsbns";
+export const V1_LIBRARY_RATINGS_UPSERT_FN = "apiV1/v1/library.ratings.upsert";
+export const V1_LIBRARY_REVIEWS_CREATE_FN = "apiV1/v1/library.reviews.create";
+export const V1_LIBRARY_READING_STATUS_UPSERT_FN = "apiV1/v1/library.readingStatus.upsert";
+export const V1_LIBRARY_LOANS_CHECKOUT_FN = "apiV1/v1/library.loans.checkout";
+export const V1_LIBRARY_LOANS_CHECKIN_FN = "apiV1/v1/library.loans.checkIn";
+export const V1_LIBRARY_LOANS_LIST_MINE_FN = "apiV1/v1/library.loans.listMine";
 export const LEGACY_RESERVATION_COMPAT_REVIEW_DATE = "2026-05-15";
 export const LEGACY_RESERVATION_COMPAT_SUNSET_NOT_BEFORE = "2026-06-30";
 export type IntakeMode = "SHELF_PURCHASE" | "WHOLE_KILN" | "COMMUNITY_SHELF";
@@ -24,6 +34,16 @@ export type PortalFnName =
   | typeof V1_RESERVATION_PICKUP_WINDOW_FN
   | typeof V1_RESERVATION_QUEUE_FAIRNESS_FN
   | typeof V1_RESERVATION_EXPORT_CONTINUITY_FN
+  | typeof V1_LIBRARY_ITEMS_LIST_FN
+  | typeof V1_LIBRARY_ITEMS_GET_FN
+  | typeof V1_LIBRARY_DISCOVERY_GET_FN
+  | typeof V1_LIBRARY_ITEMS_IMPORT_ISBNS_FN
+  | typeof V1_LIBRARY_RATINGS_UPSERT_FN
+  | typeof V1_LIBRARY_REVIEWS_CREATE_FN
+  | typeof V1_LIBRARY_READING_STATUS_UPSERT_FN
+  | typeof V1_LIBRARY_LOANS_CHECKOUT_FN
+  | typeof V1_LIBRARY_LOANS_CHECKIN_FN
+  | typeof V1_LIBRARY_LOANS_LIST_MINE_FN
   | "listMaterialsProducts"
   | "createMaterialsCheckoutSession"
   | "seedMaterialsCatalog"
@@ -206,6 +226,7 @@ export type CreateReservationRequest = {
   addOns?: {
     rushRequested?: boolean;
     wholeKilnRequested?: boolean;
+    communityShelfFillInAllowed?: boolean;
     pickupDeliveryRequested?: boolean;
     returnDeliveryRequested?: boolean;
     useStudioGlazes?: boolean;

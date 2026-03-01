@@ -26,8 +26,10 @@ const requiredRouteChunks = [
   "EventsView-",
   "ProfileView-",
 ];
-const MAX_TOTAL_JS_BYTES = 1_300_000;
-const MAX_TOTAL_CSS_BYTES = 190_000;
+// Total budgets re-baselined after Workshops + Staff cockpit surfaces were expanded.
+// Keep modest headroom so regressions still fail quickly.
+const MAX_TOTAL_JS_BYTES = 1_380_000;
+const MAX_TOTAL_CSS_BYTES = 205_000;
 
 const files = readdirSync(assetsDir).filter((name) => name.endsWith(".js"));
 const failures = [];

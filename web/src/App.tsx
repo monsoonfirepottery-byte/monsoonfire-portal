@@ -48,7 +48,6 @@ import { parseStaffRoleFromClaims } from "./auth/staffRole";
 import "./App.css";
 
 const BillingView = React.lazy(() => import("./views/BillingView"));
-const AgentRequestsView = React.lazy(() => import("./views/AgentRequestsView"));
 const CommunityView = React.lazy(() => import("./views/CommunityView"));
 const DashboardView = React.lazy(() => import("./views/DashboardView"));
 const EventsView = React.lazy(() => import("./views/EventsView"));
@@ -86,7 +85,6 @@ type NavKey =
   | "glazes"
   | "membership"
   | "materials"
-  | "requests"
   | "billing"
   | "studioResources"
   | "notifications"
@@ -107,6 +105,8 @@ type NavSection = {
   title: string;
   items: NavItem[];
 };
+
+type NavDockPosition = "left" | "top" | "right";
 
 type ImportMetaEnvShape = {
   DEV?: boolean;
@@ -133,6 +133,20 @@ type NotificationItem = {
 type PieceFocusTarget = {
   batchId: string;
   pieceId?: string;
+};
+
+type LegacyRequestsDestination = "support" | "lendingLibrary" | "events";
+
+type LegacyRequestsRedirect = {
+  targetNav: LegacyRequestsDestination;
+  notice: string;
+};
+
+type StaffWorkspaceMode = "default" | "cockpit" | "workshops";
+
+type StaffWorkspaceLaunch = {
+  targetNav: "staff";
+  mode: StaffWorkspaceMode;
 };
 
 const NAV_TOP_ITEMS: NavItem[] = [
@@ -165,7 +179,6 @@ const NAV_SECTIONS: NavSection[] = [
       { key: "glazes", label: "Glaze Board" },
       { key: "materials", label: "Store" },
       { key: "membership", label: "Membership" },
-      { key: "requests", label: "Requests" },
       { key: "billing", label: "Billing" },
     ],
   },
@@ -307,7 +320,6 @@ const NAV_LABELS: Record<NavKey, string> = {
   glazes: "Glaze Board",
   membership: "Membership",
   materials: "Store",
-  requests: "Requests",
   billing: "Billing",
   studioResources: "Studio & Resources",
   notifications: "Notifications",
@@ -321,14 +333,8 @@ const EMAIL_LINK_KEY = "mf_email_link_email";
 const LOCAL_NAV_KEY = "mf_nav_key";
 const LOCAL_NAV_SECTION_KEY = "mf_nav_section_key";
 const LOCAL_NAV_COLLAPSED_KEY = "mf_nav_collapsed";
-const LOCAL_NAV_WIDTH_KEY = "mf_nav_width";
+const LOCAL_NAV_DOCK_KEY = "mf_nav_dock";
 const SUPPORT_EMAIL = "support@monsoonfire.com";
-const SIDEBAR_MIN_WIDTH = 220;
-const SIDEBAR_DEFAULT_WIDTH = 260;
-const SIDEBAR_MAX_WIDTH = 420;
-const SIDEBAR_RESIZE_BREAKPOINT_WIDTH = 1220;
-const SIDEBAR_RESIZE_BREAKPOINT_HEIGHT = 700;
-const SIDEBAR_RESIZE_MIN_MAIN_CONTENT = 580;
 const MF_LOGO = "/branding/logo-mark-black.webp";
 const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
@@ -350,6 +356,78 @@ const WELCOME_MESSAGE_SUBJECT = "Welcome to Monsoon Fire Support";
 const WELCOME_NOTIFICATION_TITLE = "Welcome to your Monsoon Fire portal";
 
 const NAV_SECTION_KEYS: NavSectionKey[] = ["kilnRentals", "studioResources", "community"];
+const NAV_DOCK_POSITIONS: NavDockPosition[] = ["left", "top", "right"];
+const NAV_DOCK_LABELS: Record<NavDockPosition, string> = {
+  left: "Left",
+  top: "Top",
+  right: "Right",
+};
+
+function normalizeHashPath(hash: string): string {
+  if (!hash) return "";
+  const trimmed = hash.replace(/^#/, "").replace(/^!/, "").trim();
+  if (!trimmed) return "";
+  const pathCandidate = trimmed.split("?")[0] ?? "";
+  if (!pathCandidate) return "";
+  return pathCandidate.startsWith("/") ? pathCandidate : `/${pathCandidate}`;
+}
+
+function isLegacyRequestsPath(pathname: string): boolean {
+  return /^\/(?:community\/)?requests(?:\/|$)/i.test(pathname);
+}
+
+function isStaffPath(pathname: string): boolean {
+  return /^\/staff(?:\/|$)/i.test(pathname);
+}
+
+function isStaffCockpitPath(pathname: string): boolean {
+  return /^\/staff\/cockpit(?:\/|$)/i.test(pathname) || /^\/cockpit(?:\/|$)/i.test(pathname);
+}
+
+function isStaffWorkshopsPath(pathname: string): boolean {
+  return /^\/staff\/workshops(?:\/|$)/i.test(pathname);
+}
+
+function resolveStaffWorkspaceLaunch(pathname: string, hash: string): StaffWorkspaceLaunch | null {
+  const normalizedHashPath = normalizeHashPath(hash);
+  const candidates = [pathname, normalizedHashPath].filter(Boolean);
+  if (candidates.some((value) => isStaffWorkshopsPath(value))) {
+    return { targetNav: "staff", mode: "workshops" };
+  }
+  if (candidates.some((value) => isStaffCockpitPath(value))) {
+    return { targetNav: "staff", mode: "cockpit" };
+  }
+  if (candidates.some((value) => isStaffPath(value))) {
+    return { targetNav: "staff", mode: "default" };
+  }
+  return null;
+}
+
+function getLegacyRequestsNotice(targetNav: LegacyRequestsDestination): string {
+  if (targetNav === "events") {
+    return "Requests has moved. This legacy link now opens Workshops. Use Lending Library for borrowing needs, or Support for general help.";
+  }
+  if (targetNav === "lendingLibrary") {
+    return "Requests has moved. This legacy link now opens Lending Library. Use Workshops for class interest, or Support for general help.";
+  }
+  return "Requests has moved. This legacy link now opens Support. Use Lending Library for borrowing needs and Workshops for class interest.";
+}
+
+function resolveLegacyRequestsRedirect(pathname: string, search: string, hash: string): LegacyRequestsRedirect | null {
+  const normalizedHashPath = normalizeHashPath(hash);
+  if (!isLegacyRequestsPath(pathname) && !isLegacyRequestsPath(normalizedHashPath)) {
+    return null;
+  }
+
+  const normalizedHints = `${pathname} ${search} ${hash}`.toLowerCase();
+  const workshopHint = /\b(workshop|workshops|event|events|class|classes)\b/.test(normalizedHints);
+  const lendingHint = /\b(lending|library|borrow|loan|tool)\b/.test(normalizedHints);
+  const targetNav: LegacyRequestsDestination = workshopHint ? "events" : lendingHint ? "lendingLibrary" : "support";
+  return {
+    targetNav,
+    notice: getLegacyRequestsNotice(targetNav),
+  };
+}
 
 function readLocalItem(key: string): string | null {
   return safeStorageGetItem("localStorage", key);
@@ -407,6 +485,9 @@ const isNavKey = (value: string): value is NavKey =>
 const isNavSectionKey = (value: string): value is NavSectionKey =>
   NAV_SECTION_KEYS.includes(value as NavSectionKey);
 
+const isNavDockPosition = (value: string): value is NavDockPosition =>
+  NAV_DOCK_POSITIONS.includes(value as NavDockPosition);
+
 function UserProfileGlyph() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="avatar-fallback-icon">
@@ -426,15 +507,6 @@ const getSectionForNav = (navKey: NavKey): NavSectionKey | null => {
     section.items.some((item) => item.key === navKey)
   );
   return match?.key ?? null;
-};
-
-const clampSidebarWidth = (value: number, viewportWidth: number) => {
-  const maxForViewport = Math.max(
-    SIDEBAR_MIN_WIDTH,
-    Math.min(SIDEBAR_MAX_WIDTH, viewportWidth - SIDEBAR_RESIZE_MIN_MAIN_CONTENT)
-  );
-  const safeMax = Math.max(SIDEBAR_MIN_WIDTH, maxForViewport);
-  return Math.max(SIDEBAR_MIN_WIDTH, Math.min(value, safeMax));
 };
 
 function getErrorCode(error: unknown): string {
@@ -753,15 +825,43 @@ export default function App() {
   const [emailLinkPending, setEmailLinkPending] = useState(false);
   const [nav, setNav] = useState<NavKey>(() => {
     if (typeof window === "undefined") return "dashboard";
+    const staffWorkspaceLaunch = resolveStaffWorkspaceLaunch(window.location.pathname, window.location.hash);
+    if (staffWorkspaceLaunch) return staffWorkspaceLaunch.targetNav;
+    const legacyRedirect = resolveLegacyRequestsRedirect(
+      window.location.pathname,
+      window.location.search,
+      window.location.hash
+    );
+    if (legacyRedirect) return legacyRedirect.targetNav;
     const path = window.location.pathname;
     if (path === "/glazes" || path === "/community/glazes") return "glazes";
     const saved = readLocalItem(LOCAL_NAV_KEY);
     if (saved && isNavKey(saved)) return saved;
     return "dashboard";
   });
+  const [staffWorkspaceMode] = useState<StaffWorkspaceMode>(() => {
+    if (typeof window === "undefined") return "default";
+    const launch = resolveStaffWorkspaceLaunch(window.location.pathname, window.location.hash);
+    return launch?.mode ?? "default";
+  });
+  const [legacyRouteNotice] = useState(() => {
+    if (typeof window === "undefined") return "";
+    const legacyRedirect = resolveLegacyRequestsRedirect(
+      window.location.pathname,
+      window.location.search,
+      window.location.hash
+    );
+    return legacyRedirect?.notice ?? "";
+  });
   const [navCollapsed, setNavCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     return readLocalBoolean(LOCAL_NAV_COLLAPSED_KEY);
+  });
+  const [navDock, setNavDock] = useState<NavDockPosition>(() => {
+    if (typeof window === "undefined") return "left";
+    const saved = readLocalItem(LOCAL_NAV_DOCK_KEY);
+    if (saved && isNavDockPosition(saved)) return saved;
+    return "left";
   });
   const [openSection, setOpenSection] = useState<NavSectionKey | null>(() => {
     if (typeof window === "undefined") return NAV_SECTIONS[0]?.key ?? null;
@@ -771,16 +871,6 @@ export default function App() {
     if (savedNav && isNavKey(savedNav)) return getSectionForNav(savedNav);
     return NAV_SECTIONS[0]?.key ?? null;
   });
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    if (typeof window === "undefined") return SIDEBAR_DEFAULT_WIDTH;
-    const raw = readLocalItem(LOCAL_NAV_WIDTH_KEY);
-    const parsed = Number.parseInt(raw ?? "", 10);
-    if (Number.isFinite(parsed)) {
-      return clampSidebarWidth(parsed, window.innerWidth);
-    }
-    return SIDEBAR_DEFAULT_WIDTH;
-  });
-  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [devAdminToken, setDevAdminToken] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
@@ -819,28 +909,11 @@ export default function App() {
   const devAdminActive = DEV_ADMIN_TOKEN_ENABLED && devAdminToken.trim().length > 0;
   const staffUi = isStaff || devAdminActive;
   const devAdminTokenValue = devAdminActive ? devAdminToken.trim() : "";
-  const [viewportWidth, setViewportWidth] = useState(() => {
-    if (typeof window === "undefined") return 0;
-    return window.innerWidth;
-  });
-  const [viewportHeight, setViewportHeight] = useState(() => {
-    if (typeof window === "undefined") return 0;
-    return window.innerHeight;
-  });
+  const navSupportsCollapse = navDock !== "top";
+  const navIsCollapsed = navSupportsCollapse && navCollapsed;
   const navBottomItems: NavItem[] = staffUi
     ? [...NAV_BOTTOM_ITEMS, { key: "staff", label: "Staff" }]
     : NAV_BOTTOM_ITEMS;
-  const sidebarResizeMaxWidth = viewportWidth > 0
-    ? clampSidebarWidth(SIDEBAR_MAX_WIDTH, viewportWidth)
-    : SIDEBAR_MAX_WIDTH;
-  const clampedSidebarWidth = clampSidebarWidth(sidebarWidth, viewportWidth);
-  const isSmallViewport = viewportWidth > 0 && viewportWidth <= 960;
-  const canResizeSidebar =
-    !navCollapsed &&
-    !isSmallViewport &&
-    viewportWidth >= SIDEBAR_RESIZE_BREAKPOINT_WIDTH &&
-    sidebarResizeMaxWidth - SIDEBAR_MIN_WIDTH >= 24 &&
-    viewportHeight >= SIDEBAR_RESIZE_BREAKPOINT_HEIGHT;
 
   const persistThemeName = async (next: PortalThemeName): Promise<void> => {
     setThemeName(next);
@@ -871,10 +944,6 @@ export default function App() {
         });
       }
     }
-  };
-
-  const shellStyle: React.CSSProperties = {
-    ["--portal-sidebar-width" as keyof React.CSSProperties]: `${clampedSidebarWidth}px`,
   };
 
   const syncUserFromAuth = useCallback(async () => {
@@ -922,32 +991,6 @@ export default function App() {
     if (!user) return;
     void ensureDefaultProfileAvatar(user);
   }, [user, ensureDefaultProfileAvatar]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onResize = () => {
-      setViewportWidth(window.innerWidth);
-      setViewportHeight(window.innerHeight);
-    };
-
-    onResize();
-    window.addEventListener("resize", onResize);
-    return () => {
-      window.removeEventListener("resize", onResize);
-    };
-  }, []);
-
-  useEffect(() => {
-    setSidebarWidth((current) => {
-      const next = clampSidebarWidth(current, viewportWidth);
-      return next;
-    });
-  }, [viewportWidth]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    writeLocalItem(LOCAL_NAV_WIDTH_KEY, String(clampedSidebarWidth));
-  }, [clampedSidebarWidth]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1052,16 +1095,43 @@ export default function App() {
   useEffect(() => {
     writeLocalItem(LOCAL_NAV_KEY, nav);
     if (typeof window === "undefined") return;
+    const hasLegacyRequestsPath = isLegacyRequestsPath(window.location.pathname);
+    const hasLegacyRequestsHash = isLegacyRequestsPath(normalizeHashPath(window.location.hash));
+    const hasStaffPath = isStaffPath(window.location.pathname);
+    const hasStaffHashPath = isStaffPath(normalizeHashPath(window.location.hash));
+    const hasStaffCockpitPath = isStaffCockpitPath(window.location.pathname);
+    const hasStaffCockpitHashPath = isStaffCockpitPath(normalizeHashPath(window.location.hash));
     if (nav === "glazes") {
       window.history.replaceState({}, "", "/glazes");
-    } else if (window.location.pathname === "/glazes") {
+    } else if (nav === "staff" && staffWorkspaceMode === "cockpit") {
+      if (!hasStaffCockpitPath && !hasStaffCockpitHashPath) {
+        window.history.replaceState({}, "", "/staff/cockpit");
+      }
+    } else if (nav === "staff" && staffWorkspaceMode === "workshops") {
+      if (!hasStaffPath || window.location.pathname !== "/staff/workshops") {
+        window.history.replaceState({}, "", "/staff/workshops");
+      }
+    } else if (window.location.pathname === "/glazes" || hasLegacyRequestsPath || hasLegacyRequestsHash) {
+      window.history.replaceState({}, "", "/");
+    } else if (hasStaffPath || hasStaffHashPath || hasStaffCockpitPath || hasStaffCockpitHashPath) {
       window.history.replaceState({}, "", "/");
     }
-  }, [nav]);
+  }, [nav, staffWorkspaceMode]);
 
   useEffect(() => {
     writeLocalItem(LOCAL_NAV_COLLAPSED_KEY, navCollapsed ? "1" : "0");
   }, [navCollapsed]);
+
+  useEffect(() => {
+    writeLocalItem(LOCAL_NAV_DOCK_KEY, navDock);
+  }, [navDock]);
+
+  useEffect(() => {
+    if (navDock !== "top") return;
+    if (navCollapsed) {
+      setNavCollapsed(false);
+    }
+  }, [navDock, navCollapsed]);
 
   useEffect(() => {
     if (!openSection) {
@@ -1689,10 +1759,11 @@ export default function App() {
   const sidebarAvatarUrl = user?.photoURL || PROFILE_DEFAULT_AVATAR_URL;
 
   useEffect(() => {
+    if (navDock === "top") return;
     if (navSection && navSection !== openSection) {
       setOpenSection(navSection);
     }
-  }, [navSection, openSection]);
+  }, [navSection, openSection, navDock]);
 
   useEffect(() => {
     if (!staffUi && nav === "staff") {
@@ -1735,15 +1806,50 @@ export default function App() {
   }, [authReady, user, nav]);
 
   const handleSectionToggle = (sectionKey: NavSectionKey) => {
+    if (navDock === "top") {
+      setOpenSection((previous) => (previous === sectionKey ? null : sectionKey));
+      setMobileNavOpen(false);
+      return;
+    }
     if (nav !== sectionKey) {
       setNav(sectionKey);
     }
-    if (navCollapsed) {
+    if (navIsCollapsed) {
       setNavCollapsed(false);
     }
     setOpenSection(sectionKey);
     setMobileNavOpen(false);
   };
+
+  const handleNavDockChange = (nextDock: NavDockPosition) => {
+    if (nextDock === navDock) return;
+    setNavDock(nextDock);
+    setMobileNavOpen(false);
+    if (nextDock === "top") {
+      setNavCollapsed(false);
+      setOpenSection(null);
+    }
+  };
+
+  const renderNavDockControls = (className = "") => (
+    <div className={`nav-dock-controls ${className}`.trim()} role="group" aria-label="Navigation position">
+      <span className="nav-dock-label">Dock</span>
+      <div className="nav-dock-buttons">
+        {NAV_DOCK_POSITIONS.map((position) => (
+          <button
+            type="button"
+            key={`dock-${position}`}
+            className={`nav-dock-btn ${navDock === position ? "active" : ""}`}
+            aria-pressed={navDock === position}
+            onClick={() => handleNavDockChange(position)}
+            title={`Move navigation to ${NAV_DOCK_LABELS[position].toLowerCase()}`}
+          >
+            {NAV_DOCK_LABELS[position]}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
   const openPieces = useCallback((target?: PieceFocusTarget) => {
     setPiecesFocusTarget(target ?? null);
@@ -1852,8 +1958,6 @@ export default function App() {
         return <MembershipView user={user} />;
       case "materials":
         return <MaterialsView user={user} adminToken={devAdminTokenValue} isStaff={staffUi} />;
-      case "requests":
-        return <AgentRequestsView user={user} functionsBaseUrl={FUNCTIONS_BASE_URL} />;
       case "billing":
         return <BillingView user={user} />;
       case "reservations":
@@ -1925,6 +2029,10 @@ export default function App() {
             onDevAdminTokenChange={setDevAdminToken}
             devAdminEnabled={DEV_ADMIN_TOKEN_ENABLED}
             showEmulatorTools={isAuthEmulator}
+            onOpenCheckin={() => setNav("reservations")}
+            initialModule={staffWorkspaceMode === "cockpit" ? "cockpit" : staffWorkspaceMode === "workshops" ? "events" : undefined}
+            forceCockpitWorkspace={staffWorkspaceMode === "cockpit"}
+            forceEventsWorkspace={staffWorkspaceMode === "workshops"}
           />
         );
       default:
@@ -1942,13 +2050,10 @@ export default function App() {
       <a className="skip-link" href="#main-content">
         Skip to main content
       </a>
-      <div
-        className={`app-shell ${navCollapsed ? "nav-collapsed" : ""}`}
-        style={shellStyle}
-      >
+      <div className={`app-shell dock-${navDock} ${navIsCollapsed ? "nav-collapsed" : ""}`.trim()}>
         <aside
           id="portal-sidebar-nav"
-          className={`sidebar ${mobileNavOpen ? "open" : ""} ${navCollapsed ? "collapsed" : ""} ${isResizingSidebar ? "is-resizing" : ""}`}
+          className={`sidebar ${mobileNavOpen ? "open" : ""} ${navIsCollapsed ? "collapsed" : ""}`}
           aria-label="Primary navigation"
         >
           <button
@@ -1984,6 +2089,9 @@ export default function App() {
                   title={item.label}
                   onClick={() => {
                     setNav(item.key);
+                    if (navDock === "top") {
+                      setOpenSection(null);
+                    }
                     setMobileNavOpen(false);
                   }}
                 >
@@ -2023,6 +2131,9 @@ export default function App() {
                         title={item.label}
                         onClick={() => {
                           setNav(item.key);
+                          if (navDock === "top") {
+                            setOpenSection(null);
+                          }
                           setMobileNavOpen(false);
                         }}
                       >
@@ -2046,6 +2157,9 @@ export default function App() {
                   title={item.label}
                   onClick={() => {
                     setNav(item.key);
+                    if (navDock === "top") {
+                      setOpenSection(null);
+                    }
                     setMobileNavOpen(false);
                   }}
                 >
@@ -2061,52 +2175,28 @@ export default function App() {
                   ) : null}
                 </button>
               ))}
-              <button
-                type="button"
-                className="nav-toggle nav-toggle-inline"
-                data-collapsed={navCollapsed ? "true" : "false"}
-                title={navCollapsed ? "Open nav" : "Collapse nav"}
-                onClick={() => {
-                  setNavCollapsed((prev) => !prev);
-                  setMobileNavOpen(false);
-                }}
-                aria-label={navCollapsed ? "Open navigation" : "Collapse navigation"}
-                aria-pressed={!navCollapsed}
-              >
-                <span className="nav-toggle-icon" aria-hidden="true" />
-                <span className="nav-label nav-toggle-text">
-                  {navCollapsed ? "Open nav" : "Collapse nav"}
-                </span>
-              </button>
-              {canResizeSidebar ? (
-                <div className="sidebar-resize">
-                  <label className="sidebar-resize-label" htmlFor="portal-sidebar-width">
-                    <span>Width</span>
-                    <span>{clampedSidebarWidth}px</span>
-                  </label>
-                  <input
-                    id="portal-sidebar-width"
-                    className="sidebar-resize-slider"
-                    type="range"
-                    min={SIDEBAR_MIN_WIDTH}
-                    max={sidebarResizeMaxWidth}
-                    step={4}
-                    value={clampedSidebarWidth}
-                    onPointerDown={() => setIsResizingSidebar(true)}
-                    onPointerUp={() => setIsResizingSidebar(false)}
-                    onPointerCancel={() => setIsResizingSidebar(false)}
-                    onBlur={() => setIsResizingSidebar(false)}
-                    onChange={(event) => {
-                      const next = Number(event.currentTarget.value);
-                      if (Number.isNaN(next)) return;
-                      setSidebarWidth(next);
-                    }}
-                    aria-label="Set sidebar width"
-                  />
-                </div>
+              {navSupportsCollapse ? (
+                <button
+                  type="button"
+                  className="nav-toggle nav-toggle-inline"
+                  data-collapsed={navIsCollapsed ? "true" : "false"}
+                  title={navIsCollapsed ? "Open nav" : "Collapse nav"}
+                  onClick={() => {
+                    setNavCollapsed((prev) => !prev);
+                    setMobileNavOpen(false);
+                  }}
+                  aria-label={navIsCollapsed ? "Open navigation" : "Collapse navigation"}
+                  aria-pressed={!navIsCollapsed}
+                >
+                  <span className="nav-toggle-icon" aria-hidden="true" />
+                  <span className="nav-label nav-toggle-text">
+                    {navIsCollapsed ? "Open nav" : "Collapse nav"}
+                  </span>
+                </button>
               ) : null}
             </div>
           </nav>
+          {renderNavDockControls()}
           {user && (
             <div className="profile-actions">
               <button
@@ -2176,20 +2266,23 @@ export default function App() {
         </aside>
 
         <main id="main-content" className="main" tabIndex={-1}>
-          <div className="nav-toggle-row">
-            <button
-              type="button"
-              className="mobile-nav"
-              onClick={() => setMobileNavOpen((prev) => !prev)}
-              aria-expanded={mobileNavOpen}
-              aria-controls="portal-sidebar-nav"
-              aria-label={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"}
-              title={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"}
-              aria-pressed={mobileNavOpen}
-            >
-              <span className="mobile-nav-icon" aria-hidden="true" />
-              Menu
-            </button>
+          <div className={`nav-toggle-row ${navDock === "top" ? "dock-top-row" : ""}`.trim()}>
+            {navDock !== "top" ? (
+              <button
+                type="button"
+                className="mobile-nav"
+                onClick={() => setMobileNavOpen((prev) => !prev)}
+                aria-expanded={mobileNavOpen}
+                aria-controls="portal-sidebar-nav"
+                aria-label={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"}
+                title={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"}
+                aria-pressed={mobileNavOpen}
+              >
+                <span className="mobile-nav-icon" aria-hidden="true" />
+                Menu
+              </button>
+            ) : null}
+            {renderNavDockControls("nav-dock-controls-inline")}
           </div>
 
           {!authReady && (
@@ -2211,6 +2304,11 @@ export default function App() {
               {motionAutoReduced && themeName === "memoria" ? (
                 <div className="notice motion-notice">
                   Enhanced motion was disabled for performance. You can re-enable it in Profile.
+                </div>
+              ) : null}
+              {legacyRouteNotice ? (
+                <div className="notice motion-notice" role="status" aria-live="polite">
+                  {legacyRouteNotice}
                 </div>
               ) : null}
               {bootstrapWarning ? (

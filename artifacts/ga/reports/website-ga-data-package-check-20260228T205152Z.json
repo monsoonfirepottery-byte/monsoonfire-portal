@@ -1,0 +1,57 @@
+{
+  "generatedAtUtc": "2026-02-28T20:51:52.909Z",
+  "baselineDir": "/home/wuff/monsoonfire-portal/artifacts/ga/baseline/2026-02-28",
+  "baselineSnapshot": "2026-02-28",
+  "status": "ok",
+  "exports": [
+    {
+      "name": "top-acquisition-channels.csv",
+      "present": true,
+      "notes": "ok"
+    },
+    {
+      "name": "landing-pages.csv",
+      "present": true,
+      "notes": "ok"
+    },
+    {
+      "name": "path-to-conversion.csv",
+      "present": true,
+      "notes": "ok"
+    },
+    {
+      "name": "event-audit.csv",
+      "present": true,
+      "notes": "ok"
+    },
+    {
+      "name": "goal-table.csv",
+      "present": true,
+      "notes": "ok"
+    },
+    {
+      "name": "analyst-note.md",
+      "present": true,
+      "notes": "ok"
+    }
+  ],
+  "metadataChecks": [
+    {
+      "key": "Retrieval date (UTC)",
+      "ok": true
+    },
+    {
+      "key": "GA property",
+      "ok": true
+    },
+    {
+      "key": "Export owner",
+      "ok": true
+    },
+    {
+      "key": "Date windows exported",
+      "ok": true
+    }
+  ],
+  "missing": []
+}

@@ -687,6 +687,7 @@ export default function ProfileView({
                 disabled={themeSaving}
               >
                 <option value="portal">Monsoon Fire (default)</option>
+                <option value="mono">Mono (high-contrast black/white)</option>
                 <option value="memoria">Memoria design system</option>
               </select>
               <span className="profile-help">

@@ -10,13 +10,31 @@ export const V1_RESERVATION_EXPORT_CONTINUITY_FN = "apiV1/v1/reservations.export
 export const V1_LIBRARY_ITEMS_LIST_FN = "apiV1/v1/library.items.list";
 export const V1_LIBRARY_ITEMS_GET_FN = "apiV1/v1/library.items.get";
 export const V1_LIBRARY_DISCOVERY_GET_FN = "apiV1/v1/library.discovery.get";
+export const V1_LIBRARY_EXTERNAL_LOOKUP_FN = "apiV1/v1/library.externalLookup";
+export const V1_LIBRARY_EXTERNAL_LOOKUP_PROVIDER_CONFIG_GET_FN =
+  "apiV1/v1/library.externalLookup.providerConfig.get";
+export const V1_LIBRARY_EXTERNAL_LOOKUP_PROVIDER_CONFIG_SET_FN =
+  "apiV1/v1/library.externalLookup.providerConfig.set";
+export const V1_LIBRARY_ROLLOUT_CONFIG_GET_FN = "apiV1/v1/library.rollout.get";
+export const V1_LIBRARY_ROLLOUT_CONFIG_SET_FN = "apiV1/v1/library.rollout.set";
+export const V1_LIBRARY_RECOMMENDATIONS_LIST_FN = "apiV1/v1/library.recommendations.list";
+export const V1_LIBRARY_RECOMMENDATIONS_CREATE_FN = "apiV1/v1/library.recommendations.create";
+export const V1_LIBRARY_RECOMMENDATIONS_FEEDBACK_SUBMIT_FN =
+  "apiV1/v1/library.recommendations.feedback.submit";
 export const V1_LIBRARY_ITEMS_IMPORT_ISBNS_FN = "apiV1/v1/library.items.importIsbns";
 export const V1_LIBRARY_RATINGS_UPSERT_FN = "apiV1/v1/library.ratings.upsert";
 export const V1_LIBRARY_REVIEWS_CREATE_FN = "apiV1/v1/library.reviews.create";
+export const V1_LIBRARY_REVIEWS_UPDATE_FN = "apiV1/v1/library.reviews.update";
+export const V1_LIBRARY_TAG_SUBMISSIONS_CREATE_FN = "apiV1/v1/library.tags.submissions.create";
+export const V1_LIBRARY_TAG_SUBMISSIONS_APPROVE_FN = "apiV1/v1/library.tags.submissions.approve";
+export const V1_LIBRARY_TAGS_MERGE_FN = "apiV1/v1/library.tags.merge";
 export const V1_LIBRARY_READING_STATUS_UPSERT_FN = "apiV1/v1/library.readingStatus.upsert";
 export const V1_LIBRARY_LOANS_CHECKOUT_FN = "apiV1/v1/library.loans.checkout";
 export const V1_LIBRARY_LOANS_CHECKIN_FN = "apiV1/v1/library.loans.checkIn";
 export const V1_LIBRARY_LOANS_LIST_MINE_FN = "apiV1/v1/library.loans.listMine";
+export const V1_LIBRARY_LOANS_MARK_LOST_FN = "apiV1/v1/library.loans.markLost";
+export const V1_LIBRARY_LOANS_ASSESS_REPLACEMENT_FEE_FN = "apiV1/v1/library.loans.assessReplacementFee";
+export const V1_LIBRARY_ITEMS_OVERRIDE_STATUS_FN = "apiV1/v1/library.items.overrideStatus";
 export const LEGACY_RESERVATION_COMPAT_REVIEW_DATE = "2026-05-15";
 export const LEGACY_RESERVATION_COMPAT_SUNSET_NOT_BEFORE = "2026-06-30";
 export type IntakeMode = "SHELF_PURCHASE" | "WHOLE_KILN" | "COMMUNITY_SHELF";
@@ -37,19 +55,38 @@ export type PortalFnName =
   | typeof V1_LIBRARY_ITEMS_LIST_FN
   | typeof V1_LIBRARY_ITEMS_GET_FN
   | typeof V1_LIBRARY_DISCOVERY_GET_FN
+  | typeof V1_LIBRARY_EXTERNAL_LOOKUP_FN
+  | typeof V1_LIBRARY_EXTERNAL_LOOKUP_PROVIDER_CONFIG_GET_FN
+  | typeof V1_LIBRARY_EXTERNAL_LOOKUP_PROVIDER_CONFIG_SET_FN
+  | typeof V1_LIBRARY_ROLLOUT_CONFIG_GET_FN
+  | typeof V1_LIBRARY_ROLLOUT_CONFIG_SET_FN
+  | typeof V1_LIBRARY_RECOMMENDATIONS_LIST_FN
+  | typeof V1_LIBRARY_RECOMMENDATIONS_CREATE_FN
+  | typeof V1_LIBRARY_RECOMMENDATIONS_FEEDBACK_SUBMIT_FN
   | typeof V1_LIBRARY_ITEMS_IMPORT_ISBNS_FN
   | typeof V1_LIBRARY_RATINGS_UPSERT_FN
   | typeof V1_LIBRARY_REVIEWS_CREATE_FN
+  | typeof V1_LIBRARY_REVIEWS_UPDATE_FN
+  | typeof V1_LIBRARY_TAG_SUBMISSIONS_CREATE_FN
+  | typeof V1_LIBRARY_TAG_SUBMISSIONS_APPROVE_FN
+  | typeof V1_LIBRARY_TAGS_MERGE_FN
   | typeof V1_LIBRARY_READING_STATUS_UPSERT_FN
   | typeof V1_LIBRARY_LOANS_CHECKOUT_FN
   | typeof V1_LIBRARY_LOANS_CHECKIN_FN
   | typeof V1_LIBRARY_LOANS_LIST_MINE_FN
+  | typeof V1_LIBRARY_LOANS_MARK_LOST_FN
+  | typeof V1_LIBRARY_LOANS_ASSESS_REPLACEMENT_FEE_FN
+  | typeof V1_LIBRARY_ITEMS_OVERRIDE_STATUS_FN
   | "listMaterialsProducts"
   | "createMaterialsCheckoutSession"
   | "seedMaterialsCatalog"
   | "listEvents"
+  | "listIndustryEvents"
   | "listEventSignups"
   | "getEvent"
+  | "getIndustryEvent"
+  | "upsertIndustryEvent"
+  | "runIndustryEventsFreshnessNow"
   | "createEvent"
   | "publishEvent"
   | "signupForEvent"
@@ -411,6 +448,52 @@ export type ListEventsRequest = {
   includeCancelled?: boolean;
 };
 
+export type IndustryEventMode = "local" | "remote" | "hybrid";
+export type IndustryEventModeFilter = IndustryEventMode | "all";
+
+export type ListIndustryEventsRequest = {
+  mode?: IndustryEventModeFilter;
+  includePast?: boolean;
+  includeDrafts?: boolean;
+  includeCancelled?: boolean;
+  featuredOnly?: boolean;
+  limit?: number;
+};
+
+export type GetIndustryEventRequest = {
+  eventId: string;
+};
+
+export type UpsertIndustryEventRequest = {
+  eventId?: string | null;
+  title: string;
+  summary: string;
+  description?: string | null;
+  mode?: IndustryEventMode | null;
+  status?: IndustryEventStatus | null;
+  startAt?: string | null;
+  endAt?: string | null;
+  timezone?: string | null;
+  location?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  remoteUrl?: string | null;
+  registrationUrl?: string | null;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
+  featured?: boolean;
+  tags?: string[];
+  verifiedAt?: string | null;
+};
+
+export type RunIndustryEventsFreshnessNowRequest = {
+  dryRun?: boolean;
+  limit?: number;
+  staleReviewDays?: number;
+  retirePastHours?: number;
+};
+
 export type GetEventRequest = {
   eventId: string;
 };
@@ -486,6 +569,266 @@ export type CreateEventCheckoutSessionRequest = {
 export type ImportLibraryIsbnsRequest = {
   isbns: string[];
   source?: "csv" | "manual" | "donation" | (string & {});
+};
+
+export type LibraryRecommendationFeedbackKind = "helpful" | "not_helpful";
+export type LibraryCatalogAvailabilityFilter =
+  | "available"
+  | "checked_out"
+  | "overdue"
+  | "lost"
+  | "unavailable"
+  | "archived";
+export type LibraryItemsSort =
+  | "highest_rated"
+  | "most_borrowed"
+  | "recently_added"
+  | "recently_reviewed"
+  | "staff_picks";
+
+export type LibraryItemContract = {
+  id?: string;
+  title?: string | null;
+  subtitle?: string | null;
+  authors?: string[] | null;
+  description?: string | null;
+  publisher?: string | null;
+  publishedDate?: string | null;
+  pageCount?: number | null;
+  subjects?: string[] | null;
+  mediaType?: string | null;
+  format?: string | null;
+  coverUrl?: string | null;
+  identifiers?: {
+    isbn10?: string | null;
+    isbn13?: string | null;
+    olid?: string | null;
+    googleVolumeId?: string | null;
+  } | null;
+  totalCopies?: number | null;
+  availableCopies?: number | null;
+  status?: string | null;
+  source?: string | null;
+  searchTokens?: string[] | null;
+  techniques?: string[] | null;
+  releaseYear?: number | null;
+  primaryGenre?: string | null;
+  genre?: string | null;
+  studioCategory?: string | null;
+  aggregateRating?: number | null;
+  aggregateRatingCount?: number | null;
+  borrowCount?: number | null;
+  lastReviewedAtIso?: string | null;
+  curation?: {
+    staffPick?: boolean | null;
+    staffRationale?: string | null;
+    shelf?: string | null;
+    shelfRank?: number | null;
+    retrospectiveNote?: string | null;
+    featuredUntilIso?: string | null;
+  } | null;
+  lifecycle?: {
+    queueDepth?: number | null;
+    queueMessage?: string | null;
+    waitlistCount?: number | null;
+    nextAvailableIso?: string | null;
+    etaDays?: number | null;
+    renewable?: boolean | null;
+    renewalPolicyNote?: string | null;
+    notifyEnabledByDefault?: boolean | null;
+  } | null;
+  reviewSummary?: {
+    reviewCount?: number | null;
+    averagePracticality?: number | null;
+    topDifficulty?: "beginner" | "intermediate" | "advanced" | "all-levels" | null | string;
+    topBestFor?: string | null;
+    reflectionsCount?: number | null;
+    latestReflection?: string | null;
+  } | null;
+  relatedWorkshops?: Array<{
+    id?: string | null;
+    title?: string | null;
+    url?: string | null;
+    scheduleLabel?: string | null;
+    status?: string | null;
+  }> | null;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  [key: string]: unknown;
+};
+
+export type LibraryItemsListRequest = {
+  q?: string | null;
+  mediaType?: string[];
+  genre?: string | null;
+  studioCategory?: string[];
+  availability?: LibraryCatalogAvailabilityFilter | null;
+  ratingMin?: number;
+  ratingMax?: number;
+  sort?: LibraryItemsSort;
+  page?: number;
+  pageSize?: number;
+};
+
+export type LibraryItemsGetRequest = {
+  itemId: string;
+};
+
+export type LibraryDiscoveryGetRequest = {
+  limit?: number;
+};
+
+export type LibraryExternalLookupRequest = {
+  q: string;
+  limit?: number;
+};
+
+export type LibraryExternalLookupSource = {
+  provider: "openlibrary" | "googlebooks" | (string & {});
+  ok: boolean;
+  itemCount: number;
+  cached: boolean;
+  disabled?: boolean;
+};
+
+export type LibraryExternalLookupResult = {
+  title: string;
+  subtitle?: string | null;
+  author?: string | null;
+  authors?: string[] | null;
+  description?: string | null;
+  publisher?: string | null;
+  publishedDate?: string | null;
+  coverUrl?: string | null;
+  format?: string | null;
+  source?: string | null;
+  sourceLabel?: string | null;
+  sourceId?: string | null;
+  sourceUrl?: string | null;
+  publicLibraryUrl?: string | null;
+  summary?: string | null;
+  publishedYear?: number | null;
+  isbn10?: string | null;
+  isbn13?: string | null;
+  identifiers?: {
+    isbn10?: string | null;
+    isbn13?: string | null;
+    olid?: string | null;
+    googleVolumeId?: string | null;
+  } | null;
+};
+
+export type LibraryRecommendationContract = {
+  id?: string;
+  itemId?: string | null;
+  title?: string | null;
+  author?: string | null;
+  isbn?: string | null;
+  rationale?: string | null;
+  reason?: string | null;
+  tags?: string[];
+  linkUrl?: string | null;
+  coverUrl?: string | null;
+  sourceLabel?: string | null;
+  sourceUrl?: string | null;
+  techniques?: string[] | null;
+  studioRelevance?: string[] | null;
+  intentContext?: string | null;
+  moderationStatus?: "pending_review" | "approved" | "rejected" | "hidden" | (string & {});
+  recommenderUid?: string | null;
+  recommenderName?: string | null;
+  recommendedByUid?: string | null;
+  recommendedByName?: string | null;
+  viewerFeedback?: LibraryRecommendationFeedbackKind | null;
+  isMine?: boolean;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  createdAtIso?: string | null;
+  updatedAtIso?: string | null;
+  helpfulCount?: number | null;
+  feedbackCount?: number | null;
+};
+
+export type LibraryRecommendationsListRequest = {
+  itemId?: string | null;
+  status?: "pending_review" | "approved" | "rejected" | "hidden" | null;
+  sort?: "newest" | "helpful";
+  limit?: number;
+};
+
+export type LibraryRecommendationsCreateRequest = {
+  itemId?: string | null;
+  title?: string | null;
+  author?: string | null;
+  isbn?: string | null;
+  rationale: string;
+  tags?: string[];
+  linkUrl?: string | null;
+  coverUrl?: string | null;
+  sourceLabel?: string | null;
+  sourceUrl?: string | null;
+  techniques?: string[];
+  studioRelevance?: string[];
+  intentContext?: string | null;
+};
+
+export type LibraryRecommendationsFeedbackSubmitRequest = {
+  recommendationId: string;
+  helpful?: boolean;
+  comment?: string | null;
+};
+
+export type LibraryExternalLookupProviderConfigSetRequest = {
+  openlibraryEnabled?: boolean;
+  googlebooksEnabled?: boolean;
+  note?: string | null;
+};
+
+export type LibraryRolloutPhase =
+  | "phase_1_read_only"
+  | "phase_2_member_writes"
+  | "phase_3_admin_full";
+
+export type LibraryRolloutConfigGetRequest = Record<string, never>;
+
+export type LibraryRolloutConfigSetRequest = {
+  phase: LibraryRolloutPhase;
+  note?: string | null;
+};
+
+export type LibraryTagSubmissionCreateRequest = {
+  itemId: string;
+  tag: string;
+};
+
+export type LibraryTagSubmissionApproveRequest = {
+  submissionId: string;
+  canonicalTagId?: string | null;
+  canonicalTagName?: string | null;
+};
+
+export type LibraryTagMergeRequest = {
+  sourceTagId: string;
+  targetTagId: string;
+  note?: string | null;
+};
+
+export type LibraryLoanMarkLostRequest = {
+  loanId: string;
+  note?: string | null;
+};
+
+export type LibraryLoanAssessReplacementFeeRequest = {
+  loanId: string;
+  amountCents?: number | null;
+  note?: string | null;
+  confirm: boolean;
+};
+
+export type LibraryItemOverrideStatusRequest = {
+  itemId: string;
+  status: "available" | "checked_out" | "overdue" | "lost" | "unavailable" | "archived";
+  note?: string | null;
 };
 
 export type RegisterDeviceTokenRequest = {
@@ -617,6 +960,41 @@ export type EventSummary = {
   remainingCapacity?: number | null;
 };
 
+export type IndustryEventStatus = "draft" | "published" | "cancelled" | (string & {});
+
+export type IndustryEventSummary = {
+  id: string;
+  title: string;
+  summary: string;
+  description?: string;
+  mode: IndustryEventMode;
+  status: IndustryEventStatus;
+  startAt?: string | null;
+  endAt?: string | null;
+  timezone?: string | null;
+  location?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  remoteUrl?: string | null;
+  registrationUrl?: string | null;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
+  featured: boolean;
+  tags?: string[];
+  verifiedAt?: string | null;
+  freshnessState?: string | null;
+  needsReview?: boolean;
+  reviewByAt?: string | null;
+  freshnessCheckedAt?: string | null;
+  retiredAt?: string | null;
+  retiredReason?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export type IndustryEventDetail = IndustryEventSummary;
+
 export type EventDetail = {
   id: string;
   title: string;
@@ -662,6 +1040,10 @@ export type ListEventsResponse = PortalApiOkEnvelope & {
   events: EventSummary[];
 };
 
+export type ListIndustryEventsResponse = PortalApiOkEnvelope & {
+  events: IndustryEventSummary[];
+};
+
 export type ListEventSignupsResponse = PortalApiOkEnvelope & {
   signups: EventSignupRosterEntry[];
 };
@@ -669,6 +1051,29 @@ export type ListEventSignupsResponse = PortalApiOkEnvelope & {
 export type GetEventResponse = PortalApiOkEnvelope & {
   event: EventDetail;
   signup?: EventSignupSummary | null;
+};
+
+export type GetIndustryEventResponse = PortalApiOkEnvelope & {
+  event: IndustryEventDetail;
+};
+
+export type UpsertIndustryEventResponse = PortalApiOkEnvelope & {
+  eventId: string;
+  created: boolean;
+  event: IndustryEventDetail;
+};
+
+export type RunIndustryEventsFreshnessNowResponse = PortalApiOkEnvelope & {
+  result: {
+    dryRun: boolean;
+    source: "manual" | "scheduled";
+    scanned: number;
+    updated: number;
+    retired: number;
+    staleReview: number;
+    fresh: number;
+    nonPublished: number;
+  };
 };
 
 export type CreateEventResponse = PortalApiOkEnvelope & {
@@ -706,6 +1111,195 @@ export type ImportLibraryIsbnsResponse = PortalApiOkEnvelope & {
   created: number;
   updated: number;
   errors?: Array<{ isbn: string; message: string }>;
+};
+
+export type LibraryItemsListResponse = PortalApiOkEnvelope & {
+  items?: LibraryItemContract[];
+  page?: number;
+  pageSize?: number;
+  total?: number;
+  sort?: LibraryItemsSort | string | null;
+  data?: {
+    items?: LibraryItemContract[];
+    page?: number;
+    pageSize?: number;
+    total?: number;
+    sort?: LibraryItemsSort | string | null;
+  };
+};
+
+export type LibraryItemsGetResponse = PortalApiOkEnvelope & {
+  item?: LibraryItemContract | null;
+  data?: {
+    item?: LibraryItemContract | null;
+  };
+};
+
+export type LibraryDiscoveryGetResponse = PortalApiOkEnvelope & {
+  limit?: number;
+  staffPicks?: LibraryItemContract[];
+  mostBorrowed?: LibraryItemContract[];
+  recentlyAdded?: LibraryItemContract[];
+  recentlyReviewed?: LibraryItemContract[];
+  data?: {
+    limit?: number;
+    staffPicks?: LibraryItemContract[];
+    mostBorrowed?: LibraryItemContract[];
+    recentlyAdded?: LibraryItemContract[];
+    recentlyReviewed?: LibraryItemContract[];
+  };
+};
+
+export type LibraryExternalLookupResponse = PortalApiOkEnvelope & {
+  q?: string | null;
+  limit?: number;
+  items?: LibraryExternalLookupResult[];
+  cacheHit?: boolean;
+  degraded?: boolean;
+  policyLimited?: boolean;
+  providers?: LibraryExternalLookupSource[];
+  data?: {
+    q?: string | null;
+    limit?: number;
+    items?: LibraryExternalLookupResult[];
+    cacheHit?: boolean;
+    degraded?: boolean;
+    policyLimited?: boolean;
+    providers?: LibraryExternalLookupSource[];
+  };
+};
+
+export type LibraryExternalLookupProviderConfigResponse = PortalApiOkEnvelope & {
+  data?: {
+    openlibraryEnabled?: boolean;
+    googlebooksEnabled?: boolean;
+    disabledProviders?: string[];
+    note?: string | null;
+    updatedAtMs?: number;
+    updatedByUid?: string | null;
+  };
+};
+
+export type LibraryRolloutConfigResponse = PortalApiOkEnvelope & {
+  data?: {
+    phase?: LibraryRolloutPhase | null;
+    memberWritesEnabled?: boolean;
+    note?: string | null;
+    updatedAtMs?: number;
+    updatedByUid?: string | null;
+  };
+};
+
+export type LibraryRecommendationsListResponse = PortalApiOkEnvelope & {
+  data?: {
+    recommendations?: LibraryRecommendationContract[];
+    itemId?: string | null;
+    status?: string | null;
+    sort?: string | null;
+    limit?: number;
+  };
+};
+
+export type LibraryRecommendationsCreateResponse = PortalApiOkEnvelope & {
+  data?: {
+    recommendation?: LibraryRecommendationContract | null;
+  };
+};
+
+export type LibraryRecommendationsFeedbackSubmitResponse = PortalApiOkEnvelope & {
+  data?: {
+    feedback?: {
+      id?: string;
+      recommendationId?: string | null;
+      helpful?: boolean;
+      comment?: string | null;
+      moderationStatus?: string | null;
+      reviewerUid?: string | null;
+      createdAt?: unknown;
+      updatedAt?: unknown;
+    } | null;
+    recommendation?: {
+      id?: string;
+      helpfulCount?: number | null;
+      feedbackCount?: number | null;
+    } | null;
+  };
+};
+
+export type LibraryTagSubmissionCreateResponse = PortalApiOkEnvelope & {
+  data?: {
+    submission?: {
+      id?: string;
+      itemId?: string;
+      tag?: string;
+      normalizedTag?: string;
+      status?: string;
+    } | null;
+  };
+};
+
+export type LibraryTagSubmissionApproveResponse = PortalApiOkEnvelope & {
+  data?: {
+    submission?: {
+      id?: string;
+      itemId?: string;
+      status?: string;
+      canonicalTagId?: string;
+      canonicalTag?: string;
+    } | null;
+    tag?: {
+      id?: string;
+      name?: string;
+      normalizedTag?: string;
+    } | null;
+  };
+};
+
+export type LibraryTagMergeResponse = PortalApiOkEnvelope & {
+  data?: {
+    sourceTagId?: string;
+    targetTagId?: string;
+    migratedItemTags?: number;
+    retargetedSubmissions?: number;
+  };
+};
+
+export type LibraryLoanMarkLostResponse = PortalApiOkEnvelope & {
+  data?: {
+    loan?: {
+      id?: string;
+      status?: string;
+      idempotentReplay?: boolean;
+      replacementValueCents?: number;
+    } | null;
+    item?: {
+      itemId?: string;
+      status?: string;
+    } | null;
+  };
+};
+
+export type LibraryLoanAssessReplacementFeeResponse = PortalApiOkEnvelope & {
+  data?: {
+    fee?: {
+      id?: string;
+      loanId?: string;
+      itemId?: string;
+      amountCents?: number;
+      status?: string;
+      idempotentReplay?: boolean;
+    } | null;
+  };
+};
+
+export type LibraryItemOverrideStatusResponse = PortalApiOkEnvelope & {
+  data?: {
+    item?: {
+      id?: string;
+      status?: string;
+      availableCopies?: number;
+    } | null;
+  };
 };
 
 export type RegisterDeviceTokenResponse = PortalApiOkEnvelope & {

@@ -29,10 +29,18 @@ import type {
   SeedMaterialsCatalogResponse as ContractsSeedMaterialsCatalogResponse,
   ListEventsRequest as ContractsListEventsRequest,
   ListEventsResponse as ContractsListEventsResponse,
+  ListIndustryEventsRequest as ContractsListIndustryEventsRequest,
+  ListIndustryEventsResponse as ContractsListIndustryEventsResponse,
   ListEventSignupsRequest as ContractsListEventSignupsRequest,
   ListEventSignupsResponse as ContractsListEventSignupsResponse,
   GetEventRequest as ContractsGetEventRequest,
   GetEventResponse as ContractsGetEventResponse,
+  GetIndustryEventRequest as ContractsGetIndustryEventRequest,
+  GetIndustryEventResponse as ContractsGetIndustryEventResponse,
+  UpsertIndustryEventRequest as ContractsUpsertIndustryEventRequest,
+  UpsertIndustryEventResponse as ContractsUpsertIndustryEventResponse,
+  RunIndustryEventsFreshnessNowRequest as ContractsRunIndustryEventsFreshnessNowRequest,
+  RunIndustryEventsFreshnessNowResponse as ContractsRunIndustryEventsFreshnessNowResponse,
   CreateEventRequest as ContractsCreateEventRequest,
   CreateEventResponse as ContractsCreateEventResponse,
   PublishEventRequest as ContractsPublishEventRequest,
@@ -50,12 +58,29 @@ import type {
   ListBillingSummaryRequest as ContractsListBillingSummaryRequest,
   BillingReceipt as ContractsBillingReceipt,
   BillingSummaryResponse as ContractsBillingSummaryResponse,
+  LibraryItemsListRequest as ContractsLibraryItemsListRequest,
+  LibraryItemsListResponse as ContractsLibraryItemsListResponse,
+  LibraryItemsGetRequest as ContractsLibraryItemsGetRequest,
+  LibraryItemsGetResponse as ContractsLibraryItemsGetResponse,
+  LibraryDiscoveryGetRequest as ContractsLibraryDiscoveryGetRequest,
+  LibraryDiscoveryGetResponse as ContractsLibraryDiscoveryGetResponse,
+  LibraryExternalLookupRequest as ContractsLibraryExternalLookupRequest,
+  LibraryExternalLookupResponse as ContractsLibraryExternalLookupResponse,
+  LibraryRolloutConfigGetRequest as ContractsLibraryRolloutConfigGetRequest,
+  LibraryRolloutConfigSetRequest as ContractsLibraryRolloutConfigSetRequest,
+  LibraryRolloutConfigResponse as ContractsLibraryRolloutConfigResponse,
   PortalApiMeta,
   PortalFnName,
 } from "./portalContracts";
 import {
   getErrorCode,
   getErrorMessage,
+  V1_LIBRARY_DISCOVERY_GET_FN,
+  V1_LIBRARY_EXTERNAL_LOOKUP_FN,
+  V1_LIBRARY_ITEMS_GET_FN,
+  V1_LIBRARY_ITEMS_LIST_FN,
+  V1_LIBRARY_ROLLOUT_CONFIG_GET_FN,
+  V1_LIBRARY_ROLLOUT_CONFIG_SET_FN,
   V1_RESERVATION_ASSIGN_STATION_FN,
   V1_RESERVATION_CREATE_FN,
   V1_RESERVATION_PICKUP_WINDOW_FN,
@@ -107,10 +132,18 @@ export type SeedMaterialsCatalogResponse = ContractsSeedMaterialsCatalogResponse
 
 export type ListEventsRequest = ContractsListEventsRequest;
 export type ListEventsResponse = ContractsListEventsResponse;
+export type ListIndustryEventsRequest = ContractsListIndustryEventsRequest;
+export type ListIndustryEventsResponse = ContractsListIndustryEventsResponse;
 export type ListEventSignupsRequest = ContractsListEventSignupsRequest;
 export type ListEventSignupsResponse = ContractsListEventSignupsResponse;
 export type GetEventRequest = ContractsGetEventRequest;
 export type GetEventResponse = ContractsGetEventResponse;
+export type GetIndustryEventRequest = ContractsGetIndustryEventRequest;
+export type GetIndustryEventResponse = ContractsGetIndustryEventResponse;
+export type UpsertIndustryEventRequest = ContractsUpsertIndustryEventRequest;
+export type UpsertIndustryEventResponse = ContractsUpsertIndustryEventResponse;
+export type RunIndustryEventsFreshnessNowRequest = ContractsRunIndustryEventsFreshnessNowRequest;
+export type RunIndustryEventsFreshnessNowResponse = ContractsRunIndustryEventsFreshnessNowResponse;
 export type CreateEventRequest = ContractsCreateEventRequest;
 export type CreateEventResponse = ContractsCreateEventResponse;
 export type PublishEventRequest = ContractsPublishEventRequest;
@@ -128,12 +161,24 @@ export type CreateEventCheckoutSessionResponse = ContractsCreateEventCheckoutSes
 export type ListBillingSummaryRequest = ContractsListBillingSummaryRequest;
 export type BillingReceipt = ContractsBillingReceipt;
 export type BillingSummaryResponse = ContractsBillingSummaryResponse;
+export type LibraryItemsListRequest = ContractsLibraryItemsListRequest;
+export type LibraryItemsListResponse = ContractsLibraryItemsListResponse;
+export type LibraryItemsGetRequest = ContractsLibraryItemsGetRequest;
+export type LibraryItemsGetResponse = ContractsLibraryItemsGetResponse;
+export type LibraryDiscoveryGetRequest = ContractsLibraryDiscoveryGetRequest;
+export type LibraryDiscoveryGetResponse = ContractsLibraryDiscoveryGetResponse;
+export type LibraryExternalLookupRequest = ContractsLibraryExternalLookupRequest;
+export type LibraryExternalLookupResponse = ContractsLibraryExternalLookupResponse;
+export type LibraryRolloutConfigGetRequest = ContractsLibraryRolloutConfigGetRequest;
+export type LibraryRolloutConfigSetRequest = ContractsLibraryRolloutConfigSetRequest;
+export type LibraryRolloutConfigResponse = ContractsLibraryRolloutConfigResponse;
 
 type PortalApiCallArgs<TReq> = {
   idToken: string;
   adminToken?: string;
   payload: TReq;
   requestTimeoutMs?: number;
+  signal?: AbortSignal;
 };
 
 type PortalApiCallResult<TResp> = {
@@ -181,6 +226,22 @@ export type PortalApi = {
   continueJourney(
     args: PortalApiCallArgs<ContinueJourneyRequest>
   ): Promise<PortalApiCallResult<ContinueJourneyResponse>>;
+  listLibraryItems(
+    args: PortalApiCallArgs<LibraryItemsListRequest>
+  ): Promise<PortalApiCallResult<LibraryItemsListResponse>>;
+  getLibraryItem(args: PortalApiCallArgs<LibraryItemsGetRequest>): Promise<PortalApiCallResult<LibraryItemsGetResponse>>;
+  getLibraryDiscovery(
+    args: PortalApiCallArgs<LibraryDiscoveryGetRequest>
+  ): Promise<PortalApiCallResult<LibraryDiscoveryGetResponse>>;
+  externalLookupLibrary(
+    args: PortalApiCallArgs<LibraryExternalLookupRequest>
+  ): Promise<PortalApiCallResult<LibraryExternalLookupResponse>>;
+  getLibraryRolloutConfig(
+    args: PortalApiCallArgs<LibraryRolloutConfigGetRequest>
+  ): Promise<PortalApiCallResult<LibraryRolloutConfigResponse>>;
+  setLibraryRolloutConfig(
+    args: PortalApiCallArgs<LibraryRolloutConfigSetRequest>
+  ): Promise<PortalApiCallResult<LibraryRolloutConfigResponse>>;
   listMaterialsProducts(
     args: PortalApiCallArgs<ListMaterialsProductsRequest>
   ): Promise<PortalApiCallResult<ListMaterialsProductsResponse>>;
@@ -191,8 +252,20 @@ export type PortalApi = {
     args: PortalApiCallArgs<SeedMaterialsCatalogRequest>
   ): Promise<PortalApiCallResult<SeedMaterialsCatalogResponse>>;
   listEvents(args: PortalApiCallArgs<ListEventsRequest>): Promise<PortalApiCallResult<ListEventsResponse>>;
+  listIndustryEvents(
+    args: PortalApiCallArgs<ListIndustryEventsRequest>
+  ): Promise<PortalApiCallResult<ListIndustryEventsResponse>>;
   listEventSignups(args: PortalApiCallArgs<ListEventSignupsRequest>): Promise<PortalApiCallResult<ListEventSignupsResponse>>;
   getEvent(args: PortalApiCallArgs<GetEventRequest>): Promise<PortalApiCallResult<GetEventResponse>>;
+  getIndustryEvent(
+    args: PortalApiCallArgs<GetIndustryEventRequest>
+  ): Promise<PortalApiCallResult<GetIndustryEventResponse>>;
+  upsertIndustryEvent(
+    args: PortalApiCallArgs<UpsertIndustryEventRequest>
+  ): Promise<PortalApiCallResult<UpsertIndustryEventResponse>>;
+  runIndustryEventsFreshnessNow(
+    args: PortalApiCallArgs<RunIndustryEventsFreshnessNowRequest>
+  ): Promise<PortalApiCallResult<RunIndustryEventsFreshnessNowResponse>>;
   listBillingSummary(
     args: PortalApiCallArgs<ListBillingSummaryRequest>
   ): Promise<PortalApiCallResult<BillingSummaryResponse>>;
@@ -227,6 +300,12 @@ const RESERVATION_ASSIGN_STATION_FN = V1_RESERVATION_ASSIGN_STATION_FN;
 const RESERVATION_PICKUP_WINDOW_FN = V1_RESERVATION_PICKUP_WINDOW_FN;
 const RESERVATION_QUEUE_FAIRNESS_FN = V1_RESERVATION_QUEUE_FAIRNESS_FN;
 const RESERVATION_EXPORT_CONTINUITY_FN = V1_RESERVATION_EXPORT_CONTINUITY_FN;
+const LIBRARY_ITEMS_LIST_FN = V1_LIBRARY_ITEMS_LIST_FN;
+const LIBRARY_ITEMS_GET_FN = V1_LIBRARY_ITEMS_GET_FN;
+const LIBRARY_DISCOVERY_GET_FN = V1_LIBRARY_DISCOVERY_GET_FN;
+const LIBRARY_EXTERNAL_LOOKUP_FN = V1_LIBRARY_EXTERNAL_LOOKUP_FN;
+const LIBRARY_ROLLOUT_CONFIG_GET_FN = V1_LIBRARY_ROLLOUT_CONFIG_GET_FN;
+const LIBRARY_ROLLOUT_CONFIG_SET_FN = V1_LIBRARY_ROLLOUT_CONFIG_SET_FN;
 // Back-compat aliases for older callers.
 // Compatibility review date: 2026-05-15. Do not sunset before: 2026-06-30.
 const LEGACY_RESERVATION_FN_PATHS: Partial<Record<PortalFnName, string>> = {
@@ -310,17 +389,20 @@ async function callFn<TReq, TResp>(
   args: PortalApiCallArgs<TReq>
 ): Promise<PortalApiCallResult<TResp>> {
   const route = LEGACY_RESERVATION_FN_PATHS[fn] ?? fn;
-  const actionKey = makePortalActionKey(route, args.payload ?? {});
-  const existingInFlight = portalInFlightByAction.get(actionKey) as
-    | Promise<PortalApiCallResult<TResp>>
-    | undefined;
-  if (existingInFlight) {
-    return existingInFlight;
+  const actionKey = args.signal ? null : makePortalActionKey(route, args.payload ?? {});
+  if (actionKey) {
+    const existingInFlight = portalInFlightByAction.get(actionKey) as
+      | Promise<PortalApiCallResult<TResp>>
+      | undefined;
+    if (existingInFlight) {
+      return existingInFlight;
+    }
   }
 
   const run = async (): Promise<PortalApiCallResult<TResp>> => {
     const url = `${baseUrl.replace(/\/$/, "")}/${route}`;
     const requestId = makeRequestId();
+    const startedAtMs = Date.now();
     const retryGuardKey = makePortalRetryKey(route);
     const tokenSignature = makeTokenSignature(args.idToken);
 
@@ -374,6 +456,7 @@ async function callFn<TReq, TResp>(
           : {}),
         status: 401,
         ok: false,
+        durationMs: Math.max(0, Date.now() - startedAtMs),
         error: `${appError.userMessage} (support code: ${appError.correlationId})`,
         curl: metaSuppressed.curlExample,
       });
@@ -384,6 +467,7 @@ async function callFn<TReq, TResp>(
     let body: unknown = null;
     let didTimeout = false;
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    let handleCallerAbort: (() => void) | null = null;
     const requestTimeoutMs = args.requestTimeoutMs ?? 10_000;
 
     try {
@@ -392,6 +476,14 @@ async function callFn<TReq, TResp>(
         didTimeout = true;
         abortController.abort("request-timeout");
       }, requestTimeoutMs);
+      handleCallerAbort = () => {
+        abortController.abort("request-cancelled");
+      };
+      if (args.signal?.aborted) {
+        handleCallerAbort();
+      } else if (args.signal) {
+        args.signal.addEventListener("abort", handleCallerAbort, { once: true });
+      }
 
       resp = await fetch(url, {
         method: "POST",
@@ -404,6 +496,7 @@ async function callFn<TReq, TResp>(
         signal: abortController.signal,
       });
       clearTimeout(timeoutHandle);
+      timeoutHandle = null;
 
       body = await readResponseBody(resp);
       const responseSnippet = stringifyResponseSnippet(body);
@@ -450,6 +543,7 @@ async function callFn<TReq, TResp>(
             : {}),
           status: resp.status,
           ok: false,
+          durationMs: Math.max(0, Date.now() - startedAtMs),
           responseSnippet,
           error: `${appError.userMessage} (support code: ${appError.correlationId})`,
           curl: enriched.curlExample,
@@ -471,6 +565,7 @@ async function callFn<TReq, TResp>(
         payload: redactTelemetryPayload(args.payload),
         status: resp.status,
         ok: true,
+        durationMs: Math.max(0, Date.now() - startedAtMs),
         responseSnippet,
         curl: metaDone.curlExample,
       });
@@ -478,6 +573,9 @@ async function callFn<TReq, TResp>(
     } catch (error: unknown) {
       if (error instanceof PortalApiError) throw error;
       if (timeoutHandle) clearTimeout(timeoutHandle);
+      if (error instanceof Error && error.name === "AbortError" && !didTimeout && args.signal?.aborted) {
+        throw error;
+      }
 
       const msg = didTimeout
         ? `Request timeout after ${requestTimeoutMs}ms`
@@ -517,20 +615,29 @@ async function callFn<TReq, TResp>(
           : {}),
         status: resp?.status,
         ok: false,
+        durationMs: Math.max(0, Date.now() - startedAtMs),
         responseSnippet: stringifyResponseSnippet(body),
         error: `${appError.userMessage} (support code: ${appError.correlationId})`,
         curl: metaFail.curlExample,
       });
       throw new PortalApiError(appError.userMessage, metaFail, appError);
+    } finally {
+      if (args.signal && handleCallerAbort) {
+        args.signal.removeEventListener("abort", handleCallerAbort);
+      }
     }
   };
 
   const runPromise = run();
-  portalInFlightByAction.set(actionKey, runPromise as Promise<unknown>);
+  if (actionKey) {
+    portalInFlightByAction.set(actionKey, runPromise as Promise<unknown>);
+  }
   try {
     return await runPromise;
   } finally {
-    portalInFlightByAction.delete(actionKey);
+    if (actionKey) {
+      portalInFlightByAction.delete(actionKey);
+    }
   }
 }
 
@@ -614,6 +721,54 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
       });
     },
 
+    async listLibraryItems(args) {
+      return await callFn<LibraryItemsListRequest, LibraryItemsListResponse>(
+        baseUrl,
+        LIBRARY_ITEMS_LIST_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async getLibraryItem(args) {
+      return await callFn<LibraryItemsGetRequest, LibraryItemsGetResponse>(
+        baseUrl,
+        LIBRARY_ITEMS_GET_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async getLibraryDiscovery(args) {
+      return await callFn<LibraryDiscoveryGetRequest, LibraryDiscoveryGetResponse>(
+        baseUrl,
+        LIBRARY_DISCOVERY_GET_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async externalLookupLibrary(args) {
+      return await callFn<LibraryExternalLookupRequest, LibraryExternalLookupResponse>(
+        baseUrl,
+        LIBRARY_EXTERNAL_LOOKUP_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async getLibraryRolloutConfig(args) {
+      return await callFn<LibraryRolloutConfigGetRequest, LibraryRolloutConfigResponse>(
+        baseUrl,
+        LIBRARY_ROLLOUT_CONFIG_GET_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async setLibraryRolloutConfig(args) {
+      return await callFn<LibraryRolloutConfigSetRequest, LibraryRolloutConfigResponse>(
+        baseUrl,
+        LIBRARY_ROLLOUT_CONFIG_SET_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
     async listMaterialsProducts(args) {
       return await callFn<ListMaterialsProductsRequest, ListMaterialsProductsResponse>(
         baseUrl,
@@ -645,6 +800,17 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
       });
     },
 
+    async listIndustryEvents(args) {
+      return await callFn<ListIndustryEventsRequest, ListIndustryEventsResponse>(
+        baseUrl,
+        "listIndustryEvents",
+        {
+          ...args,
+          requestTimeoutMs,
+        }
+      );
+    },
+
     async listEventSignups(args) {
       return await callFn<ListEventSignupsRequest, ListEventSignupsResponse>(baseUrl, "listEventSignups", {
         ...args,
@@ -666,6 +832,39 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
         ...args,
         requestTimeoutMs,
       });
+    },
+
+    async getIndustryEvent(args) {
+      return await callFn<GetIndustryEventRequest, GetIndustryEventResponse>(
+        baseUrl,
+        "getIndustryEvent",
+        {
+          ...args,
+          requestTimeoutMs,
+        }
+      );
+    },
+
+    async upsertIndustryEvent(args) {
+      return await callFn<UpsertIndustryEventRequest, UpsertIndustryEventResponse>(
+        baseUrl,
+        "upsertIndustryEvent",
+        {
+          ...args,
+          requestTimeoutMs,
+        }
+      );
+    },
+
+    async runIndustryEventsFreshnessNow(args) {
+      return await callFn<RunIndustryEventsFreshnessNowRequest, RunIndustryEventsFreshnessNowResponse>(
+        baseUrl,
+        "runIndustryEventsFreshnessNow",
+        {
+          ...args,
+          requestTimeoutMs,
+        }
+      );
     },
 
     async createEvent(args) {

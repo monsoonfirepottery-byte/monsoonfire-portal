@@ -44,6 +44,9 @@ npm run qa:preflight:performance
 - If quick load fails with a pure saturation signature (rate-limit dominated, no server/network errors), it retries once after cooldown.
 - Writes summary artifact: `output/qa/performance-preflight.json`.
 
+Secrets note:
+- Load `secrets/portal/portal-automation.env` before running deploy/promotion-related checks; this file now includes `PORTAL_FIREBASE_API_KEY` as a populated local baseline entry.
+
 ## Reproduce reliably
 
 ### Load lane

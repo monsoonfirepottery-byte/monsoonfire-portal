@@ -7,8 +7,11 @@ import type {
   EventSignupSummary,
   EventSummary,
   GetEventResponse,
+  IndustryEventSummary,
+  ListIndustryEventsResponse,
   ListEventSignupsResponse,
   ListEventsResponse,
+  RunIndustryEventsFreshnessNowResponse,
   SignupForEventResponse,
   CancelEventSignupResponse,
   ClaimEventOfferResponse,
@@ -18,6 +21,11 @@ import type {
 import { createFunctionsClient } from "../api/functionsClient";
 import { db } from "../firebase";
 import { track } from "../lib/analytics";
+import {
+  filterIndustryEvents as filterIndustryBrowseEvents,
+  industryEventLocationLabel,
+  industryEventModeLabel,
+} from "../lib/industryEvents";
 import { formatCents, formatDateTime } from "../utils/format";
 import { checkoutErrorMessage, requestErrorMessage } from "../utils/userFacingErrors";
 import { toVoidHandler } from "../utils/toVoidHandler";
@@ -80,6 +88,19 @@ const BUDDY_MODES = [
     label: "Circle",
     copy: "I can bring a small learning circle (2-4 people).",
   },
+] as const;
+
+const INDUSTRY_MODE_OPTIONS = [
+  { key: "all", label: "All industry events" },
+  { key: "local", label: "Local" },
+  { key: "remote", label: "Remote" },
+  { key: "hybrid", label: "Hybrid" },
+] as const;
+
+const INDUSTRY_STATUS_OPTIONS = [
+  { key: "draft", label: "Draft" },
+  { key: "published", label: "Published" },
+  { key: "cancelled", label: "Cancelled" },
 ] as const;
 
 const TECHNIQUE_TAXONOMY = [
@@ -150,6 +171,31 @@ type RequestSchedule = (typeof SCHEDULE_OPTIONS)[number]["key"];
 type MemberSchedule = (typeof MEMBER_SCHEDULE_OPTIONS)[number]["key"];
 type BuddyMode = (typeof BUDDY_MODES)[number]["key"];
 type TechniqueId = (typeof TECHNIQUE_TAXONOMY)[number]["id"];
+type IndustryModeFilter = (typeof INDUSTRY_MODE_OPTIONS)[number]["key"];
+type IndustryStatus = (typeof INDUSTRY_STATUS_OPTIONS)[number]["key"];
+
+type IndustryEventDraft = {
+  eventId: string | null;
+  title: string;
+  summary: string;
+  description: string;
+  mode: Exclude<IndustryModeFilter, "all">;
+  status: IndustryStatus;
+  startAtLocal: string;
+  endAtLocal: string;
+  timezone: string;
+  location: string;
+  city: string;
+  region: string;
+  country: string;
+  remoteUrl: string;
+  registrationUrl: string;
+  sourceName: string;
+  sourceUrl: string;
+  featured: boolean;
+  tagsCsv: string;
+  verifiedAtLocal: string;
+};
 
 type RosterCounts = {
   total: number;
@@ -275,6 +321,60 @@ function requestStatusTone(status: WorkshopRequestLifecycleStatus): "accent" | "
 
 function dedupe<T>(items: T[]): T[] {
   return Array.from(new Set(items));
+}
+
+function isoToLocalInput(value?: string | null): string {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  const pad = (num: number) => String(num).padStart(2, "0");
+  return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}T${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
+}
+
+function localInputToIso(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
+function normalizeIndustryStatus(value: unknown): IndustryStatus {
+  if (value === "draft" || value === "published" || value === "cancelled") return value;
+  return "draft";
+}
+
+function toIndustryEventDraft(event?: IndustryEventSummary | null): IndustryEventDraft {
+  return {
+    eventId: event?.id ?? null,
+    title: event?.title ?? "",
+    summary: event?.summary ?? "",
+    description: event?.description ?? "",
+    mode: event?.mode ?? "local",
+    status: normalizeIndustryStatus(event?.status),
+    startAtLocal: isoToLocalInput(event?.startAt),
+    endAtLocal: isoToLocalInput(event?.endAt),
+    timezone: event?.timezone ?? "America/Phoenix",
+    location: event?.location ?? "",
+    city: event?.city ?? "",
+    region: event?.region ?? "",
+    country: event?.country ?? "US",
+    remoteUrl: event?.remoteUrl ?? "",
+    registrationUrl: event?.registrationUrl ?? "",
+    sourceName: event?.sourceName ?? "",
+    sourceUrl: event?.sourceUrl ?? "",
+    featured: event?.featured === true,
+    tagsCsv: event?.tags?.join(", ") ?? "",
+    verifiedAtLocal: isoToLocalInput(event?.verifiedAt),
+  };
+}
+
+function updateIndustryDraftField<K extends keyof IndustryEventDraft>(
+  draft: IndustryEventDraft,
+  field: K,
+  value: IndustryEventDraft[K]
+): IndustryEventDraft {
+  return { ...draft, [field]: value };
 }
 
 function sanitizeWorkshopCurationConfig(raw?: Partial<WorkshopCurationConfig> | null): WorkshopCurationConfig {
@@ -570,6 +670,17 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError, setEventsError] = useState("");
+  const [industryEvents, setIndustryEvents] = useState<IndustryEventSummary[]>([]);
+  const [industryEventsLoading, setIndustryEventsLoading] = useState(false);
+  const [industryEventsError, setIndustryEventsError] = useState("");
+  const [industrySearch, setIndustrySearch] = useState("");
+  const [industryModeFilter, setIndustryModeFilter] = useState<IndustryModeFilter>("all");
+  const [industryEditorId, setIndustryEditorId] = useState<string>("new");
+  const [industryDraft, setIndustryDraft] = useState<IndustryEventDraft>(() => toIndustryEventDraft());
+  const [industryEditorBusy, setIndustryEditorBusy] = useState(false);
+  const [industryEditorStatus, setIndustryEditorStatus] = useState("");
+  const [industrySweepBusy, setIndustrySweepBusy] = useState(false);
+  const [industrySweepStatus, setIndustrySweepStatus] = useState("");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<EventDetail | null>(null);
@@ -672,6 +783,43 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       );
     });
   }, [events, search]);
+
+  const industryModeCounts = useMemo(() => {
+    const counts: Record<IndustryModeFilter, number> = {
+      all: 0,
+      local: 0,
+      remote: 0,
+      hybrid: 0,
+    };
+    industryEvents.forEach((event) => {
+      counts.all += 1;
+      if (event.mode === "local" || event.mode === "remote" || event.mode === "hybrid") {
+        counts[event.mode] += 1;
+      }
+    });
+    return counts;
+  }, [industryEvents]);
+
+  const industryNeedsReviewCount = useMemo(
+    () => industryEvents.filter((event) => event.needsReview === true).length,
+    [industryEvents]
+  );
+
+  const filteredIndustryEvents = useMemo(() => {
+    return filterIndustryBrowseEvents(industryEvents, {
+      mode: industryModeFilter,
+      search: industrySearch,
+    });
+  }, [industryEvents, industryModeFilter, industrySearch]);
+
+  const featuredIndustryEvents = useMemo(
+    () => filteredIndustryEvents.filter((event) => event.featured).slice(0, 3),
+    [filteredIndustryEvents]
+  );
+
+  const curationIndustryEvents = useMemo(() => {
+    return [...industryEvents].sort((left, right) => left.title.localeCompare(right.title));
+  }, [industryEvents]);
 
   const selectedSummary = useMemo(
     () => events.find((event) => event.id === selectedId) || null,
@@ -1181,6 +1329,26 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     }
   }, [client, hasAdmin, includeDrafts, includeCancelled]);
 
+  const loadIndustryEvents = useCallback(async () => {
+    setIndustryEventsLoading(true);
+    setIndustryEventsError("");
+
+    try {
+      const resp = await client.postJson<ListIndustryEventsResponse>("listIndustryEvents", {
+        mode: "all",
+        includePast: false,
+        includeDrafts: hasAdmin ? true : false,
+        includeCancelled: hasAdmin ? true : false,
+        limit: 120,
+      });
+      setIndustryEvents(resp.events ?? []);
+    } catch (error: unknown) {
+      setIndustryEventsError(getErrorMessage(error));
+    } finally {
+      setIndustryEventsLoading(false);
+    }
+  }, [client, hasAdmin]);
+
   const loadDetail = useCallback(async (eventId: string) => {
     setDetailLoading(true);
     setDetailError("");
@@ -1227,6 +1395,18 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
   }, [loadEvents]);
 
   useEffect(() => {
+    void loadIndustryEvents();
+  }, [loadIndustryEvents]);
+
+  useEffect(() => {
+    if (industryEditorId === "new") return;
+    const exists = curationIndustryEvents.some((event) => event.id === industryEditorId);
+    if (exists) return;
+    setIndustryEditorId("new");
+    setIndustryDraft(toIndustryEventDraft());
+  }, [curationIndustryEvents, industryEditorId]);
+
+  useEffect(() => {
     if (!selectedId) {
       setDetail(null);
       setSignup(null);
@@ -1250,16 +1430,17 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
 
   const refreshAll = useCallback(async () => {
     if (!selectedId) {
-      await loadEvents();
+      await Promise.all([loadEvents(), loadIndustryEvents()]);
       return;
     }
 
     await Promise.all([
       loadEvents(),
+      loadIndustryEvents(),
       loadDetail(selectedId),
       hasAdmin ? loadRoster(selectedId) : Promise.resolve(),
     ]);
-  }, [selectedId, hasAdmin, loadEvents, loadDetail, loadRoster]);
+  }, [selectedId, hasAdmin, loadEvents, loadIndustryEvents, loadDetail, loadRoster]);
 
   const recordDemandSignal = useCallback((signal: WorkshopDemandSignal) => {
     setDemandSignals((prev) => [signal, ...prev].slice(0, 160));
@@ -1761,6 +1942,144 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     );
   };
 
+  const handleIndustryEditorPick = useCallback(
+    (nextId: string) => {
+      setIndustryEditorId(nextId);
+      setIndustryEditorStatus("");
+      if (nextId === "new") {
+        setIndustryDraft(toIndustryEventDraft());
+        return;
+      }
+      const match = curationIndustryEvents.find((event) => event.id === nextId) ?? null;
+      setIndustryDraft(toIndustryEventDraft(match));
+    },
+    [curationIndustryEvents]
+  );
+
+  const handleIndustryDraftField = useCallback(
+    (field: keyof IndustryEventDraft, value: string | boolean | null) => {
+      setIndustryDraft((prev) => updateIndustryDraftField(prev, field, value));
+    },
+    []
+  );
+
+  const handleSaveIndustryEvent = useCallback(async () => {
+    if (!hasAdmin || industryEditorBusy) return;
+    const title = industryDraft.title.trim();
+    const summary = industryDraft.summary.trim();
+    if (!title || !summary) {
+      setIndustryEditorStatus("Title and summary are required.");
+      return;
+    }
+
+    const startAt = localInputToIso(industryDraft.startAtLocal);
+    const endAt = localInputToIso(industryDraft.endAtLocal);
+    if (startAt && endAt && new Date(startAt).getTime() >= new Date(endAt).getTime()) {
+      setIndustryEditorStatus("Start time must be before end time.");
+      return;
+    }
+
+    if (industryDraft.status === "published") {
+      if (!startAt) {
+        setIndustryEditorStatus("Published industry events require a start time.");
+        return;
+      }
+      const hasAnyLink =
+        industryDraft.registrationUrl.trim() ||
+        industryDraft.remoteUrl.trim() ||
+        industryDraft.sourceUrl.trim();
+      if (!hasAnyLink) {
+        setIndustryEditorStatus(
+          "Published industry events require registration URL, remote URL, or source URL."
+        );
+        return;
+      }
+    }
+
+    setIndustryEditorBusy(true);
+    setIndustryEditorStatus("");
+    try {
+      const payload = {
+        eventId: industryEditorId === "new" ? null : industryEditorId,
+        title,
+        summary,
+        description: industryDraft.description.trim() || null,
+        mode: industryDraft.mode,
+        status: industryDraft.status,
+        startAt,
+        endAt,
+        timezone: industryDraft.timezone.trim() || null,
+        location: industryDraft.location.trim() || null,
+        city: industryDraft.city.trim() || null,
+        region: industryDraft.region.trim() || null,
+        country: industryDraft.country.trim() || null,
+        remoteUrl: industryDraft.remoteUrl.trim() || null,
+        registrationUrl: industryDraft.registrationUrl.trim() || null,
+        sourceName: industryDraft.sourceName.trim() || null,
+        sourceUrl: industryDraft.sourceUrl.trim() || null,
+        featured: industryDraft.featured,
+        tags: dedupe(parseCsvList(industryDraft.tagsCsv)),
+        verifiedAt: localInputToIso(industryDraft.verifiedAtLocal),
+      };
+
+      const resp = await client.postJson<{
+        ok: true;
+        eventId: string;
+        created: boolean;
+        event: IndustryEventSummary;
+      }>("upsertIndustryEvent", payload);
+      setIndustryEditorId(resp.eventId);
+      setIndustryDraft(toIndustryEventDraft(resp.event));
+      await loadIndustryEvents();
+      setIndustryEditorStatus(resp.created ? "Industry event created." : "Industry event updated.");
+      track("industry_event_curated", {
+        eventId: resp.eventId,
+        status: payload.status,
+        mode: payload.mode,
+      });
+    } catch (error: unknown) {
+      setIndustryEditorStatus(requestErrorMessage(error));
+    } finally {
+      setIndustryEditorBusy(false);
+    }
+  }, [client, hasAdmin, industryDraft, industryEditorBusy, industryEditorId, loadIndustryEvents]);
+
+  const handleRunIndustryFreshnessSweep = useCallback(
+    async (dryRun: boolean) => {
+      if (!hasAdmin || industrySweepBusy) return;
+      setIndustrySweepBusy(true);
+      setIndustrySweepStatus("");
+      try {
+        const resp = await client.postJson<RunIndustryEventsFreshnessNowResponse>(
+          "runIndustryEventsFreshnessNow",
+          {
+            dryRun,
+            limit: 250,
+          }
+        );
+        const result = resp.result;
+        if (!dryRun) {
+          await loadIndustryEvents();
+        }
+        setIndustrySweepStatus(
+          `${dryRun ? "Dry run" : "Sweep"} complete: scanned ${result.scanned}, updated ${result.updated}, retired ${result.retired}, stale review ${result.staleReview}.`
+        );
+        track("industry_freshness_sweep_run", {
+          dryRun,
+          scanned: result.scanned,
+          updated: result.updated,
+          retired: result.retired,
+          staleReview: result.staleReview,
+        });
+      } catch (error: unknown) {
+        setIndustrySweepStatus(requestErrorMessage(error));
+      } finally {
+        setIndustrySweepBusy(false);
+      }
+    },
+    [client, hasAdmin, industrySweepBusy, loadIndustryEvents]
+  );
+
   const handleStaffCheckIn = async (signupId: string) => {
     if (!signupId || rosterBusyIds[signupId]) return;
 
@@ -1887,6 +2206,128 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
             </label>
           </div>
         ) : null}
+      </section>
+
+      <section className="card card-3d industry-events-card">
+        <div className="industry-events-head">
+          <div className="card-title">Industry events (local + remote)</div>
+          <p className="events-copy">
+            Track major ceramics gatherings, conventions, and regional opportunities without leaving the studio portal.
+          </p>
+        </div>
+        <div className="industry-events-toolbar">
+          <div className="events-search">
+            <label htmlFor="industry-events-search">Search industry events</label>
+            <input
+              id="industry-events-search"
+              type="text"
+              placeholder="NCECA, Phoenix convention, virtual summit..."
+              value={industrySearch}
+              onChange={(event) => setIndustrySearch(event.target.value)}
+            />
+          </div>
+          <div className="industry-mode-filters">
+            {INDUSTRY_MODE_OPTIONS.map((option) => (
+              <button
+                key={option.key}
+                className={`events-chip ${industryModeFilter === option.key ? "active" : ""}`}
+                onClick={() => setIndustryModeFilter(option.key)}
+              >
+                {option.label}
+                <span className="events-chip-count">{industryModeCounts[option.key]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {industryEventsLoading ? <div className="events-loading">Loading industry events...</div> : null}
+        {industryEventsError ? <div className="alert inline-alert">{industryEventsError}</div> : null}
+
+        {!industryEventsLoading && !industryEventsError && featuredIndustryEvents.length > 0 ? (
+          <div className="industry-featured-grid">
+            {featuredIndustryEvents.map((event) => {
+              const primaryLink = event.registrationUrl || event.remoteUrl || event.sourceUrl;
+              return (
+                <article key={`featured-${event.id}`} className="industry-featured-card">
+                  <div className="industry-event-title-row">
+                    <strong>{event.title}</strong>
+                    <span className="event-tag accent">Featured</span>
+                  </div>
+                  <div className="events-copy">{event.summary}</div>
+                  <div className="industry-event-meta">
+                    <span>{formatDateTime(event.startAt)}</span>
+                    <span>{industryEventModeLabel(event.mode)}</span>
+                    <span>{industryEventLocationLabel(event)}</span>
+                  </div>
+                  {primaryLink ? (
+                    <a
+                      className="btn btn-ghost btn-small"
+                      href={primaryLink}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open event
+                    </a>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        ) : null}
+
+        {!industryEventsLoading && filteredIndustryEvents.length === 0 ? (
+          <div className="events-empty">
+            No matching industry events right now. Try widening filters or check back after the next curation pass.
+          </div>
+        ) : null}
+
+        <div className="industry-events-list">
+          {filteredIndustryEvents.map((event) => {
+            const primaryLink = event.registrationUrl || event.remoteUrl || event.sourceUrl;
+            const sourceLink = event.sourceUrl && event.sourceUrl !== primaryLink ? event.sourceUrl : null;
+            return (
+              <article key={event.id} className="industry-event-card">
+                <div className="industry-event-title-row">
+                  <h3>{event.title}</h3>
+                  <span className={`event-tag mode-${event.mode}`}>{industryEventModeLabel(event.mode)}</span>
+                </div>
+                <p className="events-copy">{event.summary}</p>
+                <div className="industry-event-meta">
+                  <span>{formatDateTime(event.startAt)}</span>
+                  <span>{industryEventLocationLabel(event)}</span>
+                  <span>{event.sourceName || "Curated source"}</span>
+                </div>
+                <div className="event-tags">
+                  {event.featured ? <span className="event-tag accent">Featured</span> : null}
+                  <span className={`event-tag status-${event.status}`}>{event.status}</span>
+                  {hasAdmin && event.needsReview ? <span className="event-tag">Needs review</span> : null}
+                  {event.tags?.slice(0, 3).map((tag) => (
+                    <span key={`${event.id}-${tag}`} className="event-tag">
+                      {tag}
+                    </span>
+                  ))}
+                  {event.verifiedAt ? (
+                    <span className="event-tag">Verified {new Date(event.verifiedAt).toLocaleDateString()}</span>
+                  ) : null}
+                </div>
+                <div className="industry-event-actions">
+                  {primaryLink ? (
+                    <a className="btn btn-secondary btn-small" href={primaryLink} target="_blank" rel="noreferrer">
+                      Open event
+                    </a>
+                  ) : (
+                    <span className="events-copy">Link pending</span>
+                  )}
+                  {sourceLink ? (
+                    <a className="btn btn-ghost btn-small" href={sourceLink} target="_blank" rel="noreferrer">
+                      Source
+                    </a>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })}
+        </div>
       </section>
 
       <section className="card card-3d workshop-rails-card">
@@ -2507,6 +2948,261 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
 
           {hasAdmin ? (
             <>
+              <section className="staff-intel-panel">
+                <div className="section-title">Industry events curation</div>
+                <p className="events-copy">
+                  Create and update curated industry events that appear in the member local/remote feed.
+                </p>
+                <div className="staff-summary">
+                  <div>
+                    <span className="summary-label">Needs review</span>
+                    <span className="summary-value">{industryNeedsReviewCount}</span>
+                  </div>
+                  <div>
+                    <span className="summary-label">Total tracked</span>
+                    <span className="summary-value">{industryEvents.length}</span>
+                  </div>
+                </div>
+                <label className="workshop-request-field">
+                  Editing target
+                  <select
+                    value={industryEditorId}
+                    onChange={(event) => handleIndustryEditorPick(event.target.value)}
+                    disabled={industryEditorBusy}
+                  >
+                    <option value="new">New industry event</option>
+                    {curationIndustryEvents.map((event) => (
+                    <option key={`industry-edit-${event.id}`} value={event.id}>
+                        {event.title} ({event.status}
+                        {event.needsReview ? ", needs review" : ""})
+                    </option>
+                  ))}
+                </select>
+              </label>
+                <div className="workshop-request-grid">
+                  <label className="workshop-request-field">
+                    Title
+                    <input
+                      type="text"
+                      value={industryDraft.title}
+                      onChange={(event) => handleIndustryDraftField("title", event.target.value)}
+                      placeholder="NCECA Annual Conference"
+                    />
+                  </label>
+                  <label className="workshop-request-field">
+                    Summary
+                    <input
+                      type="text"
+                      value={industryDraft.summary}
+                      onChange={(event) => handleIndustryDraftField("summary", event.target.value)}
+                      placeholder="National ceramics gathering"
+                    />
+                  </label>
+                  <label className="workshop-request-field">
+                    Mode
+                    <select
+                      value={industryDraft.mode}
+                      onChange={(event) =>
+                        handleIndustryDraftField("mode", event.target.value as IndustryEventDraft["mode"])
+                      }
+                    >
+                      {INDUSTRY_MODE_OPTIONS.filter((option) => option.key !== "all").map((option) => (
+                        <option key={`industry-mode-${option.key}`} value={option.key}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="workshop-request-field">
+                    Status
+                    <select
+                      value={industryDraft.status}
+                      onChange={(event) =>
+                        handleIndustryDraftField("status", event.target.value as IndustryStatus)
+                      }
+                    >
+                      {INDUSTRY_STATUS_OPTIONS.map((option) => (
+                        <option key={`industry-status-${option.key}`} value={option.key}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="workshop-request-field">
+                    Starts (local)
+                    <input
+                      type="datetime-local"
+                      value={industryDraft.startAtLocal}
+                      onChange={(event) => handleIndustryDraftField("startAtLocal", event.target.value)}
+                    />
+                  </label>
+                  <label className="workshop-request-field">
+                    Ends (local)
+                    <input
+                      type="datetime-local"
+                      value={industryDraft.endAtLocal}
+                      onChange={(event) => handleIndustryDraftField("endAtLocal", event.target.value)}
+                    />
+                  </label>
+                  <label className="workshop-request-field">
+                    Timezone
+                    <input
+                      type="text"
+                      value={industryDraft.timezone}
+                      onChange={(event) => handleIndustryDraftField("timezone", event.target.value)}
+                      placeholder="America/Phoenix"
+                    />
+                  </label>
+                  <label className="workshop-request-field">
+                    Location
+                    <input
+                      type="text"
+                      value={industryDraft.location}
+                      onChange={(event) => handleIndustryDraftField("location", event.target.value)}
+                      placeholder="Convention center / city / region"
+                    />
+                  </label>
+                  <label className="workshop-request-field">
+                    City
+                    <input
+                      type="text"
+                      value={industryDraft.city}
+                      onChange={(event) => handleIndustryDraftField("city", event.target.value)}
+                    />
+                  </label>
+                  <label className="workshop-request-field">
+                    Region / state
+                    <input
+                      type="text"
+                      value={industryDraft.region}
+                      onChange={(event) => handleIndustryDraftField("region", event.target.value)}
+                    />
+                  </label>
+                  <label className="workshop-request-field">
+                    Country
+                    <input
+                      type="text"
+                      value={industryDraft.country}
+                      onChange={(event) => handleIndustryDraftField("country", event.target.value)}
+                    />
+                  </label>
+                  <label className="workshop-request-field">
+                    Tags (CSV)
+                    <input
+                      type="text"
+                      value={industryDraft.tagsCsv}
+                      onChange={(event) => handleIndustryDraftField("tagsCsv", event.target.value)}
+                      placeholder="conference, community, national"
+                    />
+                  </label>
+                </div>
+                <label className="workshop-request-field">
+                  Description
+                  <textarea
+                    rows={3}
+                    value={industryDraft.description}
+                    onChange={(event) => handleIndustryDraftField("description", event.target.value)}
+                    placeholder="Why this event matters to Monsoon Fire members."
+                  />
+                </label>
+                <div className="workshop-request-grid">
+                  <label className="workshop-request-field">
+                    Registration URL
+                    <input
+                      type="url"
+                      value={industryDraft.registrationUrl}
+                      onChange={(event) => handleIndustryDraftField("registrationUrl", event.target.value)}
+                      placeholder="https://..."
+                    />
+                  </label>
+                  <label className="workshop-request-field">
+                    Remote URL
+                    <input
+                      type="url"
+                      value={industryDraft.remoteUrl}
+                      onChange={(event) => handleIndustryDraftField("remoteUrl", event.target.value)}
+                      placeholder="https://..."
+                    />
+                  </label>
+                  <label className="workshop-request-field">
+                    Source name
+                    <input
+                      type="text"
+                      value={industryDraft.sourceName}
+                      onChange={(event) => handleIndustryDraftField("sourceName", event.target.value)}
+                      placeholder="NCECA"
+                    />
+                  </label>
+                  <label className="workshop-request-field">
+                    Source URL
+                    <input
+                      type="url"
+                      value={industryDraft.sourceUrl}
+                      onChange={(event) => handleIndustryDraftField("sourceUrl", event.target.value)}
+                      placeholder="https://..."
+                    />
+                  </label>
+                  <label className="workshop-request-field">
+                    Verified at (local)
+                    <input
+                      type="datetime-local"
+                      value={industryDraft.verifiedAtLocal}
+                      onChange={(event) => handleIndustryDraftField("verifiedAtLocal", event.target.value)}
+                    />
+                  </label>
+                  <label className="workshop-request-field industry-featured-toggle">
+                    Featured
+                    <input
+                      type="checkbox"
+                      checked={industryDraft.featured}
+                      onChange={(event) => handleIndustryDraftField("featured", event.target.checked)}
+                    />
+                  </label>
+                </div>
+                <div className="workshop-request-actions">
+                  <button
+                    className="btn btn-secondary"
+                    onClick={toVoidHandler(handleSaveIndustryEvent)}
+                    disabled={industryEditorBusy}
+                  >
+                    {industryEditorBusy ? "Saving..." : "Save industry event"}
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => handleIndustryEditorPick("new")}
+                    disabled={industryEditorBusy}
+                  >
+                    New blank draft
+                  </button>
+                  {industryEditorStatus ? (
+                    <span className="workshop-request-status" role="status" aria-live="polite">
+                      {industryEditorStatus}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="workshop-request-actions">
+                  <button
+                    className="btn btn-ghost"
+                    onClick={toVoidHandler(() => handleRunIndustryFreshnessSweep(true))}
+                    disabled={industrySweepBusy}
+                  >
+                    {industrySweepBusy ? "Running..." : "Dry run freshness sweep"}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={toVoidHandler(() => handleRunIndustryFreshnessSweep(false))}
+                    disabled={industrySweepBusy}
+                  >
+                    {industrySweepBusy ? "Running..." : "Run freshness sweep now"}
+                  </button>
+                  {industrySweepStatus ? (
+                    <span className="workshop-request-status" role="status" aria-live="polite">
+                      {industrySweepStatus}
+                    </span>
+                  ) : null}
+                </div>
+              </section>
+
               <div className="staff-summary">
                 <div>
                   <span className="summary-label">Roster</span>

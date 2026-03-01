@@ -24,7 +24,7 @@ The web client uses:
 - `VITE_FUNCTIONS_BASE_URL` when set
 - otherwise production base URL
 
-`Vite` loads env vars at process start, so restart `npm run dev` after changing it.
+`Vite` loads env vars at process start, so restart `npm --prefix web run dev` after changing it.
 
 ---
 

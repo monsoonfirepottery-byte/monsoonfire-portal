@@ -2595,7 +2595,13 @@ export const readyForPickup = onRequest({ region: REGION }, async (req, res) => 
 
 export { normalizeTimelineEventTypes } from "./normalizeTimelineEventTypes";
 export { createMaterialsCheckoutSession, listMaterialsProducts, seedMaterialsCatalog, stripeWebhook } from "./materials";
-export { importLibraryIsbns } from "./library";
+export {
+  importLibraryIsbns,
+  refreshLibraryIsbnMetadata,
+  runLibraryMetadataRefreshNow,
+  syncLibraryLoanOverdues,
+  runLibraryOverdueSyncNow,
+} from "./library";
 export const createReservation = legacyReservationCompatHandler("/v1/reservations.create");
 export const updateReservation = legacyReservationCompatHandler("/v1/reservations.update");
 export const assignReservationStation = legacyReservationCompatHandler("/v1/reservations.assignStation");
@@ -2616,8 +2622,12 @@ export {
 } from "./jukebox";
 export {
   listEvents,
+  listIndustryEvents,
   listEventSignups,
   getEvent,
+  getIndustryEvent,
+  upsertIndustryEvent,
+  runIndustryEventsFreshnessNow,
   createEvent,
   publishEvent,
   staffSetEventStatus,
@@ -2627,6 +2637,7 @@ export {
   checkInEvent,
   createEventCheckoutSession,
   eventStripeWebhook,
+  sweepIndustryEvents,
   sweepEventOffers,
 } from "./events";
 export { listBillingSummary } from "./billingSummary";

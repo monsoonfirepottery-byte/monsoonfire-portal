@@ -10,6 +10,7 @@ export type RequestTelemetry = {
   authFailureReason?: string;
   status?: number;
   ok?: boolean;
+  durationMs?: number;
   responseSnippet?: string;
   error?: string;
   curl?: string;
@@ -23,7 +24,9 @@ const SECRET_KEY_PATTERN =
   /(authorization|token|secret|password|cookie|api[-_]?key|private|session|email|uid|photo|notes)/i;
 
 let latestRequest: RequestTelemetry | null = null;
+const recentRequests: RequestTelemetry[] = [];
 const listeners = new Set<Listener>();
+const MAX_RECENT_REQUESTS = 400;
 
 function stringify(value: unknown): string {
   try {
@@ -64,8 +67,20 @@ export function getLatestRequestTelemetry(): RequestTelemetry | null {
   return latestRequest;
 }
 
+export function getRecentRequestTelemetry(limit = MAX_RECENT_REQUESTS): RequestTelemetry[] {
+  const capped = Math.max(1, Math.min(MAX_RECENT_REQUESTS, Math.round(limit || MAX_RECENT_REQUESTS)));
+  if (recentRequests.length <= capped) {
+    return [...recentRequests];
+  }
+  return recentRequests.slice(recentRequests.length - capped);
+}
+
 export function publishRequestTelemetry(entry: RequestTelemetry): void {
   latestRequest = entry;
+  recentRequests.push(entry);
+  if (recentRequests.length > MAX_RECENT_REQUESTS) {
+    recentRequests.splice(0, recentRequests.length - MAX_RECENT_REQUESTS);
+  }
   listeners.forEach((listener) => {
     listener(latestRequest);
   });

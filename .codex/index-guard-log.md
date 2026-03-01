@@ -64,3 +64,21 @@
 - Missing indexes:
 - None
 
+## 2026-03-01T17:23:16.048Z
+
+- Status: passed
+- Project: monsoonfire-portal
+- Required index count: 3
+- Missing index count: 0
+- Missing indexes:
+- None
+
+## 2026-03-01T17:25:26.085Z
+
+- Status: passed
+- Project: monsoonfire-portal
+- Required index count: 3
+- Missing index count: 0
+- Missing indexes:
+- None
+

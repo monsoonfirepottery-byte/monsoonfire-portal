@@ -32,9 +32,9 @@
 }
 
 .lending-hero-meta {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 12px;
 }
 
 .lending-hero-meta > div {
@@ -45,6 +45,43 @@
   border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--surface);
+}
+
+.lending-discovery {
+  display: grid;
+  gap: 16px;
+}
+
+.discovery-rail-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: lending-rise 360ms ease both;
+}
+
+.discovery-rail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.discovery-rail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.discovery-card {
+  border-style: dashed;
+  border-width: 1px;
+  transition: transform 170ms ease, box-shadow 170ms ease, border-color 170ms ease;
+}
+
+.discovery-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 18px rgba(10, 18, 28, 0.16);
+  border-color: rgba(85, 134, 206, 0.42);
 }
 
 .lending-search {
@@ -61,6 +98,88 @@
   align-items: flex-start;
 }
 
+.lending-search-controls {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.catalog-state-row {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.library-filter-inline {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.library-filter-inline input,
+.library-filter-inline select {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 9px 10px;
+  font-size: 13px;
+}
+
+.filter-panel-toggle {
+  display: none;
+}
+
+.library-filter-panel {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.library-filter-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.library-filter-group {
+  display: grid;
+  gap: 8px;
+}
+
+.library-filter-chip-grid {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.library-filter-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.library-filter-range {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.library-filter-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .lending-search input[type="search"] {
   border-radius: 14px;
   border: 1px solid var(--border);
@@ -68,6 +187,63 @@
   color: var(--text);
   padding: 10px 14px;
   font-size: 14px;
+}
+
+.external-fallback-panel {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.external-fallback-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.external-fallback-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.external-fallback-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.external-result-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
+.external-result-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.external-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.library-empty-state {
+  grid-column: 1 / -1;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  padding: 14px;
 }
 
 .library-grid {
@@ -84,6 +260,12 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  transition: transform 180ms ease, border-color 180ms ease;
+}
+
+.library-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(90, 139, 207, 0.38);
 }
 
 .library-card-header {
@@ -135,6 +317,230 @@
   margin: 0;
 }
 
+.library-card .library-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.library-signal-meta,
+.library-lifecycle-meta {
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 10px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.library-techniques {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.lending-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.lending-detail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.lending-detail-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.detail-action-bar {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  padding: 10px;
+}
+
+.detail-action-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.detail-action-note {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.lending-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.lending-detail-panel {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-advanced-metadata {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  padding: 8px 10px;
+}
+
+.detail-advanced-metadata summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 600;
+  list-style: none;
+}
+
+.detail-advanced-metadata summary::-webkit-details-marker {
+  display: none;
+}
+
+.detail-advanced-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.detail-advanced-grid > div {
+  display: grid;
+  gap: 4px;
+}
+
+.detail-techniques {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.related-workshops {
+  display: grid;
+  gap: 6px;
+}
+
+.related-workshop-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.related-workshop-link:hover {
+  border-color: rgba(82, 132, 207, 0.45);
+}
+
+.workshop-request-inline {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.workshop-request-inline label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.workshop-request-inline input,
+.workshop-request-inline select {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 9px 10px;
+  font-size: 13px;
+}
+
+.workshop-request-inline .span-2 {
+  grid-column: 1 / -1;
+}
+
+.reflection-list {
+  display: grid;
+  gap: 8px;
+}
+
+.reflection-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  background: var(--surface-2);
+}
+
+.reflection-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.reflection-card p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.quick-review-form {
+  display: grid;
+  gap: 8px;
+}
+
+.quick-review-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.quick-review-form input,
+.quick-review-form select {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 9px 10px;
+  font-size: 13px;
+}
+
+.quick-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.btn-small {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
 .lending-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -151,6 +557,110 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.lending-recommendations {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recommendation-composer {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.recommendation-composer label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.recommendation-composer input,
+.recommendation-composer textarea {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 9px 10px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.recommendation-composer textarea {
+  resize: vertical;
+}
+
+.recommendation-composer .span-2 {
+  grid-column: 1 / -1;
+}
+
+.recommendation-composer-actions {
+  grid-column: 1 / -1;
+}
+
+.recommendation-feed {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.recommendation-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.recommendation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.recommendation-link {
+  width: fit-content;
+}
+
+.recommendation-actions .btn.is-active {
+  border-color: rgba(85, 134, 206, 0.52);
+  background: rgba(85, 134, 206, 0.14);
+}
+
+.recommendation-feedback-note {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.recommendation-feedback-note input {
+  flex: 1;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.tag-suggestion-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.tag-suggestion-row input {
+  flex: 1;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 13px;
 }
 
 .donation-grid {
@@ -209,9 +719,139 @@
   resize: vertical;
 }
 
+@keyframes lending-rise {
+  from {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 @media (max-width: 900px) {
   .library-card-header {
     grid-template-columns: 1fr;
+  }
+
+  .lending-hero-meta {
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .workshop-request-inline {
+    grid-template-columns: 1fr;
+  }
+
+  .workshop-request-inline .span-2 {
+    grid-column: auto;
+  }
+
+  .recommendation-composer {
+    grid-template-columns: 1fr;
+  }
+
+  .recommendation-composer .span-2,
+  .recommendation-composer-actions {
+    grid-column: auto;
+  }
+
+  .filter-panel-toggle {
+    display: inline-flex;
+  }
+
+  .library-filter-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: min(92vw, 360px);
+    height: 100dvh;
+    border-radius: 0;
+    border-left: 1px solid var(--border);
+    border-right: 0;
+    border-top: 0;
+    border-bottom: 0;
+    z-index: 60;
+    transform: translateX(104%);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 200ms ease, opacity 200ms ease;
+    padding: 16px;
+    overflow-y: auto;
+    box-shadow: -18px 0 30px rgba(10, 18, 28, 0.3);
+  }
+
+  .library-filter-panel.is-open {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .library-filter-grid,
+  .library-filter-range {
+    grid-template-columns: 1fr;
+  }
+
+  .library-filter-actions {
+    position: sticky;
+    bottom: 0;
+    padding-top: 8px;
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0), var(--surface) 30%);
+  }
+
+  .detail-action-bar {
+    position: sticky;
+    bottom: 8px;
+    z-index: 8;
+    box-shadow: 0 12px 20px rgba(10, 18, 28, 0.2);
+  }
+}
+
+@media (max-width: 640px) {
+  .lending-library-page {
+    gap: 16px;
+  }
+
+  .lending-hero,
+  .lending-search,
+  .lending-donate,
+  .lending-recommendations,
+  .lending-admin,
+  .discovery-rail-card,
+  .lending-detail {
+    padding: 14px;
+  }
+
+  .lending-hero-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .library-grid,
+  .discovery-rail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .library-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .detail-action-main {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .detail-advanced-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .discovery-rail-card,
+  .library-card {
+    animation: none;
+    transition: none;
   }
 }
 
@@ -227,7 +867,12 @@ html[data-portal-theme="memoria"] .lending-library-page .lending-hero,
 html[data-portal-theme="memoria"] .lending-library-page .lending-search,
 html[data-portal-theme="memoria"] .lending-library-page .lending-panel,
 html[data-portal-theme="memoria"] .lending-library-page .lending-admin,
-html[data-portal-theme="memoria"] .lending-library-page .library-card {
+html[data-portal-theme="memoria"] .lending-library-page .library-card,
+html[data-portal-theme="memoria"] .lending-library-page .lending-donate,
+html[data-portal-theme="memoria"] .lending-library-page .lending-recommendations,
+html[data-portal-theme="memoria"] .lending-library-page .discovery-rail-card,
+html[data-portal-theme="memoria"] .lending-library-page .lending-detail,
+html[data-portal-theme="memoria"] .lending-library-page .lending-detail-panel {
   border-color: rgba(153, 174, 207, 0.36);
   background:
     linear-gradient(168deg, rgba(30, 42, 62, 0.9), rgba(20, 29, 44, 0.92)),
@@ -240,7 +885,18 @@ html[data-portal-theme="memoria"] .lending-library-page .library-cover,
 html[data-portal-theme="memoria"] .lending-library-page .donation-grid input,
 html[data-portal-theme="memoria"] .lending-library-page .csv-upload input[type="file"],
 html[data-portal-theme="memoria"] .lending-library-page .csv-input,
-html[data-portal-theme="memoria"] .lending-library-page .lending-search input[type="search"] {
+html[data-portal-theme="memoria"] .lending-library-page .lending-search input[type="search"],
+html[data-portal-theme="memoria"] .lending-library-page .workshop-request-inline input,
+html[data-portal-theme="memoria"] .lending-library-page .workshop-request-inline select,
+html[data-portal-theme="memoria"] .lending-library-page .quick-review-form input,
+html[data-portal-theme="memoria"] .lending-library-page .quick-review-form select,
+html[data-portal-theme="memoria"] .lending-library-page .recommendation-composer input,
+html[data-portal-theme="memoria"] .lending-library-page .recommendation-composer textarea,
+html[data-portal-theme="memoria"] .lending-library-page .related-workshop-link,
+html[data-portal-theme="memoria"] .lending-library-page .reflection-card,
+html[data-portal-theme="memoria"] .lending-library-page .external-fallback-panel,
+html[data-portal-theme="memoria"] .lending-library-page .external-result-card,
+html[data-portal-theme="memoria"] .lending-library-page .recommendation-card {
   border-color: rgba(154, 176, 212, 0.34);
   background: linear-gradient(170deg, rgba(34, 46, 67, 0.86), rgba(23, 33, 50, 0.9));
 }
@@ -251,6 +907,12 @@ html[data-portal-theme="memoria"] .lending-library-page .library-meta,
 html[data-portal-theme="memoria"] .lending-library-page .library-description,
 html[data-portal-theme="memoria"] .lending-library-page .summary-label,
 html[data-portal-theme="memoria"] .lending-library-page .csv-upload,
-html[data-portal-theme="memoria"] .lending-library-page .donation-grid label {
+html[data-portal-theme="memoria"] .lending-library-page .donation-grid label,
+html[data-portal-theme="memoria"] .lending-library-page .library-signal-meta,
+html[data-portal-theme="memoria"] .lending-library-page .library-lifecycle-meta,
+html[data-portal-theme="memoria"] .lending-library-page .reflection-title,
+html[data-portal-theme="memoria"] .lending-library-page .workshop-request-inline label,
+html[data-portal-theme="memoria"] .lending-library-page .quick-review-form label,
+html[data-portal-theme="memoria"] .lending-library-page .recommendation-composer label {
   color: rgba(223, 232, 247, 0.72);
 }

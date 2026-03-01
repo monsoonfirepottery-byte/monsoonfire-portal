@@ -1,11 +1,11 @@
 {
-  "generatedAtIso": "2026-03-01T01:30:24.542Z",
+  "generatedAtIso": "2026-03-01T17:25:26.126Z",
   "target": "namecheap-portal",
   "baseUrl": "https://portal.monsoonfire.com",
   "status": "passed",
   "strict": true,
   "git": {
-    "sha": "3cb498386d9bf3e05166dc57ca043138df33573c",
+    "sha": "687397ba972b291197ad08478f1a5518f06618d1",
     "branch": "main"
   },
   "artifacts": [
@@ -20,8 +20,8 @@
       "payload": {
         "status": "passed",
         "target": "namecheap-portal",
-        "requirePromotionGate": false,
-        "runAtIso": "2026-03-01T01:30:07.577Z",
+        "requirePromotionGate": true,
+        "runAtIso": "2026-03-01T17:24:21.749Z",
         "reportPath": "/home/wuff/monsoonfire-portal/output/qa/deploy-preflight.json",
         "checks": [
           {
@@ -56,7 +56,7 @@
             "label": "firebase web api key is configured or resolvable",
             "status": "passed",
             "required": true,
-            "detail": "Firebase web API key source: firebase-tools-apps:sdkconfig.",
+            "detail": "Firebase web API key source: env.",
             "hint": "Set VITE_FIREBASE_API_KEY, PORTAL_FIREBASE_API_KEY, or FIREBASE_WEB_API_KEY, or ensure firebase-tools access to apps:sdkconfig."
           },
           {
@@ -79,10 +79,52 @@
             "required": true,
             "detail": "/home/wuff/monsoonfire-portal/website/.well-known/assetlinks.json",
             "hint": "Restore required .well-known file before deploy."
+          },
+          {
+            "label": "promotion gate staff email is present",
+            "status": "passed",
+            "required": true,
+            "detail": "Staff email detected.",
+            "hint": "Set PORTAL_STAFF_EMAIL for authenticated canary."
+          },
+          {
+            "label": "promotion gate staff password is present",
+            "status": "passed",
+            "required": true,
+            "detail": "Staff password detected.",
+            "hint": "Set PORTAL_STAFF_PASSWORD for authenticated canary."
+          },
+          {
+            "label": "promotion gate Firestore Rules API token is present",
+            "status": "passed",
+            "required": true,
+            "detail": "FIREBASE_RULES_API_TOKEN detected.",
+            "hint": "Set FIREBASE_RULES_API_TOKEN for backend regression/rules checks."
+          },
+          {
+            "label": "promotion gate Firestore index deploy auth is configured",
+            "status": "passed",
+            "required": true,
+            "detail": "Index deploy auth detected via FIREBASE_TOKEN, GOOGLE_APPLICATION_CREDENTIALS, service-account JSON, or local Firebase CLI session.",
+            "hint": "Set FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL (recommended), FIREBASE_TOKEN, or ensure local Firebase CLI login before deploy."
+          },
+          {
+            "label": "agent staff credentials path exists",
+            "status": "passed",
+            "required": true,
+            "detail": "/home/wuff/monsoonfire-portal/secrets/portal/portal-agent-staff.json",
+            "hint": "Set PORTAL_AGENT_STAFF_CREDENTIALS to a readable JSON credentials file."
+          },
+          {
+            "label": "agent staff credential file content is valid",
+            "status": "passed",
+            "required": true,
+            "detail": "Credential payload is parseable and complete.",
+            "hint": "Credential file must contain refreshToken, uid, and email."
           }
         ],
         "totals": {
-          "checks": 8,
+          "checks": 14,
           "requiredFailures": 0,
           "optionalFailures": 0
         },
@@ -95,6 +137,575 @@
       "required": true,
       "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-cutover-verify.json",
       "relativePath": "output/qa/post-deploy-cutover-verify.json",
+      "exists": true,
+      "status": "passed",
+      "payload": {
+        "ok": true,
+        "portalUrl": "https://portal.monsoonfire.com",
+        "checks": [
+          {
+            "path": "https://portal.monsoonfire.com",
+            "status": 200,
+            "ok": true,
+            "bodySnippet": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <link rel=\"icon\" type=\"image/png\" href=\"/pwa-192.png\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <link rel=\"dns-prefetch\" href=\"//firestore.googleapis.com\" />\n    <link rel=\"dns-prefetch\" href=\"//identity...",
+            "bodyLength": 4784,
+            "cacheControl": "no-cache",
+            "error": ""
+          },
+          {
+            "path": "https://portal.monsoonfire.com/reservations",
+            "status": 200,
+            "ok": true,
+            "bodySnippet": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <link rel=\"icon\" type=\"image/png\" href=\"/pwa-192.png\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <link rel=\"dns-prefetch\" href=\"//firestore.googleapis.com\" />\n    <link rel=\"dns-prefetch\" href=\"//identity...",
+            "bodyLength": 4784,
+            "cacheControl": "no-cache",
+            "error": ""
+          },
+          {
+            "path": "https://portal.monsoonfire.com/.well-known/apple-app-site-association",
+            "status": 200,
+            "ok": true,
+            "bodySnippet": "{\n  \"applinks\": {\n    \"apps\": [],\n    \"details\": [\n      {\n        \"appID\": \"TEAMID.com.monsoonfire.portal.reference\",\n        \"paths\": [\n          \"/materials*\",\n          \"/events*\",\n          \"/kiln*\",\n          \"/pieces*\",\n          \"/notifications*\"\n        ]\n      }\n    ]\n  }\n}\n",
+            "bodyLength": 285,
+            "cacheControl": "",
+            "error": ""
+          }
+        ],
+        "summary": {
+          "ok": true,
+          "passed": [
+            "rootRoute",
+            "deepRoute",
+            "wellKnownRoute",
+            "asset/assets/index-66buFH56.js",
+            "asset/assets/vendor-DuPUYBON.js",
+            "asset/assets/vendor-react-DPkGgiPW.js",
+            "rootCache",
+            "deepCache"
+          ],
+          "warnings": [
+            "protected function check skipped (set --id-token <token> or PORTAL_CUTOVER_ID_TOKEN=<token> in env)"
+          ],
+          "failures": []
+        },
+        "deepPath": "/reservations",
+        "wellKnownPath": "/.well-known/apple-app-site-association",
+        "sampleAssets": [
+          "/assets/index-66buFH56.js",
+          "/assets/vendor-DuPUYBON.js",
+          "/assets/vendor-react-DPkGgiPW.js"
+        ],
+        "assetChecks": [
+          {
+            "path": "/assets/index-66buFH56.js",
+            "status": 200,
+            "cacheControl": "public, max-age=31536000, immutable",
+            "hasCacheHeader": true,
+            "ok": true
+          },
+          {
+            "path": "/assets/vendor-DuPUYBON.js",
+            "status": 200,
+            "cacheControl": "public, max-age=31536000, immutable",
+            "hasCacheHeader": true,
+            "ok": true
+          },
+          {
+            "path": "/assets/vendor-react-DPkGgiPW.js",
+            "status": 200,
+            "cacheControl": "public, max-age=31536000, immutable",
+            "hasCacheHeader": true,
+            "ok": true
+          }
+        ],
+        "protectedFunctionCheck": {
+          "required": false,
+          "attempted": false,
+          "endpoint": "https://us-central1-monsoonfire-portal.cloudfunctions.net/listMaterialsProducts",
+          "functionName": "listMaterialsProducts",
+          "requestBody": {
+            "includeInactive": false
+          },
+          "status": 0,
+          "ok": false,
+          "idTokenSource": "none",
+          "message": "",
+          "responseSnippet": ""
+        },
+        "reportPath": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-cutover-verify.json"
+      }
+    },
+    {
+      "id": "promotionGate",
+      "label": "Post-deploy promotion gate",
+      "required": true,
+      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-promotion-gate.json",
+      "relativePath": "output/qa/post-deploy-promotion-gate.json",
+      "exists": true,
+      "status": "passed",
+      "payload": {
+        "status": "passed",
+        "baseUrl": "https://portal.monsoonfire.com",
+        "startedAtIso": "2026-03-01T17:24:37.948Z",
+        "finishedAtIso": "2026-03-01T17:25:26.090Z",
+        "reportPath": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-promotion-gate.json",
+        "feedback": {
+          "enabled": false,
+          "loaded": false,
+          "profilePath": "",
+          "riskLevel": "unknown",
+          "applied": {
+            "includeThemeSweep": true,
+            "includeVirtualStaff": true,
+            "includeIndexDeploy": true,
+            "includeIndexGuard": true,
+            "softFailPermissionDenied": false
+          }
+        },
+        "warnings": [],
+        "steps": [
+          {
+            "label": "firestore indexes deploy",
+            "status": "passed",
+            "failureCategory": "",
+            "exitCode": 0,
+            "durationMs": 4128,
+            "command": "node ./scripts/firestore-indexes-deploy.mjs --project monsoonfire-portal --report output/qa/post-deploy-index-deploy.json --json",
+            "stdout": "{\n  \"status\": \"passed\",\n  \"projectId\": \"monsoonfire-portal\",\n  \"startedAtIso\": \"2026-03-01T17:24:37.977Z\",\n  \"finishedAtIso\": \"2026-03-01T17:24:42.067Z\",\n  \"reportPath\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-index-deploy.json\",\n  \"authSource\": \"firebase-cli-session\",\n  \"command\": \"npx firebase-tools deploy --only firestore:indexes --project monsoonfire-portal --non-interactive\",\n  \"exitCode\": 0,\n  \"stdout\": \"\\n=== Deploying to 'monsoonfire-portal'...\\n\\ni  deploying firestore\\ni  firestore: ensuring required API firestore.googleapis.com is enabled...\\ni  firestore: ensuring required API firestore.googleapis.com is enabled...\\ni  firestore: reading indexes from firestore.indexes.json...\\ni  cloud.firestore: checking firestore.rules for compilation errors...\\n✔  cloud.firestore: rules file firestore.rules compiled successfully\\ni  firestore: deploying indexes...\\n✔  firestore: deployed indexes in firestore.indexes.json successfully for default database\\n\\n✔  Deploy complete!\\n\\nProject Console: https://console.firebase.google.com/project/monsoonfire-portal/overview\\n\",\n  \"stderr\": \"\",\n  \"notes\": []\n}\n",
+            "stderr": ""
+          },
+          {
+            "label": "authenticated portal canary",
+            "status": "passed",
+            "failureCategory": "",
+            "exitCode": 0,
+            "durationMs": 40846,
+            "command": "node ./scripts/portal-authenticated-canary.mjs --base-url https://portal.monsoonfire.com --output-dir output/qa/post-deploy-canary --report output/qa/post-deploy-authenticated-canary.json --json",
+            "stdout": "{\n  \"status\": \"passed\",\n  \"baseUrl\": \"https://portal.monsoonfire.com\",\n  \"startedAtIso\": \"2026-03-01T17:24:42.385Z\",\n  \"finishedAtIso\": \"2026-03-01T17:25:22.911Z\",\n  \"reportPath\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-authenticated-canary.json\",\n  \"auth\": {\n    \"requireAuth\": true,\n    \"credentialSource\": \"PORTAL_STAFF_EMAIL / PORTAL_STAFF_PASSWORD\",\n    \"attemptedSources\": [],\n    \"warnings\": []\n  },\n  \"feedback\": {\n    \"enabled\": false,\n    \"loaded\": false,\n    \"profilePath\": \"\",\n    \"sourceRunCount\": 0,\n    \"agenticDirectiveCount\": 0,\n    \"myPiecesReadyTimeoutMs\": 18000,\n    \"myPiecesReloadRetryCount\": 1,\n    \"markReadRetryCount\": 1,\n    \"myPiecesEmptyStatePatterns\": []\n  },\n  \"checks\": [\n    {\n      \"label\": \"base URL reachable\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"authenticate staff account\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"navigation dock controls switch left/top/right\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"legacy requests deep links route to supported pages\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"dashboard piece click-through opens my pieces detail\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"notifications mark read gives user feedback\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"workshops page shows event feed content\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"messages page loads without index/precondition errors\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"ware check-in page loads without check-in/index errors\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"ware check-in optional sections stay collapsed by default and preserve values\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"advanced diagnostics panel renders\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"theme contrast sweep (light)\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"theme contrast sweep (dark)\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"theme contrast sweep (mono)\",\n      \"status\": \"passed\"\n    }\n  ],\n  \"errors\": [],\n  \"warnings\": [],\n  \"screenshots\": [\n    {\n      \"label\": \"home\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-01-home.png\"\n    },\n    {\n      \"label\": \"authenticated dashboard\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02-authenticated-dashboard.png\"\n    },\n    {\n      \"label\": \"nav dock left\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02f-nav-dock-left.png\"\n    },\n    {\n      \"label\": \"nav dock top\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02g-nav-dock-top.png\"\n    },\n    {\n      \"label\": \"nav dock right\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02h-nav-dock-right.png\"\n    },\n    {\n      \"label\": \"legacy requests support fallback\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02b-legacy-requests-support.png\"\n    },\n    {\n      \"label\": \"legacy requests lending fallback\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02c-legacy-requests-lending.png\"\n    },\n    {\n      \"label\": \"legacy requests workshops fallback\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02d-legacy-requests-workshops.png\"\n    },\n    {\n      \"label\": \"legacy requests hash-route fallback\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02e-legacy-requests-hash-workshops.png\"\n    },\n    {\n      \"label\": \"my pieces detail\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-03-my-pieces-detail.png\"\n    },\n    {\n      \"label\": \"notifications\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-04-notifications.png\"\n    },\n    {\n      \"label\": \"workshops seeded\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-04b-workshops-seeded.png\"\n    },\n    {\n      \"label\": \"messages\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-05-messages.png\"\n    },\n    {\n      \"label\": \"ware check-in\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-06-ware-checkin.png\"\n    },\n    {\n      \"label\": \"ware check-in optional sections\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-06b-ware-checkin-optional-sections.png\"\n    },\n    {\n      \"label\": \"advanced diagnostics\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-07-advanced-diagnostics.png\"\n    },\n    {\n      \"label\": \"light Dashboard\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-light-dashboard.png\"\n    },\n    {\n      \"label\": \"light Notifications\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-light-notifications.png\"\n    },\n    {\n      \"label\": \"light Messages\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-light-messages.png\"\n    },\n    {\n      \"label\": \"light Ware Check-in\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-light-ware-check-in.png\"\n    },\n    {\n      \"label\": \"dark Dashboard\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-dark-dashboard.png\"\n    },\n    {\n      \"label\": \"dark Notifications\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-dark-notifications.png\"\n    },\n    {\n      \"label\": \"dark Messages\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-dark-messages.png\"\n    },\n    {\n      \"label\": \"dark Ware Check-in\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-dark-ware-check-in.png\"\n    },\n    {\n      \"label\": \"mono Dashboard\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-mono-dashboard.png\"\n    },\n    {\n      \"label\": \"mono Notifications\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-mono-notifications.png\"\n    },\n    {\n      \"label\": \"mono Messages\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-mono-messages.png\"\n    },\n    {\n      \"label\": \"mono Ware Check-in\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-mono-ware-check-in.png\"\n    }\n  ],\n  \"contrast\": {\n    \"light\": [\n      {\n        \"page\": \"Dashboard\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Notifications\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Messages\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Ware Check-in\",\n        \"issueCount\": 0,\n        \"issues\": []\n      }\n    ],\n    \"dark\": [\n      {\n        \"page\": \"Dashboard\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Notifications\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Messages\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Ware Check-in\",\n        \"issueCount\": 0,\n        \"issues\": []\n      }\n    ],\n    \"mono\": [\n      {\n        \"page\": \"Dashboard\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Notifications\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Messages\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Ware Check-in\",\n        \"issueCount\": 0,\n        \"issues\": []\n      }\n    ]\n  }\n}\n",
+            "stderr": ""
+          },
+          {
+            "label": "virtual staff backend regression",
+            "status": "passed",
+            "failureCategory": "",
+            "exitCode": 0,
+            "durationMs": 3089,
+            "command": "node ./scripts/run-portal-virtual-staff-regression.mjs --project monsoonfire-portal --base-url https://portal.monsoonfire.com --skip-ui-smoke --report output/qa/post-deploy-virtual-staff-regression.json --json",
+            "stdout": "{\n  \"status\": \"passed\",\n  \"projectId\": \"monsoonfire-portal\",\n  \"baseUrl\": \"https://portal.monsoonfire.com\",\n  \"functionsBaseUrl\": \"https://us-central1-monsoonfire-portal.cloudfunctions.net\",\n  \"startedAtIso\": \"2026-03-01T17:25:22.952Z\",\n  \"finishedAtIso\": \"2026-03-01T17:25:25.984Z\",\n  \"reportPath\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-virtual-staff-regression.json\",\n  \"notes\": [\n    \"UI smoke step skipped (--skip-ui-smoke).\"\n  ],\n  \"steps\": [\n    {\n      \"label\": \"firestore release drift check\",\n      \"status\": \"passed\",\n      \"exitCode\": 0,\n      \"durationMs\": 697,\n      \"command\": \"/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/sync-firestore-rules-releases.mjs --check --project monsoonfire-portal --json\",\n      \"stdout\": \"{\\n  \\\"projectId\\\": \\\"monsoonfire-portal\\\",\\n  \\\"status\\\": \\\"in_sync\\\",\\n  \\\"legacyRelease\\\": {\\n    \\\"name\\\": \\\"projects/monsoonfire-portal/releases/cloud.firestore\\\",\\n    \\\"rulesetName\\\": \\\"projects/monsoonfire-portal/rulesets/831292c4-61b4-4257-a311-4c6eee6eccc6\\\",\\n    \\\"updateTime\\\": \\\"2026-02-26T06:11:18.534484Z\\\"\\n  },\\n  \\\"defaultRelease\\\": {\\n    \\\"name\\\": \\\"projects/monsoonfire-portal/releases/cloud.firestore/default\\\",\\n    \\\"rulesetName\\\": \\\"projects/monsoonfire-portal/rulesets/831292c4-61b4-4257-a311-4c6eee6eccc6\\\",\\n    \\\"updateTime\\\": \\\"2026-02-26T06:06:51.165906Z\\\"\\n  },\\n  \\\"tokenSource\\\": \\\"env-refresh-token\\\",\\n  \\\"message\\\": \\\"Firestore releases are already aligned.\\\"\\n}\\n\",\n      \"stderr\": \"\"\n    },\n    {\n      \"label\": \"pricing + intake policy check\",\n      \"status\": \"passed\",\n      \"exitCode\": 0,\n      \"durationMs\": 91,\n      \"command\": \"/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/check-pricing-and-intake-policy.mjs\",\n      \"stdout\": \"{\\n  \\\"ok\\\": true,\\n  \\\"check\\\": \\\"pricing_and_intake_policy\\\"\\n}\\n\",\n      \"stderr\": \"\"\n    },\n    {\n      \"label\": \"my pieces authz probe\",\n      \"status\": \"passed\",\n      \"exitCode\": 0,\n      \"durationMs\": 1385,\n      \"command\": \"/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/check-portal-mypieces-authz.mjs --project monsoonfire-portal --functions-base-url https://us-central1-monsoonfire-portal.cloudfunctions.net --json --credentials /home/wuff/monsoonfire-portal/secrets/portal/portal-agent-staff.json\",\n      \"stdout\": \"{\\n  \\\"status\\\": \\\"passed\\\",\\n  \\\"projectId\\\": \\\"monsoonfire-portal\\\",\\n  \\\"actor\\\": {\\n    \\\"uid\\\": \\\"6qU0XDdJ32e4PUFVvdBfQKuAF7u1\\\",\\n    \\\"email\\\": \\\"agent.staff.bot@monsoonfire.local\\\"\\n  },\\n  \\\"batch\\\": {\\n    \\\"batchId\\\": \\\"batch-8dc22cb0cfa3120a2176\\\",\\n    \\\"status\\\": 200,\\n    \\\"ok\\\": true,\\n    \\\"error\\\": null\\n  },\\n  \\\"piece\\\": {\\n    \\\"pieceId\\\": \\\"piece-1772385924027\\\",\\n    \\\"create\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"error\\\": null\\n    },\\n    \\\"get\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"error\\\": null\\n    },\\n    \\\"list\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"error\\\": null\\n    }\\n  },\\n  \\\"message\\\": \\\"My Pieces permission path passed create/get/list checks.\\\"\\n}\\n\",\n      \"stderr\": \"\"\n    },\n    {\n      \"label\": \"notifications mark-read authz probe\",\n      \"status\": \"passed\",\n      \"exitCode\": 0,\n      \"durationMs\": 857,\n      \"command\": \"/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/check-portal-notifications-authz.mjs --project monsoonfire-portal --functions-base-url https://us-central1-monsoonfire-portal.cloudfunctions.net --json --credentials /home/wuff/monsoonfire-portal/secrets/portal/portal-agent-staff.json\",\n      \"stdout\": \"{\\n  \\\"status\\\": \\\"passed\\\",\\n  \\\"projectId\\\": \\\"monsoonfire-portal\\\",\\n  \\\"actor\\\": {\\n    \\\"uid\\\": \\\"6qU0XDdJ32e4PUFVvdBfQKuAF7u1\\\",\\n    \\\"email\\\": \\\"agent.staff.bot@monsoonfire.local\\\"\\n  },\\n  \\\"notification\\\": {\\n    \\\"targetId\\\": \\\"90f70a59fb54d38a862ecadae4db6f99a8a77ffb2e2cab311bf9498f99a694b5\\\",\\n    \\\"list\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"count\\\": 1,\\n      \\\"error\\\": null\\n    },\\n    \\\"read\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"error\\\": null\\n    },\\n    \\\"markRead\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"error\\\": null\\n    },\\n    \\\"verify\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"error\\\": null\\n    }\\n  },\\n  \\\"message\\\": \\\"Notifications permission path passed list/read/mark-read checks.\\\"\\n}\\n\",\n      \"stderr\": \"\"\n    }\n  ]\n}\n",
+            "stderr": ""
+          },
+          {
+            "label": "firestore index contract guard",
+            "status": "passed",
+            "failureCategory": "",
+            "exitCode": 0,
+            "durationMs": 77,
+            "command": "node ./scripts/firestore-index-contract-guard.mjs --strict --json --no-github --report output/qa/post-deploy-index-guard.json",
+            "stdout": "{\n  \"status\": \"passed\",\n  \"projectId\": \"monsoonfire-portal\",\n  \"runAtIso\": \"2026-03-01T17:25:26.085Z\",\n  \"durationMs\": 1,\n  \"requiredCount\": 3,\n  \"missing\": [],\n  \"strict\": true,\n  \"apply\": false,\n  \"rollingIssueUrl\": \"\",\n  \"ticketUrl\": \"\",\n  \"feedback\": {\n    \"enabled\": false,\n    \"loaded\": false,\n    \"path\": \"\",\n    \"suggestedApplyMode\": false,\n    \"suggestedKeepStrictMode\": true,\n    \"candidateMissingIds\": []\n  },\n  \"notes\": []\n}\n",
+            "stderr": ""
+          }
+        ]
+      }
+    },
+    {
+      "id": "postDeployCanary",
+      "label": "Post-deploy authenticated canary",
+      "required": false,
+      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-authenticated-canary.json",
+      "relativePath": "output/qa/post-deploy-authenticated-canary.json",
+      "exists": true,
+      "status": "passed",
+      "payload": {
+        "status": "passed",
+        "baseUrl": "https://portal.monsoonfire.com",
+        "startedAtIso": "2026-03-01T17:24:42.385Z",
+        "finishedAtIso": "2026-03-01T17:25:22.911Z",
+        "reportPath": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-authenticated-canary.json",
+        "auth": {
+          "requireAuth": true,
+          "credentialSource": "PORTAL_STAFF_EMAIL / PORTAL_STAFF_PASSWORD",
+          "attemptedSources": [],
+          "warnings": []
+        },
+        "feedback": {
+          "enabled": false,
+          "loaded": false,
+          "profilePath": "",
+          "sourceRunCount": 0,
+          "agenticDirectiveCount": 0,
+          "myPiecesReadyTimeoutMs": 18000,
+          "myPiecesReloadRetryCount": 1,
+          "markReadRetryCount": 1,
+          "myPiecesEmptyStatePatterns": []
+        },
+        "checks": [
+          {
+            "label": "base URL reachable",
+            "status": "passed"
+          },
+          {
+            "label": "authenticate staff account",
+            "status": "passed"
+          },
+          {
+            "label": "navigation dock controls switch left/top/right",
+            "status": "passed"
+          },
+          {
+            "label": "legacy requests deep links route to supported pages",
+            "status": "passed"
+          },
+          {
+            "label": "dashboard piece click-through opens my pieces detail",
+            "status": "passed"
+          },
+          {
+            "label": "notifications mark read gives user feedback",
+            "status": "passed"
+          },
+          {
+            "label": "workshops page shows event feed content",
+            "status": "passed"
+          },
+          {
+            "label": "messages page loads without index/precondition errors",
+            "status": "passed"
+          },
+          {
+            "label": "ware check-in page loads without check-in/index errors",
+            "status": "passed"
+          },
+          {
+            "label": "ware check-in optional sections stay collapsed by default and preserve values",
+            "status": "passed"
+          },
+          {
+            "label": "advanced diagnostics panel renders",
+            "status": "passed"
+          },
+          {
+            "label": "theme contrast sweep (light)",
+            "status": "passed"
+          },
+          {
+            "label": "theme contrast sweep (dark)",
+            "status": "passed"
+          },
+          {
+            "label": "theme contrast sweep (mono)",
+            "status": "passed"
+          }
+        ],
+        "errors": [],
+        "warnings": [],
+        "screenshots": [
+          {
+            "label": "home",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-01-home.png"
+          },
+          {
+            "label": "authenticated dashboard",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02-authenticated-dashboard.png"
+          },
+          {
+            "label": "nav dock left",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02f-nav-dock-left.png"
+          },
+          {
+            "label": "nav dock top",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02g-nav-dock-top.png"
+          },
+          {
+            "label": "nav dock right",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02h-nav-dock-right.png"
+          },
+          {
+            "label": "legacy requests support fallback",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02b-legacy-requests-support.png"
+          },
+          {
+            "label": "legacy requests lending fallback",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02c-legacy-requests-lending.png"
+          },
+          {
+            "label": "legacy requests workshops fallback",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02d-legacy-requests-workshops.png"
+          },
+          {
+            "label": "legacy requests hash-route fallback",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02e-legacy-requests-hash-workshops.png"
+          },
+          {
+            "label": "my pieces detail",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-03-my-pieces-detail.png"
+          },
+          {
+            "label": "notifications",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-04-notifications.png"
+          },
+          {
+            "label": "workshops seeded",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-04b-workshops-seeded.png"
+          },
+          {
+            "label": "messages",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-05-messages.png"
+          },
+          {
+            "label": "ware check-in",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-06-ware-checkin.png"
+          },
+          {
+            "label": "ware check-in optional sections",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-06b-ware-checkin-optional-sections.png"
+          },
+          {
+            "label": "advanced diagnostics",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-07-advanced-diagnostics.png"
+          },
+          {
+            "label": "light Dashboard",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-light-dashboard.png"
+          },
+          {
+            "label": "light Notifications",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-light-notifications.png"
+          },
+          {
+            "label": "light Messages",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-light-messages.png"
+          },
+          {
+            "label": "light Ware Check-in",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-light-ware-check-in.png"
+          },
+          {
+            "label": "dark Dashboard",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-dark-dashboard.png"
+          },
+          {
+            "label": "dark Notifications",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-dark-notifications.png"
+          },
+          {
+            "label": "dark Messages",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-dark-messages.png"
+          },
+          {
+            "label": "dark Ware Check-in",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-dark-ware-check-in.png"
+          },
+          {
+            "label": "mono Dashboard",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-mono-dashboard.png"
+          },
+          {
+            "label": "mono Notifications",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-mono-notifications.png"
+          },
+          {
+            "label": "mono Messages",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-mono-messages.png"
+          },
+          {
+            "label": "mono Ware Check-in",
+            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-mono-ware-check-in.png"
+          }
+        ],
+        "contrast": {
+          "light": [
+            {
+              "page": "Dashboard",
+              "issueCount": 0,
+              "issues": []
+            },
+            {
+              "page": "Notifications",
+              "issueCount": 0,
+              "issues": []
+            },
+            {
+              "page": "Messages",
+              "issueCount": 0,
+              "issues": []
+            },
+            {
+              "page": "Ware Check-in",
+              "issueCount": 0,
+              "issues": []
+            }
+          ],
+          "dark": [
+            {
+              "page": "Dashboard",
+              "issueCount": 0,
+              "issues": []
+            },
+            {
+              "page": "Notifications",
+              "issueCount": 0,
+              "issues": []
+            },
+            {
+              "page": "Messages",
+              "issueCount": 0,
+              "issues": []
+            },
+            {
+              "page": "Ware Check-in",
+              "issueCount": 0,
+              "issues": []
+            }
+          ],
+          "mono": [
+            {
+              "page": "Dashboard",
+              "issueCount": 0,
+              "issues": []
+            },
+            {
+              "page": "Notifications",
+              "issueCount": 0,
+              "issues": []
+            },
+            {
+              "page": "Messages",
+              "issueCount": 0,
+              "issues": []
+            },
+            {
+              "page": "Ware Check-in",
+              "issueCount": 0,
+              "issues": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "postDeployVirtualStaff",
+      "label": "Post-deploy virtual staff regression",
+      "required": false,
+      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-virtual-staff-regression.json",
+      "relativePath": "output/qa/post-deploy-virtual-staff-regression.json",
+      "exists": true,
+      "status": "passed",
+      "payload": {
+        "status": "passed",
+        "projectId": "monsoonfire-portal",
+        "baseUrl": "https://portal.monsoonfire.com",
+        "functionsBaseUrl": "https://us-central1-monsoonfire-portal.cloudfunctions.net",
+        "startedAtIso": "2026-03-01T17:25:22.952Z",
+        "finishedAtIso": "2026-03-01T17:25:25.984Z",
+        "reportPath": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-virtual-staff-regression.json",
+        "notes": [
+          "UI smoke step skipped (--skip-ui-smoke)."
+        ],
+        "steps": [
+          {
+            "label": "firestore release drift check",
+            "status": "passed",
+            "exitCode": 0,
+            "durationMs": 697,
+            "command": "/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/sync-firestore-rules-releases.mjs --check --project monsoonfire-portal --json",
+            "stdout": "{\n  \"projectId\": \"monsoonfire-portal\",\n  \"status\": \"in_sync\",\n  \"legacyRelease\": {\n    \"name\": \"projects/monsoonfire-portal/releases/cloud.firestore\",\n    \"rulesetName\": \"projects/monsoonfire-portal/rulesets/831292c4-61b4-4257-a311-4c6eee6eccc6\",\n    \"updateTime\": \"2026-02-26T06:11:18.534484Z\"\n  },\n  \"defaultRelease\": {\n    \"name\": \"projects/monsoonfire-portal/releases/cloud.firestore/default\",\n    \"rulesetName\": \"projects/monsoonfire-portal/rulesets/831292c4-61b4-4257-a311-4c6eee6eccc6\",\n    \"updateTime\": \"2026-02-26T06:06:51.165906Z\"\n  },\n  \"tokenSource\": \"env-refresh-token\",\n  \"message\": \"Firestore releases are already aligned.\"\n}\n",
+            "stderr": ""
+          },
+          {
+            "label": "pricing + intake policy check",
+            "status": "passed",
+            "exitCode": 0,
+            "durationMs": 91,
+            "command": "/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/check-pricing-and-intake-policy.mjs",
+            "stdout": "{\n  \"ok\": true,\n  \"check\": \"pricing_and_intake_policy\"\n}\n",
+            "stderr": ""
+          },
+          {
+            "label": "my pieces authz probe",
+            "status": "passed",
+            "exitCode": 0,
+            "durationMs": 1385,
+            "command": "/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/check-portal-mypieces-authz.mjs --project monsoonfire-portal --functions-base-url https://us-central1-monsoonfire-portal.cloudfunctions.net --json --credentials /home/wuff/monsoonfire-portal/secrets/portal/portal-agent-staff.json",
+            "stdout": "{\n  \"status\": \"passed\",\n  \"projectId\": \"monsoonfire-portal\",\n  \"actor\": {\n    \"uid\": \"6qU0XDdJ32e4PUFVvdBfQKuAF7u1\",\n    \"email\": \"agent.staff.bot@monsoonfire.local\"\n  },\n  \"batch\": {\n    \"batchId\": \"batch-8dc22cb0cfa3120a2176\",\n    \"status\": 200,\n    \"ok\": true,\n    \"error\": null\n  },\n  \"piece\": {\n    \"pieceId\": \"piece-1772385924027\",\n    \"create\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"error\": null\n    },\n    \"get\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"error\": null\n    },\n    \"list\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"error\": null\n    }\n  },\n  \"message\": \"My Pieces permission path passed create/get/list checks.\"\n}\n",
+            "stderr": ""
+          },
+          {
+            "label": "notifications mark-read authz probe",
+            "status": "passed",
+            "exitCode": 0,
+            "durationMs": 857,
+            "command": "/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/check-portal-notifications-authz.mjs --project monsoonfire-portal --functions-base-url https://us-central1-monsoonfire-portal.cloudfunctions.net --json --credentials /home/wuff/monsoonfire-portal/secrets/portal/portal-agent-staff.json",
+            "stdout": "{\n  \"status\": \"passed\",\n  \"projectId\": \"monsoonfire-portal\",\n  \"actor\": {\n    \"uid\": \"6qU0XDdJ32e4PUFVvdBfQKuAF7u1\",\n    \"email\": \"agent.staff.bot@monsoonfire.local\"\n  },\n  \"notification\": {\n    \"targetId\": \"90f70a59fb54d38a862ecadae4db6f99a8a77ffb2e2cab311bf9498f99a694b5\",\n    \"list\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"count\": 1,\n      \"error\": null\n    },\n    \"read\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"error\": null\n    },\n    \"markRead\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"error\": null\n    },\n    \"verify\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"error\": null\n    }\n  },\n  \"message\": \"Notifications permission path passed list/read/mark-read checks.\"\n}\n",
+            "stderr": ""
+          }
+        ]
+      }
+    },
+    {
+      "id": "postDeployIndexGuard",
+      "label": "Post-deploy Firestore index guard",
+      "required": false,
+      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-index-guard.json",
+      "relativePath": "output/qa/post-deploy-index-guard.json",
+      "exists": true,
+      "status": "passed",
+      "payload": {
+        "status": "passed",
+        "projectId": "monsoonfire-portal",
+        "runAtIso": "2026-03-01T17:25:26.085Z",
+        "durationMs": 1,
+        "requiredCount": 3,
+        "missing": [],
+        "strict": true,
+        "apply": false,
+        "rollingIssueUrl": "",
+        "ticketUrl": "",
+        "feedback": {
+          "enabled": false,
+          "loaded": false,
+          "path": "",
+          "suggestedApplyMode": false,
+          "suggestedKeepStrictMode": true,
+          "candidateMissingIds": []
+        },
+        "notes": []
+      }
+    },
+    {
+      "id": "rollback",
+      "label": "Auto rollback report",
+      "required": false,
+      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-rollback.json",
+      "relativePath": "output/qa/post-deploy-rollback.json",
+      "exists": true,
+      "status": "unknown",
+      "payload": {
+        "timestampIso": "2026-03-01T17:23:17.803Z",
+        "portalUrl": "https://portal.monsoonfire.com",
+        "server": "monsggbd@66.29.137.142",
+        "remotePath": "portal/",
+        "promotionGate": {
+          "exitCode": 1
+        },
+        "rollback": {
+          "status": "rolled_back",
+          "triggeredBy": "promotion-gate-failure",
+          "rollbackApplied": true,
+          "rollbackExitCode": 0,
+          "rollbackVerify": {
+            "attempted": true,
+            "exitCode": 0
+          },
+          "details": "Rollback applied because promotion gate failed."
+        }
+      }
+    },
+    {
+      "id": "rollbackVerify",
+      "label": "Post-rollback verify",
+      "required": false,
+      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-rollback-verify.json",
+      "relativePath": "output/qa/post-deploy-rollback-verify.json",
       "exists": true,
       "status": "passed",
       "payload": {
@@ -190,68 +801,8 @@
           "message": "",
           "responseSnippet": ""
         },
-        "reportPath": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-cutover-verify.json"
+        "reportPath": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-rollback-verify.json"
       }
-    },
-    {
-      "id": "promotionGate",
-      "label": "Post-deploy promotion gate",
-      "required": false,
-      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-promotion-gate.json",
-      "relativePath": "output/qa/post-deploy-promotion-gate.json",
-      "exists": false,
-      "status": "missing",
-      "payload": null
-    },
-    {
-      "id": "postDeployCanary",
-      "label": "Post-deploy authenticated canary",
-      "required": false,
-      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-authenticated-canary.json",
-      "relativePath": "output/qa/post-deploy-authenticated-canary.json",
-      "exists": false,
-      "status": "missing",
-      "payload": null
-    },
-    {
-      "id": "postDeployVirtualStaff",
-      "label": "Post-deploy virtual staff regression",
-      "required": false,
-      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-virtual-staff-regression.json",
-      "relativePath": "output/qa/post-deploy-virtual-staff-regression.json",
-      "exists": false,
-      "status": "missing",
-      "payload": null
-    },
-    {
-      "id": "postDeployIndexGuard",
-      "label": "Post-deploy Firestore index guard",
-      "required": false,
-      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-index-guard.json",
-      "relativePath": "output/qa/post-deploy-index-guard.json",
-      "exists": false,
-      "status": "missing",
-      "payload": null
-    },
-    {
-      "id": "rollback",
-      "label": "Auto rollback report",
-      "required": false,
-      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-rollback.json",
-      "relativePath": "output/qa/post-deploy-rollback.json",
-      "exists": false,
-      "status": "missing",
-      "payload": null
-    },
-    {
-      "id": "rollbackVerify",
-      "label": "Post-rollback verify",
-      "required": false,
-      "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-rollback-verify.json",
-      "relativePath": "output/qa/post-deploy-rollback-verify.json",
-      "exists": false,
-      "status": "missing",
-      "payload": null
     }
   ],
   "output": {

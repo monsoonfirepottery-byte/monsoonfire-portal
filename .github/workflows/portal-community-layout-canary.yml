@@ -6,7 +6,7 @@ on:
       base_url:
         description: "Portal base URL"
         required: false
-        default: "https://monsoonfire-portal.web.app"
+        default: "https://portal.monsoonfire.com"
   schedule:
     # Hourly guard for intermittent community sidebar/chiplet layout regressions.
     - cron: "17 * * * *"
@@ -46,7 +46,7 @@ jobs:
           if [ -n "${{ github.event.inputs.base_url }}" ]; then
             echo "value=${{ github.event.inputs.base_url }}" >> "$GITHUB_OUTPUT"
           else
-            echo "value=https://monsoonfire-portal.web.app" >> "$GITHUB_OUTPUT"
+            echo "value=https://portal.monsoonfire.com" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run community layout canary

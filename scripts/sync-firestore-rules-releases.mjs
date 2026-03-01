@@ -13,7 +13,7 @@ const GOOGLE_OAUTH_TOKEN_ENDPOINT = "https://www.googleapis.com/oauth2/v3/token"
 // Firebase CLI OAuth client values (mirrors firebase-tools defaults).
 const FIREBASE_CLI_OAUTH_CLIENT_ID =
   "563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com";
-const FIREBASE_CLI_OAUTH_CLIENT_SECRET = "j9iVZfS8kkCEFUPaAeJV0sAi";
+const FIREBASE_CLI_OAUTH_CLIENT_SECRET = String(process.env.FIREBASE_CLI_OAUTH_CLIENT_SECRET || "").trim();
 
 function parseArgs(argv) {
   const options = {
@@ -97,9 +97,11 @@ async function exchangeRefreshToken(refreshToken, source) {
   const form = new URLSearchParams({
     refresh_token: refreshToken,
     client_id: FIREBASE_CLI_OAUTH_CLIENT_ID,
-    client_secret: FIREBASE_CLI_OAUTH_CLIENT_SECRET,
     grant_type: "refresh_token",
   });
+  if (FIREBASE_CLI_OAUTH_CLIENT_SECRET) {
+    form.set("client_secret", FIREBASE_CLI_OAUTH_CLIENT_SECRET);
+  }
 
   const resp = await fetch(GOOGLE_OAUTH_TOKEN_ENDPOINT, {
     method: "POST",
@@ -144,13 +146,24 @@ async function resolveAccessToken(options) {
   const directToken = String(options.accessToken || "").trim();
   if (directToken) {
     if (looksLikeRefreshToken(directToken)) {
-      const exchanged = await exchangeRefreshToken(directToken, "env-or-arg");
-      return {
-        configPath: null,
-        accessToken: exchanged.accessToken,
-        expiresAtMs: exchanged.expiresAtMs,
-        source: "env-refresh-token",
-      };
+      try {
+        const exchanged = await exchangeRefreshToken(directToken, "env-or-arg");
+        return {
+          configPath: null,
+          accessToken: exchanged.accessToken,
+          expiresAtMs: exchanged.expiresAtMs,
+          source: "env-refresh-token",
+        };
+      } catch (error) {
+        const cliToken = await loadFirebaseCliToken().catch(() => null);
+        if (cliToken?.accessToken && typeof cliToken.accessToken === "string") {
+          return {
+            ...cliToken,
+            source: "env-refresh-token-fallback-access",
+          };
+        }
+        throw error;
+      }
     }
 
     return {

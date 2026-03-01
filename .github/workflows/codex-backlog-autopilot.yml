@@ -60,9 +60,17 @@ jobs:
           LIMIT="48"
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            EPICS="${{ inputs.epic_selection }}"
-            LIMIT="${{ inputs.limit }}"
-            if [ "${{ inputs.apply }}" != "true" ]; then
+            INPUT_EPICS="$(jq -r '.inputs.epic_selection // ""' "$GITHUB_EVENT_PATH")"
+            INPUT_LIMIT="$(jq -r '.inputs.limit // ""' "$GITHUB_EVENT_PATH")"
+            INPUT_APPLY="$(jq -r '.inputs.apply // ""' "$GITHUB_EVENT_PATH")"
+
+            if [ -n "$INPUT_EPICS" ]; then
+              EPICS="$INPUT_EPICS"
+            fi
+            if [ -n "$INPUT_LIMIT" ]; then
+              LIMIT="$INPUT_LIMIT"
+            fi
+            if [ "$INPUT_APPLY" != "true" ]; then
               MODE="--dry-run"
             fi
           fi

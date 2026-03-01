@@ -30,6 +30,10 @@
 <!-- codex-interaction:auto:start -->
 ### Automated Structural Addenda
 
-- Last structural update: n/a
-- No active automated addenda.
+- Last structural update: 2026-03-01-PM
+- Active rules:
+- [USER_BRANCH_POLICY] Include branch policy in scope constraints: PR-only changes, never direct push to `main`.
+- [USER_OUTPUT_CONTRACT] Require output sections for behavior change summary, risk assessment, and copyable QA checks.
+- [USER_PROMPT_STRUCTURE] Require `Objective`, `Constraints`, `Non-goals`, and `Definition of Done` in implementation prompts.
+- [USER_SCOPE_FENCE] Explicitly list in-scope and out-of-scope surfaces to prevent scope creep.
 <!-- codex-interaction:auto:end -->

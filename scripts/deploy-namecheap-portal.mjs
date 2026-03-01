@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,6 +37,8 @@ if (options.help) {
   printHelp();
   process.exit(0);
 }
+
+const FIREBASE_EMBEDDED_KEY_REGEX = /VITE_FIREBASE_API_KEY["']?\s*:\s*["']AIza[0-9A-Za-z_-]{20,}["']/;
 
 if (!options.server.trim()) {
   fail("Missing --server (or WEBSITE_DEPLOY_SERVER).");
@@ -113,6 +115,7 @@ try {
   if (!existsSync(webDist)) {
     fail(`Missing build output: ${webDist}`);
   }
+  assertFirebaseApiKeyIsEmbedded(webDist);
 
   cpSync(webDist, stageDir, { recursive: true });
   cpSync(htaccessTemplate, resolve(stageDir, ".htaccess"));
@@ -477,6 +480,49 @@ function run(command, args, options = {}) {
     ok: status === 0,
     status,
   };
+}
+
+function collectFiles(rootDir, includeFile) {
+  const files = [];
+  const queue = [rootDir];
+
+  while (queue.length > 0) {
+    const current = queue.pop();
+    const entries = readdirSync(current, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryPath = resolve(current, entry.name);
+      if (entry.isDirectory()) {
+        queue.push(entryPath);
+        continue;
+      }
+      if (includeFile(entryPath)) {
+        files.push(entryPath);
+      }
+    }
+  }
+
+  return files;
+}
+
+function assertFirebaseApiKeyIsEmbedded(distDir) {
+  const buildFiles = collectFiles(distDir, (filePath) => filePath.endsWith(".js"));
+  const matchingFiles = [];
+
+  for (const filePath of buildFiles) {
+    const text = readFileSync(filePath, "utf8");
+    if (FIREBASE_EMBEDDED_KEY_REGEX.test(text)) {
+      matchingFiles.push(filePath);
+    }
+  }
+
+  if (matchingFiles.length > 0) {
+    return;
+  }
+
+  fail(
+    "Build output does not include a compiled VITE_FIREBASE_API_KEY value; refusing deploy.\n" +
+      "Set VITE_FIREBASE_API_KEY (or ensure web build injects it) before deploy."
+  );
 }
 
 function writeJson(path, payload) {

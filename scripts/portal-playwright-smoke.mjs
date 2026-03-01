@@ -38,6 +38,26 @@ const DASHBOARD_THEME_SWEEP = [
     label: "desktop dashboard mono theme",
   },
 ];
+const DASHBOARD_NAV_DOCK_SWEEP = [
+  {
+    dock: "left",
+    label: "Left",
+    screenshot: "portal-02d-dashboard-dock-left.png",
+    summaryLabel: "desktop dashboard nav dock left",
+  },
+  {
+    dock: "top",
+    label: "Top",
+    screenshot: "portal-02e-dashboard-dock-top.png",
+    summaryLabel: "desktop dashboard nav dock top",
+  },
+  {
+    dock: "right",
+    label: "Right",
+    screenshot: "portal-02f-dashboard-dock-right.png",
+    summaryLabel: "desktop dashboard nav dock right",
+  },
+];
 const CONTRACT_DEFAULT_ENV = {
   STUDIO_BRAIN_PORT: "8787",
   PGHOST: "127.0.0.1",
@@ -1552,6 +1572,76 @@ const clickNavSubItem = async (page, sectionLabel, itemLabel, summaryLabel = ite
   return true;
 };
 
+const findVisibleLocator = async (locator) => {
+  const count = await locator.count();
+  for (let index = 0; index < count; index += 1) {
+    const candidate = locator.nth(index);
+    if (await candidate.isVisible().catch(() => false)) {
+      return candidate;
+    }
+  }
+  return null;
+};
+
+const resolveNavDockButton = async (page, dockLabel) => {
+  const matchers = [
+    page
+      .locator(".nav-dock-controls-inline .nav-dock-btn", {
+        hasText: new RegExp(`^${regexSafe(dockLabel)}$`, "i"),
+      }),
+    page
+      .locator(".nav-dock-controls .nav-dock-btn", {
+        hasText: new RegExp(`^${regexSafe(dockLabel)}$`, "i"),
+      }),
+  ];
+
+  for (const matcher of matchers) {
+    const visible = await findVisibleLocator(matcher);
+    if (visible) {
+      return visible;
+    }
+  }
+
+  return null;
+};
+
+const ensureNavDock = async (page, targetDock) => {
+  if (targetDock !== "left" && targetDock !== "top" && targetDock !== "right") {
+    throw new Error(`Unsupported nav dock target: ${targetDock}`);
+  }
+
+  const alreadySet = await page.evaluate((expectedDock) => {
+    const shell = document.querySelector(".app-shell");
+    return shell instanceof HTMLElement && shell.classList.contains(`dock-${expectedDock}`);
+  }, targetDock);
+
+  if (alreadySet) {
+    return;
+  }
+
+  const targetConfig = DASHBOARD_NAV_DOCK_SWEEP.find((entry) => entry.dock === targetDock);
+  if (!targetConfig) {
+    throw new Error(`Unsupported nav dock target: ${targetDock}`);
+  }
+
+  const button = await resolveNavDockButton(page, targetConfig.label);
+  if (!button) {
+    throw new Error(`Navigation dock button not found for ${targetConfig.label}.`);
+  }
+
+  await button.scrollIntoViewIfNeeded().catch(() => {});
+  await button.click({ timeout: 12000 });
+  await page.waitForFunction(
+    (expectedDock) => {
+      const shell = document.querySelector(".app-shell");
+      return shell instanceof HTMLElement && shell.classList.contains(`dock-${expectedDock}`);
+    },
+    targetDock,
+    { timeout: 12000 }
+  );
+  await page.waitForTimeout(550);
+};
+
 const ensureTheme = async (page, targetTheme) => {
   if (targetTheme !== "portal" && targetTheme !== "memoria" && targetTheme !== "mono") {
     throw new Error(`Unsupported theme target: ${targetTheme}`);
@@ -1605,6 +1695,14 @@ const captureDashboardThemeSweep = async (page, options, summary) => {
       summary,
       target.label
     );
+  }
+};
+
+const captureDashboardNavDockSweep = async (page, options, summary) => {
+  for (const target of DASHBOARD_NAV_DOCK_SWEEP) {
+    await ensureNavDock(page, target.dock);
+    await clickNavItem(page, "Dashboard", "Dashboard", true);
+    await takeScreenshot(page, options.outputDir, target.screenshot, summary, target.summaryLabel);
   }
 };
 
@@ -1873,6 +1971,15 @@ const run = async () => {
         // Restore default before continuing other checks.
         await ensureTheme(desktopPage, "portal");
         await clickNavItem(desktopPage, "Dashboard", "Dashboard", false);
+      });
+
+      await check(summary, "dashboard nav dock consistency (left + top + right)", async () => {
+        await clickNavItem(desktopPage, "Dashboard", "Dashboard", false);
+        await captureDashboardNavDockSweep(desktopPage, options, summary);
+
+        // Restore default before continuing other checks.
+        await ensureNavDock(desktopPage, "left");
+        await clickNavItem(desktopPage, "Dashboard", "Dashboard", true);
       });
 
       const houseAvailable = await clickNavItem(desktopPage, "House", "House", false);

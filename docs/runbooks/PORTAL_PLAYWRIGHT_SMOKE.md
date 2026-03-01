@@ -141,7 +141,7 @@ node ./scripts/portal-playwright-smoke.mjs --base-url https://staging.example.co
 
 ## Current portal checks
 - `/` + dashboard
-- Dashboard theme consistency (`light` + `dark`) with explicit screenshots in both modes
+- Dashboard theme consistency (`portal` + `memoria` + `mono`) with explicit screenshots in each mode
 - `House`
 - `Staff` when present for current auth
 - `Messages`

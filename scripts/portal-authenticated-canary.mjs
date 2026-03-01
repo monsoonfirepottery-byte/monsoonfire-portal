@@ -18,6 +18,26 @@ const DEFAULT_MY_PIECES_READY_TIMEOUT_MS = 18000;
 const DEFAULT_MY_PIECES_RELOAD_RETRY_COUNT = 1;
 const DEFAULT_MARK_READ_RETRY_COUNT = 1;
 const THEME_SWEEP_TARGETS = ["light", "dark", "mono"];
+const NAV_DOCK_SWEEP_TARGETS = [
+  {
+    dock: "left",
+    label: "Left",
+    screenshot: "canary-02f-nav-dock-left.png",
+    summaryLabel: "nav dock left",
+  },
+  {
+    dock: "top",
+    label: "Top",
+    screenshot: "canary-02g-nav-dock-top.png",
+    summaryLabel: "nav dock top",
+  },
+  {
+    dock: "right",
+    label: "Right",
+    screenshot: "canary-02h-nav-dock-right.png",
+    summaryLabel: "nav dock right",
+  },
+];
 
 function parseArgs(argv) {
   const options = {
@@ -406,6 +426,69 @@ async function clickNavSubItem(page, sectionLabel, itemLabel, required = true) {
   await itemButton.click({ timeout: 10000 });
   await page.waitForTimeout(700);
   return true;
+}
+
+async function findVisibleLocator(locator) {
+  const count = await locator.count();
+  for (let index = 0; index < count; index += 1) {
+    const candidate = locator.nth(index);
+    if (await candidate.isVisible().catch(() => false)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+async function resolveNavDockButton(page, dockLabel) {
+  const matchers = [
+    page.locator(".nav-dock-controls-inline .nav-dock-btn", {
+      hasText: new RegExp(`^${regexSafe(dockLabel)}$`, "i"),
+    }),
+    page.locator(".nav-dock-controls .nav-dock-btn", {
+      hasText: new RegExp(`^${regexSafe(dockLabel)}$`, "i"),
+    }),
+  ];
+
+  for (const matcher of matchers) {
+    const visible = await findVisibleLocator(matcher);
+    if (visible) return visible;
+  }
+
+  return null;
+}
+
+async function ensureNavDock(page, targetDock) {
+  if (targetDock !== "left" && targetDock !== "top" && targetDock !== "right") {
+    throw new Error(`Unsupported nav dock target: ${targetDock}`);
+  }
+
+  const alreadySet = await page.evaluate((expectedDock) => {
+    const shell = document.querySelector(".app-shell");
+    return shell instanceof HTMLElement && shell.classList.contains(`dock-${expectedDock}`);
+  }, targetDock);
+  if (alreadySet) return;
+
+  const targetConfig = NAV_DOCK_SWEEP_TARGETS.find((entry) => entry.dock === targetDock);
+  if (!targetConfig) {
+    throw new Error(`Unsupported nav dock target: ${targetDock}`);
+  }
+
+  const button = await resolveNavDockButton(page, targetConfig.label);
+  if (!button) {
+    throw new Error(`Navigation dock button not found for ${targetConfig.label}.`);
+  }
+
+  await button.scrollIntoViewIfNeeded().catch(() => {});
+  await button.click({ timeout: 10000 });
+  await page.waitForFunction(
+    (expectedDock) => {
+      const shell = document.querySelector(".app-shell");
+      return shell instanceof HTMLElement && shell.classList.contains(`dock-${expectedDock}`);
+    },
+    targetDock,
+    { timeout: 12000 }
+  );
+  await page.waitForTimeout(450);
 }
 
 async function collectMyPiecesState(page, extraEmptyStatePatterns = []) {
@@ -982,6 +1065,20 @@ async function run() {
     });
 
     if (!options.themeOnly) {
+      await check(summary, "navigation dock controls switch left/top/right", async () => {
+        await clickNavItem(page, "Dashboard", true);
+
+        for (const target of NAV_DOCK_SWEEP_TARGETS) {
+          await ensureNavDock(page, target.dock);
+          await clickNavItem(page, "Dashboard", true);
+          await takeScreenshot(page, options.outputDir, target.screenshot, summary, target.summaryLabel);
+        }
+
+        // Restore baseline navigation dock before remaining checks.
+        await ensureNavDock(page, "left");
+        await clickNavItem(page, "Dashboard", true);
+      });
+
       await check(summary, "legacy requests deep links route to supported pages", async () => {
         const scenarios = [
           {

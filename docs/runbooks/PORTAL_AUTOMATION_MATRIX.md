@@ -15,6 +15,7 @@ Purpose: define the active automation guardrails for portal functionality, UX co
 2. Daily authenticated production canary (`.github/workflows/portal-daily-authenticated-canary.yml`)
 - Signs in using staff credentials.
 - Verifies:
+  - Navigation dock controls switch cleanly across `left`, `top`, and `right` positions with screenshot evidence.
   - Legacy `/requests` deep links (path + hash) redirect to supported destinations with migration guidance (`Support`, `Lending Library`, `Workshops`).
   - Dashboard -> My Pieces piece click-through
   - My Pieces loads without permission errors

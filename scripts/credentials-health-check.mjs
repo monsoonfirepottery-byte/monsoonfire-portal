@@ -5,6 +5,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
@@ -15,6 +16,10 @@ const DEFAULT_PROJECT_ID = "monsoonfire-portal";
 const DEFAULT_BASE_URL = "https://portal.monsoonfire.com";
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "credential-health-check.json");
 const ROLLING_ISSUE_TITLE = "Portal Credential Health (Rolling)";
+const GOOGLE_OAUTH_TOKEN_ENDPOINT = "https://www.googleapis.com/oauth2/v3/token";
+const FIREBASE_CLI_OAUTH_CLIENT_ID =
+  "563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com";
+const FIREBASE_CLI_OAUTH_CLIENT_SECRET = "j9iVZfS8kkCEFUPaAeJV0sAi";
 
 function parseBoolEnv(value, fallback = false) {
   if (value === undefined || value === null || value === "") return fallback;
@@ -265,6 +270,90 @@ function decodeJwtExp(token) {
   }
 }
 
+function looksLikeRefreshToken(token) {
+  return String(token || "").startsWith("1//");
+}
+
+async function loadFirebaseCliTokens() {
+  const configPath = resolve(homedir(), ".config", "configstore", "firebase-tools.json");
+  const raw = await readFile(configPath, "utf8");
+  const parsed = JSON.parse(raw);
+  const accessToken = String(parsed?.tokens?.access_token || "").trim();
+  const refreshToken = String(parsed?.tokens?.refresh_token || "").trim();
+  return {
+    configPath,
+    accessToken,
+    refreshToken,
+  };
+}
+
+async function exchangeRefreshToken(refreshToken, source) {
+  const form = new URLSearchParams({
+    refresh_token: refreshToken,
+    client_id: FIREBASE_CLI_OAUTH_CLIENT_ID,
+    client_secret: FIREBASE_CLI_OAUTH_CLIENT_SECRET,
+    grant_type: "refresh_token",
+  });
+
+  const response = await fetch(GOOGLE_OAUTH_TOKEN_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: form.toString(),
+  });
+
+  const text = await response.text();
+  let parsed = null;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    parsed = { raw: text.slice(0, 600) };
+  }
+
+  if (!response.ok || typeof parsed?.access_token !== "string") {
+    const message =
+      String(parsed?.error_description || parsed?.error || parsed?.message || "").trim() ||
+      "token exchange failed";
+    throw new Error(`Unable to exchange rules token (${source}): ${message}`);
+  }
+
+  return String(parsed.access_token).trim();
+}
+
+async function resolveRulesApiToken() {
+  const envToken = String(process.env.FIREBASE_RULES_API_TOKEN || "").trim();
+
+  if (envToken) {
+    if (looksLikeRefreshToken(envToken)) {
+      return {
+        source: "env_refresh_token",
+        token: await exchangeRefreshToken(envToken, "env_refresh_token"),
+      };
+    }
+    return {
+      source: "env_access_token",
+      token: envToken,
+    };
+  }
+
+  const cli = await loadFirebaseCliTokens();
+  if (cli.refreshToken) {
+    return {
+      source: "firebase_tools_refresh_token",
+      token: await exchangeRefreshToken(cli.refreshToken, "firebase_tools_refresh_token"),
+    };
+  }
+  if (cli.accessToken) {
+    return {
+      source: "firebase_tools_access_token",
+      token: cli.accessToken,
+    };
+  }
+
+  throw new Error("FIREBASE_RULES_API_TOKEN is missing, and firebase-tools token cache has no usable token.");
+}
+
 function addCheck(summary, label, ok, detail, required = true) {
   summary.checks.push({
     label,
@@ -374,11 +463,24 @@ async function main() {
 
   const staffEmail = String(process.env.PORTAL_STAFF_EMAIL || "").trim();
   const staffPassword = String(process.env.PORTAL_STAFF_PASSWORD || "").trim();
-  const rulesToken = String(process.env.FIREBASE_RULES_API_TOKEN || "").trim();
+  let rulesTokenResolution = null;
+  let rulesTokenError = "";
+  try {
+    rulesTokenResolution = await resolveRulesApiToken();
+  } catch (error) {
+    rulesTokenError = error instanceof Error ? error.message : String(error);
+  }
 
   addCheck(summary, "staff email is configured", staffEmail.length > 0, staffEmail ? "PORTAL_STAFF_EMAIL detected." : "PORTAL_STAFF_EMAIL missing.");
   addCheck(summary, "staff password is configured", staffPassword.length > 0, staffPassword ? "PORTAL_STAFF_PASSWORD detected." : "PORTAL_STAFF_PASSWORD missing.");
-  addCheck(summary, "rules API token is configured", rulesToken.length > 0, rulesToken ? "FIREBASE_RULES_API_TOKEN detected." : "FIREBASE_RULES_API_TOKEN missing.");
+  addCheck(
+    summary,
+    "rules API token is configured",
+    Boolean(rulesTokenResolution?.token),
+    rulesTokenResolution?.token
+      ? `Rules API token resolved (${rulesTokenResolution.source}).`
+      : rulesTokenError || "FIREBASE_RULES_API_TOKEN missing."
+  );
   addCheck(summary, "Firebase Web API key is configured", options.apiKey.length > 0, options.apiKey ? "PORTAL_FIREBASE_API_KEY detected." : "PORTAL_FIREBASE_API_KEY missing.");
 
   const agentCreds = await resolveAgentCredentialSource(summary);
@@ -450,12 +552,12 @@ async function main() {
     });
   }
 
-  if (rulesToken) {
+  if (rulesTokenResolution?.token) {
     const rulesResp = await requestJson(
       `https://firebaserules.googleapis.com/v1/projects/${encodeURIComponent(options.projectId)}/releases/cloud.firestore/default`,
       {
         headers: {
-          authorization: `Bearer ${rulesToken}`,
+          authorization: `Bearer ${rulesTokenResolution.token}`,
         },
       },
       options.timeoutMs
@@ -466,7 +568,7 @@ async function main() {
       required: options.rulesProbeRequired,
       status: rulesResp.ok ? "passed" : "failed",
       detail: rulesResp.ok
-        ? "Rules API release read succeeded."
+        ? `Rules API release read succeeded (${rulesTokenResolution.source}).`
         : `Rules API probe failed: ${summarizeError(rulesResp)}`,
     });
   } else {
@@ -474,7 +576,7 @@ async function main() {
       label: "rules API token probe",
       required: options.rulesProbeRequired,
       status: "failed",
-      detail: "Skipped probe because FIREBASE_RULES_API_TOKEN is missing.",
+      detail: `Skipped probe because rules token is unresolved.${rulesTokenError ? ` ${rulesTokenError}` : ""}`,
     });
   }
 

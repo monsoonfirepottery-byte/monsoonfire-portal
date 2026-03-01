@@ -133,19 +133,27 @@ For local execution, keep credentials in the repo-local `secrets/` bundle:
 
 - `secrets/portal/portal-agent-staff.json`
 - `secrets/portal/portal-automation.env`
+- `secrets/portal/firebase-service-account-monsoonfire-portal-github-action.json`
 
 The `portal-automation.env` file should define at least:
 
 - `PORTAL_AGENT_STAFF_CREDENTIALS`
 - `PORTAL_STAFF_EMAIL`
 - `PORTAL_STAFF_PASSWORD`
-- `FIREBASE_RULES_API_TOKEN`
+- `FIREBASE_RULES_API_TOKEN` (supports OAuth access token or Firebase CLI refresh token format `1//...`)
+- `PORTAL_FIREBASE_API_KEY`
+- `FIREBASE_WEB_API_KEY` (local compatibility mirror; keep equal to `PORTAL_FIREBASE_API_KEY`)
 
 Recommended for full promotion/deploy coverage:
 
-- `PORTAL_FIREBASE_API_KEY` (required by token-exchange probes/fixtures and should match active web key)
 - `FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL` or `GOOGLE_APPLICATION_CREDENTIALS` (index deploy auth for promotion gate)
 - `WEBSITE_DEPLOY_KEY` (Namecheap deploy SSH key path; usually `~/.ssh/namecheap-portal`)
+
+Local baseline note:
+- As of March 1, 2026, `secrets/portal/portal-automation.env` includes populated `PORTAL_FIREBASE_API_KEY` and `FIREBASE_WEB_API_KEY` entries for promotion-gate and script compatibility.
+- `FIREBASE_RULES_API_TOKEN` is expected to use the Firebase CLI refresh token (`1//...`) in local setups so rules checks can mint fresh access tokens on each run.
+- The rotated GitHub Actions service-account JSON is stored at `secrets/portal/firebase-service-account-monsoonfire-portal-github-action.json` and referenced via `GOOGLE_APPLICATION_CREDENTIALS` in `portal-automation.env`.
+- `FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL` remains optional locally when `GOOGLE_APPLICATION_CREDENTIALS` is set.
 
 Moving-forward rule:
 

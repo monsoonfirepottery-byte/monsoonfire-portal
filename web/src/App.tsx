@@ -2045,6 +2045,31 @@ export default function App() {
     }
   };
 
+  if (!authReady) {
+    return (
+      <AppErrorBoundary>
+        <a className="skip-link" href="#auth-bootstrap-main">
+          Skip to sign in
+        </a>
+        <main id="auth-bootstrap-main" className="auth-bootstrap-screen" tabIndex={-1}>
+          <section className="auth-bootstrap-card" role="status" aria-live="polite">
+            <img
+              src={MF_LOGO}
+              alt="Monsoon Fire Pottery Studio"
+              className="auth-bootstrap-logo"
+              loading="eager"
+              decoding="async"
+              fetchPriority="high"
+            />
+            <h1>Monsoon Fire Portal</h1>
+            <p>Checking your studio sign-in status...</p>
+            <div className="auth-bootstrap-loading" aria-hidden="true" />
+          </section>
+        </main>
+      </AppErrorBoundary>
+    );
+  }
+
   return (
     <AppErrorBoundary>
       <a className="skip-link" href="#main-content">
@@ -2285,52 +2310,43 @@ export default function App() {
             {renderNavDockControls("nav-dock-controls-inline")}
           </div>
 
-          {!authReady && (
-            <div className="loading">
-              <span />
-              Loading studio portal
-            </div>
-          )}
-
-          {authReady ? (
-            <React.Suspense
-              fallback={
-                <div className="loading">
-                  <span />
-                  Loading studio view
-                </div>
-              }
+          <React.Suspense
+            fallback={
+              <div className="loading">
+                <span />
+                Loading studio view
+              </div>
+            }
+          >
+            {motionAutoReduced && themeName === "memoria" ? (
+              <div className="notice motion-notice">
+                Enhanced motion was disabled for performance. You can re-enable it in Profile.
+              </div>
+            ) : null}
+            {legacyRouteNotice ? (
+              <div className="notice motion-notice" role="status" aria-live="polite">
+                {legacyRouteNotice}
+              </div>
+            ) : null}
+            {bootstrapWarning ? (
+              <div className="notice motion-notice" role="status" aria-live="polite">
+                {bootstrapWarning}
+              </div>
+            ) : null}
+            <UiSettingsProvider
+              value={{
+                themeName,
+                portalMotion: resolvePortalMotion(prefersReducedMotion, enhancedMotion),
+                enhancedMotion,
+                prefersReducedMotion,
+              }}
             >
-              {motionAutoReduced && themeName === "memoria" ? (
-                <div className="notice motion-notice">
-                  Enhanced motion was disabled for performance. You can re-enable it in Profile.
-                </div>
-              ) : null}
-              {legacyRouteNotice ? (
-                <div className="notice motion-notice" role="status" aria-live="polite">
-                  {legacyRouteNotice}
-                </div>
-              ) : null}
-              {bootstrapWarning ? (
-                <div className="notice motion-notice" role="status" aria-live="polite">
-                  {bootstrapWarning}
-                </div>
-              ) : null}
-              <UiSettingsProvider
-                value={{
-                  themeName,
-                  portalMotion: resolvePortalMotion(prefersReducedMotion, enhancedMotion),
-                  enhancedMotion,
-                  prefersReducedMotion,
-                }}
-              >
-                <div key={`${nav}:${themeName}:${enhancedMotion ? "m1" : "m0"}`} className="view-root">
-                  {renderView(nav)}
-                </div>
-              </UiSettingsProvider>
-              <FirestoreTelemetryPanel enabled={import.meta.env.DEV} />
-            </React.Suspense>
-          ) : null}
+              <div key={`${nav}:${themeName}:${enhancedMotion ? "m1" : "m0"}`} className="view-root">
+                {renderView(nav)}
+              </div>
+            </UiSettingsProvider>
+            <FirestoreTelemetryPanel enabled={import.meta.env.DEV} />
+          </React.Suspense>
         </main>
       </div>
     </AppErrorBoundary>

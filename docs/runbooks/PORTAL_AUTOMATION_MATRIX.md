@@ -67,7 +67,7 @@ Purpose: define the active automation guardrails for portal functionality, UX co
 - Blocks PRs when required Firestore composite indexes are missing.
 
 10. Portal automation health dashboard (`.github/workflows/portal-automation-health-daily.yml`)
-- Aggregates latest 24-48h workflow evidence across canary/index/promotion/smoke/PR-functional loops.
+- Aggregates latest 24-48h workflow evidence across canary/index/promotion/smoke/PR-functional/load/coldstart loops.
 - Publishes daily JSON + markdown health artifacts.
 - Emits threshold tuning recommendations and opens/updates repeated-signature issues.
 
@@ -82,6 +82,17 @@ Purpose: define the active automation guardrails for portal functionality, UX co
 - Fails on detectable chiplet/report/video overflow and uploads screenshot/report artifacts.
 - Used as the required verification gate for Community content rotations.
 
+13. Portal load test lane (`.github/workflows/portal-load-test.yml`)
+- Exercises public Cloud Functions endpoint throughput under quick/default/deep profiles.
+- Supports an additional `soak` profile for sustained-load endurance checks.
+- Enforces scenario thresholds for p95 latency, expected-status rate, network/server error rates, and rate-limit behavior.
+- Runs daily and on manual dispatch with override inputs for profile, endpoint path, and strict mode.
+
+14. Functions coldstart regression lane (`.github/workflows/functions-coldstart-regression.yml`)
+- Measures cold import time across key backend modules plus composite `index + apiV1`.
+- Enforces default and per-target p95 budgets in strict mode.
+- Runs daily and on manual dispatch with override inputs for runs, global budget, and per-target budget map.
+
 ## Local commands
 
 ```bash
@@ -90,6 +101,12 @@ npm run portal:canary:auth
 npm run portal:canary:community-layout
 npm run portal:canary:escalate
 npm run portal:theme:contrast
+npm run portal:load:test:quick
+npm run portal:load:test
+npm run portal:load:test:deep
+npm run portal:load:test:soak
+npm run functions:profile:coldstart:strict
+npm run qa:preflight:performance
 npm run portal:index:guard
 npm run rules:index:drift:blocker
 npm run deploy:preflight
@@ -144,6 +161,9 @@ source /home/wuff/monsoonfire-portal/secrets/portal/portal-automation.env
 set +a
 ```
 
+Performance preflight summary artifact:
+- `output/qa/performance-preflight.json`
+
 Reference provenance:
 
 - staff credential bootstrap/run metadata: `docs/DRILL_EXECUTION_LOG.md`
@@ -162,5 +182,6 @@ Reference provenance:
 
 - `docs/runbooks/PORTAL_AUTOMATION_SELF_IMPROVEMENT_LOOPS.md`
 - `docs/runbooks/PORTAL_QA_LOOP_NON_STAFF.md`
+- `docs/runbooks/PORTAL_PERFORMANCE_QA_LANES.md`
 - `docs/runbooks/COMMUNITY_CONTENT_ROTATION_RUNBOOK.md`
 - `docs/runbooks/LOCAL_SECRETS_LAYOUT.md`

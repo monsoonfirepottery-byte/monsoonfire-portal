@@ -33,6 +33,14 @@ Build a safe, autonomous continuous-improvement system that runs twice daily, re
 - Append human-readable run history to `.codex/improvement-log.md`.
 - Open/refresh improvement tickets and one bot-branch PR per run when thresholds trigger.
 - Keep a rolling GitHub issue updated each run.
+- Produce a rubric scorecard artifact for agent performance:
+  - reliability
+  - speed/latency
+  - token efficiency
+  - throughput
+  - outcome quality
+- Run random telemetry audits to detect suspicious or incoherent toolcall stats before trusting trend reports.
+- Operate a backlog autopilot loop that auto-queues prioritized tickets and opens/updates capped issue slices.
 
 ## Safety Guardrails
 
@@ -76,6 +84,29 @@ Create/refresh improvement tickets when any are true:
   - Next 12h Focus
 - Update rolling issue: `Codex Continuous Improvement (Rolling)`.
 - Create/update one automation PR (bot branch) when improvements are triggered.
+- Emit rubric artifacts:
+  - `output/qa/codex-agentic-rubric-scorecard.json`
+  - `output/qa/codex-agentic-rubric-scorecard.md`
+- Emit telemetry audit artifacts:
+  - `output/qa/codex-telemetry-random-audit.json`
+  - `output/qa/codex-telemetry-random-audit.md`
+
+## Agentic Rubric v1
+
+Weights:
+- Reliability: 32%
+- Speed: 23%
+- Token Efficiency: 20%
+- Throughput: 10%
+- Outcome Quality: 15%
+
+Primary targets:
+- success rate >= 97%
+- p95 duration <= 8000 ms
+- MTTR <= 30 minutes
+- token coverage >= 70%
+- tokens per successful call <= 3000
+- recommendation closure >= 75%
 
 ## Acceptance Criteria
 
@@ -85,6 +116,9 @@ Create/refresh improvement tickets when any are true:
 - State file is updated each run and used to compute impact deltas.
 - Duplicate run IDs are skipped safely.
 - Automation never pushes to `main`.
+- Rubric scorecard is generated and archived on each `Codex Self Improvement` run.
+- Random telemetry audit runs with strict anomaly threshold and fails when anomaly rate is above the configured limit.
+- Backlog autopilot runs on schedule and maintains `Codex Backlog Autopilot (Rolling)` with capped issue fan-out.
 
 ## Risks
 
@@ -98,4 +132,3 @@ Create/refresh improvement tickets when any are true:
 - Dry-run default for local execution.
 - Graceful degradation when GitHub APIs are unavailable.
 - Evidence-first PR/issue bodies with explicit risk and QA notes.
-

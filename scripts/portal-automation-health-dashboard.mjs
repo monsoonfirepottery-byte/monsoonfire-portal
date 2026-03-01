@@ -93,6 +93,32 @@ const AUTOMATIONS = [
       },
     ],
   },
+  {
+    key: "load",
+    label: "Portal Load Test",
+    workflowName: "Portal Load Test",
+    defaultFeedbackLimit: 12,
+    maxFeedbackLimit: 30,
+    artifactSources: [
+      {
+        artifactNames: (runId) => [`portal-load-test-${runId}`],
+        fileNames: ["portal-load-test.json"],
+      },
+    ],
+  },
+  {
+    key: "coldstart",
+    label: "Functions Coldstart Regression",
+    workflowName: "Functions Coldstart Regression",
+    defaultFeedbackLimit: 12,
+    maxFeedbackLimit: 30,
+    artifactSources: [
+      {
+        artifactNames: (runId) => [`functions-coldstart-profile-${runId}`],
+        fileNames: ["latest.json"],
+      },
+    ],
+  },
 ];
 
 const CHECK_SUGGESTIONS = [
@@ -120,6 +146,16 @@ const CHECK_SUGGESTIONS = [
     test: /theme|contrast/i,
     suggestion:
       "Retain theme sweep during elevated risk periods and only relax after sustained clean streaks.",
+  },
+  {
+    test: /load|latency|p95/i,
+    suggestion:
+      "Run the dedicated load profile locally (quick/default) and tune endpoint cache/rate-limit posture before widening thresholds.",
+  },
+  {
+    test: /coldstart|import/i,
+    suggestion:
+      "Inspect heavy module initialization on import boundaries and keep coldstart budgets explicit per target.",
   },
 ];
 
@@ -341,6 +377,18 @@ function pushSignature(list, workflowKey, workflowLabel, key, label, run, sugges
     runUrl: String(run.url || ""),
     createdAt: String(run.createdAt || ""),
   });
+}
+
+function classifyLoadBreach(breachText) {
+  const normalized = String(breachText || "").toLowerCase();
+  if (!normalized) return "threshold";
+  if (normalized.includes("p95")) return "latency-p95";
+  if (normalized.includes("networkerrorrate")) return "network-error-rate";
+  if (normalized.includes("servererrorrate")) return "server-error-rate";
+  if (normalized.includes("expectedrate")) return "expected-rate";
+  if (normalized.includes("ratelimitedcount")) return "rate-limit-coverage";
+  if (normalized.includes("completed")) return "request-completion";
+  return "threshold";
 }
 
 function extractCanarySignatures(run, files, workflowKey, workflowLabel) {
@@ -605,6 +653,98 @@ function extractPrFunctionalSignatures(run, files, workflowKey, workflowLabel) {
   return signatures;
 }
 
+function extractLoadSignatures(run, files, workflowKey, workflowLabel) {
+  const signatures = [];
+  const report = files["portal-load-test.json"]?.data || null;
+  if (!report) return signatures;
+
+  const scenarios = Array.isArray(report.scenarios) ? report.scenarios : [];
+  for (const scenario of scenarios) {
+    const scenarioName = String(scenario?.name || "unknown").trim() || "unknown";
+    const scenarioSlug = slug(scenarioName) || "unknown";
+    if (String(scenario?.status || "") === "fail") {
+      pushSignature(
+        signatures,
+        workflowKey,
+        workflowLabel,
+        `load.scenario.${scenarioSlug}`,
+        `Load scenario failed: ${scenarioName}`,
+        run,
+        "Rerun quick profile to confirm persistence, then inspect endpoint caching and rate-limit behavior."
+      );
+    }
+
+    const breaches = Array.isArray(scenario?.thresholdBreaches) ? scenario.thresholdBreaches : [];
+    for (const breach of breaches) {
+      const detail = shorten(breach, 140);
+      const classKey = classifyLoadBreach(detail);
+      pushSignature(
+        signatures,
+        workflowKey,
+        workflowLabel,
+        `load.${scenarioSlug}.${classKey}`,
+        `Load breach (${scenarioName}): ${detail}`,
+        run,
+        guessSuggestion(detail),
+        breach
+      );
+    }
+  }
+
+  if (String(report.status || "") === "fail" && scenarios.length === 0) {
+    pushSignature(
+      signatures,
+      workflowKey,
+      workflowLabel,
+      "load.failed-generic",
+      "Load test failed without scenario details",
+      run,
+      "Inspect load-test JSON artifact and rerun with --profile quick for deterministic reproduction."
+    );
+  }
+
+  return signatures;
+}
+
+function extractColdstartSignatures(run, files, workflowKey, workflowLabel) {
+  const signatures = [];
+  const report = files["latest.json"]?.data || null;
+  if (!report) return signatures;
+
+  const breaches = Array.isArray(report.breaches) ? report.breaches : [];
+  for (const breach of breaches) {
+    const id = String(breach?.id || "unknown").trim() || "unknown";
+    const observedMs = Number(breach?.observedMs || 0);
+    const budgetMs = Number(breach?.budgetMs || 0);
+    pushSignature(
+      signatures,
+      workflowKey,
+      workflowLabel,
+      `coldstart.p95.${slug(id) || "unknown"}`,
+      `Coldstart p95 breach: ${id}`,
+      run,
+      "Review module import side effects and defer heavy startup logic to request path where safe.",
+      `observed=${Number.isFinite(observedMs) ? observedMs.toFixed(2) : "n/a"}ms budget=${
+        Number.isFinite(budgetMs) ? budgetMs.toFixed(2) : "n/a"
+      }ms`
+    );
+  }
+
+  if (String(report.status || "") === "fail" && breaches.length === 0) {
+    pushSignature(
+      signatures,
+      workflowKey,
+      workflowLabel,
+      "coldstart.failed-generic",
+      "Coldstart regression failed without explicit budget breaches",
+      run,
+      "Inspect coldstart profile artifact and verify budget parsing in workflow inputs."
+    );
+  }
+
+  return signatures;
+}
+
 function extractSignatures(automation, run, files) {
   const workflowKey = automation.key;
   const workflowLabel = automation.label;
@@ -613,6 +753,8 @@ function extractSignatures(automation, run, files) {
   if (workflowKey === "promotion") return extractPromotionSignatures(run, files, workflowKey, workflowLabel);
   if (workflowKey === "smoke") return extractSmokeSignatures(run, files, workflowKey, workflowLabel);
   if (workflowKey === "prFunctional") return extractPrFunctionalSignatures(run, files, workflowKey, workflowLabel);
+  if (workflowKey === "load") return extractLoadSignatures(run, files, workflowKey, workflowLabel);
+  if (workflowKey === "coldstart") return extractColdstartSignatures(run, files, workflowKey, workflowLabel);
   return [];
 }
 
@@ -664,6 +806,24 @@ function summarizeLatestFeedback(automation, latestRunWithFiles) {
         feedback.stepRemediation && typeof feedback.stepRemediation === "object"
           ? Object.keys(feedback.stepRemediation).length
           : 0,
+    };
+  }
+  if (automation.key === "load") {
+    const report = files["portal-load-test.json"]?.data || {};
+    const scenarios = Array.isArray(report.scenarios) ? report.scenarios : [];
+    return {
+      profile: String(report.profile || "unknown"),
+      failedScenarios: scenarios.filter((entry) => String(entry?.status || "") === "fail").map((entry) => entry.name),
+      totalScenarios: scenarios.length,
+      status: String(report.status || "unknown"),
+    };
+  }
+  if (automation.key === "coldstart") {
+    const report = files["latest.json"]?.data || {};
+    return {
+      status: String(report.status || "unknown"),
+      breachCount: Array.isArray(report.breaches) ? report.breaches.length : 0,
+      defaultMaxP95Ms: Number(report.thresholds?.defaultMaxP95Ms || 0) || null,
     };
   }
 
@@ -767,6 +927,19 @@ function buildTuningRecommendation(automation, workflowSummary) {
 
   if (automation.key === "prFunctional") {
     recommendation.priorityFailureThreshold = 1;
+  }
+
+  if (automation.key === "load") {
+    recommendation.keepStrictMode = true;
+    recommendation.defaultProfile = failRate >= 0.2 ? "quick" : "default";
+    recommendation.maxP95Adjustment = failRate >= 0.2 ? "inspect-endpoint-before-threshold-change" : "hold";
+  }
+
+  if (automation.key === "coldstart") {
+    const latest = workflowSummary.latestFeedback || {};
+    recommendation.keepStrictMode = true;
+    recommendation.defaultRuns = failRate >= 0.2 ? 10 : 7;
+    recommendation.defaultMaxP95Ms = Number(latest.defaultMaxP95Ms || 0) || 1500;
   }
 
   return recommendation;

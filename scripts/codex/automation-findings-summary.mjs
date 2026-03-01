@@ -34,6 +34,12 @@ const sources = [
     issueTitle: "Codex PR Green Daily (Rolling)",
     workflowName: "Codex PR Green Daily",
   },
+  {
+    key: "backlogAutopilot",
+    label: "Backlog Autopilot",
+    issueTitle: "Codex Backlog Autopilot (Rolling)",
+    workflowName: "Codex Backlog Autopilot",
+  },
 ];
 
 function parseArgs(argv) {

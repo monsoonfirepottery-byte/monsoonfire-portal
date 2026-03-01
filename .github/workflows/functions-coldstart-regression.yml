@@ -1,0 +1,113 @@
+name: Functions Coldstart Regression
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "Cold-import samples per target"
+        required: false
+        default: "7"
+      max_p95_ms:
+        description: "Default p95 budget in milliseconds"
+        required: false
+        default: "1500"
+      budget_overrides:
+        description: "Optional comma-separated per-target budgets (example: index=1200,apiV1=1200)"
+        required: false
+        default: ""
+      strict:
+        description: "Fail workflow on budget breaches"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+  schedule:
+    - cron: "50 16 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: functions-coldstart-regression
+  cancel-in-progress: false
+
+jobs:
+  coldstart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install functions deps
+        run: npm ci --prefix functions
+
+      - name: Build functions
+        run: npm --prefix functions run build
+
+      - name: Run coldstart regression profile
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RUNS="7"
+          MAX_P95_MS="1500"
+          STRICT_MODE="true"
+          BUDGET_OVERRIDES=""
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -n "${{ inputs.runs }}" ]; then RUNS="${{ inputs.runs }}"; fi
+            if [ -n "${{ inputs.max_p95_ms }}" ]; then MAX_P95_MS="${{ inputs.max_p95_ms }}"; fi
+            if [ -n "${{ inputs.strict }}" ]; then STRICT_MODE="${{ inputs.strict }}"; fi
+            if [ -n "${{ inputs.budget_overrides }}" ]; then BUDGET_OVERRIDES="${{ inputs.budget_overrides }}"; fi
+          fi
+
+          EXTRA_ARGS=()
+          if [ "${STRICT_MODE}" = "true" ]; then
+            EXTRA_ARGS+=(--strict)
+          fi
+
+          BUDGET_ARGS=()
+          if [ -n "${BUDGET_OVERRIDES}" ]; then
+            IFS=',' read -ra PAIRS <<< "${BUDGET_OVERRIDES}"
+            for PAIR in "${PAIRS[@]}"; do
+              TRIMMED="$(echo "${PAIR}" | xargs)"
+              if [[ "${TRIMMED}" == *=* ]]; then
+                BUDGET_ARGS+=(--budget "${TRIMMED}")
+              fi
+            done
+          fi
+
+          node ./scripts/functions-coldstart-profile.mjs \
+            --runs "${RUNS}" \
+            --max-p95-ms "${MAX_P95_MS}" \
+            --artifact output/functions-coldstart-profile/latest.json \
+            --report-markdown output/functions-coldstart-profile/latest.md \
+            --json \
+            "${EXTRA_ARGS[@]}" \
+            "${BUDGET_ARGS[@]}"
+
+      - name: Upload coldstart profile artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: functions-coldstart-profile-${{ github.run_id }}
+          path: |
+            output/functions-coldstart-profile/latest.json
+            output/functions-coldstart-profile/latest.md
+          if-no-files-found: ignore
+          retention-days: 21

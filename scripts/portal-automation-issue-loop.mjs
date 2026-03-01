@@ -333,6 +333,9 @@ function signatureGroupKey(signature) {
     .replace(/^canary runtime error:\s*/i, "")
     .replace(/^smoke historical failures:\s*/i, "")
     .replace(/^smoke failed check:\s*/i, "")
+    .replace(/^load breach \([^)]*\):\s*/i, "")
+    .replace(/^load scenario failed:\s*/i, "")
+    .replace(/^coldstart p95 breach:\s*/i, "")
     .replace(/^promotion gate failed step:\s*/i, "")
     .replace(/^pr functional failed step:\s*/i, "")
     .replace(/^pr functional priority failure:\s*/i, "")
@@ -348,6 +351,9 @@ function signaturePriorityScore(signature) {
   let score = count * 10;
   if (key.includes(".signal.")) score += 6;
   if (key.includes(".check.")) score += 3;
+  if (key.startsWith("load.")) score += 4;
+  if (key.startsWith("coldstart.")) score += 5;
+  if (key.includes("rate-limit-coverage")) score += 3;
   if (key.includes(".error.")) score -= 2;
   if (key.endsWith("run.failure-generic")) score -= 8;
   score += createdAtBonus;

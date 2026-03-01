@@ -1,0 +1,89 @@
+name: Codex Backlog Autopilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Apply mode (open/update backlog issues + rolling summary)
+        required: false
+        default: false
+        type: boolean
+      epic_selection:
+        description: Epic selector for backlog dispatch (example: 1-20)
+        required: false
+        default: "1-20"
+        type: string
+      limit:
+        description: Maximum queue size pulled from epic hub
+        required: false
+        default: "48"
+        type: string
+  schedule:
+    # 07:30 America/Phoenix (MST year-round) = 14:30 UTC
+    - cron: "30 14 * * *"
+    # 16:30 America/Phoenix (MST year-round) = 23:30 UTC
+    - cron: "30 23 * * *"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: codex-automation-global
+  cancel-in-progress: false
+
+jobs:
+  codex-backlog-autopilot:
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run backlog autopilot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          MODE="--apply"
+          EPICS="1-20"
+          LIMIT="48"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            EPICS="${{ inputs.epic_selection }}"
+            LIMIT="${{ inputs.limit }}"
+            if [ "${{ inputs.apply }}" != "true" ]; then
+              MODE="--dry-run"
+            fi
+          fi
+
+          node ./scripts/codex/backlog-autopilot.mjs ${MODE} --write --json --epic "${EPICS}" --limit "${LIMIT}" --max-issues 8
+
+      - name: Run telemetry random audit
+        run: |
+          set -euo pipefail
+          node ./scripts/codex/telemetry-random-audit.mjs --window-hours 72 --sample-size 25 --max-anomaly-rate 0.2 --write --json
+
+      - name: Upload backlog autopilot artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-backlog-autopilot-${{ github.run_id }}
+          path: |
+            output/qa/codex-backlog-autopilot.json
+            output/qa/codex-backlog-autopilot.md
+            output/qa/codex-telemetry-random-audit.json
+            output/qa/codex-telemetry-random-audit.md
+            .codex/toolcalls.ndjson
+          if-no-files-found: ignore
+          retention-days: 7

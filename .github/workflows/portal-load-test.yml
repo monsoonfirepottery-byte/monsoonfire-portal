@@ -1,0 +1,108 @@
+name: Portal Load Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Load profile to run"
+        required: false
+        default: "default"
+        type: choice
+        options:
+          - quick
+          - default
+          - deep
+          - soak
+      base_url:
+        description: "Cloud Functions base URL"
+        required: false
+        default: "https://us-central1-monsoonfire-portal.cloudfunctions.net"
+      endpoint_path:
+        description: "Endpoint path under base URL"
+        required: false
+        default: "websiteKilnBoard"
+      timeout_ms:
+        description: "Per-request timeout in milliseconds"
+        required: false
+        default: "12000"
+      strict:
+        description: "Fail workflow on threshold breaches"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+  schedule:
+    - cron: "20 16 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portal-load-test
+  cancel-in-progress: false
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Run portal load profile
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROFILE="default"
+          BASE_URL="https://us-central1-monsoonfire-portal.cloudfunctions.net"
+          ENDPOINT_PATH="websiteKilnBoard"
+          TIMEOUT_MS="12000"
+          STRICT_MODE="true"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -n "${{ inputs.profile }}" ]; then PROFILE="${{ inputs.profile }}"; fi
+            if [ -n "${{ inputs.base_url }}" ]; then BASE_URL="${{ inputs.base_url }}"; fi
+            if [ -n "${{ inputs.endpoint_path }}" ]; then ENDPOINT_PATH="${{ inputs.endpoint_path }}"; fi
+            if [ -n "${{ inputs.timeout_ms }}" ]; then TIMEOUT_MS="${{ inputs.timeout_ms }}"; fi
+            if [ -n "${{ inputs.strict }}" ]; then STRICT_MODE="${{ inputs.strict }}"; fi
+          fi
+
+          EXTRA_ARGS=()
+          if [ "${STRICT_MODE}" = "true" ]; then
+            EXTRA_ARGS+=(--strict)
+          fi
+
+          node ./scripts/portal-load-test.mjs \
+            --profile "${PROFILE}" \
+            --base-url "${BASE_URL}" \
+            --path "${ENDPOINT_PATH}" \
+            --timeout-ms "${TIMEOUT_MS}" \
+            --write \
+            --json \
+            --report-json output/qa/portal-load-test.json \
+            --report-markdown output/qa/portal-load-test.md \
+            "${EXTRA_ARGS[@]}"
+
+      - name: Upload load test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-load-test-${{ github.run_id }}
+          path: |
+            output/qa/portal-load-test.json
+            output/qa/portal-load-test.md
+          if-no-files-found: ignore
+          retention-days: 21

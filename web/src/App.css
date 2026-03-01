@@ -27,6 +27,19 @@
   grid-template-columns: 72px 1fr;
 }
 
+.app-shell.dock-right {
+  grid-template-columns: 1fr 260px;
+}
+
+.app-shell.dock-right.nav-collapsed {
+  grid-template-columns: 1fr 72px;
+}
+
+.app-shell.dock-top {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr;
+}
+
 .app-shell button,
 .app-shell input,
 .app-shell textarea,
@@ -3077,6 +3090,16 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   min-height: 0;
 }
 
+.app-shell.dock-right .main {
+  order: 1;
+}
+
+.app-shell.dock-right .sidebar {
+  order: 2;
+  border-right: none;
+  border-left: 1px solid var(--border);
+}
+
 .sidebar.collapsed {
   width: 72px;
   padding: 24px 12px;
@@ -3242,6 +3265,68 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   margin-top: auto;
 }
 
+.nav-dock-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+
+.nav-dock-controls-inline {
+  margin: 0;
+  padding: 0;
+  border-top: none;
+}
+
+.nav-dock-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.nav-dock-buttons {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+}
+
+.nav-dock-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.nav-dock-btn:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.nav-dock-btn.active {
+  background: rgba(180, 79, 53, 0.14);
+  color: var(--text);
+}
+
+.nav-dock-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
 .sidebar nav button {
   border: none;
   background: transparent;
@@ -3384,6 +3469,11 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   opacity: 1;
 }
 
+.app-shell.dock-right .sidebar.collapsed nav button::after {
+  left: auto;
+  right: calc(100% + 10px);
+}
+
 .sidebar.collapsed .nav-section-items {
   display: none;
 }
@@ -3437,6 +3527,11 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   margin-left: 0;
 }
 
+.app-shell.dock-right .sidebar.collapsed .nav-bottom button .badge {
+  right: auto;
+  left: 8px;
+}
+
 .sidebar.collapsed .nav-top-item {
   display: none;
 }
@@ -3461,6 +3556,28 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
 
 .sidebar.collapsed .profile-actions {
   gap: 8px;
+}
+
+.sidebar.collapsed .nav-dock-controls {
+  flex-direction: column;
+  justify-content: center;
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.sidebar.collapsed .nav-dock-label {
+  display: none;
+}
+
+.sidebar.collapsed .nav-dock-buttons {
+  width: 44px;
+  border-radius: 12px;
+  flex-direction: column;
+}
+
+.sidebar.collapsed .nav-dock-btn {
+  width: 100%;
+  padding: 8px 0;
 }
 
 .sidebar.collapsed .admin-token {
@@ -3760,6 +3877,136 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   min-width: 0;
 }
 
+.app-shell.dock-top .sidebar {
+  position: sticky;
+  top: 0;
+  height: auto;
+  width: 100%;
+  min-height: auto;
+  padding: 12px 16px;
+  border-right: none;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  overflow: visible;
+  z-index: 5;
+}
+
+.app-shell.dock-top .brand img {
+  width: 36px;
+  height: 36px;
+}
+
+.app-shell.dock-top .brand h1 {
+  font-size: 17px;
+}
+
+.app-shell.dock-top .brand span {
+  display: none;
+}
+
+.app-shell.dock-top .sidebar nav {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-right: 0;
+  flex: 1;
+}
+
+.app-shell.dock-top .nav-primary,
+.app-shell.dock-top .nav-bottom {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.app-shell.dock-top .nav-bottom {
+  margin-top: 0;
+  margin-left: auto;
+}
+
+.app-shell.dock-top .nav-section {
+  margin-top: 0;
+  display: flex;
+  align-items: center;
+  position: relative;
+  gap: 0;
+}
+
+.app-shell.dock-top .nav-section-title {
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  min-height: 40px;
+  padding: 8px 12px;
+}
+
+.app-shell.dock-top .nav-section-items {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 220px;
+  max-height: 320px;
+  overflow: auto;
+  margin-left: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  z-index: 40;
+}
+
+.app-shell.dock-top .nav-section.closed .nav-section-items {
+  display: none;
+}
+
+.app-shell.dock-top .nav-subitem {
+  padding-left: 12px;
+  justify-content: flex-start;
+}
+
+.app-shell.dock-top .sidebar > .nav-dock-controls {
+  margin: 0;
+  padding: 0;
+  border-top: none;
+  margin-left: 8px;
+}
+
+.app-shell.dock-top .sidebar > .nav-dock-controls .nav-dock-label {
+  display: none;
+}
+
+.app-shell.dock-top .profile-actions {
+  margin-top: 0;
+  margin-left: 8px;
+  padding-top: 0;
+  border-top: none;
+}
+
+.app-shell.dock-top .profile-meta,
+.app-shell.dock-top .signout-text {
+  display: none;
+}
+
+.app-shell.dock-top .profile-card-button {
+  padding: 8px;
+  min-width: 44px;
+  width: auto;
+}
+
+.app-shell.dock-top .avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+}
+
 .view-root {
   width: 100%;
   min-width: 0;
@@ -3770,6 +4017,18 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.nav-toggle-row.dock-top-row {
+  justify-content: flex-end;
+}
+
+.nav-dock-controls-inline .nav-dock-buttons {
+  border-radius: 12px;
+}
+
+.nav-dock-controls-inline .nav-dock-btn {
+  padding: 7px 10px;
 }
 
 .nav-toggle,
@@ -4034,6 +4293,64 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
     opacity: 1;
     pointer-events: auto;
     transform: translateX(-110%);
+  }
+
+  .app-shell.dock-right .sidebar {
+    left: auto;
+    right: 0;
+    border-left: 1px solid var(--border);
+    border-right: none;
+    transform: translateX(110%);
+  }
+
+  .app-shell.dock-right .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .app-shell.dock-right .sidebar.collapsed {
+    transform: translateX(110%);
+  }
+
+  .app-shell.dock-top {
+    grid-template-rows: auto 1fr;
+  }
+
+  .app-shell.dock-top .sidebar {
+    position: sticky;
+    top: 0;
+    left: auto;
+    right: auto;
+    width: 100%;
+    height: auto;
+    transform: none;
+    padding: 10px 12px;
+    border-right: none;
+    border-left: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .app-shell.dock-top .sidebar.open,
+  .app-shell.dock-top .sidebar.collapsed {
+    transform: none;
+    width: 100%;
+    padding: 10px 12px;
+  }
+
+  .app-shell.dock-top .sidebar nav {
+    gap: 6px;
+  }
+
+  .app-shell.dock-top .nav-primary,
+  .app-shell.dock-top .nav-bottom {
+    gap: 4px;
+  }
+
+  .app-shell.dock-top .sidebar > .nav-dock-controls {
+    display: none;
+  }
+
+  .app-shell.dock-top .mobile-nav {
+    display: none;
   }
 
   .mobile-nav {

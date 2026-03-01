@@ -106,7 +106,7 @@ type NavSection = {
   items: NavItem[];
 };
 
-type NavDockPosition = "left" | "top" | "right";
+type NavDockPosition = "left" | "top" | "right" | "bottom";
 
 type ImportMetaEnvShape = {
   DEV?: boolean;
@@ -356,12 +356,14 @@ const WELCOME_MESSAGE_SUBJECT = "Welcome to Monsoon Fire Support";
 const WELCOME_NOTIFICATION_TITLE = "Welcome to your Monsoon Fire portal";
 
 const NAV_SECTION_KEYS: NavSectionKey[] = ["kilnRentals", "studioResources", "community"];
-const NAV_DOCK_POSITIONS: NavDockPosition[] = ["left", "top", "right"];
+const NAV_DOCK_POSITIONS: NavDockPosition[] = ["left", "top", "right", "bottom"];
 const NAV_DOCK_LABELS: Record<NavDockPosition, string> = {
   left: "Left",
   top: "Top",
   right: "Right",
+  bottom: "Bottom",
 };
+const NAV_DOCK_DRAG_THRESHOLD_PX = 130;
 
 function normalizeHashPath(hash: string): string {
   if (!hash) return "";
@@ -487,6 +489,23 @@ const isNavSectionKey = (value: string): value is NavSectionKey =>
 
 const isNavDockPosition = (value: string): value is NavDockPosition =>
   NAV_DOCK_POSITIONS.includes(value as NavDockPosition);
+
+const isHorizontalNavDock = (dock: NavDockPosition): boolean => dock === "top" || dock === "bottom";
+
+function resolveDockDropTarget(clientX: number, clientY: number): NavDockPosition | null {
+  if (typeof window === "undefined") return null;
+  const width = Math.max(window.innerWidth, 1);
+  const height = Math.max(window.innerHeight, 1);
+  const distances: Array<[NavDockPosition, number]> = [
+    ["left", Math.max(clientX, 0)],
+    ["right", Math.max(width - clientX, 0)],
+    ["top", Math.max(clientY, 0)],
+    ["bottom", Math.max(height - clientY, 0)],
+  ];
+  const closest = distances.reduce((best, entry) => (entry[1] < best[1] ? entry : best), distances[0]);
+  if (closest[1] > NAV_DOCK_DRAG_THRESHOLD_PX) return null;
+  return closest[0];
+}
 
 function UserProfileGlyph() {
   return (
@@ -871,6 +890,8 @@ export default function App() {
     if (savedNav && isNavKey(savedNav)) return getSectionForNav(savedNav);
     return NAV_SECTIONS[0]?.key ?? null;
   });
+  const [navDockDragActive, setNavDockDragActive] = useState(false);
+  const [navDockDragHover, setNavDockDragHover] = useState<NavDockPosition | null>(null);
   const [devAdminToken, setDevAdminToken] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
@@ -901,6 +922,7 @@ export default function App() {
   });
   const [motionAutoReduced, setMotionAutoReduced] = useState(false);
   const profileThemeSyncBlockedRef = useRef(false);
+  const navDockDragPointerIdRef = useRef<number | null>(null);
 
   const authClient = auth;
   const isAuthEmulator =
@@ -909,7 +931,8 @@ export default function App() {
   const devAdminActive = DEV_ADMIN_TOKEN_ENABLED && devAdminToken.trim().length > 0;
   const staffUi = isStaff || devAdminActive;
   const devAdminTokenValue = devAdminActive ? devAdminToken.trim() : "";
-  const navSupportsCollapse = navDock !== "top";
+  const navIsHorizontalDock = isHorizontalNavDock(navDock);
+  const navSupportsCollapse = !navIsHorizontalDock;
   const navIsCollapsed = navSupportsCollapse && navCollapsed;
   const navBottomItems: NavItem[] = staffUi
     ? [...NAV_BOTTOM_ITEMS, { key: "staff", label: "Staff" }]
@@ -1127,11 +1150,11 @@ export default function App() {
   }, [navDock]);
 
   useEffect(() => {
-    if (navDock !== "top") return;
+    if (!navIsHorizontalDock) return;
     if (navCollapsed) {
       setNavCollapsed(false);
     }
-  }, [navDock, navCollapsed]);
+  }, [navIsHorizontalDock, navCollapsed]);
 
   useEffect(() => {
     if (!openSection) {
@@ -1759,11 +1782,11 @@ export default function App() {
   const sidebarAvatarUrl = user?.photoURL || PROFILE_DEFAULT_AVATAR_URL;
 
   useEffect(() => {
-    if (navDock === "top") return;
+    if (navIsHorizontalDock) return;
     if (navSection && navSection !== openSection) {
       setOpenSection(navSection);
     }
-  }, [navSection, openSection, navDock]);
+  }, [navSection, openSection, navIsHorizontalDock]);
 
   useEffect(() => {
     if (!staffUi && nav === "staff") {
@@ -1806,7 +1829,7 @@ export default function App() {
   }, [authReady, user, nav]);
 
   const handleSectionToggle = (sectionKey: NavSectionKey) => {
-    if (navDock === "top") {
+    if (navIsHorizontalDock) {
       setOpenSection((previous) => (previous === sectionKey ? null : sectionKey));
       setMobileNavOpen(false);
       return;
@@ -1825,13 +1848,60 @@ export default function App() {
     if (nextDock === navDock) return;
     setNavDock(nextDock);
     setMobileNavOpen(false);
-    if (nextDock === "top") {
+    if (isHorizontalNavDock(nextDock)) {
       setNavCollapsed(false);
       setOpenSection(null);
     }
   };
 
-  const renderNavDockControls = (className = "") => (
+  // Dock source of truth: both click controls and drag-to-dock commit through handleNavDockChange.
+  const clearNavDockDragState = useCallback(() => {
+    navDockDragPointerIdRef.current = null;
+    setNavDockDragActive(false);
+    setNavDockDragHover(null);
+  }, []);
+
+  const updateNavDockHoverFromPointer = useCallback((clientX: number, clientY: number) => {
+    setNavDockDragHover(resolveDockDropTarget(clientX, clientY));
+  }, []);
+
+  const handleNavDockDragStart = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (typeof window !== "undefined" && window.matchMedia?.("(max-width: 960px)")?.matches) {
+      return;
+    }
+    navDockDragPointerIdRef.current = event.pointerId;
+    setNavDockDragActive(true);
+    updateNavDockHoverFromPointer(event.clientX, event.clientY);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+
+  const handleNavDockDragMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!navDockDragActive) return;
+    if (navDockDragPointerIdRef.current !== event.pointerId) return;
+    updateNavDockHoverFromPointer(event.clientX, event.clientY);
+  };
+
+  const finishNavDockDrag = (
+    event: React.PointerEvent<HTMLButtonElement>,
+    commitDrop: boolean
+  ) => {
+    if (navDockDragPointerIdRef.current !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    const nextDock = resolveDockDropTarget(event.clientX, event.clientY) ?? navDockDragHover;
+    clearNavDockDragState();
+    if (commitDrop && nextDock) {
+      handleNavDockChange(nextDock);
+    }
+  };
+
+  const renderNavDockControls = (
+    className = "",
+    options: { showDragHandle?: boolean } = {}
+  ) => (
     <div className={`nav-dock-controls ${className}`.trim()} role="group" aria-label="Navigation position">
       <span className="nav-dock-label">Dock</span>
       <div className="nav-dock-buttons">
@@ -1848,6 +1918,24 @@ export default function App() {
           </button>
         ))}
       </div>
+      {(options.showDragHandle ?? true) ? (
+        <button
+          type="button"
+          className={`nav-dock-drag-handle ${navDockDragActive ? "dragging" : ""}`.trim()}
+          aria-label="Drag to dock navigation"
+          title="Drag to dock navigation to left, top, right, or bottom"
+          onPointerDown={handleNavDockDragStart}
+          onPointerMove={handleNavDockDragMove}
+          onPointerUp={(event) => finishNavDockDrag(event, true)}
+          onPointerCancel={(event) => finishNavDockDrag(event, false)}
+          onLostPointerCapture={() => clearNavDockDragState()}
+        >
+          <span className="nav-dock-drag-handle-icon" aria-hidden="true">
+            ⋮⋮
+          </span>
+          <span className="nav-dock-drag-handle-text">Drag</span>
+        </button>
+      ) : null}
     </div>
   );
 
@@ -2075,6 +2163,20 @@ export default function App() {
       <a className="skip-link" href="#main-content">
         Skip to main content
       </a>
+      {navDockDragActive ? (
+        <div className="nav-dock-drop-overlay" aria-hidden="true">
+          {NAV_DOCK_POSITIONS.map((position) => (
+            <div
+              key={`drop-zone-${position}`}
+              className={`nav-dock-drop-zone nav-dock-drop-zone-${position} ${
+                navDockDragHover === position ? "active" : ""
+              }`.trim()}
+            >
+              <span>{NAV_DOCK_LABELS[position]}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className={`app-shell dock-${navDock} ${navIsCollapsed ? "nav-collapsed" : ""}`.trim()}>
         <aside
           id="portal-sidebar-nav"
@@ -2114,7 +2216,7 @@ export default function App() {
                   title={item.label}
                   onClick={() => {
                     setNav(item.key);
-                    if (navDock === "top") {
+                    if (navIsHorizontalDock) {
                       setOpenSection(null);
                     }
                     setMobileNavOpen(false);
@@ -2156,7 +2258,7 @@ export default function App() {
                         title={item.label}
                         onClick={() => {
                           setNav(item.key);
-                          if (navDock === "top") {
+                          if (navIsHorizontalDock) {
                             setOpenSection(null);
                           }
                           setMobileNavOpen(false);
@@ -2182,7 +2284,7 @@ export default function App() {
                   title={item.label}
                   onClick={() => {
                     setNav(item.key);
-                    if (navDock === "top") {
+                    if (navIsHorizontalDock) {
                       setOpenSection(null);
                     }
                     setMobileNavOpen(false);
@@ -2291,8 +2393,8 @@ export default function App() {
         </aside>
 
         <main id="main-content" className="main" tabIndex={-1}>
-          <div className={`nav-toggle-row ${navDock === "top" ? "dock-top-row" : ""}`.trim()}>
-            {navDock !== "top" ? (
+          <div className={`nav-toggle-row ${navIsHorizontalDock ? "dock-horizontal-row" : ""}`.trim()}>
+            {!navIsHorizontalDock ? (
               <button
                 type="button"
                 className="mobile-nav"
@@ -2307,7 +2409,7 @@ export default function App() {
                 Menu
               </button>
             ) : null}
-            {renderNavDockControls("nav-dock-controls-inline")}
+            {renderNavDockControls("nav-dock-controls-inline", { showDragHandle: false })}
           </div>
 
           <React.Suspense

@@ -626,7 +626,17 @@ async function openProfileView(page) {
 
 async function setThemeFromProfile(page, themeValue) {
   await openProfileView(page);
-  const themeSelect = page.getByLabel(/^Theme$/i).first();
+  await page.locator(".profile-form").first().waitFor({ timeout: 12000 });
+
+  let themeSelect = page.getByLabel(/^Theme$/i).first();
+  if ((await themeSelect.count()) === 0) {
+    themeSelect = page
+      .locator("select")
+      .filter({ has: page.locator(`option[value="${themeValue}"]`) })
+      .first();
+  }
+
+  await themeSelect.waitFor({ timeout: 10000 });
   if ((await themeSelect.count()) === 0) {
     throw new Error("Theme selector not found on Profile page.");
   }

@@ -25,6 +25,7 @@ import {
 import { formatDateTime } from "../utils/format";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import { shortId, track } from "../lib/analytics";
+import type { AnalyticsProps } from "../lib/analytics";
 import RevealCard from "../components/RevealCard";
 import { useUiSettings } from "../context/UiSettingsContext";
 import { safeStorageReadJson, safeStorageRemoveItem, safeStorageSetItem } from "../lib/safeStorage";
@@ -89,14 +90,6 @@ const CHECKIN_NOTE_TAGS = [
   "Keep together",
   "Separate pieces",
   "First firing",
-] as const;
-
-const PIECE_STATUS_OPTIONS = [
-  { id: "awaiting_placement", label: "Awaiting placement" },
-  { id: "loaded", label: "Loaded" },
-  { id: "fired", label: "Fired" },
-  { id: "ready", label: "Ready" },
-  { id: "picked_up", label: "Picked up" },
 ] as const;
 
 const KILN_OPTIONS = [
@@ -661,6 +654,7 @@ type Props = {
   user: User;
   isStaff: boolean;
   adminToken?: string;
+  viewMode?: "full" | "listOnly";
 };
 
 type KilnOption = (typeof KILN_OPTIONS)[number] & {
@@ -711,58 +705,7 @@ type ArrivalLookupOutstanding = {
   needsResourceProfile?: boolean;
 };
 
-type ReservationPieceDraftStatus = (typeof PIECE_STATUS_OPTIONS)[number]["id"];
-
-type ReservationPieceDraft = {
-  rowId: string;
-  pieceId: string;
-  pieceLabel: string;
-  pieceCount: number;
-  piecePhotoUrl: string;
-  pieceStatus: ReservationPieceDraftStatus;
-};
-
-function sanitizePieceCodeInput(value: string): string {
-  return value
-    .toUpperCase()
-    .replace(/[^A-Z0-9_-]/g, "")
-    .slice(0, 120);
-}
-
-function createEmptyPieceDraft(seed?: number): ReservationPieceDraft {
-  return {
-    rowId: makeRequestId("piece"),
-    pieceId: "",
-    pieceLabel: "",
-    pieceCount: Math.max(1, Math.round(seed ?? 1)),
-    piecePhotoUrl: "",
-    pieceStatus: "awaiting_placement",
-  };
-}
-
-function parsePieceBulkRows(input: string): ReservationPieceDraft[] {
-  const lines = input
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  const rows: ReservationPieceDraft[] = [];
-  lines.forEach((line) => {
-    const [labelChunk, countChunk] = line.split(/[,|]/);
-    const label = (labelChunk ?? "").trim();
-    const parsedCount = Number((countChunk ?? "").trim());
-    const pieceCount =
-      Number.isFinite(parsedCount) && parsedCount > 0
-        ? Math.max(1, Math.round(parsedCount))
-        : 1;
-    rows.push({
-      ...createEmptyPieceDraft(pieceCount),
-      pieceLabel: label,
-    });
-  });
-  return rows;
-}
-
-export default function ReservationsView({ user, isStaff, adminToken }: Props) {
+export default function ReservationsView({ user, isStaff, adminToken, viewMode = "full" }: Props) {
   const { themeName, portalMotion } = useUiSettings();
   const motionEnabled = themeName === "memoria" && portalMotion === "enhanced";
   const [reservations, setReservations] = useState<ReservationRecord[]>([]);
@@ -788,9 +731,6 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
   const [firingType, setFiringType] = useState<(typeof FIRING_OPTIONS)[number]["id"]>("bisque");
   const [intakeMode, setIntakeMode] = useState<IntakeMode>("SHELF_PURCHASE");
   const [communityShelfInfoOpen, setCommunityShelfInfoOpen] = useState(false);
-  const [communityShelfConfirmOpen, setCommunityShelfConfirmOpen] = useState(false);
-  const [communityShelfPreviousMode, setCommunityShelfPreviousMode] =
-    useState<IntakeMode>("SHELF_PURCHASE");
   const [footprintHalfShelves, setFootprintHalfShelves] = useState(1);
   const [showMoreFootprints, setShowMoreFootprints] = useState(false);
   const [hasTallPieces, setHasTallPieces] = useState(false);
@@ -805,10 +745,9 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
 
   const [latest, setLatest] = useState("");
   const [linkedBatchId, setLinkedBatchId] = useState("");
+  const [showAllRecentPieceChoices, setShowAllRecentPieceChoices] = useState(false);
   const [notesGeneral, setNotesGeneral] = useState("");
   const [notesTags, setNotesTags] = useState<string[]>([]);
-  const [pieceRows, setPieceRows] = useState<ReservationPieceDraft[]>([createEmptyPieceDraft()]);
-  const [pieceBulkInput, setPieceBulkInput] = useState("");
   const [rushRequested, setRushRequested] = useState(false);
   const [waxResistAssistRequested, setWaxResistAssistRequested] = useState(false);
   const [glazeSanityCheckRequested, setGlazeSanityCheckRequested] = useState(false);
@@ -817,6 +756,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryInstructions, setDeliveryInstructions] = useState("");
   const [useStudioGlazes, setUseStudioGlazes] = useState(false);
+  const [communityShelfFillInAllowed, setCommunityShelfFillInAllowed] = useState(false);
   const [glazeAccessCost, setGlazeAccessCost] = useState<number | null>(null);
 
   const [formError, setFormError] = useState("");
@@ -1000,6 +940,16 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     [user, adminToken]
   );
   const portalApi = useMemo(() => createPortalApi({ baseUrl: resolveFunctionsBaseUrl() }), []);
+  const trackStudioLifecycle = useCallback(
+    (eventName: string, props: AnalyticsProps = {}) => {
+      track(eventName, {
+        uid: shortId(user.uid),
+        surface: "reservations",
+        ...props,
+      });
+    },
+    [user.uid]
+  );
 
   const persistOfflineQueue = useCallback((nextQueue: StaffOfflineAction[]) => {
     const trimmed = nextQueue.slice(-STAFF_OFFLINE_QUEUE_MAX);
@@ -1518,6 +1468,57 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
       (reservation) => reservation.firingType === "bisque" && reservation.linkedBatchId
     );
   }, [sortedReservations]);
+  const recentPieceChoices = useMemo(() => {
+    const choices: Array<{ id: string; label: string; detail: string }> = [];
+    const seen = new Set<string>();
+
+    sortedReservations.forEach((reservation) => {
+      if (choices.length >= 24) return;
+      const pieces = Array.isArray(reservation.pieces) ? reservation.pieces : [];
+      pieces.forEach((piece) => {
+        if (choices.length >= 24) return;
+        const pieceId = typeof piece.pieceId === "string" ? piece.pieceId.trim() : "";
+        if (!pieceId || seen.has(pieceId)) return;
+        seen.add(pieceId);
+        const label =
+          typeof piece.pieceLabel === "string" && piece.pieceLabel.trim()
+            ? piece.pieceLabel.trim()
+            : "Recent piece";
+        const count =
+          typeof piece.pieceCount === "number" && Number.isFinite(piece.pieceCount)
+            ? Math.max(1, Math.round(piece.pieceCount))
+            : 1;
+        choices.push({
+          id: pieceId,
+          label,
+          detail: count > 1 ? `${count} pieces · ${pieceId}` : pieceId,
+        });
+      });
+    });
+
+    if (choices.length >= 3) return choices;
+
+    sortedReservations.forEach((reservation) => {
+      if (choices.length >= 24) return;
+      const linkedId =
+        typeof reservation.linkedBatchId === "string" ? reservation.linkedBatchId.trim() : "";
+      if (!linkedId || seen.has(linkedId)) return;
+      seen.add(linkedId);
+      choices.push({
+        id: linkedId,
+        label: "Recent linked batch",
+        detail: linkedId,
+      });
+    });
+
+    return choices;
+  }, [sortedReservations]);
+  const primaryRecentPieceChoices = useMemo(() => recentPieceChoices.slice(0, 3), [recentPieceChoices]);
+  const overflowRecentPieceChoices = useMemo(() => recentPieceChoices.slice(3, 12), [recentPieceChoices]);
+  const selectedRecentPieceChoice = useMemo(
+    () => recentPieceChoices.find((choice) => choice.id === linkedBatchId) ?? null,
+    [recentPieceChoices, linkedBatchId]
+  );
   const activeQueueReservations = useMemo(
     () =>
       sortedReservations
@@ -1899,64 +1900,6 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     setNotesTags((prev) => (prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag]));
   };
 
-  const setPieceRowField = (
-    rowId: string,
-    key: keyof Omit<ReservationPieceDraft, "rowId">,
-    value: string | number
-  ) => {
-    setPieceRows((prev) =>
-      prev.map((row) => {
-        if (row.rowId !== rowId) return row;
-        if (key === "pieceCount") {
-          const count = Number(value);
-          return {
-            ...row,
-            pieceCount:
-              Number.isFinite(count) && count > 0 ? Math.max(1, Math.round(count)) : 1,
-          };
-        }
-        if (key === "pieceId") {
-          return {
-            ...row,
-            pieceId: sanitizePieceCodeInput(String(value)),
-          };
-        }
-        if (key === "pieceStatus") {
-          const normalized = String(value);
-          const nextStatus = PIECE_STATUS_OPTIONS.some((option) => option.id === normalized)
-            ? (normalized as ReservationPieceDraftStatus)
-            : "awaiting_placement";
-          return {
-            ...row,
-            pieceStatus: nextStatus,
-          };
-        }
-        return {
-          ...row,
-          [key]: String(value),
-        };
-      })
-    );
-  };
-
-  const addPieceRow = () => {
-    setPieceRows((prev) => [...prev, createEmptyPieceDraft()]);
-  };
-
-  const removePieceRow = (rowId: string) => {
-    setPieceRows((prev) => {
-      const next = prev.filter((row) => row.rowId !== rowId);
-      return next.length ? next : [createEmptyPieceDraft()];
-    });
-  };
-
-  const importPieceBulkRows = () => {
-    const parsed = parsePieceBulkRows(pieceBulkInput);
-    if (!parsed.length) return;
-    setPieceRows(parsed);
-    setPieceBulkInput("");
-  };
-
   const setStaffNotesDraft = (reservationId: string, value: string) => {
     setStaffNotesByReservationId((prev) => ({
       ...prev,
@@ -2057,6 +2000,8 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
   ) => {
     if (pickupWindowBusyId) return;
     const allowOfflineQueue = options?.allowOfflineQueue === true;
+    const transitionAction = payload.action;
+    const reservationToken = shortId(reservationId);
     const requestPayload: Record<string, unknown> = {
       reservationId,
       ...payload,
@@ -2075,6 +2020,13 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         setPickupWindowMessage(
           "Offline mode: pickup window action queued. It will sync automatically when connection returns."
         );
+        trackStudioLifecycle("status_transition", {
+          reservationId: reservationToken,
+          actorRole: "staff",
+          transitionDomain: "pickup_window",
+          transitionAction,
+          transitionOutcome: "queued_offline",
+        });
         return;
       }
       const idToken = await user.getIdToken();
@@ -2098,6 +2050,27 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         },
       });
       setPickupWindowMessage(successMessage);
+      trackStudioLifecycle("status_transition", {
+        reservationId: reservationToken,
+        actorRole: isStaff ? "staff" : "member",
+        transitionDomain: "pickup_window",
+        transitionAction,
+        transitionOutcome: "success",
+      });
+      if (transitionAction === "staff_set_open_window") {
+        trackStudioLifecycle("pickup_ready", {
+          reservationId: reservationToken,
+          actorRole: "staff",
+          transitionDomain: "pickup_window",
+        });
+      }
+      if (transitionAction === "staff_mark_completed") {
+        trackStudioLifecycle("pickup_completed", {
+          reservationId: reservationToken,
+          actorRole: "staff",
+          transitionDomain: "pickup_window",
+        });
+      }
       await loadReservations();
     } catch (error: unknown) {
       if (allowOfflineQueue && isStaff && isRetryableOfflineError(error)) {
@@ -2111,9 +2084,24 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         setPickupWindowMessage(
           "Network issue detected. Pickup window action queued for automatic retry when online."
         );
+        trackStudioLifecycle("status_transition", {
+          reservationId: reservationToken,
+          actorRole: "staff",
+          transitionDomain: "pickup_window",
+          transitionAction,
+          transitionOutcome: "queued_retry",
+        });
         return;
       }
       setPickupWindowMessage(`Pickup window update failed: ${getErrorMessage(error)}`);
+      trackStudioLifecycle("status_transition_exception", {
+        reservationId: reservationToken,
+        actorRole: isStaff ? "staff" : "member",
+        transitionDomain: "pickup_window",
+        transitionAction,
+        errorCode: getErrorCode(error) ?? "unknown",
+        errorMessage: getErrorMessage(error).slice(0, 160),
+      });
     } finally {
       setPickupWindowBusyId(null);
     }
@@ -2375,6 +2363,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
       assignedStationId: stationId,
       queueClass: laneDraft || null,
     };
+    const reservationToken = shortId(reservation.id);
     setStaffActionBusyId(reservation.id);
     setStaffActionMessage("");
     try {
@@ -2389,6 +2378,14 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         setStaffActionMessage(
           "Offline mode: station assignment queued. It will sync automatically when connection returns."
         );
+        trackStudioLifecycle("status_transition", {
+          reservationId: reservationToken,
+          actorRole: "staff",
+          transitionDomain: "station_assignment",
+          transitionAction: "assign_station",
+          transitionOutcome: "queued_offline",
+          stationId,
+        });
         return;
       }
       const idToken = await user.getIdToken();
@@ -2407,6 +2404,20 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
       const capacityCopy =
         used !== null && capacity !== null ? ` (${used}/${capacity} half shelves)` : "";
       setStaffActionMessage(`Station assigned to ${stationId}${capacityCopy}.`);
+      trackStudioLifecycle("reservation_station_assigned", {
+        reservationId: reservationToken,
+        actorRole: "staff",
+        stationId,
+        queueClass: laneDraft || null,
+      });
+      trackStudioLifecycle("status_transition", {
+        reservationId: reservationToken,
+        actorRole: "staff",
+        transitionDomain: "station_assignment",
+        transitionAction: "assign_station",
+        transitionOutcome: "success",
+        stationId,
+      });
       await loadReservations();
     } catch (error: unknown) {
       if (isStaff && isRetryableOfflineError(error)) {
@@ -2420,9 +2431,26 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         setStaffActionMessage(
           "Network issue detected. Station assignment queued for automatic retry when online."
         );
+        trackStudioLifecycle("status_transition", {
+          reservationId: reservationToken,
+          actorRole: "staff",
+          transitionDomain: "station_assignment",
+          transitionAction: "assign_station",
+          transitionOutcome: "queued_retry",
+          stationId,
+        });
         return;
       }
       setStaffActionMessage(`Station assignment failed: ${getErrorMessage(error)}`);
+      trackStudioLifecycle("status_transition_exception", {
+        reservationId: reservationToken,
+        actorRole: "staff",
+        transitionDomain: "station_assignment",
+        transitionAction: "assign_station",
+        stationId,
+        errorCode: getErrorCode(error) ?? "unknown",
+        errorMessage: getErrorMessage(error).slice(0, 160),
+      });
     } finally {
       setStaffActionBusyId(null);
     }
@@ -2445,6 +2473,9 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
       status: pendingStatusAction.nextStatus,
       staffNotes: notesDraft || null,
     };
+    const reservationToken = shortId(pendingStatusAction.reservationId);
+    const previousStatus = pendingStatusAction.currentStatus;
+    const nextStatus = pendingStatusAction.nextStatus;
     setStaffActionBusyId(pendingStatusAction.reservationId);
     setStaffActionMessage("");
     setStaffToolsUnavailable("");
@@ -2460,6 +2491,15 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         setStaffActionMessage(
           "Offline mode: status change queued. It will sync automatically when connection returns."
         );
+        trackStudioLifecycle("status_transition", {
+          reservationId: reservationToken,
+          actorRole: "staff",
+          transitionDomain: "reservation_status",
+          transitionAction: "apply_status",
+          transitionFrom: previousStatus,
+          transitionTo: nextStatus,
+          transitionOutcome: "queued_offline",
+        });
         setPendingStatusAction(null);
         return;
       }
@@ -2478,15 +2518,24 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         typeof responseData.arrivalToken === "string" ? responseData.arrivalToken : null;
       setUndoStatusAction({
         reservationId: pendingStatusAction.reservationId,
-        previousStatus: pendingStatusAction.currentStatus,
+        previousStatus,
         previousStaffNotes: notesDraft || null,
         expiresAt: Date.now() + STAFF_UNDO_WINDOW_MS,
       });
       setStaffActionMessage(
-        `Reservation moved to ${pendingStatusAction.nextStatus}. Undo is available for ${Math.floor(
+        `Reservation moved to ${nextStatus}. Undo is available for ${Math.floor(
           STAFF_UNDO_WINDOW_MS / 1000
         )} seconds.${arrivalTokenIssued ? ` Arrival code: ${arrivalTokenIssued}` : ""}`
       );
+      trackStudioLifecycle("status_transition", {
+        reservationId: reservationToken,
+        actorRole: "staff",
+        transitionDomain: "reservation_status",
+        transitionAction: "apply_status",
+        transitionFrom: previousStatus,
+        transitionTo: nextStatus,
+        transitionOutcome: "success",
+      });
       setPendingStatusAction(null);
       await loadReservations();
     } catch (error: unknown) {
@@ -2501,6 +2550,15 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         setStaffActionMessage(
           "Network issue detected. Status change queued for automatic retry when online."
         );
+        trackStudioLifecycle("status_transition", {
+          reservationId: reservationToken,
+          actorRole: "staff",
+          transitionDomain: "reservation_status",
+          transitionAction: "apply_status",
+          transitionFrom: previousStatus,
+          transitionTo: nextStatus,
+          transitionOutcome: "queued_retry",
+        });
         setPendingStatusAction(null);
         return;
       }
@@ -2512,6 +2570,16 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         );
       }
       setStaffActionMessage(`Status update failed: ${message}`);
+      trackStudioLifecycle("status_transition_exception", {
+        reservationId: reservationToken,
+        actorRole: "staff",
+        transitionDomain: "reservation_status",
+        transitionAction: "apply_status",
+        transitionFrom: previousStatus,
+        transitionTo: nextStatus,
+        errorCode: getErrorCode(error) ?? "unknown",
+        errorMessage: message.slice(0, 160),
+      });
     } finally {
       setStaffActionBusyId(null);
     }
@@ -2525,6 +2593,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     }
     setStaffActionBusyId(undoStatusAction.reservationId);
     setStaffActionMessage("");
+    const reservationToken = shortId(undoStatusAction.reservationId);
     try {
       const idToken = await user.getIdToken();
       await portalApi.updateReservation({
@@ -2537,10 +2606,26 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         },
       });
       setStaffActionMessage("Last status change was reverted.");
+      trackStudioLifecycle("status_transition", {
+        reservationId: reservationToken,
+        actorRole: "staff",
+        transitionDomain: "reservation_status",
+        transitionAction: "undo_last_status_action",
+        transitionTo: undoStatusAction.previousStatus,
+        transitionOutcome: "rollback",
+      });
       setUndoStatusAction(null);
       await loadReservations();
     } catch (error: unknown) {
       setStaffActionMessage(`Undo failed: ${getErrorMessage(error)}`);
+      trackStudioLifecycle("status_transition_exception", {
+        reservationId: reservationToken,
+        actorRole: "staff",
+        transitionDomain: "reservation_status",
+        transitionAction: "undo_last_status_action",
+        errorCode: getErrorCode(error) ?? "unknown",
+        errorMessage: getErrorMessage(error).slice(0, 160),
+      });
     } finally {
       setStaffActionBusyId(null);
     }
@@ -2693,8 +2778,6 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     setFiringType("bisque");
     setIntakeMode("SHELF_PURCHASE");
     setCommunityShelfInfoOpen(false);
-    setCommunityShelfConfirmOpen(false);
-    setCommunityShelfPreviousMode("SHELF_PURCHASE");
     setFootprintHalfShelves(1);
     setHasTallPieces(false);
     setTiers(1);
@@ -2705,10 +2788,9 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     setPhotoStatus("");
     setLatest("");
     setLinkedBatchId("");
+    setShowAllRecentPieceChoices(false);
     setNotesTags([]);
     setNotesGeneral("");
-    setPieceRows([createEmptyPieceDraft()]);
-    setPieceBulkInput("");
     setRushRequested(false);
     setWaxResistAssistRequested(false);
     setGlazeSanityCheckRequested(false);
@@ -2717,6 +2799,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     setDeliveryAddress("");
     setDeliveryInstructions("");
     setUseStudioGlazes(false);
+    setCommunityShelfFillInAllowed(false);
     setGlazeAccessCost(null);
     setSubmitRequestId(null);
     setPrefillNote(null);
@@ -2725,21 +2808,16 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
   };
 
   const beginCommunityShelfFlow = useCallback(() => {
-    setCommunityShelfPreviousMode(intakeMode);
     setCommunityShelfInfoOpen(true);
-    setCommunityShelfConfirmOpen(false);
-  }, [intakeMode]);
+  }, []);
 
   const cancelCommunityShelfFlow = useCallback(() => {
-    setIntakeMode(communityShelfPreviousMode);
     setCommunityShelfInfoOpen(false);
-    setCommunityShelfConfirmOpen(false);
-  }, [communityShelfPreviousMode]);
+  }, []);
 
   const confirmCommunityShelfFlow = useCallback(() => {
     setIntakeMode("COMMUNITY_SHELF");
     setCommunityShelfInfoOpen(false);
-    setCommunityShelfConfirmOpen(false);
   }, []);
 
   const chooseIntakeMode = useCallback(
@@ -2750,7 +2828,6 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         return;
       }
       setCommunityShelfInfoOpen(false);
-      setCommunityShelfConfirmOpen(false);
       setIntakeMode(nextMode);
     },
     [beginCommunityShelfFlow, intakeMode]
@@ -2803,38 +2880,6 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
     }
 
     const latestDate = sanitizeDateInput(latest);
-    const normalizedPieces = pieceRows
-      .map((row) => {
-        const pieceId = sanitizePieceCodeInput(row.pieceId || "");
-        const pieceLabel = row.pieceLabel.trim();
-        const piecePhotoUrl = row.piecePhotoUrl.trim();
-        const pieceCount =
-          Number.isFinite(row.pieceCount) && row.pieceCount > 0
-            ? Math.max(1, Math.round(row.pieceCount))
-            : 1;
-        if (!pieceId && !pieceLabel && !piecePhotoUrl) return null;
-        return {
-          pieceId: pieceId || null,
-          pieceLabel: pieceLabel || null,
-          pieceCount,
-          piecePhotoUrl: piecePhotoUrl || null,
-          pieceStatus: row.pieceStatus,
-        };
-      })
-      .filter((row): row is NonNullable<typeof row> => row !== null);
-
-    if (normalizedPieces.length > 0) {
-      const totalPieceCount = normalizedPieces.reduce((sum, row) => sum + row.pieceCount, 0);
-      const shelfEstimate = Math.max(1, estimatedHalfShelvesRounded || computedHalfShelves);
-      const minimumExpected = Math.max(1, shelfEstimate - 1);
-      const maximumExpected = Math.max(minimumExpected, shelfEstimate * 12);
-      if (totalPieceCount < minimumExpected || totalPieceCount > maximumExpected) {
-        setFormError(
-          `Piece count (${totalPieceCount}) looks out of range for ${shelfEstimate} half shelves. Adjust piece rows or space estimate before submitting.`
-        );
-        return;
-      }
-    }
 
     const requestId = submitRequestId ?? makeRequestId("req");
     if (!submitRequestId) {
@@ -2884,12 +2929,13 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
           clayBody: null,
           glazeNotes: null,
         },
-        pieces: normalizedPieces.length ? normalizedPieces : null,
+        pieces: null,
         addOns: {
           rushRequested: !isCommunityShelf && rushRequested,
           waxResistAssistRequested: !isCommunityShelf && waxResistAssistRequested,
           glazeSanityCheckRequested: !isCommunityShelf && glazeSanityCheckRequested,
           wholeKilnRequested: intakeMode === "WHOLE_KILN",
+          communityShelfFillInAllowed: intakeMode === "SHELF_PURCHASE" && communityShelfFillInAllowed,
           pickupDeliveryRequested: !isCommunityShelf && pickupDeliveryRequested,
           returnDeliveryRequested: !isCommunityShelf && returnDeliveryRequested,
           useStudioGlazes: !isCommunityShelf && useStudioGlazes,
@@ -2907,6 +2953,14 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         firingType,
         kilnId,
       });
+      trackStudioLifecycle("reservation_created", {
+        reservationId: shortId(requestId),
+        actorRole: mode === "staff" ? "staff" : "member",
+        mode,
+        firingType,
+        kilnId,
+        intakeMode,
+      });
       setFormStatus(mode === "staff" ? "Staff check-in saved." : "Check-in sent.");
       resetForm();
     } catch (error: unknown) {
@@ -2920,25 +2974,36 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         kilnId,
         message: getErrorMessage(error).slice(0, 160),
       });
+      trackStudioLifecycle("status_transition_exception", {
+        reservationId: shortId(requestId),
+        actorRole: mode === "staff" ? "staff" : "member",
+        transitionDomain: "reservation_create",
+        transitionAction: "create_reservation",
+        errorCode: getErrorCode(error) ?? "unknown",
+        errorMessage: getErrorMessage(error).slice(0, 160),
+      });
       setFormError(getErrorMessage(error) || "Submission failed.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const showStaffTools = isStaff;
+  const isListOnly = viewMode === "listOnly";
+  const showStaffTools = isStaff && !isListOnly;
 
   return (
     <div className="page reservations-page">
-      <div className="page-header">
-        <div>
-          <h1>Ware Check-in</h1>
-          <p className="page-subtitle">
-            Think of it like an airport: pre-check here to breeze through the gate-check, or let
-            an agent help you check in. Both are equally good ways to use the studio kiln rentals.
-          </p>
+      {!isListOnly ? (
+        <div className="page-header">
+          <div>
+            <h1>Ware Check-in</h1>
+            <p className="page-subtitle">
+              Think of it like an airport: pre-check here to breeze through the gate-check, or let
+              an agent help you check in. Both are equally good ways to use the studio kiln rentals.
+            </p>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {showStaffTools ? (
         <RevealCard
@@ -2996,7 +3061,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         </RevealCard>
       ) : null}
 
-      {recentBisqueReservation ? (
+      {mode === "client" && recentBisqueReservation ? (
         <RevealCard
           as="section"
           className="card card-3d recent-checkin-card"
@@ -3026,7 +3091,8 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
         </RevealCard>
       ) : null}
 
-      <RevealCard as="section" className="card card-3d reservation-form" index={2} enabled={motionEnabled}>
+      {!isListOnly ? (
+        <RevealCard as="section" className="card card-3d reservation-form" index={2} enabled={motionEnabled}>
         <div className="card-title">
           {mode === "staff" ? "Staff check-in workflow" : "Self check-in workflow"}
         </div>
@@ -3216,6 +3282,27 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
                   <p className="form-helper">
                     About one carry-on suitcase laid flat.
                   </p>
+                  {intakeMode === "SHELF_PURCHASE" ? (
+                    <div className="community-overflow-optin">
+                      <label className="addon-toggle">
+                        <input
+                          type="checkbox"
+                          checked={communityShelfFillInAllowed}
+                          onChange={(event) => setCommunityShelfFillInAllowed(event.target.checked)}
+                        />
+                        <span className="addon-text">
+                          <span className="addon-title">Allow community shelf fill-in on unused space</span>
+                          <span className="addon-copy">
+                            If your shelf has open space after your pieces are loaded, staff may use only that extra
+                            area for community shelf work.
+                          </span>
+                        </span>
+                      </label>
+                      <p className="form-helper">
+                        Optional. This does not change your billing or move your own work back in the queue.
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
 
                   {showFitPrompt ? (
@@ -3312,6 +3399,9 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
                     ) : null}
                     {intakeMode === "SHELF_PURCHASE" && priceBreakApplied ? (
                       <span className="estimate-chip">Whole kiln option</span>
+                    ) : null}
+                    {intakeMode === "SHELF_PURCHASE" && communityShelfFillInAllowed ? (
+                      <span className="estimate-chip">Community shelf fill-in allowed</span>
                     ) : null}
                     {selectedKiln?.id === "reduction-raku" ? (
                       <span className="estimate-chip">Raku is always glaze pricing</span>
@@ -3548,109 +3638,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
             </details>
 
             <details className="checkin-step checkin-optional-step">
-              <summary className="checkin-step-title">7. Piece details (optional)</summary>
-              <p className="form-helper">
-                Add per-piece labels or codes so staff can quickly locate your work at pickup.
-              </p>
-              <div className="piece-bulk-panel">
-                <label>
-                  Bulk paste rows (`label,count`)
-                  <textarea
-                    value={pieceBulkInput}
-                    onChange={(event) => setPieceBulkInput(event.target.value)}
-                    placeholder={`Mug set,4\nLarge platter,1`}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={importPieceBulkRows}
-                  disabled={!pieceBulkInput.trim()}
-                >
-                  Import rows
-                </button>
-              </div>
-              <div className="piece-row-list">
-                {pieceRows.map((row, index) => (
-                  <div className="piece-row-card" key={row.rowId}>
-                    <div className="piece-row-header">
-                      <strong>Piece row {index + 1}</strong>
-                      <button
-                        type="button"
-                        className="btn btn-ghost piece-remove-btn"
-                        onClick={() => removePieceRow(row.rowId)}
-                        disabled={pieceRows.length <= 1}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    <div className="piece-row-grid">
-                      <label>
-                        Piece code
-                        <input
-                          type="text"
-                          value={row.pieceId}
-                          onChange={(event) => setPieceRowField(row.rowId, "pieceId", event.target.value)}
-                          placeholder="MF-RES-..."
-                        />
-                      </label>
-                      <label>
-                        Piece label
-                        <input
-                          type="text"
-                          value={row.pieceLabel}
-                          onChange={(event) => setPieceRowField(row.rowId, "pieceLabel", event.target.value)}
-                          placeholder="Mug set"
-                        />
-                      </label>
-                      <label>
-                        Piece count
-                        <input
-                          type="number"
-                          min={1}
-                          max={500}
-                          value={row.pieceCount}
-                          onChange={(event) => setPieceRowField(row.rowId, "pieceCount", event.target.value)}
-                        />
-                      </label>
-                      <label>
-                        Piece status
-                        <select
-                          value={row.pieceStatus}
-                          onChange={(event) => setPieceRowField(row.rowId, "pieceStatus", event.target.value)}
-                        >
-                          {PIECE_STATUS_OPTIONS.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-                    <label>
-                      Piece photo URL (optional)
-                      <input
-                        type="url"
-                        value={row.piecePhotoUrl}
-                        onChange={(event) => setPieceRowField(row.rowId, "piecePhotoUrl", event.target.value)}
-                        placeholder="https://..."
-                      />
-                    </label>
-                  </div>
-                ))}
-              </div>
-              <div className="piece-actions">
-                <button type="button" className="btn btn-ghost" onClick={addPieceRow}>
-                  Add piece row
-                </button>
-                <span className="form-helper">
-                  Leave code blank to auto-generate an `MF-RES-...` identifier server-side.
-                </span>
-              </div>
-            </details>
-
-            <details className="checkin-step checkin-optional-step">
-              <summary className="checkin-step-title">8. Notes (optional)</summary>
+              <summary className="checkin-step-title">7. Notes (optional)</summary>
               <div className="notes-grid">
                 <label>
                   General notes
@@ -3661,12 +3649,13 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
                   />
                 </label>
                 <label>
-                  Preferred date
+                  I need it by
                   <input
                     type="datetime-local"
                     value={latest}
                     onChange={(event) => setLatest(event.target.value)}
                   />
+                  <span className="deadline-helper">Optional deadline. Approximate timing is okay.</span>
                 </label>
               </div>
               <details className="notes-details">
@@ -3685,16 +3674,71 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
                   ))}
                 </div>
                 <div className="form-helper">Pick any tags that apply. We&apos;ll confirm at drop-off.</div>
-                <div className="notes-grid">
-                  <label>
-                    Link a piece or collection (optional)
-                    <input
-                      type="text"
-                      placeholder="Paste piece code or collection ID"
-                      value={linkedBatchId}
-                      onChange={(event) => setLinkedBatchId(event.target.value)}
-                    />
-                  </label>
+                <div className="piece-linker">
+                  <div className="piece-linker-title">Link one of your recent pieces (optional)</div>
+                  {primaryRecentPieceChoices.length ? (
+                    <div className="notes-tags">
+                      {primaryRecentPieceChoices.map((choice) => (
+                        <button
+                          key={choice.id}
+                          type="button"
+                          className={`note-tag ${linkedBatchId === choice.id ? "selected" : ""}`}
+                          onClick={() => setLinkedBatchId(choice.id)}
+                          aria-pressed={linkedBatchId === choice.id}
+                        >
+                          {choice.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="form-helper">
+                      No recent pieces found yet. You can skip this for now and we&apos;ll still process your check-in.
+                    </div>
+                  )}
+                  {overflowRecentPieceChoices.length ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost piece-linker-more"
+                      onClick={() => setShowAllRecentPieceChoices((prev) => !prev)}
+                    >
+                      {showAllRecentPieceChoices
+                        ? "Show fewer piece choices"
+                        : `Show ${overflowRecentPieceChoices.length} more piece choices`}
+                    </button>
+                  ) : null}
+                  {showAllRecentPieceChoices && overflowRecentPieceChoices.length ? (
+                    <div className="notes-tags">
+                      {overflowRecentPieceChoices.map((choice) => (
+                        <button
+                          key={choice.id}
+                          type="button"
+                          className={`note-tag ${linkedBatchId === choice.id ? "selected" : ""}`}
+                          onClick={() => setLinkedBatchId(choice.id)}
+                          aria-pressed={linkedBatchId === choice.id}
+                        >
+                          {choice.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {selectedRecentPieceChoice ? (
+                    <div className="piece-linker-selected">
+                      Linked piece: <code>{selectedRecentPieceChoice.detail}</code>
+                    </div>
+                  ) : null}
+                  <div className="piece-linker-actions">
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => setLinkedBatchId("")}
+                      disabled={!linkedBatchId}
+                    >
+                      Clear linked piece
+                    </button>
+                  </div>
+                  <div className="form-helper">
+                    Need more options? Open <strong>My Pieces</strong> from the sidebar.
+                  </div>
                 </div>
               </details>
               {prefillNote ? <div className="notice inline-alert">{prefillNote}</div> : null}
@@ -3710,7 +3754,7 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
             <button
               type="submit"
               className="btn btn-primary checkin-submit-btn"
-              disabled={isSaving || communityShelfInfoOpen || communityShelfConfirmOpen}
+              disabled={isSaving || communityShelfInfoOpen}
             >
               {isSaving ? (
                 "Submitting..."
@@ -3724,46 +3768,30 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
             {communityShelfInfoOpen ? (
               <div className="intake-modal-backdrop" role="presentation">
                 <div className="intake-modal" role="dialog" aria-modal="true" aria-label="Community shelf policy">
-                  <h3>Community shelf policy</h3>
+                  <h3>Community shelf summary</h3>
                   <p>
-                    Community shelf check-ins are free ({formatUsd(0)}), placed last, and only added
-                    when space remains on a purchased shelf with that owner&apos;s permission.
+                    Community shelf is best for flexible timelines. It keeps check-ins free ({formatUsd(0)})
+                    and helps fill leftover space when a shelf owner opts in.
                   </p>
-                  <p>
-                    Community shelf wares never trigger firing schedules and do not move a firing date
-                    sooner.
-                  </p>
-                  <div className="intake-modal-actions">
-                    <button type="button" className="btn btn-ghost" onClick={cancelCommunityShelfFlow}>
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      onClick={() => {
-                        setCommunityShelfInfoOpen(false);
-                        setCommunityShelfConfirmOpen(true);
-                      }}
-                    >
-                      Continue
-                    </button>
+                  <div className="community-shelf-summary" aria-label="Community shelf pros and tradeoffs">
+                    <p className="community-shelf-summary-title">Pros</p>
+                    <ul>
+                      <li>Free check-in when timing is flexible.</li>
+                      <li>Good fit for test pieces and low-priority work.</li>
+                    </ul>
+                    <p className="community-shelf-summary-title">Tradeoffs</p>
+                    <ul>
+                      <li>Placed last and only when donated shelf space is open.</li>
+                      <li>Does not trigger firing schedules or move dates forward.</li>
+                      <li>Rush and paid shelf add-ons stay disabled in this mode.</li>
+                    </ul>
                   </div>
-                </div>
-              </div>
-            ) : null}
-            {communityShelfConfirmOpen ? (
-              <div className="intake-modal-backdrop" role="presentation">
-                <div className="intake-modal" role="dialog" aria-modal="true" aria-label="Confirm community shelf">
-                  <h3>Proceed with Community Shelf?</h3>
-                  <p>
-                    This marks the check-in as free and lowest-priority placement.
-                  </p>
                   <div className="intake-modal-actions">
                     <button type="button" className="btn btn-ghost" onClick={cancelCommunityShelfFlow}>
-                      Cancel
+                      Keep Shelf Purchase
                     </button>
                     <button type="button" className="btn btn-primary" onClick={confirmCommunityShelfFlow}>
-                      Proceed with Community Shelf
+                      Use Community Shelf
                     </button>
                   </div>
                 </div>
@@ -3771,12 +3799,14 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
             ) : null}
           </form>
         )}
-      </RevealCard>
+        </RevealCard>
+      ) : null}
 
-      <RevealCard as="section" className="card card-3d reservation-list" index={3} enabled={motionEnabled}>
+      {isListOnly ? (
+        <RevealCard as="section" className="card card-3d reservation-list" index={3} enabled={motionEnabled}>
         <div className="reservation-list-header">
           <div>
-            <div className="card-title">Your check-ins</div>
+            <div className="card-title">{isListOnly ? "Check-ins queue" : "Your check-ins"}</div>
             <p className="reservation-list-meta">
               Queue pressure:{" "}
               <span className={`queue-pressure tone-${capacityPressure.tone}`}>
@@ -4417,13 +4447,18 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
                         })}
                     </div>
                   ) : null}
-                  {reservation.addOns?.pickupDeliveryRequested || reservation.addOns?.returnDeliveryRequested ? (
+                  {reservation.addOns?.pickupDeliveryRequested ||
+                  reservation.addOns?.returnDeliveryRequested ||
+                  reservation.addOns?.communityShelfFillInAllowed ? (
                     <div className="reservation-addons-inline">
                       {reservation.addOns?.pickupDeliveryRequested ? (
                         <span className="reservation-addon-pill">Pickup delivery</span>
                       ) : null}
                       {reservation.addOns?.returnDeliveryRequested ? (
                         <span className="reservation-addon-pill">Return delivery</span>
+                      ) : null}
+                      {reservation.addOns?.communityShelfFillInAllowed ? (
+                        <span className="reservation-addon-pill">Community shelf fill-in allowed</span>
                       ) : null}
                     </div>
                   ) : null}
@@ -4658,7 +4693,8 @@ export default function ReservationsView({ user, isStaff, adminToken }: Props) {
             })}
           </div>
         )}
-      </RevealCard>
+        </RevealCard>
+      ) : null}
 
       {DEV_MODE ? (
         <details className="card card-3d debug-panel">

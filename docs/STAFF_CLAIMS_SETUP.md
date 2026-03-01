@@ -6,6 +6,11 @@ Use Firebase custom claims to grant staff access in the portal.
 - Firebase CLI authenticated to the correct project.
 - User has signed in at least once so their auth record exists.
 
+## Secrets Handling (Moving Forward)
+- Keep local staff automation secrets in `secrets/portal/` (gitignored).
+- Prefer `source ./secrets/portal/portal-automation.env` over ad-hoc exports in shells.
+- Document path + variable name in markdown; do not document raw secret values.
+
 ## Role Contract (Authoritative)
 - Source parser: `web/src/auth/staffRole.ts`
 - Staff authority precedence:
@@ -55,6 +60,7 @@ Use this once your staff session is active:
 1. Set:
    - `PORTAL_STAFF_EMAIL=studio-brain-staff@monsoonfire.local`
    - `PORTAL_STAFF_PASSWORD=<PASSWORD>`
+   - preferred local bundle: `source ./secrets/portal/portal-automation.env`
 2. Run:
    - `npm --prefix web run check:messages-playwright`
 3. A missing CC/BCC pass returns:

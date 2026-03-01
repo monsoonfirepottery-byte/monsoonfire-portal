@@ -19,11 +19,13 @@ function parseArgs(argv) {
     reportPath: process.env.PORTAL_PROMOTION_GATE_REPORT || DEFAULT_REPORT_PATH,
     includeVirtualStaff: true,
     includeThemeSweep: true,
+    includeIndexDeploy: true,
     includeIndexGuard: true,
     feedbackPath: String(process.env.PORTAL_PROMOTION_FEEDBACK_PATH || "").trim(),
     userOverrides: {
       includeVirtualStaff: false,
       includeThemeSweep: false,
+      includeIndexDeploy: false,
       includeIndexGuard: false,
     },
     asJson: false,
@@ -58,6 +60,12 @@ function parseArgs(argv) {
     if (arg === "--skip-theme-sweep") {
       options.includeThemeSweep = false;
       options.userOverrides.includeThemeSweep = true;
+      continue;
+    }
+
+    if (arg === "--skip-index-deploy") {
+      options.includeIndexDeploy = false;
+      options.userOverrides.includeIndexDeploy = true;
       continue;
     }
 
@@ -148,9 +156,25 @@ async function main() {
     if (!options.userOverrides.includeVirtualStaff && typeof feedbackProfile.feedback.includeVirtualStaff === "boolean") {
       options.includeVirtualStaff = feedbackProfile.feedback.includeVirtualStaff;
     }
+    if (!options.userOverrides.includeIndexDeploy && typeof feedbackProfile.feedback.includeIndexDeploy === "boolean") {
+      options.includeIndexDeploy = feedbackProfile.feedback.includeIndexDeploy;
+    }
     if (!options.userOverrides.includeIndexGuard && typeof feedbackProfile.feedback.includeIndexGuard === "boolean") {
       options.includeIndexGuard = feedbackProfile.feedback.includeIndexGuard;
     }
+  }
+
+  if (options.includeIndexDeploy) {
+    steps.push(
+      runStep("firestore indexes deploy", "node", [
+        "./scripts/firestore-indexes-deploy.mjs",
+        "--project",
+        "monsoonfire-portal",
+        "--report",
+        "output/qa/post-deploy-index-deploy.json",
+        "--json",
+      ])
+    );
   }
 
   const canaryArgs = [
@@ -213,6 +237,7 @@ async function main() {
       applied: {
         includeThemeSweep: options.includeThemeSweep,
         includeVirtualStaff: options.includeVirtualStaff,
+        includeIndexDeploy: options.includeIndexDeploy,
         includeIndexGuard: options.includeIndexGuard,
       },
     },

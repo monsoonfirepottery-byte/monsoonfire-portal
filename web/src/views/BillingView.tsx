@@ -34,6 +34,15 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function str(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function isMissingIndexError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  return message.includes("requires an index") || message.includes("failed-precondition");
+}
+
 type FirestoreTimestamp = { toDate?: () => Date };
 
 type EventSignupDoc = {
@@ -56,6 +65,23 @@ type EventChargeDoc = {
   stripeCheckoutSessionId?: string | null;
 };
 
+type ApiV1Envelope<TData> = {
+  ok: boolean;
+  requestId?: string;
+  code?: string;
+  message?: string;
+  data?: TData;
+};
+
+type AgentRequestsListMineResponse = ApiV1Envelope<{ requests?: Array<Record<string, unknown>> }>;
+
+type AgentCheckoutResponse = {
+  ok: boolean;
+  message?: string;
+  checkoutUrl?: string | null;
+  sessionId?: string | null;
+};
+
 type MaterialsOrderDoc = {
   id: string;
   status?: string | null;
@@ -76,6 +102,14 @@ type ReceiptItem = {
   createdAt?: Date | null;
   status?: string;
   link?: string | null;
+};
+
+type PendingCommissionCheckout = {
+  requestId: string;
+  title: string;
+  status: string;
+  commissionOrderId: string;
+  commissionPaymentStatus: string;
 };
 
 function toDate(value: unknown): Date | null {
@@ -113,9 +147,13 @@ export default function BillingView({ user }: Props) {
   const [materials, setMaterials] = useState<MaterialsOrderDoc[]>([]);
   const [materialsLoading, setMaterialsLoading] = useState(true);
   const [materialsError, setMaterialsError] = useState("");
+  const [pendingCommissionCheckouts, setPendingCommissionCheckouts] = useState<PendingCommissionCheckout[]>([]);
+  const [commissionLoading, setCommissionLoading] = useState(true);
+  const [commissionError, setCommissionError] = useState("");
   const [eventTitles, setEventTitles] = useState<Record<string, string>>({});
   const [statusMessage, setStatusMessage] = useState("");
   const [payBusyId, setPayBusyId] = useState("");
+  const [commissionPayBusyId, setCommissionPayBusyId] = useState("");
   const [receiptFilter, setReceiptFilter] = useState<"all" | "events" | "store">("all");
 
   const baseUrl = useMemo(() => resolveFunctionsBaseUrl(), []);
@@ -173,6 +211,33 @@ export default function BillingView({ user }: Props) {
       }));
       setCharges(rows);
     } catch (error: unknown) {
+      if (isMissingIndexError(error)) {
+        try {
+          const fallbackSnap = await getDocs(
+            query(
+              collection(db, "eventCharges"),
+              where("uid", "==", user.uid),
+              limit(120)
+            )
+          );
+          const rows: EventChargeDoc[] = fallbackSnap.docs.map((docSnap) => ({
+            ...(docSnap.data() as EventChargeDoc),
+            id: docSnap.id,
+          }));
+          rows.sort((a, b) => {
+            const aMs = toDate(a.createdAt)?.getTime() ?? 0;
+            const bMs = toDate(b.createdAt)?.getTime() ?? 0;
+            return bMs - aMs;
+          });
+          setCharges(rows.slice(0, 30));
+          setStatusMessage("Loaded billing receipts with compatibility mode while indexes finish syncing.");
+          setChargesError("");
+          return;
+        } catch (fallbackError: unknown) {
+          setChargesError(getErrorMessage(fallbackError));
+          return;
+        }
+      }
       setChargesError(getErrorMessage(error));
     } finally {
       setChargesLoading(false);
@@ -204,12 +269,54 @@ export default function BillingView({ user }: Props) {
     }
   }, [user]);
 
+  const loadCommissionCheckouts = useCallback(async () => {
+    if (!user) return;
+    setCommissionLoading(true);
+    setCommissionError("");
+    try {
+      const resp = await client.postJson<AgentRequestsListMineResponse>("apiV1/v1/agent.requests.listMine", {
+        limit: 100,
+        includeClosed: true,
+      });
+      if (!resp.ok) {
+        setCommissionError(resp.message ?? "Could not load pending commission checkouts.");
+        return;
+      }
+      const rows = Array.isArray(resp.data?.requests)
+        ? resp.data.requests.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object")
+        : [];
+      const pending = rows
+        .map((row): PendingCommissionCheckout | null => {
+          const kind = str(row.kind).toLowerCase();
+          if (kind !== "commission") return null;
+          const commissionOrderId = str(row.commissionOrderId);
+          if (!commissionOrderId) return null;
+          const paymentStatus = str(row.commissionPaymentStatus, "checkout_pending").toLowerCase();
+          if (paymentStatus === "paid") return null;
+          return {
+            requestId: str(row.id),
+            title: str(row.title, "(untitled commission request)"),
+            status: str(row.status, "new"),
+            commissionOrderId,
+            commissionPaymentStatus: paymentStatus,
+          };
+        })
+        .filter((row): row is PendingCommissionCheckout => Boolean(row));
+      setPendingCommissionCheckouts(pending);
+    } catch (error: unknown) {
+      setCommissionError(getErrorMessage(error));
+    } finally {
+      setCommissionLoading(false);
+    }
+  }, [client, user]);
+
   const refreshBilling = useCallback(() => {
     void loadCheckIns();
     void loadCharges();
     void loadMaterials();
+    void loadCommissionCheckouts();
     setStatusMessage("Billing data refreshed.");
-  }, [loadCheckIns, loadCharges, loadMaterials]);
+  }, [loadCheckIns, loadCharges, loadCommissionCheckouts, loadMaterials]);
 
   useEffect(() => {
     void loadCheckIns();
@@ -222,6 +329,10 @@ export default function BillingView({ user }: Props) {
   useEffect(() => {
     void loadMaterials();
   }, [loadMaterials]);
+
+  useEffect(() => {
+    void loadCommissionCheckouts();
+  }, [loadCommissionCheckouts]);
 
   const uniqueEventIds = useMemo(() => {
     const ids = new Set<string>();
@@ -363,6 +474,35 @@ export default function BillingView({ user }: Props) {
     setStatusMessage(checkoutErrorMessage(error));
   };
 
+  const handleCommissionCheckout = async (entry: PendingCommissionCheckout) => {
+    if (!entry.commissionOrderId) {
+      setStatusMessage("Commission order ID missing.");
+      return;
+    }
+    if (commissionPayBusyId) return;
+    setCommissionPayBusyId(entry.requestId);
+    setStatusMessage("");
+    try {
+      const resp = await client.postJson<AgentCheckoutResponse>("createAgentCheckoutSession", {
+        orderId: entry.commissionOrderId,
+      });
+      if (!resp.ok) {
+        setStatusMessage(resp.message ?? "Unable to create commission checkout session.");
+        return;
+      }
+      const checkoutUrl = typeof resp.checkoutUrl === "string" ? resp.checkoutUrl : "";
+      if (!checkoutUrl) {
+        setStatusMessage("Checkout session created, but no URL returned.");
+        return;
+      }
+      window.location.assign(checkoutUrl);
+    } catch (error: unknown) {
+      setStatusMessage(checkoutErrorMessage(error));
+    } finally {
+      setCommissionPayBusyId("");
+    }
+  };
+
   return (
     <div className="page billing-page">
       <div className="page-header">
@@ -387,10 +527,15 @@ export default function BillingView({ user }: Props) {
           <div className="summary-value">{pendingMaterialsCount}</div>
           <div className="summary-note">Checkout or confirm pickup to close the order.</div>
         </article>
+        <article className="billing-summary-card">
+          <div className="summary-label">Pending commission checkouts</div>
+          <div className="summary-value">{pendingCommissionCheckouts.length}</div>
+          <div className="summary-note">Pay approved commission requests from Billing.</div>
+        </article>
         <button
           className="btn btn-ghost billing-refresh"
           onClick={refreshBilling}
-          disabled={checkInsLoading || chargesLoading || materialsLoading}
+          disabled={checkInsLoading || chargesLoading || materialsLoading || commissionLoading}
         >
           Refresh billing overview
         </button>
@@ -400,6 +545,7 @@ export default function BillingView({ user }: Props) {
         <div className="billing-status inline-alert">{statusMessage}</div>
       ) : null}
       {chargesError ? <div className="billing-status inline-alert">{chargesError}</div> : null}
+      {commissionError ? <div className="billing-status inline-alert">{commissionError}</div> : null}
 
       <section className="card billing-section">
         <div className="card-title">Unpaid check-ins</div>
@@ -495,6 +641,41 @@ export default function BillingView({ user }: Props) {
       </section>
 
       <section className="card billing-section">
+        <div className="card-title">Commission payments</div>
+        {commissionLoading ? (
+          <div className="billing-empty">Loading commission payment actions...</div>
+        ) : pendingCommissionCheckouts.length === 0 ? (
+          <div className="billing-empty">No pending commission checkouts.</div>
+        ) : (
+          <div className="billing-materials">
+            {pendingCommissionCheckouts.map((entry) => (
+              <div className="billing-material-row" key={entry.requestId}>
+                <div>
+                  <div className="billing-row-title">{entry.title}</div>
+                  <div className="billing-row-meta">
+                    Request {entry.requestId} · Status: {entry.status} · Payment: {entry.commissionPaymentStatus}
+                  </div>
+                </div>
+                <div>
+                  <button
+                    className="btn btn-primary"
+                    disabled={Boolean(commissionPayBusyId)}
+                    onClick={toVoidHandler(
+                      () => handleCommissionCheckout(entry),
+                      handleCheckoutHandlerError,
+                      "billing.commissionCheckout"
+                    )}
+                  >
+                    {commissionPayBusyId === entry.requestId ? "Preparing checkout..." : "Open commission checkout"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="card billing-section">
         <div className="card-title">Receipts</div>
         <div className="receipt-tabs">
           {receiptFilters.map((filter) => (
@@ -534,8 +715,8 @@ export default function BillingView({ user }: Props) {
         <div className="card-title">Need help?</div>
         <p className="billing-copy">
           Billing is attendance-only: we only charge you after a staff or self check-in. Cancel anytime up
-          to 3 hours before the event. Orders are paid via hosted Stripe Checkout—look for the receipt link
-          on this page.
+          to 3 hours before the event. Orders and approved commissions are paid via hosted Stripe Checkout;
+          use the actions on this page.
         </p>
         <p className="billing-copy">
           Questions? Visit the Support tab or email{" "}

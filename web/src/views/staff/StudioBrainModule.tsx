@@ -353,7 +353,7 @@ export default function StudioBrainModule({ user, active, disabled, adminToken }
   };
 
   useEffect(() => {
-    if (!active || disabledByToken) return;
+    if (!active || disabledByToken || !studioBrainBaseUrl) return;
     void run("loadStudioBrain", loadAll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, disabledByToken, auditActionPrefix, auditActorFilter, auditApprovalFilter, studioBrainBaseUrl]);

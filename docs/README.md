@@ -18,6 +18,8 @@ This folder contains the current integration references for the project.
   iOS API-layer setup, contracts alignment, and smoke-test guidance.
 - `docs/API_CONTRACTS.md`  
   Canonical API contract reference for request/response shapes and environment behavior.
+- `docs/library/README.md`
+  Hybrid Lending Library architecture/spec/schema/API documentation pack.
 - `docs/DEEP_LINK_CONTRACT.md`  
   Canonical deep-link contract for web + native clients.
 - `docs/SOURCE_OF_TRUTH_INDEX.md`  

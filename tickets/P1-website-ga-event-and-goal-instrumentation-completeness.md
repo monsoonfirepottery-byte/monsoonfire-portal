@@ -1,6 +1,6 @@
 # Website GA event and goal instrumentation completeness
 
-Status: In Progress
+Status: Completed
 Priority: P1
 Severity: Sev2
 Component: website
@@ -53,3 +53,24 @@ Audit all key pages and interactions against a single analytics event contract s
   - artifact: `artifacts/website-ga-sprint1-foundations.json`
 - Remaining blocker:
   - validating real-time GA event ingestion still requires production property access.
+
+## Progress update (2026-02-28)
+- Added repeatable baseline package report generation so exported event/goal data can be triaged in one pass:
+  - `scripts/build-website-ga-baseline-report.mjs`
+  - `npm run website:ga:baseline:report`
+- Runbook now includes the report step in Sprint 1 workflow:
+  - `docs/runbooks/WEBSITE_GA_SPRINT1_FOUNDATIONS.md`
+
+## Completion evidence (2026-02-28)
+- Added canonical event-goal contract with weekly validation checklist:
+  - `docs/analytics/WEBSITE_GA_EVENT_GOAL_MAP.md`
+- Implemented canonical conversion event instrumentation in both website runtime variants:
+  - `website/assets/js/main.js`
+  - `website/ncsitebuilder/assets/js/main.js`
+- Implemented contact form conversion instrumentation (`quote_form_open`, `quote_form_submit`) in both website variants:
+  - `website/contact/index.html`
+  - `website/ncsitebuilder/contact/index.html`
+- Added deterministic contract check:
+  - `scripts/check-website-ga-event-goal-coverage.mjs`
+  - `npm run website:ga:event-goal:check`
+  - artifact: `artifacts/ga/reports/website-ga-event-goal-check-latest.json`

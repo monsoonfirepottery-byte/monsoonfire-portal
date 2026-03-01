@@ -1,0 +1,76 @@
+{
+  "generatedAtUtc": "2026-02-28T21:02:29.153Z",
+  "status": "partial",
+  "baselineSnapshot": "2026-02-28",
+  "baselineDir": "/home/wuff/monsoonfire-portal/artifacts/ga/baseline/2026-02-28",
+  "eventsCsvPath": "/home/wuff/monsoonfire-portal/artifacts/ga/baseline/2026-02-28/event-audit.csv",
+  "funnel": [
+    {
+      "step": 1,
+      "eventName": "reservation_created",
+      "label": "Reservation created",
+      "count": 0,
+      "stepConversionPct": 100,
+      "fromCreatePct": 0
+    },
+    {
+      "step": 2,
+      "eventName": "reservation_station_assigned",
+      "label": "Station assigned",
+      "count": 0,
+      "stepConversionPct": 0,
+      "fromCreatePct": 0
+    },
+    {
+      "step": 3,
+      "eventName": "kiln_load_started",
+      "label": "Kiln load started",
+      "count": 0,
+      "stepConversionPct": 0,
+      "fromCreatePct": 0
+    },
+    {
+      "step": 4,
+      "eventName": "pickup_ready",
+      "label": "Pickup ready",
+      "count": 0,
+      "stepConversionPct": 0,
+      "fromCreatePct": 0
+    },
+    {
+      "step": 5,
+      "eventName": "pickup_completed",
+      "label": "Pickup completed",
+      "count": 0,
+      "stepConversionPct": 0,
+      "fromCreatePct": 0
+    }
+  ],
+  "eventCounts": {
+    "reservation_created": 0,
+    "reservation_station_assigned": 0,
+    "kiln_load_started": 0,
+    "status_transition": 0,
+    "pickup_ready": 0,
+    "pickup_completed": 0
+  },
+  "coverage": {
+    "requiredEventsSeen": 0,
+    "requiredEventsMissing": 6,
+    "missing": [
+      "reservation_created",
+      "reservation_station_assigned",
+      "kiln_load_started",
+      "status_transition",
+      "pickup_ready",
+      "pickup_completed"
+    ]
+  },
+  "exceptions": {
+    "exceptionCount": 0,
+    "topReasons": []
+  },
+  "rollbacks": {
+    "rollbackCount": 0
+  }
+}

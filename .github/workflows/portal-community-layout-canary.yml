@@ -1,0 +1,73 @@
+name: Portal Community Layout Canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Portal base URL"
+        required: false
+        default: "https://monsoonfire-portal.web.app"
+  schedule:
+    # Hourly guard for intermittent community sidebar/chiplet layout regressions.
+    - cron: "17 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portal-community-layout-canary
+  cancel-in-progress: false
+
+jobs:
+  community-layout-canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Resolve base URL
+        id: base_url
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.base_url }}" ]; then
+            echo "value=${{ github.event.inputs.base_url }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=https://monsoonfire-portal.web.app" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run community layout canary
+        env:
+          PORTAL_STAFF_EMAIL: ${{ secrets.PORTAL_STAFF_EMAIL }}
+          PORTAL_STAFF_PASSWORD: ${{ secrets.PORTAL_STAFF_PASSWORD }}
+          PORTAL_AGENT_STAFF_CREDENTIALS_JSON: ${{ secrets.PORTAL_AGENT_STAFF_CREDENTIALS_JSON }}
+        run: |
+          node ./scripts/portal-community-layout-canary.mjs \
+            --base-url "${{ steps.base_url.outputs.value }}" \
+            --output-dir output/qa/portal-community-layout-canary \
+            --report output/qa/portal-community-layout-canary.json \
+            --json
+
+      - name: Upload community layout artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-community-layout-canary-${{ github.run_id }}
+          path: |
+            output/qa/portal-community-layout-canary.json
+            output/qa/portal-community-layout-canary
+          if-no-files-found: ignore
+          retention-days: 14

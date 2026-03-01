@@ -5,6 +5,7 @@ Gate deployments on a consistent non-staff QA loop that covers:
 - smoke behavior
 - functionality behavior
 - user experience quality
+- legacy Requests deep-link fallback to supported pages (Support, Lending Library, Workshops)
 
 Staff console is intentionally excluded from this loop.
 
@@ -34,6 +35,7 @@ Optional deep probe:
 - Primary action on each page is clickable and produces expected state change.
 - API-backed data regions load or present a stable partial/empty state.
 - Auth-protected regions do not show unauthorized errors for valid users.
+- Legacy `/requests` links redirect to supported pages and show migration guidance (no dead-end).
 
 ### UX benchmark
 - Text contrast remains readable in both `portal` and `memoria` themes.
@@ -54,17 +56,19 @@ Optional deep probe:
 | Glaze Board | `glazes` | Board loads | Save/apply combo interaction works | Swatches and labels remain readable in dark theme |
 | Store | `materials` | Product list renders | Add/select workflow updates cart state | Prices and call-to-action controls are clear |
 | Membership | `membership` | Plan cards render | Primary action opens next flow | Plan comparison copy is readable and scannable |
-| Requests | `requests` | Requests list/form renders | Create request path succeeds | Success/error banners are stable and clear |
 | Billing | `billing` | Billing summary renders | Payment/intents actions handle expected responses | Financial labels and totals are high-contrast |
+| Billing (commission) | `billing` | Commission payment rail renders | Commission checkout CTA opens hosted checkout flow when pending orders exist | Commission status + CTA copy remains readable and stable |
 | Community | `community` | Community overview renders | Feed/report controls respond | Moderation/report affordances are clear |
 | Workshops | `events` | Event cards render | RSVP state toggles correctly | Capacity/waitlist labels remain readable |
 | Lending Library | `lendingLibrary` | Listing renders | Borrow/request action updates state | Availability status chips are readable |
 | Notifications | `notifications` | Notification stream renders | Mark-as-read/read transitions work and do not show `Mark read failed: Missing or insufficient permissions.` | Read/unread differentiation is obvious |
 | Messages | `messages` | Inbox + announcements render | Thread open/reply flow works | No index/permission blocker; message hierarchy is clear |
 | Support | `support` | Support page renders | Submit support request path works | Confirmation/error copy is stable and readable |
+| Legacy Requests links | `/requests*` and `/#/requests*` | App shell loads and target page renders | Redirect lands on Support, Lending Library, or Workshops based on link intent | `Requests has moved.` notice appears and URL no longer stays on `/requests` |
 
 ## Release Rule
 A deploy is considered successful only when:
 1. Gate commands pass.
 2. No P1/P2 regressions remain in non-staff pages.
 3. UX benchmark is met for both themes.
+4. Legacy Requests fallback behavior is verified in the authenticated canary evidence.

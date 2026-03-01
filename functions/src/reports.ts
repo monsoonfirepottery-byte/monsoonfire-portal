@@ -15,6 +15,7 @@ import {
   type ResponseLike,
 } from "./shared";
 import { enforceAppCheckIfEnabled } from "./authz";
+import { websiteCommunityConductFallbackPolicy } from "./policySourceOfTruth";
 
 const REGION = "us-central1";
 
@@ -204,11 +205,22 @@ type ActivePolicy = {
 };
 
 async function readActivePolicy(): Promise<ActivePolicy | null> {
+  const fallbackPolicy = websiteCommunityConductFallbackPolicy();
   const configSnap = await db.doc(POLICY_CONFIG_PATH).get();
   const version = safeString(configSnap.data()?.activeVersion);
-  if (!version) return null;
+  if (!version) {
+    return {
+      version: fallbackPolicy.version,
+      rules: fallbackPolicy.rules.map((rule) => ({ id: rule.id })),
+    };
+  }
   const policySnap = await db.collection(POLICY_VERSIONS_COL).doc(version).get();
-  if (!policySnap.exists) return null;
+  if (!policySnap.exists) {
+    return {
+      version: fallbackPolicy.version,
+      rules: fallbackPolicy.rules.map((rule) => ({ id: rule.id })),
+    };
+  }
   const data = policySnap.data() as { rules?: unknown } | undefined;
   const rules = Array.isArray(data?.rules)
     ? data.rules
@@ -218,6 +230,12 @@ async function readActivePolicy(): Promise<ActivePolicy | null> {
         })
         .filter((entry) => entry.id.length > 0)
     : [];
+  if (!rules.length) {
+    return {
+      version: fallbackPolicy.version,
+      rules: fallbackPolicy.rules.map((rule) => ({ id: rule.id })),
+    };
+  }
   return { version, rules };
 }
 

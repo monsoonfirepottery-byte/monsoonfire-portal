@@ -1,0 +1,419 @@
+{
+  "generatedAtUtc": "2026-02-28T20:43:33.599Z",
+  "scanRoots": [
+    "website",
+    "website/ncsitebuilder"
+  ],
+  "summary": {
+    "touchpointsScanned": 104,
+    "explicitTagged": 0,
+    "coveredByAutotag": 104,
+    "missingCoverage": 0,
+    "explicitCoveragePct": 0,
+    "effectiveCoveragePct": 100,
+    "minCoveragePct": 80
+  },
+  "missing": [],
+  "sample": [
+    {
+      "page": "website/ab/a/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ab/b/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/about/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/classes/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/contact/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/contact/index.html",
+      "href": "https://monsoonfire.kilnfire.com/new-user",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/faq/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/gallery/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/highlights/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/kiln-firing/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/kiln-firing/index.html",
+      "href": "https://monsoonfire.kilnfire.com/new-user",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/kiln-firing/index.html",
+      "href": "https://monsoonfire.kilnfire.com/new-user",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/memberships/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/memberships/index.html",
+      "href": "https://monsoonfire.kilnfire.com/new-user",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/ab/a/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/ab/b/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/about/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/classes/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/contact/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/contact/index.html",
+      "href": "https://monsoonfire.kilnfire.com/new-user",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/faq/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/faq/index.html",
+      "href": "https://www.phoenixcenterforthearts.org/",
+      "host": "phoenixcenterforthearts.org",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/gallery/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/highlights/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/kiln-firing/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/kiln-firing/index.html",
+      "href": "https://monsoonfire.kilnfire.com/new-user",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/kiln-firing/index.html",
+      "href": "https://monsoonfire.kilnfire.com/new-user",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/memberships/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/memberships/index.html",
+      "href": "https://monsoonfire.kilnfire.com/new-user",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/policies/accessibility/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/policies/clay-materials/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/policies/community-conduct/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/policies/damage-responsibility/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/policies/firing-scheduling/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/policies/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/policies/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/policies/media-accessibility/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/policies/payments-refunds/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/policies/safety-kiln-rules/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/policies/storage-abandoned-work/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/policies/studio-access/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/services/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/services/index.html",
+      "href": "https://monsoonfire.kilnfire.com/new-user",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/services/index.html",
+      "href": "https://monsoonfire.kilnfire.com/new-user",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/supplies/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/supplies/index.html",
+      "href": "https://monsoonfire.kilnfire.com/supplies",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/supplies/index.html",
+      "href": "https://monsoonfire.kilnfire.com/new-user",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    },
+    {
+      "page": "website/ncsitebuilder/support/index.html",
+      "href": "https://monsoonfire.kilnfire.com",
+      "host": "monsoonfire.kilnfire.com",
+      "explicitTagged": false,
+      "autoTagEligible": true,
+      "effectiveCovered": true
+    }
+  ]
+}

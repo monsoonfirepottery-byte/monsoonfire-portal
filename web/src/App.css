@@ -4404,6 +4404,14 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   background: linear-gradient(160deg, #f5f7fb 0%, #fdfdfd 50%, #eef2f8 100%);
 }
 
+.signed-out-auth-main {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px, 3.5vw, 40px);
+  background: var(--bg);
+}
+
 .auth-bootstrap-card {
   width: min(460px, 92vw);
   border-radius: 20px;

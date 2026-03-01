@@ -176,6 +176,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { key: "studioResources", label: "Overview" },
       { key: "pieces", label: "My Pieces" },
+      { key: "lendingLibrary", label: "Lending Library" },
       { key: "glazes", label: "Glaze Board" },
       { key: "materials", label: "Store" },
       { key: "membership", label: "Membership" },
@@ -188,7 +189,6 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { key: "community", label: "Overview" },
       { key: "events", label: "Workshops" },
-      { key: "lendingLibrary", label: "Lending Library" },
     ],
   },
 ];
@@ -349,6 +349,7 @@ const DEV_ADMIN_TOKEN_ENABLED =
   (FUNCTIONS_BASE_URL.includes("localhost") || FUNCTIONS_BASE_URL.includes("127.0.0.1"));
 const DEV_ADMIN_TOKEN_PERSIST_ENABLED =
   DEV_ADMIN_TOKEN_ENABLED && ENV.VITE_PERSIST_DEV_ADMIN_TOKEN === "true";
+const AUTH_GATED_BODY_CLASS = "portal-auth-gated";
 const SUPPORT_THREAD_PREFIX = "support_";
 const SUPPORT_MESSAGE_PREFIX = "welcome";
 const WELCOME_NOTIFICATION_ID = "welcome-messaging-infra";
@@ -1001,6 +1002,15 @@ export default function App() {
       document.documentElement.style.setProperty(key, String(value));
     }
   }, [themeName, prefersReducedMotion, enhancedMotion]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const shouldHideRuntimeTools = !authReady || !user;
+    document.body.classList.toggle(AUTH_GATED_BODY_CLASS, shouldHideRuntimeTools);
+    return () => {
+      document.body.classList.remove(AUTH_GATED_BODY_CLASS);
+    };
+  }, [authReady, user]);
 
   useEffect(() => {
     setAvatarLoadFailed(false);
@@ -1948,21 +1958,23 @@ export default function App() {
     setPiecesFocusTarget(null);
   }, []);
 
+  const renderSignedOutView = () => (
+    <SignedOutView
+      onProviderSignIn={toVoidHandler(handleProviderSignIn, handleAuthHandlerError, "auth.provider")}
+      onEmailPassword={toVoidHandler(handleEmailPassword, handleAuthHandlerError, "auth.emailPassword")}
+      onEmailLink={toVoidHandler(handleEmailLink, handleAuthHandlerError, "auth.emailLinkSend")}
+      onCompleteEmailLink={toVoidHandler(handleCompleteEmailLink, handleAuthHandlerError, "auth.emailLinkComplete")}
+      emailLinkPending={emailLinkPending}
+      status={authStatus}
+      busy={authBusy}
+      onEmulatorSignIn={toVoidHandler(handleEmulatorSignIn, handleAuthHandlerError, "auth.emulator")}
+      showEmulatorTools={isAuthEmulator}
+    />
+  );
+
   const renderView = (key: NavKey) => {
       if (!user) {
-        return (
-          <SignedOutView
-            onProviderSignIn={toVoidHandler(handleProviderSignIn, handleAuthHandlerError, "auth.provider")}
-            onEmailPassword={toVoidHandler(handleEmailPassword, handleAuthHandlerError, "auth.emailPassword")}
-            onEmailLink={toVoidHandler(handleEmailLink, handleAuthHandlerError, "auth.emailLinkSend")}
-            onCompleteEmailLink={toVoidHandler(handleCompleteEmailLink, handleAuthHandlerError, "auth.emailLinkComplete")}
-            emailLinkPending={emailLinkPending}
-            status={authStatus}
-            busy={authBusy}
-            onEmulatorSignIn={toVoidHandler(handleEmulatorSignIn, handleAuthHandlerError, "auth.emulator")}
-            showEmulatorTools={isAuthEmulator}
-          />
-        );
+        return renderSignedOutView();
       }
 
     switch (key) {
@@ -2153,6 +2165,37 @@ export default function App() {
             <p>Checking your studio sign-in status...</p>
             <div className="auth-bootstrap-loading" aria-hidden="true" />
           </section>
+        </main>
+      </AppErrorBoundary>
+    );
+  }
+
+  if (!user) {
+    return (
+      <AppErrorBoundary>
+        <a className="skip-link" href="#signed-out-main">
+          Skip to sign in
+        </a>
+        <main id="signed-out-main" className="signed-out-auth-main" tabIndex={-1}>
+          <React.Suspense
+            fallback={
+              <section className="auth-bootstrap-card" role="status" aria-live="polite">
+                <img
+                  src={MF_LOGO}
+                  alt="Monsoon Fire Pottery Studio"
+                  className="auth-bootstrap-logo"
+                  loading="eager"
+                  decoding="async"
+                  fetchPriority="high"
+                />
+                <h1>Monsoon Fire Portal</h1>
+                <p>Loading sign-in options...</p>
+                <div className="auth-bootstrap-loading" aria-hidden="true" />
+              </section>
+            }
+          >
+            {renderSignedOutView()}
+          </React.Suspense>
         </main>
       </AppErrorBoundary>
     );

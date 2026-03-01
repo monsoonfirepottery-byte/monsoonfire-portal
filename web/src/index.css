@@ -123,6 +123,10 @@ img {
   gap: 8px;
 }
 
+body.portal-auth-gated .runtime-hardening-tools {
+  display: none;
+}
+
 .runtime-hardening-toggle {
   justify-self: end;
   border: 1px solid var(--border-strong, rgba(27, 26, 23, 0.2));

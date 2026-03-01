@@ -38,7 +38,7 @@ Optional deep probe:
 - Legacy `/requests` links redirect to supported pages and show migration guidance (no dead-end).
 
 ### UX benchmark
-- Text contrast remains readable in both `portal` and `memoria` themes.
+- Text contrast remains readable in `portal`, `mono`, and `memoria` themes.
 - Loading and error copy is stable (no flashing or bounce loops).
 - Interaction latency feels responsive (no obvious stuck controls).
 - Automated consistency checks must execute both themes each run (light + dark) for dashboard baseline.

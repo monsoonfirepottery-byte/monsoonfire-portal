@@ -21,7 +21,7 @@ Use `scripts/codex-mcp.sh` from repo root:
 ```
 
 What it does:
-- Prefers repo-local `node_modules/.bin/codex` when present to avoid global/local binary ambiguity.
+- Uses the global PATH `codex` binary by default (repo-local binary is fallback only).
 - Runs `codex --profile <profile> -c 'mcp_servers.<id>.enabled=true' ... mcp list`
 - Includes read-only smoke checks for `docs` and `cloudflare`
 

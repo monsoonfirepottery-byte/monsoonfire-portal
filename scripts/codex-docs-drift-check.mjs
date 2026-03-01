@@ -197,7 +197,7 @@ function main() {
       report,
       "warning",
       "codex-version-ambiguity",
-      `Multiple Codex CLI versions detected in PATH (${codexResolution.versionSet.join(", ")}). Prefer repo-local node_modules/.bin/codex for deterministic harness behavior.`,
+      `Multiple Codex CLI versions detected in PATH (${codexResolution.versionSet.join(", ")}). Ensure your PATH resolves to the intended global Codex binary for deterministic harness behavior.`,
       {
         preferred: codexResolution.preferred,
         candidates: codexResolution.candidates,

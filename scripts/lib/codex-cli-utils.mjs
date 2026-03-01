@@ -129,25 +129,17 @@ function addCandidate(candidateMap, source, binaryPath, env, repoRoot) {
 export function selectPreferredCodexCandidate(candidates) {
   if (!Array.isArray(candidates) || candidates.length === 0) return null;
   const withVersion = candidates.filter((candidate) => candidate.version);
-  const pickHighest = (items) =>
-    [...items].sort((left, right) => compareSemver(right.version || "0.0.0", left.version || "0.0.0"))[0] || null;
-
-  const localWithVersion = withVersion.filter((candidate) => candidate.isLocal);
-  if (localWithVersion.length > 0) {
-    return pickHighest(localWithVersion);
-  }
-
   const activeWithVersion = withVersion.find((candidate) => candidate.sources.includes("active-path"));
   if (activeWithVersion) {
     return activeWithVersion;
   }
 
   if (withVersion.length > 0) {
-    return pickHighest(withVersion);
+    const byVersionDesc = [...withVersion].sort((left, right) =>
+      compareSemver(right.version || "0.0.0", left.version || "0.0.0"),
+    );
+    return byVersionDesc[0] || null;
   }
-
-  const localFallback = candidates.find((candidate) => candidate.isLocal);
-  if (localFallback) return localFallback;
 
   return candidates.find((candidate) => candidate.sources.includes("active-path")) || candidates[0] || null;
 }

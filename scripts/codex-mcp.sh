@@ -12,12 +12,12 @@ resolve_codex_bin() {
   if [[ -n "${CODEX_BIN_OVERRIDE:-}" ]]; then
     CODEX_BIN="${CODEX_BIN_OVERRIDE}"
     CODEX_SOURCE="override"
-  elif [[ -x "${LOCAL_CODEX_BIN}" ]]; then
-    CODEX_BIN="${LOCAL_CODEX_BIN}"
-    CODEX_SOURCE="repo-local"
   elif command -v codex >/dev/null 2>&1; then
     CODEX_BIN="$(command -v codex)"
-    CODEX_SOURCE="path"
+    CODEX_SOURCE="global-path"
+  elif [[ -x "${LOCAL_CODEX_BIN}" ]]; then
+    CODEX_BIN="${LOCAL_CODEX_BIN}"
+    CODEX_SOURCE="repo-local-fallback"
   else
     cat >&2 <<'NO_CODEX'
 ERROR: Unable to find a usable Codex CLI binary.
@@ -29,12 +29,11 @@ NO_CODEX
   fi
 
   CODEX_VERSION="$("${CODEX_BIN}" --version 2>/dev/null | head -n 1 || true)"
-  if [[ -x "${LOCAL_CODEX_BIN}" && "${CODEX_BIN}" != "${LOCAL_CODEX_BIN}" ]]; then
-    cat >&2 <<WARN_AMBIG
-WARN: Using non-local Codex binary (${CODEX_BIN}).
-WARN: Repo-local pinned Codex exists at ${LOCAL_CODEX_BIN}.
-WARN: Set CODEX_BIN_OVERRIDE or run from an environment that prefers the local binary to avoid CLI version drift.
-WARN_AMBIG
+  if [[ "${CODEX_SOURCE}" == "repo-local-fallback" ]]; then
+    cat >&2 <<WARN_LOCAL
+WARN: Falling back to repo-local Codex binary (${LOCAL_CODEX_BIN}).
+WARN: Install Codex globally (or place it on PATH) to keep this harness global-first.
+WARN_LOCAL
   fi
 }
 

@@ -246,7 +246,7 @@ function main() {
       "codex-cli-ambiguity",
       "warning",
       false,
-      `Multiple Codex CLI versions detected (${codexCli.versionSet.join(", ")}). Prefer the repo-local binary for deterministic behavior.`,
+      `Multiple Codex CLI versions detected (${codexCli.versionSet.join(", ")}). Ensure PATH resolves to your intended global Codex binary.`,
       {
         preferred: codexCli.preferred,
         candidates: codexCli.candidates,

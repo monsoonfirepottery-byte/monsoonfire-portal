@@ -107,6 +107,7 @@ const reservationSchema = z.object({
     .object({
       rushRequested: z.boolean().optional(),
       wholeKilnRequested: z.boolean().optional(),
+      communityShelfFillInAllowed: z.boolean().optional(),
       pickupDeliveryRequested: z.boolean().optional(),
       returnDeliveryRequested: z.boolean().optional(),
       useStudioGlazes: z.boolean().optional(),
@@ -495,6 +496,7 @@ export const createReservation = onRequest(
       waxResistAssistRequested: !isCommunityShelf && addOnsInput?.waxResistAssistRequested === true,
       glazeSanityCheckRequested: !isCommunityShelf && addOnsInput?.glazeSanityCheckRequested === true,
       wholeKilnRequested: intakeMode === "WHOLE_KILN",
+      communityShelfFillInAllowed: intakeMode === "SHELF_PURCHASE" && addOnsInput?.communityShelfFillInAllowed === true,
       pickupDeliveryRequested: !isCommunityShelf && addOnsInput?.pickupDeliveryRequested === true,
       returnDeliveryRequested: !isCommunityShelf && addOnsInput?.returnDeliveryRequested === true,
       useStudioGlazes: !isCommunityShelf && addOnsInput?.useStudioGlazes === true,

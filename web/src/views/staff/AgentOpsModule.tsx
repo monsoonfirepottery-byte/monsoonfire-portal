@@ -2275,4 +2275,3 @@ export default function AgentOpsModule({ client, active, disabled }: Props) {
     </section>
   );
 }
-

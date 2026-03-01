@@ -1,6 +1,6 @@
 # Portal Gap Remediation Program — 2026-02-18
 
-Status: Planned
+Status: Completed
 Created: 2026-02-18
 Owner: PM + Engineering
 
@@ -36,3 +36,18 @@ This program tracks the security, auth, data integrity, and backlog-quality gaps
 1. All six epics have at least one ticket completed to P1 standard.
 2. No high-confidence silent-fallback path remains untagged in production.
 3. Board state and ticket files are synchronized for all created tickets before merge.
+
+## Completion evidence (2026-02-28)
+- Program epics now all marked `Completed`:
+  - `tickets/P1-EPIC-01-stripe-payment-webhook-hardening.md`
+  - `tickets/P1-EPIC-02-auth-role-consistency-and-traceability.md`
+  - `tickets/P1-EPIC-03-mock-data-governance-and-production-hygiene.md`
+  - `tickets/P1-EPIC-04-functions-type-safety-and-data-contract-fidelity.md`
+  - `tickets/P1-EPIC-05-security-surface-hardening-and-trust-controls.md`
+  - `tickets/P1-EPIC-06-backlog-hygiene-and-ticket-topology.md`
+- Representative downstream hardening dispatch completion:
+  - `tickets/P2-api-v1-hardening-swarm-dispatch.md`
+  - `tickets/P2-api-v1-response-contract-regression-tests.md`
+- Latest regression validation evidence:
+  - `npm --prefix functions run build`
+  - `node --test functions/lib/apiV1.test.js` (`115` passing tests)

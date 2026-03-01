@@ -1,6 +1,6 @@
 # P2 — API v1 Hardening Swarm Dispatch
 
-Status: Planned
+Status: Completed
 Date: 2026-02-17
 
 ## Swarm targets
@@ -30,10 +30,11 @@ Date: 2026-02-17
   - Owner: TBD
   - Focus: verify page-wide inline-style removal and CSP behavior.
 
-- **Swarm F (Contracts/Regression)**  
+- **Swarm F (Contracts/Regression)** ✅ **Done**
   - Ticket: `tickets/P2-api-v1-response-contract-regression-tests.md`
   - Owner: TBD
   - Focus: lock route allowlist and payload-contract behavior with deterministic API tests.
+  - Completion note: route normalization/reject, payload projection, and rate-limit thrown-path regression coverage now runs in `functions/src/apiV1.test.ts` and passes in compiled `node --test functions/lib/apiV1.test.js`.
 
 - **Swarm G (Collections Projection)** ✅ **Done**
   - Ticket: `tickets/P2-api-v1-collections-projection-hardening.md`
@@ -69,3 +70,10 @@ Date: 2026-02-17
 ## Coordination note
 - APIV1-001 route allowlist work is already completed in this branch.
 - Use `docs/apiV1-hardening-tickets.md` as backlog summary and handoff reference.
+
+## Completion evidence (2026-02-28)
+- Swarms A, B, C, D, E, F, G, H, I, J, K now all have completed tickets.
+- Latest verification run for Swarm F:
+  - `npm --prefix functions run build`
+  - `node --test functions/lib/apiV1.test.js`
+  - `115` tests passed, `0` failed.

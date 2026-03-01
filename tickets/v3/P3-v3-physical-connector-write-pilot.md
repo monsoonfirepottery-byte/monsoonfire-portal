@@ -1,6 +1,6 @@
 # P3: Hubitat Physical Control Pilot (Capability-gated, Write-Capable)
 
-Status: Proposed
+Status: Blocked
 Priority: P3
 Severity: Sev2
 Component: studio-brain
@@ -71,3 +71,10 @@ We need a controlled, auditable write-capable path that can execute only approve
 - Replay/race on idempotency key handling.
 - Retry storms from transient device outages.
 - Operator confusion if write capability is exposed before staff training docs are complete.
+
+## Blocker (2026-02-28)
+- This pilot is intentionally blocked on its prerequisite v3 controls:
+  - capability registry + proposal/approval + immutable audit
+  - policy exemptions + kill-switch controls
+  - write-path pilot action guardrails and connector harness coverage
+- These prerequisites must be implemented and validated first to avoid shipping unsafe connector writes.

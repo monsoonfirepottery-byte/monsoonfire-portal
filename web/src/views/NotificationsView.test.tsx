@@ -6,7 +6,6 @@ import type { User } from "firebase/auth";
 import NotificationsView from "./NotificationsView";
 
 const docMock = vi.fn((_: unknown, ...segments: string[]) => ({ path: segments.join("/") }));
-const serverTimestampMock = vi.fn(() => "server-ts");
 const updateDocMock = vi.fn(async () => undefined);
 const timestampNowMock = vi.fn(() => "client-ts");
 const postJsonMock = vi.fn(async () => ({ ok: true, data: { notificationId: "notif-fallback" } }));
@@ -27,7 +26,6 @@ vi.mock("../firebase", () => ({
 
 vi.mock("firebase/firestore", () => ({
   doc: (...args: unknown[]) => docMock(...(args as [unknown, ...string[]])),
-  serverTimestamp: () => serverTimestampMock(),
   updateDoc: (...args: unknown[]) => updateDocMock(...args),
   Timestamp: {
     now: () => timestampNowMock(),
@@ -35,9 +33,10 @@ vi.mock("firebase/firestore", () => ({
 }));
 
 function createUser(uid = "user-1"): User {
+  const getIdToken = vi.fn(async () => "id-token");
   return {
     uid,
-    getIdToken: async () => "id-token",
+    getIdToken,
   } as User;
 }
 
@@ -47,7 +46,6 @@ beforeEach(() => {
   postJsonMock.mockReset();
   postJsonMock.mockResolvedValue({ ok: true, data: { notificationId: "notif-fallback" } });
   docMock.mockClear();
-  serverTimestampMock.mockClear();
   timestampNowMock.mockClear();
 });
 
@@ -90,7 +88,7 @@ describe("NotificationsView mark-read feedback", () => {
   });
 
   it("falls back to api mark-read when Firestore permission update is denied", async () => {
-    updateDocMock.mockRejectedValueOnce(new Error("Missing or insufficient permissions."));
+    updateDocMock.mockRejectedValue(new Error("Missing or insufficient permissions."));
 
     render(
       <NotificationsView
@@ -121,7 +119,7 @@ describe("NotificationsView mark-read feedback", () => {
   });
 
   it("shows mark-read error when both Firestore and fallback api fail", async () => {
-    updateDocMock.mockRejectedValueOnce(new Error("Missing or insufficient permissions."));
+    updateDocMock.mockRejectedValue(new Error("Missing or insufficient permissions."));
     postJsonMock.mockRejectedValueOnce(new Error("fallback failed"));
 
     render(
@@ -150,5 +148,109 @@ describe("NotificationsView mark-read feedback", () => {
 
     expect(screen.queryByRole("button", { name: /mark read/i })).not.toBeNull();
     expect(screen.queryByText("1 unread")).not.toBeNull();
+  });
+
+  it("retries Firestore mark-read after permission/auth errors before using api fallback", async () => {
+    updateDocMock.mockRejectedValueOnce(new Error("Missing or insufficient permissions."));
+    updateDocMock.mockResolvedValueOnce(undefined);
+    const user = createUser();
+
+    render(
+      <NotificationsView
+        user={user}
+        notifications={[
+          {
+            id: "notif-4",
+            title: "Studio note",
+            body: "Reminder posted.",
+            createdAt: { toDate: () => new Date("2026-02-26T00:00:00.000Z") },
+            readAt: null,
+          },
+        ]}
+        loading={false}
+        error=""
+        onOpenFirings={() => undefined}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /mark read/i }));
+
+    await waitFor(() => {
+      expect(updateDocMock).toHaveBeenCalledTimes(2);
+    });
+    expect(user.getIdToken).toHaveBeenCalledWith(true);
+    expect(postJsonMock).toHaveBeenCalledTimes(0);
+    expect(screen.queryByText("Notification marked as read.")).not.toBeNull();
+  });
+
+  it("falls back to api when Firestore update fails for non-permission errors", async () => {
+    updateDocMock.mockRejectedValueOnce(new Error("No document to update"));
+
+    render(
+      <NotificationsView
+        user={createUser()}
+        notifications={[
+          {
+            id: "notif-5",
+            title: "Studio note",
+            body: "Reminder posted.",
+            createdAt: { toDate: () => new Date("2026-02-26T00:00:00.000Z") },
+            readAt: null,
+          },
+        ]}
+        loading={false}
+        error=""
+        onOpenFirings={() => undefined}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /mark read/i }));
+
+    await waitFor(() => {
+      expect(postJsonMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(screen.queryByText("Notification marked as read.")).not.toBeNull();
+    expect(screen.queryByText("All caught up")).not.toBeNull();
+  });
+
+  it("retries mark-read via alternate v1 route when apiV1 route returns not found", async () => {
+    updateDocMock.mockRejectedValueOnce(new Error("No document to update"));
+    postJsonMock.mockImplementation(async (route: unknown) => {
+      if (route === "apiV1/v1/notifications.markRead") {
+        const error = new Error("Unknown route");
+        (error as Error & { statusCode?: number; code?: string }).statusCode = 404;
+        (error as Error & { statusCode?: number; code?: string }).code = "NOT_FOUND";
+        throw error;
+      }
+      return { ok: true, data: { notificationId: "notif-6" } };
+    });
+
+    render(
+      <NotificationsView
+        user={createUser()}
+        notifications={[
+          {
+            id: "notif-6",
+            title: "Studio note",
+            body: "Reminder posted.",
+            createdAt: { toDate: () => new Date("2026-02-26T00:00:00.000Z") },
+            readAt: null,
+          },
+        ]}
+        loading={false}
+        error=""
+        onOpenFirings={() => undefined}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /mark read/i }));
+
+    await waitFor(() => {
+      expect(postJsonMock).toHaveBeenCalledTimes(2);
+    });
+    expect(postJsonMock.mock.calls[0]?.[0]).toBe("apiV1/v1/notifications.markRead");
+    expect(postJsonMock.mock.calls[1]?.[0]).toBe("v1/notifications.markRead");
+    expect(screen.queryByText("Notification marked as read.")).not.toBeNull();
   });
 });

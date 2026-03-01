@@ -1,0 +1,110 @@
+{
+  "generatedAtUtc": "2026-02-28T20:52:56.052Z",
+  "status": "ok",
+  "metrics": {
+    "sessionsTotalTop10Sources": 1140,
+    "assistedRevenueTotal": 15900,
+    "assistedConversionsTotal": 38,
+    "averageTopFunnelConversionPct": 30.43
+  },
+  "deltas": {
+    "sessionsTotalTop10Sources": 0,
+    "assistedRevenueTotal": 0,
+    "averageTopFunnelConversionPct": 0
+  },
+  "thresholds": [
+    {
+      "metric": "sessionsTotalTop10Sources",
+      "breachDeltaPct": -15,
+      "ticketPriority": "P2",
+      "escalationPath": "marketing-lead -> web-lead -> product-lead"
+    },
+    {
+      "metric": "averageTopFunnelConversionPct",
+      "breachDeltaPct": -12,
+      "ticketPriority": "P1",
+      "escalationPath": "web-product -> web-content -> product-lead"
+    },
+    {
+      "metric": "assistedRevenueTotal",
+      "breachDeltaPct": -20,
+      "ticketPriority": "P2",
+      "escalationPath": "marketing-lead -> product-lead"
+    }
+  ],
+  "owners": [
+    {
+      "metricFamily": "acquisition + source/medium",
+      "owner": "marketing-lead"
+    },
+    {
+      "metricFamily": "funnel conversion",
+      "owner": "web-product"
+    },
+    {
+      "metricFamily": "landing page engagement",
+      "owner": "web-content"
+    },
+    {
+      "metricFamily": "assisted conversion value",
+      "owner": "product-lead"
+    }
+  ],
+  "alerts": [],
+  "weeklyTemplate": {
+    "weekEnding": "2026-02-28",
+    "summary": "Review 5 source/medium rows, 3 funnels, and 5 landing opportunities.",
+    "decisionsNeeded": "Approve top 2 experiments and confirm remediation owners for any breached metric.",
+    "actionOwnerMap": "acquisition + source/medium=marketing-lead; funnel conversion=web-product; landing page engagement=web-content; assisted conversion value=product-lead",
+    "topLandingWatchlist": [
+      {
+        "pagePath": "/memberships/",
+        "bounceRate": 40.5,
+        "goalCompletionRate": 5.78
+      },
+      {
+        "pagePath": "/services/",
+        "bounceRate": 39.48,
+        "goalCompletionRate": 6.44
+      },
+      {
+        "pagePath": "/kiln-firing/",
+        "bounceRate": 37.43,
+        "goalCompletionRate": 7.49
+      },
+      {
+        "pagePath": "/",
+        "bounceRate": 34.71,
+        "goalCompletionRate": 4.36
+      },
+      {
+        "pagePath": "/contact/",
+        "bounceRate": 29.59,
+        "goalCompletionRate": 19.39
+      }
+    ],
+    "activeExperimentTop3": [
+      {
+        "title": "Add concise 'What to expect' trust block under top CTA",
+        "owner": "web-content",
+        "score": 6
+      },
+      {
+        "title": "Standardize campaign UTM fields and retire unstructured outbound links",
+        "owner": "marketing-ops",
+        "score": 5
+      },
+      {
+        "title": "Clarify primary CTA label and placement on top service pages",
+        "owner": "web-content",
+        "score": 4
+      }
+    ]
+  },
+  "sourceReports": {
+    "acquisitionPath": "/home/wuff/monsoonfire-portal/artifacts/ga/reports/website-ga-acquisition-quality-latest.json",
+    "funnelPath": "/home/wuff/monsoonfire-portal/artifacts/ga/reports/website-ga-funnel-friction-latest.json",
+    "contentPath": "/home/wuff/monsoonfire-portal/artifacts/ga/reports/website-ga-content-opportunities-latest.json",
+    "experimentPath": "/home/wuff/monsoonfire-portal/artifacts/ga/reports/website-ga-experiment-backlog-latest.json"
+  }
+}

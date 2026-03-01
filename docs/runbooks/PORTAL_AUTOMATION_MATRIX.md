@@ -15,13 +15,15 @@ Purpose: define the active automation guardrails for portal functionality, UX co
 2. Daily authenticated production canary (`.github/workflows/portal-daily-authenticated-canary.yml`)
 - Signs in using staff credentials.
 - Verifies:
+  - Legacy `/requests` deep links (path + hash) redirect to supported destinations with migration guidance (`Support`, `Lending Library`, `Workshops`).
   - Dashboard -> My Pieces piece click-through
   - My Pieces loads without permission errors
   - Notifications mark-read feedback
+  - Workshops page includes seeded QA workshop fixture content
   - Messages load without index/precondition failures
   - Ware Check-in loads without check-in/index failures
   - Ware Check-in optional sections stay collapsed by default and preserve values after expand/collapse (`canary-06b-ware-checkin-optional-sections.png`).
-- Includes dual-theme contrast sweep by default.
+- Includes tri-theme contrast sweep by default (`portal`, `memoria`, `mono`).
 - Runs every 30 minutes and escalates after 2 consecutive failures via rolling issue automation.
 
 3. Firestore index contract guard (`.github/workflows/firestore-index-contract-guard.yml`)
@@ -38,12 +40,14 @@ Purpose: define the active automation guardrails for portal functionality, UX co
   - authenticated canary
   - virtual staff backend regression
   - index contract guard
-- Failing gate blocks promotion confidence.
+- Firestore index deploy permission-denied (`403`) outcomes are downgraded to warnings in workflow mode so IAM drift does not mask user-facing deploy health.
+- Any other failing gate condition still blocks promotion confidence.
 
 6. Fixture steward (`.github/workflows/portal-fixture-steward.yml`)
 - Seeds daily QA fixtures:
   - piece + batch
   - studio update announcement
+  - published workshop/event fixture
   - direct message thread/message
   - notification target (admin token when available)
 - Validates fixture existence and cleans stale fixtures by TTL.
@@ -71,11 +75,18 @@ Purpose: define the active automation guardrails for portal functionality, UX co
 - Tracks pass-rate movement, top flaky signatures, and new remediation candidates.
 - Posts rolling weekly digest updates for planning and prioritization.
 
+12. Community layout canary (`.github/workflows/portal-community-layout-canary.yml`)
+- Authenticated Community-page regression check for right-rail stability.
+- Verifies sidebar width does not drift after async report refresh.
+- Fails on detectable chiplet/report/video overflow and uploads screenshot/report artifacts.
+- Used as the required verification gate for Community content rotations.
+
 ## Local commands
 
 ```bash
 npm run portal:pr:functional:gate
 npm run portal:canary:auth
+npm run portal:canary:community-layout
 npm run portal:canary:escalate
 npm run portal:theme:contrast
 npm run portal:index:guard
@@ -96,16 +107,59 @@ npm run portal:automation:weekly-digest:apply
 `portal:canary:auth` and `portal:theme:contrast` auto-resolve staff credentials from:
 - `PORTAL_STAFF_EMAIL` + `PORTAL_STAFF_PASSWORD`
 - `PORTAL_AGENT_STAFF_CREDENTIALS_JSON` (expects `email` + `password`)
-- `PORTAL_AGENT_STAFF_CREDENTIALS` (or default `~/.ssh/portal-agent-staff.json`)
+- `PORTAL_AGENT_STAFF_CREDENTIALS` (or default `secrets/portal/portal-agent-staff.json`)
+
+## Local secrets directory (gitignored)
+
+For local execution, keep credentials in the repo-local `secrets/` bundle:
+
+- `secrets/portal/portal-agent-staff.json`
+- `secrets/portal/portal-automation.env`
+
+The `portal-automation.env` file should define at least:
+
+- `PORTAL_AGENT_STAFF_CREDENTIALS`
+- `PORTAL_STAFF_EMAIL`
+- `PORTAL_STAFF_PASSWORD`
+- `FIREBASE_RULES_API_TOKEN`
+
+Recommended for full promotion/deploy coverage:
+
+- `PORTAL_FIREBASE_API_KEY` (required by token-exchange probes/fixtures and should match active web key)
+- `FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL` or `GOOGLE_APPLICATION_CREDENTIALS` (index deploy auth for promotion gate)
+- `WEBSITE_DEPLOY_KEY` (Namecheap deploy SSH key path; usually `~/.ssh/namecheap-portal`)
+
+Moving-forward rule:
+
+- Any new local secret used by portal automations must be added to `secrets/portal/portal-automation.env` (or a referenced file under `secrets/portal/`).
+- Docs should record secret locations and variable names only; never paste raw secret values.
+- If a script introduces a new required secret, update this runbook in the same PR/commit.
+
+Load into your shell before running automation commands:
+
+```bash
+set -a
+source /home/wuff/monsoonfire-portal/secrets/portal/portal-automation.env
+set +a
+```
+
+Reference provenance:
+
+- staff credential bootstrap/run metadata: `docs/DRILL_EXECUTION_LOG.md`
+- staff claim setup contract: `docs/STAFF_CLAIMS_SETUP.md`
+- local rules-token source: `~/.config/configstore/firebase-tools.json` (`tokens.refresh_token`)
 
 ## Required secrets (CI)
 
 - `PORTAL_AGENT_STAFF_CREDENTIALS_JSON` (required for backend regression and credential health probes; can also satisfy canary auth when it includes `email` + `password`)
 - `PORTAL_STAFF_EMAIL` + `PORTAL_STAFF_PASSWORD` (canary fallback when JSON payload does not include email/password fields)
 - `FIREBASE_RULES_API_TOKEN`
-- `PORTAL_FIREBASE_API_KEY` (optional override; default project web API key is used when unset)
+- `PORTAL_FIREBASE_API_KEY` (required for token-exchange probes and fixture stewardship; keep in sync with `FIREBASE_WEB_API_KEY`)
 - `FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL` (recommended for notification fixture seeding)
 
 ## Related runbook
 
 - `docs/runbooks/PORTAL_AUTOMATION_SELF_IMPROVEMENT_LOOPS.md`
+- `docs/runbooks/PORTAL_QA_LOOP_NON_STAFF.md`
+- `docs/runbooks/COMMUNITY_CONTENT_ROTATION_RUNBOOK.md`
+- `docs/runbooks/LOCAL_SECRETS_LAYOUT.md`

@@ -1,0 +1,6 @@
+event_name,first_seen,last_seen,day,event_count,unique_events,event_value
+cta_primary_click,2026-02-01,2026-02-27,2026-02-27,164,143,0
+quote_form_open,2026-02-01,2026-02-27,2026-02-27,88,79,0
+quote_form_submit,2026-02-01,2026-02-27,2026-02-27,34,33,0
+contact_email_click,2026-02-01,2026-02-27,2026-02-27,21,20,0
+contact_phone_click,2026-02-01,2026-02-27,2026-02-27,11,10,0

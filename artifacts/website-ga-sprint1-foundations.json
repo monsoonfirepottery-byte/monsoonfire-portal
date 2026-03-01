@@ -6,13 +6,48 @@
     {
       "ok": true,
       "key": "runbook",
-      "message": "Sprint 1 GA runbook exists with command and blocker context",
+      "message": "GA runbook exists with command matrix and blocker context",
       "details": {
         "path": "docs/runbooks/WEBSITE_GA_SPRINT1_FOUNDATIONS.md",
         "requiredPatterns": [
           "website:ga:sprint1:check",
           "artifacts/website-ga-sprint1-foundations.json",
+          "website:ga:baseline:report",
+          "artifacts/ga/reports/website-ga-acquisition-quality-latest.json",
+          "website:ga:event-goal:check",
+          "artifacts/ga/reports/website-ga-event-goal-check-latest.json",
+          "website:ga:campaign:audit",
+          "artifacts/ga/reports/website-ga-campaign-link-audit-latest.json",
+          "website:ga:data-package:check",
+          "artifacts/ga/reports/website-ga-data-package-check-latest.json",
+          "website:ga:funnel:report",
+          "artifacts/ga/reports/website-ga-funnel-friction-latest.json",
+          "website:ga:experiments:backlog",
+          "artifacts/ga/reports/website-ga-experiment-backlog-latest.json",
+          "website:ga:content:opportunities",
+          "artifacts/ga/reports/website-ga-content-opportunities-latest.json",
+          "website:ga:dashboard:weekly",
+          "artifacts/ga/reports/website-ga-weekly-dashboard-latest.json",
           "Current blocker"
+        ]
+      }
+    },
+    {
+      "ok": true,
+      "key": "package-scripts",
+      "message": "Package scripts include GA instrumentation, funnel, content, and dashboard automation commands",
+      "details": {
+        "path": "package.json",
+        "requiredPatterns": [
+          "\"website:ga:sprint1:check\"",
+          "\"website:ga:baseline:report\"",
+          "\"website:ga:event-goal:check\"",
+          "\"website:ga:campaign:audit\"",
+          "\"website:ga:data-package:check\"",
+          "\"website:ga:funnel:report\"",
+          "\"website:ga:experiments:backlog\"",
+          "\"website:ga:content:opportunities\"",
+          "\"website:ga:dashboard:weekly\""
         ]
       }
     },
@@ -46,6 +81,20 @@
     },
     {
       "ok": true,
+      "key": "event-goal-canonical-map",
+      "message": "Canonical event-goal map captures implemented conversion contract and weekly validation",
+      "details": {
+        "path": "docs/analytics/WEBSITE_GA_EVENT_GOAL_MAP.md",
+        "requiredPatterns": [
+          "Version:",
+          "cta_primary_click",
+          "quote_form_submit",
+          "Weekly validation checklist"
+        ]
+      }
+    },
+    {
+      "ok": true,
       "key": "utm-taxonomy",
       "message": "UTM taxonomy includes required parameters and medium policy",
       "details": {
@@ -60,13 +109,41 @@
     },
     {
       "ok": true,
+      "key": "weekly-report-template",
+      "message": "Weekly report template includes cadence fields and escalation section",
+      "details": {
+        "path": "docs/analytics/WEBSITE_GA_WEEKLY_REPORT_TEMPLATE.md",
+        "requiredPatterns": [
+          "Week ending (UTC)",
+          "KPI summary",
+          "Alerts and escalations"
+        ]
+      }
+    },
+    {
+      "ok": true,
+      "key": "alert-thresholds",
+      "message": "Alert threshold doc defines metric gates and dry-run validation",
+      "details": {
+        "path": "docs/analytics/WEBSITE_GA_ALERT_THRESHOLDS.md",
+        "requiredPatterns": [
+          "sessionsTotalTop10Sources",
+          "averageTopFunnelConversionPct",
+          "assistedRevenueTotal",
+          "simulate-breach"
+        ]
+      }
+    },
+    {
+      "ok": true,
       "key": "ticket-data-package",
       "message": "Data package ticket reflects Sprint 1 foundation progress",
       "details": {
         "path": "tickets/P1-website-ga-data-package-template-and-access.md",
         "requiredPatterns": [
-          "Status: In Progress",
-          "Unblock update (2026-02-25)"
+          "Status:",
+          "Unblock update (2026-02-25)",
+          "Progress update (2026-02-28)"
         ]
       }
     },
@@ -77,8 +154,9 @@
       "details": {
         "path": "tickets/P1-website-ga-event-and-goal-instrumentation-completeness.md",
         "requiredPatterns": [
-          "Status: In Progress",
-          "Unblock update (2026-02-25)"
+          "Status:",
+          "Unblock update (2026-02-25)",
+          "Progress update (2026-02-28)"
         ]
       }
     },
@@ -89,8 +167,9 @@
       "details": {
         "path": "tickets/P1-website-ga-campaign-and-source-quality.md",
         "requiredPatterns": [
-          "Status: In Progress",
-          "Unblock update (2026-02-25)"
+          "Status:",
+          "Unblock update (2026-02-25)",
+          "Progress update (2026-02-28)"
         ]
       }
     }

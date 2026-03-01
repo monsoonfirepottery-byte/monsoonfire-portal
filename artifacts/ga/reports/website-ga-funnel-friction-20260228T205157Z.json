@@ -1,0 +1,43 @@
+{
+  "generatedAtUtc": "2026-02-28T20:51:57.027Z",
+  "baselineDir": "/home/wuff/monsoonfire-portal/artifacts/ga/baseline/2026-02-28",
+  "baselineSnapshot": "2026-02-28",
+  "summary": {
+    "funnelsAnalyzed": 2,
+    "transitionsAnalyzed": 5,
+    "highestFrictionCount": 1
+  },
+  "topFunnels": [
+    {
+      "funnelName": "/ -> /services/ -> /contact/",
+      "entryVolume": 412,
+      "finalCompletions": 106,
+      "funnelConversionRatePct": 25.73
+    },
+    {
+      "funnelName": "/faq/ -> /contact/",
+      "entryVolume": 116,
+      "finalCompletions": 52,
+      "funnelConversionRatePct": 44.83
+    }
+  ],
+  "highestFrictionTransitions": [
+    {
+      "funnelName": "/faq/ -> /contact/",
+      "stepName": "community",
+      "stepIndex": 1,
+      "dropoffCount": 64,
+      "completionCount": 52,
+      "dropoffRatePct": 55.17,
+      "intervention": "Simplify form sequence and keep one frictionless primary action visible.",
+      "hypothesis": "Less form friction will increase quote/contact completion.",
+      "owner": "web-product",
+      "expectedImpactPct": 14
+    }
+  ],
+  "remeasurement": {
+    "preWindow": "latest baseline snapshot (30d rolling)",
+    "postWindow": "14 days after intervention deploy",
+    "cadence": "weekly"
+  }
+}

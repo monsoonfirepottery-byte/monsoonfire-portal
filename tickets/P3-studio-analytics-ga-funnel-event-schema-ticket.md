@@ -1,6 +1,6 @@
 # Ticket: P3 — Studio Analytics GA Funnel and Event Schema Alignment
 
-Status: Planned
+Status: Completed
 Created: 2026-02-17  
 Priority: P3  
 Owner: Website + Analytics Team  
@@ -45,3 +45,21 @@ Align analytics instrumentation with reservation lifecycle milestones and websit
 
 - GA funnel exists and is reviewed by product owner.
 - Analytics event schema is documented in repo and linked from planning docs.
+
+## Completion evidence (2026-02-28)
+
+- Implemented lifecycle event instrumentation in:
+  - `web/src/views/ReservationsView.tsx`
+  - `web/src/views/KilnLaunchView.tsx`
+- Added canonical schema + cadence docs:
+  - `docs/analytics/STUDIO_GA_EVENT_SCHEMA.md`
+  - `docs/analytics/STUDIO_GA_MONTHLY_REVIEW_RUNBOOK.md`
+- Added monthly review report generator:
+  - `scripts/build-studio-ga-monthly-review-report.mjs`
+  - `npm run studio:ga:monthly:report`
+- Latest monthly artifact outputs:
+  - `artifacts/ga/reports/studio-ga-monthly-review-latest.json`
+  - `artifacts/ga/reports/studio-ga-monthly-review-latest.md`
+- Added exception + rollback telemetry:
+  - `status_transition_exception` tagged with `transitionDomain`, `transitionAction`, and `errorCode`
+  - `status_transition` rollback coverage via `transitionOutcome=rollback`

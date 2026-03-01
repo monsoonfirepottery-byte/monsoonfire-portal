@@ -4,14 +4,33 @@ import { spawn } from "node:child_process";
 import { resolveStudioBrainBaseUrlFromEnv } from "./studio-brain-url-resolution.mjs";
 
 const BASE_URL = resolveStudioBrainBaseUrlFromEnv({ env: process.env });
-const ADMIN_TOKEN = process.env.STUDIO_BRAIN_ADMIN_TOKEN || readAdminTokenFromDotEnv() || "";
-const ID_TOKEN = process.env.STUDIO_BRAIN_ID_TOKEN || "";
+const LOCAL_STUDIO_BRAIN_SECRETS_PATH = resolve("secrets", "studio-brain", "studio-brain-automation.env");
+const LEGACY_STUDIO_BRAIN_ENV_PATH = resolve("studio-brain/.env");
+const ADMIN_TOKEN =
+  process.env.STUDIO_BRAIN_ADMIN_TOKEN ||
+  readTokenFromEnvFiles("STUDIO_BRAIN_ADMIN_TOKEN", [LOCAL_STUDIO_BRAIN_SECRETS_PATH, LEGACY_STUDIO_BRAIN_ENV_PATH]) ||
+  "";
+const ID_TOKEN =
+  process.env.STUDIO_BRAIN_ID_TOKEN ||
+  readTokenFromEnvFiles("STUDIO_BRAIN_ID_TOKEN", [LOCAL_STUDIO_BRAIN_SECRETS_PATH, LEGACY_STUDIO_BRAIN_ENV_PATH]) ||
+  "";
 
-function readAdminTokenFromDotEnv() {
+function readTokenFromEnvFiles(name, paths) {
+  for (const filePath of paths) {
+    const value = readTokenFromEnvFile(name, filePath);
+    if (value) return value;
+  }
+  return "";
+}
+
+function readTokenFromEnvFile(name, filePath) {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`^\\s*${escapedName}\\s*=\\s*(.+)\\s*$`, "m");
   try {
-    const raw = readFileSync(resolve("studio-brain/.env"), "utf8");
-    const match = raw.match(/^STUDIO_BRAIN_ADMIN_TOKEN=(.+)$/m);
-    return match?.[1]?.trim() || "";
+    const raw = readFileSync(filePath, "utf8");
+    const match = raw.match(pattern);
+    if (!match?.[1]) return "";
+    return match[1].trim().replace(/^['"]|['"]$/g, "");
   } catch {
     return "";
   }
@@ -23,10 +42,14 @@ function nowIso() {
 
 function assertEnv() {
   if (!ADMIN_TOKEN.trim()) {
-    throw new Error("Missing STUDIO_BRAIN_ADMIN_TOKEN.");
+    throw new Error(
+      "Missing STUDIO_BRAIN_ADMIN_TOKEN. Set env var or define it in secrets/studio-brain/studio-brain-automation.env."
+    );
   }
   if (!ID_TOKEN.trim()) {
-    throw new Error("Missing STUDIO_BRAIN_ID_TOKEN.");
+    throw new Error(
+      "Missing STUDIO_BRAIN_ID_TOKEN. Set env var or define it in secrets/studio-brain/studio-brain-automation.env."
+    );
   }
 }
 

@@ -30,6 +30,7 @@ Guards:
 - `CHAOS_MODE=true`
 - `NODE_ENV=staging`
 - `STUDIO_BRAIN_ADMIN_TOKEN` set
+- Preferred local source: `source ./secrets/studio-brain/studio-brain-automation.env`
 
 ## Tabletop Guidance
 - Document assumptions and rollback steps.

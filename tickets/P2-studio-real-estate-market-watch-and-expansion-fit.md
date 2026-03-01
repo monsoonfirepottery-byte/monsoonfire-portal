@@ -1,6 +1,6 @@
 # P2 - Studio Expansion Real-Estate Market Watch and Fit Scoring
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -42,3 +42,9 @@ Create a lightweight, repeatable market-watch workflow that turns listing snapsh
 - `docs/ENGINEERING_TODOS.md`
 - `docs/REAL_ESTATE_MARKET_WATCH.md`
 - `scripts/run-real-estate-market-watch.ps1`
+
+## Completion evidence (2026-02-28)
+1. Listing schema, scoring model, and operator commands are documented in `docs/REAL_ESTATE_MARKET_WATCH.md`.
+2. Market-watch processor is implemented in `scripts/run-real-estate-market-watch.ps1` with fit scoring/tiering and ranked outputs.
+3. Historical artifacts exist in `output/real-estate/market-watch-*.json` and feed trend rollups via `output/real-estate/market-watch-history.csv`.
+4. Quarterly trend handoff from market-watch snapshots is implemented (`scripts/build-real-estate-quarterly-context.ps1`).

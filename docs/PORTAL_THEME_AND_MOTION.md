@@ -4,6 +4,7 @@
 
 Portal currently supports:
 - `portal` (default): Monsoon Fire current graphics (light)
+- `mono`: high-contrast black/white (light, minimal styling)
 - `memoria`: monochrome dark "Memoria design system"
 
 ## Where Theme Is Stored
@@ -35,7 +36,7 @@ Precedence (highest first):
 ## DOM Hooks
 
 `App.tsx` writes:
-- `html[data-portal-theme="portal|memoria"]`
+- `html[data-portal-theme="portal|mono|memoria"]`
 - `html[data-portal-motion="enhanced|reduced"]`
 - `html.style.colorScheme = "light" | "dark"`
 
@@ -60,4 +61,3 @@ Good:
 
 Avoid:
 - wrapping every row in long lists (too many observers)
-

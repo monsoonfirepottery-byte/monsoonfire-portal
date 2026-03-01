@@ -26,6 +26,8 @@ jobs:
         run: |
           set -euo pipefail
           echo "Using Firebase API key source: ${{ steps.firebase_api_key.outputs.firebase_api_key_source }}"
+          echo "VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY" >> "$GITHUB_ENV"
+          export VITE_FIREBASE_API_KEY
           npm --prefix web ci
           npm --prefix web run build
       - uses: FirebaseExtended/action-hosting-deploy@092436dca3ec6dacb231d965ae56f7ff6c09f258

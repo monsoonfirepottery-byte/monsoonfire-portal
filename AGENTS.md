@@ -129,11 +129,19 @@ Use these defaults unless the user explicitly overrides them in-session.
 - Execution style:
   - Default to high-autonomy delivery: run deep and continue until a concrete blocker appears.
   - Prefer momentum over repeated permission/checkpoint prompts for routine implementation work.
+- On-demand self-improvement loops:
+  - The user can request a self-improvement/interrogation loop at any time (not only on schedule).
+  - Fast entry points: `npm run codex:improve:daily`, `npm run codex:interaction:daily`, `npm run codex:pr-green:daily`.
 - Durable memory workflow:
   - Treat external memory workspace as source of truth:
     - `C:\Users\micah\.codex\memory`
   - Read from `accepted/accepted.jsonl` for stable preferences/decisions/open loops.
   - Write new inferred items to `proposed/proposed.jsonl` first; do not auto-accept weak inferences.
+  - Local fallback memory pipeline is available in this repo:
+    - `npm run codex:memory:init`
+    - `npm run codex:memory:status`
+    - `npm run codex:memory:propose -- --statement \"...\"`
+    - `npm run codex:memory:accept -- --id <memory-id>`
 - Known durable decision:
   - Maintain an external memory ingestion pipeline sourced from exported conversation data.
 - Strategic open loop to keep visible:

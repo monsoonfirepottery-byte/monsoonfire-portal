@@ -52,6 +52,8 @@ Before publishing policy edits:
 4. Maintain the agent action layer in each policy file frontmatter (`agent` block).
 5. Regenerate policy outputs with `node website/scripts/sync-policies.mjs`.
 6. Run `npm run lint:policies` before merging policy-authored changes.
+7. Run single-source parity checks from:
+   - `docs/runbooks/POLICY_SINGLE_SOURCE_OF_TRUTH_WEBSITE_PORTAL_REPORTS.md`
 
 ## Frontmatter template
 

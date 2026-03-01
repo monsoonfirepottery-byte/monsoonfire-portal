@@ -1,6 +1,6 @@
 # Website analytics review: Google Analytics-backed growth epic
 
-Status: Planned
+Status: Completed
 Priority: P2
 Severity: Sev4
 Component: website
@@ -27,12 +27,25 @@ The goal is to convert this into a concrete engineering + analytics execution pl
 - Supporting: `P2-website-ga-experiment-backlog-and-prioritization.md`
 - Supporting: `P1-website-ga-30-day-priority-roadmap.md`
 
-## Current implementation evidence (Feb 2026 snapshot)
+## Current implementation evidence (updated 2026-02-28)
 - `website/assets/js/analytics.js` loads GA ID `G-ZJQ30LHFKH` and Metricool.
-- `website/assets/js/main.js` emits broad `cta_click` events for links/forms but does not define staged funnel goals.
-- No dedicated "quote start → quote submit", "contact start", or pickup/lead completion goals are defined in visible scripts.
-- No explicit revenue/lead proxy event payload standard (source/medium + step + intent) is consistently captured.
-- `website` pages are currently conversion-first but largely non-instrumented beyond global CTA tracking.
+- Canonical staged event instrumentation is now implemented:
+  - `website/assets/js/main.js`
+  - `website/ncsitebuilder/assets/js/main.js`
+  - `website/contact/index.html`
+  - `website/ncsitebuilder/contact/index.html`
+- Canonical event/goal map is now versioned:
+  - `docs/analytics/WEBSITE_GA_EVENT_GOAL_MAP.md`
+- Deterministic GA reporting pipeline now exists in-repo:
+  - `website:ga:event-goal:check`
+  - `website:ga:campaign:audit`
+  - `website:ga:data-package:check`
+  - `website:ga:baseline:report`
+  - `website:ga:funnel:report`
+  - `website:ga:experiments:backlog`
+  - `website:ga:content:opportunities`
+  - `website:ga:dashboard:weekly`
+- Latest artifacts in `artifacts/ga/reports/` include event-goal, campaign, data package, acquisition, funnel, experiment, content, and weekly dashboard outputs.
 
 ## Baseline metrics set (required)
 - Sessions, engaged sessions
@@ -68,3 +81,14 @@ The goal is to convert this into a concrete engineering + analytics execution pl
   - 30-day and 90-day snapshots from `Acquisition`, `Behavior > Behavior Flow`, and `Conversions`.
   - Source/medium + device reports for the same date windows.
 - Keep all edits in markdown ticket format to match the existing docs-and-git tracking workflow.
+
+## Progress update (2026-02-28)
+- Epic 1 (data foundation + instrumentation truth): completed.
+- Epic 2 (demand quality and acquisition efficiency): completed.
+- Epic 3 (funnel + conversion lift): automation complete with actionable interventions and ranked backlog.
+- Epic 4 (content/engagement health): automation complete with top-10 queue and metadata/alt checks.
+- Epic 5 (reporting/alerts/handover): automation complete with threshold dry-run and owner mapping.
+- Supporting lifecycle analytics alignment ticket is now complete:
+  - `P3-studio-analytics-ga-funnel-event-schema-ticket.md`
+- Ongoing live-traffic experiment cycles continue under:
+  - `P1-website-ga-30-day-priority-roadmap.md`

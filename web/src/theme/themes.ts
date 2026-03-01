@@ -1,11 +1,11 @@
 import type { CSSProperties } from "react";
 
-export type PortalThemeName = "portal" | "memoria";
+export type PortalThemeName = "portal" | "memoria" | "mono";
 
 export const DEFAULT_PORTAL_THEME: PortalThemeName = "portal";
 
 export function isPortalThemeName(value: unknown): value is PortalThemeName {
-  return value === "portal" || value === "memoria";
+  return value === "portal" || value === "memoria" || value === "mono";
 }
 
 export const portalTheme = {
@@ -110,7 +110,59 @@ export const memoriaTheme = {
   "--radius-sm": "10px",
 } as CSSProperties;
 
+export const monoTheme = {
+  "--text": "#111111",
+  "--muted": "#3d3d3d",
+  "--bg": "#ffffff",
+  "--bg-2": "#f3f3f3",
+  "--surface": "#ffffff",
+  "--surface-strong": "#ffffff",
+  "--surface-2": "#f7f7f7",
+  "--surface-3": "#ededed",
+  "--border-soft": "rgba(0, 0, 0, 0.08)",
+  "--border": "rgba(0, 0, 0, 0.16)",
+  "--border-strong": "rgba(0, 0, 0, 0.28)",
+  "--accent": "#000000",
+  "--accent-soft": "#1a1a1a",
+  "--accent-2": "#2a2a2a",
+  "--accent-3": "#4a4a4a",
+  "--shadow": "0 1px 2px rgba(0, 0, 0, 0.12)",
+  "--shadow-soft": "0 1px 1px rgba(0, 0, 0, 0.08)",
+  "--shadow-brand": "0 2px 6px rgba(0, 0, 0, 0.16)",
+  "--shadow-card": "0 2px 6px rgba(0, 0, 0, 0.12)",
+  "--shadow-card-hover": "0 4px 10px rgba(0, 0, 0, 0.16)",
+  "--shadow-card-dashboard": "0 6px 14px rgba(0, 0, 0, 0.14)",
+  "--shadow-card-dashboard-hover": "0 8px 18px rgba(0, 0, 0, 0.2)",
+  "--focus-ring": "rgba(0, 0, 0, 0.34)",
+  "--focus-ring-strong": "rgba(0, 0, 0, 0.52)",
+  "--memoria-active-rail": "rgba(0, 0, 0, 0.38)",
+  "--memoria-active-rail-glow": "0 0 0 rgba(0, 0, 0, 0)",
+  "--memoria-subdot": "rgba(0, 0, 0, 0.26)",
+  "--memoria-subdot-active": "rgba(0, 0, 0, 0.7)",
+  "--memoria-btn-secondary-bg": "rgba(0, 0, 0, 0.03)",
+  "--memoria-btn-secondary-bg-hover": "rgba(0, 0, 0, 0.06)",
+  "--memoria-btn-secondary-border": "rgba(0, 0, 0, 0.2)",
+  "--memoria-btn-secondary-border-hover": "rgba(0, 0, 0, 0.32)",
+  "--memoria-btn-secondary-shadow": "0 1px 2px rgba(0, 0, 0, 0.08)",
+  "--memoria-btn-ghost-bg": "rgba(0, 0, 0, 0.01)",
+  "--memoria-btn-ghost-border": "rgba(0, 0, 0, 0.24)",
+  "--memoria-toggle-active-bg": "rgba(0, 0, 0, 0.12)",
+  "--memoria-toggle-active-shadow": "0 2px 8px rgba(0, 0, 0, 0.14)",
+  "--memoria-sidebar-active-border": "rgba(0, 0, 0, 0.3)",
+  "--memoria-sidebar-active-shadow": "0 4px 12px rgba(0, 0, 0, 0.16)",
+  "--memoria-btn-primary-border": "rgba(0, 0, 0, 0.9)",
+  "--memoria-btn-primary-border-hover": "rgba(0, 0, 0, 0.95)",
+  "--memoria-btn-primary-shadow": "0 2px 8px rgba(0, 0, 0, 0.2)",
+  "--display-font": "\"Segoe UI\", system-ui, -apple-system, Arial, sans-serif",
+  "--body-font": "\"Segoe UI\", system-ui, -apple-system, Arial, sans-serif",
+  "--ui-font": "\"Segoe UI\", system-ui, -apple-system, Arial, sans-serif",
+  "--radius-lg": "12px",
+  "--radius-md": "10px",
+  "--radius-sm": "8px",
+} as CSSProperties;
+
 export const PORTAL_THEMES: Record<PortalThemeName, CSSProperties> = {
   portal: portalTheme,
   memoria: memoriaTheme,
+  mono: monoTheme,
 };

@@ -1,0 +1,37 @@
+name: Policy Single Source Of Truth Parity
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "11 6 * * *"
+  push:
+    paths:
+      - "docs/policies/**"
+      - "functions/src/policySourceOfTruth.ts"
+      - "website/policies/community-conduct/**"
+      - "package.json"
+      - "scripts/policy-single-source-of-truth-check.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  parity-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run parity check
+        run: npm run policy:sot:check

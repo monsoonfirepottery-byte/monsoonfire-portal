@@ -1,6 +1,6 @@
 # GA-backed website experiment backlog and prioritization
 
-Status: Planned
+Status: Completed
 Priority: P2
 Severity: Sev3
 Component: website
@@ -55,3 +55,15 @@ Without a shared prioritization model, website optimization can drift into many 
 1. Score all proposed experiments and verify the top 3 are implemented first.
 2. Confirm each has non-overlapping target pages/events.
 3. Confirm results are logged in weekly reporting ticket.
+
+## Completion evidence (2026-02-28)
+- Added deterministic experiment backlog builder sourced from funnel + campaign + acquisition reports:
+  - `scripts/build-website-ga-experiment-backlog.mjs`
+  - `npm run website:ga:experiments:backlog -- --strict`
+- Latest backlog artifacts:
+  - `artifacts/ga/reports/website-ga-experiment-backlog-latest.json`
+  - `artifacts/ga/reports/website-ga-experiment-backlog-latest.md`
+- Current backlog output:
+  - 7 ranked experiments with Impact/Confidence/Effort/Risk and computed score
+  - top 3 experiments explicitly linked to GA-derived funnel friction or channel quality signals
+  - each experiment includes hypothesis, success metric, owner, and rollback condition

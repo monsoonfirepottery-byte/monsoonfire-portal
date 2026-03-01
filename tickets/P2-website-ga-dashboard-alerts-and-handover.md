@@ -1,6 +1,6 @@
 # Website GA dashboard, alerting, and reporting handover
 
-Status: Planned
+Status: Completed
 Priority: P2
 Severity: Sev3
 Component: website
@@ -38,3 +38,19 @@ Set a lightweight operating cadence with dashboards, alerts, and handoff notes.
 1. Run a dry-run report and validate metric definitions and formulas.
 1. Simulate one threshold breach with historical data and validate escalation path.
 1. Confirm recipients and file links are up to date.
+
+## Completion evidence (2026-02-28)
+- Added weekly GA dashboard + anomaly checker:
+  - `scripts/build-website-ga-weekly-dashboard.mjs`
+  - `npm run website:ga:dashboard:weekly -- --strict`
+- Added handover template and threshold docs:
+  - `docs/analytics/WEBSITE_GA_WEEKLY_REPORT_TEMPLATE.md`
+  - `docs/analytics/WEBSITE_GA_ALERT_THRESHOLDS.md`
+- Latest weekly dashboard artifacts:
+  - `artifacts/ga/reports/website-ga-weekly-dashboard-latest.json`
+  - `artifacts/ga/reports/website-ga-weekly-dashboard-latest.md`
+- Alert dry-run evidence (simulated breach):
+  - `npm run website:ga:dashboard:weekly -- --strict --simulate-breach`
+  - artifact: `artifacts/ga/reports/website-ga-weekly-dashboard-20260228T205255926Z.json` (`status: alert`, `alerts: 1`)
+- 30-day/weekly archive path retained for comparisons:
+  - `artifacts/ga/archive/website-ga-weekly-metrics-history.jsonl`

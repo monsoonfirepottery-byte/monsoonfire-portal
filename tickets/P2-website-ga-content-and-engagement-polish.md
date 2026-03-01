@@ -1,6 +1,6 @@
 # Website GA content and engagement polish
 
-Status: Planned
+Status: Completed
 Priority: P2
 Severity: Sev3
 Component: website
@@ -37,3 +37,15 @@ Use GA behavior insights to tune content, discoverability, and mobile engagement
 1. Confirm metadata edits are reflected in page source and rendering.
 1. Verify mobile usability changes do not regress core layout.
 1. Compare pre/post GA signal trends after 14 days.
+
+## Completion evidence (2026-02-28)
+- Added deterministic content opportunity queue generator:
+  - `scripts/build-website-ga-content-opportunities.mjs`
+  - `npm run website:ga:content:opportunities -- --strict`
+- Latest content opportunity artifacts:
+  - `artifacts/ga/reports/website-ga-content-opportunities-latest.json`
+  - `artifacts/ga/reports/website-ga-content-opportunities-latest.md`
+- Current output includes:
+  - ranked top 10 pages with objective per page (conversion or engagement)
+  - mobile recommendations captured separately from desktop recommendations
+  - per-page metadata + image alt-text audit fields (`metaDescriptionPresent`, `imagesMissingAlt`, `imageCount`)

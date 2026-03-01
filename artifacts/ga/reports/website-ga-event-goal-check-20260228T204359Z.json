@@ -1,0 +1,73 @@
+{
+  "ok": true,
+  "strict": true,
+  "failed": 0,
+  "checks": [
+    {
+      "ok": true,
+      "key": "canonical-map-events",
+      "message": "Canonical map includes all required website conversion events",
+      "details": {
+        "path": "docs/analytics/WEBSITE_GA_EVENT_GOAL_MAP.md",
+        "missingEvents": []
+      }
+    },
+    {
+      "ok": true,
+      "key": "canonical-map-duplicates",
+      "message": "Canonical map avoids duplicate event names",
+      "details": {
+        "path": "docs/analytics/WEBSITE_GA_EVENT_GOAL_MAP.md",
+        "duplicateEvents": []
+      }
+    },
+    {
+      "ok": true,
+      "key": "canonical-map-weekly-checklist",
+      "message": "Canonical map includes weekly validation checklist",
+      "details": {
+        "path": "docs/analytics/WEBSITE_GA_EVENT_GOAL_MAP.md"
+      }
+    },
+    {
+      "ok": true,
+      "key": "website-main-instrumentation",
+      "message": "Primary website runtime emits canonical CTA/contact events with campaign metadata",
+      "details": {
+        "path": "website/assets/js/main.js",
+        "missing": []
+      }
+    },
+    {
+      "ok": true,
+      "key": "ncsitebuilder-main-instrumentation",
+      "message": "NC Site Builder runtime emits canonical CTA/contact events with campaign metadata",
+      "details": {
+        "path": "website/ncsitebuilder/assets/js/main.js",
+        "missing": []
+      }
+    },
+    {
+      "ok": true,
+      "key": "website-contact-form",
+      "message": "Primary contact form emits open and submit conversion events",
+      "details": {
+        "path": "website/contact/index.html",
+        "missing": []
+      }
+    },
+    {
+      "ok": true,
+      "key": "ncsitebuilder-contact-form",
+      "message": "NC Site Builder contact form emits open and submit conversion events",
+      "details": {
+        "path": "website/ncsitebuilder/contact/index.html",
+        "missing": []
+      }
+    }
+  ],
+  "outputs": {
+    "jsonPath": "/home/wuff/monsoonfire-portal/artifacts/ga/reports/website-ga-event-goal-check-20260228T204359Z.json",
+    "latestJsonPath": "/home/wuff/monsoonfire-portal/artifacts/ga/reports/website-ga-event-goal-check-latest.json"
+  }
+}

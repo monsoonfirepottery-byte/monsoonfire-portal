@@ -279,3 +279,28 @@ Full marketing-site UI/UX + accessibility pass for `monsoonfire.com` website (no
   - `docs/sprints/SWARM_BOARD.md` open-ticket list no longer includes P0 drill-token blocker.
   - `docs/DRILL_EXECUTION_LOG.md` appended production run metadata and artifact references.
   - Sanitized bootstrap artifact: `artifacts/agent-staff-bootstrap-2026-02-25.json`.
+
+## 2026-02-28 local portal secrets canonicalization
+- Consolidated local automation secrets into repo-local gitignored directory:
+  - `secrets/portal/portal-agent-staff.json` (copied from `~/.ssh/portal-agent-staff.json`)
+  - `secrets/portal/portal-automation.env` (contains local env exports for canary/promotion scripts)
+- Updated runbook docs to point to canonical local bundle and load command:
+  - `docs/runbooks/PORTAL_AUTOMATION_MATRIX.md`
+  - `docs/STAFF_CLAIMS_SETUP.md`
+- Established moving-forward convention: new local portal automation secrets must be added under `secrets/portal/` and documented by path/var-name only (never raw values).
+- Follow-up hardening: portal auth/regression/fixture scripts now default credential lookup to `secrets/portal/portal-agent-staff.json` (not `~/.ssh/portal-agent-staff.json`) and runbook now includes additional recommended secret vars for promotion/deploy coverage.
+- Added shared local-secrets contract doc: `docs/runbooks/LOCAL_SECRETS_LAYOUT.md`, plus `secrets/studio-brain/studio-brain-automation.env` template and staging drill script fallback to that file for `STUDIO_BRAIN_ADMIN_TOKEN` / `STUDIO_BRAIN_ID_TOKEN`.
+- Enforced `PORTAL_FIREBASE_API_KEY` as required for portal credential/authz probe scripts (removed embedded API-key fallbacks), and added `scripts/resolve-firebase-api-key.mjs` with workflow integration so canary/promotion/credential-health/fixture/CI jobs resolve a valid key from portal/web secrets before running.
+- Security scan hardening: added strict gitleaks scan to smoke CI (`gitleaks dir`), removed stale key allowlist, and updated `.gitleaks.toml` path allowlist for local `secrets/` and generated build-output noise.
+- Key rotation hardening: rotation now updates both `FIREBASE_WEB_API_KEY` and `PORTAL_FIREBASE_API_KEY` in one run, with workflow + docs updated to track multi-secret updates.
+
+## 2026-02-28 codex cli update handoff prep
+- Captured full restart-ready session handoff at:
+  - `docs/SESSION_HANDOFF_2026-02-28_CLI_UPDATE.md`
+- Handoff includes:
+  - branch/head snapshot (`main` @ `c98f6a56`)
+  - high-signal completed work list for current swarm
+  - generated artifact pointers
+  - current blocked ticket list
+  - exact resume commands and unblock order
+- Ready for Codex CLI update/restart without losing task continuity.

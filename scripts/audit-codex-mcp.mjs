@@ -38,7 +38,11 @@ function readCanonicalSetFromDocs(markdown) {
   const sectionBody = sectionMatch[1];
   const canonical = new Set();
   for (const match of sectionBody.matchAll(/mcp_servers\.([a-zA-Z0-9_]+)/g)) {
-    canonical.add(match[1]);
+    const key = match[1];
+    const offset = (match.index ?? -1) + match[0].length;
+    const hasWildcardSuffix = offset >= 0 && sectionBody[offset] === '*';
+    if (hasWildcardSuffix) continue;
+    canonical.add(key);
   }
 
   if (canonical.size === 0) {
@@ -109,6 +113,12 @@ function addError(message) {
   errors.push(`- ${message}`);
 }
 
+function hasDeprecatedModelConfig(toml) {
+  const hasLegacyProviders = /^\s*\[\[?model_providers(?:[.\]])/m.test(toml);
+  const hasLegacyModels = /^\s*\[\[?models(?:[.\]])/m.test(toml);
+  return hasLegacyProviders || hasLegacyModels;
+}
+
 function main() {
   if (!fs.existsSync(docsPath)) {
     console.error('FAIL');
@@ -128,6 +138,12 @@ function main() {
 
   if (codexToml.toLowerCase().includes('/sse')) {
     addError('Found deprecated /sse endpoint string in ~/.codex/config.toml. Use streamable HTTP /mcp endpoints only.');
+  }
+
+  if (hasDeprecatedModelConfig(codexToml)) {
+    addError(
+      'Found deprecated model config blocks (`model_providers` / `models`) in ~/.codex/config.toml. Codex CLI 0.106.0+ expects top-level `model` + optional `model_provider`.'
+    );
   }
 
   const { topServers, profileServers } = parseCodexConfigToml(codexToml);

@@ -46,3 +46,21 @@
 - Missing indexes:
 - None
 
+## 2026-02-28T06:01:45.331Z
+
+- Status: passed
+- Project: monsoonfire-portal
+- Required index count: 3
+- Missing index count: 0
+- Missing indexes:
+- None
+
+## 2026-02-28T06:06:21.563Z
+
+- Status: passed
+- Project: monsoonfire-portal
+- Required index count: 3
+- Missing index count: 0
+- Missing indexes:
+- None
+

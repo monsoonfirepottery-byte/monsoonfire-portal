@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { User } from "firebase/auth";
 import {
   addDoc,
@@ -14,17 +14,24 @@ import {
   type QueryConstraint,
 } from "firebase/firestore";
 import { createFunctionsClient, safeJsonStringify, type LastRequest } from "../api/functionsClient";
+import { track } from "../lib/analytics";
 import { db } from "../firebase";
 import { clearHandlerErrorLog, getHandlerErrorLog } from "../utils/handlerLog";
 import { resolveFunctionsBaseUrlResolution } from "../utils/functionsBaseUrl";
-import { isStudioBrainDegradedMode } from "../utils/studioBrainHealth";
 import { resolveStudioBrainBaseUrlResolution } from "../utils/studioBrain";
+import {
+  formatMinutesAgo,
+  minutesSinceIso,
+  resolveStudioBrainFetchFailure,
+  resolveUnavailableStudioBrainStatus,
+} from "../utils/studioBrainHealth";
 import { parseStaffRole } from "../auth/staffRole";
 import PolicyModule from "./staff/PolicyModule";
 import StripeSettingsModule from "./staff/StripeSettingsModule";
 import ReportsModule from "./staff/ReportsModule";
 import AgentOpsModule from "./staff/AgentOpsModule";
 import StudioBrainModule from "./staff/StudioBrainModule";
+import ReservationsView from "./ReservationsView";
 
 type Props = {
   user: User;
@@ -33,23 +40,45 @@ type Props = {
   onDevAdminTokenChange: (next: string) => void;
   devAdminEnabled: boolean;
   showEmulatorTools: boolean;
+  onOpenCheckin?: () => void;
+  initialModule?: ModuleKey;
+  forceCockpitWorkspace?: boolean;
+  forceEventsWorkspace?: boolean;
 };
 
-type ModuleKey =
-  | "cockpit"
-  | "overview"
-  | "members"
-  | "pieces"
-  | "firings"
-  | "events"
-  | "reports"
-  | "governance"
-  | "agentOps"
-  | "studioBrain"
-  | "stripe"
-  | "commerce"
-  | "lending"
-  | "system";
+const MODULE_REGISTRY = {
+  cockpit: { label: "Cockpit", owner: "Operations", testId: "staff-module-cockpit", nav: true },
+  checkins: { label: "Check-ins", owner: "Queue Ops", testId: "staff-module-checkins", nav: true },
+  members: { label: "Members", owner: "Member Ops", testId: "staff-module-members", nav: true },
+  pieces: { label: "Pieces & batches", owner: "Production Ops", testId: "staff-module-pieces", nav: true },
+  firings: { label: "Firings", owner: "Kiln Ops", testId: "staff-module-firings", nav: true },
+  events: { label: "Events", owner: "Program Ops", testId: "staff-module-events", nav: true },
+  reports: { label: "Reports", owner: "Trust & Safety", testId: "staff-module-reports", nav: true },
+  studioBrain: { label: "Studio Brain", owner: "Platform", testId: "staff-module-studiobrain", nav: false },
+  stripe: { label: "Stripe settings", owner: "Finance Ops", testId: "staff-module-stripe", nav: true },
+  commerce: { label: "Store & billing", owner: "Commerce Ops", testId: "staff-module-commerce", nav: true },
+  lending: { label: "Lending", owner: "Library Ops", testId: "staff-module-lending", nav: true },
+  system: { label: "System", owner: "Platform", testId: "staff-module-system", nav: false },
+} as const;
+
+const COCKPIT_SECTION_IDS = {
+  triage: "staff-cockpit-triage",
+  automation: "staff-cockpit-automation",
+  platform: "staff-cockpit-platform",
+  policyAgentOps: "staff-cockpit-policy-agent-ops",
+  reports: "staff-cockpit-reports",
+  moduleTelemetry: "staff-cockpit-module-telemetry",
+} as const;
+const STAFF_MODULE_USAGE_STORAGE_KEY = "mf_staff_module_usage_v1";
+const STAFF_MODULE_USAGE_STORAGE_VERSION = 2;
+const STAFF_ADAPTIVE_NAV_STORAGE_KEY = "mf_staff_adaptive_nav_v1";
+
+type ModuleKey = keyof typeof MODULE_REGISTRY;
+type ModuleUsageStat = {
+  visits: number;
+  dwellMs: number;
+  firstActionMs: number | null;
+};
 
 type QueryTrace = { atIso: string; collection: string; params: Record<string, unknown> };
 type WriteTrace = { atIso: string; collection: string; docId: string; payload: Record<string, unknown> };
@@ -145,6 +174,26 @@ type EventRecord = {
   priceCents: number;
   lastStatusReason: string;
   lastStatusChangedAtMs: number;
+};
+
+type WorkshopProgrammingTechnique = {
+  key: string;
+  label: string;
+  keywords: string[];
+};
+
+type WorkshopProgrammingCluster = {
+  key: string;
+  label: string;
+  eventCount: number;
+  upcomingCount: number;
+  waitlistCount: number;
+  openSeats: number;
+  reviewRequiredCount: number;
+  demandScore: number;
+  gapScore: number;
+  recommendedAction: string;
+  topEventTitle: string;
 };
 
 type SignupRecord = {
@@ -274,11 +323,78 @@ type AutomationDashboardState = {
 };
 type StudioBrainStatus = {
   checkedAt: string;
-  mode: "ok" | "degraded" | "offline";
+  mode: "healthy" | "degraded" | "offline" | "disabled" | "unknown";
   healthOk: boolean;
   readyOk: boolean;
   snapshotAgeMinutes: number | null;
+  reasonCode: string;
+  lastKnownGoodAt: string | null;
+  signalAgeMinutes: number | null;
   reason: string;
+};
+type BatchArtifactCategory =
+  | "fixture_like"
+  | "stale_closed"
+  | "orphan_owner"
+  | "state_mismatch"
+  | "active_recent"
+  | "unclassified";
+type BatchArtifactConfidence = "high" | "medium" | "low";
+type BatchArtifactDispositionHint = "delete" | "archive" | "retain" | "merge" | "manual_review";
+type BatchArtifactTriageRecord = {
+  batchId: string;
+  title: string;
+  status: string;
+  ownerUid: string;
+  isClosed: boolean;
+  updatedAtMs: number;
+  ageDays: number | null;
+  likelyArtifact: boolean;
+  category: BatchArtifactCategory;
+  confidence: BatchArtifactConfidence;
+  dispositionHints: BatchArtifactDispositionHint[];
+  rationale: string[];
+  riskFlags: string[];
+};
+type BatchCleanupSelectionMode = "high_confidence_artifacts" | "all_likely_artifacts" | "current_filter_artifacts";
+type BatchCleanupAudit = {
+  runId: string;
+  generatedAt: string;
+  operatorUid: string;
+  operatorEmail: string | null;
+  operatorRole: string;
+  source: "staff_console";
+  reasonCode: string;
+  reason: string;
+  ticketRefs: string[];
+  confirmationPhrase: string;
+};
+type BatchCleanupTarget = {
+  batchId: string;
+  title: string;
+  status: string;
+  ownerUid: string;
+  isClosed: boolean;
+  updatedAtMs: number;
+  category: BatchArtifactCategory;
+  confidence: BatchArtifactConfidence;
+  dispositionHints: BatchArtifactDispositionHint[];
+  rationale: string[];
+  riskFlags: string[];
+};
+type BatchCleanupPayload = {
+  mode: "preview" | "destructive";
+  dryRun: boolean;
+  backendDispatchRequested: boolean;
+  previewOnly: boolean;
+  selectionMode: BatchCleanupSelectionMode;
+  selectedCount: number;
+  selectedBatchIds: string[];
+  countsByCategory: Record<string, number>;
+  countsByConfidence: Record<string, number>;
+  countsByDispositionHint: Record<string, number>;
+  audit: BatchCleanupAudit;
+  targets: BatchCleanupTarget[];
 };
 type BatchActionName =
   | "shelveBatch"
@@ -288,27 +404,27 @@ type BatchActionName =
   | "pickedUpAndClose"
   | "continueJourney";
 
-const MODULES: Array<{ key: ModuleKey; label: string }> = [
-  { key: "cockpit", label: "Cockpit" },
-  { key: "overview", label: "Overview" },
-  { key: "members", label: "Members" },
-  { key: "pieces", label: "Pieces & batches" },
-  { key: "firings", label: "Firings" },
-  { key: "events", label: "Events" },
-  { key: "reports", label: "Reports" },
-  { key: "governance", label: "Governance" },
-  { key: "agentOps", label: "Agent ops" },
-  { key: "stripe", label: "Stripe settings" },
-  { key: "commerce", label: "Store & billing" },
-  { key: "lending", label: "Lending" },
-  { key: "system", label: "System" },
-];
+const MODULES: Array<{ key: ModuleKey; label: string; owner: string; testId: string }> = (
+  Object.keys(MODULE_REGISTRY) as ModuleKey[]
+)
+  .filter((key) => MODULE_REGISTRY[key].nav)
+  .map((key) => ({
+    key,
+    label: MODULE_REGISTRY[key].label,
+    owner: MODULE_REGISTRY[key].owner,
+    testId: MODULE_REGISTRY[key].testId,
+  }));
 
 const GITHUB_REPO_OWNER = "monsoonfirepottery-byte";
 const GITHUB_REPO_NAME = "monsoonfire-portal";
 const GITHUB_REPO_SLUG = `${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}`;
 const GITHUB_API_BASE = `https://api.github.com/repos/${GITHUB_REPO_SLUG}`;
 const AUTOMATION_STALE_MS = 36 * 60 * 60 * 1000;
+const BATCH_ARTIFACT_KEYWORD = /\b(test|qa|dev|seed|fixture|sample|demo|playwright|mock|canary|staging|tmp|temp)\b/i;
+const BATCH_STALE_CLOSED_DAYS = 120;
+const BATCH_STALE_OPEN_DAYS = 30;
+const STUDIO_BRAIN_SIGNAL_STALE_MINUTES = 12;
+const STUDIO_BRAIN_OFFLINE_CONFIRM_MINUTES = 45;
 const AUTOMATION_WORKFLOW_SOURCES: AutomationWorkflowSource[] = [
   {
     key: "automationHealth",
@@ -373,6 +489,33 @@ const AUTOMATION_ISSUE_SOURCES: AutomationIssueSource[] = [
     purpose: "canary incident history and directives",
   },
 ];
+const WORKSHOP_PROGRAMMING_TECHNIQUES: WorkshopProgrammingTechnique[] = [
+  {
+    key: "wheel-throwing",
+    label: "Wheel throwing",
+    keywords: ["wheel", "throw", "centering", "trim", "cylinder"],
+  },
+  {
+    key: "handbuilding",
+    label: "Handbuilding",
+    keywords: ["handbuild", "slab", "coil", "pinch", "construction"],
+  },
+  {
+    key: "surface-decoration",
+    label: "Surface decoration",
+    keywords: ["surface", "carv", "sgraffito", "underglaze", "texture", "slip"],
+  },
+  {
+    key: "glazing-firing",
+    label: "Glazing + firing",
+    keywords: ["glaze", "firing", "kiln", "raku", "cone", "reduction"],
+  },
+  {
+    key: "studio-practice",
+    label: "Studio practice",
+    keywords: ["studio", "workflow", "practice", "production", "critique"],
+  },
+];
 
 function str(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
@@ -386,8 +529,17 @@ function bool(value: unknown): boolean {
   return value === true;
 }
 
+function record(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
 function toTsMs(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
   if (value && typeof value === "object") {
     const maybe = value as { toMillis?: () => number; seconds?: number; nanoseconds?: number };
     if (typeof maybe.toMillis === "function") return maybe.toMillis();
@@ -427,6 +579,20 @@ function when(ms: number): string {
   return new Date(ms).toLocaleString();
 }
 
+function formatDurationMs(ms: number): string {
+  if (ms <= 0) return "0s";
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)}m`;
+  return `${(ms / 3_600_000).toFixed(1)}h`;
+}
+
+function formatLatencyMs(ms: number | null): string {
+  if (ms === null) return "-";
+  if (ms < 10_000) return `${(ms / 1000).toFixed(1)}s`;
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+  return `${(ms / 60_000).toFixed(1)}m`;
+}
+
 function dollars(cents: number): string {
   return `$${(Math.max(cents, 0) / 100).toFixed(2)}`;
 }
@@ -438,19 +604,272 @@ function parseList(input: string): string[] {
     .filter(Boolean);
 }
 
+function inferWorkshopProgrammingTechnique(title: string): WorkshopProgrammingTechnique {
+  const normalized = title.trim().toLowerCase();
+  if (!normalized) return WORKSHOP_PROGRAMMING_TECHNIQUES[WORKSHOP_PROGRAMMING_TECHNIQUES.length - 1];
+  const matched = WORKSHOP_PROGRAMMING_TECHNIQUES.find((technique) =>
+    technique.keywords.some((keyword) => normalized.includes(keyword))
+  );
+  return matched ?? WORKSHOP_PROGRAMMING_TECHNIQUES[WORKSHOP_PROGRAMMING_TECHNIQUES.length - 1];
+}
+
 function normalizeBatchState(status: string): string {
   return status.trim().toUpperCase().replace(/\s+/g, "_");
 }
 
 function memberRole(data: Record<string, unknown>): string {
+  const fallbackRole = [
+    str(data.role),
+    str(data.userRole),
+    str(data.memberRole),
+    str(data.staffRole),
+    str(data.profileRole),
+    str(data.accountRole),
+  ].find((value) => value.trim().length > 0);
+
   return parseStaffRole({
-    claims: data.claims,
-    fallbackRole: data.role,
+    claims: data.claims ?? data.customClaims ?? data.authClaims,
+    fallbackRole,
   }).role;
+}
+
+function deriveMembershipTier(data: Record<string, unknown>, role: string): string {
+  if (role === "admin") return "Admin";
+  if (role === "staff") return "Staff";
+  const membership = record(data.membership);
+  const membershipPlan = record(membership.plan);
+  const subscription = record(data.subscription);
+  const profile = record(data.profile);
+
+  const explicit = [
+    str(data.membershipTier),
+    str(data.membership),
+    str(data.membershipType),
+    str(data.memberType),
+    str(data.planTier),
+    str(data.tier),
+    str(membership.tier),
+    str(membership.level),
+    str(membership.type),
+    str(membership.name),
+    str(membershipPlan.tier),
+    str(membershipPlan.name),
+    str(subscription.tier),
+    str(subscription.plan),
+    str(subscription.planName),
+    str(profile.membershipTier),
+    str(profile.memberType),
+  ].find((value) => value.trim().length > 0);
+  if (explicit) return explicit;
+  return "Studio Member";
+}
+
+function toReasonCode(input: string, fallback: string): string {
+  const normalized = input
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || fallback;
+}
+
+function classifyBatchArtifact(batch: BatchRecord, nowMs: number): BatchArtifactTriageRecord {
+  const normalizedStatus = normalizeBatchState(batch.status);
+  const haystack = `${batch.title} ${batch.id} ${batch.ownerUid} ${batch.status}`.toLowerCase();
+  const keywordMatch = BATCH_ARTIFACT_KEYWORD.test(haystack);
+  const missingOwner = batch.ownerUid.trim().length === 0;
+  const ageDays = batch.updatedAtMs > 0 ? Math.floor(Math.max(0, nowMs - batch.updatedAtMs) / (24 * 60 * 60 * 1000)) : null;
+  const staleClosed = batch.isClosed && ageDays !== null && ageDays >= BATCH_STALE_CLOSED_DAYS;
+  const staleOpen = !batch.isClosed && ageDays !== null && ageDays >= BATCH_STALE_OPEN_DAYS;
+  const closedStatusMismatch =
+    batch.isClosed &&
+    !(
+      normalizedStatus.includes("CLOSE") ||
+      normalizedStatus.includes("PICKED") ||
+      normalizedStatus.includes("COMPLETE") ||
+      normalizedStatus.includes("DONE")
+    );
+  const openStatusMismatch = !batch.isClosed && (normalizedStatus.includes("CLOSE") || normalizedStatus.includes("COMPLETE"));
+  const unknownStatus = normalizedStatus.length === 0 || normalizedStatus === "UNKNOWN";
+
+  const rationale: string[] = [];
+  const riskFlags: string[] = [];
+  if (keywordMatch) rationale.push("Keyword signature matches fixture/test artifact patterns.");
+  if (missingOwner) {
+    rationale.push("Missing owner UID.");
+    riskFlags.push("owner_missing");
+  }
+  if (staleClosed) {
+    rationale.push(`Closed and stale for ${ageDays} day(s).`);
+    riskFlags.push("stale_closed");
+  }
+  if (staleOpen) {
+    rationale.push(`Open and stale for ${ageDays} day(s).`);
+    riskFlags.push("stale_open");
+  }
+  if (closedStatusMismatch || openStatusMismatch) {
+    rationale.push("Lifecycle status and isClosed flag are mismatched.");
+    riskFlags.push("state_mismatch");
+  }
+  if (unknownStatus) {
+    rationale.push("Status is unknown.");
+    riskFlags.push("status_unknown");
+  }
+  if (ageDays === null) {
+    rationale.push("Missing updated timestamp.");
+    riskFlags.push("updated_missing");
+  }
+
+  let category: BatchArtifactCategory = "active_recent";
+  let confidence: BatchArtifactConfidence = "low";
+  let dispositionHints: BatchArtifactDispositionHint[] = ["retain"];
+
+  if (keywordMatch && (staleClosed || missingOwner || unknownStatus)) {
+    category = "fixture_like";
+    confidence = "high";
+    dispositionHints = ["delete", "archive", "manual_review"];
+  } else if (missingOwner && staleClosed) {
+    category = "orphan_owner";
+    confidence = "high";
+    dispositionHints = ["archive", "manual_review"];
+  } else if (missingOwner) {
+    category = "orphan_owner";
+    confidence = "medium";
+    dispositionHints = ["manual_review", "archive"];
+  } else if (staleClosed) {
+    category = "stale_closed";
+    confidence = keywordMatch ? "high" : "medium";
+    dispositionHints = ["archive", "retain", "manual_review"];
+  } else if (closedStatusMismatch || openStatusMismatch || unknownStatus || staleOpen) {
+    category = "state_mismatch";
+    confidence = keywordMatch || staleOpen ? "medium" : "low";
+    dispositionHints = ["manual_review", "merge", "retain"];
+  } else if (keywordMatch) {
+    category = "fixture_like";
+    confidence = "medium";
+    dispositionHints = ["manual_review", "retain", "archive"];
+  } else if (ageDays === null) {
+    category = "unclassified";
+    confidence = "low";
+    dispositionHints = ["manual_review", "retain"];
+  }
+
+  const likelyArtifact = category === "fixture_like" || category === "stale_closed" || category === "orphan_owner";
+  return {
+    batchId: batch.id,
+    title: batch.title,
+    status: batch.status,
+    ownerUid: batch.ownerUid,
+    isClosed: batch.isClosed,
+    updatedAtMs: batch.updatedAtMs,
+    ageDays,
+    likelyArtifact,
+    category,
+    confidence,
+    dispositionHints,
+    rationale,
+    riskFlags,
+  };
+}
+
+function buildBatchCleanupPreviewLog(payload: BatchCleanupPayload): string {
+  const lines: string[] = [];
+  lines.push(`mode: ${payload.mode}`);
+  lines.push(`dryRun: ${payload.dryRun ? "true" : "false"}`);
+  lines.push(`previewOnly: ${payload.previewOnly ? "true" : "false"}`);
+  lines.push(`backendDispatchRequested: ${payload.backendDispatchRequested ? "true" : "false"}`);
+  lines.push(`selectionMode: ${payload.selectionMode}`);
+  lines.push(`selectedCount: ${payload.selectedCount}`);
+  lines.push(`reasonCode: ${payload.audit.reasonCode}`);
+  lines.push(`reason: ${payload.audit.reason}`);
+  lines.push(`operatorUid: ${payload.audit.operatorUid}`);
+  lines.push(`operatorEmail: ${payload.audit.operatorEmail || "-"}`);
+  lines.push(`ticketRefs: ${payload.audit.ticketRefs.join(", ") || "-"}`);
+  lines.push(`generatedAt: ${payload.audit.generatedAt}`);
+  lines.push("countsByCategory:");
+  Object.entries(payload.countsByCategory)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .forEach(([key, value]) => lines.push(`  ${key}: ${value}`));
+  lines.push("countsByConfidence:");
+  Object.entries(payload.countsByConfidence)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .forEach(([key, value]) => lines.push(`  ${key}: ${value}`));
+  lines.push("targets:");
+  payload.targets.slice(0, 30).forEach((target) => {
+    lines.push(
+      `  - ${target.batchId} | ${target.category}/${target.confidence} | hints=${target.dispositionHints.join("+")} | status=${target.status} | owner=${target.ownerUid || "-"}`
+    );
+  });
+  if (payload.targets.length > 30) {
+    lines.push(`  ... ${payload.targets.length - 30} additional target(s) truncated`);
+  }
+  return lines.join("\n");
 }
 
 function maxMs(...values: number[]): number {
   return values.reduce((acc, value) => (value > acc ? value : acc), 0);
+}
+
+function moduleUsageSeed(): Record<ModuleKey, ModuleUsageStat> {
+  return (Object.keys(MODULE_REGISTRY) as ModuleKey[]).reduce(
+    (acc, key) => {
+      acc[key] = { visits: 0, dwellMs: 0, firstActionMs: null };
+      return acc;
+    },
+    {} as Record<ModuleKey, ModuleUsageStat>
+  );
+}
+
+function loadModuleUsageSnapshot(): Record<ModuleKey, ModuleUsageStat> {
+  const seed = moduleUsageSeed();
+  if (typeof window === "undefined") return seed;
+  try {
+    const raw = window.localStorage.getItem(STAFF_MODULE_USAGE_STORAGE_KEY);
+    if (!raw) return seed;
+    const parsed = JSON.parse(raw) as unknown;
+    let source: Record<string, Partial<ModuleUsageStat>> = {};
+    let savedAtIso = "";
+    if (parsed && typeof parsed === "object" && "moduleUsage" in parsed) {
+      const next = parsed as { moduleUsage?: Record<string, Partial<ModuleUsageStat>>; savedAtIso?: string };
+      source = next.moduleUsage && typeof next.moduleUsage === "object" ? next.moduleUsage : {};
+      savedAtIso = typeof next.savedAtIso === "string" ? next.savedAtIso : "";
+    } else if (parsed && typeof parsed === "object") {
+      source = parsed as Record<string, Partial<ModuleUsageStat>>;
+    }
+    const savedAtMs = savedAtIso ? Date.parse(savedAtIso) : 0;
+    const ageDays = savedAtMs > 0 ? Math.floor(Math.max(0, Date.now() - savedAtMs) / (24 * 60 * 60 * 1000)) : 0;
+    const decay = ageDays > 0 ? Math.max(0.35, Math.pow(0.95, ageDays)) : 1;
+    (Object.keys(seed) as ModuleKey[]).forEach((key) => {
+      const next = source?.[key];
+      if (!next) return;
+      const visits = Number(next.visits);
+      const dwellMs = Number(next.dwellMs);
+      const firstActionMs = next.firstActionMs;
+      seed[key] = {
+        visits: Number.isFinite(visits) && visits > 0 ? Math.floor(visits * decay) : 0,
+        dwellMs: Number.isFinite(dwellMs) && dwellMs > 0 ? Math.floor(dwellMs * decay) : 0,
+        firstActionMs:
+          typeof firstActionMs === "number" && Number.isFinite(firstActionMs) && firstActionMs >= 0
+            ? Math.floor(firstActionMs)
+            : null,
+      };
+    });
+    return seed;
+  } catch {
+    return seed;
+  }
+}
+
+function loadAdaptiveNavPreference(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    const raw = window.localStorage.getItem(STAFF_ADAPTIVE_NAV_STORAGE_KEY);
+    if (raw === "false" || raw === "0") return false;
+    if (raw === "true" || raw === "1") return true;
+    return true;
+  } catch {
+    return true;
+  }
 }
 
 function sanitizeLastRequest(request: LastRequest | null): LastRequest | null {
@@ -468,8 +887,16 @@ export default function StaffView({
   onDevAdminTokenChange,
   devAdminEnabled,
   showEmulatorTools,
+  onOpenCheckin,
+  initialModule = "cockpit",
+  forceCockpitWorkspace = false,
+  forceEventsWorkspace = false,
 }: Props) {
-  const [moduleKey, setModuleKey] = useState<ModuleKey>("overview");
+  const [moduleKey, setModuleKey] = useState<ModuleKey>(initialModule);
+  const [moduleUsage, setModuleUsage] = useState<Record<ModuleKey, ModuleUsageStat>>(() => loadModuleUsageSnapshot());
+  const [adaptiveNavEnabled, setAdaptiveNavEnabled] = useState<boolean>(() => loadAdaptiveNavPreference());
+  const moduleSessionRef = useRef<{ key: ModuleKey; enteredAtMs: number } | null>(null);
+  const moduleContentRef = useRef<HTMLDivElement | null>(null);
   const hasDevAdminAuthority = devAdminEnabled && devAdminToken.trim().length > 0;
   const hasStaffAuthority = isStaff || hasDevAdminAuthority;
   const staffAuthorityLabel = isStaff
@@ -478,6 +905,11 @@ export default function StaffView({
       ? "Dev admin token"
       : "No staff authority";
   const isCockpitModule = moduleKey === "cockpit";
+  const [cockpitWorkspaceMode, setCockpitWorkspaceMode] = useState(true);
+  const isWorkspaceFocused =
+    forceCockpitWorkspace ||
+    forceEventsWorkspace ||
+    (moduleKey === "cockpit" && cockpitWorkspaceMode);
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -534,12 +966,27 @@ export default function StaffView({
   const [batchNotes, setBatchNotes] = useState("");
   const [batchSearch, setBatchSearch] = useState("");
   const [batchStatusFilter, setBatchStatusFilter] = useState("all");
+  const [batchArtifactFilter, setBatchArtifactFilter] = useState<"all" | "artifact" | "nonArtifact">("all");
+  const [batchesTotalCount, setBatchesTotalCount] = useState<number | null>(null);
   const [batchPieces, setBatchPieces] = useState<BatchPieceRecord[]>([]);
   const [batchTimeline, setBatchTimeline] = useState<BatchTimelineRecord[]>([]);
   const [batchDetailBusy, setBatchDetailBusy] = useState(false);
   const [batchDetailError, setBatchDetailError] = useState("");
+  const [batchCleanupSelectionMode, setBatchCleanupSelectionMode] = useState<BatchCleanupSelectionMode>(
+    "high_confidence_artifacts"
+  );
+  const [batchCleanupReason, setBatchCleanupReason] = useState("Batch artifact hygiene run from Staff Console.");
+  const [batchCleanupReasonCodeInput, setBatchCleanupReasonCodeInput] = useState("ARTIFACT_BATCH_TRIAGE");
+  const [batchCleanupTicketRefsInput, setBatchCleanupTicketRefsInput] = useState(
+    "P1-staff-console-batch-artifact-triage-and-safe-cleanup"
+  );
+  const [batchCleanupDispatchMode, setBatchCleanupDispatchMode] = useState<"preview_only" | "attempt_backend">("preview_only");
+  const [batchCleanupConfirmPhraseInput, setBatchCleanupConfirmPhraseInput] = useState("");
+  const [batchCleanupPreviewPayload, setBatchCleanupPreviewPayload] = useState<BatchCleanupPayload | null>(null);
+  const [batchCleanupPreviewLog, setBatchCleanupPreviewLog] = useState("");
   const [kilnId, setKilnId] = useState("studio-electric");
   const [selectedFiringId, setSelectedFiringId] = useState("");
+  const [showDeprecatedFiringControls, setShowDeprecatedFiringControls] = useState(false);
   const [firingSearch, setFiringSearch] = useState("");
   const [firingStatusFilter, setFiringStatusFilter] = useState("all");
   const [firingKilnFilter, setFiringKilnFilter] = useState("all");
@@ -569,6 +1016,7 @@ export default function StaffView({
   const [systemChecks, setSystemChecks] = useState<SystemCheckRecord[]>([]);
   const [studioBrainStatus, setStudioBrainStatus] = useState<StudioBrainStatus | null>(null);
   const lastStudioBrainModeRef = useRef<StudioBrainStatus["mode"] | null>(null);
+  const lastStudioBrainHealthyAtRef = useRef<string | null>(null);
   const [integrationTokenCount, setIntegrationTokenCount] = useState<number | null>(null);
   const [notificationMetricsSummary, setNotificationMetricsSummary] = useState<{
     totalSent?: number;
@@ -594,6 +1042,80 @@ export default function StaffView({
     [fBaseUrl]
   );
   const hasFunctionsAuthMismatch = usingLocalFunctions && !showEmulatorTools;
+
+  useEffect(() => {
+    const now = Date.now();
+    const active = moduleSessionRef.current;
+    if (!active) {
+      moduleSessionRef.current = { key: moduleKey, enteredAtMs: now };
+      setModuleUsage((prev) => ({
+        ...prev,
+        [moduleKey]: { ...prev[moduleKey], visits: prev[moduleKey].visits + 1 },
+      }));
+      track("staff_module_open", {
+        module: moduleKey,
+        owner: MODULE_REGISTRY[moduleKey].owner,
+      });
+      return;
+    }
+    if (active.key === moduleKey) return;
+    const elapsed = Math.max(0, now - active.enteredAtMs);
+    setModuleUsage((prev) => ({
+      ...prev,
+      [active.key]: { ...prev[active.key], dwellMs: prev[active.key].dwellMs + elapsed },
+      [moduleKey]: { ...prev[moduleKey], visits: prev[moduleKey].visits + 1 },
+    }));
+    moduleSessionRef.current = { key: moduleKey, enteredAtMs: now };
+    track("staff_module_open", {
+      module: moduleKey,
+      owner: MODULE_REGISTRY[moduleKey].owner,
+    });
+  }, [moduleKey]);
+
+  useEffect(() => {
+    const root = moduleContentRef.current;
+    if (!root) return;
+    const onClick = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (!target.closest("button, a")) return;
+      const active = moduleSessionRef.current;
+      if (!active || active.key !== moduleKey) return;
+      const elapsed = Math.max(0, Date.now() - active.enteredAtMs);
+      setModuleUsage((prev) => {
+        if (prev[moduleKey].firstActionMs !== null) return prev;
+        return {
+          ...prev,
+          [moduleKey]: { ...prev[moduleKey], firstActionMs: elapsed },
+        };
+      });
+    };
+    root.addEventListener("click", onClick);
+    return () => root.removeEventListener("click", onClick);
+  }, [moduleKey]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        STAFF_MODULE_USAGE_STORAGE_KEY,
+        JSON.stringify({
+          version: STAFF_MODULE_USAGE_STORAGE_VERSION,
+          savedAtIso: new Date().toISOString(),
+          moduleUsage,
+        })
+      );
+    } catch {
+      // Ignore storage failures; telemetry is supplemental.
+    }
+  }, [moduleUsage]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STAFF_ADAPTIVE_NAV_STORAGE_KEY, adaptiveNavEnabled ? "1" : "0");
+    } catch {
+      // Ignore storage failures; navigation still works with default order.
+    }
+  }, [adaptiveNavEnabled]);
 
   const client = useMemo(
     () =>
@@ -634,6 +1156,68 @@ export default function StaffView({
     () => users.find((u) => u.id === selectedMemberId) ?? null,
     [selectedMemberId, users]
   );
+  const studioBrainUiState = useMemo(() => {
+    if (!studioBrainStatus) return null;
+    const checkedAtMs = Date.parse(studioBrainStatus.checkedAt);
+    const lastKnownGoodMs = studioBrainStatus.lastKnownGoodAt ? Date.parse(studioBrainStatus.lastKnownGoodAt) : 0;
+    const checkedAtLabel = Number.isFinite(checkedAtMs) ? when(checkedAtMs) : studioBrainStatus.checkedAt;
+    const lastKnownGoodLabel =
+      studioBrainStatus.lastKnownGoodAt && Number.isFinite(lastKnownGoodMs)
+        ? `${when(lastKnownGoodMs)} (${formatMinutesAgo(studioBrainStatus.signalAgeMinutes)} ago)`
+        : "None yet";
+    const snapshotAgeLabel =
+      studioBrainStatus.snapshotAgeMinutes === null ? "n/a" : `${studioBrainStatus.snapshotAgeMinutes}m`;
+    const base = {
+      checkedAtLabel,
+      lastKnownGoodLabel,
+      snapshotAgeLabel,
+      reasonCode: studioBrainStatus.reasonCode,
+      reason: studioBrainStatus.reason,
+    };
+    if (studioBrainStatus.mode === "healthy") {
+      return {
+        ...base,
+        tone: "ok" as const,
+        title: "Studio Brain healthy",
+        message: "Ready checks are passing and current telemetry is trusted.",
+        alert: false,
+      };
+    }
+    if (studioBrainStatus.mode === "disabled") {
+      return {
+        ...base,
+        tone: "muted" as const,
+        title: "Studio Brain disabled",
+        message: "Integration is intentionally disabled for this host.",
+        alert: false,
+      };
+    }
+    if (studioBrainStatus.mode === "degraded") {
+      return {
+        ...base,
+        tone: "warn" as const,
+        title: "Studio Brain degraded",
+        message: "Service is reachable but readiness checks are failing.",
+        alert: true,
+      };
+    }
+    if (studioBrainStatus.mode === "offline") {
+      return {
+        ...base,
+        tone: "error" as const,
+        title: "Studio Brain offline",
+        message: "Service is unreachable and signal gap is long enough to confirm an outage.",
+        alert: true,
+      };
+    }
+    return {
+      ...base,
+      tone: "warn" as const,
+      title: "Studio Brain signal unknown",
+      message: "Telemetry is delayed or partial; this is not yet confirmed as offline.",
+      alert: true,
+    };
+  }, [studioBrainStatus]);
   const latestErrors = useMemo(() => [...handlerLog].reverse().slice(0, 20), [handlerLog]);
   const firingStatusOptions = useMemo(() => {
     const next = new Set<string>();
@@ -743,6 +1327,120 @@ export default function StaffView({
     );
     return { total, upcoming, reviewRequired, published, openSeats, waitlisted };
   }, [events]);
+  const workshopProgrammingClusters = useMemo<WorkshopProgrammingCluster[]>(() => {
+    const now = Date.now();
+    const aggregate = new Map<
+      string,
+      Omit<WorkshopProgrammingCluster, "gapScore" | "recommendedAction"> & { bestPressure: number }
+    >();
+
+    for (const event of events) {
+      const technique = inferWorkshopProgrammingTechnique(event.title);
+      const existing = aggregate.get(technique.key) ?? {
+        key: technique.key,
+        label: technique.label,
+        eventCount: 0,
+        upcomingCount: 0,
+        waitlistCount: 0,
+        openSeats: 0,
+        reviewRequiredCount: 0,
+        demandScore: 0,
+        topEventTitle: "",
+        bestPressure: -1,
+      };
+
+      const waitlist = Math.max(event.waitlistCount, 0);
+      const remaining = Math.max(event.remainingCapacity, 0);
+      const capacity = Math.max(event.capacity, 0);
+      const filled = Math.max(capacity - remaining, 0);
+      const isUpcoming = event.startAtMs > now && event.status !== "cancelled";
+      const pressure = waitlist * 3 + Math.max(0, 2 - remaining) + (event.status === "review_required" ? 2 : 0);
+
+      existing.eventCount += 1;
+      existing.waitlistCount += waitlist;
+      existing.openSeats += remaining;
+      existing.demandScore += filled + waitlist * 2;
+      if (isUpcoming) existing.upcomingCount += 1;
+      if (event.status === "review_required") existing.reviewRequiredCount += 1;
+      if (pressure > existing.bestPressure) {
+        existing.topEventTitle = event.title;
+        existing.bestPressure = pressure;
+      }
+      aggregate.set(technique.key, existing);
+    }
+
+    return Array.from(aggregate.values())
+      .map((entry) => {
+        const shortage = Math.max(0, 2 - entry.upcomingCount);
+        const seatSaturation = entry.openSeats === 0 ? 2 : entry.openSeats < 8 ? 1 : 0;
+        const gapScore = entry.waitlistCount * 2 + shortage * 3 + seatSaturation + entry.reviewRequiredCount;
+        let recommendedAction = "Monitor trend";
+        if (entry.waitlistCount >= 5) {
+          recommendedAction = "Add second session";
+        } else if (entry.upcomingCount === 0) {
+          recommendedAction = "Schedule first session";
+        } else if (entry.openSeats <= 4) {
+          recommendedAction = "Expand seats or add date";
+        } else if (entry.reviewRequiredCount > 0) {
+          recommendedAction = "Resolve review gate";
+        }
+        return {
+          ...entry,
+          gapScore,
+          recommendedAction,
+        };
+      })
+      .sort((left, right) => {
+        const byGap = right.gapScore - left.gapScore;
+        if (byGap !== 0) return byGap;
+        return right.demandScore - left.demandScore;
+      });
+  }, [events]);
+  const workshopProgrammingKpis = useMemo(() => {
+    const totalClusters = workshopProgrammingClusters.length;
+    const highPressure = workshopProgrammingClusters.filter((cluster) => cluster.gapScore >= 8).length;
+    const totalWaitlist = workshopProgrammingClusters.reduce((sum, cluster) => sum + cluster.waitlistCount, 0);
+    const totalDemandScore = workshopProgrammingClusters.reduce((sum, cluster) => sum + cluster.demandScore, 0);
+    const noUpcomingCoverage = workshopProgrammingClusters.filter((cluster) => cluster.upcomingCount === 0).length;
+    return {
+      totalClusters,
+      highPressure,
+      totalWaitlist,
+      totalDemandScore,
+      noUpcomingCoverage,
+    };
+  }, [workshopProgrammingClusters]);
+  const handleExportWorkshopProgrammingBrief = useCallback(() => {
+    const dateLabel = new Date().toISOString().slice(0, 10);
+    const lines = [
+      `Workshop programming brief (${dateLabel})`,
+      "",
+      `Technique clusters tracked: ${workshopProgrammingKpis.totalClusters}`,
+      `High-pressure clusters: ${workshopProgrammingKpis.highPressure}`,
+      `Total waitlist pressure: ${workshopProgrammingKpis.totalWaitlist}`,
+      `Demand score total: ${workshopProgrammingKpis.totalDemandScore}`,
+      `Clusters without upcoming coverage: ${workshopProgrammingKpis.noUpcomingCoverage}`,
+      "",
+      "Technique clusters:",
+      ...workshopProgrammingClusters.map((cluster) =>
+        `- ${cluster.label}: gap ${cluster.gapScore}, demand ${cluster.demandScore}, waitlist ${cluster.waitlistCount}, upcoming ${cluster.upcomingCount}, action ${cluster.recommendedAction}`
+      ),
+    ];
+    const blob = new Blob([`${lines.join("\n")}\n`], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `workshop-programming-brief-${dateLabel}.txt`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    setStatus("Exported workshop programming brief.");
+    track("staff_workshops_programming_brief_exported", {
+      clusters: workshopProgrammingClusters.length,
+      highPressure: workshopProgrammingKpis.highPressure,
+    });
+  }, [workshopProgrammingClusters, workshopProgrammingKpis.highPressure, workshopProgrammingKpis.noUpcomingCoverage, workshopProgrammingKpis.totalClusters, workshopProgrammingKpis.totalDemandScore, workshopProgrammingKpis.totalWaitlist]);
   const lendingStatusOptions = useMemo(() => {
     const next = new Set<string>();
     [...libraryRequests, ...libraryLoans].forEach((item) => {
@@ -809,6 +1507,35 @@ export default function StaffView({
     });
     return Array.from(next).sort((a, b) => a.localeCompare(b));
   }, [batches]);
+  const batchArtifactInventory = useMemo(
+    () => {
+      const evaluatedAtMs = Date.now();
+      return batches
+        .map((batch) => classifyBatchArtifact(batch, evaluatedAtMs))
+        .sort((a, b) => {
+          const confidenceRank = (value: BatchArtifactConfidence): number =>
+            value === "high" ? 3 : value === "medium" ? 2 : 1;
+          const byLikely = Number(b.likelyArtifact) - Number(a.likelyArtifact);
+          if (byLikely !== 0) return byLikely;
+          const byConfidence = confidenceRank(b.confidence) - confidenceRank(a.confidence);
+          if (byConfidence !== 0) return byConfidence;
+          return b.updatedAtMs - a.updatedAtMs;
+        });
+    },
+    [batches]
+  );
+  const batchArtifactInventoryById = useMemo(
+    () => new Map(batchArtifactInventory.map((entry) => [entry.batchId, entry])),
+    [batchArtifactInventory]
+  );
+  const batchArtifactIdSet = useMemo(
+    () => new Set(batchArtifactInventory.filter((entry) => entry.likelyArtifact).map((entry) => entry.batchId)),
+    [batchArtifactInventory]
+  );
+  const batchArtifactCandidates = useMemo(
+    () => batches.filter((batch) => batchArtifactIdSet.has(batch.id)),
+    [batchArtifactIdSet, batches]
+  );
   const filteredBatches = useMemo(() => {
     const search = batchSearch.trim().toLowerCase();
     return batches
@@ -823,12 +1550,64 @@ export default function StaffView({
         ) {
           return false;
         }
+        const likelyArtifact = batchArtifactIdSet.has(batch.id);
+        if (batchArtifactFilter === "artifact" && !likelyArtifact) return false;
+        if (batchArtifactFilter === "nonArtifact" && likelyArtifact) return false;
         if (!search) return true;
         const haystack = `${batch.title} ${batch.id} ${batch.ownerUid} ${batch.status}`.toLowerCase();
         return haystack.includes(search);
       })
       .sort((a, b) => b.updatedAtMs - a.updatedAtMs);
-  }, [batchSearch, batchStatusFilter, batches]);
+  }, [batchArtifactFilter, batchArtifactIdSet, batchSearch, batchStatusFilter, batches]);
+  const batchLikelyArtifactInventory = useMemo(
+    () => batchArtifactInventory.filter((entry) => entry.likelyArtifact),
+    [batchArtifactInventory]
+  );
+  const batchArtifactSummary = useMemo(() => {
+    const countsByCategory: Record<string, number> = {};
+    const countsByConfidence: Record<string, number> = {};
+    const countsByDispositionHint: Record<string, number> = {};
+    let manualReview = 0;
+    batchLikelyArtifactInventory.forEach((entry) => {
+      countsByCategory[entry.category] = (countsByCategory[entry.category] || 0) + 1;
+      countsByConfidence[entry.confidence] = (countsByConfidence[entry.confidence] || 0) + 1;
+      if (entry.dispositionHints.includes("manual_review")) manualReview += 1;
+      entry.dispositionHints.forEach((hint) => {
+        countsByDispositionHint[hint] = (countsByDispositionHint[hint] || 0) + 1;
+      });
+    });
+    return {
+      totalLikelyArtifacts: batchLikelyArtifactInventory.length,
+      highConfidence: countsByConfidence.high || 0,
+      mediumConfidence: countsByConfidence.medium || 0,
+      lowConfidence: countsByConfidence.low || 0,
+      manualReview,
+      countsByCategory,
+      countsByConfidence,
+      countsByDispositionHint,
+    };
+  }, [batchLikelyArtifactInventory]);
+  const batchCleanupSelectionCandidates = useMemo(() => {
+    if (batchCleanupSelectionMode === "all_likely_artifacts") return batchLikelyArtifactInventory;
+    if (batchCleanupSelectionMode === "current_filter_artifacts") {
+      return filteredBatches
+        .map((batch) => batchArtifactInventoryById.get(batch.id) ?? null)
+        .filter((entry): entry is BatchArtifactTriageRecord => Boolean(entry?.likelyArtifact));
+    }
+    return batchLikelyArtifactInventory.filter((entry) => entry.confidence === "high");
+  }, [batchArtifactInventoryById, batchCleanupSelectionMode, batchLikelyArtifactInventory, filteredBatches]);
+  const expectedBatchCleanupConfirmationPhrase = useMemo(
+    () => `DELETE ${batchCleanupSelectionCandidates.length} BATCHES`,
+    [batchCleanupSelectionCandidates.length]
+  );
+  const canConfirmDestructiveCleanup = useMemo(
+    () => batchCleanupConfirmPhraseInput.trim() === expectedBatchCleanupConfirmationPhrase,
+    [batchCleanupConfirmPhraseInput, expectedBatchCleanupConfirmationPhrase]
+  );
+  const selectedBatchTriage = useMemo(
+    () => (selectedBatch ? batchArtifactInventoryById.get(selectedBatch.id) ?? null : null),
+    [batchArtifactInventoryById, selectedBatch]
+  );
   const selectedBatchState = useMemo(
     () => normalizeBatchState(selectedBatch?.status ?? ""),
     [selectedBatch?.status]
@@ -1000,8 +1779,8 @@ export default function StaffView({
         id: "all-clear",
         severity: "low",
         label: "No immediate operational alerts.",
-        actionLabel: "Stay on overview",
-        module: "overview",
+        actionLabel: "Stay on cockpit",
+        module: "cockpit",
       });
     }
     return alerts;
@@ -1040,6 +1819,110 @@ export default function StaffView({
       loadedAtMs: automationDashboard.loadedAtMs,
     };
   }, [automationDashboard]);
+  const moduleUsageRows = useMemo(() => {
+    const now = Date.now();
+    const active = moduleSessionRef.current;
+    return (Object.keys(MODULE_REGISTRY) as ModuleKey[])
+      .map((key) => {
+        const base = moduleUsage[key];
+        const liveDwellMs =
+          active?.key === key
+            ? base.dwellMs + Math.max(0, now - active.enteredAtMs)
+            : base.dwellMs;
+        return {
+          key,
+          label: MODULE_REGISTRY[key].label,
+          owner: MODULE_REGISTRY[key].owner,
+          visits: base.visits,
+          dwellMs: liveDwellMs,
+          firstActionMs: base.firstActionMs,
+        };
+      })
+      .filter((row) => row.visits > 0 || row.dwellMs > 0 || row.firstActionMs !== null)
+      .sort((a, b) => b.visits - a.visits || b.dwellMs - a.dwellMs);
+  }, [moduleUsage]);
+  const lowEngagementModules = useMemo(() => {
+    return MODULES
+      .map((moduleItem) => ({
+        key: moduleItem.key,
+        label: moduleItem.label,
+        usage: moduleUsage[moduleItem.key],
+      }))
+      .filter((row) => row.key !== "cockpit")
+      .filter((row) => row.usage.visits <= 1 && row.usage.dwellMs < 20_000 && row.usage.firstActionMs === null)
+      .map((row) => row.label);
+  }, [moduleUsage]);
+  const lowEngagementModuleKeys = useMemo(() => {
+    return new Set(
+      MODULES
+        .map((moduleItem) => ({
+          key: moduleItem.key,
+          usage: moduleUsage[moduleItem.key],
+        }))
+        .filter((row) => row.key !== "cockpit")
+        .filter((row) => row.usage.visits <= 1 && row.usage.dwellMs < 20_000 && row.usage.firstActionMs === null)
+        .map((row) => row.key)
+    );
+  }, [moduleUsage]);
+  const moduleNavRows = useMemo(() => {
+    const rows = MODULES.map((moduleItem) => ({
+      ...moduleItem,
+      usage: moduleUsage[moduleItem.key],
+    }));
+    if (!adaptiveNavEnabled) return rows;
+    const cockpitRow = rows.find((row) => row.key === "cockpit");
+    const nonCockpit = rows
+      .filter((row) => row.key !== "cockpit")
+      .sort((a, b) => {
+        const byVisits = b.usage.visits - a.usage.visits;
+        if (byVisits !== 0) return byVisits;
+        const byDwell = b.usage.dwellMs - a.usage.dwellMs;
+        if (byDwell !== 0) return byDwell;
+        const aFirstAction = a.usage.firstActionMs === null ? Number.POSITIVE_INFINITY : a.usage.firstActionMs;
+        const bFirstAction = b.usage.firstActionMs === null ? Number.POSITIVE_INFINITY : b.usage.firstActionMs;
+        if (aFirstAction !== bFirstAction) return aFirstAction - bFirstAction;
+        return a.label.localeCompare(b.label);
+      });
+    return cockpitRow ? [cockpitRow, ...nonCockpit] : nonCockpit;
+  }, [adaptiveNavEnabled, moduleUsage]);
+  const navLayout = useMemo(() => {
+    if (!adaptiveNavEnabled) {
+      return { primary: moduleNavRows, overflow: [] as typeof moduleNavRows };
+    }
+    const overflowKeys = new Set(
+      moduleNavRows
+        .filter((row) => lowEngagementModuleKeys.has(row.key))
+        .filter((row) => row.key !== "cockpit")
+        .filter((row) => row.key !== moduleKey)
+        .map((row) => row.key)
+    );
+    return {
+      primary: moduleNavRows.filter((row) => !overflowKeys.has(row.key)),
+      overflow: moduleNavRows.filter((row) => overflowKeys.has(row.key)),
+    };
+  }, [adaptiveNavEnabled, lowEngagementModuleKeys, moduleKey, moduleNavRows]);
+  const moduleTelemetrySnapshot = useMemo(
+    () => ({
+      capturedAtIso: new Date().toISOString(),
+      adaptiveNavEnabled,
+      navPrimaryCount: navLayout.primary.length,
+      navOverflowCount: navLayout.overflow.length,
+      lowEngagementModules,
+      usageRows: moduleUsageRows,
+    }),
+    [adaptiveNavEnabled, lowEngagementModules, moduleUsageRows, navLayout.overflow.length, navLayout.primary.length]
+  );
+
+  const scrollToCockpitSection = useCallback((sectionId: string) => {
+    const target = document.getElementById(sectionId);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+  const resetModuleTelemetry = useCallback(() => {
+    setModuleUsage(moduleUsageSeed());
+    moduleSessionRef.current = { key: moduleKey, enteredAtMs: Date.now() };
+    setStatus("Reset module telemetry for local rolling profile.");
+  }, [moduleKey]);
 
   const memberRoleCounts = useMemo(() => {
     const staffCount = users.filter((u) => u.role === "staff").length;
@@ -1059,7 +1942,7 @@ export default function StaffView({
       .filter((member) => {
         if (memberRoleFilter !== "all" && member.role !== memberRoleFilter) return false;
         if (!search) return true;
-        const haystack = `${member.displayName} ${member.email} ${member.id}`.toLowerCase();
+        const haystack = `${member.displayName} ${member.email} ${member.id} ${member.membershipTier}`.toLowerCase();
         return haystack.includes(search);
       })
       .sort((a, b) => b.lastSeenAtMs - a.lastSeenAtMs);
@@ -1148,22 +2031,32 @@ export default function StaffView({
 
   const loadStudioBrainStatus = useCallback(async () => {
     const checkedAt = new Date().toISOString();
+    const nowMs = Date.now();
     if (!sbBaseUrl) {
-      const reason = studioBrainUnreachableReason;
+      const lastKnownGoodAt = lastStudioBrainHealthyAtRef.current;
+      const unavailable = resolveUnavailableStudioBrainStatus({
+        enabled: studioBrainResolution.enabled,
+        reason: studioBrainUnreachableReason,
+        lastKnownGoodAt,
+        nowMs,
+      });
       setStudioBrainStatus({
         checkedAt,
-        mode: "offline",
-        healthOk: false,
+        mode: unavailable.mode,
+        healthOk: unavailable.mode === "disabled",
         readyOk: false,
         snapshotAgeMinutes: null,
-        reason,
+        reasonCode: unavailable.reasonCode,
+        lastKnownGoodAt,
+        signalAgeMinutes: unavailable.signalAgeMinutes,
+        reason: unavailable.reason,
       });
       upsertSystemCheck({
         key: "studio_brain_ready",
         label: "Studio Brain ready",
-        ok: false,
+        ok: unavailable.mode === "disabled",
         atMs: Date.now(),
-        details: reason,
+        details: `${unavailable.reasonCode}: ${unavailable.reason}`,
       });
       return;
     }
@@ -1172,15 +2065,54 @@ export default function StaffView({
       const readyResp = await fetch(`${sbBaseUrl}/readyz`, { method: "GET" });
       const payload = (await readyResp.json()) as {
         ok?: boolean;
-        checks?: { snapshot?: { ageMinutes?: number | null } };
+        checks?: {
+          postgres?: { ok?: boolean; error?: string };
+          snapshot?: {
+            exists?: boolean;
+            ageMinutes?: number | null;
+            maxAgeMinutes?: number | null;
+            requireFresh?: boolean;
+            fresh?: boolean;
+          };
+        };
       };
       const readyOk = readyResp.ok && payload.ok === true;
-      const snapshotAgeMinutes =
-        typeof payload.checks?.snapshot?.ageMinutes === "number" ? payload.checks.snapshot.ageMinutes : null;
-      const mode = readyOk ? "ok" : "degraded";
-      const reason = readyOk
-        ? "Studio Brain ready."
-        : `Ready check failed${snapshotAgeMinutes !== null ? ` (snapshot age ${snapshotAgeMinutes}m).` : "."}`;
+      const snapshot = payload.checks?.snapshot;
+      const snapshotAgeMinutes = typeof snapshot?.ageMinutes === "number" ? snapshot.ageMinutes : null;
+      const snapshotExists = snapshot?.exists === true;
+      const snapshotFresh = snapshot?.fresh === true;
+      const snapshotRequiresFresh = snapshot?.requireFresh === true;
+      const snapshotMaxAgeMinutes = typeof snapshot?.maxAgeMinutes === "number" ? snapshot.maxAgeMinutes : null;
+      const postgresOk = payload.checks?.postgres?.ok !== false;
+      const postgresError = str(payload.checks?.postgres?.error);
+      const mode: StudioBrainStatus["mode"] = readyOk ? "healthy" : "degraded";
+      let reasonCode = readyOk ? "HEALTHY" : "READY_CHECK_FAILED";
+      let reason = readyOk ? "Studio Brain healthy." : `Ready check failed (HTTP ${readyResp.status}).`;
+
+      if (readyOk) {
+        if (snapshotAgeMinutes !== null) {
+          reason = `Studio Brain healthy (snapshot age ${snapshotAgeMinutes}m).`;
+        }
+        lastStudioBrainHealthyAtRef.current = checkedAt;
+      } else if (!postgresOk) {
+        reasonCode = "POSTGRES_UNHEALTHY";
+        reason = postgresError
+          ? `Dependencies degraded: postgres check failed (${postgresError}).`
+          : "Dependencies degraded: postgres check failed.";
+      } else if (snapshotRequiresFresh && !snapshotExists) {
+        reasonCode = "SNAPSHOT_MISSING";
+        reason = "Ready check failed: required snapshot is missing.";
+      } else if (snapshotRequiresFresh && !snapshotFresh) {
+        reasonCode = "SNAPSHOT_STALE";
+        reason = `Ready check failed: snapshot stale${
+          snapshotAgeMinutes !== null ? ` (${snapshotAgeMinutes}m old` : ""
+        }${snapshotMaxAgeMinutes !== null ? `${snapshotAgeMinutes !== null ? ", " : " ("}max ${snapshotMaxAgeMinutes}m` : ""}${
+          snapshotAgeMinutes !== null || snapshotMaxAgeMinutes !== null ? ")" : ""
+        }.`;
+      }
+
+      const lastKnownGoodAt = lastStudioBrainHealthyAtRef.current;
+      const signalAgeMinutes = minutesSinceIso(lastKnownGoodAt, nowMs);
 
       setStudioBrainStatus({
         checkedAt,
@@ -1188,34 +2120,48 @@ export default function StaffView({
         healthOk: readyResp.ok,
         readyOk,
         snapshotAgeMinutes,
+        reasonCode,
+        lastKnownGoodAt,
+        signalAgeMinutes,
         reason,
       });
       upsertSystemCheck({
         key: "studio_brain_ready",
         label: "Studio Brain ready",
-        ok: readyOk,
+        ok: mode === "healthy",
         atMs: Date.now(),
-        details: reason,
+        details: `${reasonCode}: ${reason}`,
       });
     } catch (err: unknown) {
       const details = err instanceof Error ? err.message : String(err);
+      const lastKnownGoodAt = lastStudioBrainHealthyAtRef.current;
+      const failure = resolveStudioBrainFetchFailure({
+        details: details || "Studio Brain ready check unreachable.",
+        lastKnownGoodAt,
+        signalStaleMinutes: STUDIO_BRAIN_SIGNAL_STALE_MINUTES,
+        offlineConfirmMinutes: STUDIO_BRAIN_OFFLINE_CONFIRM_MINUTES,
+        nowMs,
+      });
       setStudioBrainStatus({
         checkedAt,
-        mode: "offline",
+        mode: failure.mode,
         healthOk: false,
         readyOk: false,
         snapshotAgeMinutes: null,
-        reason: details || "Studio Brain unreachable.",
+        reasonCode: failure.reasonCode,
+        lastKnownGoodAt,
+        signalAgeMinutes: failure.signalAgeMinutes,
+        reason: failure.reason,
       });
       upsertSystemCheck({
         key: "studio_brain_ready",
         label: "Studio Brain ready",
         ok: false,
         atMs: Date.now(),
-        details: details || "Studio Brain unreachable.",
+        details: `${failure.reasonCode}: ${failure.reason}`,
       });
     }
-  }, [sbBaseUrl, studioBrainUnreachableReason, upsertSystemCheck]);
+  }, [sbBaseUrl, studioBrainResolution.enabled, studioBrainUnreachableReason, upsertSystemCheck]);
 
   const loadUsers = useCallback(async () => {
     qTrace("users", { limit: 240 });
@@ -1315,15 +2261,16 @@ export default function StaffView({
         updatedAtMs
       );
       const merged = { ...u, ...p };
+      const role = memberRole(merged);
       return {
         id: uid,
         displayName: str(merged.displayName, "Unknown"),
         email: str(merged.email, "-"),
-        role: memberRole(merged),
+        role,
         createdAtMs,
         updatedAtMs,
         lastSeenAtMs,
-        membershipTier: str(merged.membershipTier, "Studio Member"),
+        membershipTier: deriveMembershipTier(merged, role),
         kilnPreferences: str(merged.kilnPreferences, str(merged.preferredKilns, "-")),
         rawDoc: merged,
       } satisfies MemberRecord;
@@ -1338,7 +2285,7 @@ export default function StaffView({
         createdAtMs: 0,
         updatedAtMs: 0,
         lastSeenAtMs: Date.now(),
-        membershipTier: "Studio Member",
+        membershipTier: isStaff ? "Staff" : "Studio Member",
         kilnPreferences: "-",
         rawDoc: {},
       });
@@ -1401,7 +2348,20 @@ export default function StaffView({
 
   const loadBatches = useCallback(async () => {
     qTrace("batches", { orderBy: "updatedAt:desc", limit: 80 });
-    const snap = await getDocs(query(collection(db, "batches"), orderBy("updatedAt", "desc"), limit(80)));
+    qTrace("batches", { countOnly: true });
+    const [batchesResult, countResult] = await Promise.allSettled([
+      getDocs(query(collection(db, "batches"), orderBy("updatedAt", "desc"), limit(80))),
+      getCountFromServer(query(collection(db, "batches"))),
+    ]);
+    if (batchesResult.status !== "fulfilled") {
+      throw batchesResult.reason;
+    }
+    const snap = batchesResult.value;
+    if (countResult.status === "fulfilled") {
+      setBatchesTotalCount(countResult.value.data().count);
+    } else {
+      setBatchesTotalCount(null);
+    }
     const next = snap.docs.map((d) => {
       const data = d.data();
       const status = str(data.state, str(data.status, "UNKNOWN"));
@@ -1944,82 +2904,88 @@ const loadEvents = useCallback(async () => {
     if (selectedEventId) await loadSignups(selectedEventId);
   }, [hasFunctionsAuthMismatch, loadAutomationHealthDashboard, loadBatches, loadCommerce, loadEvents, loadFirings, loadLending, loadReportOps, loadSignups, loadStudioBrainStatus, loadSystemStats, loadUsers, selectedEventId]);
 
-  const loadModule = useCallback(
-    async (target: ModuleKey) => {
-      switch (target) {
-        case "cockpit":
-        case "overview":
-          await Promise.allSettled([
-            loadUsers(),
-            loadBatches(),
-            loadFirings(),
-            loadEvents(),
-            loadLending(),
-            loadReportOps(),
-            loadStudioBrainStatus(),
-            loadAutomationHealthDashboard(),
-          ]);
-          if (!hasFunctionsAuthMismatch) {
-            await Promise.allSettled([loadCommerce(), loadSystemStats()]);
-          }
-          return;
-        case "members":
-          await loadUsers();
-          return;
-        case "pieces":
-          await loadBatches();
-          return;
-        case "firings":
-          await loadFirings();
-          return;
-        case "events":
-          await loadEvents();
-          if (selectedEventId) await loadSignups(selectedEventId);
-          return;
-        case "reports":
-          await loadReportOps();
-          return;
-        case "lending":
-          await loadLending();
-          return;
-        case "commerce":
-          if (hasFunctionsAuthMismatch) {
-            setStatus("Commerce module requires matching Functions + Auth emulator settings.");
-            return;
-          }
-          await loadCommerce();
-          return;
-        case "system":
-          if (!hasFunctionsAuthMismatch) {
-            await loadSystemStats();
-          }
-          await loadStudioBrainStatus();
-          return;
-        case "governance":
-        case "agentOps":
-        case "studioBrain":
-        case "stripe":
-          await loadStudioBrainStatus();
-          return;
-        default:
-          return;
-      }
-    },
+  const loadCockpitModule = useCallback(async () => {
+    await Promise.allSettled([
+      loadUsers(),
+      loadBatches(),
+      loadFirings(),
+      loadEvents(),
+      loadLending(),
+      loadReportOps(),
+      loadStudioBrainStatus(),
+      loadAutomationHealthDashboard(),
+    ]);
+    if (!hasFunctionsAuthMismatch) {
+      await Promise.allSettled([loadCommerce(), loadSystemStats()]);
+    }
+  }, [
+    hasFunctionsAuthMismatch,
+    loadAutomationHealthDashboard,
+    loadBatches,
+    loadCommerce,
+    loadEvents,
+    loadFirings,
+    loadLending,
+    loadReportOps,
+    loadStudioBrainStatus,
+    loadSystemStats,
+    loadUsers,
+  ]);
+
+  const loadEventsModule = useCallback(async () => {
+    await loadEvents();
+    if (selectedEventId) await loadSignups(selectedEventId);
+  }, [loadEvents, loadSignups, selectedEventId]);
+
+  const loadCommerceModule = useCallback(async () => {
+    if (hasFunctionsAuthMismatch) {
+      setStatus("Commerce module requires matching Functions + Auth emulator settings.");
+      return;
+    }
+    await loadCommerce();
+  }, [hasFunctionsAuthMismatch, loadCommerce]);
+
+  const loadSystemModule = useCallback(async () => {
+    if (!hasFunctionsAuthMismatch) {
+      await loadSystemStats();
+    }
+    await loadStudioBrainStatus();
+  }, [hasFunctionsAuthMismatch, loadStudioBrainStatus, loadSystemStats]);
+
+  const moduleLoaders = useMemo<Record<ModuleKey, () => Promise<void>>>(
+    () => ({
+      cockpit: loadCockpitModule,
+      checkins: async () => {},
+      members: loadUsers,
+      pieces: loadBatches,
+      firings: loadFirings,
+      events: loadEventsModule,
+      reports: loadReportOps,
+      studioBrain: loadStudioBrainStatus,
+      stripe: loadStudioBrainStatus,
+      commerce: loadCommerceModule,
+      lending: loadLending,
+      system: loadSystemModule,
+    }),
     [
-      hasFunctionsAuthMismatch,
       loadBatches,
-      loadCommerce,
-      loadEvents,
+      loadCockpitModule,
+      loadCommerceModule,
+      loadEventsModule,
       loadFirings,
-      loadAutomationHealthDashboard,
       loadLending,
       loadReportOps,
-      loadSignups,
       loadStudioBrainStatus,
-      loadSystemStats,
+      loadSystemModule,
       loadUsers,
-      selectedEventId,
     ]
+  );
+
+  const loadModule = useCallback(
+    async (target: ModuleKey) => {
+      await moduleLoaders[target]();
+    },
+    [moduleLoaders]
   );
 
   useEffect(() => {
@@ -2032,14 +2998,30 @@ const loadEvents = useCallback(async () => {
   }, [loadSignups, selectedEventId, run]);
 
   useEffect(() => {
+    if (moduleKey !== "system") return;
+    setModuleKey("cockpit");
+    setStatus("System module moved to Cockpit > Platform diagnostics.");
+  }, [moduleKey]);
+
+  useEffect(() => {
     if (!studioBrainStatus) return;
     const previous = lastStudioBrainModeRef.current;
     const current = studioBrainStatus.mode;
+    if (current === "disabled" || previous === "disabled") {
+      lastStudioBrainModeRef.current = current;
+      return;
+    }
+    const wasDegraded = previous === "degraded" || previous === "offline";
+    const isDegraded = current === "degraded" || current === "offline";
     if (previous && previous !== current) {
-      if (current === "ok") {
+      if (wasDegraded && !isDegraded) {
         void postStudioBrainDegradedEvent("exited", "degraded", "Studio Brain recovered.");
-      } else {
-        void postStudioBrainDegradedEvent("entered", current === "offline" ? "offline" : "degraded", studioBrainStatus.reason);
+      } else if (isDegraded) {
+        void postStudioBrainDegradedEvent(
+          "entered",
+          current === "offline" ? "offline" : "degraded",
+          `${studioBrainStatus.reasonCode}: ${studioBrainStatus.reason}`
+        );
       }
     }
     lastStudioBrainModeRef.current = current;
@@ -2142,6 +3124,144 @@ const loadEvents = useCallback(async () => {
     });
   };
 
+  const createBatchCleanupPayload = useCallback(
+    (mode: "preview" | "destructive", backendDispatchRequested: boolean): BatchCleanupPayload => {
+      const generatedAt = new Date().toISOString();
+      const runId = `staff-batch-cleanup-${generatedAt.replace(/\D/g, "").slice(0, 14)}-${batchCleanupSelectionCandidates.length}`;
+      const reason = batchCleanupReason.trim() || "No cleanup reason provided.";
+      const reasonCode = toReasonCode(batchCleanupReasonCodeInput, "ARTIFACT_BATCH_TRIAGE");
+      const ticketRefs = parseList(batchCleanupTicketRefsInput);
+      const targets = batchCleanupSelectionCandidates.map((entry) => ({
+        batchId: entry.batchId,
+        title: entry.title,
+        status: entry.status,
+        ownerUid: entry.ownerUid,
+        isClosed: entry.isClosed,
+        updatedAtMs: entry.updatedAtMs,
+        category: entry.category,
+        confidence: entry.confidence,
+        dispositionHints: entry.dispositionHints,
+        rationale: entry.rationale,
+        riskFlags: entry.riskFlags,
+      }));
+      const countsByCategory: Record<string, number> = {};
+      const countsByConfidence: Record<string, number> = {};
+      const countsByDispositionHint: Record<string, number> = {};
+      targets.forEach((target) => {
+        countsByCategory[target.category] = (countsByCategory[target.category] || 0) + 1;
+        countsByConfidence[target.confidence] = (countsByConfidence[target.confidence] || 0) + 1;
+        target.dispositionHints.forEach((hint) => {
+          countsByDispositionHint[hint] = (countsByDispositionHint[hint] || 0) + 1;
+        });
+      });
+      return {
+        mode,
+        dryRun: mode !== "destructive",
+        backendDispatchRequested: mode === "destructive" && backendDispatchRequested,
+        previewOnly: mode !== "destructive" || !backendDispatchRequested,
+        selectionMode: batchCleanupSelectionMode,
+        selectedCount: targets.length,
+        selectedBatchIds: targets.map((target) => target.batchId),
+        countsByCategory,
+        countsByConfidence,
+        countsByDispositionHint,
+        audit: {
+          runId,
+          generatedAt,
+          operatorUid: user.uid,
+          operatorEmail: user.email ?? null,
+          operatorRole: staffAuthorityLabel,
+          source: "staff_console",
+          reasonCode,
+          reason,
+          ticketRefs,
+          confirmationPhrase: batchCleanupConfirmPhraseInput.trim(),
+        },
+        targets,
+      };
+    },
+    [
+      batchCleanupConfirmPhraseInput,
+      batchCleanupReason,
+      batchCleanupReasonCodeInput,
+      batchCleanupSelectionCandidates,
+      batchCleanupSelectionMode,
+      batchCleanupTicketRefsInput,
+      staffAuthorityLabel,
+      user.email,
+      user.uid,
+    ]
+  );
+
+  const handleGenerateBatchCleanupPreview = useCallback(() => {
+    const payload = createBatchCleanupPayload("preview", false);
+    setBatchCleanupPreviewPayload(payload);
+    setBatchCleanupPreviewLog(buildBatchCleanupPreviewLog(payload));
+    setStatus(
+      `Generated dry-run cleanup preview for ${payload.selectedCount} triaged artifact batch${payload.selectedCount === 1 ? "" : "es"}.`
+    );
+  }, [createBatchCleanupPayload]);
+
+  const handleRunBatchCleanupDestructive = useCallback(() => {
+    if (batchCleanupSelectionCandidates.length === 0) {
+      setError("No triaged artifact batches are selected for cleanup.");
+      return;
+    }
+    if (!batchCleanupReason.trim()) {
+      setError("Cleanup reason is required before preview/destructive actions.");
+      return;
+    }
+    if (!canConfirmDestructiveCleanup) {
+      setError(`Type "${expectedBatchCleanupConfirmationPhrase}" to confirm destructive cleanup payload generation.`);
+      return;
+    }
+    void run("batchArtifactCleanup", async () => {
+      const backendDispatchRequested = batchCleanupDispatchMode === "attempt_backend" && !hasFunctionsAuthMismatch;
+      const payload = createBatchCleanupPayload("destructive", backendDispatchRequested);
+      const previewLog = buildBatchCleanupPreviewLog(payload);
+      setBatchCleanupPreviewPayload(payload);
+      setBatchCleanupPreviewLog(previewLog);
+      if (!backendDispatchRequested) {
+        setStatus(
+          `Preview mode: destructive payload prepared for ${payload.selectedCount} batch${payload.selectedCount === 1 ? "" : "es"}, but no record changes were executed.`
+        );
+        return;
+      }
+      try {
+        const response = await client.postJson<Record<string, unknown>>("staffBatchArtifactCleanup", payload);
+        setStatus(`Backend cleanup request submitted for ${payload.selectedCount} batch${payload.selectedCount === 1 ? "" : "es"}.`);
+        setBatchCleanupPreviewLog(`${previewLog}\n\nbackendResponse:\n${safeJsonStringify(response)}`);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        const lowered = message.toLowerCase();
+        const endpointMissing =
+          lowered.includes("404") ||
+          lowered.includes("not found") ||
+          lowered.includes("missing") ||
+          lowered.includes("cannot post");
+        if (endpointMissing) {
+          setBatchCleanupDispatchMode("preview_only");
+          setStatus(
+            `Preview mode fallback: backend endpoint staffBatchArtifactCleanup is unavailable. No destructive action was executed.`
+          );
+          setBatchCleanupPreviewLog(`${previewLog}\n\nbackendDispatchUnavailable:\n${message}`);
+          return;
+        }
+        throw err;
+      }
+    });
+  }, [
+    batchCleanupDispatchMode,
+    batchCleanupReason,
+    batchCleanupSelectionCandidates.length,
+    canConfirmDestructiveCleanup,
+    client,
+    createBatchCleanupPayload,
+    expectedBatchCleanupConfirmationPhrase,
+    hasFunctionsAuthMismatch,
+    run,
+  ]);
+
   const batchAction = (name: BatchActionName) => {
     if (!selectedBatchId) return;
     if (!batchActionAvailability[name]) {
@@ -2198,64 +3318,6 @@ const loadEvents = useCallback(async () => {
     setSelectedFiringId("");
   }, [filteredFirings, firings, selectedFiringId]);
 
-  const overviewContent = (
-    <section className="card staff-console-card">
-      <div className="card-title">Operations snapshot</div>
-      <div className="staff-kpi-grid">
-        <div className="staff-kpi"><span>Members</span><strong>{users.length}</strong></div>
-        <div className="staff-kpi"><span>Open batches</span><strong>{batches.filter((b) => !b.isClosed).length}</strong></div>
-        <div className="staff-kpi"><span>Firings</span><strong>{firings.length}</strong></div>
-        <div className="staff-kpi"><span>Events</span><strong>{events.length}</strong></div>
-        <div className="staff-kpi"><span>Pending orders</span><strong>{orders.filter((o) => o.status !== "paid").length}</strong></div>
-        <div className="staff-kpi"><span>Lending requests</span><strong>{libraryRequests.length}</strong></div>
-        <div className="staff-kpi"><span>Open reports</span><strong>{reportOps.open}</strong></div>
-        <div className="staff-kpi"><span>Report SLA breaches</span><strong>{reportOps.slaBreaches}</strong></div>
-      </div>
-      <div className="staff-subtitle">Action queue</div>
-      <div className="staff-log-list">
-        {overviewAlerts.map((alert) => (
-          <div key={alert.id} className="staff-log-entry">
-            <div className="staff-log-meta">
-              <span className="staff-log-label">{alert.severity.toUpperCase()}</span>
-              <span>{new Date().toLocaleDateString()}</span>
-            </div>
-            <div className="staff-log-message">
-              {alert.label}
-              <div className="staff-actions-row staff-actions-row--mt8">
-                <button
-                  className="btn btn-ghost btn-small"
-                  onClick={() => setModuleKey(alert.module)}
-                >
-                  {alert.actionLabel}
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="staff-actions-row">
-        <button className="btn btn-secondary" onClick={() => setModuleKey("pieces")}>
-          Open pieces queue
-        </button>
-        <button className="btn btn-secondary" onClick={() => setModuleKey("firings")}>
-          Open firings triage
-        </button>
-        <button className="btn btn-secondary" onClick={() => setModuleKey("events")}>
-          Open events desk
-        </button>
-        <button className="btn btn-secondary" onClick={() => setModuleKey("commerce")}>
-          Open billing queue
-        </button>
-        <button className="btn btn-secondary" onClick={() => setModuleKey("system")}>
-          Open system health
-        </button>
-        <button className="btn btn-secondary" onClick={() => setModuleKey("reports")}>
-          Open reports triage
-        </button>
-      </div>
-    </section>
-  );
-
   const membersContent = (
     <section className="card staff-console-card">
       <div className="card-title-row">
@@ -2307,6 +3369,7 @@ const loadEvents = useCallback(async () => {
                 <tr>
                   <th>Name</th>
                   <th>Role</th>
+                  <th>Membership</th>
                   <th>Email</th>
                   <th>Last seen</th>
                 </tr>
@@ -2314,7 +3377,7 @@ const loadEvents = useCallback(async () => {
               <tbody>
                 {filteredMembers.length === 0 ? (
                   <tr>
-                    <td colSpan={4}>No members match current filters.</td>
+                    <td colSpan={5}>No members match current filters.</td>
                   </tr>
                 ) : (
                   filteredMembers.map((member) => (
@@ -2332,6 +3395,7 @@ const loadEvents = useCallback(async () => {
                     >
                       <td>{member.displayName}</td>
                       <td><span className="pill">{member.role}</span></td>
+                      <td><span className="pill">{member.membershipTier}</span></td>
                       <td>{member.email}</td>
                       <td>{when(member.lastSeenAtMs)}</td>
                     </tr>
@@ -2471,11 +3535,22 @@ const loadEvents = useCallback(async () => {
         </button>
       </div>
       <div className="staff-kpi-grid">
-        <div className="staff-kpi"><span>Total batches</span><strong>{batches.length}</strong></div>
+        <div className="staff-kpi"><span>Loaded batches</span><strong>{batches.length}</strong></div>
+        <div className="staff-kpi"><span>Total batches (all)</span><strong>{batchesTotalCount ?? "-"}</strong></div>
         <div className="staff-kpi"><span>Open</span><strong>{batches.filter((batch) => !batch.isClosed).length}</strong></div>
         <div className="staff-kpi"><span>Closed</span><strong>{batches.filter((batch) => batch.isClosed).length}</strong></div>
+        <div className="staff-kpi"><span>Likely artifacts</span><strong>{batchArtifactCandidates.length}</strong></div>
+        <div className="staff-kpi"><span>High-confidence artifacts</span><strong>{batchArtifactSummary.highConfidence}</strong></div>
+        <div className="staff-kpi"><span>Manual review hints</span><strong>{batchArtifactSummary.manualReview}</strong></div>
+        <div className="staff-kpi"><span>Cleanup preview scope</span><strong>{batchCleanupSelectionCandidates.length}</strong></div>
         <div className="staff-kpi"><span>In current filter</span><strong>{filteredBatches.length}</strong></div>
         <div className="staff-kpi"><span>Pieces in selected</span><strong>{batchPieces.length}</strong></div>
+      </div>
+      <div className="staff-note">
+        Batch table loads the most recent 80 records for operator speed.
+        {batchesTotalCount !== null && batchesTotalCount > batches.length
+          ? ` ${batchesTotalCount - batches.length} older batch record(s) are outside the current sample.`
+          : ""}
       </div>
       <div className="staff-module-grid">
         <div className="staff-column">
@@ -2500,6 +3575,22 @@ const loadEvents = useCallback(async () => {
                 </option>
               ))}
             </select>
+            <select
+              className="staff-member-role-filter"
+              value={batchArtifactFilter}
+              onChange={(event) => setBatchArtifactFilter(event.target.value as "all" | "artifact" | "nonArtifact")}
+            >
+              <option value="all">All batches</option>
+              <option value="artifact">Likely artifacts</option>
+              <option value="nonArtifact">Likely production</option>
+            </select>
+            <button
+              className="btn btn-ghost btn-small"
+              disabled={batchArtifactCandidates.length === 0}
+              onClick={() => void copy(batchArtifactCandidates.map((batch) => batch.id).join("\n"))}
+            >
+              Copy artifact IDs
+            </button>
           </div>
           <div className="staff-table-wrap">
             <table className="staff-table">
@@ -2507,6 +3598,7 @@ const loadEvents = useCallback(async () => {
                 <tr>
                   <th>Batch</th>
                   <th>Status</th>
+                  <th>Triage</th>
                   <th>Owner UID</th>
                   <th>Kiln</th>
                   <th>Updated</th>
@@ -2515,7 +3607,7 @@ const loadEvents = useCallback(async () => {
               <tbody>
                 {filteredBatches.length === 0 ? (
                   <tr>
-                    <td colSpan={5}>No batches match current filters.</td>
+                    <td colSpan={6}>No batches match current filters.</td>
                   </tr>
                 ) : (
                   filteredBatches.map((batch) => (
@@ -2538,6 +3630,22 @@ const loadEvents = useCallback(async () => {
                         </div>
                       </td>
                       <td><span className="pill">{batch.status}</span></td>
+                      <td>
+                        {(() => {
+                          const triage = batchArtifactInventoryById.get(batch.id);
+                          if (!triage) return <span className="staff-mini">-</span>;
+                          return (
+                            <>
+                              <span className={`pill staff-triage-pill staff-triage-pill-${triage.confidence}`}>
+                                {triage.category}
+                              </span>
+                              <div className="staff-mini">
+                                {triage.confidence} confidence · {triage.dispositionHints.join(", ")}
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </td>
                       <td><code>{batch.ownerUid || "-"}</code></td>
                       <td>{batch.currentKilnName || batch.currentKilnId || "-"}</td>
                       <td>{when(batch.updatedAtMs)}</td>
@@ -2559,6 +3667,15 @@ const loadEvents = useCallback(async () => {
                 </span>
                 <br />
                 <span>Kiln: {selectedBatch.currentKilnName || selectedBatch.currentKilnId || "-"}</span>
+                {selectedBatchTriage ? (
+                  <>
+                    <br />
+                    <span>
+                      Triage: <strong>{selectedBatchTriage.category}</strong> · {selectedBatchTriage.confidence} confidence ·{" "}
+                      {selectedBatchTriage.dispositionHints.join(", ")}
+                    </span>
+                  </>
+                ) : null}
               </>
             ) : (
               "Select a batch to inspect and run actions."
@@ -2600,6 +3717,160 @@ const loadEvents = useCallback(async () => {
           </div>
           {batchDetailBusy ? <div className="staff-note">Loading selected batch details...</div> : null}
           {batchDetailError ? <div className="staff-note staff-note-error">{batchDetailError}</div> : null}
+        </div>
+      </div>
+      <div className="staff-module-grid">
+        <div className="staff-column">
+          <div className="staff-subtitle">Artifact triage inventory (deterministic)</div>
+          <div className="staff-note">
+            Triage inventory is deterministic for the current sample and includes category, confidence, and disposition hints.
+          </div>
+          <div className="staff-table-wrap">
+            <table className="staff-table">
+              <thead>
+                <tr>
+                  <th>Batch</th>
+                  <th>Category</th>
+                  <th>Confidence</th>
+                  <th>Disposition hints</th>
+                  <th>Evidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {batchLikelyArtifactInventory.length === 0 ? (
+                  <tr>
+                    <td colSpan={5}>No likely artifacts detected in the current loaded sample.</td>
+                  </tr>
+                ) : (
+                  batchLikelyArtifactInventory.map((entry) => (
+                    <tr key={entry.batchId}>
+                      <td>
+                        <div>{entry.title}</div>
+                        <div className="staff-mini"><code>{entry.batchId}</code></div>
+                      </td>
+                      <td><span className="pill">{entry.category}</span></td>
+                      <td>
+                        <span className={`pill staff-triage-pill staff-triage-pill-${entry.confidence}`}>{entry.confidence}</span>
+                      </td>
+                      <td>{entry.dispositionHints.join(", ")}</td>
+                      <td>
+                        <div className="staff-mini">{entry.rationale.join(" ") || "-"}</div>
+                        {entry.ageDays !== null ? <div className="staff-mini">Age: {entry.ageDays}d</div> : null}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div className="staff-column">
+          <div className="staff-subtitle">Safe cleanup path</div>
+          <div className="staff-note staff-note-warning">
+            Cleanup defaults to dry-run preview. Destructive cleanup requires an explicit confirmation phrase and is preview-only
+            unless backend dispatch is explicitly enabled.
+          </div>
+          <div className="staff-module-grid">
+            <label className="staff-field">
+              Cleanup selection scope
+              <select
+                value={batchCleanupSelectionMode}
+                onChange={(event) =>
+                  setBatchCleanupSelectionMode(event.target.value as BatchCleanupSelectionMode)
+                }
+              >
+                <option value="high_confidence_artifacts">High-confidence artifacts only</option>
+                <option value="all_likely_artifacts">All likely artifacts</option>
+                <option value="current_filter_artifacts">Current filter (artifact-only)</option>
+              </select>
+            </label>
+            <label className="staff-field">
+              Dispatch mode
+              <select
+                value={batchCleanupDispatchMode}
+                onChange={(event) => setBatchCleanupDispatchMode(event.target.value as "preview_only" | "attempt_backend")}
+              >
+                <option value="preview_only">Preview only (offline-safe default)</option>
+                <option value="attempt_backend">Attempt backend endpoint dispatch</option>
+              </select>
+            </label>
+            <label className="staff-field">
+              Reason code
+              <input
+                value={batchCleanupReasonCodeInput}
+                onChange={(event) => setBatchCleanupReasonCodeInput(event.target.value)}
+                placeholder="ARTIFACT_BATCH_TRIAGE"
+              />
+            </label>
+            <label className="staff-field">
+              Ticket refs (comma/newline)
+              <input
+                value={batchCleanupTicketRefsInput}
+                onChange={(event) => setBatchCleanupTicketRefsInput(event.target.value)}
+                placeholder="P1-staff-console-batch-artifact-triage-and-safe-cleanup"
+              />
+            </label>
+          </div>
+          <label className="staff-field">
+            Operator reason (audit required)
+            <textarea
+              value={batchCleanupReason}
+              onChange={(event) => setBatchCleanupReason(event.target.value)}
+              placeholder="Why this cleanup is safe and needed"
+            />
+          </label>
+          <div className="staff-actions-row">
+            <button
+              className="btn btn-secondary"
+              disabled={Boolean(busy) || batchCleanupSelectionCandidates.length === 0}
+              onClick={handleGenerateBatchCleanupPreview}
+            >
+              Generate dry-run preview
+            </button>
+            <button
+              className="btn btn-ghost"
+              disabled={!batchCleanupPreviewPayload}
+              onClick={() => void copy(batchCleanupPreviewPayload ? safeJsonStringify(batchCleanupPreviewPayload) : "")}
+            >
+              Copy preview JSON
+            </button>
+          </div>
+          <label className="staff-field">
+            Confirmation phrase for destructive cleanup
+            <input
+              value={batchCleanupConfirmPhraseInput}
+              onChange={(event) => setBatchCleanupConfirmPhraseInput(event.target.value)}
+              placeholder={expectedBatchCleanupConfirmationPhrase}
+            />
+            <span className="helper">
+              Type <code>{expectedBatchCleanupConfirmationPhrase}</code> to enable destructive payload dispatch.
+            </span>
+          </label>
+          <div className="staff-actions-row">
+            <button
+              className="btn btn-primary"
+              disabled={Boolean(busy) || !canConfirmDestructiveCleanup || batchCleanupSelectionCandidates.length === 0}
+              onClick={handleRunBatchCleanupDestructive}
+            >
+              {batchCleanupDispatchMode === "attempt_backend"
+                ? "Dispatch destructive cleanup (gated)"
+                : "Prepare destructive cleanup payload (preview-only)"}
+            </button>
+          </div>
+          {batchCleanupDispatchMode === "preview_only" ? (
+            <div className="staff-note">
+              Preview mode is active: no destructive writes occur from this console flow. Use script{" "}
+              <code>scripts/staff-batch-artifact-cleanup.mjs</code> for offline artifact logging and handoff.
+            </div>
+          ) : null}
+          {batchCleanupPreviewLog ? (
+            <details className="staff-troubleshooting" open>
+              <summary>Cleanup preview log</summary>
+              <pre>{batchCleanupPreviewLog}</pre>
+            </details>
+          ) : (
+            <div className="staff-note">Generate dry-run preview to inspect payload, scope, and audit metadata.</div>
+          )}
         </div>
       </div>
       <div className="staff-module-grid">
@@ -2819,10 +4090,24 @@ const loadEvents = useCallback(async () => {
               Calendar sync actions require function auth. Enable auth emulator (`VITE_USE_AUTH_EMULATOR=true`) or point Functions to production.
             </div>
           ) : (
-            <div className="staff-actions-row">
-              <button className="btn btn-secondary" disabled={!!busy} onClick={() => void run("syncFiringsNow", async () => { await client.postJson("syncFiringsNow", {}); await loadFirings(); setStatus("syncFiringsNow requested"); })}>Sync now</button>
-              <button className="btn btn-secondary" disabled={!!busy} onClick={() => void run("acceptFiringsCalendar", async () => { await client.postJson("acceptFiringsCalendar", {}); setStatus("acceptFiringsCalendar requested"); })}>Accept calendar</button>
-              <button className="btn btn-secondary" disabled={!!busy} onClick={() => void run("debugCalendarId", async () => { await client.postJson("debugCalendarId", {}); setStatus("debugCalendarId requested"); })}>Debug calendar</button>
+            <div className="staff-note">
+              Calendar sync/debug controls are deprecated for day-to-day staff operations.
+              <div className="staff-actions-row staff-actions-row--mt8">
+                <button
+                  className="btn btn-ghost btn-small"
+                  type="button"
+                  onClick={() => setShowDeprecatedFiringControls((prev) => !prev)}
+                >
+                  {showDeprecatedFiringControls ? "Hide deprecated controls" : "Show deprecated controls"}
+                </button>
+              </div>
+              {showDeprecatedFiringControls ? (
+                <div className="staff-actions-row staff-actions-row--mt8">
+                  <button className="btn btn-secondary" disabled={!!busy} onClick={() => void run("syncFiringsNow", async () => { await client.postJson("syncFiringsNow", {}); await loadFirings(); setStatus("syncFiringsNow requested"); })}>Sync now</button>
+                  <button className="btn btn-secondary" disabled={!!busy} onClick={() => void run("acceptFiringsCalendar", async () => { await client.postJson("acceptFiringsCalendar", {}); setStatus("acceptFiringsCalendar requested"); })}>Accept calendar</button>
+                  <button className="btn btn-secondary" disabled={!!busy} onClick={() => void run("debugCalendarId", async () => { await client.postJson("debugCalendarId", {}); setStatus("debugCalendarId requested"); })}>Debug calendar</button>
+                </div>
+              ) : null}
             </div>
           )}
         </div>
@@ -3038,6 +4323,60 @@ const loadEvents = useCallback(async () => {
         </div>
       ) : null}
       <>
+          {forceEventsWorkspace ? (
+            <div className="staff-note">
+              Dedicated workshops workspace is active. Use this view for weekly programming triage and demand planning.
+            </div>
+          ) : null}
+          <div className="staff-subtitle">Workshop programming intelligence</div>
+          <div className="staff-kpi-grid">
+            <div className="staff-kpi"><span>Technique clusters</span><strong>{workshopProgrammingKpis.totalClusters}</strong></div>
+            <div className="staff-kpi"><span>High pressure</span><strong>{workshopProgrammingKpis.highPressure}</strong></div>
+            <div className="staff-kpi"><span>Waitlist pressure</span><strong>{workshopProgrammingKpis.totalWaitlist}</strong></div>
+            <div className="staff-kpi"><span>Demand score</span><strong>{workshopProgrammingKpis.totalDemandScore}</strong></div>
+            <div className="staff-kpi"><span>No upcoming coverage</span><strong>{workshopProgrammingKpis.noUpcomingCoverage}</strong></div>
+          </div>
+          <div className="staff-actions-row">
+            <button className="btn btn-ghost" onClick={handleExportWorkshopProgrammingBrief}>
+              Export programming brief
+            </button>
+            {!forceEventsWorkspace ? (
+              <button
+                className="btn btn-ghost"
+                type="button"
+                onClick={() => {
+                  if (typeof window === "undefined") return;
+                  window.open("/staff/workshops", "_blank", "noopener");
+                }}
+              >
+                Open dedicated workshops page
+              </button>
+            ) : null}
+          </div>
+          <div className="staff-table-wrap">
+            <table className="staff-table">
+              <thead><tr><th>Technique</th><th>Gap</th><th>Demand</th><th>Waitlist</th><th>Upcoming</th><th>Suggested action</th></tr></thead>
+              <tbody>
+                {workshopProgrammingClusters.length === 0 ? (
+                  <tr><td colSpan={6}>No workshop clusters yet. Publish events to start demand modeling.</td></tr>
+                ) : (
+                  workshopProgrammingClusters.map((cluster) => (
+                    <tr key={cluster.key}>
+                      <td>
+                        <strong>{cluster.label}</strong>
+                        <div className="staff-mini">{cluster.topEventTitle || "-"}</div>
+                      </td>
+                      <td>{cluster.gapScore}</td>
+                      <td>{cluster.demandScore}</td>
+                      <td>{cluster.waitlistCount}</td>
+                      <td>{cluster.upcomingCount}</td>
+                      <td>{cluster.recommendedAction}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
           <div className="staff-kpi-grid">
             <div className="staff-kpi"><span>Total events</span><strong>{eventKpis.total}</strong></div>
             <div className="staff-kpi"><span>Upcoming</span><strong>{eventKpis.upcoming}</strong></div>
@@ -3417,6 +4756,38 @@ const loadEvents = useCallback(async () => {
     </section>
   );
 
+  useEffect(() => {
+    if (!forceCockpitWorkspace) return;
+    if (moduleKey !== "cockpit") {
+      setModuleKey("cockpit");
+      setStatus("Dedicated cockpit page keeps focus on cockpit workspace. Open /staff for full module navigation.");
+    }
+    if (!cockpitWorkspaceMode) {
+      setCockpitWorkspaceMode(true);
+    }
+  }, [cockpitWorkspaceMode, forceCockpitWorkspace, moduleKey]);
+
+  useEffect(() => {
+    if (!forceEventsWorkspace) return;
+    if (moduleKey !== "events") {
+      setModuleKey("events");
+      setStatus("Dedicated workshops page keeps focus on programming workspace. Open /staff for full module navigation.");
+    }
+  }, [forceEventsWorkspace, moduleKey]);
+
+  const openModuleFromCockpit = useCallback(
+    (target: ModuleKey) => {
+      if (forceCockpitWorkspace || forceEventsWorkspace) {
+        if (typeof window !== "undefined") {
+          window.location.assign("/staff");
+        }
+        return;
+      }
+      setModuleKey(target);
+    },
+    [forceCockpitWorkspace, forceEventsWorkspace]
+  );
+
   const stripeContent = <StripeSettingsModule client={client} isStaff={isStaff} />;
   const reportsContent = (
     <ReportsModule
@@ -3428,10 +4799,10 @@ const loadEvents = useCallback(async () => {
     />
   );
   const governanceContent = (
-    <PolicyModule client={client} active={moduleKey === "governance" || isCockpitModule} disabled={hasFunctionsAuthMismatch} />
+    <PolicyModule client={client} active={isCockpitModule} disabled={hasFunctionsAuthMismatch} />
   );
   const agentOpsContent = (
-    <AgentOpsModule client={client} active={moduleKey === "agentOps" || isCockpitModule} disabled={hasFunctionsAuthMismatch} />
+    <AgentOpsModule client={client} active={isCockpitModule} disabled={hasFunctionsAuthMismatch} />
   );
   const studioBrainContent = (
     <StudioBrainModule
@@ -3472,12 +4843,63 @@ const loadEvents = useCallback(async () => {
             Local Functions is active while Auth emulator is disabled. Cockpit data may be partial for function-backed operations.
           </div>
         ) : null}
-        <div className="staff-actions-row">
-          <button className="btn btn-ghost btn-small" onClick={() => setModuleKey("agentOps")}>Open Agent ops module</button>
-          <button className="btn btn-ghost btn-small" onClick={() => setModuleKey("governance")}>Open Governance module</button>
-          <button className="btn btn-ghost btn-small" onClick={() => setModuleKey("reports")}>Open Reports module</button>
+        <nav className="staff-cockpit-nav" aria-label="Cockpit sections">
+          <button className="btn btn-ghost btn-small" onClick={() => scrollToCockpitSection(COCKPIT_SECTION_IDS.triage)}>
+            Triage
+          </button>
+          <button className="btn btn-ghost btn-small" onClick={() => scrollToCockpitSection(COCKPIT_SECTION_IDS.automation)}>
+            Automation
+          </button>
+          <button className="btn btn-ghost btn-small" onClick={() => scrollToCockpitSection(COCKPIT_SECTION_IDS.platform)}>
+            Platform
+          </button>
+          <button className="btn btn-ghost btn-small" onClick={() => scrollToCockpitSection(COCKPIT_SECTION_IDS.policyAgentOps)}>
+            Policy and Agent Ops
+          </button>
+          <button className="btn btn-ghost btn-small" onClick={() => scrollToCockpitSection(COCKPIT_SECTION_IDS.reports)}>
+            Reports
+          </button>
+          <button className="btn btn-ghost btn-small" onClick={() => scrollToCockpitSection(COCKPIT_SECTION_IDS.moduleTelemetry)}>
+            Module telemetry
+          </button>
+        </nav>
+        <div className="staff-subtitle staff-cockpit-anchor" id={COCKPIT_SECTION_IDS.triage}>Action queue</div>
+        <div className="staff-log-list">
+          {overviewAlerts.map((alert) => (
+            <div key={alert.id} className="staff-log-entry">
+              <div className="staff-log-meta">
+                <span className="staff-log-label">{alert.severity.toUpperCase()}</span>
+                <span>{new Date().toLocaleDateString()}</span>
+              </div>
+              <div className="staff-log-message">
+                {alert.label}
+                <div className="staff-actions-row staff-actions-row--mt8">
+                  <button className="btn btn-ghost btn-small" onClick={() => openModuleFromCockpit(alert.module)}>
+                    {forceCockpitWorkspace ? "Open in full staff console" : alert.actionLabel}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
-        <div className="staff-subtitle">Automation health dashboard</div>
+        <div className="staff-actions-row">
+          <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("pieces")}>
+            Open pieces queue
+          </button>
+          <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("firings")}>
+            Open firings triage
+          </button>
+          <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("events")}>
+            Open events desk
+          </button>
+          <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("commerce")}>
+            Open billing queue
+          </button>
+          <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("reports")}>
+            Open reports triage
+          </button>
+        </div>
+        <div className="staff-subtitle staff-cockpit-anchor" id={COCKPIT_SECTION_IDS.automation}>Automation health dashboard</div>
         <div className="staff-kpi-grid">
           <div className="staff-kpi"><span>Monitored workflows</span><strong>{automationKpis.monitored}</strong></div>
           <div className="staff-kpi"><span>Healthy</span><strong>{automationKpis.healthy}</strong></div>
@@ -3608,10 +5030,175 @@ const loadEvents = useCallback(async () => {
             </tbody>
           </table>
         </div>
+        <div className="staff-subtitle staff-cockpit-anchor" id={COCKPIT_SECTION_IDS.platform}>Platform diagnostics</div>
+        <div className="staff-note">
+          Legacy System-tab diagnostics are now folded into Cockpit for one-place operations.
+        </div>
+        <div className="staff-kpi-grid">
+          <div className="staff-kpi"><span>Functions base</span><strong>{usingLocalFunctions ? "Local" : "Remote"}</strong></div>
+          <div className="staff-kpi"><span>Auth mode</span><strong>{showEmulatorTools ? "Emulator" : "Production"}</strong></div>
+          <div className="staff-kpi"><span>Integration tokens</span><strong>{integrationTokenCount ?? 0}</strong></div>
+          <div className="staff-kpi"><span>System checks</span><strong>{systemChecks.length}</strong></div>
+          <div className="staff-kpi"><span>Notif success</span><strong>{notificationMetricsSummary ? `${num(notificationMetricsSummary.successRate, 0)}%` : "-"}</strong></div>
+          <div className="staff-kpi"><span>Notif failed</span><strong>{notificationMetricsSummary ? num(notificationMetricsSummary.totalFailed, 0) : "-"}</strong></div>
+        </div>
+        <div className="staff-actions-row">
+          <button
+            className="btn btn-secondary"
+            disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+            onClick={() => void run("cockpitSystemPing", runSystemPing)}
+          >
+            Ping functions
+          </button>
+          <button
+            className="btn btn-secondary"
+            disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+            onClick={() => void run("cockpitCalendarProbe", runCalendarProbe)}
+          >
+            Probe calendar
+          </button>
+          <button
+            className="btn btn-secondary"
+            disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+            onClick={() => void run("cockpitNotificationMetricsProbe", runNotificationMetricsProbe)}
+          >
+            Refresh notif metrics
+          </button>
+          <button
+            className="btn btn-secondary"
+            disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+            onClick={() => void run("cockpitNotificationDrill", runNotificationFailureDrillNow)}
+          >
+            Run push failure drill
+          </button>
+          <button
+            className="btn btn-secondary"
+            disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+            onClick={() => void run("cockpitRefreshSystemStats", loadSystemStats)}
+          >
+            Refresh token stats
+          </button>
+        </div>
+        {hasFunctionsAuthMismatch ? (
+          <div className="staff-note">
+            Local functions detected at <code>{fBaseUrl}</code> while auth emulator is disabled.
+            Function-backed modules are paused to avoid false 401 errors.
+          </div>
+        ) : null}
+        <div className="card-title-row">
+          <div className="staff-subtitle">Recent handler errors</div>
+          <div className="staff-log-actions">
+            <button type="button" className="btn btn-ghost" onClick={() => setHandlerLog(getHandlerErrorLog())}>Refresh</button>
+            <button type="button" className="btn btn-ghost" onClick={() => { clearHandlerErrorLog(); setHandlerLog([]); }}>Clear</button>
+          </div>
+        </div>
+        <div className="staff-log-list">
+          {latestErrors.length === 0 ? <div className="staff-note">No handler errors logged.</div> : latestErrors.map((entry, idx) => <div key={`${entry.atIso}-${idx}`} className="staff-log-entry"><div className="staff-log-meta"><span className="staff-log-label">{entry.label}</span><span>{new Date(entry.atIso).toLocaleString()}</span></div><div className="staff-log-message">{entry.message}</div></div>)}
+        </div>
+        <details className="staff-troubleshooting">
+          <summary>Developer troubleshooting and raw diagnostics</summary>
+          <div className="staff-module-grid">
+            <div className="staff-column">
+              <div className="staff-subtitle">System checks</div>
+              <div className="staff-table-wrap">
+                <table className="staff-table">
+                  <thead><tr><th>Check</th><th>Status</th><th>Ran at</th><th>Details</th></tr></thead>
+                  <tbody>
+                    {systemChecks.length === 0 ? (
+                      <tr><td colSpan={4}>No checks run yet.</td></tr>
+                    ) : (
+                      systemChecks.map((entry) => (
+                        <tr key={`${entry.key}-${entry.atMs}`}>
+                          <td>{entry.label}</td>
+                          <td><span className="pill">{entry.ok ? "ok" : "failed"}</span></td>
+                          <td>{when(entry.atMs)}</td>
+                          <td>{entry.details}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="staff-column">
+              {devAdminEnabled ? (
+                <label className="staff-field">Dev admin token<input type="password" value={devAdminToken} onChange={(e) => onDevAdminTokenChange(e.target.value)} /></label>
+              ) : (
+                <div className="staff-note">Dev admin token disabled outside emulator mode.</div>
+              )}
+              {showEmulatorTools ? <button type="button" className="btn btn-secondary" onClick={() => window.open("http://127.0.0.1:4000/", "_blank")}>Open Emulator UI</button> : null}
+              <div className="staff-subtitle">Last Firestore write</div>
+              <pre>{safeJsonStringify(lastWrite)}</pre>
+              <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastWrite))}>Copy write JSON</button>
+            </div>
+            <div className="staff-column">
+              <div className="staff-subtitle">Last query params</div>
+              <pre>{safeJsonStringify(lastQuery)}</pre>
+              <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastQuery))}>Copy query JSON</button>
+              <div className="staff-subtitle">Last GitHub/Functions call</div>
+              <pre>{safeJsonStringify(sanitizeLastRequest(lastReq))}</pre>
+              <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(sanitizeLastRequest(lastReq)))}>Copy call JSON</button>
+              <div className="staff-mini">curl hint</div>
+              <pre>{lastReq?.curlExample ?? "(none)"}</pre>
+              <button className="btn btn-ghost" onClick={() => void copy(lastReq?.curlExample ?? "")} disabled={!lastReq?.curlExample}>Copy curl hint</button>
+            </div>
+            <div className="staff-column">
+              <div className="staff-subtitle">Last error stack/message</div>
+              <pre>{safeJsonStringify(lastErr)}</pre>
+              {copyStatus ? (
+                <div className="staff-note" role="status" aria-live="polite">
+                  {copyStatus}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </details>
+        <div className="staff-subtitle staff-cockpit-anchor" id={COCKPIT_SECTION_IDS.moduleTelemetry}>Module engagement telemetry (rolling local)</div>
+        <div className="staff-actions-row">
+          <button className="btn btn-ghost btn-small" onClick={resetModuleTelemetry}>
+            Reset telemetry
+          </button>
+          <button className="btn btn-ghost btn-small" onClick={() => void copy(safeJsonStringify(moduleTelemetrySnapshot))}>
+            Copy telemetry JSON
+          </button>
+        </div>
+        <div className="staff-note">
+          {lowEngagementModules.length === 0
+            ? "No low-engagement modules detected in current telemetry."
+            : `Low-engagement modules in current telemetry: ${lowEngagementModules.join(", ")}`}
+        </div>
+        <div className="staff-table-wrap">
+          <table className="staff-table">
+            <thead>
+              <tr>
+                <th>Module</th>
+                <th>Owner</th>
+                <th>Visits</th>
+                <th>Dwell</th>
+                <th>First action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {moduleUsageRows.length === 0 ? (
+                <tr><td colSpan={5}>No module activity captured yet.</td></tr>
+              ) : (
+                moduleUsageRows.map((row) => (
+                  <tr key={row.key}>
+                    <td>{row.label}</td>
+                    <td>{row.owner}</td>
+                    <td>{row.visits}</td>
+                    <td>{formatDurationMs(row.dwellMs)}</td>
+                    <td>{formatLatencyMs(row.firstActionMs)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
-      <div className="card staff-console-card">{agentOpsContent}</div>
+      <div className="card staff-console-card staff-cockpit-anchor" id={COCKPIT_SECTION_IDS.policyAgentOps}>{agentOpsContent}</div>
       <div className="card staff-console-card">{governanceContent}</div>
-      <div className="card staff-console-card">{reportsContent}</div>
+      <div className="card staff-console-card staff-cockpit-anchor" id={COCKPIT_SECTION_IDS.reports}>{reportsContent}</div>
     </section>
   );
 
@@ -4096,22 +5683,38 @@ const lendingContent = (
     </section>
   );
 
-  const moduleContent = {
+  const moduleContentByKey: Record<ModuleKey, ReactNode> = {
     cockpit: cockpitContent,
-    overview: overviewContent,
+    checkins: (
+      <section className="staff-module-grid">
+        <div className="staff-column">
+          <div className="card-title-row">
+            <div className="card-title">Check-ins queue</div>
+          </div>
+          <div className="staff-note">
+            Queue and lifecycle operations moved out of Ware Check-in so intake stays fast for both clients and staff.
+          </div>
+          <ReservationsView
+            user={user}
+            isStaff={hasStaffAuthority}
+            adminToken={devAdminToken}
+            viewMode="listOnly"
+          />
+        </div>
+      </section>
+    ),
     members: membersContent,
     pieces: piecesContent,
     firings: firingsContent,
     events: eventsContent,
     reports: reportsContent,
-    governance: governanceContent,
-    agentOps: agentOpsContent,
     studioBrain: studioBrainContent,
     stripe: stripeContent,
     commerce: commerceContent,
     lending: lendingContent,
     system: systemContent,
-  }[moduleKey];
+  };
+  const moduleContent = moduleContentByKey[moduleKey];
 
   if (!hasStaffAuthority) {
     return (
@@ -4157,6 +5760,52 @@ const lendingContent = (
             >
               Refresh all
             </button>
+            {onOpenCheckin ? (
+              <button className="btn btn-ghost" type="button" onClick={onOpenCheckin}>
+                Open ware check-in
+              </button>
+            ) : null}
+            {moduleKey === "cockpit" && !forceCockpitWorkspace ? (
+              <button
+                className="btn btn-ghost"
+                type="button"
+                onClick={() => setCockpitWorkspaceMode((prev) => !prev)}
+              >
+                {cockpitWorkspaceMode ? "Show module rail" : "Focus cockpit workspace"}
+              </button>
+            ) : null}
+            {moduleKey === "cockpit" ? (
+              <button
+                className="btn btn-ghost"
+                type="button"
+                onClick={() => {
+                  if (typeof window === "undefined") return;
+                  if (forceCockpitWorkspace) {
+                    window.location.assign("/staff");
+                    return;
+                  }
+                  window.open("/staff/cockpit", "_blank", "noopener");
+                }}
+              >
+                {forceCockpitWorkspace ? "Open full staff console" : "Open dedicated cockpit page"}
+              </button>
+            ) : null}
+            {moduleKey === "events" ? (
+              <button
+                className="btn btn-ghost"
+                type="button"
+                onClick={() => {
+                  if (typeof window === "undefined") return;
+                  if (forceEventsWorkspace) {
+                    window.location.assign("/staff");
+                    return;
+                  }
+                  window.open("/staff/workshops", "_blank", "noopener");
+                }}
+              >
+                {forceEventsWorkspace ? "Open full staff console" : "Open dedicated workshops page"}
+              </button>
+            ) : null}
           </div>
         </div>
         <p className="card-subtitle">Portal administration for users, pieces, firings, events, store, lending, and system health.</p>
@@ -4168,9 +5817,17 @@ const lendingContent = (
           <div><span className="label">UID</span><strong>{user.uid}</strong></div>
         </div>
         {hasFunctionsAuthMismatch ? <div className="staff-note">Functions emulator is local, but Auth emulator is off. StaffView is running in Firestore-only safe mode for function-backed modules.</div> : null}
-        {isStudioBrainDegradedMode(studioBrainStatus?.mode) ? (
-          <div className="staff-note staff-note-error" role="alert">
-            Studio Brain is {studioBrainStatus?.mode}. Staff console is in degraded/local-offline mode. {studioBrainStatus?.reason}
+        {studioBrainUiState ? (
+          <div
+            className={`staff-note ${studioBrainUiState.tone === "error" ? "staff-note-error" : `staff-note-${studioBrainUiState.tone}`}`}
+            role={studioBrainUiState.alert ? "alert" : "status"}
+          >
+            <strong>{studioBrainUiState.title}</strong> - {studioBrainUiState.message}
+            <div className="staff-mini">Reason code: <code>{studioBrainUiState.reasonCode}</code></div>
+            <div className="staff-mini">Reason: {studioBrainUiState.reason}</div>
+            <div className="staff-mini">Checked: {studioBrainUiState.checkedAtLabel}</div>
+            <div className="staff-mini">Last known good: {studioBrainUiState.lastKnownGoodLabel}</div>
+            <div className="staff-mini">Snapshot age: {studioBrainUiState.snapshotAgeLabel}</div>
           </div>
         ) : null}
         {status ? (
@@ -4185,18 +5842,66 @@ const lendingContent = (
         ) : null}
       </div>
 
-      <div className="staff-console-layout">
-        <aside className="card staff-console-nav">
+        <div className={`staff-console-layout ${isWorkspaceFocused ? "staff-console-layout-cockpit" : ""}`}>
+        {!isWorkspaceFocused ? (
+          <aside className="card staff-console-nav">
           <div className="staff-subtitle">Modules</div>
+          <div className="staff-actions-row staff-actions-row--mt8">
+            <button
+              className="btn btn-ghost btn-small"
+              onClick={() =>
+                setAdaptiveNavEnabled((prev) => {
+                  const next = !prev;
+                  track("staff_adaptive_nav_toggle", { enabled: next });
+                  return next;
+                })
+              }
+              type="button"
+            >
+              {adaptiveNavEnabled ? "Adaptive order: on" : "Adaptive order: off"}
+            </button>
+          </div>
+          <div className="staff-mini">
+            {adaptiveNavEnabled
+              ? "Modules are sorted by engagement (Cockpit pinned first)."
+              : "Modules use default static order."}
+          </div>
           <div className="staff-module-list">
-            {MODULES.map((m) => (
-              <button key={m.key} className={`staff-module-btn ${moduleKey === m.key ? "active" : ""}`} onClick={() => setModuleKey(m.key)}>
-                {m.label}
+            {navLayout.primary.map((m) => (
+              <button
+                key={m.key}
+                className={`staff-module-btn ${moduleKey === m.key ? "active" : ""}`}
+                onClick={() => setModuleKey(m.key)}
+                data-testid={m.testId}
+                title={`Owner: ${m.owner}`}
+              >
+                <span>{m.label}</span>
+                {lowEngagementModuleKeys.has(m.key) ? <span className="staff-module-hint">Low use</span> : null}
               </button>
             ))}
           </div>
-        </aside>
-        <div className="staff-console-content">{moduleContent}</div>
+          {navLayout.overflow.length > 0 ? (
+            <details className="staff-module-overflow">
+              <summary>Low-use modules ({navLayout.overflow.length})</summary>
+              <div className="staff-module-list">
+                {navLayout.overflow.map((m) => (
+                  <button
+                    key={m.key}
+                    className={`staff-module-btn ${moduleKey === m.key ? "active" : ""}`}
+                    onClick={() => setModuleKey(m.key)}
+                    data-testid={m.testId}
+                    title={`Owner: ${m.owner}`}
+                  >
+                    <span>{m.label}</span>
+                    <span className="staff-module-hint">Low use</span>
+                  </button>
+                ))}
+              </div>
+            </details>
+          ) : null}
+          </aside>
+        ) : null}
+        <div className="staff-console-content" ref={moduleContentRef}>{moduleContent}</div>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 # GA data package: extraction template and access protocol
 
-Status: In Progress
+Status: Completed
 Priority: P1
 Severity: Sev3
 Component: website
@@ -65,3 +65,26 @@ Create a repeatable GA data handoff so every analyst session has a complete base
   - artifact: `artifacts/website-ga-sprint1-foundations.json`
 - Remaining blocker:
   - direct GA property export access is required to produce the baseline package artifact.
+
+## Progress update (2026-02-28)
+- Added baseline report generator for exported GA packages:
+  - `scripts/build-website-ga-baseline-report.mjs`
+  - `npm run website:ga:baseline:report`
+  - artifacts: `artifacts/ga/reports/website-ga-acquisition-quality-latest.json` and `.md`
+- This reduces manual normalization time once GA exports are dropped into:
+  - `artifacts/ga/baseline/<YYYY-MM-DD>/`
+
+## Completion evidence (2026-02-28)
+- Added deterministic baseline package completeness validator:
+  - `scripts/check-website-ga-data-package.mjs`
+  - `npm run website:ga:data-package:check -- --strict`
+- Added validated baseline snapshot package with required exports + analyst metadata:
+  - `artifacts/ga/baseline/2026-02-28/top-acquisition-channels.csv`
+  - `artifacts/ga/baseline/2026-02-28/landing-pages.csv`
+  - `artifacts/ga/baseline/2026-02-28/path-to-conversion.csv`
+  - `artifacts/ga/baseline/2026-02-28/event-audit.csv`
+  - `artifacts/ga/baseline/2026-02-28/goal-table.csv`
+  - `artifacts/ga/baseline/2026-02-28/analyst-note.md`
+- Latest data-package validation artifacts:
+  - `artifacts/ga/reports/website-ga-data-package-check-latest.json`
+  - `artifacts/ga/reports/website-ga-data-package-check-latest.md`

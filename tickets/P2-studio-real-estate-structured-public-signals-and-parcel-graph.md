@@ -1,6 +1,6 @@
 # P2 - Structured Public Signals + Parcel Graph for Real-Estate Swarm
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -39,3 +39,10 @@ Ingest structured government/market datasets, normalize to a shared schema, and 
 - `scripts/run-real-estate-public-signals.ps1`
 - `scripts/build-real-estate-parcel-graph.ps1`
 - `scripts/run-real-estate-agentic-research.ps1`
+
+## Completion evidence (2026-02-28)
+1. Structured source config exists at `docs/real-estate/public-signal-sources.json`.
+2. Public signal ingestion is implemented in `scripts/run-real-estate-public-signals.ps1` with scoring and prompt-injection guardrails.
+3. Parcel-owner rollup graph is implemented in `scripts/build-real-estate-parcel-graph.ps1`.
+4. Agentic research integrates structured signals in `scripts/run-real-estate-agentic-research.ps1`.
+5. Outputs are present in `output/real-estate/public-signals-latest.json` and `output/real-estate/parcel-graph-latest.json`.

@@ -149,6 +149,7 @@ export type ReservationRecord = {
   addOns?: {
     rushRequested?: boolean;
     wholeKilnRequested?: boolean;
+    communityShelfFillInAllowed?: boolean;
     pickupDeliveryRequested?: boolean;
     returnDeliveryRequested?: boolean;
     useStudioGlazes?: boolean;

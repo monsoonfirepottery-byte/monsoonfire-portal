@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,6 +37,11 @@ if (options.help) {
   printHelp();
   process.exit(0);
 }
+
+const FIREBASE_WEB_APP_ID = "1:667865114946:web:7275b02c9345aa975200db";
+const FIREBASE_PROJECT_ID = "monsoonfire-portal";
+const FIREBASE_API_KEY_REGEX = /^AIza[0-9A-Za-z_-]{20,}$/;
+const FIREBASE_EMBEDDED_KEY_REGEX = /VITE_FIREBASE_API_KEY["']?\s*:\s*["']AIza[0-9A-Za-z_-]{20,}["']/;
 
 if (!options.server.trim()) {
   fail("Missing --server (or WEBSITE_DEPLOY_SERVER).");
@@ -104,15 +109,23 @@ try {
     });
   }
 
+  const resolvedFirebaseApiKey = resolveFirebaseWebApiKey();
+  process.stdout.write(`Using Firebase Web API key source: ${resolvedFirebaseApiKey.source}\n`);
+
   if (!options.noBuild) {
     run("npm", ["--prefix", "web", "run", "build"], {
       label: "Building web/dist",
+      env: {
+        ...process.env,
+        VITE_FIREBASE_API_KEY: resolvedFirebaseApiKey.key,
+      },
     });
   }
 
   if (!existsSync(webDist)) {
     fail(`Missing build output: ${webDist}`);
   }
+  assertFirebaseApiKeyIsEmbedded(webDist);
 
   cpSync(webDist, stageDir, { recursive: true });
   cpSync(htaccessTemplate, resolve(stageDir, ".htaccess"));
@@ -456,7 +469,11 @@ function run(command, args, options = {}) {
   if (options.label) {
     process.stdout.write(`${options.label}...\n`);
   }
-  const result = spawnSync(command, args, { stdio: "inherit", shell: false });
+  const result = spawnSync(command, args, {
+    stdio: "inherit",
+    shell: false,
+    env: options.env || process.env,
+  });
 
   if (result.error) {
     if (options.allowFailure) {
@@ -477,6 +494,112 @@ function run(command, args, options = {}) {
     ok: status === 0,
     status,
   };
+}
+
+function runCapture(command, args, options = {}) {
+  return spawnSync(command, args, {
+    stdio: ["ignore", "pipe", "pipe"],
+    shell: false,
+    encoding: "utf8",
+    env: options.env || process.env,
+    cwd: options.cwd || process.cwd(),
+  });
+}
+
+function looksLikeFirebaseApiKey(value) {
+  return FIREBASE_API_KEY_REGEX.test(String(value || "").trim());
+}
+
+function parseJsonObjectFromMixedOutput(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const firstBrace = raw.indexOf("{");
+    const lastBrace = raw.lastIndexOf("}");
+    if (firstBrace < 0 || lastBrace <= firstBrace) return null;
+    try {
+      return JSON.parse(raw.slice(firstBrace, lastBrace + 1));
+    } catch {
+      return null;
+    }
+  }
+}
+
+function resolveFirebaseWebApiKey() {
+  const directCandidates = [
+    { source: "VITE_FIREBASE_API_KEY", value: process.env.VITE_FIREBASE_API_KEY },
+    { source: "PORTAL_FIREBASE_API_KEY", value: process.env.PORTAL_FIREBASE_API_KEY },
+    { source: "FIREBASE_WEB_API_KEY", value: process.env.FIREBASE_WEB_API_KEY },
+  ];
+
+  for (const candidate of directCandidates) {
+    const key = String(candidate.value || "").trim();
+    if (looksLikeFirebaseApiKey(key)) {
+      return { key, source: candidate.source };
+    }
+  }
+
+  const sdkConfig = runCapture(
+    "npx",
+    ["firebase-tools", "apps:sdkconfig", "web", FIREBASE_WEB_APP_ID, "--project", FIREBASE_PROJECT_ID],
+    { cwd: repoRoot }
+  );
+  const payload = parseJsonObjectFromMixedOutput(sdkConfig.stdout);
+  const sdkKey = String(payload?.apiKey || "").trim();
+  if (sdkConfig.status === 0 && looksLikeFirebaseApiKey(sdkKey)) {
+    return { key: sdkKey, source: "firebase-tools-apps:sdkconfig" };
+  }
+
+  fail(
+    "Unable to resolve a valid Firebase Web API key for portal build.\n" +
+      "Set one of VITE_FIREBASE_API_KEY, PORTAL_FIREBASE_API_KEY, or FIREBASE_WEB_API_KEY,\n" +
+      "or ensure `firebase-tools apps:sdkconfig` can read project config in this environment."
+  );
+}
+
+function collectFiles(rootDir, includeFile) {
+  const files = [];
+  const queue = [rootDir];
+
+  while (queue.length > 0) {
+    const current = queue.pop();
+    const entries = readdirSync(current, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryPath = resolve(current, entry.name);
+      if (entry.isDirectory()) {
+        queue.push(entryPath);
+        continue;
+      }
+      if (includeFile(entryPath)) {
+        files.push(entryPath);
+      }
+    }
+  }
+
+  return files;
+}
+
+function assertFirebaseApiKeyIsEmbedded(distDir) {
+  const buildFiles = collectFiles(distDir, (filePath) => filePath.endsWith(".js"));
+  const matchingFiles = [];
+
+  for (const filePath of buildFiles) {
+    const text = readFileSync(filePath, "utf8");
+    if (FIREBASE_EMBEDDED_KEY_REGEX.test(text)) {
+      matchingFiles.push(filePath);
+    }
+  }
+
+  if (matchingFiles.length > 0) {
+    return;
+  }
+
+  fail(
+    "Build output does not include a compiled VITE_FIREBASE_API_KEY value; refusing deploy.\n" +
+      "Set VITE_FIREBASE_API_KEY (or ensure web build injects it) before deploy."
+  );
 }
 
 function writeJson(path, payload) {

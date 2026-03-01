@@ -1,6 +1,6 @@
 # Ticket: P2 — Studio Notification SLA & ETA Communication
 
-Status: Planned
+Status: Completed
 Created: 2026-02-17  
 Priority: P2  
 Owner: Product + Functions Team  
@@ -46,3 +46,19 @@ Define and execute a predictable communication journey around reservation state 
   - transition to ready
   - delay reason
   - pickup completed
+
+## Completion evidence (2026-02-28)
+- SLA + reservation notification flow shipped under and validated via:
+  - `tickets/P1-studio-notification-sla-journey.md` (`Status: Completed`)
+  - `tickets/P2-studio-pickup-window-booking.md` (`Status: Completed`)
+  - `tickets/P2-studio-no-show-and-queue-fairness-policy.md` (`Status: Completed`)
+  - `tickets/P2-studio-notification-channel-and-fallback-controls.md` (`Status: Completed`)
+- Core implementation files:
+  - `functions/src/notifications.ts`
+  - `functions/src/apiV1.ts`
+- Regression and lifecycle validation coverage:
+  - `functions/src/apiV1.test.ts` (pickup window progression, queue fairness, notifications mark-read/idempotency)
+  - verification run: `node --test functions/lib/apiV1.test.js` (`115` pass, `0` fail)
+- Operator documentation and telemetry runbooks:
+  - `docs/EMAIL_NOTIFICATIONS.md`
+  - `docs/NOTIFICATION_ONCALL_RUNBOOK.md`

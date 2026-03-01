@@ -354,6 +354,65 @@ const staffUpdateUserProfileSchema = z.object({
   }),
 });
 
+const staffBatchArtifactCategorySchema = z.enum([
+  "fixture_like",
+  "stale_closed",
+  "orphan_owner",
+  "state_mismatch",
+  "active_recent",
+  "unclassified",
+]);
+
+const staffBatchArtifactConfidenceSchema = z.enum(["high", "medium", "low"]);
+
+const staffBatchArtifactDispositionHintSchema = z.enum([
+  "delete",
+  "archive",
+  "retain",
+  "merge",
+  "manual_review",
+]);
+
+const staffBatchArtifactTargetSchema = z.object({
+  batchId: z.string().min(1).max(128),
+  title: z.string().max(240).optional().nullable(),
+  status: z.string().max(80).optional().nullable(),
+  ownerUid: z.string().max(128).optional().nullable(),
+  isClosed: z.boolean().optional(),
+  updatedAtMs: z.number().int().nonnegative().optional().nullable(),
+  category: staffBatchArtifactCategorySchema,
+  confidence: staffBatchArtifactConfidenceSchema,
+  dispositionHints: z.array(staffBatchArtifactDispositionHintSchema).max(8).optional(),
+  rationale: z.array(z.string().max(320)).max(16).optional(),
+  riskFlags: z.array(z.string().max(120)).max(12).optional(),
+});
+
+const staffBatchArtifactCleanupSchema = z.object({
+  mode: z.enum(["preview", "destructive"]),
+  dryRun: z.boolean(),
+  backendDispatchRequested: z.boolean().optional(),
+  previewOnly: z.boolean().optional(),
+  selectionMode: z.enum(["high_confidence_artifacts", "all_likely_artifacts", "current_filter_artifacts"]),
+  selectedCount: z.number().int().nonnegative().max(5000),
+  selectedBatchIds: z.array(z.string().min(1).max(128)).max(5000),
+  countsByCategory: z.record(z.string(), z.number().int().nonnegative()).optional(),
+  countsByConfidence: z.record(z.string(), z.number().int().nonnegative()).optional(),
+  countsByDispositionHint: z.record(z.string(), z.number().int().nonnegative()).optional(),
+  audit: z.object({
+    runId: z.string().min(1).max(180),
+    generatedAt: z.string().min(1).max(96),
+    operatorUid: z.string().max(128).optional().nullable(),
+    operatorEmail: z.string().max(320).optional().nullable(),
+    operatorRole: z.string().max(80).optional().nullable(),
+    source: z.string().max(80).optional().nullable(),
+    reasonCode: z.string().min(1).max(80),
+    reason: z.string().min(1).max(1000),
+    ticketRefs: z.array(z.string().max(160)).max(32).optional(),
+    confirmationPhrase: z.string().max(240).optional(),
+  }),
+  targets: z.array(staffBatchArtifactTargetSchema).max(5000),
+});
+
 function batchesCol() {
   return db.collection("batches");
 }
@@ -660,6 +719,183 @@ export const staffUpdateUserProfile = onRequest(
       const code = message === "User not found" ? 404 : 500;
       logger.error("staffUpdateUserProfile failed", { message });
       res.status(code).json({ ok: false, message });
+    }
+  }
+);
+
+export const staffBatchArtifactCleanup = onRequest(
+  { region: REGION, timeoutSeconds: 60 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+
+    const admin = await requireAdmin(req);
+    if (!admin.ok) {
+      res.status(403).json({ ok: false, message: "Forbidden" });
+      return;
+    }
+
+    const parsed = parseBody(staffBatchArtifactCleanupSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const payload = parsed.data;
+    const uniqueBatchIds = Array.from(
+      new Set(payload.selectedBatchIds.map((entry) => String(entry).trim()).filter(Boolean))
+    );
+    if (uniqueBatchIds.length === 0) {
+      res.status(400).json({ ok: false, message: "No selected batch ids provided." });
+      return;
+    }
+
+    const now = nowTs();
+    const runRef = db.collection("staffBatchArtifactCleanupRuns").doc();
+    const expectedConfirmPhrase = `DELETE ${uniqueBatchIds.length} BATCHES`;
+    const isDestructive = payload.mode === "destructive" && payload.dryRun !== true;
+
+    if (isDestructive && (payload.audit.confirmationPhrase ?? "").trim() !== expectedConfirmPhrase) {
+      res.status(400).json({
+        ok: false,
+        message: `Confirmation phrase mismatch. Expected "${expectedConfirmPhrase}".`,
+      });
+      return;
+    }
+
+    const targetById = new Map(payload.targets.map((target) => [target.batchId, target]));
+    const ineligibleTargets = uniqueBatchIds.filter((batchId) => {
+      const target = targetById.get(batchId);
+      if (!target) return true;
+      if (target.confidence !== "high") return true;
+      return target.category === "active_recent";
+    });
+    if (isDestructive && ineligibleTargets.length > 0) {
+      res.status(400).json({
+        ok: false,
+        message:
+          "Destructive cleanup requires high-confidence non-active targets only. Use preview mode for wider cohorts.",
+        ineligibleCount: ineligibleTargets.length,
+      });
+      return;
+    }
+
+    try {
+      const writeBatch = db.batch();
+      let archivedCount = 0;
+
+      if (isDestructive) {
+        uniqueBatchIds.forEach((batchId) => {
+          const target = targetById.get(batchId) ?? null;
+          const ref = batchesCol().doc(batchId);
+          writeBatch.set(
+            ref,
+            {
+              isClosed: true,
+              status: "CLOSED_OTHER",
+              updatedAt: now,
+              staffArtifactCleanup: {
+                runId: runRef.id,
+                action: "archive",
+                actorUid: auth.uid,
+                actorMode: admin.mode,
+                reasonCode: payload.audit.reasonCode,
+                reason: payload.audit.reason,
+                source: payload.audit.source ?? "staff_console",
+                category: target?.category ?? "unclassified",
+                confidence: target?.confidence ?? "high",
+                cleanedAt: now,
+              },
+            },
+            { merge: true }
+          );
+          archivedCount += 1;
+        });
+      }
+
+      const targetSample = payload.targets.slice(0, 120).map((target) => ({
+        batchId: target.batchId,
+        status: target.status ?? "",
+        ownerUid: target.ownerUid ?? "",
+        category: target.category,
+        confidence: target.confidence,
+        dispositionHints: target.dispositionHints ?? [],
+        riskFlags: target.riskFlags ?? [],
+      }));
+
+      writeBatch.set(runRef, {
+        runId: runRef.id,
+        submittedRunId: payload.audit.runId,
+        mode: isDestructive ? "destructive" : "preview",
+        dryRun: payload.dryRun,
+        backendDispatchRequested: payload.backendDispatchRequested ?? false,
+        previewOnly: !isDestructive,
+        selectionMode: payload.selectionMode,
+        selectedCount: uniqueBatchIds.length,
+        selectedBatchIdsSample: uniqueBatchIds.length > 300 ? uniqueBatchIds.slice(0, 300) : uniqueBatchIds,
+        selectedBatchIdsSampleTruncated: uniqueBatchIds.length > 300,
+        countsByCategory: payload.countsByCategory ?? {},
+        countsByConfidence: payload.countsByConfidence ?? {},
+        countsByDispositionHint: payload.countsByDispositionHint ?? {},
+        audit: {
+          generatedAt: payload.audit.generatedAt,
+          operatorUid: auth.uid,
+          operatorEmail: auth.decoded.email ?? null,
+          operatorRole: admin.mode,
+          source: payload.audit.source ?? "staff_console",
+          reasonCode: payload.audit.reasonCode,
+          reason: payload.audit.reason,
+          ticketRefs: payload.audit.ticketRefs ?? [],
+          confirmationPhrase: payload.audit.confirmationPhrase ?? "",
+        },
+        targetSample,
+        targetCount: payload.targets.length,
+        targetSampleTruncated: payload.targets.length > targetSample.length,
+        ineligibleCount: ineligibleTargets.length,
+        archivedCount,
+        createdAt: now,
+        createdByUid: auth.uid,
+        createdByMode: admin.mode,
+      });
+
+      await writeBatch.commit();
+      await db.collection("agentAuditLogs").add({
+        actorUid: auth.uid,
+        actorMode: admin.mode,
+        action: "staff_batch_artifact_cleanup_run",
+        runId: runRef.id,
+        mode: isDestructive ? "destructive" : "preview",
+        selectedCount: uniqueBatchIds.length,
+        archivedCount,
+        reasonCode: payload.audit.reasonCode,
+        createdAt: now,
+      });
+
+      res.status(200).json({
+        ok: true,
+        runId: runRef.id,
+        mode: isDestructive ? "destructive" : "preview",
+        previewOnly: !isDestructive,
+        selectedCount: uniqueBatchIds.length,
+        archivedCount,
+        message: isDestructive
+          ? `Archived ${archivedCount} batch artifact candidate(s).`
+          : `Preview recorded for ${uniqueBatchIds.length} batch artifact candidate(s).`,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error("staffBatchArtifactCleanup failed", { message });
+      res.status(500).json({ ok: false, message: "Batch cleanup failed" });
     }
   }
 );

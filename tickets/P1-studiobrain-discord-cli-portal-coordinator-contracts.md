@@ -1,6 +1,6 @@
 # P1 - StudioBrain Coordinator Contracts (Discord + CLI + Portal)
 
-Status: Open
+Status: Completed
 Date: 2026-02-17
 
 ## Problem
@@ -36,3 +36,13 @@ Define and implement stable command/event contracts so a Codex/OpenClaw-like coo
 - `output/real-estate/parcel-graph-latest.json`
 - `output/real-estate/agent-swarm-research-context-*.json`
 - `docs/REAL_ESTATE_MARKET_WATCH.md`
+
+## Completion evidence (2026-02-28)
+1. Coordinator contract generator is implemented in `scripts/build-studiobrain-coordinator-adapters.ps1`.
+2. Weekly orchestrator includes coordinator contract generation in `scripts/run-real-estate-weekly-cadence.ps1`.
+3. Channel command contracts for Discord/CLI/Portal and execution queue output are emitted to:
+   - `output/real-estate/studiobrain-coordinator-*.json`
+   - `output/real-estate/studiobrain-coordinator-latest.json`
+4. Capability and operator handoff documentation is included in:
+   - `docs/REAL_ESTATE_MARKET_WATCH.md`
+   - `docs/real-estate/AGENT_CAPABILITIES_OVERVIEW.md`

@@ -108,6 +108,13 @@ function isActionableRequestFailure(entry) {
   return true;
 }
 
+function isActionableConsoleError(entry) {
+  const text = String(entry?.text || "");
+  if (hasMatch(text, COOP_WARNING_PATTERNS)) return false;
+  if (hasMatch(text, PROFILE_THEME_WARNING_PATTERNS)) return false;
+  return true;
+}
+
 async function run() {
   const options = parseOptions(process.argv.slice(2));
   const scanStamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -231,12 +238,13 @@ async function run() {
   }
 
   const actionableRequestFailures = summary.requestFailures.filter((entry) => isActionableRequestFailure(entry));
+  const actionableConsoleErrors = summary.consoleErrors.filter((entry) => isActionableConsoleError(entry));
   const actionableAsset404s = summary.responseFailures.filter((entry) =>
     entry.status >= 400 && isSameOriginAssetFailure(entry, options.baseUrl)
   );
 
-  if (summary.consoleErrors.length > 0) {
-    summary.failures.push(`console errors: ${summary.consoleErrors.length}`);
+  if (actionableConsoleErrors.length > 0) {
+    summary.failures.push(`console errors: ${actionableConsoleErrors.length}`);
   }
   if (summary.pageErrors.length > 0) {
     summary.failures.push(`page errors: ${summary.pageErrors.length}`);

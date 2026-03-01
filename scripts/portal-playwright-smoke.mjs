@@ -57,6 +57,12 @@ const DASHBOARD_NAV_DOCK_SWEEP = [
     screenshot: "portal-02f-dashboard-dock-right.png",
     summaryLabel: "desktop dashboard nav dock right",
   },
+  {
+    dock: "bottom",
+    label: "Bottom",
+    screenshot: "portal-02g-dashboard-dock-bottom.png",
+    summaryLabel: "desktop dashboard nav dock bottom",
+  },
 ];
 const CONTRACT_DEFAULT_ENV = {
   STUDIO_BRAIN_PORT: "8787",
@@ -1606,7 +1612,7 @@ const resolveNavDockButton = async (page, dockLabel) => {
 };
 
 const ensureNavDock = async (page, targetDock) => {
-  if (targetDock !== "left" && targetDock !== "top" && targetDock !== "right") {
+  if (targetDock !== "left" && targetDock !== "top" && targetDock !== "right" && targetDock !== "bottom") {
     throw new Error(`Unsupported nav dock target: ${targetDock}`);
   }
 
@@ -1640,6 +1646,41 @@ const ensureNavDock = async (page, targetDock) => {
     { timeout: 12000 }
   );
   await page.waitForTimeout(550);
+};
+
+const assertNoHorizontalOverflow = async (page, summaryLabel) => {
+  const metrics = await page.evaluate(() => {
+    const root = document.scrollingElement || document.documentElement;
+    const maxScrollableX = Math.max(0, (root?.scrollWidth ?? 0) - (root?.clientWidth ?? 0));
+    const originalScrollLeft = root?.scrollLeft ?? 0;
+    if (root && maxScrollableX > 0) {
+      root.scrollLeft = Math.min(maxScrollableX, originalScrollLeft + 64);
+    }
+    const movedScrollLeft = root?.scrollLeft ?? 0;
+    if (root) {
+      root.scrollLeft = originalScrollLeft;
+    }
+    const htmlOverflowX = window.getComputedStyle(document.documentElement).overflowX;
+    const bodyOverflowX = window.getComputedStyle(document.body).overflowX;
+    const overflowExplicitlyHidden =
+      htmlOverflowX === "hidden" ||
+      htmlOverflowX === "clip" ||
+      bodyOverflowX === "hidden" ||
+      bodyOverflowX === "clip";
+    return {
+      clientWidth: root?.clientWidth ?? 0,
+      scrollWidth: root?.scrollWidth ?? 0,
+      maxScrollableX,
+      canScrollHorizontally: movedScrollLeft !== originalScrollLeft,
+      overflowExplicitlyHidden,
+    };
+  });
+
+  if (metrics.maxScrollableX > 2 && metrics.canScrollHorizontally && !metrics.overflowExplicitlyHidden) {
+    throw new Error(
+      `${summaryLabel} created horizontal overflow (${metrics.scrollWidth}px > ${metrics.clientWidth}px).`
+    );
+  }
 };
 
 const ensureTheme = async (page, targetTheme) => {
@@ -1702,6 +1743,7 @@ const captureDashboardNavDockSweep = async (page, options, summary) => {
   for (const target of DASHBOARD_NAV_DOCK_SWEEP) {
     await ensureNavDock(page, target.dock);
     await clickNavItem(page, "Dashboard", "Dashboard", true);
+    await assertNoHorizontalOverflow(page, `dashboard nav dock ${target.dock}`);
     await takeScreenshot(page, options.outputDir, target.screenshot, summary, target.summaryLabel);
   }
 };
@@ -1973,11 +2015,37 @@ const run = async () => {
         await clickNavItem(desktopPage, "Dashboard", "Dashboard", false);
       });
 
-      await check(summary, "dashboard nav dock consistency (left + top + right)", async () => {
+      await check(summary, "dashboard nav dock consistency (left + top + right + bottom)", async () => {
         await clickNavItem(desktopPage, "Dashboard", "Dashboard", false);
         await captureDashboardNavDockSweep(desktopPage, options, summary);
 
         // Restore default before continuing other checks.
+        await ensureNavDock(desktopPage, "left");
+        await clickNavItem(desktopPage, "Dashboard", "Dashboard", true);
+      });
+
+      await check(summary, "dashboard nav flyouts work in top and bottom docks", async () => {
+        const flyoutTargets = [
+          {
+            dock: "top",
+            screenshot: "portal-02h-dashboard-nav-flyout-top.png",
+            summaryLabel: "desktop dashboard nav flyout top",
+          },
+          {
+            dock: "bottom",
+            screenshot: "portal-02i-dashboard-nav-flyout-bottom.png",
+            summaryLabel: "desktop dashboard nav flyout bottom",
+          },
+        ];
+
+        for (const target of flyoutTargets) {
+          await ensureNavDock(desktopPage, target.dock);
+          await clickNavSubItem(desktopPage, "Studio & Resources", "Overview", "Studio & Resources overview", true);
+          await desktopPage.getByRole("heading", { name: /^Studio & Resources$/i }).first().waitFor({ timeout: 15000 });
+          await assertNoHorizontalOverflow(desktopPage, `dashboard nav flyout ${target.dock}`);
+          await takeScreenshot(desktopPage, options.outputDir, target.screenshot, summary, target.summaryLabel);
+        }
+
         await ensureNavDock(desktopPage, "left");
         await clickNavItem(desktopPage, "Dashboard", "Dashboard", true);
       });

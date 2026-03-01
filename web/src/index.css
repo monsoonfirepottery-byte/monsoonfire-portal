@@ -8,6 +8,13 @@
   -webkit-font-smoothing: antialiased;
 }
 
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -21,6 +28,8 @@ body {
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
 }
 
 a {
@@ -39,6 +48,7 @@ img {
 
 .runtime-hardening-shell {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .error-banner {
@@ -227,6 +237,7 @@ body.portal-auth-gated .runtime-hardening-tools {
 
 .root-error-screen {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: 18px;

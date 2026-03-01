@@ -1,5 +1,6 @@
 .app-root {
   min-height: 100vh;
+  min-height: 100dvh;
   position: relative;
   color: var(--text);
   background: var(--bg);
@@ -17,6 +18,9 @@
   display: grid;
   grid-template-columns: 260px 1fr;
   min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  max-width: 100%;
   z-index: 1;
   background: var(--bg);
   color: var(--text);
@@ -92,6 +96,7 @@
   position: sticky;
   top: 0;
   height: 100vh;
+  height: 100dvh;
   padding: 28px 22px;
   background: rgba(247, 241, 232, 0.96);
   backdrop-filter: blur(8px);
@@ -1727,6 +1732,7 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
 
 .signed-out {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: 24px;
@@ -2549,6 +2555,7 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
 
 .error-screen {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: 24px;
@@ -3083,6 +3090,7 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   position: sticky;
   top: 0;
   height: 100vh;
+  height: 100dvh;
   padding: 28px 22px;
   background: rgba(247, 241, 232, 0.96);
   backdrop-filter: blur(8px);
@@ -4006,6 +4014,7 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   flex-direction: column;
   gap: 24px;
   min-width: 0;
+  overflow-x: clip;
 }
 
 .app-shell:is(.dock-top, .dock-bottom) .sidebar {
@@ -4018,6 +4027,9 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   display: flex;
   flex-direction: row;
   align-items: center;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  row-gap: 8px;
   gap: 12px;
   overflow: visible;
   z-index: 5;
@@ -4048,41 +4060,39 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
 }
 
 .app-shell:is(.dock-top, .dock-bottom) .sidebar nav {
+  order: 2;
   display: flex;
   flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: center;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  align-content: flex-start;
+  row-gap: 6px;
   gap: 6px;
-  overflow-x: auto;
-  overflow-y: visible;
-  scrollbar-width: none;
+  /* Keep flyouts clickable in horizontal docks: scrolling containers clip absolutely-positioned menus. */
+  overflow: visible;
   padding-right: 0;
-  flex: 1 1 auto;
+  flex: 1 1 100%;
   min-width: 0;
-}
-
-.app-shell:is(.dock-top, .dock-bottom) .sidebar nav::-webkit-scrollbar {
-  display: none;
 }
 
 .app-shell:is(.dock-top, .dock-bottom) .nav-primary,
 .app-shell:is(.dock-top, .dock-bottom) .nav-bottom {
   flex-direction: row;
   align-items: center;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 4px;
 }
 
 .app-shell:is(.dock-top, .dock-bottom) .nav-primary {
-  flex: 0 1 auto;
+  flex: 1 1 560px;
   min-width: 0;
 }
 
 .app-shell:is(.dock-top, .dock-bottom) .nav-bottom {
   margin-top: 0;
   margin-left: auto;
-  justify-content: flex-end;
-  flex: 0 0 auto;
+  justify-content: flex-start;
+  flex: 0 1 auto;
 }
 
 .app-shell:is(.dock-top, .dock-bottom) .sidebar nav button {
@@ -4127,6 +4137,7 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   position: absolute;
   left: 0;
   min-width: 220px;
+  max-width: min(320px, calc(100vw - 24px));
   max-height: 320px;
   overflow: auto;
   margin-left: 0;
@@ -4157,10 +4168,11 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
 }
 
 .app-shell:is(.dock-top, .dock-bottom) .sidebar > .nav-dock-controls {
+  order: 3;
   margin: 0;
   padding: 0;
   border-top: none;
-  margin-left: 8px;
+  margin-left: 0;
 }
 
 .app-shell:is(.dock-top, .dock-bottom) .sidebar > .nav-dock-controls .nav-dock-label {
@@ -4168,8 +4180,9 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
 }
 
 .app-shell:is(.dock-top, .dock-bottom) .profile-actions {
+  order: 4;
   margin-top: 0;
-  margin-left: 8px;
+  margin-left: auto;
   padding-top: 0;
   border-top: none;
 }
@@ -4398,6 +4411,7 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
 
 .auth-bootstrap-screen {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: clamp(24px, 4vw, 48px);
@@ -4406,6 +4420,7 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
 
 .signed-out-auth-main {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: clamp(18px, 3.5vw, 40px);

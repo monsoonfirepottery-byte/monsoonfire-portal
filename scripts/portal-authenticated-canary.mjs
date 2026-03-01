@@ -37,6 +37,12 @@ const NAV_DOCK_SWEEP_TARGETS = [
     screenshot: "canary-02h-nav-dock-right.png",
     summaryLabel: "nav dock right",
   },
+  {
+    dock: "bottom",
+    label: "Bottom",
+    screenshot: "canary-02i-nav-dock-bottom.png",
+    summaryLabel: "nav dock bottom",
+  },
 ];
 
 function parseArgs(argv) {
@@ -414,9 +420,15 @@ async function clickNavSubItem(page, sectionLabel, itemLabel, required = true) {
     await page.waitForTimeout(350);
   }
 
-  const itemButton = page
-    .locator(".nav-subitem", { hasText: new RegExp(regexSafe(itemLabel), "i") })
-    .first();
+  const controlsId = await sectionButton.getAttribute("aria-controls");
+  const itemButton = controlsId
+    ? page
+        .locator(`#${controlsId}`)
+        .locator("button", { hasText: new RegExp(`^${regexSafe(itemLabel)}$`, "i") })
+        .first()
+    : page
+        .locator(".nav-subitem", { hasText: new RegExp(`^${regexSafe(itemLabel)}$`, "i") })
+        .first();
 
   if ((await itemButton.count()) === 0) {
     if (required) throw new Error(`Nav subitem not found: ${sectionLabel} > ${itemLabel}`);
@@ -458,7 +470,7 @@ async function resolveNavDockButton(page, dockLabel) {
 }
 
 async function ensureNavDock(page, targetDock) {
-  if (targetDock !== "left" && targetDock !== "top" && targetDock !== "right") {
+  if (targetDock !== "left" && targetDock !== "top" && targetDock !== "right" && targetDock !== "bottom") {
     throw new Error(`Unsupported nav dock target: ${targetDock}`);
   }
 
@@ -489,6 +501,41 @@ async function ensureNavDock(page, targetDock) {
     { timeout: 12000 }
   );
   await page.waitForTimeout(450);
+}
+
+async function assertNoHorizontalOverflow(page, label) {
+  const metrics = await page.evaluate(() => {
+    const root = document.scrollingElement || document.documentElement;
+    const maxScrollableX = Math.max(0, (root?.scrollWidth ?? 0) - (root?.clientWidth ?? 0));
+    const originalScrollLeft = root?.scrollLeft ?? 0;
+    if (root && maxScrollableX > 0) {
+      root.scrollLeft = Math.min(maxScrollableX, originalScrollLeft + 64);
+    }
+    const movedScrollLeft = root?.scrollLeft ?? 0;
+    if (root) {
+      root.scrollLeft = originalScrollLeft;
+    }
+    const htmlOverflowX = window.getComputedStyle(document.documentElement).overflowX;
+    const bodyOverflowX = window.getComputedStyle(document.body).overflowX;
+    const overflowExplicitlyHidden =
+      htmlOverflowX === "hidden" ||
+      htmlOverflowX === "clip" ||
+      bodyOverflowX === "hidden" ||
+      bodyOverflowX === "clip";
+    return {
+      clientWidth: root?.clientWidth ?? 0,
+      scrollWidth: root?.scrollWidth ?? 0,
+      maxScrollableX,
+      canScrollHorizontally: movedScrollLeft !== originalScrollLeft,
+      overflowExplicitlyHidden,
+    };
+  });
+
+  if (metrics.maxScrollableX > 2 && metrics.canScrollHorizontally && !metrics.overflowExplicitlyHidden) {
+    throw new Error(
+      `${label} created horizontal overflow (${metrics.scrollWidth}px > ${metrics.clientWidth}px).`
+    );
+  }
 }
 
 async function collectMyPiecesState(page, extraEmptyStatePatterns = []) {
@@ -1065,16 +1112,43 @@ async function run() {
     });
 
     if (!options.themeOnly) {
-      await check(summary, "navigation dock controls switch left/top/right", async () => {
+      await check(summary, "navigation dock controls switch left/top/right/bottom", async () => {
         await clickNavItem(page, "Dashboard", true);
 
         for (const target of NAV_DOCK_SWEEP_TARGETS) {
           await ensureNavDock(page, target.dock);
           await clickNavItem(page, "Dashboard", true);
+          await assertNoHorizontalOverflow(page, `nav dock ${target.dock}`);
           await takeScreenshot(page, options.outputDir, target.screenshot, summary, target.summaryLabel);
         }
 
         // Restore baseline navigation dock before remaining checks.
+        await ensureNavDock(page, "left");
+        await clickNavItem(page, "Dashboard", true);
+      });
+
+      await check(summary, "navigation flyouts open in top/bottom docks", async () => {
+        const flyoutTargets = [
+          {
+            dock: "top",
+            screenshot: "canary-02j-nav-flyout-top.png",
+            summaryLabel: "nav flyout top dock",
+          },
+          {
+            dock: "bottom",
+            screenshot: "canary-02k-nav-flyout-bottom.png",
+            summaryLabel: "nav flyout bottom dock",
+          },
+        ];
+
+        for (const target of flyoutTargets) {
+          await ensureNavDock(page, target.dock);
+          await clickNavSubItem(page, "Studio & Resources", "Overview", true);
+          await page.getByRole("heading", { name: /^Studio & Resources$/i }).first().waitFor({ timeout: 15000 });
+          await assertNoHorizontalOverflow(page, `nav flyout ${target.dock}`);
+          await takeScreenshot(page, options.outputDir, target.screenshot, summary, target.summaryLabel);
+        }
+
         await ensureNavDock(page, "left");
         await clickNavItem(page, "Dashboard", true);
       });

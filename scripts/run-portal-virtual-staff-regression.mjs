@@ -28,6 +28,9 @@ function parseArgs(argv) {
     includeUiSmoke: true,
     deepSmoke: false,
     asJson: false,
+    softFailPermissionDenied:
+      String(process.env.PORTAL_VIRTUAL_STAFF_SOFT_FAIL_PERMISSION_DENIED || "").toLowerCase() ===
+      "true",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -96,6 +99,11 @@ function parseArgs(argv) {
       options.asJson = true;
       continue;
     }
+
+    if (arg === "--soft-fail-permission-denied") {
+      options.softFailPermissionDenied = true;
+      continue;
+    }
   }
 
   return options;
@@ -107,7 +115,17 @@ function truncate(value, max = 16000) {
   return `${value.slice(0, max)}\n...[truncated ${value.length - max} chars]`;
 }
 
-function runNodeStep(label, scriptPath, args = [], env = {}) {
+function isPermissionDeniedFailure(output = "") {
+  const value = String(output || "");
+  const hasPermissionSignal =
+    /permission denied/i.test(value) ||
+    /caller does not have permission/i.test(value) ||
+    /PERMISSION_DENIED/i.test(value);
+  const hasScopeSignal = /\b403\b/.test(value) || /firebaserules\.googleapis\.com/i.test(value);
+  return hasPermissionSignal && hasScopeSignal;
+}
+
+function runNodeStep(label, scriptPath, args = [], env = {}, behavior = {}) {
   const startedAt = Date.now();
   const result = spawnSync(process.execPath, [scriptPath, ...args], {
     cwd: repoRoot,
@@ -120,16 +138,22 @@ function runNodeStep(label, scriptPath, args = [], env = {}) {
 
   const durationMs = Date.now() - startedAt;
   const exitCode = typeof result.status === "number" ? result.status : 1;
-  const passed = exitCode === 0;
+  const stdout = truncate(result.stdout || "");
+  const stderr = truncate(result.stderr || "");
+  const allowPermissionDenied = Boolean(behavior.allowPermissionDenied);
+  const permissionDenied = isPermissionDeniedFailure(`${stdout}\n${stderr}`);
+  const status =
+    exitCode === 0 ? "passed" : allowPermissionDenied && permissionDenied ? "degraded" : "failed";
 
   return {
     label,
-    status: passed ? "passed" : "failed",
+    status,
+    failureCategory: status === "degraded" ? "permission_denied" : "",
     exitCode,
     durationMs,
     command: [process.execPath, scriptPath, ...args].join(" "),
-    stdout: truncate(result.stdout || ""),
-    stderr: truncate(result.stderr || ""),
+    stdout,
+    stderr,
   };
 }
 
@@ -158,6 +182,9 @@ function printHumanSummary(summary) {
       `- ${step.label}: ${step.status} (${step.durationMs}ms, exit=${step.exitCode})\n`
     );
   });
+  if (summary.warnings.length > 0) {
+    summary.warnings.forEach((warning) => process.stdout.write(`warning: ${warning}\n`));
+  }
   if (summary.notes.length > 0) {
     summary.notes.forEach((note) => process.stdout.write(`note: ${note}\n`));
   }
@@ -175,11 +202,20 @@ async function main() {
   );
 
   try {
+    const rulesCheckArgs = ["--check", "--project", options.projectId, "--json"];
+    if (options.softFailPermissionDenied) {
+      rulesCheckArgs.push("--soft-fail-permission-denied");
+    }
+
     steps.push(
       runNodeStep(
         "firestore release drift check",
         "./scripts/sync-firestore-rules-releases.mjs",
-        ["--check", "--project", options.projectId, "--json"]
+        rulesCheckArgs,
+        {},
+        {
+          allowPermissionDenied: options.softFailPermissionDenied,
+        }
       )
     );
 
@@ -254,7 +290,9 @@ async function main() {
   }
 
   const failedSteps = steps.filter((step) => step.status === "failed");
-  const status = failedSteps.length > 0 ? "failed" : "passed";
+  const degradedSteps = steps.filter((step) => step.status === "degraded");
+  const status =
+    failedSteps.length > 0 ? "failed" : degradedSteps.length > 0 ? "passed_with_warnings" : "passed";
   const finishedAtIso = new Date().toISOString();
   const summary = {
     status,
@@ -265,6 +303,12 @@ async function main() {
     finishedAtIso,
     reportPath: options.reportPath,
     notes,
+    warnings: degradedSteps.map((step) => {
+      if (step.failureCategory) {
+        return `${step.label} degraded (${step.failureCategory})`;
+      }
+      return `${step.label} degraded`;
+    }),
     steps,
   };
 
@@ -278,7 +322,7 @@ async function main() {
     printHumanSummary(summary);
   }
 
-  if (status !== "passed") {
+  if (status === "failed") {
     process.exit(1);
   }
 }

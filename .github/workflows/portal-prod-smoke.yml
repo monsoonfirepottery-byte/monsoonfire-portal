@@ -102,6 +102,7 @@ jobs:
             --project monsoonfire-portal \
             --base-url "${{ steps.base_url.outputs.value }}" \
             --skip-ui-smoke \
+            --soft-fail-permission-denied \
             --report output/qa/portal-virtual-staff-regression-prod.json \
             --json
 

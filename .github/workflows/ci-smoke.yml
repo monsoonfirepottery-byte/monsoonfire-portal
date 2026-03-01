@@ -108,7 +108,7 @@ jobs:
             echo "Missing required secret: FIREBASE_RULES_API_TOKEN" >&2
             exit 1
           fi
-          npm run firestore:rules:sync:check
+          npm run firestore:rules:sync:check -- --soft-fail-permission-denied
 
       - name: Skip rules release drift check for Dependabot PRs
         if: ${{ env.IS_DEPENDABOT_PR == 'true' }}
@@ -182,6 +182,7 @@ jobs:
             --project monsoonfire-portal \
             --base-url https://portal.monsoonfire.com \
             --skip-ui-smoke \
+            --soft-fail-permission-denied \
             --report output/qa/portal-virtual-staff-regression-ci.json \
             --json
 

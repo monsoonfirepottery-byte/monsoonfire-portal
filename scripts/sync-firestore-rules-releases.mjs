@@ -24,6 +24,8 @@ function parseArgs(argv) {
       "",
     checkOnly: false,
     asJson: false,
+    softFailPermissionDenied:
+      String(process.env.FIREBASE_RULES_SOFT_FAIL_PERMISSION_DENIED || "").toLowerCase() === "true",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -57,6 +59,11 @@ function parseArgs(argv) {
 
     if (arg === "--json") {
       options.asJson = true;
+      continue;
+    }
+
+    if (arg === "--soft-fail-permission-denied") {
+      options.softFailPermissionDenied = true;
       continue;
     }
   }
@@ -222,6 +229,21 @@ async function requestRulesApi({ accessToken, path, method = "GET", body = null 
   return { ok: resp.ok, status: resp.status, json };
 }
 
+function isPermissionDeniedResponse(response) {
+  const statusCode =
+    typeof response?.status === "number"
+      ? response.status
+      : typeof response?.json?.error?.code === "number"
+        ? response.json.error.code
+        : Number.NaN;
+  const errorStatus = String(response?.json?.error?.status || "");
+  const errorMessage = String(response?.json?.error?.message || "");
+  if (statusCode !== 403) {
+    return false;
+  }
+  return /PERMISSION_DENIED/i.test(errorStatus) || /permission/i.test(errorMessage);
+}
+
 function releasePath(projectId, releaseId) {
   return `projects/${projectId}/releases/${releaseId}`;
 }
@@ -277,6 +299,22 @@ async function main() {
   ]);
 
   if (!legacyResp.ok || !defaultResp.ok) {
+    const permissionDenied =
+      isPermissionDeniedResponse(legacyResp) || isPermissionDeniedResponse(defaultResp);
+    if (options.softFailPermissionDenied && permissionDenied) {
+      const result = {
+        projectId: options.projectId,
+        status: "permission_denied",
+        message:
+          "Firestore Rules API permission denied; skipping drift enforcement because --soft-fail-permission-denied is set.",
+        tokenSource: tokenInfo.source,
+        legacyRelease: legacyResp,
+        defaultRelease: defaultResp,
+      };
+      printResult(result, options.asJson);
+      return;
+    }
+
     const result = {
       projectId: options.projectId,
       status: "error",

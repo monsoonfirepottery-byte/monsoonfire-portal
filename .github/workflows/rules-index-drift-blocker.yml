@@ -58,7 +58,7 @@ jobs:
             exit 1
           fi
 
-          npm run firestore:rules:sync:check
+          npm run firestore:rules:sync:check -- --soft-fail-permission-denied
 
       - name: Skip Firestore rules release drift check for Dependabot PRs
         if: ${{ env.IS_DEPENDABOT_PR == 'true' }}

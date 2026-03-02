@@ -18,7 +18,6 @@ import {
   V1_LIBRARY_LOANS_CHECKOUT_FN,
   V1_LIBRARY_LOANS_LIST_MINE_FN,
   V1_LIBRARY_RECOMMENDATIONS_CREATE_FN,
-  V1_LIBRARY_RECOMMENDATIONS_FEEDBACK_SUBMIT_FN,
   V1_LIBRARY_RECOMMENDATIONS_LIST_FN,
   V1_LIBRARY_RATINGS_UPSERT_FN,
   V1_LIBRARY_READING_STATUS_UPSERT_FN,
@@ -33,8 +32,6 @@ import {
   type LibraryRolloutPhase,
   type LibraryRecommendationsCreateRequest,
   type LibraryRecommendationsCreateResponse,
-  type LibraryRecommendationsFeedbackSubmitRequest,
-  type LibraryRecommendationsFeedbackSubmitResponse,
   type LibraryRecommendationsListRequest,
   type LibraryRecommendationsListResponse,
   type LibraryTagSubmissionCreateRequest,
@@ -76,6 +73,11 @@ const LENDING_HANDOFF_STORAGE_SLOT = "mf_lending_handoff_v1";
 const ACQUISITION_REQUEST_SECTION_ID = "acquisition-request-panel";
 const PUBLIC_LIBRARY_SEARCH_BASE_URL = "https://www.worldcat.org/search?q=";
 const CATALOG_SEARCH_DEBOUNCE_MS = 280;
+const DISCOVERY_RAIL_LIMIT = 8;
+const STAFF_PICKS_LIMIT = 2;
+const LIBRARY_ITEMS_API_PAGE_SIZE = 100;
+const LIBRARY_RECOMMENDATIONS_API_LIMIT = 100;
+const DETAIL_TAG_LIMIT = 8;
 
 type CatalogAvailability = "all" | LibraryCatalogAvailabilityFilter;
 type DiscoverySectionKey = "staff_picks" | "most_borrowed" | "recently_added" | "recently_reviewed";
@@ -87,6 +89,12 @@ type WorkshopRequestSchedule =
   | "weekend-afternoon"
   | "flexible";
 type ReadingStatusValue = "have" | "borrowed" | "want_to_read" | "recommended";
+const READING_STATUS_OPTIONS: Array<{ value: ReadingStatusValue; label: string }> = [
+  { value: "want_to_read", label: "Want to read" },
+  { value: "borrowed", label: "Borrowed" },
+  { value: "have", label: "Have" },
+  { value: "recommended", label: "Recommended" },
+];
 
 type LendingHandoffPayload = {
   search?: string;
@@ -112,15 +120,6 @@ type ReviewEntry = {
   reflection: string | null;
   reviewerUid: string | null;
   createdAt: { toDate?: () => Date } | null;
-};
-
-type ReviewAggregate = {
-  reviewCount: number;
-  averagePracticality: number | null;
-  topDifficulty: LibraryDifficulty | null;
-  topBestFor: string | null;
-  reflectionsCount: number;
-  latestReflection: string | null;
 };
 
 type DiscoveryRail = {
@@ -203,20 +202,6 @@ const DEFAULT_CATALOG_FILTERS: CatalogFilters = {
   sort: "recently_added",
 };
 
-type RecommendationComposerDraft = {
-  title: string;
-  author: string;
-  reason: string;
-  isbn: string;
-  techniques: string;
-  studioRelevance: string;
-  intentContext: string;
-  linkUrl: string;
-  coverUrl: string;
-  sourceLabel: string;
-  sourceUrl: string;
-};
-
 type CatalogUrlState = {
   search: string;
   filters: CatalogFilters;
@@ -233,6 +218,18 @@ function resolveFunctionsBaseUrl() {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isPermissionDeniedMessage(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized.includes("missing or insufficient permissions") ||
+    normalized.includes("permission denied") ||
+    normalized.includes("permission_denied") ||
+    normalized.includes("forbidden") ||
+    normalized.includes("unauthenticated")
+  );
 }
 
 function formatAvailability(item: LibraryItem) {
@@ -299,10 +296,74 @@ function normalizeReadingStatus(value: unknown): ReadingStatusValue | null {
   return null;
 }
 
+function formatReadingStatusLabel(value: ReadingStatusValue): string {
+  if (value === "want_to_read") return "Want to read";
+  if (value === "borrowed") return "Borrowed";
+  if (value === "have") return "Have";
+  return "Recommended";
+}
+
 function formatTechniqueLabel(raw: string): string {
   const cleaned = raw.trim();
   if (!cleaned) return "Technique";
   return capitalizeWords(cleaned);
+}
+
+function inferLibraryNarrativeTag(item: LibraryItem): "Fiction" | "Non-fiction" | null {
+  const rawText = [
+    item.title,
+    item.subtitle,
+    item.description,
+    item.genre,
+    item.primaryGenre,
+    ...(item.subjects ?? []),
+  ]
+    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    .join(" ")
+    .toLowerCase();
+  if (!rawText.trim()) return null;
+
+  const hasNonFictionSignal = /non[\s-]?fiction|reference|guide|manual|how[\s-]?to|handbook/.test(rawText);
+  const hasFictionSignal = /\bfiction\b|\bnovel\b|\bfantasy\b|\bromance\b|\bmystery\b|\bthriller\b|\bsci[-\s]?fi\b/.test(
+    rawText
+  );
+
+  if (hasFictionSignal && !hasNonFictionSignal) return "Fiction";
+  if (hasNonFictionSignal && !hasFictionSignal) return "Non-fiction";
+  return null;
+}
+
+function buildLibraryDetailTags(item: LibraryItem): string[] {
+  const draft = [
+    inferLibraryNarrativeTag(item),
+    item.genre,
+    item.primaryGenre,
+    item.studioCategory,
+    item.format,
+    item.mediaType,
+    ...(item.subjects ?? []),
+  ];
+  const deduped: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of draft) {
+    if (typeof entry !== "string") continue;
+    const cleaned = entry.trim();
+    if (!cleaned) continue;
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(capitalizeWords(cleaned));
+    if (deduped.length >= DETAIL_TAG_LIMIT) break;
+  }
+  return deduped;
+}
+
+function resolveLibrarySummaryText(item: LibraryItem): string | null {
+  const description = typeof item.description === "string" ? item.description.trim() : "";
+  if (description) return description;
+  const subtitle = typeof item.subtitle === "string" ? item.subtitle.trim() : "";
+  if (subtitle) return subtitle;
+  return null;
 }
 
 function parseCatalogUrlState(searchValue: string): CatalogUrlState {
@@ -377,11 +438,6 @@ function countActiveCatalogFilters(filters: CatalogFilters, searchValue: string)
   return count;
 }
 
-function formatStars(value: number | null | undefined) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "No ratings";
-  return `${value.toFixed(1)} / 5 practical`;
-}
-
 function buildPublicLibrarySearchUrl(query: string) {
   const trimmed = query.trim();
   return `${PUBLIC_LIBRARY_SEARCH_BASE_URL}${encodeURIComponent(trimmed || "ceramics library")}`;
@@ -423,6 +479,45 @@ function itemLastReviewedMs(item: LibraryItem): number {
   return 0;
 }
 
+function isCeramicsNonFictionTitle(item: LibraryItem): boolean {
+  const mediaType = normalizeLibraryToken(item.mediaType);
+  const bookLike =
+    mediaType === "book" ||
+    mediaType === "physical_book" ||
+    mediaType === "physical-book" ||
+    mediaType === "print";
+  if (!bookLike) return false;
+
+  const rawText = [
+    item.title,
+    item.subtitle,
+    item.description,
+    item.genre,
+    item.primaryGenre,
+    item.studioCategory,
+    item.format,
+    ...(item.subjects ?? []),
+    ...(item.techniques ?? []),
+  ]
+    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    .join(" ")
+    .toLowerCase();
+
+  if (!rawText.trim()) return false;
+
+  const hasNonFictionSignal = /non[\s-]?fiction|reference|guide|manual|how[\s-]?to|handbook/.test(rawText);
+  const hasFictionSignal = /\bfiction\b|\bnovel\b|\bfantasy\b|\bromance\b|\bmystery\b|\bthriller\b|\bsci[-\s]?fi\b/.test(
+    rawText
+  );
+  if (hasFictionSignal && !hasNonFictionSignal) return false;
+
+  const hasCeramicsSignal =
+    /\bceramic(s)?\b|\bpottery\b|\bclay\b|\bglaze\b|\bkiln\b|\bwheel[-\s]?throw(ing)?\b|\bhandbuild(ing)?\b|\bstoneware\b|\bporcelain\b|\bearthenware\b/.test(
+      rawText
+    );
+  return hasCeramicsSignal;
+}
+
 function normalizeLibraryToken(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
@@ -447,19 +542,6 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
   }, [delayMs, value]);
 
   return debounced;
-}
-
-function recommendationCreatedLabel(entry: LibraryRecommendation) {
-  if (entry.createdAt?.toDate) {
-    return entry.createdAt.toDate().toLocaleDateString();
-  }
-  if (entry.createdAtIso) {
-    const parsed = Date.parse(entry.createdAtIso);
-    if (Number.isFinite(parsed)) {
-      return new Date(parsed).toLocaleDateString();
-    }
-  }
-  return "Recently";
 }
 
 function daysUntil(value: { toDate?: () => Date } | null | undefined): number | null {
@@ -487,17 +569,6 @@ function normalizeTagToken(value: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
-}
-
-function parseRecommendationContextInput(value: string): string[] {
-  return Array.from(
-    new Set(
-      value
-        .split(/[,\n;]+/g)
-        .map((entry) => normalizeTagToken(entry))
-        .filter(Boolean)
-    )
-  ).slice(0, 8);
 }
 
 function normalizeTagSubmissionLabel(value: string): string {
@@ -549,14 +620,6 @@ function recommendationVisibleForViewer(entry: LibraryRecommendation, viewerUid:
   if (entry.moderationStatus === "approved") return true;
   if (!recommendationBelongsToViewer(entry, viewerUid)) return false;
   return entry.moderationStatus === "pending_review" || entry.moderationStatus === "rejected";
-}
-
-function recommendationModerationLabel(status: string): string {
-  if (status === "pending_review") return "Pending review";
-  if (status === "rejected") return "Needs staff revision";
-  if (status === "hidden") return "Hidden";
-  if (status === "approved") return "Approved";
-  return capitalizeWords(status || "pending_review");
 }
 
 function normalizeExternalLookupProviders(value: unknown): LibraryExternalLookupSource[] {
@@ -844,6 +907,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
   const [search, setSearch] = useState("");
   const [catalogFilters, setCatalogFilters] = useState<CatalogFilters>(DEFAULT_CATALOG_FILTERS);
   const [filtersPanelOpen, setFiltersPanelOpen] = useState(false);
+  const [recommendationsFlyoutOpen, setRecommendationsFlyoutOpen] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionStatus, setActionStatus] = useState("");
 
@@ -851,6 +915,8 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
   const [selectedItemDetail, setSelectedItemDetail] = useState<LibraryItem | null>(null);
   const [selectedItemDetailLoading, setSelectedItemDetailLoading] = useState(false);
   const [selectedItemDetailError, setSelectedItemDetailError] = useState("");
+  const [shelfCanScrollBack, setShelfCanScrollBack] = useState(false);
+  const [shelfCanScrollForward, setShelfCanScrollForward] = useState(false);
 
   const [notifyPrefs, setNotifyPrefs] = useState<Record<string, boolean>>({});
   const [notifyBusyById, setNotifyBusyById] = useState<Record<string, boolean>>({});
@@ -893,24 +959,8 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
   const [recommendations, setRecommendations] = useState<LibraryRecommendation[]>([]);
   const [recommendationsLoading, setRecommendationsLoading] = useState(true);
   const [recommendationsError, setRecommendationsError] = useState("");
-  const [recommendationDraft, setRecommendationDraft] = useState<RecommendationComposerDraft>({
-    title: "",
-    author: "",
-    reason: "",
-    isbn: "",
-    techniques: "",
-    studioRelevance: "",
-    intentContext: "",
-    linkUrl: "",
-    coverUrl: "",
-    sourceLabel: "",
-    sourceUrl: "",
-  });
   const [recommendationBusy, setRecommendationBusy] = useState(false);
   const [recommendationStatus, setRecommendationStatus] = useState("");
-  const [recommendationFeedbackBusyById, setRecommendationFeedbackBusyById] = useState<Record<string, boolean>>({});
-  const [recommendationFeedbackCommentById, setRecommendationFeedbackCommentById] = useState<Record<string, string>>({});
-  const [recommendationFeedbackStatus, setRecommendationFeedbackStatus] = useState("");
   const [libraryRolloutPhase, setLibraryRolloutPhase] = useState<LibraryRolloutPhase>("phase_3_admin_full");
   const [libraryRolloutMemberWritesEnabled, setLibraryRolloutMemberWritesEnabled] = useState(true);
   const [libraryRolloutNote, setLibraryRolloutNote] = useState("");
@@ -923,6 +973,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
   const detailRequestSeqRef = useRef(0);
   const externalLookupAbortRef = useRef<AbortController | null>(null);
   const hydratedUrlStateRef = useRef(false);
+  const shelfTrackRef = useRef<HTMLDivElement | null>(null);
 
   const baseUrl = useMemo(() => resolveFunctionsBaseUrl(), []);
   const debouncedSearch = useDebouncedValue(search.trim(), CATALOG_SEARCH_DEBOUNCE_MS);
@@ -1025,7 +1076,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
             ratingMax: normalizedRatingMax ?? undefined,
             sort: catalogFilters.sort,
             page: 1,
-            pageSize: 120,
+            pageSize: LIBRARY_ITEMS_API_PAGE_SIZE,
           },
           signal: abortController.signal,
         });
@@ -1058,7 +1109,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
       setItemsTotal(total);
       setSelectedItemId((prev) => {
         if (prev && rows.some((entry) => entry.id === prev)) return prev;
-        return rows[0]?.id ?? null;
+        return null;
       });
       trackLending("lending_items_loaded", {
         section: "catalog",
@@ -1096,7 +1147,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
         if (rankA !== rankB) return rankA - rankB;
         return byTitle(a, b);
       })
-      .slice(0, limit);
+      .slice(0, Math.min(limit, STAFF_PICKS_LIMIT));
     const mostBorrowed = [...rows]
       .sort((a, b) => {
         const delta = (b.borrowCount ?? 0) - (a.borrowCount ?? 0);
@@ -1137,7 +1188,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
     setDiscoveryLoading(true);
     setDiscoveryError("");
     try {
-      const limit = 8;
+      const limit = DISCOVERY_RAIL_LIMIT;
       let rails = createEmptyDiscoveryRails();
       let source: "api_v1" | "firestore" = "api_v1";
       try {
@@ -1165,7 +1216,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
           normalizeLibraryItem(safeString(row.id) ?? `recently-reviewed-${index + 1}`, row as Partial<LibraryItem>)
         );
         const byKey: Record<DiscoverySectionKey, LibraryItem[]> = {
-          staff_picks: staffPicks,
+          staff_picks: staffPicks.slice(0, STAFF_PICKS_LIMIT),
           most_borrowed: mostBorrowed,
           recently_added: recentlyAdded,
           recently_reviewed: recentlyReviewed,
@@ -1325,9 +1376,10 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
     setRecommendationsError("");
     try {
       let source: "api_v1" | "firestore" = "api_v1";
+      const canUseFirestoreFallback = isStaff;
 
       const loadFromApiV1 = async (): Promise<LibraryRecommendation[] | null> => {
-        const payload: LibraryRecommendationsListRequest = { limit: 120 };
+        const payload: LibraryRecommendationsListRequest = { limit: LIBRARY_RECOMMENDATIONS_API_LIMIT };
         const response = await client.postJson<LibraryRecommendationsListResponse>(
           V1_LIBRARY_RECOMMENDATIONS_LIST_FN,
           payload
@@ -1365,17 +1417,26 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
       };
 
       let rows: LibraryRecommendation[] = [];
+      let apiError: unknown = null;
       try {
         const apiRows = await loadFromApiV1();
         if (apiRows) {
           rows = apiRows;
-        } else {
-          source = "firestore";
-          rows = await loadFromFirestore();
         }
-      } catch {
+      } catch (error: unknown) {
+        apiError = error;
+      }
+
+      if (rows.length === 0 && canUseFirestoreFallback) {
         source = "firestore";
         rows = await loadFromFirestore();
+      } else if (rows.length === 0 && apiError) {
+        const message = getErrorMessage(apiError);
+        if (isPermissionDeniedMessage(message)) {
+          rows = [];
+        } else {
+          throw apiError;
+        }
       }
 
       rows.sort((a, b) => recommendationTimeMs(b) - recommendationTimeMs(a));
@@ -1388,7 +1449,13 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
         totalFetched: rows.length,
       });
     } catch (error: unknown) {
-      setRecommendationsError(`Recommendations failed: ${getErrorMessage(error)}`);
+      const message = getErrorMessage(error);
+      if (isPermissionDeniedMessage(message)) {
+        setRecommendations([]);
+        setRecommendationsError("");
+      } else {
+        setRecommendationsError(`Recommendations failed: ${message}`);
+      }
     } finally {
       setRecommendationsLoading(false);
     }
@@ -1402,6 +1469,12 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
     const loadReviews = async () => {
       setReviewsLoading(true);
       setReviewsError("");
+      if (!isStaff) {
+        // Member view relies on API/item-level aggregates; direct Firestore review reads are staff-only.
+        setReviews([]);
+        setReviewsLoading(false);
+        return;
+      }
       try {
         const reviewsQuery = query(collection(db, "libraryReviews"), orderBy("createdAt", "desc"), limit(800));
         const snap = await getDocs(reviewsQuery);
@@ -1425,14 +1498,20 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
           .filter((entry): entry is ReviewEntry => Boolean(entry));
         setReviews(rows);
       } catch (error: unknown) {
-        setReviewsError(`Reviews are currently unavailable: ${getErrorMessage(error)}`);
+        const message = getErrorMessage(error);
+        if (/missing or insufficient permissions/i.test(message)) {
+          setReviews([]);
+          setReviewsError("");
+        } else {
+          setReviewsError(`Reviews are currently unavailable: ${message}`);
+        }
       } finally {
         setReviewsLoading(false);
       }
     };
 
     void loadReviews();
-  }, []);
+  }, [isStaff]);
 
   useEffect(() => {
     const loadReadingStatuses = async () => {
@@ -1560,80 +1639,6 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
     return map;
   }, [discoveryRails]);
 
-  const reviewAggregateMap = useMemo(() => {
-    const map = new Map<string, ReviewAggregate>();
-
-    const fromDocSummary = (item: LibraryItem): ReviewAggregate | null => {
-      const summary = item.reviewSummary;
-      if (!summary) return null;
-      return {
-        reviewCount: summary.reviewCount ?? 0,
-        averagePracticality: summary.averagePracticality ?? null,
-        topDifficulty: summary.topDifficulty ?? null,
-        topBestFor: summary.topBestFor ?? null,
-        reflectionsCount: summary.reflectionsCount ?? 0,
-        latestReflection: summary.latestReflection ?? null,
-      };
-    };
-
-    items.forEach((item) => {
-      const base = fromDocSummary(item);
-      if (base) {
-        map.set(item.id, base);
-      }
-    });
-
-    const grouped = new Map<string, ReviewEntry[]>();
-    reviews.forEach((entry) => {
-      const bucket = grouped.get(entry.itemId);
-      if (bucket) {
-        bucket.push(entry);
-      } else {
-        grouped.set(entry.itemId, [entry]);
-      }
-    });
-
-    grouped.forEach((entries, itemId) => {
-      const reviewCount = entries.length;
-      if (!reviewCount) return;
-
-      const practicalityTotal = entries.reduce((sum, entry) => sum + entry.practicality, 0);
-
-      const difficultyVotes: Record<LibraryDifficulty, number> = {
-        "all-levels": 0,
-        beginner: 0,
-        intermediate: 0,
-        advanced: 0,
-      };
-      entries.forEach((entry) => {
-        difficultyVotes[entry.difficulty] += 1;
-      });
-      const topDifficulty = (Object.entries(difficultyVotes).sort((a, b) => b[1] - a[1])[0]?.[0] ??
-        "all-levels") as LibraryDifficulty;
-
-      const bestForVotes = new Map<string, number>();
-      entries.forEach((entry) => {
-        bestForVotes.set(entry.bestFor, (bestForVotes.get(entry.bestFor) ?? 0) + 1);
-      });
-      const topBestFor = [...bestForVotes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-
-      const reflections = entries.filter((entry) => Boolean(entry.reflection));
-      const latestReflection =
-        reflections.sort((a, b) => asMs(b.createdAt) - asMs(a.createdAt))[0]?.reflection ?? null;
-
-      map.set(itemId, {
-        reviewCount,
-        averagePracticality: practicalityTotal / reviewCount,
-        topDifficulty,
-        topBestFor,
-        reflectionsCount: reflections.length,
-        latestReflection,
-      });
-    });
-
-    return map;
-  }, [items, reviews]);
-
   const filteredItems = useMemo(() => {
     if (itemsSource === "api_v1") return items;
 
@@ -1730,6 +1735,24 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
     if (selectedItemDetail?.id === selectedItemId) return selectedItemDetail;
     return itemMap.get(selectedItemId) ?? discoveryItemMap.get(selectedItemId) ?? null;
   }, [discoveryItemMap, itemMap, selectedItemDetail, selectedItemId]);
+  const selectedItemSummary = useMemo(
+    () => (selectedItem ? resolveLibrarySummaryText(selectedItem) : null),
+    [selectedItem]
+  );
+  const selectedItemDetailTags = useMemo(
+    () => (selectedItem ? buildLibraryDetailTags(selectedItem) : []),
+    [selectedItem]
+  );
+  const selectedItemRecommendations = useMemo(() => {
+    if (!selectedItemId) return [];
+    return recommendations.filter((entry) => entry.itemId === selectedItemId).slice(0, 8);
+  }, [recommendations, selectedItemId]);
+  const viewerHasRecommendedSelectedItem = useMemo(() => {
+    if (!selectedItemId) return false;
+    return recommendations.some(
+      (entry) => entry.itemId === selectedItemId && recommendationBelongsToViewer(entry, user.uid)
+    );
+  }, [recommendations, selectedItemId, user.uid]);
 
   useEffect(() => {
     if (!selectedItemId) {
@@ -1803,11 +1826,61 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
     if (!selectedItemId) return null;
     return reviews.find((entry) => entry.itemId === selectedItemId && entry.reviewerUid === user.uid) ?? null;
   }, [reviews, selectedItemId, user.uid]);
+  const selectedItemSupportsCeramicsLearningPath = useMemo(
+    () => (selectedItem ? isCeramicsNonFictionTitle(selectedItem) : false),
+    [selectedItem]
+  );
+
+  useEffect(() => {
+    if (selectedItemSupportsCeramicsLearningPath) return;
+    setWorkshopTechnique("");
+    setWorkshopStatus("");
+    setReviewItemId(null);
+  }, [selectedItemSupportsCeramicsLearningPath]);
 
   const canRequest = activeLoanCount < MAX_LOANS;
   const memberInteractionsPaused = !libraryRolloutMemberWritesEnabled;
   const memberInteractionsPauseNotice = `Member interactions are temporarily paused during ${libraryRolloutPhaseLabel(libraryRolloutPhase)}. You can still browse, search, and plan your next reads.`;
   const memberInteractionsPauseNote = libraryRolloutNote.trim();
+
+  const updateShelfScrollState = useCallback(() => {
+    const node = shelfTrackRef.current;
+    if (!node) {
+      setShelfCanScrollBack(false);
+      setShelfCanScrollForward(false);
+      return;
+    }
+    const maxLeft = Math.max(0, node.scrollWidth - node.clientWidth);
+    setShelfCanScrollBack(node.scrollLeft > 4);
+    setShelfCanScrollForward(node.scrollLeft < maxLeft - 4);
+  }, []);
+
+  const scrollShelf = useCallback(
+    (direction: "back" | "forward") => {
+      const node = shelfTrackRef.current;
+      if (!node) return;
+      const delta = Math.max(220, Math.round(node.clientWidth * 0.82));
+      node.scrollBy({
+        left: direction === "back" ? -delta : delta,
+        behavior: "smooth",
+      });
+      window.setTimeout(updateShelfScrollState, 220);
+    },
+    [updateShelfScrollState]
+  );
+
+  useEffect(() => {
+    updateShelfScrollState();
+    const node = shelfTrackRef.current;
+    if (!node) return;
+    const onScroll = () => updateShelfScrollState();
+    node.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      node.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [filteredItems.length, updateShelfScrollState]);
 
   useEffect(() => {
     trackLending("lending_view_open", {
@@ -2366,20 +2439,27 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
     }
 
     try {
-      await addDoc(collection(db, "libraryDonationRequests"), {
-        isbn: isbn || null,
-        title: title || null,
-        author: author || null,
-        format: format || null,
-        notes: notes || null,
-        status: "pending",
-        donorUid: user.uid,
-        donorName: user.displayName || null,
-        donorEmail: user.email || null,
+      const requestedTitle = title || `ISBN ${isbn}`;
+      await addDoc(collection(db, "supportRequests"), {
+        uid: user.uid,
+        subject: `Library acquisition request: ${requestedTitle}`,
+        body: [
+          `Title: ${title || "(not provided)"}`,
+          `Author: ${author || "(not provided)"}`,
+          `ISBN: ${isbn || "(not provided)"}`,
+          `Format: ${format || "(not provided)"}`,
+          notes ? `Notes: ${notes}` : "Notes: (none)",
+        ].join("\n"),
+        category: "Library",
+        status: "new",
+        urgency: "non-urgent",
+        channel: "portal",
+        source: "lending-acquisition-request",
         createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        displayName: user.displayName || null,
+        email: user.email || null,
       });
-      setDonationStatus("Thanks. We received your acquisition request.");
+      setDonationStatus("Request sent to staff queue. You'll be notified when they review it.");
       setDonationIsbn("");
       setDonationTitle("");
       setDonationAuthor("");
@@ -2389,6 +2469,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
         section: "donation",
         hasIsbn: Boolean(isbn),
         hasTitle: Boolean(title),
+        routedTo: "supportRequests",
       });
     } catch (error: unknown) {
       setDonationStatus(`Donation request failed: ${getErrorMessage(error)}`);
@@ -2504,35 +2585,41 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
     });
   };
 
-  const submitRecommendation = async () => {
+  const submitRecommendation = async (item: LibraryItem) => {
     if (memberInteractionsPaused) {
       setRecommendationStatus(memberInteractionsPauseNotice);
       return;
     }
     if (recommendationBusy) return;
 
-    const title = recommendationDraft.title.trim();
-    const author = recommendationDraft.author.trim();
-    const reason = recommendationDraft.reason.trim();
-    const isbn = recommendationDraft.isbn.trim();
-    const linkUrl = recommendationDraft.linkUrl.trim();
-    const coverUrl = recommendationDraft.coverUrl.trim();
-    const sourceLabel = recommendationDraft.sourceLabel.trim();
-    const sourceUrl = recommendationDraft.sourceUrl.trim();
-    const techniques = parseRecommendationContextInput(recommendationDraft.techniques);
-    const studioRelevance = parseRecommendationContextInput(recommendationDraft.studioRelevance);
-    const intentContext = recommendationDraft.intentContext.trim();
+    const alreadyRecommended = recommendations.some(
+      (entry) => entry.itemId === item.id && recommendationBelongsToViewer(entry, user.uid)
+    );
+    if (alreadyRecommended) {
+      setRecommendationStatus("You already recommended this title to the community.");
+      return;
+    }
+
+    const title = item.title.trim();
+    const author = (item.authors?.[0] ?? "").trim() || "Unknown author";
+    const reason = "Member recommended this catalog title for studio use.";
+    const isbn = item.identifiers?.isbn13 ?? item.identifiers?.isbn10 ?? null;
+    const techniques = Array.from(
+      new Set(
+        (item.techniques ?? [])
+          .map((entry) => normalizeTagToken(entry))
+          .filter(Boolean)
+      )
+    ).slice(0, 8);
+    const studioRelevance = item.studioCategory
+      ? [normalizeTagToken(item.studioCategory)].filter(Boolean)
+      : [];
+    const intentContext = "catalog_title_recommendation";
     const tags = buildRecommendationContextTags({
       techniques,
       studioRelevance,
       intentContext,
     });
-    const matchingItem = items.find((item) => item.title.trim().toLowerCase() === title.toLowerCase()) ?? null;
-
-    if (!title || !author || !reason) {
-      setRecommendationStatus("Add title, author, and why this recommendation is useful.");
-      return;
-    }
 
     setRecommendationBusy(true);
     setRecommendationStatus("");
@@ -2541,19 +2628,19 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
       let createdEntry: LibraryRecommendation | null = null;
 
       const payload: LibraryRecommendationsCreateRequest = {
-        itemId: matchingItem?.id ?? null,
-        title: title || null,
-        author: author || null,
-        isbn: isbn || null,
+        itemId: item.id,
+        title,
+        author,
+        isbn,
         rationale: reason,
         tags,
-        linkUrl: linkUrl || null,
-        coverUrl: coverUrl || null,
-        sourceLabel: sourceLabel || null,
-        sourceUrl: sourceUrl || null,
+        linkUrl: null,
+        coverUrl: resolveMemberApprovedLibraryCoverUrl(item),
+        sourceLabel: "Monsoon Fire catalog",
+        sourceUrl: null,
         techniques,
         studioRelevance,
-        intentContext: intentContext || null,
+        intentContext,
       };
 
       try {
@@ -2565,19 +2652,19 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
         if (recommendationRecord && typeof recommendationRecord === "object") {
           createdEntry = normalizeRecommendationRow(
             {
-              itemId: matchingItem?.id ?? null,
+              itemId: item.id,
               title,
               author,
               rationale: reason,
               tags,
-              isbn: isbn || null,
-              linkUrl: linkUrl || null,
-              coverUrl: coverUrl || null,
-              sourceLabel: sourceLabel || null,
-              sourceUrl: sourceUrl || null,
+              isbn,
+              linkUrl: null,
+              coverUrl: resolveMemberApprovedLibraryCoverUrl(item),
+              sourceLabel: "Monsoon Fire catalog",
+              sourceUrl: null,
               techniques,
               studioRelevance,
-              intentContext: intentContext || null,
+              intentContext,
               recommenderUid: user.uid,
               recommenderName: user.displayName || user.email || "Member",
               isMine: true,
@@ -2590,19 +2677,19 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
         if (shouldBlockWriteFallback(error)) throw error;
         source = "firestore";
         const docRef = await addDoc(collection(db, "libraryRecommendations"), {
-          itemId: matchingItem?.id ?? null,
+          itemId: item.id,
           title,
           author,
           rationale: reason,
           tags,
-          isbn: isbn || null,
-          linkUrl: linkUrl || null,
-          coverUrl: coverUrl || null,
-          sourceLabel: sourceLabel || null,
-          sourceUrl: sourceUrl || null,
+          isbn,
+          linkUrl: null,
+          coverUrl: resolveMemberApprovedLibraryCoverUrl(item),
+          sourceLabel: "Monsoon Fire catalog",
+          sourceUrl: null,
           techniques,
           studioRelevance,
-          intentContext: intentContext || null,
+          intentContext,
           moderationStatus: "pending_review",
           recommenderUid: user.uid,
           recommenderName: user.displayName || user.email || "Member",
@@ -2614,19 +2701,19 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
 
         createdEntry = normalizeLibraryRecommendation(docRef.id, {
           id: docRef.id,
-          itemId: matchingItem?.id ?? null,
+          itemId: item.id,
           title,
           author,
           rationale: reason,
           tags,
-          isbn: isbn || null,
-          linkUrl: linkUrl || null,
-          coverUrl: coverUrl || null,
-          sourceLabel: sourceLabel || null,
-          sourceUrl: sourceUrl || null,
+          isbn,
+          linkUrl: null,
+          coverUrl: resolveMemberApprovedLibraryCoverUrl(item),
+          sourceLabel: "Monsoon Fire catalog",
+          sourceUrl: null,
           techniques,
           studioRelevance,
-          intentContext: intentContext || null,
+          intentContext,
           moderationStatus: "pending_review",
           recommenderUid: user.uid,
           recommenderName: user.displayName || user.email || "Member",
@@ -2639,19 +2726,19 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
 
       if (!createdEntry) {
         createdEntry = normalizeLibraryRecommendation(`recommendation-local-${Date.now()}`, {
-          itemId: matchingItem?.id ?? null,
+          itemId: item.id,
           title,
           author,
           rationale: reason,
           tags,
-          isbn: isbn || null,
-          linkUrl: linkUrl || null,
-          coverUrl: coverUrl || null,
-          sourceLabel: sourceLabel || null,
-          sourceUrl: sourceUrl || null,
+          isbn,
+          linkUrl: null,
+          coverUrl: resolveMemberApprovedLibraryCoverUrl(item),
+          sourceLabel: "Monsoon Fire catalog",
+          sourceUrl: null,
           techniques,
           studioRelevance,
-          intentContext: intentContext || null,
+          intentContext,
           moderationStatus: "pending_review",
           recommenderUid: user.uid,
           recommenderName: user.displayName || user.email || "Member",
@@ -2667,240 +2754,25 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
           recommendationVisibleForViewer(entry, user.uid, isStaff)
         )
       );
-      setRecommendationDraft({
-        title: "",
-        author: "",
-        reason: "",
-        isbn: "",
-        techniques: "",
-        studioRelevance: "",
-        intentContext: "",
-        linkUrl: "",
-        coverUrl: "",
-        sourceLabel: "",
-        sourceUrl: "",
-      });
-      setRecommendationStatus("Recommendation shared. Thanks for helping the studio community.");
-      setRecommendationFeedbackStatus("");
+      setRecommendationStatus(`"${item.title}" shared with the community shelf.`);
       trackLending("lending_recommendation_created", {
         section: "community_recommendations",
         source,
         hasIsbn: Boolean(isbn),
-        linkedItem: matchingItem?.id ?? null,
+        linkedItem: item.id,
         hasContextMetadata: tags.length > 0,
-        hasSourceContext: Boolean(sourceLabel || sourceUrl),
+        hasSourceContext: true,
       });
     } catch (error: unknown) {
-      setRecommendationStatus(`Recommendation failed: ${getErrorMessage(error)}`);
+      const message = getErrorMessage(error);
+      if (isPermissionDeniedMessage(message)) {
+        setRecommendationStatus("Recommendations are currently unavailable for your account.");
+      } else {
+        setRecommendationStatus(`Recommendation failed: ${message}`);
+      }
     } finally {
       setRecommendationBusy(false);
     }
-  };
-
-  const submitRecommendationFeedback = async (
-    recommendation: LibraryRecommendation,
-    feedback: LibraryRecommendationFeedbackKind,
-    commentInput?: string
-  ) => {
-    if (memberInteractionsPaused) {
-      setRecommendationFeedbackStatus(memberInteractionsPauseNotice);
-      return;
-    }
-    if (recommendationFeedbackBusyById[recommendation.id]) return;
-    const comment = (commentInput ?? recommendationFeedbackCommentById[recommendation.id] ?? "").trim();
-    const previousFeedback = recommendation.viewerFeedback ?? null;
-    const previousHelpful = recommendation.helpfulCount;
-    const previousNotHelpful = recommendation.notHelpfulCount;
-
-    setRecommendationFeedbackBusyById((prev) => ({ ...prev, [recommendation.id]: true }));
-    setRecommendationFeedbackStatus("");
-    setRecommendations((prev) =>
-      prev.map((entry) => {
-        if (entry.id !== recommendation.id) return entry;
-        let helpfulCount = entry.helpfulCount;
-        let notHelpfulCount = entry.notHelpfulCount;
-        if (entry.viewerFeedback === "helpful") helpfulCount = Math.max(0, helpfulCount - 1);
-        if (entry.viewerFeedback === "not_helpful") notHelpfulCount = Math.max(0, notHelpfulCount - 1);
-        if (feedback === "helpful") helpfulCount += 1;
-        if (feedback === "not_helpful") notHelpfulCount += 1;
-        return {
-          ...entry,
-          viewerFeedback: feedback,
-          helpfulCount,
-          notHelpfulCount,
-        };
-      })
-    );
-
-    try {
-      let source: "api_v1" | "firestore" = "api_v1";
-      try {
-        const helpful = feedback === "helpful";
-        const payload: LibraryRecommendationsFeedbackSubmitRequest = {
-          recommendationId: recommendation.id,
-          helpful,
-          comment: comment || null,
-        };
-        const response = await client.postJson<LibraryRecommendationsFeedbackSubmitResponse>(
-          V1_LIBRARY_RECOMMENDATIONS_FEEDBACK_SUBMIT_FN,
-          payload
-        );
-        const helpfulCount = response?.data?.recommendation?.helpfulCount;
-        const feedbackCount = response?.data?.recommendation?.feedbackCount;
-        if (typeof helpfulCount === "number" || typeof feedbackCount === "number") {
-          setRecommendations((prev) =>
-            prev.map((entry) =>
-              entry.id === recommendation.id
-                ? {
-                    ...entry,
-                    helpfulCount: typeof helpfulCount === "number" ? Math.max(0, Math.round(helpfulCount)) : entry.helpfulCount,
-                    feedbackCount:
-                      typeof feedbackCount === "number"
-                        ? Math.max(0, Math.round(feedbackCount))
-                        : entry.feedbackCount,
-                    notHelpfulCount:
-                      typeof helpfulCount === "number" && typeof feedbackCount === "number"
-                        ? Math.max(0, Math.round(feedbackCount) - Math.round(helpfulCount))
-                        : entry.notHelpfulCount,
-                    viewerFeedback: feedback,
-                  }
-                : entry
-            )
-          );
-        }
-      } catch (error: unknown) {
-        if (shouldBlockWriteFallback(error)) throw error;
-        source = "firestore";
-        await setDoc(
-          doc(db, "libraryRecommendationFeedback", `${recommendation.id}__${user.uid}`),
-          {
-            recommendationId: recommendation.id,
-            uid: user.uid,
-            helpful: feedback === "helpful",
-            comment: comment || null,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      }
-
-      if (comment) {
-        setRecommendationFeedbackCommentById((prev) => {
-          const next = { ...prev };
-          delete next[recommendation.id];
-          return next;
-        });
-      }
-
-      setRecommendationFeedbackStatus(
-        comment
-          ? "Feedback note saved. Thanks for adding context for peers."
-          : feedback === "helpful"
-            ? "Marked as helpful. Thanks for supporting peers."
-            : "Feedback saved. Thanks for helping improve recommendations."
-      );
-      trackLending("lending_recommendation_feedback_submitted", {
-        section: "community_recommendations",
-        recommendationId: recommendation.id,
-        feedback,
-        hasComment: Boolean(comment),
-        source,
-      });
-    } catch (error: unknown) {
-      setRecommendations((prev) =>
-        prev.map((entry) =>
-          entry.id === recommendation.id
-            ? {
-                ...entry,
-                viewerFeedback: previousFeedback,
-                helpfulCount: previousHelpful,
-                notHelpfulCount: previousNotHelpful,
-              }
-            : entry
-        )
-      );
-      setRecommendationFeedbackStatus(`Feedback failed: ${getErrorMessage(error)}`);
-    } finally {
-      setRecommendationFeedbackBusyById((prev) => {
-        const next = { ...prev };
-        delete next[recommendation.id];
-        return next;
-      });
-    }
-  };
-
-  const renderItemActions = (item: LibraryItem, context: "rail" | "catalog") => {
-    const available = typeof item.availableCopies === "number" ? item.availableCopies : 0;
-    const activeRequest = requestMap.get(item.id);
-    const activeLoan = loanMap.get(item.id);
-    const actionLabel = available > 0 ? "Reserve" : "Join waitlist";
-    const actionType = available > 0 ? "reserve" : "waitlist";
-
-    return (
-      <div className="library-actions">
-        {memberInteractionsPaused ? (
-          <div className="pill">{`Interactions paused (${libraryRolloutPhaseLabel(libraryRolloutPhase)})`}</div>
-        ) : activeLoan ? (
-          <button
-            className="btn btn-primary"
-            onClick={toVoidHandler(() => handleRequest(item, "return"))}
-            disabled={actionBusy}
-          >
-            {actionBusy ? "Requesting..." : "Request return"}
-          </button>
-        ) : activeRequest ? (
-          <div className="pill">
-            {activeRequest.type === "waitlist"
-              ? "Waitlist pending"
-              : activeRequest.type === "return"
-                ? "Return pending"
-                : "Reservation pending"}
-          </div>
-        ) : (
-          <button
-            className="btn btn-primary"
-            onClick={toVoidHandler(async () => {
-              trackLending("lending_section_action", {
-                section: context,
-                action: actionType,
-                itemId: item.id,
-              });
-              await handleRequest(item, actionType);
-            })}
-            disabled={actionBusy || !canRequest}
-          >
-            {actionBusy ? "Requesting..." : actionLabel}
-          </button>
-        )}
-        <button
-          className="btn btn-ghost"
-          onClick={() => {
-            setSelectedItemId(item.id);
-            setWorkshopTechnique(item.techniques?.[0] ?? "");
-            trackLending("lending_section_action", {
-              section: context,
-              action: "view_details",
-              itemId: item.id,
-            });
-          }}
-        >
-          View details
-        </button>
-      </div>
-    );
-  };
-
-  const renderSignalMeta = (item: LibraryItem) => {
-    const summary = reviewAggregateMap.get(item.id);
-    if (!summary) {
-      return <div className="library-signal-meta">New title - be the first to review practical value</div>;
-    }
-    return (
-      <div className="library-signal-meta">
-        {formatStars(summary.averagePracticality)} - {summary.reviewCount} review{summary.reviewCount === 1 ? "" : "s"}
-        {summary.topBestFor ? ` - best for ${formatTechniqueLabel(summary.topBestFor)}` : ""}
-      </div>
-    );
   };
 
   const renderDetailPrimaryActions = (item: LibraryItem) => {
@@ -2909,6 +2781,12 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
     const activeLoan = loanMap.get(item.id);
     const primaryLabel = availableCopies > 0 ? "Reserve this title" : "Join waitlist";
     const primaryType: "reserve" | "waitlist" = availableCopies > 0 ? "reserve" : "waitlist";
+    const showNotifyAction = availableCopies <= 0;
+    const recommendationButtonLabel = viewerHasRecommendedSelectedItem
+      ? "Recommended"
+      : recommendationBusy
+        ? "Sharing..."
+        : "Recommend";
 
     return (
       <div className="detail-action-bar">
@@ -2940,16 +2818,25 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
               {actionBusy ? "Submitting..." : primaryLabel}
             </button>
           )}
+          {showNotifyAction ? (
+            <button
+              className="btn btn-ghost"
+              onClick={toVoidHandler(() => handleNotifyToggle(item))}
+              disabled={notifyBusyById[item.id]}
+            >
+              {notifyBusyById[item.id]
+                ? "Updating..."
+                : notifyPrefs[item.id]
+                  ? "Notifications on"
+                  : "Notify when available"}
+            </button>
+          ) : null}
           <button
-            className="btn btn-ghost"
-            onClick={toVoidHandler(() => handleNotifyToggle(item))}
-            disabled={notifyBusyById[item.id]}
+            className="btn btn-secondary"
+            onClick={toVoidHandler(() => submitRecommendation(item))}
+            disabled={recommendationBusy || memberInteractionsPaused || viewerHasRecommendedSelectedItem}
           >
-            {notifyBusyById[item.id]
-              ? "Updating..."
-              : notifyPrefs[item.id]
-                ? "Notifications on"
-                : "Notify when available"}
+            {recommendationButtonLabel}
           </button>
         </div>
         <div className="detail-action-note">
@@ -2963,6 +2850,8 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                 ? `${availableCopies} cop${availableCopies === 1 ? "y" : "ies"} available right now.`
                 : "No copies available right now. Join the waitlist to hold your place."}
         </div>
+        {recommendationStatus ? <div className="notice inline-alert">{recommendationStatus}</div> : null}
+        {recommendationsError ? <div className="alert inline-alert">{recommendationsError}</div> : null}
       </div>
     );
   };
@@ -2975,34 +2864,6 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
         </div>
       </div>
 
-      <section className="card card-3d lending-hero">
-        <div>
-          <div className="card-title">Library policies</div>
-          <p className="lending-copy">
-            Loan length: {LOAN_LENGTH_LABEL}. Active loans: {activeLoanCount} / {MAX_LOANS}. Staff
-            approval required for all reservations and waitlists.
-          </p>
-        </div>
-        <div className="lending-hero-meta">
-          <div>
-            <span className="summary-label">Loan length</span>
-            <span className="summary-value">{LOAN_LENGTH_LABEL}</span>
-          </div>
-          <div>
-            <span className="summary-label">Max loans</span>
-            <span className="summary-value">{MAX_LOANS}</span>
-          </div>
-          <div>
-            <span className="summary-label">Role</span>
-            <span className="summary-value">{isStaff ? "Staff" : "Client"}</span>
-          </div>
-          <div>
-            <span className="summary-label">Signals</span>
-            <span className="summary-value">{reviewsLoading ? "..." : reviews.length}</span>
-          </div>
-        </div>
-      </section>
-
       {memberInteractionsPaused ? (
         <section className="card card-3d">
           <div className="notice inline-alert">{memberInteractionsPauseNotice}</div>
@@ -3012,113 +2873,140 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
         </section>
       ) : null}
 
-      <section className="lending-discovery">
-        {discoveryLoading ? <div className="notice inline-alert">Loading discovery rails...</div> : null}
-        {discoveryError ? <div className="notice inline-alert">{discoveryError}</div> : null}
-        {rails.map((rail) => (
-          <article className="card card-3d discovery-rail-card" key={rail.key}>
-            <div className="discovery-rail-header">
-              <div>
-                <div className="card-title">{rail.title}</div>
-                <p className="lending-copy">{rail.subtitle}</p>
-              </div>
-              <div className="summary-label">{rail.items.length} titles</div>
-            </div>
-            {rail.items.length === 0 ? (
-              <div className="empty-state">
-                Discovery rail will populate as staff curation and member signals update.
-              </div>
-            ) : (
-              <div className="discovery-rail-grid">
-                {rail.items.map((item) => (
-                  <article className="library-card discovery-card" key={`${rail.key}-${item.id}`}>
-                    <div className="library-card-header">
-                      {renderMemberLibraryCover(item)}
-                      <div>
-                        <div className="library-title">{item.title}</div>
-                        <div className="library-meta">{(item.authors ?? []).join(", ") || "Unknown author"}</div>
-                        <div className="library-meta">{formatAvailability(item)}</div>
-                      </div>
-                    </div>
-                    {item.curation?.staffRationale ? (
-                      <p className="library-description">{item.curation.staffRationale}</p>
-                    ) : null}
-                    {renderSignalMeta(item)}
-                    {renderItemActions(item, "rail")}
-                  </article>
-                ))}
-              </div>
-            )}
-          </article>
-        ))}
-      </section>
-
-      <section className="card card-3d lending-search">
+      <section className="card card-3d lending-search lending-shelf-experience">
         <div className="lending-search-header">
           <div>
             <div className="card-title">Browse the library</div>
-            <p className="lending-copy">Search by title, author, technique, subject, or ISBN.</p>
-            <div className="catalog-state-row">
-              <span className="library-meta">
-                {activeFilterCount > 0
-                  ? `${activeFilterCount} active search/filter control${activeFilterCount === 1 ? "" : "s"}`
-                  : "No active filters"}
-              </span>
-              {activeFilterCount > 0 ? (
-                <button
-                  className="btn btn-ghost btn-small"
-                  onClick={resetCatalogSearchAndFilters}
-                >
-                  Reset search and filters
-                </button>
-              ) : null}
-            </div>
           </div>
-          <div className="lending-search-controls">
-            <label className="library-filter-inline">
-              Sort
-              <select
-                value={catalogFilters.sort}
-                onChange={(event) => {
-                  const sortValue = event.target.value as LibraryItemsSort;
-                  setCatalogFilters((prev) => ({ ...prev, sort: sortValue }));
-                  trackLending("lending_filter_changed", {
-                    section: "catalog",
-                    filter: "sort",
-                    value: sortValue,
-                  });
-                }}
+          <div className="catalog-state-row">
+            <span className="library-meta">
+              {activeFilterCount > 0
+                ? `${activeFilterCount} active search/filter control${activeFilterCount === 1 ? "" : "s"}`
+                : "Filters are collapsed by default"}
+            </span>
+            {activeFilterCount > 0 ? (
+              <button
+                className="btn btn-ghost btn-small"
+                onClick={resetCatalogSearchAndFilters}
               >
-                {SORT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              className={`btn btn-ghost btn-small filter-panel-toggle ${filtersPanelOpen ? "is-open" : ""}`}
-              onClick={() => setFiltersPanelOpen((prev) => !prev)}
-              aria-expanded={filtersPanelOpen}
-              aria-controls="library-filter-panel"
-            >
-              {filtersPanelOpen ? "Close filters" : "Filters"}
-            </button>
+                Reset search and filters
+              </button>
+            ) : null}
           </div>
         </div>
-        <input
-          type="search"
-          placeholder="Search books, authors, techniques, ISBNs"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
+
+        <div className="library-shelf-stage">
+          <div className="library-shelf-header">
+            <div className="library-shelf-instruction">
+              Browse covers first, then open a title for details.
+            </div>
+            {filteredItems.length > 0 ? (
+              <div className="library-shelf-nav" aria-label="Shelf navigation">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-small"
+                  onClick={() => scrollShelf("back")}
+                  disabled={!shelfCanScrollBack}
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-small"
+                  onClick={() => scrollShelf("forward")}
+                  disabled={!shelfCanScrollForward}
+                >
+                  Next
+                </button>
+              </div>
+            ) : null}
+          </div>
+          {filteredItems.length === 0 ? (
+            <div className="empty-state library-empty-state">
+              No local titles match this search yet.
+            </div>
+          ) : (
+            <div className="library-shelf-track" ref={shelfTrackRef} role="list" aria-label="Library cover shelf">
+              {filteredItems.map((item) => {
+                const availableCopies = typeof item.availableCopies === "number" ? item.availableCopies : 0;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="listitem"
+                    className={`library-shelf-item ${selectedItemId === item.id ? "is-selected" : ""}`}
+                    aria-pressed={selectedItemId === item.id}
+                    onClick={() => {
+                      setSelectedItemId(item.id);
+                      setWorkshopTechnique(isCeramicsNonFictionTitle(item) ? item.techniques?.[0] ?? "" : "");
+                      trackLending("lending_section_action", {
+                        section: "catalog",
+                        action: "open_title",
+                        itemId: item.id,
+                      });
+                    }}
+                  >
+                    <div className="library-shelf-cover-wrap">{renderMemberLibraryCover(item)}</div>
+                    <div className="library-shelf-item-title">{item.title}</div>
+                    <div className="library-shelf-item-meta">{(item.authors ?? [])[0] || "Unknown author"}</div>
+                    <div className={`library-shelf-item-status ${availableCopies > 0 ? "is-available" : "is-waitlist"}`}>
+                      {availableCopies > 0 ? "Available" : "Waitlist"}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="lending-search-controls">
+          <input
+            type="search"
+            placeholder="Search books, authors, techniques, ISBNs"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          <label className="library-filter-inline">
+            Sort
+            <select
+              value={catalogFilters.sort}
+              onChange={(event) => {
+                const sortValue = event.target.value as LibraryItemsSort;
+                setCatalogFilters((prev) => ({ ...prev, sort: sortValue }));
+                trackLending("lending_filter_changed", {
+                  section: "catalog",
+                  filter: "sort",
+                  value: sortValue,
+                });
+              }}
+            >
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            className={`btn btn-ghost btn-small filter-panel-toggle ${filtersPanelOpen ? "is-open" : ""}`}
+            onClick={() => setFiltersPanelOpen((prev) => !prev)}
+            aria-expanded={filtersPanelOpen}
+            aria-controls="library-filter-panel"
+          >
+            {filtersPanelOpen ? "Hide filters" : "Filter catalog"}
+          </button>
+        </div>
+
         <div
           id="library-filter-panel"
           className={`library-filter-panel ${filtersPanelOpen ? "is-open" : ""}`}
         >
           <div className="library-filter-panel-header">
             <span className="summary-label">Filter catalog</span>
-            <button className="btn btn-ghost btn-small" onClick={() => setFiltersPanelOpen(false)}>
+            <button
+              className="btn btn-ghost btn-small library-filter-panel-close"
+              onClick={() => setFiltersPanelOpen(false)}
+            >
               Close
             </button>
           </div>
@@ -3254,6 +3142,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
         </div>
         {itemsError ? <div className="alert inline-alert">{itemsError}</div> : null}
         {itemsLoading ? <div className="notice inline-alert">Loading library items...</div> : null}
+        {reviewsLoading ? <div className="notice inline-alert">Loading review signals...</div> : null}
         {reviewsError ? <div className="notice inline-alert">{reviewsError}</div> : null}
 
         {shouldShowExternalFallbackPanel ? (
@@ -3337,57 +3226,6 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
             ) : null}
           </aside>
         ) : null}
-
-        <div className="library-grid">
-          {filteredItems.length === 0 ? (
-            <div className="empty-state library-empty-state">
-              No local titles match this search yet.
-            </div>
-          ) : (
-            filteredItems.map((item) => {
-              const summary = reviewAggregateMap.get(item.id);
-              const queueSummary = summarizeQueueContext(item, requestMap.get(item.id));
-              return (
-                <article className="library-card" key={item.id}>
-                  <div className="library-card-header">
-                    {renderMemberLibraryCover(item)}
-                    <div>
-                      <div className="library-title">{item.title}</div>
-                      {item.subtitle ? <div className="library-subtitle">{item.subtitle}</div> : null}
-                      <div className="library-meta">
-                        {(item.authors ?? []).join(", ") || "Unknown author"}
-                      </div>
-                      <div className="library-meta">{formatAvailability(item)}</div>
-                      {item.techniques && item.techniques.length > 0 ? (
-                        <div className="library-techniques">
-                          {item.techniques.slice(0, 3).map((technique) => (
-                            <span className="pill subtle" key={`${item.id}-${technique}`}>
-                              {formatTechniqueLabel(technique)}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="library-signal-meta">
-                    {summary
-                      ? `${formatStars(summary.averagePracticality)} - ${summary.reviewCount} practical review${
-                          summary.reviewCount === 1 ? "" : "s"
-                        }`
-                      : "No practical reviews yet"}
-                  </div>
-
-                  <div className="library-lifecycle-meta">{queueSummary}</div>
-
-                  {item.description ? <p className="library-description">{item.description}</p> : null}
-
-                  {renderItemActions(item, "catalog")}
-                </article>
-              );
-            })
-          )}
-        </div>
       </section>
 
       {selectedItem ? (
@@ -3400,48 +3238,58 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
               </div>
               <div className="library-meta">{formatAvailability(selectedItem)}</div>
             </div>
-            <div className="lending-detail-badges">
-              <span className="pill">{summarizeQueueContext(selectedItem, requestMap.get(selectedItem.id))}</span>
-              <span className="pill subtle">{summarizeEtaContext(selectedItem, requestMap.get(selectedItem.id))}</span>
-            </div>
           </div>
           {renderDetailPrimaryActions(selectedItem)}
           {selectedItemDetailLoading ? <div className="notice inline-alert">Refreshing detail...</div> : null}
           {selectedItemDetailError ? <div className="notice inline-alert">{selectedItemDetailError}</div> : null}
+          {recommendationsLoading ? <div className="notice inline-alert">Loading recommendations...</div> : null}
 
           <div className="lending-detail-grid">
-            <article className="lending-detail-panel">
-              <div className="summary-label">Lifecycle clarity</div>
-              <p className="lending-copy">
-                {selectedItem.lifecycle?.queueMessage ??
-                  "Requests are approved by staff in order. We will message you when pickup is ready."}
+            <article className="lending-detail-panel lending-detail-about">
+              <div className="summary-label">About this title</div>
+              <p className="library-description lending-detail-description">
+                {selectedItemSummary ??
+                  "Summary details are not available yet for this title. Staff can add synopsis content during catalog curation."}
               </p>
-              <p className="lending-copy">{summarizeEtaContext(selectedItem, requestMap.get(selectedItem.id))}</p>
-              <label>
-                Reading status
-                <select
-                  value={readingStatusByItem[selectedItem.id] ?? ""}
-                  onChange={(event) => {
-                    const nextStatus = normalizeReadingStatus(event.target.value);
-                    if (!nextStatus) return;
-                    toVoidHandler(() => upsertReadingStatus(selectedItem, nextStatus))();
-                  }}
-                  disabled={readingStatusBusyByItem[selectedItem.id] || memberInteractionsPaused}
-                >
-                  <option value="">Set status...</option>
-                  <option value="have">Have</option>
-                  <option value="borrowed">Borrowed</option>
-                  <option value="want_to_read">Want to read</option>
-                  <option value="recommended">Recommended</option>
-                </select>
-              </label>
+              {selectedItemDetailTags.length > 0 ? (
+                <div className="lending-detail-tag-list" aria-label="Title tags">
+                  {selectedItemDetailTags.map((tag) => (
+                    <span className="chip detail-tag-chip" key={`${selectedItem.id}-tag-${tag}`}>
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="library-meta">Tags will appear here when metadata is added.</div>
+              )}
+            </article>
+
+            <article className="lending-detail-panel">
+              <div className="summary-label">Reading status</div>
+              <div className="reading-status-group" role="group" aria-label="Reading status">
+                {READING_STATUS_OPTIONS.map((option) => {
+                  const isActive = readingStatusByItem[selectedItem.id] === option.value;
+                  return (
+                    <button
+                      key={`${selectedItem.id}-reading-status-${option.value}`}
+                      type="button"
+                      className={`reading-status-chip ${isActive ? "is-active" : ""}`}
+                      aria-pressed={isActive}
+                      onClick={toVoidHandler(() => upsertReadingStatus(selectedItem, option.value))}
+                      disabled={readingStatusBusyByItem[selectedItem.id] || memberInteractionsPaused || isActive}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
               <div className="library-meta">
                 {memberInteractionsPaused
                   ? `Reading status updates are paused during ${libraryRolloutPhaseLabel(libraryRolloutPhase)}.`
                   : readingStatusBusyByItem[selectedItem.id]
                     ? "Saving reading status..."
                     : readingStatusByItem[selectedItem.id]
-                    ? `Current status: ${formatTechniqueLabel(readingStatusByItem[selectedItem.id])}`
+                    ? `Current status: ${formatReadingStatusLabel(readingStatusByItem[selectedItem.id])}`
                     : "No reading status set yet."}
               </div>
               {readingStatusMessage ? <div className="notice inline-alert">{readingStatusMessage}</div> : null}
@@ -3473,7 +3321,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
               <div className="library-meta">
                 {memberInteractionsPaused
                   ? `Tag suggestions are paused during ${libraryRolloutPhaseLabel(libraryRolloutPhase)}.`
-                  : "Tag suggestions are reviewed by staff before they appear in discovery."}
+                  : "Tag suggestions are reviewed by staff."}
               </div>
               {tagSubmissionStatus ? <div className="notice inline-alert">{tagSubmissionStatus}</div> : null}
               <details className="detail-advanced-metadata">
@@ -3521,166 +3369,78 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
               </details>
             </article>
 
-            <article className="lending-detail-panel">
-              <div className="summary-label">Technique to workshop pathway</div>
-              <div className="detail-techniques">
-                {(selectedItem.techniques ?? []).length > 0 ? (
-                  selectedItem.techniques?.map((technique) => (
-                    <button
-                      key={`${selectedItem.id}-tech-${technique}`}
-                      className="chip"
-                      onClick={() => {
-                        setWorkshopTechnique(technique);
-                        trackLending("lending_section_action", {
-                          section: "technique_workshop_bridge",
-                          action: "prefill_technique",
-                          itemId: selectedItem.id,
-                          technique,
-                        });
-                      }}
-                    >
-                      {formatTechniqueLabel(technique)}
-                    </button>
-                  ))
-                ) : (
-                  <div className="empty-state">No technique tags yet. Staff can add them for pathway matching.</div>
-                )}
-              </div>
-
-              <div className="related-workshops">
-                {(selectedItem.relatedWorkshops ?? []).length > 0 ? (
-                  selectedItem.relatedWorkshops?.map((workshop) => (
-                    <a
-                      className="related-workshop-link"
-                      key={`${selectedItem.id}-workshop-${workshop.id ?? workshop.title}`}
-                      href={workshop.url || "#"}
-                      target={workshop.url ? "_blank" : undefined}
-                      rel={workshop.url ? "noreferrer" : undefined}
-                      onClick={() => {
-                        trackLending("lending_workshop_link_opened", {
-                          section: "technique_workshop_bridge",
-                          itemId: selectedItem.id,
-                          workshopTitle: workshop.title,
-                          hasUrl: Boolean(workshop.url),
-                        });
-                      }}
-                    >
-                      <span>{workshop.title}</span>
-                      <span className="library-meta">
-                        {[workshop.scheduleLabel, workshop.status].filter(Boolean).join(" - ") ||
-                          "Related workshop"}
-                      </span>
-                    </a>
-                  ))
-                ) : (
-                  <div className="empty-state">No linked workshop yet for these techniques.</div>
-                )}
-              </div>
-
-              <div className="workshop-request-inline">
-                <label>
-                  Technique/topic
-                  <input
-                    type="text"
-                    value={workshopTechnique}
-                    onChange={(event) => setWorkshopTechnique(event.target.value)}
-                    placeholder="ex: handbuilding handles, atmospheric glazing"
-                  />
-                </label>
-                <label>
-                  Skill level
-                  <select
-                    value={workshopLevel}
-                    onChange={(event) => setWorkshopLevel(event.target.value as WorkshopRequestLevel)}
-                  >
-                    <option value="all-levels">All levels</option>
-                    <option value="beginner">Beginner</option>
-                    <option value="intermediate">Intermediate</option>
-                    <option value="advanced">Advanced</option>
-                  </select>
-                </label>
-                <label>
-                  Schedule
-                  <select
-                    value={workshopSchedule}
-                    onChange={(event) =>
-                      setWorkshopSchedule(event.target.value as WorkshopRequestSchedule)
-                    }
-                  >
-                    <option value="weekday-evening">Weekday evening</option>
-                    <option value="weekday-daytime">Weekday daytime</option>
-                    <option value="weekend-morning">Weekend morning</option>
-                    <option value="weekend-afternoon">Weekend afternoon</option>
-                    <option value="flexible">Flexible</option>
-                  </select>
-                </label>
-                <label className="span-2">
-                  Notes (optional)
-                  <input
-                    type="text"
-                    value={workshopNote}
-                    onChange={(event) => setWorkshopNote(event.target.value)}
-                    placeholder="What would make this workshop immediately useful?"
-                  />
-                </label>
-                <button
-                  className="btn btn-primary"
-                  onClick={toVoidHandler(() => submitWorkshopRequest(selectedItem))}
-                  disabled={workshopBusy || !workshopTechnique.trim()}
-                >
-                  {workshopBusy ? "Sending..." : "Request workshop for this technique"}
-                </button>
-                {workshopStatus ? <div className="notice inline-alert">{workshopStatus}</div> : null}
-              </div>
-            </article>
-
-            <article className="lending-detail-panel">
-              <div className="summary-label">Member learning signals</div>
-              {renderSignalMeta(selectedItem)}
-              {selectedItemReflections.length > 0 ? (
-                <div className="reflection-list">
-                  {selectedItemReflections.map((entry) => (
-                    <div className="reflection-card" key={entry.id}>
-                      <div className="reflection-title">Inspired by this title</div>
-                      <p>{entry.reflection}</p>
-                    </div>
-                  ))}
+            {selectedItemSupportsCeramicsLearningPath ? (
+              <article className="lending-detail-panel">
+                <div className="summary-label">Technique to workshop pathway</div>
+                <div className="detail-techniques">
+                  {(selectedItem.techniques ?? []).length > 0 ? (
+                    selectedItem.techniques?.map((technique) => (
+                      <button
+                        key={`${selectedItem.id}-tech-${technique}`}
+                        className="chip"
+                        onClick={() => {
+                          setWorkshopTechnique(technique);
+                          trackLending("lending_section_action", {
+                            section: "technique_workshop_bridge",
+                            action: "prefill_technique",
+                            itemId: selectedItem.id,
+                            technique,
+                          });
+                        }}
+                      >
+                        {formatTechniqueLabel(technique)}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="empty-state">No technique tags yet. Staff can add them for pathway matching.</div>
+                  )}
                 </div>
-              ) : (
-                <div className="empty-state">No inspired-by reflections yet.</div>
-              )}
 
-              {memberInteractionsPaused ? (
-                <div className="library-meta">
-                  {`Practical review submissions are paused during ${libraryRolloutPhaseLabel(libraryRolloutPhase)}.`}
+                <div className="related-workshops">
+                  {(selectedItem.relatedWorkshops ?? []).length > 0 ? (
+                    selectedItem.relatedWorkshops?.map((workshop) => (
+                      <a
+                        className="related-workshop-link"
+                        key={`${selectedItem.id}-workshop-${workshop.id ?? workshop.title}`}
+                        href={workshop.url || "#"}
+                        target={workshop.url ? "_blank" : undefined}
+                        rel={workshop.url ? "noreferrer" : undefined}
+                        onClick={() => {
+                          trackLending("lending_workshop_link_opened", {
+                            section: "technique_workshop_bridge",
+                            itemId: selectedItem.id,
+                            workshopTitle: workshop.title,
+                            hasUrl: Boolean(workshop.url),
+                          });
+                        }}
+                      >
+                        <span>{workshop.title}</span>
+                        <span className="library-meta">
+                          {[workshop.scheduleLabel, workshop.status].filter(Boolean).join(" - ") ||
+                            "Related workshop"}
+                        </span>
+                      </a>
+                    ))
+                  ) : (
+                    <div className="empty-state">No linked workshop yet for these techniques.</div>
+                  )}
                 </div>
-              ) : reviewItemId === selectedItem.id ? (
-                <form
-                  className="quick-review-form"
-                  onSubmit={toVoidHandler(async () => {
-                    await submitReview(selectedItem);
-                  })}
-                >
-                  <div className="summary-label">
-                    {selectedItemMyReview ? "Update your practical review" : "45-second practical review"}
-                  </div>
+
+                <div className="workshop-request-inline">
                   <label>
-                    Practical value (1-5)
+                    Technique/topic
                     <input
-                      type="range"
-                      min={1}
-                      max={5}
-                      step={1}
-                      value={reviewPracticality}
-                      onChange={(event) => setReviewPracticality(normalizePracticality(event.target.value))}
+                      type="text"
+                      value={workshopTechnique}
+                      onChange={(event) => setWorkshopTechnique(event.target.value)}
+                      placeholder="ex: handbuilding handles, atmospheric glazing"
                     />
                   </label>
-                  <div className="library-meta">Selected: {reviewPracticality}</div>
                   <label>
-                    Difficulty
+                    Skill level
                     <select
-                      value={reviewDifficulty}
-                      onChange={(event) => setReviewDifficulty(normalizeDifficulty(event.target.value))}
+                      value={workshopLevel}
+                      onChange={(event) => setWorkshopLevel(event.target.value as WorkshopRequestLevel)}
                     >
                       <option value="all-levels">All levels</option>
                       <option value="beginner">Beginner</option>
@@ -3689,326 +3449,264 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                     </select>
                   </label>
                   <label>
-                    Best for
-                    <select value={reviewBestFor} onChange={(event) => setReviewBestFor(event.target.value)}>
-                      <option value="quick-reference">Quick reference</option>
-                      <option value="project-planning">Project planning</option>
-                      <option value="troubleshooting">Troubleshooting</option>
-                      <option value="skill-drill">Skill drill</option>
-                      <option value="studio-system">Studio system</option>
+                    Schedule
+                    <select
+                      value={workshopSchedule}
+                      onChange={(event) =>
+                        setWorkshopSchedule(event.target.value as WorkshopRequestSchedule)
+                      }
+                    >
+                      <option value="weekday-evening">Weekday evening</option>
+                      <option value="weekday-daytime">Weekday daytime</option>
+                      <option value="weekend-morning">Weekend morning</option>
+                      <option value="weekend-afternoon">Weekend afternoon</option>
+                      <option value="flexible">Flexible</option>
                     </select>
                   </label>
-                  <label>
-                    Inspired by this book (optional)
+                  <label className="span-2">
+                    Notes (optional)
                     <input
                       type="text"
-                      maxLength={180}
-                      value={reviewReflection}
-                      onChange={(event) => setReviewReflection(event.target.value)}
-                      placeholder="ex: I used this trimming flow on six mugs this week"
+                      value={workshopNote}
+                      onChange={(event) => setWorkshopNote(event.target.value)}
+                      placeholder="What would make this workshop immediately useful?"
                     />
                   </label>
-                  <div className="quick-review-actions">
-                    <button className="btn btn-primary" type="submit" disabled={reviewBusy}>
-                      {reviewBusy ? "Saving..." : selectedItemMyReview ? "Update review" : "Save review"}
-                    </button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={toVoidHandler(() => submitWorkshopRequest(selectedItem))}
+                    disabled={workshopBusy || !workshopTechnique.trim()}
+                  >
+                    {workshopBusy ? "Sending..." : "Request workshop for this technique"}
+                  </button>
+                  {workshopStatus ? <div className="notice inline-alert">{workshopStatus}</div> : null}
+                </div>
+              </article>
+            ) : null}
+
+            <article className="lending-detail-panel">
+              {selectedItemSupportsCeramicsLearningPath ? (
+                <>
+                  {selectedItemReflections.length > 0 ? (
+                    <div className="reflection-list">
+                      {selectedItemReflections.map((entry) => (
+                        <div className="reflection-card" key={entry.id}>
+                          <div className="reflection-title">Inspired by this title</div>
+                          <p>{entry.reflection}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-state">No inspired-by reflections yet.</div>
+                  )}
+
+                  {memberInteractionsPaused ? (
+                    <div className="library-meta">
+                      {`Practical review submissions are paused during ${libraryRolloutPhaseLabel(libraryRolloutPhase)}.`}
+                    </div>
+                  ) : reviewItemId === selectedItem.id ? (
+                    <form
+                      className="quick-review-form"
+                      onSubmit={toVoidHandler(async () => {
+                        await submitReview(selectedItem);
+                      })}
+                    >
+                      <div className="summary-label">
+                        {selectedItemMyReview ? "Update your practical review" : "45-second practical review"}
+                      </div>
+                      <label>
+                        Practical value (1-5)
+                        <input
+                          type="range"
+                          min={1}
+                          max={5}
+                          step={1}
+                          value={reviewPracticality}
+                          onChange={(event) => setReviewPracticality(normalizePracticality(event.target.value))}
+                        />
+                      </label>
+                      <div className="library-meta">Selected: {reviewPracticality}</div>
+                      <label>
+                        Difficulty
+                        <select
+                          value={reviewDifficulty}
+                          onChange={(event) => setReviewDifficulty(normalizeDifficulty(event.target.value))}
+                        >
+                          <option value="all-levels">All levels</option>
+                          <option value="beginner">Beginner</option>
+                          <option value="intermediate">Intermediate</option>
+                          <option value="advanced">Advanced</option>
+                        </select>
+                      </label>
+                      <label>
+                        Best for
+                        <select value={reviewBestFor} onChange={(event) => setReviewBestFor(event.target.value)}>
+                          <option value="quick-reference">Quick reference</option>
+                          <option value="project-planning">Project planning</option>
+                          <option value="troubleshooting">Troubleshooting</option>
+                          <option value="skill-drill">Skill drill</option>
+                          <option value="studio-system">Studio system</option>
+                        </select>
+                      </label>
+                      <label>
+                        Inspired by this book (optional)
+                        <input
+                          type="text"
+                          maxLength={180}
+                          value={reviewReflection}
+                          onChange={(event) => setReviewReflection(event.target.value)}
+                          placeholder="ex: I used this trimming flow on six mugs this week"
+                        />
+                      </label>
+                      <div className="quick-review-actions">
+                        <button className="btn btn-primary" type="submit" disabled={reviewBusy}>
+                          {reviewBusy ? "Saving..." : selectedItemMyReview ? "Update review" : "Save review"}
+                        </button>
+                        <button
+                          className="btn btn-ghost"
+                          type="button"
+                          onClick={() => {
+                            setReviewItemId(null);
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
                     <button
-                      className="btn btn-ghost"
-                      type="button"
+                      className="btn btn-secondary"
                       onClick={() => {
-                        setReviewItemId(null);
+                        setReviewItemId(selectedItem.id);
+                        if (selectedItemMyReview) {
+                          setReviewPracticality(normalizePracticality(selectedItemMyReview.practicality));
+                          setReviewDifficulty(selectedItemMyReview.difficulty);
+                          setReviewBestFor(selectedItemMyReview.bestFor);
+                          setReviewReflection(selectedItemMyReview.reflection ?? "");
+                        } else {
+                          setReviewPracticality(4);
+                          setReviewDifficulty("all-levels");
+                          setReviewBestFor("quick-reference");
+                          setReviewReflection("");
+                        }
+                        trackLending("lending_section_action", {
+                          section: "learning_signals",
+                          action: "open_review_form",
+                          itemId: selectedItem.id,
+                        });
                       }}
                     >
-                      Cancel
+                      {selectedItemMyReview ? "Update your practical review" : "Add 45-second practical review"}
                     </button>
-                  </div>
-                </form>
+                  )}
+                </>
               ) : (
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setReviewItemId(selectedItem.id);
-                    if (selectedItemMyReview) {
-                      setReviewPracticality(normalizePracticality(selectedItemMyReview.practicality));
-                      setReviewDifficulty(selectedItemMyReview.difficulty);
-                      setReviewBestFor(selectedItemMyReview.bestFor);
-                      setReviewReflection(selectedItemMyReview.reflection ?? "");
-                    } else {
-                      setReviewPracticality(4);
-                      setReviewDifficulty("all-levels");
-                      setReviewBestFor("quick-reference");
-                      setReviewReflection("");
-                    }
-                    trackLending("lending_section_action", {
-                      section: "learning_signals",
-                      action: "open_review_form",
-                      itemId: selectedItem.id,
-                    });
-                  }}
-                >
-                  {selectedItemMyReview ? "Update your practical review" : "Add 45-second practical review"}
-                </button>
+                <div className="library-meta">
+                  Practical reviews are shown only for ceramics non-fiction titles.
+                </div>
               )}
+              {selectedItemRecommendations.length > 0 ? (
+                <details className="detail-advanced-metadata">
+                  <summary>Community recommendations ({selectedItemRecommendations.length})</summary>
+                  <div className="detail-recommend-list">
+                    {selectedItemRecommendations.map((entry) => (
+                      <div className="reflection-card" key={entry.id}>
+                        <div className="reflection-title">
+                          {entry.recommendedByName || "Member"}
+                        </div>
+                        <p>{entry.reason || "Recommended for studio use."}</p>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
               {reviewStatus ? <div className="notice inline-alert">{reviewStatus}</div> : null}
             </article>
           </div>
         </section>
-      ) : null}
+      ) : (
+        <section className="card card-3d lending-detail lending-detail-empty">
+          <div className="card-title">Select a title from the shelf</div>
+          <p className="lending-copy">
+            Details, checkout, reviews, and recommendations stay hidden until you open a title.
+          </p>
+        </section>
+      )}
 
-      <section className="card card-3d lending-recommendations">
-        <div className="card-title">Community recommendations</div>
-        <p className="lending-copy">
-          Share useful titles with peers. Members can vote on what is most helpful for the studio queue.
-        </p>
-        {memberInteractionsPaused ? (
-          <div className="notice inline-alert">
-            {`Recommendation sharing is paused during ${libraryRolloutPhaseLabel(libraryRolloutPhase)}. You can still browse existing recommendations.`}
-          </div>
-        ) : (
-          <form
-            className="recommendation-composer"
-            onSubmit={toVoidHandler(async () => {
-              await submitRecommendation();
-            })}
-          >
-          <label>
-            Title
-            <input
-              type="text"
-              value={recommendationDraft.title}
-              onChange={(event) =>
-                setRecommendationDraft((prev) => ({ ...prev, title: event.target.value }))
-              }
-              placeholder="Book or resource title"
-            />
-          </label>
-          <label>
-            Author
-            <input
-              type="text"
-              value={recommendationDraft.author}
-              onChange={(event) =>
-                setRecommendationDraft((prev) => ({ ...prev, author: event.target.value }))
-              }
-              placeholder="Author or creator"
-            />
-          </label>
-          <label className="span-2">
-            Why it helps (required)
-            <textarea
-              value={recommendationDraft.reason}
-              onChange={(event) =>
-                setRecommendationDraft((prev) => ({ ...prev, reason: event.target.value }))
-              }
-              rows={3}
-              maxLength={320}
-              placeholder="What specific workflow, firing issue, or skill does this improve?"
-            />
-          </label>
-          <label>
-            Techniques (optional)
-            <input
-              type="text"
-              value={recommendationDraft.techniques}
-              onChange={(event) =>
-                setRecommendationDraft((prev) => ({ ...prev, techniques: event.target.value }))
-              }
-              placeholder="comma-separated, ex: handbuilding, trimming"
-            />
-          </label>
-          <label>
-            Studio relevance (optional)
-            <input
-              type="text"
-              value={recommendationDraft.studioRelevance}
-              onChange={(event) =>
-                setRecommendationDraft((prev) => ({ ...prev, studioRelevance: event.target.value }))
-              }
-              placeholder="comma-separated, ex: glaze testing, kiln loading"
-            />
-          </label>
-          <label className="span-2">
-            Intent context (optional)
-            <input
-              type="text"
-              value={recommendationDraft.intentContext}
-              onChange={(event) =>
-                setRecommendationDraft((prev) => ({ ...prev, intentContext: event.target.value }))
-              }
-              placeholder="What context should peers know before using this recommendation?"
-            />
-          </label>
-          <label>
-            ISBN (optional)
-            <input
-              type="text"
-              value={recommendationDraft.isbn}
-              onChange={(event) =>
-                setRecommendationDraft((prev) => ({ ...prev, isbn: event.target.value }))
-              }
-              placeholder="ISBN-10 or ISBN-13"
-            />
-          </label>
-          <label>
-            Reference link (optional)
-            <input
-              type="url"
-              value={recommendationDraft.linkUrl}
-              onChange={(event) =>
-                setRecommendationDraft((prev) => ({ ...prev, linkUrl: event.target.value }))
-              }
-              placeholder="https://..."
-            />
-          </label>
-          <label>
-            Cover image URL (optional)
-            <input
-              type="url"
-              value={recommendationDraft.coverUrl}
-              onChange={(event) =>
-                setRecommendationDraft((prev) => ({ ...prev, coverUrl: event.target.value }))
-              }
-              placeholder="https://..."
-            />
-          </label>
-          <label>
-            Source label (optional)
-            <input
-              type="text"
-              value={recommendationDraft.sourceLabel}
-              onChange={(event) =>
-                setRecommendationDraft((prev) => ({ ...prev, sourceLabel: event.target.value }))
-              }
-              placeholder="Open Library, Publisher, etc."
-            />
-          </label>
-          <label className="span-2">
-            Source URL (optional)
-            <input
-              type="url"
-              value={recommendationDraft.sourceUrl}
-              onChange={(event) =>
-                setRecommendationDraft((prev) => ({ ...prev, sourceUrl: event.target.value }))
-              }
-              placeholder="https://source.example"
-            />
-          </label>
-            <div className="recommendation-composer-actions">
-              <button className="btn btn-primary" type="submit" disabled={recommendationBusy}>
-                {recommendationBusy ? "Sharing..." : "Share recommendation"}
-              </button>
+      <section className="card card-3d lending-discovery-flyout">
+        <div className="lending-discovery-flyout-header">
+          <div>
+            <div className="card-title">Recommendations</div>
+            <div className="library-meta">
+              Quick rails are tucked away so browsing stays focused.
             </div>
-          </form>
-        )}
-        {recommendationStatus ? <div className="notice inline-alert">{recommendationStatus}</div> : null}
-        {recommendationsError ? <div className="alert inline-alert">{recommendationsError}</div> : null}
-        {recommendationsLoading ? (
-          <div className="notice inline-alert">Loading community recommendations...</div>
-        ) : null}
-
-        <div className="recommendation-feed">
-          {!recommendationsLoading && recommendations.length === 0 ? (
-            <div className="empty-state">No recommendations yet. Be the first to add one.</div>
-          ) : (
-            recommendations.slice(0, 30).map((entry) => {
-              const mine = recommendationBelongsToViewer(entry, user.uid);
-              const showModeration = mine && entry.moderationStatus !== "approved";
-              const contextSummary = [
-                entry.techniques.length > 0 ? `Techniques: ${entry.techniques.join(", ")}` : null,
-                entry.studioRelevance.length > 0 ? `Studio relevance: ${entry.studioRelevance.join(", ")}` : null,
-                entry.intentContext ? `Intent: ${entry.intentContext}` : null,
-              ]
-                .filter(Boolean)
-                .join(" | ");
-
-              return (
-                <article className="recommendation-card" key={entry.id}>
-                  <div className="library-card-header">
-                    {entry.coverUrl ? (
-                      <img className="library-cover" src={entry.coverUrl} alt={entry.title} />
-                    ) : (
-                      <div className="library-cover placeholder">Cover</div>
-                    )}
-                    <div>
-                      <div className="library-title">{entry.title}</div>
-                      <div className="library-meta">{entry.author}</div>
-                      <div className="library-meta">
-                        Shared by {entry.recommendedByName || "Member"} on {recommendationCreatedLabel(entry)}
-                      </div>
-                      {showModeration ? (
-                        <div className="library-meta">Moderation: {recommendationModerationLabel(entry.moderationStatus)}</div>
-                      ) : null}
-                    </div>
-                  </div>
-                  <p className="library-description">{entry.reason}</p>
-                  {contextSummary ? <div className="library-meta">{contextSummary}</div> : null}
-                  {entry.sourceLabel || entry.sourceUrl ? (
-                    <div className="library-meta">
-                      Source:{" "}
-                      {entry.sourceUrl ? (
-                        <a href={entry.sourceUrl} target="_blank" rel="noreferrer">
-                          {entry.sourceLabel || "Reference link"}
-                        </a>
-                      ) : (
-                        entry.sourceLabel
-                      )}
-                    </div>
-                  ) : null}
-                  {entry.linkUrl ? (
-                    <a className="library-meta recommendation-link" href={entry.linkUrl} target="_blank" rel="noreferrer">
-                      Open referenced title
-                    </a>
-                  ) : null}
-                  <div className="recommendation-actions">
-                    <button
-                      className={`btn btn-ghost btn-small ${entry.viewerFeedback === "helpful" ? "is-active" : ""}`}
-                      onClick={toVoidHandler(() => submitRecommendationFeedback(entry, "helpful"))}
-                      disabled={recommendationFeedbackBusyById[entry.id] || memberInteractionsPaused}
-                    >
-                      Helpful ({entry.helpfulCount})
-                    </button>
-                    <button
-                      className={`btn btn-ghost btn-small ${entry.viewerFeedback === "not_helpful" ? "is-active" : ""}`}
-                      onClick={toVoidHandler(() => submitRecommendationFeedback(entry, "not_helpful"))}
-                      disabled={recommendationFeedbackBusyById[entry.id] || memberInteractionsPaused}
-                    >
-                      Needs context ({entry.notHelpfulCount})
-                    </button>
-                  </div>
-                  <div className="recommendation-feedback-note">
-                    <input
-                      type="text"
-                      value={recommendationFeedbackCommentById[entry.id] ?? ""}
-                      onChange={(event) =>
-                        setRecommendationFeedbackCommentById((prev) => ({
-                          ...prev,
-                          [entry.id]: event.target.value,
-                        }))
-                      }
-                      maxLength={220}
-                      placeholder="Optional note for peers or staff moderation"
-                      disabled={memberInteractionsPaused}
-                    />
-                    <button
-                      className="btn btn-ghost btn-small"
-                      onClick={toVoidHandler(() =>
-                        submitRecommendationFeedback(entry, "not_helpful", recommendationFeedbackCommentById[entry.id] ?? "")
-                      )}
-                      disabled={
-                        recommendationFeedbackBusyById[entry.id] ||
-                        memberInteractionsPaused ||
-                        !(recommendationFeedbackCommentById[entry.id] ?? "").trim()
-                      }
-                    >
-                      Send note
-                    </button>
-                  </div>
-                </article>
-              );
-            })
-          )}
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost btn-small"
+            aria-expanded={recommendationsFlyoutOpen}
+            aria-controls="recommendations-flyout-panel"
+            onClick={() => {
+              setRecommendationsFlyoutOpen((previous) => {
+                const next = !previous;
+                trackLending("lending_section_action", {
+                  section: "recommendations_flyout",
+                  action: next ? "open" : "close",
+                });
+                return next;
+              });
+            }}
+          >
+            {recommendationsFlyoutOpen ? "Hide recommendations" : "Open recommendations"}
+          </button>
         </div>
-        {recommendationFeedbackStatus ? <div className="notice inline-alert">{recommendationFeedbackStatus}</div> : null}
+
+        <div
+          id="recommendations-flyout-panel"
+          className={`lending-discovery lending-discovery-secondary recommendations-flyout-panel ${recommendationsFlyoutOpen ? "is-open" : ""}`}
+        >
+          {discoveryLoading ? <div className="notice inline-alert">Loading discovery rails...</div> : null}
+          {discoveryError ? <div className="notice inline-alert">{discoveryError}</div> : null}
+          {rails.map((rail) => {
+            const railItems =
+              rail.key === "staff_picks"
+                ? rail.items.slice(0, STAFF_PICKS_LIMIT)
+                : rail.items.slice(0, DISCOVERY_RAIL_LIMIT);
+            return (
+              <article className="discovery-rail-row" key={rail.key}>
+                <div className="discovery-rail-header">
+                  <div className="summary-label">{rail.title}</div>
+                  <div className="library-meta">{railItems.length} titles</div>
+                </div>
+                {railItems.length === 0 ? (
+                  <div className="empty-state">No titles in this lane yet.</div>
+                ) : (
+                  <div className="discovery-rail-track">
+                    {railItems.map((item) => (
+                      <button
+                        key={`${rail.key}-${item.id}`}
+                        type="button"
+                        className="discovery-rail-tile"
+                        onClick={() => {
+                          setSelectedItemId(item.id);
+                          setWorkshopTechnique(isCeramicsNonFictionTitle(item) ? item.techniques?.[0] ?? "" : "");
+                          trackLending("lending_section_action", {
+                            section: rail.key,
+                            action: "open_title",
+                            itemId: item.id,
+                          });
+                        }}
+                      >
+                        <div className="discovery-rail-cover">{renderMemberLibraryCover(item)}</div>
+                        <span className="discovery-rail-title">{item.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
       </section>
 
       {actionStatus ? <div className="notice inline-alert">{actionStatus}</div> : null}
@@ -4114,10 +3812,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
       </section>
 
       <section className="card card-3d lending-donate" id={ACQUISITION_REQUEST_SECTION_ID}>
-        <div className="card-title">Acquisition request</div>
-        <p className="lending-copy">
-          Submit an ISBN or share title details. Staff will review for purchase or donation intake.
-        </p>
+        <div className="card-title">Request a new title</div>
         <div className="donation-grid">
           <label>
             ISBN
@@ -4167,8 +3862,16 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
         </div>
         {donationStatus ? <div className="notice inline-alert">{donationStatus}</div> : null}
         <button className="btn btn-primary" onClick={toVoidHandler(handleDonation)} disabled={donationBusy}>
-          {donationBusy ? "Submitting..." : "Submit request"}
+          {donationBusy ? "Sending..." : "Send to staff queue"}
         </button>
+      </section>
+
+      <section className="card card-3d lending-policy-note">
+        <div className="card-title">Borrowing policy</div>
+        <p className="lending-copy">
+          Loan length is {LOAN_LENGTH_LABEL}. Active loans: {activeLoanCount} / {MAX_LOANS}. Reservations and waitlists
+          are approved by staff.
+        </p>
       </section>
 
     </div>

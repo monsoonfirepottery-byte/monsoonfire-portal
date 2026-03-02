@@ -2,6 +2,11 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  background:
+    radial-gradient(circle at 10% -20%, rgba(120, 164, 220, 0.16), transparent 42%),
+    radial-gradient(circle at 92% 0%, rgba(70, 116, 181, 0.14), transparent 44%);
+  border-radius: 22px;
+  padding: 8px;
 }
 
 .lending-library-page .summary-label {
@@ -17,13 +22,6 @@
   color: var(--text);
 }
 
-.lending-hero {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
 .lending-copy {
   margin: 0;
   color: var(--muted);
@@ -31,63 +29,30 @@
   line-height: 1.6;
 }
 
-.lending-hero-meta {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(120px, 1fr));
-  gap: 12px;
-}
-
-.lending-hero-meta > div {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.lending-discovery {
-  display: grid;
-  gap: 16px;
-}
-
-.discovery-rail-card {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  animation: lending-rise 360ms ease both;
-}
-
-.discovery-rail-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  align-items: flex-start;
-}
-
-.discovery-rail-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 12px;
-}
-
-.discovery-card {
-  border-style: dashed;
-  border-width: 1px;
-  transition: transform 170ms ease, box-shadow 170ms ease, border-color 170ms ease;
-}
-
-.discovery-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 18px rgba(10, 18, 28, 0.16);
-  border-color: rgba(85, 134, 206, 0.42);
-}
-
 .lending-search {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.lending-shelf-experience {
+  position: relative;
+  overflow: hidden;
+}
+
+.lending-shelf-experience::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 35%),
+    radial-gradient(circle at 50% 120%, rgba(120, 160, 220, 0.22), transparent 45%);
+  pointer-events: none;
+}
+
+.lending-shelf-experience > * {
+  position: relative;
+  z-index: 1;
 }
 
 .lending-search-header {
@@ -101,8 +66,13 @@
 .lending-search-controls {
   display: flex;
   gap: 10px;
-  align-items: flex-end;
+  align-items: center;
   flex-wrap: wrap;
+}
+
+.lending-search-controls input[type="search"] {
+  flex: 1 1 260px;
+  min-width: 220px;
 }
 
 .catalog-state-row {
@@ -131,7 +101,7 @@
 }
 
 .filter-panel-toggle {
-  display: none;
+  display: inline-flex;
 }
 
 .library-filter-panel {
@@ -139,8 +109,12 @@
   border-radius: 14px;
   background: var(--surface);
   padding: 12px;
-  display: grid;
+  display: none;
   gap: 10px;
+}
+
+.library-filter-panel.is-open {
+  display: grid;
 }
 
 .library-filter-panel-header {
@@ -148,6 +122,10 @@
   justify-content: space-between;
   align-items: center;
   gap: 8px;
+}
+
+.library-filter-panel-close {
+  display: none;
 }
 
 .library-filter-group {
@@ -178,6 +156,138 @@
   justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.library-shelf-stage {
+  display: grid;
+  gap: 10px;
+}
+
+.library-shelf-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.library-shelf-instruction {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.library-shelf-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.library-shelf-track {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(148px, 172px);
+  gap: 12px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  padding: 6px 4px 10px;
+}
+
+.library-shelf-track::-webkit-scrollbar {
+  height: 8px;
+}
+
+.library-shelf-track::-webkit-scrollbar-thumb {
+  background: rgba(120, 148, 188, 0.5);
+  border-radius: 999px;
+}
+
+.library-shelf-item {
+  border: 1px solid rgba(130, 156, 192, 0.34);
+  border-radius: 16px;
+  background: linear-gradient(168deg, rgba(31, 42, 58, 0.9), rgba(20, 29, 43, 0.9));
+  color: var(--text);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 170ms ease, border-color 170ms ease, box-shadow 170ms ease;
+  scroll-snap-align: start;
+  min-height: 256px;
+}
+
+.library-shelf-item:hover {
+  transform: translateY(-4px) scale(1.015);
+  border-color: rgba(143, 182, 234, 0.66);
+  box-shadow: 0 14px 24px rgba(8, 14, 26, 0.34);
+}
+
+.library-shelf-item:focus-visible {
+  outline: 2px solid rgba(175, 204, 245, 0.9);
+  outline-offset: 2px;
+}
+
+.library-shelf-item.is-selected {
+  border-color: rgba(175, 204, 245, 0.9);
+  box-shadow: 0 0 0 1px rgba(175, 204, 245, 0.45), 0 14px 24px rgba(8, 14, 26, 0.34);
+}
+
+.library-shelf-cover-wrap {
+  display: grid;
+  place-items: center;
+}
+
+.library-shelf-item .library-cover {
+  width: 126px;
+  height: 174px;
+  border-radius: 12px;
+}
+
+.library-shelf-item .library-cover.placeholder {
+  width: 126px;
+  height: 174px;
+}
+
+.library-shelf-item-title {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.library-shelf-item-meta {
+  font-size: 12px;
+  color: rgba(221, 231, 247, 0.76);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.library-shelf-item-status {
+  margin-top: auto;
+  font-size: 12px;
+  font-weight: 600;
+  width: 100%;
+  border-radius: 999px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  text-align: center;
+  justify-self: center;
+}
+
+.library-shelf-item-status.is-available {
+  color: #c7f5d9;
+  border-color: rgba(128, 220, 165, 0.45);
+  background: rgba(42, 128, 77, 0.22);
+}
+
+.library-shelf-item-status.is-waitlist {
+  color: #ffe5c2;
+  border-color: rgba(240, 184, 112, 0.48);
+  background: rgba(128, 88, 28, 0.28);
 }
 
 .lending-search input[type="search"] {
@@ -237,6 +347,112 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.lending-discovery {
+  display: grid;
+  gap: 12px;
+}
+
+.lending-discovery-secondary {
+  display: grid;
+  gap: 12px;
+}
+
+.lending-discovery-flyout {
+  display: grid;
+  gap: 12px;
+}
+
+.lending-discovery-flyout-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.recommendations-flyout-panel {
+  display: none;
+}
+
+.recommendations-flyout-panel.is-open {
+  display: grid;
+}
+
+.discovery-rail-row {
+  display: grid;
+  gap: 8px;
+}
+
+.discovery-rail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.discovery-rail-track {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(120px, 132px);
+  gap: 10px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  padding-bottom: 8px;
+}
+
+.discovery-rail-tile {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  padding: 8px;
+  color: var(--text);
+  display: grid;
+  gap: 6px;
+  text-align: center;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition: transform 150ms ease, border-color 150ms ease;
+}
+
+.discovery-rail-tile:hover {
+  transform: translateY(-2px);
+  border-color: rgba(129, 167, 219, 0.6);
+}
+
+.discovery-rail-cover {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(19, 27, 39, 0.45);
+  display: grid;
+  place-items: center;
+}
+
+.discovery-rail-tile .library-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border: 0;
+}
+
+.discovery-rail-tile .library-cover.placeholder {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.discovery-rail-title {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .library-empty-state {
@@ -340,12 +556,18 @@
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 6px;
+  justify-content: center;
 }
 
 .lending-detail {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.lending-detail-empty {
+  min-height: 120px;
+  justify-content: center;
 }
 
 .lending-detail-header {
@@ -374,11 +596,13 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  justify-content: center;
 }
 
 .detail-action-note {
   font-size: 12px;
   color: var(--muted);
+  text-align: center;
 }
 
 .lending-detail-grid {
@@ -395,6 +619,65 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.lending-detail-about {
+  grid-column: 1 / -1;
+  gap: 12px;
+}
+
+.lending-detail-description {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.lending-detail-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.detail-tag-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.reading-status-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.reading-status-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  padding: 6px 11px;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.reading-status-chip:hover {
+  border-color: rgba(129, 167, 219, 0.6);
+  transform: translateY(-1px);
+}
+
+.reading-status-chip.is-active {
+  border-color: rgba(143, 182, 234, 0.7);
+  background: rgba(143, 182, 234, 0.15);
+}
+
+.reading-status-chip:disabled {
+  opacity: 0.65;
+  cursor: default;
+  transform: none;
 }
 
 .detail-advanced-metadata {
@@ -432,6 +715,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  justify-content: center;
 }
 
 .related-workshops {
@@ -485,6 +769,24 @@
 .reflection-list {
   display: grid;
   gap: 8px;
+}
+
+.detail-recommend-row {
+  display: grid;
+  gap: 6px;
+}
+
+.detail-recommend-list {
+  display: grid;
+  gap: 8px;
+}
+
+.lending-library-page .pill,
+.lending-library-page .chip {
+  display: inline-flex;
+  align-items: center;
+  text-align: center;
+  justify-content: center;
 }
 
 .reflection-card {
@@ -557,6 +859,12 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.lending-policy-note {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .lending-recommendations {
@@ -735,11 +1043,6 @@
     grid-template-columns: 1fr;
   }
 
-  .lending-hero-meta {
-    grid-template-columns: 1fr 1fr;
-    width: 100%;
-  }
-
   .workshop-request-inline {
     grid-template-columns: 1fr;
   }
@@ -757,11 +1060,8 @@
     grid-column: auto;
   }
 
-  .filter-panel-toggle {
-    display: inline-flex;
-  }
-
   .library-filter-panel {
+    display: grid;
     position: fixed;
     top: 0;
     right: 0;
@@ -782,10 +1082,18 @@
     box-shadow: -18px 0 30px rgba(10, 18, 28, 0.3);
   }
 
+  .lending-search-controls input[type="search"] {
+    min-width: 100%;
+  }
+
   .library-filter-panel.is-open {
     transform: translateX(0);
     opacity: 1;
     pointer-events: auto;
+  }
+
+  .library-filter-panel-close {
+    display: inline-flex;
   }
 
   .library-filter-grid,
@@ -806,6 +1114,20 @@
     z-index: 8;
     box-shadow: 0 12px 20px rgba(10, 18, 28, 0.2);
   }
+
+  .library-shelf-track {
+    grid-auto-columns: minmax(140px, 158px);
+  }
+
+  .library-shelf-item {
+    min-height: 238px;
+  }
+
+  .library-shelf-item .library-cover,
+  .library-shelf-item .library-cover.placeholder {
+    width: 112px;
+    height: 154px;
+  }
 }
 
 @media (max-width: 640px) {
@@ -813,23 +1135,12 @@
     gap: 16px;
   }
 
-  .lending-hero,
   .lending-search,
   .lending-donate,
-  .lending-recommendations,
+  .lending-policy-note,
   .lending-admin,
-  .discovery-rail-card,
   .lending-detail {
     padding: 14px;
-  }
-
-  .lending-hero-meta {
-    grid-template-columns: 1fr;
-  }
-
-  .library-grid,
-  .discovery-rail-grid {
-    grid-template-columns: 1fr;
   }
 
   .library-actions {
@@ -845,11 +1156,26 @@
   .detail-advanced-grid {
     grid-template-columns: 1fr;
   }
+
+  .library-shelf-track {
+    grid-auto-columns: minmax(132px, 146px);
+  }
+
+  .library-shelf-item .library-cover,
+  .library-shelf-item .library-cover.placeholder {
+    width: 98px;
+    height: 136px;
+  }
+
+  .discovery-rail-track {
+    grid-auto-columns: minmax(110px, 124px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .discovery-rail-card,
-  .library-card {
+  .library-card,
+  .library-shelf-item,
+  .discovery-rail-tile {
     animation: none;
     transition: none;
   }
@@ -869,8 +1195,12 @@ html[data-portal-theme="memoria"] .lending-library-page .lending-panel,
 html[data-portal-theme="memoria"] .lending-library-page .lending-admin,
 html[data-portal-theme="memoria"] .lending-library-page .library-card,
 html[data-portal-theme="memoria"] .lending-library-page .lending-donate,
+html[data-portal-theme="memoria"] .lending-library-page .lending-policy-note,
 html[data-portal-theme="memoria"] .lending-library-page .lending-recommendations,
 html[data-portal-theme="memoria"] .lending-library-page .discovery-rail-card,
+html[data-portal-theme="memoria"] .lending-library-page .discovery-rail-row,
+html[data-portal-theme="memoria"] .lending-library-page .library-shelf-item,
+html[data-portal-theme="memoria"] .lending-library-page .discovery-rail-tile,
 html[data-portal-theme="memoria"] .lending-library-page .lending-detail,
 html[data-portal-theme="memoria"] .lending-library-page .lending-detail-panel {
   border-color: rgba(153, 174, 207, 0.36);
@@ -890,8 +1220,6 @@ html[data-portal-theme="memoria"] .lending-library-page .workshop-request-inline
 html[data-portal-theme="memoria"] .lending-library-page .workshop-request-inline select,
 html[data-portal-theme="memoria"] .lending-library-page .quick-review-form input,
 html[data-portal-theme="memoria"] .lending-library-page .quick-review-form select,
-html[data-portal-theme="memoria"] .lending-library-page .recommendation-composer input,
-html[data-portal-theme="memoria"] .lending-library-page .recommendation-composer textarea,
 html[data-portal-theme="memoria"] .lending-library-page .related-workshop-link,
 html[data-portal-theme="memoria"] .lending-library-page .reflection-card,
 html[data-portal-theme="memoria"] .lending-library-page .external-fallback-panel,
@@ -913,6 +1241,6 @@ html[data-portal-theme="memoria"] .lending-library-page .library-lifecycle-meta,
 html[data-portal-theme="memoria"] .lending-library-page .reflection-title,
 html[data-portal-theme="memoria"] .lending-library-page .workshop-request-inline label,
 html[data-portal-theme="memoria"] .lending-library-page .quick-review-form label,
-html[data-portal-theme="memoria"] .lending-library-page .recommendation-composer label {
+html[data-portal-theme="memoria"] .lending-library-page .library-shelf-item-meta {
   color: rgba(223, 232, 247, 0.72);
 }

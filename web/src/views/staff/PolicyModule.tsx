@@ -26,6 +26,8 @@ type CommunitySafetyConfig = {
   mediumSeverityThreshold: number;
   blockedTerms: string[];
   blockedUrlHosts: string[];
+  updatedAtMs: number;
+  updatedBy: string | null;
 };
 
 type SafetyTrigger = {
@@ -229,6 +231,8 @@ function normalizeSafetyConfig(row: Record<string, unknown> | undefined): Commun
       : 35,
     blockedTerms,
     blockedUrlHosts,
+    updatedAtMs: Number.isFinite(row?.updatedAtMs as number) ? Number(row?.updatedAtMs) : 0,
+    updatedBy: str(row?.updatedBy).trim() || null,
   };
 }
 
@@ -247,6 +251,8 @@ export default function PolicyModule({ client, active, disabled }: Props) {
     mediumSeverityThreshold: 35,
     blockedTerms: [],
     blockedUrlHosts: [],
+    updatedAtMs: 0,
+    updatedBy: null,
   });
 
   const [versionDraft, setVersionDraft] = useState("");
@@ -469,6 +475,29 @@ export default function PolicyModule({ client, active, disabled }: Props) {
       <div className={`staff-note ${safetyPosture.level === "healthy" ? "" : "staff-note-error"}`}>
         Safety posture: <strong>{safetyPosture.level}</strong> · {safetyPosture.message}
       </div>
+      <div className="staff-note">
+        <strong>What each control changes</strong>
+        <ul className="staff-list">
+          <li>
+            <strong>Publish kill switch</strong> pauses event publishing by returning a temporary
+            stop for new create/publish calls (`createEvent`, `publishEvent`).
+          </li>
+          <li>
+            <strong>Safety scanner enabled</strong> controls risk scoring. Turning it off skips
+            proactive scoring/triggers for drafts.
+          </li>
+          <li>
+            <strong>Auto-flag high severity drafts</strong> keeps scanning active, but stops auto
+            routing high-risk drafts into required review.
+          </li>
+        </ul>
+        <div className="staff-mini">
+          Last safety config update:{" "}
+          {safetyConfig.updatedAtMs
+            ? `${when(safetyConfig.updatedAtMs)} by ${safetyConfig.updatedBy ?? "unknown"}`
+            : "no recorded updates yet"}
+        </div>
+      </div>
       <div className="staff-actions-row">
         <button
           className="btn btn-secondary"
@@ -484,7 +513,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
             })
           }
         >
-          Engage emergency kill switch
+          Pause all community publishing
         </button>
         <button
           className="btn btn-secondary"
@@ -502,8 +531,12 @@ export default function PolicyModule({ client, active, disabled }: Props) {
             })
           }
         >
-          Restore normal safety defaults
+          Resume normal safety defaults
         </button>
+      </div>
+      <div className="staff-mini">
+        Use the publish pause only for active incident containment, then restore normal defaults
+        after mitigation verification.
       </div>
       <div className="staff-subtitle">Safety presets</div>
       <div className="staff-actions-row">
@@ -557,7 +590,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
               setSafetyConfig((prev) => ({ ...prev, enabled: event.target.checked }))
             }
           />
-          Safety scanner enabled
+          Safety scanner enabled (risk scoring on)
         </label>
         <label className="staff-inline-check">
           <input
@@ -567,7 +600,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
               setSafetyConfig((prev) => ({ ...prev, autoFlagEnabled: event.target.checked }))
             }
           />
-          Auto-flag high severity drafts
+          Auto-flag high severity drafts (review queue auto-routing)
         </label>
         <label className="staff-inline-check">
           <input
@@ -577,7 +610,7 @@ export default function PolicyModule({ client, active, disabled }: Props) {
               setSafetyConfig((prev) => ({ ...prev, publishKillSwitch: event.target.checked }))
             }
           />
-          Publish kill switch
+          Publish kill switch (new create/publish calls paused)
         </label>
       </div>
 

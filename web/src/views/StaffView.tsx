@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { User } from "firebase/auth";
 import {
   addDoc,
+  arrayUnion,
   collection,
   doc,
+  documentId,
   getCountFromServer,
   getDocs,
   limit,
@@ -11,9 +13,11 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
   where,
   type QueryConstraint,
 } from "firebase/firestore";
+import { connectStorageEmulator, getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
 import { createFunctionsClient, safeJsonStringify, type LastRequest } from "../api/functionsClient";
 import {
   type ImportLibraryIsbnsResponse,
@@ -51,6 +55,8 @@ import {
 import { track } from "../lib/analytics";
 import { getRecentRequestTelemetry, type RequestTelemetry } from "../lib/requestTelemetry";
 import { db } from "../firebase";
+import type { Announcement, DirectMessageThread } from "../types/messaging";
+import { normalizeReservationRecord, type ReservationRecord } from "../lib/normalizers/reservations";
 import { clearHandlerErrorLog, getHandlerErrorLog } from "../utils/handlerLog";
 import { resolveFunctionsBaseUrlResolution } from "../utils/functionsBaseUrl";
 import { resolveStudioBrainBaseUrlResolution } from "../utils/studioBrain";
@@ -65,8 +71,9 @@ import PolicyModule from "./staff/PolicyModule";
 import StripeSettingsModule from "./staff/StripeSettingsModule";
 import ReportsModule from "./staff/ReportsModule";
 import AgentOpsModule from "./staff/AgentOpsModule";
-import StudioBrainModule from "./staff/StudioBrainModule";
+import { buildLendingAdminApiPayload } from "./staff/lendingAdminPayload";
 import ReservationsView from "./ReservationsView";
+import { formatDateTime } from "../utils/format";
 
 type Props = {
   user: User;
@@ -76,9 +83,22 @@ type Props = {
   devAdminEnabled: boolean;
   showEmulatorTools: boolean;
   onOpenCheckin?: () => void;
+  onOpenReservation?: (reservationId?: string) => void;
+  onOpenMessages?: () => void;
+  onOpenMessageThread?: (threadId: string) => void;
+  onOpenFirings?: () => void;
+  onStartFiring?: () => void;
   initialModule?: ModuleKey;
   forceCockpitWorkspace?: boolean;
   forceEventsWorkspace?: boolean;
+  forceSystemWorkspace?: boolean;
+  messageThreads?: DirectMessageThread[];
+  messageThreadsLoading?: boolean;
+  messageThreadsError?: string;
+  announcements?: Announcement[];
+  announcementsLoading?: boolean;
+  announcementsError?: string;
+  unreadAnnouncements?: number;
 };
 
 const MODULE_REGISTRY = {
@@ -89,21 +109,20 @@ const MODULE_REGISTRY = {
   firings: { label: "Firings", owner: "Kiln Ops", testId: "staff-module-firings", nav: true },
   events: { label: "Events", owner: "Program Ops", testId: "staff-module-events", nav: true },
   reports: { label: "Reports", owner: "Trust & Safety", testId: "staff-module-reports", nav: true },
-  studioBrain: { label: "Studio Brain", owner: "Platform", testId: "staff-module-studiobrain", nav: false },
   stripe: { label: "Stripe settings", owner: "Finance Ops", testId: "staff-module-stripe", nav: true },
   commerce: { label: "Store & billing", owner: "Commerce Ops", testId: "staff-module-commerce", nav: true },
   lending: { label: "Lending", owner: "Library Ops", testId: "staff-module-lending", nav: true },
   system: { label: "System", owner: "Platform", testId: "staff-module-system", nav: false },
 } as const;
 
-const COCKPIT_SECTION_IDS = {
-  triage: "staff-cockpit-triage",
-  automation: "staff-cockpit-automation",
-  platform: "staff-cockpit-platform",
-  policyAgentOps: "staff-cockpit-policy-agent-ops",
-  reports: "staff-cockpit-reports",
-  moduleTelemetry: "staff-cockpit-module-telemetry",
-} as const;
+const COCKPIT_TABS = [
+  { key: "triage", label: "Action queue" },
+  { key: "automation", label: "Automation" },
+  { key: "platform", label: "Platform" },
+  { key: "policyAgentOps", label: "Policy & Agent Ops" },
+  { key: "reports", label: "Reports" },
+  { key: "moduleTelemetry", label: "Telemetry" },
+] as const;
 const STAFF_MODULE_USAGE_STORAGE_KEY = "mf_staff_module_usage_v1";
 const STAFF_MODULE_USAGE_STORAGE_VERSION = 2;
 const STAFF_ADAPTIVE_NAV_STORAGE_KEY = "mf_staff_adaptive_nav_v1";
@@ -113,8 +132,11 @@ const V1_LIBRARY_ITEMS_CREATE_FN = "apiV1/v1/library.items.create";
 const V1_LIBRARY_ITEMS_UPDATE_FN = "apiV1/v1/library.items.update";
 const V1_LIBRARY_ITEMS_DELETE_FN = "apiV1/v1/library.items.delete";
 const V1_LIBRARY_ITEMS_RESOLVE_ISBN_FN = "apiV1/v1/library.items.resolveIsbn";
+const LIBRARY_ITEMS_API_PAGE_SIZE = 100;
+const LIBRARY_RECOMMENDATIONS_API_LIMIT = 100;
 
 type ModuleKey = keyof typeof MODULE_REGISTRY;
+type CockpitTabKey = (typeof COCKPIT_TABS)[number]["key"];
 type ModuleUsageStat = {
   visits: number;
   dwellMs: number;
@@ -563,6 +585,24 @@ type BatchActionName =
   | "pickedUpAndClose"
   | "continueJourney";
 
+type TodayReservationRow = {
+  id: string;
+  ownerUid: string;
+  displayName: string;
+  timeMs: number;
+  status: string;
+  itemCount: number;
+  visitType: string;
+  notes: string;
+};
+
+type TodayPaymentAlert = {
+  id: string;
+  severity: "P0" | "P1";
+  title: string;
+  detail: string;
+};
+
 const MODULES: Array<{ key: ModuleKey; label: string; owner: string; testId: string }> = (
   Object.keys(MODULE_REGISTRY) as ModuleKey[]
 )
@@ -579,11 +619,16 @@ const GITHUB_REPO_NAME = "monsoonfire-portal";
 const GITHUB_REPO_SLUG = `${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}`;
 const GITHUB_API_BASE = `https://api.github.com/repos/${GITHUB_REPO_SLUG}`;
 const AUTOMATION_STALE_MS = 36 * 60 * 60 * 1000;
+const TODAY_RESERVATION_LIMIT = 10;
+const TODAY_MESSAGE_LIMIT = 8;
+const TODAY_ALERT_LIMIT = 8;
+const MAX_FIRING_PHOTO_BYTES = 10 * 1024 * 1024;
 const BATCH_ARTIFACT_KEYWORD = /\b(test|qa|dev|seed|fixture|sample|demo|playwright|mock|canary|staging|tmp|temp)\b/i;
 const BATCH_STALE_CLOSED_DAYS = 120;
 const BATCH_STALE_OPEN_DAYS = 30;
 const STUDIO_BRAIN_SIGNAL_STALE_MINUTES = 12;
 const STUDIO_BRAIN_OFFLINE_CONFIRM_MINUTES = 45;
+let storageEmulatorConnected = false;
 const AUTOMATION_WORKFLOW_SOURCES: AutomationWorkflowSource[] = [
   {
     key: "automationHealth",
@@ -906,6 +951,109 @@ function toTsMs(value: unknown): number {
   return 0;
 }
 
+function getLocalDayBoundsMs(reference = Date.now()) {
+  const start = new Date(reference);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return {
+    startMs: start.getTime(),
+    endMs: end.getTime(),
+    startDate: start,
+    endDate: end,
+  };
+}
+
+function reservationStatusLabel(value: unknown): string {
+  const status = typeof value === "string" ? value.trim().toUpperCase() : "";
+  if (!status) return "REQUESTED";
+  if (status === "CONFIRMED" || status === "WAITLISTED" || status === "CANCELLED") return status;
+  return status;
+}
+
+function reservationVisitTypeLabel(record: ReservationRecord): string {
+  const mode = typeof record.intakeMode === "string" ? record.intakeMode.trim().toUpperCase() : "";
+  if (mode === "WHOLE_KILN") return "Whole kiln";
+  if (mode === "COMMUNITY_SHELF") return "Community shelf";
+  if (mode === "SHELF_PURCHASE") return "Per-shelf purchase";
+  return "Check-in";
+}
+
+function toShortTimeLabel(valueMs: number): string {
+  if (!valueMs) return "Time TBD";
+  try {
+    return new Date(valueMs).toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return "Time TBD";
+  }
+}
+
+function toFileExtension(file: File): string {
+  const name = file.name || "";
+  const idx = name.lastIndexOf(".");
+  if (idx > -1 && idx < name.length - 1) {
+    return name.slice(idx + 1).toLowerCase();
+  }
+  const type = file.type || "";
+  if (type.includes("png")) return "png";
+  if (type.includes("webp")) return "webp";
+  return "jpg";
+}
+
+function readTimestampMs(value: unknown): number {
+  if (!value || typeof value !== "object") return 0;
+  const candidate = value as { toMillis?: () => number; toDate?: () => Date; seconds?: number };
+  if (typeof candidate.toMillis === "function") {
+    const ms = candidate.toMillis();
+    return Number.isFinite(ms) ? ms : 0;
+  }
+  if (typeof candidate.toDate === "function") {
+    const date = candidate.toDate();
+    const ms = date.getTime();
+    return Number.isFinite(ms) ? ms : 0;
+  }
+  if (typeof candidate.seconds === "number" && Number.isFinite(candidate.seconds)) {
+    return Math.floor(candidate.seconds * 1000);
+  }
+  return 0;
+}
+
+function isDirectMessageUnread(thread: DirectMessageThread, uid: string): boolean {
+  const lastMessageMs = readTimestampMs(thread.lastMessageAt);
+  if (!lastMessageMs) return false;
+  const lastReadMs = readTimestampMs(thread.lastReadAtByUid?.[uid]);
+  if (!lastReadMs) return true;
+  return lastMessageMs > lastReadMs;
+}
+
+function resolveStorageForStaffToday() {
+  const storage = getStorage();
+  const env = (import.meta.env ?? {}) as {
+    DEV?: boolean;
+    VITE_USE_EMULATORS?: string;
+    VITE_STORAGE_EMULATOR_HOST?: string;
+    VITE_STORAGE_EMULATOR_PORT?: string;
+  };
+  const devMode = typeof import.meta !== "undefined" && Boolean(env.DEV);
+  if (
+    devMode &&
+    env.VITE_USE_EMULATORS === "true" &&
+    !storageEmulatorConnected
+  ) {
+    const host = env.VITE_STORAGE_EMULATOR_HOST || "127.0.0.1";
+    const portRaw = env.VITE_STORAGE_EMULATOR_PORT || "9199";
+    const port = Number(portRaw);
+    if (Number.isFinite(port)) {
+      connectStorageEmulator(storage, host, port);
+      storageEmulatorConnected = true;
+    }
+  }
+  return storage;
+}
+
 function toIsoMs(value: unknown): number {
   if (typeof value !== "string") return 0;
   const parsed = Date.parse(value);
@@ -966,11 +1114,6 @@ function cleanIsbnToken(raw: string): string {
 
 function parseUniqueCsv(input: string): string[] {
   return Array.from(new Set(parseList(input).map((value) => value.trim()).filter(Boolean)));
-}
-
-function nullableText(value: string): string | null {
-  const trimmed = value.trim();
-  return trimmed ? trimmed : null;
 }
 
 function inferIsbnVariants(raw: string): { primary: string; isbn10: string | null; isbn13: string | null } {
@@ -1393,9 +1536,22 @@ export default function StaffView({
   devAdminEnabled,
   showEmulatorTools,
   onOpenCheckin,
+  onOpenReservation,
+  onOpenMessages,
+  onOpenMessageThread,
+  onOpenFirings,
+  onStartFiring,
   initialModule = "cockpit",
   forceCockpitWorkspace = false,
   forceEventsWorkspace = false,
+  forceSystemWorkspace = false,
+  messageThreads = [],
+  messageThreadsLoading = false,
+  messageThreadsError = "",
+  announcements = [],
+  announcementsLoading = false,
+  announcementsError = "",
+  unreadAnnouncements = 0,
 }: Props) {
   const [moduleKey, setModuleKey] = useState<ModuleKey>(initialModule);
   const [moduleUsage, setModuleUsage] = useState<Record<ModuleKey, ModuleUsageStat>>(() => loadModuleUsageSnapshot());
@@ -1411,9 +1567,11 @@ export default function StaffView({
       : "No staff authority";
   const isCockpitModule = moduleKey === "cockpit";
   const [cockpitWorkspaceMode, setCockpitWorkspaceMode] = useState(true);
+  const [cockpitTab, setCockpitTab] = useState<CockpitTabKey>("triage");
   const isWorkspaceFocused =
     forceCockpitWorkspace ||
     forceEventsWorkspace ||
+    forceSystemWorkspace ||
     (moduleKey === "cockpit" && cockpitWorkspaceMode);
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
@@ -1428,6 +1586,11 @@ export default function StaffView({
   const [users, setUsers] = useState<MemberRecord[]>([]);
   const [batches, setBatches] = useState<BatchRecord[]>([]);
   const [firings, setFirings] = useState<FiringRecord[]>([]);
+  const [firingsLoading, setFiringsLoading] = useState(false);
+  const [firingsError, setFiringsError] = useState("");
+  const [todayReservations, setTodayReservations] = useState<TodayReservationRow[]>([]);
+  const [todayReservationsLoading, setTodayReservationsLoading] = useState(false);
+  const [todayReservationsError, setTodayReservationsError] = useState("");
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [signups, setSignups] = useState<SignupRecord[]>([]);
   const [summary, setSummary] = useState<{
@@ -1438,6 +1601,9 @@ export default function StaffView({
     receiptsCount: number;
     receiptsAmountCents: number;
   } | null>(null);
+  const [commerceLoading, setCommerceLoading] = useState(false);
+  const [commerceError, setCommerceError] = useState("");
+  const [todayBootstrapAttempted, setTodayBootstrapAttempted] = useState(false);
   const [orders, setOrders] = useState<CommerceOrderRecord[]>([]);
   const [unpaidCheckIns, setUnpaidCheckIns] = useState<UnpaidCheckInRecord[]>([]);
   const [receipts, setReceipts] = useState<ReceiptRecord[]>([]);
@@ -1495,6 +1661,9 @@ export default function StaffView({
   const [batchCleanupPreviewLog, setBatchCleanupPreviewLog] = useState("");
   const [kilnId, setKilnId] = useState("studio-electric");
   const [selectedFiringId, setSelectedFiringId] = useState("");
+  const [firingPhotoBusy, setFiringPhotoBusy] = useState(false);
+  const [firingPhotoStatus, setFiringPhotoStatus] = useState("");
+  const [firingPhotoError, setFiringPhotoError] = useState("");
   const [showDeprecatedFiringControls, setShowDeprecatedFiringControls] = useState(false);
   const [firingSearch, setFiringSearch] = useState("");
   const [firingStatusFilter, setFiringStatusFilter] = useState("all");
@@ -1570,6 +1739,8 @@ export default function StaffView({
   const [externalLookupPolicyStatus, setExternalLookupPolicyStatus] = useState("");
   const [externalLookupPolicyOpenLibraryEnabled, setExternalLookupPolicyOpenLibraryEnabled] = useState(true);
   const [externalLookupPolicyGoogleBooksEnabled, setExternalLookupPolicyGoogleBooksEnabled] = useState(true);
+  const [externalLookupPolicyCoverReviewGuardrailEnabled, setExternalLookupPolicyCoverReviewGuardrailEnabled] =
+    useState(true);
   const [externalLookupPolicyNote, setExternalLookupPolicyNote] = useState("");
   const [externalLookupPolicyUpdatedAtMs, setExternalLookupPolicyUpdatedAtMs] = useState(0);
   const [externalLookupPolicyUpdatedByUid, setExternalLookupPolicyUpdatedByUid] = useState("");
@@ -2553,11 +2724,6 @@ export default function StaffView({
     [adaptiveNavEnabled, lowEngagementModules, moduleUsageRows, navLayout.overflow.length, navLayout.primary.length]
   );
 
-  const scrollToCockpitSection = useCallback((sectionId: string) => {
-    const target = document.getElementById(sectionId);
-    if (!target) return;
-    target.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, []);
   const resetModuleTelemetry = useCallback(() => {
     setModuleUsage(moduleUsageSeed());
     moduleSessionRef.current = { key: moduleKey, enteredAtMs: Date.now() };
@@ -3020,6 +3186,97 @@ export default function StaffView({
     if (!selectedBatchId && next[0]) setSelectedBatchId(next[0].id);
   }, [qTrace, selectedBatchId]);
 
+  const loadTodayReservations = useCallback(async () => {
+    const { startDate, endDate } = getLocalDayBoundsMs();
+    setTodayReservationsLoading(true);
+    setTodayReservationsError("");
+    try {
+      qTrace("reservations", {
+        todayStartIso: startDate.toISOString(),
+        todayEndIso: endDate.toISOString(),
+        orderBy: "preferredWindow.latestDate:asc",
+        limit: TODAY_RESERVATION_LIMIT,
+      });
+      const reservationsQuery = query(
+        collection(db, "reservations"),
+        where("preferredWindow.latestDate", ">=", startDate),
+        where("preferredWindow.latestDate", "<", endDate),
+        orderBy("preferredWindow.latestDate", "asc"),
+        limit(TODAY_RESERVATION_LIMIT)
+      );
+      const snap = await getDocs(reservationsQuery);
+      const ownerUids = Array.from(
+        new Set(
+          snap.docs
+            .map((docSnap) => firstNonBlankString((docSnap.data() as { ownerUid?: unknown }).ownerUid))
+            .filter(Boolean)
+        )
+      ).slice(0, 10);
+      const ownerNameByUid = new Map<string, string>();
+      if (ownerUids.length > 0) {
+        try {
+          const usersSnap = await getDocs(
+            query(collection(db, "users"), where(documentId(), "in", ownerUids), limit(ownerUids.length))
+          );
+          usersSnap.docs.forEach((docSnap) => {
+            const data = docSnap.data();
+            const displayName = firstNonBlankString(data.displayName, data.name, data.fullName);
+            if (displayName) ownerNameByUid.set(docSnap.id, displayName);
+          });
+        } catch {
+          // Name lookup is best-effort; reservation rows still render with uid fallback.
+        }
+      }
+      const rows: TodayReservationRow[] = snap.docs
+        .map((docSnap) => {
+          const raw = (docSnap.data() ?? {}) as Record<string, unknown>;
+          const reservation = normalizeReservationRecord(docSnap.id, raw as Partial<ReservationRecord>);
+          const preferredAtMs = toTsMs(reservation.preferredWindow?.latestDate);
+          const createdAtMs = toTsMs(reservation.createdAt);
+          const updatedAtMs = toTsMs(reservation.updatedAt);
+          const timeMs = preferredAtMs || createdAtMs || updatedAtMs || 0;
+          const ownerUid = firstNonBlankString(raw.ownerUid);
+          const pieceCount = Array.isArray(reservation.pieces)
+            ? reservation.pieces.reduce((sum, piece) => {
+                const next =
+                  typeof piece.pieceCount === "number" && Number.isFinite(piece.pieceCount)
+                    ? Math.max(1, Math.round(piece.pieceCount))
+                    : 1;
+                return sum + next;
+              }, 0)
+            : 0;
+          const shelfCount =
+            typeof reservation.estimatedHalfShelves === "number" && Number.isFinite(reservation.estimatedHalfShelves)
+              ? Math.max(1, Math.round(reservation.estimatedHalfShelves))
+              : 1;
+          const itemCount = pieceCount > 0 ? pieceCount : shelfCount;
+          const displayName =
+            firstNonBlankString(raw.displayName, raw.ownerName, raw.clientName, raw.name) ||
+            ownerNameByUid.get(ownerUid) ||
+            (ownerUid ? `Member ${ownerUid.slice(0, 6)}` : "Member");
+          const notes = firstNonBlankString(reservation.notes?.general, reservation.staffNotes, raw.staffNotes, raw.notes);
+          return {
+            id: reservation.id,
+            ownerUid,
+            displayName,
+            timeMs,
+            status: reservationStatusLabel(reservation.status),
+            itemCount,
+            visitType: reservationVisitTypeLabel(reservation),
+            notes,
+          } satisfies TodayReservationRow;
+        })
+        .sort((a, b) => a.timeMs - b.timeMs || a.displayName.localeCompare(b.displayName));
+      setTodayReservations(rows);
+    } catch (err: unknown) {
+      setTodayReservations([]);
+      setTodayReservationsError(err instanceof Error ? err.message : String(err));
+      throw err;
+    } finally {
+      setTodayReservationsLoading(false);
+    }
+  }, [qTrace]);
+
   const loadSelectedBatchDetails = useCallback(
     async (batchId: string) => {
       if (!batchId) {
@@ -3077,32 +3334,42 @@ export default function StaffView({
   );
 
   const loadFirings = useCallback(async () => {
-    qTrace("kilnFirings", { orderBy: "updatedAt:desc", limit: 50 });
-    const snap = await getDocs(query(collection(db, "kilnFirings"), orderBy("updatedAt", "desc"), limit(50)));
-    const next = snap.docs.map((d) => {
-      const data = d.data();
-      const batchIds = Array.isArray(data.batchIds) ? data.batchIds : [];
-      const pieceIds = Array.isArray(data.pieceIds) ? data.pieceIds : [];
-      return {
-        id: d.id,
-        title: str(data.title, "Kiln firing"),
-        kilnName: str(data.kilnName, str(data.kilnId, "Kiln")),
-        kilnId: str(data.kilnId),
-        status: str(data.status, "scheduled"),
-        cycleType: str(data.cycleType, "unknown"),
-        confidence: str(data.confidence, "estimated"),
-        startAtMs: toTsMs(data.startAt),
-        endAtMs: toTsMs(data.endAt),
-        unloadedAtMs: toTsMs(data.unloadedAt),
-        batchCount: batchIds.length,
-        pieceCount: pieceIds.length,
-        notes: str(data.notes, ""),
-        updatedAtMs: toTsMs(data.updatedAt),
-      } satisfies FiringRecord;
-    });
-    setFirings(next);
-    if (!selectedFiringId && next[0]) {
-      setSelectedFiringId(next[0].id);
+    setFiringsLoading(true);
+    setFiringsError("");
+    try {
+      qTrace("kilnFirings", { orderBy: "updatedAt:desc", limit: 50 });
+      const snap = await getDocs(query(collection(db, "kilnFirings"), orderBy("updatedAt", "desc"), limit(50)));
+      const next = snap.docs.map((d) => {
+        const data = d.data();
+        const batchIds = Array.isArray(data.batchIds) ? data.batchIds : [];
+        const pieceIds = Array.isArray(data.pieceIds) ? data.pieceIds : [];
+        return {
+          id: d.id,
+          title: str(data.title, "Kiln firing"),
+          kilnName: str(data.kilnName, str(data.kilnId, "Kiln")),
+          kilnId: str(data.kilnId),
+          status: str(data.status, "scheduled"),
+          cycleType: str(data.cycleType, "unknown"),
+          confidence: str(data.confidence, "estimated"),
+          startAtMs: toTsMs(data.startAt),
+          endAtMs: toTsMs(data.endAt),
+          unloadedAtMs: toTsMs(data.unloadedAt),
+          batchCount: batchIds.length,
+          pieceCount: pieceIds.length,
+          notes: str(data.notes, ""),
+          updatedAtMs: toTsMs(data.updatedAt),
+        } satisfies FiringRecord;
+      });
+      setFirings(next);
+      if (!selectedFiringId && next[0]) {
+        setSelectedFiringId(next[0].id);
+      }
+    } catch (err: unknown) {
+      setFirings([]);
+      setFiringsError(err instanceof Error ? err.message : String(err));
+      throw err;
+    } finally {
+      setFiringsLoading(false);
     }
   }, [qTrace, selectedFiringId]);
 
@@ -3203,87 +3470,102 @@ const loadEvents = useCallback(async () => {
   );
 
   const loadCommerce = useCallback(async () => {
+    setCommerceLoading(true);
+    setCommerceError("");
     if (hasFunctionsAuthMismatch) {
       setSummary(null);
       setOrders([]);
       setUnpaidCheckIns([]);
       setReceipts([]);
+      setCommerceError("Payment services are running in degraded mode while Functions/Auth emulators are mismatched.");
+      setCommerceLoading(false);
       return;
     }
-    const resp = await client.postJson<{
-      summary?: typeof summary;
-      unpaidCheckIns?: Array<Record<string, unknown>>;
-      materialsOrders?: Array<Record<string, unknown>>;
-      receipts?: Array<Record<string, unknown>>;
-    }>("listBillingSummary", { limit: 60 });
-    setSummary(resp.summary ?? null);
-    setOrders(
-      (resp.materialsOrders ?? []).map((o) => ({
-        id: str(o.id),
-        status: str(o.status, "unknown"),
-        totalCents: num(o.totalCents, 0),
-        currency: str(o.currency, "USD"),
-        updatedAt: str(o.updatedAt, "-"),
-        createdAt: str(o.createdAt, "-"),
-        checkoutUrl: (() => {
-          const raw = str(o.checkoutUrl, "");
-          return raw || null;
-        })(),
-        pickupNotes: (() => {
-          const raw = str(o.pickupNotes, "");
-          return raw || null;
-        })(),
-        itemCount: Array.isArray(o.items) ? o.items.length : 0,
-      }))
-    );
-    setUnpaidCheckIns(
-      (resp.unpaidCheckIns ?? []).map((entry) => ({
-        signupId: str(entry.signupId),
-        eventId: str(entry.eventId),
-        eventTitle: str(entry.eventTitle, "Event"),
-        amountCents:
-          typeof entry.amountCents === "number" && Number.isFinite(entry.amountCents)
-            ? entry.amountCents
-            : null,
-        currency: (() => {
-          const raw = str(entry.currency, "");
-          return raw || null;
-        })(),
-        paymentStatus: (() => {
-          const raw = str(entry.paymentStatus, "");
-          return raw || null;
-        })(),
-        checkInMethod: (() => {
-          const raw = str(entry.checkInMethod, "");
-          return raw || null;
-        })(),
-        createdAt: (() => {
-          const raw = str(entry.createdAt, "");
-          return raw || null;
-        })(),
-        checkedInAt: (() => {
-          const raw = str(entry.checkedInAt, "");
-          return raw || null;
-        })(),
-      }))
-    );
-    setReceipts(
-      (resp.receipts ?? []).map((entry) => ({
-        id: str(entry.id),
-        type: str(entry.type, "unknown"),
-        title: str(entry.title, "Receipt"),
-        amountCents: num(entry.amountCents, 0),
-        currency: str(entry.currency, "USD"),
-        createdAt: (() => {
-          const raw = str(entry.createdAt, "");
-          return raw || null;
-        })(),
-        paidAt: (() => {
-          const raw = str(entry.paidAt, "");
-          return raw || null;
-        })(),
-      }))
-    );
+    try {
+      const resp = await client.postJson<{
+        summary?: typeof summary;
+        unpaidCheckIns?: Array<Record<string, unknown>>;
+        materialsOrders?: Array<Record<string, unknown>>;
+        receipts?: Array<Record<string, unknown>>;
+      }>("listBillingSummary", { limit: 60 });
+      setSummary(resp.summary ?? null);
+      setOrders(
+        (resp.materialsOrders ?? []).map((o) => ({
+          id: str(o.id),
+          status: str(o.status, "unknown"),
+          totalCents: num(o.totalCents, 0),
+          currency: str(o.currency, "USD"),
+          updatedAt: str(o.updatedAt, "-"),
+          createdAt: str(o.createdAt, "-"),
+          checkoutUrl: (() => {
+            const raw = str(o.checkoutUrl, "");
+            return raw || null;
+          })(),
+          pickupNotes: (() => {
+            const raw = str(o.pickupNotes, "");
+            return raw || null;
+          })(),
+          itemCount: Array.isArray(o.items) ? o.items.length : 0,
+        }))
+      );
+      setUnpaidCheckIns(
+        (resp.unpaidCheckIns ?? []).map((entry) => ({
+          signupId: str(entry.signupId),
+          eventId: str(entry.eventId),
+          eventTitle: str(entry.eventTitle, "Event"),
+          amountCents:
+            typeof entry.amountCents === "number" && Number.isFinite(entry.amountCents)
+              ? entry.amountCents
+              : null,
+          currency: (() => {
+            const raw = str(entry.currency, "");
+            return raw || null;
+          })(),
+          paymentStatus: (() => {
+            const raw = str(entry.paymentStatus, "");
+            return raw || null;
+          })(),
+          checkInMethod: (() => {
+            const raw = str(entry.checkInMethod, "");
+            return raw || null;
+          })(),
+          createdAt: (() => {
+            const raw = str(entry.createdAt, "");
+            return raw || null;
+          })(),
+          checkedInAt: (() => {
+            const raw = str(entry.checkedInAt, "");
+            return raw || null;
+          })(),
+        }))
+      );
+      setReceipts(
+        (resp.receipts ?? []).map((entry) => ({
+          id: str(entry.id),
+          type: str(entry.type, "unknown"),
+          title: str(entry.title, "Receipt"),
+          amountCents: num(entry.amountCents, 0),
+          currency: str(entry.currency, "USD"),
+          createdAt: (() => {
+            const raw = str(entry.createdAt, "");
+            return raw || null;
+          })(),
+          paidAt: (() => {
+            const raw = str(entry.paidAt, "");
+            return raw || null;
+          })(),
+        }))
+      );
+    } catch (err: unknown) {
+      setSummary(null);
+      setOrders([]);
+      setUnpaidCheckIns([]);
+      setReceipts([]);
+      setCommerceError(err instanceof Error ? err.message : String(err));
+      throw err;
+    } finally {
+      setCommerceLoading(false);
+    }
   }, [client, hasFunctionsAuthMismatch]);
 
   const loadSystemStats = useCallback(async () => {
@@ -3327,14 +3609,14 @@ const loadEvents = useCallback(async () => {
           route: V1_LIBRARY_ITEMS_LIST_FN,
           sort: "recently_added",
           page: 1,
-          pageSize: 120,
+          pageSize: LIBRARY_ITEMS_API_PAGE_SIZE,
         });
         const response = await client.postJson<{ data?: { items?: unknown[] }; items?: unknown[] }>(
           V1_LIBRARY_ITEMS_LIST_FN,
           {
             sort: "recently_added",
             page: 1,
-            pageSize: 120,
+            pageSize: LIBRARY_ITEMS_API_PAGE_SIZE,
           }
         );
         const apiItems = Array.isArray(response?.data?.items)
@@ -3482,10 +3764,10 @@ const loadEvents = useCallback(async () => {
       recommendationRows = await loadRecommendationsFromFirestore();
     } else {
       try {
-        qTrace("libraryRecommendations", { route: V1_LIBRARY_RECOMMENDATIONS_LIST_FN, limit: 120 });
+        qTrace("libraryRecommendations", { route: V1_LIBRARY_RECOMMENDATIONS_LIST_FN, limit: LIBRARY_RECOMMENDATIONS_API_LIMIT });
         const response = await client.postJson<LibraryRecommendationsListResponse>(
           V1_LIBRARY_RECOMMENDATIONS_LIST_FN,
-          { limit: 120 }
+          { limit: LIBRARY_RECOMMENDATIONS_API_LIMIT }
         );
         const apiRows = Array.isArray(response?.data?.recommendations)
           ? response.data.recommendations
@@ -3568,6 +3850,7 @@ const loadEvents = useCallback(async () => {
         const data = response?.data ?? {};
         setExternalLookupPolicyOpenLibraryEnabled(data.openlibraryEnabled !== false);
         setExternalLookupPolicyGoogleBooksEnabled(data.googlebooksEnabled !== false);
+        setExternalLookupPolicyCoverReviewGuardrailEnabled(data.coverReviewGuardrailEnabled !== false);
         setExternalLookupPolicyNote(str(data.note, ""));
         setExternalLookupPolicyUpdatedAtMs(num(data.updatedAtMs, 0));
         setExternalLookupPolicyUpdatedByUid(str(data.updatedByUid, ""));
@@ -3929,35 +4212,13 @@ const loadEvents = useCallback(async () => {
     const isbn = inferIsbnVariants(lendingAdminItemDraft.isbn);
     const subjects = parseUniqueCsv(lendingAdminItemDraft.subjectsCsv);
     const techniques = parseUniqueCsv(lendingAdminItemDraft.techniquesCsv);
-    const payload: Record<string, unknown> = {
-      title,
-      subtitle: nullableText(lendingAdminItemDraft.subtitle),
+    const payload = buildLendingAdminApiPayload({
+      draft: lendingAdminItemDraft,
       authors,
-      author: authors[0] ?? null,
-      description: nullableText(lendingAdminItemDraft.description),
-      publisher: nullableText(lendingAdminItemDraft.publisher),
-      publishedDate: nullableText(lendingAdminItemDraft.publishedDate),
-      mediaType: firstNonBlankString(lendingAdminItemDraft.mediaType, "book"),
-      format: nullableText(lendingAdminItemDraft.format),
-      coverUrl: nullableText(lendingAdminItemDraft.coverUrl),
-      totalCopies,
-      availableCopies,
-      status: normalizeLibraryItemOverrideStatus(lendingAdminItemDraft.status),
-      source: firstNonBlankString(lendingAdminItemDraft.source, "manual"),
       subjects,
       techniques,
-      updatedByUid: user.uid,
-    };
-    if (isbn.primary) {
-      payload.isbn = isbn.primary;
-      payload.isbn_normalized = isbn.primary;
-      payload.identifiers = {
-        isbn10: isbn.isbn10,
-        isbn13: isbn.isbn13,
-      };
-      if (isbn.isbn10) payload.isbn10 = isbn.isbn10;
-      if (isbn.isbn13) payload.isbn13 = isbn.isbn13;
-    }
+      isbn,
+    });
 
     setLendingAdminItemBusy(true);
     let savedItemId = selectedAdminItemId;
@@ -3971,7 +4232,6 @@ const loadEvents = useCallback(async () => {
               V1_LIBRARY_ITEMS_UPDATE_FN,
               {
                 itemId: selectedAdminItemId,
-                patch: payload,
                 ...payload,
               }
             );
@@ -3987,10 +4247,7 @@ const loadEvents = useCallback(async () => {
           } else {
             const response = await client.postJson<Record<string, unknown>>(
               V1_LIBRARY_ITEMS_CREATE_FN,
-              {
-                item: payload,
-                ...payload,
-              }
+              payload
             );
             const data = record((response as { data?: unknown }).data);
             savedItemId = firstNonBlankString(
@@ -4010,9 +4267,20 @@ const loadEvents = useCallback(async () => {
       if (usedFirestoreFallback) {
         const firestorePayload: Record<string, unknown> = {
           ...payload,
+          techniques,
           updatedAt: serverTimestamp(),
           updatedByUid: user.uid,
         };
+        if (isbn.primary) {
+          firestorePayload.isbn = isbn.primary;
+          firestorePayload.isbn_normalized = isbn.primary;
+          firestorePayload.identifiers = {
+            isbn10: isbn.isbn10,
+            isbn13: isbn.isbn13,
+          };
+          if (isbn.isbn10) firestorePayload.isbn10 = isbn.isbn10;
+          if (isbn.isbn13) firestorePayload.isbn13 = isbn.isbn13;
+        }
         if (editing && selectedAdminItemId) {
           await setDoc(doc(db, "libraryItems", selectedAdminItemId), firestorePayload, { merge: true });
           savedItemId = selectedAdminItemId;
@@ -4069,22 +4337,7 @@ const loadEvents = useCallback(async () => {
     handleSelectLendingAdminItem,
     hasFunctionsAuthMismatch,
     lendingAdminItemBusy,
-    lendingAdminItemDraft.authorsCsv,
-    lendingAdminItemDraft.availableCopies,
-    lendingAdminItemDraft.coverUrl,
-    lendingAdminItemDraft.description,
-    lendingAdminItemDraft.format,
-    lendingAdminItemDraft.isbn,
-    lendingAdminItemDraft.mediaType,
-    lendingAdminItemDraft.publishedDate,
-    lendingAdminItemDraft.publisher,
-    lendingAdminItemDraft.source,
-    lendingAdminItemDraft.status,
-    lendingAdminItemDraft.subjectsCsv,
-    lendingAdminItemDraft.subtitle,
-    lendingAdminItemDraft.techniquesCsv,
-    lendingAdminItemDraft.title,
-    lendingAdminItemDraft.totalCopies,
+    lendingAdminItemDraft,
     libraryAdminItems,
     loadLending,
     selectedAdminItemId,
@@ -4118,8 +4371,7 @@ const loadEvents = useCallback(async () => {
             V1_LIBRARY_ITEMS_DELETE_FN,
             {
               itemId: selectedAdminItem.id,
-              confirm: true,
-              softDelete: true,
+              note: "Archived from Staff -> Lending catalog admin.",
             }
           );
         } catch (error: unknown) {
@@ -4665,6 +4917,7 @@ const loadEvents = useCallback(async () => {
       const payload: LibraryExternalLookupProviderConfigSetRequest = {
         openlibraryEnabled: externalLookupPolicyOpenLibraryEnabled,
         googlebooksEnabled: externalLookupPolicyGoogleBooksEnabled,
+        coverReviewGuardrailEnabled: externalLookupPolicyCoverReviewGuardrailEnabled,
         note: externalLookupPolicyNote.trim() || null,
       };
       const response = await client.postJson<LibraryExternalLookupProviderConfigResponse>(
@@ -4674,6 +4927,7 @@ const loadEvents = useCallback(async () => {
       const data = response?.data ?? {};
       setExternalLookupPolicyOpenLibraryEnabled(data.openlibraryEnabled !== false);
       setExternalLookupPolicyGoogleBooksEnabled(data.googlebooksEnabled !== false);
+      setExternalLookupPolicyCoverReviewGuardrailEnabled(data.coverReviewGuardrailEnabled !== false);
       setExternalLookupPolicyNote(str(data.note, ""));
       setExternalLookupPolicyUpdatedAtMs(num(data.updatedAtMs, Date.now()));
       setExternalLookupPolicyUpdatedByUid(str(data.updatedByUid, user.uid));
@@ -4689,6 +4943,7 @@ const loadEvents = useCallback(async () => {
   }, [
     client,
     externalLookupPolicyBusy,
+    externalLookupPolicyCoverReviewGuardrailEnabled,
     externalLookupPolicyGoogleBooksEnabled,
     externalLookupPolicyNote,
     externalLookupPolicyOpenLibraryEnabled,
@@ -4940,6 +5195,7 @@ const loadEvents = useCallback(async () => {
 
   const loadAll = useCallback(async () => {
     const tasks: Array<Promise<unknown>> = [
+      loadTodayReservations(),
       loadUsers(),
       loadBatches(),
       loadFirings(),
@@ -4960,10 +5216,11 @@ const loadEvents = useCallback(async () => {
     }
     await Promise.allSettled(tasks);
     if (selectedEventId) await loadSignups(selectedEventId);
-  }, [hasFunctionsAuthMismatch, loadAutomationHealthDashboard, loadBatches, loadCommerce, loadEvents, loadFirings, loadLending, loadReportOps, loadSignups, loadStudioBrainStatus, loadSystemStats, loadUsers, selectedEventId]);
+  }, [hasFunctionsAuthMismatch, loadAutomationHealthDashboard, loadBatches, loadCommerce, loadEvents, loadFirings, loadLending, loadReportOps, loadSignups, loadStudioBrainStatus, loadSystemStats, loadTodayReservations, loadUsers, selectedEventId]);
 
   const loadCockpitModule = useCallback(async () => {
     await Promise.allSettled([
+      loadTodayReservations(),
       loadUsers(),
       loadBatches(),
       loadFirings(),
@@ -4987,6 +5244,7 @@ const loadEvents = useCallback(async () => {
     loadReportOps,
     loadStudioBrainStatus,
     loadSystemStats,
+    loadTodayReservations,
     loadUsers,
   ]);
 
@@ -5019,7 +5277,6 @@ const loadEvents = useCallback(async () => {
       firings: loadFirings,
       events: loadEventsModule,
       reports: loadReportOps,
-      studioBrain: loadStudioBrainStatus,
       stripe: loadStudioBrainStatus,
       commerce: loadCommerceModule,
       lending: loadLending,
@@ -5047,19 +5304,13 @@ const loadEvents = useCallback(async () => {
   );
 
   useEffect(() => {
-    setStatus("Select a module and click Load current module to fetch data.");
+    setStatus("Today Console loads key shift data automatically. Use Load current module for deeper module refreshes.");
   }, []);
 
   useEffect(() => {
     if (!selectedEventId) return;
     void run("signups", async () => await loadSignups(selectedEventId));
   }, [loadSignups, selectedEventId, run]);
-
-  useEffect(() => {
-    if (moduleKey !== "system") return;
-    setModuleKey("cockpit");
-    setStatus("System module moved to Cockpit > Platform diagnostics.");
-  }, [moduleKey]);
 
   useEffect(() => {
     if (!studioBrainStatus) return;
@@ -6864,9 +7115,17 @@ const loadEvents = useCallback(async () => {
     }
   }, [forceEventsWorkspace, moduleKey]);
 
+  useEffect(() => {
+    if (!forceSystemWorkspace) return;
+    if (moduleKey !== "system") {
+      setModuleKey("system");
+      setStatus("Dedicated system page keeps advanced tooling in one place. Open /staff for the full module navigation.");
+    }
+  }, [forceSystemWorkspace, moduleKey]);
+
   const openModuleFromCockpit = useCallback(
     (target: ModuleKey) => {
-      if (forceCockpitWorkspace || forceEventsWorkspace) {
+      if (forceCockpitWorkspace || forceEventsWorkspace || forceSystemWorkspace) {
         if (typeof window !== "undefined") {
           window.location.assign("/staff");
         }
@@ -6874,7 +7133,234 @@ const loadEvents = useCallback(async () => {
       }
       setModuleKey(target);
     },
-    [forceCockpitWorkspace, forceEventsWorkspace]
+    [forceCockpitWorkspace, forceEventsWorkspace, forceSystemWorkspace]
+  );
+
+  useEffect(() => {
+    if (moduleKey !== "cockpit") return;
+    if (todayBootstrapAttempted) return;
+    setTodayBootstrapAttempted(true);
+    const tasks: Array<Promise<unknown>> = [
+      loadTodayReservations(),
+      loadFirings(),
+      loadAutomationHealthDashboard(),
+    ];
+    if (!hasFunctionsAuthMismatch) {
+      tasks.push(loadCommerce());
+    }
+    void Promise.allSettled(tasks);
+  }, [
+    hasFunctionsAuthMismatch,
+    loadAutomationHealthDashboard,
+    loadCommerce,
+    loadFirings,
+    loadTodayReservations,
+    moduleKey,
+    todayBootstrapAttempted,
+  ]);
+
+  const todayMessageRows = useMemo(
+    () =>
+      [...messageThreads]
+        .sort((a, b) => readTimestampMs(b.lastMessageAt) - readTimestampMs(a.lastMessageAt))
+        .slice(0, TODAY_MESSAGE_LIMIT),
+    [messageThreads]
+  );
+  const unreadMessageCount = useMemo(
+    () => messageThreads.reduce((sum, thread) => sum + (isDirectMessageUnread(thread, user.uid) ? 1 : 0), 0),
+    [messageThreads, user.uid]
+  );
+  const activeFiring = useMemo(() => {
+    const activeStatuses = new Set(["loading", "loaded", "firing", "cooling", "unloading", "in-progress"]);
+    return firings.find((firing) => activeStatuses.has(firing.status.toLowerCase())) ?? null;
+  }, [firings]);
+  const messagesDegraded = Boolean(messageThreadsError) || Boolean(announcementsError);
+  const paymentAlerts = useMemo(() => {
+    const alerts: TodayPaymentAlert[] = [];
+    const failedOrderStatuses = new Set([
+      "failed",
+      "payment_failed",
+      "declined",
+      "past_due",
+      "requires_payment_method",
+      "error",
+    ]);
+    const failedOrders = orders.filter((order) => failedOrderStatuses.has(order.status.toLowerCase()));
+    if (failedOrders.length > 0) {
+      alerts.push({
+        id: "payments-failed-orders",
+        severity: "P0",
+        title: `${failedOrders.length} failed payment${failedOrders.length === 1 ? "" : "s"}`,
+        detail: "Orders are blocked and need immediate payment review.",
+      });
+    }
+    if (unpaidCheckIns.length > 0) {
+      alerts.push({
+        id: "payments-unpaid-checkins",
+        severity: "P1",
+        title: `${unpaidCheckIns.length} unpaid check-in${unpaidCheckIns.length === 1 ? "" : "s"}`,
+        detail: "Customers are checked in but payment follow-up is still required.",
+      });
+    }
+    const smokeCanaryFailures = automationDashboard.workflows.filter((workflow) => {
+      const label = `${workflow.label} ${workflow.workflowFile}`.toLowerCase();
+      const smokeLike = label.includes("smoke") || label.includes("canary");
+      return smokeLike && workflow.conclusion === "failure";
+    });
+    if (smokeCanaryFailures.length > 0) {
+      alerts.push({
+        id: "payments-smoke-canary-failures",
+        severity: "P0",
+        title: `${smokeCanaryFailures.length} smoke/canary workflow failure${smokeCanaryFailures.length === 1 ? "" : "s"}`,
+        detail: "Production health checks are failing and may impact payment reliability.",
+      });
+    }
+    const paymentHandlerErrors = latestErrors.filter((entry) =>
+      /(payment|billing|stripe|kilnfire)/i.test(`${entry.label} ${entry.message}`)
+    );
+    if (paymentHandlerErrors.length > 0) {
+      alerts.push({
+        id: "payments-handler-errors",
+        severity: "P1",
+        title: `${paymentHandlerErrors.length} recent payment-related handler error${paymentHandlerErrors.length === 1 ? "" : "s"}`,
+        detail: "Recent backend logs indicate payment or billing instability.",
+      });
+    }
+    return alerts.slice(0, TODAY_ALERT_LIMIT);
+  }, [automationDashboard.workflows, latestErrors, orders, unpaidCheckIns.length]);
+  const paymentDegraded = hasFunctionsAuthMismatch || Boolean(commerceError) || Boolean(automationDashboard.error);
+  const systemSummaryTone = useMemo<"green" | "amber" | "red">(() => {
+    if (cockpitKpis.highAlerts > 0 || paymentAlerts.some((alert) => alert.severity === "P0")) return "red";
+    if (cockpitKpis.mediumAlerts > 0 || paymentDegraded || messagesDegraded) return "amber";
+    return "green";
+  }, [cockpitKpis.highAlerts, cockpitKpis.mediumAlerts, messagesDegraded, paymentAlerts, paymentDegraded]);
+  const systemSummaryToneLabel = useMemo(() => {
+    if (systemSummaryTone === "red") return "Action needed";
+    if (systemSummaryTone === "amber") return "Watch";
+    return "Healthy";
+  }, [systemSummaryTone]);
+  const systemSummaryMessage = useMemo(() => {
+    if (systemSummaryTone === "red") {
+      return "Immediate attention needed. Resolve critical operational alerts first.";
+    }
+    if (systemSummaryTone === "amber") {
+      return "Some services are degraded. Continue operations with caution and follow fallback links.";
+    }
+    return "Systems are stable for routine shift operations.";
+  }, [systemSummaryTone]);
+
+  const openReservationsToday = useCallback(() => {
+    if (onOpenCheckin) {
+      onOpenCheckin();
+      return;
+    }
+    setModuleKey("checkins");
+  }, [onOpenCheckin]);
+
+  const openReservationDetail = useCallback(
+    (reservationId: string) => {
+      if (onOpenReservation) {
+        onOpenReservation(reservationId);
+        return;
+      }
+      openReservationsToday();
+    },
+    [onOpenReservation, openReservationsToday]
+  );
+
+  const openMessagesInbox = useCallback(() => {
+    if (onOpenMessages) {
+      onOpenMessages();
+      return;
+    }
+    setStatus("Messages route is unavailable in this surface. Use main navigation to open Messages.");
+  }, [onOpenMessages]);
+
+  const openMessageThread = useCallback(
+    (threadId: string) => {
+      if (onOpenMessageThread) {
+        onOpenMessageThread(threadId);
+        return;
+      }
+      openMessagesInbox();
+    },
+    [onOpenMessageThread, openMessagesInbox]
+  );
+
+  const openFiringsWorkspace = useCallback(() => {
+    if (onOpenFirings) {
+      onOpenFirings();
+      return;
+    }
+    setModuleKey("firings");
+  }, [onOpenFirings]);
+
+  const startFiringFlow = useCallback(() => {
+    if (onStartFiring) {
+      onStartFiring();
+      return;
+    }
+    openFiringsWorkspace();
+  }, [onStartFiring, openFiringsWorkspace]);
+
+  const openSystemWorkspace = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.open("/staff/system", "_blank", "noopener");
+    }
+  }, []);
+
+  const handleFiringPhotoFile = useCallback(
+    async (file: File | null) => {
+      if (!file) return;
+      if (file.size > MAX_FIRING_PHOTO_BYTES) {
+        setFiringPhotoError("Photo is too large. Use an image under 10 MB.");
+        return;
+      }
+      setFiringPhotoBusy(true);
+      setFiringPhotoStatus("");
+      setFiringPhotoError("");
+      const target = activeFiring ?? firings[0] ?? null;
+      const targetFiringId = target?.id || "unassigned";
+      try {
+        const storage = resolveStorageForStaffToday();
+        const extension = toFileExtension(file);
+        const path = `firings/${user.uid}/${targetFiringId}/${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}.${extension}`;
+        const uploadRef = ref(storage, path);
+        await uploadBytes(uploadRef, file, { contentType: file.type || "image/jpeg" });
+        const url = await getDownloadURL(uploadRef);
+        if (target) {
+          try {
+            await updateDoc(doc(db, "kilnFirings", target.id), {
+              evidencePhotos: arrayUnion({
+                url,
+                path,
+                uploadedByUid: user.uid,
+                uploadedAtIso: new Date().toISOString(),
+                source: "staff_today_console",
+              }),
+              updatedAt: serverTimestamp(),
+            });
+            setFiringPhotoStatus("Photo uploaded and attached to the active firing record.");
+          } catch (attachError: unknown) {
+            setFiringPhotoStatus(
+              `Photo uploaded to portal storage, but firing attachment failed: ${
+                attachError instanceof Error ? attachError.message : String(attachError)
+              }`
+            );
+          }
+        } else {
+          setFiringPhotoStatus("Photo uploaded to portal storage.");
+        }
+        await loadFirings();
+      } catch (err: unknown) {
+        setFiringPhotoError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setFiringPhotoBusy(false);
+      }
+    },
+    [activeFiring, firings, loadFirings, user.uid]
   );
 
   const stripeContent = <StripeSettingsModule client={client} isStaff={isStaff} />;
@@ -6893,15 +7379,7 @@ const loadEvents = useCallback(async () => {
   const agentOpsContent = (
     <AgentOpsModule client={client} active={isCockpitModule} disabled={hasFunctionsAuthMismatch} />
   );
-  const studioBrainContent = (
-    <StudioBrainModule
-      user={user}
-      active={moduleKey === "studioBrain" || isCockpitModule}
-      disabled={false}
-      adminToken={devAdminToken}
-    />
-  );
-  const cockpitContent = (
+  const legacySystemOpsContent = (
     <section className="staff-module-grid">
       <section className="card staff-console-card">
         <div className="card-title-row">
@@ -6932,362 +7410,374 @@ const loadEvents = useCallback(async () => {
             Local Functions is active while Auth emulator is disabled. Cockpit data may be partial for function-backed operations.
           </div>
         ) : null}
-        <nav className="staff-cockpit-nav" aria-label="Cockpit sections">
-          <button className="btn btn-ghost btn-small" onClick={() => scrollToCockpitSection(COCKPIT_SECTION_IDS.triage)}>
-            Triage
-          </button>
-          <button className="btn btn-ghost btn-small" onClick={() => scrollToCockpitSection(COCKPIT_SECTION_IDS.automation)}>
-            Automation
-          </button>
-          <button className="btn btn-ghost btn-small" onClick={() => scrollToCockpitSection(COCKPIT_SECTION_IDS.platform)}>
-            Platform
-          </button>
-          <button className="btn btn-ghost btn-small" onClick={() => scrollToCockpitSection(COCKPIT_SECTION_IDS.policyAgentOps)}>
-            Policy and Agent Ops
-          </button>
-          <button className="btn btn-ghost btn-small" onClick={() => scrollToCockpitSection(COCKPIT_SECTION_IDS.reports)}>
-            Reports
-          </button>
-          <button className="btn btn-ghost btn-small" onClick={() => scrollToCockpitSection(COCKPIT_SECTION_IDS.moduleTelemetry)}>
-            Module telemetry
-          </button>
-        </nav>
-        <div className="staff-subtitle staff-cockpit-anchor" id={COCKPIT_SECTION_IDS.triage}>Action queue</div>
-        <div className="staff-log-list">
-          {overviewAlerts.map((alert) => (
-            <div key={alert.id} className="staff-log-entry">
-              <div className="staff-log-meta">
-                <span className="staff-log-label">{alert.severity.toUpperCase()}</span>
-                <span>{new Date().toLocaleDateString()}</span>
-              </div>
-              <div className="staff-log-message">
-                {alert.label}
-                <div className="staff-actions-row staff-actions-row--mt8">
-                  <button className="btn btn-ghost btn-small" onClick={() => openModuleFromCockpit(alert.module)}>
-                    {forceCockpitWorkspace ? "Open in full staff console" : alert.actionLabel}
-                  </button>
-                </div>
-              </div>
-            </div>
+        <nav className="segmented staff-cockpit-tabs" aria-label="Ops cockpit tabs">
+          {COCKPIT_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              className={cockpitTab === tab.key ? "active" : ""}
+              onClick={() => setCockpitTab(tab.key)}
+            >
+              {tab.label}
+            </button>
           ))}
-        </div>
-        <div className="staff-actions-row">
-          <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("pieces")}>
-            Open pieces queue
-          </button>
-          <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("firings")}>
-            Open firings triage
-          </button>
-          <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("events")}>
-            Open events desk
-          </button>
-          <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("commerce")}>
-            Open billing queue
-          </button>
-          <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("reports")}>
-            Open reports triage
-          </button>
-        </div>
-        <div className="staff-subtitle staff-cockpit-anchor" id={COCKPIT_SECTION_IDS.automation}>Automation health dashboard</div>
-        <div className="staff-kpi-grid">
-          <div className="staff-kpi"><span>Monitored workflows</span><strong>{automationKpis.monitored}</strong></div>
-          <div className="staff-kpi"><span>Healthy</span><strong>{automationKpis.healthy}</strong></div>
-          <div className="staff-kpi"><span>Failing</span><strong>{automationKpis.failing}</strong></div>
-          <div className="staff-kpi"><span>In progress</span><strong>{automationKpis.inProgress}</strong></div>
-          <div className="staff-kpi"><span>Stale workflows</span><strong>{automationKpis.stale}</strong></div>
-          <div className="staff-kpi"><span>Rolling threads</span><strong>{automationKpis.threads}</strong></div>
-        </div>
-        <div className="staff-actions-row">
-          <button
-            className="btn btn-secondary btn-small"
-            disabled={Boolean(busy) || automationDashboard.loading}
-            onClick={() => void run("refreshAutomationHealth", loadAutomationHealthDashboard)}
-          >
-            {automationDashboard.loading ? "Refreshing..." : "Refresh automation dashboard"}
-          </button>
-          <a
-            className="btn btn-ghost btn-small"
-            href={`https://github.com/${GITHUB_REPO_SLUG}/actions/workflows/portal-automation-health-daily.yml`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open daily workflow
-          </a>
-          <a
-            className="btn btn-ghost btn-small"
-            href={`https://github.com/${GITHUB_REPO_SLUG}/actions/workflows/portal-automation-weekly-digest.yml`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open weekly digest
-          </a>
-        </div>
-        {automationDashboard.error ? (
-          <div className="staff-note staff-note-error">
-            Automation dashboard fetch error: {automationDashboard.error}
-          </div>
+        </nav>
+        {cockpitTab === "triage" ? (
+          <>
+            <div className="staff-subtitle">Action queue</div>
+            <div className="staff-log-list">
+              {overviewAlerts.map((alert) => (
+                <div key={alert.id} className="staff-log-entry">
+                  <div className="staff-log-meta">
+                    <span className="staff-log-label">{alert.severity.toUpperCase()}</span>
+                    <span>{new Date().toLocaleDateString()}</span>
+                  </div>
+                  <div className="staff-log-message">
+                    {alert.label}
+                    <div className="staff-actions-row staff-actions-row--mt8">
+                      <button className="btn btn-ghost btn-small" onClick={() => openModuleFromCockpit(alert.module)}>
+                        {forceCockpitWorkspace ? "Open in full staff console" : alert.actionLabel}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="staff-actions-row">
+              <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("pieces")}>
+                Open pieces queue
+              </button>
+              <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("firings")}>
+                Open firings triage
+              </button>
+              <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("events")}>
+                Open events desk
+              </button>
+              <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("commerce")}>
+                Open billing queue
+              </button>
+              <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("reports")}>
+                Open reports triage
+              </button>
+            </div>
+          </>
         ) : null}
-        <div className="staff-mini">
-          Source: GitHub Actions + rolling issues for <code>{GITHUB_REPO_SLUG}</code>.
-          {automationKpis.loadedAtMs ? ` Last refresh ${when(automationKpis.loadedAtMs)}.` : " Not loaded yet."}
-        </div>
-        <div className="staff-table-wrap">
-          <table className="staff-table">
-            <thead>
-              <tr>
-                <th>Workflow</th>
-                <th>Status</th>
-                <th>Conclusion</th>
-                <th>Last run</th>
-                <th>Output</th>
-              </tr>
-            </thead>
-            <tbody>
-              {automationDashboard.workflows.length === 0 ? (
-                <tr><td colSpan={5}>No automation workflow status loaded yet.</td></tr>
-              ) : (
-                automationDashboard.workflows.map((workflow) => (
-                  <tr key={workflow.key}>
-                    <td>
-                      <div>{workflow.label}</div>
-                      <div className="staff-mini"><code>{workflow.workflowFile}</code></div>
-                      <div className="staff-mini">{workflow.outputHint}</div>
-                      {workflow.error ? <div className="staff-mini">{workflow.error}</div> : null}
-                    </td>
-                    <td><span className="pill">{workflow.status || "-"}</span></td>
-                    <td>
-                      <span className="pill">
-                        {workflow.conclusion || (workflow.status === "queued" || workflow.status === "in_progress" ? "running" : "unknown")}
-                      </span>
-                    </td>
-                    <td>
-                      {workflow.createdAtMs ? when(workflow.createdAtMs) : "-"}
-                      {workflow.isStale ? <div className="staff-mini">stale</div> : null}
-                    </td>
-                    <td>
-                      {workflow.runUrl ? (
-                        <a href={workflow.runUrl} target="_blank" rel="noreferrer">Run</a>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
+        {cockpitTab === "automation" ? (
+          <>
+            <div className="staff-subtitle">Automation health dashboard</div>
+            <div className="staff-kpi-grid">
+              <div className="staff-kpi"><span>Monitored workflows</span><strong>{automationKpis.monitored}</strong></div>
+              <div className="staff-kpi"><span>Healthy</span><strong>{automationKpis.healthy}</strong></div>
+              <div className="staff-kpi"><span>Failing</span><strong>{automationKpis.failing}</strong></div>
+              <div className="staff-kpi"><span>In progress</span><strong>{automationKpis.inProgress}</strong></div>
+              <div className="staff-kpi"><span>Stale workflows</span><strong>{automationKpis.stale}</strong></div>
+              <div className="staff-kpi"><span>Rolling threads</span><strong>{automationKpis.threads}</strong></div>
+            </div>
+            <div className="staff-actions-row">
+              <button
+                className="btn btn-secondary btn-small"
+                disabled={Boolean(busy) || automationDashboard.loading}
+                onClick={() => void run("refreshAutomationHealth", loadAutomationHealthDashboard)}
+              >
+                {automationDashboard.loading ? "Refreshing..." : "Refresh automation dashboard"}
+              </button>
+              <a
+                className="btn btn-ghost btn-small"
+                href={`https://github.com/${GITHUB_REPO_SLUG}/actions/workflows/portal-automation-health-daily.yml`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open daily workflow
+              </a>
+              <a
+                className="btn btn-ghost btn-small"
+                href={`https://github.com/${GITHUB_REPO_SLUG}/actions/workflows/portal-automation-weekly-digest.yml`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open weekly digest
+              </a>
+            </div>
+            {automationDashboard.error ? (
+              <div className="staff-note staff-note-error">
+                Automation dashboard fetch error: {automationDashboard.error}
+              </div>
+            ) : null}
+            <div className="staff-mini">
+              Source: GitHub Actions + rolling issues for <code>{GITHUB_REPO_SLUG}</code>.
+              {automationKpis.loadedAtMs ? ` Last refresh ${when(automationKpis.loadedAtMs)}.` : " Not loaded yet."}
+            </div>
+            <div className="staff-table-wrap">
+              <table className="staff-table">
+                <thead>
+                  <tr>
+                    <th>Workflow</th>
+                    <th>Status</th>
+                    <th>Conclusion</th>
+                    <th>Last run</th>
+                    <th>Output</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="staff-subtitle">Rolling output threads</div>
-        <div className="staff-table-wrap">
-          <table className="staff-table">
-            <thead>
-              <tr>
-                <th>Thread</th>
-                <th>State</th>
-                <th>Updated</th>
-                <th>Latest output preview</th>
-              </tr>
-            </thead>
-            <tbody>
-              {automationDashboard.issues.length === 0 ? (
-                <tr><td colSpan={4}>No rolling issue threads loaded yet.</td></tr>
-              ) : (
-                automationDashboard.issues.map((issue) => (
-                  <tr key={issue.key}>
-                    <td>
-                      {issue.issueUrl ? (
-                        <a href={issue.issueUrl} target="_blank" rel="noreferrer">{issue.title}</a>
-                      ) : (
-                        issue.title
-                      )}
-                      <div className="staff-mini">#{issue.issueNumber} · {issue.purpose}</div>
-                      {issue.error ? <div className="staff-mini">{issue.error}</div> : null}
-                    </td>
-                    <td><span className="pill">{issue.state || "-"}</span></td>
-                    <td>{issue.updatedAtMs ? when(issue.updatedAtMs) : "-"}</td>
-                    <td>
-                      {issue.latestCommentPreview || "-"}
-                      {issue.latestCommentUrl ? (
-                        <div className="staff-mini">
-                          <a href={issue.latestCommentUrl} target="_blank" rel="noreferrer">Open latest comment</a>
-                        </div>
-                      ) : null}
-                    </td>
+                </thead>
+                <tbody>
+                  {automationDashboard.workflows.length === 0 ? (
+                    <tr><td colSpan={5}>No automation workflow status loaded yet.</td></tr>
+                  ) : (
+                    automationDashboard.workflows.map((workflow) => (
+                      <tr key={workflow.key}>
+                        <td>
+                          <div>{workflow.label}</div>
+                          <div className="staff-mini"><code>{workflow.workflowFile}</code></div>
+                          <div className="staff-mini">{workflow.outputHint}</div>
+                          {workflow.error ? <div className="staff-mini">{workflow.error}</div> : null}
+                        </td>
+                        <td><span className="pill">{workflow.status || "-"}</span></td>
+                        <td>
+                          <span className="pill">
+                            {workflow.conclusion || (workflow.status === "queued" || workflow.status === "in_progress" ? "running" : "unknown")}
+                          </span>
+                        </td>
+                        <td>
+                          {workflow.createdAtMs ? when(workflow.createdAtMs) : "-"}
+                          {workflow.isStale ? <div className="staff-mini">stale</div> : null}
+                        </td>
+                        <td>
+                          {workflow.runUrl ? (
+                            <a href={workflow.runUrl} target="_blank" rel="noreferrer">Run</a>
+                          ) : (
+                            "-"
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="staff-subtitle">Rolling output threads</div>
+            <div className="staff-table-wrap">
+              <table className="staff-table">
+                <thead>
+                  <tr>
+                    <th>Thread</th>
+                    <th>State</th>
+                    <th>Updated</th>
+                    <th>Latest output preview</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="staff-subtitle staff-cockpit-anchor" id={COCKPIT_SECTION_IDS.platform}>Platform diagnostics</div>
-        <div className="staff-note">
-          Legacy System-tab diagnostics are now folded into Cockpit for one-place operations.
-        </div>
-        <div className="staff-kpi-grid">
-          <div className="staff-kpi"><span>Functions base</span><strong>{usingLocalFunctions ? "Local" : "Remote"}</strong></div>
-          <div className="staff-kpi"><span>Auth mode</span><strong>{showEmulatorTools ? "Emulator" : "Production"}</strong></div>
-          <div className="staff-kpi"><span>Integration tokens</span><strong>{integrationTokenCount ?? 0}</strong></div>
-          <div className="staff-kpi"><span>System checks</span><strong>{systemChecks.length}</strong></div>
-          <div className="staff-kpi"><span>Notif success</span><strong>{notificationMetricsSummary ? `${num(notificationMetricsSummary.successRate, 0)}%` : "-"}</strong></div>
-          <div className="staff-kpi"><span>Notif failed</span><strong>{notificationMetricsSummary ? num(notificationMetricsSummary.totalFailed, 0) : "-"}</strong></div>
-        </div>
-        <div className="staff-actions-row">
-          <button
-            className="btn btn-secondary"
-            disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-            onClick={() => void run("cockpitSystemPing", runSystemPing)}
-          >
-            Ping functions
-          </button>
-          <button
-            className="btn btn-secondary"
-            disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-            onClick={() => void run("cockpitCalendarProbe", runCalendarProbe)}
-          >
-            Probe calendar
-          </button>
-          <button
-            className="btn btn-secondary"
-            disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-            onClick={() => void run("cockpitNotificationMetricsProbe", runNotificationMetricsProbe)}
-          >
-            Refresh notif metrics
-          </button>
-          <button
-            className="btn btn-secondary"
-            disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-            onClick={() => void run("cockpitNotificationDrill", runNotificationFailureDrillNow)}
-          >
-            Run push failure drill
-          </button>
-          <button
-            className="btn btn-secondary"
-            disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-            onClick={() => void run("cockpitRefreshSystemStats", loadSystemStats)}
-          >
-            Refresh token stats
-          </button>
-        </div>
-        {hasFunctionsAuthMismatch ? (
-          <div className="staff-note">
-            Local functions detected at <code>{fBaseUrl}</code> while auth emulator is disabled.
-            Function-backed modules are paused to avoid false 401 errors.
-          </div>
+                </thead>
+                <tbody>
+                  {automationDashboard.issues.length === 0 ? (
+                    <tr><td colSpan={4}>No rolling issue threads loaded yet.</td></tr>
+                  ) : (
+                    automationDashboard.issues.map((issue) => (
+                      <tr key={issue.key}>
+                        <td>
+                          {issue.issueUrl ? (
+                            <a href={issue.issueUrl} target="_blank" rel="noreferrer">{issue.title}</a>
+                          ) : (
+                            issue.title
+                          )}
+                          <div className="staff-mini">#{issue.issueNumber} · {issue.purpose}</div>
+                          {issue.error ? <div className="staff-mini">{issue.error}</div> : null}
+                        </td>
+                        <td><span className="pill">{issue.state || "-"}</span></td>
+                        <td>{issue.updatedAtMs ? when(issue.updatedAtMs) : "-"}</td>
+                        <td>
+                          {issue.latestCommentPreview || "-"}
+                          {issue.latestCommentUrl ? (
+                            <div className="staff-mini">
+                              <a href={issue.latestCommentUrl} target="_blank" rel="noreferrer">Open latest comment</a>
+                            </div>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
         ) : null}
-        <div className="card-title-row">
-          <div className="staff-subtitle">Recent handler errors</div>
-          <div className="staff-log-actions">
-            <button type="button" className="btn btn-ghost" onClick={() => setHandlerLog(getHandlerErrorLog())}>Refresh</button>
-            <button type="button" className="btn btn-ghost" onClick={() => { clearHandlerErrorLog(); setHandlerLog([]); }}>Clear</button>
-          </div>
-        </div>
-        <div className="staff-log-list">
-          {latestErrors.length === 0 ? <div className="staff-note">No handler errors logged.</div> : latestErrors.map((entry, idx) => <div key={`${entry.atIso}-${idx}`} className="staff-log-entry"><div className="staff-log-meta"><span className="staff-log-label">{entry.label}</span><span>{new Date(entry.atIso).toLocaleString()}</span></div><div className="staff-log-message">{entry.message}</div></div>)}
-        </div>
-        <details className="staff-troubleshooting">
-          <summary>Developer troubleshooting and raw diagnostics</summary>
-          <div className="staff-module-grid">
-            <div className="staff-column">
-              <div className="staff-subtitle">System checks</div>
-              <div className="staff-table-wrap">
-                <table className="staff-table">
-                  <thead><tr><th>Check</th><th>Status</th><th>Ran at</th><th>Details</th></tr></thead>
-                  <tbody>
-                    {systemChecks.length === 0 ? (
-                      <tr><td colSpan={4}>No checks run yet.</td></tr>
-                    ) : (
-                      systemChecks.map((entry) => (
-                        <tr key={`${entry.key}-${entry.atMs}`}>
-                          <td>{entry.label}</td>
-                          <td><span className="pill">{entry.ok ? "ok" : "failed"}</span></td>
-                          <td>{when(entry.atMs)}</td>
-                          <td>{entry.details}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+        {cockpitTab === "platform" ? (
+          <>
+            <div className="staff-subtitle">Platform diagnostics</div>
+            <div className="staff-note">
+              Legacy System diagnostics now live here so operators can work from one place.
+            </div>
+            <div className="staff-kpi-grid">
+              <div className="staff-kpi"><span>Functions base</span><strong>{usingLocalFunctions ? "Local" : "Remote"}</strong></div>
+              <div className="staff-kpi"><span>Auth mode</span><strong>{showEmulatorTools ? "Emulator" : "Production"}</strong></div>
+              <div className="staff-kpi"><span>Integration tokens</span><strong>{integrationTokenCount ?? 0}</strong></div>
+              <div className="staff-kpi"><span>System checks</span><strong>{systemChecks.length}</strong></div>
+              <div className="staff-kpi"><span>Notif success</span><strong>{notificationMetricsSummary ? `${num(notificationMetricsSummary.successRate, 0)}%` : "-"}</strong></div>
+              <div className="staff-kpi"><span>Notif failed</span><strong>{notificationMetricsSummary ? num(notificationMetricsSummary.totalFailed, 0) : "-"}</strong></div>
+            </div>
+            <div className="staff-actions-row">
+              <button
+                className="btn btn-secondary"
+                disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+                onClick={() => void run("cockpitSystemPing", runSystemPing)}
+              >
+                Ping functions
+              </button>
+              <button
+                className="btn btn-secondary"
+                disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+                onClick={() => void run("cockpitCalendarProbe", runCalendarProbe)}
+              >
+                Probe calendar
+              </button>
+              <button
+                className="btn btn-secondary"
+                disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+                onClick={() => void run("cockpitNotificationMetricsProbe", runNotificationMetricsProbe)}
+              >
+                Refresh notif metrics
+              </button>
+              <button
+                className="btn btn-secondary"
+                disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+                onClick={() => void run("cockpitNotificationDrill", runNotificationFailureDrillNow)}
+              >
+                Run push failure drill
+              </button>
+              <button
+                className="btn btn-secondary"
+                disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+                onClick={() => void run("cockpitRefreshSystemStats", loadSystemStats)}
+              >
+                Refresh token stats
+              </button>
+            </div>
+            {hasFunctionsAuthMismatch ? (
+              <div className="staff-note">
+                Local functions detected at <code>{fBaseUrl}</code> while auth emulator is disabled.
+                Function-backed modules are paused to avoid false 401 errors.
+              </div>
+            ) : null}
+            <div className="card-title-row">
+              <div className="staff-subtitle">Recent handler errors</div>
+              <div className="staff-log-actions">
+                <button type="button" className="btn btn-ghost" onClick={() => setHandlerLog(getHandlerErrorLog())}>Refresh</button>
+                <button type="button" className="btn btn-ghost" onClick={() => { clearHandlerErrorLog(); setHandlerLog([]); }}>Clear</button>
               </div>
             </div>
-            <div className="staff-column">
-              {devAdminEnabled ? (
-                <label className="staff-field">Dev admin token<input type="password" value={devAdminToken} onChange={(e) => onDevAdminTokenChange(e.target.value)} /></label>
-              ) : (
-                <div className="staff-note">Dev admin token disabled outside emulator mode.</div>
-              )}
-              {showEmulatorTools ? <button type="button" className="btn btn-secondary" onClick={() => window.open("http://127.0.0.1:4000/", "_blank")}>Open Emulator UI</button> : null}
-              <div className="staff-subtitle">Last Firestore write</div>
-              <pre>{safeJsonStringify(lastWrite)}</pre>
-              <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastWrite))}>Copy write JSON</button>
+            <div className="staff-log-list">
+              {latestErrors.length === 0 ? <div className="staff-note">No handler errors logged.</div> : latestErrors.map((entry, idx) => <div key={`${entry.atIso}-${idx}`} className="staff-log-entry"><div className="staff-log-meta"><span className="staff-log-label">{entry.label}</span><span>{new Date(entry.atIso).toLocaleString()}</span></div><div className="staff-log-message">{entry.message}</div></div>)}
             </div>
-            <div className="staff-column">
-              <div className="staff-subtitle">Last query params</div>
-              <pre>{safeJsonStringify(lastQuery)}</pre>
-              <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastQuery))}>Copy query JSON</button>
-              <div className="staff-subtitle">Last GitHub/Functions call</div>
-              <pre>{safeJsonStringify(sanitizeLastRequest(lastReq))}</pre>
-              <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(sanitizeLastRequest(lastReq)))}>Copy call JSON</button>
-              <div className="staff-mini">curl hint</div>
-              <pre>{lastReq?.curlExample ?? "(none)"}</pre>
-              <button className="btn btn-ghost" onClick={() => void copy(lastReq?.curlExample ?? "")} disabled={!lastReq?.curlExample}>Copy curl hint</button>
-            </div>
-            <div className="staff-column">
-              <div className="staff-subtitle">Last error stack/message</div>
-              <pre>{safeJsonStringify(lastErr)}</pre>
-              {copyStatus ? (
-                <div className="staff-note" role="status" aria-live="polite">
-                  {copyStatus}
+            <details className="staff-troubleshooting">
+              <summary>Developer troubleshooting and raw diagnostics</summary>
+              <div className="staff-module-grid">
+                <div className="staff-column">
+                  <div className="staff-subtitle">System checks</div>
+                  <div className="staff-table-wrap">
+                    <table className="staff-table">
+                      <thead><tr><th>Check</th><th>Status</th><th>Ran at</th><th>Details</th></tr></thead>
+                      <tbody>
+                        {systemChecks.length === 0 ? (
+                          <tr><td colSpan={4}>No checks run yet.</td></tr>
+                        ) : (
+                          systemChecks.map((entry) => (
+                            <tr key={`${entry.key}-${entry.atMs}`}>
+                              <td>{entry.label}</td>
+                              <td><span className="pill">{entry.ok ? "ok" : "failed"}</span></td>
+                              <td>{when(entry.atMs)}</td>
+                              <td>{entry.details}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              ) : null}
+                <div className="staff-column">
+                  {devAdminEnabled ? (
+                    <label className="staff-field">Dev admin token<input type="password" value={devAdminToken} onChange={(e) => onDevAdminTokenChange(e.target.value)} /></label>
+                  ) : (
+                    <div className="staff-note">Dev admin token disabled outside emulator mode.</div>
+                  )}
+                  {showEmulatorTools ? <button type="button" className="btn btn-secondary" onClick={() => window.open("http://127.0.0.1:4000/", "_blank")}>Open Emulator UI</button> : null}
+                  <div className="staff-subtitle">Last Firestore write</div>
+                  <pre>{safeJsonStringify(lastWrite)}</pre>
+                  <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastWrite))}>Copy write JSON</button>
+                </div>
+                <div className="staff-column">
+                  <div className="staff-subtitle">Last query params</div>
+                  <pre>{safeJsonStringify(lastQuery)}</pre>
+                  <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastQuery))}>Copy query JSON</button>
+                  <div className="staff-subtitle">Last GitHub/Functions call</div>
+                  <pre>{safeJsonStringify(sanitizeLastRequest(lastReq))}</pre>
+                  <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(sanitizeLastRequest(lastReq)))}>Copy call JSON</button>
+                  <div className="staff-mini">curl hint</div>
+                  <pre>{lastReq?.curlExample ?? "(none)"}</pre>
+                  <button className="btn btn-ghost" onClick={() => void copy(lastReq?.curlExample ?? "")} disabled={!lastReq?.curlExample}>Copy curl hint</button>
+                </div>
+                <div className="staff-column">
+                  <div className="staff-subtitle">Last error stack/message</div>
+                  <pre>{safeJsonStringify(lastErr)}</pre>
+                  {copyStatus ? (
+                    <div className="staff-note" role="status" aria-live="polite">
+                      {copyStatus}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </details>
+          </>
+        ) : null}
+        {cockpitTab === "moduleTelemetry" ? (
+          <>
+            <div className="staff-subtitle">Module engagement telemetry (rolling local)</div>
+            <div className="staff-actions-row">
+              <button className="btn btn-ghost btn-small" onClick={resetModuleTelemetry}>
+                Reset telemetry
+              </button>
+              <button className="btn btn-ghost btn-small" onClick={() => void copy(safeJsonStringify(moduleTelemetrySnapshot))}>
+                Copy telemetry JSON
+              </button>
             </div>
-          </div>
-        </details>
-        <div className="staff-subtitle staff-cockpit-anchor" id={COCKPIT_SECTION_IDS.moduleTelemetry}>Module engagement telemetry (rolling local)</div>
-        <div className="staff-actions-row">
-          <button className="btn btn-ghost btn-small" onClick={resetModuleTelemetry}>
-            Reset telemetry
-          </button>
-          <button className="btn btn-ghost btn-small" onClick={() => void copy(safeJsonStringify(moduleTelemetrySnapshot))}>
-            Copy telemetry JSON
-          </button>
-        </div>
-        <div className="staff-note">
-          {lowEngagementModules.length === 0
-            ? "No low-engagement modules detected in current telemetry."
-            : `Low-engagement modules in current telemetry: ${lowEngagementModules.join(", ")}`}
-        </div>
-        <div className="staff-table-wrap">
-          <table className="staff-table">
-            <thead>
-              <tr>
-                <th>Module</th>
-                <th>Owner</th>
-                <th>Visits</th>
-                <th>Dwell</th>
-                <th>First action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {moduleUsageRows.length === 0 ? (
-                <tr><td colSpan={5}>No module activity captured yet.</td></tr>
-              ) : (
-                moduleUsageRows.map((row) => (
-                  <tr key={row.key}>
-                    <td>{row.label}</td>
-                    <td>{row.owner}</td>
-                    <td>{row.visits}</td>
-                    <td>{formatDurationMs(row.dwellMs)}</td>
-                    <td>{formatLatencyMs(row.firstActionMs)}</td>
+            <div className="staff-note">
+              {lowEngagementModules.length === 0
+                ? "No low-engagement modules detected in the current telemetry sample."
+                : `Low-engagement modules in the current telemetry sample: ${lowEngagementModules.join(", ")}`}
+            </div>
+            <div className="staff-table-wrap">
+              <table className="staff-table">
+                <thead>
+                  <tr>
+                    <th>Module</th>
+                    <th>Owner</th>
+                    <th>Visits</th>
+                    <th>Dwell</th>
+                    <th>First action</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {moduleUsageRows.length === 0 ? (
+                    <tr><td colSpan={5}>No module activity captured yet.</td></tr>
+                  ) : (
+                    moduleUsageRows.map((row) => (
+                      <tr key={row.key}>
+                        <td>{row.label}</td>
+                        <td>{row.owner}</td>
+                        <td>{row.visits}</td>
+                        <td>{formatDurationMs(row.dwellMs)}</td>
+                        <td>{formatLatencyMs(row.firstActionMs)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : null}
       </section>
-      <div className="card staff-console-card staff-cockpit-anchor" id={COCKPIT_SECTION_IDS.policyAgentOps}>{agentOpsContent}</div>
-      <div className="card staff-console-card">{governanceContent}</div>
-      <div className="card staff-console-card staff-cockpit-anchor" id={COCKPIT_SECTION_IDS.reports}>{reportsContent}</div>
+      {cockpitTab === "policyAgentOps" ? (
+        <>
+          <div className="card staff-console-card">{agentOpsContent}</div>
+          <div className="card staff-console-card">{governanceContent}</div>
+        </>
+      ) : null}
+      {cockpitTab === "reports" ? <div className="card staff-console-card">{reportsContent}</div> : null}
     </section>
   );
 
@@ -7385,6 +7875,16 @@ const lendingContent = (
                 {" "}
                 Google Books enabled
               </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={externalLookupPolicyCoverReviewGuardrailEnabled}
+                  onChange={(event) => setExternalLookupPolicyCoverReviewGuardrailEnabled(event.target.checked)}
+                  disabled={Boolean(busy) || externalLookupPolicyBusy || hasFunctionsAuthMismatch}
+                />
+                {" "}
+                Require staff cover approval for imported covers
+              </label>
             </div>
             <input
               type="text"
@@ -7394,7 +7894,8 @@ const lendingContent = (
               disabled={Boolean(busy) || externalLookupPolicyBusy || hasFunctionsAuthMismatch}
             />
             <span className="helper">
-              Use this to pause a provider when rate limits or reliability issues occur.
+              Use this to pause a provider when rate limits or reliability issues occur, and temporarily bypass manual cover approvals for trusted bulk ingestion.
+              Cover approvals are handled in Staff / Lending / Cover review queue.
             </span>
           </label>
           <div className="staff-actions-row">
@@ -8394,6 +8895,9 @@ const lendingContent = (
         </button>
       </div>
       <div className="staff-subtitle">Cover review queue</div>
+      <div className="staff-note">
+        Review and approve imported covers here. This queue is the manual approval workflow for cover guardrails.
+      </div>
       {coverReviewStatus ? <div className="staff-note">{coverReviewStatus}</div> : null}
       <div className="staff-table-wrap">
         <table className="staff-table">
@@ -8715,6 +9219,371 @@ const lendingContent = (
     </section>
   );
 
+  const cockpitContent = (
+    <section className="staff-today-console">
+      <section className="card staff-console-card">
+        <div className="card-title">Quick actions</div>
+        <p className="card-subtitle">Large iPad-friendly shortcuts for the most common daily staff actions.</p>
+        <div className="staff-quick-actions">
+          <button className="btn btn-primary staff-quick-action-btn" onClick={openReservationsToday}>
+            View reservations (today)
+          </button>
+          <button className="btn btn-primary staff-quick-action-btn" onClick={openMessagesInbox}>
+            Open messages
+          </button>
+          <button className="btn btn-primary staff-quick-action-btn" onClick={startFiringFlow}>
+            Start firing
+          </button>
+          <button className="btn btn-primary staff-quick-action-btn" onClick={() => openModuleFromCockpit("commerce")}>
+            Payment lookup and alerts
+          </button>
+          <button className="btn btn-primary staff-quick-action-btn" onClick={() => openModuleFromCockpit("events")}>
+            Open content tools
+          </button>
+        </div>
+      </section>
+
+      <section className="staff-module-grid staff-today-overview-grid">
+        <section className="card staff-console-card staff-today-card">
+          <div className="card-title-row">
+            <div className="card-title">Reservations today</div>
+            <button
+              className="btn btn-secondary btn-small"
+              disabled={Boolean(busy) || todayReservationsLoading}
+              onClick={() => void run("refreshTodayReservations", loadTodayReservations)}
+            >
+              {todayReservationsLoading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+          <p className="card-subtitle">
+            Fast scan for who is due today, when they are expected, and what needs prep.
+          </p>
+          {todayReservationsLoading ? (
+            <div className="staff-skeleton-list" aria-hidden="true">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <div key={`today-reservation-skeleton-${index}`} className="staff-skeleton-row" />
+              ))}
+            </div>
+          ) : todayReservationsError ? (
+            <>
+              <div className="staff-note staff-note-error">
+                Reservations are temporarily unavailable: {todayReservationsError}
+              </div>
+              <div className="staff-actions-row">
+                <button className="btn btn-secondary btn-small" onClick={() => void run("retryTodayReservations", loadTodayReservations)}>
+                  Retry
+                </button>
+                <button className="btn btn-ghost btn-small" onClick={openReservationsToday}>
+                  Open reservations
+                </button>
+              </div>
+            </>
+          ) : todayReservations.length === 0 ? (
+            <>
+              <div className="staff-note">No reservations due today.</div>
+              <div className="staff-actions-row">
+                <button className="btn btn-secondary btn-small" onClick={openReservationsToday}>
+                  Open full calendar
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <ul className="staff-today-list" aria-label="Reservations today">
+                {todayReservations.map((reservation) => (
+                  <li key={reservation.id}>
+                    <button
+                      type="button"
+                      className="staff-today-row"
+                      onClick={() => openReservationDetail(reservation.id)}
+                    >
+                      <div className="staff-today-row-top">
+                        <strong>{reservation.displayName}</strong>
+                        <span>{toShortTimeLabel(reservation.timeMs)}</span>
+                      </div>
+                      <div className="staff-today-row-meta">
+                        <span>{reservation.itemCount} item{reservation.itemCount === 1 ? "" : "s"}</span>
+                        <span className="pill">{reservation.status}</span>
+                        <span>{reservation.visitType}</span>
+                      </div>
+                      {reservation.notes ? <div className="staff-today-row-note">{shortText(reservation.notes, 120)}</div> : null}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="staff-actions-row">
+                <button className="btn btn-ghost btn-small" onClick={openReservationsToday}>
+                  View all reservations
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+
+        <section className="card staff-console-card staff-today-card">
+          <div className="card-title-row">
+            <div className="card-title">Messages</div>
+            <button className="btn btn-secondary btn-small" onClick={openMessagesInbox}>
+              Open inbox
+            </button>
+          </div>
+          <p className="card-subtitle">
+            Unread conversations, support requests, and operational communication in one quick list.
+          </p>
+          <div className="staff-meta-inline">
+            <span className="pill">Unread {unreadMessageCount}</span>
+            <span className="pill">Announcements {unreadAnnouncements}</span>
+            <span className="pill">Posts {announcements.length}</span>
+          </div>
+          {messageThreadsLoading || announcementsLoading ? (
+            <div className="staff-skeleton-list" aria-hidden="true">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={`today-message-skeleton-${index}`} className="staff-skeleton-row" />
+              ))}
+            </div>
+          ) : messagesDegraded ? (
+            <>
+              <div className="staff-note staff-note-warn">
+                Degraded mode: message feeds may be delayed.
+                {messageThreadsError ? ` Threads: ${messageThreadsError}.` : ""}
+                {announcementsError ? ` Announcements: ${announcementsError}.` : ""}
+              </div>
+              <div className="staff-actions-row">
+                <button className="btn btn-secondary btn-small" onClick={openMessagesInbox}>
+                  View all messages
+                </button>
+              </div>
+            </>
+          ) : todayMessageRows.length === 0 ? (
+            <>
+              <div className="staff-note">No active conversations right now.</div>
+              <div className="staff-actions-row">
+                <button className="btn btn-secondary btn-small" onClick={openMessagesInbox}>
+                  Send message
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <ul className="staff-today-list" aria-label="Recent messages">
+                {todayMessageRows.map((thread) => {
+                  const unread = isDirectMessageUnread(thread, user.uid);
+                  const sender = firstNonBlankString(thread.lastSenderName, thread.lastSenderEmail, thread.subject, "Conversation");
+                  const snippet = firstNonBlankString(thread.lastMessagePreview, thread.subject, "Open thread");
+                  const atMs = readTimestampMs(thread.lastMessageAt);
+                  return (
+                    <li key={thread.id}>
+                      <button type="button" className="staff-today-row" onClick={() => openMessageThread(thread.id)}>
+                        <div className="staff-today-row-top">
+                          <strong>{sender}</strong>
+                          <span>{atMs ? when(atMs) : "-"}</span>
+                        </div>
+                        <div className="staff-today-row-meta">
+                          <span>{thread.kind || "direct"}</span>
+                          {unread ? <span className="staff-unread-dot">Unread</span> : <span>Read</span>}
+                        </div>
+                        <div className="staff-today-row-note">{shortText(snippet, 120)}</div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="staff-actions-row">
+                <button className="btn btn-ghost btn-small" onClick={openMessagesInbox}>
+                  View all messages
+                </button>
+                <button className="btn btn-ghost btn-small" onClick={openMessagesInbox}>
+                  Send message
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+
+        <section className="card staff-console-card staff-today-card">
+          <div className="card-title-row">
+            <div className="card-title">Firings</div>
+            <button
+              className="btn btn-secondary btn-small"
+              disabled={Boolean(busy) || firingsLoading}
+              onClick={() => void run("refreshTodayFirings", loadFirings)}
+            >
+              {firingsLoading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+          <p className="card-subtitle">
+            Single active firing model with quick launch and iPad photo capture for kiln evidence.
+          </p>
+          {firingsLoading ? (
+            <div className="staff-skeleton-list" aria-hidden="true">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={`today-firing-skeleton-${index}`} className="staff-skeleton-row" />
+              ))}
+            </div>
+          ) : firingsError ? (
+            <>
+              <div className="staff-note staff-note-error">Firings are unavailable: {firingsError}</div>
+              <div className="staff-actions-row">
+                <button className="btn btn-secondary btn-small" onClick={() => void run("retryTodayFirings", loadFirings)}>
+                  Retry
+                </button>
+                <button className="btn btn-ghost btn-small" onClick={openFiringsWorkspace}>
+                  Open firings view
+                </button>
+              </div>
+            </>
+          ) : activeFiring ? (
+            <>
+              <div className="staff-note">
+                <strong>{activeFiring.kilnName || activeFiring.kilnId || "Kiln unknown"}</strong> · {activeFiring.status}
+                <div className="staff-mini">
+                  Started {activeFiring.startAtMs ? formatDateTime(activeFiring.startAtMs) : "time pending"} · last update{" "}
+                  {activeFiring.updatedAtMs ? when(activeFiring.updatedAtMs) : "-"}
+                </div>
+              </div>
+              <div className="staff-actions-row">
+                <button className="btn btn-secondary btn-small" onClick={openFiringsWorkspace}>
+                  Monitor firing
+                </button>
+                <button className="btn btn-ghost btn-small" onClick={startFiringFlow}>
+                  Start new firing
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="staff-note">No active firing. Start a new run from the queue workflow.</div>
+              <div className="staff-actions-row">
+                <button className="btn btn-primary btn-small" onClick={startFiringFlow}>
+                  Start New Firing
+                </button>
+              </div>
+            </>
+          )}
+          <label className="staff-field">
+            Capture kiln/status photo
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              disabled={firingPhotoBusy}
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                void handleFiringPhotoFile(file);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+          <div className="staff-mini">
+            Photos now upload to portal storage. Existing Kilnfire storage remains intact during migration.
+          </div>
+          {firingPhotoStatus ? <div className="staff-note staff-note-ok">{firingPhotoStatus}</div> : null}
+          {firingPhotoError ? <div className="staff-note staff-note-error">{firingPhotoError}</div> : null}
+        </section>
+
+        <section className="card staff-console-card staff-today-card">
+          <div className="card-title-row">
+            <div className="card-title">Payment alerts (P0/P1)</div>
+            <button
+              className="btn btn-secondary btn-small"
+              disabled={Boolean(busy) || commerceLoading}
+              onClick={() =>
+                void run("refreshTodayPayments", async () => {
+                  await Promise.allSettled([loadCommerce(), loadAutomationHealthDashboard()]);
+                })
+              }
+            >
+              {commerceLoading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+          <p className="card-subtitle">
+            Critical payment and smoke/canary risk signals only. Use details links for full transaction workflows.
+          </p>
+          {paymentDegraded ? (
+            <div className="staff-note staff-note-warn">
+              Degraded mode: payments status may be delayed.
+              {commerceError ? ` ${commerceError}` : ""}
+            </div>
+          ) : null}
+          {commerceLoading ? (
+            <div className="staff-skeleton-list" aria-hidden="true">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={`today-payment-skeleton-${index}`} className="staff-skeleton-row" />
+              ))}
+            </div>
+          ) : paymentAlerts.length === 0 ? (
+            <>
+              <div className="staff-note">No P0/P1 payment alerts right now.</div>
+              <div className="staff-actions-row">
+                <button className="btn btn-ghost btn-small" onClick={() => openModuleFromCockpit("commerce")}>
+                  Payment lookup
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <ul className="staff-today-list" aria-label="Payment alerts">
+                {paymentAlerts.map((alert) => (
+                  <li key={alert.id}>
+                    <div className="staff-today-row staff-today-row-static">
+                      <div className="staff-today-row-top">
+                        <strong>{alert.title}</strong>
+                        <span className={`pill ${alert.severity === "P0" ? "staff-pill-danger" : "staff-pill-warn"}`}>
+                          {alert.severity}
+                        </span>
+                      </div>
+                      <div className="staff-today-row-note">{alert.detail}</div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <div className="staff-actions-row">
+                <button className="btn btn-secondary btn-small" onClick={() => openModuleFromCockpit("commerce")}>
+                  View payment details
+                </button>
+                <button className="btn btn-ghost btn-small" onClick={() => openModuleFromCockpit("stripe")}>
+                  Open Stripe settings
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+      </section>
+
+      <section className="card staff-console-card">
+        <div className="card-title">System status summary</div>
+        <p className="card-subtitle">Operational health at a glance with one link to advanced tools.</p>
+        <div className="staff-note">
+          <strong>{systemSummaryToneLabel}</strong> · {systemSummaryMessage}
+        </div>
+        <div className="staff-note staff-note-muted">
+          Advanced diagnostics, policy controls, and agent operations have moved off this primary page.
+        </div>
+        <div className="staff-actions-row">
+          <button className="btn btn-secondary" onClick={() => setModuleKey("system")}>
+            Open System Tools
+          </button>
+          <button className="btn btn-ghost" onClick={openSystemWorkspace}>
+            Open dedicated /staff/system
+          </button>
+        </div>
+      </section>
+    </section>
+  );
+
+  const systemWorkspaceContent = (
+    <section className="staff-system-workspace">
+      <section className="card staff-console-card">
+        <div className="card-title">System tools workspace</div>
+        <p className="card-subtitle">
+          Internal tooling, diagnostics, policy controls, and agent operations live here to keep the Today Console focused.
+        </p>
+      </section>
+      {systemContent}
+      {legacySystemOpsContent}
+    </section>
+  );
+
   const moduleContentByKey: Record<ModuleKey, ReactNode> = {
     cockpit: cockpitContent,
     checkins: (
@@ -8740,11 +9609,10 @@ const lendingContent = (
     firings: firingsContent,
     events: eventsContent,
     reports: reportsContent,
-    studioBrain: studioBrainContent,
     stripe: stripeContent,
     commerce: commerceContent,
     lending: lendingContent,
-    system: systemContent,
+    system: systemWorkspaceContent,
   };
   const moduleContent = moduleContentByKey[moduleKey];
 
@@ -8764,89 +9632,101 @@ const lendingContent = (
 
   return (
     <div className="staff-console">
-      <div className="staff-hero card card-3d">
-        <div className="card-title-row">
-          <div className="card-title">Staff Console</div>
-          <div className="staff-hero-actions">
-            <button
-              className="btn btn-secondary"
-              disabled={Boolean(busy)}
-              onClick={() =>
-                void run("refreshModule", async () => {
-                  await loadModule(moduleKey);
-                  setStatus(`Loaded ${moduleKey} module.`);
-                })
-              }
-            >
-              {busy ? "Working..." : "Load current module"}
+      <section className="staff-console-toolbar">
+        <div className="staff-console-title">Staff console</div>
+        <p className="staff-console-description">
+          Manage members, pieces, firings, events, billing, lending, and system health.
+        </p>
+        <div className="staff-actions-row">
+          <button
+            className="btn btn-secondary"
+            disabled={Boolean(busy)}
+            onClick={() =>
+              void run("refreshModule", async () => {
+                await loadModule(moduleKey);
+                setStatus(`Loaded ${moduleKey} module.`);
+              })
+            }
+          >
+            {busy ? "Working..." : "Load current module"}
+          </button>
+          <button
+            className="btn btn-ghost"
+            disabled={Boolean(busy)}
+            onClick={() =>
+              void run("refreshAll", async () => {
+                await loadAll();
+                setStatus("Refreshed all modules");
+              })
+            }
+          >
+            Refresh all
+          </button>
+          {onOpenCheckin ? (
+            <button className="btn btn-ghost" type="button" onClick={onOpenCheckin}>
+              Open ware check-in
             </button>
+          ) : null}
+          {moduleKey === "cockpit" && !forceCockpitWorkspace ? (
             <button
               className="btn btn-ghost"
-              disabled={Boolean(busy)}
-              onClick={() =>
-                void run("refreshAll", async () => {
-                  await loadAll();
-                  setStatus("Refreshed all modules");
-                })
-              }
+              type="button"
+              onClick={() => setCockpitWorkspaceMode((prev) => !prev)}
             >
-              Refresh all
+              {cockpitWorkspaceMode ? "Show module rail" : "Focus cockpit workspace"}
             </button>
-            {onOpenCheckin ? (
-              <button className="btn btn-ghost" type="button" onClick={onOpenCheckin}>
-                Open ware check-in
-              </button>
-            ) : null}
-            {moduleKey === "cockpit" && !forceCockpitWorkspace ? (
-              <button
-                className="btn btn-ghost"
-                type="button"
-                onClick={() => setCockpitWorkspaceMode((prev) => !prev)}
-              >
-                {cockpitWorkspaceMode ? "Show module rail" : "Focus cockpit workspace"}
-              </button>
-            ) : null}
-            {moduleKey === "cockpit" ? (
-              <button
-                className="btn btn-ghost"
-                type="button"
-                onClick={() => {
-                  if (typeof window === "undefined") return;
-                  if (forceCockpitWorkspace) {
-                    window.location.assign("/staff");
-                    return;
-                  }
-                  window.open("/staff/cockpit", "_blank", "noopener");
-                }}
-              >
-                {forceCockpitWorkspace ? "Open full staff console" : "Open dedicated cockpit page"}
-              </button>
-            ) : null}
-            {moduleKey === "events" ? (
-              <button
-                className="btn btn-ghost"
-                type="button"
-                onClick={() => {
-                  if (typeof window === "undefined") return;
-                  if (forceEventsWorkspace) {
-                    window.location.assign("/staff");
-                    return;
-                  }
-                  window.open("/staff/workshops", "_blank", "noopener");
-                }}
-              >
-                {forceEventsWorkspace ? "Open full staff console" : "Open dedicated workshops page"}
-              </button>
-            ) : null}
-          </div>
+          ) : null}
+          {moduleKey === "cockpit" ? (
+            <button
+              className="btn btn-ghost"
+              type="button"
+              onClick={() => {
+                if (typeof window === "undefined") return;
+                if (forceCockpitWorkspace) {
+                  window.location.assign("/staff");
+                  return;
+                }
+                window.open("/staff/cockpit", "_blank", "noopener");
+              }}
+            >
+              {forceCockpitWorkspace ? "Open full staff console" : "Open dedicated cockpit page"}
+            </button>
+          ) : null}
+          {moduleKey === "events" ? (
+            <button
+              className="btn btn-ghost"
+              type="button"
+              onClick={() => {
+                if (typeof window === "undefined") return;
+                if (forceEventsWorkspace) {
+                  window.location.assign("/staff");
+                  return;
+                }
+                window.open("/staff/workshops", "_blank", "noopener");
+              }}
+            >
+              {forceEventsWorkspace ? "Open full staff console" : "Open dedicated workshops page"}
+            </button>
+          ) : null}
+          {moduleKey === "system" ? (
+            <button
+              className="btn btn-ghost"
+              type="button"
+              onClick={() => {
+                if (typeof window === "undefined") return;
+                if (forceSystemWorkspace) {
+                  window.location.assign("/staff");
+                  return;
+                }
+                window.open("/staff/system", "_blank", "noopener");
+              }}
+            >
+              {forceSystemWorkspace ? "Open full staff console" : "Open dedicated system page"}
+            </button>
+          ) : null}
         </div>
-        <p className="card-subtitle">Portal administration for users, pieces, firings, events, store, lending, and system health.</p>
-        <div className="staff-note">Data is lazy-loaded. Start with <strong>Load current module</strong> to keep reads controlled.</div>
-        <div className="staff-meta">
-          <div><span className="label">Signed in</span><strong>{user.displayName ?? "Staff"}</strong></div>
-          <div><span className="label">Role</span><strong>{staffAuthorityLabel}</strong></div>
-          <div><span className="label">Email</span><strong>{user.email ?? "-"}</strong></div>
-          <div><span className="label">UID</span><strong>{user.uid}</strong></div>
+        <div className="staff-mini">
+          Data loads lazily. Start with <strong>Load current module</strong> when you want focused refreshes.
         </div>
         {hasFunctionsAuthMismatch ? <div className="staff-note">Functions emulator is local, but Auth emulator is off. StaffView is running in Firestore-only safe mode for function-backed modules.</div> : null}
         {studioBrainUiState ? (
@@ -8872,9 +9752,9 @@ const lendingContent = (
             {error}
           </div>
         ) : null}
-      </div>
+      </section>
 
-        <div className={`staff-console-layout ${isWorkspaceFocused ? "staff-console-layout-cockpit" : ""}`}>
+      <div className={`staff-console-layout ${isWorkspaceFocused ? "staff-console-layout-cockpit" : ""}`}>
         {!isWorkspaceFocused ? (
           <aside className="card staff-console-nav">
           <div className="staff-subtitle">Modules</div>
@@ -8933,7 +9813,16 @@ const lendingContent = (
           ) : null}
           </aside>
         ) : null}
-        <div className="staff-console-content" ref={moduleContentRef}>{moduleContent}</div>
+        <div
+          className={`staff-console-content ${isWorkspaceFocused ? "staff-console-content-focused" : ""}`}
+          ref={moduleContentRef}
+        >
+          {moduleContent}
+        </div>
+      </div>
+      <div className="staff-identity-statusline staff-identity-statusline-footer">
+        Signed in as <strong>{user.displayName ?? "Staff"}</strong> · Role <strong>{staffAuthorityLabel}</strong> · Email{" "}
+        <strong>{user.email ?? "-"}</strong> · UID <strong>{user.uid}</strong>
       </div>
     </div>
   );

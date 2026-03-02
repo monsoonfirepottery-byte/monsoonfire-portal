@@ -195,6 +195,13 @@
   box-shadow: var(--shadow-soft);
 }
 
+.segmented-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+  box-shadow: none;
+}
+
 .segmented-button.selected {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px rgba(180, 79, 53, 0.2);
@@ -289,6 +296,18 @@
 
 .community-shelf-summary li {
   color: var(--muted);
+}
+
+.community-shelf-attest {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.community-shelf-attest input {
+  margin-top: 2px;
 }
 
 .intake-modal-actions {

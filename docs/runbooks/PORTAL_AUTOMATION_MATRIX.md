@@ -105,6 +105,7 @@ Purpose: define the active automation guardrails for portal functionality, UX co
 - Reservations Step 5 had low-signal clutter (`Most people start here`, space gauge copy, duplicate estimate language) that reduced trust.
 - Reservations Step 6 add-on framing needed clearer fairness language for priority queue (line-cut penalty tradeoff).
 - Priority queue now requires community shelf fill-in consent by policy to rebalance queue fairness.
+- Community shelf now enforces a tiny-load cap (under one half shelf per check-in) to prevent free-firing misuse.
 - Staff glaze-prep language was confusing; refocused on concrete “staff follows your glaze/wax directions” intent and per-half-shelf pricing.
 - Need-by deadline behavior now follows urgency-aware prompts (2-week suggest, 1-week preselect with opt-out).
 - Keep running click-efficiency metrics and fold recurring friction signatures into weekly automation digest / self-improvement loops.

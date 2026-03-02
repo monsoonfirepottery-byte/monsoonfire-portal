@@ -65,7 +65,7 @@ const INTAKE_MODE_OPTIONS: Array<{
   {
     id: "COMMUNITY_SHELF",
     label: "Community shelf",
-    detail: "Free placement when space remains and permission is granted.",
+    detail: "Tiny-load lane for flexible timing when extra kiln space appears.",
   },
 ];
 
@@ -108,6 +108,7 @@ const KILN_OPTIONS = [
 
 const CHECKIN_PREFILL_KEY = "mf_checkin_prefill";
 const KILN_CAPACITY_HALF_SHELVES = 8;
+const COMMUNITY_SHELF_MAX_HALF_SHELVES = 1;
 const STATUS_ACTIONS: Array<{ status: StaffQueueStatus; label: string; tone: "primary" | "ghost" | "danger" }> = [
   { status: "CONFIRMED", label: "Confirm", tone: "primary" },
   { status: "WAITLISTED", label: "Waitlist", tone: "ghost" },
@@ -791,6 +792,7 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
   const [deliveryInstructions, setDeliveryInstructions] = useState("");
   const [useStudioGlazes, setUseStudioGlazes] = useState(false);
   const [communityShelfFillInAllowed, setCommunityShelfFillInAllowed] = useState(false);
+  const [communityShelfSmallLoadConfirmed, setCommunityShelfSmallLoadConfirmed] = useState(false);
   const [glazeAccessCost, setGlazeAccessCost] = useState<number | null>(null);
   const [submitCelebrationActive, setSubmitCelebrationActive] = useState(false);
 
@@ -908,6 +910,8 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
     const safeFootprint = Math.min(8, Math.max(1, footprintHalfShelves));
     return safeFootprint + (hasTallPieces ? 1 : 0);
   }, [footprintHalfShelves, hasTallPieces]);
+  const communityShelfSizeExceeded =
+    intakeMode === "COMMUNITY_SHELF" && computedHalfShelves > COMMUNITY_SHELF_MAX_HALF_SHELVES;
   const computedCost = useMemo(() => {
     if (intakeMode === "COMMUNITY_SHELF") return 0;
     if (intakeMode === "WHOLE_KILN") return FULL_KILN_CUSTOM_PRICE;
@@ -1303,6 +1307,10 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
 
   useEffect(() => {
     if (intakeMode !== "COMMUNITY_SHELF") return;
+    setFootprintHalfShelves(1);
+    setShowMoreFootprints(false);
+    setHasTallPieces(false);
+    setFitsOnOneLayer(null);
     setRushRequested(false);
     setStaffGlazePrepRequested(false);
     setPickupDeliveryRequested(false);
@@ -2840,6 +2848,7 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
     setDeliveryInstructions("");
     setUseStudioGlazes(false);
     setCommunityShelfFillInAllowed(false);
+    setCommunityShelfSmallLoadConfirmed(false);
     setGlazeAccessCost(null);
     setSubmitRequestId(null);
     setPrefillNote(null);
@@ -2849,17 +2858,24 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
   };
 
   const beginCommunityShelfFlow = useCallback(() => {
+    setCommunityShelfSmallLoadConfirmed(false);
     setCommunityShelfInfoOpen(true);
   }, []);
 
   const cancelCommunityShelfFlow = useCallback(() => {
+    setCommunityShelfSmallLoadConfirmed(false);
     setCommunityShelfInfoOpen(false);
   }, []);
 
   const confirmCommunityShelfFlow = useCallback(() => {
+    if (!communityShelfSmallLoadConfirmed) return;
     setIntakeMode("COMMUNITY_SHELF");
+    setFootprintHalfShelves(1);
+    setShowMoreFootprints(false);
+    setHasTallPieces(false);
+    setFitsOnOneLayer(null);
     setCommunityShelfInfoOpen(false);
-  }, []);
+  }, [communityShelfSmallLoadConfirmed]);
 
   const chooseIntakeMode = useCallback(
     (nextMode: IntakeMode) => {
@@ -2869,6 +2885,7 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
         return;
       }
       setCommunityShelfInfoOpen(false);
+      setCommunityShelfSmallLoadConfirmed(false);
       setIntakeMode(nextMode);
     },
     [beginCommunityShelfFlow, intakeMode]
@@ -2907,6 +2924,19 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
     if (!Number.isFinite(footprintHalfShelves) || footprintHalfShelves < 1) {
       setFormError("Tell us roughly how much table space you need.");
       return;
+    }
+
+    if (intakeMode === "COMMUNITY_SHELF") {
+      if (!communityShelfSmallLoadConfirmed) {
+        setFormError("Confirm the tiny-load community shelf policy before submitting this check-in.");
+        return;
+      }
+      if (communityShelfSizeExceeded || footprintHalfShelves > COMMUNITY_SHELF_MAX_HALF_SHELVES || hasTallPieces) {
+        setFormError(
+          "Community shelf is limited to tiny drops under one half-shelf. Switch to Per-shelf purchase for larger work."
+        );
+        return;
+      }
     }
 
     if (pickupDeliveryRequested || returnDeliveryRequested) {
@@ -3299,7 +3329,8 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
               </p>
               {intakeMode === "COMMUNITY_SHELF" ? (
                 <div className="notice inline-alert">
-                  Community shelf is free, lowest priority, and excluded from firing triggers.
+                  Community shelf is for tiny drops only (under one half shelf), remains lowest priority, and does
+                  not trigger firings.
                 </div>
               ) : null}
             </div>
@@ -3323,21 +3354,26 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                           footprintHalfShelves === count ? "selected" : ""
                         }`}
                         onClick={() => setFootprintHalfShelves(count)}
+                        disabled={
+                          intakeMode === "COMMUNITY_SHELF" && count > COMMUNITY_SHELF_MAX_HALF_SHELVES
+                        }
                         aria-pressed={footprintHalfShelves === count}
                       >
                         <span className="segmented-main">{count}</span>
                       </button>
                     ))}
-                    <button
-                      type="button"
-                      className={`segmented-button ${showMoreFootprints ? "selected" : ""}`}
-                      onClick={() => setShowMoreFootprints((prev) => !prev)}
-                      aria-label="Show more shelf options"
-                      aria-pressed={showMoreFootprints}
-                    >
-                      <span className="segmented-main">More</span>
-                    </button>
-                    {showMoreFootprints
+                    {intakeMode !== "COMMUNITY_SHELF" ? (
+                      <button
+                        type="button"
+                        className={`segmented-button ${showMoreFootprints ? "selected" : ""}`}
+                        onClick={() => setShowMoreFootprints((prev) => !prev)}
+                        aria-label="Show more shelf options"
+                        aria-pressed={showMoreFootprints}
+                      >
+                        <span className="segmented-main">More</span>
+                      </button>
+                    ) : null}
+                    {intakeMode !== "COMMUNITY_SHELF" && showMoreFootprints
                       ? Array.from({ length: 5 }, (_, index) => index + 4).map((count) => (
                           <button
                             type="button"
@@ -3360,7 +3396,9 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                       : null}
                   </div>
                   <p className="form-helper">
-                    About one carry-on suitcase laid flat.
+                    {intakeMode === "COMMUNITY_SHELF"
+                      ? "Community shelf is for tiny drops only: under one half shelf per check-in."
+                      : "About one carry-on suitcase laid flat."}
                   </p>
                   {intakeMode === "SHELF_PURCHASE" ? (
                     <div className="community-overflow-optin">
@@ -3431,7 +3469,11 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                       <button
                         type="button"
                         className={`segmented-button ${hasTallPieces ? "selected" : ""}`}
-                        onClick={() => setHasTallPieces(true)}
+                        onClick={() => {
+                          if (intakeMode === "COMMUNITY_SHELF") return;
+                          setHasTallPieces(true);
+                        }}
+                        disabled={intakeMode === "COMMUNITY_SHELF"}
                         aria-pressed={hasTallPieces}
                       >
                         Yes, it&apos;s tall
@@ -3448,11 +3490,23 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                     {hasTallPieces ? (
                       <div className="form-helper">Tall pieces usually count as 2–3 half-shelves.</div>
                     ) : null}
+                    {intakeMode === "COMMUNITY_SHELF" ? (
+                      <div className="form-helper">
+                        Tall pieces and larger loads are not eligible for community shelf. Choose Per-shelf purchase
+                        for those.
+                      </div>
+                    ) : null}
                     <div className="form-helper">
                       Not sure? Choose standard height. We&apos;ll measure it with you.
                     </div>
                   </div>
                 </div>
+
+                {communityShelfSizeExceeded ? (
+                  <div className="notice inline-alert">
+                    This load exceeds the community shelf tiny-load cap. Switch to Per-shelf purchase to continue.
+                  </div>
+                ) : null}
 
                 <aside className={`estimate-summary ${animateEstimate ? "animate" : ""}`}>
                   <details className="shelf-guide">
@@ -3836,17 +3890,33 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                     </ul>
                     <p className="community-shelf-summary-title">Tradeoffs</p>
                     <ul>
+                      <li>Tiny-load lane only: under one half shelf per check-in.</li>
                       <li>Placed last and only when donated shelf space is open.</li>
                       <li>Does not trigger firing schedules or move dates forward.</li>
                       <li>Rush and paid shelf add-ons stay disabled in this mode.</li>
                     </ul>
                   </div>
+                  <label className="community-shelf-attest">
+                    <input
+                      type="checkbox"
+                      checked={communityShelfSmallLoadConfirmed}
+                      onChange={(event) => setCommunityShelfSmallLoadConfirmed(event.target.checked)}
+                    />
+                    <span>
+                      I confirm this drop-off is under one half shelf and can wait for leftover kiln space.
+                    </span>
+                  </label>
                   <div className="intake-modal-actions">
                     <button type="button" className="btn btn-ghost" onClick={cancelCommunityShelfFlow}>
                       Keep Shelf Purchase
                     </button>
-                    <button type="button" className="btn btn-primary" onClick={confirmCommunityShelfFlow}>
-                      Use Community Shelf
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={confirmCommunityShelfFlow}
+                      disabled={!communityShelfSmallLoadConfirmed}
+                    >
+                      Use Community Shelf (tiny load)
                     </button>
                   </div>
                 </div>

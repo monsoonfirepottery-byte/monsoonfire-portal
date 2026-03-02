@@ -2099,6 +2099,7 @@ export default function App() {
             onOpenPieces={() => openPieces()}
             onOpenMaterials={() => setNav("materials")}
             onOpenMembership={() => setNav("membership")}
+            onOpenBilling={() => setNav("billing")}
           />
         );
       case "messages":

@@ -268,6 +268,14 @@ export type CreateReservationRequest = {
     returnDeliveryRequested?: boolean;
     useStudioGlazes?: boolean;
     glazeAccessCost?: number | null;
+    fragileHandlingRequested?: boolean;
+    fragileHandlingCost?: number | null;
+    placementPreferenceRequested?: boolean;
+    placementPreferenceZone?: "top" | "middle" | "bottom" | null;
+    placementPreferenceCost?: number | null;
+    prepaidStorageRequested?: boolean;
+    prepaidStorageWeeks?: number | null;
+    prepaidStorageCost?: number | null;
   } | null;
 };
 
@@ -781,6 +789,7 @@ export type LibraryRecommendationsFeedbackSubmitRequest = {
 export type LibraryExternalLookupProviderConfigSetRequest = {
   openlibraryEnabled?: boolean;
   googlebooksEnabled?: boolean;
+  coverReviewGuardrailEnabled?: boolean;
   note?: string | null;
 };
 
@@ -1173,6 +1182,7 @@ export type LibraryExternalLookupProviderConfigResponse = PortalApiOkEnvelope & 
   data?: {
     openlibraryEnabled?: boolean;
     googlebooksEnabled?: boolean;
+    coverReviewGuardrailEnabled?: boolean;
     disabledProviders?: string[];
     note?: string | null;
     updatedAtMs?: number;

@@ -571,7 +571,7 @@ async function collectMyPiecesState(page, extraEmptyStatePatterns = []) {
 
     const viewDetailsCount = Array.from(document.querySelectorAll("button")).filter((node) => {
       if (!isVisible(node)) return false;
-      return /^View details$/i.test(textOf(node));
+      return /^(View details|Open detail)$/i.test(textOf(node));
     }).length;
 
     const customPatterns = Array.isArray(patterns)
@@ -1261,23 +1261,56 @@ async function run() {
           }
 
           const detailTitle = page.locator(".detail-title").first();
+          const detailButtons = page
+            .locator(".piece-row button")
+            .filter({ hasText: /^(View details|Open detail)$/i });
+          const isDetailTitleVisible = async () => {
+            if ((await detailTitle.count()) === 0) return false;
+            try {
+              return await detailTitle.isVisible();
+            } catch {
+              return false;
+            }
+          };
+
+          let detailTitleVisible = await isDetailTitleVisible();
           let attemptedOpenDetails = false;
-          if ((await detailTitle.count()) === 0) {
-            const viewDetailsButton = page.getByRole("button", { name: /^View details$/i }).first();
-            if ((await viewDetailsButton.count()) > 0) {
+          if (!detailTitleVisible) {
+            const detailButtonCount = await detailButtons.count();
+            if (detailButtonCount > 0) {
               attemptedOpenDetails = true;
-              await viewDetailsButton.click({ timeout: 10000 });
-            } else {
-              const firstRow = page.locator(".piece-row").first();
-              if ((await firstRow.count()) > 0) {
-                attemptedOpenDetails = true;
-                await firstRow.click({ timeout: 10000 });
+              const maxAttempts = Math.min(detailButtonCount, 3);
+              for (let index = 0; index < maxAttempts; index += 1) {
+                const button = detailButtons.nth(index);
+                try {
+                  await button.scrollIntoViewIfNeeded();
+                } catch {
+                  // Ignore scroll errors and still attempt the click.
+                }
+                await button.click({ timeout: 10000 });
+
+                try {
+                  await detailTitle.waitFor({ state: "visible", timeout: 2500 });
+                  detailTitleVisible = true;
+                  break;
+                } catch {
+                  // Try the next visible row-level detail button.
+                }
               }
             }
           }
 
-          if (attemptedOpenDetails || (await detailTitle.count()) > 0) {
-            await page.locator(".detail-title").first().waitFor({ timeout: 10000 });
+          if (attemptedOpenDetails || detailTitleVisible) {
+            try {
+              await detailTitle.waitFor({ state: "visible", timeout: 10000 });
+            } catch (error) {
+              const waitMessage = error instanceof Error ? error.message : String(error);
+              myPiecesState = await collectMyPiecesState(page, feedbackProfile.myPiecesEmptyStatePatterns);
+              throw new Error(
+                `Open detail action did not reveal a visible detail title. ` +
+                  `route=${routeUsed}; waitError=${waitMessage}; ${formatMyPiecesStateForError(myPiecesState)}`
+              );
+            }
           } else {
             let reloadAttempts = 0;
             while (

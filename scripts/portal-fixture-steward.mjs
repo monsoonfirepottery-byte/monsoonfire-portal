@@ -369,7 +369,6 @@ async function main() {
   if (serviceAccount) {
     try {
       adminToken = await mintServiceAccessToken(serviceAccount);
-      summary.usedAdminToken = true;
     } catch (error) {
       summary.warnings.push(
         `Service account token mint failed: ${error instanceof Error ? error.message : String(error)}`
@@ -377,7 +376,18 @@ async function main() {
     }
   }
 
-  const firestoreToken = adminToken || idToken;
+  let firestoreToken = idToken;
+  if (adminToken) {
+    const adminProbe = await fireGet(options.projectId, adminToken, "batches/__portal_fixture_probe__");
+    if (adminProbe.status === 401 || adminProbe.status === 403) {
+      summary.warnings.push(
+        `Service account token is not authorized for Firestore (status ${adminProbe.status}); falling back to staff token.`
+      );
+    } else {
+      firestoreToken = adminToken;
+      summary.usedAdminToken = true;
+    }
+  }
   const now = new Date();
   const runNonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const batchClientRequestId = `${options.prefix}-batch-${runDate.compact}-${runNonce}`;

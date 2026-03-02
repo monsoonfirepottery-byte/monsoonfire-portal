@@ -142,7 +142,7 @@ type LegacyRequestsRedirect = {
   notice: string;
 };
 
-type StaffWorkspaceMode = "default" | "cockpit" | "workshops";
+type StaffWorkspaceMode = "default" | "cockpit" | "workshops" | "system";
 
 type StaffWorkspaceLaunch = {
   targetNav: "staff";
@@ -180,7 +180,6 @@ const NAV_SECTIONS: NavSection[] = [
       { key: "glazes", label: "Glaze Board" },
       { key: "materials", label: "Store" },
       { key: "membership", label: "Membership" },
-      { key: "billing", label: "Billing" },
     ],
   },
   {
@@ -391,9 +390,16 @@ function isStaffWorkshopsPath(pathname: string): boolean {
   return /^\/staff\/workshops(?:\/|$)/i.test(pathname);
 }
 
+function isStaffSystemPath(pathname: string): boolean {
+  return /^\/staff\/system(?:\/|$)/i.test(pathname);
+}
+
 function resolveStaffWorkspaceLaunch(pathname: string, hash: string): StaffWorkspaceLaunch | null {
   const normalizedHashPath = normalizeHashPath(hash);
   const candidates = [pathname, normalizedHashPath].filter(Boolean);
+  if (candidates.some((value) => isStaffSystemPath(value))) {
+    return { targetNav: "staff", mode: "system" };
+  }
   if (candidates.some((value) => isStaffWorkshopsPath(value))) {
     return { targetNav: "staff", mode: "workshops" };
   }
@@ -898,6 +904,8 @@ export default function App() {
   const [isStaff, setIsStaff] = useState(false);
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [reservationFocusId, setReservationFocusId] = useState<string | null>(null);
+  const [messagesInitialThreadId, setMessagesInitialThreadId] = useState<string | null>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [supportStatus, setSupportStatus] = useState("");
   const [supportBusy, setSupportBusy] = useState(false);
@@ -1134,11 +1142,17 @@ export default function App() {
     const hasStaffHashPath = isStaffPath(normalizeHashPath(window.location.hash));
     const hasStaffCockpitPath = isStaffCockpitPath(window.location.pathname);
     const hasStaffCockpitHashPath = isStaffCockpitPath(normalizeHashPath(window.location.hash));
+    const hasStaffSystemPath = isStaffSystemPath(window.location.pathname);
+    const hasStaffSystemHashPath = isStaffSystemPath(normalizeHashPath(window.location.hash));
     if (nav === "glazes") {
       window.history.replaceState({}, "", "/glazes");
     } else if (nav === "staff" && staffWorkspaceMode === "cockpit") {
       if (!hasStaffCockpitPath && !hasStaffCockpitHashPath) {
         window.history.replaceState({}, "", "/staff/cockpit");
+      }
+    } else if (nav === "staff" && staffWorkspaceMode === "system") {
+      if (!hasStaffSystemPath && !hasStaffSystemHashPath) {
+        window.history.replaceState({}, "", "/staff/system");
       }
     } else if (nav === "staff" && staffWorkspaceMode === "workshops") {
       if (!hasStaffPath || window.location.pathname !== "/staff/workshops") {
@@ -1146,7 +1160,14 @@ export default function App() {
       }
     } else if (window.location.pathname === "/glazes" || hasLegacyRequestsPath || hasLegacyRequestsHash) {
       window.history.replaceState({}, "", "/");
-    } else if (hasStaffPath || hasStaffHashPath || hasStaffCockpitPath || hasStaffCockpitHashPath) {
+    } else if (
+      hasStaffPath ||
+      hasStaffHashPath ||
+      hasStaffCockpitPath ||
+      hasStaffCockpitHashPath ||
+      hasStaffSystemPath ||
+      hasStaffSystemHashPath
+    ) {
       window.history.replaceState({}, "", "/");
     }
   }, [nav, staffWorkspaceMode]);
@@ -1510,8 +1531,8 @@ export default function App() {
     user,
     isStaff && nav === "messages"
   );
-  const shouldLoadMessages = nav === "messages" || nav === "dashboard";
-  const shouldLoadAnnouncements = nav === "messages" || nav === "dashboard";
+  const shouldLoadMessages = nav === "messages" || nav === "dashboard" || nav === "staff";
+  const shouldLoadAnnouncements = nav === "messages" || nav === "dashboard" || nav === "staff";
   const { threads, loading: threadsLoading, error: threadsError } = useDirectMessages(
     user,
     shouldLoadMessages
@@ -1982,6 +2003,7 @@ export default function App() {
         return (
           <DashboardView
             user={user}
+            isStaff={staffUi}
             name={user.displayName ?? "Member"}
             themeName={themeName}
             onThemeChange={(next) => {
@@ -2025,6 +2047,7 @@ export default function App() {
               writeStoredEnhancedMotion(next);
             }}
             onOpenIntegrations={() => setNav("integrations")}
+            onOpenBilling={() => setNav("billing")}
             onAvatarUpdated={() => {
               void syncUserFromAuth();
             }}
@@ -2061,7 +2084,14 @@ export default function App() {
       case "billing":
         return <BillingView user={user} />;
       case "reservations":
-        return <ReservationsView user={user} isStaff={staffUi} adminToken={devAdminTokenValue} />;
+        return (
+          <ReservationsView
+            user={user}
+            isStaff={staffUi}
+            adminToken={devAdminTokenValue}
+            focusReservationId={reservationFocusId}
+          />
+        );
       case "kiln":
         return <KilnScheduleView user={user} isStaff={staffUi} />;
       case "kilnRentals":
@@ -2080,7 +2110,7 @@ export default function App() {
             onOpenPieces={() => openPieces()}
             onOpenMaterials={() => setNav("materials")}
             onOpenMembership={() => setNav("membership")}
-            onOpenBilling={() => setNav("billing")}
+            onOpenProfile={() => setNav("profile")}
           />
         );
       case "messages":
@@ -2088,6 +2118,7 @@ export default function App() {
           <MessagesView
             user={user}
             supportEmail={SUPPORT_EMAIL}
+            initialThreadId={messagesInitialThreadId}
             threads={threads}
             threadsLoading={threadsLoading}
             threadsError={threadsError}
@@ -2129,10 +2160,43 @@ export default function App() {
             onDevAdminTokenChange={setDevAdminToken}
             devAdminEnabled={DEV_ADMIN_TOKEN_ENABLED}
             showEmulatorTools={isAuthEmulator}
-            onOpenCheckin={() => setNav("reservations")}
-            initialModule={staffWorkspaceMode === "cockpit" ? "cockpit" : staffWorkspaceMode === "workshops" ? "events" : undefined}
+            onOpenCheckin={() => {
+              setReservationFocusId(null);
+              setNav("reservations");
+            }}
+            onOpenReservation={(reservationId) => {
+              setReservationFocusId(reservationId ?? null);
+              setNav("reservations");
+            }}
+            onOpenMessages={() => {
+              setMessagesInitialThreadId(null);
+              setNav("messages");
+            }}
+            onOpenMessageThread={(threadId) => {
+              setMessagesInitialThreadId(threadId);
+              setNav("messages");
+            }}
+            onOpenFirings={() => setNav("kiln")}
+            onStartFiring={() => setNav("kilnLaunch")}
+            initialModule={
+              staffWorkspaceMode === "cockpit"
+                ? "cockpit"
+                : staffWorkspaceMode === "workshops"
+                  ? "events"
+                  : staffWorkspaceMode === "system"
+                    ? "system"
+                    : undefined
+            }
             forceCockpitWorkspace={staffWorkspaceMode === "cockpit"}
             forceEventsWorkspace={staffWorkspaceMode === "workshops"}
+            forceSystemWorkspace={staffWorkspaceMode === "system"}
+            messageThreads={threads}
+            messageThreadsLoading={threadsLoading}
+            messageThreadsError={threadsError}
+            announcements={announcements}
+            announcementsLoading={announcementsLoading}
+            announcementsError={announcementsError}
+            unreadAnnouncements={unreadAnnouncements}
           />
         );
       default:

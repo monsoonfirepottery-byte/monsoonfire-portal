@@ -15,7 +15,8 @@ Purpose: define the active automation guardrails for portal functionality, UX co
 2. Daily authenticated production canary (`.github/workflows/portal-daily-authenticated-canary.yml`)
 - Signs in using staff credentials.
 - Verifies:
-  - Navigation dock controls switch cleanly across `left`, `top`, and `right` positions with screenshot evidence.
+  - Navigation dock controls switch cleanly across `left`, `top`, `right`, and `bottom` positions with screenshot evidence.
+  - Top/bottom dock flyout menus open and remain clickable.
   - Legacy `/requests` deep links (path + hash) redirect to supported destinations with migration guidance (`Support`, `Lending Library`, `Workshops`).
   - Dashboard -> My Pieces piece click-through
   - My Pieces loads without permission errors
@@ -93,6 +94,11 @@ Purpose: define the active automation guardrails for portal functionality, UX co
 - Enforces default and per-target p95 budgets in strict mode.
 - Runs daily and on manual dispatch with override inputs for runs, global budget, and per-target budget map.
 
+15. Reservations journey click-efficiency guard (`web/scripts/check-reservations-journey-playwright.mjs`)
+- Validates pickup-delivery guardrail messaging in Ware Check-in.
+- Captures click count for the goal path (sign in -> Ware Check-in -> pickup toggle -> submit).
+- Writes machine-readable metrics (`tmp/reservations-journey-metrics.json`) so we can track interaction friction over time.
+
 ## Local commands
 
 ```bash
@@ -120,6 +126,7 @@ npm run portal:automation:issues
 npm run portal:automation:issues:apply
 npm run portal:automation:weekly-digest
 npm run portal:automation:weekly-digest:apply
+npm --prefix web run check:reservations-journey-playwright
 ```
 
 `portal:canary:auth` and `portal:theme:contrast` auto-resolve staff credentials from:

@@ -3658,8 +3658,8 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                   <span className="deadline-helper">Optional deadline. Approximate timing is okay.</span>
                 </label>
               </div>
-              <details className="notes-details">
-                <summary>More details (optional)</summary>
+              <div className="piece-linker">
+                <div className="piece-linker-title">Quick tags (optional)</div>
                 <div className="notes-tags">
                   {CHECKIN_NOTE_TAGS.map((tag) => (
                     <button
@@ -3674,73 +3674,71 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                   ))}
                 </div>
                 <div className="form-helper">Pick any tags that apply. We&apos;ll confirm at drop-off.</div>
-                <div className="piece-linker">
-                  <div className="piece-linker-title">Link one of your recent pieces (optional)</div>
-                  {primaryRecentPieceChoices.length ? (
-                    <div className="notes-tags">
-                      {primaryRecentPieceChoices.map((choice) => (
-                        <button
-                          key={choice.id}
-                          type="button"
-                          className={`note-tag ${linkedBatchId === choice.id ? "selected" : ""}`}
-                          onClick={() => setLinkedBatchId(choice.id)}
-                          aria-pressed={linkedBatchId === choice.id}
-                        >
-                          {choice.label}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="form-helper">
-                      No recent pieces found yet. You can skip this for now and we&apos;ll still process your check-in.
-                    </div>
-                  )}
-                  {overflowRecentPieceChoices.length ? (
-                    <button
-                      type="button"
-                      className="btn btn-ghost piece-linker-more"
-                      onClick={() => setShowAllRecentPieceChoices((prev) => !prev)}
-                    >
-                      {showAllRecentPieceChoices
-                        ? "Show fewer piece choices"
-                        : `Show ${overflowRecentPieceChoices.length} more piece choices`}
-                    </button>
-                  ) : null}
-                  {showAllRecentPieceChoices && overflowRecentPieceChoices.length ? (
-                    <div className="notes-tags">
-                      {overflowRecentPieceChoices.map((choice) => (
-                        <button
-                          key={choice.id}
-                          type="button"
-                          className={`note-tag ${linkedBatchId === choice.id ? "selected" : ""}`}
-                          onClick={() => setLinkedBatchId(choice.id)}
-                          aria-pressed={linkedBatchId === choice.id}
-                        >
-                          {choice.label}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                  {selectedRecentPieceChoice ? (
-                    <div className="piece-linker-selected">
-                      Linked piece: <code>{selectedRecentPieceChoice.detail}</code>
-                    </div>
-                  ) : null}
-                  <div className="piece-linker-actions">
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => setLinkedBatchId("")}
-                      disabled={!linkedBatchId}
-                    >
-                      Clear linked piece
-                    </button>
+                <div className="piece-linker-title">Link one of your recent pieces (optional)</div>
+                {primaryRecentPieceChoices.length ? (
+                  <div className="notes-tags">
+                    {primaryRecentPieceChoices.map((choice) => (
+                      <button
+                        key={choice.id}
+                        type="button"
+                        className={`note-tag ${linkedBatchId === choice.id ? "selected" : ""}`}
+                        onClick={() => setLinkedBatchId(choice.id)}
+                        aria-pressed={linkedBatchId === choice.id}
+                      >
+                        {choice.label}
+                      </button>
+                    ))}
                   </div>
+                ) : (
                   <div className="form-helper">
-                    Need more options? Open <strong>My Pieces</strong> from the sidebar.
+                    No recent pieces found yet. You can skip this for now and we&apos;ll still process your check-in.
                   </div>
+                )}
+                {overflowRecentPieceChoices.length ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost piece-linker-more"
+                    onClick={() => setShowAllRecentPieceChoices((prev) => !prev)}
+                  >
+                    {showAllRecentPieceChoices
+                      ? "Show fewer piece choices"
+                      : `Show ${overflowRecentPieceChoices.length} more piece choices`}
+                  </button>
+                ) : null}
+                {showAllRecentPieceChoices && overflowRecentPieceChoices.length ? (
+                  <div className="notes-tags">
+                    {overflowRecentPieceChoices.map((choice) => (
+                      <button
+                        key={choice.id}
+                        type="button"
+                        className={`note-tag ${linkedBatchId === choice.id ? "selected" : ""}`}
+                        onClick={() => setLinkedBatchId(choice.id)}
+                        aria-pressed={linkedBatchId === choice.id}
+                      >
+                        {choice.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {selectedRecentPieceChoice ? (
+                  <div className="piece-linker-selected">
+                    Linked piece: <code>{selectedRecentPieceChoice.detail}</code>
+                  </div>
+                ) : null}
+                <div className="piece-linker-actions">
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => setLinkedBatchId("")}
+                    disabled={!linkedBatchId}
+                  >
+                    Clear linked piece
+                  </button>
                 </div>
-              </details>
+                <div className="form-helper">
+                  Need more options? Open <strong>My Pieces</strong> from the sidebar.
+                </div>
+              </div>
               {prefillNote ? <div className="notice inline-alert">{prefillNote}</div> : null}
               <p className="form-helper">
                 Add anything that helps the studio load and fire safely.

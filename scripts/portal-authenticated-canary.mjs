@@ -719,8 +719,6 @@ async function verifyCheckInOptionalSections(page) {
   const notesInput = notesStep.getByLabel("General notes").first();
   await notesInput.fill(noteText);
 
-  const moreDetails = notesStep.locator("details.notes-details").first();
-  await setDetailsOpen(moreDetails, true, "notes more-details section");
   const firstTag = notesStep.getByRole("button", { name: /^Fragile handles$/i }).first();
   await firstTag.click({ timeout: 10000 });
   const tagSelected = await firstTag.getAttribute("aria-pressed");

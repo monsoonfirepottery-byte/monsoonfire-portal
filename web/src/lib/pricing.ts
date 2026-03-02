@@ -5,6 +5,7 @@ export const DELIVERY_PRICE_PER_TRIP = 25;
 export const RUSH_REQUEST_PRICE = 20;
 export const WAX_RESIST_ASSIST_PRICE = 10;
 export const GLAZE_SANITY_CHECK_PRICE = 12;
+export const STAFF_GLAZE_PREP_PER_HALF_SHELF_PRICE = 10;
 
 export type FiringType = "bisque" | "glaze" | "other";
 

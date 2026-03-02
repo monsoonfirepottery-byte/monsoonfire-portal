@@ -157,10 +157,13 @@ async function main() {
     await openWareCheckin(page, clickTracked);
     await page.getByRole("heading", { name: /^Ware Check-in$/i }).waitFor({ timeout: 30000 });
 
-    const extrasStep = page.locator("details.checkin-optional-step").nth(1);
+    const extrasSummary = page
+      .locator("details.checkin-optional-step > summary", { hasText: /Helpful extras/i })
+      .first();
+    const extrasStep = extrasSummary.locator("xpath=..");
     const extrasOpen = await extrasStep.evaluate((node) => node instanceof HTMLDetailsElement && node.open);
     if (!extrasOpen) {
-      await clickTracked(extrasStep.locator("summary").first(), "Open helpful extras");
+      await clickTracked(extrasSummary, "Open helpful extras");
       await page.waitForTimeout(250);
     }
 
@@ -173,7 +176,12 @@ async function main() {
     await checkTracked(pickupToggle, "Enable pickup run", { force: true });
 
     await page.getByText(/^Delivery address$/i).waitFor({ timeout: 15000 });
-    await clickTracked(page.getByRole("button", { name: /Submit check-in/i }), "Submit check-in");
+    const submitButton = page
+      .getByRole("button", {
+        name: /^(Submit check-in|Send my check-in|Save check-in)$/i,
+      })
+      .first();
+    await clickTracked(submitButton, "Submit check-in");
     await page
       .getByText(/Add the delivery address so we can schedule pickup\/return\./i)
       .waitFor({ timeout: 15000 });

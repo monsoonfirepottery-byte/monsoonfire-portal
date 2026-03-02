@@ -99,6 +99,16 @@ Purpose: define the active automation guardrails for portal functionality, UX co
 - Captures click count for the goal path (sign in -> Ware Check-in -> pickup toggle -> submit).
 - Writes machine-readable metrics (`tmp/reservations-journey-metrics.json`) so we can track interaction friction over time.
 
+## Friction tuning log (2026-03-02)
+
+- Reservations Step 4 policy helper now needs centered presentation to keep scanability high.
+- Reservations Step 5 had low-signal clutter (`Most people start here`, space gauge copy, duplicate estimate language) that reduced trust.
+- Reservations Step 6 add-on framing needed clearer fairness language for priority queue (line-cut penalty tradeoff).
+- Priority queue now requires community shelf fill-in consent by policy to rebalance queue fairness.
+- Staff glaze-prep language was confusing; refocused on concrete “staff follows your glaze/wax directions” intent and per-half-shelf pricing.
+- Need-by deadline behavior now follows urgency-aware prompts (2-week suggest, 1-week preselect with opt-out).
+- Keep running click-efficiency metrics and fold recurring friction signatures into weekly automation digest / self-improvement loops.
+
 ## Local commands
 
 ```bash

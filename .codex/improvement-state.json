@@ -105,18 +105,18 @@
     "automation": 0
   },
   "prGreenDaily": {
-    "lastRunAtIso": "2026-02-26T07:13:56.409Z",
-    "lastRunId": "2026-02-26-PR-GREEN",
+    "lastRunAtIso": "2026-03-03T07:04:19.131Z",
+    "lastRunId": "2026-03-03-PR-GREEN",
     "rerunRunIds": [],
     "rerunHistory": [],
     "lastSummary": {
-      "prsAnalyzed": 1,
+      "prsAnalyzed": 6,
       "prsGreen": 1,
       "prsPending": 0,
-      "prsBlocked": 0,
-      "failingChecks": 0,
+      "prsBlocked": 5,
+      "failingChecks": 11,
       "pendingChecks": 0,
-      "healthScore": 100
+      "healthScore": 42
     }
   }
 }

@@ -43,23 +43,21 @@
   "lastRecommendations": [],
   "recommendationOutcomes": [],
   "interactionInterrogation": {
-    "lastRunAtIso": "2026-03-03T07:53:15.247Z",
+    "lastRunAtIso": "2026-03-03T14:26:57.939Z",
     "lastRunId": "2026-03-03-AM",
     "lastPatternIds": [
       "workflow-restatement-cluster",
-      "tool-retry-loop-cluster",
       "skill-density-spike"
     ],
     "lastTopRecommendations": [
       "workflow-restatement-cluster",
-      "tool-retry-loop-cluster",
       "skill-density-spike"
     ],
-    "lastImpactScore": 72,
+    "lastImpactScore": 80,
     "recentImpactScores": [
       100,
       100,
-      72
+      80
     ],
     "activeRuleIds": {
       "user": [
@@ -76,18 +74,18 @@
       ]
     },
     "lastRuleUpdateRunId": "2026-03-03-AM",
-    "lastStructuralEditAtIso": "2026-03-03T07:53:15.247Z",
+    "lastStructuralEditAtIso": "2026-03-03T14:26:57.939Z",
     "lastSkillDensity": {
-      "firestore": 12,
+      "firestore": 17,
       "cloudFunctions": 0,
-      "schedulingLogic": 5,
-      "metadataConfig": 7,
-      "tooling": 17,
-      "workflowPolicy": 8,
-      "automation": 25
+      "schedulingLogic": 7,
+      "metadataConfig": 9,
+      "tooling": 0,
+      "workflowPolicy": 12,
+      "automation": 32
     },
-    "lastToolFailureRate24": 0.17391304347826086,
-    "lastErrorClusterCount": 2,
+    "lastToolFailureRate24": 0,
+    "lastErrorClusterCount": 1,
     "lastHighChurnCount": 0,
     "lastCiFailureRepeats": 3,
     "followThroughHistory": [
@@ -103,7 +101,7 @@
       },
       {
         "runId": "2026-03-03-AM",
-        "generatedAtIso": "2026-03-03T07:53:15.247Z",
+        "generatedAtIso": "2026-03-03T14:26:57.939Z",
         "outcomes": []
       }
     ]
@@ -114,7 +112,7 @@
         "url": "https://github.com/monsoonfirepottery-byte/monsoonfire-portal/pull/153",
         "branch": "codex/auto-improve/2026-03-03-AM",
         "source": "shared",
-        "updatedAtIso": "2026-03-03T07:53:15.247Z"
+        "updatedAtIso": "2026-03-03T14:26:57.939Z"
       }
     },
     "lastStructuralEditAtIso": ""

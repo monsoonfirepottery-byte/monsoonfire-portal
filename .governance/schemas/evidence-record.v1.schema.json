@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://monsoonfire.com/governance/schemas/evidence-record.v1.schema.json",
+  "title": "Governance Evidence Record v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "evidence_id",
+    "source_type",
+    "pointer",
+    "timestamp"
+  ],
+  "properties": {
+    "evidence_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{6,120}$"
+    },
+    "source_type": {
+      "type": "string",
+      "enum": [
+        "CI",
+        "rg",
+        "test",
+        "doc",
+        "memory",
+        "human",
+        "git",
+        "tool_output"
+      ]
+    },
+    "pointer": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 4000
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "hash_attestation": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 300
+    },
+    "redaction_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "redacted": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 500
+        },
+        "fields_removed": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}
+

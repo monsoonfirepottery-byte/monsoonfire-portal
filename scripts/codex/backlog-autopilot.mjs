@@ -6,7 +6,6 @@ import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promise
 import { spawnSync } from "node:child_process";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { captureAutomationMemory } from "./open-memory-automation.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..", "..");
@@ -22,6 +21,49 @@ const defaultReportMarkdownPath = resolve(defaultOutputDir, "codex-backlog-autop
 const rollingIssueTitle = "Codex Backlog Autopilot (Rolling)";
 const defaultLendingLibraryExclusionRegex =
   "(lending[ -]?library|tickets/p1-epic-16|tickets/p1-library-|tickets/p2-library-|tickets/p1-lending-library-|tickets/p2-lending-library-)";
+
+let captureAutomationMemoryImpl = null;
+
+async function captureAutomationMemorySafe(payload) {
+  if (typeof captureAutomationMemoryImpl !== "function") {
+    try {
+      const module = await import("./open-memory-automation.mjs");
+      if (module && typeof module.captureAutomationMemory === "function") {
+        captureAutomationMemoryImpl = module.captureAutomationMemory;
+      }
+    } catch (error) {
+      return {
+        attempted: false,
+        ok: false,
+        reason: "missing-open-memory-helper",
+        error: error instanceof Error ? error.message : String(error),
+        status: 0,
+      };
+    }
+  }
+
+  if (typeof captureAutomationMemoryImpl !== "function") {
+    return {
+      attempted: false,
+      ok: false,
+      reason: "missing-open-memory-helper",
+      error: "captureAutomationMemory is unavailable",
+      status: 0,
+    };
+  }
+
+  try {
+    return await captureAutomationMemoryImpl(payload);
+  } catch (error) {
+    return {
+      attempted: false,
+      ok: false,
+      reason: "open-memory-helper-error",
+      error: error instanceof Error ? error.message : String(error),
+      status: 0,
+    };
+  }
+}
 
 function printUsage() {
   process.stdout.write(
@@ -949,7 +991,7 @@ async function main() {
     },
   };
 
-  output.memory.capture = await captureAutomationMemory({
+  output.memory.capture = await captureAutomationMemorySafe({
     tool: "backlog-autopilot",
     runId,
     status: output.status,

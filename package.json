@@ -253,7 +253,7 @@
     "node": "22"
   },
   "dependencies": {
-    "firebase": "^12.9.0",
+    "firebase": "^12.10.0",
     "firebase-functions": "^7.0.6"
   },
   "devDependencies": {

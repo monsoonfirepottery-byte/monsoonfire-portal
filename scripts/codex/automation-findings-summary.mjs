@@ -153,6 +153,35 @@ function uniqueList(values) {
   return output;
 }
 
+function stableHash(value) {
+  const payload = JSON.stringify(value);
+  let hash = 2166136261;
+  for (let index = 0; index < payload.length; index += 1) {
+    hash ^= payload.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `f${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+function buildDigestSignature(sourceSummaries, okCount, needsAttentionCount, notes, mentionTarget) {
+  return stableHash({
+    summary: {
+      sourcesMonitored: sourceSummaries.length,
+      healthyWorkflows: okCount,
+      workflowsNeedingAttention: needsAttentionCount,
+      mentionTarget: String(mentionTarget || ""),
+    },
+    sources: (Array.isArray(sourceSummaries) ? sourceSummaries : []).map((entry) => ({
+      key: String(entry?.key || ""),
+      workflowStatus: String(entry?.workflowStatus || ""),
+      workflowConclusion: String(entry?.workflowConclusion || ""),
+      latestFindingAt: String(entry?.latestFindingAt || ""),
+      highlights: Array.isArray(entry?.highlights) ? entry.highlights.map((item) => String(item || "")) : [],
+    })),
+    notes: (Array.isArray(notes) ? notes : []).map((note) => String(note || "")),
+  });
+}
+
 function extractHighlights(markdownBody, maxItems = 5) {
   const lines = String(markdownBody || "")
     .split(/\r?\n/)
@@ -261,6 +290,7 @@ function createSummaryComment({
   needsAttentionCount,
   notes,
   mentionTarget,
+  digestMarker,
 }) {
   const lines = [];
   lines.push(`## ${generatedAtIso} (Automation Findings Digest)`);
@@ -292,6 +322,11 @@ function createSummaryComment({
   if (notes.length > 0) {
     lines.push("### Notes");
     notes.forEach((note) => lines.push(`- ${note}`));
+    lines.push("");
+  }
+
+  if (digestMarker) {
+    lines.push(`<!-- ${digestMarker} -->`);
     lines.push("");
   }
 
@@ -364,6 +399,13 @@ async function main() {
 
   const okCount = sourceSummaries.filter((entry) => entry.workflowConclusion === "success").length;
   const needsAttentionCount = sourceSummaries.length - okCount;
+  const digestMarker = `codex-findings-digest-signature:${buildDigestSignature(
+    sourceSummaries,
+    okCount,
+    needsAttentionCount,
+    notes,
+    mentionTarget
+  )}`;
   const markdown = createSummaryComment({
     generatedAtIso,
     sourceSummaries,
@@ -371,6 +413,7 @@ async function main() {
     needsAttentionCount,
     notes,
     mentionTarget,
+    digestMarker,
   });
 
   const report = {
@@ -386,6 +429,7 @@ async function main() {
     sources: sourceSummaries,
     notes,
     mentionTarget: mentionTarget || null,
+    digestMarker,
     artifacts: {
       markdown: relative(repoRoot, markdownArtifactPath),
       json: relative(repoRoot, jsonArtifactPath),
@@ -435,18 +479,23 @@ async function main() {
 
     if (digestIssue?.number) {
       digestIssueUrl = digestIssue.url;
-      runGh(
-        [
-          "issue",
-          "comment",
-          String(digestIssue.number),
-          "--repo",
-          repoSlug,
-          "--body",
-          markdown,
-        ],
-        { allowFailure: true }
-      );
+      const latestDigestComment = fetchLatestIssueComment(repoSlug, digestIssue.number);
+      if (latestDigestComment?.body?.includes(`<!-- ${digestMarker} -->`)) {
+        notes.push("Digest unchanged; skipped duplicate rolling digest comment.");
+      } else {
+        runGh(
+          [
+            "issue",
+            "comment",
+            String(digestIssue.number),
+            "--repo",
+            repoSlug,
+            "--body",
+            markdown,
+          ],
+          { allowFailure: true }
+        );
+      }
     }
   }
 

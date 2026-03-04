@@ -2107,7 +2107,26 @@ async function main() {
       }
     }
 
-    const shouldCreateRunPr = !skipRunPrOnDirtyAllow && (newlyCreatedTicketUrls.length > 0 || scoreDroppedTwice);
+    const openFocusedPr = prList.find((pr) => {
+      if (String(pr?.state || "").toLowerCase() !== "open") return false;
+      const head = String(pr?.headRefName || "").trim();
+      if (!head) return false;
+      if (head.includes(runInfo.runId)) return false;
+      if (/^codex\/(auto-improve|interaction-improve|auto-pr-green|pr-green)\//i.test(head)) return false;
+      if (hasAutomationLabel(pr)) return false;
+      return true;
+    });
+    const shouldCreateRunPr =
+      !skipRunPrOnDirtyAllow &&
+      !openFocusedPr &&
+      (newlyCreatedTicketUrls.length > 0 || scoreDroppedTwice);
+    if (openFocusedPr) {
+      notes.push(
+        `Run PR creation suppressed: focused PR already open (${String(
+          openFocusedPr.url || openFocusedPr.headRefName || "unknown"
+        )}).`
+      );
+    }
     if (!shouldCreateRunPr && recommendations.length > 0 && !scoreDroppedTwice) {
       notes.push(
         "Run PR creation suppressed: recommendations mapped to existing lanes with no net-new ticket creation."

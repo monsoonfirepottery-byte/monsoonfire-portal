@@ -19,6 +19,11 @@ const DEFAULT_MAX_PER_WORKFLOW = 2;
 const TUNING_ROLLING_ISSUE = "Portal Automation Threshold Tuning (Rolling)";
 const CANARY_ROLLING_ISSUE = "Portal Authenticated Canary Failures (Rolling)";
 const ROLLING_ONLY_SIGNATURE_KEYS = new Set(["promotion::promotion.risk.high"]);
+const NON_GATING_SIGNATURE_PATTERNS = [
+  /deploy to firebase hosting on pr/i,
+  /deploy preview/i,
+  /build[_-]?and[_-]?preview/i,
+];
 
 function parseArgs(argv) {
   const options = {
@@ -377,6 +382,21 @@ function isRollingOnlySignature(signature) {
   return ROLLING_ONLY_SIGNATURE_KEYS.has(signatureKey(signature));
 }
 
+function isNonGatingNoiseSignature(signature) {
+  const composite = [
+    signature?.workflowKey,
+    signature?.workflowLabel,
+    signature?.key,
+    signature?.label,
+    signature?.evidence,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" ");
+  if (!composite) return false;
+  return NON_GATING_SIGNATURE_PATTERNS.some((pattern) => pattern.test(composite));
+}
+
 function signatureGroupKey(signature) {
   const workflowKey = String(signature?.workflowKey || "workflow");
   const label = String(signature?.label || "").toLowerCase();
@@ -432,7 +452,12 @@ function selectSignatures(rawSignatures, options) {
   const rollingOnlySuppressed = Array.from(
     new Set(filtered.filter((entry) => isRollingOnlySignature(entry)).map((entry) => signatureKey(entry)))
   );
-  const issueEligible = filtered.filter((entry) => !isRollingOnlySignature(entry));
+  const nonGatingSuppressed = Array.from(
+    new Set(filtered.filter((entry) => isNonGatingNoiseSignature(entry)).map((entry) => signatureKey(entry)))
+  );
+  const issueEligible = filtered.filter(
+    (entry) => !isRollingOnlySignature(entry) && !isNonGatingNoiseSignature(entry)
+  );
   const dedupe = new Map();
   for (const signature of issueEligible) {
     const group = signatureGroupKey(signature);
@@ -471,6 +496,8 @@ function selectSignatures(rawSignatures, options) {
     dedupedCount: ranked.length,
     rollingOnlySuppressedCount: rollingOnlySuppressed.length,
     rollingOnlySuppressed,
+    nonGatingSuppressedCount: nonGatingSuppressed.length,
+    nonGatingSuppressed,
   };
 }
 
@@ -582,6 +609,7 @@ async function main() {
     dedupedCount: signatureSelection.dedupedCount,
     selectedCount: signatures.length,
     rollingOnlySuppressedCount: signatureSelection.rollingOnlySuppressedCount || 0,
+    nonGatingSuppressedCount: signatureSelection.nonGatingSuppressedCount || 0,
   };
   if (signatureSelection.eligibleCount > signatures.length) {
     report.notes.push(
@@ -591,6 +619,11 @@ async function main() {
   if ((signatureSelection.rollingOnlySuppressedCount || 0) > 0) {
     report.notes.push(
       `Suppressed rolling-only signatures: ${(signatureSelection.rollingOnlySuppressed || []).join(", ")}.`
+    );
+  }
+  if ((signatureSelection.nonGatingSuppressedCount || 0) > 0) {
+    report.notes.push(
+      `Suppressed non-gating CI signatures: ${(signatureSelection.nonGatingSuppressed || []).join(", ")}.`
     );
   }
 

@@ -249,6 +249,36 @@ Reference provenance:
 - `FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL` (recommended for notification fixture seeding)
 - `PORTAL_CANARY_ADMIN_TOKEN` (preferred) or `PORTAL_ADMIN_TOKEN` (optional but recommended for deterministic promotion-gate journey cleanup)
 
+## Secret rotation policy (ops)
+
+Owner:
+- Primary: portal operator (Micah/Wuff)
+- Backup: designated release duty engineer
+
+Scope:
+- `PORTAL_CANARY_ADMIN_TOKEN`
+- `PORTAL_ADMIN_TOKEN`
+- `PORTAL_STAFF_EMAIL`
+- `PORTAL_STAFF_PASSWORD`
+- `PORTAL_AGENT_STAFF_CREDENTIALS_JSON`
+
+Rotation cadence:
+- `PORTAL_CANARY_ADMIN_TOKEN`: every 30 days
+- `PORTAL_ADMIN_TOKEN`: every 30 days (match canary token unless split is required)
+- Staff credentials (`PORTAL_STAFF_EMAIL`, `PORTAL_STAFF_PASSWORD`, `PORTAL_AGENT_STAFF_CREDENTIALS_JSON`): every 60 days
+- Immediate rotation on leak suspicion, offboarding, or auth anomalies
+
+Rotation procedure:
+1. Generate new token/credentials.
+2. Update GitHub Actions secrets first.
+3. Update local `secrets/portal/portal-automation.env` and secure vault entries.
+4. Run `Portal Credential Health` and `Portal Post-Deploy Promotion Gate`.
+5. Confirm both workflows are green before closing the rotation task.
+
+Evidence:
+- Record rotation date, owner, and workflow run URLs in release notes or ops log.
+- Never store raw secret values in repo files, issues, or chat transcripts.
+
 ## Related runbook
 
 - `docs/runbooks/PORTAL_AUTOMATION_SELF_IMPROVEMENT_LOOPS.md`

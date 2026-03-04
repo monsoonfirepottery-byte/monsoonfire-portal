@@ -1,0 +1,242 @@
+name: Governance Supervisor
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+      - ready_for_review
+      - labeled
+      - unlabeled
+
+permissions:
+  contents: read
+  actions: read
+  checks: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: governance-supervisor-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+env:
+  GOVERNANCE_SUPERVISOR_MODE: active
+  GOVERNANCE_COMMENT_MARKER: "<!-- governance-supervisor-audit -->"
+
+jobs:
+  supervisor-audit:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Run supervisor audit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node ./scripts/governance/supervisor-audit.mjs \
+            --event-path "$GITHUB_EVENT_PATH" \
+            --output-json output/governance/supervisor-audit.json \
+            --output-md output/governance/supervisor-audit.md
+
+      - name: Upsert governance audit comment and optional actions
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require("fs");
+            const marker = process.env.GOVERNANCE_COMMENT_MARKER || "<!-- governance-supervisor-audit -->";
+            const mode = (process.env.GOVERNANCE_SUPERVISOR_MODE || "passive").toLowerCase();
+            const reportPath = "output/governance/supervisor-audit.json";
+            const mdPath = "output/governance/supervisor-audit.md";
+            const HOLD_LABEL = "verification-hold";
+            if (!fs.existsSync(reportPath) || !fs.existsSync(mdPath)) {
+              core.setFailed("Supervisor artifacts missing.");
+              return;
+            }
+            const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+            const markdown = fs.readFileSync(mdPath, "utf8");
+            const audit = report.audit_event || {};
+            const controls = report.controls || {};
+            const prNumber = context.payload.pull_request?.number;
+            if (!prNumber) {
+              core.info("No PR context available; skipping PR actions.");
+              return;
+            }
+
+            const { owner, repo } = context.repo;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: prNumber,
+              per_page: 100
+            });
+            const existing = comments.find((row) => {
+              const body = String(row.body || "");
+              return row.user?.type === "Bot" && body.includes(marker);
+            });
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body: markdown
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body: markdown
+              });
+            }
+
+            const recommendation = String(audit.recommended_action || "observe");
+            const isActiveMode = mode === "active";
+            const policyBlocked = controls.push_grace_active || controls.circuit_breaker_active || controls.override_active || !controls.canary_eligible;
+            const shouldHold = (recommendation === "hold_for_verification" || recommendation === "escalate_human_review") && !policyBlocked && !controls.hold_cap_reached;
+
+            const currentPr = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+            const currentLabels = (currentPr.data.labels || []).map((row) => String(row.name || ""));
+            const alreadyHeld = currentLabels.includes(HOLD_LABEL);
+
+            let holdCooldownActive = false;
+            const holdCooldownMinutes = 60;
+            try {
+              const events = await github.paginate(github.rest.issues.listEvents, {
+                owner,
+                repo,
+                issue_number: prNumber,
+                per_page: 100
+              });
+              const relevant = events
+                .filter((row) => {
+                  const event = String(row.event || "");
+                  const label = String(row.label?.name || "");
+                  return (event === "labeled" || event === "unlabeled") && label === HOLD_LABEL;
+                })
+                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+              if (relevant.length > 0) {
+                const lastMs = new Date(relevant[0].created_at).getTime();
+                const ageMinutes = (Date.now() - lastMs) / (1000 * 60);
+                holdCooldownActive = ageMinutes < holdCooldownMinutes;
+              }
+            } catch (error) {
+              core.warning(`Could not read issue events for hold cooldown: ${error.message}`);
+            }
+
+            if (isActiveMode && shouldHold && !alreadyHeld && !holdCooldownActive) {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: prNumber,
+                labels: [HOLD_LABEL]
+              });
+            }
+
+            if (isActiveMode && recommendation === "escalate_human_review" && !policyBlocked && !controls.escalation_cap_reached) {
+              const title = `Audit Escalation: ${audit.intent_id || "unknown-intent"} PR #${prNumber}`;
+              const issues = await github.paginate(github.rest.issues.listForRepo, {
+                owner,
+                repo,
+                state: "all",
+                labels: "audit-escalation",
+                per_page: 100
+              });
+              const existsRecent = issues.some((row) => {
+                if (String(row.title || "") !== title) return false;
+                const createdMs = new Date(row.created_at).getTime();
+                return Date.now() - createdMs < 24 * 60 * 60 * 1000;
+              });
+              const existsOpen = issues.some((row) => String(row.state || "") === "open" && String(row.title || "") === title);
+              const exists = existsRecent || existsOpen;
+              if (!exists) {
+                const body = [
+                  "Automated governance escalation detected a repeated or high-risk pattern.",
+                  "",
+                  `- PR: #${prNumber}`,
+                  `- Intent: ${audit.intent_id || "unresolved"}`,
+                  `- Severity: ${audit.severity || "unknown"}`,
+                  `- Recommended action: ${recommendation}`,
+                  `- Confidence: ${audit.confidence_score ?? "n/a"}`,
+                  "",
+                  "Pattern context:",
+                  `- push_grace_active: ${Boolean(controls.push_grace_active)}`,
+                  `- canary_eligible: ${Boolean(controls.canary_eligible)}`,
+                  `- circuit_breaker_active: ${Boolean(controls.circuit_breaker_active)}`,
+                  "",
+                  "Please decide: proceed, re-scope, or abandon."
+                ].join("\n");
+                await github.rest.issues.create({
+                  owner,
+                  repo,
+                  title,
+                  body,
+                  labels: ["audit-escalation"]
+                });
+              }
+            }
+
+            if (isActiveMode && controls.override_followup_required === true) {
+              const followupLabel = "post-override-audit";
+              const followupTitle = `Post-Override Audit: ${audit.intent_id || "unknown-intent"} PR #${prNumber}`;
+              const issues = await github.paginate(github.rest.issues.listForRepo, {
+                owner,
+                repo,
+                state: "all",
+                labels: followupLabel,
+                per_page: 100
+              });
+              const existsRecent = issues.some((row) => {
+                if (String(row.title || "") !== followupTitle) return false;
+                const createdMs = new Date(row.created_at).getTime();
+                return Date.now() - createdMs < 24 * 60 * 60 * 1000;
+              });
+              if (!existsRecent) {
+                const body = [
+                  "Human override was applied. A follow-up audit is required.",
+                  "",
+                  `- PR: #${prNumber}`,
+                  `- Intent: ${audit.intent_id || "unresolved"}`,
+                  `- Override reason present: ${Boolean(controls.override_reason_present)}`,
+                  `- Override expires: ${controls.override_expires_utc || "missing"}`,
+                  "",
+                  "Required:",
+                  "1. Confirm criteria evidence coverage reaches 100%.",
+                  "2. Remove override label when risk is back within policy.",
+                  "3. Record final decision in a Decision Request issue."
+                ].join("\n");
+                await github.rest.issues.create({
+                  owner,
+                  repo,
+                  title: followupTitle,
+                  body,
+                  labels: [followupLabel]
+                });
+              }
+            }
+
+            core.info(`Supervisor mode=${mode}, recommendation=${recommendation}, policyBlocked=${policyBlocked}, shouldHold=${shouldHold}`);
+
+      - name: Upload supervisor artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-supervisor-${{ github.run_id }}
+          path: |
+            output/governance/supervisor-audit.json
+            output/governance/supervisor-audit.md
+          if-no-files-found: ignore
+          retention-days: 14

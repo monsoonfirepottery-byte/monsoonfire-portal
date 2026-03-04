@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://monsoonfire.com/governance/schemas/audit-event.v1.schema.json",
+  "title": "Governance Audit Event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "supervisor_version",
+    "subject_pr",
+    "subject_run_id",
+    "intent_id",
+    "intent_version",
+    "event_type",
+    "severity",
+    "summary",
+    "evidence_refs",
+    "recommended_action",
+    "action_taken",
+    "confidence_score",
+    "tamper_hash",
+    "previous_hash",
+    "timestamp"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{8,120}$"
+    },
+    "supervisor_version": {
+      "type": "string",
+      "minLength": 3
+    },
+    "subject_pr": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "subject_run_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 200
+    },
+    "intent_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 140
+    },
+    "intent_version": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "drift",
+        "grounding_gap",
+        "constraint_violation",
+        "integrity_failure",
+        "needs_human_input"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 4000
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 2
+      }
+    },
+    "recommended_action": {
+      "type": "string",
+      "enum": [
+        "observe",
+        "hold_for_verification",
+        "escalate_human_review",
+        "corrective_action_future"
+      ]
+    },
+    "action_taken": {
+      "type": "string",
+      "enum": [
+        "observe",
+        "hold_for_verification",
+        "escalate_human_review",
+        "corrective_action_future",
+        "none"
+      ]
+    },
+    "confidence_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "tamper_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "previous_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
+

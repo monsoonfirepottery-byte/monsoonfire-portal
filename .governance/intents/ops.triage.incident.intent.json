@@ -1,0 +1,110 @@
+{
+  "intent_id": "ops.triage.incident",
+  "version": 1,
+  "goal": "Diagnose and stabilize incident conditions while preserving evidence and minimizing operational risk.",
+  "success_criteria": [
+    {
+      "id": "blast_radius_bounded",
+      "statement": "Incident blast radius is bounded according to declared containment target.",
+      "metric": "incident.blast_radius_state",
+      "operator": "eq",
+      "target": "bounded",
+      "measurement_method": "Incident dashboard + human validation"
+    },
+    {
+      "id": "root_cause_grounded",
+      "statement": "Root-cause hypothesis has corroborating non-agent evidence.",
+      "metric": "incident.root_cause_grounding_tier",
+      "operator": "lte",
+      "target": 3,
+      "measurement_method": "Evidence review using trust tiers"
+    },
+    {
+      "id": "recovery_verified",
+      "statement": "Recovery criteria are met and verified by human approver.",
+      "metric": "incident.recovery_verified",
+      "operator": "eq",
+      "target": true,
+      "measurement_method": "Human approval on incident thread"
+    }
+  ],
+  "constraints": {
+    "must": [
+      "Treat all remediation actions as high-risk unless explicitly approved.",
+      "Document every intervention with evidence pointers."
+    ],
+    "must_not": [
+      "Perform destructive rollback without authority gate approval.",
+      "Use tier-5-only claims for operational decisions."
+    ],
+    "allowed_paths": [
+      "docs/runbooks/**",
+      "functions/**",
+      "scripts/**",
+      ".governance/**"
+    ],
+    "max_changed_files": 120
+  },
+  "budgets": {
+    "tokens": 300000,
+    "runtime_minutes": 180,
+    "retries": 8
+  },
+  "allowed_tools": [
+    "git",
+    "rg",
+    "node",
+    "gh-api-read",
+    "gh-api-write"
+  ],
+  "required_evidence": [
+    {
+      "criterion_id": "blast_radius_bounded",
+      "minimum_tier": 2,
+      "accepted_sources": [
+        "tool_output",
+        "human"
+      ]
+    },
+    {
+      "criterion_id": "root_cause_grounded",
+      "minimum_tier": 3,
+      "accepted_sources": [
+        "ci",
+        "tool_output",
+        "repo_doc",
+        "memory"
+      ]
+    },
+    {
+      "criterion_id": "recovery_verified",
+      "minimum_tier": 1,
+      "accepted_sources": [
+        "human"
+      ]
+    }
+  ],
+  "risk_level": "critical",
+  "authority_gates": [
+    {
+      "name": "prod-mitigation-approval",
+      "requires_human_approval": true,
+      "trigger": "Any production-impacting mitigation",
+      "approved_roles": [
+        "owner",
+        "incident_commander"
+      ]
+    }
+  ],
+  "stop_conditions": [
+    "No stabilizing progress after 2 mitigation cycles.",
+    "Evidence chain cannot corroborate root-cause hypothesis.",
+    "Human incident commander unavailable for required gate."
+  ],
+  "metadata": {
+    "activation_state": "defined_not_active",
+    "auto_enable": false,
+    "supervisor_cadence_steps": 2
+  }
+}
+

@@ -1809,6 +1809,40 @@ async function main() {
         continue;
       }
 
+      const recentlyClosedIssueResp = runGhJson([
+        "issue",
+        "list",
+        "--repo",
+        repoSlug,
+        "--state",
+        "closed",
+        "--search",
+        `\"${marker}\" in:body`,
+        "--limit",
+        "1",
+        "--json",
+        "number,url,title,closedAt",
+      ]);
+      if (
+        recentlyClosedIssueResp.ok &&
+        Array.isArray(recentlyClosedIssueResp.data) &&
+        recentlyClosedIssueResp.data.length > 0
+      ) {
+        const recentlyClosed = recentlyClosedIssueResp.data[0];
+        const closedAtMs = toMs(recentlyClosed?.closedAt);
+        const closedRecently =
+          closedAtMs != null && now.getTime() - closedAtMs >= 0 && now.getTime() - closedAtMs <= 72 * 60 * 60 * 1000;
+        if (closedRecently) {
+          if (recentlyClosed?.url) {
+            createdTicketUrls.push(recentlyClosed.url);
+          }
+          notes.push(
+            `Skipped creating duplicate ticket for ${recommendation.id}; reusing recently closed issue ${recentlyClosed?.url || "#"}.`
+          );
+          continue;
+        }
+      }
+
       const body = recommendationIssueBody(recommendation, runInfo);
       const createIssue = runGh(
         [

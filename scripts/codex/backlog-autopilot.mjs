@@ -600,7 +600,8 @@ async function ensureGhLabel(repoSlug, name, color, description, enabled) {
   );
 }
 
-async function collectStandaloneBacklogTasks(limit = 48) {
+async function collectStandaloneBacklogTasks(limit = 48, options = {}) {
+  const includeClosed = options?.includeClosed === true;
   let entries = [];
   try {
     entries = await readdir(ticketsDir, { withFileTypes: true });
@@ -633,7 +634,7 @@ async function collectStandaloneBacklogTasks(limit = 48) {
     const inferredDoneFromScope =
       !/^\s*Status:\s*/im.test(content) && /##\s*Scope Implemented\b/i.test(content);
     const statusNormalized = inferredDoneFromScope ? "done" : normalizeTicketStatus(status);
-    if (statusNormalized === "done" || statusNormalized === "blocked") {
+    if (!includeClosed && (statusNormalized === "done" || statusNormalized === "blocked")) {
       continue;
     }
 
@@ -710,6 +711,12 @@ async function main() {
 
   const epicHubTasks = ensureArray(runnerPayload.tasks);
   const fallbackTasks = await collectStandaloneBacklogTasks(options.limit);
+  const fallbackStatusTasks = await collectStandaloneBacklogTasks(5000, { includeClosed: true });
+  const fallbackStatusByRef = new Map(
+    fallbackStatusTasks
+      .filter((task) => Boolean(task?.ticketRef))
+      .map((task) => [String(task.ticketRef), task])
+  );
   const mergedByRef = new Map();
   for (const task of epicHubTasks) {
     if (!task?.ticketRef) continue;
@@ -742,8 +749,31 @@ async function main() {
           : existing.definitionOfDone,
       taskOutline:
         Array.isArray(task.taskOutline) && task.taskOutline.length > 0
-          ? task.taskOutline
-          : existing.taskOutline,
+        ? task.taskOutline
+        : existing.taskOutline,
+    });
+  }
+  for (const [ticketRef, task] of mergedByRef.entries()) {
+    const statusTask = fallbackStatusByRef.get(String(ticketRef));
+    if (!statusTask) continue;
+    mergedByRef.set(ticketRef, {
+      ...task,
+      ticketStatus: statusTask.ticketStatus || task.ticketStatus,
+      ticketStatusNormalized: statusTask.ticketStatusNormalized || task.ticketStatusNormalized,
+      ticketPriority: statusTask.ticketPriority || task.ticketPriority,
+      owner: statusTask.owner || task.owner,
+      acceptanceCriteria:
+        Array.isArray(statusTask.acceptanceCriteria) && statusTask.acceptanceCriteria.length > 0
+          ? statusTask.acceptanceCriteria
+          : task.acceptanceCriteria,
+      definitionOfDone:
+        Array.isArray(statusTask.definitionOfDone) && statusTask.definitionOfDone.length > 0
+          ? statusTask.definitionOfDone
+          : task.definitionOfDone,
+      taskOutline:
+        Array.isArray(statusTask.taskOutline) && statusTask.taskOutline.length > 0
+          ? statusTask.taskOutline
+          : task.taskOutline,
     });
   }
   const discoveredTasks = Array.from(mergedByRef.values()).sort((left, right) => {

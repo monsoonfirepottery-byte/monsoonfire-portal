@@ -2030,8 +2030,21 @@ async function main() {
         )}).`
       );
     }
+    const currentBranchForAutomation = runGit(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.trim();
+    const branchGuardTriggered =
+      Boolean(currentBranchForAutomation) &&
+      currentBranchForAutomation !== "main" &&
+      !/^codex\/interaction-improve\//i.test(currentBranchForAutomation);
+    if (branchGuardTriggered) {
+      notes.push(
+        `Structural PR creation suppressed: current branch is ${currentBranchForAutomation}; switch to main before apply runs.`
+      );
+    }
     const shouldAttemptStructuralPr =
-      structuralDecision.mode === "Triggered" && structuralDocChangesAvailable && !openFocusedPr;
+      structuralDecision.mode === "Triggered" &&
+      structuralDocChangesAvailable &&
+      !openFocusedPr &&
+      !branchGuardTriggered;
 
     if (shouldAttemptStructuralPr) {
       const sharedEntry = sharedCoordination?.automationPrByRunId?.[runInfo.runId];

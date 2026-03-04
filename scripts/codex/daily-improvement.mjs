@@ -2116,15 +2116,26 @@ async function main() {
       if (hasAutomationLabel(pr)) return false;
       return true;
     });
+    const currentBranchForAutomation = runGit(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.trim();
+    const branchGuardTriggered =
+      Boolean(currentBranchForAutomation) &&
+      currentBranchForAutomation !== "main" &&
+      !/^codex\/auto-improve\//i.test(currentBranchForAutomation);
     const shouldCreateRunPr =
       !skipRunPrOnDirtyAllow &&
       !openFocusedPr &&
+      !branchGuardTriggered &&
       (newlyCreatedTicketUrls.length > 0 || scoreDroppedTwice);
     if (openFocusedPr) {
       notes.push(
         `Run PR creation suppressed: focused PR already open (${String(
           openFocusedPr.url || openFocusedPr.headRefName || "unknown"
         )}).`
+      );
+    }
+    if (branchGuardTriggered) {
+      notes.push(
+        `Run PR creation suppressed: current branch is ${currentBranchForAutomation}; switch to main before apply runs.`
       );
     }
     if (!shouldCreateRunPr && recommendations.length > 0 && !scoreDroppedTwice) {

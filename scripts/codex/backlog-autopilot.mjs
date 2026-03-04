@@ -717,9 +717,34 @@ async function main() {
   }
   for (const task of fallbackTasks) {
     if (!task?.ticketRef) continue;
-    if (!mergedByRef.has(task.ticketRef)) {
+    const existing = mergedByRef.get(task.ticketRef);
+    if (!existing) {
       mergedByRef.set(task.ticketRef, task);
+      continue;
     }
+
+    // Local ticket files are the source-of-truth for current status and acceptance details.
+    // Refresh status metadata from fallback parsing so stale epic-hub payloads cannot reopen
+    // tickets that are already marked Closed/Done in tickets/*.md.
+    mergedByRef.set(task.ticketRef, {
+      ...existing,
+      ticketStatus: task.ticketStatus || existing.ticketStatus,
+      ticketStatusNormalized: task.ticketStatusNormalized || existing.ticketStatusNormalized,
+      ticketPriority: task.ticketPriority || existing.ticketPriority,
+      owner: task.owner || existing.owner,
+      acceptanceCriteria:
+        Array.isArray(task.acceptanceCriteria) && task.acceptanceCriteria.length > 0
+          ? task.acceptanceCriteria
+          : existing.acceptanceCriteria,
+      definitionOfDone:
+        Array.isArray(task.definitionOfDone) && task.definitionOfDone.length > 0
+          ? task.definitionOfDone
+          : existing.definitionOfDone,
+      taskOutline:
+        Array.isArray(task.taskOutline) && task.taskOutline.length > 0
+          ? task.taskOutline
+          : existing.taskOutline,
+    });
   }
   const discoveredTasks = Array.from(mergedByRef.values()).sort((left, right) => {
     const epicPriority = parsePriorityValue(left.epicPriority) - parsePriorityValue(right.epicPriority);

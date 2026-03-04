@@ -147,9 +147,35 @@ function short(text, max = 220) {
   return `${value.slice(0, Math.max(0, max - 3)).trim()}...`;
 }
 
+function stableHash(value) {
+  const payload = JSON.stringify(value);
+  let hash = 2166136261;
+  for (let index = 0; index < payload.length; index += 1) {
+    hash ^= payload.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `f${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
 function parseIssueNumberFromUrl(url) {
   const match = String(url || "").match(/\/issues\/(\d+)$/);
   return match ? Number(match[1]) : 0;
+}
+
+function fetchLatestIssueCommentBody(repoSlug, issueNumber) {
+  const view = runGh(
+    ["issue", "view", String(issueNumber), "--repo", repoSlug, "--json", "comments"],
+    { allowFailure: true }
+  );
+  if (!view.ok) return "";
+  try {
+    const parsed = JSON.parse(view.stdout || "{}");
+    const comments = Array.isArray(parsed?.comments) ? parsed.comments : [];
+    const latest = comments.length > 0 ? comments[comments.length - 1] : null;
+    return String(latest?.body || "");
+  } catch {
+    return "";
+  }
 }
 
 function findIssueByTitle(repoSlug, title) {
@@ -264,7 +290,7 @@ function createIssueComment(signature, dashboard) {
   return lines.join("\n");
 }
 
-function createTuningComment(dashboard) {
+function createTuningComment(dashboard, marker = "") {
   const tuning = dashboard.tuning?.recommendations || {};
   const lines = [];
   lines.push(`## ${dashboard.generatedAtIso} (Threshold Tuning Snapshot)`);
@@ -278,19 +304,31 @@ function createTuningComment(dashboard) {
   lines.push("Agent handoff:");
   lines.push("- Apply recommendations only when they reduce flakiness without hiding persistent regressions.");
   lines.push("- Keep deterministic repro steps attached to any signature that reaches this thread repeatedly.");
+  if (marker) {
+    lines.push("");
+    lines.push(`<!-- ${marker} -->`);
+  }
   lines.push("");
   return lines.join("\n");
 }
 
-function createCanaryDirectiveComment(dashboard) {
+function extractCanaryDirectiveCandidates(dashboard) {
   const canary = dashboard.tuning?.recommendations?.canary || {};
   const directives = canary.directiveCandidates && typeof canary.directiveCandidates === "object"
     ? canary.directiveCandidates
     : {};
+  return {
+    timeoutMs: Math.max(0, Number(directives["mypieces-timeout-ms"] || 0)),
+    reloadRetries: Math.max(0, Number(directives["mypieces-reload-retries"] || 0)),
+    markReadRetries: Math.max(0, Number(directives["mark-read-retries"] || 0)),
+  };
+}
 
-  const timeoutMs = Number(directives["mypieces-timeout-ms"] || 0);
-  const reloadRetries = Number(directives["mypieces-reload-retries"] || 0);
-  const markReadRetries = Number(directives["mark-read-retries"] || 0);
+function createCanaryDirectiveComment(dashboard, marker = "") {
+  const directives = extractCanaryDirectiveCandidates(dashboard);
+  const timeoutMs = directives.timeoutMs;
+  const reloadRetries = directives.reloadRetries;
+  const markReadRetries = directives.markReadRetries;
 
   const lines = [];
   lines.push(`## ${dashboard.generatedAtIso} (Canary Directive Refresh)`);
@@ -298,10 +336,14 @@ function createCanaryDirectiveComment(dashboard) {
   lines.push("Automated directive refresh from portal automation dashboard.");
   lines.push("");
   if (timeoutMs > 0) lines.push(`canary-feedback: mypieces-timeout-ms=${timeoutMs}`);
-  lines.push(`canary-feedback: mypieces-reload-retries=${Math.max(0, reloadRetries)}`);
-  lines.push(`canary-feedback: mark-read-retries=${Math.max(0, markReadRetries)}`);
+  lines.push(`canary-feedback: mypieces-reload-retries=${reloadRetries}`);
+  lines.push(`canary-feedback: mark-read-retries=${markReadRetries}`);
   lines.push("");
   lines.push("Use these only as adaptive controls, not as a substitute for root-cause fixes.");
+  if (marker) {
+    lines.push("");
+    lines.push(`<!-- ${marker} -->`);
+  }
   lines.push("");
   return lines.join("\n");
 }
@@ -619,21 +661,28 @@ async function main() {
     {
       title: TUNING_ROLLING_ISSUE,
       labels: ["automation", "portal-qa", "self-improvement"],
-      commentBody: createTuningComment(dashboard),
+      markerPrefix: "portal-tuning-snapshot-signature",
+      signaturePayload: dashboard.tuning?.recommendations || {},
+      buildComment: (marker) => createTuningComment(dashboard, marker),
     },
     {
       title: CANARY_ROLLING_ISSUE,
       labels: ["automation", "portal-qa"],
-      commentBody: createCanaryDirectiveComment(dashboard),
+      markerPrefix: "portal-canary-directive-signature",
+      signaturePayload: extractCanaryDirectiveCandidates(dashboard),
+      buildComment: (marker) => createCanaryDirectiveComment(dashboard, marker),
     },
   ];
 
   for (const config of rollingConfigs) {
+    const marker = `${config.markerPrefix}:${stableHash(config.signaturePayload)}`;
+    const commentBody = config.buildComment(marker);
     const existing = findIssueByTitle(repoSlug, config.title);
     const update = {
       title: config.title,
       result: options.apply ? "pending" : "dry-run",
       url: existing?.url || "",
+      marker,
     };
 
     if (!options.apply) {
@@ -668,16 +717,22 @@ async function main() {
     }
 
     if (issueNumber) {
-      const commented = runGh(
-        ["issue", "comment", String(issueNumber), "--repo", repoSlug, "--body", config.commentBody],
-        { allowFailure: true }
-      );
-      if (commented.ok) {
-        update.result = "commented";
+      const latestComment = fetchLatestIssueCommentBody(repoSlug, issueNumber);
+      if (latestComment.includes(`<!-- ${marker} -->`)) {
+        update.result = "unchanged-skip";
         update.url = issueUrl || existing?.url || "";
       } else {
-        update.result = "failed-comment";
-        report.notes.push(`Could not comment on rolling issue "${config.title}".`);
+        const commented = runGh(
+          ["issue", "comment", String(issueNumber), "--repo", repoSlug, "--body", commentBody],
+          { allowFailure: true }
+        );
+        if (commented.ok) {
+          update.result = "commented";
+          update.url = issueUrl || existing?.url || "";
+        } else {
+          update.result = "failed-comment";
+          report.notes.push(`Could not comment on rolling issue "${config.title}".`);
+        }
       }
     }
 

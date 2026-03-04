@@ -192,15 +192,22 @@ function findIssueByTitle(repoSlug, title) {
 
 function fetchLatestIssueComment(repoSlug, issueNumber) {
   const response = runGhJson([
-    "api",
-    `repos/${repoSlug}/issues/${issueNumber}/comments?per_page=1&sort=created&direction=desc`,
+    "issue",
+    "view",
+    String(issueNumber),
+    "--repo",
+    repoSlug,
+    "--json",
+    "comments",
   ]);
 
-  if (!response.ok || !Array.isArray(response.data) || response.data.length === 0) return null;
-  const latest = response.data[0];
+  if (!response.ok || !response.data || typeof response.data !== "object") return null;
+  const comments = Array.isArray(response.data.comments) ? response.data.comments : [];
+  if (comments.length === 0) return null;
+  const latest = comments[comments.length - 1];
   return {
-    url: String(latest.html_url || ""),
-    createdAt: String(latest.created_at || ""),
+    url: String(latest.url || latest.html_url || ""),
+    createdAt: String(latest.createdAt || latest.created_at || ""),
     body: String(latest.body || ""),
   };
 }

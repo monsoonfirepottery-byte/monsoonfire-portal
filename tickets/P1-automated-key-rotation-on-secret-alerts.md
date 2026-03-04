@@ -1,5 +1,11 @@
 # P1: Automated Key Rotation on Secret Alerts
 
+Status: Closed
+Date: 2026-03-04
+Priority: P1
+Owner: Platform / Tooling
+Type: Ticket
+
 ## Objective
 Automate response when a secret-scanning incident suggests compromised Google API key exposure.
 

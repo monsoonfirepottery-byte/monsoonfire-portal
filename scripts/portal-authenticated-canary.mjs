@@ -10,14 +10,50 @@ import { chromium } from "playwright";
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
 
-const DEFAULT_BASE_URL = "https://monsoonfire-portal.web.app";
+const DEFAULT_BASE_URL = "https://portal.monsoonfire.com";
 const DEFAULT_OUTPUT_DIR = resolve(repoRoot, "output", "qa", "portal-authenticated-canary");
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "portal-authenticated-canary.json");
 const DEFAULT_STAFF_CREDENTIALS_PATH = resolve(repoRoot, "secrets", "portal", "portal-agent-staff.json");
+const DEFAULT_FIREBASE_PROJECT_ID = "monsoonfire-portal";
 const DEFAULT_MY_PIECES_READY_TIMEOUT_MS = 18000;
 const DEFAULT_MY_PIECES_RELOAD_RETRY_COUNT = 1;
 const DEFAULT_MARK_READ_RETRY_COUNT = 1;
 const THEME_SWEEP_TARGETS = ["light", "dark", "mono"];
+const NAV_DOCK_SWEEP_TARGETS = [
+  {
+    dock: "left",
+    label: "Left",
+    screenshot: "canary-02f-nav-dock-left.png",
+    summaryLabel: "nav dock left",
+  },
+  {
+    dock: "top",
+    label: "Top",
+    screenshot: "canary-02g-nav-dock-top.png",
+    summaryLabel: "nav dock top",
+  },
+  {
+    dock: "right",
+    label: "Right",
+    screenshot: "canary-02h-nav-dock-right.png",
+    summaryLabel: "nav dock right",
+  },
+  {
+    dock: "bottom",
+    label: "Bottom",
+    screenshot: "canary-02i-nav-dock-bottom.png",
+    summaryLabel: "nav dock bottom",
+  },
+];
+const STAFF_PATHS = {
+  cockpit: "/staff/cockpit",
+  workshops: "/staff/workshops",
+  system: "/staff/system",
+};
+const STAFF_PATHS_CASE_NOISE = "/STAFF/Workshops";
+const STAFF_FALLBACK_PATH = "/staff";
+const STAFF_SYSTEM_WORKSPACE_MARKER = "System tools workspace";
+const STAFF_UNKNOWN_FALLBACK_PATH = "/staff/does-not-exist";
 
 function parseArgs(argv) {
   const options = {
@@ -30,11 +66,18 @@ function parseArgs(argv) {
       process.env.PORTAL_AGENT_STAFF_CREDENTIALS ||
       DEFAULT_STAFF_CREDENTIALS_PATH,
     credentialsJson: String(process.env.PORTAL_AGENT_STAFF_CREDENTIALS_JSON || "").trim(),
+    firebaseApiKey: String(process.env.PORTAL_FIREBASE_API_KEY || process.env.FIREBASE_WEB_API_KEY || "").trim(),
+    projectId: String(process.env.PORTAL_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID).trim() || DEFAULT_FIREBASE_PROJECT_ID,
+    adminToken: String(process.env.PORTAL_CANARY_ADMIN_TOKEN || process.env.PORTAL_ADMIN_TOKEN || "").trim(),
     requireAuth: true,
     headless: true,
     runThemeSweep: true,
+    runJourneyCheck: String(process.env.PORTAL_CANARY_JOURNEY_CHECK || "").trim().toLowerCase() === "true",
+    journeyPiecePrefix: String(process.env.PORTAL_CANARY_JOURNEY_PIECE_PREFIX || "QA-").trim() || "QA-",
+    journeyCleanupMode: String(process.env.PORTAL_CANARY_JOURNEY_CLEANUP_MODE || "best-effort").trim().toLowerCase(),
     functionalOnly: false,
     themeOnly: false,
+    enforceStaffRoutes: String(process.env.PORTAL_CANARY_ENFORCE_STAFF_ROUTES || "").trim().toLowerCase() === "true",
     minContrast: 4.2,
     feedbackPath: String(process.env.PORTAL_CANARY_FEEDBACK_PATH || "").trim(),
     asJson: false,
@@ -100,6 +143,30 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--api-key") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --api-key");
+      options.firebaseApiKey = String(next).trim();
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--project") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --project");
+      options.projectId = String(next).trim() || DEFAULT_FIREBASE_PROJECT_ID;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--admin-token") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --admin-token");
+      options.adminToken = String(next).trim();
+      index += 1;
+      continue;
+    }
+
     if (arg === "--no-require-auth") {
       options.requireAuth = false;
       continue;
@@ -127,6 +194,37 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--journey-check") {
+      options.runJourneyCheck = true;
+      continue;
+    }
+
+    if (arg === "--skip-journey-check") {
+      options.runJourneyCheck = false;
+      continue;
+    }
+
+    if (arg === "--journey-piece-prefix") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --journey-piece-prefix");
+      options.journeyPiecePrefix = String(next).trim() || "QA-";
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--journey-cleanup-mode") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error("Missing value for --journey-cleanup-mode");
+      options.journeyCleanupMode = String(next).trim().toLowerCase();
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--enforce-staff-routes") {
+      options.enforceStaffRoutes = true;
+      continue;
+    }
+
     if (arg === "--min-contrast") {
       const next = argv[index + 1];
       if (!next || next.startsWith("--")) throw new Error("Missing value for --min-contrast");
@@ -149,6 +247,10 @@ function parseArgs(argv) {
       options.asJson = true;
       continue;
     }
+  }
+
+  if (options.journeyCleanupMode !== "best-effort" && options.journeyCleanupMode !== "skip") {
+    throw new Error("--journey-cleanup-mode must be one of: best-effort, skip");
   }
 
   return options;
@@ -361,6 +463,174 @@ function addWarning(summary, message) {
   summary.warnings.push(text);
 }
 
+function safeJsonParse(raw, fallback = null) {
+  try {
+    return JSON.parse(String(raw || ""));
+  } catch {
+    return fallback;
+  }
+}
+
+function encodeFirestorePath(path) {
+  return String(path || "")
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
+function firestoreValueToJs(value) {
+  if (!value || typeof value !== "object") return null;
+  if (Object.prototype.hasOwnProperty.call(value, "nullValue")) return null;
+  if (Object.prototype.hasOwnProperty.call(value, "stringValue")) return String(value.stringValue || "");
+  if (Object.prototype.hasOwnProperty.call(value, "booleanValue")) return Boolean(value.booleanValue);
+  if (Object.prototype.hasOwnProperty.call(value, "integerValue")) return Number(value.integerValue);
+  if (Object.prototype.hasOwnProperty.call(value, "doubleValue")) return Number(value.doubleValue);
+  if (Object.prototype.hasOwnProperty.call(value, "timestampValue")) return String(value.timestampValue || "");
+  if (Object.prototype.hasOwnProperty.call(value, "arrayValue")) {
+    const values = Array.isArray(value.arrayValue?.values) ? value.arrayValue.values : [];
+    return values.map((entry) => firestoreValueToJs(entry));
+  }
+  if (Object.prototype.hasOwnProperty.call(value, "mapValue")) {
+    const fields = value.mapValue?.fields && typeof value.mapValue.fields === "object" ? value.mapValue.fields : {};
+    const out = {};
+    for (const [key, nested] of Object.entries(fields)) {
+      out[key] = firestoreValueToJs(nested);
+    }
+    return out;
+  }
+  return null;
+}
+
+function firestoreDocToObject(doc) {
+  const fields = doc?.fields && typeof doc.fields === "object" ? doc.fields : {};
+  const out = {};
+  for (const [key, value] of Object.entries(fields)) {
+    out[key] = firestoreValueToJs(value);
+  }
+  return out;
+}
+
+function firestoreDocIdFromName(name) {
+  const text = String(name || "");
+  const parts = text.split("/").filter(Boolean);
+  return parts.at(-1) || "";
+}
+
+async function requestJson(url, init = {}) {
+  const response = await fetch(url, init);
+  const text = await response.text();
+  const json = safeJsonParse(text, null);
+  return {
+    ok: response.ok,
+    status: response.status,
+    json,
+    text,
+  };
+}
+
+async function signInFirebaseWithPassword({ apiKey, email, password }) {
+  const trimmedApiKey = String(apiKey || "").trim();
+  const trimmedEmail = String(email || "").trim();
+  const trimmedPassword = String(password || "").trim();
+  if (!trimmedApiKey) {
+    throw new Error("Journey check requires PORTAL_FIREBASE_API_KEY (or --api-key).");
+  }
+  if (!trimmedEmail || !trimmedPassword) {
+    throw new Error("Journey check requires staff email/password credentials.");
+  }
+
+  const url = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(trimmedApiKey)}`;
+  const response = await requestJson(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      email: trimmedEmail,
+      password: trimmedPassword,
+      returnSecureToken: true,
+    }),
+  });
+  if (!response.ok || !response.json?.idToken) {
+    const message = String(response.json?.error?.message || response.text || `status ${response.status}`);
+    throw new Error(`Could not mint Firebase ID token for journey check: ${message}`);
+  }
+  return String(response.json.idToken);
+}
+
+async function firestoreGetDocument({ projectId, path, idToken }) {
+  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/${encodeFirestorePath(path)}`;
+  return requestJson(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+    },
+  });
+}
+
+async function firestoreListDocuments({ projectId, path, idToken, pageSize = 80 }) {
+  const base = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/${encodeFirestorePath(path)}`;
+  const url = `${base}?pageSize=${Math.max(1, Math.min(200, Number(pageSize) || 80))}`;
+  return requestJson(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+    },
+  });
+}
+
+async function firestoreDeleteDocument({ projectId, path, idToken }) {
+  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/${encodeFirestorePath(path)}`;
+  return requestJson(url, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+    },
+  });
+}
+
+function deriveSiblingFunctionUrl(fromUrl, functionName, fallbackBaseUrl = "") {
+  const normalizedFunctionName = String(functionName || "").trim().replace(/^\/+/, "");
+  if (!normalizedFunctionName) return "";
+
+  const rawFromUrl = String(fromUrl || "").trim();
+  if (rawFromUrl) {
+    try {
+      const parsed = new URL(rawFromUrl);
+      const replacementPattern = /\/continueJourney(?:\/)?$/i;
+      if (replacementPattern.test(parsed.pathname)) {
+        parsed.pathname = parsed.pathname.replace(replacementPattern, `/${normalizedFunctionName}`);
+        parsed.search = "";
+        parsed.hash = "";
+        return parsed.toString();
+      }
+    } catch {
+      // Fall through to base URL fallback.
+    }
+  }
+
+  const normalizedFallback = String(fallbackBaseUrl || "").trim().replace(/\/+$/, "");
+  if (!normalizedFallback) return "";
+  return `${normalizedFallback}/${normalizedFunctionName}`;
+}
+
+async function callFunctionEndpoint({ url, idToken, adminToken, payload }) {
+  const headers = {
+    "content-type": "application/json",
+    Authorization: `Bearer ${idToken}`,
+  };
+  const trimmedAdminToken = String(adminToken || "").trim();
+  if (trimmedAdminToken) {
+    headers["x-admin-token"] = trimmedAdminToken;
+  }
+
+  return requestJson(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload ?? {}),
+  });
+}
+
 async function takeScreenshot(page, outputDir, fileName, summary, label) {
   const path = resolve(outputDir, fileName);
   await page.screenshot({ path, fullPage: true });
@@ -394,9 +664,15 @@ async function clickNavSubItem(page, sectionLabel, itemLabel, required = true) {
     await page.waitForTimeout(350);
   }
 
-  const itemButton = page
-    .locator(".nav-subitem", { hasText: new RegExp(regexSafe(itemLabel), "i") })
-    .first();
+  const controlsId = await sectionButton.getAttribute("aria-controls");
+  const itemButton = controlsId
+    ? page
+        .locator(`#${controlsId}`)
+        .locator("button", { hasText: new RegExp(`^${regexSafe(itemLabel)}$`, "i") })
+        .first()
+    : page
+        .locator(".nav-subitem", { hasText: new RegExp(`^${regexSafe(itemLabel)}$`, "i") })
+        .first();
 
   if ((await itemButton.count()) === 0) {
     if (required) throw new Error(`Nav subitem not found: ${sectionLabel} > ${itemLabel}`);
@@ -406,6 +682,195 @@ async function clickNavSubItem(page, sectionLabel, itemLabel, required = true) {
   await itemButton.click({ timeout: 10000 });
   await page.waitForTimeout(700);
   return true;
+}
+
+function normalizeObservedPath(pathname) {
+  const sanitized = String(pathname || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\/?#/, "")
+    .replace(/^!/, "");
+  const withLeadingSlash = sanitized.startsWith("/") ? sanitized : `/${sanitized}`;
+  const pathOnly = withLeadingSlash.split(/[?#]/)[0] ?? "/";
+  const trimmed = pathOnly.replace(/\/+/g, "/").replace(/\/+$/, "");
+  return trimmed === "" ? "/" : trimmed;
+}
+
+function shouldSkipStaffWorkspaceChecks(options) {
+  if (options.enforceStaffRoutes) return false;
+
+  const email = String(options.staffEmail || "").trim().toLowerCase();
+  if (!email) return false;
+
+  const isSyntheticCredential =
+    email.endsWith(".local") ||
+    email.includes("@example.") ||
+    email.includes("@test.");
+
+  if (!isSyntheticCredential) return false;
+
+  try {
+    const host = new URL(options.baseUrl).hostname.toLowerCase();
+    return host === "portal.monsoonfire.com";
+  } catch {
+    return false;
+  }
+}
+
+function resolveObservedStaffPathFromUrl(rawUrl) {
+  const parsed = new URL(rawUrl);
+  const observed = normalizeObservedPath(parsed.pathname);
+  const observedHash = normalizeObservedPath(parsed.hash.replace(/^#/, ""));
+  if (observed === "/" && observedHash && observedHash !== "/") {
+    return observedHash;
+  }
+  return observed;
+}
+
+function toStaffHashFallbackRoute(routePath) {
+  const normalizedRoute = normalizeObservedPath(routePath);
+  if (normalizedRoute.startsWith("/#/")) {
+    return normalizedRoute;
+  }
+  return `/#${normalizedRoute}`;
+}
+
+async function assertStaffWorkspaceRoute(page, summary, baseUrl, routePath, expectedPath, ...requiredSignals) {
+  const normalizedRoute = normalizeObservedPath(routePath);
+  const normalizedExpected = normalizeObservedPath(expectedPath);
+  await page.goto(`${baseUrl}${normalizedRoute}`, { waitUntil: "domcontentloaded", timeout: 30000 });
+  await page.waitForTimeout(900);
+  let canonicalObserved = resolveObservedStaffPathFromUrl(page.url());
+  const initialObserved = canonicalObserved;
+  let fallbackObserved = "";
+
+  if (canonicalObserved !== normalizedExpected) {
+    const hashFallbackRoute = toStaffHashFallbackRoute(normalizedRoute);
+    if (hashFallbackRoute !== normalizedRoute) {
+      await page.goto(`${baseUrl}${hashFallbackRoute}`, { waitUntil: "domcontentloaded", timeout: 30000 });
+      await page.waitForTimeout(900);
+      fallbackObserved = resolveObservedStaffPathFromUrl(page.url());
+      if (fallbackObserved === normalizedExpected) {
+        canonicalObserved = fallbackObserved;
+        addWarning(
+          summary,
+          `Staff route ${normalizedRoute} redirected to ${initialObserved} on initial load; hash fallback ${hashFallbackRoute} resolved to ${normalizedExpected}. Verify Namecheap SPA rewrite deployment (.htaccess).`
+        );
+      }
+    }
+  }
+
+  if (canonicalObserved !== normalizedExpected) {
+    const fallbackSuffix = fallbackObserved
+      ? ` (hash fallback landed on ${fallbackObserved})`
+      : "";
+    throw new Error(
+      `Staff workspace route expected ${normalizedExpected} but landed on ${canonicalObserved} after visiting ${normalizedRoute}${fallbackSuffix}.`
+    );
+  }
+  for (const signal of requiredSignals) {
+    if (!signal) continue;
+    const matcher = signal instanceof RegExp ? signal : new RegExp(regexSafe(String(signal)), "i");
+    await page.getByText(matcher).first().waitFor({ timeout: 12000 });
+  }
+}
+
+async function findVisibleLocator(locator) {
+  const count = await locator.count();
+  for (let index = 0; index < count; index += 1) {
+    const candidate = locator.nth(index);
+    if (await candidate.isVisible().catch(() => false)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+async function resolveNavDockButton(page, dockLabel) {
+  const matchers = [
+    page.locator(".nav-dock-controls-inline .nav-dock-btn", {
+      hasText: new RegExp(`^${regexSafe(dockLabel)}$`, "i"),
+    }),
+    page.locator(".nav-dock-controls .nav-dock-btn", {
+      hasText: new RegExp(`^${regexSafe(dockLabel)}$`, "i"),
+    }),
+  ];
+
+  for (const matcher of matchers) {
+    const visible = await findVisibleLocator(matcher);
+    if (visible) return visible;
+  }
+
+  return null;
+}
+
+async function ensureNavDock(page, targetDock) {
+  if (targetDock !== "left" && targetDock !== "top" && targetDock !== "right" && targetDock !== "bottom") {
+    throw new Error(`Unsupported nav dock target: ${targetDock}`);
+  }
+
+  const alreadySet = await page.evaluate((expectedDock) => {
+    const shell = document.querySelector(".app-shell");
+    return shell instanceof HTMLElement && shell.classList.contains(`dock-${expectedDock}`);
+  }, targetDock);
+  if (alreadySet) return;
+
+  const targetConfig = NAV_DOCK_SWEEP_TARGETS.find((entry) => entry.dock === targetDock);
+  if (!targetConfig) {
+    throw new Error(`Unsupported nav dock target: ${targetDock}`);
+  }
+
+  const button = await resolveNavDockButton(page, targetConfig.label);
+  if (!button) {
+    throw new Error(`Navigation dock button not found for ${targetConfig.label}.`);
+  }
+
+  await button.scrollIntoViewIfNeeded().catch(() => {});
+  await button.click({ timeout: 10000 });
+  await page.waitForFunction(
+    (expectedDock) => {
+      const shell = document.querySelector(".app-shell");
+      return shell instanceof HTMLElement && shell.classList.contains(`dock-${expectedDock}`);
+    },
+    targetDock,
+    { timeout: 12000 }
+  );
+  await page.waitForTimeout(450);
+}
+
+async function assertNoHorizontalOverflow(page, label) {
+  const metrics = await page.evaluate(() => {
+    const root = document.scrollingElement || document.documentElement;
+    const maxScrollableX = Math.max(0, (root?.scrollWidth ?? 0) - (root?.clientWidth ?? 0));
+    const originalScrollLeft = root?.scrollLeft ?? 0;
+    if (root && maxScrollableX > 0) {
+      root.scrollLeft = Math.min(maxScrollableX, originalScrollLeft + 64);
+    }
+    const movedScrollLeft = root?.scrollLeft ?? 0;
+    if (root) {
+      root.scrollLeft = originalScrollLeft;
+    }
+    const htmlOverflowX = window.getComputedStyle(document.documentElement).overflowX;
+    const bodyOverflowX = window.getComputedStyle(document.body).overflowX;
+    const overflowExplicitlyHidden =
+      htmlOverflowX === "hidden" ||
+      htmlOverflowX === "clip" ||
+      bodyOverflowX === "hidden" ||
+      bodyOverflowX === "clip";
+    return {
+      clientWidth: root?.clientWidth ?? 0,
+      scrollWidth: root?.scrollWidth ?? 0,
+      maxScrollableX,
+      canScrollHorizontally: movedScrollLeft !== originalScrollLeft,
+      overflowExplicitlyHidden,
+    };
+  });
+
+  if (metrics.maxScrollableX > 2 && metrics.canScrollHorizontally && !metrics.overflowExplicitlyHidden) {
+    throw new Error(
+      `${label} created horizontal overflow (${metrics.scrollWidth}px > ${metrics.clientWidth}px).`
+    );
+  }
 }
 
 async function collectMyPiecesState(page, extraEmptyStatePatterns = []) {
@@ -441,7 +906,7 @@ async function collectMyPiecesState(page, extraEmptyStatePatterns = []) {
 
     const viewDetailsCount = Array.from(document.querySelectorAll("button")).filter((node) => {
       if (!isVisible(node)) return false;
-      return /^View details$/i.test(textOf(node));
+      return /^(View details|Open detail)$/i.test(textOf(node));
     }).length;
 
     const customPatterns = Array.isArray(patterns)
@@ -589,8 +1054,6 @@ async function verifyCheckInOptionalSections(page) {
   const notesInput = notesStep.getByLabel("General notes").first();
   await notesInput.fill(noteText);
 
-  const moreDetails = notesStep.locator("details.notes-details").first();
-  await setDetailsOpen(moreDetails, true, "notes more-details section");
   const firstTag = notesStep.getByRole("button", { name: /^Fragile handles$/i }).first();
   await firstTag.click({ timeout: 10000 });
   const tagSelected = await firstTag.getAttribute("aria-pressed");
@@ -895,6 +1358,303 @@ async function assertNoPermissionOrIndexError(page, labelPrefixes) {
   }
 }
 
+async function runContinueJourneyRuntimeCheck(page, summary, options, feedbackProfile) {
+  const journey = summary.journeyCheck;
+  journey.enabled = true;
+  journey.piecePrefix = options.journeyPiecePrefix;
+
+  if (!options.firebaseApiKey) {
+    throw new Error("Journey check requires PORTAL_FIREBASE_API_KEY (or --api-key).");
+  }
+
+  await clickNavSubItem(page, "Studio & Resources", "My Pieces", true);
+  await page.getByRole("heading", { name: /^My Pieces$/i }).first().waitFor({ timeout: 30000 });
+
+  const state = await waitForMyPiecesReadyState(
+    page,
+    feedbackProfile.myPiecesReadyTimeoutMs,
+    feedbackProfile.myPiecesEmptyStatePatterns
+  );
+  if (state.piecesFailedMessage) {
+    throw new Error(state.piecesFailedMessage);
+  }
+  if (state.permissionDenied) {
+    throw new Error("My Pieces still shows permission denied text.");
+  }
+
+  const rowMatcher = new RegExp(regexSafe(options.journeyPiecePrefix), "i");
+  const fixtureRow = await findVisibleLocator(page.locator(".piece-row", { hasText: rowMatcher }));
+  if (!fixtureRow) {
+    throw new Error(
+      `Could not find a visible My Pieces row for prefix "${options.journeyPiecePrefix}". ${formatMyPiecesStateForError(state)}`
+    );
+  }
+
+  const detailButton = fixtureRow.getByRole("button", { name: /^(View details|Open detail)$/i }).first();
+  if ((await detailButton.count()) === 0) {
+    throw new Error(`Fixture row for prefix "${options.journeyPiecePrefix}" does not expose a detail button.`);
+  }
+
+  await detailButton.click({ timeout: 10000 });
+  const detailTitle = page.locator(".detail-title").first();
+  await detailTitle.waitFor({ state: "visible", timeout: 12000 });
+
+  const continueButton = page.getByRole("button", { name: /^Send to next firing$/i }).first();
+  await continueButton.waitFor({ state: "visible", timeout: 12000 });
+  if (await continueButton.isDisabled()) {
+    throw new Error("Send to next firing is disabled for the selected fixture row.");
+  }
+
+  const continueResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      /\/continueJourney(?:$|[/?#])/i.test(response.url()),
+    { timeout: 30000 }
+  );
+
+  await continueButton.click({ timeout: 10000 });
+  const continueResponse = await continueResponsePromise;
+  const continueResponseUrl = String(continueResponse.url() || "").trim();
+  const responseStatus = continueResponse.status();
+  const responseJson = safeJsonParse(await continueResponse.text(), {});
+  const requestBody = safeJsonParse(continueResponse.request().postData() || "", {});
+
+  const fromBatchId = String(requestBody?.fromBatchId || "").trim();
+  const requestUid = String(requestBody?.uid || "").trim();
+  const newBatchId = String(responseJson?.batchId || responseJson?.newBatchId || "").trim();
+  const rootId = String(responseJson?.rootId || "").trim();
+
+  journey.request = {
+    uid: requestUid,
+    fromBatchId,
+  };
+  journey.response = {
+    url: continueResponseUrl,
+    status: responseStatus,
+    ok: responseJson?.ok === true,
+    batchId: newBatchId,
+    rootId,
+  };
+  journey.sourceBatchId = fromBatchId;
+  journey.createdBatchId = newBatchId;
+  journey.rootId = rootId;
+
+  if (responseStatus < 200 || responseStatus >= 300) {
+    throw new Error(`continueJourney returned HTTP ${responseStatus}.`);
+  }
+  if (!fromBatchId || !requestUid) {
+    throw new Error("continueJourney request payload was missing uid/fromBatchId.");
+  }
+  if (!newBatchId) {
+    throw new Error("continueJourney response did not include a batch id.");
+  }
+
+  await page.waitForTimeout(900);
+  await takeScreenshot(
+    page,
+    options.outputDir,
+    "canary-03b-continue-journey-created.png",
+    summary,
+    "continue journey runtime check"
+  );
+
+  const idToken = await signInFirebaseWithPassword({
+    apiKey: options.firebaseApiKey,
+    email: options.staffEmail,
+    password: options.staffPassword,
+  });
+
+  const sourceDocResponse = await firestoreGetDocument({
+    projectId: options.projectId,
+    path: `batches/${fromBatchId}`,
+    idToken,
+  });
+  const newDocResponse = await firestoreGetDocument({
+    projectId: options.projectId,
+    path: `batches/${newBatchId}`,
+    idToken,
+  });
+  const timelineResponse = await firestoreListDocuments({
+    projectId: options.projectId,
+    path: `batches/${newBatchId}/timeline`,
+    idToken,
+    pageSize: 100,
+  });
+
+  if (!sourceDocResponse.ok) {
+    throw new Error(`Could not read source batch ${fromBatchId} (status ${sourceDocResponse.status}).`);
+  }
+  if (!newDocResponse.ok) {
+    throw new Error(`Could not read new continuation batch ${newBatchId} (status ${newDocResponse.status}).`);
+  }
+  if (!timelineResponse.ok) {
+    throw new Error(`Could not read continuation timeline for ${newBatchId} (status ${timelineResponse.status}).`);
+  }
+
+  const sourceBatch = firestoreDocToObject(sourceDocResponse.json);
+  const newBatch = firestoreDocToObject(newDocResponse.json);
+  const timelineDocs = Array.isArray(timelineResponse.json?.documents)
+    ? timelineResponse.json.documents
+    : [];
+  const timelineRows = timelineDocs.map((doc) => ({
+    id: firestoreDocIdFromName(doc?.name),
+    row: firestoreDocToObject(doc),
+  }));
+  const continueEvent = timelineRows.find(
+    (entry) => String(entry.row?.type || "").trim().toUpperCase() === "CONTINUE_JOURNEY"
+  );
+  const timelineFromBatchId = String(
+    continueEvent?.row?.fromBatchId ||
+      continueEvent?.row?.extra?.fromBatchId ||
+      ""
+  ).trim();
+  const expectedRootId = String(sourceBatch.journeyRootBatchId || fromBatchId || "").trim();
+
+  const assertionRows = [];
+  const assertionFailures = [];
+  const recordAssertion = (label, condition, details) => {
+    const passed = Boolean(condition);
+    assertionRows.push({
+      label,
+      status: passed ? "passed" : "failed",
+      details: String(details || ""),
+    });
+    if (!passed) {
+      assertionFailures.push(`${label}: ${details}`);
+    }
+  };
+
+  recordAssertion(
+    "new batch state is DRAFT",
+    String(newBatch.state || "") === "DRAFT",
+    `observed="${String(newBatch.state || "")}"`
+  );
+  recordAssertion(
+    "new batch is open",
+    newBatch.isClosed === false,
+    `observed="${String(newBatch.isClosed)}"`
+  );
+  recordAssertion(
+    "new batch links journeyParentBatchId",
+    String(newBatch.journeyParentBatchId || "") === fromBatchId,
+    `observed="${String(newBatch.journeyParentBatchId || "")}" expected="${fromBatchId}"`
+  );
+  recordAssertion(
+    "new batch links journeyRootBatchId",
+    String(newBatch.journeyRootBatchId || "") === expectedRootId,
+    `observed="${String(newBatch.journeyRootBatchId || "")}" expected="${expectedRootId}"`
+  );
+  recordAssertion(
+    "new batch ownerUid matches authenticated uid",
+    String(newBatch.ownerUid || "") === requestUid,
+    `observed="${String(newBatch.ownerUid || "")}" expected="${requestUid}"`
+  );
+  recordAssertion(
+    "timeline contains CONTINUE_JOURNEY event",
+    Boolean(continueEvent),
+    `timelineCount=${timelineRows.length}`
+  );
+  recordAssertion(
+    "timeline continue event references source batch",
+    Boolean(continueEvent) && timelineFromBatchId === fromBatchId,
+    `observed="${timelineFromBatchId}" expected="${fromBatchId}"`
+  );
+
+  journey.assertions = assertionRows;
+
+  const cleanup = {
+    mode: options.journeyCleanupMode,
+    attempted: false,
+    status: "not_run",
+    deletedPaths: [],
+    lifecycleTransitions: [],
+    debt: [],
+  };
+
+  if (options.journeyCleanupMode === "skip") {
+    cleanup.status = "skipped";
+  } else {
+    cleanup.attempted = true;
+    let settledByLifecycle = false;
+    const pickedUpAndCloseUrl = deriveSiblingFunctionUrl(
+      continueResponseUrl,
+      "pickedUpAndClose",
+      options.baseUrl
+    );
+
+    if (pickedUpAndCloseUrl) {
+      const lifecycleResponse = await callFunctionEndpoint({
+        url: pickedUpAndCloseUrl,
+        idToken,
+        adminToken: options.adminToken,
+        payload: {
+          batchId: newBatchId,
+          notes: "Canary journey cleanup: close generated continuation batch.",
+        },
+      });
+      cleanup.lifecycleTransitions.push({
+        action: "pickedUpAndClose",
+        url: pickedUpAndCloseUrl,
+        status: lifecycleResponse.status,
+        ok: lifecycleResponse.ok && lifecycleResponse.json?.ok !== false,
+      });
+      settledByLifecycle = lifecycleResponse.ok && lifecycleResponse.json?.ok !== false;
+      if (settledByLifecycle) {
+        cleanup.deletedPaths.push(`batches/${newBatchId} (closed via pickedUpAndClose)`);
+      } else {
+        addWarning(
+          summary,
+          `Journey cleanup could not close ${newBatchId} via pickedUpAndClose (status ${lifecycleResponse.status}); falling back to direct delete attempts.`
+        );
+      }
+    }
+
+    if (!settledByLifecycle) {
+      const deletePaths = [
+        ...timelineRows
+          .map((entry) => (entry.id ? `batches/${newBatchId}/timeline/${entry.id}` : ""))
+          .filter(Boolean),
+        `batches/${newBatchId}`,
+      ];
+      for (const path of deletePaths) {
+        const response = await firestoreDeleteDocument({
+          projectId: options.projectId,
+          path,
+          idToken,
+        });
+        if (response.ok || response.status === 404) {
+          cleanup.deletedPaths.push(path);
+        } else {
+          cleanup.debt.push({
+            path,
+            status: response.status,
+            message: String(
+              response.json?.error?.message ||
+                response.json?.error?.status ||
+                response.text ||
+                "delete failed"
+            ),
+          });
+        }
+      }
+    }
+
+    cleanup.status = cleanup.debt.length > 0 ? "partial" : "clean";
+    if (cleanup.debt.length > 0) {
+      addWarning(
+        summary,
+        `Journey cleanup left ${cleanup.debt.length} residual document(s); tracked in report debt entries.`
+      );
+    }
+  }
+
+  journey.cleanup = cleanup;
+
+  if (assertionFailures.length > 0) {
+    throw new Error(assertionFailures.join(" | "));
+  }
+}
+
 async function run() {
   const options = parseArgs(process.argv.slice(2));
 
@@ -924,11 +1684,13 @@ async function run() {
   const summary = {
     status: "passed",
     baseUrl: options.baseUrl,
+    projectId: options.projectId,
     startedAtIso: new Date().toISOString(),
     finishedAtIso: "",
     reportPath: options.reportPath,
     auth: {
       requireAuth: options.requireAuth,
+      adminTokenProvided: Boolean(options.adminToken),
       credentialSource: credentialResolution.source || "unresolved",
       attemptedSources: credentialResolution.attemptedSources,
       warnings: credentialResolution.warnings,
@@ -953,9 +1715,39 @@ async function run() {
       dark: [],
       mono: [],
     },
+    journeyCheck: {
+      enabled: false,
+      piecePrefix: options.journeyPiecePrefix,
+      sourceBatchId: "",
+      createdBatchId: "",
+      rootId: "",
+      request: null,
+      response: null,
+      assertions: [],
+      cleanup: {
+        mode: options.journeyCleanupMode,
+        attempted: false,
+        status: "not_run",
+        deletedPaths: [],
+        debt: [],
+      },
+    },
   };
 
   feedbackProfile.warnings.forEach((warning) => addWarning(summary, warning));
+  const skipStaffWorkspaceChecks = shouldSkipStaffWorkspaceChecks(options);
+  if (skipStaffWorkspaceChecks) {
+    addWarning(
+      summary,
+      "Skipping staff workspace route checks because configured credentials look synthetic for production (for example *.local). Set --enforce-staff-routes (or PORTAL_CANARY_ENFORCE_STAFF_ROUTES=true) to force strict staff route assertions."
+    );
+  }
+  if (options.themeOnly && options.runJourneyCheck) {
+    addWarning(
+      summary,
+      "Journey check requested with --theme-only; functional journey assertions are skipped in theme-only mode."
+    );
+  }
 
   const browser = await chromium.launch({ headless: options.headless });
 
@@ -981,7 +1773,148 @@ async function run() {
       await takeScreenshot(page, options.outputDir, "canary-02-authenticated-dashboard.png", summary, "authenticated dashboard");
     });
 
+    if (skipStaffWorkspaceChecks) {
+      summary.checks.push({
+        label: "staff workspace route checks",
+        status: "passed",
+        message: "Skipped strict staff-route assertions for synthetic production credentials.",
+      });
+    } else {
+      await check(summary, "staff dedicated cockpit path resolves to cockpit workspace", async () => {
+        await assertStaffWorkspaceRoute(
+          page,
+          summary,
+          options.baseUrl,
+          STAFF_PATHS.cockpit,
+          STAFF_PATHS.cockpit,
+          /Action queue/i
+        );
+        await takeScreenshot(
+          page,
+          options.outputDir,
+          "canary-02c-staff-cockpit.png",
+          summary,
+          "staff cockpit workspace"
+        );
+      });
+
+      await check(summary, "staff dedicated workshops path resolves to workshops workspace", async () => {
+        await assertStaffWorkspaceRoute(
+          page,
+          summary,
+          options.baseUrl,
+          STAFF_PATHS.workshops,
+          STAFF_PATHS.workshops,
+          /Workshop programming intelligence/i,
+        );
+        await takeScreenshot(
+          page,
+          options.outputDir,
+          "canary-02d-staff-workshops.png",
+          summary,
+          "staff workshops workspace"
+        );
+      });
+
+      await check(summary, "staff dedicated system path resolves to system workspace", async () => {
+        await assertStaffWorkspaceRoute(
+          page,
+          summary,
+          options.baseUrl,
+          STAFF_PATHS.system,
+          STAFF_PATHS.system,
+          STAFF_SYSTEM_WORKSPACE_MARKER
+        );
+        await takeScreenshot(
+          page,
+          options.outputDir,
+          "canary-02e-staff-system.png",
+          summary,
+          "staff system workspace"
+        );
+      });
+
+      await check(summary, "staff path noise is canonicalized consistently", async () => {
+        await assertStaffWorkspaceRoute(
+          page,
+          summary,
+          options.baseUrl,
+          `${STAFF_PATHS.cockpit}/`,
+          STAFF_PATHS.cockpit,
+          /Action queue/i
+        );
+        await assertStaffWorkspaceRoute(
+          page,
+          summary,
+          options.baseUrl,
+          STAFF_PATHS_CASE_NOISE,
+          STAFF_PATHS.workshops,
+          /Workshop programming intelligence/i
+        );
+        await assertStaffWorkspaceRoute(
+          page,
+          summary,
+          options.baseUrl,
+          "/#/staff/workshops",
+          STAFF_PATHS.workshops,
+          /Workshop programming intelligence/i
+        );
+      });
+
+      await check(summary, "unknown staff paths recover to /staff", async () => {
+        await assertStaffWorkspaceRoute(
+          page,
+          summary,
+          options.baseUrl,
+          `${STAFF_UNKNOWN_FALLBACK_PATH}/?from=legacy`,
+          STAFF_FALLBACK_PATH,
+        );
+        await takeScreenshot(page, options.outputDir, "canary-02f-staff-recovery.png", summary, "staff path fallback");
+      });
+    }
+
     if (!options.themeOnly) {
+      await check(summary, "navigation dock controls switch left/top/right/bottom", async () => {
+        await clickNavItem(page, "Dashboard", true);
+
+        for (const target of NAV_DOCK_SWEEP_TARGETS) {
+          await ensureNavDock(page, target.dock);
+          await clickNavItem(page, "Dashboard", true);
+          await assertNoHorizontalOverflow(page, `nav dock ${target.dock}`);
+          await takeScreenshot(page, options.outputDir, target.screenshot, summary, target.summaryLabel);
+        }
+
+        // Restore baseline navigation dock before remaining checks.
+        await ensureNavDock(page, "left");
+        await clickNavItem(page, "Dashboard", true);
+      });
+
+      await check(summary, "navigation flyouts open in top/bottom docks", async () => {
+        const flyoutTargets = [
+          {
+            dock: "top",
+            screenshot: "canary-02j-nav-flyout-top.png",
+            summaryLabel: "nav flyout top dock",
+          },
+          {
+            dock: "bottom",
+            screenshot: "canary-02k-nav-flyout-bottom.png",
+            summaryLabel: "nav flyout bottom dock",
+          },
+        ];
+
+        for (const target of flyoutTargets) {
+          await ensureNavDock(page, target.dock);
+          await clickNavSubItem(page, "Studio & Resources", "Overview", true);
+          await page.waitForTimeout(350);
+          await assertNoHorizontalOverflow(page, `nav flyout ${target.dock}`);
+          await takeScreenshot(page, options.outputDir, target.screenshot, summary, target.summaryLabel);
+        }
+
+        await ensureNavDock(page, "left");
+        await clickNavItem(page, "Dashboard", true);
+      });
+
       await check(summary, "legacy requests deep links route to supported pages", async () => {
         const scenarios = [
           {
@@ -1092,23 +2025,56 @@ async function run() {
           }
 
           const detailTitle = page.locator(".detail-title").first();
+          const detailButtons = page
+            .locator(".piece-row button")
+            .filter({ hasText: /^(View details|Open detail)$/i });
+          const isDetailTitleVisible = async () => {
+            if ((await detailTitle.count()) === 0) return false;
+            try {
+              return await detailTitle.isVisible();
+            } catch {
+              return false;
+            }
+          };
+
+          let detailTitleVisible = await isDetailTitleVisible();
           let attemptedOpenDetails = false;
-          if ((await detailTitle.count()) === 0) {
-            const viewDetailsButton = page.getByRole("button", { name: /^View details$/i }).first();
-            if ((await viewDetailsButton.count()) > 0) {
+          if (!detailTitleVisible) {
+            const detailButtonCount = await detailButtons.count();
+            if (detailButtonCount > 0) {
               attemptedOpenDetails = true;
-              await viewDetailsButton.click({ timeout: 10000 });
-            } else {
-              const firstRow = page.locator(".piece-row").first();
-              if ((await firstRow.count()) > 0) {
-                attemptedOpenDetails = true;
-                await firstRow.click({ timeout: 10000 });
+              const maxAttempts = Math.min(detailButtonCount, 3);
+              for (let index = 0; index < maxAttempts; index += 1) {
+                const button = detailButtons.nth(index);
+                try {
+                  await button.scrollIntoViewIfNeeded();
+                } catch {
+                  // Ignore scroll errors and still attempt the click.
+                }
+                await button.click({ timeout: 10000 });
+
+                try {
+                  await detailTitle.waitFor({ state: "visible", timeout: 2500 });
+                  detailTitleVisible = true;
+                  break;
+                } catch {
+                  // Try the next visible row-level detail button.
+                }
               }
             }
           }
 
-          if (attemptedOpenDetails || (await detailTitle.count()) > 0) {
-            await page.locator(".detail-title").first().waitFor({ timeout: 10000 });
+          if (attemptedOpenDetails || detailTitleVisible) {
+            try {
+              await detailTitle.waitFor({ state: "visible", timeout: 10000 });
+            } catch (error) {
+              const waitMessage = error instanceof Error ? error.message : String(error);
+              myPiecesState = await collectMyPiecesState(page, feedbackProfile.myPiecesEmptyStatePatterns);
+              throw new Error(
+                `Open detail action did not reveal a visible detail title. ` +
+                  `route=${routeUsed}; waitError=${waitMessage}; ${formatMyPiecesStateForError(myPiecesState)}`
+              );
+            }
           } else {
             let reloadAttempts = 0;
             while (
@@ -1172,6 +2138,12 @@ async function run() {
           throw error;
         }
       });
+
+      if (options.runJourneyCheck) {
+        await check(summary, "continue journey runtime linkage (ui + firestore)", async () => {
+          await runContinueJourneyRuntimeCheck(page, summary, options, feedbackProfile);
+        });
+      }
 
       await check(summary, "notifications mark read gives user feedback", async () => {
         await clickNavItem(page, "Notifications", true);
@@ -1395,6 +2367,12 @@ async function run() {
   } else {
     process.stdout.write(`status: ${summary.status}\n`);
     process.stdout.write(`baseUrl: ${summary.baseUrl}\n`);
+    process.stdout.write(`projectId: ${summary.projectId}\n`);
+    if (summary.journeyCheck?.enabled) {
+      process.stdout.write(
+        `journeyCheck: createdBatch=${summary.journeyCheck.createdBatchId || "n/a"} cleanup=${summary.journeyCheck.cleanup?.status || "not_run"}\n`
+      );
+    }
     summary.checks.forEach((checkItem) => {
       process.stdout.write(`- ${checkItem.label}: ${checkItem.status}${checkItem.message ? ` (${checkItem.message})` : ""}\n`);
     });

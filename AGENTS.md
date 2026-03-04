@@ -55,6 +55,17 @@ Codex, treat this file as your **ground truth** for how to work here: what matte
   - Treat as distinct product: content + design + performance
   - Priorities: SEO basics, accessibility, clean nav, predictable deploy steps
 
+## Secrets Hint (Local Only)
+
+- Local test/automation secrets live under `secrets/` and are intentionally outside regular source workflows.
+- Portal automation/staff credentials are in:
+  - `secrets/portal/portal-agent-staff.json`
+  - `secrets/portal/portal-automation.env`
+- Studio Brain automation secrets are in:
+  - `secrets/studio-brain/studio-brain-automation.env`
+- Use these files to unblock local verification workflows when needed.
+- Never paste raw secret values into commits, tickets, or chat output.
+
 ---
 
 ## 3) Non-Negotiables (do not regress)
@@ -111,9 +122,8 @@ Known fixed issues + patterns:
 
 ### Portal (web)
 ```bash
-cd web
-npm install
-npm run dev
+npm --prefix web install
+npm --prefix web run dev
 ```
 
 ### Theme + Motion

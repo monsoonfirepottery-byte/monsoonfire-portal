@@ -21,9 +21,18 @@ import {
 } from "./shared";
 import { z } from "zod";
 import { evaluateCommunityContentRisk, getCommunitySafetyConfig } from "./communitySafety";
+import {
+  INDUSTRY_EVENT_RETIRE_PAST_MS,
+  INDUSTRY_EVENT_REVIEW_STALE_MS,
+  evaluateIndustryEventFreshness,
+  filterIndustryEvents,
+  normalizeIndustryEvent,
+  normalizeIndustryEventMode,
+} from "./industryEvents";
 
 const REGION = "us-central1";
 const EVENTS_COL = "events";
+const INDUSTRY_EVENTS_COL = "industryEvents";
 const SIGNUPS_COL = "eventSignups";
 const CHARGES_COL = "eventCharges";
 
@@ -37,6 +46,15 @@ const listEventsSchema = z.object({
   includeCancelled: z.boolean().optional(),
 });
 
+const listIndustryEventsSchema = z.object({
+  mode: z.enum(["all", "local", "remote", "hybrid"]).optional(),
+  includePast: z.boolean().optional(),
+  includeDrafts: z.boolean().optional(),
+  includeCancelled: z.boolean().optional(),
+  featuredOnly: z.boolean().optional(),
+  limit: z.number().int().min(1).max(200).optional(),
+});
+
 const listEventSignupsSchema = z.object({
   eventId: z.string().min(1),
   includeCancelled: z.boolean().optional(),
@@ -46,6 +64,40 @@ const listEventSignupsSchema = z.object({
 
 const eventIdSchema = z.object({
   eventId: z.string().min(1),
+});
+
+const industryEventIdSchema = z.object({
+  eventId: z.string().min(1),
+});
+
+const upsertIndustryEventSchema = z.object({
+  eventId: z.string().min(1).optional().nullable(),
+  title: z.string().min(1),
+  summary: z.string().min(1),
+  description: z.string().max(4000).optional().nullable(),
+  mode: z.enum(["local", "remote", "hybrid"]).optional().nullable(),
+  status: z.enum(["draft", "published", "cancelled"]).optional().nullable(),
+  startAt: z.any().optional().nullable(),
+  endAt: z.any().optional().nullable(),
+  timezone: z.string().max(120).optional().nullable(),
+  location: z.string().max(240).optional().nullable(),
+  city: z.string().max(120).optional().nullable(),
+  region: z.string().max(120).optional().nullable(),
+  country: z.string().max(120).optional().nullable(),
+  remoteUrl: z.string().max(1000).optional().nullable(),
+  registrationUrl: z.string().max(1000).optional().nullable(),
+  sourceName: z.string().max(240).optional().nullable(),
+  sourceUrl: z.string().max(1000).optional().nullable(),
+  featured: z.boolean().optional(),
+  tags: z.array(z.string().min(1).max(64)).max(20).optional(),
+  verifiedAt: z.any().optional().nullable(),
+});
+
+const runIndustryEventsFreshnessSchema = z.object({
+  dryRun: z.boolean().optional(),
+  limit: z.number().int().min(1).max(500).optional(),
+  staleReviewDays: z.number().int().min(1).max(90).optional(),
+  retirePastHours: z.number().int().min(1).max(336).optional(),
 });
 
 const publishEventSchema = z.object({
@@ -173,6 +225,158 @@ function toIso(value: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+function normalizeOptionalText(value: unknown): string | null {
+  const normalized = safeString(value).trim();
+  return normalized || null;
+}
+
+function normalizeOptionalUrl(value: unknown): string | null {
+  const normalized = safeString(value).trim();
+  if (!normalized) return null;
+  try {
+    const url = new URL(normalized);
+    if (!url.protocol.startsWith("http")) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function normalizeTags(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  raw.forEach((entry) => {
+    const normalized = safeString(entry).trim().toLowerCase();
+    if (!normalized || out.includes(normalized)) return;
+    out.push(normalized);
+  });
+  return out.slice(0, 20);
+}
+
+type SweepIndustryEventsFreshnessOptions = {
+  dryRun?: boolean;
+  limit?: number;
+  staleReviewMs?: number;
+  retirePastMs?: number;
+  source?: "scheduled" | "manual";
+  nowMs?: number;
+};
+
+type SweepIndustryEventsFreshnessResult = {
+  dryRun: boolean;
+  source: "scheduled" | "manual";
+  scanned: number;
+  updated: number;
+  retired: number;
+  staleReview: number;
+  fresh: number;
+  nonPublished: number;
+};
+
+async function sweepIndustryEventsFreshness(
+  options: SweepIndustryEventsFreshnessOptions = {}
+): Promise<SweepIndustryEventsFreshnessResult> {
+  const dryRun = options.dryRun === true;
+  const source = options.source ?? "scheduled";
+  const limit = Math.min(Math.max(asInt(options.limit, 250), 1), 500);
+  const staleReviewMs = Math.max(
+    60_000,
+    asInt(options.staleReviewMs, INDUSTRY_EVENT_REVIEW_STALE_MS)
+  );
+  const retirePastMs = Math.max(
+    60_000,
+    asInt(options.retirePastMs, INDUSTRY_EVENT_RETIRE_PAST_MS)
+  );
+  const nowMs = options.nowMs ?? Date.now();
+
+  const snap = await db.collection(INDUSTRY_EVENTS_COL).limit(limit).get();
+  if (snap.empty) {
+    return {
+      dryRun,
+      source,
+      scanned: 0,
+      updated: 0,
+      retired: 0,
+      staleReview: 0,
+      fresh: 0,
+      nonPublished: 0,
+    };
+  }
+
+  const summary: SweepIndustryEventsFreshnessResult = {
+    dryRun,
+    source,
+    scanned: 0,
+    updated: 0,
+    retired: 0,
+    staleReview: 0,
+    fresh: 0,
+    nonPublished: 0,
+  };
+  const t = nowTs();
+
+  for (const docSnap of snap.docs) {
+    const raw = (docSnap.data() as Record<string, unknown>) ?? {};
+    const normalized = normalizeIndustryEvent(docSnap.id, raw);
+    const decision = evaluateIndustryEventFreshness(normalized, {
+      nowMs,
+      staleReviewMs,
+      retirePastMs,
+    });
+
+    summary.scanned += 1;
+    if (decision.outcome === "retired") summary.retired += 1;
+    else if (decision.outcome === "stale_review") summary.staleReview += 1;
+    else if (decision.outcome === "fresh") summary.fresh += 1;
+    else summary.nonPublished += 1;
+
+    const currentStatus = safeString(raw["status"]).trim() || "draft";
+    const currentFreshnessState = normalizeOptionalText(raw["freshnessState"]);
+    const currentNeedsReview = raw["needsReview"] === true;
+    const currentReviewByAt = toIso(raw["reviewByAt"]);
+    const currentRetiredReason = normalizeOptionalText(raw["retiredReason"]);
+    const currentRetiredAt = toIso(raw["retiredAt"]);
+
+    const patch: Record<string, unknown> = {};
+    if (currentStatus !== decision.nextStatus) {
+      patch.status = decision.nextStatus;
+    }
+    if (currentFreshnessState !== decision.freshnessState) {
+      patch.freshnessState = decision.freshnessState;
+    }
+    if (currentNeedsReview !== decision.needsReview) {
+      patch.needsReview = decision.needsReview;
+    }
+    if (currentReviewByAt !== decision.reviewByAt) {
+      patch.reviewByAt = decision.reviewByAt ? parseTimestamp(decision.reviewByAt) : null;
+    }
+    if (decision.shouldRetire) {
+      if (!currentRetiredAt) {
+        patch.retiredAt = t;
+      }
+      if (currentRetiredReason !== decision.retiredReason) {
+        patch.retiredReason = decision.retiredReason;
+      }
+    } else if (decision.nextStatus === "published" && (currentRetiredAt || currentRetiredReason)) {
+      patch.retiredAt = null;
+      patch.retiredReason = null;
+    }
+
+    if (Object.keys(patch).length === 0) continue;
+
+    patch.freshnessCheckedAt = t;
+    patch.freshnessSweepSource = source;
+    patch.updatedAt = t;
+    summary.updated += 1;
+
+    if (!dryRun) {
+      await docSnap.ref.set(patch, { merge: true });
+    }
+  }
+
+  return summary;
 }
 
 type EventAddOn = {
@@ -309,6 +513,285 @@ export const listEvents = onRequest({ region: REGION, cors: true }, async (req, 
     res.status(200).json({ ok: true, events });
   } catch (err: any) {
     logger.error("listEvents failed", err);
+    res.status(500).json({ ok: false, message: err?.message ?? String(err) });
+  }
+});
+
+export const listIndustryEvents = onRequest({ region: REGION }, async (req, res) => {
+  if (applyCors(req, res)) return;
+
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+
+  const parsed = parseBody(listIndustryEventsSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const includeDrafts = parsed.data.includeDrafts === true;
+  const includeCancelled = parsed.data.includeCancelled === true;
+  const includePast = parsed.data.includePast === true;
+  const featuredOnly = parsed.data.featuredOnly === true;
+  const mode = parsed.data.mode ?? "all";
+  const limit = Math.min(Math.max(asInt(parsed.data.limit, 80), 1), 200);
+
+  if (includeDrafts || includeCancelled) {
+    const admin = await requireAdmin(req);
+    if (!admin.ok) {
+      res.status(403).json({ ok: false, message: "Forbidden" });
+      return;
+    }
+  }
+
+  const rate = await enforceRateLimit({
+    req,
+    key: "listIndustryEvents",
+    max: 30,
+    windowMs: 60_000,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ ok: false, message: "Too many requests" });
+    return;
+  }
+
+  try {
+    const baseQuery =
+      includeDrafts || includeCancelled
+        ? db.collection(INDUSTRY_EVENTS_COL)
+        : db.collection(INDUSTRY_EVENTS_COL).where("status", "==", "published");
+    const snaps = await baseQuery.limit(500).get();
+
+    const normalized = snaps.docs.map((docSnap) => normalizeIndustryEvent(docSnap.id, docSnap.data()));
+    const events = filterIndustryEvents(normalized, {
+      mode,
+      includePast,
+      includeDrafts,
+      includeCancelled,
+      featuredOnly,
+      limit,
+    });
+
+    res.status(200).json({ ok: true, events });
+  } catch (err: any) {
+    logger.error("listIndustryEvents failed", err);
+    res.status(500).json({ ok: false, message: err?.message ?? String(err) });
+  }
+});
+
+export const getIndustryEvent = onRequest({ region: REGION }, async (req, res) => {
+  if (applyCors(req, res)) return;
+
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+
+  const parsed = parseBody(industryEventIdSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const rate = await enforceRateLimit({
+    req,
+    key: "getIndustryEvent",
+    max: 60,
+    windowMs: 60_000,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ ok: false, message: "Too many requests" });
+    return;
+  }
+
+  const eventId = safeString(parsed.data.eventId).trim();
+  try {
+    const docSnap = await db.collection(INDUSTRY_EVENTS_COL).doc(eventId).get();
+    if (!docSnap.exists) {
+      res.status(404).json({ ok: false, message: "Industry event not found" });
+      return;
+    }
+
+    const event = normalizeIndustryEvent(docSnap.id, docSnap.data());
+    if (event.status !== "published") {
+      const admin = await requireAdmin(req);
+      if (!admin.ok) {
+        res.status(403).json({ ok: false, message: "Forbidden" });
+        return;
+      }
+    }
+
+    res.status(200).json({ ok: true, event });
+  } catch (err: any) {
+    logger.error("getIndustryEvent failed", err);
+    res.status(500).json({ ok: false, message: err?.message ?? String(err) });
+  }
+});
+
+export const upsertIndustryEvent = onRequest({ region: REGION }, async (req, res) => {
+  if (applyCors(req, res)) return;
+
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+
+  const admin = await requireAdmin(req);
+  if (!admin.ok) {
+    res.status(403).json({ ok: false, message: "Forbidden" });
+    return;
+  }
+
+  const parsed = parseBody(upsertIndustryEventSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const rate = await enforceRateLimit({
+    req,
+    key: "upsertIndustryEvent",
+    max: 20,
+    windowMs: 60_000,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ ok: false, message: "Too many requests" });
+    return;
+  }
+
+  const eventIdInput = normalizeOptionalText(parsed.data.eventId);
+  const title = safeString(parsed.data.title).trim();
+  const summary = safeString(parsed.data.summary).trim();
+  const description = normalizeOptionalText(parsed.data.description);
+  const location = normalizeOptionalText(parsed.data.location);
+  const remoteUrlInput = normalizeOptionalText(parsed.data.remoteUrl);
+  const registrationUrlInput = normalizeOptionalText(parsed.data.registrationUrl);
+  const sourceUrlInput = normalizeOptionalText(parsed.data.sourceUrl);
+  const remoteUrl = normalizeOptionalUrl(remoteUrlInput);
+  const registrationUrl = normalizeOptionalUrl(registrationUrlInput);
+  const sourceUrl = normalizeOptionalUrl(sourceUrlInput);
+  const sourceName = normalizeOptionalText(parsed.data.sourceName);
+  const mode = normalizeIndustryEventMode(parsed.data.mode, { location, remoteUrl });
+  const status = parsed.data.status ?? "draft";
+  const featured = parsed.data.featured === true;
+  const startAt = parseTimestamp(parsed.data.startAt);
+  const endAt = parseTimestamp(parsed.data.endAt);
+  const verifiedAt = parseTimestamp(parsed.data.verifiedAt);
+
+  if (!title || !summary) {
+    res.status(400).json({ ok: false, message: "title and summary are required." });
+    return;
+  }
+
+  if (eventIdInput?.includes("/")) {
+    res.status(400).json({ ok: false, message: "eventId cannot include '/'." });
+    return;
+  }
+
+  if (remoteUrlInput && !remoteUrl) {
+    res.status(400).json({ ok: false, message: "remoteUrl must be a valid http(s) URL." });
+    return;
+  }
+
+  if (registrationUrlInput && !registrationUrl) {
+    res.status(400).json({ ok: false, message: "registrationUrl must be a valid http(s) URL." });
+    return;
+  }
+
+  if (sourceUrlInput && !sourceUrl) {
+    res.status(400).json({ ok: false, message: "sourceUrl must be a valid http(s) URL." });
+    return;
+  }
+
+  if (startAt && endAt && startAt.toMillis() >= endAt.toMillis()) {
+    res.status(400).json({ ok: false, message: "startAt must be before endAt" });
+    return;
+  }
+
+  if (status === "published") {
+    if (!startAt) {
+      res.status(400).json({ ok: false, message: "startAt is required for published industry events." });
+      return;
+    }
+    if (!registrationUrl && !remoteUrl && !sourceUrl) {
+      res.status(400).json({
+        ok: false,
+        message: "Published industry events require registrationUrl, remoteUrl, or sourceUrl.",
+      });
+      return;
+    }
+  }
+
+  try {
+    const t = nowTs();
+    const eventRef = eventIdInput
+      ? db.collection(INDUSTRY_EVENTS_COL).doc(eventIdInput)
+      : db.collection(INDUSTRY_EVENTS_COL).doc();
+    const existingSnap = await eventRef.get();
+    const existing = existingSnap.exists ? ((existingSnap.data() as Record<string, unknown>) ?? {}) : null;
+
+    await eventRef.set(
+      {
+        title,
+        summary,
+        description,
+        mode,
+        status,
+        startAt: startAt ?? null,
+        endAt: endAt ?? null,
+        timezone: normalizeOptionalText(parsed.data.timezone),
+        location,
+        city: normalizeOptionalText(parsed.data.city),
+        region: normalizeOptionalText(parsed.data.region),
+        country: normalizeOptionalText(parsed.data.country),
+        remoteUrl,
+        registrationUrl,
+        sourceName,
+        sourceUrl,
+        featured,
+        tags: normalizeTags(parsed.data.tags),
+        verifiedAt: verifiedAt ?? null,
+        createdAt: existing?.createdAt ?? t,
+        createdByUid: normalizeOptionalText(existing?.createdByUid) ?? auth.uid,
+        updatedAt: t,
+        updatedByUid: auth.uid,
+      },
+      { merge: true }
+    );
+
+    const nextSnap = await eventRef.get();
+    const normalized = normalizeIndustryEvent(eventRef.id, nextSnap.data());
+    res.status(200).json({
+      ok: true,
+      eventId: eventRef.id,
+      created: !existingSnap.exists,
+      event: normalized,
+    });
+  } catch (err: any) {
+    logger.error("upsertIndustryEvent failed", err);
     res.status(500).json({ ok: false, message: err?.message ?? String(err) });
   }
 });
@@ -1621,6 +2104,83 @@ export const eventStripeWebhook = onRequest({ region: REGION, timeoutSeconds: 60
   res.status(200).json({ ok: true });
 });
 
+export const runIndustryEventsFreshnessNow = onRequest(
+  { region: REGION, timeoutSeconds: 120 },
+  async (req, res) => {
+    if (applyCors(req, res)) return;
+
+    if (req.method !== "POST") {
+      res.status(405).json({ ok: false, message: "Use POST" });
+      return;
+    }
+
+    const auth = await requireAuthUid(req);
+    if (!auth.ok) {
+      res.status(401).json({ ok: false, message: auth.message });
+      return;
+    }
+
+    const admin = await requireAdmin(req);
+    if (!admin.ok) {
+      res.status(403).json({ ok: false, message: "Forbidden" });
+      return;
+    }
+
+    const parsed = parseBody(runIndustryEventsFreshnessSchema, req.body);
+    if (!parsed.ok) {
+      res.status(400).json({ ok: false, message: parsed.message });
+      return;
+    }
+
+    const rate = await enforceRateLimit({
+      req,
+      key: "runIndustryEventsFreshnessNow",
+      max: 6,
+      windowMs: 60_000,
+    });
+    if (!rate.ok) {
+      res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+      res.status(429).json({ ok: false, message: "Too many freshness sweep requests" });
+      return;
+    }
+
+    try {
+      const result = await sweepIndustryEventsFreshness({
+        dryRun: parsed.data.dryRun === true,
+        limit: parsed.data.limit,
+        staleReviewMs:
+          typeof parsed.data.staleReviewDays === "number"
+            ? parsed.data.staleReviewDays * 24 * 60 * 60 * 1000
+            : INDUSTRY_EVENT_REVIEW_STALE_MS,
+        retirePastMs:
+          typeof parsed.data.retirePastHours === "number"
+            ? parsed.data.retirePastHours * 60 * 60 * 1000
+            : INDUSTRY_EVENT_RETIRE_PAST_MS,
+        source: "manual",
+      });
+      res.status(200).json({ ok: true, result });
+    } catch (err: any) {
+      logger.error("runIndustryEventsFreshnessNow failed", err);
+      res.status(500).json({ ok: false, message: err?.message ?? String(err) });
+    }
+  }
+);
+
+export const sweepIndustryEvents = onSchedule(
+  { region: REGION, schedule: "every 6 hours", timeZone: "America/Phoenix" },
+  async () => {
+    try {
+      const result = await sweepIndustryEventsFreshness({
+        source: "scheduled",
+        limit: 250,
+      });
+      logger.info("sweepIndustryEvents completed", result);
+    } catch (err) {
+      logger.error("sweepIndustryEvents failed", err);
+    }
+  }
+);
+
 export const sweepEventOffers = onSchedule(
   { region: REGION, schedule: "every 30 minutes", timeZone: "America/Phoenix" },
   async () => {
@@ -1731,4 +2291,3 @@ export const sweepEventOffers = onSchedule(
     }
   }
 );
-

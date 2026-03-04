@@ -103,6 +103,11 @@ function main() {
     websiteTargets
   );
   assertHasMatches(
+    "portal community shelf tiny-load cap statement",
+    "under one half shelf per check-in|tiny-load lane",
+    ["web/src/views/ReservationsView.tsx"]
+  );
+  assertHasMatches(
     "website community shelf firing exclusion statement",
     "excluded from firing triggers|do not trigger firing schedules",
     websiteTargets

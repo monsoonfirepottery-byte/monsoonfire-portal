@@ -1,7 +1,8 @@
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -188,18 +189,64 @@ console.log(`Emulator host: ${emulatorHost}`);
 
 console.log(`Starting Firebase emulators (${only}) for project ${project}...`);
 
+const maybeApplyHostToConfig = (configPath, selectedEmulators, targetHost) => {
+  if (!targetHost) return configPath;
+
+  const knownEmulators = new Set([
+    "apphosting",
+    "auth",
+    "functions",
+    "firestore",
+    "database",
+    "hosting",
+    "pubsub",
+    "storage",
+    "eventarc",
+    "dataconnect",
+    "tasks",
+  ]);
+  const selected = String(selectedEmulators || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .filter((value) => knownEmulators.has(value));
+  if (selected.length === 0) return configPath;
+
+  const configJson = JSON.parse(readFileSync(configPath, "utf8"));
+  if (!configJson.emulators || typeof configJson.emulators !== "object") {
+    return configPath;
+  }
+
+  let patched = false;
+  for (const emulator of selected) {
+    const current = configJson.emulators[emulator];
+    if (!current || typeof current !== "object") continue;
+    if (current.host === targetHost) continue;
+    configJson.emulators[emulator] = { ...current, host: targetHost };
+    patched = true;
+  }
+
+  if (!patched) return configPath;
+
+  const runtimeDir = mkdtempSync(join(tmpdir(), "mf-emulators-"));
+  const runtimeConfigPath = join(runtimeDir, "firebase.runtime.host.json");
+  writeFileSync(runtimeConfigPath, `${JSON.stringify(configJson, null, 2)}\n`, "utf8");
+  console.log(`Using runtime emulator config with host bindings: ${runtimeConfigPath}`);
+  return runtimeConfigPath;
+};
+
+const runtimeConfigPath = maybeApplyHostToConfig(resolvedConfig, only, emulatorHost);
+
 const result = spawnSync(
   "firebase",
   [
     "emulators:start",
     "--config",
-    resolvedConfig,
+    runtimeConfigPath,
     "--project",
     project,
     "--only",
     only,
-    "--host",
-    emulatorHost,
   ],
   {
     cwd: repoRoot,

@@ -174,6 +174,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
     }
 
     const run = async (): Promise<TResp> => {
+      const startedAtMs = Date.now();
       const redactedPayload = redactTelemetryPayload(normalizedPayload);
       const req: LastRequest = {
         atIso: new Date().toISOString(),
@@ -232,6 +233,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
             : {}),
           status: failed.status,
           ok: false,
+          durationMs: Math.max(0, Date.now() - startedAtMs),
           error: `${appError.userMessage} (support code: ${appError.correlationId})`,
           curl: failed.curlExample,
         });
@@ -292,6 +294,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
             ? { authFailureReason: appError.authFailureReason }
             : {}),
           ok: false,
+          durationMs: Math.max(0, Date.now() - startedAtMs),
           error: `${appError.userMessage} (support code: ${appError.correlationId})`,
           curl: failed.curlExample,
         });
@@ -348,6 +351,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
             : {}),
           status: updated.status,
           ok: false,
+          durationMs: Math.max(0, Date.now() - startedAtMs),
           responseSnippet: stringifyResponseSnippet(body),
           error: `${appError.userMessage} (support code: ${appError.correlationId})`,
           curl: updated.curlExample,
@@ -370,6 +374,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
         payload: redactTelemetryPayload(updated.payload),
         status: updated.status,
         ok: true,
+        durationMs: Math.max(0, Date.now() - startedAtMs),
         responseSnippet: stringifyResponseSnippet(body),
         curl: updated.curlExample,
       });

@@ -6,9 +6,14 @@ on:
       base_url:
         description: "Portal base URL"
         required: false
-        default: "https://monsoonfire-portal.web.app"
+        default: "https://portal.monsoonfire.com"
       skip_theme_sweep:
         description: "Skip theme sweep during promotion gate"
+        required: false
+        default: false
+        type: boolean
+      skip_journey_check:
+        description: "Skip continue-journey runtime linkage check"
         required: false
         default: false
         type: boolean
@@ -55,7 +60,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.base_url }}" ]; then
             echo "value=${{ github.event.inputs.base_url }}" >> "$GITHUB_OUTPUT"
           else
-            echo "value=https://monsoonfire-portal.web.app" >> "$GITHUB_OUTPUT"
+            echo "value=https://portal.monsoonfire.com" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build promotion gate feedback profile
@@ -79,11 +84,27 @@ jobs:
           FIREBASE_WEB_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
         run: node ./scripts/resolve-firebase-api-key.mjs --github-output --json
 
+      - name: Authenticate to Google Cloud (promotion gate)
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
+
+      - name: Setup gcloud (promotion gate)
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: monsoonfire-portal
+
+      - name: Mint Rules API access token (promotion gate)
+        id: rules_token
+        run: echo "access_token=$(gcloud auth print-access-token)" >> "$GITHUB_OUTPUT"
+
       - name: Run post-deploy promotion gate
         env:
           PORTAL_STAFF_EMAIL: ${{ secrets.PORTAL_STAFF_EMAIL }}
           PORTAL_STAFF_PASSWORD: ${{ secrets.PORTAL_STAFF_PASSWORD }}
-          FIREBASE_RULES_API_TOKEN: ${{ secrets.FIREBASE_RULES_API_TOKEN }}
+          PORTAL_CANARY_ADMIN_TOKEN: ${{ secrets.PORTAL_CANARY_ADMIN_TOKEN }}
+          PORTAL_ADMIN_TOKEN: ${{ secrets.PORTAL_ADMIN_TOKEN }}
+          FIREBASE_RULES_API_TOKEN: ${{ steps.rules_token.outputs.access_token || secrets.FIREBASE_RULES_API_TOKEN }}
           FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
           PORTAL_AGENT_STAFF_CREDENTIALS_JSON: ${{ secrets.PORTAL_AGENT_STAFF_CREDENTIALS_JSON }}
           PORTAL_FIREBASE_API_KEY: ${{ steps.firebase_api_key.outputs.firebase_api_key }}
@@ -103,6 +124,9 @@ jobs:
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.skip_theme_sweep }}" = "true" ]; then
             ARGS+=(--skip-theme-sweep)
+          fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.skip_journey_check }}" = "true" ]; then
+            ARGS+=(--skip-journey-check)
           fi
 
           node ./scripts/post-deploy-promotion-gate.mjs "${ARGS[@]}"

@@ -1,3 +1,7 @@
+> Status: Historical archive.
+> Last reviewed: 2026-03-01.
+> Canonical current references: `docs/README.md` and `docs/SOURCE_OF_TRUTH_INDEX.md`.
+
 # WORKLOG
 
 ## Task

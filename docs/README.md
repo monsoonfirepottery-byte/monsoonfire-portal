@@ -1,72 +1,48 @@
 # Monsoon Fire Portal Documentation
 
-This folder contains the current integration references for the project.
+Last reviewed: 2026-03-01
 
-## Testing URLs
+This folder contains active runbooks and contracts for the portal, functions, native parity, and operations workflows.
 
-- Production app: `https://monsoonfire-portal.web.app`
-- Firebase Hosting fallback: `https://monsoonfire-portal.firebaseapp.com`
-- Direct function endpoint: `https://us-central1-monsoonfire-portal.cloudfunctions.net/websiteKilnBoard`
-- Local Firebase hosting emulator: `http://127.0.0.1:5000`
-- Local Vite dev server: `http://localhost:5173`
+## Start Here
 
-## What to read first
+- Root operating guide: [`../AGENTS.md`](../AGENTS.md)
+- Portal/API contracts: [`API_CONTRACTS.md`](API_CONTRACTS.md)
+- Source-of-truth map: [`SOURCE_OF_TRUTH_INDEX.md`](SOURCE_OF_TRUTH_INDEX.md)
+- Deep-link contract: [`DEEP_LINK_CONTRACT.md`](DEEP_LINK_CONTRACT.md)
+- Library docs pack: [`library/README.md`](library/README.md)
+- Agent-readable surface runbook: [`runbooks/AGENT_SURFACES.md`](runbooks/AGENT_SURFACES.md)
+- Docs hygiene runbook: [`runbooks/DOCS_HYGIENE.md`](runbooks/DOCS_HYGIENE.md)
+- Industry events curation runbook: [`runbooks/INDUSTRY_EVENTS_CURATION_RUNBOOK.md`](runbooks/INDUSTRY_EVENTS_CURATION_RUNBOOK.md)
 
-- `web/README.md`  
-  Dev runbook for web setup, Vite + Firebase Functions env switching, and emulator workflow.
-- `ios/README.md`  
-  iOS API-layer setup, contracts alignment, and smoke-test guidance.
-- `docs/API_CONTRACTS.md`  
-  Canonical API contract reference for request/response shapes and environment behavior.
-- `docs/library/README.md`
-  Hybrid Lending Library architecture/spec/schema/API documentation pack.
-- `docs/DEEP_LINK_CONTRACT.md`  
-  Canonical deep-link contract for web + native clients.
-- `docs/SOURCE_OF_TRUTH_INDEX.md`  
-  Source-of-truth registry for contract/deployment gate wiring.
-- `docs/runbooks/AGENT_SURFACES.md`
-  Agent-readable surface maintenance runbook for website + portal discovery files.
-- `docs/MILESTONE_2026-01-19.md`  
-  Milestone history and implementation notes.
+## Environment URLs
 
-## One-minute startup checklist
+- Production portal: `https://portal.monsoonfire.com`
+- Firebase Hosting fallback: `https://monsoonfire-portal.web.app`
+- Local Hosting emulator: `http://127.0.0.1:5000`
+- Local Vite dev server: `http://127.0.0.1:5173`
 
-1. Install dependencies for the web client and run dev server (see `web/README.md`).
-2. Confirm your target backend environment (prod vs emulator).
-3. Verify you can read required toolchain binaries:
-	- `command -v ufw fail2ban-client jq tmux git rg ffmpeg python3 pip3`
-4. Use `docs/API_CONTRACTS.md` for exact payloads before touching client call sites.
+## High-Value Commands
 
-## Automation commands
+- Start emulators: `npm run emulators:start`
+- Start portal dev server: `npm --prefix web run dev`
+- Validate reservation docs parity: `npm run docs:reservations:check`
+- Validate generated runtime docs drift: `npm run docs:contract:check`
+- Contract/source-of-truth gate: `npm run source:truth:contract:strict`
+- Agent surface gate: `npm run agent:surfaces:check`
+- Docs hygiene audit: `npm run docs:hygiene`
+- Docs refresh bundle: `npm run docs:refresh`
 
-- `npm run test:automation`  
-  Full local/CI-ready validation bundle:
-  - unit tests (`functions`, `studio-brain`, `web`)
-  - functions CORS smoke
-  - website + portal Playwright smoke
-  - portal production bundle readiness guard
-  - web accessibility smoke
-- `npm run test:automation:deep`  
-  Extends `test:automation` with explicit production-gated CORS options and deep portal endpoint probes.
-- `npm run test:automation:bundle`  
-  Build portal bundle and assert no localhost Studio Brain backend references are shipped.
-- `npm run test:automation:ui:deep`  
-  Deep portal browser probes only (`/readyz`, backend function probes, critical endpoint capture).
-- `npm run source:truth:contract:strict`  
-  Contract parity matrix for web/native/backend and API route drift.
-- `npm run source:truth:deployment`  
-  Deployment target and profile matrix checks for staging/beta/production/store-readiness.
-- `npm run agent:surfaces:check`
-  Deterministic validation for website + portal `llms.txt`/`ai.txt`, public contract pointers, and leak-safe link surfaces.
-- `npm run smoke:phased`  
-  Phase-aware smoke matrix validation.
-- `npm run mobile:store-readiness`  
-  Deep-link + `.well-known` + mobile parity validation.
-- `npm run epics:agentic:run`  
-  Emit an agentic dispatch manifest for blocker epics `1-9` in JSONL for autonomous ticket execution.
-- `npm run epics:agentic:run:md`  
-  Emit the same agentic dispatch for blocker epics `1-9` as markdown artifacts under `output/epic-hub-runner/<run-id>/`.
+## Documentation Hygiene
 
-## iOS contract parity
+- Use `npm run docs:hygiene:strict` before merging broad documentation updates.
+- Use explicit package-prefixed npm commands in docs (`npm --prefix <pkg> run <script>`) to avoid ambiguous instructions.
+- Keep generated docs machine-owned. Do not hand-edit `docs/generated/*.generated.md`.
 
-Keep `ios/PortalModels.swift` aligned with `web/src/api/portalContracts.ts` whenever client contracts change.
+## Historical Notes
+
+These files are retained as archives and should not be treated as active source-of-truth:
+
+- [`../PROJECT_SNAPSHOT.md`](../PROJECT_SNAPSHOT.md)
+- [`../REVIEW_ACTION_PLAN.md`](../REVIEW_ACTION_PLAN.md)
+- [`../WORKLOG.md`](../WORKLOG.md)

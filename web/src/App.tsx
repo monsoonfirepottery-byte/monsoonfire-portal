@@ -106,7 +106,7 @@ type NavSection = {
   items: NavItem[];
 };
 
-type NavDockPosition = "left" | "top" | "right";
+type NavDockPosition = "left" | "top" | "right" | "bottom";
 
 type ImportMetaEnvShape = {
   DEV?: boolean;
@@ -142,7 +142,7 @@ type LegacyRequestsRedirect = {
   notice: string;
 };
 
-type StaffWorkspaceMode = "default" | "cockpit" | "workshops";
+type StaffWorkspaceMode = "default" | "cockpit" | "workshops" | "system";
 
 type StaffWorkspaceLaunch = {
   targetNav: "staff";
@@ -176,10 +176,10 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { key: "studioResources", label: "Overview" },
       { key: "pieces", label: "My Pieces" },
+      { key: "lendingLibrary", label: "Lending Library" },
       { key: "glazes", label: "Glaze Board" },
       { key: "materials", label: "Store" },
       { key: "membership", label: "Membership" },
-      { key: "billing", label: "Billing" },
     ],
   },
   {
@@ -188,7 +188,6 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { key: "community", label: "Overview" },
       { key: "events", label: "Workshops" },
-      { key: "lendingLibrary", label: "Lending Library" },
     ],
   },
 ];
@@ -349,6 +348,7 @@ const DEV_ADMIN_TOKEN_ENABLED =
   (FUNCTIONS_BASE_URL.includes("localhost") || FUNCTIONS_BASE_URL.includes("127.0.0.1"));
 const DEV_ADMIN_TOKEN_PERSIST_ENABLED =
   DEV_ADMIN_TOKEN_ENABLED && ENV.VITE_PERSIST_DEV_ADMIN_TOKEN === "true";
+const AUTH_GATED_BODY_CLASS = "portal-auth-gated";
 const SUPPORT_THREAD_PREFIX = "support_";
 const SUPPORT_MESSAGE_PREFIX = "welcome";
 const WELCOME_NOTIFICATION_ID = "welcome-messaging-infra";
@@ -356,12 +356,14 @@ const WELCOME_MESSAGE_SUBJECT = "Welcome to Monsoon Fire Support";
 const WELCOME_NOTIFICATION_TITLE = "Welcome to your Monsoon Fire portal";
 
 const NAV_SECTION_KEYS: NavSectionKey[] = ["kilnRentals", "studioResources", "community"];
-const NAV_DOCK_POSITIONS: NavDockPosition[] = ["left", "top", "right"];
+const NAV_DOCK_POSITIONS: NavDockPosition[] = ["left", "top", "right", "bottom"];
 const NAV_DOCK_LABELS: Record<NavDockPosition, string> = {
   left: "Left",
   top: "Top",
   right: "Right",
+  bottom: "Bottom",
 };
+const NAV_DOCK_DRAG_THRESHOLD_PX = 130;
 
 function normalizeHashPath(hash: string): string {
   if (!hash) return "";
@@ -388,9 +390,16 @@ function isStaffWorkshopsPath(pathname: string): boolean {
   return /^\/staff\/workshops(?:\/|$)/i.test(pathname);
 }
 
+function isStaffSystemPath(pathname: string): boolean {
+  return /^\/staff\/system(?:\/|$)/i.test(pathname);
+}
+
 function resolveStaffWorkspaceLaunch(pathname: string, hash: string): StaffWorkspaceLaunch | null {
   const normalizedHashPath = normalizeHashPath(hash);
   const candidates = [pathname, normalizedHashPath].filter(Boolean);
+  if (candidates.some((value) => isStaffSystemPath(value))) {
+    return { targetNav: "staff", mode: "system" };
+  }
   if (candidates.some((value) => isStaffWorkshopsPath(value))) {
     return { targetNav: "staff", mode: "workshops" };
   }
@@ -487,6 +496,23 @@ const isNavSectionKey = (value: string): value is NavSectionKey =>
 
 const isNavDockPosition = (value: string): value is NavDockPosition =>
   NAV_DOCK_POSITIONS.includes(value as NavDockPosition);
+
+const isHorizontalNavDock = (dock: NavDockPosition): boolean => dock === "top" || dock === "bottom";
+
+function resolveDockDropTarget(clientX: number, clientY: number): NavDockPosition | null {
+  if (typeof window === "undefined") return null;
+  const width = Math.max(window.innerWidth, 1);
+  const height = Math.max(window.innerHeight, 1);
+  const distances: Array<[NavDockPosition, number]> = [
+    ["left", Math.max(clientX, 0)],
+    ["right", Math.max(width - clientX, 0)],
+    ["top", Math.max(clientY, 0)],
+    ["bottom", Math.max(height - clientY, 0)],
+  ];
+  const closest = distances.reduce((best, entry) => (entry[1] < best[1] ? entry : best), distances[0]);
+  if (closest[1] > NAV_DOCK_DRAG_THRESHOLD_PX) return null;
+  return closest[0];
+}
 
 function UserProfileGlyph() {
   return (
@@ -871,6 +897,8 @@ export default function App() {
     if (savedNav && isNavKey(savedNav)) return getSectionForNav(savedNav);
     return NAV_SECTIONS[0]?.key ?? null;
   });
+  const [navDockDragActive, setNavDockDragActive] = useState(false);
+  const [navDockDragHover, setNavDockDragHover] = useState<NavDockPosition | null>(null);
   const [devAdminToken, setDevAdminToken] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
@@ -901,6 +929,7 @@ export default function App() {
   });
   const [motionAutoReduced, setMotionAutoReduced] = useState(false);
   const profileThemeSyncBlockedRef = useRef(false);
+  const navDockDragPointerIdRef = useRef<number | null>(null);
 
   const authClient = auth;
   const isAuthEmulator =
@@ -909,7 +938,8 @@ export default function App() {
   const devAdminActive = DEV_ADMIN_TOKEN_ENABLED && devAdminToken.trim().length > 0;
   const staffUi = isStaff || devAdminActive;
   const devAdminTokenValue = devAdminActive ? devAdminToken.trim() : "";
-  const navSupportsCollapse = navDock !== "top";
+  const navIsHorizontalDock = isHorizontalNavDock(navDock);
+  const navSupportsCollapse = !navIsHorizontalDock;
   const navIsCollapsed = navSupportsCollapse && navCollapsed;
   const navBottomItems: NavItem[] = staffUi
     ? [...NAV_BOTTOM_ITEMS, { key: "staff", label: "Staff" }]
@@ -978,6 +1008,15 @@ export default function App() {
       document.documentElement.style.setProperty(key, String(value));
     }
   }, [themeName, prefersReducedMotion, enhancedMotion]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const shouldHideRuntimeTools = !authReady || !user;
+    document.body.classList.toggle(AUTH_GATED_BODY_CLASS, shouldHideRuntimeTools);
+    return () => {
+      document.body.classList.remove(AUTH_GATED_BODY_CLASS);
+    };
+  }, [authReady, user]);
 
   useEffect(() => {
     setAvatarLoadFailed(false);
@@ -1101,11 +1140,17 @@ export default function App() {
     const hasStaffHashPath = isStaffPath(normalizeHashPath(window.location.hash));
     const hasStaffCockpitPath = isStaffCockpitPath(window.location.pathname);
     const hasStaffCockpitHashPath = isStaffCockpitPath(normalizeHashPath(window.location.hash));
+    const hasStaffSystemPath = isStaffSystemPath(window.location.pathname);
+    const hasStaffSystemHashPath = isStaffSystemPath(normalizeHashPath(window.location.hash));
     if (nav === "glazes") {
       window.history.replaceState({}, "", "/glazes");
     } else if (nav === "staff" && staffWorkspaceMode === "cockpit") {
       if (!hasStaffCockpitPath && !hasStaffCockpitHashPath) {
         window.history.replaceState({}, "", "/staff/cockpit");
+      }
+    } else if (nav === "staff" && staffWorkspaceMode === "system") {
+      if (!hasStaffSystemPath && !hasStaffSystemHashPath) {
+        window.history.replaceState({}, "", "/staff/system");
       }
     } else if (nav === "staff" && staffWorkspaceMode === "workshops") {
       if (!hasStaffPath || window.location.pathname !== "/staff/workshops") {
@@ -1113,7 +1158,14 @@ export default function App() {
       }
     } else if (window.location.pathname === "/glazes" || hasLegacyRequestsPath || hasLegacyRequestsHash) {
       window.history.replaceState({}, "", "/");
-    } else if (hasStaffPath || hasStaffHashPath || hasStaffCockpitPath || hasStaffCockpitHashPath) {
+    } else if (
+      hasStaffPath ||
+      hasStaffHashPath ||
+      hasStaffCockpitPath ||
+      hasStaffCockpitHashPath ||
+      hasStaffSystemPath ||
+      hasStaffSystemHashPath
+    ) {
       window.history.replaceState({}, "", "/");
     }
   }, [nav, staffWorkspaceMode]);
@@ -1127,11 +1179,11 @@ export default function App() {
   }, [navDock]);
 
   useEffect(() => {
-    if (navDock !== "top") return;
+    if (!navIsHorizontalDock) return;
     if (navCollapsed) {
       setNavCollapsed(false);
     }
-  }, [navDock, navCollapsed]);
+  }, [navIsHorizontalDock, navCollapsed]);
 
   useEffect(() => {
     if (!openSection) {
@@ -1477,8 +1529,8 @@ export default function App() {
     user,
     isStaff && nav === "messages"
   );
-  const shouldLoadMessages = nav === "messages" || nav === "dashboard";
-  const shouldLoadAnnouncements = nav === "messages" || nav === "dashboard";
+  const shouldLoadMessages = nav === "messages" || nav === "dashboard" || nav === "staff";
+  const shouldLoadAnnouncements = nav === "messages" || nav === "dashboard" || nav === "staff";
   const { threads, loading: threadsLoading, error: threadsError } = useDirectMessages(
     user,
     shouldLoadMessages
@@ -1759,11 +1811,11 @@ export default function App() {
   const sidebarAvatarUrl = user?.photoURL || PROFILE_DEFAULT_AVATAR_URL;
 
   useEffect(() => {
-    if (navDock === "top") return;
+    if (navIsHorizontalDock) return;
     if (navSection && navSection !== openSection) {
       setOpenSection(navSection);
     }
-  }, [navSection, openSection, navDock]);
+  }, [navSection, openSection, navIsHorizontalDock]);
 
   useEffect(() => {
     if (!staffUi && nav === "staff") {
@@ -1806,7 +1858,7 @@ export default function App() {
   }, [authReady, user, nav]);
 
   const handleSectionToggle = (sectionKey: NavSectionKey) => {
-    if (navDock === "top") {
+    if (navIsHorizontalDock) {
       setOpenSection((previous) => (previous === sectionKey ? null : sectionKey));
       setMobileNavOpen(false);
       return;
@@ -1825,13 +1877,60 @@ export default function App() {
     if (nextDock === navDock) return;
     setNavDock(nextDock);
     setMobileNavOpen(false);
-    if (nextDock === "top") {
+    if (isHorizontalNavDock(nextDock)) {
       setNavCollapsed(false);
       setOpenSection(null);
     }
   };
 
-  const renderNavDockControls = (className = "") => (
+  // Dock source of truth: both click controls and drag-to-dock commit through handleNavDockChange.
+  const clearNavDockDragState = useCallback(() => {
+    navDockDragPointerIdRef.current = null;
+    setNavDockDragActive(false);
+    setNavDockDragHover(null);
+  }, []);
+
+  const updateNavDockHoverFromPointer = useCallback((clientX: number, clientY: number) => {
+    setNavDockDragHover(resolveDockDropTarget(clientX, clientY));
+  }, []);
+
+  const handleNavDockDragStart = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (typeof window !== "undefined" && window.matchMedia?.("(max-width: 960px)")?.matches) {
+      return;
+    }
+    navDockDragPointerIdRef.current = event.pointerId;
+    setNavDockDragActive(true);
+    updateNavDockHoverFromPointer(event.clientX, event.clientY);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+
+  const handleNavDockDragMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!navDockDragActive) return;
+    if (navDockDragPointerIdRef.current !== event.pointerId) return;
+    updateNavDockHoverFromPointer(event.clientX, event.clientY);
+  };
+
+  const finishNavDockDrag = (
+    event: React.PointerEvent<HTMLButtonElement>,
+    commitDrop: boolean
+  ) => {
+    if (navDockDragPointerIdRef.current !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    const nextDock = resolveDockDropTarget(event.clientX, event.clientY) ?? navDockDragHover;
+    clearNavDockDragState();
+    if (commitDrop && nextDock) {
+      handleNavDockChange(nextDock);
+    }
+  };
+
+  const renderNavDockControls = (
+    className = "",
+    options: { showDragHandle?: boolean } = {}
+  ) => (
     <div className={`nav-dock-controls ${className}`.trim()} role="group" aria-label="Navigation position">
       <span className="nav-dock-label">Dock</span>
       <div className="nav-dock-buttons">
@@ -1848,6 +1947,24 @@ export default function App() {
           </button>
         ))}
       </div>
+      {(options.showDragHandle ?? true) ? (
+        <button
+          type="button"
+          className={`nav-dock-drag-handle ${navDockDragActive ? "dragging" : ""}`.trim()}
+          aria-label="Drag to dock navigation"
+          title="Drag to dock navigation to left, top, right, or bottom"
+          onPointerDown={handleNavDockDragStart}
+          onPointerMove={handleNavDockDragMove}
+          onPointerUp={(event) => finishNavDockDrag(event, true)}
+          onPointerCancel={(event) => finishNavDockDrag(event, false)}
+          onLostPointerCapture={() => clearNavDockDragState()}
+        >
+          <span className="nav-dock-drag-handle-icon" aria-hidden="true">
+            ⋮⋮
+          </span>
+          <span className="nav-dock-drag-handle-text">Drag</span>
+        </button>
+      ) : null}
     </div>
   );
 
@@ -1860,21 +1977,23 @@ export default function App() {
     setPiecesFocusTarget(null);
   }, []);
 
+  const renderSignedOutView = () => (
+    <SignedOutView
+      onProviderSignIn={toVoidHandler(handleProviderSignIn, handleAuthHandlerError, "auth.provider")}
+      onEmailPassword={toVoidHandler(handleEmailPassword, handleAuthHandlerError, "auth.emailPassword")}
+      onEmailLink={toVoidHandler(handleEmailLink, handleAuthHandlerError, "auth.emailLinkSend")}
+      onCompleteEmailLink={toVoidHandler(handleCompleteEmailLink, handleAuthHandlerError, "auth.emailLinkComplete")}
+      emailLinkPending={emailLinkPending}
+      status={authStatus}
+      busy={authBusy}
+      onEmulatorSignIn={toVoidHandler(handleEmulatorSignIn, handleAuthHandlerError, "auth.emulator")}
+      showEmulatorTools={isAuthEmulator}
+    />
+  );
+
   const renderView = (key: NavKey) => {
       if (!user) {
-        return (
-          <SignedOutView
-            onProviderSignIn={toVoidHandler(handleProviderSignIn, handleAuthHandlerError, "auth.provider")}
-            onEmailPassword={toVoidHandler(handleEmailPassword, handleAuthHandlerError, "auth.emailPassword")}
-            onEmailLink={toVoidHandler(handleEmailLink, handleAuthHandlerError, "auth.emailLinkSend")}
-            onCompleteEmailLink={toVoidHandler(handleCompleteEmailLink, handleAuthHandlerError, "auth.emailLinkComplete")}
-            emailLinkPending={emailLinkPending}
-            status={authStatus}
-            busy={authBusy}
-            onEmulatorSignIn={toVoidHandler(handleEmulatorSignIn, handleAuthHandlerError, "auth.emulator")}
-            showEmulatorTools={isAuthEmulator}
-          />
-        );
+        return renderSignedOutView();
       }
 
     switch (key) {
@@ -2030,9 +2149,30 @@ export default function App() {
             devAdminEnabled={DEV_ADMIN_TOKEN_ENABLED}
             showEmulatorTools={isAuthEmulator}
             onOpenCheckin={() => setNav("reservations")}
-            initialModule={staffWorkspaceMode === "cockpit" ? "cockpit" : staffWorkspaceMode === "workshops" ? "events" : undefined}
+            onOpenReservation={() => setNav("reservations")}
+            onOpenMessages={() => setNav("messages")}
+            onOpenMessageThread={() => setNav("messages")}
+            onOpenFirings={() => setNav("kiln")}
+            onStartFiring={() => setNav("kilnLaunch")}
+            initialModule={
+              staffWorkspaceMode === "cockpit"
+                ? "cockpit"
+                : staffWorkspaceMode === "workshops"
+                  ? "events"
+                  : staffWorkspaceMode === "system"
+                    ? "system"
+                    : undefined
+            }
             forceCockpitWorkspace={staffWorkspaceMode === "cockpit"}
             forceEventsWorkspace={staffWorkspaceMode === "workshops"}
+            forceSystemWorkspace={staffWorkspaceMode === "system"}
+            messageThreads={threads}
+            messageThreadsLoading={threadsLoading}
+            messageThreadsError={threadsError}
+            announcements={announcements}
+            announcementsLoading={announcementsLoading}
+            announcementsError={announcementsError}
+            unreadAnnouncements={unreadAnnouncements}
           />
         );
       default:
@@ -2045,11 +2185,81 @@ export default function App() {
     }
   };
 
+  if (!authReady) {
+    return (
+      <AppErrorBoundary>
+        <a className="skip-link" href="#auth-bootstrap-main">
+          Skip to sign in
+        </a>
+        <main id="auth-bootstrap-main" className="auth-bootstrap-screen" tabIndex={-1}>
+          <section className="auth-bootstrap-card" role="status" aria-live="polite">
+            <img
+              src={MF_LOGO}
+              alt="Monsoon Fire Pottery Studio"
+              className="auth-bootstrap-logo"
+              loading="eager"
+              decoding="async"
+              fetchPriority="high"
+            />
+            <h1>Monsoon Fire Portal</h1>
+            <p>Checking your studio sign-in status...</p>
+            <div className="auth-bootstrap-loading" aria-hidden="true" />
+          </section>
+        </main>
+      </AppErrorBoundary>
+    );
+  }
+
+  if (!user) {
+    return (
+      <AppErrorBoundary>
+        <a className="skip-link" href="#signed-out-main">
+          Skip to sign in
+        </a>
+        <main id="signed-out-main" className="signed-out-auth-main" tabIndex={-1}>
+          <React.Suspense
+            fallback={
+              <section className="auth-bootstrap-card" role="status" aria-live="polite">
+                <img
+                  src={MF_LOGO}
+                  alt="Monsoon Fire Pottery Studio"
+                  className="auth-bootstrap-logo"
+                  loading="eager"
+                  decoding="async"
+                  fetchPriority="high"
+                />
+                <h1>Monsoon Fire Portal</h1>
+                <p>Loading sign-in options...</p>
+                <div className="auth-bootstrap-loading" aria-hidden="true" />
+              </section>
+            }
+          >
+            {renderSignedOutView()}
+          </React.Suspense>
+        </main>
+      </AppErrorBoundary>
+    );
+  }
+
   return (
     <AppErrorBoundary>
       <a className="skip-link" href="#main-content">
         Skip to main content
       </a>
+      {navDockDragActive ? (
+        <div className="nav-dock-drop-overlay" aria-hidden="true">
+          {NAV_DOCK_POSITIONS.map((position) => (
+            <div
+              key={`drop-zone-${position}`}
+              className={`nav-dock-drop-zone nav-dock-drop-zone-${position} ${
+                navDockDragHover === position ? "active" : ""
+              }`.trim()}
+            >
+              <span>{NAV_DOCK_LABELS[position]}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className={`app-shell dock-${navDock} ${navIsCollapsed ? "nav-collapsed" : ""}`.trim()}>
         <aside
           id="portal-sidebar-nav"
@@ -2089,7 +2299,7 @@ export default function App() {
                   title={item.label}
                   onClick={() => {
                     setNav(item.key);
-                    if (navDock === "top") {
+                    if (navIsHorizontalDock) {
                       setOpenSection(null);
                     }
                     setMobileNavOpen(false);
@@ -2131,7 +2341,7 @@ export default function App() {
                         title={item.label}
                         onClick={() => {
                           setNav(item.key);
-                          if (navDock === "top") {
+                          if (navIsHorizontalDock) {
                             setOpenSection(null);
                           }
                           setMobileNavOpen(false);
@@ -2157,7 +2367,7 @@ export default function App() {
                   title={item.label}
                   onClick={() => {
                     setNav(item.key);
-                    if (navDock === "top") {
+                    if (navIsHorizontalDock) {
                       setOpenSection(null);
                     }
                     setMobileNavOpen(false);
@@ -2266,8 +2476,8 @@ export default function App() {
         </aside>
 
         <main id="main-content" className="main" tabIndex={-1}>
-          <div className={`nav-toggle-row ${navDock === "top" ? "dock-top-row" : ""}`.trim()}>
-            {navDock !== "top" ? (
+          <div className={`nav-toggle-row ${navIsHorizontalDock ? "dock-horizontal-row" : ""}`.trim()}>
+            {!navIsHorizontalDock ? (
               <button
                 type="button"
                 className="mobile-nav"
@@ -2282,55 +2492,46 @@ export default function App() {
                 Menu
               </button>
             ) : null}
-            {renderNavDockControls("nav-dock-controls-inline")}
+            {renderNavDockControls("nav-dock-controls-inline", { showDragHandle: false })}
           </div>
 
-          {!authReady && (
-            <div className="loading">
-              <span />
-              Loading studio portal
-            </div>
-          )}
-
-          {authReady ? (
-            <React.Suspense
-              fallback={
-                <div className="loading">
-                  <span />
-                  Loading studio view
-                </div>
-              }
+          <React.Suspense
+            fallback={
+              <div className="loading">
+                <span />
+                Loading studio view
+              </div>
+            }
+          >
+            {motionAutoReduced && themeName === "memoria" ? (
+              <div className="notice motion-notice">
+                Enhanced motion was disabled for performance. You can re-enable it in Profile.
+              </div>
+            ) : null}
+            {legacyRouteNotice ? (
+              <div className="notice motion-notice" role="status" aria-live="polite">
+                {legacyRouteNotice}
+              </div>
+            ) : null}
+            {bootstrapWarning ? (
+              <div className="notice motion-notice" role="status" aria-live="polite">
+                {bootstrapWarning}
+              </div>
+            ) : null}
+            <UiSettingsProvider
+              value={{
+                themeName,
+                portalMotion: resolvePortalMotion(prefersReducedMotion, enhancedMotion),
+                enhancedMotion,
+                prefersReducedMotion,
+              }}
             >
-              {motionAutoReduced && themeName === "memoria" ? (
-                <div className="notice motion-notice">
-                  Enhanced motion was disabled for performance. You can re-enable it in Profile.
-                </div>
-              ) : null}
-              {legacyRouteNotice ? (
-                <div className="notice motion-notice" role="status" aria-live="polite">
-                  {legacyRouteNotice}
-                </div>
-              ) : null}
-              {bootstrapWarning ? (
-                <div className="notice motion-notice" role="status" aria-live="polite">
-                  {bootstrapWarning}
-                </div>
-              ) : null}
-              <UiSettingsProvider
-                value={{
-                  themeName,
-                  portalMotion: resolvePortalMotion(prefersReducedMotion, enhancedMotion),
-                  enhancedMotion,
-                  prefersReducedMotion,
-                }}
-              >
-                <div key={`${nav}:${themeName}:${enhancedMotion ? "m1" : "m0"}`} className="view-root">
-                  {renderView(nav)}
-                </div>
-              </UiSettingsProvider>
-              <FirestoreTelemetryPanel enabled={import.meta.env.DEV} />
-            </React.Suspense>
-          ) : null}
+              <div key={`${nav}:${themeName}:${enhancedMotion ? "m1" : "m0"}`} className="view-root">
+                {renderView(nav)}
+              </div>
+            </UiSettingsProvider>
+            <FirestoreTelemetryPanel enabled={import.meta.env.DEV} />
+          </React.Suspense>
         </main>
       </div>
     </AppErrorBoundary>

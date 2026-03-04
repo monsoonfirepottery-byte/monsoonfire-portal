@@ -15,7 +15,7 @@ Canonical host/port contract for local and LAN-aware development and cutover too
 | Portal functions base URL | `http://127.0.0.1:5001/monsoonfire-portal/us-central1` | `http://studiobrain.local:5001/monsoonfire-portal/us-central1` (or host profile override) | Keep non-production and production URLs separated by `VITE_USE_*` + `VITE_FUNCTIONS_BASE_URL`.
 | Studio Brain base URL | `http://127.0.0.1:8787` | `http://studiobrain.local:8787` (or static IP override) | Canonical source from `scripts/studio-network-profile.mjs` when env is unset.
 | Website smoke/deploy target | `WEBSITE_DEPLOY_SERVER` unset (required) | `WEBSITE_DEPLOY_SERVER` set to studio target | `website/scripts/deploy.mjs` now requires explicit deploy server.
-| Emulator bootstrap host | `npm run emulators:start -- --host 127.0.0.1` (default) | `npm run emulators:start -- --network-profile lan-dhcp` | `scripts/start-emulators.mjs` resolves host from profile.
+| Emulator bootstrap host | `npm run emulators:start -- --network-profile local` (default loopback contract) | `npm run emulators:start -- --network-profile lan-dhcp` | `scripts/start-emulators.mjs` resolves host from profile and injects host bindings into a runtime Firebase config (no direct Firebase CLI `--host` dependency).
 | Network mode | `local` -> loopback-only contracts | `lan-dhcp` / `dhcp-host` -> hostname-based contracts | `lan-static` for fixed host identity when static IP is managed |
 | Current static LAN assignment | n/a | `192.168.1.226` | Active `lan-static` profile host for Studiobrain cutover workflows. |
 | Host source precedence | explicit `STUDIO_BRAIN_HOST` | `STUDIO_BRAIN_DHCP_HOST` (for DHCP alias flows) then `STUDIO_BRAIN_LAN_HOST` | fallback to static IP when `STUDIO_BRAIN_STATIC_IP` is set under `lan-static` |
@@ -26,7 +26,7 @@ Canonical host/port contract for local and LAN-aware development and cutover too
 - `scripts/studio-network-profile.mjs` resolves profile/host defaults.
 - `studio-brain/.env.network.profile` documents host policy and static-IP ownership.
 - `scripts/studiobrain-network-check.mjs` emits host-source/profile-source/network-target-mode metadata and persists lease evidence with `--write-state`.
-- `scripts/start-emulators.mjs` enforces emulator contract validation (`scripts/validate-emulator-contract.mjs --strict`) before emulator startup unless explicitly bypassed.
+- `scripts/start-emulators.mjs` enforces emulator contract validation (`scripts/validate-emulator-contract.mjs --strict`) before emulator startup unless explicitly bypassed, and writes a runtime `firebase.json` with per-emulator `host` bindings for CLI-version compatibility.
 - In beta rollout, the host state file should contain stable lease metadata (`state file`) including `static-ip` and `networkTargetMode`.
 - `studio-brain/.env.example` defines policy override env vars used by onboarding.
 - beta-pilot profile (`beta-pilot`) is the intermediate rollout lane for phased pilots and uses the same LAN-aware host contract with explicit smoke gates before production cutover.

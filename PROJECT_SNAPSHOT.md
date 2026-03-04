@@ -1,3 +1,7 @@
+> Status: Historical archive.
+> Last reviewed: 2026-03-01.
+> Canonical current references: `docs/README.md` and `docs/SOURCE_OF_TRUTH_INDEX.md`.
+
 # Project Snapshot (Repo State)
 
 ## 0) One-liner
@@ -113,8 +117,8 @@ List implemented, user-visible features grouped by surface:
 
 ## 6) Developer Workflow
 - How to run locally (commands):
-  - Portal: `cd web && npm install && npm run dev`
-  - Functions: `cd functions && npm install && npm run build`
+  - Portal: `npm --prefix web install && npm --prefix web run dev`
+  - Functions: `npm --prefix functions install && npm --prefix functions run build`
   - Emulators: `firebase emulators:start --only firestore,functions,auth` (or configured subset).
 - How to test:
   - Web lint: `npm --prefix web run lint`

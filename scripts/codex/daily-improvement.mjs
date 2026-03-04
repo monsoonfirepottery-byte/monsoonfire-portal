@@ -47,6 +47,11 @@ const metadataMatchers = [
   /^pnpm-lock\.yaml$/,
 ];
 
+const automationSelfChurnMatchers = [
+  /^scripts\/codex\/daily-improvement\.mjs$/,
+  /^scripts\/codex\/backlog-autopilot\.mjs$/,
+];
+
 const secretKeyPattern = /(token|secret|password|authorization|api[_-]?key|cookie|session|private[_-]?key)/i;
 const secretValuePatterns = [
   /bearer\s+[a-z0-9._~-]+/gi,
@@ -496,6 +501,10 @@ function parseRepoSlug() {
 
 function isMetadataPath(path) {
   return metadataMatchers.some((matcher) => matcher.test(path));
+}
+
+function isAutomationSelfChurnPath(path) {
+  return automationSelfChurnMatchers.some((matcher) => matcher.test(path));
 }
 
 function parseCommitLog(stdout) {
@@ -1468,6 +1477,12 @@ async function main() {
   }
 
   for (const [path, touches] of highChurnFiles.slice(0, 6)) {
+    if (isAutomationSelfChurnPath(path)) {
+      notes.push(
+        `Suppressed standalone churn recommendation for ${path}; tracking this lane in rolling codex-improvement updates.`
+      );
+      continue;
+    }
     ensureRecommendation(recommendations, {
       id: `churn-${slugify(path)}`,
       title: `Reduce churn hotspot in ${path}`,

@@ -244,6 +244,7 @@
     "open-memory:pst:relationship:dashboard": "node ./scripts/pst-memory-relationship-dashboard.mjs --json",
     "open-memory:pst:relationship:dashboard:strict": "node ./scripts/pst-memory-relationship-dashboard.mjs --strict --json",
     "open-memory:pst:continuity:smoke": "node ./scripts/pst-memory-continuity-smoke.mjs --strict --json",
+    "open-memory:pst:continuity:gate": "npm run --silent open-memory:pst:continuity:smoke && npm run --silent open-memory:pst:relationship:dashboard:strict",
     "open-memory:context:slice": "node ./scripts/build-memory-context-slice.mjs",
     "open-memory:context:sync": "node ./scripts/open-memory-context-sync.mjs",
     "open-memory:context:sync:resumable": "node ./scripts/open-memory-context-sync.mjs --include-resumable true",

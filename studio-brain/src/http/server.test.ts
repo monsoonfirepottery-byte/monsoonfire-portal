@@ -1,9 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { startHttpServer } from "./server";
 import { MemoryEventStore, MemoryStateStore } from "../stores/memoryStores";
 import { CapabilityRuntime, defaultCapabilities } from "../capabilities/runtime";
+import { createInMemoryMemoryStoreAdapter } from "../memory/inMemoryAdapter";
+import { createMemoryService } from "../memory/service";
 
 const logger = {
   debug: () => {},
@@ -12,6 +15,16 @@ const logger = {
   error: () => {},
 };
 
+function buildIngestHeaders(secret: string, payload: Record<string, unknown>, timestampSeconds: number = Math.trunc(Date.now() / 1000)): Record<string, string> {
+  const raw = JSON.stringify(payload);
+  const signature = crypto.createHmac("sha256", secret).update(`${timestampSeconds}.${raw}`).digest("hex");
+  return {
+    "content-type": "application/json",
+    "x-memory-ingest-timestamp": `${timestampSeconds}`,
+    "x-memory-ingest-signature": `v1=${signature}`,
+  };
+}
+
 async function withServer(
   options: Partial<Parameters<typeof startHttpServer>[0]>,
   run: (baseUrl: string) => Promise<void>
@@ -19,6 +32,14 @@ async function withServer(
   const stateStore = options.stateStore ?? new MemoryStateStore();
   const eventStore = options.eventStore ?? new MemoryEventStore();
   const capabilityRuntime = new CapabilityRuntime(defaultCapabilities, eventStore);
+  const memoryService =
+    options.memoryService ??
+    createMemoryService({
+      store: createInMemoryMemoryStoreAdapter(),
+      defaultTenantId: "monsoonfire-main",
+      defaultAgentId: "test-agent",
+      defaultRunId: "test-run",
+    });
 
   const server = startHttpServer({
     host: "127.0.0.1",
@@ -28,6 +49,7 @@ async function withServer(
     eventStore,
     pgCheck: async () => ({ ok: true, latencyMs: 1 }),
     capabilityRuntime,
+    memoryService,
     verifyFirebaseAuth: async (authorizationHeader) => {
       if (authorizationHeader === "Bearer test-staff") {
         return { uid: "staff-test-uid", isStaff: true, roles: ["staff"] };
@@ -139,6 +161,402 @@ test("metrics endpoint includes process payload", async () => {
       assert.equal(payload.ok, true);
       assert.ok(payload.metrics.process.pid > 0);
       assert.ok(payload.metrics.process.uptimeSec >= 0);
+    }
+  );
+});
+
+test("memory endpoints capture, search, recent, stats, and import", async () => {
+  await withServer({}, async (baseUrl) => {
+    const captured = await fetch(`${baseUrl}/api/memory/capture`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        content: "Decision: move launch to March 15 after QA payment blockers.",
+        source: "manual",
+        tags: ["decision", "launch"],
+        metadata: { owner: "rachel" },
+      }),
+    });
+    assert.equal(captured.status, 201);
+    const capturePayload = (await captured.json()) as { ok: boolean; memory: { id: string } };
+    assert.equal(capturePayload.ok, true);
+    assert.ok(capturePayload.memory.id.startsWith("mem_"));
+
+    const searched = await fetch(`${baseUrl}/api/memory/search`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({ query: "QA payment blockers", limit: 5 }),
+    });
+    assert.equal(searched.status, 200);
+    const searchPayload = (await searched.json()) as {
+      ok: boolean;
+      rows: Array<{ id: string; content: string }>;
+    };
+    assert.equal(searchPayload.ok, true);
+    assert.ok(searchPayload.rows.some((row) => row.id === capturePayload.memory.id));
+
+    const recent = await fetch(`${baseUrl}/api/memory/recent?limit=5`, {
+      headers: { authorization: "Bearer test-staff" },
+    });
+    assert.equal(recent.status, 200);
+    const recentPayload = (await recent.json()) as { ok: boolean; rows: Array<{ id: string }> };
+    assert.equal(recentPayload.ok, true);
+    assert.ok(recentPayload.rows.length >= 1);
+
+    const stats = await fetch(`${baseUrl}/api/memory/stats`, {
+      headers: { authorization: "Bearer test-staff" },
+    });
+    assert.equal(stats.status, 200);
+    const statsPayload = (await stats.json()) as {
+      ok: boolean;
+      stats: { total: number; bySource: Array<{ source: string; count: number }> };
+    };
+    assert.equal(statsPayload.ok, true);
+    assert.ok(statsPayload.stats.total >= 1);
+    assert.ok(statsPayload.stats.bySource.some((entry) => entry.source === "manual"));
+
+    const context = await fetch(`${baseUrl}/api/memory/context`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        agentId: "test-agent",
+        runId: "test-run",
+        query: "QA blockers",
+        maxItems: 3,
+        maxChars: 512,
+      }),
+    });
+    assert.equal(context.status, 200);
+    const contextPayload = (await context.json()) as {
+      ok: boolean;
+      context: { items: Array<{ id: string }>; budget: { maxItems: number; maxChars: number } };
+    };
+    assert.equal(contextPayload.ok, true);
+    assert.ok(contextPayload.context.items.length >= 1);
+    assert.equal(contextPayload.context.budget.maxItems, 3);
+    assert.equal(contextPayload.context.budget.maxChars, 512);
+
+    const imported = await fetch(`${baseUrl}/api/memory/import`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        sourceOverride: "import",
+        items: [
+          { content: "Marcus mentioned onboarding confusion around permissions." },
+          { content: "Insight: pricing FAQ needs examples for kiln scheduling." },
+        ],
+      }),
+    });
+    assert.equal(imported.status, 201);
+    const importPayload = (await imported.json()) as {
+      ok: boolean;
+      result: { imported: number; failed: number };
+    };
+    assert.equal(importPayload.ok, true);
+    assert.equal(importPayload.result.imported, 2);
+    assert.equal(importPayload.result.failed, 0);
+  });
+});
+
+test("memory neighborhood endpoint returns ranked rows with relationship diagnostics", async () => {
+  await withServer({}, async (baseUrl) => {
+    const first = await fetch(`${baseUrl}/api/memory/capture`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        content: "Parent decision for glaze sequencing.",
+        source: "manual",
+        metadata: { owner: "ops" },
+      }),
+    });
+    assert.equal(first.status, 201);
+    const firstPayload = (await first.json()) as { memory: { id: string } };
+
+    const second = await fetch(`${baseUrl}/api/memory/capture`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        content: "Follow-up thread item with kiln loading constraints.",
+        source: "manual",
+        metadata: { owner: "ops" },
+      }),
+    });
+    assert.equal(second.status, 201);
+    const secondPayload = (await second.json()) as { memory: { id: string } };
+
+    const seed = await fetch(`${baseUrl}/api/memory/capture`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        content: "Seed note: reopen and resolve conflict now visible for diagnostics.",
+        source: "manual",
+        metadata: {
+          relatedMemoryIds: [firstPayload.memory.id, secondPayload.memory.id],
+          resolvesMemoryId: firstPayload.memory.id,
+          reopensMemoryId: firstPayload.memory.id,
+          relationships: [{ targetId: secondPayload.memory.id, relationType: "dependsOn" }],
+        },
+      }),
+    });
+    assert.equal(seed.status, 201);
+    const seedPayload = (await seed.json()) as { memory: { id: string } };
+
+    const response = await fetch(`${baseUrl}/api/memory/neighborhood`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        seedMemoryId: seedPayload.memory.id,
+        maxHops: 2,
+        maxItems: 8,
+      }),
+    });
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as {
+      ok: boolean;
+      neighborhood: {
+        seedMemoryId: string;
+        nodes: Array<{ id: string }>;
+      };
+      edgeSummary: {
+        nodeCount: number;
+        unresolvedConflictCount: number;
+      };
+      relationshipTypeCounts: Record<string, number>;
+      diagnostics: {
+        previewSummaries: Array<{ id: string; summary: string }>;
+      };
+    };
+    assert.equal(payload.ok, true);
+    assert.equal(payload.neighborhood.seedMemoryId, seedPayload.memory.id);
+    assert.ok(payload.neighborhood.nodes.some((row) => row.id === seedPayload.memory.id));
+    assert.ok(payload.edgeSummary.nodeCount >= 1);
+    assert.ok(Number(payload.relationshipTypeCounts.related ?? 0) >= 1);
+    assert.ok(payload.edgeSummary.unresolvedConflictCount >= 1);
+    assert.ok(payload.diagnostics.previewSummaries.length >= 1);
+  });
+});
+
+test("relationship diagnostics endpoint validates requests and returns edge summary contract", async () => {
+  await withServer({}, async (baseUrl) => {
+    const capture = await fetch(`${baseUrl}/api/memory/capture`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        content: "Ticket handoff note with continuity and queue context.",
+        source: "manual",
+      }),
+    });
+    assert.equal(capture.status, 201);
+
+    const invalid = await fetch(`${baseUrl}/api/memory/relationship-diagnostics`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({ maxItems: 8 }),
+    });
+    assert.equal(invalid.status, 400);
+
+    const response = await fetch(`${baseUrl}/api/memory/relationship-diagnostics`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+      body: JSON.stringify({
+        query: "handoff continuity queue",
+        maxItems: 8,
+        maxHops: 2,
+      }),
+    });
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as {
+      ok: boolean;
+      diagnostics: {
+        query: string | null;
+        edgeSummary: { nodeCount: number; edgeCount: number };
+        relationshipTypeCounts: Record<string, number>;
+        previewSummaries: Array<{ id: string; summary: string }>;
+      };
+    };
+    assert.equal(payload.ok, true);
+    assert.equal(payload.diagnostics.query, "handoff continuity queue");
+    assert.ok(payload.diagnostics.edgeSummary.nodeCount >= 1);
+    assert.ok(payload.diagnostics.edgeSummary.edgeCount >= 0);
+    assert.equal(typeof payload.diagnostics.relationshipTypeCounts, "object");
+    assert.ok(payload.diagnostics.previewSummaries.length >= 1);
+  });
+});
+
+test("memory endpoints require staff auth", async () => {
+  await withServer({}, async (baseUrl) => {
+    const unauth = await fetch(`${baseUrl}/api/memory/stats`);
+    assert.equal(unauth.status, 401);
+
+    const contextUnauth = await fetch(`${baseUrl}/api/memory/context`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ maxItems: 5 }),
+    });
+    assert.equal(contextUnauth.status, 401);
+
+    const nonStaff = await fetch(`${baseUrl}/api/memory/stats`, {
+      headers: { authorization: "Bearer test-member" },
+    });
+    assert.equal(nonStaff.status, 401);
+  });
+});
+
+test("memory ingest endpoint is disabled by default", async () => {
+  await withServer({}, async (baseUrl) => {
+    const payload = {
+      content: "Insight: permissions onboarding needs simpler defaults.",
+      source: "discord",
+      clientRequestId: "req-disabled-1",
+      metadata: {
+        discordGuildId: "guild-1",
+        discordChannelId: "channel-1",
+      },
+    };
+    const response = await fetch(`${baseUrl}/api/memory/ingest`, {
+      method: "POST",
+      headers: buildIngestHeaders("unused-secret", payload),
+      body: JSON.stringify(payload),
+    });
+    assert.equal(response.status, 404);
+  });
+});
+
+test("memory ingest accepts valid signed discord payloads when enabled", async () => {
+  await withServer(
+    {
+      memoryIngestConfig: {
+        enabled: true,
+        hmacSecret: "ingest-secret",
+        allowedSources: ["discord"],
+        allowedDiscordGuildIds: ["guild-1"],
+        allowedDiscordChannelIds: ["channel-1"],
+        requireClientRequestId: true,
+      },
+    },
+    async (baseUrl) => {
+      const payload = {
+        content: "Decision: keep onboarding copy in plain language for Discord users.",
+        source: "discord",
+        clientRequestId: "discord-msg-123",
+        metadata: {
+          discordGuildId: "guild-1",
+          discordChannelId: "channel-1",
+          authorId: "user-99",
+        },
+      };
+      const response = await fetch(`${baseUrl}/api/memory/ingest`, {
+        method: "POST",
+        headers: buildIngestHeaders("ingest-secret", payload),
+        body: JSON.stringify(payload),
+      });
+      assert.equal(response.status, 201);
+      const body = (await response.json()) as { ok: boolean; memory: { id: string; source: string } };
+      assert.equal(body.ok, true);
+      assert.ok(body.memory.id.startsWith("mem_req_"));
+      assert.equal(body.memory.source, "discord");
+    }
+  );
+});
+
+test("memory ingest rejects stale signatures, invalid signature, and missing client request id", async () => {
+  await withServer(
+    {
+      memoryIngestConfig: {
+        enabled: true,
+        hmacSecret: "ingest-secret",
+        allowedSources: ["discord"],
+        allowedDiscordGuildIds: ["guild-1"],
+        allowedDiscordChannelIds: ["channel-1"],
+        requireClientRequestId: true,
+      },
+    },
+    async (baseUrl) => {
+      const stalePayload = {
+        content: "Stale payload should be rejected.",
+        source: "discord",
+        clientRequestId: "req-stale-1",
+        metadata: { discordGuildId: "guild-1", discordChannelId: "channel-1" },
+      };
+      const staleResponse = await fetch(`${baseUrl}/api/memory/ingest`, {
+        method: "POST",
+        headers: buildIngestHeaders("ingest-secret", stalePayload, Math.trunc(Date.now() / 1000) - 10_000),
+        body: JSON.stringify(stalePayload),
+      });
+      assert.equal(staleResponse.status, 401);
+
+      const invalidSigPayload = {
+        content: "Invalid signature should be rejected.",
+        source: "discord",
+        clientRequestId: "req-bad-signature-1",
+        metadata: { discordGuildId: "guild-1", discordChannelId: "channel-1" },
+      };
+      const invalidSigResponse = await fetch(`${baseUrl}/api/memory/ingest`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-memory-ingest-timestamp": `${Math.trunc(Date.now() / 1000)}`,
+          "x-memory-ingest-signature": "v1=deadbeef",
+        },
+        body: JSON.stringify(invalidSigPayload),
+      });
+      assert.equal(invalidSigResponse.status, 401);
+
+      const missingRequestIdPayload = {
+        content: "Missing request id should be rejected.",
+        source: "discord",
+        metadata: { discordGuildId: "guild-1", discordChannelId: "channel-1" },
+      };
+      const missingRequestIdResponse = await fetch(`${baseUrl}/api/memory/ingest`, {
+        method: "POST",
+        headers: buildIngestHeaders("ingest-secret", missingRequestIdPayload),
+        body: JSON.stringify(missingRequestIdPayload),
+      });
+      assert.equal(missingRequestIdResponse.status, 400);
+    }
+  );
+});
+
+test("memory ingest enforces source and discord allowlists", async () => {
+  await withServer(
+    {
+      memoryIngestConfig: {
+        enabled: true,
+        hmacSecret: "ingest-secret",
+        allowedSources: ["discord"],
+        allowedDiscordGuildIds: ["guild-1"],
+        allowedDiscordChannelIds: ["channel-1"],
+        requireClientRequestId: true,
+      },
+    },
+    async (baseUrl) => {
+      const blockedSourcePayload = {
+        content: "This webhook source should be blocked.",
+        source: "webhook",
+        clientRequestId: "blocked-source-1",
+      };
+      const blockedSource = await fetch(`${baseUrl}/api/memory/ingest`, {
+        method: "POST",
+        headers: buildIngestHeaders("ingest-secret", blockedSourcePayload),
+        body: JSON.stringify(blockedSourcePayload),
+      });
+      assert.equal(blockedSource.status, 403);
+
+      const blockedGuildPayload = {
+        content: "This guild should be blocked.",
+        source: "discord",
+        clientRequestId: "blocked-guild-1",
+        metadata: {
+          discordGuildId: "guild-x",
+          discordChannelId: "channel-1",
+        },
+      };
+      const blockedGuild = await fetch(`${baseUrl}/api/memory/ingest`, {
+        method: "POST",
+        headers: buildIngestHeaders("ingest-secret", blockedGuildPayload),
+        body: JSON.stringify(blockedGuildPayload),
+      });
+      assert.equal(blockedGuild.status, 403);
     }
   );
 });

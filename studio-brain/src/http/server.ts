@@ -27,6 +27,8 @@ import { lintCapabilityPolicy } from "../observability/policyLint";
 import { capabilityPolicyMetadata } from "../capabilities/policyMetadata";
 import type { PilotWriteExecutor } from "../capabilities/pilotWrite";
 import type { BackendHealthReport } from "../connectivity/healthcheck";
+import type { MemoryService } from "../memory/service";
+import { MemoryValidationError } from "../memory/service";
 
 function withSecurityHeaders(headers: Record<string, string>): Record<string, string> {
   return {
@@ -42,6 +44,293 @@ function parseIsoToMillis(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function toBooleanFlag(value: string | null, fallback = false): boolean {
+  if (value === null) return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (normalized === "0" || normalized === "false" || normalized === "no" || normalized === "off") return false;
+  return true;
+}
+
+function toObjectRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function toTrimmedString(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim();
+}
+
+function toBoundedInt(value: unknown, fallback: number, min: number, max: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.trunc(parsed)));
+}
+
+function toStringList(value: unknown, maxItems = 64): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => toTrimmedString(entry))
+    .filter(Boolean)
+    .slice(0, Math.max(1, maxItems));
+}
+
+function normalizeRelationshipType(value: unknown): string {
+  const token = String(value ?? "related")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return token || "related";
+}
+
+function readStringValues(input: unknown, limit = 24): string[] {
+  if (Array.isArray(input)) {
+    return input
+      .map((entry) => toTrimmedString(entry))
+      .filter(Boolean)
+      .slice(0, Math.max(1, limit));
+  }
+  const single = toTrimmedString(input);
+  return single ? [single] : [];
+}
+
+type DerivedRelationshipEdge = {
+  sourceId: string;
+  targetId: string;
+  relationType: string;
+};
+
+function extractRelationshipEdgesFromMetadata(sourceId: string, metadataRaw: unknown): DerivedRelationshipEdge[] {
+  const metadata = toObjectRecord(metadataRaw);
+  const edges: DerivedRelationshipEdge[] = [];
+  const seen = new Set<string>();
+  const pushEdge = (targetCandidate: unknown, relationTypeCandidate: unknown): void => {
+    const targetId = toTrimmedString(targetCandidate);
+    if (!targetId || targetId === sourceId) return;
+    const relationType = normalizeRelationshipType(relationTypeCandidate);
+    const key = `${sourceId}|${targetId}|${relationType}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    edges.push({ sourceId, targetId, relationType });
+  };
+
+  const pushFromKeys = (keys: string[], relationType: string): void => {
+    for (const key of keys) {
+      for (const value of readStringValues(metadata[key], 32)) {
+        pushEdge(value, relationType);
+      }
+    }
+  };
+
+  pushFromKeys(["relatedMemoryIds", "relatedIds", "relatedTo", "relatedMemoryIdList", "relationshipsIds"], "related");
+  pushFromKeys(["parentMemoryId", "parentId", "inReplyToParentId"], "parent");
+  pushFromKeys(["replyToMemoryId", "replyToId", "replyToMessageId"], "reply-to");
+  pushFromKeys(["threadRootMemoryId", "threadRootId", "threadId"], "thread-root");
+  pushFromKeys(["resolvesMemoryId", "resolvesId", "resolvedMemoryId"], "resolves");
+  pushFromKeys(["reopensMemoryId", "reopensId", "reopenedMemoryId"], "reopens");
+  pushFromKeys(["supersedesMemoryId", "supersedesId", "supersededMemoryId"], "supersedes");
+  pushFromKeys(["referencesMemoryId", "referencesId"], "references");
+  pushFromKeys(["dependsOnMemoryId", "dependsOnId"], "depends-on");
+  pushFromKeys(["conflictsWithMemoryId", "conflictsWithId"], "conflicts-with");
+
+  for (const key of ["resolvesMemoryIds", "reopensMemoryIds", "supersedesMemoryIds", "referencesMemoryIds"]) {
+    const relationType = key
+      .replace(/MemoryIds?$/i, "")
+      .replace(/([a-z])([A-Z])/g, "$1-$2")
+      .toLowerCase();
+    for (const value of readStringValues(metadata[key], 48)) {
+      pushEdge(value, relationType);
+    }
+  }
+
+  const relationships = metadata.relationships;
+  if (Array.isArray(relationships)) {
+    for (const entry of relationships.slice(0, 64)) {
+      if (typeof entry === "string") {
+        pushEdge(entry, "related");
+        continue;
+      }
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+      const row = entry as Record<string, unknown>;
+      const targetId = row.targetId ?? row.relatedId ?? row.memoryId ?? row.id;
+      const relationType = row.relationType ?? row.type ?? row.kind;
+      pushEdge(targetId, relationType);
+    }
+  }
+
+  const relationship = metadata.relationship;
+  if (relationship && typeof relationship === "object" && !Array.isArray(relationship)) {
+    const row = relationship as Record<string, unknown>;
+    pushEdge(row.targetId ?? row.relatedId ?? row.memoryId ?? row.id, row.relationType ?? row.type ?? row.kind);
+  }
+
+  return edges;
+}
+
+function summarizePreview(text: unknown, maxChars = 180): string {
+  const value = typeof text === "string" ? text.trim() : "";
+  if (!value) return "";
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`;
+}
+
+function buildRelationshipDiagnosticsFromNodes(
+  seedMemoryId: string | null,
+  rows: Array<{ id: string; content: string; metadata: Record<string, unknown> }>
+): {
+  edgeSummary: {
+    seedMemoryId: string | null;
+    nodeCount: number;
+    edgeCount: number;
+    internalEdgeCount: number;
+    externalEdgeCount: number;
+    relationshipTypes: Record<string, number>;
+    unresolvedConflictCount: number;
+  };
+  relationshipTypeCounts: Record<string, number>;
+  unresolvedConflicts: Array<{ sourceId: string; targetId: string; relationTypes: string[] }>;
+  previewSummaries: Array<{ id: string; summary: string }>;
+} {
+  const nodeIds = new Set(rows.map((row) => row.id));
+  const relationshipTypeCountsMap = new Map<string, number>();
+  const edgeTypesByPair = new Map<string, Set<string>>();
+  let edgeCount = 0;
+  let internalEdgeCount = 0;
+  let externalEdgeCount = 0;
+
+  for (const row of rows) {
+    const edges = extractRelationshipEdgesFromMetadata(row.id, row.metadata);
+    for (const edge of edges) {
+      edgeCount += 1;
+      if (nodeIds.has(edge.targetId)) internalEdgeCount += 1;
+      else externalEdgeCount += 1;
+      relationshipTypeCountsMap.set(edge.relationType, Number(relationshipTypeCountsMap.get(edge.relationType) ?? 0) + 1);
+      const pairKey = `${edge.sourceId}|${edge.targetId}`;
+      const bucket = edgeTypesByPair.get(pairKey) ?? new Set<string>();
+      bucket.add(edge.relationType);
+      edgeTypesByPair.set(pairKey, bucket);
+    }
+  }
+
+  const conflictingPairs: Array<{ sourceId: string; targetId: string; relationTypes: string[] }> = [];
+  const conflictTypeSets = [
+    ["resolves", "reopens"],
+    ["resolves", "supersedes"],
+    ["reopens", "supersedes"],
+    ["depends-on", "conflicts-with"],
+  ];
+  for (const [pairKey, typeSet] of edgeTypesByPair.entries()) {
+    const types = Array.from(typeSet);
+    const isConflict = conflictTypeSets.some(
+      ([left, right]) => typeSet.has(left) && typeSet.has(right)
+    );
+    if (!isConflict) continue;
+    const [sourceId, targetId] = pairKey.split("|");
+    conflictingPairs.push({
+      sourceId: sourceId ?? "",
+      targetId: targetId ?? "",
+      relationTypes: types.sort((left, right) => left.localeCompare(right)),
+    });
+  }
+
+  const relationshipTypeCounts = Object.fromEntries(
+    Array.from(relationshipTypeCountsMap.entries()).sort((left, right) => {
+      if (right[1] !== left[1]) return right[1] - left[1];
+      return left[0].localeCompare(right[0]);
+    })
+  );
+
+  return {
+    edgeSummary: {
+      seedMemoryId,
+      nodeCount: rows.length,
+      edgeCount,
+      internalEdgeCount,
+      externalEdgeCount,
+      relationshipTypes: relationshipTypeCounts,
+      unresolvedConflictCount: conflictingPairs.length,
+    },
+    relationshipTypeCounts,
+    unresolvedConflicts: conflictingPairs.slice(0, 24),
+    previewSummaries: rows.slice(0, 10).map((row) => ({
+      id: row.id,
+      summary: summarizePreview(row.content, 200),
+    })),
+  };
+}
+
+function formatLoopDigestMarkdown(payload: {
+  generatedAt: string;
+  query: string | null;
+  incidents: Array<{
+    loopKey: string;
+    lane: string;
+    currentState: string;
+    escalationScore: number;
+    blastRadiusScore: number;
+    anomalyScore: number;
+    suggestedOwner: string | null;
+    hoursUntilBreach: number;
+    slaStatus: string;
+    recommendedAction: string;
+    narrative: string;
+  }>;
+  summary: Record<string, unknown> | null;
+}): string {
+  const lines: string[] = [];
+  lines.push(`# Loop Incident Digest`);
+  lines.push(`Generated: ${payload.generatedAt}`);
+  if (payload.query) {
+    lines.push(`Query: ${payload.query}`);
+  }
+  const incidentCount = payload.incidents.length;
+  lines.push(`Incidents: ${incidentCount}`);
+  if (payload.summary && typeof payload.summary === "object") {
+    const summaryRow = payload.summary as Record<string, unknown>;
+    const highestEscalation = Number(summaryRow.highestEscalationScore ?? 0);
+    const highestBlast = Number(summaryRow.highestBlastRadiusScore ?? 0);
+    const sla = (summaryRow.sla as Record<string, unknown> | undefined) ?? {};
+    const ownerQueues = Array.isArray(summaryRow.ownerQueues) ? summaryRow.ownerQueues : [];
+    lines.push(`Top escalation score: ${highestEscalation.toFixed(2)} | Top blast radius: ${highestBlast.toFixed(2)}`);
+    lines.push(
+      `SLA: healthy ${Number(sla.healthy ?? 0)}, at-risk ${Number(sla.atRisk ?? 0)}, breached ${Number(
+        sla.breached ?? 0
+      )}, soonest breach ${sla.soonestBreachHours === null || sla.soonestBreachHours === undefined ? "n/a" : `${Number(
+        sla.soonestBreachHours
+      ).toFixed(1)}h`}`
+    );
+    if (ownerQueues.length > 0) {
+      const topOwners = ownerQueues
+        .slice(0, 3)
+        .map((row) => `${String((row as Record<string, unknown>).owner ?? "unassigned")}:${Number((row as Record<string, unknown>).total ?? 0)}`)
+        .join(", ");
+      lines.push(`Top owner queues: ${topOwners}`);
+    }
+  }
+  lines.push("");
+  if (incidentCount === 0) {
+    lines.push(`No incidents matched the current thresholds.`);
+    return lines.join("\n");
+  }
+  payload.incidents.forEach((incident, index) => {
+    lines.push(
+      `${index + 1}. [${incident.lane.toUpperCase()}] ${incident.loopKey} (${incident.currentState})`
+    );
+    lines.push(
+      `   Escalation ${incident.escalationScore.toFixed(2)} | Blast ${incident.blastRadiusScore.toFixed(2)} | Anomaly ${incident.anomalyScore.toFixed(2)}`
+    );
+    lines.push(`   Owner: ${incident.suggestedOwner ?? "unassigned"}`);
+    lines.push(`   SLA: ${incident.slaStatus} (${incident.hoursUntilBreach.toFixed(1)}h until breach)`);
+    lines.push(`   Action: ${incident.recommendedAction}`);
+    lines.push(`   Narrative: ${incident.narrative}`);
+    lines.push("");
+  });
+  return lines.join("\n").trim();
+}
+
 export type RuntimeStatusProvider = () => Record<string, unknown> | Promise<Record<string, unknown>>;
 export type RuntimeMetricsProvider = () => Record<string, unknown> | Promise<Record<string, unknown>>;
 export type EndpointRateLimitConfig = {
@@ -51,14 +340,90 @@ export type EndpointRateLimitConfig = {
   marketingReviewPerMinute: number;
 };
 
-async function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
+export type MemoryIngestConfig = {
+  enabled?: boolean;
+  hmacSecret?: string | null;
+  maxSkewSeconds?: number;
+  requireClientRequestId?: boolean;
+  allowedSources?: string[];
+  allowedDiscordGuildIds?: string[];
+  allowedDiscordChannelIds?: string[];
+};
+
+type ParsedJsonBody = {
+  raw: string;
+  json: Record<string, unknown>;
+};
+
+async function readRawBody(req: http.IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
-  if (!chunks.length) return {};
-  const raw = Buffer.concat(chunks).toString("utf8");
-  return JSON.parse(raw) as Record<string, unknown>;
+  if (!chunks.length) return "";
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function parseJsonBody(raw: string): Record<string, unknown> {
+  if (!raw.trim()) return {};
+  const parsed = JSON.parse(raw) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("JSON body must be an object.");
+  }
+  return parsed as Record<string, unknown>;
+}
+
+async function readJsonBodyWithRaw(req: http.IncomingMessage): Promise<ParsedJsonBody> {
+  const raw = await readRawBody(req);
+  return {
+    raw,
+    json: parseJsonBody(raw),
+  };
+}
+
+async function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
+  return (await readJsonBodyWithRaw(req)).json;
+}
+
+function normalizeHmacSignature(value: string | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const candidate = trimmed.includes("=") ? trimmed.slice(trimmed.lastIndexOf("=") + 1).trim() : trimmed;
+  return /^[a-f0-9]{64}$/i.test(candidate) ? candidate.toLowerCase() : null;
+}
+
+function parseEpochSeconds(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return null;
+  const value = Math.trunc(parsed);
+  return value > 0 ? value : null;
+}
+
+function isTimestampWithinSkew(timestampSeconds: number, nowMs: number, maxSkewSeconds: number): boolean {
+  const deltaMs = Math.abs(nowMs - timestampSeconds * 1000);
+  return deltaMs <= maxSkewSeconds * 1000;
+}
+
+function verifyHmacSignature(expectedHex: string, providedHex: string): boolean {
+  if (expectedHex.length !== providedHex.length) return false;
+  try {
+    const expected = Buffer.from(expectedHex, "hex");
+    const provided = Buffer.from(providedHex, "hex");
+    if (expected.length !== provided.length) return false;
+    return crypto.timingSafeEqual(expected, provided);
+  } catch {
+    return false;
+  }
+}
+
+function toNormalizedSet(values: string[] | undefined): Set<string> {
+  return new Set(
+    (values ?? [])
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean)
+  );
 }
 
 function parseActor(payload: Record<string, unknown>): CapabilityActorContext {
@@ -147,6 +512,8 @@ export function startHttpServer(params: {
   adminToken?: string;
   verifyFirebaseAuth?: (authorizationHeader: string | undefined) => Promise<AuthPrincipal>;
   backendHealth?: () => Promise<BackendHealthReport>;
+  memoryService?: MemoryService | null;
+  memoryIngestConfig?: MemoryIngestConfig;
   endpointRateLimits?: Partial<EndpointRateLimitConfig>;
   abuseQuotaStore?: QuotaStore;
   pilotWriteExecutor?: PilotWriteExecutor | null;
@@ -167,6 +534,8 @@ export function startHttpServer(params: {
     adminToken,
     verifyFirebaseAuth = verifyFirebaseAuthHeader,
     backendHealth,
+    memoryService = null,
+    memoryIngestConfig,
     endpointRateLimits,
     abuseQuotaStore = new InMemoryQuotaStore(),
     pilotWriteExecutor = null,
@@ -177,6 +546,38 @@ export function startHttpServer(params: {
     intakeOverridePerMinute: Math.max(1, endpointRateLimits?.intakeOverridePerMinute ?? 10),
     marketingReviewPerMinute: Math.max(1, endpointRateLimits?.marketingReviewPerMinute ?? 20),
   };
+  const memoryIngest = {
+    enabled: memoryIngestConfig?.enabled === true,
+    hmacSecret: memoryIngestConfig?.hmacSecret?.trim() ?? "",
+    maxSkewSeconds: Math.max(30, memoryIngestConfig?.maxSkewSeconds ?? 300),
+    requireClientRequestId: memoryIngestConfig?.requireClientRequestId !== false,
+    allowedSources: toNormalizedSet(memoryIngestConfig?.allowedSources),
+    allowedDiscordGuildIds: toNormalizedSet(memoryIngestConfig?.allowedDiscordGuildIds),
+    allowedDiscordChannelIds: toNormalizedSet(memoryIngestConfig?.allowedDiscordChannelIds),
+  };
+  const parseBoundedEnvInt = (name: string, fallback: number, min = 0, max = 10_000): number => {
+    const raw = String(process.env[name] ?? "").trim();
+    if (!raw) return fallback;
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(min, Math.min(max, parsed));
+  };
+  const memoryPressureConfig = {
+    maxActiveImportsBeforeBackfill: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORTS_BEFORE_BACKFILL", 8, 0, 10_000),
+    maxConcurrentBackfills: parseBoundedEnvInt("STUDIO_BRAIN_MAX_CONCURRENT_BACKFILLS", 1, 1, 100),
+    retryAfterSeconds: parseBoundedEnvInt("STUDIO_BRAIN_BACKFILL_RETRY_AFTER_SECONDS", 20, 1, 3600),
+  };
+  let activeImportRequests = 0;
+  let activeBackfillRequests = 0;
+  const memoryPressureSnapshot = () => ({
+    activeImportRequests,
+    activeBackfillRequests,
+    thresholds: {
+      maxActiveImportsBeforeBackfill: memoryPressureConfig.maxActiveImportsBeforeBackfill,
+      maxConcurrentBackfills: memoryPressureConfig.maxConcurrentBackfills,
+      retryAfterSeconds: memoryPressureConfig.retryAfterSeconds,
+    },
+  });
 
   const isOriginAllowed = (origin: string | null): boolean => {
     if (!origin) return true;
@@ -187,7 +588,8 @@ export function startHttpServer(params: {
     if (!origin || !isOriginAllowed(origin)) return {};
     return {
       "access-control-allow-origin": origin,
-      "access-control-allow-headers": "content-type, authorization, x-studio-brain-admin-token",
+      "access-control-allow-headers":
+        "content-type, authorization, x-studio-brain-admin-token, x-memory-ingest-signature, x-memory-ingest-timestamp",
       "access-control-allow-methods": "GET,POST,OPTIONS",
       "access-control-max-age": "600",
       vary: "Origin",
@@ -339,6 +741,1234 @@ export function startHttpServer(params: {
         statusCode = 200;
         res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
         res.end(JSON.stringify({ ok: true, snapshot }));
+        return;
+      }
+
+      if (memoryService && method === "POST" && url.pathname === "/api/memory/capture") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+
+        try {
+          const payload = await readJsonBody(req);
+          const metadata =
+            payload.metadata && typeof payload.metadata === "object" && !Array.isArray(payload.metadata)
+              ? (payload.metadata as Record<string, unknown>)
+              : {};
+          const memory = await memoryService.capture({
+            ...payload,
+            metadata: {
+              ...metadata,
+              writerUid: auth.principal?.uid ?? "staff:unknown",
+            },
+          });
+          statusCode = 201;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, memory }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "POST" && url.pathname === "/api/memory/ingest") {
+        if (!memoryIngest.enabled) {
+          statusCode = 404;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Memory ingest endpoint is disabled." }));
+          return;
+        }
+        if (!memoryIngest.hmacSecret) {
+          statusCode = 503;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: "Memory ingest endpoint is misconfigured." }));
+          return;
+        }
+
+        try {
+          const timestampRaw = firstHeader(req.headers["x-memory-ingest-timestamp"]);
+          const signatureRaw = firstHeader(req.headers["x-memory-ingest-signature"]);
+          const timestampSeconds = parseEpochSeconds(timestampRaw);
+          const providedSignature = normalizeHmacSignature(signatureRaw);
+
+          if (!timestampSeconds || !providedSignature) {
+            statusCode = 401;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "Missing or invalid ingest signature headers." }));
+            return;
+          }
+          if (!isTimestampWithinSkew(timestampSeconds, Date.now(), memoryIngest.maxSkewSeconds)) {
+            statusCode = 401;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "Ingest signature timestamp is outside allowed skew." }));
+            return;
+          }
+
+          const parsedBody = await readJsonBodyWithRaw(req);
+          const expectedSignature = crypto
+            .createHmac("sha256", memoryIngest.hmacSecret)
+            .update(`${timestampSeconds}.${parsedBody.raw}`)
+            .digest("hex");
+
+          if (!verifyHmacSignature(expectedSignature, providedSignature)) {
+            statusCode = 401;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "Invalid ingest signature." }));
+            return;
+          }
+
+          const payload = parsedBody.json;
+          const sourceRaw = typeof payload.source === "string" ? payload.source.trim() : "";
+          const source = sourceRaw.toLowerCase();
+          if (memoryIngest.allowedSources.size > 0 && (!source || !memoryIngest.allowedSources.has(source))) {
+            statusCode = 403;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: false, message: "Memory ingest source is not allowed." }));
+            return;
+          }
+
+          const metadata =
+            payload.metadata && typeof payload.metadata === "object" && !Array.isArray(payload.metadata)
+              ? (payload.metadata as Record<string, unknown>)
+              : {};
+          if (source === "discord") {
+            const guildId = String(metadata.discordGuildId ?? metadata.guildId ?? "").trim().toLowerCase();
+            const channelId = String(metadata.discordChannelId ?? metadata.channelId ?? "").trim().toLowerCase();
+            if (memoryIngest.allowedDiscordGuildIds.size > 0 && (!guildId || !memoryIngest.allowedDiscordGuildIds.has(guildId))) {
+              statusCode = 403;
+              res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+              res.end(JSON.stringify({ ok: false, message: "Discord guild is not allowed for ingest." }));
+              return;
+            }
+            if (memoryIngest.allowedDiscordChannelIds.size > 0 && (!channelId || !memoryIngest.allowedDiscordChannelIds.has(channelId))) {
+              statusCode = 403;
+              res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+              res.end(JSON.stringify({ ok: false, message: "Discord channel is not allowed for ingest." }));
+              return;
+            }
+          }
+
+          if (memoryIngest.requireClientRequestId) {
+            const clientRequestIdRaw = typeof payload.clientRequestId === "string" ? payload.clientRequestId.trim() : "";
+            if (!clientRequestIdRaw) {
+              statusCode = 400;
+              res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+              res.end(JSON.stringify({ ok: false, message: "clientRequestId is required for memory ingest." }));
+              return;
+            }
+          }
+
+          const memory = await memoryService.capture(payload);
+          statusCode = 201;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, memory }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation =
+            error instanceof MemoryValidationError ||
+            (error instanceof Error && error.message === "JSON body must be an object.");
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "POST" && url.pathname === "/api/memory/context") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const payload = await readJsonBody(req);
+          const context = await memoryService.context(payload);
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(
+            JSON.stringify({
+              ok: true,
+              context,
+              payload: context,
+              items: context.items,
+              summary: context.summary,
+            })
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "POST" && url.pathname === "/api/memory/search") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const payload = await readJsonBody(req);
+          const rows = await memoryService.search(payload);
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, rows, results: rows }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "POST" && url.pathname === "/api/memory/neighborhood") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const payload = await readJsonBody(req);
+          const seedMemoryId = toTrimmedString(payload.seedMemoryId);
+          if (!seedMemoryId) {
+            throw new MemoryValidationError("seedMemoryId is required.");
+          }
+          const maxItems = toBoundedInt(payload.maxItems, 24, 1, 100);
+          const maxHops = toBoundedInt(payload.maxHops, 2, 1, 4);
+          const includeSeed = payload.includeSeed !== false;
+          const maxChars = toBoundedInt(payload.maxChars, Math.max(8_000, maxItems * 1_200), 256, 100_000);
+          const scanLimit = toBoundedInt(payload.scanLimit, Math.max(200, maxItems * 10), 1, 500);
+          const context = await memoryService.context({
+            tenantId: toTrimmedString(payload.tenantId) || undefined,
+            agentId: toTrimmedString(payload.agentId) || undefined,
+            runId: toTrimmedString(payload.runId) || undefined,
+            query: toTrimmedString(payload.query) || undefined,
+            seedMemoryId,
+            sourceAllowlist: toStringList(payload.sourceAllowlist),
+            sourceDenylist: toStringList(payload.sourceDenylist),
+            retrievalMode: toTrimmedString(payload.retrievalMode) || undefined,
+            temporalAnchorAt: toTrimmedString(payload.temporalAnchorAt) || undefined,
+            explain: payload.explain === true,
+            includeTenantFallback: payload.includeTenantFallback === true,
+            expandRelationships: true,
+            maxHops,
+            maxItems: includeSeed ? maxItems : Math.min(100, maxItems + 1),
+            maxChars,
+            scanLimit,
+          });
+          let nodes = context.items;
+          if (!includeSeed) {
+            nodes = nodes.filter((row) => row.id !== seedMemoryId);
+          }
+          nodes = nodes.slice(0, maxItems);
+          const diagnostics = buildRelationshipDiagnosticsFromNodes(seedMemoryId, nodes);
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(
+            JSON.stringify({
+              ok: true,
+              neighborhood: {
+                seedMemoryId,
+                maxItems,
+                maxHops,
+                includeSeed,
+                nodes,
+                selection: context.selection,
+                budget: context.budget,
+              },
+              edgeSummary: diagnostics.edgeSummary,
+              relationshipTypeCounts: diagnostics.relationshipTypeCounts,
+              diagnostics,
+            })
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "POST" && url.pathname === "/api/memory/relationship-diagnostics") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const payload = await readJsonBody(req);
+          const seedMemoryId = toTrimmedString(payload.seedMemoryId);
+          const query = toTrimmedString(payload.query);
+          if (!seedMemoryId && !query) {
+            throw new MemoryValidationError("seedMemoryId or query is required.");
+          }
+          const maxItems = toBoundedInt(payload.maxItems, 24, 1, 100);
+          const maxHops = toBoundedInt(payload.maxHops, 2, 1, 4);
+          const includeSeed = payload.includeSeed !== false;
+          const maxChars = toBoundedInt(payload.maxChars, Math.max(8_000, maxItems * 1_200), 256, 100_000);
+          const scanLimit = toBoundedInt(payload.scanLimit, Math.max(200, maxItems * 10), 1, 500);
+          const context = await memoryService.context({
+            tenantId: toTrimmedString(payload.tenantId) || undefined,
+            agentId: toTrimmedString(payload.agentId) || undefined,
+            runId: toTrimmedString(payload.runId) || undefined,
+            query: query || undefined,
+            seedMemoryId: seedMemoryId || undefined,
+            sourceAllowlist: toStringList(payload.sourceAllowlist),
+            sourceDenylist: toStringList(payload.sourceDenylist),
+            retrievalMode: toTrimmedString(payload.retrievalMode) || undefined,
+            temporalAnchorAt: toTrimmedString(payload.temporalAnchorAt) || undefined,
+            explain: payload.explain === true,
+            includeTenantFallback: payload.includeTenantFallback === true,
+            expandRelationships: true,
+            maxHops,
+            maxItems: includeSeed ? maxItems : Math.min(100, maxItems + 1),
+            maxChars,
+            scanLimit,
+          });
+          let nodes = context.items;
+          if (!includeSeed && seedMemoryId) {
+            nodes = nodes.filter((row) => row.id !== seedMemoryId);
+          }
+          nodes = nodes.slice(0, maxItems);
+          const diagnostics = buildRelationshipDiagnosticsFromNodes(seedMemoryId || null, nodes);
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(
+            JSON.stringify({
+              ok: true,
+              diagnostics: {
+                ...diagnostics,
+                query: query || null,
+                maxItems,
+                maxHops,
+                includeSeed,
+                selection: context.selection,
+                budget: context.budget,
+              },
+            })
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "GET" && url.pathname === "/api/memory/recent") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const limitRaw = Number(url.searchParams.get("limit") ?? "20");
+          const tenantParam = url.searchParams.get("tenantId");
+          const rows = await memoryService.recent({
+            limit: Number.isFinite(limitRaw) ? limitRaw : 20,
+            tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+          });
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, rows }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "GET" && url.pathname === "/api/memory/stats") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const tenantParam = url.searchParams.get("tenantId");
+          const stats = await memoryService.stats({
+            tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+          });
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, stats }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "GET" && url.pathname === "/api/memory/pressure") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        statusCode = 200;
+        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+        res.end(
+          JSON.stringify({
+            ok: true,
+            pressure: memoryPressureSnapshot(),
+          })
+        );
+        return;
+      }
+
+      if (memoryService && method === "GET" && url.pathname === "/api/memory/loops") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const tenantParam = url.searchParams.get("tenantId");
+          const limitRaw = Number(url.searchParams.get("limit") ?? "30");
+          const query = url.searchParams.get("query");
+          const sortBy = url.searchParams.get("sortBy");
+          const includeMemoryRaw = url.searchParams.get("includeMemory");
+          const includeIncidentsRaw = url.searchParams.get("includeIncidents");
+          const minAttentionParam = url.searchParams.get("minAttention");
+          const minVolatilityParam = url.searchParams.get("minVolatility");
+          const minAnomalyParam = url.searchParams.get("minAnomaly");
+          const minCentralityParam = url.searchParams.get("minCentrality");
+          const minEscalationParam = url.searchParams.get("minEscalation");
+          const minBlastRadiusParam = url.searchParams.get("minBlastRadius");
+          const incidentLimitParam = url.searchParams.get("incidentLimit");
+          const incidentMinEscalationParam = url.searchParams.get("incidentMinEscalation");
+          const incidentMinBlastRadiusParam = url.searchParams.get("incidentMinBlastRadius");
+          const minAttentionRaw = minAttentionParam === null ? Number.NaN : Number(minAttentionParam);
+          const minVolatilityRaw = minVolatilityParam === null ? Number.NaN : Number(minVolatilityParam);
+          const minAnomalyRaw = minAnomalyParam === null ? Number.NaN : Number(minAnomalyParam);
+          const minCentralityRaw = minCentralityParam === null ? Number.NaN : Number(minCentralityParam);
+          const minEscalationRaw = minEscalationParam === null ? Number.NaN : Number(minEscalationParam);
+          const minBlastRadiusRaw = minBlastRadiusParam === null ? Number.NaN : Number(minBlastRadiusParam);
+          const incidentLimitRaw = incidentLimitParam === null ? Number.NaN : Number(incidentLimitParam);
+          const incidentMinEscalationRaw =
+            incidentMinEscalationParam === null ? Number.NaN : Number(incidentMinEscalationParam);
+          const incidentMinBlastRadiusRaw =
+            incidentMinBlastRadiusParam === null ? Number.NaN : Number(incidentMinBlastRadiusParam);
+          const states = String(url.searchParams.get("states") ?? "")
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+          const lanes = String(url.searchParams.get("lanes") ?? "")
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+          const loopKeys = String(url.searchParams.get("loopKeys") ?? "")
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+          const loops = await memoryService.loops({
+            tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+            limit: Number.isFinite(limitRaw) ? limitRaw : 30,
+            query: query === null || query.trim().length === 0 ? undefined : query.trim(),
+            sortBy: sortBy === null || sortBy.trim().length === 0 ? undefined : sortBy.trim(),
+            includeMemory:
+              includeMemoryRaw === null ? undefined : includeMemoryRaw.trim().toLowerCase() !== "false",
+            includeIncidents:
+              includeIncidentsRaw === null ? undefined : includeIncidentsRaw.trim().toLowerCase() !== "false",
+            states,
+            lanes,
+            loopKeys,
+            minAttention: Number.isFinite(minAttentionRaw) ? minAttentionRaw : undefined,
+            minVolatility: Number.isFinite(minVolatilityRaw) ? minVolatilityRaw : undefined,
+            minAnomaly: Number.isFinite(minAnomalyRaw) ? minAnomalyRaw : undefined,
+            minCentrality: Number.isFinite(minCentralityRaw) ? minCentralityRaw : undefined,
+            minEscalation: Number.isFinite(minEscalationRaw) ? minEscalationRaw : undefined,
+            minBlastRadius: Number.isFinite(minBlastRadiusRaw) ? minBlastRadiusRaw : undefined,
+            incidentLimit: Number.isFinite(incidentLimitRaw) ? incidentLimitRaw : undefined,
+            incidentMinEscalation: Number.isFinite(incidentMinEscalationRaw)
+              ? incidentMinEscalationRaw
+              : undefined,
+            incidentMinBlastRadius: Number.isFinite(incidentMinBlastRadiusRaw)
+              ? incidentMinBlastRadiusRaw
+              : undefined,
+          });
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, loops, rows: loops.rows, incidents: loops.incidents, summary: loops.summary }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "GET" && url.pathname === "/api/memory/loops/incidents") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const tenantParam = url.searchParams.get("tenantId");
+          const query = url.searchParams.get("query");
+          const limitRaw = Number(url.searchParams.get("limit") ?? "12");
+          const incidentMinEscalationRaw = Number(url.searchParams.get("incidentMinEscalation") ?? "NaN");
+          const incidentMinBlastRadiusRaw = Number(url.searchParams.get("incidentMinBlastRadius") ?? "NaN");
+          const states = String(url.searchParams.get("states") ?? "")
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+          const lanes = String(url.searchParams.get("lanes") ?? "")
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+          const loopKeys = String(url.searchParams.get("loopKeys") ?? "")
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+          const loops = await memoryService.loops({
+            tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+            query: query === null || query.trim().length === 0 ? undefined : query.trim(),
+            sortBy: "escalation",
+            includeMemory: true,
+            includeIncidents: true,
+            states,
+            lanes,
+            loopKeys,
+            limit: Math.min(200, Math.max(30, Number.isFinite(limitRaw) ? limitRaw * 3 : 36)),
+            incidentLimit: Number.isFinite(limitRaw) ? limitRaw : 12,
+            incidentMinEscalation: Number.isFinite(incidentMinEscalationRaw) ? incidentMinEscalationRaw : undefined,
+            incidentMinBlastRadius: Number.isFinite(incidentMinBlastRadiusRaw) ? incidentMinBlastRadiusRaw : undefined,
+          });
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(
+            JSON.stringify({
+              ok: true,
+              incidents: loops.incidents,
+              summary: loops.summary,
+            })
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "POST" && url.pathname === "/api/memory/loops/incident-action") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const payload = await readJsonBody(req);
+          const result = await memoryService.incidentAction(payload);
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, result }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "POST" && url.pathname === "/api/memory/loops/incident-action/batch") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const payload = await readJsonBody(req);
+          const result = await memoryService.incidentActionBatch(payload);
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, result }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "GET" && url.pathname === "/api/memory/loops/feedback-stats") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const tenantParam = url.searchParams.get("tenantId");
+          const limitRaw = Number(url.searchParams.get("limit") ?? "120");
+          const windowDaysRaw = Number(url.searchParams.get("windowDays") ?? "180");
+          const loopKeys = String(url.searchParams.get("loopKeys") ?? "")
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+          const report = await memoryService.loopFeedbackStats({
+            tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+            loopKeys,
+            limit: Number.isFinite(limitRaw) ? limitRaw : 120,
+            windowDays: Number.isFinite(windowDaysRaw) ? windowDaysRaw : 180,
+          });
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, report, rows: report.rows, summary: report.summary }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "GET" && url.pathname === "/api/memory/loops/owner-queues") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const tenantParam = url.searchParams.get("tenantId");
+          const query = url.searchParams.get("query");
+          const limitRaw = Number(url.searchParams.get("limit") ?? "50");
+          const incidentLimitRaw = Number(url.searchParams.get("incidentLimit") ?? "20");
+          const incidentMinEscalationRaw = Number(url.searchParams.get("incidentMinEscalation") ?? "NaN");
+          const incidentMinBlastRadiusRaw = Number(url.searchParams.get("incidentMinBlastRadius") ?? "NaN");
+          const states = String(url.searchParams.get("states") ?? "")
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+          const lanes = String(url.searchParams.get("lanes") ?? "")
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+          const loopKeys = String(url.searchParams.get("loopKeys") ?? "")
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+          const report = await memoryService.ownerQueues({
+            tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+            query: query === null || query.trim().length === 0 ? undefined : query.trim(),
+            states,
+            lanes,
+            loopKeys,
+            limit: Number.isFinite(limitRaw) ? limitRaw : 50,
+            incidentLimit: Number.isFinite(incidentLimitRaw) ? incidentLimitRaw : 20,
+            incidentMinEscalation: Number.isFinite(incidentMinEscalationRaw) ? incidentMinEscalationRaw : undefined,
+            incidentMinBlastRadius: Number.isFinite(incidentMinBlastRadiusRaw) ? incidentMinBlastRadiusRaw : undefined,
+          });
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(
+            JSON.stringify({
+              ok: true,
+              report,
+              queues: report.queues,
+              sla: report.sla,
+              incidents: report.incidents,
+              summary: report.summary,
+            })
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "GET" && url.pathname === "/api/memory/loops/action-plan") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const tenantParam = url.searchParams.get("tenantId");
+          const query = url.searchParams.get("query");
+          const limitRaw = Number(url.searchParams.get("limit") ?? "50");
+          const incidentLimitRaw = Number(url.searchParams.get("incidentLimit") ?? "30");
+          const maxActionsRaw = Number(url.searchParams.get("maxActions") ?? "40");
+          const includeBatchPayloadRaw = url.searchParams.get("includeBatchPayload");
+          const incidentMinEscalationRaw = Number(url.searchParams.get("incidentMinEscalation") ?? "NaN");
+          const incidentMinBlastRadiusRaw = Number(url.searchParams.get("incidentMinBlastRadius") ?? "NaN");
+          const states = String(url.searchParams.get("states") ?? "")
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+          const lanes = String(url.searchParams.get("lanes") ?? "")
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+          const loopKeys = String(url.searchParams.get("loopKeys") ?? "")
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+          const plan = await memoryService.actionPlan({
+            tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+            query: query === null || query.trim().length === 0 ? undefined : query.trim(),
+            states,
+            lanes,
+            loopKeys,
+            limit: Number.isFinite(limitRaw) ? limitRaw : 50,
+            incidentLimit: Number.isFinite(incidentLimitRaw) ? incidentLimitRaw : 30,
+            maxActions: Number.isFinite(maxActionsRaw) ? maxActionsRaw : 40,
+            includeBatchPayload: toBooleanFlag(includeBatchPayloadRaw, true),
+            incidentMinEscalation: Number.isFinite(incidentMinEscalationRaw) ? incidentMinEscalationRaw : undefined,
+            incidentMinBlastRadius: Number.isFinite(incidentMinBlastRadiusRaw) ? incidentMinBlastRadiusRaw : undefined,
+          });
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, plan }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "POST" && url.pathname === "/api/memory/loops/automation-tick") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const payload = await readJsonBody(req);
+          const tick = await memoryService.automationTick(payload);
+          const shouldDispatch = toBooleanFlag(String((payload as Record<string, unknown>).dispatch ?? "").trim(), false);
+          const webhookUrl =
+            String((payload as Record<string, unknown>).webhookUrl ?? "").trim() ||
+            String(process.env.STUDIO_BRAIN_LOOP_DIGEST_WEBHOOK ?? "").trim();
+          const incidents = tick.plan.actions.slice(0, 20).map((action) => ({
+            loopKey: action.loopKey,
+            lane: action.lane,
+            currentState: action.currentState,
+            escalationScore: action.escalationScore,
+            blastRadiusScore: action.blastRadiusScore,
+            anomalyScore: action.anomalyScore,
+            suggestedOwner: action.suggestedOwner,
+            hoursUntilBreach: action.hoursUntilBreach,
+            slaStatus: action.slaStatus,
+            recommendedAction: action.reason,
+            narrative: action.reason,
+          }));
+          const markdown = formatLoopDigestMarkdown({
+            generatedAt: tick.generatedAt,
+            query: tick.plan.query,
+            incidents,
+            summary: {
+              highestEscalationScore:
+                tick.plan.actions.length > 0 ? Math.max(...tick.plan.actions.map((row) => row.escalationScore)) : 0,
+              highestBlastRadiusScore: tick.plan.actions.length > 0 ? Math.max(...tick.plan.actions.map((row) => row.blastRadiusScore)) : 0,
+              ownerQueues: tick.plan.ownerQueues,
+              sla: tick.plan.sla,
+            },
+          });
+          let dispatchResult: { requested: boolean; delivered: boolean; status?: number; message?: string; webhookUrl?: string } = {
+            requested: shouldDispatch,
+            delivered: false,
+          };
+          if (shouldDispatch) {
+            if (!webhookUrl) {
+              dispatchResult = {
+                requested: true,
+                delivered: false,
+                message: "Missing webhook URL. Set STUDIO_BRAIN_LOOP_DIGEST_WEBHOOK or pass webhookUrl.",
+              };
+            } else {
+              try {
+                const response = await fetch(webhookUrl, {
+                  method: "POST",
+                  headers: {
+                    "content-type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    text: markdown,
+                    tick,
+                  }),
+                });
+                dispatchResult = {
+                  requested: true,
+                  delivered: response.ok,
+                  status: response.status,
+                  webhookUrl,
+                  message: response.ok ? "Delivered." : `Webhook returned HTTP ${response.status}.`,
+                };
+              } catch (error) {
+                dispatchResult = {
+                  requested: true,
+                  delivered: false,
+                  webhookUrl,
+                  message: error instanceof Error ? error.message : String(error),
+                };
+              }
+            }
+          }
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(
+            JSON.stringify({
+              ok: true,
+              tick,
+              dispatch: dispatchResult,
+            })
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "GET" && url.pathname === "/api/memory/loops/digest") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const tenantParam = url.searchParams.get("tenantId");
+          const query = url.searchParams.get("query");
+          const limitRaw = Number(url.searchParams.get("limit") ?? "12");
+          const incidentMinEscalationRaw = Number(url.searchParams.get("incidentMinEscalation") ?? "NaN");
+          const incidentMinBlastRadiusRaw = Number(url.searchParams.get("incidentMinBlastRadius") ?? "NaN");
+          const dispatch = toBooleanFlag(url.searchParams.get("dispatch"), false);
+          const webhookUrl =
+            String(url.searchParams.get("webhookUrl") ?? "").trim() ||
+            String(process.env.STUDIO_BRAIN_LOOP_DIGEST_WEBHOOK ?? "").trim();
+          const states = String(url.searchParams.get("states") ?? "")
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+          const lanes = String(url.searchParams.get("lanes") ?? "")
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+          const loopKeys = String(url.searchParams.get("loopKeys") ?? "")
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+          const loops = await memoryService.loops({
+            tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+            query: query === null || query.trim().length === 0 ? undefined : query.trim(),
+            sortBy: "escalation",
+            includeMemory: true,
+            includeIncidents: true,
+            states,
+            lanes,
+            loopKeys,
+            limit: Math.min(200, Math.max(30, Number.isFinite(limitRaw) ? limitRaw * 3 : 36)),
+            incidentLimit: Number.isFinite(limitRaw) ? limitRaw : 12,
+            incidentMinEscalation: Number.isFinite(incidentMinEscalationRaw) ? incidentMinEscalationRaw : undefined,
+            incidentMinBlastRadius: Number.isFinite(incidentMinBlastRadiusRaw) ? incidentMinBlastRadiusRaw : undefined,
+          });
+          const digest = {
+            generatedAt: new Date().toISOString(),
+            query: query === null || query.trim().length === 0 ? null : query.trim(),
+            incidentCount: loops.incidents.length,
+            incidents: loops.incidents,
+            summary: loops.summary,
+          };
+          const markdown = formatLoopDigestMarkdown({
+            generatedAt: digest.generatedAt,
+            query: digest.query,
+            incidents: loops.incidents,
+            summary: loops.summary as unknown as Record<string, unknown>,
+          });
+          let dispatchResult: { requested: boolean; delivered: boolean; status?: number; message?: string; webhookUrl?: string } = {
+            requested: dispatch,
+            delivered: false,
+          };
+          if (dispatch) {
+            if (!webhookUrl) {
+              dispatchResult = {
+                requested: true,
+                delivered: false,
+                message: "Missing webhook URL. Set STUDIO_BRAIN_LOOP_DIGEST_WEBHOOK or pass webhookUrl.",
+              };
+            } else {
+              try {
+                const response = await fetch(webhookUrl, {
+                  method: "POST",
+                  headers: {
+                    "content-type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    text: markdown,
+                    digest,
+                  }),
+                });
+                dispatchResult = {
+                  requested: true,
+                  delivered: response.ok,
+                  status: response.status,
+                  webhookUrl,
+                  message: response.ok ? "Delivered." : `Webhook returned HTTP ${response.status}.`,
+                };
+              } catch (error) {
+                dispatchResult = {
+                  requested: true,
+                  delivered: false,
+                  webhookUrl,
+                  message: error instanceof Error ? error.message : String(error),
+                };
+              }
+            }
+          }
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(
+            JSON.stringify({
+              ok: true,
+              digest: {
+                ...digest,
+                markdown,
+              },
+              dispatch: dispatchResult,
+            })
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "POST" && url.pathname === "/api/memory/import") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const payload = await readJsonBody(req);
+          let result;
+          activeImportRequests += 1;
+          try {
+            result = await memoryService.importBatch(payload);
+          } finally {
+            activeImportRequests = Math.max(0, activeImportRequests - 1);
+          }
+          const shouldDispatch = toBooleanFlag(String((payload as Record<string, unknown>).dispatch ?? "").trim(), false);
+          const webhookUrl =
+            String((payload as Record<string, unknown>).webhookUrl ?? "").trim() ||
+            String(process.env.STUDIO_BRAIN_LOOP_DIGEST_WEBHOOK ?? "").trim();
+          let dispatchResult: { requested: boolean; delivered: boolean; status?: number; message?: string; webhookUrl?: string } = {
+            requested: shouldDispatch,
+            delivered: false,
+          };
+          if (shouldDispatch) {
+            if (!result.briefing) {
+              dispatchResult = {
+                requested: true,
+                delivered: false,
+                message: "No briefing was generated for this import. Enable generateBriefing or import mail-like sources.",
+              };
+            } else if (!webhookUrl) {
+              dispatchResult = {
+                requested: true,
+                delivered: false,
+                message: "Missing webhook URL. Set STUDIO_BRAIN_LOOP_DIGEST_WEBHOOK or pass webhookUrl.",
+              };
+            } else {
+              const markdown = formatLoopDigestMarkdown({
+                generatedAt: result.briefing.generatedAt,
+                query: result.briefing.query,
+                incidents: result.briefing.incidents,
+                summary: result.briefing.summary as unknown as Record<string, unknown>,
+              });
+              const actionHeadlines = result.briefing.actionPlan.actions
+                .slice(0, 5)
+                .map((row, index) => `${index + 1}. [${row.priority.toUpperCase()}] ${row.action} ${row.loopKey} (${row.reason})`)
+                .join("\n");
+              const text = actionHeadlines
+                ? `${markdown}\n\n# Recommended Actions\n${actionHeadlines}`
+                : markdown;
+              try {
+                const response = await fetch(webhookUrl, {
+                  method: "POST",
+                  headers: {
+                    "content-type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    text,
+                    briefing: result.briefing,
+                    result,
+                  }),
+                });
+                dispatchResult = {
+                  requested: true,
+                  delivered: response.ok,
+                  status: response.status,
+                  webhookUrl,
+                  message: response.ok ? "Delivered." : `Webhook returned HTTP ${response.status}.`,
+                };
+              } catch (error) {
+                dispatchResult = {
+                  requested: true,
+                  delivered: false,
+                  webhookUrl,
+                  message: error instanceof Error ? error.message : String(error),
+                };
+              }
+            }
+          }
+          statusCode = 201;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(
+            JSON.stringify({
+              ok: true,
+              result,
+              briefing: result.briefing ?? null,
+              dispatch: dispatchResult,
+            })
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "POST" && url.pathname === "/api/memory/backfill-email-threading") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const pressure = memoryPressureSnapshot();
+        if (
+          pressure.activeImportRequests >= memoryPressureConfig.maxActiveImportsBeforeBackfill ||
+          pressure.activeBackfillRequests >= memoryPressureConfig.maxConcurrentBackfills
+        ) {
+          const reason =
+            pressure.activeImportRequests >= memoryPressureConfig.maxActiveImportsBeforeBackfill
+              ? "active-import-pressure"
+              : "backfill-concurrency-limit";
+          statusCode = 503;
+          res.writeHead(
+            statusCode,
+            withSecurityHeaders({
+              "content-type": "application/json",
+              ...corsHeaders,
+              "x-request-id": requestId,
+              "retry-after": String(memoryPressureConfig.retryAfterSeconds),
+            })
+          );
+          res.end(
+            JSON.stringify({
+              ok: false,
+              message: "Backfill deferred due current memory ingest pressure.",
+              reason,
+              retryAfterSeconds: memoryPressureConfig.retryAfterSeconds,
+              pressure,
+            })
+          );
+          return;
+        }
+        try {
+          const payload = await readJsonBody(req);
+          let result;
+          activeBackfillRequests += 1;
+          try {
+            result = await memoryService.backfillEmailThreading(payload);
+          } finally {
+            activeBackfillRequests = Math.max(0, activeBackfillRequests - 1);
+          }
+          logger.info("memory_backfill_email_threading_summary", {
+            requestId,
+            tenantId: result.tenantId ?? null,
+            dryRun: result.dryRun,
+            scanned: result.scanned,
+            eligible: result.eligible,
+            updated: result.updated,
+            skipped: result.skipped,
+            failed: result.failed,
+            writesAttempted: result.writesAttempted ?? 0,
+            maxWrites: result.maxWrites ?? 0,
+            timeoutErrors: result.timeoutErrors ?? 0,
+            stopReason: result.stopReason ?? null,
+            convergence: result.convergence ?? null,
+            pressure: memoryPressureSnapshot(),
+          });
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, result }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "POST" && url.pathname === "/api/memory/backfill-signal-indexing") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const pressure = memoryPressureSnapshot();
+        if (
+          pressure.activeImportRequests >= memoryPressureConfig.maxActiveImportsBeforeBackfill ||
+          pressure.activeBackfillRequests >= memoryPressureConfig.maxConcurrentBackfills
+        ) {
+          const reason =
+            pressure.activeImportRequests >= memoryPressureConfig.maxActiveImportsBeforeBackfill
+              ? "active-import-pressure"
+              : "backfill-concurrency-limit";
+          statusCode = 503;
+          res.writeHead(
+            statusCode,
+            withSecurityHeaders({
+              "content-type": "application/json",
+              ...corsHeaders,
+              "x-request-id": requestId,
+              "retry-after": String(memoryPressureConfig.retryAfterSeconds),
+            })
+          );
+          res.end(
+            JSON.stringify({
+              ok: false,
+              message: "Backfill deferred due current memory ingest pressure.",
+              reason,
+              retryAfterSeconds: memoryPressureConfig.retryAfterSeconds,
+              pressure,
+            })
+          );
+          return;
+        }
+        try {
+          const payload = await readJsonBody(req);
+          let result;
+          activeBackfillRequests += 1;
+          try {
+            result = await memoryService.backfillSignalIndexing(payload);
+          } finally {
+            activeBackfillRequests = Math.max(0, activeBackfillRequests - 1);
+          }
+          logger.info("memory_backfill_signal_indexing_summary", {
+            requestId,
+            tenantId: result.tenantId ?? null,
+            dryRun: result.dryRun,
+            scanned: result.scanned,
+            eligible: result.eligible,
+            updated: result.updated,
+            skipped: result.skipped,
+            failed: result.failed,
+            writesAttempted: result.writesAttempted ?? 0,
+            maxWrites: result.maxWrites ?? 0,
+            timeoutErrors: result.timeoutErrors ?? 0,
+            alreadyIndexedSkipped: result.alreadyIndexedSkipped ?? 0,
+            loopStateUpdates: result.loopStateUpdates ?? 0,
+            relationshipInference: result.relationshipInference ?? null,
+            relationshipProbes: result.relationshipInference?.probes ?? 0,
+            relationshipEdgesAdded: result.relationshipInference?.inferredEdgesAdded ?? 0,
+            stopReason: result.stopReason ?? null,
+            convergence: result.convergence ?? null,
+            pressure: memoryPressureSnapshot(),
+          });
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, result }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
         return;
       }
 

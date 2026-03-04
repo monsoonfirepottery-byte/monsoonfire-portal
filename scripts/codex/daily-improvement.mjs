@@ -1266,6 +1266,66 @@ async function main() {
     return;
   }
 
+  if (!options.force && options.includeGithub) {
+    const repoSlugForDuplicateCheck = parseRepoSlug();
+    if (repoSlugForDuplicateCheck) {
+      const ghVersion = runGh(["--version"], { allowFailure: true });
+      const authStatus = runGh(["auth", "status"], { allowFailure: true });
+      if (ghVersion.ok && authStatus.ok) {
+        const existingRollingResp = runGhJson([
+          "issue",
+          "list",
+          "--repo",
+          repoSlugForDuplicateCheck,
+          "--state",
+          "open",
+          "--search",
+          `"${rollingIssueTitle}" in:title`,
+          "--limit",
+          "5",
+          "--json",
+          "number,title,url",
+        ]);
+        if (existingRollingResp.ok && Array.isArray(existingRollingResp.data)) {
+          const exact = existingRollingResp.data.find((issue) => issue.title === rollingIssueTitle);
+          if (exact?.number) {
+            const runMarker = `codex-improvement-rollup-run:${runInfo.runId}`;
+            const latestRollingComment = fetchLatestIssueCommentBody(
+              repoSlugForDuplicateCheck,
+              Number(exact.number)
+            );
+            if (latestRollingComment.includes(`<!-- ${runMarker} -->`)) {
+              const skipped = {
+                status: "skipped",
+                reason: `Run ${runInfo.runId} already processed by rolling issue marker`,
+                runId: runInfo.runId,
+                timeZone: TZ,
+                rollingIssue: exact.url || null,
+              };
+              await appendToolcall({
+                actor: detectRunActor(),
+                tool: "daily-improvement",
+                action: "skip-duplicate-run-rolling",
+                ok: true,
+                durationMs: Date.now() - runStartedAt.getTime(),
+                context: {
+                  runId: runInfo.runId,
+                  rollingIssue: exact.url || null,
+                },
+              });
+              if (options.asJson) {
+                process.stdout.write(`${JSON.stringify(skipped, null, 2)}\n`);
+              } else {
+                process.stdout.write(`skipped: ${skipped.reason}\n`);
+              }
+              return;
+            }
+          }
+        }
+      }
+    }
+  }
+
   const startupMemoryContext = await loadAutomationStartupMemoryContextSafe({
     tool: "daily-improvement",
     runId: runInfo.runId,

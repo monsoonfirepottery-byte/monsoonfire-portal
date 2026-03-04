@@ -48,6 +48,7 @@
     "website:ga:content:opportunities": "node ./scripts/build-website-ga-content-opportunities.mjs --json",
     "website:ga:dashboard:weekly": "node ./scripts/build-website-ga-weekly-dashboard.mjs --json",
     "website:ga:roadmap:readiness": "node ./scripts/check-website-ga-roadmap-readiness.mjs --json",
+    "website:ga:roadmap:handoff": "node ./scripts/run-website-ga-roadmap-handoff.mjs --json",
     "studio:ga:monthly:report": "node ./scripts/build-studio-ga-monthly-review-report.mjs --json",
     "functions:smoke:cors": "node ./scripts/functions-cors-smoke.mjs",
     "functions:profile:coldstart": "node ./scripts/functions-coldstart-profile.mjs --artifact output/functions-coldstart-profile/latest.json",

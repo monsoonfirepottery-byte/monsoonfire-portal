@@ -2014,8 +2014,24 @@ async function main() {
       }
     }
 
+    const openFocusedPr = prList.find((pr) => {
+      if (String(pr?.state || "").toLowerCase() !== "open") return false;
+      const head = String(pr?.headRefName || "").trim();
+      if (!head) return false;
+      if (head.includes(runInfo.runId)) return false;
+      if (/^codex\/(interaction-improve|auto-improve|auto-pr-green|pr-green)\//i.test(head)) return false;
+      if (hasAutomationLabel(pr)) return false;
+      return true;
+    });
+    if (openFocusedPr) {
+      notes.push(
+        `Structural PR creation suppressed: focused PR already open (${String(
+          openFocusedPr.url || openFocusedPr.headRefName || "unknown"
+        )}).`
+      );
+    }
     const shouldAttemptStructuralPr =
-      structuralDecision.mode === "Triggered" && structuralDocChangesAvailable;
+      structuralDecision.mode === "Triggered" && structuralDocChangesAvailable && !openFocusedPr;
 
     if (shouldAttemptStructuralPr) {
       const sharedEntry = sharedCoordination?.automationPrByRunId?.[runInfo.runId];

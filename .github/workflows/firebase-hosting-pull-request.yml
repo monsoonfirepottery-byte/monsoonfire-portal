@@ -55,7 +55,7 @@ jobs:
         continue-on-error: true
         env:
           FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
-        run: node ./scripts/prune-firebase-preview-channels.mjs --project monsoonfire-portal --prefix pr --keep 60 --max-delete 30 --json
+        run: node ./scripts/prune-firebase-preview-channels.mjs --project monsoonfire-portal --prefix pr --keep 20 --max-delete 80 --json
       - name: Deploy preview channel
         if: ${{ env.IS_DEPENDABOT_PR != 'true' }}
         uses: FirebaseExtended/action-hosting-deploy@092436dca3ec6dacb231d965ae56f7ff6c09f258

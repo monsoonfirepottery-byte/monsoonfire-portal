@@ -463,10 +463,36 @@ function buildMarkdown(report) {
   return lines.join("\n");
 }
 
+async function loadDashboardWithFallback(options, report) {
+  try {
+    const dashboardRaw = await readFile(options.dashboardPath, "utf8");
+    return parseDashboard(dashboardRaw);
+  } catch (error) {
+    const code = String(error?.code || "").trim();
+    if (code !== "ENOENT") throw error;
+
+    report.notes.push(
+      `Dashboard snapshot missing at ${options.dashboardPath}; generating fresh portal automation dashboard.`
+    );
+    const dashboardScriptPath = resolve(repoRoot, "scripts", "portal-automation-health-dashboard.mjs");
+    const generated = runCommand(process.execPath, [dashboardScriptPath, "--json"], { allowFailure: true });
+    if (!generated.ok) {
+      throw new Error(
+        `Failed to generate dashboard snapshot automatically: ${short(generated.stderr || generated.stdout, 240)}`
+      );
+    }
+
+    try {
+      return parseDashboard(generated.stdout || "{}");
+    } catch {
+      const dashboardRaw = await readFile(options.dashboardPath, "utf8");
+      return parseDashboard(dashboardRaw);
+    }
+  }
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const dashboardRaw = await readFile(options.dashboardPath, "utf8");
-  const dashboard = parseDashboard(dashboardRaw);
 
   const report = {
     status: "ok",
@@ -480,6 +506,7 @@ async function main() {
     rollingUpdates: [],
     notes: [],
   };
+  const dashboard = await loadDashboardWithFallback(options, report);
 
   const repoSlug = parseRepoSlug();
   if (!repoSlug) {

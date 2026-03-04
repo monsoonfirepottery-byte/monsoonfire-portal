@@ -6,6 +6,7 @@ import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promise
 import { spawnSync } from "node:child_process";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { captureAutomationMemory } from "./open-memory-automation.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..", "..");
@@ -257,7 +258,13 @@ function matchLine(content, regex, fallback = "") {
 
 function normalizeTicketStatus(raw = "Unknown") {
   const value = String(raw || "").toLowerCase();
-  if (value.includes("complete") || value.includes("done")) {
+  if (
+    value.includes("complete") ||
+    value.includes("completed") ||
+    value.includes("done") ||
+    value.includes("closed") ||
+    value.includes("resolved")
+  ) {
     return "done";
   }
   if (value.includes("blocked") || value.includes("hold")) {
@@ -344,6 +351,54 @@ function buildIssueBody(task, runId, marker, ticketRefUrl) {
   return `${lines.join("\n")}\n`;
 }
 
+function buildRollingCommentSignature({
+  queueTotal,
+  includedCount,
+  excludedCount,
+  ownerCounts,
+  createdIssueUrls,
+  linkedIssueUrls,
+  topTasks,
+  notes,
+}) {
+  const payload = JSON.stringify({
+    queueTotal: Number(queueTotal || 0),
+    includedCount: Number(includedCount || 0),
+    excludedCount: Number(excludedCount || 0),
+    ownerCounts: (Array.isArray(ownerCounts) ? ownerCounts : []).map((entry) => ({
+      owner: String(entry?.owner || ""),
+      count: Number(entry?.count || 0),
+    })),
+    createdIssueUrls: (Array.isArray(createdIssueUrls) ? createdIssueUrls : []).map((entry) => String(entry || "")),
+    linkedIssueUrls: (Array.isArray(linkedIssueUrls) ? linkedIssueUrls : []).map((entry) => String(entry || "")),
+    topTasks: (Array.isArray(topTasks) ? topTasks : []).map((task) => ({
+      ticketRef: String(task?.ticketRef || ""),
+      ticketTitle: String(task?.ticketTitle || ""),
+      epicPriority: String(task?.epicPriority || ""),
+      ticketPriority: String(task?.ticketPriority || ""),
+    })),
+    notes: (Array.isArray(notes) ? notes : []).map((entry) => String(entry || "")),
+  });
+
+  let hash = 2166136261;
+  for (let index = 0; index < payload.length; index += 1) {
+    hash ^= payload.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `f${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+function getLatestIssueCommentBody(repoSlug, issueNumber) {
+  const response = runGhJson(
+    ["issue", "view", String(issueNumber), "--repo", repoSlug, "--json", "comments"],
+    { allowFailure: true }
+  );
+  if (!response.ok || !response.data || typeof response.data !== "object") return "";
+  const comments = Array.isArray(response.data.comments) ? response.data.comments : [];
+  const latest = comments.length > 0 ? comments[comments.length - 1] : null;
+  return String(latest?.body || "");
+}
+
 function buildRollingComment({
   generatedAtIso,
   runId,
@@ -355,6 +410,7 @@ function buildRollingComment({
   linkedIssueUrls,
   topTasks,
   notes,
+  marker = "",
 }) {
   const lines = [];
   lines.push(`## ${generatedAtIso} (run ${runId})`);
@@ -394,6 +450,11 @@ function buildRollingComment({
   if (notes.length > 0) {
     lines.push("### Notes");
     notes.forEach((note) => lines.push(`- ${note}`));
+    lines.push("");
+  }
+
+  if (marker) {
+    lines.push(`<!-- ${marker} -->`);
     lines.push("");
   }
 
@@ -523,7 +584,7 @@ async function collectStandaloneBacklogTasks(limit = 48) {
 
     const status = matchLine(content, /^Status:\s*(.+)$/m, "Unknown");
     const statusNormalized = normalizeTicketStatus(status);
-    if (statusNormalized === "done") {
+    if (statusNormalized === "done" || statusNormalized === "blocked") {
       continue;
     }
 
@@ -626,6 +687,17 @@ async function main() {
   const includedTasks = [];
 
   for (const task of discoveredTasks) {
+    const normalizedStatus = String(task.ticketStatusNormalized || "").toLowerCase();
+    if (normalizedStatus === "blocked" || normalizedStatus === "done") {
+      excludedTasks.push(task);
+      continue;
+    }
+
+    if (String(task.ticketRef || "").toLowerCase() === "tickets/readme.md") {
+      excludedTasks.push(task);
+      continue;
+    }
+
     const sample = `${task.ticketRef || ""} ${task.ticketTitle || ""} ${task.epic || ""} ${task.epicTitle || ""}`;
     if (excludeRegex && excludeRegex.test(sample)) {
       excludedTasks.push(task);
@@ -662,6 +734,8 @@ async function main() {
     linked: [],
   };
   let rollingIssueUrl = "";
+  let rollingCommentSignature = "";
+  let rollingCommentSkipped = false;
 
   if (options.apply && githubAvailable) {
     await ensureGhLabel(repoSlug, "automation", "1d76db", "Automation-generated work", true);
@@ -676,18 +750,23 @@ async function main() {
         "--repo",
         repoSlug,
         "--state",
-        "open",
+        "all",
         "--search",
         `"${marker}" in:body`,
         "--limit",
-        "1",
+        "5",
         "--json",
-        "number,url,title",
+        "number,url,title,state,updatedAt,closedAt",
       ]);
 
       if (existingResp.ok && Array.isArray(existingResp.data) && existingResp.data.length > 0) {
-        issueActions.linked.push(existingResp.data[0].url);
-        continue;
+        const openMatch = existingResp.data.find(
+          (issue) => String(issue?.state || "").toLowerCase() === "open"
+        );
+        if (openMatch?.url) {
+          issueActions.linked.push(openMatch.url);
+          continue;
+        }
       }
 
       const ticketRefUrl = `https://github.com/${repoSlug}/blob/main/${task.ticketRef}`;
@@ -770,9 +849,7 @@ async function main() {
     }
 
     if (rollingIssueNumber) {
-      const comment = buildRollingComment({
-        generatedAtIso,
-        runId,
+      rollingCommentSignature = buildRollingCommentSignature({
         queueTotal: discoveredTasks.length,
         includedCount: includedTasks.length,
         excludedCount: excludedTasks.length,
@@ -782,20 +859,44 @@ async function main() {
         topTasks: topCandidates,
         notes,
       });
+      const marker = `codex-backlog-rollup-signature:${rollingCommentSignature}`;
+      const latestBody = getLatestIssueCommentBody(repoSlug, rollingIssueNumber);
+      const unchanged = latestBody.includes(`<!-- ${marker} -->`);
+      rollingCommentSkipped = unchanged;
 
-      runGh(
-        [
-          "issue",
-          "comment",
-          String(rollingIssueNumber),
-          "--repo",
-          repoSlug,
-          "--body",
-          comment,
-        ],
-        { allowFailure: true }
-      );
+      if (!unchanged) {
+        const comment = buildRollingComment({
+          generatedAtIso,
+          runId,
+          queueTotal: discoveredTasks.length,
+          includedCount: includedTasks.length,
+          excludedCount: excludedTasks.length,
+          ownerCounts: ownerBuckets,
+          createdIssueUrls: issueActions.created,
+          linkedIssueUrls: issueActions.linked,
+          topTasks: topCandidates,
+          notes,
+          marker,
+        });
+
+        runGh(
+          [
+            "issue",
+            "comment",
+            String(rollingIssueNumber),
+            "--repo",
+            repoSlug,
+            "--body",
+            comment,
+          ],
+          { allowFailure: true }
+        );
+      }
     }
+  }
+
+  if (!options.writeArtifacts) {
+    notes.push("Artifacts were not written; rerun with --write to persist JSON/Markdown reports.");
   }
 
   const output = {
@@ -828,13 +929,41 @@ async function main() {
     })),
     issueActions,
     rollingIssueUrl: rollingIssueUrl || null,
+    rollingCommentSignature: rollingCommentSignature || null,
+    rollingCommentSkipped,
     notes,
+    memory: {
+      capture: null,
+    },
     artifacts: {
+      written: options.writeArtifacts,
       reportJsonPath: relative(repoRoot, options.reportJsonPath),
       reportMarkdownPath: relative(repoRoot, options.reportMarkdownPath),
       toolcallPath: relative(repoRoot, toolcallPath),
     },
   };
+
+  output.memory.capture = await captureAutomationMemory({
+    tool: "backlog-autopilot",
+    runId,
+    status: output.status,
+    summary: {
+      discovered: discoveredTasks.length,
+      included: includedTasks.length,
+      excluded: excludedTasks.length,
+      issuesCreated: output.issueActions.created.length,
+      issuesLinked: output.issueActions.linked.length,
+      rollingCommentSkipped: output.rollingCommentSkipped,
+      githubAvailable,
+      apply: options.apply,
+    },
+    metadata: {
+      epicSelection: options.epicSelection,
+      ownerFilter: options.ownerFilter || null,
+      rollingIssueUrl: rollingIssueUrl || null,
+      rollingCommentSignature: rollingCommentSignature || null,
+    },
+  });
 
   const markdown = buildMarkdownReport(output);
 
@@ -859,6 +988,8 @@ async function main() {
       issuesCreated: issueActions.created.length,
       issuesLinked: issueActions.linked.length,
       rollingIssueUrl: rollingIssueUrl || null,
+      rollingCommentSignature: rollingCommentSignature || null,
+      rollingCommentSkipped,
       apply: options.apply,
       githubAvailable,
     },

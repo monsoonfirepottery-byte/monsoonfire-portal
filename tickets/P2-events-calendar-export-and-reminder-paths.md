@@ -1,7 +1,7 @@
 # P2 — Events: Calendar Export and Reminder Paths
 
-Status: Active
-Date: 2026-03-01
+Status: Closed
+Date: 2026-03-04
 Priority: P2
 Owner: Frontend + Member Experience
 Type: Ticket

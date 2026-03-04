@@ -1,7 +1,7 @@
 # P1 — Events: Staff Curation, Source Review, and Publishing
 
-Status: Active
-Date: 2026-03-01
+Status: Closed
+Date: 2026-03-04
 Priority: P1
 Owner: Staff Console + Program Ops
 Type: Ticket

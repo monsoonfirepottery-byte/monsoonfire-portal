@@ -1,7 +1,7 @@
 # P1 — Events: Industry Feed Contract and Normalization
 
-Status: Active
-Date: 2026-03-01
+Status: Closed
+Date: 2026-03-04
 Priority: P1
 Owner: Platform + Functions + Member Experience
 Type: Ticket

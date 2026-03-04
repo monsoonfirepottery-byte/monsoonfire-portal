@@ -582,15 +582,21 @@ async function collectStandaloneBacklogTasks(limit = 48) {
       continue;
     }
 
+    const title = matchLine(content, /^#\s*(.+)$/m, file.name.replace(/\.md$/i, ""));
+    if (/^P\d+\s+Epic\b/i.test(title)) {
+      continue;
+    }
+
     const status = matchLine(content, /^Status:\s*(.+)$/m, "Unknown");
-    const statusNormalized = normalizeTicketStatus(status);
+    const inferredDoneFromScope =
+      !/^\s*Status:\s*/im.test(content) && /##\s*Scope Implemented\b/i.test(content);
+    const statusNormalized = inferredDoneFromScope ? "done" : normalizeTicketStatus(status);
     if (statusNormalized === "done" || statusNormalized === "blocked") {
       continue;
     }
 
     const priority = matchLine(content, /^Priority:\s*(.+)$/m, "P3");
     const owner = matchLine(content, /^Owner:\s*(.+)$/m, "unassigned");
-    const title = matchLine(content, /^#\s*(.+)$/m, file.name.replace(/\.md$/i, ""));
     const parentEpic = matchLine(content, /^Parent Epic:\s*(.+)$/m, "standalone-backlog");
     const ticketRef = `tickets/${file.name}`;
 

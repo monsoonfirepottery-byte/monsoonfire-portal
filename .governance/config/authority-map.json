@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "verified_identities": [
+    {
+      "github_login": "wuff",
+      "role": "owner",
+      "tier": 1,
+      "can_approve_holds": true,
+      "can_override_for_urgent_merge": true
+    },
+    {
+      "github_login": "micah",
+      "role": "owner",
+      "tier": 1,
+      "can_approve_holds": true,
+      "can_override_for_urgent_merge": true
+    }
+  ],
+  "default_unknown_identity_tier": 5
+}
+

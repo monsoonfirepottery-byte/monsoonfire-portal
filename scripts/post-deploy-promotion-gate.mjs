@@ -57,8 +57,6 @@ function parseArgs(argv) {
     includeIndexGuard: true,
     includeJourneyCheck:
       String(process.env.PORTAL_PROMOTION_INCLUDE_JOURNEY_CHECK || "").trim().toLowerCase() !== "false",
-    requireJourneyCleanupClean:
-      String(process.env.PORTAL_PROMOTION_ALLOW_JOURNEY_CLEANUP_DEBT || "").trim().toLowerCase() !== "true",
     feedbackPath: String(process.env.PORTAL_PROMOTION_FEEDBACK_PATH || "").trim(),
     userOverrides: {
       includeVirtualStaff: false,
@@ -123,11 +121,6 @@ function parseArgs(argv) {
     if (arg === "--skip-journey-check") {
       options.includeJourneyCheck = false;
       options.userOverrides.includeJourneyCheck = true;
-      continue;
-    }
-
-    if (arg === "--allow-journey-cleanup-debt") {
-      options.requireJourneyCleanupClean = false;
       continue;
     }
 
@@ -300,7 +293,7 @@ async function main() {
   });
   steps.push(canaryStep);
 
-  if (options.includeJourneyCheck && options.requireJourneyCleanupClean && canaryStep.status !== "failed") {
+  if (options.includeJourneyCheck && canaryStep.status !== "failed") {
     const canarySummary = parseJsonSafe(canaryStep.stdout);
     const cleanupStatus = String(canarySummary?.journeyCheck?.cleanup?.status || "")
       .trim()
@@ -365,7 +358,6 @@ async function main() {
         includeIndexDeploy: options.includeIndexDeploy,
         includeIndexGuard: options.includeIndexGuard,
         includeJourneyCheck: options.includeJourneyCheck,
-        requireJourneyCleanupClean: options.requireJourneyCleanupClean,
         softFailPermissionDenied: options.softFailPermissionDenied,
       },
     },

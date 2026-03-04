@@ -1464,7 +1464,7 @@ async function main() {
   const metadataTouchDelta = metadataTouchTotal24 - Number(state?.lastMetadataTouchTotal24 || 0);
   const metadataRecommendationActionable =
     metadataUnstable &&
-    (commitsSinceLast.length > 0 || metadataTouchDelta > 0 || state?.lastRunId === "1970-01-01-AM");
+    (metadataTouchDelta > 0 || state?.lastRunId === "1970-01-01-AM");
 
   if (metadataRecommendationActionable) {
     ensureRecommendation(recommendations, {

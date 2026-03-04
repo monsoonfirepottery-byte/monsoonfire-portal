@@ -18,6 +18,7 @@ const DEFAULT_MAX_ISSUES = 6;
 const DEFAULT_MAX_PER_WORKFLOW = 2;
 const TUNING_ROLLING_ISSUE = "Portal Automation Threshold Tuning (Rolling)";
 const CANARY_ROLLING_ISSUE = "Portal Authenticated Canary Failures (Rolling)";
+const ROLLING_ONLY_SIGNATURE_KEYS = new Set(["promotion::promotion.risk.high"]);
 
 function parseArgs(argv) {
   const options = {
@@ -324,6 +325,16 @@ function isGenericSignature(signature) {
   return key.endsWith("run.failure-generic") || /without parsed signature/i.test(label);
 }
 
+function signatureKey(signature) {
+  const workflowKey = String(signature?.workflowKey || "").trim();
+  const key = String(signature?.key || "").trim();
+  return `${workflowKey}::${key}`;
+}
+
+function isRollingOnlySignature(signature) {
+  return ROLLING_ONLY_SIGNATURE_KEYS.has(signatureKey(signature));
+}
+
 function signatureGroupKey(signature) {
   const workflowKey = String(signature?.workflowKey || "workflow");
   const label = String(signature?.label || "").toLowerCase();
@@ -367,8 +378,12 @@ function selectSignatures(rawSignatures, options) {
   const filtered = withThreshold.filter(
     (entry) => options.includeGenericSignatures || !isGenericSignature(entry)
   );
+  const rollingOnlySuppressed = Array.from(
+    new Set(filtered.filter((entry) => isRollingOnlySignature(entry)).map((entry) => signatureKey(entry)))
+  );
+  const issueEligible = filtered.filter((entry) => !isRollingOnlySignature(entry));
   const dedupe = new Map();
-  for (const signature of filtered) {
+  for (const signature of issueEligible) {
     const group = signatureGroupKey(signature);
     const candidate = {
       ...signature,
@@ -403,6 +418,8 @@ function selectSignatures(rawSignatures, options) {
     eligibleCount: withThreshold.length,
     filteredCount: filtered.length,
     dedupedCount: ranked.length,
+    rollingOnlySuppressedCount: rollingOnlySuppressed.length,
+    rollingOnlySuppressed,
   };
 }
 
@@ -486,10 +503,16 @@ async function main() {
     filteredCount: signatureSelection.filteredCount,
     dedupedCount: signatureSelection.dedupedCount,
     selectedCount: signatures.length,
+    rollingOnlySuppressedCount: signatureSelection.rollingOnlySuppressedCount || 0,
   };
   if (signatureSelection.eligibleCount > signatures.length) {
     report.notes.push(
       `Signature selection reduced issue volume (${signatureSelection.eligibleCount} eligible -> ${signatures.length} selected).`
+    );
+  }
+  if ((signatureSelection.rollingOnlySuppressedCount || 0) > 0) {
+    report.notes.push(
+      `Suppressed rolling-only signatures: ${(signatureSelection.rollingOnlySuppressed || []).join(", ")}.`
     );
   }
 

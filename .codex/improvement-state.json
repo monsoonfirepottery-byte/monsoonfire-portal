@@ -1,63 +1,75 @@
 {
-  "lastRunAtIso": "2026-02-26T07:07:04.069Z",
-  "lastRunId": "2026-02-26-AM",
-  "lastSeenCommitSha": "d023aee92ff778e3250696f63381d49c6b9d80a4",
+  "lastRunAtIso": "2026-03-04T16:33:34.797Z",
+  "lastRunId": "2026-03-04-autonomous-b3",
+  "lastSeenCommitSha": "7e859bee3efab21fe5b31053f94571e6f83bea71",
   "rolling7Day": {
     "errorCounts": {},
-    "ciFailures": 46,
+    "ciFailures": 16,
     "churnFiles": {
-      "package.json": 19,
-      "WORKLOG.md": 11,
+      "scripts/portal-authenticated-canary.mjs": 16,
+      "package.json": 15,
+      "docs/runbooks/PORTAL_AUTOMATION_MATRIX.md": 15,
+      ".github/workflows/ci-smoke.yml": 12,
+      "web/src/App.css": 11,
+      "scripts/codex/daily-improvement.mjs": 10,
+      ".github/workflows/portal-post-deploy-promotion-gate.yml": 10,
       "web/src/App.tsx": 10,
-      "docs/runbooks/PR_GATE.md": 7,
-      "docs/sprints/SWARM_BOARD.md": 6,
-      "functions/src/index.ts": 6,
-      "web/src/api/portalApi.ts": 6,
-      "functions/src/apiV1.test.ts": 5,
+      "scripts/rotate-firebase-web-api-key.mjs": 9,
+      "scripts/portal-automation-issue-loop.mjs": 8,
+      "scripts/post-deploy-promotion-gate.mjs": 8,
+      ".github/workflows/portal-credential-health.yml": 8,
+      "studio-brain/.env.integrity.json": 8,
+      "package-lock.json": 7,
+      ".github/workflows/portal-pr-functional-gate.yml": 7,
+      ".github/workflows/portal-daily-authenticated-canary.yml": 7,
+      ".github/workflows/firebase-hosting-merge.yml": 7,
+      ".github/workflows/firebase-hosting-pull-request.yml": 7,
+      "scripts/credentials-health-check.mjs": 6,
+      "scripts/portal-playwright-smoke.mjs": 6,
+      "scripts/codex/automation-findings-summary.mjs": 5,
+      "web/package-lock.json": 5,
+      "scripts/codex/backlog-autopilot.mjs": 5,
+      "web/scripts/check-chunk-budgets.mjs": 5,
+      "scripts/portal-fixture-steward.mjs": 5,
+      "web/src/views/ReservationsView.css": 5,
       "web/src/views/ReservationsView.tsx": 5,
-      "web/src/views/StaffView.tsx": 5,
-      "package-lock.json": 5,
-      "website/ncsitebuilder/assets/js/main.js": 4,
-      "functions/src/apiV1.ts": 4,
-      "web/src/api/portalContracts.ts": 4,
-      "docs/SOURCE_OF_TRUTH_INDEX.md": 4,
-      "docs/EMULATOR_RUNBOOK.md": 4,
-      "tickets/P1-EPIC-14-reliability-hardening-failure-mode-first-ux.md": 4,
-      "web/src/api/functionsClient.ts": 4,
-      "web/src/views/DashboardView.tsx": 3,
-      "web/src/views/MyPiecesView.tsx": 3,
-      "web/index.html": 3,
-      "docs/cutover-verify.json": 3,
-      "web/deploy/namecheap/.htaccess": 3,
-      "web/deploy/namecheap/README.md": 3,
-      "docs/SCHEMA_RESERVATIONS.md": 3,
-      "web/src/views/SupportView.tsx": 3,
-      "functions/.env.local.example": 3,
-      "studio-brain/.env.contract.schema.json": 3,
-      "studio-brain/lib/config/env.js": 3,
-      "studio-brain/src/config/env.ts": 3
+      ".github/workflows/portal-prod-smoke.yml": 5,
+      "scripts/deploy-namecheap-portal.mjs": 5,
+      ".github/workflows/security-key-rotation.yml": 5
     },
-    "ticketsCreated": 0,
-    "ticketsClosed": 0
+    "ticketsCreated": 57,
+    "ticketsClosed": 107
   },
-  "lastRecommendations": [],
+  "lastRecommendations": [
+    "ci-deploy-to-firebase-hosting-on-pr-feat-ga-add-roadmap-live-execut",
+    "ci-smoke-tests-feat-memory-add-neighborhood-and-relationship-diagno",
+    "churn-scripts-portal-automation-issue-loop-mjs",
+    "churn-package-json",
+    "metadata-churn-unstable",
+    "skill-density-spike"
+  ],
   "recommendationOutcomes": [],
   "interactionInterrogation": {
-    "lastRunAtIso": "2026-03-03T14:26:57.939Z",
-    "lastRunId": "2026-03-03-AM",
+    "lastRunAtIso": "2026-03-04T16:34:14.570Z",
+    "lastRunId": "2026-03-04-autonomous-b3",
     "lastPatternIds": [
+      "clarification-loop-control",
       "workflow-restatement-cluster",
+      "scope-and-verbosity-balance",
+      "churn-driven-guardrails",
       "skill-density-spike"
     ],
     "lastTopRecommendations": [
+      "clarification-loop-control",
       "workflow-restatement-cluster",
-      "skill-density-spike"
+      "scope-and-verbosity-balance"
     ],
-    "lastImpactScore": 80,
+    "lastImpactScore": 100,
     "recentImpactScores": [
       100,
       100,
-      80
+      80,
+      100
     ],
     "activeRuleIds": {
       "user": [
@@ -68,26 +80,27 @@
       ],
       "agents": [
         "AGENT_BRANCH_ENFORCEMENT",
+        "AGENT_DECIDE_AFTER_ONE_CLARIFY",
         "AGENT_RETRY_STOP_TWO",
         "AGENT_SCOPE_LOCK",
         "AGENT_STRUCTURED_PR_NOTES"
       ]
     },
-    "lastRuleUpdateRunId": "2026-03-03-AM",
-    "lastStructuralEditAtIso": "2026-03-03T14:26:57.939Z",
+    "lastRuleUpdateRunId": "2026-03-04-autonomous-b3",
+    "lastStructuralEditAtIso": "2026-03-04T16:34:14.570Z",
     "lastSkillDensity": {
-      "firestore": 17,
+      "firestore": 69,
       "cloudFunctions": 0,
-      "schedulingLogic": 7,
-      "metadataConfig": 9,
+      "schedulingLogic": 50,
+      "metadataConfig": 47,
       "tooling": 0,
-      "workflowPolicy": 12,
-      "automation": 32
+      "workflowPolicy": 37,
+      "automation": 138
     },
     "lastToolFailureRate24": 0,
-    "lastErrorClusterCount": 1,
-    "lastHighChurnCount": 0,
-    "lastCiFailureRepeats": 3,
+    "lastErrorClusterCount": 2,
+    "lastHighChurnCount": 5,
+    "lastCiFailureRepeats": 2,
     "followThroughHistory": [
       {
         "runId": "2026-02-25-PM",
@@ -103,6 +116,30 @@
         "runId": "2026-03-03-AM",
         "generatedAtIso": "2026-03-03T14:26:57.939Z",
         "outcomes": []
+      },
+      {
+        "runId": "2026-03-04-autonomous-b3",
+        "generatedAtIso": "2026-03-04T16:34:14.570Z",
+        "outcomes": [
+          {
+            "id": "workflow-restatement-cluster",
+            "status": "In Progress",
+            "evidence": [
+              "Issue #115 comment: https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/115#issuecomment-3993007671",
+              "Issue #128 comment: https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/128#issuecomment-3993007476",
+              "Issue #141 comment: https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/141#issuecomment-3993007564"
+            ]
+          },
+          {
+            "id": "skill-density-spike",
+            "status": "In Progress",
+            "evidence": [
+              "automation: 138 (previous 32)",
+              "firestore: 69 (previous 17)",
+              "metadataConfig: 47 (previous 9)"
+            ]
+          }
+        ]
       }
     ]
   },
@@ -113,25 +150,32 @@
         "branch": "codex/auto-improve/2026-03-03-AM",
         "source": "shared",
         "updatedAtIso": "2026-03-03T14:26:57.939Z"
+      },
+      "2026-03-04-autonomous-b3": {
+        "url": "https://github.com/monsoonfirepottery-byte/monsoonfire-portal/pull/258",
+        "branch": "codex/auto-improve/2026-03-04-autonomous-b3",
+        "source": "shared",
+        "updatedAtIso": "2026-03-04T16:34:14.570Z"
       }
     },
-    "lastStructuralEditAtIso": ""
+    "lastStructuralEditAtIso": "2026-03-04T16:33:34.797Z"
   },
-  "lastHighChurnCount24": 0,
+  "lastHighChurnCount24": 5,
   "improvementImpactScores": [
+    100,
     100,
     100,
     100,
     100
   ],
   "skillDensityLast": {
-    "firestore": 0,
+    "firestore": 17,
     "cloudFunctions": 0,
-    "schedulingLogic": 0,
-    "metadataConfig": 0,
+    "schedulingLogic": 7,
+    "metadataConfig": 14,
     "tooling": 0,
-    "workflowPolicy": 0,
-    "automation": 0
+    "workflowPolicy": 12,
+    "automation": 32
   },
   "prGreenDaily": {
     "lastRunAtIso": "2026-02-26T07:13:56.409Z",
@@ -147,5 +191,7 @@
       "pendingChecks": 0,
       "healthScore": 100
     }
-  }
+  },
+  "lastMetadataUnstable24": true,
+  "lastMetadataTouchTotal24": 14
 }

@@ -33,9 +33,10 @@
 <!-- codex-interaction:auto:start -->
 ### Automated Structural Addenda
 
-- Last structural update: 2026-03-03-AM
+- Last structural update: 2026-03-04-autonomous-b3
 - Active rules:
 - [AGENT_BRANCH_ENFORCEMENT] Enforce PR-only delivery with protected-branch behavior; never push directly to `main`.
+- [AGENT_DECIDE_AFTER_ONE_CLARIFY] Ask at most one clarification when risk is bounded; then execute with explicit assumptions to reduce back-and-forth loops.
 - [AGENT_RETRY_STOP_TWO] After two identical tool failures, stop blind retries and switch strategy with a classified failure note.
 - [AGENT_SCOPE_LOCK] Reject out-of-scope edits unless explicitly requested by user constraints.
 - [AGENT_STRUCTURED_PR_NOTES] PR updates must include friction evidence, structural rationale, risk assessment, and QA observation guidance.

@@ -56,6 +56,21 @@ const secretValuePatterns = [
   /(sk-[A-Za-z0-9]{20,})/g,
 ];
 
+const toolFailureSuppressionRules = [
+  {
+    errorType: /^runtime_error$/i,
+    message: /Refusing --apply run on dirty worktree/i,
+  },
+  {
+    errorType: /^runtime_error$/i,
+    message: /would be overwritten by checkout/i,
+  },
+  {
+    errorType: /^runtime_error$/i,
+    message: /Missing value for --(?:help|allow-dirty|state-only|run-id)/i,
+  },
+];
+
 const AUTO_START = "<!-- codex-interaction:auto:start -->";
 const AUTO_END = "<!-- codex-interaction:auto:end -->";
 
@@ -1100,6 +1115,19 @@ function countBy(items, keyFn) {
   return counts;
 }
 
+function shouldSuppressToolFailureEntry(entry) {
+  if (!entry || entry.ok !== false) return false;
+  const errorType = String(entry?.errorType || "").trim();
+  const errorMessage = String(entry?.errorMessage || "").trim();
+  if (!errorMessage) return false;
+
+  return toolFailureSuppressionRules.some((rule) => {
+    const typeOk = rule.errorType ? rule.errorType.test(errorType) : true;
+    if (!typeOk) return false;
+    return rule.message.test(errorMessage);
+  });
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const runStartedAt = new Date();
@@ -1228,9 +1256,11 @@ async function main() {
   const toolcallData = await readToolcalls();
   const calls24 = filterByTimeWindow(toolcallData.entries, "tsIso", start24Ms);
   const failures24 = calls24.filter((entry) => entry?.ok === false);
-  const toolFailureRate24 = calls24.length === 0 ? 0 : failures24.length / calls24.length;
+  const suppressedFailures24 = failures24.filter((entry) => shouldSuppressToolFailureEntry(entry));
+  const actionableFailures24 = failures24.filter((entry) => !shouldSuppressToolFailureEntry(entry));
+  const toolFailureRate24 = calls24.length === 0 ? 0 : actionableFailures24.length / calls24.length;
 
-  const retryClusterMap = countBy(failures24, (entry) => {
+  const retryClusterMap = countBy(actionableFailures24, (entry) => {
     const tool = String(entry?.tool || "").trim();
     const action = String(entry?.action || "").trim();
     if (!tool || !action) return "";
@@ -1238,12 +1268,17 @@ async function main() {
   });
   const retryClusters = Array.from(retryClusterMap.entries()).filter(([, count]) => count >= 2);
 
-  const errorClusterMap = countBy(failures24, (entry) => String(entry?.errorType || "").trim());
+  const errorClusterMap = countBy(actionableFailures24, (entry) => String(entry?.errorType || "").trim());
   const repeatedErrorClusters = Array.from(errorClusterMap.entries()).filter(
     ([name, count]) => name && count >= 2
   );
 
   const notes = [];
+  if (suppressedFailures24.length > 0) {
+    notes.push(
+      `Suppressed ${suppressedFailures24.length} non-actionable tool failure event(s) from interaction clustering.`
+    );
+  }
   const repoSlug = parseRepoSlug();
   let githubAvailable = false;
   let prList = [];
@@ -1776,7 +1811,7 @@ async function main() {
     metadataConfig:
       metadataChanges24.reduce((sum, item) => sum + item.touches, 0) +
       textEntries.filter((entry) => /\b(config|metadata|workflow file|github workflow)\b/i.test(entry.text)).length,
-    tooling: failures24.length + retryClusters.length,
+    tooling: actionableFailures24.length + retryClusters.length,
     workflowPolicy:
       branchProtectionPattern.count +
       workflowRestatementCount +
@@ -2030,8 +2065,21 @@ async function main() {
         )}).`
       );
     }
+    const currentBranchForAutomation = runGit(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.trim();
+    const branchGuardTriggered =
+      Boolean(currentBranchForAutomation) &&
+      currentBranchForAutomation !== "main" &&
+      !/^codex\/interaction-improve\//i.test(currentBranchForAutomation);
+    if (branchGuardTriggered) {
+      notes.push(
+        `Structural PR creation suppressed: current branch is ${currentBranchForAutomation}; switch to main before apply runs.`
+      );
+    }
     const shouldAttemptStructuralPr =
-      structuralDecision.mode === "Triggered" && structuralDocChangesAvailable && !openFocusedPr;
+      structuralDecision.mode === "Triggered" &&
+      structuralDocChangesAvailable &&
+      !openFocusedPr &&
+      !branchGuardTriggered;
 
     if (shouldAttemptStructuralPr) {
       const sharedEntry = sharedCoordination?.automationPrByRunId?.[runInfo.runId];

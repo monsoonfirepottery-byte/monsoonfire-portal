@@ -83,7 +83,12 @@ jobs:
       - name: Mint Rules API access token (rules checks)
         if: ${{ env.IS_DEPENDABOT_PR != 'true' }}
         id: rules_token
-        run: echo "access_token=$(gcloud auth print-access-token)" >> "$GITHUB_OUTPUT"
+        run: |
+          token="$(gcloud auth print-access-token)"
+          if [ -n "$token" ]; then
+            echo "::add-mask::$token"
+            echo "access_token=$token" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install root deps
         run: npm ci
@@ -144,6 +149,27 @@ jobs:
 
       - name: Codex docs drift strict audit
         run: npm run codex:docs:drift:strict
+
+      - name: Intent contract validate strict
+        run: npm run intent:validate:strict
+
+      - name: Intent eval gate (changed intents)
+        run: npm run intent:eval:gate
+
+      - name: Intent policy gate
+        run: npm run intent:policy:gate
+
+      - name: Intent budget preflight gate
+        run: npm run intent:budget:preflight
+
+      - name: Intent plan drift strict gate
+        run: npm run intent:drift:strict
+
+      - name: Intent runner unit tests
+        run: npm run test:intent:runner
+
+      - name: Intent runner plan smoke
+        run: npm run intent:run -- --report output/intent/intent-run-report-ci.json --ledger output/intent/intent-run-ledger-ci.jsonl
 
       - name: Ephemeral artifact tracking guard
         run: npm run guard:ephemeral:artifacts

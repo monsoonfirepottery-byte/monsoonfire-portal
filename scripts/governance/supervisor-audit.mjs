@@ -596,6 +596,7 @@ async function main() {
     }
   }
 
+  const eventType = classifyPrimaryEventType(findings);
   const severity = classifySeverity(findings);
   const highCount = findings.filter((row) => row.severity === "high" || row.severity === "critical").length;
   const mediumCount = findings.filter((row) => row.severity === "medium").length;
@@ -763,7 +764,6 @@ async function main() {
     recommendationReason = "hold_cap_reached";
   }
 
-  const eventType = classifyPrimaryEventType(findings);
   const maxQuestions = Number(thresholds.human_question_protocol?.max_questions_per_cycle || 3);
   const questions = buildQuestions(findings, maxQuestions);
 

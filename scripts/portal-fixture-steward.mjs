@@ -185,6 +185,10 @@ function encodeDocPath(path) {
     .join("/");
 }
 
+function isPermissionDeniedStatus(status) {
+  return status === 401 || status === 403;
+}
+
 function formatPhoenixDate(date = new Date()) {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Phoenix",
@@ -570,14 +574,24 @@ async function main() {
 
   for (const result of upsertResults) {
     const ok = result.response.ok;
+    const permissionDenied = !ok && isPermissionDeniedStatus(result.response.status);
     summary.steps.push({
       step: result.step,
-      status: ok ? "passed" : "failed",
+      status: ok ? "passed" : permissionDenied ? "skipped" : "failed",
       httpStatus: result.response.status,
     });
 
     if (!ok) {
       const message = result.response.json?.error?.message || result.response.json?.raw || "unknown error";
+      if (permissionDenied) {
+        summary.warnings.push(
+          `${result.step} skipped due Firestore permissions (${result.response.status}): ${truncate(
+            String(message),
+            280
+          )}`
+        );
+        continue;
+      }
       if ((result.step === "upsert notification" || result.step === "upsert workshop event") && !summary.usedAdminToken) {
         summary.warnings.push(
           `${result.step === "upsert notification" ? "Notification" : "Workshop"} fixture seed skipped without admin token: ${truncate(String(message), 280)}`
@@ -600,14 +614,21 @@ async function main() {
   for (const checkItem of validations) {
     const response = await fireGet(options.projectId, firestoreToken, checkItem.path);
     const passed = response.ok;
+    const permissionDenied = !passed && isPermissionDeniedStatus(response.status);
 
     summary.steps.push({
       step: `validate ${checkItem.key}`,
-      status: passed ? "passed" : "failed",
+      status: passed ? "passed" : permissionDenied ? "skipped" : "failed",
       httpStatus: response.status,
     });
 
     if (!passed) {
+      if (permissionDenied) {
+        summary.warnings.push(
+          `Fixture validation skipped for ${checkItem.key} due Firestore permissions (${response.status}).`
+        );
+        continue;
+      }
       if ((checkItem.key === "notification" || checkItem.key === "workshopEvent") && !summary.usedAdminToken) {
         summary.warnings.push(
           `${checkItem.key === "notification" ? "Notification" : "Workshop"} fixture validation skipped without admin token (status ${response.status}).`

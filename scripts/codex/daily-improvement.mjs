@@ -50,6 +50,7 @@ const metadataMatchers = [
 const automationSelfChurnMatchers = [
   /^scripts\/codex\/daily-improvement\.mjs$/,
   /^scripts\/codex\/backlog-autopilot\.mjs$/,
+  /^docs\/runbooks\/codex-improvement\/[^/]+\.md$/,
 ];
 
 const secretKeyPattern = /(token|secret|password|authorization|api[_-]?key|cookie|session|private[_-]?key)/i;

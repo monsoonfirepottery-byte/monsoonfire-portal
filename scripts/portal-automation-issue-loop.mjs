@@ -413,6 +413,15 @@ function signaturePriorityScore(signature) {
   return score;
 }
 
+function buildRollingMarkerCandidates(config) {
+  const markerHash = stableHash(config?.signaturePayload || {});
+  const prefixes = [config?.markerPrefix, ...(Array.isArray(config?.markerAliases) ? config.markerAliases : [])]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const uniquePrefixes = Array.from(new Set(prefixes));
+  return uniquePrefixes.map((prefix) => `${prefix}:${markerHash}`);
+}
+
 function selectSignatures(rawSignatures, options) {
   const withThreshold = (Array.isArray(rawSignatures) ? rawSignatures : []).filter(
     (entry) => Number(entry?.count || 0) >= options.repeatedThreshold
@@ -677,10 +686,7 @@ async function main() {
   ];
 
   for (const config of rollingConfigs) {
-    const markerHash = stableHash(config.signaturePayload);
-    const markerCandidates = [config.markerPrefix, ...(config.markerAliases || [])].map(
-      (prefix) => `${prefix}:${markerHash}`
-    );
+    const markerCandidates = buildRollingMarkerCandidates(config);
     const marker = markerCandidates[0];
     const commentBody = config.buildComment(marker);
     const existing = findIssueByTitle(repoSlug, config.title);

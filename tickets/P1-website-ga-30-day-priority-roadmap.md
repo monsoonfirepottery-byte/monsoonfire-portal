@@ -127,3 +127,15 @@ Sprint 4 completion update (2026-02-28):
   - run monthly/weekly operating cadence against real GA exports,
   - ship and evaluate at least 2 live experiments,
   - post day-30 wins/losses and next-quarter backlog outcomes.
+
+## Roadmap unblock pack update (2026-03-04)
+- Added deterministic owner-handoff assets for live execution:
+  - `docs/runbooks/WEBSITE_GA_30_DAY_EXECUTION_HANDOFF.md`
+  - `docs/analytics/WEBSITE_GA_LIVE_EXECUTION_HANDOFF_TEMPLATE.md`
+  - `scripts/check-website-ga-roadmap-readiness.mjs`
+- Added readiness verification command:
+  - `npm run website:ga:roadmap:readiness -- --strict`
+- This does not remove the external dependency. It reduces restart friction once owner-side access/data is available.
+- Remaining external blockers:
+  - live GA property export access in owner environment
+  - live-traffic experiment windows and outcome data

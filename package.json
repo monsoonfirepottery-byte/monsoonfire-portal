@@ -243,6 +243,8 @@
     "open-memory:pst:resume": "node ./scripts/pst-memory-resume.mjs",
     "open-memory:pst:relationship:dashboard": "node ./scripts/pst-memory-relationship-dashboard.mjs --json",
     "open-memory:pst:relationship:dashboard:strict": "node ./scripts/pst-memory-relationship-dashboard.mjs --strict --json",
+    "open-memory:pst:relationship:monitor": "node ./scripts/pst-memory-relationship-monitor.mjs --json",
+    "open-memory:pst:relationship:monitor:apply": "node ./scripts/pst-memory-relationship-monitor.mjs --apply --json",
     "open-memory:pst:continuity:smoke": "node ./scripts/pst-memory-continuity-smoke.mjs --strict --json",
     "open-memory:pst:continuity:gate": "npm run --silent open-memory:pst:continuity:smoke && npm run --silent open-memory:pst:relationship:dashboard:strict",
     "open-memory:context:slice": "node ./scripts/build-memory-context-slice.mjs",

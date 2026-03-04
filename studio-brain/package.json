@@ -19,7 +19,7 @@
     "infra:deps": "npm run compose:validate && npm run healthcheck",
     "infra:integration": "npm run test:infra",
     "export:audit": "npm run build && node lib/cli/exportAudit.js",
-    "lint:policy": "npm run build && node lib/cli/policyLint.js",
+    "lint:policy": "node lib/cli/policyLint.js",
     "rebuild": "npm run build && node lib/cli/rebuild.js"
   },
   "dependencies": {

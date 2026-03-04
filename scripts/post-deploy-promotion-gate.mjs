@@ -3,6 +3,7 @@
 /* eslint-disable no-console */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -12,6 +13,37 @@ const repoRoot = resolve(dirname(__filename), "..");
 
 const DEFAULT_BASE_URL = "https://portal.monsoonfire.com";
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "post-deploy-promotion-gate.json");
+const DEFAULT_PORTAL_AUTOMATION_ENV_PATH = resolve(repoRoot, "secrets", "portal", "portal-automation.env");
+
+function loadPortalAutomationEnv() {
+  const configuredPath = String(process.env.PORTAL_AUTOMATION_ENV_PATH || "").trim();
+  const envPath = configuredPath || DEFAULT_PORTAL_AUTOMATION_ENV_PATH;
+  if (!envPath || !existsSync(envPath)) return;
+
+  const raw = readFileSync(envPath, "utf8");
+  const lines = raw.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex <= 0) continue;
+    const key = trimmed.slice(0, separatorIndex).trim();
+    if (!key || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    if (String(process.env[key] || "").trim()) continue;
+
+    let value = trimmed.slice(separatorIndex + 1).trim();
+    if (
+      (value.startsWith("\"") && value.endsWith("\"")) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
+}
+
+loadPortalAutomationEnv();
 
 function parseArgs(argv) {
   const options = {
@@ -23,12 +55,17 @@ function parseArgs(argv) {
     includeThemeSweep: true,
     includeIndexDeploy: true,
     includeIndexGuard: true,
+    includeJourneyCheck:
+      String(process.env.PORTAL_PROMOTION_INCLUDE_JOURNEY_CHECK || "").trim().toLowerCase() !== "false",
+    requireJourneyCleanupClean:
+      String(process.env.PORTAL_PROMOTION_ALLOW_JOURNEY_CLEANUP_DEBT || "").trim().toLowerCase() !== "true",
     feedbackPath: String(process.env.PORTAL_PROMOTION_FEEDBACK_PATH || "").trim(),
     userOverrides: {
       includeVirtualStaff: false,
       includeThemeSweep: false,
       includeIndexDeploy: false,
       includeIndexGuard: false,
+      includeJourneyCheck: false,
     },
     asJson: false,
   };
@@ -77,6 +114,23 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--journey-check") {
+      options.includeJourneyCheck = true;
+      options.userOverrides.includeJourneyCheck = true;
+      continue;
+    }
+
+    if (arg === "--skip-journey-check") {
+      options.includeJourneyCheck = false;
+      options.userOverrides.includeJourneyCheck = true;
+      continue;
+    }
+
+    if (arg === "--allow-journey-cleanup-debt") {
+      options.requireJourneyCleanupClean = false;
+      continue;
+    }
+
     if (arg === "--soft-fail-permission-denied") {
       options.softFailPermissionDenied = true;
       continue;
@@ -115,13 +169,28 @@ function truncate(value, max = 16000) {
   return `${value.slice(0, max)}\n...[truncated ${value.length - max} chars]`;
 }
 
+function parseJsonSafe(raw) {
+  try {
+    return JSON.parse(String(raw || ""));
+  } catch {
+    return null;
+  }
+}
+
 function isPermissionDeniedFailure(stdout, stderr) {
   const output = `${String(stdout || "")}\n${String(stderr || "")}`;
+  const hasMissingPermissionsSignal =
+    /missing or insufficient permissions\./i.test(output) ||
+    /insufficient permissions/i.test(output);
   const hasPermissionSignal =
+    hasMissingPermissionsSignal ||
     /permission denied/i.test(output) ||
     /caller does not have permission/i.test(output) ||
     /PERMISSION_DENIED/i.test(output);
-  const hasScopeSignal = /\b403\b/.test(output) || /firebaserules\.googleapis\.com/i.test(output);
+  const hasScopeSignal =
+    /\b403\b/.test(output) ||
+    /firebaserules\.googleapis\.com/i.test(output) ||
+    hasMissingPermissionsSignal;
   return hasPermissionSignal && hasScopeSignal;
 }
 
@@ -185,6 +254,9 @@ async function main() {
     if (!options.userOverrides.includeIndexGuard && typeof feedbackProfile.feedback.includeIndexGuard === "boolean") {
       options.includeIndexGuard = feedbackProfile.feedback.includeIndexGuard;
     }
+    if (!options.userOverrides.includeJourneyCheck && typeof feedbackProfile.feedback.includeJourneyCheck === "boolean") {
+      options.includeJourneyCheck = feedbackProfile.feedback.includeJourneyCheck;
+    }
   }
 
   if (options.includeIndexDeploy) {
@@ -215,8 +287,33 @@ async function main() {
   if (!options.includeThemeSweep) {
     canaryArgs.push("--no-theme-sweep");
   }
+  if (options.includeJourneyCheck) {
+    canaryArgs.push("--journey-check");
+    canaryArgs.push("--journey-piece-prefix", "QA-");
+    canaryArgs.push("--journey-cleanup-mode", "best-effort");
+  } else {
+    canaryArgs.push("--skip-journey-check");
+  }
 
-  steps.push(runStep("authenticated portal canary", "node", canaryArgs));
+  const canaryStep = runStep("authenticated portal canary", "node", canaryArgs, {}, {
+    allowPermissionDenied: options.softFailPermissionDenied,
+  });
+  steps.push(canaryStep);
+
+  if (options.includeJourneyCheck && options.requireJourneyCleanupClean && canaryStep.status !== "failed") {
+    const canarySummary = parseJsonSafe(canaryStep.stdout);
+    const cleanupStatus = String(canarySummary?.journeyCheck?.cleanup?.status || "")
+      .trim()
+      .toLowerCase();
+
+    if (!cleanupStatus || cleanupStatus !== "clean") {
+      const detail = cleanupStatus ? `observed "${cleanupStatus}"` : "cleanup status missing from canary report";
+      const message = `Journey check cleanup must be clean before promotion; ${detail}.`;
+      canaryStep.status = "failed";
+      canaryStep.failureCategory = "journey_cleanup_not_clean";
+      canaryStep.stderr = truncate([canaryStep.stderr, message].filter(Boolean).join("\n"));
+    }
+  }
 
   if (options.includeVirtualStaff) {
     steps.push(
@@ -267,6 +364,8 @@ async function main() {
         includeVirtualStaff: options.includeVirtualStaff,
         includeIndexDeploy: options.includeIndexDeploy,
         includeIndexGuard: options.includeIndexGuard,
+        includeJourneyCheck: options.includeJourneyCheck,
+        requireJourneyCleanupClean: options.requireJourneyCleanupClean,
         softFailPermissionDenied: options.softFailPermissionDenied,
       },
     },

@@ -11,6 +11,7 @@ Purpose: define the active automation guardrails for portal functionality, UX co
   - Direct messages
   - Ware check-ins
 - Includes Firestore index contract guard check.
+- Includes `continueJourney` endpoint runtime checks (success + input/authz/ownership denial cases) via `functions/lib/continueJourneyEndpoint.test.js`.
 
 2. Daily authenticated production canary (`.github/workflows/portal-daily-authenticated-canary.yml`)
 - Signs in using staff credentials.
@@ -26,6 +27,11 @@ Purpose: define the active automation guardrails for portal functionality, UX co
   - Ware Check-in loads without check-in/index failures
   - Ware Check-in optional sections stay collapsed by default and preserve values after expand/collapse (`canary-06b-ware-checkin-optional-sections.png`).
 - Includes tri-theme contrast sweep by default (`portal`, `memoria`, `mono`).
+- Includes staff-routing hardening checks that require dedicated workspace routes to remain durable:
+  - `/staff/cockpit`
+  - `/staff/workshops`
+  - `/staff/system`
+  - Unknown `/staff/*` paths recover to `/staff`.
 - Runs every 30 minutes and escalates after 2 consecutive failures via rolling issue automation.
 
 3. Firestore index contract guard (`.github/workflows/firestore-index-contract-guard.yml`)
@@ -42,6 +48,12 @@ Purpose: define the active automation guardrails for portal functionality, UX co
   - authenticated canary
   - virtual staff backend regression
   - index contract guard
+- Authenticated canary in promotion mode now executes a runtime continue-journey linkage assertion:
+  - trigger `Send to next firing` from My Pieces fixture row
+  - verify new batch lineage (`journeyParentBatchId`, `journeyRootBatchId`) and draft/open state via Firestore reads
+  - verify `CONTINUE_JOURNEY` timeline linkage to source batch
+  - enforce cleanup status `clean` (promotion gate fails if journey cleanup is `partial`, `not_run`, or missing)
+  - temporary escape hatch for incidents: `--allow-journey-cleanup-debt` (or `PORTAL_PROMOTION_ALLOW_JOURNEY_CLEANUP_DEBT=true`)
 - Firestore index deploy permission-denied (`403`) outcomes are downgraded to warnings in workflow mode so IAM drift does not mask user-facing deploy health.
 - Any other failing gate condition still blocks promotion confidence.
 
@@ -99,6 +111,12 @@ Purpose: define the active automation guardrails for portal functionality, UX co
 - Captures click count for the goal path (sign in -> Ware Check-in -> pickup toggle -> submit).
 - Writes machine-readable metrics (`tmp/reservations-journey-metrics.json`) so we can track interaction friction over time.
 
+16. Industry events reliability checks (`npm run events:industry:check`)
+- Validates industry-events contracts/helpers and EventsView integration tests.
+- Runs connector ingest dry-run with deterministic dedupe + failure artifact.
+- Runs freshness audit artifact generation.
+- Runs canary checks for non-empty feed, filter behavior, link validity, and stale-event suppression.
+
 ## Friction tuning log (2026-03-02)
 
 - Reservations Step 4 policy helper now needs centered presentation to keep scanability high.
@@ -109,6 +127,28 @@ Purpose: define the active automation guardrails for portal functionality, UX co
 - Staff glaze-prep language was confusing; refocused on concrete “staff follows your glaze/wax directions” intent and per-half-shelf pricing.
 - Need-by deadline behavior now follows urgency-aware prompts (2-week suggest, 1-week preselect with opt-out).
 - Keep running click-efficiency metrics and fold recurring friction signatures into weekly automation digest / self-improvement loops.
+- Staff console routing now uses only canonical deep link `/staff/cockpit` for cockpit launch; legacy `/cockpit` alias handling was removed to avoid ambiguous route state and preserve deterministic staff-workspace state.
+- Staff console path canonicalization now retains `/staff` as the durable full console path; focused workspaces still own `/staff/cockpit`, `/staff/workshops`, and `/staff/system`, and unknown `/staff/*` paths fall back to `/staff` for lower-friction recovery.
+- Staff workspace transitions from the active staff page now prefer in-app canonical staff-route updates (history push/replace) rather than full reloads, reducing low-value route-friction when moving between dedicated workspaces.
+- Unknown dedicated-cockpit deep links now normalize to the nearest supported cockpit segment (for example `/staff/cockpit/does-not-exist` -> `/staff/cockpit`) so stale links can’t strand operators in unsupported URLs.
+- Hash deep-link fallbacks now preserve dedicated workspace intent when the path is the staff root (for example `/staff#/staff/workshops`) while still preserving route determinism for explicit non-root staff paths.
+- Staff workspace request resolution now uses one shared helper for path+hash intent (`resolveStaffWorkspaceRequestedPath`) so URL normalization and deterministic canonicalization are centralized, reducing duplicate branching and recovery ambiguity.
+- `/staff#/staff/...` links now normalize to deterministic dedicated workspace URLs (for example `/staff/workshops`) so staff links are copy/paste-safe and avoid legacy hash-route ambiguity.
+- Staff-path canonicalization and canary checks now strip hash fragments as well as query strings before slash normalization so noisy links like `/staff/workshops#utm=ci` stay deterministic.
+- Staff path canonicalization now also tolerates legacy hash-bang route prefixes (`/#!/...`, `#!/...`) so staff deep links resolve to deterministic workspace mode without extra navigation friction.
+- Staff-console workspace navigation now normalizes redundant slashes and trailing separators before path checks, which prevents ambiguous route state from `/staff/.../` style links and keeps dedicated-workspace handoff deterministic.
+- Staff canonicalization and canary checks now also cover noisy path variants (`/staff/.../`, mixed-case legacy forms, and `/#/staff/...`) so operational routing remains deterministic before dedicated workspace rendering.
+- Staff path handling now tolerates absolute URLs in staff route payloads (for example `https://portal.monsoonfire.com/staff/workshops` and `.../#/staff/system`) so helper callers and automation logs can pass URL-like inputs without bypassing routing hardening.
+- Staff workspace open normalization also resolves staff fragments on absolute URLs where the main path is non-staff (for example `https://portal.monsoonfire.com/dashboard#/staff/workshops`) so full copied URLs continue to land in the intended dedicated workspace.
+- Staff path canonicalization now also handles encoded hash markers in staff deep links (for example `/%23/staff/cockpit`), preserving deterministic workspace resolution from link-safe variants.
+- Staff canonicalization also handles protocol-relative URLs (for example `//portal.monsoonfire.com/staff/cockpit`) so link variants shared across environments continue resolving deterministically.
+- Legacy hash variants are also normalized when the hash marker omits a leading slash (for example `#staff/workshops`), so staff deep links remain deterministic even with mixed copy/paste formats.
+- Staff workspace open action now hardens empty or whitespace-only targets by defaulting to `/staff` so low-value "click/no-op" outcomes are avoided.
+- Staff path handling now also accepts protocol-less staff links such as `portal.monsoonfire.com/staff/cockpit` by treating them as staff URLs before canonicalization, reducing copy/paste friction from shared links that omit a scheme.
+
+- Staff canonicalization now also decodes percent-encoded separators and removes `.` / `..` path fragments (for example `/staff%2fcockpit`, `/staff/%2e%2e/system`) so noisy encoded deep links route deterministically before workspace mode selection.
+
+- Staff console navigation now preserves cockpit/workshop/system module path segments on path recovery (for example `/staff#/staff/cockpit/commerce`) instead of collapsing to the workspace root, preventing low-value friction for direct deep links into dedicated staff modules.
 
 ## Local commands
 
@@ -138,6 +178,10 @@ npm run portal:automation:issues:apply
 npm run portal:automation:weekly-digest
 npm run portal:automation:weekly-digest:apply
 npm --prefix web run check:reservations-journey-playwright
+npm run events:industry:check
+npm run events:industry:import
+npm run events:industry:freshness:audit
+npm run events:industry:canary
 ```
 
 `portal:canary:auth` and `portal:theme:contrast` auto-resolve staff credentials from:
@@ -166,6 +210,7 @@ Recommended for full promotion/deploy coverage:
 
 - `FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL` or `GOOGLE_APPLICATION_CREDENTIALS` (index deploy auth for promotion gate)
 - `WEBSITE_DEPLOY_KEY` (Namecheap deploy SSH key path; usually `~/.ssh/namecheap-portal`)
+- `PORTAL_CANARY_ADMIN_TOKEN` (preferred) or `PORTAL_ADMIN_TOKEN` so journey cleanup can always use lifecycle close path (`pickedUpAndClose`) during promotion canary runs
 
 Local baseline note:
 - As of March 1, 2026, `secrets/portal/portal-automation.env` includes populated `PORTAL_FIREBASE_API_KEY` and `FIREBASE_WEB_API_KEY` entries for promotion-gate and script compatibility.
@@ -203,6 +248,7 @@ Reference provenance:
 - `FIREBASE_RULES_API_TOKEN`
 - `PORTAL_FIREBASE_API_KEY` (required for token-exchange probes and fixture stewardship; keep in sync with `FIREBASE_WEB_API_KEY`)
 - `FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL` (recommended for notification fixture seeding)
+- `PORTAL_CANARY_ADMIN_TOKEN` (preferred) or `PORTAL_ADMIN_TOKEN` (optional but recommended for deterministic promotion-gate journey cleanup)
 
 ## Related runbook
 

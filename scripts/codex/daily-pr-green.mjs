@@ -220,6 +220,22 @@ function runGhJson(args, { allowFailure = true } = {}) {
   }
 }
 
+function fetchLatestIssueCommentBody(repoSlug, issueNumber) {
+  const response = runGhJson([
+    "issue",
+    "view",
+    String(issueNumber),
+    "--repo",
+    repoSlug,
+    "--json",
+    "comments",
+  ]);
+  if (!response.ok || !response.data || typeof response.data !== "object") return "";
+  const comments = Array.isArray(response.data.comments) ? response.data.comments : [];
+  const latest = comments.length > 0 ? comments[comments.length - 1] : null;
+  return String(latest?.body || "");
+}
+
 async function pathExists(targetPath) {
   try {
     await access(targetPath, fsConstants.F_OK);
@@ -424,7 +440,7 @@ function buildLogEntry({ runInfo, summary, blockedPrs, rerunActions, nextFocus }
   return `${lines.join("\n")}\n`;
 }
 
-function buildRollingIssueComment({ runInfo, summary, blockedPrs, rerunActions, nextFocus }) {
+function buildRollingIssueComment({ runInfo, summary, blockedPrs, rerunActions, nextFocus, runMarker }) {
   const lines = [];
   lines.push(`## ${runInfo.dateKey} (PR Green Daily)`);
   lines.push("");
@@ -456,6 +472,10 @@ function buildRollingIssueComment({ runInfo, summary, blockedPrs, rerunActions, 
   lines.push("");
   lines.push("### Next Focus");
   nextFocus.forEach((focus) => lines.push(`- ${focus}`));
+  if (runMarker) {
+    lines.push("");
+    lines.push(`<!-- ${runMarker} -->`);
+  }
   lines.push("");
   return lines.join("\n");
 }
@@ -533,6 +553,59 @@ async function main() {
     if (options.asJson) process.stdout.write(`${JSON.stringify(skipped, null, 2)}\n`);
     else process.stdout.write(`skipped: ${skipped.reason}\n`);
     return;
+  }
+
+  if (!options.force && options.apply && options.includeGithub) {
+    const repoSlugForDuplicateCheck = parseRepoSlug();
+    if (repoSlugForDuplicateCheck) {
+      const existingIssueResp = runGhJson([
+        "issue",
+        "list",
+        "--repo",
+        repoSlugForDuplicateCheck,
+        "--state",
+        "open",
+        "--search",
+        `"${rollingIssueTitle}" in:title`,
+        "--limit",
+        "5",
+        "--json",
+        "number,title,url",
+      ]);
+      if (existingIssueResp.ok && Array.isArray(existingIssueResp.data)) {
+        const exact = existingIssueResp.data.find((issue) => issue.title === rollingIssueTitle);
+        if (exact?.number) {
+          const runMarker = `codex-pr-green-rollup-run:${runInfo.runId}`;
+          const latestRollingComment = fetchLatestIssueCommentBody(
+            repoSlugForDuplicateCheck,
+            Number(exact.number)
+          );
+          if (latestRollingComment.includes(`<!-- ${runMarker} -->`)) {
+            const skipped = {
+              status: "skipped",
+              reason: `Run ${runInfo.runId} already processed by rolling issue marker`,
+              runId: runInfo.runId,
+              timeZone: TZ,
+              rollingIssue: exact.url || null,
+            };
+            await appendToolcall({
+              actor: detectRunActor(),
+              tool: "daily-pr-green",
+              action: "skip-duplicate-run-rolling",
+              ok: true,
+              durationMs: Date.now() - runStartedAt.getTime(),
+              context: {
+                runId: runInfo.runId,
+                rollingIssue: exact.url || null,
+              },
+            });
+            if (options.asJson) process.stdout.write(`${JSON.stringify(skipped, null, 2)}\n`);
+            else process.stdout.write(`skipped: ${skipped.reason}\n`);
+            return;
+          }
+        }
+      }
+    }
   }
 
   const notes = [];
@@ -746,18 +819,25 @@ async function main() {
     }
 
     if (rollingIssueNumber) {
-      runGh(
-        [
-          "issue",
-          "comment",
-          String(rollingIssueNumber),
-          "--repo",
-          repoSlug,
-          "--body",
-          buildRollingIssueComment({ runInfo, summary, blockedPrs, rerunActions, nextFocus }),
-        ],
-        { allowFailure: true }
-      );
+      const runMarker = `codex-pr-green-rollup-run:${runInfo.runId}`;
+      const latestRollingComment = fetchLatestIssueCommentBody(repoSlug, rollingIssueNumber);
+      const alreadyPosted = latestRollingComment.includes(`<!-- ${runMarker} -->`);
+      if (!alreadyPosted) {
+        runGh(
+          [
+            "issue",
+            "comment",
+            String(rollingIssueNumber),
+            "--repo",
+            repoSlug,
+            "--body",
+            buildRollingIssueComment({ runInfo, summary, blockedPrs, rerunActions, nextFocus, runMarker }),
+          ],
+          { allowFailure: true }
+        );
+      } else {
+        notes.push("Rolling issue already has this run marker; skipped duplicate PR-green rollup comment.");
+      }
     }
   }
 

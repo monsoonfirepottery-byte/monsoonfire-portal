@@ -1780,6 +1780,7 @@ async function main() {
   }
 
   let createdTicketUrls = [];
+  let newlyCreatedTicketUrls = [];
   let prUrl = "";
   let runBranchUsed = "";
   let rollingIssueUrl = "";
@@ -1900,7 +1901,10 @@ async function main() {
 
       if (createIssue.ok) {
         const url = createIssue.stdout.trim();
-        if (url) createdTicketUrls.push(url);
+        if (url) {
+          createdTicketUrls.push(url);
+          newlyCreatedTicketUrls.push(url);
+        }
       }
     }
 
@@ -2017,7 +2021,12 @@ async function main() {
       }
     }
 
-    const shouldCreateRunPr = (recommendations.length > 0 || scoreDroppedTwice) && !skipRunPrOnDirtyAllow;
+    const shouldCreateRunPr = !skipRunPrOnDirtyAllow && (newlyCreatedTicketUrls.length > 0 || scoreDroppedTwice);
+    if (!shouldCreateRunPr && recommendations.length > 0 && !scoreDroppedTwice) {
+      notes.push(
+        "Run PR creation suppressed: recommendations mapped to existing lanes with no net-new ticket creation."
+      );
+    }
 
     if (shouldCreateRunPr) {
       const sharedRunPr = sharedCoordination?.automationPrByRunId?.[runInfo.runId];

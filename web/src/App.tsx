@@ -904,8 +904,6 @@ export default function App() {
   const [isStaff, setIsStaff] = useState(false);
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
-  const [reservationFocusId, setReservationFocusId] = useState<string | null>(null);
-  const [messagesInitialThreadId, setMessagesInitialThreadId] = useState<string | null>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [supportStatus, setSupportStatus] = useState("");
   const [supportBusy, setSupportBusy] = useState(false);
@@ -2003,7 +2001,6 @@ export default function App() {
         return (
           <DashboardView
             user={user}
-            isStaff={staffUi}
             name={user.displayName ?? "Member"}
             themeName={themeName}
             onThemeChange={(next) => {
@@ -2047,7 +2044,6 @@ export default function App() {
               writeStoredEnhancedMotion(next);
             }}
             onOpenIntegrations={() => setNav("integrations")}
-            onOpenBilling={() => setNav("billing")}
             onAvatarUpdated={() => {
               void syncUserFromAuth();
             }}
@@ -2084,14 +2080,7 @@ export default function App() {
       case "billing":
         return <BillingView user={user} />;
       case "reservations":
-        return (
-          <ReservationsView
-            user={user}
-            isStaff={staffUi}
-            adminToken={devAdminTokenValue}
-            focusReservationId={reservationFocusId}
-          />
-        );
+        return <ReservationsView user={user} isStaff={staffUi} adminToken={devAdminTokenValue} />;
       case "kiln":
         return <KilnScheduleView user={user} isStaff={staffUi} />;
       case "kilnRentals":
@@ -2110,7 +2099,7 @@ export default function App() {
             onOpenPieces={() => openPieces()}
             onOpenMaterials={() => setNav("materials")}
             onOpenMembership={() => setNav("membership")}
-            onOpenProfile={() => setNav("profile")}
+            onOpenBilling={() => setNav("billing")}
           />
         );
       case "messages":
@@ -2118,7 +2107,6 @@ export default function App() {
           <MessagesView
             user={user}
             supportEmail={SUPPORT_EMAIL}
-            initialThreadId={messagesInitialThreadId}
             threads={threads}
             threadsLoading={threadsLoading}
             threadsError={threadsError}
@@ -2160,22 +2148,10 @@ export default function App() {
             onDevAdminTokenChange={setDevAdminToken}
             devAdminEnabled={DEV_ADMIN_TOKEN_ENABLED}
             showEmulatorTools={isAuthEmulator}
-            onOpenCheckin={() => {
-              setReservationFocusId(null);
-              setNav("reservations");
-            }}
-            onOpenReservation={(reservationId) => {
-              setReservationFocusId(reservationId ?? null);
-              setNav("reservations");
-            }}
-            onOpenMessages={() => {
-              setMessagesInitialThreadId(null);
-              setNav("messages");
-            }}
-            onOpenMessageThread={(threadId) => {
-              setMessagesInitialThreadId(threadId);
-              setNav("messages");
-            }}
+            onOpenCheckin={() => setNav("reservations")}
+            onOpenReservation={() => setNav("reservations")}
+            onOpenMessages={() => setNav("messages")}
+            onOpenMessageThread={() => setNav("messages")}
             onOpenFirings={() => setNav("kiln")}
             onStartFiring={() => setNav("kilnLaunch")}
             initialModule={

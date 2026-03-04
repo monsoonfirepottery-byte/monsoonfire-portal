@@ -7,7 +7,6 @@ import { constants as fsConstants } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { captureAutomationMemory, loadAutomationStartupMemoryContext } from "./open-memory-automation.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..", "..");
@@ -56,6 +55,75 @@ const secretValuePatterns = [
   /(sk-[A-Za-z0-9]{20,})/g,
 ];
 
+let openMemoryHelpersReady = false;
+let captureAutomationMemoryImpl = null;
+let loadAutomationStartupMemoryContextImpl = null;
+
+async function ensureOpenMemoryHelpers() {
+  if (openMemoryHelpersReady) return;
+  openMemoryHelpersReady = true;
+  try {
+    const module = await import("./open-memory-automation.mjs");
+    if (module && typeof module.captureAutomationMemory === "function") {
+      captureAutomationMemoryImpl = module.captureAutomationMemory;
+    }
+    if (module && typeof module.loadAutomationStartupMemoryContext === "function") {
+      loadAutomationStartupMemoryContextImpl = module.loadAutomationStartupMemoryContext;
+    }
+  } catch {
+    captureAutomationMemoryImpl = null;
+    loadAutomationStartupMemoryContextImpl = null;
+  }
+}
+
+async function loadAutomationStartupMemoryContextSafe(payload) {
+  await ensureOpenMemoryHelpers();
+  if (typeof loadAutomationStartupMemoryContextImpl !== "function") {
+    return {
+      items: [],
+      metadata: {
+        available: false,
+        reason: "missing-open-memory-helper",
+      },
+    };
+  }
+  try {
+    return await loadAutomationStartupMemoryContextImpl(payload);
+  } catch (error) {
+    return {
+      items: [],
+      metadata: {
+        available: false,
+        reason: "open-memory-helper-error",
+        error: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
+async function captureAutomationMemorySafe(payload) {
+  await ensureOpenMemoryHelpers();
+  if (typeof captureAutomationMemoryImpl !== "function") {
+    return {
+      attempted: false,
+      ok: false,
+      reason: "missing-open-memory-helper",
+      status: 0,
+    };
+  }
+  try {
+    return await captureAutomationMemoryImpl(payload);
+  } catch (error) {
+    return {
+      attempted: false,
+      ok: false,
+      reason: "open-memory-helper-error",
+      error: error instanceof Error ? error.message : String(error),
+      status: 0,
+    };
+  }
+}
+
 function defaultState() {
   return {
     lastRunAtIso: "1970-01-01T00:00:00.000Z",
@@ -71,6 +139,8 @@ function defaultState() {
     lastRecommendations: [],
     recommendationOutcomes: [],
     improvementImpactScores: [],
+    lastMetadataUnstable24: false,
+    lastMetadataTouchTotal24: 0,
     skillDensityLast: {
       firestore: 0,
       cloudFunctions: 0,
@@ -560,6 +630,23 @@ function collectFailureSignatures(runs) {
     counts[signature] = (counts[signature] || 0) + 1;
   }
   return counts;
+}
+
+function collectLatestRunBySignature(runs) {
+  const latest = {};
+  for (const run of runs) {
+    const signature = toFailureSignature(run);
+    const createdMs = toMs(run?.createdAt) || 0;
+    const existing = latest[signature];
+    const existingMs = existing ? Number(existing.createdMs || 0) : -1;
+    if (!existing || createdMs >= existingMs) {
+      latest[signature] = {
+        createdMs,
+        conclusion: String(run?.conclusion || "").toLowerCase(),
+      };
+    }
+  }
+  return latest;
 }
 
 function isFailedConclusion(conclusion) {
@@ -1170,7 +1257,7 @@ async function main() {
     return;
   }
 
-  const startupMemoryContext = await loadAutomationStartupMemoryContext({
+  const startupMemoryContext = await loadAutomationStartupMemoryContextSafe({
     tool: "daily-improvement",
     runId: runInfo.runId,
     query: "codex continuous improvement recommendations failure clusters follow-through",
@@ -1321,7 +1408,12 @@ async function main() {
   });
 
   const failureSignatures24 = collectFailureSignatures(failedRuns24);
-  const repeatedFailureSignatures = Object.entries(failureSignatures24).filter(([, count]) => count >= 2);
+  const latestRunBySignature24 = collectLatestRunBySignature(runs24);
+  const repeatedFailureSignatures = Object.entries(failureSignatures24).filter(([signature, count]) => {
+    if (count < 2) return false;
+    const latest = latestRunBySignature24[signature];
+    return latest ? isFailedConclusion(latest.conclusion) : true;
+  });
 
   const recommendations = [];
 
@@ -1369,7 +1461,12 @@ async function main() {
     });
   }
 
-  if (metadataUnstable) {
+  const metadataTouchDelta = metadataTouchTotal24 - Number(state?.lastMetadataTouchTotal24 || 0);
+  const metadataRecommendationActionable =
+    metadataUnstable &&
+    (commitsSinceLast.length > 0 || metadataTouchDelta > 0 || state?.lastRunId === "1970-01-01-AM");
+
+  if (metadataRecommendationActionable) {
     ensureRecommendation(recommendations, {
       id: "metadata-churn-unstable",
       title: "Stabilize metadata/config churn",
@@ -1378,6 +1475,10 @@ async function main() {
       action: "Consolidate config changes behind explicit runbooks and add stricter policy checks.",
       evidence: metadataEntries24.map((entry) => `${entry.path}: ${entry.commitTouches}`),
     });
+  } else if (metadataUnstable) {
+    notes.push(
+      "Metadata/config churn remains above threshold but did not increase since the prior run; suppressing duplicate recommendation."
+    );
   }
 
   const interactionSnapshot =
@@ -1673,7 +1774,20 @@ async function main() {
     await ensureGhLabel(repoSlug, "epic:codex-improvement", "5319e7", "Codex continuous improvement epic", true);
     await ensureGhLabel(repoSlug, `run:${runInfo.runSlot}`, "0e8a16", "Codex AM/PM run marker", true);
 
-    for (const recommendation of recommendations.slice(0, options.maxIssuesPerRun)) {
+    const cooldownDefersInteractionTickets =
+      structuralEvolutionDecision.status === "Deferred" &&
+      /cooldown|stability governor/i.test(String(structuralEvolutionDecision.reason || ""));
+    const ticketableRecommendations = recommendations.filter((recommendation) => {
+      if (!cooldownDefersInteractionTickets) return true;
+      return !String(recommendation?.id || "").startsWith("interaction-");
+    });
+    if (cooldownDefersInteractionTickets && ticketableRecommendations.length < recommendations.length) {
+      notes.push(
+        "Interaction recommendation tickets were skipped because structural cooldown is active; tracking continues via rolling issue."
+      );
+    }
+
+    for (const recommendation of ticketableRecommendations.slice(0, options.maxIssuesPerRun)) {
       const marker = `codex-improvement:${recommendation.id}`;
       const existingIssueResp = runGhJson([
         "issue",
@@ -2110,6 +2224,8 @@ async function main() {
     lastRunId: runInfo.runId,
     lastSeenCommitSha: headSha,
     lastHighChurnCount24: highChurnFiles.length,
+    lastMetadataUnstable24: metadataUnstable,
+    lastMetadataTouchTotal24: metadataTouchTotal24,
     improvementImpactScores: [
       ...(Array.isArray(state.improvementImpactScores) ? state.improvementImpactScores : []),
       impactScore,
@@ -2228,7 +2344,7 @@ async function main() {
     },
   };
 
-  output.memory.capture = await captureAutomationMemory({
+  output.memory.capture = await captureAutomationMemorySafe({
     tool: "daily-improvement",
     runId: runInfo.runId,
     status: output.status,

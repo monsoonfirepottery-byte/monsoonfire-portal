@@ -30,7 +30,7 @@
 <!-- codex-interaction:auto:start -->
 ### Automated Structural Addenda
 
-- Last structural update: 2026-03-03-AM
+- Last structural update: 2026-03-04-autonomous-b4
 - Active rules:
 - [USER_BRANCH_POLICY] Include branch policy in scope constraints: PR-only changes, never direct push to `main`.
 - [USER_OUTPUT_CONTRACT] Require output sections for behavior change summary, risk assessment, and copyable QA checks.

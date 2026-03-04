@@ -284,6 +284,7 @@ function createIssueBody(signature, dashboard) {
 
 function createIssueComment(signature, dashboard) {
   const lines = [];
+  const marker = signatureUpdateMarker(signature);
   lines.push(`## ${dashboard.generatedAtIso} (Repeated Signature Update)`);
   lines.push("");
   lines.push(`- Signature: **${signature.label}**`);
@@ -291,6 +292,8 @@ function createIssueComment(signature, dashboard) {
   lines.push(`- Latest run: ${signature.runUrl || "n/a"}`);
   if (signature.evidence) lines.push(`- Evidence: ${short(signature.evidence, 280)}`);
   if (signature.suggestion) lines.push(`- Suggested remediation: ${signature.suggestion}`);
+  lines.push("");
+  lines.push(`<!-- ${marker} -->`);
   lines.push("");
   return lines.join("\n");
 }
@@ -376,6 +379,16 @@ function signatureKey(signature) {
   const workflowKey = String(signature?.workflowKey || "").trim();
   const key = String(signature?.key || "").trim();
   return `${workflowKey}::${key}`;
+}
+
+function signatureUpdateMarker(signature) {
+  return `portal-signature-update-${stableHash({
+    signatureKey: signatureKey(signature),
+    runUrl: String(signature?.runUrl || ""),
+    count: Number(signature?.count || 0),
+    evidence: short(signature?.evidence || "", 200),
+    suggestion: short(signature?.suggestion || "", 200),
+  })}`;
 }
 
 function isRollingOnlySignature(signature) {
@@ -675,6 +688,14 @@ async function main() {
       }
     } else {
       const commentBody = createIssueComment(signature, dashboard);
+      const latestComment = fetchLatestIssueCommentBody(repoSlug, existing.number);
+      const marker = signatureUpdateMarker(signature);
+      if (latestComment.includes(`<!-- ${marker} -->`)) {
+        action.result = "unchanged-skip";
+        action.url = existing.url;
+        report.signatureActions.push(action);
+        continue;
+      }
       const commented = runGh(
         [
           "issue",

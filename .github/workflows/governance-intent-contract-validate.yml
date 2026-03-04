@@ -1,0 +1,51 @@
+name: Governance Intent Contract Validate
+
+on:
+  pull_request:
+    paths:
+      - ".governance/**"
+      - "scripts/governance/**"
+      - ".github/workflows/governance-*"
+  push:
+    branches:
+      - main
+    paths:
+      - ".governance/**"
+      - "scripts/governance/**"
+      - ".github/workflows/governance-*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: governance-intent-validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  governance-intent-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Validate governance artifacts
+        run: node ./scripts/governance/validate-governance-artifacts.mjs --report output/governance/validate-governance-artifacts.json
+
+      - name: Upload governance validation artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-intent-validate-${{ github.run_id }}
+          path: output/governance/validate-governance-artifacts.json
+          if-no-files-found: ignore
+          retention-days: 14
+

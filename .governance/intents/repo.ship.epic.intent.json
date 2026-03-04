@@ -1,0 +1,122 @@
+{
+  "intent_id": "repo.ship.epic",
+  "version": 1,
+  "goal": "Deliver a multi-PR epic with measurable progress, controlled scope, and human-verified release readiness.",
+  "success_criteria": [
+    {
+      "id": "linked_prs_complete",
+      "statement": "All linked PRs for the epic are merged or explicitly deferred.",
+      "metric": "epic.open_linked_prs",
+      "operator": "eq",
+      "target": 0,
+      "measurement_method": "Epic tracking issue and linked PR state reconciliation"
+    },
+    {
+      "id": "integration_green",
+      "statement": "Integration and smoke checks pass for release branch.",
+      "metric": "ci.failed_release_checks",
+      "operator": "eq",
+      "target": 0,
+      "measurement_method": "CI release workflow check-runs"
+    },
+    {
+      "id": "runbook_updated",
+      "statement": "Operational runbook is updated with new behavior and rollback path.",
+      "metric": "docs.runbook_update_present",
+      "operator": "eq",
+      "target": true,
+      "measurement_method": "Repository diff includes required runbook updates"
+    }
+  ],
+  "constraints": {
+    "must": [
+      "Maintain evidence links per PR and per success criterion.",
+      "Keep migration and rollback procedures documented before merge."
+    ],
+    "must_not": [
+      "Merge schema-changing PRs without human approval.",
+      "Proceed when critical CI checks are red."
+    ],
+    "allowed_paths": [
+      "web/**",
+      "functions/**",
+      "contracts/**",
+      "docs/**",
+      "scripts/**",
+      ".governance/**"
+    ],
+    "max_changed_files": 250
+  },
+  "budgets": {
+    "tokens": 1200000,
+    "runtime_minutes": 480,
+    "retries": 12
+  },
+  "allowed_tools": [
+    "git",
+    "rg",
+    "node",
+    "npm",
+    "gh-api-read",
+    "gh-api-write"
+  ],
+  "required_evidence": [
+    {
+      "criterion_id": "linked_prs_complete",
+      "minimum_tier": 2,
+      "accepted_sources": [
+        "tool_output",
+        "repo_doc",
+        "human"
+      ]
+    },
+    {
+      "criterion_id": "integration_green",
+      "minimum_tier": 2,
+      "accepted_sources": [
+        "ci",
+        "test"
+      ]
+    },
+    {
+      "criterion_id": "runbook_updated",
+      "minimum_tier": 3,
+      "accepted_sources": [
+        "repo_doc",
+        "human"
+      ]
+    }
+  ],
+  "risk_level": "high",
+  "authority_gates": [
+    {
+      "name": "schema-change-approval",
+      "requires_human_approval": true,
+      "trigger": "Any schema, migration, or durable data contract change",
+      "approved_roles": [
+        "owner",
+        "staff_engineer"
+      ]
+    },
+    {
+      "name": "release-cut-approval",
+      "requires_human_approval": true,
+      "trigger": "Final release promotion",
+      "approved_roles": [
+        "owner",
+        "release_manager"
+      ]
+    }
+  ],
+  "stop_conditions": [
+    "No measurable success-criteria progress after 3 audited execution windows.",
+    "CI failure loop repeats same signature 3 times.",
+    "Budget hard caps exceeded."
+  ],
+  "metadata": {
+    "activation_state": "active",
+    "requires_human_decision_log": true,
+    "supervisor_cadence_steps": 3
+  }
+}
+

@@ -1,0 +1,127 @@
+{
+  "audit_cadence": {
+    "steps": 3,
+    "minutes": 20
+  },
+  "push_grace": {
+    "enabled": true,
+    "minutes_after_synchronize": 10
+  },
+  "risk_policy": {
+    "low": {
+      "allow_hold": false,
+      "allow_escalation": false
+    },
+    "medium": {
+      "allow_hold_on_repeated_medium": true,
+      "allow_escalation": true
+    },
+    "high": {
+      "allow_hold_fast": true,
+      "allow_escalation_fast": true
+    },
+    "critical": {
+      "allow_hold_fast": true,
+      "allow_escalation_fast": true
+    }
+  },
+  "triggers": {
+    "no_success_progress_steps": 3,
+    "repeated_ci_failure_signature_count": 3,
+    "scope_breach_any": true,
+    "budget_warn_percent": 80,
+    "budget_hard_stop_percent": 100
+  },
+  "decision_ladder": {
+    "hold": {
+      "high_findings_min": 1,
+      "medium_findings_min": 2,
+      "minimum_confidence": 0.7,
+      "require_persistence_for_medium": true,
+      "persistence_window_hours": 24
+    },
+    "escalate": {
+      "high_findings_min": 2,
+      "failed_ci_checks_min": 4,
+      "repeat_holds_same_pr_min": 2,
+      "minimum_confidence": 0.8
+    }
+  },
+  "intervention_ladder": {
+    "hold_for_verification": {
+      "high_findings_min": 1,
+      "medium_findings_min": 2,
+      "failed_ci_checks_min": 2
+    },
+    "escalate_human_review": {
+      "high_findings_min": 2,
+      "failed_ci_checks_min": 4,
+      "repeat_holds_same_pr_min": 2
+    }
+  },
+  "circuit_breaker": {
+    "enabled": true,
+    "hold_rate_window_hours": 1,
+    "hold_rate_max": 0.25,
+    "min_open_prs_for_hold_rate": 4,
+    "ci_infra_failure_window_hours": 1,
+    "ci_infra_failure_min_runs": 8,
+    "ci_infra_failure_rate_threshold": 0.6,
+    "pause_minutes": 60
+  },
+  "canary_rollout": {
+    "enabled": true,
+    "start_utc": "2026-03-04T00:00:00Z",
+    "duration_days": 7,
+    "required_labels_any": [
+      "governance-canary"
+    ],
+    "required_paths_any": [
+      ".governance/**",
+      "scripts/governance/**"
+    ],
+    "required_authority_roles_any": [
+      "owner",
+      "maintainer",
+      "staff_engineer"
+    ]
+  },
+  "override_valve": {
+    "label": "human-override",
+    "reason_key": "override_reason",
+    "expires_key": "override_expires",
+    "followup_issue_label": "post-override-audit",
+    "followup_issue_cooldown_hours": 24
+  },
+  "idempotency": {
+    "max_audit_comments_per_pr_per_cycle": 1,
+    "comment_thread_update_instead_of_new": true,
+    "hold_label_cooldown_minutes": 60,
+    "escalation_issue_cooldown_hours": 24,
+    "max_holds_per_pr_per_day": 2,
+    "max_escalations_per_pr_per_day": 1
+  },
+  "human_question_protocol": {
+    "max_questions_per_cycle": 3,
+    "non_critical_default_timeout_hours": 24,
+    "critical_requires_explicit_human_response": true
+  },
+  "quality_policy": {
+    "tier5_never_sufficient": true,
+    "allow_hypothesis_mode_without_hold": true,
+    "hypothesis_mode_key": "hypothesis_mode",
+    "merge_recommendation_requires_criteria_evidence": true
+  },
+  "self_safety": {
+    "max_tokens_per_audit_cycle": 30000,
+    "max_audits_per_pr_per_hour": 2,
+    "max_interventions_per_day": 25,
+    "max_recursion_depth": 2
+  },
+  "weekly_tuning": {
+    "enabled": true,
+    "max_step_adjustment": 0.02,
+    "target_false_positive_rate": 0.15,
+    "target_mean_time_on_hold_minutes": 180
+  }
+}

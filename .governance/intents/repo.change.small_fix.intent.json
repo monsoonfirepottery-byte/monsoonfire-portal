@@ -1,0 +1,112 @@
+{
+  "intent_id": "repo.change.small_fix",
+  "version": 1,
+  "goal": "Apply a narrowly scoped repository fix that resolves a defined defect without introducing regressions.",
+  "success_criteria": [
+    {
+      "id": "ci_pass",
+      "statement": "Required CI checks are passing for the PR head commit.",
+      "metric": "ci.failed_checks",
+      "operator": "eq",
+      "target": 0,
+      "measurement_method": "GitHub check-runs API on PR head sha"
+    },
+    {
+      "id": "scope_bounded",
+      "statement": "Changed files stay within allowed path scope for this intent.",
+      "metric": "repo.out_of_scope_files",
+      "operator": "eq",
+      "target": 0,
+      "measurement_method": "PR changed-files list compared to constraints.allowed_paths"
+    },
+    {
+      "id": "verification_evidence",
+      "statement": "PR includes at least one concrete verification artifact link.",
+      "metric": "pr.evidence_links",
+      "operator": "gte",
+      "target": 1,
+      "measurement_method": "PR body and comments parsed for evidence links"
+    }
+  ],
+  "constraints": {
+    "must": [
+      "Map each executor step to at least one success criterion.",
+      "Capture direct tool evidence for action-impacting claims."
+    ],
+    "must_not": [
+      "Claim completion based only on agent statements.",
+      "Bypass CI for merge recommendation."
+    ],
+    "allowed_paths": [
+      "web/**",
+      "functions/**",
+      "docs/**",
+      "scripts/**",
+      ".governance/**"
+    ],
+    "max_changed_files": 30
+  },
+  "budgets": {
+    "tokens": 120000,
+    "runtime_minutes": 45,
+    "retries": 4
+  },
+  "allowed_tools": [
+    "git",
+    "rg",
+    "node",
+    "npm",
+    "gh-api-read"
+  ],
+  "required_evidence": [
+    {
+      "criterion_id": "ci_pass",
+      "minimum_tier": 2,
+      "accepted_sources": [
+        "ci",
+        "tool_output"
+      ]
+    },
+    {
+      "criterion_id": "scope_bounded",
+      "minimum_tier": 2,
+      "accepted_sources": [
+        "tool_output",
+        "repo_doc"
+      ]
+    },
+    {
+      "criterion_id": "verification_evidence",
+      "minimum_tier": 2,
+      "accepted_sources": [
+        "test",
+        "ci",
+        "tool_output",
+        "repo_doc"
+      ]
+    }
+  ],
+  "risk_level": "low",
+  "authority_gates": [
+    {
+      "name": "destructive-change-gate",
+      "requires_human_approval": true,
+      "trigger": "Any destructive operation or data-loss risk",
+      "approved_roles": [
+        "owner",
+        "maintainer"
+      ]
+    }
+  ],
+  "stop_conditions": [
+    "Budget cap exceeded without measurable success-criteria progress.",
+    "Repeated CI failure signature appears 3 times.",
+    "Required human decision is unresolved for more than 24 hours."
+  ],
+  "metadata": {
+    "activation_state": "active",
+    "evidence_chain_policy": "tier5_never_sufficient",
+    "supervisor_cadence_steps": 3
+  }
+}
+

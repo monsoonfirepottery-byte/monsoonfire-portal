@@ -1,7 +1,7 @@
 # P1 — Events: Local and Remote Browse + Filters
 
-Status: Active
-Date: 2026-03-01
+Status: Closed
+Date: 2026-03-04
 Priority: P1
 Owner: Frontend + Member Experience
 Type: Ticket

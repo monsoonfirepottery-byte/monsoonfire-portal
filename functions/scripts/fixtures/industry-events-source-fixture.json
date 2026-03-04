@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "generatedAt": "2026-03-01T00:00:00.000Z",
+  "sources": [
+    {
+      "sourceId": "fixture-curated-main",
+      "sourceName": "Fixture Curated Industry Feed",
+      "sourceUrl": "https://fixtures.monsoonfire.com/industry/main",
+      "connector": "curated-feed",
+      "events": [
+        {
+          "externalId": "nceca-2026-primary",
+          "title": "NCECA Annual Conference 2026",
+          "summary": "Primary conference row for national ceramics planning.",
+          "description": "Fixture baseline row for ingestion and triage.",
+          "mode": "hybrid",
+          "status": "published",
+          "startAt": "2026-03-26T15:00:00.000Z",
+          "endAt": "2026-03-29T01:00:00.000Z",
+          "timezone": "America/Chicago",
+          "location": "Annual host city convention center",
+          "city": "Host city",
+          "region": "US",
+          "country": "US",
+          "remoteUrl": "https://nceca.net/live",
+          "registrationUrl": "https://nceca.net/register",
+          "sourceName": "NCECA",
+          "sourceUrl": "https://nceca.net/conference-2026",
+          "tags": [
+            "conference",
+            "national"
+          ],
+          "verifiedAt": "2026-02-28T12:00:00.000Z"
+        },
+        {
+          "externalId": "nceca-2026-duplicate-url",
+          "title": "NCECA Conference 2026 (duplicate URL row)",
+          "summary": "Duplicate source URL should suppress this row.",
+          "mode": "hybrid",
+          "status": "published",
+          "startAt": "2026-03-26T16:00:00.000Z",
+          "endAt": "2026-03-29T01:00:00.000Z",
+          "timezone": "America/Chicago",
+          "location": "Annual host city convention center",
+          "country": "US",
+          "sourceUrl": "https://nceca.net/conference-2026",
+          "verifiedAt": "2026-02-28T12:00:00.000Z"
+        },
+        {
+          "externalId": "phoenix-open-studio-a",
+          "title": "Phoenix Clay Open Studio Night",
+          "summary": "First local open studio feed row.",
+          "mode": "local",
+          "status": "published",
+          "startAt": "2026-04-12T01:00:00.000Z",
+          "endAt": "2026-04-12T04:00:00.000Z",
+          "timezone": "America/Phoenix",
+          "location": "Phoenix metro area",
+          "city": "Phoenix",
+          "region": "AZ",
+          "country": "US",
+          "registrationUrl": "https://fixtures.monsoonfire.com/open-studio",
+          "tags": [
+            "phoenix",
+            "open-studio"
+          ],
+          "verifiedAt": "2026-03-01T09:00:00.000Z"
+        },
+        {
+          "externalId": "phoenix-open-studio-b",
+          "title": "Phoenix Clay Open-Studio Night",
+          "summary": "Title/date hash duplicate should suppress this row.",
+          "mode": "local",
+          "status": "published",
+          "startAt": "2026-04-12T10:30:00.000Z",
+          "endAt": "2026-04-12T12:30:00.000Z",
+          "timezone": "America/Phoenix",
+          "location": "Phoenix metro area",
+          "city": "Phoenix",
+          "region": "AZ",
+          "country": "US",
+          "verifiedAt": "2026-03-01T09:00:00.000Z"
+        },
+        {
+          "externalId": "stale-remote-congress",
+          "title": "Ceramics Congress Replay Access Window",
+          "summary": "Stale verification row for freshness checks.",
+          "mode": "remote",
+          "status": "published",
+          "startAt": "2026-05-10T14:00:00.000Z",
+          "endAt": "2026-05-12T02:00:00.000Z",
+          "timezone": "UTC",
+          "remoteUrl": "https://ceramic.school/congress/replay",
+          "sourceUrl": "https://ceramic.school/congress/replay",
+          "country": "US",
+          "verifiedAt": "2025-11-01T00:00:00.000Z"
+        },
+        {
+          "externalId": "retired-local-archive",
+          "title": "Regional Clay Meetup 2025 Archive",
+          "summary": "Past event that should be retired by freshness policy.",
+          "mode": "local",
+          "status": "published",
+          "startAt": "2025-01-10T18:00:00.000Z",
+          "endAt": "2025-01-10T22:00:00.000Z",
+          "timezone": "America/Phoenix",
+          "location": "Mesa community studio",
+          "city": "Mesa",
+          "region": "AZ",
+          "country": "US",
+          "sourceUrl": "https://fixtures.monsoonfire.com/archive/regional-clay-meetup-2025",
+          "verifiedAt": "2026-02-20T00:00:00.000Z"
+        },
+        {
+          "externalId": "invalid-missing-title",
+          "title": "",
+          "summary": "Invalid row to ensure failure artifacts are produced.",
+          "mode": "local",
+          "status": "published",
+          "startAt": "2026-07-01T16:00:00.000Z",
+          "endAt": "2026-07-01T20:00:00.000Z",
+          "timezone": "America/Phoenix",
+          "location": "Phoenix",
+          "country": "US",
+          "sourceUrl": "https://fixtures.monsoonfire.com/invalid/missing-title"
+        }
+      ]
+    }
+  ]
+}

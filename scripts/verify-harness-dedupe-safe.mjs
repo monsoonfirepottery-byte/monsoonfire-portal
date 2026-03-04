@@ -272,6 +272,11 @@ async function main() {
       command: "node",
       args: ["./scripts/credentials-health-check.mjs", "--apply", "--rules-probe-optional", "--json"],
     },
+    {
+      name: "industry-events-canary",
+      command: "node",
+      args: ["./scripts/check-industry-events-canary.mjs", "--json", "--strict"],
+    },
   ];
 
   const filteredTasks = tasks.filter((task) => {

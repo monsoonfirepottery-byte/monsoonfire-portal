@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://monsoonfire.com/governance/schemas/plan-step.v1.schema.json",
+  "title": "Governance Plan Step v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "step_id",
+    "maps_to_success_criteria",
+    "action_summary",
+    "evidence_to_collect",
+    "rollback_plan",
+    "risk_delta"
+  ],
+  "properties": {
+    "step_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{2,80}$"
+    },
+    "maps_to_success_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9._-]{2,80}$"
+      }
+    },
+    "action_summary": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 2000
+    },
+    "evidence_to_collect": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 500
+      }
+    },
+    "rollback_plan": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 2000
+    },
+    "risk_delta": {
+      "type": "string",
+      "enum": [
+        "decrease",
+        "neutral",
+        "increase"
+      ]
+    }
+  }
+}
+

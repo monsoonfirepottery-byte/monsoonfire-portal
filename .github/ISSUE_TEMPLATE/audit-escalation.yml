@@ -1,0 +1,59 @@
+name: Audit Escalation
+description: Escalation record for repeated verification holds or high-severity governance findings.
+title: "Audit Escalation: <intent/pr>"
+labels:
+  - audit-escalation
+body:
+  - type: input
+    id: intent_id
+    attributes:
+      label: Intent ID
+      placeholder: repo.ship.epic
+    validations:
+      required: true
+
+  - type: input
+    id: pr_number
+    attributes:
+      label: PR Number
+      placeholder: "1234"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - medium
+        - high
+        - critical
+    validations:
+      required: true
+
+  - type: textarea
+    id: pattern_summary
+    attributes:
+      label: Pattern Summary
+      description: What repeated pattern triggered escalation?
+      placeholder: repeated CI loop, scope drift, grounding gap, integrity signal
+    validations:
+      required: true
+
+  - type: textarea
+    id: recommendation
+    attributes:
+      label: Recommended Decision
+      description: Choose proceed, re-scope, or abandon and explain why.
+      placeholder: proceed / re-scope / abandon
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence_refs
+    attributes:
+      label: Evidence References
+      description: Link-based references only. No secret values.
+    validations:
+      required: true
+

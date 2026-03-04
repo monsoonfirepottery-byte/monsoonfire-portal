@@ -1,0 +1,66 @@
+name: Decision Request
+description: Structured human decision capture for governance holds and escalations.
+title: "Decision Request: <intent-or-pr>"
+labels:
+  - decision-request
+body:
+  - type: input
+    id: intent_id
+    attributes:
+      label: Intent ID
+      description: Which intent contract does this decision affect?
+      placeholder: repo.change.small_fix
+    validations:
+      required: true
+
+  - type: input
+    id: pr_number
+    attributes:
+      label: PR Number
+      description: Pull request tied to this decision.
+      placeholder: "1234"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: decision_type
+    attributes:
+      label: Decision Type
+      options:
+        - proceed
+        - re-scope
+        - abandon
+        - hold
+        - urgent-override
+    validations:
+      required: true
+
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Decision Rationale
+      description: Why this decision was chosen and what success criterion/constraint it affects.
+      placeholder: Include evidence pointers and tradeoffs.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence_refs
+    attributes:
+      label: Evidence References
+      description: Links to PR comments, CI runs, docs@commit, or other evidence.
+      placeholder: |
+        - https://github.com/<org>/<repo>/pull/<n>#issuecomment-...
+        - https://github.com/<org>/<repo>/actions/runs/<id>
+    validations:
+      required: true
+
+  - type: textarea
+    id: next_steps
+    attributes:
+      label: Next Steps
+      description: Smallest safe next steps after this decision.
+      placeholder: 1) ... 2) ...
+    validations:
+      required: true
+

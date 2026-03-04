@@ -53,6 +53,11 @@ const automationSelfChurnMatchers = [
   /^docs\/runbooks\/codex-improvement\/[^/]+\.md$/,
 ];
 
+const ciFailureSignatureSuppressions = [
+  /^Deploy to Firebase Hosting on PR ::/i,
+  /::\s*Deploy Preview$/i,
+];
+
 const secretKeyPattern = /(token|secret|password|authorization|api[_-]?key|cookie|session|private[_-]?key)/i;
 const secretValuePatterns = [
   /bearer\s+[a-z0-9._~-]+/gi,
@@ -662,6 +667,12 @@ function collectLatestRunBySignature(runs) {
 function isFailedConclusion(conclusion) {
   const normalized = String(conclusion || "").toLowerCase();
   return ["failure", "timed_out", "cancelled", "action_required", "startup_failure"].includes(normalized);
+}
+
+function shouldSuppressCiFailureSignature(signature) {
+  const value = String(signature || "").trim();
+  if (!value) return false;
+  return ciFailureSignatureSuppressions.some((pattern) => pattern.test(value));
 }
 
 function ensureRecommendation(recommendations, recommendation) {
@@ -1496,11 +1507,25 @@ async function main() {
 
   const failureSignatures24 = collectFailureSignatures(failedRuns24);
   const latestRunBySignature24 = collectLatestRunBySignature(runs24);
-  const repeatedFailureSignatures = Object.entries(failureSignatures24).filter(([signature, count]) => {
+  const repeatedFailureSignaturesAll = Object.entries(failureSignatures24).filter(([signature, count]) => {
     if (count < 2) return false;
     const latest = latestRunBySignature24[signature];
     return latest ? isFailedConclusion(latest.conclusion) : true;
   });
+  const suppressedRepeatedFailureSignatures = repeatedFailureSignaturesAll.filter(([signature]) =>
+    shouldSuppressCiFailureSignature(signature)
+  );
+  const repeatedFailureSignatures = repeatedFailureSignaturesAll.filter(
+    ([signature]) => !shouldSuppressCiFailureSignature(signature)
+  );
+  if (suppressedRepeatedFailureSignatures.length > 0) {
+    notes.push(
+      `Suppressed non-actionable CI signatures: ${suppressedRepeatedFailureSignatures
+        .slice(0, 3)
+        .map(([signature]) => signature)
+        .join("; ")}.`
+    );
+  }
 
   const recommendations = [];
 

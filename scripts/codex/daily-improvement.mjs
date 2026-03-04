@@ -7,6 +7,7 @@ import { constants as fsConstants } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { captureAutomationMemory, loadAutomationStartupMemoryContext } from "./open-memory-automation.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..", "..");
@@ -141,25 +142,54 @@ function parseArgs(argv) {
       continue;
     }
 
-    const next = argv[index + 1];
-    if (!arg.startsWith("--")) continue;
-    if (!next || next.startsWith("--")) {
-      throw new Error(`Missing value for ${arg}`);
+    if (arg === "--help" || arg === "-h") {
+      continue;
     }
 
+    if (arg.startsWith("--now=")) {
+      options.nowIso = String(arg.slice("--now=".length)).trim();
+      continue;
+    }
+
+    if (arg.startsWith("--run-id=")) {
+      options.runId = String(arg.slice("--run-id=".length)).trim();
+      continue;
+    }
+
+    if (arg.startsWith("--max-issues=")) {
+      const value = Number(arg.slice("--max-issues=".length));
+      if (!Number.isFinite(value) || value < 0) {
+        throw new Error(`Invalid --max-issues value: ${arg.slice("--max-issues=".length)}`);
+      }
+      options.maxIssuesPerRun = Math.floor(value);
+      continue;
+    }
+
+    if (!arg.startsWith("--")) continue;
+    const next = argv[index + 1];
+
     if (arg === "--now") {
+      if (!next || next.startsWith("--")) {
+        throw new Error(`Missing value for ${arg}`);
+      }
       options.nowIso = String(next).trim();
       index += 1;
       continue;
     }
 
     if (arg === "--run-id") {
+      if (!next || next.startsWith("--")) {
+        throw new Error(`Missing value for ${arg}`);
+      }
       options.runId = String(next).trim();
       index += 1;
       continue;
     }
 
     if (arg === "--max-issues") {
+      if (!next || next.startsWith("--")) {
+        throw new Error(`Missing value for ${arg}`);
+      }
       const value = Number(next);
       if (!Number.isFinite(value) || value < 0) {
         throw new Error(`Invalid --max-issues value: ${next}`);
@@ -168,6 +198,9 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+
+    // Unknown flags are ignored to keep automation resilient to wrapper drift.
+    continue;
   }
 
   return options;
@@ -607,7 +640,63 @@ function buildRunMarkdown({
   return `${lines.join("\n")}\n`;
 }
 
-function buildRollingIssueComment({ runInfo, summary, recommendations, ticketUrls, prUrl, nextFocus }) {
+function buildRollingCommentSignature({ summary, recommendations, ticketUrls, prUrl, nextFocus }) {
+  const payload = JSON.stringify({
+    summary: {
+      commits12h: Number(summary?.activity?.commits12h || 0),
+      commits24h: Number(summary?.activity?.commits24h || 0),
+      reverts24h: Number(summary?.activity?.reverts24h || 0),
+      prMerged24h: Number(summary?.activity?.prMerged24h || 0),
+      ciHealthDelta: summary?.impact?.ciHealthDelta ?? null,
+      errorClusterDelta: summary?.impact?.errorClusterDelta ?? null,
+      toolFailureRateDelta: summary?.impact?.toolFailureRateDelta ?? null,
+      fileChurnDelta: summary?.impact?.fileChurnDelta ?? null,
+      impactScore: Number(summary?.impact?.impactScore || 0),
+      structuralDecision: String(summary?.structuralEvolutionDecision?.status || ""),
+    },
+    recommendations: (Array.isArray(recommendations) ? recommendations : []).map((item) => ({
+      id: String(item?.id || ""),
+      trigger: String(item?.trigger || ""),
+    })),
+    tickets: (Array.isArray(ticketUrls) ? ticketUrls : []).map((item) => String(item || "")),
+    prUrl: String(prUrl || ""),
+    nextFocus: (Array.isArray(nextFocus) ? nextFocus : []).map((item) => String(item || "")),
+  });
+
+  let hash = 2166136261;
+  for (let index = 0; index < payload.length; index += 1) {
+    hash ^= payload.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `f${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+function fetchLatestIssueCommentBody(repoSlug, issueNumber) {
+  const response = runGhJson([
+    "issue",
+    "view",
+    String(issueNumber),
+    "--repo",
+    repoSlug,
+    "--json",
+    "comments",
+  ]);
+  if (!response.ok || !response.data || typeof response.data !== "object") return "";
+  const comments = Array.isArray(response.data.comments) ? response.data.comments : [];
+  const latest = comments.length > 0 ? comments[comments.length - 1] : null;
+  return String(latest?.body || "");
+}
+
+function buildRollingIssueComment({
+  runInfo,
+  summary,
+  recommendations,
+  ticketUrls,
+  prUrl,
+  nextFocus,
+  marker = "",
+  runMarker = "",
+}) {
   const lines = [];
   lines.push(`## ${runInfo.dateKey} (${runInfo.runSlot}, last ${PRIMARY_WINDOW_HOURS}h, rollup ${SECONDARY_WINDOW_HOURS}h)`);
   lines.push("");
@@ -670,6 +759,12 @@ function buildRollingIssueComment({ runInfo, summary, recommendations, ticketUrl
   lines.push("### Next 12h Focus");
   nextFocus.forEach((focus) => lines.push(`- ${focus}`));
   lines.push("");
+  if (marker) {
+    lines.push(`<!-- ${marker} -->`);
+  }
+  if (runMarker) {
+    lines.push(`<!-- ${runMarker} -->`);
+  }
 
   return lines.join("\n");
 }
@@ -1031,7 +1126,8 @@ function normalizeSkillDensity(raw) {
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const runStartedAt = new Date();
-  const shouldPersist = options.apply || options.persistDryRun;
+  let shouldPersist = options.apply || options.persistDryRun;
+  let applyDowngradedReason = "";
 
   await ensureContracts();
   const state = await readJsonFile(improvementStatePath, defaultState());
@@ -1073,6 +1169,12 @@ async function main() {
     }
     return;
   }
+
+  const startupMemoryContext = await loadAutomationStartupMemoryContext({
+    tool: "daily-improvement",
+    runId: runInfo.runId,
+    query: "codex continuous improvement recommendations failure clusters follow-through",
+  });
 
   const start12Ms = now.getTime() - PRIMARY_WINDOW_HOURS * 60 * 60 * 1000;
   const start24Ms = now.getTime() - SECONDARY_WINDOW_HOURS * 60 * 60 * 1000;
@@ -1123,6 +1225,11 @@ async function main() {
 
   let githubAvailable = false;
   const notes = [];
+  if (startupMemoryContext.ok && startupMemoryContext.itemCount > 0) {
+    notes.push(`Loaded ${startupMemoryContext.itemCount} Open Memory context item(s).`);
+  } else if (startupMemoryContext.attempted && startupMemoryContext.error) {
+    notes.push(`Open Memory context unavailable: ${startupMemoryContext.error}`);
+  }
   const repoSlug = parseRepoSlug();
   let prList = [];
   let issueList = [];
@@ -1320,15 +1427,47 @@ async function main() {
     ensureRecommendation(recommendations, mapped);
   }
 
-  const retryClusterCounts = {};
-  for (const entry of callFailures24) {
-    const tool = String(entry?.tool || "").trim();
-    const action = String(entry?.action || "").trim();
-    if (!tool || !action) continue;
-    const key = `${tool}::${action}`;
-    retryClusterCounts[key] = (retryClusterCounts[key] || 0) + 1;
-  }
-  const toolRetryClusters = Object.entries(retryClusterCounts).filter(([, count]) => count >= 2);
+  const toolRetryClusters = (() => {
+    const sortedCalls = calls24.slice().sort((left, right) => {
+      const leftMs = toMs(left?.tsIso || left?.timestampIso || left?.createdAt || "") || 0;
+      const rightMs = toMs(right?.tsIso || right?.timestampIso || right?.createdAt || "") || 0;
+      return leftMs - rightMs;
+    });
+    const streakBySignature = new Map();
+    const bursts = new Map();
+
+    for (const entry of sortedCalls) {
+      const tool = String(entry?.tool || "").trim();
+      const action = String(entry?.action || "").trim();
+      if (!tool || !action) continue;
+      const signature = `${tool}::${action}`;
+
+      if (entry?.ok === true) {
+        streakBySignature.delete(signature);
+        continue;
+      }
+      if (entry?.ok !== false) continue;
+
+      const errorType = String(entry?.errorType || "unknown").trim() || "unknown";
+      const previous = streakBySignature.get(signature);
+      const count =
+        previous && previous.errorType === errorType ? Number(previous.count || 0) + 1 : 1;
+      streakBySignature.set(signature, { count, errorType });
+
+      if (count < 2) continue;
+      const burstKey = `${signature}::${errorType}`;
+      const existing = bursts.get(burstKey);
+      if (!existing || count > Number(existing.count || 0)) {
+        bursts.set(burstKey, { signature, errorType, count });
+      }
+    }
+
+    return Array.from(bursts.values()).sort((left, right) => {
+      const countDelta = Number(right.count || 0) - Number(left.count || 0);
+      if (countDelta !== 0) return countDelta;
+      return String(left.signature).localeCompare(String(right.signature));
+    });
+  })();
   if (toolRetryClusters.length > 0) {
     ensureRecommendation(recommendations, {
       id: "tool-retry-loop-cluster",
@@ -1336,7 +1475,10 @@ async function main() {
       trigger: `${toolRetryClusters.length} tool retry cluster(s) crossed threshold >=2.`,
       why: "Repeated identical retries waste cycles and hide root causes.",
       action: "Stop after repeated signatures and switch to structured fallback strategies.",
-      evidence: toolRetryClusters.map(([signature, count]) => `${signature}: ${count}`),
+      evidence: toolRetryClusters.map(
+        (cluster) =>
+          `${cluster.signature} [${cluster.errorType}] consecutive-failure streak: ${cluster.count}`
+      ),
     });
   }
 
@@ -1505,11 +1647,25 @@ async function main() {
   let runBranchUsed = "";
   let rollingIssueUrl = "";
   let rollingIssueNumber = null;
+  let rollingCommentSkipped = false;
+  let rollingCommentSignature = "";
+  const dirtyWorkingTree = getWorkingTreeDirty();
 
-  if (options.apply && !options.allowDirty && getWorkingTreeDirty()) {
-    throw new Error(
-      "Refusing --apply run on dirty worktree. Commit/stash changes first or pass --allow-dirty explicitly."
+  if (options.apply && !options.allowDirty && dirtyWorkingTree) {
+    options.apply = false;
+    options.dryRun = true;
+    shouldPersist = options.apply || options.persistDryRun;
+    applyDowngradedReason =
+      "Apply mode requested on dirty worktree; downgraded to dry-run to avoid repeated runtime failures.";
+  }
+  const skipRunPrOnDirtyAllow = options.apply && options.allowDirty && dirtyWorkingTree;
+  if (skipRunPrOnDirtyAllow) {
+    notes.push(
+      "Apply mode is running with --allow-dirty on a dirty worktree; skipping branch checkout/push/PR creation for this run."
     );
+  }
+  if (applyDowngradedReason) {
+    notes.push(applyDowngradedReason);
   }
 
   if (options.apply && githubAvailable) {
@@ -1613,50 +1769,71 @@ async function main() {
     }
 
     if (rollingIssueNumber) {
-      const rollingComment = buildRollingIssueComment({
-        runInfo,
-        summary: {
-          activity: {
-            commits12h: commits12.length,
-            commits24h: commits24.length,
-            reverts24h: reverts24,
-            prMerged24h: prSummary.merged24h,
-          },
-          failures: {
-            ciFailures24h: failedRuns24.length,
-          },
-          impact: {
-            ciHealthDelta,
-            errorClusterDelta,
-            toolFailureRateDelta,
-            fileChurnDelta,
-            impactScore,
-          },
-          skillDensity,
-          interactionFrictionClusters,
-          structuralEvolutionDecision,
+      const rollingSummary = {
+        activity: {
+          commits12h: commits12.length,
+          commits24h: commits24.length,
+          reverts24h: reverts24,
+          prMerged24h: prSummary.merged24h,
         },
+        failures: {
+          ciFailures24h: failedRuns24.length,
+        },
+        impact: {
+          ciHealthDelta,
+          errorClusterDelta,
+          toolFailureRateDelta,
+          fileChurnDelta,
+          impactScore,
+        },
+        skillDensity,
+        interactionFrictionClusters,
+        structuralEvolutionDecision,
+      };
+
+      rollingCommentSignature = buildRollingCommentSignature({
+        summary: rollingSummary,
         recommendations,
         ticketUrls: createdTicketUrls,
         prUrl,
         nextFocus,
       });
+      const marker = `codex-improvement-rollup-signature:${rollingCommentSignature}`;
+      const runMarker = `codex-improvement-rollup-run:${runInfo.runId}`;
+      const latestRollingComment = fetchLatestIssueCommentBody(repoSlug, rollingIssueNumber);
+      const unchanged =
+        latestRollingComment.includes(`<!-- ${marker} -->`) ||
+        latestRollingComment.includes(`<!-- ${runMarker} -->`);
+      rollingCommentSkipped = unchanged;
 
-      runGh(
-        [
-          "issue",
-          "comment",
-          String(rollingIssueNumber),
-          "--repo",
-          repoSlug,
-          "--body",
-          rollingComment,
-        ],
-        { allowFailure: true }
-      );
+      if (!unchanged) {
+        const rollingComment = buildRollingIssueComment({
+          runInfo,
+          summary: rollingSummary,
+          recommendations,
+          ticketUrls: createdTicketUrls,
+          prUrl,
+          nextFocus,
+          marker,
+          runMarker,
+        });
+
+        runGh(
+          [
+            "issue",
+            "comment",
+            String(rollingIssueNumber),
+            "--repo",
+            repoSlug,
+            "--body",
+            rollingComment,
+          ],
+          { allowFailure: true }
+        );
+      }
     }
 
-    const shouldCreateRunPr = recommendations.length > 0 || scoreDroppedTwice;
+    const shouldCreateRunPr = (recommendations.length > 0 || scoreDroppedTwice) && !skipRunPrOnDirtyAllow;
 
     if (shouldCreateRunPr) {
       const sharedRunPr = sharedCoordination?.automationPrByRunId?.[runInfo.runId];
@@ -2030,14 +2207,50 @@ async function main() {
     autoCreatedTickets: createdTicketUrls,
     prsCreated: prUrl ? [prUrl] : [],
     rollingIssue: rollingIssueUrl || null,
+    rollingCommentSignature: rollingCommentSignature || null,
+    rollingCommentSkipped,
     nextFocus,
     notes,
+    memory: {
+      context: {
+        attempted: startupMemoryContext.attempted,
+        ok: startupMemoryContext.ok,
+        itemCount: startupMemoryContext.itemCount,
+        reason: startupMemoryContext.reason || null,
+        error: startupMemoryContext.error || null,
+      },
+      capture: null,
+    },
     artifacts: {
       improvementLogPath: relative(repoRoot, improvementLogPath),
       improvementStatePath: relative(repoRoot, improvementStatePath),
       toolcallPath: relative(repoRoot, toolcallPath),
     },
   };
+
+  output.memory.capture = await captureAutomationMemory({
+    tool: "daily-improvement",
+    runId: runInfo.runId,
+    status: output.status,
+    summary: {
+      recommendations: output.recommendations.length,
+      ticketsCreated: output.autoCreatedTickets.length,
+      prsCreated: output.prsCreated.length,
+      impactScore,
+      githubAvailable,
+      persisted: shouldPersist,
+      dryRun: options.dryRun,
+    },
+    extraTags: [runInfo.runSlot],
+    metadata: {
+      runSlot: runInfo.runSlot,
+      rollingIssue: rollingIssueUrl || null,
+      rollingCommentSignature: rollingCommentSignature || null,
+      rollingCommentSkipped,
+      structuralEvolutionDecision: structuralEvolutionDecision.status,
+      memoryContextItems: startupMemoryContext.itemCount,
+    },
+  });
 
   if (options.asJson) {
     process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);

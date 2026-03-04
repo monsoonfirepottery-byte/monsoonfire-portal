@@ -2,6 +2,7 @@
 
 /* eslint-disable no-console */
 
+import crypto from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -48,12 +49,29 @@ function parseArgs(argv) {
       options.asJson = true;
       continue;
     }
+    if (arg === "--apply") {
+      options.apply = true;
+      continue;
+    }
     if (arg === "--no-apply") {
       options.apply = false;
       continue;
     }
     if (arg === "--no-github") {
       options.includeGithub = false;
+      continue;
+    }
+    if (arg === "--rules-probe-required") {
+      options.rulesProbeRequired = true;
+      continue;
+    }
+    if (arg === "--rules-probe-optional" || arg === "--no-rules-probe-required") {
+      options.rulesProbeRequired = false;
+      continue;
+    }
+    if (arg.startsWith("--rules-probe-required=")) {
+      const raw = String(arg.slice("--rules-probe-required=".length)).trim().toLowerCase();
+      options.rulesProbeRequired = raw === "1" || raw === "true" || raw === "yes" || raw === "on";
       continue;
     }
 
@@ -205,6 +223,50 @@ function postIssueComment(repoSlug, issueNumber, body) {
   );
 }
 
+function getLatestIssueCommentBody(repoSlug, issueNumber) {
+  const view = runCommand(
+    "gh",
+    ["issue", "view", String(issueNumber), "--repo", repoSlug, "--json", "comments"],
+    { allowFailure: true }
+  );
+  if (!view.ok) return "";
+  try {
+    const parsed = JSON.parse(view.stdout || "{}");
+    const comments = Array.isArray(parsed?.comments) ? parsed.comments : [];
+    const latest = comments.length > 0 ? comments[comments.length - 1] : null;
+    return String(latest?.body || "");
+  } catch {
+    return "";
+  }
+}
+
+function stableHash(value, len = 20) {
+  return crypto.createHash("sha256").update(String(value || "")).digest("hex").slice(0, len);
+}
+
+function buildSummarySignature(summary) {
+  const shape = {
+    status: String(summary?.status || ""),
+    projectId: String(summary?.projectId || ""),
+    baseUrl: String(summary?.baseUrl || ""),
+    checks: Array.isArray(summary?.checks)
+      ? summary.checks.map((item) => ({
+          label: String(item?.label || ""),
+          status: String(item?.status || ""),
+          required: item?.required !== false,
+        }))
+      : [],
+    probes: Array.isArray(summary?.probes)
+      ? summary.probes.map((item) => ({
+          label: String(item?.label || ""),
+          status: String(item?.status || ""),
+          required: item?.required !== false,
+        }))
+      : [],
+  };
+  return stableHash(JSON.stringify(shape), 20);
+}
+
 async function requestJson(url, init = {}, timeoutMs = 15000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -325,34 +387,47 @@ async function exchangeRefreshToken(refreshToken, source) {
 
 async function resolveRulesApiToken() {
   const envToken = String(process.env.FIREBASE_RULES_API_TOKEN || "").trim();
+  let envRefreshError = null;
 
   if (envToken) {
     if (looksLikeRefreshToken(envToken)) {
+      try {
+        return {
+          source: "env_refresh_token",
+          token: await exchangeRefreshToken(envToken, "env_refresh_token"),
+        };
+      } catch (error) {
+        envRefreshError = error instanceof Error ? error : new Error(String(error));
+      }
+    } else {
       return {
-        source: "env_refresh_token",
-        token: await exchangeRefreshToken(envToken, "env_refresh_token"),
+        source: "env_access_token",
+        token: envToken,
       };
     }
-    return {
-      source: "env_access_token",
-      token: envToken,
-    };
   }
 
-  const cli = await loadFirebaseCliTokens();
-  if (cli.accessToken) {
-    return {
-      source: "firebase_tools_access_token",
-      token: cli.accessToken,
-    };
-  }
-  if (cli.refreshToken) {
-    return {
-      source: "firebase_tools_refresh_token",
-      token: await exchangeRefreshToken(cli.refreshToken, "firebase_tools_refresh_token"),
-    };
+  try {
+    const cli = await loadFirebaseCliTokens();
+    if (cli.accessToken) {
+      return {
+        source: "firebase_tools_access_token",
+        token: cli.accessToken,
+      };
+    }
+    if (cli.refreshToken) {
+      return {
+        source: "firebase_tools_refresh_token",
+        token: await exchangeRefreshToken(cli.refreshToken, "firebase_tools_refresh_token"),
+      };
+    }
+  } catch {
+    // Ignore configstore read failures and continue to consolidated error below.
   }
 
+  if (envRefreshError) {
+    throw envRefreshError;
+  }
   throw new Error("FIREBASE_RULES_API_TOKEN is missing, and firebase-tools token cache has no usable token.");
 }
 
@@ -418,7 +493,7 @@ async function resolveAgentCredentialSource(summary) {
   return null;
 }
 
-function buildIssueComment(summary) {
+function buildIssueComment(summary, signatureMarker = "") {
   const lines = [];
   lines.push(`## ${summary.timestampIso} — credential health`);
   lines.push("");
@@ -434,11 +509,16 @@ function buildIssueComment(summary) {
   lines.push("### Probes");
   for (const probe of summary.probes) {
     const requiredSuffix = probe.required === false ? " (optional)" : "";
-    lines.push(`- ${probe.label}${requiredSuffix}: ${probe.status}${probe.detail ? ` (${probe.detail})` : ""}`);
+    const displayStatus = probe.required === false && probe.status === "failed" ? "warn" : probe.status;
+    lines.push(`- ${probe.label}${requiredSuffix}: ${displayStatus}${probe.detail ? ` (${probe.detail})` : ""}`);
   }
   lines.push("");
   if (summary.runUrl) {
     lines.push(`- Run: ${summary.runUrl}`);
+  }
+  if (signatureMarker) {
+    lines.push("");
+    lines.push(signatureMarker);
   }
   return lines.join("\n");
 }
@@ -481,7 +561,8 @@ async function main() {
     Boolean(rulesTokenResolution?.token),
     rulesTokenResolution?.token
       ? `Rules API token resolved (${rulesTokenResolution.source}).`
-      : rulesTokenError || "FIREBASE_RULES_API_TOKEN missing."
+      : rulesTokenError || "FIREBASE_RULES_API_TOKEN missing.",
+    options.rulesProbeRequired
   );
   addCheck(summary, "Firebase Web API key is configured", options.apiKey.length > 0, options.apiKey ? "PORTAL_FIREBASE_API_KEY detected." : "PORTAL_FIREBASE_API_KEY missing.");
 
@@ -596,7 +677,15 @@ async function main() {
       const rollingIssue = ensureRollingIssue(repoSlug);
       summary.rollingIssue = rollingIssue;
       if (rollingIssue.number > 0) {
-        postIssueComment(repoSlug, rollingIssue.number, buildIssueComment(summary));
+        const signature = buildSummarySignature(summary);
+        const marker = `<!-- credential-health-signature:${signature} -->`;
+        const latestBody = getLatestIssueCommentBody(repoSlug, rollingIssue.number);
+        const unchanged = latestBody.includes(marker);
+        summary.rollingIssue.signature = signature;
+        summary.rollingIssue.commentSkipped = unchanged;
+        if (!unchanged) {
+          postIssueComment(repoSlug, rollingIssue.number, buildIssueComment(summary, marker));
+        }
       }
     }
   }

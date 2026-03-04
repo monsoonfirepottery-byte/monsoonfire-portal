@@ -1,5 +1,11 @@
 # P1 Epic: Daily Repo Security Scanning
 
+Status: Closed
+Date: 2026-03-04
+Priority: P1
+Owner: Platform / Tooling
+Type: Epic
+
 ## Goal
 Run automated daily security checks against the published repository to catch:
 - leaked secrets in tracked code/artifacts,

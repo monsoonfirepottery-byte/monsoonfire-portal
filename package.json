@@ -82,7 +82,7 @@
     "lint:policies": "node website/scripts/lint-policies.mjs",
     "test:web": "npm --prefix web run test:run",
     "test:functions": "npm --prefix functions run test",
-    "test:studio-brain": "npm --prefix studio-brain run test",
+    "test:studio-brain": "npm --prefix studio-brain run test:ci",
     "test:unit": "npm run test:all",
     "test:full": "npm run test:automation",
     "test:all": "npm run test:functions && npm run test:studio-brain && npm run test:web",

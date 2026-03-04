@@ -662,6 +662,7 @@ async function main() {
       title: TUNING_ROLLING_ISSUE,
       labels: ["automation", "portal-qa", "self-improvement"],
       markerPrefix: "portal-tuning-snapshot-signature",
+      markerAliases: ["portal-tuning-signature", "portal-automation-tuning-signature"],
       signaturePayload: dashboard.tuning?.recommendations || {},
       buildComment: (marker) => createTuningComment(dashboard, marker),
     },
@@ -669,13 +670,18 @@ async function main() {
       title: CANARY_ROLLING_ISSUE,
       labels: ["automation", "portal-qa"],
       markerPrefix: "portal-canary-directive-signature",
+      markerAliases: ["portal-canary-signature", "portal-automation-canary-signature"],
       signaturePayload: extractCanaryDirectiveCandidates(dashboard),
       buildComment: (marker) => createCanaryDirectiveComment(dashboard, marker),
     },
   ];
 
   for (const config of rollingConfigs) {
-    const marker = `${config.markerPrefix}:${stableHash(config.signaturePayload)}`;
+    const markerHash = stableHash(config.signaturePayload);
+    const markerCandidates = [config.markerPrefix, ...(config.markerAliases || [])].map(
+      (prefix) => `${prefix}:${markerHash}`
+    );
+    const marker = markerCandidates[0];
     const commentBody = config.buildComment(marker);
     const existing = findIssueByTitle(repoSlug, config.title);
     const update = {
@@ -718,7 +724,7 @@ async function main() {
 
     if (issueNumber) {
       const latestComment = fetchLatestIssueCommentBody(repoSlug, issueNumber);
-      if (latestComment.includes(`<!-- ${marker} -->`)) {
+      if (markerCandidates.some((candidate) => latestComment.includes(`<!-- ${candidate} -->`))) {
         update.result = "unchanged-skip";
         update.url = issueUrl || existing?.url || "";
       } else {

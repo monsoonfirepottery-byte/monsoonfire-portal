@@ -538,7 +538,9 @@ async function main() {
     report.notes.push("Not enough snapshots for week-over-week delta analysis.");
   }
 
-  const digestMarker = `portal-automation-weekly-digest-signature:${buildDigestSignature(report)}`;
+  const digestSignature = buildDigestSignature(report);
+  const digestMarker = `portal-automation-weekly-digest-signature:${digestSignature}`;
+  const legacyDigestMarker = `portal-weekly-digest-signature:${digestSignature}`;
   const digestComment = buildDigestComment(report, digestMarker);
   report.digestMarker = digestMarker;
   if (options.apply) {
@@ -576,7 +578,8 @@ async function main() {
 
       if (issue?.number) {
         const latestCommentBody = fetchLatestIssueCommentBody(repoSlug, issue.number);
-        if (latestCommentBody.includes(`<!-- ${digestMarker} -->`)) {
+        const knownDigestMarkers = [digestMarker, legacyDigestMarker];
+        if (knownDigestMarkers.some((marker) => latestCommentBody.includes(`<!-- ${marker} -->`))) {
           report.digestIssue = String(issue.url || "");
           report.notes.push("Weekly digest unchanged; skipped duplicate rolling comment.");
         } else {

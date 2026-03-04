@@ -172,3 +172,115 @@ test("pst-memory-analysis-gateway returns non-zero when input file is missing", 
     rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test("pst-memory-analysis-gateway stitches reply chains, collapses near-duplicates, and normalizes aliases", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "pst-analysis-gateway-alias-"));
+  try {
+    const inputPath = join(tempDir, "input.jsonl");
+    const outputPath = join(tempDir, "output.jsonl");
+    const reportPath = join(tempDir, "report.json");
+
+    writeJsonl(inputPath, [
+      {
+        content:
+          "Launch thread kickoff. Decision: ship Friday if QA passes. Action item: Sam validates checklist.",
+        source: "pst:libratom",
+        metadata: {
+          subject: "Studio Launch Decision",
+          from: "Micah <wuff@example.com>",
+          to: "Sam <sam@example.com>",
+          messageDate: "2026-02-20T10:00:00Z",
+        },
+        clientRequestId: "alias-1",
+        occurredAt: "2026-02-20T10:00:00Z",
+      },
+      {
+        content:
+          "Reconfirming Friday launch once QA clears.\n\nOn Thu, Feb 20, 2026 at 10:00 AM Micah <wuff@example.com> wrote:\n> Launch thread kickoff. Decision: ship Friday if QA passes.",
+        source: "pst:libratom",
+        metadata: {
+          subject: "Re: Studio Launch Decision",
+          from: "wuff@EXAMPLE.com",
+          to: "sam@example.com",
+          messageDate: "2026-02-21T09:00:00Z",
+        },
+        clientRequestId: "alias-2",
+        occurredAt: "2026-02-21T09:00:00Z",
+      },
+      {
+        content:
+          "Reconfirming Friday launch once QA clears. On Thu, Feb 20, 2026 Micah wrote: > Launch thread kickoff. Decision: ship Friday if QA passes.",
+        source: "pst:libratom",
+        metadata: {
+          subject: "Re: Studio Launch Decision",
+          from: "Wuff <wuff@example.com>",
+          to: "Sammy <sam@example.com>",
+          messageDate: "2026-02-21T09:01:00Z",
+        },
+        clientRequestId: "alias-3",
+        occurredAt: "2026-02-21T09:01:00Z",
+      },
+      {
+        content:
+          "Following up: QA passed and we keep Friday launch. Next step: publish checklist.",
+        source: "pst:libratom",
+        metadata: {
+          subject: "Re: Studio Launch Decision",
+          from: "sammy <sam@example.com>",
+          to: "wuff@example.com",
+          messageDate: "2026-02-22T12:00:00Z",
+        },
+        clientRequestId: "alias-4",
+        occurredAt: "2026-02-22T12:00:00Z",
+      },
+    ]);
+
+    const result = runGateway([
+      "--input",
+      inputPath,
+      "--output",
+      outputPath,
+      "--report",
+      reportPath,
+      "--min-thread-messages",
+      "2",
+      "--max-output",
+      "20",
+      "--max-message-insights",
+      "10",
+      "--max-thread-summaries",
+      "5",
+      "--max-contact-facts",
+      "5",
+      "--max-trend-summaries",
+      "3",
+      "--max-correlations",
+      "2",
+    ]);
+
+    assert.equal(result.status, 0, result.stderr || "gateway alias run should succeed");
+    const report = parseJson(result.stdout);
+    assert.equal(report.status, "ok");
+    assert.equal(report.summary.rawInputRows, 4);
+    assert.ok(report.summary.parsedMessages <= 4);
+    assert.ok(Number(report.summary.aliasLinksResolved || 0) >= 2);
+
+    const outputRows = readFileSync(outputPath, "utf8")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+
+    const threadSummary = outputRows.find((row) => row?.metadata?.analysisType === "thread_summary");
+    assert.ok(threadSummary, "thread summary should exist");
+    assert.ok(Number(threadSummary.metadata?.replyMessageCount || 0) >= 1);
+    assert.ok(Number(threadSummary.metadata?.quoteLinkedMessages || 0) >= 1);
+    const participants = Array.isArray(threadSummary.metadata?.canonicalParticipants)
+      ? threadSummary.metadata.canonicalParticipants
+      : [];
+    assert.ok(participants.includes("wuff@example.com"));
+    assert.ok(participants.includes("sam@example.com"));
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});

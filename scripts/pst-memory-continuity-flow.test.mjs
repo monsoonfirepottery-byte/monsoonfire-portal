@@ -43,6 +43,28 @@ test("pst continuity flow reconstructs thread context, cross-links, and handoff 
     const promotedOutputPath = join(tempDir, "promoted.jsonl");
     const promotedDeadLetterPath = join(tempDir, "promoted-dead.jsonl");
     const promotedReportPath = join(tempDir, "promoted-report.json");
+    const importCheckpointPath = join(tempDir, "import-checkpoint.json");
+    const importLedgerPath = join(tempDir, "import-ledger.jsonl");
+    const importDeadLetterPath = join(tempDir, "import-dead.jsonl");
+    const importReportPath = join(tempDir, "import-report.json");
+    const mockOpenMemoryPath = join(tempDir, "mock-open-memory.mjs");
+    const continuityArtifactPath = join(tempDir, "continuity.json");
+
+    writeFileSync(
+      mockOpenMemoryPath,
+      `#!/usr/bin/env node
+const fs = await import("node:fs");
+const args = process.argv.slice(2);
+if (args[0] !== "import") {
+  process.stderr.write("unsupported command\\n");
+  process.exit(1);
+}
+const inputIndex = args.indexOf("--input");
+const inputPath = inputIndex >= 0 ? args[inputIndex + 1] : "";
+const lines = fs.readFileSync(inputPath, "utf8").split(/\\r?\\n/).map((line) => line.trim()).filter(Boolean);
+process.stdout.write(JSON.stringify({ ok: true, result: { total: lines.length, imported: lines.length, failed: 0 } }) + "\\n");
+`
+    );
 
     writeJsonl(inputPath, [
       {
@@ -143,6 +165,31 @@ test("pst continuity flow reconstructs thread context, cross-links, and handoff 
     );
     assert.ok(hasCrossLinks, "promoted rows should include cross-reference links");
 
+    const importResult = runNode([
+      "./scripts/pst-memory-import-resumable.mjs",
+      "--json",
+      "--input",
+      promotedOutputPath,
+      "--run-id",
+      "pst-continuity-flow-test",
+      "--chunk-size",
+      "2",
+      "--checkpoint",
+      importCheckpointPath,
+      "--ledger",
+      importLedgerPath,
+      "--dead-letter",
+      importDeadLetterPath,
+      "--report",
+      importReportPath,
+      "--open-memory-script",
+      mockOpenMemoryPath,
+    ]);
+    assert.equal(importResult.status, 0, importResult.stderr || "import resumable should succeed");
+    const importPayload = JSON.parse(String(importResult.stdout || "{}"));
+    assert.equal(importPayload.progress.completed, true);
+    assert.ok(Number(importPayload.totals.imported || 0) >= 2);
+
     const continuity = buildContinuityArtifact({
       runId: "pst-continuity-flow-test",
       promotedRows,
@@ -152,6 +199,7 @@ test("pst continuity flow reconstructs thread context, cross-links, and handoff 
       handoffTargetShellId: "shell-target",
       resumeHints: ["launch-thread", "qa-blocker"],
     });
+    writeFileSync(continuityArtifactPath, `${JSON.stringify(continuity, null, 2)}\n`, "utf8");
     assert.equal(continuity.activeHandoff.handoffOwner, "agent:codex");
     assert.equal(continuity.activeHandoff.handoffSourceShellId, "shell-source");
     assert.equal(continuity.activeHandoff.handoffTargetShellId, "shell-target");
@@ -175,6 +223,20 @@ test("pst continuity flow reconstructs thread context, cross-links, and handoff 
     assert.equal(monitoring.schema, "pst-memory-relationship-monitor.v1");
     assert.ok(Array.isArray(monitoring.alerts) && monitoring.alerts.length >= 5);
     assert.ok(["ok", "warn", "critical"].includes(String(monitoring.status)));
+
+    const smokeResult = runNode([
+      "./scripts/pst-memory-continuity-smoke.mjs",
+      "--json",
+      "--strict",
+      "--max-runtime-ms",
+      "5000",
+      "--artifact",
+      continuityArtifactPath,
+    ]);
+    assert.equal(smokeResult.status, 0, smokeResult.stderr || "continuity smoke should pass");
+    const smokePayload = JSON.parse(String(smokeResult.stdout || "{}"));
+    assert.equal(smokePayload.status, "pass");
+    assert.ok(Number(smokePayload.runtimeMs || 0) <= Number(smokePayload.runtimeBudgetMs || 0));
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }

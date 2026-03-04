@@ -1934,16 +1934,12 @@ async function main() {
     await ensureGhLabel(repoSlug, "epic:codex-improvement", "5319e7", "Codex continuous improvement epic", true);
     await ensureGhLabel(repoSlug, `run:${runInfo.runSlot}`, "0e8a16", "Codex AM/PM run marker", true);
 
-    const cooldownDefersInteractionTickets =
-      structuralEvolutionDecision.status === "Deferred" &&
-      /cooldown|stability governor/i.test(String(structuralEvolutionDecision.reason || ""));
-    const ticketableRecommendations = recommendations.filter((recommendation) => {
-      if (!cooldownDefersInteractionTickets) return true;
-      return !String(recommendation?.id || "").startsWith("interaction-");
-    });
-    if (cooldownDefersInteractionTickets && ticketableRecommendations.length < recommendations.length) {
+    const ticketableRecommendations = recommendations.filter(
+      (recommendation) => !String(recommendation?.id || "").startsWith("interaction-")
+    );
+    if (ticketableRecommendations.length < recommendations.length) {
       notes.push(
-        "Interaction recommendation tickets were skipped because structural cooldown is active; tracking continues via rolling issue."
+        "Interaction recommendations are tracked through the rolling interaction issue; standalone tickets were skipped."
       );
     }
 

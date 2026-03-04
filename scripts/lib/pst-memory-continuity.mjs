@@ -80,22 +80,34 @@ export function buildRelationshipQualityArtifact({ runId, promotedRows, generate
 
   for (const row of promotedRows) {
     const metadata = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
+    const relationships = Array.isArray(metadata.relationships)
+      ? metadata.relationships.filter((entry) => entry && typeof entry === "object")
+      : [];
     const relatedMemoryIds = Array.isArray(metadata.relatedMemoryIds) ? metadata.relatedMemoryIds : [];
     const relationTypes = Array.isArray(metadata.relationTypes)
       ? metadata.relationTypes.map((item) => normalizeLabel(item)).filter(Boolean)
       : [];
+    const relationshipTypes = relationships
+      .map((entry) => normalizeLabel(entry.type || entry.relationType))
+      .filter(Boolean);
+    const allRelationTypes = relationTypes.length > 0 ? relationTypes : relationshipTypes;
 
-    if (relatedMemoryIds.length === 0) {
+    if (relationships.length === 0 && relatedMemoryIds.length === 0) {
       orphanRows += 1;
     } else {
       linkedRows += 1;
-      if (relationTypes.length === 0) {
-        edgeCountByType.set(
-          "relatedMemoryIds",
-          Number(edgeCountByType.get("relatedMemoryIds") || 0) + relatedMemoryIds.length
-        );
+      if (relationships.length > 0) {
+        for (const relationship of relationships) {
+          const relationType = normalizeLabel(
+            relationship.type || relationship.relationType || "context_related"
+          );
+          edgeCountByType.set(relationType, Number(edgeCountByType.get(relationType) || 0) + 1);
+        }
+      } else if (allRelationTypes.length === 0) {
+        const relatedCount = relatedMemoryIds.length;
+        edgeCountByType.set("relatedMemoryIds", Number(edgeCountByType.get("relatedMemoryIds") || 0) + relatedCount);
       } else {
-        for (const relationType of relationTypes) {
+        for (const relationType of allRelationTypes) {
           edgeCountByType.set(
             relationType,
             Number(edgeCountByType.get(relationType) || 0) + relatedMemoryIds.length
@@ -104,10 +116,19 @@ export function buildRelationshipQualityArtifact({ runId, promotedRows, generate
       }
     }
 
+    const conflictRelationshipCount = relationships.reduce((count, relationship) => {
+      const relationType = normalizeLabel(relationship.type || relationship.relationType).toLowerCase();
+      if (relationType.includes("conflict") || relationType.includes("contradiction")) {
+        return count + 1;
+      }
+      return count;
+    }, 0);
     if (Array.isArray(metadata.conflictMemoryIds)) {
       unresolvedConflictEdges += metadata.conflictMemoryIds.length;
     } else if (Array.isArray(metadata.conflictEdges)) {
       unresolvedConflictEdges += metadata.conflictEdges.length;
+    } else if (conflictRelationshipCount > 0) {
+      unresolvedConflictEdges += conflictRelationshipCount;
     } else if (metadata.hasConflict === true || metadata.semanticConflict === true) {
       unresolvedConflictEdges += 1;
     }
@@ -223,7 +244,8 @@ export function buildContinuityArtifact({
     counts: {
       promotedRows: promotedRows.length,
       rowsWithRelations: promotedRows.filter((row) =>
-        Array.isArray(row?.metadata?.relatedMemoryIds) && row.metadata.relatedMemoryIds.length > 0
+        (Array.isArray(row?.metadata?.relatedMemoryIds) && row.metadata.relatedMemoryIds.length > 0) ||
+        (Array.isArray(row?.metadata?.relationships) && row.metadata.relationships.length > 0)
       ).length,
     },
   };

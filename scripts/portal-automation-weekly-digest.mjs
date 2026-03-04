@@ -192,12 +192,74 @@ function short(text, max = 200) {
   return `${value.slice(0, Math.max(0, max - 3)).trim()}...`;
 }
 
+function stableHash(value) {
+  const payload = JSON.stringify(value);
+  let hash = 2166136261;
+  for (let index = 0; index < payload.length; index += 1) {
+    hash ^= payload.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `f${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+function fetchLatestIssueCommentBody(repoSlug, issueNumber) {
+  const view = runGh(
+    ["issue", "view", String(issueNumber), "--repo", repoSlug, "--json", "comments"],
+    { allowFailure: true }
+  );
+  if (!view.ok) return "";
+  try {
+    const parsed = JSON.parse(view.stdout || "{}");
+    const comments = Array.isArray(parsed?.comments) ? parsed.comments : [];
+    const latest = comments.length > 0 ? comments[comments.length - 1] : null;
+    return String(latest?.body || "");
+  } catch {
+    return "";
+  }
+}
+
+function buildDigestSignature(report) {
+  const payload = {
+    lookbackDays: Number(report?.lookbackDays || 0),
+    snapshotCount: Number(report?.snapshotCount || 0),
+    oldestSnapshot: String(report?.oldestSnapshot?.generatedAtIso || ""),
+    latestSnapshot: String(report?.latestSnapshot?.generatedAtIso || ""),
+    passRateDeltas: (Array.isArray(report?.trend?.passRateDeltas) ? report.trend.passRateDeltas : []).map(
+      (entry) => ({
+        label: String(entry?.label || ""),
+        from: Number(entry?.from || 0),
+        to: Number(entry?.to || 0),
+        delta: Number(entry?.delta || 0),
+      })
+    ),
+    topFlakySignatures: (
+      Array.isArray(report?.trend?.topFlakySignatures) ? report.trend.topFlakySignatures : []
+    ).map((entry) => ({
+      workflowLabel: String(entry?.workflowLabel || ""),
+      label: String(entry?.label || ""),
+      count: Number(entry?.count || 0),
+      suggestion: String(entry?.suggestion || ""),
+      key: String(entry?.key || ""),
+      workflowKey: String(entry?.workflowKey || ""),
+    })),
+    newRemediationCandidates: (
+      Array.isArray(report?.trend?.newRemediationCandidates) ? report.trend.newRemediationCandidates : []
+    ).map((entry) => ({
+      workflowLabel: String(entry?.workflowLabel || ""),
+      label: String(entry?.label || ""),
+      runUrl: String(entry?.runUrl || ""),
+      suggestion: String(entry?.suggestion || ""),
+    })),
+  };
+  return stableHash(payload);
+}
+
 function findWorkflowMetric(snapshot, key) {
   const workflows = Array.isArray(snapshot?.workflows) ? snapshot.workflows : [];
   return workflows.find((entry) => String(entry?.key || "") === key) || null;
 }
 
-function buildDigestComment(report) {
+function buildDigestComment(report, marker = "") {
   const lines = [];
   lines.push(`## ${report.generatedAtIso} (Portal Automation Weekly Digest)`);
   lines.push("");
@@ -240,6 +302,10 @@ function buildDigestComment(report) {
     }
   }
   lines.push("");
+  if (marker) {
+    lines.push(`<!-- ${marker} -->`);
+    lines.push("");
+  }
   return lines.join("\n");
 }
 
@@ -472,7 +538,9 @@ async function main() {
     report.notes.push("Not enough snapshots for week-over-week delta analysis.");
   }
 
-  const digestComment = buildDigestComment(report);
+  const digestMarker = `portal-automation-weekly-digest-signature:${buildDigestSignature(report)}`;
+  const digestComment = buildDigestComment(report, digestMarker);
+  report.digestMarker = digestMarker;
   if (options.apply) {
     const repoSlug = parseRepoSlug();
     if (!repoSlug) {
@@ -507,14 +575,20 @@ async function main() {
       }
 
       if (issue?.number) {
-        const comment = runGh(
-          ["issue", "comment", String(issue.number), "--repo", repoSlug, "--body", digestComment],
-          { allowFailure: true }
-        );
-        if (comment.ok) {
+        const latestCommentBody = fetchLatestIssueCommentBody(repoSlug, issue.number);
+        if (latestCommentBody.includes(`<!-- ${digestMarker} -->`)) {
           report.digestIssue = String(issue.url || "");
+          report.notes.push("Weekly digest unchanged; skipped duplicate rolling comment.");
         } else {
-          report.notes.push("Could not post weekly digest comment.");
+          const comment = runGh(
+            ["issue", "comment", String(issue.number), "--repo", repoSlug, "--body", digestComment],
+            { allowFailure: true }
+          );
+          if (comment.ok) {
+            report.digestIssue = String(issue.url || "");
+          } else {
+            report.notes.push("Could not post weekly digest comment.");
+          }
         }
       }
     }

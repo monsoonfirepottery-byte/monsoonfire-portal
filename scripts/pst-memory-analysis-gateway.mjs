@@ -506,6 +506,116 @@ function normalizeSubject(value) {
   return subject;
 }
 
+function normalizeIdentity(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function extractAddressParts(value) {
+  const raw = String(value || "");
+  const parts = raw
+    .split(/[;,]/g)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const entries = [];
+
+  for (const part of parts) {
+    const bracketMatch = part.match(/^(.*?)<([^>]+)>$/);
+    if (bracketMatch) {
+      const alias = normalizeWhitespace(bracketMatch[1] || "");
+      const email = toCanonicalEmail(bracketMatch[2] || "");
+      entries.push({ alias, email });
+      continue;
+    }
+
+    const directEmail = toCanonicalEmail(part);
+    if (directEmail) {
+      entries.push({ alias: "", email: directEmail });
+      continue;
+    }
+
+    const extracted = extractEmails(part);
+    if (extracted.length > 0) {
+      const cleanedAlias = normalizeWhitespace(part.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, ""));
+      for (const email of extracted) {
+        entries.push({ alias: cleanedAlias, email });
+      }
+      continue;
+    }
+
+    const alias = normalizeWhitespace(part.replace(/[<>"']/g, ""));
+    if (alias) {
+      entries.push({ alias, email: "" });
+    }
+  }
+
+  return entries;
+}
+
+function stripQuotedSections(value) {
+  const text = String(value || "");
+  if (!text.trim()) {
+    return {
+      body: "",
+      quoteLines: 0,
+      quotedMarkerCount: 0,
+    };
+  }
+
+  const lines = text.split(/\r?\n/);
+  const bodyLines = [];
+  let quoteLines = 0;
+  let quotedMarkerCount = 0;
+  let inQuotedBlock = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed && !inQuotedBlock) {
+      bodyLines.push("");
+      continue;
+    }
+
+    if (/^on .+wrote:$/i.test(trimmed) || /^from:\s.+$/i.test(trimmed) || /^-----original message-----$/i.test(trimmed)) {
+      inQuotedBlock = true;
+      quotedMarkerCount += 1;
+      quoteLines += 1;
+      continue;
+    }
+    if (/^>+/.test(trimmed)) {
+      inQuotedBlock = true;
+      quoteLines += 1;
+      continue;
+    }
+    if (inQuotedBlock && (/^(sent|to|subject|cc):\s/i.test(trimmed) || trimmed === "")) {
+      quoteLines += 1;
+      continue;
+    }
+    if (inQuotedBlock && trimmed && !/^[-_=]{2,}$/.test(trimmed)) {
+      // Continue skipping known quoted payload once quote mode started.
+      quoteLines += 1;
+      continue;
+    }
+
+    bodyLines.push(line);
+  }
+
+  return {
+    body: normalizeWhitespace(bodyLines.join(" ")),
+    quoteLines,
+    quotedMarkerCount,
+  };
+}
+
+function fingerprintText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function toCanonicalEmail(value) {
   const trimmed = String(value || "").trim().toLowerCase();
   if (/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(trimmed)) {
@@ -603,29 +713,88 @@ function pairKey(a, b) {
   return [a, b].sort((left, right) => left.localeCompare(right)).join("::");
 }
 
+function buildAliasLookup(messages) {
+  const map = new Map();
+  const remember = (aliasValue, emailValue) => {
+    const alias = normalizeIdentity(aliasValue);
+    const email = toCanonicalEmail(emailValue);
+    if (!alias || !email) return;
+    map.set(alias, email);
+  };
+
+  for (const message of messages) {
+    for (const entry of message.fromAddressEntries) {
+      remember(entry.alias, entry.email);
+    }
+    for (const entry of message.toAddressEntries) {
+      remember(entry.alias, entry.email);
+    }
+  }
+  return map;
+}
+
+function canonicalizeIdentity(identity, aliasLookup) {
+  const normalized = normalizeIdentity(identity);
+  if (!normalized) return "";
+  const asEmail = toCanonicalEmail(normalized);
+  if (asEmail) return asEmail;
+  return aliasLookup.get(normalized) || normalized;
+}
+
+function buildThreadKey({ metadata, threadSubject, canonicalParticipants }) {
+  const meta = metadata && typeof metadata === "object" ? metadata : {};
+  const explicitThreadHint = normalizeWhitespace(
+    meta.threadId || meta.threadKey || meta.conversationId || meta.conversationIndex || meta.inReplyTo || meta.references
+  );
+  if (explicitThreadHint) {
+    return `conversation:${explicitThreadHint.toLowerCase()}`;
+  }
+  const subject = normalizeSubject(threadSubject || "");
+  if (subject) {
+    return `subject:${subject.toLowerCase()}`;
+  }
+  const participantAnchor = canonicalParticipants
+    .slice()
+    .sort((left, right) => left.localeCompare(right))
+    .slice(0, 4)
+    .join(",");
+  return `participants:${participantAnchor || "unknown"}`;
+}
+
 function createMessageModel(rawItem, index, maxSnippetChars) {
   const metadata = rawItem?.metadata && typeof rawItem.metadata === "object" ? rawItem.metadata : {};
-  const subject = normalizeSubject(metadata.subject || "");
+  const rawSubject = normalizeWhitespace(metadata.subject || "");
+  const subject = normalizeSubject(rawSubject || "");
   const fromRaw = String(metadata.from || "").trim();
   const toRaw = String(metadata.to || "").trim();
-  const fromEmails = extractEmails(fromRaw);
-  const toEmails = extractEmails(toRaw);
-  const participants = dedupeValues([...fromEmails, ...toEmails]);
+  const fromAddressEntries = extractAddressParts(fromRaw);
+  const toAddressEntries = extractAddressParts(toRaw);
+  const fromEmails = dedupeValues(fromAddressEntries.map((entry) => entry.email).filter(Boolean));
+  const toEmails = dedupeValues(toAddressEntries.map((entry) => entry.email).filter(Boolean));
+  const fromAliases = dedupeValues(fromAddressEntries.map((entry) => entry.alias).filter(Boolean));
+  const toAliases = dedupeValues(toAddressEntries.map((entry) => entry.alias).filter(Boolean));
+  const participants = dedupeValues([...fromEmails, ...toEmails, ...fromAliases, ...toAliases]);
 
   const content = normalizeWhitespace(rawItem?.content || "");
-  const snippet = clip(content, maxSnippetChars);
+  const quoteSplit = stripQuotedSections(rawItem?.content || "");
+  const contentCore = quoteSplit.body || content;
+  const snippet = clip(contentCore || content, maxSnippetChars);
   const date = parseDate(rawItem?.occurredAt || metadata.messageDate || rawItem?.createdAt || "");
   const dateLabel = date ? isoDate(date) : "unknown-date";
 
-  const threadSubject = subject || normalizeSubject(content.slice(0, 120));
-  const threadKey = threadSubject
-    ? `subject:${threadSubject.toLowerCase()}`
-    : `fallback:${participants.join(",") || "unknown"}:${dateLabel}`;
-  const signal = detectSignals(`${subject} ${content}`);
-  const tokens = tokenize(`${subject} ${content}`);
+  const threadSubject = subject || normalizeSubject(contentCore.slice(0, 120));
+  const signal = detectSignals(`${subject} ${contentCore}`);
+  const tokens = tokenize(`${subject} ${contentCore}`);
   const stableSourceId =
     String(rawItem?.clientRequestId || "").trim() ||
-    `raw-${stableHash(`${index}|${subject}|${content}|${fromRaw}|${toRaw}`).slice(0, 24)}`;
+    `raw-${stableHash(`${index}|${subject}|${contentCore}|${fromRaw}|${toRaw}`).slice(0, 24)}`;
+  const isReply =
+    /^(re|fw|fwd)\s*:/i.test(rawSubject) ||
+    quoteSplit.quotedMarkerCount > 0 ||
+    /(^|\s)wrote:/i.test(String(rawItem?.content || ""));
+  const nearDuplicateFingerprint = stableHash(
+    `${normalizeSubject(threadSubject)}|${fingerprintText(fromRaw || fromEmails[0] || "")}|${fingerprintText(contentCore)}`
+  ).slice(0, 32);
 
   return {
     index,
@@ -634,18 +803,33 @@ function createMessageModel(rawItem, index, maxSnippetChars) {
     subject,
     fromRaw,
     toRaw,
+    fromAddressEntries,
+    toAddressEntries,
     fromEmails,
     toEmails,
+    fromAliases,
+    toAliases,
     participants,
+    canonicalParticipants: participants,
+    canonicalSender: fromEmails[0] || normalizeIdentity(fromAliases[0] || fromRaw || "unknown"),
     content,
+    contentCore,
     snippet,
     date,
     dateLabel,
     threadSubject,
-    threadKey,
+    threadKey: buildThreadKey({
+      metadata,
+      threadSubject,
+      canonicalParticipants: participants,
+    }),
     signal,
     tokens,
     stableSourceId,
+    isReply,
+    quoteLines: quoteSplit.quoteLines,
+    quotedMarkerCount: quoteSplit.quotedMarkerCount,
+    nearDuplicateFingerprint,
   };
 }
 
@@ -691,7 +875,7 @@ function buildMessageInsights(messages, options) {
     .slice(0, options.maxMessageInsights);
 
   return candidates.map((message) => {
-    const sender = message.fromEmails[0] || normalizeWhitespace(message.fromRaw) || "unknown sender";
+    const sender = message.canonicalSender || message.fromEmails[0] || normalizeWhitespace(message.fromRaw) || "unknown sender";
     const recipients = message.toEmails.length > 0 ? message.toEmails.join(", ") : normalizeWhitespace(message.toRaw) || "unknown recipients";
     const subject = message.subject || "no subject";
     const categories = message.signal.categories.length > 0 ? message.signal.categories.join(", ") : "general";
@@ -710,6 +894,9 @@ function buildMessageInsights(messages, options) {
         subject,
         sender,
         recipients,
+        canonicalParticipants: message.canonicalParticipants.slice(0, 12),
+        replyDetected: message.isReply,
+        quoteLines: message.quoteLines,
         signalCategories: message.signal.categories,
       },
     });
@@ -746,9 +933,13 @@ function buildThreadSummaries(messages, options) {
       timeline: 0,
     };
     let threadScore = 0;
+    let replyMessageCount = 0;
+    let quoteLinkedMessages = 0;
 
     for (const message of sorted) {
       threadScore += message.signal.score;
+      if (message.isReply) replyMessageCount += 1;
+      if (message.quoteLines > 0 || message.quotedMarkerCount > 0) quoteLinkedMessages += 1;
       for (const category of message.signal.categories) {
         if (Object.prototype.hasOwnProperty.call(signals, category)) {
           signals[category] += 1;
@@ -758,7 +949,7 @@ function buildThreadSummaries(messages, options) {
 
     const bestMessage = [...sorted].sort((a, b) => b.signal.score - a.signal.score)[0];
     const subject = first.threadSubject || "Untitled thread";
-    const content = `Email thread "${subject}" ran ${first.dateLabel} to ${last.dateLabel} with ${sorted.length} messages across ${allParticipants.length} participants (${formatParticipantList(allParticipants)}). Themes: ${
+    const content = `Email thread "${subject}" ran ${first.dateLabel} to ${last.dateLabel} with ${sorted.length} messages across ${allParticipants.length} participants (${formatParticipantList(allParticipants)}). Reply continuity: ${replyMessageCount} replies, ${quoteLinkedMessages} quote-linked messages. Themes: ${
       topTerms.length > 0 ? topTerms.join(", ") : "mixed discussion"
     }. Signal mix: ${signals.decision} decision, ${signals.action} action, ${signals.risk} risk cues. Key takeaway: ${bestMessage.snippet}`;
 
@@ -777,6 +968,9 @@ function buildThreadSummaries(messages, options) {
           messageCount: sorted.length,
           participantCount: allParticipants.length,
           participants: allParticipants.slice(0, 12),
+          canonicalParticipants: allParticipants.slice(0, 12),
+          replyMessageCount,
+          quoteLinkedMessages,
           signalMix: signals,
           themes: topTerms,
           sourceClientRequestIds: sorted.map((message) => message.stableSourceId).slice(0, 50),
@@ -1089,17 +1283,45 @@ function main() {
   const rawEntries = readJsonl(inputPath);
   const messagesPreDedup = rawEntries.map((entry, index) => createMessageModel(entry, index, options.maxSnippetChars));
 
+  const aliasLookup = buildAliasLookup(messagesPreDedup);
+  for (const message of messagesPreDedup) {
+    const canonicalParticipants = dedupeValues(
+      message.participants
+        .map((participant) => canonicalizeIdentity(participant, aliasLookup))
+        .filter(Boolean)
+    );
+    const canonicalSender =
+      canonicalizeIdentity(
+        message.fromEmails[0] || message.fromAliases[0] || message.fromRaw || "unknown",
+        aliasLookup
+      ) || "unknown";
+    message.canonicalParticipants = canonicalParticipants.length > 0 ? canonicalParticipants : message.participants;
+    message.canonicalSender = canonicalSender;
+    message.threadKey = buildThreadKey({
+      metadata: message.metadata,
+      threadSubject: message.threadSubject,
+      canonicalParticipants: message.canonicalParticipants,
+    });
+    message.nearDuplicateFingerprint = stableHash(
+      `${message.threadKey}|${message.canonicalSender}|${fingerprintText(message.contentCore)}`
+    ).slice(0, 32);
+  }
+
   const messageByStableId = new Map();
   for (const message of messagesPreDedup) {
     if (!message.content) continue;
-    const existing = messageByStableId.get(message.stableSourceId);
+    const dedupeKey = `${message.stableSourceId}|${message.nearDuplicateFingerprint}`;
+    const existing = messageByStableId.get(dedupeKey);
     if (!existing) {
-      messageByStableId.set(message.stableSourceId, message);
+      messageByStableId.set(dedupeKey, message);
       continue;
     }
-    const existingScore = existing.signal.score;
-    if (message.signal.score > existingScore) {
-      messageByStableId.set(message.stableSourceId, message);
+    const existingScore = Number(existing.signal?.score || 0);
+    const incomingScore = Number(message.signal?.score || 0);
+    const existingBody = Number(existing.contentCore?.length || 0);
+    const incomingBody = Number(message.contentCore?.length || 0);
+    if (incomingScore > existingScore || (incomingScore === existingScore && incomingBody > existingBody)) {
+      messageByStableId.set(dedupeKey, message);
     }
   }
   const messages = [...messageByStableId.values()];
@@ -1131,6 +1353,7 @@ function main() {
       parsedMessages: messages.length,
       highSignalMessages: highSignalMessageCount,
       uniqueThreads: uniqueThreadCount,
+      aliasLinksResolved: Array.from(aliasLookup.entries()).length,
       analyzedMemoriesWritten: finalRows.length,
       ingestionReductionRatio:
         rawEntries.length > 0 ? Number((finalRows.length / rawEntries.length).toFixed(4)) : 0,

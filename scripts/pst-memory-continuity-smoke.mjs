@@ -13,6 +13,7 @@ function parseArgs(argv) {
     artifact: resolve(REPO_ROOT, "./output/memory/continuity/latest.json"),
     strict: false,
     asJson: false,
+    maxRuntimeMs: 5000,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -34,6 +35,21 @@ function parseArgs(argv) {
       options.artifact = resolve(REPO_ROOT, arg.slice("--artifact=".length));
       continue;
     }
+    if (arg === "--max-runtime-ms" && argv[index + 1]) {
+      const parsed = Number(argv[index + 1]);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        options.maxRuntimeMs = Math.trunc(parsed);
+      }
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--max-runtime-ms=")) {
+      const parsed = Number(arg.slice("--max-runtime-ms=".length));
+      if (Number.isFinite(parsed) && parsed > 0) {
+        options.maxRuntimeMs = Math.trunc(parsed);
+      }
+      continue;
+    }
   }
   return options;
 }
@@ -48,6 +64,7 @@ function normalize(value) {
 }
 
 function run() {
+  const startedAtMs = Date.now();
   const options = parseArgs(process.argv.slice(2));
   const artifact = parseArtifact(options.artifact);
 
@@ -86,11 +103,21 @@ function run() {
 
   const topWorkstream = normalize(workstreams[0]?.workstream) || "n/a";
   const latestIntent = normalize(recentIntentTrajectory[0]?.summary) || "n/a";
+  const runtimeMs = Date.now() - startedAtMs;
+  const runtimeCheck = {
+    id: "runtime-budget",
+    ok: runtimeMs <= options.maxRuntimeMs,
+    detail: `runtime ${runtimeMs}ms (budget ${options.maxRuntimeMs}ms)`,
+  };
+  checks.push(runtimeCheck);
+
   const summary = {
     status: checks.every((check) => check.ok) ? "pass" : "warn",
     runId: normalize(artifact?.runId) || null,
     generatedAt: normalize(artifact?.generatedAt) || null,
     artifact: options.artifact,
+    runtimeMs,
+    runtimeBudgetMs: options.maxRuntimeMs,
     checks,
     resumeInProgress: {
       owner: normalize(handoff.handoffOwner) || null,
@@ -116,6 +143,7 @@ function run() {
     process.stdout.write(`- target shell: ${summary.resumeInProgress.targetShell || "n/a"}\n`);
     process.stdout.write(`- top workstream: ${summary.resumeInProgress.topWorkstream}\n`);
     process.stdout.write(`- latest intent: ${summary.resumeInProgress.latestIntent}\n`);
+    process.stdout.write(`- runtime: ${summary.runtimeMs}ms (budget ${summary.runtimeBudgetMs}ms)\n`);
     process.stdout.write(
       `- resume hints: ${summary.resumeInProgress.resumeHints.length > 0 ? summary.resumeInProgress.resumeHints.join(", ") : "n/a"}\n`
     );

@@ -58,6 +58,21 @@ const ciFailureSignatureSuppressions = [
   /::\s*Deploy Preview$/i,
 ];
 
+const toolFailureSuppressionRules = [
+  {
+    errorType: /^runtime_error$/i,
+    message: /Refusing --apply run on dirty worktree/i,
+  },
+  {
+    errorType: /^runtime_error$/i,
+    message: /would be overwritten by checkout/i,
+  },
+  {
+    errorType: /^runtime_error$/i,
+    message: /Missing value for --(?:help|allow-dirty|state-only|run-id)/i,
+  },
+];
+
 const secretKeyPattern = /(token|secret|password|authorization|api[_-]?key|cookie|session|private[_-]?key)/i;
 const secretValuePatterns = [
   /bearer\s+[a-z0-9._~-]+/gi,
@@ -673,6 +688,19 @@ function shouldSuppressCiFailureSignature(signature) {
   const value = String(signature || "").trim();
   if (!value) return false;
   return ciFailureSignatureSuppressions.some((pattern) => pattern.test(value));
+}
+
+function shouldSuppressToolFailureEntry(entry) {
+  if (!entry || entry.ok !== false) return false;
+  const errorType = String(entry?.errorType || "").trim();
+  const errorMessage = String(entry?.errorMessage || "").trim();
+  if (!errorMessage) return false;
+
+  return toolFailureSuppressionRules.some((rule) => {
+    const typeOk = rule.errorType ? rule.errorType.test(errorType) : true;
+    if (!typeOk) return false;
+    return rule.message.test(errorMessage);
+  });
 }
 
 function ensureRecommendation(recommendations, recommendation) {
@@ -1404,12 +1432,20 @@ async function main() {
   const calls7d = filterByTimeWindow(toolcallData.entries, "tsIso", start7dMs);
 
   const callFailures24 = calls24.filter((entry) => entry?.ok === false);
-  const toolFailureRate24 = calls24.length === 0 ? 0 : callFailures24.length / calls24.length;
-  const errorCounts24 = countByKey(callFailures24, "errorType");
+  const suppressedCallFailures24 = callFailures24.filter((entry) => shouldSuppressToolFailureEntry(entry));
+  const actionableCallFailures24 = callFailures24.filter((entry) => !shouldSuppressToolFailureEntry(entry));
+  const toolFailureRate24 =
+    calls24.length === 0 ? 0 : actionableCallFailures24.length / calls24.length;
+  const errorCounts24 = countByKey(actionableCallFailures24, "errorType");
   const repeatedErrorEntries = Object.entries(errorCounts24).filter(([, count]) => count >= 2);
 
   let githubAvailable = false;
   const notes = [];
+  if (suppressedCallFailures24.length > 0) {
+    notes.push(
+      `Suppressed ${suppressedCallFailures24.length} non-actionable tool failure event(s) from recommendation clustering.`
+    );
+  }
   if (startupMemoryContext.ok && startupMemoryContext.itemCount > 0) {
     notes.push(`Loaded ${startupMemoryContext.itemCount} Open Memory context item(s).`);
   } else if (startupMemoryContext.attempted && startupMemoryContext.error) {
@@ -1547,7 +1583,7 @@ async function main() {
       trigger: `Tool failure rate is ${(toolFailureRate24 * 100).toFixed(1)}% over ${calls24.length} calls (threshold: >10%).`,
       why: "High tool failure rates create avoidable rework and reduce confidence in automation.",
       action: "Prioritize top failing tools, add retries/fallbacks, and improve error classification.",
-      evidence: [`failed calls: ${callFailures24.length}`, `total calls: ${calls24.length}`],
+      evidence: [`failed calls: ${actionableCallFailures24.length}`, `total calls: ${calls24.length}`],
     });
   }
 
@@ -1670,6 +1706,7 @@ async function main() {
         continue;
       }
       if (entry?.ok !== false) continue;
+      if (shouldSuppressToolFailureEntry(entry)) continue;
 
       const errorType = String(entry?.errorType || "unknown").trim() || "unknown";
       const previous = streakBySignature.get(signature);
@@ -1755,7 +1792,7 @@ async function main() {
       )
     ).length,
     metadataConfig: metadataTouchTotal24,
-    tooling: callFailures24.length,
+    tooling: actionableCallFailures24.length,
     workflowPolicy: recommendations.filter((recommendation) =>
       /workflow|branch|policy|guardrail/i.test(
         `${recommendation.id} ${recommendation.title} ${recommendation.trigger}`
@@ -2372,7 +2409,7 @@ async function main() {
     tools: {
       total12h: calls12.length,
       total24h: calls24.length,
-      failed24h: callFailures24.length,
+      failed24h: actionableCallFailures24.length,
       failureRate24h: toolFailureRate24,
       invalidLines: toolcallData.invalidLines,
     },

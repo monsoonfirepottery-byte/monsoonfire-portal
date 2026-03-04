@@ -53,7 +53,6 @@ Purpose: define the active automation guardrails for portal functionality, UX co
   - verify new batch lineage (`journeyParentBatchId`, `journeyRootBatchId`) and draft/open state via Firestore reads
   - verify `CONTINUE_JOURNEY` timeline linkage to source batch
   - enforce cleanup status `clean` (promotion gate fails if journey cleanup is `partial`, `not_run`, or missing)
-  - temporary escape hatch for incidents: `--allow-journey-cleanup-debt` (or `PORTAL_PROMOTION_ALLOW_JOURNEY_CLEANUP_DEBT=true`)
 - Firestore index deploy permission-denied (`403`) outcomes are downgraded to warnings in workflow mode so IAM drift does not mask user-facing deploy health.
 - Any other failing gate condition still blocks promotion confidence.
 

@@ -2,20 +2,61 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { User } from "firebase/auth";
 import {
   addDoc,
+  arrayUnion,
   collection,
   doc,
+  documentId,
   getCountFromServer,
   getDocs,
   limit,
   orderBy,
   query,
+  serverTimestamp,
   setDoc,
+  updateDoc,
   where,
   type QueryConstraint,
 } from "firebase/firestore";
+import { connectStorageEmulator, getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
 import { createFunctionsClient, safeJsonStringify, type LastRequest } from "../api/functionsClient";
+import {
+  type ImportLibraryIsbnsResponse,
+  type LibraryExternalLookupResponse,
+  type LibraryExternalLookupProviderConfigResponse,
+  type LibraryExternalLookupProviderConfigSetRequest,
+  type LibraryRolloutConfigResponse,
+  type LibraryRolloutConfigSetRequest,
+  type LibraryRolloutPhase,
+  type LibraryItemOverrideStatusRequest,
+  type LibraryItemOverrideStatusResponse,
+  type LibraryLoanAssessReplacementFeeRequest,
+  type LibraryLoanAssessReplacementFeeResponse,
+  type LibraryLoanMarkLostRequest,
+  type LibraryLoanMarkLostResponse,
+  type LibraryRecommendationsListResponse,
+  type LibraryTagMergeRequest,
+  type LibraryTagMergeResponse,
+  type LibraryTagSubmissionApproveRequest,
+  type LibraryTagSubmissionApproveResponse,
+  V1_LIBRARY_EXTERNAL_LOOKUP_FN,
+  V1_LIBRARY_EXTERNAL_LOOKUP_PROVIDER_CONFIG_GET_FN,
+  V1_LIBRARY_EXTERNAL_LOOKUP_PROVIDER_CONFIG_SET_FN,
+  V1_LIBRARY_ITEMS_LIST_FN,
+  V1_LIBRARY_ITEMS_OVERRIDE_STATUS_FN,
+  V1_LIBRARY_ITEMS_IMPORT_ISBNS_FN,
+  V1_LIBRARY_ROLLOUT_CONFIG_GET_FN,
+  V1_LIBRARY_ROLLOUT_CONFIG_SET_FN,
+  V1_LIBRARY_LOANS_ASSESS_REPLACEMENT_FEE_FN,
+  V1_LIBRARY_LOANS_MARK_LOST_FN,
+  V1_LIBRARY_RECOMMENDATIONS_LIST_FN,
+  V1_LIBRARY_TAGS_MERGE_FN,
+  V1_LIBRARY_TAG_SUBMISSIONS_APPROVE_FN,
+} from "../api/portalContracts";
 import { track } from "../lib/analytics";
+import { getRecentRequestTelemetry, type RequestTelemetry } from "../lib/requestTelemetry";
 import { db } from "../firebase";
+import type { Announcement, DirectMessageThread } from "../types/messaging";
+import { normalizeReservationRecord, type ReservationRecord } from "../lib/normalizers/reservations";
 import { clearHandlerErrorLog, getHandlerErrorLog } from "../utils/handlerLog";
 import { resolveFunctionsBaseUrlResolution } from "../utils/functionsBaseUrl";
 import { resolveStudioBrainBaseUrlResolution } from "../utils/studioBrain";
@@ -30,8 +71,9 @@ import PolicyModule from "./staff/PolicyModule";
 import StripeSettingsModule from "./staff/StripeSettingsModule";
 import ReportsModule from "./staff/ReportsModule";
 import AgentOpsModule from "./staff/AgentOpsModule";
-import StudioBrainModule from "./staff/StudioBrainModule";
+import { buildLendingAdminApiPayload } from "./staff/lendingAdminPayload";
 import ReservationsView from "./ReservationsView";
+import { formatDateTime } from "../utils/format";
 
 type Props = {
   user: User;
@@ -41,9 +83,22 @@ type Props = {
   devAdminEnabled: boolean;
   showEmulatorTools: boolean;
   onOpenCheckin?: () => void;
+  onOpenReservation?: (reservationId?: string) => void;
+  onOpenMessages?: () => void;
+  onOpenMessageThread?: (threadId: string) => void;
+  onOpenFirings?: () => void;
+  onStartFiring?: () => void;
   initialModule?: ModuleKey;
   forceCockpitWorkspace?: boolean;
   forceEventsWorkspace?: boolean;
+  forceSystemWorkspace?: boolean;
+  messageThreads?: DirectMessageThread[];
+  messageThreadsLoading?: boolean;
+  messageThreadsError?: string;
+  announcements?: Announcement[];
+  announcementsLoading?: boolean;
+  announcementsError?: string;
+  unreadAnnouncements?: number;
 };
 
 const MODULE_REGISTRY = {
@@ -54,26 +109,34 @@ const MODULE_REGISTRY = {
   firings: { label: "Firings", owner: "Kiln Ops", testId: "staff-module-firings", nav: true },
   events: { label: "Events", owner: "Program Ops", testId: "staff-module-events", nav: true },
   reports: { label: "Reports", owner: "Trust & Safety", testId: "staff-module-reports", nav: true },
-  studioBrain: { label: "Studio Brain", owner: "Platform", testId: "staff-module-studiobrain", nav: false },
   stripe: { label: "Stripe settings", owner: "Finance Ops", testId: "staff-module-stripe", nav: true },
   commerce: { label: "Store & billing", owner: "Commerce Ops", testId: "staff-module-commerce", nav: true },
   lending: { label: "Lending", owner: "Library Ops", testId: "staff-module-lending", nav: true },
   system: { label: "System", owner: "Platform", testId: "staff-module-system", nav: false },
 } as const;
 
-const COCKPIT_SECTION_IDS = {
-  triage: "staff-cockpit-triage",
-  automation: "staff-cockpit-automation",
-  platform: "staff-cockpit-platform",
-  policyAgentOps: "staff-cockpit-policy-agent-ops",
-  reports: "staff-cockpit-reports",
-  moduleTelemetry: "staff-cockpit-module-telemetry",
-} as const;
+const COCKPIT_TABS = [
+  { key: "triage", label: "Action queue" },
+  { key: "automation", label: "Automation" },
+  { key: "platform", label: "Platform" },
+  { key: "policyAgentOps", label: "Policy & Agent Ops" },
+  { key: "reports", label: "Reports" },
+  { key: "moduleTelemetry", label: "Telemetry" },
+] as const;
 const STAFF_MODULE_USAGE_STORAGE_KEY = "mf_staff_module_usage_v1";
 const STAFF_MODULE_USAGE_STORAGE_VERSION = 2;
 const STAFF_ADAPTIVE_NAV_STORAGE_KEY = "mf_staff_adaptive_nav_v1";
+const V1_LIBRARY_RECOMMENDATIONS_MODERATE_FN = "apiV1/v1/library.recommendations.moderate";
+const LEGACY_LIBRARY_RECOMMENDATIONS_MODERATE_FN = "moderateLibraryRecommendation";
+const V1_LIBRARY_ITEMS_CREATE_FN = "apiV1/v1/library.items.create";
+const V1_LIBRARY_ITEMS_UPDATE_FN = "apiV1/v1/library.items.update";
+const V1_LIBRARY_ITEMS_DELETE_FN = "apiV1/v1/library.items.delete";
+const V1_LIBRARY_ITEMS_RESOLVE_ISBN_FN = "apiV1/v1/library.items.resolveIsbn";
+const LIBRARY_ITEMS_API_PAGE_SIZE = 100;
+const LIBRARY_RECOMMENDATIONS_API_LIMIT = 100;
 
 type ModuleKey = keyof typeof MODULE_REGISTRY;
+type CockpitTabKey = (typeof COCKPIT_TABS)[number]["key"];
 type ModuleUsageStat = {
   visits: number;
   dwellMs: number;
@@ -98,6 +161,51 @@ type MemberSourceStats = {
   profilesDocs: number;
   inferredMembers: number;
   fallbackCollections: string[];
+};
+
+type LibraryPhaseRouteMetrics = {
+  route: string;
+  requestCount: number;
+  errorCount: number;
+  conflictCount: number;
+  routeErrorCount: number;
+  p50LatencyMs: number | null;
+  p95LatencyMs: number | null;
+};
+
+type LibraryPhaseMetricsSnapshot = {
+  generatedAtIso: string;
+  windowMinutes: number;
+  requestCount: number;
+  errorCount: number;
+  conflictCount: number;
+  routeErrorCount: number;
+  errorRate: number;
+  conflictRate: number;
+  p50LatencyMs: number | null;
+  p95LatencyMs: number | null;
+  maxLatencyMs: number | null;
+  endpoints: LibraryPhaseRouteMetrics[];
+};
+
+type LibraryPhaseMetricsArtifact = {
+  rolloutPhase: LibraryRolloutPhase;
+  rolloutLabel: string;
+  memberWritesEnabled: boolean;
+  generatedAtIso: string;
+  windowMinutes: number;
+  summary: {
+    requestCount: number;
+    errorCount: number;
+    conflictCount: number;
+    routeErrorCount: number;
+    errorRate: number;
+    conflictRate: number;
+    p50LatencyMs: number | null;
+    p95LatencyMs: number | null;
+    maxLatencyMs: number | null;
+  };
+  endpoints: LibraryPhaseRouteMetrics[];
 };
 
 type MemberRecord = {
@@ -229,6 +337,79 @@ type LendingLoanRecord = {
   createdAtMs: number;
   dueAtMs: number;
   returnedAtMs: number;
+  rawDoc: Record<string, unknown>;
+};
+
+type LendingAdminItemRecord = {
+  id: string;
+  title: string;
+  authorLine: string;
+  isbn: string;
+  isbn10: string;
+  isbn13: string;
+  mediaType: string;
+  status: string;
+  source: string;
+  totalCopies: number;
+  availableCopies: number;
+  updatedAtMs: number;
+  rawDoc: Record<string, unknown>;
+};
+
+type LendingAdminItemDraft = {
+  title: string;
+  subtitle: string;
+  authorsCsv: string;
+  description: string;
+  publisher: string;
+  publishedDate: string;
+  isbn: string;
+  mediaType: string;
+  format: string;
+  coverUrl: string;
+  totalCopies: string;
+  availableCopies: string;
+  status: string;
+  source: string;
+  subjectsCsv: string;
+  techniquesCsv: string;
+};
+
+type LendingCoverReviewRecord = {
+  id: string;
+  title: string;
+  coverUrl: string | null;
+  coverQualityStatus: string;
+  coverQualityReason: string | null;
+  updatedAtMs: number;
+  rawDoc: Record<string, unknown>;
+};
+
+type LendingRecommendationRecord = {
+  id: string;
+  title: string;
+  author: string;
+  isbn: string;
+  moderationStatus: string;
+  recommenderUid: string;
+  recommenderName: string;
+  rationale: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+  rawDoc: Record<string, unknown>;
+};
+
+type LendingTagSubmissionRecord = {
+  id: string;
+  itemId: string;
+  itemTitle: string;
+  tag: string;
+  normalizedTag: string;
+  status: string;
+  submittedByUid: string;
+  submittedByName: string;
+  createdAtMs: number;
+  updatedAtMs: number;
   rawDoc: Record<string, unknown>;
 };
 
@@ -404,6 +585,24 @@ type BatchActionName =
   | "pickedUpAndClose"
   | "continueJourney";
 
+type TodayReservationRow = {
+  id: string;
+  ownerUid: string;
+  displayName: string;
+  timeMs: number;
+  status: string;
+  itemCount: number;
+  visitType: string;
+  notes: string;
+};
+
+type TodayPaymentAlert = {
+  id: string;
+  severity: "P0" | "P1";
+  title: string;
+  detail: string;
+};
+
 const MODULES: Array<{ key: ModuleKey; label: string; owner: string; testId: string }> = (
   Object.keys(MODULE_REGISTRY) as ModuleKey[]
 )
@@ -420,11 +619,16 @@ const GITHUB_REPO_NAME = "monsoonfire-portal";
 const GITHUB_REPO_SLUG = `${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}`;
 const GITHUB_API_BASE = `https://api.github.com/repos/${GITHUB_REPO_SLUG}`;
 const AUTOMATION_STALE_MS = 36 * 60 * 60 * 1000;
+const TODAY_RESERVATION_LIMIT = 10;
+const TODAY_MESSAGE_LIMIT = 8;
+const TODAY_ALERT_LIMIT = 8;
+const MAX_FIRING_PHOTO_BYTES = 10 * 1024 * 1024;
 const BATCH_ARTIFACT_KEYWORD = /\b(test|qa|dev|seed|fixture|sample|demo|playwright|mock|canary|staging|tmp|temp)\b/i;
 const BATCH_STALE_CLOSED_DAYS = 120;
 const BATCH_STALE_OPEN_DAYS = 30;
 const STUDIO_BRAIN_SIGNAL_STALE_MINUTES = 12;
 const STUDIO_BRAIN_OFFLINE_CONFIRM_MINUTES = 45;
+let storageEmulatorConnected = false;
 const AUTOMATION_WORKFLOW_SOURCES: AutomationWorkflowSource[] = [
   {
     key: "automationHealth",
@@ -521,12 +725,209 @@ function str(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
+function firstNonBlankString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return "";
+}
+
 function num(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 function bool(value: unknown): boolean {
   return value === true;
+}
+
+const LIBRARY_PHASE_METRICS_WINDOW_MINUTES = 180;
+const LIBRARY_PHASE_METRICS_MAX_ENTRIES = 400;
+const LIBRARY_PHASE_CRITICAL_ROUTES = [
+  "/v1/library.items.list",
+  "/v1/library.discovery.get",
+  "/v1/library.items.get",
+  "/v1/library.loans.checkout",
+  "/v1/library.loans.checkIn",
+  "/v1/library.reviews.create",
+];
+
+function telemetryRouteKey(endpoint: string): string | null {
+  const raw = endpoint.trim();
+  if (!raw) return null;
+  const withoutQuery = raw.split("?")[0] ?? raw;
+  const marker = "v1/library.";
+  const lower = withoutQuery.toLowerCase();
+  const markerIndex = lower.indexOf(marker);
+  if (markerIndex < 0) return null;
+  const start = markerIndex > 0 && withoutQuery[markerIndex - 1] === "/" ? markerIndex - 1 : markerIndex;
+  const route = withoutQuery.slice(start);
+  return route.startsWith("/v1/library.") ? route : `/${route}`;
+}
+
+function percentile(values: number[], p: number): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const clamped = Math.max(0, Math.min(1, p));
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(clamped * sorted.length) - 1));
+  const value = sorted[index];
+  return Number.isFinite(value) ? value : null;
+}
+
+function buildLibraryPhaseMetricsSnapshot(
+  rows: RequestTelemetry[],
+  nowMs = Date.now(),
+  windowMinutes = LIBRARY_PHASE_METRICS_WINDOW_MINUTES
+): LibraryPhaseMetricsSnapshot {
+  const cutoffMs = nowMs - windowMinutes * 60_000;
+  const bucket = new Map<string, {
+    requestCount: number;
+    errorCount: number;
+    conflictCount: number;
+    routeErrorCount: number;
+    latencies: number[];
+  }>();
+  let requestCount = 0;
+  let errorCount = 0;
+  let conflictCount = 0;
+  let routeErrorCount = 0;
+  const latencySamples: number[] = [];
+
+  for (const row of rows) {
+    const route = telemetryRouteKey(row.endpoint);
+    if (!route) continue;
+    const atMs = Date.parse(row.atIso);
+    if (!Number.isFinite(atMs) || atMs < cutoffMs) continue;
+
+    const status = typeof row.status === "number" && Number.isFinite(row.status) ? Math.trunc(row.status) : 0;
+    const isError = row.ok === false || status >= 400;
+    const isConflict = status === 409;
+    const isRouteError = status === 404;
+    const durationMs =
+      typeof row.durationMs === "number" && Number.isFinite(row.durationMs) && row.durationMs >= 0
+        ? Math.round(row.durationMs)
+        : null;
+
+    requestCount += 1;
+    if (isError) errorCount += 1;
+    if (isConflict) conflictCount += 1;
+    if (isRouteError) routeErrorCount += 1;
+    if (durationMs !== null) latencySamples.push(durationMs);
+
+    const current = bucket.get(route) ?? {
+      requestCount: 0,
+      errorCount: 0,
+      conflictCount: 0,
+      routeErrorCount: 0,
+      latencies: [],
+    };
+    current.requestCount += 1;
+    if (isError) current.errorCount += 1;
+    if (isConflict) current.conflictCount += 1;
+    if (isRouteError) current.routeErrorCount += 1;
+    if (durationMs !== null) current.latencies.push(durationMs);
+    bucket.set(route, current);
+  }
+
+  const endpoints = Array.from(bucket.entries())
+    .map(([route, value]) => ({
+      route,
+      requestCount: value.requestCount,
+      errorCount: value.errorCount,
+      conflictCount: value.conflictCount,
+      routeErrorCount: value.routeErrorCount,
+      p50LatencyMs: percentile(value.latencies, 0.5),
+      p95LatencyMs: percentile(value.latencies, 0.95),
+    }))
+    .sort((a, b) => b.requestCount - a.requestCount);
+
+  for (const route of LIBRARY_PHASE_CRITICAL_ROUTES) {
+    if (endpoints.some((entry) => entry.route === route)) continue;
+    endpoints.push({
+      route,
+      requestCount: 0,
+      errorCount: 0,
+      conflictCount: 0,
+      routeErrorCount: 0,
+      p50LatencyMs: null,
+      p95LatencyMs: null,
+    });
+  }
+
+  const denominator = requestCount > 0 ? requestCount : 1;
+  return {
+    generatedAtIso: new Date(nowMs).toISOString(),
+    windowMinutes,
+    requestCount,
+    errorCount,
+    conflictCount,
+    routeErrorCount,
+    errorRate: Number((errorCount / denominator).toFixed(4)),
+    conflictRate: Number((conflictCount / denominator).toFixed(4)),
+    p50LatencyMs: percentile(latencySamples, 0.5),
+    p95LatencyMs: percentile(latencySamples, 0.95),
+    maxLatencyMs: latencySamples.length > 0 ? Math.max(...latencySamples) : null,
+    endpoints,
+  };
+}
+
+function normalizeLibraryRolloutPhase(
+  value: unknown,
+  fallback: LibraryRolloutPhase = "phase_3_admin_full"
+): LibraryRolloutPhase {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "phase_1_read_only" || normalized === "1" || normalized === "phase1") {
+      return "phase_1_read_only";
+    }
+    if (normalized === "phase_2_member_writes" || normalized === "2" || normalized === "phase2") {
+      return "phase_2_member_writes";
+    }
+    if (normalized === "phase_3_admin_full" || normalized === "3" || normalized === "phase3") {
+      return "phase_3_admin_full";
+    }
+  }
+  return fallback;
+}
+
+function libraryRolloutPhaseLabel(phase: LibraryRolloutPhase): string {
+  if (phase === "phase_1_read_only") return "Phase 1";
+  if (phase === "phase_2_member_writes") return "Phase 2";
+  return "Phase 3";
+}
+
+function libraryRolloutMemberWritesEnabledForPhase(phase: LibraryRolloutPhase): boolean {
+  return phase !== "phase_1_read_only";
+}
+
+function shouldBlockLibraryFallback(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const row = error as {
+    kind?: unknown;
+    statusCode?: unknown;
+    code?: unknown;
+    message?: unknown;
+    debugMessage?: unknown;
+  };
+  const kind = str(row.kind).toLowerCase();
+  const statusCode =
+    typeof row.statusCode === "number" && Number.isFinite(row.statusCode) ? Math.trunc(row.statusCode) : 0;
+  const code = str(row.code).toLowerCase();
+  const message = `${str(row.message)} ${str(row.debugMessage)}`.toLowerCase();
+
+  if (kind === "auth") return true;
+  if (statusCode === 401 || statusCode === 403) return true;
+  if (code === "unauthenticated" || code === "permission_denied" || code === "forbidden" || code === "unauthorized") {
+    return true;
+  }
+  if (code.includes("rollout") || code.includes("phase") || code.includes("writes_disabled")) {
+    return true;
+  }
+  if (message.includes("rollout") && (message.includes("phase") || message.includes("disabled") || message.includes("paused"))) {
+    return true;
+  }
+  return false;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -548,6 +949,109 @@ function toTsMs(value: unknown): number {
     }
   }
   return 0;
+}
+
+function getLocalDayBoundsMs(reference = Date.now()) {
+  const start = new Date(reference);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return {
+    startMs: start.getTime(),
+    endMs: end.getTime(),
+    startDate: start,
+    endDate: end,
+  };
+}
+
+function reservationStatusLabel(value: unknown): string {
+  const status = typeof value === "string" ? value.trim().toUpperCase() : "";
+  if (!status) return "REQUESTED";
+  if (status === "CONFIRMED" || status === "WAITLISTED" || status === "CANCELLED") return status;
+  return status;
+}
+
+function reservationVisitTypeLabel(record: ReservationRecord): string {
+  const mode = typeof record.intakeMode === "string" ? record.intakeMode.trim().toUpperCase() : "";
+  if (mode === "WHOLE_KILN") return "Whole kiln";
+  if (mode === "COMMUNITY_SHELF") return "Community shelf";
+  if (mode === "SHELF_PURCHASE") return "Per-shelf purchase";
+  return "Check-in";
+}
+
+function toShortTimeLabel(valueMs: number): string {
+  if (!valueMs) return "Time TBD";
+  try {
+    return new Date(valueMs).toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return "Time TBD";
+  }
+}
+
+function toFileExtension(file: File): string {
+  const name = file.name || "";
+  const idx = name.lastIndexOf(".");
+  if (idx > -1 && idx < name.length - 1) {
+    return name.slice(idx + 1).toLowerCase();
+  }
+  const type = file.type || "";
+  if (type.includes("png")) return "png";
+  if (type.includes("webp")) return "webp";
+  return "jpg";
+}
+
+function readTimestampMs(value: unknown): number {
+  if (!value || typeof value !== "object") return 0;
+  const candidate = value as { toMillis?: () => number; toDate?: () => Date; seconds?: number };
+  if (typeof candidate.toMillis === "function") {
+    const ms = candidate.toMillis();
+    return Number.isFinite(ms) ? ms : 0;
+  }
+  if (typeof candidate.toDate === "function") {
+    const date = candidate.toDate();
+    const ms = date.getTime();
+    return Number.isFinite(ms) ? ms : 0;
+  }
+  if (typeof candidate.seconds === "number" && Number.isFinite(candidate.seconds)) {
+    return Math.floor(candidate.seconds * 1000);
+  }
+  return 0;
+}
+
+function isDirectMessageUnread(thread: DirectMessageThread, uid: string): boolean {
+  const lastMessageMs = readTimestampMs(thread.lastMessageAt);
+  if (!lastMessageMs) return false;
+  const lastReadMs = readTimestampMs(thread.lastReadAtByUid?.[uid]);
+  if (!lastReadMs) return true;
+  return lastMessageMs > lastReadMs;
+}
+
+function resolveStorageForStaffToday() {
+  const storage = getStorage();
+  const env = (import.meta.env ?? {}) as {
+    DEV?: boolean;
+    VITE_USE_EMULATORS?: string;
+    VITE_STORAGE_EMULATOR_HOST?: string;
+    VITE_STORAGE_EMULATOR_PORT?: string;
+  };
+  const devMode = typeof import.meta !== "undefined" && Boolean(env.DEV);
+  if (
+    devMode &&
+    env.VITE_USE_EMULATORS === "true" &&
+    !storageEmulatorConnected
+  ) {
+    const host = env.VITE_STORAGE_EMULATOR_HOST || "127.0.0.1";
+    const portRaw = env.VITE_STORAGE_EMULATOR_PORT || "9199";
+    const port = Number(portRaw);
+    if (Number.isFinite(port)) {
+      connectStorageEmulator(storage, host, port);
+      storageEmulatorConnected = true;
+    }
+  }
+  return storage;
 }
 
 function toIsoMs(value: unknown): number {
@@ -602,6 +1106,150 @@ function parseList(input: string): string[] {
     .split(/[\n,]/g)
     .map((v) => v.trim())
     .filter(Boolean);
+}
+
+function cleanIsbnToken(raw: string): string {
+  return raw.replace(/[^0-9xX]/g, "").toUpperCase();
+}
+
+function parseUniqueCsv(input: string): string[] {
+  return Array.from(new Set(parseList(input).map((value) => value.trim()).filter(Boolean)));
+}
+
+function inferIsbnVariants(raw: string): { primary: string; isbn10: string | null; isbn13: string | null } {
+  const cleaned = cleanIsbnToken(raw);
+  if (!cleaned) return { primary: "", isbn10: null, isbn13: null };
+  if (cleaned.length === 10) return { primary: cleaned, isbn10: cleaned, isbn13: null };
+  if (cleaned.length === 13) return { primary: cleaned, isbn10: null, isbn13: cleaned };
+  return { primary: cleaned, isbn10: null, isbn13: null };
+}
+
+function makeEmptyLendingAdminItemDraft(): LendingAdminItemDraft {
+  return {
+    title: "",
+    subtitle: "",
+    authorsCsv: "",
+    description: "",
+    publisher: "",
+    publishedDate: "",
+    isbn: "",
+    mediaType: "book",
+    format: "",
+    coverUrl: "",
+    totalCopies: "1",
+    availableCopies: "1",
+    status: "available",
+    source: "manual",
+    subjectsCsv: "",
+    techniquesCsv: "",
+  };
+}
+
+function normalizeLendingAdminItemRecord(
+  fallbackId: string,
+  raw: Record<string, unknown>
+): LendingAdminItemRecord {
+  const identifiers = record(raw.identifiers);
+  const authors = Array.isArray(raw.authors)
+    ? raw.authors.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  const authorLine =
+    authors.length > 0
+      ? authors.join(", ")
+      : firstNonBlankString(raw.author, raw.authorName, raw.byline) || "Unknown author";
+  const isbn10 = firstNonBlankString(raw.isbn10, identifiers.isbn10);
+  const isbn13 = firstNonBlankString(raw.isbn13, identifiers.isbn13);
+  const isbn = firstNonBlankString(raw.isbn, raw.isbn_normalized, isbn13, isbn10);
+  const title = firstNonBlankString(raw.title, raw.itemTitle, raw.bookTitle);
+  const id = firstNonBlankString(raw.id, raw.itemId, fallbackId) || fallbackId;
+  const totalCopies = Math.max(
+    0,
+    num(raw.totalCopies, num(raw.total_copies, num(raw.copiesTotal, 1)))
+  );
+  const availableCopies = Math.max(
+    0,
+    num(raw.availableCopies, num(raw.available_copies, num(raw.copiesAvailable, totalCopies)))
+  );
+  return {
+    id,
+    title: title || "Library item",
+    authorLine,
+    isbn,
+    isbn10,
+    isbn13,
+    mediaType: firstNonBlankString(raw.mediaType, raw.type) || "book",
+    status: firstNonBlankString(raw.status) || "available",
+    source: firstNonBlankString(raw.source) || "manual",
+    totalCopies,
+    availableCopies: Math.min(availableCopies, totalCopies),
+    updatedAtMs: maxMs(toTsMs(raw.updatedAt), toTsMs(raw.updatedAtIso), toTsMs(raw.createdAt)),
+    rawDoc: raw,
+  };
+}
+
+function buildLendingAdminDraftFromItem(item: LendingAdminItemRecord): LendingAdminItemDraft {
+  const raw = item.rawDoc;
+  const identifiers = record(raw.identifiers);
+  const authors = Array.isArray(raw.authors)
+    ? raw.authors.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  const subjects = Array.isArray(raw.subjects)
+    ? raw.subjects.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  const techniques = Array.isArray(raw.techniques)
+    ? raw.techniques.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  return {
+    title: item.title,
+    subtitle: firstNonBlankString(raw.subtitle),
+    authorsCsv: authors.length > 0 ? authors.join(", ") : item.authorLine,
+    description: firstNonBlankString(raw.description),
+    publisher: firstNonBlankString(raw.publisher),
+    publishedDate: firstNonBlankString(raw.publishedDate),
+    isbn: firstNonBlankString(raw.isbn, raw.isbn_normalized, raw.isbn13, raw.isbn10, identifiers.isbn13, identifiers.isbn10),
+    mediaType: firstNonBlankString(raw.mediaType, raw.type, item.mediaType) || "book",
+    format: firstNonBlankString(raw.format),
+    coverUrl: firstNonBlankString(raw.coverUrl),
+    totalCopies: String(Math.max(1, item.totalCopies || 1)),
+    availableCopies: String(Math.max(0, Math.min(item.availableCopies || 0, item.totalCopies || 1))),
+    status: firstNonBlankString(raw.status, item.status) || "available",
+    source: firstNonBlankString(raw.source, item.source) || "manual",
+    subjectsCsv: subjects.join(", "),
+    techniquesCsv: techniques.join(", "),
+  };
+}
+
+function normalizeLibraryTagLabel(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[_]+/g, " ")
+    .replace(/[^a-z0-9+\-/&.\s]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
+function normalizeLibraryItemOverrideStatus(
+  value: string
+): "available" | "checked_out" | "overdue" | "lost" | "unavailable" | "archived" {
+  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (normalized === "available") return "available";
+  if (normalized === "checked_out" || normalized === "checkedout") return "checked_out";
+  if (normalized === "overdue") return "overdue";
+  if (normalized === "lost") return "lost";
+  if (normalized === "unavailable") return "unavailable";
+  return "archived";
+}
+
+function isValidHttpUrl(value: string): boolean {
+  if (!value.trim()) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function inferWorkshopProgrammingTechnique(title: string): WorkshopProgrammingTechnique {
@@ -888,9 +1536,22 @@ export default function StaffView({
   devAdminEnabled,
   showEmulatorTools,
   onOpenCheckin,
+  onOpenReservation,
+  onOpenMessages,
+  onOpenMessageThread,
+  onOpenFirings,
+  onStartFiring,
   initialModule = "cockpit",
   forceCockpitWorkspace = false,
   forceEventsWorkspace = false,
+  forceSystemWorkspace = false,
+  messageThreads = [],
+  messageThreadsLoading = false,
+  messageThreadsError = "",
+  announcements = [],
+  announcementsLoading = false,
+  announcementsError = "",
+  unreadAnnouncements = 0,
 }: Props) {
   const [moduleKey, setModuleKey] = useState<ModuleKey>(initialModule);
   const [moduleUsage, setModuleUsage] = useState<Record<ModuleKey, ModuleUsageStat>>(() => loadModuleUsageSnapshot());
@@ -906,9 +1567,11 @@ export default function StaffView({
       : "No staff authority";
   const isCockpitModule = moduleKey === "cockpit";
   const [cockpitWorkspaceMode, setCockpitWorkspaceMode] = useState(true);
+  const [cockpitTab, setCockpitTab] = useState<CockpitTabKey>("triage");
   const isWorkspaceFocused =
     forceCockpitWorkspace ||
     forceEventsWorkspace ||
+    forceSystemWorkspace ||
     (moduleKey === "cockpit" && cockpitWorkspaceMode);
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
@@ -923,6 +1586,11 @@ export default function StaffView({
   const [users, setUsers] = useState<MemberRecord[]>([]);
   const [batches, setBatches] = useState<BatchRecord[]>([]);
   const [firings, setFirings] = useState<FiringRecord[]>([]);
+  const [firingsLoading, setFiringsLoading] = useState(false);
+  const [firingsError, setFiringsError] = useState("");
+  const [todayReservations, setTodayReservations] = useState<TodayReservationRow[]>([]);
+  const [todayReservationsLoading, setTodayReservationsLoading] = useState(false);
+  const [todayReservationsError, setTodayReservationsError] = useState("");
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [signups, setSignups] = useState<SignupRecord[]>([]);
   const [summary, setSummary] = useState<{
@@ -933,6 +1601,9 @@ export default function StaffView({
     receiptsCount: number;
     receiptsAmountCents: number;
   } | null>(null);
+  const [commerceLoading, setCommerceLoading] = useState(false);
+  const [commerceError, setCommerceError] = useState("");
+  const [todayBootstrapAttempted, setTodayBootstrapAttempted] = useState(false);
   const [orders, setOrders] = useState<CommerceOrderRecord[]>([]);
   const [unpaidCheckIns, setUnpaidCheckIns] = useState<UnpaidCheckInRecord[]>([]);
   const [receipts, setReceipts] = useState<ReceiptRecord[]>([]);
@@ -940,6 +1611,10 @@ export default function StaffView({
   const [commerceStatusFilter, setCommerceStatusFilter] = useState("all");
   const [libraryRequests, setLibraryRequests] = useState<LendingRequestRecord[]>([]);
   const [libraryLoans, setLibraryLoans] = useState<LendingLoanRecord[]>([]);
+  const [libraryAdminItems, setLibraryAdminItems] = useState<LendingAdminItemRecord[]>([]);
+  const [libraryCoverReviews, setLibraryCoverReviews] = useState<LendingCoverReviewRecord[]>([]);
+  const [libraryRecommendations, setLibraryRecommendations] = useState<LendingRecommendationRecord[]>([]);
+  const [libraryTagSubmissions, setLibraryTagSubmissions] = useState<LendingTagSubmissionRecord[]>([]);
   const [reportOps, setReportOps] = useState({ total: 0, open: 0, highOpen: 0, slaBreaches: 0 });
 
   const [memberSearch, setMemberSearch] = useState("");
@@ -986,6 +1661,9 @@ export default function StaffView({
   const [batchCleanupPreviewLog, setBatchCleanupPreviewLog] = useState("");
   const [kilnId, setKilnId] = useState("studio-electric");
   const [selectedFiringId, setSelectedFiringId] = useState("");
+  const [firingPhotoBusy, setFiringPhotoBusy] = useState(false);
+  const [firingPhotoStatus, setFiringPhotoStatus] = useState("");
+  const [firingPhotoError, setFiringPhotoError] = useState("");
   const [showDeprecatedFiringControls, setShowDeprecatedFiringControls] = useState(false);
   const [firingSearch, setFiringSearch] = useState("");
   const [firingStatusFilter, setFiringStatusFilter] = useState("all");
@@ -1008,11 +1686,73 @@ export default function StaffView({
   const [signupStatusFilter, setSignupStatusFilter] = useState("all");
   const [selectedSignupId, setSelectedSignupId] = useState("");
   const [isbnInput, setIsbnInput] = useState("");
+  const [isbnScanInput, setIsbnScanInput] = useState("");
+  const [isbnImportBusy, setIsbnImportBusy] = useState(false);
+  const [isbnImportStatus, setIsbnImportStatus] = useState("");
+  const [isbnImportError, setIsbnImportError] = useState("");
+  const [isbnScanBusy, setIsbnScanBusy] = useState(false);
+  const [isbnScanStatus, setIsbnScanStatus] = useState("");
   const [lendingSearch, setLendingSearch] = useState("");
   const [lendingStatusFilter, setLendingStatusFilter] = useState("all");
   const [lendingFocusFilter, setLendingFocusFilter] = useState<"all" | "requests" | "active" | "overdue" | "returned">("all");
+  const [lendingRecommendationFilter, setLendingRecommendationFilter] = useState("all");
   const [selectedRequestId, setSelectedRequestId] = useState("");
   const [selectedLoanId, setSelectedLoanId] = useState("");
+  const [selectedAdminItemId, setSelectedAdminItemId] = useState("");
+  const [lendingAdminItemSearch, setLendingAdminItemSearch] = useState("");
+  const [lendingAdminItemDraft, setLendingAdminItemDraft] = useState<LendingAdminItemDraft>(() =>
+    makeEmptyLendingAdminItemDraft()
+  );
+  const [lendingAdminItemBusy, setLendingAdminItemBusy] = useState(false);
+  const [lendingAdminItemStatus, setLendingAdminItemStatus] = useState("");
+  const [lendingAdminItemError, setLendingAdminItemError] = useState("");
+  const [lendingAdminItemDeleteConfirmInput, setLendingAdminItemDeleteConfirmInput] = useState("");
+  const [lendingAdminIsbnResolveBusy, setLendingAdminIsbnResolveBusy] = useState(false);
+  const [lendingAdminIsbnResolveStatus, setLendingAdminIsbnResolveStatus] = useState("");
+  const [coverReviewDraftById, setCoverReviewDraftById] = useState<Record<string, string>>({});
+  const [coverReviewBusyById, setCoverReviewBusyById] = useState<Record<string, boolean>>({});
+  const [coverReviewErrorById, setCoverReviewErrorById] = useState<Record<string, string>>({});
+  const [coverReviewStatus, setCoverReviewStatus] = useState("");
+  const [recommendationModerationBusyById, setRecommendationModerationBusyById] = useState<Record<string, boolean>>({});
+  const [recommendationModerationStatus, setRecommendationModerationStatus] = useState("");
+  const [tagSubmissionApprovalDraftById, setTagSubmissionApprovalDraftById] = useState<Record<string, string>>({});
+  const [tagModerationBusyById, setTagModerationBusyById] = useState<Record<string, boolean>>({});
+  const [tagModerationStatus, setTagModerationStatus] = useState("");
+  const [tagMergeSourceId, setTagMergeSourceId] = useState("");
+  const [tagMergeTargetId, setTagMergeTargetId] = useState("");
+  const [tagMergeNote, setTagMergeNote] = useState("");
+  const [tagMergeBusy, setTagMergeBusy] = useState(false);
+  const [loanRecoveryBusy, setLoanRecoveryBusy] = useState(false);
+  const [loanRecoveryStatus, setLoanRecoveryStatus] = useState("");
+  const [loanReplacementFeeAmountInput, setLoanReplacementFeeAmountInput] = useState("");
+  const [loanOverrideStatusDraft, setLoanOverrideStatusDraft] = useState<
+    "available" | "checked_out" | "overdue" | "lost" | "unavailable" | "archived"
+  >("available");
+  const [loanOverrideNoteDraft, setLoanOverrideNoteDraft] = useState("");
+  const [externalLookupProbeQuery, setExternalLookupProbeQuery] = useState("ceramics glaze chemistry");
+  const [externalLookupProbeBusy, setExternalLookupProbeBusy] = useState(false);
+  const [externalLookupProbeStatus, setExternalLookupProbeStatus] = useState("");
+  const [externalLookupProbeProviders, setExternalLookupProbeProviders] = useState<
+    Array<{ provider: string; ok: boolean; itemCount: number; cached: boolean; disabled: boolean }>
+  >([]);
+  const [externalLookupPolicyBusy, setExternalLookupPolicyBusy] = useState(false);
+  const [externalLookupPolicyStatus, setExternalLookupPolicyStatus] = useState("");
+  const [externalLookupPolicyOpenLibraryEnabled, setExternalLookupPolicyOpenLibraryEnabled] = useState(true);
+  const [externalLookupPolicyGoogleBooksEnabled, setExternalLookupPolicyGoogleBooksEnabled] = useState(true);
+  const [externalLookupPolicyCoverReviewGuardrailEnabled, setExternalLookupPolicyCoverReviewGuardrailEnabled] =
+    useState(true);
+  const [externalLookupPolicyNote, setExternalLookupPolicyNote] = useState("");
+  const [externalLookupPolicyUpdatedAtMs, setExternalLookupPolicyUpdatedAtMs] = useState(0);
+  const [externalLookupPolicyUpdatedByUid, setExternalLookupPolicyUpdatedByUid] = useState("");
+  const [libraryRolloutPhaseBusy, setLibraryRolloutPhaseBusy] = useState(false);
+  const [libraryRolloutPhaseStatus, setLibraryRolloutPhaseStatus] = useState("");
+  const [libraryRolloutPhase, setLibraryRolloutPhase] = useState<LibraryRolloutPhase>("phase_3_admin_full");
+  const [libraryRolloutMemberWritesEnabled, setLibraryRolloutMemberWritesEnabled] = useState(true);
+  const [libraryRolloutNote, setLibraryRolloutNote] = useState("");
+  const [libraryRolloutUpdatedAtMs, setLibraryRolloutUpdatedAtMs] = useState(0);
+  const [libraryRolloutUpdatedByUid, setLibraryRolloutUpdatedByUid] = useState("");
+  const [libraryPhaseMetricsSnapshot, setLibraryPhaseMetricsSnapshot] = useState<LibraryPhaseMetricsSnapshot | null>(null);
+  const [libraryPhaseMetricsStatus, setLibraryPhaseMetricsStatus] = useState("");
   const [systemChecks, setSystemChecks] = useState<SystemCheckRecord[]>([]);
   const [studioBrainStatus, setStudioBrainStatus] = useState<StudioBrainStatus | null>(null);
   const lastStudioBrainModeRef = useRef<StudioBrainStatus["mode"] | null>(null);
@@ -1147,6 +1887,10 @@ export default function StaffView({
   const selectedLoan = useMemo(
     () => libraryLoans.find((loan) => loan.id === selectedLoanId) ?? null,
     [libraryLoans, selectedLoanId]
+  );
+  const selectedAdminItem = useMemo(
+    () => libraryAdminItems.find((item) => item.id === selectedAdminItemId) ?? null,
+    [libraryAdminItems, selectedAdminItemId]
   );
   const selectedFiring = useMemo(
     () => firings.find((firing) => firing.id === selectedFiringId) ?? null,
@@ -1448,6 +2192,13 @@ export default function StaffView({
     });
     return Array.from(next).sort((a, b) => a.localeCompare(b));
   }, [libraryLoans, libraryRequests]);
+  const lendingRecommendationStatusOptions = useMemo(() => {
+    const next = new Set<string>();
+    libraryRecommendations.forEach((entry) => {
+      if (entry.moderationStatus) next.add(entry.moderationStatus);
+    });
+    return Array.from(next).sort((a, b) => a.localeCompare(b));
+  }, [libraryRecommendations]);
   const filteredRequests = useMemo(() => {
     const search = lendingSearch.trim().toLowerCase();
     return libraryRequests
@@ -1470,6 +2221,66 @@ export default function StaffView({
       })
       .sort((a, b) => b.createdAtMs - a.createdAtMs);
   }, [lendingSearch, lendingStatusFilter, libraryLoans]);
+  const filteredLendingAdminItems = useMemo(() => {
+    const search = lendingAdminItemSearch.trim().toLowerCase();
+    return libraryAdminItems
+      .filter((item) => {
+        if (!search) return true;
+        const haystack =
+          `${item.title} ${item.authorLine} ${item.id} ${item.status} ${item.mediaType} ${item.source} ${item.isbn} ${item.isbn10} ${item.isbn13}`
+            .toLowerCase();
+        return haystack.includes(search);
+      })
+      .sort((a, b) => b.updatedAtMs - a.updatedAtMs || a.title.localeCompare(b.title));
+  }, [lendingAdminItemSearch, libraryAdminItems]);
+  const lendingAdminDeleteConfirmationPhrase = useMemo(
+    () => (selectedAdminItem ? `delete ${selectedAdminItem.id}` : ""),
+    [selectedAdminItem]
+  );
+  const filteredRecommendations = useMemo(() => {
+    const search = lendingSearch.trim().toLowerCase();
+    return libraryRecommendations
+      .filter((entry) => {
+        if (lendingRecommendationFilter !== "all" && entry.moderationStatus !== lendingRecommendationFilter) return false;
+        if (!search) return true;
+        const haystack = `${entry.title} ${entry.author} ${entry.isbn} ${entry.id} ${entry.recommenderName} ${entry.recommenderUid}`.toLowerCase();
+        return haystack.includes(search);
+      })
+      .sort((a, b) => b.createdAtMs - a.createdAtMs || b.updatedAtMs - a.updatedAtMs);
+  }, [lendingRecommendationFilter, lendingSearch, libraryRecommendations]);
+  const filteredTagSubmissions = useMemo(() => {
+    const search = lendingSearch.trim().toLowerCase();
+    return libraryTagSubmissions
+      .filter((entry) => entry.status === "pending")
+      .filter((entry) => {
+        if (!search) return true;
+        const haystack =
+          `${entry.itemTitle} ${entry.itemId} ${entry.tag} ${entry.submittedByName} ${entry.submittedByUid}`.toLowerCase();
+        return haystack.includes(search);
+      })
+      .sort((a, b) => b.createdAtMs - a.createdAtMs || b.updatedAtMs - a.updatedAtMs);
+  }, [lendingSearch, libraryTagSubmissions]);
+  const recommendationModerationKpis = useMemo(() => {
+    const pendingReview = libraryRecommendations.filter((entry) => entry.moderationStatus === "pending_review").length;
+    const hidden = libraryRecommendations.filter((entry) => entry.moderationStatus === "hidden").length;
+    const approved = libraryRecommendations.filter((entry) => entry.moderationStatus === "approved").length;
+    return {
+      total: libraryRecommendations.length,
+      pendingReview,
+      hidden,
+      approved,
+    };
+  }, [libraryRecommendations]);
+  const tagModerationKpis = useMemo(() => {
+    const statusToken = (value: string): string => value.trim().toLowerCase().replace(/\s+/g, "_");
+    const pending = libraryTagSubmissions.filter((entry) => statusToken(entry.status || "pending") === "pending").length;
+    const approved = libraryTagSubmissions.filter((entry) => statusToken(entry.status) === "approved").length;
+    return {
+      total: libraryTagSubmissions.length,
+      pending,
+      approved,
+    };
+  }, [libraryTagSubmissions]);
   const lendingTriage = useMemo(() => {
     const now = Date.now();
     const activeLoans = filteredLoans.filter((loan) => {
@@ -1913,11 +2724,6 @@ export default function StaffView({
     [adaptiveNavEnabled, lowEngagementModules, moduleUsageRows, navLayout.overflow.length, navLayout.primary.length]
   );
 
-  const scrollToCockpitSection = useCallback((sectionId: string) => {
-    const target = document.getElementById(sectionId);
-    if (!target) return;
-    target.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, []);
   const resetModuleTelemetry = useCallback(() => {
     setModuleUsage(moduleUsageSeed());
     moduleSessionRef.current = { key: moduleKey, enteredAtMs: Date.now() };
@@ -2380,6 +3186,97 @@ export default function StaffView({
     if (!selectedBatchId && next[0]) setSelectedBatchId(next[0].id);
   }, [qTrace, selectedBatchId]);
 
+  const loadTodayReservations = useCallback(async () => {
+    const { startDate, endDate } = getLocalDayBoundsMs();
+    setTodayReservationsLoading(true);
+    setTodayReservationsError("");
+    try {
+      qTrace("reservations", {
+        todayStartIso: startDate.toISOString(),
+        todayEndIso: endDate.toISOString(),
+        orderBy: "preferredWindow.latestDate:asc",
+        limit: TODAY_RESERVATION_LIMIT,
+      });
+      const reservationsQuery = query(
+        collection(db, "reservations"),
+        where("preferredWindow.latestDate", ">=", startDate),
+        where("preferredWindow.latestDate", "<", endDate),
+        orderBy("preferredWindow.latestDate", "asc"),
+        limit(TODAY_RESERVATION_LIMIT)
+      );
+      const snap = await getDocs(reservationsQuery);
+      const ownerUids = Array.from(
+        new Set(
+          snap.docs
+            .map((docSnap) => firstNonBlankString((docSnap.data() as { ownerUid?: unknown }).ownerUid))
+            .filter(Boolean)
+        )
+      ).slice(0, 10);
+      const ownerNameByUid = new Map<string, string>();
+      if (ownerUids.length > 0) {
+        try {
+          const usersSnap = await getDocs(
+            query(collection(db, "users"), where(documentId(), "in", ownerUids), limit(ownerUids.length))
+          );
+          usersSnap.docs.forEach((docSnap) => {
+            const data = docSnap.data();
+            const displayName = firstNonBlankString(data.displayName, data.name, data.fullName);
+            if (displayName) ownerNameByUid.set(docSnap.id, displayName);
+          });
+        } catch {
+          // Name lookup is best-effort; reservation rows still render with uid fallback.
+        }
+      }
+      const rows: TodayReservationRow[] = snap.docs
+        .map((docSnap) => {
+          const raw = (docSnap.data() ?? {}) as Record<string, unknown>;
+          const reservation = normalizeReservationRecord(docSnap.id, raw as Partial<ReservationRecord>);
+          const preferredAtMs = toTsMs(reservation.preferredWindow?.latestDate);
+          const createdAtMs = toTsMs(reservation.createdAt);
+          const updatedAtMs = toTsMs(reservation.updatedAt);
+          const timeMs = preferredAtMs || createdAtMs || updatedAtMs || 0;
+          const ownerUid = firstNonBlankString(raw.ownerUid);
+          const pieceCount = Array.isArray(reservation.pieces)
+            ? reservation.pieces.reduce((sum, piece) => {
+                const next =
+                  typeof piece.pieceCount === "number" && Number.isFinite(piece.pieceCount)
+                    ? Math.max(1, Math.round(piece.pieceCount))
+                    : 1;
+                return sum + next;
+              }, 0)
+            : 0;
+          const shelfCount =
+            typeof reservation.estimatedHalfShelves === "number" && Number.isFinite(reservation.estimatedHalfShelves)
+              ? Math.max(1, Math.round(reservation.estimatedHalfShelves))
+              : 1;
+          const itemCount = pieceCount > 0 ? pieceCount : shelfCount;
+          const displayName =
+            firstNonBlankString(raw.displayName, raw.ownerName, raw.clientName, raw.name) ||
+            ownerNameByUid.get(ownerUid) ||
+            (ownerUid ? `Member ${ownerUid.slice(0, 6)}` : "Member");
+          const notes = firstNonBlankString(reservation.notes?.general, reservation.staffNotes, raw.staffNotes, raw.notes);
+          return {
+            id: reservation.id,
+            ownerUid,
+            displayName,
+            timeMs,
+            status: reservationStatusLabel(reservation.status),
+            itemCount,
+            visitType: reservationVisitTypeLabel(reservation),
+            notes,
+          } satisfies TodayReservationRow;
+        })
+        .sort((a, b) => a.timeMs - b.timeMs || a.displayName.localeCompare(b.displayName));
+      setTodayReservations(rows);
+    } catch (err: unknown) {
+      setTodayReservations([]);
+      setTodayReservationsError(err instanceof Error ? err.message : String(err));
+      throw err;
+    } finally {
+      setTodayReservationsLoading(false);
+    }
+  }, [qTrace]);
+
   const loadSelectedBatchDetails = useCallback(
     async (batchId: string) => {
       if (!batchId) {
@@ -2437,32 +3334,42 @@ export default function StaffView({
   );
 
   const loadFirings = useCallback(async () => {
-    qTrace("kilnFirings", { orderBy: "updatedAt:desc", limit: 50 });
-    const snap = await getDocs(query(collection(db, "kilnFirings"), orderBy("updatedAt", "desc"), limit(50)));
-    const next = snap.docs.map((d) => {
-      const data = d.data();
-      const batchIds = Array.isArray(data.batchIds) ? data.batchIds : [];
-      const pieceIds = Array.isArray(data.pieceIds) ? data.pieceIds : [];
-      return {
-        id: d.id,
-        title: str(data.title, "Kiln firing"),
-        kilnName: str(data.kilnName, str(data.kilnId, "Kiln")),
-        kilnId: str(data.kilnId),
-        status: str(data.status, "scheduled"),
-        cycleType: str(data.cycleType, "unknown"),
-        confidence: str(data.confidence, "estimated"),
-        startAtMs: toTsMs(data.startAt),
-        endAtMs: toTsMs(data.endAt),
-        unloadedAtMs: toTsMs(data.unloadedAt),
-        batchCount: batchIds.length,
-        pieceCount: pieceIds.length,
-        notes: str(data.notes, ""),
-        updatedAtMs: toTsMs(data.updatedAt),
-      } satisfies FiringRecord;
-    });
-    setFirings(next);
-    if (!selectedFiringId && next[0]) {
-      setSelectedFiringId(next[0].id);
+    setFiringsLoading(true);
+    setFiringsError("");
+    try {
+      qTrace("kilnFirings", { orderBy: "updatedAt:desc", limit: 50 });
+      const snap = await getDocs(query(collection(db, "kilnFirings"), orderBy("updatedAt", "desc"), limit(50)));
+      const next = snap.docs.map((d) => {
+        const data = d.data();
+        const batchIds = Array.isArray(data.batchIds) ? data.batchIds : [];
+        const pieceIds = Array.isArray(data.pieceIds) ? data.pieceIds : [];
+        return {
+          id: d.id,
+          title: str(data.title, "Kiln firing"),
+          kilnName: str(data.kilnName, str(data.kilnId, "Kiln")),
+          kilnId: str(data.kilnId),
+          status: str(data.status, "scheduled"),
+          cycleType: str(data.cycleType, "unknown"),
+          confidence: str(data.confidence, "estimated"),
+          startAtMs: toTsMs(data.startAt),
+          endAtMs: toTsMs(data.endAt),
+          unloadedAtMs: toTsMs(data.unloadedAt),
+          batchCount: batchIds.length,
+          pieceCount: pieceIds.length,
+          notes: str(data.notes, ""),
+          updatedAtMs: toTsMs(data.updatedAt),
+        } satisfies FiringRecord;
+      });
+      setFirings(next);
+      if (!selectedFiringId && next[0]) {
+        setSelectedFiringId(next[0].id);
+      }
+    } catch (err: unknown) {
+      setFirings([]);
+      setFiringsError(err instanceof Error ? err.message : String(err));
+      throw err;
+    } finally {
+      setFiringsLoading(false);
     }
   }, [qTrace, selectedFiringId]);
 
@@ -2563,87 +3470,102 @@ const loadEvents = useCallback(async () => {
   );
 
   const loadCommerce = useCallback(async () => {
+    setCommerceLoading(true);
+    setCommerceError("");
     if (hasFunctionsAuthMismatch) {
       setSummary(null);
       setOrders([]);
       setUnpaidCheckIns([]);
       setReceipts([]);
+      setCommerceError("Payment services are running in degraded mode while Functions/Auth emulators are mismatched.");
+      setCommerceLoading(false);
       return;
     }
-    const resp = await client.postJson<{
-      summary?: typeof summary;
-      unpaidCheckIns?: Array<Record<string, unknown>>;
-      materialsOrders?: Array<Record<string, unknown>>;
-      receipts?: Array<Record<string, unknown>>;
-    }>("listBillingSummary", { limit: 60 });
-    setSummary(resp.summary ?? null);
-    setOrders(
-      (resp.materialsOrders ?? []).map((o) => ({
-        id: str(o.id),
-        status: str(o.status, "unknown"),
-        totalCents: num(o.totalCents, 0),
-        currency: str(o.currency, "USD"),
-        updatedAt: str(o.updatedAt, "-"),
-        createdAt: str(o.createdAt, "-"),
-        checkoutUrl: (() => {
-          const raw = str(o.checkoutUrl, "");
-          return raw || null;
-        })(),
-        pickupNotes: (() => {
-          const raw = str(o.pickupNotes, "");
-          return raw || null;
-        })(),
-        itemCount: Array.isArray(o.items) ? o.items.length : 0,
-      }))
-    );
-    setUnpaidCheckIns(
-      (resp.unpaidCheckIns ?? []).map((entry) => ({
-        signupId: str(entry.signupId),
-        eventId: str(entry.eventId),
-        eventTitle: str(entry.eventTitle, "Event"),
-        amountCents:
-          typeof entry.amountCents === "number" && Number.isFinite(entry.amountCents)
-            ? entry.amountCents
-            : null,
-        currency: (() => {
-          const raw = str(entry.currency, "");
-          return raw || null;
-        })(),
-        paymentStatus: (() => {
-          const raw = str(entry.paymentStatus, "");
-          return raw || null;
-        })(),
-        checkInMethod: (() => {
-          const raw = str(entry.checkInMethod, "");
-          return raw || null;
-        })(),
-        createdAt: (() => {
-          const raw = str(entry.createdAt, "");
-          return raw || null;
-        })(),
-        checkedInAt: (() => {
-          const raw = str(entry.checkedInAt, "");
-          return raw || null;
-        })(),
-      }))
-    );
-    setReceipts(
-      (resp.receipts ?? []).map((entry) => ({
-        id: str(entry.id),
-        type: str(entry.type, "unknown"),
-        title: str(entry.title, "Receipt"),
-        amountCents: num(entry.amountCents, 0),
-        currency: str(entry.currency, "USD"),
-        createdAt: (() => {
-          const raw = str(entry.createdAt, "");
-          return raw || null;
-        })(),
-        paidAt: (() => {
-          const raw = str(entry.paidAt, "");
-          return raw || null;
-        })(),
-      }))
-    );
+    try {
+      const resp = await client.postJson<{
+        summary?: typeof summary;
+        unpaidCheckIns?: Array<Record<string, unknown>>;
+        materialsOrders?: Array<Record<string, unknown>>;
+        receipts?: Array<Record<string, unknown>>;
+      }>("listBillingSummary", { limit: 60 });
+      setSummary(resp.summary ?? null);
+      setOrders(
+        (resp.materialsOrders ?? []).map((o) => ({
+          id: str(o.id),
+          status: str(o.status, "unknown"),
+          totalCents: num(o.totalCents, 0),
+          currency: str(o.currency, "USD"),
+          updatedAt: str(o.updatedAt, "-"),
+          createdAt: str(o.createdAt, "-"),
+          checkoutUrl: (() => {
+            const raw = str(o.checkoutUrl, "");
+            return raw || null;
+          })(),
+          pickupNotes: (() => {
+            const raw = str(o.pickupNotes, "");
+            return raw || null;
+          })(),
+          itemCount: Array.isArray(o.items) ? o.items.length : 0,
+        }))
+      );
+      setUnpaidCheckIns(
+        (resp.unpaidCheckIns ?? []).map((entry) => ({
+          signupId: str(entry.signupId),
+          eventId: str(entry.eventId),
+          eventTitle: str(entry.eventTitle, "Event"),
+          amountCents:
+            typeof entry.amountCents === "number" && Number.isFinite(entry.amountCents)
+              ? entry.amountCents
+              : null,
+          currency: (() => {
+            const raw = str(entry.currency, "");
+            return raw || null;
+          })(),
+          paymentStatus: (() => {
+            const raw = str(entry.paymentStatus, "");
+            return raw || null;
+          })(),
+          checkInMethod: (() => {
+            const raw = str(entry.checkInMethod, "");
+            return raw || null;
+          })(),
+          createdAt: (() => {
+            const raw = str(entry.createdAt, "");
+            return raw || null;
+          })(),
+          checkedInAt: (() => {
+            const raw = str(entry.checkedInAt, "");
+            return raw || null;
+          })(),
+        }))
+      );
+      setReceipts(
+        (resp.receipts ?? []).map((entry) => ({
+          id: str(entry.id),
+          type: str(entry.type, "unknown"),
+          title: str(entry.title, "Receipt"),
+          amountCents: num(entry.amountCents, 0),
+          currency: str(entry.currency, "USD"),
+          createdAt: (() => {
+            const raw = str(entry.createdAt, "");
+            return raw || null;
+          })(),
+          paidAt: (() => {
+            const raw = str(entry.paidAt, "");
+            return raw || null;
+          })(),
+        }))
+      );
+    } catch (err: unknown) {
+      setSummary(null);
+      setOrders([]);
+      setUnpaidCheckIns([]);
+      setReceipts([]);
+      setCommerceError(err instanceof Error ? err.message : String(err));
+      throw err;
+    } finally {
+      setCommerceLoading(false);
+    }
   }, [client, hasFunctionsAuthMismatch]);
 
   const loadSystemStats = useCallback(async () => {
@@ -2660,14 +3582,80 @@ const loadEvents = useCallback(async () => {
   }, [client, hasFunctionsAuthMismatch]);
 
   const loadLending = useCallback(async () => {
+    const loadAdminItemsFromFirestore = async (): Promise<LendingAdminItemRecord[]> => {
+      qTrace("libraryItems", { orderBy: "updatedAt:desc", limit: 200, fallback: "firestore_admin_items" });
+      const snap = await getDocs(query(collection(db, "libraryItems"), orderBy("updatedAt", "desc"), limit(200)));
+      return snap.docs
+        .map((docSnap) =>
+          normalizeLendingAdminItemRecord(
+            docSnap.id,
+            (docSnap.data() ?? {}) as Record<string, unknown>
+          )
+        )
+        .filter((entry) => {
+          const deleted = entry.rawDoc.deleted === true || entry.rawDoc.isDeleted === true || entry.rawDoc.softDeleted === true;
+          const deletedAt = toTsMs(entry.rawDoc.deletedAt);
+          return !deleted && deletedAt === 0;
+        })
+        .slice(0, 120);
+    };
+
+    let adminItems: LendingAdminItemRecord[] = [];
+    if (hasFunctionsAuthMismatch) {
+      adminItems = await loadAdminItemsFromFirestore();
+    } else {
+      try {
+        qTrace("libraryItems", {
+          route: V1_LIBRARY_ITEMS_LIST_FN,
+          sort: "recently_added",
+          page: 1,
+          pageSize: LIBRARY_ITEMS_API_PAGE_SIZE,
+        });
+        const response = await client.postJson<{ data?: { items?: unknown[] }; items?: unknown[] }>(
+          V1_LIBRARY_ITEMS_LIST_FN,
+          {
+            sort: "recently_added",
+            page: 1,
+            pageSize: LIBRARY_ITEMS_API_PAGE_SIZE,
+          }
+        );
+        const apiItems = Array.isArray(response?.data?.items)
+          ? response.data.items
+          : Array.isArray(response?.items)
+            ? response.items
+            : null;
+        if (apiItems) {
+          adminItems = apiItems
+            .map((entry, index) => {
+              if (!entry || typeof entry !== "object") return null;
+              return normalizeLendingAdminItemRecord(
+                `library-item-api-${index + 1}`,
+                entry as Record<string, unknown>
+              );
+            })
+            .filter((entry): entry is LendingAdminItemRecord => Boolean(entry));
+        } else {
+          adminItems = await loadAdminItemsFromFirestore();
+        }
+      } catch {
+        adminItems = await loadAdminItemsFromFirestore();
+      }
+    }
+    setLibraryAdminItems(adminItems);
+    setSelectedAdminItemId((current) => {
+      if (current && adminItems.some((item) => item.id === current)) return current;
+      return "";
+    });
+
     qTrace("libraryRequests", { orderBy: "createdAt:desc", limit: 60 });
     const reqSnap = await getDocs(query(collection(db, "libraryRequests"), orderBy("createdAt", "desc"), limit(60)));
     setLibraryRequests(
       reqSnap.docs.map((d) => {
         const data = d.data();
+        const title = firstNonBlankString(data.itemTitle, data.title, data.bookTitle);
         return {
           id: d.id,
-          title: str(data.title, str(data.bookTitle, "Request")),
+          title: title || "Request",
           status: str(data.status, "open"),
           requesterUid: str(data.requesterUid, str(data.uid)),
           requesterName: str(data.requesterName, str(data.displayName, "Unknown")),
@@ -2683,9 +3671,10 @@ const loadEvents = useCallback(async () => {
     setLibraryLoans(
       loanSnap.docs.map((d) => {
         const data = d.data();
+        const title = firstNonBlankString(data.itemTitle, data.title, data.bookTitle);
         return {
           id: d.id,
-          title: str(data.title, str(data.bookTitle, "Loan")),
+          title: title || "Loan",
           status: str(data.status, "active"),
           borrowerUid: str(data.borrowerUid, str(data.uid)),
           borrowerName: str(data.borrowerName, str(data.displayName, "Unknown")),
@@ -2697,7 +3686,1331 @@ const loadEvents = useCallback(async () => {
         } satisfies LendingLoanRecord;
       })
     );
-  }, [qTrace]);
+
+    let coverSnap;
+    try {
+      qTrace("libraryItems", { where: "needsCoverReview==true", limit: 80 });
+      coverSnap = await getDocs(
+        query(collection(db, "libraryItems"), where("needsCoverReview", "==", true), limit(80))
+      );
+    } catch {
+      qTrace("libraryItems", { orderBy: "updatedAt:desc", limit: 160, fallback: "client_filter_cover_review" });
+      coverSnap = await getDocs(query(collection(db, "libraryItems"), orderBy("updatedAt", "desc"), limit(160)));
+    }
+
+    const coverRows = coverSnap.docs
+      .map((d) => {
+        const data = d.data();
+        const title = firstNonBlankString(data.itemTitle, data.title, data.bookTitle);
+        return {
+          id: d.id,
+          title: title || "Library item",
+          coverUrl: (() => {
+            const raw = str(data.coverUrl, "");
+            return raw || null;
+          })(),
+          coverQualityStatus: str(data.coverQualityStatus, "needs_review"),
+          coverQualityReason: (() => {
+            const raw = str(data.coverQualityReason, "");
+            return raw || null;
+          })(),
+          updatedAtMs: toTsMs(data.updatedAt),
+          rawDoc: (data ?? {}) as Record<string, unknown>,
+        } satisfies LendingCoverReviewRecord;
+      })
+      .filter((entry) => {
+        const rawNeedsReview = entry.rawDoc.needsCoverReview === true;
+        return rawNeedsReview || entry.coverQualityStatus === "needs_review" || entry.coverQualityStatus === "missing";
+      })
+      .slice(0, 80);
+    setLibraryCoverReviews(coverRows);
+
+    const normalizeRecommendationRow = (
+      data: Record<string, unknown>,
+      fallbackId: string
+    ): LendingRecommendationRecord => {
+      const firstAuthorFromArray =
+        Array.isArray(data.authors) && data.authors.length > 0 ? firstNonBlankString(data.authors[0]) : "";
+      const title = firstNonBlankString(data.itemTitle, data.title, data.bookTitle);
+      const recommendationId = firstNonBlankString(data.id, data.recommendationId, fallbackId) || fallbackId;
+      return {
+        id: recommendationId,
+        title: title || "Untitled recommendation",
+        author: firstNonBlankString(data.author, firstAuthorFromArray),
+        isbn: firstNonBlankString(data.isbn, data.isbn13, data.isbn10),
+        moderationStatus: firstNonBlankString(data.moderationStatus, data.status) || "pending_review",
+        recommenderUid: firstNonBlankString(data.recommenderUid, data.recommendedByUid, data.uid),
+        recommenderName: firstNonBlankString(data.recommenderName, data.recommendedByName, data.displayName),
+        rationale: firstNonBlankString(data.rationale, data.reason, data.note),
+        createdAtMs: maxMs(toTsMs(data.createdAt), toTsMs(data.createdAtIso)),
+        updatedAtMs: maxMs(toTsMs(data.updatedAt), toTsMs(data.updatedAtIso), toTsMs(data.moderatedAt)),
+        rawDoc: data,
+      };
+    };
+
+    const loadRecommendationsFromFirestore = async (): Promise<LendingRecommendationRecord[]> => {
+      qTrace("libraryRecommendations", { orderBy: "createdAt:desc", limit: 120, fallback: "firestore" });
+      const snap = await getDocs(
+        query(collection(db, "libraryRecommendations"), orderBy("createdAt", "desc"), limit(120))
+      );
+      return snap.docs.map((docSnap) => {
+        const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+        return normalizeRecommendationRow(data, docSnap.id);
+      });
+    };
+
+    let recommendationRows: LendingRecommendationRecord[] = [];
+    if (hasFunctionsAuthMismatch) {
+      recommendationRows = await loadRecommendationsFromFirestore();
+    } else {
+      try {
+        qTrace("libraryRecommendations", { route: V1_LIBRARY_RECOMMENDATIONS_LIST_FN, limit: LIBRARY_RECOMMENDATIONS_API_LIMIT });
+        const response = await client.postJson<LibraryRecommendationsListResponse>(
+          V1_LIBRARY_RECOMMENDATIONS_LIST_FN,
+          { limit: LIBRARY_RECOMMENDATIONS_API_LIMIT }
+        );
+        const apiRows = Array.isArray(response?.data?.recommendations)
+          ? response.data.recommendations
+          : Array.isArray((response as { recommendations?: unknown }).recommendations)
+            ? ((response as { recommendations?: unknown[] }).recommendations ?? [])
+            : null;
+        if (apiRows) {
+          recommendationRows = apiRows
+            .map((entry, index) => {
+              if (!entry || typeof entry !== "object") return null;
+              return normalizeRecommendationRow(
+                entry as Record<string, unknown>,
+                `recommendation-api-${index + 1}`
+              );
+            })
+            .filter((entry): entry is LendingRecommendationRecord => Boolean(entry));
+        } else {
+          recommendationRows = await loadRecommendationsFromFirestore();
+        }
+      } catch {
+        recommendationRows = await loadRecommendationsFromFirestore();
+      }
+    }
+    setLibraryRecommendations(recommendationRows.slice(0, 120));
+
+    const normalizeTagSubmissionRow = (
+      data: Record<string, unknown>,
+      fallbackId: string
+    ): LendingTagSubmissionRecord => {
+      const itemTitle = firstNonBlankString(data.itemTitle, data.title, data.bookTitle);
+      return {
+        id: fallbackId,
+        itemId: firstNonBlankString(data.itemId),
+        itemTitle: itemTitle || "Library item",
+        tag: firstNonBlankString(data.tag),
+        normalizedTag: firstNonBlankString(data.normalizedTag),
+        status: firstNonBlankString(data.status) || "pending",
+        submittedByUid: firstNonBlankString(data.submittedByUid, data.uid),
+        submittedByName: firstNonBlankString(data.submittedByName, data.displayName),
+        createdAtMs: maxMs(toTsMs(data.createdAt), toTsMs(data.createdAtIso)),
+        updatedAtMs: maxMs(toTsMs(data.updatedAt), toTsMs(data.updatedAtIso)),
+        rawDoc: data,
+      };
+    };
+
+    qTrace("libraryTagSubmissions", { orderBy: "createdAt:desc", limit: 160 });
+    const tagSubmissionSnap = await getDocs(
+      query(collection(db, "libraryTagSubmissions"), orderBy("createdAt", "desc"), limit(160))
+    );
+    const tagSubmissionRows = tagSubmissionSnap.docs
+      .map((docSnap) =>
+        normalizeTagSubmissionRow((docSnap.data() ?? {}) as Record<string, unknown>, docSnap.id)
+      )
+      .slice(0, 160);
+    setLibraryTagSubmissions(tagSubmissionRows);
+
+    const snapshot = buildLibraryPhaseMetricsSnapshot(
+      getRecentRequestTelemetry(LIBRARY_PHASE_METRICS_MAX_ENTRIES),
+      Date.now(),
+      LIBRARY_PHASE_METRICS_WINDOW_MINUTES
+    );
+    setLibraryPhaseMetricsSnapshot(snapshot);
+    setLibraryPhaseMetricsStatus(
+      `Phase metrics snapshot refreshed ${when(Date.parse(snapshot.generatedAtIso))}.`
+    );
+
+    if (hasFunctionsAuthMismatch) {
+      setExternalLookupPolicyStatus(
+        "Provider policy controls require function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
+      );
+      setLibraryRolloutPhaseStatus(
+        "Rollout phase controls require function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
+      );
+    } else {
+      try {
+        const response = await client.postJson<LibraryExternalLookupProviderConfigResponse>(
+          V1_LIBRARY_EXTERNAL_LOOKUP_PROVIDER_CONFIG_GET_FN,
+          {}
+        );
+        const data = response?.data ?? {};
+        setExternalLookupPolicyOpenLibraryEnabled(data.openlibraryEnabled !== false);
+        setExternalLookupPolicyGoogleBooksEnabled(data.googlebooksEnabled !== false);
+        setExternalLookupPolicyCoverReviewGuardrailEnabled(data.coverReviewGuardrailEnabled !== false);
+        setExternalLookupPolicyNote(str(data.note, ""));
+        setExternalLookupPolicyUpdatedAtMs(num(data.updatedAtMs, 0));
+        setExternalLookupPolicyUpdatedByUid(str(data.updatedByUid, ""));
+        setExternalLookupPolicyStatus("");
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        setExternalLookupPolicyStatus(`Provider policy load failed: ${message}`);
+      }
+
+      try {
+        const response = await client.postJson<LibraryRolloutConfigResponse>(
+          V1_LIBRARY_ROLLOUT_CONFIG_GET_FN,
+          {}
+        );
+        const data = response?.data ?? {};
+        const nextPhase = normalizeLibraryRolloutPhase(data.phase, "phase_3_admin_full");
+        setLibraryRolloutPhase(nextPhase);
+        setLibraryRolloutMemberWritesEnabled(
+          typeof data.memberWritesEnabled === "boolean"
+            ? data.memberWritesEnabled
+            : libraryRolloutMemberWritesEnabledForPhase(nextPhase)
+        );
+        setLibraryRolloutNote(str(data.note, ""));
+        setLibraryRolloutUpdatedAtMs(num(data.updatedAtMs, 0));
+        setLibraryRolloutUpdatedByUid(str(data.updatedByUid, ""));
+        setLibraryRolloutPhaseStatus("");
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        setLibraryRolloutPhaseStatus(`Rollout phase load failed: ${message}`);
+      }
+    }
+  }, [client, hasFunctionsAuthMismatch, qTrace]);
+
+  const refreshLibraryPhaseMetricsSnapshot = useCallback(() => {
+    const snapshot = buildLibraryPhaseMetricsSnapshot(
+      getRecentRequestTelemetry(LIBRARY_PHASE_METRICS_MAX_ENTRIES),
+      Date.now(),
+      LIBRARY_PHASE_METRICS_WINDOW_MINUTES
+    );
+    setLibraryPhaseMetricsSnapshot(snapshot);
+    setLibraryPhaseMetricsStatus(`Phase metrics snapshot refreshed ${when(Date.parse(snapshot.generatedAtIso))}.`);
+  }, []);
+
+  const libraryPhaseMetricsArtifact = useMemo<LibraryPhaseMetricsArtifact | null>(() => {
+    if (!libraryPhaseMetricsSnapshot) return null;
+    return {
+      rolloutPhase: libraryRolloutPhase,
+      rolloutLabel: libraryRolloutPhaseLabel(libraryRolloutPhase),
+      memberWritesEnabled: libraryRolloutMemberWritesEnabled,
+      generatedAtIso: libraryPhaseMetricsSnapshot.generatedAtIso,
+      windowMinutes: libraryPhaseMetricsSnapshot.windowMinutes,
+      summary: {
+        requestCount: libraryPhaseMetricsSnapshot.requestCount,
+        errorCount: libraryPhaseMetricsSnapshot.errorCount,
+        conflictCount: libraryPhaseMetricsSnapshot.conflictCount,
+        routeErrorCount: libraryPhaseMetricsSnapshot.routeErrorCount,
+        errorRate: libraryPhaseMetricsSnapshot.errorRate,
+        conflictRate: libraryPhaseMetricsSnapshot.conflictRate,
+        p50LatencyMs: libraryPhaseMetricsSnapshot.p50LatencyMs,
+        p95LatencyMs: libraryPhaseMetricsSnapshot.p95LatencyMs,
+        maxLatencyMs: libraryPhaseMetricsSnapshot.maxLatencyMs,
+      },
+      endpoints: libraryPhaseMetricsSnapshot.endpoints,
+    };
+  }, [libraryPhaseMetricsSnapshot, libraryRolloutMemberWritesEnabled, libraryRolloutPhase]);
+
+  const importLibraryIsbns = useCallback(
+    async (isbns: string[], source: "csv" | "scanner"): Promise<ImportLibraryIsbnsResponse> => {
+      let response: ImportLibraryIsbnsResponse | null = null;
+      try {
+        const v1Response = await client.postJson<{ data?: ImportLibraryIsbnsResponse }>(
+          V1_LIBRARY_ITEMS_IMPORT_ISBNS_FN,
+          {
+            isbns,
+            source,
+          }
+        );
+        if (v1Response?.data) {
+          response = v1Response.data;
+        }
+      } catch {
+        response = null;
+      }
+      if (!response) {
+        response = await client.postJson<ImportLibraryIsbnsResponse>("importLibraryIsbns", {
+          isbns,
+          source,
+        });
+      }
+      return response;
+    },
+    [client]
+  );
+
+  const handleLendingIsbnFile = useCallback(async (file: File | null) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      setIsbnInput(text);
+      setIsbnImportError("");
+      setIsbnImportStatus(`Loaded ${file.name}. Review and import when ready.`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      setIsbnImportError(`Failed to read file: ${message}`);
+    }
+  }, []);
+
+  const handleLendingIsbnImport = useCallback(async () => {
+    if (isbnImportBusy) return;
+    setIsbnImportStatus("");
+    setIsbnImportError("");
+    if (hasFunctionsAuthMismatch) {
+      setIsbnImportError(
+        "ISBN import requires function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
+      );
+      return;
+    }
+    const isbns = parseList(isbnInput);
+    if (isbns.length === 0) {
+      setIsbnImportError("Paste at least one ISBN (comma or newline separated).");
+      return;
+    }
+    setIsbnImportBusy(true);
+    try {
+      const response = await importLibraryIsbns(isbns, "csv");
+      const errorCount = response.errors?.length ?? 0;
+      setIsbnImportStatus(`Imported ${response.created} new, updated ${response.updated}. ${errorCount} errors.`);
+      setIsbnInput("");
+      track("staff_lending_isbn_import", {
+        source: "csv",
+        requested: isbns.length,
+        created: response.created,
+        updated: response.updated,
+        errors: errorCount,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      setIsbnImportError(message);
+    } finally {
+      await loadLending();
+      setIsbnImportBusy(false);
+    }
+  }, [hasFunctionsAuthMismatch, importLibraryIsbns, isbnImportBusy, isbnInput, loadLending]);
+
+  const handleLendingIsbnScanSubmit = useCallback(async () => {
+    if (isbnScanBusy) return;
+    setIsbnScanStatus("");
+    if (hasFunctionsAuthMismatch) {
+      setIsbnScanStatus(
+        "Scanner check-in requires function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
+      );
+      return;
+    }
+    const raw = isbnScanInput.trim();
+    if (!raw) {
+      setIsbnScanStatus("Scan an ISBN first.");
+      return;
+    }
+    setIsbnScanBusy(true);
+    try {
+      const response = await importLibraryIsbns([raw], "scanner");
+      const errorCount = response.errors?.length ?? 0;
+      setIsbnScanStatus(`Imported ${response.created} new, updated ${response.updated}. ${errorCount} errors.`);
+      setIsbnScanInput("");
+      track("staff_lending_isbn_import", {
+        source: "scanner",
+        requested: 1,
+        created: response.created,
+        updated: response.updated,
+        errors: errorCount,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      setIsbnScanStatus(message);
+    } finally {
+      await loadLending();
+      setIsbnScanBusy(false);
+    }
+  }, [hasFunctionsAuthMismatch, importLibraryIsbns, isbnScanBusy, isbnScanInput, loadLending]);
+
+  const handleSelectLendingAdminItem = useCallback((item: LendingAdminItemRecord) => {
+    setSelectedAdminItemId(item.id);
+    setLendingAdminItemDraft(buildLendingAdminDraftFromItem(item));
+    setLendingAdminItemDeleteConfirmInput("");
+    setLendingAdminItemError("");
+    setLendingAdminItemStatus("");
+    setLendingAdminIsbnResolveStatus("");
+  }, []);
+
+  const handleStartLendingAdminItemCreate = useCallback(() => {
+    setSelectedAdminItemId("");
+    setLendingAdminItemDraft(makeEmptyLendingAdminItemDraft());
+    setLendingAdminItemDeleteConfirmInput("");
+    setLendingAdminItemError("");
+    setLendingAdminItemStatus("Creating a new library item draft.");
+    setLendingAdminIsbnResolveStatus("");
+  }, []);
+
+  const handleLendingAdminResolveIsbn = useCallback(async () => {
+    if (lendingAdminIsbnResolveBusy) return;
+    setLendingAdminIsbnResolveStatus("");
+    setLendingAdminItemError("");
+    const cleaned = cleanIsbnToken(lendingAdminItemDraft.isbn);
+    if (!cleaned) {
+      setLendingAdminIsbnResolveStatus("Enter an ISBN first.");
+      return;
+    }
+
+    if (hasFunctionsAuthMismatch) {
+      setLendingAdminIsbnResolveStatus(
+        "ISBN resolve requires function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
+      );
+      return;
+    }
+
+    setLendingAdminIsbnResolveBusy(true);
+    try {
+      const tryApplyMetadata = (candidate: Record<string, unknown> | null, sourceHint: string): boolean => {
+        if (!candidate) return false;
+        const identifiers = record(candidate.identifiers);
+        const authors = Array.isArray(candidate.authors)
+          ? candidate.authors.filter((entry): entry is string => typeof entry === "string")
+          : [];
+        const authorFallback = firstNonBlankString(candidate.author);
+        const resolvedIsbn13 = firstNonBlankString(candidate.isbn13, identifiers.isbn13);
+        const resolvedIsbn10 = firstNonBlankString(candidate.isbn10, identifiers.isbn10);
+        const resolvedIsbn = firstNonBlankString(candidate.isbn, resolvedIsbn13, resolvedIsbn10, cleaned) || cleaned;
+        setLendingAdminItemDraft((prev) => ({
+          ...prev,
+          title: firstNonBlankString(candidate.title, prev.title),
+          subtitle: firstNonBlankString(candidate.subtitle, prev.subtitle),
+          authorsCsv:
+            authors.length > 0 ? authors.join(", ") : authorFallback ? authorFallback : prev.authorsCsv,
+          description: firstNonBlankString(candidate.description, prev.description),
+          publisher: firstNonBlankString(candidate.publisher, prev.publisher),
+          publishedDate: firstNonBlankString(candidate.publishedDate, prev.publishedDate),
+          isbn: resolvedIsbn,
+          format: firstNonBlankString(candidate.format, prev.format),
+          coverUrl: firstNonBlankString(candidate.coverUrl, prev.coverUrl),
+          source: firstNonBlankString(candidate.source, sourceHint, prev.source),
+        }));
+        const normalizedResolved = cleanIsbnToken(resolvedIsbn);
+        const duplicateIds = libraryAdminItems
+          .filter((item) => item.id !== selectedAdminItemId)
+          .filter((item) => {
+            const existing = [item.isbn, item.isbn10, item.isbn13]
+              .map((value) => cleanIsbnToken(value))
+              .filter(Boolean);
+            return normalizedResolved ? existing.includes(normalizedResolved) : false;
+          })
+          .map((item) => item.id);
+        const duplicateNote =
+          duplicateIds.length > 0
+            ? ` Possible duplicate ISBN on ${duplicateIds.slice(0, 3).join(", ")}${duplicateIds.length > 3 ? "..." : ""}.`
+            : "";
+        setLendingAdminIsbnResolveStatus(
+          `Resolved metadata from ${sourceHint || "ISBN provider"} for ${resolvedIsbn}.${duplicateNote}`
+        );
+        track("staff_lending_admin_isbn_resolve", {
+          source: sourceHint || "unknown",
+          isbn: resolvedIsbn,
+          duplicateCount: duplicateIds.length,
+        });
+        return true;
+      };
+
+      let resolved = false;
+      try {
+        const response = await client.postJson<Record<string, unknown>>(
+          V1_LIBRARY_ITEMS_RESOLVE_ISBN_FN,
+          { isbn: cleaned }
+        );
+        const data = record((response as { data?: unknown }).data);
+        resolved =
+          tryApplyMetadata(
+            (() => {
+              const candidates = [data.item, data.resolvedItem, data.lookup, data.result, data.metadata];
+              for (const value of candidates) {
+                if (value && typeof value === "object") return value as Record<string, unknown>;
+              }
+              return null;
+            })(),
+            firstNonBlankString(data.source, record(data.item).source, record(data.lookup).source) ||
+              "v1/library.items.resolveIsbn"
+          ) || false;
+      } catch {
+        resolved = false;
+      }
+
+      if (!resolved) {
+        const response = await client.postJson<LibraryExternalLookupResponse>(
+          V1_LIBRARY_EXTERNAL_LOOKUP_FN,
+          { q: cleaned, limit: 6 }
+        );
+        const items = Array.isArray(response?.data?.items)
+          ? response.data.items.map((entry) => record(entry))
+          : [];
+        const normalizedSearch = cleanIsbnToken(cleaned);
+        const best =
+          items.find((entry) => {
+            const identifiers = record(entry.identifiers);
+            const candidates = [
+              firstNonBlankString(entry.isbn13, identifiers.isbn13),
+              firstNonBlankString(entry.isbn10, identifiers.isbn10),
+            ]
+              .map((value) => cleanIsbnToken(value))
+              .filter(Boolean);
+            return normalizedSearch ? candidates.includes(normalizedSearch) : false;
+          }) ?? items[0];
+        if (!best || !tryApplyMetadata(best, firstNonBlankString(best.source, best.sourceLabel, "external_lookup"))) {
+          setLendingAdminIsbnResolveStatus(`No metadata results for ISBN ${cleaned}.`);
+        }
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLendingAdminIsbnResolveStatus(`ISBN resolve failed: ${message}`);
+    } finally {
+      setLendingAdminIsbnResolveBusy(false);
+    }
+  }, [
+    client,
+    hasFunctionsAuthMismatch,
+    lendingAdminIsbnResolveBusy,
+    lendingAdminItemDraft.isbn,
+    libraryAdminItems,
+    selectedAdminItemId,
+  ]);
+
+  const handleLendingAdminSave = useCallback(async () => {
+    if (lendingAdminItemBusy) return;
+    setLendingAdminItemError("");
+    setLendingAdminItemStatus("");
+    const editing = Boolean(selectedAdminItemId);
+    const title = lendingAdminItemDraft.title.trim();
+    if (!title) {
+      setLendingAdminItemError("Title is required.");
+      return;
+    }
+    const authors = parseUniqueCsv(lendingAdminItemDraft.authorsCsv);
+    if (authors.length === 0) {
+      setLendingAdminItemError("Provide at least one author.");
+      return;
+    }
+    const totalCopies = Number.parseInt(lendingAdminItemDraft.totalCopies.trim(), 10);
+    if (!Number.isFinite(totalCopies) || totalCopies < 1) {
+      setLendingAdminItemError("Total copies must be a whole number greater than 0.");
+      return;
+    }
+    const availableCopies = Number.parseInt(lendingAdminItemDraft.availableCopies.trim(), 10);
+    if (!Number.isFinite(availableCopies) || availableCopies < 0) {
+      setLendingAdminItemError("Available copies must be a non-negative whole number.");
+      return;
+    }
+    if (availableCopies > totalCopies) {
+      setLendingAdminItemError("Available copies cannot exceed total copies.");
+      return;
+    }
+
+    const isbn = inferIsbnVariants(lendingAdminItemDraft.isbn);
+    const subjects = parseUniqueCsv(lendingAdminItemDraft.subjectsCsv);
+    const techniques = parseUniqueCsv(lendingAdminItemDraft.techniquesCsv);
+    const payload = buildLendingAdminApiPayload({
+      draft: lendingAdminItemDraft,
+      authors,
+      subjects,
+      techniques,
+      isbn,
+    });
+
+    setLendingAdminItemBusy(true);
+    let savedItemId = selectedAdminItemId;
+    let usedFirestoreFallback = hasFunctionsAuthMismatch;
+    let routeErrorMessage = "";
+    try {
+      if (!usedFirestoreFallback) {
+        try {
+          if (editing) {
+            const response = await client.postJson<Record<string, unknown>>(
+              V1_LIBRARY_ITEMS_UPDATE_FN,
+              {
+                itemId: selectedAdminItemId,
+                ...payload,
+              }
+            );
+            const data = record((response as { data?: unknown }).data);
+            savedItemId =
+              firstNonBlankString(
+                data.itemId,
+                record(data.item).id,
+                (response as { itemId?: unknown }).itemId,
+                record((response as { item?: unknown }).item).id,
+                selectedAdminItemId
+              ) || selectedAdminItemId;
+          } else {
+            const response = await client.postJson<Record<string, unknown>>(
+              V1_LIBRARY_ITEMS_CREATE_FN,
+              payload
+            );
+            const data = record((response as { data?: unknown }).data);
+            savedItemId = firstNonBlankString(
+              data.itemId,
+              record(data.item).id,
+              (response as { itemId?: unknown }).itemId,
+              record((response as { item?: unknown }).item).id
+            );
+          }
+        } catch (error: unknown) {
+          routeErrorMessage = error instanceof Error ? error.message : String(error);
+          if (shouldBlockLibraryFallback(error)) throw error;
+          usedFirestoreFallback = true;
+        }
+      }
+
+      if (usedFirestoreFallback) {
+        const firestorePayload: Record<string, unknown> = {
+          ...payload,
+          techniques,
+          updatedAt: serverTimestamp(),
+          updatedByUid: user.uid,
+        };
+        if (isbn.primary) {
+          firestorePayload.isbn = isbn.primary;
+          firestorePayload.isbn_normalized = isbn.primary;
+          firestorePayload.identifiers = {
+            isbn10: isbn.isbn10,
+            isbn13: isbn.isbn13,
+          };
+          if (isbn.isbn10) firestorePayload.isbn10 = isbn.isbn10;
+          if (isbn.isbn13) firestorePayload.isbn13 = isbn.isbn13;
+        }
+        if (editing && selectedAdminItemId) {
+          await setDoc(doc(db, "libraryItems", selectedAdminItemId), firestorePayload, { merge: true });
+          savedItemId = selectedAdminItemId;
+        } else {
+          const fallbackId = isbn.primary ? `isbn-${isbn.primary}` : "";
+          if (fallbackId) {
+            await setDoc(
+              doc(db, "libraryItems", fallbackId),
+              {
+                ...firestorePayload,
+                createdAt: serverTimestamp(),
+                createdByUid: user.uid,
+              },
+              { merge: true }
+            );
+            savedItemId = fallbackId;
+          } else {
+            const createdRef = await addDoc(collection(db, "libraryItems"), {
+              ...firestorePayload,
+              createdAt: serverTimestamp(),
+              createdByUid: user.uid,
+            });
+            savedItemId = createdRef.id;
+          }
+        }
+      }
+
+      await loadLending();
+      if (savedItemId) {
+        const savedItem = libraryAdminItems.find((item) => item.id === savedItemId);
+        if (savedItem) {
+          handleSelectLendingAdminItem(savedItem);
+        } else {
+          setSelectedAdminItemId(savedItemId);
+        }
+      }
+      setLendingAdminItemStatus(
+        `${editing ? "Updated" : "Created"} library item "${title}". ${usedFirestoreFallback ? "Saved via Firestore fallback." : "Saved via API."}${
+          routeErrorMessage ? ` API fallback reason: ${shortText(routeErrorMessage, 140)}.` : ""
+        }`
+      );
+      track("staff_lending_admin_item_saved", {
+        mode: editing ? "edit" : "create",
+        usedFirestoreFallback,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLendingAdminItemError(`Save failed: ${message}`);
+    } finally {
+      setLendingAdminItemBusy(false);
+    }
+  }, [
+    client,
+    handleSelectLendingAdminItem,
+    hasFunctionsAuthMismatch,
+    lendingAdminItemBusy,
+    lendingAdminItemDraft,
+    libraryAdminItems,
+    loadLending,
+    selectedAdminItemId,
+    user.uid,
+  ]);
+
+  const handleLendingAdminDelete = useCallback(async () => {
+    if (lendingAdminItemBusy || !selectedAdminItem) return;
+    const expectedPhrase = `delete ${selectedAdminItem.id}`;
+    if (lendingAdminItemDeleteConfirmInput.trim().toLowerCase() !== expectedPhrase) {
+      setLendingAdminItemError(`Type "${expectedPhrase}" to confirm delete.`);
+      return;
+    }
+    const ok = window.confirm(
+      `Archive "${selectedAdminItem.title}" (${selectedAdminItem.id})? This removes it from active catalog listings.`
+    );
+    if (!ok) {
+      setLendingAdminItemStatus("Delete cancelled.");
+      return;
+    }
+
+    setLendingAdminItemBusy(true);
+    setLendingAdminItemError("");
+    setLendingAdminItemStatus("");
+    let usedFirestoreFallback = hasFunctionsAuthMismatch;
+    let routeErrorMessage = "";
+    try {
+      if (!usedFirestoreFallback) {
+        try {
+          await client.postJson<Record<string, unknown>>(
+            V1_LIBRARY_ITEMS_DELETE_FN,
+            {
+              itemId: selectedAdminItem.id,
+              note: "Archived from Staff -> Lending catalog admin.",
+            }
+          );
+        } catch (error: unknown) {
+          routeErrorMessage = error instanceof Error ? error.message : String(error);
+          if (shouldBlockLibraryFallback(error)) throw error;
+          usedFirestoreFallback = true;
+        }
+      }
+
+      if (usedFirestoreFallback) {
+        await setDoc(
+          doc(db, "libraryItems", selectedAdminItem.id),
+          {
+            deleted: true,
+            deletedAt: serverTimestamp(),
+            deletedByUid: user.uid,
+            status: "archived",
+            updatedAt: serverTimestamp(),
+            updatedByUid: user.uid,
+          },
+          { merge: true }
+        );
+      }
+
+      await loadLending();
+      setSelectedAdminItemId("");
+      setLendingAdminItemDraft(makeEmptyLendingAdminItemDraft());
+      setLendingAdminItemDeleteConfirmInput("");
+      setLendingAdminItemStatus(
+        `Deleted library item "${selectedAdminItem.title}". ${
+          usedFirestoreFallback ? "Applied via Firestore fallback." : "Applied via API."
+        }${routeErrorMessage ? ` API fallback reason: ${shortText(routeErrorMessage, 140)}.` : ""}`
+      );
+      track("staff_lending_admin_item_deleted", {
+        usedFirestoreFallback,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLendingAdminItemError(`Delete failed: ${message}`);
+    } finally {
+      setLendingAdminItemBusy(false);
+    }
+  }, [
+    client,
+    hasFunctionsAuthMismatch,
+    lendingAdminItemBusy,
+    lendingAdminItemDeleteConfirmInput,
+    loadLending,
+    selectedAdminItem,
+    user.uid,
+  ]);
+
+  const handleCoverReviewResolve = useCallback(
+    async (row: LendingCoverReviewRecord, mode: "approve_existing" | "set_replacement") => {
+      if (coverReviewBusyById[row.id]) return;
+      const draftUrl = (coverReviewDraftById[row.id] ?? "").trim();
+      const currentCoverUrl = (row.coverUrl ?? "").trim();
+      const currentCoverValid = isValidHttpUrl(currentCoverUrl);
+      const draftCoverValid = isValidHttpUrl(draftUrl);
+      if (mode === "approve_existing" && !currentCoverValid) {
+        setCoverReviewErrorById((prev) => ({
+          ...prev,
+          [row.id]: "Current cover URL is missing or invalid. Add a replacement URL and use \"Use replacement URL\".",
+        }));
+        setCoverReviewStatus("Resolve blocked: replacement URL is required when the current cover is missing or invalid.");
+        return;
+      }
+      if (mode === "set_replacement" && !draftUrl) {
+        setCoverReviewErrorById((prev) => ({ ...prev, [row.id]: "Paste a replacement cover URL before submitting." }));
+        setCoverReviewStatus("Paste a replacement cover URL before submitting.");
+        return;
+      }
+      if (mode === "set_replacement" && !draftCoverValid) {
+        setCoverReviewErrorById((prev) => ({ ...prev, [row.id]: "Replacement cover URL must be a valid http(s) URL." }));
+        setCoverReviewStatus("Replacement cover URL is invalid. Use a full http(s) URL.");
+        return;
+      }
+
+      setCoverReviewStatus("");
+      setCoverReviewErrorById((prev) => {
+        const next = { ...prev };
+        delete next[row.id];
+        return next;
+      });
+      setCoverReviewBusyById((prev) => ({ ...prev, [row.id]: true }));
+      try {
+        const payload: Record<string, unknown> = {
+          needsCoverReview: false,
+          coverQualityStatus: "approved",
+          coverQualityReason: null,
+          coverQualityReviewedAt: serverTimestamp(),
+          coverQualityReviewedByUid: user.uid,
+          updatedAt: serverTimestamp(),
+        };
+        if (mode === "set_replacement") {
+          payload.coverUrl = draftUrl;
+        }
+        await setDoc(doc(db, "libraryItems", row.id), payload, { merge: true });
+        setCoverReviewStatus(
+          mode === "set_replacement"
+            ? `Cover updated and approved for ${row.title}.`
+            : `Cover approved for ${row.title}.`
+        );
+        setCoverReviewDraftById((prev) => {
+          const next = { ...prev };
+          delete next[row.id];
+          return next;
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        setCoverReviewStatus(`Cover review update failed: ${message}`);
+      } finally {
+        await loadLending();
+        setCoverReviewBusyById((prev) => {
+          const next = { ...prev };
+          delete next[row.id];
+          return next;
+        });
+      }
+    },
+    [coverReviewBusyById, coverReviewDraftById, loadLending, user.uid]
+  );
+
+  const handleRecommendationModeration = useCallback(
+    async (row: LendingRecommendationRecord, action: "approve" | "hide" | "restore") => {
+      if (recommendationModerationBusyById[row.id]) return;
+      setRecommendationModerationStatus("");
+      setRecommendationModerationBusyById((prev) => ({ ...prev, [row.id]: true }));
+
+      const nextStatus = action === "hide" ? "hidden" : "approved";
+      const actionLabel = action === "hide" ? "Hidden" : action === "restore" ? "Restored" : "Approved";
+      const titleLabel = row.title || row.id;
+      let usedFirestoreFallback = false;
+
+      const applyFirestoreFallback = async () => {
+        usedFirestoreFallback = true;
+        await setDoc(
+          doc(db, "libraryRecommendations", row.id),
+          {
+            moderationStatus: nextStatus,
+            moderatedAt: serverTimestamp(),
+            moderatedByUid: user.uid,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      };
+
+      try {
+        const payload = {
+          recommendationId: row.id,
+          action,
+        };
+        if (hasFunctionsAuthMismatch) {
+          await applyFirestoreFallback();
+        } else {
+          try {
+            await client.postJson<Record<string, unknown>>(
+              V1_LIBRARY_RECOMMENDATIONS_MODERATE_FN,
+              payload
+            );
+          } catch (error: unknown) {
+            if (shouldBlockLibraryFallback(error)) throw error;
+            try {
+              await client.postJson<Record<string, unknown>>(
+                LEGACY_LIBRARY_RECOMMENDATIONS_MODERATE_FN,
+                payload
+              );
+            } catch (legacyError: unknown) {
+              if (shouldBlockLibraryFallback(legacyError)) throw legacyError;
+              await applyFirestoreFallback();
+            }
+          }
+        }
+
+        setLibraryRecommendations((prev) =>
+          prev.map((entry) =>
+            entry.id === row.id
+              ? {
+                  ...entry,
+                  moderationStatus: nextStatus,
+                  updatedAtMs: Date.now(),
+                }
+              : entry
+          )
+        );
+        setRecommendationModerationStatus(
+          `${actionLabel} recommendation "${titleLabel}". ${usedFirestoreFallback ? "Saved via Firestore fallback." : "Saved via API."}`
+        );
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        setRecommendationModerationStatus(`Recommendation moderation failed: ${message}`);
+      } finally {
+        await loadLending();
+        setRecommendationModerationBusyById((prev) => {
+          const next = { ...prev };
+          delete next[row.id];
+          return next;
+        });
+      }
+    },
+    [client, hasFunctionsAuthMismatch, loadLending, recommendationModerationBusyById, user.uid]
+  );
+
+  const handleTagSubmissionApprove = useCallback(
+    async (row: LendingTagSubmissionRecord) => {
+      if (tagModerationBusyById[row.id]) return;
+      const canonicalTagName = normalizeLibraryTagLabel(tagSubmissionApprovalDraftById[row.id] ?? row.tag);
+      if (!canonicalTagName) {
+        setTagModerationStatus("Canonical tag name is required.");
+        return;
+      }
+
+      setTagModerationBusyById((prev) => ({ ...prev, [row.id]: true }));
+      setTagModerationStatus("");
+      try {
+        let usedFirestoreFallback = false;
+        if (hasFunctionsAuthMismatch) {
+          usedFirestoreFallback = true;
+          const now = serverTimestamp();
+          await setDoc(
+            doc(db, "libraryTagSubmissions", row.id),
+            {
+              status: "approved",
+              canonicalTag: canonicalTagName,
+              normalizedTag: canonicalTagName.replace(/[^a-z0-9]+/g, "-"),
+              moderatedAt: now,
+              moderatedByUid: user.uid,
+              updatedAt: now,
+            },
+            { merge: true }
+          );
+        } else {
+          const payload: LibraryTagSubmissionApproveRequest = {
+            submissionId: row.id,
+            canonicalTagName,
+          };
+          await client.postJson<LibraryTagSubmissionApproveResponse>(
+            V1_LIBRARY_TAG_SUBMISSIONS_APPROVE_FN,
+            payload
+          );
+        }
+
+        setLibraryTagSubmissions((prev) =>
+          prev.map((entry) =>
+            entry.id === row.id
+              ? {
+                  ...entry,
+                  status: "approved",
+                  updatedAtMs: Date.now(),
+                }
+              : entry
+          )
+        );
+        setTagSubmissionApprovalDraftById((prev) => {
+          const next = { ...prev };
+          delete next[row.id];
+          return next;
+        });
+        setTagModerationStatus(
+          `Approved tag suggestion "${row.tag}" for ${row.itemTitle}.${usedFirestoreFallback ? " Saved via Firestore fallback." : ""}`
+        );
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        setTagModerationStatus(`Tag approval failed: ${message}`);
+      } finally {
+        await loadLending();
+        setTagModerationBusyById((prev) => {
+          const next = { ...prev };
+          delete next[row.id];
+          return next;
+        });
+      }
+    },
+    [client, hasFunctionsAuthMismatch, loadLending, tagModerationBusyById, tagSubmissionApprovalDraftById, user.uid]
+  );
+
+  const handleTagMerge = useCallback(async () => {
+    if (tagMergeBusy) return;
+    const sourceTagId = tagMergeSourceId.trim();
+    const targetTagId = tagMergeTargetId.trim();
+    if (!sourceTagId || !targetTagId) {
+      setTagModerationStatus("Provide source and target tag IDs before merging.");
+      return;
+    }
+    if (sourceTagId === targetTagId) {
+      setTagModerationStatus("Source and target tag IDs must be different.");
+      return;
+    }
+
+    setTagMergeBusy(true);
+    setTagModerationStatus("");
+    try {
+      if (hasFunctionsAuthMismatch) {
+        setTagModerationStatus(
+          "Tag merge requires function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
+        );
+        return;
+      }
+      const payload: LibraryTagMergeRequest = {
+        sourceTagId,
+        targetTagId,
+        note: tagMergeNote.trim() || null,
+      };
+      const response = await client.postJson<LibraryTagMergeResponse>(
+        V1_LIBRARY_TAGS_MERGE_FN,
+        payload
+      );
+      const migratedItemTags = num(response?.data?.migratedItemTags, 0);
+      const retargetedSubmissions = num(response?.data?.retargetedSubmissions, 0);
+      setTagModerationStatus(
+        `Merged ${sourceTagId} -> ${targetTagId}. Migrated ${migratedItemTags} item tags and retargeted ${retargetedSubmissions} submissions.`
+      );
+      setTagMergeSourceId("");
+      setTagMergeTargetId("");
+      setTagMergeNote("");
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      setTagModerationStatus(`Tag merge failed: ${message}`);
+    } finally {
+      await loadLending();
+      setTagMergeBusy(false);
+    }
+  }, [client, hasFunctionsAuthMismatch, loadLending, tagMergeBusy, tagMergeNote, tagMergeSourceId, tagMergeTargetId]);
+
+  const handleLoanMarkLost = useCallback(
+    async (row: LendingLoanRecord) => {
+      if (loanRecoveryBusy) return;
+      if (hasFunctionsAuthMismatch) {
+        setLoanRecoveryStatus(
+          "Loan recovery actions require function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
+        );
+        return;
+      }
+      const confirmMarkLost = window.confirm(
+        `Mark "${row.title}" as lost? This updates loan recovery state and can trigger replacement workflows.`
+      );
+      if (!confirmMarkLost) {
+        setLoanRecoveryStatus("Mark-lost cancelled.");
+        return;
+      }
+
+      setLoanRecoveryBusy(true);
+      setLoanRecoveryStatus("");
+      try {
+        const payload: LibraryLoanMarkLostRequest = {
+          loanId: row.id,
+          note: "Marked lost from Staff -> Lending recovery tools.",
+        };
+        const response = await client.postJson<LibraryLoanMarkLostResponse>(
+          V1_LIBRARY_LOANS_MARK_LOST_FN,
+          payload
+        );
+        const replacementValueCents = num(response?.data?.loan?.replacementValueCents, 0);
+        setLoanRecoveryStatus(
+          replacementValueCents > 0
+            ? `Marked "${row.title}" as lost. Replacement value set to ${dollars(replacementValueCents)}.`
+            : `Marked "${row.title}" as lost.`
+        );
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        setLoanRecoveryStatus(`Mark-lost failed: ${message}`);
+      } finally {
+        await loadLending();
+        setLoanRecoveryBusy(false);
+      }
+    },
+    [client, hasFunctionsAuthMismatch, loadLending, loanRecoveryBusy]
+  );
+
+  const handleLoanAssessReplacementFee = useCallback(
+    async (row: LendingLoanRecord) => {
+      if (loanRecoveryBusy) return;
+      if (hasFunctionsAuthMismatch) {
+        setLoanRecoveryStatus(
+          "Replacement-fee assessment requires function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
+        );
+        return;
+      }
+
+      const amountDraft = loanReplacementFeeAmountInput.trim();
+      let amountCents: number | null = null;
+      if (amountDraft) {
+        if (!/^\d+$/.test(amountDraft)) {
+          setLoanRecoveryStatus("Replacement fee amount must be whole-number cents.");
+          return;
+        }
+        amountCents = Number.parseInt(amountDraft, 10);
+      }
+      const amountLabel = amountCents !== null ? dollars(amountCents) : "the default replacement value";
+      const confirmAssessment = window.confirm(
+        `Assess replacement fee for "${row.title}" using ${amountLabel}?`
+      );
+      if (!confirmAssessment) {
+        setLoanRecoveryStatus("Replacement fee assessment cancelled.");
+        return;
+      }
+
+      setLoanRecoveryBusy(true);
+      setLoanRecoveryStatus("");
+      try {
+        const payload: LibraryLoanAssessReplacementFeeRequest = {
+          loanId: row.id,
+          confirm: true,
+          amountCents,
+          note: null,
+        };
+        const response = await client.postJson<LibraryLoanAssessReplacementFeeResponse>(
+          V1_LIBRARY_LOANS_ASSESS_REPLACEMENT_FEE_FN,
+          payload
+        );
+        const assessedCents = num(response?.data?.fee?.amountCents, amountCents ?? 0);
+        setLoanRecoveryStatus(
+          assessedCents > 0
+            ? `Replacement fee assessed for "${row.title}" at ${dollars(assessedCents)} (pending charge).`
+            : `Replacement fee assessment recorded for "${row.title}".`
+        );
+        setLoanReplacementFeeAmountInput("");
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        setLoanRecoveryStatus(`Replacement fee assessment failed: ${message}`);
+      } finally {
+        await loadLending();
+        setLoanRecoveryBusy(false);
+      }
+    },
+    [client, hasFunctionsAuthMismatch, loanRecoveryBusy, loanReplacementFeeAmountInput, loadLending]
+  );
+
+  const handleLoanItemStatusOverride = useCallback(
+    async (row: LendingLoanRecord) => {
+      if (loanRecoveryBusy) return;
+      if (hasFunctionsAuthMismatch) {
+        setLoanRecoveryStatus(
+          "Item status override requires function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
+        );
+        return;
+      }
+
+      const itemId = firstNonBlankString(row.rawDoc.itemId, row.rawDoc.item_id, row.rawDoc.libraryItemId);
+      if (!itemId) {
+        setLoanRecoveryStatus("Selected loan is missing linked item ID.");
+        return;
+      }
+      const confirmOverride = window.confirm(
+        `Override item ${itemId} to "${loanOverrideStatusDraft}"? This may affect lending availability immediately.`
+      );
+      if (!confirmOverride) {
+        setLoanRecoveryStatus("Item status override cancelled.");
+        return;
+      }
+
+      setLoanRecoveryBusy(true);
+      setLoanRecoveryStatus("");
+      try {
+        const payload: LibraryItemOverrideStatusRequest = {
+          itemId,
+          status: loanOverrideStatusDraft,
+          note: loanOverrideNoteDraft.trim() || null,
+        };
+        const response = await client.postJson<LibraryItemOverrideStatusResponse>(
+          V1_LIBRARY_ITEMS_OVERRIDE_STATUS_FN,
+          payload
+        );
+        const nextStatus = firstNonBlankString(response?.data?.item?.status, loanOverrideStatusDraft);
+        setLoanRecoveryStatus(`Overrode item ${itemId} to status "${nextStatus}".`);
+        setLoanOverrideNoteDraft("");
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        setLoanRecoveryStatus(`Item status override failed: ${message}`);
+      } finally {
+        await loadLending();
+        setLoanRecoveryBusy(false);
+      }
+    },
+    [client, hasFunctionsAuthMismatch, loanOverrideNoteDraft, loanOverrideStatusDraft, loanRecoveryBusy, loadLending]
+  );
+
+  const runExternalLookupProviderProbe = useCallback(async () => {
+    if (externalLookupProbeBusy) return;
+    if (hasFunctionsAuthMismatch) {
+      setExternalLookupProbeProviders([]);
+      setExternalLookupProbeStatus(
+        "Provider probe requires function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
+      );
+      return;
+    }
+    const q = externalLookupProbeQuery.trim();
+    if (!q) {
+      setExternalLookupProbeStatus("Enter a probe query first.");
+      return;
+    }
+
+    setExternalLookupProbeBusy(true);
+    setExternalLookupProbeStatus("");
+    try {
+      const response = await client.postJson<LibraryExternalLookupResponse>(
+        V1_LIBRARY_EXTERNAL_LOOKUP_FN,
+        {
+          q,
+          limit: 6,
+        }
+      );
+      const providers = Array.isArray(response?.data?.providers)
+        ? response.data.providers.map((entry) => ({
+            provider: str(entry.provider, "unknown"),
+            ok: entry.ok === true,
+            itemCount: num(entry.itemCount, 0),
+            cached: entry.cached === true,
+            disabled: entry.disabled === true,
+          }))
+        : [];
+      const degraded = response?.data?.degraded === true;
+      const policyLimited = response?.data?.policyLimited === true;
+      setExternalLookupProbeProviders(providers);
+      setExternalLookupProbeStatus(
+        policyLimited
+          ? "Probe completed with policy limits enabled (one or more providers are paused by staff controls)."
+          : degraded
+          ? "Probe completed in degraded mode (one or more providers failed or timed out)."
+          : "Probe completed. Provider health looks normal."
+      );
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      setExternalLookupProbeStatus(`Provider probe failed: ${message}`);
+    } finally {
+      setExternalLookupProbeBusy(false);
+    }
+  }, [client, externalLookupProbeBusy, externalLookupProbeQuery, hasFunctionsAuthMismatch]);
+
+  const saveExternalLookupProviderPolicy = useCallback(async () => {
+    if (externalLookupPolicyBusy) return;
+    if (hasFunctionsAuthMismatch) {
+      setExternalLookupPolicyStatus(
+        "Provider policy update requires function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
+      );
+      return;
+    }
+
+    setExternalLookupPolicyBusy(true);
+    setExternalLookupPolicyStatus("");
+    try {
+      const payload: LibraryExternalLookupProviderConfigSetRequest = {
+        openlibraryEnabled: externalLookupPolicyOpenLibraryEnabled,
+        googlebooksEnabled: externalLookupPolicyGoogleBooksEnabled,
+        coverReviewGuardrailEnabled: externalLookupPolicyCoverReviewGuardrailEnabled,
+        note: externalLookupPolicyNote.trim() || null,
+      };
+      const response = await client.postJson<LibraryExternalLookupProviderConfigResponse>(
+        V1_LIBRARY_EXTERNAL_LOOKUP_PROVIDER_CONFIG_SET_FN,
+        payload
+      );
+      const data = response?.data ?? {};
+      setExternalLookupPolicyOpenLibraryEnabled(data.openlibraryEnabled !== false);
+      setExternalLookupPolicyGoogleBooksEnabled(data.googlebooksEnabled !== false);
+      setExternalLookupPolicyCoverReviewGuardrailEnabled(data.coverReviewGuardrailEnabled !== false);
+      setExternalLookupPolicyNote(str(data.note, ""));
+      setExternalLookupPolicyUpdatedAtMs(num(data.updatedAtMs, Date.now()));
+      setExternalLookupPolicyUpdatedByUid(str(data.updatedByUid, user.uid));
+      setExternalLookupPolicyStatus("External lookup provider policy updated.");
+      setExternalLookupProbeProviders([]);
+      setExternalLookupProbeStatus("Run a provider probe to verify the new policy.");
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      setExternalLookupPolicyStatus(`Provider policy update failed: ${message}`);
+    } finally {
+      setExternalLookupPolicyBusy(false);
+    }
+  }, [
+    client,
+    externalLookupPolicyBusy,
+    externalLookupPolicyCoverReviewGuardrailEnabled,
+    externalLookupPolicyGoogleBooksEnabled,
+    externalLookupPolicyNote,
+    externalLookupPolicyOpenLibraryEnabled,
+    hasFunctionsAuthMismatch,
+    user.uid,
+  ]);
+
+  const saveLibraryRolloutPhasePolicy = useCallback(async () => {
+    if (libraryRolloutPhaseBusy) return;
+    if (hasFunctionsAuthMismatch) {
+      setLibraryRolloutPhaseStatus(
+        "Rollout phase update requires function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
+      );
+      return;
+    }
+
+    setLibraryRolloutPhaseBusy(true);
+    setLibraryRolloutPhaseStatus("");
+    try {
+      const payload: LibraryRolloutConfigSetRequest = {
+        phase: libraryRolloutPhase,
+        note: libraryRolloutNote.trim() || null,
+      };
+      const response = await client.postJson<LibraryRolloutConfigResponse>(
+        V1_LIBRARY_ROLLOUT_CONFIG_SET_FN,
+        payload
+      );
+      const data = response?.data ?? {};
+      const nextPhase = normalizeLibraryRolloutPhase(data.phase, libraryRolloutPhase);
+      const memberWritesEnabled =
+        typeof data.memberWritesEnabled === "boolean"
+          ? data.memberWritesEnabled
+          : libraryRolloutMemberWritesEnabledForPhase(nextPhase);
+      const phaseLabel = libraryRolloutPhaseLabel(nextPhase);
+      setLibraryRolloutPhase(nextPhase);
+      setLibraryRolloutMemberWritesEnabled(memberWritesEnabled);
+      setLibraryRolloutNote(str(data.note, libraryRolloutNote.trim()));
+      setLibraryRolloutUpdatedAtMs(num(data.updatedAtMs, Date.now()));
+      setLibraryRolloutUpdatedByUid(str(data.updatedByUid, user.uid));
+      setLibraryRolloutPhaseStatus(
+        memberWritesEnabled
+          ? `Library rollout phase updated to ${phaseLabel}. Member interactions are enabled.`
+          : `Library rollout phase updated to ${phaseLabel}. Member interactions are paused.`
+      );
+      const snapshot = buildLibraryPhaseMetricsSnapshot(
+        getRecentRequestTelemetry(LIBRARY_PHASE_METRICS_MAX_ENTRIES),
+        Date.now(),
+        LIBRARY_PHASE_METRICS_WINDOW_MINUTES
+      );
+      setLibraryPhaseMetricsSnapshot(snapshot);
+      setLibraryPhaseMetricsStatus(
+        `Phase metrics snapshot refreshed ${when(Date.parse(snapshot.generatedAtIso))}.`
+      );
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLibraryRolloutPhaseStatus(`Rollout phase update failed: ${message}`);
+    } finally {
+      setLibraryRolloutPhaseBusy(false);
+    }
+  }, [
+    client,
+    hasFunctionsAuthMismatch,
+    libraryRolloutNote,
+    libraryRolloutPhase,
+    libraryRolloutPhaseBusy,
+    user.uid,
+  ]);
 
   const loadReportOps = useCallback(async () => {
     qTrace("communityReports", { orderBy: "createdAt:desc", limit: 250 });
@@ -2882,6 +5195,7 @@ const loadEvents = useCallback(async () => {
 
   const loadAll = useCallback(async () => {
     const tasks: Array<Promise<unknown>> = [
+      loadTodayReservations(),
       loadUsers(),
       loadBatches(),
       loadFirings(),
@@ -2902,10 +5216,11 @@ const loadEvents = useCallback(async () => {
     }
     await Promise.allSettled(tasks);
     if (selectedEventId) await loadSignups(selectedEventId);
-  }, [hasFunctionsAuthMismatch, loadAutomationHealthDashboard, loadBatches, loadCommerce, loadEvents, loadFirings, loadLending, loadReportOps, loadSignups, loadStudioBrainStatus, loadSystemStats, loadUsers, selectedEventId]);
+  }, [hasFunctionsAuthMismatch, loadAutomationHealthDashboard, loadBatches, loadCommerce, loadEvents, loadFirings, loadLending, loadReportOps, loadSignups, loadStudioBrainStatus, loadSystemStats, loadTodayReservations, loadUsers, selectedEventId]);
 
   const loadCockpitModule = useCallback(async () => {
     await Promise.allSettled([
+      loadTodayReservations(),
       loadUsers(),
       loadBatches(),
       loadFirings(),
@@ -2929,6 +5244,7 @@ const loadEvents = useCallback(async () => {
     loadReportOps,
     loadStudioBrainStatus,
     loadSystemStats,
+    loadTodayReservations,
     loadUsers,
   ]);
 
@@ -2961,7 +5277,6 @@ const loadEvents = useCallback(async () => {
       firings: loadFirings,
       events: loadEventsModule,
       reports: loadReportOps,
-      studioBrain: loadStudioBrainStatus,
       stripe: loadStudioBrainStatus,
       commerce: loadCommerceModule,
       lending: loadLending,
@@ -2989,19 +5304,13 @@ const loadEvents = useCallback(async () => {
   );
 
   useEffect(() => {
-    setStatus("Select a module and click Load current module to fetch data.");
+    setStatus("Today Console loads key shift data automatically. Use Load current module for deeper module refreshes.");
   }, []);
 
   useEffect(() => {
     if (!selectedEventId) return;
     void run("signups", async () => await loadSignups(selectedEventId));
   }, [loadSignups, selectedEventId, run]);
-
-  useEffect(() => {
-    if (moduleKey !== "system") return;
-    setModuleKey("cockpit");
-    setStatus("System module moved to Cockpit > Platform diagnostics.");
-  }, [moduleKey]);
 
   useEffect(() => {
     if (!studioBrainStatus) return;
@@ -3062,6 +5371,37 @@ const loadEvents = useCallback(async () => {
     if (selectedLoanId && filteredLoans.some((loan) => loan.id === selectedLoanId)) return;
     setSelectedLoanId(filteredLoans[0].id);
   }, [filteredLoans, selectedLoanId]);
+
+  useEffect(() => {
+    if (!selectedLoan) {
+      setLoanOverrideStatusDraft("available");
+      setLoanOverrideNoteDraft("");
+      setLoanReplacementFeeAmountInput("");
+      return;
+    }
+    const normalizedLoanStatus = normalizeLibraryItemOverrideStatus(selectedLoan.status || "");
+    setLoanOverrideStatusDraft(
+      normalizedLoanStatus === "archived" ? "available" : normalizedLoanStatus
+    );
+    setLoanOverrideNoteDraft("");
+    setLoanReplacementFeeAmountInput("");
+  }, [selectedLoan]);
+
+  useEffect(() => {
+    if (!selectedAdminItemId) return;
+    if (libraryAdminItems.some((item) => item.id === selectedAdminItemId)) return;
+    setSelectedAdminItemId("");
+    setLendingAdminItemDraft(makeEmptyLendingAdminItemDraft());
+    setLendingAdminItemDeleteConfirmInput("");
+  }, [libraryAdminItems, selectedAdminItemId]);
+
+  useEffect(() => {
+    if (!selectedAdminItem) return;
+    setLendingAdminItemDraft(buildLendingAdminDraftFromItem(selectedAdminItem));
+    setLendingAdminItemDeleteConfirmInput("");
+    setLendingAdminItemError("");
+    setLendingAdminIsbnResolveStatus("");
+  }, [selectedAdminItem]);
 
   useEffect(() => {
     if (!selectedMemberId || moduleKey !== "members") return;
@@ -4775,9 +7115,17 @@ const loadEvents = useCallback(async () => {
     }
   }, [forceEventsWorkspace, moduleKey]);
 
+  useEffect(() => {
+    if (!forceSystemWorkspace) return;
+    if (moduleKey !== "system") {
+      setModuleKey("system");
+      setStatus("Dedicated system page keeps advanced tooling in one place. Open /staff for the full module navigation.");
+    }
+  }, [forceSystemWorkspace, moduleKey]);
+
   const openModuleFromCockpit = useCallback(
     (target: ModuleKey) => {
-      if (forceCockpitWorkspace || forceEventsWorkspace) {
+      if (forceCockpitWorkspace || forceEventsWorkspace || forceSystemWorkspace) {
         if (typeof window !== "undefined") {
           window.location.assign("/staff");
         }
@@ -4785,7 +7133,234 @@ const loadEvents = useCallback(async () => {
       }
       setModuleKey(target);
     },
-    [forceCockpitWorkspace, forceEventsWorkspace]
+    [forceCockpitWorkspace, forceEventsWorkspace, forceSystemWorkspace]
+  );
+
+  useEffect(() => {
+    if (moduleKey !== "cockpit") return;
+    if (todayBootstrapAttempted) return;
+    setTodayBootstrapAttempted(true);
+    const tasks: Array<Promise<unknown>> = [
+      loadTodayReservations(),
+      loadFirings(),
+      loadAutomationHealthDashboard(),
+    ];
+    if (!hasFunctionsAuthMismatch) {
+      tasks.push(loadCommerce());
+    }
+    void Promise.allSettled(tasks);
+  }, [
+    hasFunctionsAuthMismatch,
+    loadAutomationHealthDashboard,
+    loadCommerce,
+    loadFirings,
+    loadTodayReservations,
+    moduleKey,
+    todayBootstrapAttempted,
+  ]);
+
+  const todayMessageRows = useMemo(
+    () =>
+      [...messageThreads]
+        .sort((a, b) => readTimestampMs(b.lastMessageAt) - readTimestampMs(a.lastMessageAt))
+        .slice(0, TODAY_MESSAGE_LIMIT),
+    [messageThreads]
+  );
+  const unreadMessageCount = useMemo(
+    () => messageThreads.reduce((sum, thread) => sum + (isDirectMessageUnread(thread, user.uid) ? 1 : 0), 0),
+    [messageThreads, user.uid]
+  );
+  const activeFiring = useMemo(() => {
+    const activeStatuses = new Set(["loading", "loaded", "firing", "cooling", "unloading", "in-progress"]);
+    return firings.find((firing) => activeStatuses.has(firing.status.toLowerCase())) ?? null;
+  }, [firings]);
+  const messagesDegraded = Boolean(messageThreadsError) || Boolean(announcementsError);
+  const paymentAlerts = useMemo(() => {
+    const alerts: TodayPaymentAlert[] = [];
+    const failedOrderStatuses = new Set([
+      "failed",
+      "payment_failed",
+      "declined",
+      "past_due",
+      "requires_payment_method",
+      "error",
+    ]);
+    const failedOrders = orders.filter((order) => failedOrderStatuses.has(order.status.toLowerCase()));
+    if (failedOrders.length > 0) {
+      alerts.push({
+        id: "payments-failed-orders",
+        severity: "P0",
+        title: `${failedOrders.length} failed payment${failedOrders.length === 1 ? "" : "s"}`,
+        detail: "Orders are blocked and need immediate payment review.",
+      });
+    }
+    if (unpaidCheckIns.length > 0) {
+      alerts.push({
+        id: "payments-unpaid-checkins",
+        severity: "P1",
+        title: `${unpaidCheckIns.length} unpaid check-in${unpaidCheckIns.length === 1 ? "" : "s"}`,
+        detail: "Customers are checked in but payment follow-up is still required.",
+      });
+    }
+    const smokeCanaryFailures = automationDashboard.workflows.filter((workflow) => {
+      const label = `${workflow.label} ${workflow.workflowFile}`.toLowerCase();
+      const smokeLike = label.includes("smoke") || label.includes("canary");
+      return smokeLike && workflow.conclusion === "failure";
+    });
+    if (smokeCanaryFailures.length > 0) {
+      alerts.push({
+        id: "payments-smoke-canary-failures",
+        severity: "P0",
+        title: `${smokeCanaryFailures.length} smoke/canary workflow failure${smokeCanaryFailures.length === 1 ? "" : "s"}`,
+        detail: "Production health checks are failing and may impact payment reliability.",
+      });
+    }
+    const paymentHandlerErrors = latestErrors.filter((entry) =>
+      /(payment|billing|stripe|kilnfire)/i.test(`${entry.label} ${entry.message}`)
+    );
+    if (paymentHandlerErrors.length > 0) {
+      alerts.push({
+        id: "payments-handler-errors",
+        severity: "P1",
+        title: `${paymentHandlerErrors.length} recent payment-related handler error${paymentHandlerErrors.length === 1 ? "" : "s"}`,
+        detail: "Recent backend logs indicate payment or billing instability.",
+      });
+    }
+    return alerts.slice(0, TODAY_ALERT_LIMIT);
+  }, [automationDashboard.workflows, latestErrors, orders, unpaidCheckIns.length]);
+  const paymentDegraded = hasFunctionsAuthMismatch || Boolean(commerceError) || Boolean(automationDashboard.error);
+  const systemSummaryTone = useMemo<"green" | "amber" | "red">(() => {
+    if (cockpitKpis.highAlerts > 0 || paymentAlerts.some((alert) => alert.severity === "P0")) return "red";
+    if (cockpitKpis.mediumAlerts > 0 || paymentDegraded || messagesDegraded) return "amber";
+    return "green";
+  }, [cockpitKpis.highAlerts, cockpitKpis.mediumAlerts, messagesDegraded, paymentAlerts, paymentDegraded]);
+  const systemSummaryToneLabel = useMemo(() => {
+    if (systemSummaryTone === "red") return "Action needed";
+    if (systemSummaryTone === "amber") return "Watch";
+    return "Healthy";
+  }, [systemSummaryTone]);
+  const systemSummaryMessage = useMemo(() => {
+    if (systemSummaryTone === "red") {
+      return "Immediate attention needed. Resolve critical operational alerts first.";
+    }
+    if (systemSummaryTone === "amber") {
+      return "Some services are degraded. Continue operations with caution and follow fallback links.";
+    }
+    return "Systems are stable for routine shift operations.";
+  }, [systemSummaryTone]);
+
+  const openReservationsToday = useCallback(() => {
+    if (onOpenCheckin) {
+      onOpenCheckin();
+      return;
+    }
+    setModuleKey("checkins");
+  }, [onOpenCheckin]);
+
+  const openReservationDetail = useCallback(
+    (reservationId: string) => {
+      if (onOpenReservation) {
+        onOpenReservation(reservationId);
+        return;
+      }
+      openReservationsToday();
+    },
+    [onOpenReservation, openReservationsToday]
+  );
+
+  const openMessagesInbox = useCallback(() => {
+    if (onOpenMessages) {
+      onOpenMessages();
+      return;
+    }
+    setStatus("Messages route is unavailable in this surface. Use main navigation to open Messages.");
+  }, [onOpenMessages]);
+
+  const openMessageThread = useCallback(
+    (threadId: string) => {
+      if (onOpenMessageThread) {
+        onOpenMessageThread(threadId);
+        return;
+      }
+      openMessagesInbox();
+    },
+    [onOpenMessageThread, openMessagesInbox]
+  );
+
+  const openFiringsWorkspace = useCallback(() => {
+    if (onOpenFirings) {
+      onOpenFirings();
+      return;
+    }
+    setModuleKey("firings");
+  }, [onOpenFirings]);
+
+  const startFiringFlow = useCallback(() => {
+    if (onStartFiring) {
+      onStartFiring();
+      return;
+    }
+    openFiringsWorkspace();
+  }, [onStartFiring, openFiringsWorkspace]);
+
+  const openSystemWorkspace = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.open("/staff/system", "_blank", "noopener");
+    }
+  }, []);
+
+  const handleFiringPhotoFile = useCallback(
+    async (file: File | null) => {
+      if (!file) return;
+      if (file.size > MAX_FIRING_PHOTO_BYTES) {
+        setFiringPhotoError("Photo is too large. Use an image under 10 MB.");
+        return;
+      }
+      setFiringPhotoBusy(true);
+      setFiringPhotoStatus("");
+      setFiringPhotoError("");
+      const target = activeFiring ?? firings[0] ?? null;
+      const targetFiringId = target?.id || "unassigned";
+      try {
+        const storage = resolveStorageForStaffToday();
+        const extension = toFileExtension(file);
+        const path = `firings/${user.uid}/${targetFiringId}/${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}.${extension}`;
+        const uploadRef = ref(storage, path);
+        await uploadBytes(uploadRef, file, { contentType: file.type || "image/jpeg" });
+        const url = await getDownloadURL(uploadRef);
+        if (target) {
+          try {
+            await updateDoc(doc(db, "kilnFirings", target.id), {
+              evidencePhotos: arrayUnion({
+                url,
+                path,
+                uploadedByUid: user.uid,
+                uploadedAtIso: new Date().toISOString(),
+                source: "staff_today_console",
+              }),
+              updatedAt: serverTimestamp(),
+            });
+            setFiringPhotoStatus("Photo uploaded and attached to the active firing record.");
+          } catch (attachError: unknown) {
+            setFiringPhotoStatus(
+              `Photo uploaded to portal storage, but firing attachment failed: ${
+                attachError instanceof Error ? attachError.message : String(attachError)
+              }`
+            );
+          }
+        } else {
+          setFiringPhotoStatus("Photo uploaded to portal storage.");
+        }
+        await loadFirings();
+      } catch (err: unknown) {
+        setFiringPhotoError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setFiringPhotoBusy(false);
+      }
+    },
+    [activeFiring, firings, loadFirings, user.uid]
   );
 
   const stripeContent = <StripeSettingsModule client={client} isStaff={isStaff} />;
@@ -4804,15 +7379,7 @@ const loadEvents = useCallback(async () => {
   const agentOpsContent = (
     <AgentOpsModule client={client} active={isCockpitModule} disabled={hasFunctionsAuthMismatch} />
   );
-  const studioBrainContent = (
-    <StudioBrainModule
-      user={user}
-      active={moduleKey === "studioBrain" || isCockpitModule}
-      disabled={false}
-      adminToken={devAdminToken}
-    />
-  );
-  const cockpitContent = (
+  const legacySystemOpsContent = (
     <section className="staff-module-grid">
       <section className="card staff-console-card">
         <div className="card-title-row">
@@ -4843,362 +7410,374 @@ const loadEvents = useCallback(async () => {
             Local Functions is active while Auth emulator is disabled. Cockpit data may be partial for function-backed operations.
           </div>
         ) : null}
-        <nav className="staff-cockpit-nav" aria-label="Cockpit sections">
-          <button className="btn btn-ghost btn-small" onClick={() => scrollToCockpitSection(COCKPIT_SECTION_IDS.triage)}>
-            Triage
-          </button>
-          <button className="btn btn-ghost btn-small" onClick={() => scrollToCockpitSection(COCKPIT_SECTION_IDS.automation)}>
-            Automation
-          </button>
-          <button className="btn btn-ghost btn-small" onClick={() => scrollToCockpitSection(COCKPIT_SECTION_IDS.platform)}>
-            Platform
-          </button>
-          <button className="btn btn-ghost btn-small" onClick={() => scrollToCockpitSection(COCKPIT_SECTION_IDS.policyAgentOps)}>
-            Policy and Agent Ops
-          </button>
-          <button className="btn btn-ghost btn-small" onClick={() => scrollToCockpitSection(COCKPIT_SECTION_IDS.reports)}>
-            Reports
-          </button>
-          <button className="btn btn-ghost btn-small" onClick={() => scrollToCockpitSection(COCKPIT_SECTION_IDS.moduleTelemetry)}>
-            Module telemetry
-          </button>
-        </nav>
-        <div className="staff-subtitle staff-cockpit-anchor" id={COCKPIT_SECTION_IDS.triage}>Action queue</div>
-        <div className="staff-log-list">
-          {overviewAlerts.map((alert) => (
-            <div key={alert.id} className="staff-log-entry">
-              <div className="staff-log-meta">
-                <span className="staff-log-label">{alert.severity.toUpperCase()}</span>
-                <span>{new Date().toLocaleDateString()}</span>
-              </div>
-              <div className="staff-log-message">
-                {alert.label}
-                <div className="staff-actions-row staff-actions-row--mt8">
-                  <button className="btn btn-ghost btn-small" onClick={() => openModuleFromCockpit(alert.module)}>
-                    {forceCockpitWorkspace ? "Open in full staff console" : alert.actionLabel}
-                  </button>
-                </div>
-              </div>
-            </div>
+        <nav className="segmented staff-cockpit-tabs" aria-label="Ops cockpit tabs">
+          {COCKPIT_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              className={cockpitTab === tab.key ? "active" : ""}
+              onClick={() => setCockpitTab(tab.key)}
+            >
+              {tab.label}
+            </button>
           ))}
-        </div>
-        <div className="staff-actions-row">
-          <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("pieces")}>
-            Open pieces queue
-          </button>
-          <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("firings")}>
-            Open firings triage
-          </button>
-          <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("events")}>
-            Open events desk
-          </button>
-          <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("commerce")}>
-            Open billing queue
-          </button>
-          <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("reports")}>
-            Open reports triage
-          </button>
-        </div>
-        <div className="staff-subtitle staff-cockpit-anchor" id={COCKPIT_SECTION_IDS.automation}>Automation health dashboard</div>
-        <div className="staff-kpi-grid">
-          <div className="staff-kpi"><span>Monitored workflows</span><strong>{automationKpis.monitored}</strong></div>
-          <div className="staff-kpi"><span>Healthy</span><strong>{automationKpis.healthy}</strong></div>
-          <div className="staff-kpi"><span>Failing</span><strong>{automationKpis.failing}</strong></div>
-          <div className="staff-kpi"><span>In progress</span><strong>{automationKpis.inProgress}</strong></div>
-          <div className="staff-kpi"><span>Stale workflows</span><strong>{automationKpis.stale}</strong></div>
-          <div className="staff-kpi"><span>Rolling threads</span><strong>{automationKpis.threads}</strong></div>
-        </div>
-        <div className="staff-actions-row">
-          <button
-            className="btn btn-secondary btn-small"
-            disabled={Boolean(busy) || automationDashboard.loading}
-            onClick={() => void run("refreshAutomationHealth", loadAutomationHealthDashboard)}
-          >
-            {automationDashboard.loading ? "Refreshing..." : "Refresh automation dashboard"}
-          </button>
-          <a
-            className="btn btn-ghost btn-small"
-            href={`https://github.com/${GITHUB_REPO_SLUG}/actions/workflows/portal-automation-health-daily.yml`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open daily workflow
-          </a>
-          <a
-            className="btn btn-ghost btn-small"
-            href={`https://github.com/${GITHUB_REPO_SLUG}/actions/workflows/portal-automation-weekly-digest.yml`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open weekly digest
-          </a>
-        </div>
-        {automationDashboard.error ? (
-          <div className="staff-note staff-note-error">
-            Automation dashboard fetch error: {automationDashboard.error}
-          </div>
+        </nav>
+        {cockpitTab === "triage" ? (
+          <>
+            <div className="staff-subtitle">Action queue</div>
+            <div className="staff-log-list">
+              {overviewAlerts.map((alert) => (
+                <div key={alert.id} className="staff-log-entry">
+                  <div className="staff-log-meta">
+                    <span className="staff-log-label">{alert.severity.toUpperCase()}</span>
+                    <span>{new Date().toLocaleDateString()}</span>
+                  </div>
+                  <div className="staff-log-message">
+                    {alert.label}
+                    <div className="staff-actions-row staff-actions-row--mt8">
+                      <button className="btn btn-ghost btn-small" onClick={() => openModuleFromCockpit(alert.module)}>
+                        {forceCockpitWorkspace ? "Open in full staff console" : alert.actionLabel}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="staff-actions-row">
+              <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("pieces")}>
+                Open pieces queue
+              </button>
+              <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("firings")}>
+                Open firings triage
+              </button>
+              <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("events")}>
+                Open events desk
+              </button>
+              <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("commerce")}>
+                Open billing queue
+              </button>
+              <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("reports")}>
+                Open reports triage
+              </button>
+            </div>
+          </>
         ) : null}
-        <div className="staff-mini">
-          Source: GitHub Actions + rolling issues for <code>{GITHUB_REPO_SLUG}</code>.
-          {automationKpis.loadedAtMs ? ` Last refresh ${when(automationKpis.loadedAtMs)}.` : " Not loaded yet."}
-        </div>
-        <div className="staff-table-wrap">
-          <table className="staff-table">
-            <thead>
-              <tr>
-                <th>Workflow</th>
-                <th>Status</th>
-                <th>Conclusion</th>
-                <th>Last run</th>
-                <th>Output</th>
-              </tr>
-            </thead>
-            <tbody>
-              {automationDashboard.workflows.length === 0 ? (
-                <tr><td colSpan={5}>No automation workflow status loaded yet.</td></tr>
-              ) : (
-                automationDashboard.workflows.map((workflow) => (
-                  <tr key={workflow.key}>
-                    <td>
-                      <div>{workflow.label}</div>
-                      <div className="staff-mini"><code>{workflow.workflowFile}</code></div>
-                      <div className="staff-mini">{workflow.outputHint}</div>
-                      {workflow.error ? <div className="staff-mini">{workflow.error}</div> : null}
-                    </td>
-                    <td><span className="pill">{workflow.status || "-"}</span></td>
-                    <td>
-                      <span className="pill">
-                        {workflow.conclusion || (workflow.status === "queued" || workflow.status === "in_progress" ? "running" : "unknown")}
-                      </span>
-                    </td>
-                    <td>
-                      {workflow.createdAtMs ? when(workflow.createdAtMs) : "-"}
-                      {workflow.isStale ? <div className="staff-mini">stale</div> : null}
-                    </td>
-                    <td>
-                      {workflow.runUrl ? (
-                        <a href={workflow.runUrl} target="_blank" rel="noreferrer">Run</a>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
+        {cockpitTab === "automation" ? (
+          <>
+            <div className="staff-subtitle">Automation health dashboard</div>
+            <div className="staff-kpi-grid">
+              <div className="staff-kpi"><span>Monitored workflows</span><strong>{automationKpis.monitored}</strong></div>
+              <div className="staff-kpi"><span>Healthy</span><strong>{automationKpis.healthy}</strong></div>
+              <div className="staff-kpi"><span>Failing</span><strong>{automationKpis.failing}</strong></div>
+              <div className="staff-kpi"><span>In progress</span><strong>{automationKpis.inProgress}</strong></div>
+              <div className="staff-kpi"><span>Stale workflows</span><strong>{automationKpis.stale}</strong></div>
+              <div className="staff-kpi"><span>Rolling threads</span><strong>{automationKpis.threads}</strong></div>
+            </div>
+            <div className="staff-actions-row">
+              <button
+                className="btn btn-secondary btn-small"
+                disabled={Boolean(busy) || automationDashboard.loading}
+                onClick={() => void run("refreshAutomationHealth", loadAutomationHealthDashboard)}
+              >
+                {automationDashboard.loading ? "Refreshing..." : "Refresh automation dashboard"}
+              </button>
+              <a
+                className="btn btn-ghost btn-small"
+                href={`https://github.com/${GITHUB_REPO_SLUG}/actions/workflows/portal-automation-health-daily.yml`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open daily workflow
+              </a>
+              <a
+                className="btn btn-ghost btn-small"
+                href={`https://github.com/${GITHUB_REPO_SLUG}/actions/workflows/portal-automation-weekly-digest.yml`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open weekly digest
+              </a>
+            </div>
+            {automationDashboard.error ? (
+              <div className="staff-note staff-note-error">
+                Automation dashboard fetch error: {automationDashboard.error}
+              </div>
+            ) : null}
+            <div className="staff-mini">
+              Source: GitHub Actions + rolling issues for <code>{GITHUB_REPO_SLUG}</code>.
+              {automationKpis.loadedAtMs ? ` Last refresh ${when(automationKpis.loadedAtMs)}.` : " Not loaded yet."}
+            </div>
+            <div className="staff-table-wrap">
+              <table className="staff-table">
+                <thead>
+                  <tr>
+                    <th>Workflow</th>
+                    <th>Status</th>
+                    <th>Conclusion</th>
+                    <th>Last run</th>
+                    <th>Output</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="staff-subtitle">Rolling output threads</div>
-        <div className="staff-table-wrap">
-          <table className="staff-table">
-            <thead>
-              <tr>
-                <th>Thread</th>
-                <th>State</th>
-                <th>Updated</th>
-                <th>Latest output preview</th>
-              </tr>
-            </thead>
-            <tbody>
-              {automationDashboard.issues.length === 0 ? (
-                <tr><td colSpan={4}>No rolling issue threads loaded yet.</td></tr>
-              ) : (
-                automationDashboard.issues.map((issue) => (
-                  <tr key={issue.key}>
-                    <td>
-                      {issue.issueUrl ? (
-                        <a href={issue.issueUrl} target="_blank" rel="noreferrer">{issue.title}</a>
-                      ) : (
-                        issue.title
-                      )}
-                      <div className="staff-mini">#{issue.issueNumber} · {issue.purpose}</div>
-                      {issue.error ? <div className="staff-mini">{issue.error}</div> : null}
-                    </td>
-                    <td><span className="pill">{issue.state || "-"}</span></td>
-                    <td>{issue.updatedAtMs ? when(issue.updatedAtMs) : "-"}</td>
-                    <td>
-                      {issue.latestCommentPreview || "-"}
-                      {issue.latestCommentUrl ? (
-                        <div className="staff-mini">
-                          <a href={issue.latestCommentUrl} target="_blank" rel="noreferrer">Open latest comment</a>
-                        </div>
-                      ) : null}
-                    </td>
+                </thead>
+                <tbody>
+                  {automationDashboard.workflows.length === 0 ? (
+                    <tr><td colSpan={5}>No automation workflow status loaded yet.</td></tr>
+                  ) : (
+                    automationDashboard.workflows.map((workflow) => (
+                      <tr key={workflow.key}>
+                        <td>
+                          <div>{workflow.label}</div>
+                          <div className="staff-mini"><code>{workflow.workflowFile}</code></div>
+                          <div className="staff-mini">{workflow.outputHint}</div>
+                          {workflow.error ? <div className="staff-mini">{workflow.error}</div> : null}
+                        </td>
+                        <td><span className="pill">{workflow.status || "-"}</span></td>
+                        <td>
+                          <span className="pill">
+                            {workflow.conclusion || (workflow.status === "queued" || workflow.status === "in_progress" ? "running" : "unknown")}
+                          </span>
+                        </td>
+                        <td>
+                          {workflow.createdAtMs ? when(workflow.createdAtMs) : "-"}
+                          {workflow.isStale ? <div className="staff-mini">stale</div> : null}
+                        </td>
+                        <td>
+                          {workflow.runUrl ? (
+                            <a href={workflow.runUrl} target="_blank" rel="noreferrer">Run</a>
+                          ) : (
+                            "-"
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="staff-subtitle">Rolling output threads</div>
+            <div className="staff-table-wrap">
+              <table className="staff-table">
+                <thead>
+                  <tr>
+                    <th>Thread</th>
+                    <th>State</th>
+                    <th>Updated</th>
+                    <th>Latest output preview</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="staff-subtitle staff-cockpit-anchor" id={COCKPIT_SECTION_IDS.platform}>Platform diagnostics</div>
-        <div className="staff-note">
-          Legacy System-tab diagnostics are now folded into Cockpit for one-place operations.
-        </div>
-        <div className="staff-kpi-grid">
-          <div className="staff-kpi"><span>Functions base</span><strong>{usingLocalFunctions ? "Local" : "Remote"}</strong></div>
-          <div className="staff-kpi"><span>Auth mode</span><strong>{showEmulatorTools ? "Emulator" : "Production"}</strong></div>
-          <div className="staff-kpi"><span>Integration tokens</span><strong>{integrationTokenCount ?? 0}</strong></div>
-          <div className="staff-kpi"><span>System checks</span><strong>{systemChecks.length}</strong></div>
-          <div className="staff-kpi"><span>Notif success</span><strong>{notificationMetricsSummary ? `${num(notificationMetricsSummary.successRate, 0)}%` : "-"}</strong></div>
-          <div className="staff-kpi"><span>Notif failed</span><strong>{notificationMetricsSummary ? num(notificationMetricsSummary.totalFailed, 0) : "-"}</strong></div>
-        </div>
-        <div className="staff-actions-row">
-          <button
-            className="btn btn-secondary"
-            disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-            onClick={() => void run("cockpitSystemPing", runSystemPing)}
-          >
-            Ping functions
-          </button>
-          <button
-            className="btn btn-secondary"
-            disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-            onClick={() => void run("cockpitCalendarProbe", runCalendarProbe)}
-          >
-            Probe calendar
-          </button>
-          <button
-            className="btn btn-secondary"
-            disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-            onClick={() => void run("cockpitNotificationMetricsProbe", runNotificationMetricsProbe)}
-          >
-            Refresh notif metrics
-          </button>
-          <button
-            className="btn btn-secondary"
-            disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-            onClick={() => void run("cockpitNotificationDrill", runNotificationFailureDrillNow)}
-          >
-            Run push failure drill
-          </button>
-          <button
-            className="btn btn-secondary"
-            disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-            onClick={() => void run("cockpitRefreshSystemStats", loadSystemStats)}
-          >
-            Refresh token stats
-          </button>
-        </div>
-        {hasFunctionsAuthMismatch ? (
-          <div className="staff-note">
-            Local functions detected at <code>{fBaseUrl}</code> while auth emulator is disabled.
-            Function-backed modules are paused to avoid false 401 errors.
-          </div>
+                </thead>
+                <tbody>
+                  {automationDashboard.issues.length === 0 ? (
+                    <tr><td colSpan={4}>No rolling issue threads loaded yet.</td></tr>
+                  ) : (
+                    automationDashboard.issues.map((issue) => (
+                      <tr key={issue.key}>
+                        <td>
+                          {issue.issueUrl ? (
+                            <a href={issue.issueUrl} target="_blank" rel="noreferrer">{issue.title}</a>
+                          ) : (
+                            issue.title
+                          )}
+                          <div className="staff-mini">#{issue.issueNumber} · {issue.purpose}</div>
+                          {issue.error ? <div className="staff-mini">{issue.error}</div> : null}
+                        </td>
+                        <td><span className="pill">{issue.state || "-"}</span></td>
+                        <td>{issue.updatedAtMs ? when(issue.updatedAtMs) : "-"}</td>
+                        <td>
+                          {issue.latestCommentPreview || "-"}
+                          {issue.latestCommentUrl ? (
+                            <div className="staff-mini">
+                              <a href={issue.latestCommentUrl} target="_blank" rel="noreferrer">Open latest comment</a>
+                            </div>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
         ) : null}
-        <div className="card-title-row">
-          <div className="staff-subtitle">Recent handler errors</div>
-          <div className="staff-log-actions">
-            <button type="button" className="btn btn-ghost" onClick={() => setHandlerLog(getHandlerErrorLog())}>Refresh</button>
-            <button type="button" className="btn btn-ghost" onClick={() => { clearHandlerErrorLog(); setHandlerLog([]); }}>Clear</button>
-          </div>
-        </div>
-        <div className="staff-log-list">
-          {latestErrors.length === 0 ? <div className="staff-note">No handler errors logged.</div> : latestErrors.map((entry, idx) => <div key={`${entry.atIso}-${idx}`} className="staff-log-entry"><div className="staff-log-meta"><span className="staff-log-label">{entry.label}</span><span>{new Date(entry.atIso).toLocaleString()}</span></div><div className="staff-log-message">{entry.message}</div></div>)}
-        </div>
-        <details className="staff-troubleshooting">
-          <summary>Developer troubleshooting and raw diagnostics</summary>
-          <div className="staff-module-grid">
-            <div className="staff-column">
-              <div className="staff-subtitle">System checks</div>
-              <div className="staff-table-wrap">
-                <table className="staff-table">
-                  <thead><tr><th>Check</th><th>Status</th><th>Ran at</th><th>Details</th></tr></thead>
-                  <tbody>
-                    {systemChecks.length === 0 ? (
-                      <tr><td colSpan={4}>No checks run yet.</td></tr>
-                    ) : (
-                      systemChecks.map((entry) => (
-                        <tr key={`${entry.key}-${entry.atMs}`}>
-                          <td>{entry.label}</td>
-                          <td><span className="pill">{entry.ok ? "ok" : "failed"}</span></td>
-                          <td>{when(entry.atMs)}</td>
-                          <td>{entry.details}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+        {cockpitTab === "platform" ? (
+          <>
+            <div className="staff-subtitle">Platform diagnostics</div>
+            <div className="staff-note">
+              Legacy System diagnostics now live here so operators can work from one place.
+            </div>
+            <div className="staff-kpi-grid">
+              <div className="staff-kpi"><span>Functions base</span><strong>{usingLocalFunctions ? "Local" : "Remote"}</strong></div>
+              <div className="staff-kpi"><span>Auth mode</span><strong>{showEmulatorTools ? "Emulator" : "Production"}</strong></div>
+              <div className="staff-kpi"><span>Integration tokens</span><strong>{integrationTokenCount ?? 0}</strong></div>
+              <div className="staff-kpi"><span>System checks</span><strong>{systemChecks.length}</strong></div>
+              <div className="staff-kpi"><span>Notif success</span><strong>{notificationMetricsSummary ? `${num(notificationMetricsSummary.successRate, 0)}%` : "-"}</strong></div>
+              <div className="staff-kpi"><span>Notif failed</span><strong>{notificationMetricsSummary ? num(notificationMetricsSummary.totalFailed, 0) : "-"}</strong></div>
+            </div>
+            <div className="staff-actions-row">
+              <button
+                className="btn btn-secondary"
+                disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+                onClick={() => void run("cockpitSystemPing", runSystemPing)}
+              >
+                Ping functions
+              </button>
+              <button
+                className="btn btn-secondary"
+                disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+                onClick={() => void run("cockpitCalendarProbe", runCalendarProbe)}
+              >
+                Probe calendar
+              </button>
+              <button
+                className="btn btn-secondary"
+                disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+                onClick={() => void run("cockpitNotificationMetricsProbe", runNotificationMetricsProbe)}
+              >
+                Refresh notif metrics
+              </button>
+              <button
+                className="btn btn-secondary"
+                disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+                onClick={() => void run("cockpitNotificationDrill", runNotificationFailureDrillNow)}
+              >
+                Run push failure drill
+              </button>
+              <button
+                className="btn btn-secondary"
+                disabled={Boolean(busy) || hasFunctionsAuthMismatch}
+                onClick={() => void run("cockpitRefreshSystemStats", loadSystemStats)}
+              >
+                Refresh token stats
+              </button>
+            </div>
+            {hasFunctionsAuthMismatch ? (
+              <div className="staff-note">
+                Local functions detected at <code>{fBaseUrl}</code> while auth emulator is disabled.
+                Function-backed modules are paused to avoid false 401 errors.
+              </div>
+            ) : null}
+            <div className="card-title-row">
+              <div className="staff-subtitle">Recent handler errors</div>
+              <div className="staff-log-actions">
+                <button type="button" className="btn btn-ghost" onClick={() => setHandlerLog(getHandlerErrorLog())}>Refresh</button>
+                <button type="button" className="btn btn-ghost" onClick={() => { clearHandlerErrorLog(); setHandlerLog([]); }}>Clear</button>
               </div>
             </div>
-            <div className="staff-column">
-              {devAdminEnabled ? (
-                <label className="staff-field">Dev admin token<input type="password" value={devAdminToken} onChange={(e) => onDevAdminTokenChange(e.target.value)} /></label>
-              ) : (
-                <div className="staff-note">Dev admin token disabled outside emulator mode.</div>
-              )}
-              {showEmulatorTools ? <button type="button" className="btn btn-secondary" onClick={() => window.open("http://127.0.0.1:4000/", "_blank")}>Open Emulator UI</button> : null}
-              <div className="staff-subtitle">Last Firestore write</div>
-              <pre>{safeJsonStringify(lastWrite)}</pre>
-              <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastWrite))}>Copy write JSON</button>
+            <div className="staff-log-list">
+              {latestErrors.length === 0 ? <div className="staff-note">No handler errors logged.</div> : latestErrors.map((entry, idx) => <div key={`${entry.atIso}-${idx}`} className="staff-log-entry"><div className="staff-log-meta"><span className="staff-log-label">{entry.label}</span><span>{new Date(entry.atIso).toLocaleString()}</span></div><div className="staff-log-message">{entry.message}</div></div>)}
             </div>
-            <div className="staff-column">
-              <div className="staff-subtitle">Last query params</div>
-              <pre>{safeJsonStringify(lastQuery)}</pre>
-              <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastQuery))}>Copy query JSON</button>
-              <div className="staff-subtitle">Last GitHub/Functions call</div>
-              <pre>{safeJsonStringify(sanitizeLastRequest(lastReq))}</pre>
-              <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(sanitizeLastRequest(lastReq)))}>Copy call JSON</button>
-              <div className="staff-mini">curl hint</div>
-              <pre>{lastReq?.curlExample ?? "(none)"}</pre>
-              <button className="btn btn-ghost" onClick={() => void copy(lastReq?.curlExample ?? "")} disabled={!lastReq?.curlExample}>Copy curl hint</button>
-            </div>
-            <div className="staff-column">
-              <div className="staff-subtitle">Last error stack/message</div>
-              <pre>{safeJsonStringify(lastErr)}</pre>
-              {copyStatus ? (
-                <div className="staff-note" role="status" aria-live="polite">
-                  {copyStatus}
+            <details className="staff-troubleshooting">
+              <summary>Developer troubleshooting and raw diagnostics</summary>
+              <div className="staff-module-grid">
+                <div className="staff-column">
+                  <div className="staff-subtitle">System checks</div>
+                  <div className="staff-table-wrap">
+                    <table className="staff-table">
+                      <thead><tr><th>Check</th><th>Status</th><th>Ran at</th><th>Details</th></tr></thead>
+                      <tbody>
+                        {systemChecks.length === 0 ? (
+                          <tr><td colSpan={4}>No checks run yet.</td></tr>
+                        ) : (
+                          systemChecks.map((entry) => (
+                            <tr key={`${entry.key}-${entry.atMs}`}>
+                              <td>{entry.label}</td>
+                              <td><span className="pill">{entry.ok ? "ok" : "failed"}</span></td>
+                              <td>{when(entry.atMs)}</td>
+                              <td>{entry.details}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              ) : null}
+                <div className="staff-column">
+                  {devAdminEnabled ? (
+                    <label className="staff-field">Dev admin token<input type="password" value={devAdminToken} onChange={(e) => onDevAdminTokenChange(e.target.value)} /></label>
+                  ) : (
+                    <div className="staff-note">Dev admin token disabled outside emulator mode.</div>
+                  )}
+                  {showEmulatorTools ? <button type="button" className="btn btn-secondary" onClick={() => window.open("http://127.0.0.1:4000/", "_blank")}>Open Emulator UI</button> : null}
+                  <div className="staff-subtitle">Last Firestore write</div>
+                  <pre>{safeJsonStringify(lastWrite)}</pre>
+                  <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastWrite))}>Copy write JSON</button>
+                </div>
+                <div className="staff-column">
+                  <div className="staff-subtitle">Last query params</div>
+                  <pre>{safeJsonStringify(lastQuery)}</pre>
+                  <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastQuery))}>Copy query JSON</button>
+                  <div className="staff-subtitle">Last GitHub/Functions call</div>
+                  <pre>{safeJsonStringify(sanitizeLastRequest(lastReq))}</pre>
+                  <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(sanitizeLastRequest(lastReq)))}>Copy call JSON</button>
+                  <div className="staff-mini">curl hint</div>
+                  <pre>{lastReq?.curlExample ?? "(none)"}</pre>
+                  <button className="btn btn-ghost" onClick={() => void copy(lastReq?.curlExample ?? "")} disabled={!lastReq?.curlExample}>Copy curl hint</button>
+                </div>
+                <div className="staff-column">
+                  <div className="staff-subtitle">Last error stack/message</div>
+                  <pre>{safeJsonStringify(lastErr)}</pre>
+                  {copyStatus ? (
+                    <div className="staff-note" role="status" aria-live="polite">
+                      {copyStatus}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </details>
+          </>
+        ) : null}
+        {cockpitTab === "moduleTelemetry" ? (
+          <>
+            <div className="staff-subtitle">Module engagement telemetry (rolling local)</div>
+            <div className="staff-actions-row">
+              <button className="btn btn-ghost btn-small" onClick={resetModuleTelemetry}>
+                Reset telemetry
+              </button>
+              <button className="btn btn-ghost btn-small" onClick={() => void copy(safeJsonStringify(moduleTelemetrySnapshot))}>
+                Copy telemetry JSON
+              </button>
             </div>
-          </div>
-        </details>
-        <div className="staff-subtitle staff-cockpit-anchor" id={COCKPIT_SECTION_IDS.moduleTelemetry}>Module engagement telemetry (rolling local)</div>
-        <div className="staff-actions-row">
-          <button className="btn btn-ghost btn-small" onClick={resetModuleTelemetry}>
-            Reset telemetry
-          </button>
-          <button className="btn btn-ghost btn-small" onClick={() => void copy(safeJsonStringify(moduleTelemetrySnapshot))}>
-            Copy telemetry JSON
-          </button>
-        </div>
-        <div className="staff-note">
-          {lowEngagementModules.length === 0
-            ? "No low-engagement modules detected in current telemetry."
-            : `Low-engagement modules in current telemetry: ${lowEngagementModules.join(", ")}`}
-        </div>
-        <div className="staff-table-wrap">
-          <table className="staff-table">
-            <thead>
-              <tr>
-                <th>Module</th>
-                <th>Owner</th>
-                <th>Visits</th>
-                <th>Dwell</th>
-                <th>First action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {moduleUsageRows.length === 0 ? (
-                <tr><td colSpan={5}>No module activity captured yet.</td></tr>
-              ) : (
-                moduleUsageRows.map((row) => (
-                  <tr key={row.key}>
-                    <td>{row.label}</td>
-                    <td>{row.owner}</td>
-                    <td>{row.visits}</td>
-                    <td>{formatDurationMs(row.dwellMs)}</td>
-                    <td>{formatLatencyMs(row.firstActionMs)}</td>
+            <div className="staff-note">
+              {lowEngagementModules.length === 0
+                ? "No low-engagement modules detected in the current telemetry sample."
+                : `Low-engagement modules in the current telemetry sample: ${lowEngagementModules.join(", ")}`}
+            </div>
+            <div className="staff-table-wrap">
+              <table className="staff-table">
+                <thead>
+                  <tr>
+                    <th>Module</th>
+                    <th>Owner</th>
+                    <th>Visits</th>
+                    <th>Dwell</th>
+                    <th>First action</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {moduleUsageRows.length === 0 ? (
+                    <tr><td colSpan={5}>No module activity captured yet.</td></tr>
+                  ) : (
+                    moduleUsageRows.map((row) => (
+                      <tr key={row.key}>
+                        <td>{row.label}</td>
+                        <td>{row.owner}</td>
+                        <td>{row.visits}</td>
+                        <td>{formatDurationMs(row.dwellMs)}</td>
+                        <td>{formatLatencyMs(row.firstActionMs)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : null}
       </section>
-      <div className="card staff-console-card staff-cockpit-anchor" id={COCKPIT_SECTION_IDS.policyAgentOps}>{agentOpsContent}</div>
-      <div className="card staff-console-card">{governanceContent}</div>
-      <div className="card staff-console-card staff-cockpit-anchor" id={COCKPIT_SECTION_IDS.reports}>{reportsContent}</div>
+      {cockpitTab === "policyAgentOps" ? (
+        <>
+          <div className="card staff-console-card">{agentOpsContent}</div>
+          <div className="card staff-console-card">{governanceContent}</div>
+        </>
+      ) : null}
+      {cockpitTab === "reports" ? <div className="card staff-console-card">{reportsContent}</div> : null}
     </section>
   );
 
@@ -5210,26 +7789,640 @@ const lendingContent = (
           Refresh lending
         </button>
       </div>
-      <label className="staff-field">
-        ISBN import
-        <textarea value={isbnInput} onChange={(e) => setIsbnInput(e.target.value)} placeholder="9780596007126, 9780132350884" />
-      </label>
-      <div className="staff-actions-row">
-        <button className="btn btn-primary" disabled={!!busy} onClick={() => {
-          const isbns = parseList(isbnInput);
-          if (!isbns.length) {
-            setError("Paste at least one ISBN.");
-            return;
-          }
-          void run("importLibraryIsbns", async () => {
-            await client.postJson("importLibraryIsbns", { isbns });
-            setStatus(`Imported ${isbns.length} ISBN(s)`);
-            setIsbnInput("");
-            await loadLending();
-          });
-        }}>Import ISBNs</button>
+      {hasFunctionsAuthMismatch ? (
+        <div className="staff-note">
+          Local functions detected at <code>{fBaseUrl}</code> while Auth emulator is off. ISBN import, scanner check-in, provider policy/probe controls, and rollout phase controls are paused to prevent false auth failures.
+        </div>
+      ) : null}
+      <div className="staff-module-grid">
+        <section className="staff-column">
+          <div className="staff-subtitle">ISBN bulk import</div>
+          <label className="staff-field">
+            Paste ISBNs
+            <textarea
+              value={isbnInput}
+              onChange={(event) => setIsbnInput(event.target.value)}
+              placeholder="9780596007126, 9780132350884"
+            />
+            <span className="helper">Comma or newline separated. ISBN-10 and ISBN-13 are supported.</span>
+          </label>
+          <label className="staff-field">
+            Upload CSV
+            <input
+              type="file"
+              accept=".csv,text/csv,text/plain"
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                void handleLendingIsbnFile(file);
+              }}
+            />
+          </label>
+          {isbnImportError ? <div className="staff-note staff-note-error">{isbnImportError}</div> : null}
+          {isbnImportStatus ? <div className="staff-note staff-note-ok">{isbnImportStatus}</div> : null}
+          <div className="staff-actions-row">
+            <button className="btn btn-primary" disabled={Boolean(busy) || isbnImportBusy || hasFunctionsAuthMismatch} onClick={() => void handleLendingIsbnImport()}>
+              {isbnImportBusy ? "Importing..." : "Import ISBNs"}
+            </button>
+          </div>
+        </section>
+        <section className="staff-column">
+          <div className="staff-subtitle">Scanner check-in</div>
+          <label className="staff-field">
+            Scan ISBN
+            <input
+              type="text"
+              value={isbnScanInput}
+              placeholder="Scan ISBN here"
+              onChange={(event) => setIsbnScanInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void handleLendingIsbnScanSubmit();
+                }
+              }}
+            />
+            <span className="helper">Use a Bluetooth scanner then press Enter to submit one item instantly.</span>
+          </label>
+          {isbnScanStatus ? <div className="staff-note">{isbnScanStatus}</div> : null}
+          <div className="staff-actions-row">
+            <button className="btn btn-primary" onClick={() => void handleLendingIsbnScanSubmit()} disabled={Boolean(busy) || isbnScanBusy || hasFunctionsAuthMismatch}>
+              {isbnScanBusy ? "Adding..." : "Add scanned ISBN"}
+            </button>
+          </div>
+        </section>
+        <section className="staff-column">
+          <div className="staff-subtitle">External source provider diagnostics</div>
+          <label className="staff-field">
+            Provider policy
+            <div className="staff-actions-row">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={externalLookupPolicyOpenLibraryEnabled}
+                  onChange={(event) => setExternalLookupPolicyOpenLibraryEnabled(event.target.checked)}
+                  disabled={Boolean(busy) || externalLookupPolicyBusy || hasFunctionsAuthMismatch}
+                />
+                {" "}
+                Open Library enabled
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={externalLookupPolicyGoogleBooksEnabled}
+                  onChange={(event) => setExternalLookupPolicyGoogleBooksEnabled(event.target.checked)}
+                  disabled={Boolean(busy) || externalLookupPolicyBusy || hasFunctionsAuthMismatch}
+                />
+                {" "}
+                Google Books enabled
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={externalLookupPolicyCoverReviewGuardrailEnabled}
+                  onChange={(event) => setExternalLookupPolicyCoverReviewGuardrailEnabled(event.target.checked)}
+                  disabled={Boolean(busy) || externalLookupPolicyBusy || hasFunctionsAuthMismatch}
+                />
+                {" "}
+                Require staff cover approval for imported covers
+              </label>
+            </div>
+            <input
+              type="text"
+              value={externalLookupPolicyNote}
+              onChange={(event) => setExternalLookupPolicyNote(event.target.value)}
+              placeholder="Optional note for why this policy is set."
+              disabled={Boolean(busy) || externalLookupPolicyBusy || hasFunctionsAuthMismatch}
+            />
+            <span className="helper">
+              Use this to pause a provider when rate limits or reliability issues occur, and temporarily bypass manual cover approvals for trusted bulk ingestion.
+              Cover approvals are handled in Staff / Lending / Cover review queue.
+            </span>
+          </label>
+          <div className="staff-actions-row">
+            <button
+              className="btn btn-secondary"
+              disabled={Boolean(busy) || externalLookupPolicyBusy || hasFunctionsAuthMismatch}
+              onClick={() => void saveExternalLookupProviderPolicy()}
+            >
+              {externalLookupPolicyBusy ? "Saving..." : "Save provider policy"}
+            </button>
+          </div>
+          {externalLookupPolicyStatus ? <div className="staff-note">{externalLookupPolicyStatus}</div> : null}
+          {externalLookupPolicyUpdatedAtMs > 0 ? (
+            <div className="staff-note">
+              Policy updated {when(externalLookupPolicyUpdatedAtMs)}
+              {externalLookupPolicyUpdatedByUid ? ` by ${externalLookupPolicyUpdatedByUid}` : ""}
+            </div>
+          ) : null}
+          <label className="staff-field">
+            Probe query
+            <input
+              type="text"
+              value={externalLookupProbeQuery}
+              onChange={(event) => setExternalLookupProbeQuery(event.target.value)}
+              placeholder="ceramics glaze chemistry"
+            />
+            <span className="helper">Runs the same route members use for external fallback and reports provider health.</span>
+          </label>
+          {externalLookupProbeStatus ? <div className="staff-note">{externalLookupProbeStatus}</div> : null}
+          <div className="staff-actions-row">
+            <button
+              className="btn btn-secondary"
+              disabled={Boolean(busy) || externalLookupProbeBusy || hasFunctionsAuthMismatch}
+              onClick={() => void runExternalLookupProviderProbe()}
+            >
+              {externalLookupProbeBusy ? "Probing..." : "Run provider probe"}
+            </button>
+          </div>
+          <div className="staff-table-wrap">
+            <table className="staff-table">
+              <thead><tr><th>Provider</th><th>Healthy</th><th>Policy</th><th>Items</th><th>Cache</th></tr></thead>
+              <tbody>
+                {externalLookupProbeProviders.length === 0 ? (
+                  <tr><td colSpan={5}>No probe results yet.</td></tr>
+                ) : (
+                  externalLookupProbeProviders.map((entry) => (
+                    <tr key={entry.provider}>
+                      <td>{entry.provider}</td>
+                      <td>{entry.ok ? "yes" : "no"}</td>
+                      <td>{entry.disabled ? "paused" : "active"}</td>
+                      <td>{entry.itemCount}</td>
+                      <td>{entry.cached ? "hit" : "miss"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section className="staff-column">
+          <div className="staff-subtitle">Library rollout phase</div>
+          <label className="staff-field">
+            Phase selector
+            <select
+              value={libraryRolloutPhase}
+              onChange={(event) =>
+                setLibraryRolloutPhase(normalizeLibraryRolloutPhase(event.target.value, libraryRolloutPhase))
+              }
+              disabled={Boolean(busy) || libraryRolloutPhaseBusy || hasFunctionsAuthMismatch}
+            >
+              <option value="phase_1_read_only">Phase 1 - Authenticated discovery (member writes paused)</option>
+              <option value="phase_2_member_writes">Phase 2 - Member interactions enabled</option>
+              <option value="phase_3_admin_full">Phase 3 - Admin management + cutover</option>
+            </select>
+            <span className="helper">
+              Phase 1 pauses member interaction writes in the member library view while keeping browse/read available.
+            </span>
+          </label>
+          <label className="staff-field">
+            Rollout note
+            <input
+              type="text"
+              value={libraryRolloutNote}
+              onChange={(event) => setLibraryRolloutNote(event.target.value)}
+              placeholder="Optional context shown to staff and surfaced in member pause notice."
+              disabled={Boolean(busy) || libraryRolloutPhaseBusy || hasFunctionsAuthMismatch}
+            />
+          </label>
+          <div className="staff-note">
+            Member interactions are currently {libraryRolloutMemberWritesEnabled ? "enabled" : "paused"}.
+          </div>
+          <div className="staff-actions-row">
+            <button
+              className="btn btn-secondary"
+              disabled={Boolean(busy) || libraryRolloutPhaseBusy || hasFunctionsAuthMismatch}
+              onClick={() => void saveLibraryRolloutPhasePolicy()}
+            >
+              {libraryRolloutPhaseBusy ? "Saving..." : "Save rollout phase"}
+            </button>
+          </div>
+          {libraryRolloutPhaseStatus ? <div className="staff-note">{libraryRolloutPhaseStatus}</div> : null}
+          {libraryRolloutUpdatedAtMs > 0 ? (
+            <div className="staff-note">
+              Rollout updated {when(libraryRolloutUpdatedAtMs)}
+              {libraryRolloutUpdatedByUid ? ` by ${libraryRolloutUpdatedByUid}` : ""}
+            </div>
+          ) : null}
+          <div className="staff-subtitle">Phase metrics snapshot</div>
+          <div className="staff-note">
+            Tracks library route health over the last {LIBRARY_PHASE_METRICS_WINDOW_MINUTES} minutes for go/no-go checks.
+          </div>
+          <div className="staff-actions-row">
+            <button
+              className="btn btn-ghost btn-small"
+              disabled={Boolean(busy)}
+              onClick={() => refreshLibraryPhaseMetricsSnapshot()}
+            >
+              Refresh phase metrics
+            </button>
+            <button
+              className="btn btn-ghost btn-small"
+              disabled={!libraryPhaseMetricsArtifact}
+              onClick={() => void copy(libraryPhaseMetricsArtifact ? safeJsonStringify(libraryPhaseMetricsArtifact) : "")}
+            >
+              Copy phase metrics JSON
+            </button>
+          </div>
+          {libraryPhaseMetricsStatus ? <div className="staff-note">{libraryPhaseMetricsStatus}</div> : null}
+          <div className="staff-table-wrap">
+            <table className="staff-table">
+              <tbody>
+                <tr>
+                  <th>Requests</th>
+                  <td>{libraryPhaseMetricsSnapshot?.requestCount ?? 0}</td>
+                  <th>Errors</th>
+                  <td>{libraryPhaseMetricsSnapshot?.errorCount ?? 0}</td>
+                </tr>
+                <tr>
+                  <th>Conflicts</th>
+                  <td>{libraryPhaseMetricsSnapshot?.conflictCount ?? 0}</td>
+                  <th>Route errors</th>
+                  <td>{libraryPhaseMetricsSnapshot?.routeErrorCount ?? 0}</td>
+                </tr>
+                <tr>
+                  <th>Error rate</th>
+                  <td>
+                    {libraryPhaseMetricsSnapshot
+                      ? `${(libraryPhaseMetricsSnapshot.errorRate * 100).toFixed(1)}%`
+                      : "-"}
+                  </td>
+                  <th>Conflict rate</th>
+                  <td>
+                    {libraryPhaseMetricsSnapshot
+                      ? `${(libraryPhaseMetricsSnapshot.conflictRate * 100).toFixed(1)}%`
+                      : "-"}
+                  </td>
+                </tr>
+                <tr>
+                  <th>P50 latency</th>
+                  <td>{formatLatencyMs(libraryPhaseMetricsSnapshot?.p50LatencyMs ?? null)}</td>
+                  <th>P95 latency</th>
+                  <td>{formatLatencyMs(libraryPhaseMetricsSnapshot?.p95LatencyMs ?? null)}</td>
+                </tr>
+                <tr>
+                  <th>Max latency</th>
+                  <td>{formatLatencyMs(libraryPhaseMetricsSnapshot?.maxLatencyMs ?? null)}</td>
+                  <th>Generated</th>
+                  <td>{libraryPhaseMetricsSnapshot ? when(Date.parse(libraryPhaseMetricsSnapshot.generatedAtIso)) : "-"}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="staff-table-wrap">
+            <table className="staff-table">
+              <thead>
+                <tr>
+                  <th>Endpoint</th>
+                  <th>Requests</th>
+                  <th>Errors</th>
+                  <th>Conflicts</th>
+                  <th>Route errors</th>
+                  <th>P95 latency</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(libraryPhaseMetricsSnapshot?.endpoints ?? []).slice(0, 12).map((entry) => (
+                  <tr key={entry.route}>
+                    <td><code>{entry.route}</code></td>
+                    <td>{entry.requestCount}</td>
+                    <td>{entry.errorCount}</td>
+                    <td>{entry.conflictCount}</td>
+                    <td>{entry.routeErrorCount}</td>
+                    <td>{formatLatencyMs(entry.p95LatencyMs)}</td>
+                  </tr>
+                ))}
+                {!libraryPhaseMetricsSnapshot || libraryPhaseMetricsSnapshot.endpoints.length === 0 ? (
+                  <tr>
+                    <td colSpan={6}>No library telemetry recorded in this browser session yet.</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
+      <details className="staff-troubleshooting">
+        <summary>Catalog admin (create/edit/delete + ISBN resolve)</summary>
+        <div className="staff-note">
+          Item save/delete dispatches to v1 admin routes when present and falls back to direct Firestore writes when routes are unavailable.
+        </div>
+        <div className="staff-module-grid">
+          <section className="staff-column">
+            <div className="staff-actions-row">
+              <input
+                className="staff-member-search"
+                placeholder="Search library items by title, author, ISBN, ID"
+                value={lendingAdminItemSearch}
+                onChange={(event) => setLendingAdminItemSearch(event.target.value)}
+              />
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={() => handleStartLendingAdminItemCreate()}
+                disabled={Boolean(busy) || lendingAdminItemBusy}
+              >
+                New item
+              </button>
+            </div>
+            <div className="staff-table-wrap">
+              <table className="staff-table">
+                <thead>
+                  <tr>
+                    <th>Title</th>
+                    <th>Status</th>
+                    <th>Copies</th>
+                    <th>Updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredLendingAdminItems.length === 0 ? (
+                    <tr><td colSpan={4}>No library items match this search.</td></tr>
+                  ) : (
+                    filteredLendingAdminItems.slice(0, 80).map((item) => (
+                      <tr
+                        key={item.id}
+                        className={`staff-click-row ${selectedAdminItemId === item.id ? "active" : ""}`}
+                        onClick={() => handleSelectLendingAdminItem(item)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            handleSelectLendingAdminItem(item);
+                          }
+                        }}
+                        tabIndex={0}
+                      >
+                        <td>
+                          <div>{item.title}</div>
+                          <div className="staff-mini">{item.authorLine}</div>
+                          <div className="staff-mini"><code>{item.id}</code></div>
+                          {item.isbn ? <div className="staff-mini">ISBN {item.isbn}</div> : null}
+                        </td>
+                        <td><span className="pill">{item.status}</span></td>
+                        <td>{item.availableCopies}/{item.totalCopies}</td>
+                        <td>{when(item.updatedAtMs)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <section className="staff-column">
+            <div className="staff-subtitle">
+              {selectedAdminItem ? `Editing ${selectedAdminItem.title}` : "New library item"}
+            </div>
+            <label className="staff-field">
+              Title
+              <input
+                type="text"
+                value={lendingAdminItemDraft.title}
+                onChange={(event) =>
+                  setLendingAdminItemDraft((prev) => ({ ...prev, title: event.target.value }))
+                }
+                disabled={Boolean(busy) || lendingAdminItemBusy}
+              />
+            </label>
+            <label className="staff-field">
+              Authors (comma/newline)
+              <textarea
+                value={lendingAdminItemDraft.authorsCsv}
+                onChange={(event) =>
+                  setLendingAdminItemDraft((prev) => ({ ...prev, authorsCsv: event.target.value }))
+                }
+                disabled={Boolean(busy) || lendingAdminItemBusy}
+              />
+            </label>
+            <div className="staff-actions-row">
+              <label className="staff-field">
+                ISBN
+                <input
+                  type="text"
+                  value={lendingAdminItemDraft.isbn}
+                  onChange={(event) =>
+                    setLendingAdminItemDraft((prev) => ({ ...prev, isbn: event.target.value }))
+                  }
+                  disabled={Boolean(busy) || lendingAdminItemBusy || lendingAdminIsbnResolveBusy}
+                />
+              </label>
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => void handleLendingAdminResolveIsbn()}
+                disabled={Boolean(busy) || lendingAdminItemBusy || lendingAdminIsbnResolveBusy}
+              >
+                {lendingAdminIsbnResolveBusy ? "Resolving..." : "Resolve ISBN"}
+              </button>
+            </div>
+            <label className="staff-field">
+              Subtitle
+              <input
+                type="text"
+                value={lendingAdminItemDraft.subtitle}
+                onChange={(event) =>
+                  setLendingAdminItemDraft((prev) => ({ ...prev, subtitle: event.target.value }))
+                }
+                disabled={Boolean(busy) || lendingAdminItemBusy}
+              />
+            </label>
+            <label className="staff-field">
+              Description
+              <textarea
+                value={lendingAdminItemDraft.description}
+                onChange={(event) =>
+                  setLendingAdminItemDraft((prev) => ({ ...prev, description: event.target.value }))
+                }
+                disabled={Boolean(busy) || lendingAdminItemBusy}
+              />
+            </label>
+            <div className="staff-actions-row">
+              <label className="staff-field">
+                Publisher
+                <input
+                  type="text"
+                  value={lendingAdminItemDraft.publisher}
+                  onChange={(event) =>
+                    setLendingAdminItemDraft((prev) => ({ ...prev, publisher: event.target.value }))
+                  }
+                  disabled={Boolean(busy) || lendingAdminItemBusy}
+                />
+              </label>
+              <label className="staff-field">
+                Published date
+                <input
+                  type="text"
+                  value={lendingAdminItemDraft.publishedDate}
+                  placeholder="YYYY-MM-DD"
+                  onChange={(event) =>
+                    setLendingAdminItemDraft((prev) => ({ ...prev, publishedDate: event.target.value }))
+                  }
+                  disabled={Boolean(busy) || lendingAdminItemBusy}
+                />
+              </label>
+            </div>
+            <div className="staff-actions-row">
+              <label className="staff-field">
+                Media type
+                <input
+                  type="text"
+                  value={lendingAdminItemDraft.mediaType}
+                  onChange={(event) =>
+                    setLendingAdminItemDraft((prev) => ({ ...prev, mediaType: event.target.value }))
+                  }
+                  disabled={Boolean(busy) || lendingAdminItemBusy}
+                />
+              </label>
+              <label className="staff-field">
+                Status
+                <select
+                  value={lendingAdminItemDraft.status}
+                  onChange={(event) =>
+                    setLendingAdminItemDraft((prev) => ({ ...prev, status: event.target.value }))
+                  }
+                  disabled={Boolean(busy) || lendingAdminItemBusy}
+                >
+                  <option value="available">available</option>
+                  <option value="checked_out">checked_out</option>
+                  <option value="overdue">overdue</option>
+                  <option value="lost">lost</option>
+                  <option value="unavailable">unavailable</option>
+                  <option value="archived">archived</option>
+                </select>
+              </label>
+              <label className="staff-field">
+                Source
+                <input
+                  type="text"
+                  value={lendingAdminItemDraft.source}
+                  onChange={(event) =>
+                    setLendingAdminItemDraft((prev) => ({ ...prev, source: event.target.value }))
+                  }
+                  disabled={Boolean(busy) || lendingAdminItemBusy}
+                />
+              </label>
+            </div>
+            <div className="staff-actions-row">
+              <label className="staff-field">
+                Total copies
+                <input
+                  type="number"
+                  min={1}
+                  value={lendingAdminItemDraft.totalCopies}
+                  onChange={(event) =>
+                    setLendingAdminItemDraft((prev) => ({ ...prev, totalCopies: event.target.value }))
+                  }
+                  disabled={Boolean(busy) || lendingAdminItemBusy}
+                />
+              </label>
+              <label className="staff-field">
+                Available copies
+                <input
+                  type="number"
+                  min={0}
+                  value={lendingAdminItemDraft.availableCopies}
+                  onChange={(event) =>
+                    setLendingAdminItemDraft((prev) => ({ ...prev, availableCopies: event.target.value }))
+                  }
+                  disabled={Boolean(busy) || lendingAdminItemBusy}
+                />
+              </label>
+              <label className="staff-field">
+                Format
+                <input
+                  type="text"
+                  value={lendingAdminItemDraft.format}
+                  onChange={(event) =>
+                    setLendingAdminItemDraft((prev) => ({ ...prev, format: event.target.value }))
+                  }
+                  disabled={Boolean(busy) || lendingAdminItemBusy}
+                />
+              </label>
+            </div>
+            <label className="staff-field">
+              Cover URL
+              <input
+                type="url"
+                value={lendingAdminItemDraft.coverUrl}
+                onChange={(event) =>
+                  setLendingAdminItemDraft((prev) => ({ ...prev, coverUrl: event.target.value }))
+                }
+                disabled={Boolean(busy) || lendingAdminItemBusy}
+              />
+            </label>
+            <div className="staff-actions-row">
+              <label className="staff-field">
+                Subjects
+                <input
+                  type="text"
+                  value={lendingAdminItemDraft.subjectsCsv}
+                  placeholder="glaze chemistry, kiln control"
+                  onChange={(event) =>
+                    setLendingAdminItemDraft((prev) => ({ ...prev, subjectsCsv: event.target.value }))
+                  }
+                  disabled={Boolean(busy) || lendingAdminItemBusy}
+                />
+              </label>
+              <label className="staff-field">
+                Techniques
+                <input
+                  type="text"
+                  value={lendingAdminItemDraft.techniquesCsv}
+                  placeholder="wheel, handbuilding"
+                  onChange={(event) =>
+                    setLendingAdminItemDraft((prev) => ({ ...prev, techniquesCsv: event.target.value }))
+                  }
+                  disabled={Boolean(busy) || lendingAdminItemBusy}
+                />
+              </label>
+            </div>
+            <div className="staff-actions-row">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => void handleLendingAdminSave()}
+                disabled={Boolean(busy) || lendingAdminItemBusy}
+              >
+                {lendingAdminItemBusy ? "Saving..." : selectedAdminItem ? "Save item" : "Create item"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => handleStartLendingAdminItemCreate()}
+                disabled={Boolean(busy) || lendingAdminItemBusy}
+              >
+                Reset draft
+              </button>
+            </div>
+            {selectedAdminItem ? (
+              <>
+                <label className="staff-field">
+                  Type <code>{lendingAdminDeleteConfirmationPhrase || "delete <itemId>"}</code> to enable delete
+                  <input
+                    type="text"
+                    value={lendingAdminItemDeleteConfirmInput}
+                    onChange={(event) => setLendingAdminItemDeleteConfirmInput(event.target.value)}
+                    disabled={Boolean(busy) || lendingAdminItemBusy}
+                  />
+                </label>
+                <div className="staff-actions-row">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => void handleLendingAdminDelete()}
+                    disabled={Boolean(busy) || lendingAdminItemBusy}
+                  >
+                    {lendingAdminItemBusy ? "Deleting..." : "Delete item"}
+                  </button>
+                </div>
+              </>
+            ) : null}
+            {lendingAdminIsbnResolveStatus ? <div className="staff-note">{lendingAdminIsbnResolveStatus}</div> : null}
+            {lendingAdminItemError ? <div className="staff-note staff-note-error">{lendingAdminItemError}</div> : null}
+            {lendingAdminItemStatus ? <div className="staff-note staff-note-ok">{lendingAdminItemStatus}</div> : null}
+          </section>
+        </div>
+      </details>
       <div className="staff-kpi-grid">
+        <div className="staff-kpi"><span>Catalog items</span><strong>{libraryAdminItems.length}</strong></div>
         <div className="staff-kpi"><span>Requests</span><strong>{libraryRequests.length}</strong></div>
         <div className="staff-kpi"><span>Loans</span><strong>{libraryLoans.length}</strong></div>
         <div className="staff-kpi"><span>Filtered requests</span><strong>{lendingTriage.requestView.length}</strong></div>
@@ -5238,6 +8431,13 @@ const lendingContent = (
         <div className="staff-kpi"><span>Active loans</span><strong>{lendingTriage.activeLoans.length}</strong></div>
         <div className="staff-kpi"><span>Overdue loans</span><strong>{lendingTriage.overdueLoans.length}</strong></div>
         <div className="staff-kpi"><span>Returned loans</span><strong>{lendingTriage.returnedLoans.length}</strong></div>
+        <div className="staff-kpi"><span>Recommendations</span><strong>{recommendationModerationKpis.total}</strong></div>
+        <div className="staff-kpi"><span>Pending review</span><strong>{recommendationModerationKpis.pendingReview}</strong></div>
+        <div className="staff-kpi"><span>Approved recs</span><strong>{recommendationModerationKpis.approved}</strong></div>
+        <div className="staff-kpi"><span>Hidden recs</span><strong>{recommendationModerationKpis.hidden}</strong></div>
+        <div className="staff-kpi"><span>Tag queue</span><strong>{tagModerationKpis.pending}</strong></div>
+        <div className="staff-kpi"><span>Total tag subs</span><strong>{tagModerationKpis.total}</strong></div>
+        <div className="staff-kpi"><span>Cover review queue</span><strong>{libraryCoverReviews.length}</strong></div>
       </div>
       <div className="staff-actions-row">
         <input
@@ -5270,6 +8470,16 @@ const lendingContent = (
           <option value="active">Active loans</option>
           <option value="overdue">Overdue loans</option>
           <option value="returned">Returned loans</option>
+        </select>
+        <select
+          className="staff-member-role-filter"
+          value={lendingRecommendationFilter}
+          onChange={(event) => setLendingRecommendationFilter(event.target.value)}
+        >
+          <option value="all">All recommendation states</option>
+          {lendingRecommendationStatusOptions.map((statusName) => (
+            <option key={statusName} value={statusName}>{statusName}</option>
+          ))}
         </select>
       </div>
       <div className="staff-module-grid">
@@ -5433,12 +8643,338 @@ const lendingContent = (
             </div>
           ) : null}
           {selectedLoan ? (
+            <>
+              <div className="staff-subtitle">Loan recovery</div>
+              <div className="staff-actions-row">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-small"
+                  disabled={
+                    Boolean(busy) ||
+                    loanRecoveryBusy ||
+                    selectedLoan.status.trim().toLowerCase() === "lost" ||
+                    selectedLoan.status.trim().toLowerCase() === "returned"
+                  }
+                  onClick={() => void handleLoanMarkLost(selectedLoan)}
+                >
+                  {loanRecoveryBusy ? "Saving..." : "Mark lost"}
+                </button>
+                <input
+                  className="staff-member-search"
+                  placeholder="Replacement fee cents (optional)"
+                  value={loanReplacementFeeAmountInput}
+                  onChange={(event) => setLoanReplacementFeeAmountInput(event.target.value)}
+                  disabled={Boolean(busy) || loanRecoveryBusy}
+                />
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-small"
+                  disabled={Boolean(busy) || loanRecoveryBusy || selectedLoan.status.trim().toLowerCase() !== "lost"}
+                  onClick={() => void handleLoanAssessReplacementFee(selectedLoan)}
+                >
+                  {loanRecoveryBusy ? "Saving..." : "Assess replacement fee"}
+                </button>
+              </div>
+              <div className="staff-actions-row">
+                <select
+                  className="staff-member-role-filter"
+                  value={loanOverrideStatusDraft}
+                  onChange={(event) =>
+                    setLoanOverrideStatusDraft(
+                      normalizeLibraryItemOverrideStatus(event.target.value)
+                    )
+                  }
+                  disabled={Boolean(busy) || loanRecoveryBusy}
+                >
+                  <option value="available">available</option>
+                  <option value="checked_out">checked_out</option>
+                  <option value="overdue">overdue</option>
+                  <option value="lost">lost</option>
+                  <option value="unavailable">unavailable</option>
+                  <option value="archived">archived</option>
+                </select>
+                <input
+                  className="staff-member-search"
+                  placeholder="Override note (optional)"
+                  value={loanOverrideNoteDraft}
+                  onChange={(event) => setLoanOverrideNoteDraft(event.target.value)}
+                  disabled={Boolean(busy) || loanRecoveryBusy}
+                />
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-small"
+                  disabled={Boolean(busy) || loanRecoveryBusy}
+                  onClick={() => void handleLoanItemStatusOverride(selectedLoan)}
+                >
+                  {loanRecoveryBusy ? "Saving..." : "Override item status"}
+                </button>
+              </div>
+              {loanRecoveryStatus ? <div className="staff-note">{loanRecoveryStatus}</div> : null}
+            </>
+          ) : null}
+          {selectedLoan ? (
             <details className="staff-troubleshooting">
               <summary>Raw loan document</summary>
               <pre>{safeJsonStringify(selectedLoan.rawDoc)}</pre>
             </details>
           ) : null}
         </div>
+      </div>
+      <div className="staff-subtitle">Recommendation moderation</div>
+      {recommendationModerationStatus ? <div className="staff-note">{recommendationModerationStatus}</div> : null}
+      <div className="staff-table-wrap">
+        <table className="staff-table">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Recommender</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredRecommendations.length === 0 ? (
+              <tr><td colSpan={5}>No recommendations match current filters.</td></tr>
+            ) : (
+              filteredRecommendations.map((row) => {
+                const rowBusy = Boolean(recommendationModerationBusyById[row.id]);
+                const statusLower = row.moderationStatus.toLowerCase();
+                return (
+                  <tr key={row.id}>
+                    <td>
+                      <div>{row.title}</div>
+                      {row.author ? <div className="staff-mini">by {row.author}</div> : null}
+                      {row.isbn ? <div className="staff-mini">ISBN {row.isbn}</div> : null}
+                      {row.rationale ? <div className="staff-mini">{row.rationale}</div> : null}
+                      <div className="staff-mini"><code>{row.id}</code></div>
+                    </td>
+                    <td>
+                      <div>{row.recommenderName || "Unknown"}</div>
+                      <div className="staff-mini"><code>{row.recommenderUid || "-"}</code></div>
+                    </td>
+                    <td><span className="pill">{row.moderationStatus || "pending_review"}</span></td>
+                    <td>{when(row.createdAtMs)}</td>
+                    <td>
+                      <div className="staff-actions-row">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-small"
+                          disabled={Boolean(busy) || rowBusy || statusLower === "approved"}
+                          onClick={() => void handleRecommendationModeration(row, "approve")}
+                        >
+                          {rowBusy ? "Saving..." : "Approve"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-small"
+                          disabled={Boolean(busy) || rowBusy || statusLower === "hidden"}
+                          onClick={() => void handleRecommendationModeration(row, "hide")}
+                        >
+                          {rowBusy ? "Saving..." : "Hide"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-small"
+                          disabled={Boolean(busy) || rowBusy || statusLower !== "hidden"}
+                          onClick={() => void handleRecommendationModeration(row, "restore")}
+                        >
+                          {rowBusy ? "Saving..." : "Restore"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="staff-subtitle">Tag moderation queue</div>
+      {tagModerationStatus ? <div className="staff-note">{tagModerationStatus}</div> : null}
+      <div className="staff-table-wrap">
+        <table className="staff-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Suggested tag</th>
+              <th>Member</th>
+              <th>Created</th>
+              <th>Approve</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredTagSubmissions.length === 0 ? (
+              <tr><td colSpan={5}>No pending tag submissions match current filters.</td></tr>
+            ) : (
+              filteredTagSubmissions.map((row) => {
+                const rowBusy = Boolean(tagModerationBusyById[row.id]);
+                const draftName = tagSubmissionApprovalDraftById[row.id] ?? row.tag;
+                const canApprove = Boolean(normalizeLibraryTagLabel(draftName));
+                return (
+                  <tr key={row.id}>
+                    <td>
+                      <div>{row.itemTitle || "Library item"}</div>
+                      <div className="staff-mini"><code>{row.itemId || row.id}</code></div>
+                    </td>
+                    <td>
+                      <div>{row.tag || "(empty)"}</div>
+                      <div className="staff-mini"><code>{row.normalizedTag || "-"}</code></div>
+                    </td>
+                    <td>
+                      <div>{row.submittedByName || "Member"}</div>
+                      <div className="staff-mini"><code>{row.submittedByUid || "-"}</code></div>
+                    </td>
+                    <td>{when(row.createdAtMs)}</td>
+                    <td>
+                      <div className="staff-actions-row">
+                        <input
+                          type="text"
+                          className="staff-member-search"
+                          value={draftName}
+                          placeholder="Canonical tag name"
+                          maxLength={80}
+                          onChange={(event) =>
+                            setTagSubmissionApprovalDraftById((prev) => ({
+                              ...prev,
+                              [row.id]: event.target.value,
+                            }))
+                          }
+                          disabled={Boolean(busy) || rowBusy}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-small"
+                          disabled={Boolean(busy) || rowBusy || !canApprove}
+                          onClick={() => void handleTagSubmissionApprove(row)}
+                        >
+                          {rowBusy ? "Saving..." : "Approve"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="staff-subtitle">Tag merge</div>
+      <div className="staff-note">
+        Merge duplicate tags by canonical tag ID. Source is marked merged and item-tag links are migrated.
+      </div>
+      <div className="staff-actions-row">
+        <input
+          className="staff-member-search"
+          placeholder="Source tag ID (tag_...)"
+          value={tagMergeSourceId}
+          onChange={(event) => setTagMergeSourceId(event.target.value)}
+          disabled={Boolean(busy) || tagMergeBusy}
+        />
+        <input
+          className="staff-member-search"
+          placeholder="Target tag ID (tag_...)"
+          value={tagMergeTargetId}
+          onChange={(event) => setTagMergeTargetId(event.target.value)}
+          disabled={Boolean(busy) || tagMergeBusy}
+        />
+        <input
+          className="staff-member-search"
+          placeholder="Merge note (optional)"
+          value={tagMergeNote}
+          onChange={(event) => setTagMergeNote(event.target.value)}
+          disabled={Boolean(busy) || tagMergeBusy}
+        />
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => void handleTagMerge()}
+          disabled={Boolean(busy) || tagMergeBusy}
+        >
+          {tagMergeBusy ? "Merging..." : "Merge tags"}
+        </button>
+      </div>
+      <div className="staff-subtitle">Cover review queue</div>
+      <div className="staff-note">
+        Review and approve imported covers here. This queue is the manual approval workflow for cover guardrails.
+      </div>
+      {coverReviewStatus ? <div className="staff-note">{coverReviewStatus}</div> : null}
+      <div className="staff-table-wrap">
+        <table className="staff-table">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Status</th>
+              <th>Reason</th>
+              <th>Updated</th>
+              <th>Resolve</th>
+            </tr>
+          </thead>
+          <tbody>
+            {libraryCoverReviews.length === 0 ? (
+              <tr><td colSpan={5}>No items currently flagged for cover review.</td></tr>
+            ) : (
+              libraryCoverReviews.map((row) => {
+                const rowBusy = Boolean(coverReviewBusyById[row.id]);
+                const currentCoverValid = isValidHttpUrl((row.coverUrl ?? "").trim());
+                const rowError = coverReviewErrorById[row.id] ?? "";
+                return (
+                  <tr key={row.id}>
+                    <td>
+                      <div>{row.title}</div>
+                      <div className="staff-mini"><code>{row.id}</code></div>
+                      {row.coverUrl ? (
+                        <a className="staff-mini" href={row.coverUrl} target="_blank" rel="noreferrer">
+                          Open current cover
+                        </a>
+                      ) : null}
+                      {!currentCoverValid ? <div className="staff-mini">Current cover URL is missing or invalid.</div> : null}
+                    </td>
+                    <td><span className="pill">{row.coverQualityStatus || "needs_review"}</span></td>
+                    <td>{row.coverQualityReason || "manual_review_required"}</td>
+                    <td>{when(row.updatedAtMs)}</td>
+                    <td>
+                      <div className="staff-actions-row">
+                        <input
+                          type="url"
+                          className="staff-member-search"
+                          placeholder="https://cover-image-url"
+                          value={coverReviewDraftById[row.id] ?? ""}
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            setCoverReviewDraftById((prev) => ({ ...prev, [row.id]: nextValue }));
+                            setCoverReviewErrorById((prev) => {
+                              const next = { ...prev };
+                              delete next[row.id];
+                              return next;
+                            });
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-small"
+                          onClick={() => void handleCoverReviewResolve(row, "approve_existing")}
+                          disabled={Boolean(busy) || rowBusy || !currentCoverValid}
+                        >
+                          {rowBusy ? "Saving..." : "Approve current"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-small"
+                          onClick={() => void handleCoverReviewResolve(row, "set_replacement")}
+                          disabled={Boolean(busy) || rowBusy}
+                        >
+                          {rowBusy ? "Saving..." : "Use replacement URL"}
+                        </button>
+                      </div>
+                      {rowError ? <div className="staff-note staff-note-error">{rowError}</div> : null}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
       </div>
     </section>
   );
@@ -5683,6 +9219,371 @@ const lendingContent = (
     </section>
   );
 
+  const cockpitContent = (
+    <section className="staff-today-console">
+      <section className="card staff-console-card">
+        <div className="card-title">Quick actions</div>
+        <p className="card-subtitle">Large iPad-friendly shortcuts for the most common daily staff actions.</p>
+        <div className="staff-quick-actions">
+          <button className="btn btn-primary staff-quick-action-btn" onClick={openReservationsToday}>
+            View reservations (today)
+          </button>
+          <button className="btn btn-primary staff-quick-action-btn" onClick={openMessagesInbox}>
+            Open messages
+          </button>
+          <button className="btn btn-primary staff-quick-action-btn" onClick={startFiringFlow}>
+            Start firing
+          </button>
+          <button className="btn btn-primary staff-quick-action-btn" onClick={() => openModuleFromCockpit("commerce")}>
+            Payment lookup and alerts
+          </button>
+          <button className="btn btn-primary staff-quick-action-btn" onClick={() => openModuleFromCockpit("events")}>
+            Open content tools
+          </button>
+        </div>
+      </section>
+
+      <section className="staff-module-grid staff-today-overview-grid">
+        <section className="card staff-console-card staff-today-card">
+          <div className="card-title-row">
+            <div className="card-title">Reservations today</div>
+            <button
+              className="btn btn-secondary btn-small"
+              disabled={Boolean(busy) || todayReservationsLoading}
+              onClick={() => void run("refreshTodayReservations", loadTodayReservations)}
+            >
+              {todayReservationsLoading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+          <p className="card-subtitle">
+            Fast scan for who is due today, when they are expected, and what needs prep.
+          </p>
+          {todayReservationsLoading ? (
+            <div className="staff-skeleton-list" aria-hidden="true">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <div key={`today-reservation-skeleton-${index}`} className="staff-skeleton-row" />
+              ))}
+            </div>
+          ) : todayReservationsError ? (
+            <>
+              <div className="staff-note staff-note-error">
+                Reservations are temporarily unavailable: {todayReservationsError}
+              </div>
+              <div className="staff-actions-row">
+                <button className="btn btn-secondary btn-small" onClick={() => void run("retryTodayReservations", loadTodayReservations)}>
+                  Retry
+                </button>
+                <button className="btn btn-ghost btn-small" onClick={openReservationsToday}>
+                  Open reservations
+                </button>
+              </div>
+            </>
+          ) : todayReservations.length === 0 ? (
+            <>
+              <div className="staff-note">No reservations due today.</div>
+              <div className="staff-actions-row">
+                <button className="btn btn-secondary btn-small" onClick={openReservationsToday}>
+                  Open full calendar
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <ul className="staff-today-list" aria-label="Reservations today">
+                {todayReservations.map((reservation) => (
+                  <li key={reservation.id}>
+                    <button
+                      type="button"
+                      className="staff-today-row"
+                      onClick={() => openReservationDetail(reservation.id)}
+                    >
+                      <div className="staff-today-row-top">
+                        <strong>{reservation.displayName}</strong>
+                        <span>{toShortTimeLabel(reservation.timeMs)}</span>
+                      </div>
+                      <div className="staff-today-row-meta">
+                        <span>{reservation.itemCount} item{reservation.itemCount === 1 ? "" : "s"}</span>
+                        <span className="pill">{reservation.status}</span>
+                        <span>{reservation.visitType}</span>
+                      </div>
+                      {reservation.notes ? <div className="staff-today-row-note">{shortText(reservation.notes, 120)}</div> : null}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="staff-actions-row">
+                <button className="btn btn-ghost btn-small" onClick={openReservationsToday}>
+                  View all reservations
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+
+        <section className="card staff-console-card staff-today-card">
+          <div className="card-title-row">
+            <div className="card-title">Messages</div>
+            <button className="btn btn-secondary btn-small" onClick={openMessagesInbox}>
+              Open inbox
+            </button>
+          </div>
+          <p className="card-subtitle">
+            Unread conversations, support requests, and operational communication in one quick list.
+          </p>
+          <div className="staff-meta-inline">
+            <span className="pill">Unread {unreadMessageCount}</span>
+            <span className="pill">Announcements {unreadAnnouncements}</span>
+            <span className="pill">Posts {announcements.length}</span>
+          </div>
+          {messageThreadsLoading || announcementsLoading ? (
+            <div className="staff-skeleton-list" aria-hidden="true">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={`today-message-skeleton-${index}`} className="staff-skeleton-row" />
+              ))}
+            </div>
+          ) : messagesDegraded ? (
+            <>
+              <div className="staff-note staff-note-warn">
+                Degraded mode: message feeds may be delayed.
+                {messageThreadsError ? ` Threads: ${messageThreadsError}.` : ""}
+                {announcementsError ? ` Announcements: ${announcementsError}.` : ""}
+              </div>
+              <div className="staff-actions-row">
+                <button className="btn btn-secondary btn-small" onClick={openMessagesInbox}>
+                  View all messages
+                </button>
+              </div>
+            </>
+          ) : todayMessageRows.length === 0 ? (
+            <>
+              <div className="staff-note">No active conversations right now.</div>
+              <div className="staff-actions-row">
+                <button className="btn btn-secondary btn-small" onClick={openMessagesInbox}>
+                  Send message
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <ul className="staff-today-list" aria-label="Recent messages">
+                {todayMessageRows.map((thread) => {
+                  const unread = isDirectMessageUnread(thread, user.uid);
+                  const sender = firstNonBlankString(thread.lastSenderName, thread.lastSenderEmail, thread.subject, "Conversation");
+                  const snippet = firstNonBlankString(thread.lastMessagePreview, thread.subject, "Open thread");
+                  const atMs = readTimestampMs(thread.lastMessageAt);
+                  return (
+                    <li key={thread.id}>
+                      <button type="button" className="staff-today-row" onClick={() => openMessageThread(thread.id)}>
+                        <div className="staff-today-row-top">
+                          <strong>{sender}</strong>
+                          <span>{atMs ? when(atMs) : "-"}</span>
+                        </div>
+                        <div className="staff-today-row-meta">
+                          <span>{thread.kind || "direct"}</span>
+                          {unread ? <span className="staff-unread-dot">Unread</span> : <span>Read</span>}
+                        </div>
+                        <div className="staff-today-row-note">{shortText(snippet, 120)}</div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="staff-actions-row">
+                <button className="btn btn-ghost btn-small" onClick={openMessagesInbox}>
+                  View all messages
+                </button>
+                <button className="btn btn-ghost btn-small" onClick={openMessagesInbox}>
+                  Send message
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+
+        <section className="card staff-console-card staff-today-card">
+          <div className="card-title-row">
+            <div className="card-title">Firings</div>
+            <button
+              className="btn btn-secondary btn-small"
+              disabled={Boolean(busy) || firingsLoading}
+              onClick={() => void run("refreshTodayFirings", loadFirings)}
+            >
+              {firingsLoading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+          <p className="card-subtitle">
+            Single active firing model with quick launch and iPad photo capture for kiln evidence.
+          </p>
+          {firingsLoading ? (
+            <div className="staff-skeleton-list" aria-hidden="true">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={`today-firing-skeleton-${index}`} className="staff-skeleton-row" />
+              ))}
+            </div>
+          ) : firingsError ? (
+            <>
+              <div className="staff-note staff-note-error">Firings are unavailable: {firingsError}</div>
+              <div className="staff-actions-row">
+                <button className="btn btn-secondary btn-small" onClick={() => void run("retryTodayFirings", loadFirings)}>
+                  Retry
+                </button>
+                <button className="btn btn-ghost btn-small" onClick={openFiringsWorkspace}>
+                  Open firings view
+                </button>
+              </div>
+            </>
+          ) : activeFiring ? (
+            <>
+              <div className="staff-note">
+                <strong>{activeFiring.kilnName || activeFiring.kilnId || "Kiln unknown"}</strong> · {activeFiring.status}
+                <div className="staff-mini">
+                  Started {activeFiring.startAtMs ? formatDateTime(activeFiring.startAtMs) : "time pending"} · last update{" "}
+                  {activeFiring.updatedAtMs ? when(activeFiring.updatedAtMs) : "-"}
+                </div>
+              </div>
+              <div className="staff-actions-row">
+                <button className="btn btn-secondary btn-small" onClick={openFiringsWorkspace}>
+                  Monitor firing
+                </button>
+                <button className="btn btn-ghost btn-small" onClick={startFiringFlow}>
+                  Start new firing
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="staff-note">No active firing. Start a new run from the queue workflow.</div>
+              <div className="staff-actions-row">
+                <button className="btn btn-primary btn-small" onClick={startFiringFlow}>
+                  Start New Firing
+                </button>
+              </div>
+            </>
+          )}
+          <label className="staff-field">
+            Capture kiln/status photo
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              disabled={firingPhotoBusy}
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                void handleFiringPhotoFile(file);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+          <div className="staff-mini">
+            Photos now upload to portal storage. Existing Kilnfire storage remains intact during migration.
+          </div>
+          {firingPhotoStatus ? <div className="staff-note staff-note-ok">{firingPhotoStatus}</div> : null}
+          {firingPhotoError ? <div className="staff-note staff-note-error">{firingPhotoError}</div> : null}
+        </section>
+
+        <section className="card staff-console-card staff-today-card">
+          <div className="card-title-row">
+            <div className="card-title">Payment alerts (P0/P1)</div>
+            <button
+              className="btn btn-secondary btn-small"
+              disabled={Boolean(busy) || commerceLoading}
+              onClick={() =>
+                void run("refreshTodayPayments", async () => {
+                  await Promise.allSettled([loadCommerce(), loadAutomationHealthDashboard()]);
+                })
+              }
+            >
+              {commerceLoading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+          <p className="card-subtitle">
+            Critical payment and smoke/canary risk signals only. Use details links for full transaction workflows.
+          </p>
+          {paymentDegraded ? (
+            <div className="staff-note staff-note-warn">
+              Degraded mode: payments status may be delayed.
+              {commerceError ? ` ${commerceError}` : ""}
+            </div>
+          ) : null}
+          {commerceLoading ? (
+            <div className="staff-skeleton-list" aria-hidden="true">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={`today-payment-skeleton-${index}`} className="staff-skeleton-row" />
+              ))}
+            </div>
+          ) : paymentAlerts.length === 0 ? (
+            <>
+              <div className="staff-note">No P0/P1 payment alerts right now.</div>
+              <div className="staff-actions-row">
+                <button className="btn btn-ghost btn-small" onClick={() => openModuleFromCockpit("commerce")}>
+                  Payment lookup
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <ul className="staff-today-list" aria-label="Payment alerts">
+                {paymentAlerts.map((alert) => (
+                  <li key={alert.id}>
+                    <div className="staff-today-row staff-today-row-static">
+                      <div className="staff-today-row-top">
+                        <strong>{alert.title}</strong>
+                        <span className={`pill ${alert.severity === "P0" ? "staff-pill-danger" : "staff-pill-warn"}`}>
+                          {alert.severity}
+                        </span>
+                      </div>
+                      <div className="staff-today-row-note">{alert.detail}</div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <div className="staff-actions-row">
+                <button className="btn btn-secondary btn-small" onClick={() => openModuleFromCockpit("commerce")}>
+                  View payment details
+                </button>
+                <button className="btn btn-ghost btn-small" onClick={() => openModuleFromCockpit("stripe")}>
+                  Open Stripe settings
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+      </section>
+
+      <section className="card staff-console-card">
+        <div className="card-title">System status summary</div>
+        <p className="card-subtitle">Operational health at a glance with one link to advanced tools.</p>
+        <div className="staff-note">
+          <strong>{systemSummaryToneLabel}</strong> · {systemSummaryMessage}
+        </div>
+        <div className="staff-note staff-note-muted">
+          Advanced diagnostics, policy controls, and agent operations have moved off this primary page.
+        </div>
+        <div className="staff-actions-row">
+          <button className="btn btn-secondary" onClick={() => setModuleKey("system")}>
+            Open System Tools
+          </button>
+          <button className="btn btn-ghost" onClick={openSystemWorkspace}>
+            Open dedicated /staff/system
+          </button>
+        </div>
+      </section>
+    </section>
+  );
+
+  const systemWorkspaceContent = (
+    <section className="staff-system-workspace">
+      <section className="card staff-console-card">
+        <div className="card-title">System tools workspace</div>
+        <p className="card-subtitle">
+          Internal tooling, diagnostics, policy controls, and agent operations live here to keep the Today Console focused.
+        </p>
+      </section>
+      {systemContent}
+      {legacySystemOpsContent}
+    </section>
+  );
+
   const moduleContentByKey: Record<ModuleKey, ReactNode> = {
     cockpit: cockpitContent,
     checkins: (
@@ -5708,11 +9609,10 @@ const lendingContent = (
     firings: firingsContent,
     events: eventsContent,
     reports: reportsContent,
-    studioBrain: studioBrainContent,
     stripe: stripeContent,
     commerce: commerceContent,
     lending: lendingContent,
-    system: systemContent,
+    system: systemWorkspaceContent,
   };
   const moduleContent = moduleContentByKey[moduleKey];
 
@@ -5732,89 +9632,101 @@ const lendingContent = (
 
   return (
     <div className="staff-console">
-      <div className="staff-hero card card-3d">
-        <div className="card-title-row">
-          <div className="card-title">Staff Console</div>
-          <div className="staff-hero-actions">
-            <button
-              className="btn btn-secondary"
-              disabled={Boolean(busy)}
-              onClick={() =>
-                void run("refreshModule", async () => {
-                  await loadModule(moduleKey);
-                  setStatus(`Loaded ${moduleKey} module.`);
-                })
-              }
-            >
-              {busy ? "Working..." : "Load current module"}
+      <section className="staff-console-toolbar">
+        <div className="staff-console-title">Staff console</div>
+        <p className="staff-console-description">
+          Manage members, pieces, firings, events, billing, lending, and system health.
+        </p>
+        <div className="staff-actions-row">
+          <button
+            className="btn btn-secondary"
+            disabled={Boolean(busy)}
+            onClick={() =>
+              void run("refreshModule", async () => {
+                await loadModule(moduleKey);
+                setStatus(`Loaded ${moduleKey} module.`);
+              })
+            }
+          >
+            {busy ? "Working..." : "Load current module"}
+          </button>
+          <button
+            className="btn btn-ghost"
+            disabled={Boolean(busy)}
+            onClick={() =>
+              void run("refreshAll", async () => {
+                await loadAll();
+                setStatus("Refreshed all modules");
+              })
+            }
+          >
+            Refresh all
+          </button>
+          {onOpenCheckin ? (
+            <button className="btn btn-ghost" type="button" onClick={onOpenCheckin}>
+              Open ware check-in
             </button>
+          ) : null}
+          {moduleKey === "cockpit" && !forceCockpitWorkspace ? (
             <button
               className="btn btn-ghost"
-              disabled={Boolean(busy)}
-              onClick={() =>
-                void run("refreshAll", async () => {
-                  await loadAll();
-                  setStatus("Refreshed all modules");
-                })
-              }
+              type="button"
+              onClick={() => setCockpitWorkspaceMode((prev) => !prev)}
             >
-              Refresh all
+              {cockpitWorkspaceMode ? "Show module rail" : "Focus cockpit workspace"}
             </button>
-            {onOpenCheckin ? (
-              <button className="btn btn-ghost" type="button" onClick={onOpenCheckin}>
-                Open ware check-in
-              </button>
-            ) : null}
-            {moduleKey === "cockpit" && !forceCockpitWorkspace ? (
-              <button
-                className="btn btn-ghost"
-                type="button"
-                onClick={() => setCockpitWorkspaceMode((prev) => !prev)}
-              >
-                {cockpitWorkspaceMode ? "Show module rail" : "Focus cockpit workspace"}
-              </button>
-            ) : null}
-            {moduleKey === "cockpit" ? (
-              <button
-                className="btn btn-ghost"
-                type="button"
-                onClick={() => {
-                  if (typeof window === "undefined") return;
-                  if (forceCockpitWorkspace) {
-                    window.location.assign("/staff");
-                    return;
-                  }
-                  window.open("/staff/cockpit", "_blank", "noopener");
-                }}
-              >
-                {forceCockpitWorkspace ? "Open full staff console" : "Open dedicated cockpit page"}
-              </button>
-            ) : null}
-            {moduleKey === "events" ? (
-              <button
-                className="btn btn-ghost"
-                type="button"
-                onClick={() => {
-                  if (typeof window === "undefined") return;
-                  if (forceEventsWorkspace) {
-                    window.location.assign("/staff");
-                    return;
-                  }
-                  window.open("/staff/workshops", "_blank", "noopener");
-                }}
-              >
-                {forceEventsWorkspace ? "Open full staff console" : "Open dedicated workshops page"}
-              </button>
-            ) : null}
-          </div>
+          ) : null}
+          {moduleKey === "cockpit" ? (
+            <button
+              className="btn btn-ghost"
+              type="button"
+              onClick={() => {
+                if (typeof window === "undefined") return;
+                if (forceCockpitWorkspace) {
+                  window.location.assign("/staff");
+                  return;
+                }
+                window.open("/staff/cockpit", "_blank", "noopener");
+              }}
+            >
+              {forceCockpitWorkspace ? "Open full staff console" : "Open dedicated cockpit page"}
+            </button>
+          ) : null}
+          {moduleKey === "events" ? (
+            <button
+              className="btn btn-ghost"
+              type="button"
+              onClick={() => {
+                if (typeof window === "undefined") return;
+                if (forceEventsWorkspace) {
+                  window.location.assign("/staff");
+                  return;
+                }
+                window.open("/staff/workshops", "_blank", "noopener");
+              }}
+            >
+              {forceEventsWorkspace ? "Open full staff console" : "Open dedicated workshops page"}
+            </button>
+          ) : null}
+          {moduleKey === "system" ? (
+            <button
+              className="btn btn-ghost"
+              type="button"
+              onClick={() => {
+                if (typeof window === "undefined") return;
+                if (forceSystemWorkspace) {
+                  window.location.assign("/staff");
+                  return;
+                }
+                window.open("/staff/system", "_blank", "noopener");
+              }}
+            >
+              {forceSystemWorkspace ? "Open full staff console" : "Open dedicated system page"}
+            </button>
+          ) : null}
         </div>
-        <p className="card-subtitle">Portal administration for users, pieces, firings, events, store, lending, and system health.</p>
-        <div className="staff-note">Data is lazy-loaded. Start with <strong>Load current module</strong> to keep reads controlled.</div>
-        <div className="staff-meta">
-          <div><span className="label">Signed in</span><strong>{user.displayName ?? "Staff"}</strong></div>
-          <div><span className="label">Role</span><strong>{staffAuthorityLabel}</strong></div>
-          <div><span className="label">Email</span><strong>{user.email ?? "-"}</strong></div>
-          <div><span className="label">UID</span><strong>{user.uid}</strong></div>
+        <div className="staff-mini">
+          Data loads lazily. Start with <strong>Load current module</strong> when you want focused refreshes.
         </div>
         {hasFunctionsAuthMismatch ? <div className="staff-note">Functions emulator is local, but Auth emulator is off. StaffView is running in Firestore-only safe mode for function-backed modules.</div> : null}
         {studioBrainUiState ? (
@@ -5840,9 +9752,9 @@ const lendingContent = (
             {error}
           </div>
         ) : null}
-      </div>
+      </section>
 
-        <div className={`staff-console-layout ${isWorkspaceFocused ? "staff-console-layout-cockpit" : ""}`}>
+      <div className={`staff-console-layout ${isWorkspaceFocused ? "staff-console-layout-cockpit" : ""}`}>
         {!isWorkspaceFocused ? (
           <aside className="card staff-console-nav">
           <div className="staff-subtitle">Modules</div>
@@ -5901,7 +9813,16 @@ const lendingContent = (
           ) : null}
           </aside>
         ) : null}
-        <div className="staff-console-content" ref={moduleContentRef}>{moduleContent}</div>
+        <div
+          className={`staff-console-content ${isWorkspaceFocused ? "staff-console-content-focused" : ""}`}
+          ref={moduleContentRef}
+        >
+          {moduleContent}
+        </div>
+      </div>
+      <div className="staff-identity-statusline staff-identity-statusline-footer">
+        Signed in as <strong>{user.displayName ?? "Staff"}</strong> · Role <strong>{staffAuthorityLabel}</strong> · Email{" "}
+        <strong>{user.email ?? "-"}</strong> · UID <strong>{user.uid}</strong>
       </div>
     </div>
   );

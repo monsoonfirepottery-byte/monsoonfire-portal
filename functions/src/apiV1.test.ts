@@ -187,6 +187,90 @@ function withMockFirestore<T>(
   });
 }
 
+function createStatefulRunTransaction(state: MockDbState) {
+  let queue = Promise.resolve();
+
+  return async (txCallback: (tx: MockTransaction) => Promise<unknown>): Promise<unknown> => {
+    let releaseQueue: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      releaseQueue = resolve;
+    });
+    const previous = queue;
+    queue = previous.then(() => gate);
+    await previous;
+
+    try {
+      const pendingWrites: Array<{
+        collectionName: string;
+        docId: string;
+        value: Record<string, unknown>;
+        merge: boolean;
+      }> = [];
+
+      const tx = {
+        get: async (docRef: unknown) => {
+          const maybeDoc = docRef as { __mfCollection?: unknown; __mfDocId?: unknown; get?: unknown };
+          if (
+            maybeDoc &&
+            typeof maybeDoc.__mfCollection === "string" &&
+            typeof maybeDoc.__mfDocId === "string"
+          ) {
+            const rows = state[maybeDoc.__mfCollection] ?? {};
+            const row = Object.prototype.hasOwnProperty.call(rows, maybeDoc.__mfDocId)
+              ? rows[maybeDoc.__mfDocId]
+              : null;
+            return createSnapshot(maybeDoc.__mfDocId, row);
+          }
+
+          if (maybeDoc && typeof maybeDoc.get === "function") {
+            return await (maybeDoc.get as () => Promise<unknown>)();
+          }
+
+          throw new Error("Unsupported tx.get target in stateful test mock");
+        },
+        set: async (docRef: unknown, value: unknown, options?: { merge?: boolean }) => {
+          const maybeDoc = docRef as { __mfCollection?: unknown; __mfDocId?: unknown };
+          if (
+            !maybeDoc ||
+            typeof maybeDoc.__mfCollection !== "string" ||
+            typeof maybeDoc.__mfDocId !== "string"
+          ) {
+            throw new Error("Unsupported tx.set target in stateful test mock");
+          }
+          pendingWrites.push({
+            collectionName: maybeDoc.__mfCollection,
+            docId: maybeDoc.__mfDocId,
+            value: value && typeof value === "object" ? ({ ...(value as Record<string, unknown>) }) : {},
+            merge: options?.merge === true,
+          });
+        },
+      } as unknown as MockTransaction;
+
+      const result = await txCallback(tx);
+
+      for (const write of pendingWrites) {
+        const rows = state[write.collectionName] ?? {};
+        if (!Object.prototype.hasOwnProperty.call(state, write.collectionName)) {
+          state[write.collectionName] = rows;
+        }
+        const existing = rows[write.docId];
+        const base =
+          write.merge && existing && typeof existing === "object"
+            ? { ...(existing as Record<string, unknown>) }
+            : {};
+        rows[write.docId] = {
+          ...base,
+          ...write.value,
+        };
+      }
+
+      return result;
+    } finally {
+      releaseQueue();
+    }
+  };
+}
+
 async function withMockedRateLimit<T>(callback: () => Promise<T>): Promise<T> {
   const runtime = shared as unknown as { enforceRateLimit: typeof shared.enforceRateLimit };
   const original = runtime.enforceRateLimit;
@@ -434,6 +518,24 @@ function cloneState(state: MockDbState): MockDbState {
   return JSON.parse(JSON.stringify(state)) as MockDbState;
 }
 
+function lendingIdempotencyDocId(
+  actorUid: string,
+  operation: "checkout" | "checkIn" | "markLost" | "assessReplacementFee",
+  key: string,
+): string {
+  return shared.makeIdempotencyId(`library-loan-${operation}`, actorUid, key);
+}
+
+function lendingIdempotencyFingerprint(
+  operation: "checkout" | "checkIn" | "markLost" | "assessReplacementFee",
+  payload: Record<string, unknown>,
+): string {
+  return JSON.stringify({
+    operation,
+    payload,
+  });
+}
+
 function withoutRequestId(body: unknown): Record<string, unknown> {
   if (!body || typeof body !== "object") return {};
   const out = { ...(body as Record<string, unknown>) };
@@ -453,6 +555,26 @@ async function invokeApiV1Route(state: MockDbState, request: shared.RequestLike)
     body: response.body(),
     headers: response.headers(),
   };
+}
+
+async function setLibraryRolloutPhaseForTest(
+  phase: "phase_1_read_only" | "phase_2_member_writes" | "phase_3_admin_full",
+): Promise<void> {
+  const request = makeRequest(
+    "/v1/library.rollout.set",
+    {
+      phase,
+      note: "apiV1.test rollout fixture",
+    },
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+  await withMockedRateLimit(async () =>
+    withMockFirestore({}, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+  assert.equal(response.status(), 200, JSON.stringify(response.body()));
 }
 
 test("toTimelineEventRow normalizes explicit fields and drops unknown fields", () => {
@@ -785,6 +907,2023 @@ test("handleApiV1 dispatches /v1/batches.timeline.list with projected timeline r
       ],
     },
   });
+});
+
+test("handleApiV1 dispatches /v1/library.items.list with filtering and computed aggregates", async () => {
+  const request = makeRequest(
+    "/v1/library.items.list",
+    { q: "glaze", sort: "highest_rated", page: 1, pageSize: 10 },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-1": {
+        title: "Glaze Atlas",
+        authors: ["A. Potter"],
+        mediaType: "book",
+        status: "available",
+        createdAt: { seconds: 100 },
+      },
+      "item-2": {
+        title: "Kiln Maintenance Manual",
+        author: "B. Fire",
+        mediaType: "book",
+        status: "checked_out",
+        createdAt: { seconds: 120 },
+      },
+      "item-archived": {
+        title: "Archived title",
+        mediaType: "book",
+        deletedAt: { seconds: 400 },
+      },
+    },
+    libraryReviews: {
+      "review-1": {
+        itemId: "item-1",
+        body: "excellent glaze chemistry reference",
+        practicality: 5,
+        createdAt: { seconds: 200 },
+      },
+      "review-2": {
+        itemId: "item-2",
+        body: "good kiln checklists",
+        practicality: 3,
+        createdAt: { seconds: 150 },
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      items: Array<Record<string, unknown>>;
+      total: number;
+      page: number;
+      pageSize: number;
+      sort: string;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.total, 1);
+  assert.equal(body.data.page, 1);
+  assert.equal(body.data.pageSize, 10);
+  assert.equal(body.data.sort, "highest_rated");
+  assert.equal(body.data.items.length, 1);
+  assert.equal(body.data.items[0]?.id, "item-1");
+  assert.equal(body.data.items[0]?.status, "available");
+  assert.equal(body.data.items[0]?.aggregateRating, 5);
+});
+
+test("handleApiV1 highest_rated uses stored aggregate rating count for tie-breaks", async () => {
+  const request = makeRequest(
+    "/v1/library.items.list",
+    { sort: "highest_rated", page: 1, pageSize: 10 },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-1": {
+        title: "Glaze Atlas",
+        mediaType: "book",
+        status: "available",
+        aggregateRating: 4.4,
+        aggregateRatingCount: 12,
+        createdAt: { seconds: 100 },
+      },
+      "item-2": {
+        title: "Kiln Notes",
+        mediaType: "book",
+        status: "available",
+        aggregateRating: 4.4,
+        aggregateRatingCount: 2,
+        createdAt: { seconds: 120 },
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      items: Array<Record<string, unknown>>;
+      total: number;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.total, 2);
+  assert.equal(body.data.items.length, 2);
+  assert.equal(body.data.items[0]?.id, "item-1");
+  assert.equal(body.data.items[1]?.id, "item-2");
+});
+
+test("handleApiV1 rejects non-firebase callers for library routes", async () => {
+  const request = makeRequest("/v1/library.items.list", { page: 1, pageSize: 10 }, patContext());
+  const response = createResponse();
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore({}, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 403);
+  const body = response.body() as { ok: boolean; code: string; message: string };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "FORBIDDEN");
+});
+
+test("handleApiV1 /v1/library.rollout.get returns default rollout config", async () => {
+  const request = makeRequest(
+    "/v1/library.rollout.get",
+    {},
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore({}, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200, JSON.stringify(response.body()));
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      phase: string;
+      note: string | null;
+      updatedByUid: string | null;
+      updatedAtMs: number;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.phase, "phase_3_admin_full");
+  assert.equal(body.data.note, null);
+  assert.equal(body.data.updatedByUid, null);
+  assert.equal(body.data.updatedAtMs, 0);
+});
+
+test("handleApiV1 rollout phase_1_read_only blocks member write routes with explicit code and message", async () => {
+  try {
+    await setLibraryRolloutPhaseForTest("phase_1_read_only");
+
+    const request = makeRequest(
+      "/v1/library.recommendations.create",
+      {
+        title: "Kiln loading basics",
+        rationale: "Great book for baseline loading habits.",
+      },
+      firebaseContext({ uid: "owner-1" }),
+    );
+    const response = createResponse();
+
+    await withMockedRateLimit(async () =>
+      withMockFirestore({}, async () => {
+        await handleApiV1(request, response.res);
+      }),
+    );
+
+    assert.equal(response.status(), 403, JSON.stringify(response.body()));
+    const body = response.body() as {
+      ok: boolean;
+      code: string;
+      message: string;
+      details: { phase?: string; requiredPhase?: string | null };
+    };
+    assert.equal(body.ok, false);
+    assert.equal(body.code, "LIBRARY_ROLLOUT_BLOCKED");
+    assert.equal(body.message, "Library rollout phase phase_1_read_only allows read routes only.");
+    assert.equal(body.details?.phase, "phase_1_read_only");
+    assert.equal(body.details?.requiredPhase, "phase_2_member_writes");
+  } finally {
+    await setLibraryRolloutPhaseForTest("phase_3_admin_full");
+  }
+});
+
+test("handleApiV1 rollout phase_2_member_writes blocks admin routes but allows member writes", async () => {
+  try {
+    await setLibraryRolloutPhaseForTest("phase_2_member_writes");
+
+    const blockedAdminRequest = makeRequest(
+      "/v1/library.items.importIsbns",
+      { isbns: ["9780131103627"] },
+      staffContext({ uid: "staff-1" }),
+    );
+    const blockedAdminResponse = createResponse();
+    await withMockedRateLimit(async () =>
+      withMockFirestore({}, async () => {
+        await handleApiV1(blockedAdminRequest, blockedAdminResponse.res);
+      }),
+    );
+    assert.equal(blockedAdminResponse.status(), 403, JSON.stringify(blockedAdminResponse.body()));
+    const blockedAdminBody = blockedAdminResponse.body() as {
+      ok: boolean;
+      code: string;
+      message: string;
+      details: { phase?: string; requiredPhase?: string | null };
+    };
+    assert.equal(blockedAdminBody.ok, false);
+    assert.equal(blockedAdminBody.code, "LIBRARY_ROLLOUT_BLOCKED");
+    assert.equal(
+      blockedAdminBody.message,
+      "Library rollout phase phase_2_member_writes does not allow admin routes yet.",
+    );
+    assert.equal(blockedAdminBody.details?.phase, "phase_2_member_writes");
+    assert.equal(blockedAdminBody.details?.requiredPhase, "phase_3_admin_full");
+
+    const allowedMemberWriteRequest = makeRequest(
+      "/v1/library.recommendations.create",
+      {
+        title: "Wheel trimming patterns",
+        rationale: "Useful examples for clean finishing workflow.",
+      },
+      firebaseContext({ uid: "owner-1" }),
+    );
+    const allowedMemberWriteResponse = createResponse();
+    await withMockedRateLimit(async () =>
+      withMockFirestore({}, async () => {
+        await handleApiV1(allowedMemberWriteRequest, allowedMemberWriteResponse.res);
+      }),
+    );
+    assert.equal(allowedMemberWriteResponse.status(), 200, JSON.stringify(allowedMemberWriteResponse.body()));
+  } finally {
+    await setLibraryRolloutPhaseForTest("phase_3_admin_full");
+  }
+});
+
+test("handleApiV1 /v1/library.rollout.set updates config for staff and rejects non-staff", async () => {
+  try {
+    const staffRequest = makeRequest(
+      "/v1/library.rollout.set",
+      {
+        phase: "phase_1_read_only",
+        note: "Canary rollout for read-only access.",
+      },
+      staffContext({ uid: "staff-1" }),
+    );
+    const staffResponse = createResponse();
+    await withMockedRateLimit(async () =>
+      withMockFirestore({}, async () => {
+        await handleApiV1(staffRequest, staffResponse.res);
+      }),
+    );
+
+    assert.equal(staffResponse.status(), 200, JSON.stringify(staffResponse.body()));
+    const staffBody = staffResponse.body() as {
+      ok: boolean;
+      data: {
+        phase: string;
+        note: string | null;
+        updatedByUid: string | null;
+      };
+    };
+    assert.equal(staffBody.ok, true);
+    assert.equal(staffBody.data.phase, "phase_1_read_only");
+    assert.equal(staffBody.data.note, "Canary rollout for read-only access.");
+    assert.equal(staffBody.data.updatedByUid, "staff-1");
+
+    const nonStaffRequest = makeRequest(
+      "/v1/library.rollout.set",
+      { phase: "phase_2_member_writes" },
+      firebaseContext({ uid: "owner-1" }),
+    );
+    const nonStaffResponse = createResponse();
+    await withMockedRateLimit(async () =>
+      withMockFirestore({}, async () => {
+        await handleApiV1(nonStaffRequest, nonStaffResponse.res);
+      }),
+    );
+
+    assert.equal(nonStaffResponse.status(), 403);
+    const nonStaffBody = nonStaffResponse.body() as { ok: boolean; code: string };
+    assert.equal(nonStaffBody.ok, false);
+    assert.equal(nonStaffBody.code, "FORBIDDEN");
+  } finally {
+    await setLibraryRolloutPhaseForTest("phase_3_admin_full");
+  }
+});
+
+test("handleApiV1 dispatches /v1/library.items.get with projected item payload", async () => {
+  const request = makeRequest(
+    "/v1/library.items.get",
+    { itemId: "item-2" },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-2": {
+        title: "Kiln Maintenance Manual",
+        author: "B. Fire",
+        mediaType: "book",
+        status: "checked_out",
+      },
+    },
+    libraryReviews: {
+      "review-2": {
+        itemId: "item-2",
+        body: "good kiln checklists",
+        practicality: 3,
+        createdAt: { seconds: 150 },
+      },
+    },
+    libraryLoans: {
+      "loan-1": { itemId: "item-2", status: "returned" },
+      "loan-2": { itemId: "item-2", status: "checked_out" },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as { ok: boolean; data: { item: Record<string, unknown> } };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.item.id, "item-2");
+  assert.equal(body.data.item.status, "checked_out");
+  assert.equal(body.data.item.aggregateRating, 3);
+  assert.equal(body.data.item.borrowCount, 2);
+});
+
+test("handleApiV1 dispatches /v1/library.discovery.get with required sections", async () => {
+  const request = makeRequest(
+    "/v1/library.discovery.get",
+    { limit: 2 },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-1": {
+        title: "Staff Pick Clay",
+        mediaType: "book",
+        staffPick: true,
+        createdAt: { seconds: 100 },
+      },
+      "item-2": {
+        title: "Popular Borrow",
+        mediaType: "book",
+        createdAt: { seconds: 200 },
+      },
+      "item-3": {
+        title: "Fresh Review",
+        mediaType: "book",
+        createdAt: { seconds: 300 },
+      },
+    },
+    libraryReviews: {
+      "review-1": { itemId: "item-3", practicality: 4, body: "helpful", createdAt: { seconds: 500 } },
+    },
+    libraryLoans: {
+      "loan-1": { itemId: "item-2", status: "returned" },
+      "loan-2": { itemId: "item-2", status: "checked_out" },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      limit: number;
+      staffPicks: Array<Record<string, unknown>>;
+      mostBorrowed: Array<Record<string, unknown>>;
+      recentlyAdded: Array<Record<string, unknown>>;
+      recentlyReviewed: Array<Record<string, unknown>>;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.limit, 2);
+  assert.equal(body.data.staffPicks.length, 1);
+  assert.equal(body.data.staffPicks[0]?.id, "item-1");
+  assert.equal(body.data.mostBorrowed.length, 2);
+  assert.equal(body.data.mostBorrowed[0]?.id, "item-2");
+  assert.equal(body.data.recentlyAdded[0]?.id, "item-3");
+  assert.equal(body.data.recentlyReviewed[0]?.id, "item-3");
+});
+
+test("handleApiV1 rejects /v1/library.items.importIsbns for non-staff firebase caller", async () => {
+  const request = makeRequest(
+    "/v1/library.items.importIsbns",
+    { isbns: ["9780131103627"] },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore({}, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 403);
+  const body = response.body() as { ok: boolean; code: string };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "FORBIDDEN");
+});
+
+test("handleApiV1 rejects non-staff firebase callers for library item admin lifecycle routes", async () => {
+  const scenarios: Array<{ route: string; body: Record<string, unknown> }> = [
+    {
+      route: "/v1/library.items.resolveIsbn",
+      body: { isbn: "9780132350884", allowRemoteLookup: false },
+    },
+    {
+      route: "/v1/library.items.create",
+      body: { isbn: "9780132350884", allowRemoteLookup: false },
+    },
+    {
+      route: "/v1/library.items.update",
+      body: { itemId: "item-1", title: "Updated title" },
+    },
+    {
+      route: "/v1/library.items.delete",
+      body: { itemId: "item-1" },
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const request = makeRequest(scenario.route, scenario.body, firebaseContext({ uid: "owner-1" }));
+    const response = createResponse();
+    await withMockedRateLimit(async () =>
+      withMockFirestore({}, async () => {
+        await handleApiV1(request, response.res);
+      }),
+    );
+    assert.equal(response.status(), 403, `${scenario.route} expected status 403`);
+    const body = response.body() as { ok: boolean; code: string };
+    assert.equal(body.ok, false, `${scenario.route} expected ok=false`);
+    assert.equal(body.code, "FORBIDDEN", `${scenario.route} expected FORBIDDEN`);
+  }
+});
+
+test("handleApiV1 dispatches /v1/library.items.resolveIsbn with success and fallback results", async () => {
+  const successRequest = makeRequest(
+    "/v1/library.items.resolveIsbn",
+    { isbn: "9780132350884", allowRemoteLookup: false },
+    staffContext({ uid: "staff-1" }),
+  );
+  const successResponse = createResponse();
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore({}, async () => {
+      await handleApiV1(successRequest, successResponse.res);
+    }),
+  );
+
+  assert.equal(successResponse.status(), 200, JSON.stringify(successResponse.body()));
+  const successBody = successResponse.body() as {
+    ok: boolean;
+    requestId: string;
+    data: {
+      source: string;
+      fallback: boolean;
+      isbn13: string | null;
+      item: { title: string };
+    };
+  };
+  assert.equal(successBody.ok, true);
+  assert.ok(typeof successBody.requestId === "string" && successBody.requestId.length > 0);
+  assert.equal(successBody.data.source, "local_reference");
+  assert.equal(successBody.data.fallback, false);
+  assert.equal(successBody.data.isbn13, "9780132350884");
+  assert.equal(successBody.data.item.title, "Clean Code");
+
+  const fallbackRequest = makeRequest(
+    "/v1/library.items.resolveIsbn",
+    { isbn: "9780000000000", allowRemoteLookup: false },
+    staffContext({ uid: "staff-1" }),
+  );
+  const fallbackResponse = createResponse();
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore({}, async () => {
+      await handleApiV1(fallbackRequest, fallbackResponse.res);
+    }),
+  );
+
+  assert.equal(fallbackResponse.status(), 200, JSON.stringify(fallbackResponse.body()));
+  const fallbackBody = fallbackResponse.body() as {
+    ok: boolean;
+    data: {
+      source: string;
+      fallback: boolean;
+      item: { title: string };
+    };
+  };
+  assert.equal(fallbackBody.ok, true);
+  assert.equal(fallbackBody.data.source, "manual");
+  assert.equal(fallbackBody.data.fallback, true);
+  assert.equal(fallbackBody.data.item.title, "ISBN 9780000000000");
+});
+
+test("handleApiV1 /v1/library.items.resolveIsbn rejects invalid isbn input", async () => {
+  const request = makeRequest(
+    "/v1/library.items.resolveIsbn",
+    { isbn: "not-an-isbn", allowRemoteLookup: false },
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore({}, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 400, JSON.stringify(response.body()));
+  const body = response.body() as {
+    ok: boolean;
+    code: string;
+    details: { reasonCode: string };
+  };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "INVALID_ARGUMENT");
+  assert.equal(body.details.reasonCode, "INVALID_ISBN");
+});
+
+test("handleApiV1 /v1/library.items.create returns conflict for duplicate active isbn", async () => {
+  const request = makeRequest(
+    "/v1/library.items.create",
+    {
+      isbn: "9780132350884",
+      allowRemoteLookup: false,
+      title: "Duplicate Clean Code Copy",
+    },
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-existing": {
+        title: "Clean Code",
+        isbn13: "9780132350884",
+        status: "available",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 409, JSON.stringify(response.body()));
+  const body = response.body() as {
+    ok: boolean;
+    code: string;
+    details: { reasonCode: string; duplicateItemId: string };
+  };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "CONFLICT");
+  assert.equal(body.details.reasonCode, "ISBN_ALREADY_EXISTS");
+  assert.equal(body.details.duplicateItemId, "item-existing");
+});
+
+test("handleApiV1 /v1/library.items.delete soft deletes item and allows recreate when prior copy is soft-deleted", async () => {
+  const deleteRequest = makeRequest(
+    "/v1/library.items.delete",
+    { itemId: "item-1", note: "Retired damaged copy" },
+    staffContext({ uid: "staff-1" }),
+  );
+  const deleteResponse = createResponse();
+  const deleteState: MockDbState = {
+    libraryItems: {
+      "item-1": {
+        title: "Old kiln notes",
+        status: "available",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(deleteState, async () => {
+      await handleApiV1(deleteRequest, deleteResponse.res);
+    }),
+  );
+
+  assert.equal(deleteResponse.status(), 200, JSON.stringify(deleteResponse.body()));
+  const deleteBody = deleteResponse.body() as {
+    ok: boolean;
+    data: { item: { id: string; deleted: boolean; status: string } };
+  };
+  assert.equal(deleteBody.ok, true);
+  assert.equal(deleteBody.data.item.id, "item-1");
+  assert.equal(deleteBody.data.item.deleted, true);
+  assert.equal(deleteBody.data.item.status, "archived");
+
+  const recreateRequest = makeRequest(
+    "/v1/library.items.create",
+    {
+      isbn: "9780131103627",
+      allowRemoteLookup: false,
+      title: "Replacement copy",
+    },
+    staffContext({ uid: "staff-1" }),
+  );
+  const recreateResponse = createResponse();
+  const recreateState: MockDbState = {
+    libraryItems: {
+      "isbn-9780131103627": {
+        title: "Retired copy",
+        isbn13: "9780131103627",
+        deletedAt: { seconds: 100 },
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(recreateState, async () => {
+      await handleApiV1(recreateRequest, recreateResponse.res);
+    }),
+  );
+
+  assert.equal(recreateResponse.status(), 200, JSON.stringify(recreateResponse.body()));
+  const recreateBody = recreateResponse.body() as {
+    ok: boolean;
+    data: { item: { id: string; deleted: boolean } };
+  };
+  assert.equal(recreateBody.ok, true);
+  assert.equal(recreateBody.data.item.deleted, false);
+  assert.ok(
+    recreateBody.data.item.id.startsWith("isbn-9780131103627-"),
+    `expected regenerated item id, got ${recreateBody.data.item.id}`,
+  );
+});
+
+test("handleApiV1 dispatches /v1/library.externalLookup.providerConfig.get for staff", async () => {
+  const request = makeRequest(
+    "/v1/library.externalLookup.providerConfig.get",
+    {},
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore({}, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200, JSON.stringify(response.body()));
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      openlibraryEnabled: boolean;
+      googlebooksEnabled: boolean;
+      disabledProviders: string[];
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(typeof body.data.openlibraryEnabled, "boolean");
+  assert.equal(typeof body.data.googlebooksEnabled, "boolean");
+  assert.ok(Array.isArray(body.data.disabledProviders));
+});
+
+test("handleApiV1 dispatches /v1/library.externalLookup.providerConfig.set for staff", async () => {
+  const request = makeRequest(
+    "/v1/library.externalLookup.providerConfig.set",
+    {
+      openlibraryEnabled: false,
+      note: "Temporary hold due provider error budget burn.",
+    },
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore({}, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200, JSON.stringify(response.body()));
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      openlibraryEnabled: boolean;
+      googlebooksEnabled: boolean;
+      disabledProviders: string[];
+      note?: string | null;
+      updatedByUid?: string | null;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.openlibraryEnabled, false);
+  assert.equal(typeof body.data.googlebooksEnabled, "boolean");
+  assert.equal(body.data.updatedByUid, "staff-1");
+  assert.equal(body.data.note, "Temporary hold due provider error budget burn.");
+  assert.equal(body.data.disabledProviders.includes("openlibrary"), true);
+});
+
+test("handleApiV1 rejects /v1/library.externalLookup.providerConfig.set for non-staff", async () => {
+  const request = makeRequest(
+    "/v1/library.externalLookup.providerConfig.set",
+    { openlibraryEnabled: false },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore({}, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 403);
+  const body = response.body() as { ok: boolean; code: string };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "FORBIDDEN");
+});
+
+test("handleApiV1 library recommendations list never leaks other users non-approved rows via status filter", async () => {
+  const state: MockDbState = {
+    libraryRecommendations: {
+      "rec-approved-other": {
+        itemId: "item-1",
+        title: "Approved rec",
+        recommenderUid: "owner-2",
+        moderationStatus: "approved",
+        helpfulCount: 1,
+        createdAt: { seconds: 100 },
+      },
+      "rec-pending-other": {
+        itemId: "item-1",
+        title: "Pending other",
+        recommenderUid: "owner-2",
+        moderationStatus: "pending_review",
+        helpfulCount: 3,
+        createdAt: { seconds: 90 },
+      },
+      "rec-hidden-other": {
+        itemId: "item-1",
+        title: "Hidden other",
+        recommenderUid: "owner-2",
+        moderationStatus: "hidden",
+        helpfulCount: 2,
+        createdAt: { seconds: 80 },
+      },
+      "rec-rejected-other": {
+        itemId: "item-1",
+        title: "Rejected other",
+        recommenderUid: "owner-2",
+        moderationStatus: "rejected",
+        helpfulCount: 2,
+        createdAt: { seconds: 70 },
+      },
+      "rec-pending-mine": {
+        itemId: "item-1",
+        title: "Pending mine",
+        recommenderUid: "owner-1",
+        moderationStatus: "pending_review",
+        helpfulCount: 4,
+        createdAt: { seconds: 95 },
+      },
+    },
+  };
+
+  const scenarios = [
+    { status: "pending_review", expectedIds: ["rec-pending-mine"] },
+    { status: "hidden", expectedIds: [] },
+    { status: "rejected", expectedIds: [] },
+  ] as const;
+
+  for (const scenario of scenarios) {
+    const request = makeRequest(
+      "/v1/library.recommendations.list",
+      { status: scenario.status, limit: 50 },
+      firebaseContext({ uid: "owner-1" }),
+    );
+    const response = createResponse();
+
+    await withMockedRateLimit(async () =>
+      withMockFirestore(cloneState(state), async () => {
+        await handleApiV1(request, response.res);
+      }),
+    );
+
+    assert.equal(response.status(), 200, JSON.stringify(response.body()));
+    const body = response.body() as {
+      ok: boolean;
+      data: { recommendations: Array<Record<string, unknown>> };
+    };
+    assert.equal(body.ok, true);
+    const recommendationIds = body.data.recommendations.map((row) => String(row.id ?? ""));
+    assert.deepEqual(recommendationIds.sort(), [...scenario.expectedIds].sort());
+    assert.equal(recommendationIds.includes(`rec-${scenario.status}-other`), false);
+  }
+});
+
+test("handleApiV1 dispatches /v1/library.recommendations.moderate for staff and rejects non-staff", async () => {
+  const state: MockDbState = {
+    libraryRecommendations: {
+      "rec-1": {
+        title: "Atlas",
+        recommenderUid: "owner-2",
+        moderationStatus: "pending_review",
+      },
+    },
+  };
+
+  const staffRequest = makeRequest(
+    "/v1/library.recommendations.moderate",
+    { recommendationId: "rec-1", action: "reject", note: "Off-topic recommendation." },
+    staffContext({ uid: "staff-1" }),
+  );
+  const staffResponse = createResponse();
+  await withMockedRateLimit(async () =>
+    withMockFirestore(cloneState(state), async () => {
+      await handleApiV1(staffRequest, staffResponse.res);
+    }),
+  );
+
+  assert.equal(staffResponse.status(), 200, JSON.stringify(staffResponse.body()));
+  const staffBody = staffResponse.body() as {
+    ok: boolean;
+    data: {
+      recommendation: Record<string, unknown>;
+      moderation: Record<string, unknown>;
+    };
+  };
+  assert.equal(staffBody.ok, true);
+  assert.equal(staffBody.data.recommendation.id, "rec-1");
+  assert.equal(staffBody.data.recommendation.moderationStatus, "rejected");
+  assert.equal(staffBody.data.moderation.action, "reject");
+  assert.equal(staffBody.data.moderation.moderationStatus, "rejected");
+
+  const memberRequest = makeRequest(
+    "/v1/library.recommendations.moderate",
+    { recommendationId: "rec-1", action: "approve" },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const memberResponse = createResponse();
+  await withMockedRateLimit(async () =>
+    withMockFirestore(cloneState(state), async () => {
+      await handleApiV1(memberRequest, memberResponse.res);
+    }),
+  );
+
+  assert.equal(memberResponse.status(), 403);
+  const memberBody = memberResponse.body() as { ok: boolean; code: string };
+  assert.equal(memberBody.ok, false);
+  assert.equal(memberBody.code, "FORBIDDEN");
+});
+
+test("handleApiV1 rejects invalid action for /v1/library.recommendations.moderate", async () => {
+  const request = makeRequest(
+    "/v1/library.recommendations.moderate",
+    { recommendationId: "rec-1", action: "not-a-real-action" },
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryRecommendations: {
+      "rec-1": {
+        recommenderUid: "owner-2",
+        moderationStatus: "pending_review",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 400);
+  const body = response.body() as { ok: boolean; code: string };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "INVALID_ARGUMENT");
+});
+
+test("handleApiV1 dispatches /v1/library.recommendations.feedback.moderate for staff and rejects non-staff", async () => {
+  const state: MockDbState = {
+    libraryRecommendations: {
+      "rec-1": {
+        title: "Atlas",
+        recommenderUid: "owner-2",
+        moderationStatus: "approved",
+      },
+    },
+    libraryRecommendationFeedback: {
+      "rec-1__owner-3": {
+        recommendationId: "rec-1",
+        reviewerUid: "owner-3",
+        helpful: true,
+        comment: "Useful resource.",
+        moderationStatus: "pending_review",
+      },
+    },
+  };
+
+  const staffRequest = makeRequest(
+    "/v1/library.recommendations.feedback.moderate",
+    { feedbackId: "rec-1__owner-3", action: "hide", note: "Contains personal info." },
+    staffContext({ uid: "staff-1" }),
+  );
+  const staffResponse = createResponse();
+  await withMockedRateLimit(async () =>
+    withMockFirestore(cloneState(state), async () => {
+      await handleApiV1(staffRequest, staffResponse.res);
+    }),
+  );
+
+  assert.equal(staffResponse.status(), 200, JSON.stringify(staffResponse.body()));
+  const staffBody = staffResponse.body() as {
+    ok: boolean;
+    data: {
+      feedback: Record<string, unknown>;
+      moderation: Record<string, unknown>;
+    };
+  };
+  assert.equal(staffBody.ok, true);
+  assert.equal(staffBody.data.feedback.id, "rec-1__owner-3");
+  assert.equal(staffBody.data.feedback.moderationStatus, "hidden");
+  assert.equal(staffBody.data.moderation.action, "hide");
+  assert.equal(staffBody.data.moderation.moderationStatus, "hidden");
+
+  const memberRequest = makeRequest(
+    "/v1/library.recommendations.feedback.moderate",
+    { feedbackId: "rec-1__owner-3", action: "approve" },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const memberResponse = createResponse();
+  await withMockedRateLimit(async () =>
+    withMockFirestore(cloneState(state), async () => {
+      await handleApiV1(memberRequest, memberResponse.res);
+    }),
+  );
+
+  assert.equal(memberResponse.status(), 403);
+  const memberBody = memberResponse.body() as { ok: boolean; code: string };
+  assert.equal(memberBody.ok, false);
+  assert.equal(memberBody.code, "FORBIDDEN");
+});
+
+test("handleApiV1 rejects invalid action for /v1/library.recommendations.feedback.moderate", async () => {
+  const request = makeRequest(
+    "/v1/library.recommendations.feedback.moderate",
+    { feedbackId: "rec-1__owner-3", action: "wildcard" },
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryRecommendationFeedback: {
+      "rec-1__owner-3": {
+        recommendationId: "rec-1",
+        reviewerUid: "owner-3",
+        helpful: true,
+        moderationStatus: "pending_review",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 400);
+  const body = response.body() as { ok: boolean; code: string };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "INVALID_ARGUMENT");
+});
+
+test("handleApiV1 dispatches /v1/library.ratings.upsert for authenticated members", async () => {
+  const request = makeRequest(
+    "/v1/library.ratings.upsert",
+    { itemId: "item-2", stars: 4 },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-2": {
+        title: "Kiln Maintenance Manual",
+        status: "available",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      rating: {
+        id: string;
+        itemId: string;
+        userId: string;
+        stars: number;
+      };
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.rating.id, "owner-1__item-2");
+  assert.equal(body.data.rating.itemId, "item-2");
+  assert.equal(body.data.rating.userId, "owner-1");
+  assert.equal(body.data.rating.stars, 4);
+});
+
+test("handleApiV1 dispatches /v1/library.reviews.create and validates review payload", async () => {
+  const invalidRequest = makeRequest(
+    "/v1/library.reviews.create",
+    { itemId: "item-2" },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const invalidResponse = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-2": {
+        title: "Kiln Maintenance Manual",
+        status: "available",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(invalidRequest, invalidResponse.res);
+    }),
+  );
+
+  assert.equal(invalidResponse.status(), 400);
+  assert.equal((invalidResponse.body() as { code: string }).code, "INVALID_ARGUMENT");
+
+  const request = makeRequest(
+    "/v1/library.reviews.create",
+    { itemId: "item-2", body: "Great kiln reference for weekly checks." },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: { review: { id: string; itemId: string } };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.review.itemId, "item-2");
+  assert.ok(body.data.review.id.length > 0);
+});
+
+test("handleApiV1 dispatches /v1/library.reviews.update for review owner", async () => {
+  const request = makeRequest(
+    "/v1/library.reviews.update",
+    {
+      reviewId: "review-1",
+      body: "Updated reflection after two firings.",
+      practicality: 5,
+    },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryReviews: {
+      "review-1": {
+        itemId: "item-2",
+        reviewerUid: "owner-1",
+        body: "Original review body",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200, JSON.stringify(response.body()));
+  const body = response.body() as {
+    ok: boolean;
+    data: { review: { id: string; itemId: string } };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.review.id, "review-1");
+  assert.equal(body.data.review.itemId, "item-2");
+});
+
+test("handleApiV1 rejects /v1/library.reviews.update for non-owner non-staff", async () => {
+  const request = makeRequest(
+    "/v1/library.reviews.update",
+    {
+      reviewId: "review-1",
+      reflection: "Trying to overwrite another member review.",
+    },
+    firebaseContext({ uid: "owner-9" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryReviews: {
+      "review-1": {
+        itemId: "item-2",
+        reviewerUid: "owner-1",
+        body: "Original review body",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 403);
+  const body = response.body() as { ok: boolean; code: string };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "FORBIDDEN");
+});
+
+test("handleApiV1 dispatches /v1/library.tags.submissions.create for members", async () => {
+  const request = makeRequest(
+    "/v1/library.tags.submissions.create",
+    {
+      itemId: "item-2",
+      tag: "Glaze testing",
+    },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-2": {
+        title: "Kiln Maintenance Manual",
+        status: "available",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200, JSON.stringify(response.body()));
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      submission: {
+        id: string;
+        itemId: string;
+        tag: string;
+        normalizedTag: string;
+        status: string;
+      };
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.submission.itemId, "item-2");
+  assert.equal(body.data.submission.tag, "glaze testing");
+  assert.equal(body.data.submission.normalizedTag, "glaze-testing");
+  assert.equal(body.data.submission.status, "pending");
+});
+
+test("handleApiV1 rejects duplicate pending /v1/library.tags.submissions.create for same member", async () => {
+  const request = makeRequest(
+    "/v1/library.tags.submissions.create",
+    {
+      itemId: "item-2",
+      tag: "Glaze testing",
+    },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-2": {
+        title: "Kiln Maintenance Manual",
+        status: "available",
+      },
+    },
+    libraryTagSubmissions: {
+      "sub-1": {
+        itemId: "item-2",
+        tag: "glaze testing",
+        normalizedTag: "glaze-testing",
+        status: "pending",
+        submittedByUid: "owner-1",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 409);
+  const body = response.body() as { ok: boolean; code: string };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "CONFLICT");
+});
+
+test("handleApiV1 dispatches /v1/library.tags.submissions.approve for staff and rejects non-staff", async () => {
+  const state: MockDbState = {
+    libraryTagSubmissions: {
+      "sub-1": {
+        itemId: "item-2",
+        itemTitle: "Kiln Maintenance Manual",
+        tag: "glaze testing",
+        normalizedTag: "glaze-testing",
+        status: "pending",
+        submittedByUid: "owner-1",
+      },
+    },
+    libraryItems: {
+      "item-2": {
+        title: "Kiln Maintenance Manual",
+        status: "available",
+      },
+    },
+  };
+
+  const staffRequest = makeRequest(
+    "/v1/library.tags.submissions.approve",
+    {
+      submissionId: "sub-1",
+      canonicalTagName: "Glaze testing",
+    },
+    staffContext({ uid: "staff-1" }),
+  );
+  const staffResponse = createResponse();
+  await withMockedRateLimit(async () =>
+    withMockFirestore(cloneState(state), async () => {
+      await handleApiV1(staffRequest, staffResponse.res);
+    }),
+  );
+
+  assert.equal(staffResponse.status(), 200, JSON.stringify(staffResponse.body()));
+  const staffBody = staffResponse.body() as {
+    ok: boolean;
+    data: {
+      submission: { id: string; status: string; canonicalTagId: string };
+      tag: { id: string; name: string };
+    };
+  };
+  assert.equal(staffBody.ok, true);
+  assert.equal(staffBody.data.submission.id, "sub-1");
+  assert.equal(staffBody.data.submission.status, "approved");
+  assert.ok(staffBody.data.submission.canonicalTagId.length > 0);
+  assert.ok(staffBody.data.tag.id.length > 0);
+
+  const memberRequest = makeRequest(
+    "/v1/library.tags.submissions.approve",
+    {
+      submissionId: "sub-1",
+    },
+    firebaseContext({ uid: "owner-2" }),
+  );
+  const memberResponse = createResponse();
+  await withMockedRateLimit(async () =>
+    withMockFirestore(cloneState(state), async () => {
+      await handleApiV1(memberRequest, memberResponse.res);
+    }),
+  );
+  assert.equal(memberResponse.status(), 403);
+  assert.equal((memberResponse.body() as { code: string }).code, "FORBIDDEN");
+});
+
+test("handleApiV1 dispatches /v1/library.tags.merge for staff", async () => {
+  const request = makeRequest(
+    "/v1/library.tags.merge",
+    {
+      sourceTagId: "tag-source",
+      targetTagId: "tag-target",
+      note: "Normalize duplicate casing",
+    },
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryTags: {
+      "tag-source": { name: "glaze testing", normalizedTag: "glaze-testing", status: "active" },
+      "tag-target": { name: "Glaze Testing", normalizedTag: "glaze-testing", status: "active" },
+    },
+    libraryItemTags: {
+      "item-2__tag-source": {
+        itemId: "item-2",
+        tagId: "tag-source",
+        tag: "glaze testing",
+        normalizedTag: "glaze-testing",
+        status: "active",
+      },
+    },
+    libraryTagSubmissions: {
+      "sub-1": {
+        itemId: "item-2",
+        tag: "glaze testing",
+        canonicalTagId: "tag-source",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200, JSON.stringify(response.body()));
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      sourceTagId: string;
+      targetTagId: string;
+      migratedItemTags: number;
+      retargetedSubmissions: number;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.sourceTagId, "tag-source");
+  assert.equal(body.data.targetTagId, "tag-target");
+  assert.equal(body.data.migratedItemTags, 1);
+  assert.equal(body.data.retargetedSubmissions, 1);
+});
+
+test("handleApiV1 dispatches /v1/library.readingStatus.upsert for authenticated members", async () => {
+  const request = makeRequest(
+    "/v1/library.readingStatus.upsert",
+    { itemId: "item-2", status: "want_to_read" },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-2": {
+        title: "Kiln Maintenance Manual",
+        status: "available",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      readingStatus: {
+        id: string;
+        itemId: string;
+        userId: string;
+        status: string;
+      };
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.readingStatus.id, "owner-1__item-2");
+  assert.equal(body.data.readingStatus.itemId, "item-2");
+  assert.equal(body.data.readingStatus.userId, "owner-1");
+  assert.equal(body.data.readingStatus.status, "want_to_read");
+});
+
+test("handleApiV1 dispatches /v1/library.loans.checkout and returns loan + item state", async () => {
+  const request = makeRequest(
+    "/v1/library.loans.checkout",
+    { itemId: "item-2", suggestedDonationCents: 300 },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-2": {
+        title: "Kiln Maintenance Manual",
+        status: "available",
+        totalCopies: 1,
+        availableCopies: 1,
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      loan: { id: string; itemId: string; status: string };
+      item: { itemId: string; status: string; availableCopies: number };
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.loan.itemId, "item-2");
+  assert.equal(body.data.loan.status, "checked_out");
+  assert.ok(body.data.loan.id.length > 0);
+  assert.equal(body.data.item.itemId, "item-2");
+  assert.equal(body.data.item.status, "checked_out");
+  assert.equal(body.data.item.availableCopies, 0);
+});
+
+test("handleApiV1 library checkout allows only one success across concurrent requests for a single copy", async () => {
+  const state: MockDbState = {
+    libraryItems: {
+      "item-race": {
+        title: "Single Copy Race Test",
+        status: "available",
+        totalCopies: 1,
+        availableCopies: 1,
+      },
+    },
+  };
+  const requestA = makeRequest(
+    "/v1/library.loans.checkout",
+    { itemId: "item-race" },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const requestB = makeRequest(
+    "/v1/library.loans.checkout",
+    { itemId: "item-race" },
+    firebaseContext({ uid: "owner-2" }),
+  );
+  const responseA = createResponse();
+  const responseB = createResponse();
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(
+      state,
+      async () => {
+        await Promise.all([
+          handleApiV1(requestA, responseA.res),
+          handleApiV1(requestB, responseB.res),
+        ]);
+      },
+      { runTransaction: createStatefulRunTransaction(state) },
+    ),
+  );
+
+  const statuses = [responseA.status(), responseB.status()].sort((a, b) => a - b);
+  assert.deepEqual(statuses, [200, 409]);
+
+  const bodies = [responseA.body(), responseB.body()];
+  const successBody = bodies.find((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    return (entry as { ok?: unknown }).ok === true;
+  }) as { data?: { loan?: { itemId?: string }; item?: { availableCopies?: number } } } | undefined;
+  const conflictBody = bodies.find((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    return (entry as { ok?: unknown }).ok === false;
+  }) as { code?: string; details?: { reasonCode?: string | null } } | undefined;
+
+  assert.equal(successBody?.data?.loan?.itemId, "item-race");
+  assert.equal(successBody?.data?.item?.availableCopies, 0);
+  assert.equal(conflictBody?.code, "CONFLICT");
+  assert.equal(conflictBody?.details?.reasonCode, "NO_AVAILABLE_COPIES");
+
+  const itemRow = (state.libraryItems?.["item-race"] ?? null) as Record<string, unknown> | null;
+  assert.equal(itemRow?.status, "checked_out");
+  assert.equal(itemRow?.availableCopies, 0);
+
+  const loanRows = Object.values(state.libraryLoans ?? {}).filter(
+    (row): row is Record<string, unknown> => row !== null,
+  );
+  assert.equal(loanRows.length, 1);
+});
+
+test("handleApiV1 library checkout returns conflict reason when item is not lendable", async () => {
+  const request = makeRequest(
+    "/v1/library.loans.checkout",
+    { itemId: "item-digital" },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-digital": {
+        title: "Glaze Chemistry PDF",
+        mediaType: "digital_book",
+        lendingEligible: false,
+        status: "available",
+        totalCopies: 1,
+        availableCopies: 1,
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 409);
+  const body = response.body() as { ok: boolean; code: string; details?: { reasonCode?: string | null } };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "CONFLICT");
+  assert.equal(body.details?.reasonCode, "ITEM_NOT_LENDABLE");
+});
+
+test("handleApiV1 dispatches /v1/library.loans.listMine and returns only caller loans", async () => {
+  const request = makeRequest(
+    "/v1/library.loans.listMine",
+    { limit: 20 },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryLoans: {
+      "loan-owner": {
+        itemId: "item-2",
+        borrowerUid: "owner-1",
+        status: "checked_out",
+        loanedAt: { seconds: 200 },
+      },
+      "loan-other": {
+        itemId: "item-3",
+        borrowerUid: "owner-2",
+        status: "checked_out",
+        loanedAt: { seconds: 500 },
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: { loans: Array<Record<string, unknown>>; limit: number };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.limit, 20);
+  assert.equal(body.data.loans.length, 1);
+  assert.equal(body.data.loans[0]?.id, "loan-owner");
+});
+
+test("handleApiV1 dispatches /v1/library.loans.checkIn for borrower and returns returned state", async () => {
+  const request = makeRequest(
+    "/v1/library.loans.checkIn",
+    { loanId: "loan-1" },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryLoans: {
+      "loan-1": {
+        itemId: "item-2",
+        borrowerUid: "owner-1",
+        status: "checked_out",
+      },
+    },
+    libraryItems: {
+      "item-2": {
+        title: "Kiln Maintenance Manual",
+        status: "checked_out",
+        totalCopies: 1,
+        availableCopies: 0,
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      loan: { id: string; status: string; idempotentReplay: boolean };
+      item: { itemId: string; status: string; availableCopies: number };
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.loan.id, "loan-1");
+  assert.equal(body.data.loan.status, "returned");
+  assert.equal(body.data.loan.idempotentReplay, false);
+  assert.equal(body.data.item.itemId, "item-2");
+  assert.equal(body.data.item.status, "available");
+  assert.equal(body.data.item.availableCopies, 1);
+});
+
+test("handleApiV1 library check-in rejects invalid loan transition with reason code", async () => {
+  const request = makeRequest(
+    "/v1/library.loans.checkIn",
+    { loanId: "loan-lost" },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryLoans: {
+      "loan-lost": {
+        itemId: "item-2",
+        borrowerUid: "owner-1",
+        status: "lost",
+      },
+    },
+    libraryItems: {
+      "item-2": {
+        title: "Kiln Maintenance Manual",
+        status: "lost",
+        totalCopies: 1,
+        availableCopies: 0,
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 409);
+  const body = response.body() as { ok: boolean; code: string; details?: { reasonCode?: string | null } };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "CONFLICT");
+  assert.equal(body.details?.reasonCode, "INVALID_LOAN_TRANSITION");
+});
+
+test("handleApiV1 dispatches /v1/library.loans.markLost for staff and rejects member caller", async () => {
+  const state: MockDbState = {
+    libraryLoans: {
+      "loan-2": {
+        itemId: "item-2",
+        borrowerUid: "owner-1",
+        status: "checked_out",
+      },
+    },
+    libraryItems: {
+      "item-2": {
+        title: "Kiln Maintenance Manual",
+        status: "checked_out",
+        replacementValueCents: 4200,
+        totalCopies: 1,
+        availableCopies: 0,
+      },
+    },
+  };
+
+  const staffRequest = makeRequest(
+    "/v1/library.loans.markLost",
+    { loanId: "loan-2", note: "Member confirmed item cannot be recovered." },
+    staffContext({ uid: "staff-1" }),
+  );
+  const staffResponse = createResponse();
+  await withMockedRateLimit(async () =>
+    withMockFirestore(cloneState(state), async () => {
+      await handleApiV1(staffRequest, staffResponse.res);
+    }),
+  );
+  assert.equal(staffResponse.status(), 200);
+  const staffBody = staffResponse.body() as {
+    ok: boolean;
+    data: { loan: { id: string; status: string; replacementValueCents: number } };
+  };
+  assert.equal(staffBody.ok, true);
+  assert.equal(staffBody.data.loan.id, "loan-2");
+  assert.equal(staffBody.data.loan.status, "lost");
+  assert.equal(staffBody.data.loan.replacementValueCents, 4200);
+
+  const memberRequest = makeRequest(
+    "/v1/library.loans.markLost",
+    { loanId: "loan-2" },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const memberResponse = createResponse();
+  await withMockedRateLimit(async () =>
+    withMockFirestore(cloneState(state), async () => {
+      await handleApiV1(memberRequest, memberResponse.res);
+    }),
+  );
+  assert.equal(memberResponse.status(), 403);
+  assert.equal((memberResponse.body() as { code: string }).code, "FORBIDDEN");
+});
+
+test("handleApiV1 dispatches /v1/library.loans.assessReplacementFee for lost loans", async () => {
+  const request = makeRequest(
+    "/v1/library.loans.assessReplacementFee",
+    { loanId: "loan-2", confirm: true },
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryLoans: {
+      "loan-2": {
+        itemId: "item-2",
+        borrowerUid: "owner-1",
+        status: "lost",
+        replacementValueCents: 4200,
+      },
+    },
+    libraryItems: {
+      "item-2": {
+        title: "Kiln Maintenance Manual",
+        status: "lost",
+        replacementValueCents: 4200,
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: { fee: { id: string; loanId: string; amountCents: number; status: string } };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.fee.loanId, "loan-2");
+  assert.equal(body.data.fee.amountCents, 4200);
+  assert.equal(body.data.fee.status, "pending_charge");
+  assert.ok(body.data.fee.id.length > 0);
+});
+
+test("handleApiV1 library checkout replays deterministic response for matching idempotency key", async () => {
+  const idempotencyKey = "library-loan-checkout-key";
+  const request = {
+    ...makeRequest(
+      "/v1/library.loans.checkout",
+      { itemId: "item-2", suggestedDonationCents: 300 },
+      firebaseContext({ uid: "owner-1" }),
+    ),
+    headers: {
+      "x-idempotency-key": idempotencyKey,
+    },
+  } satisfies shared.RequestLike;
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryLoanIdempotency: {
+      [lendingIdempotencyDocId("owner-1", "checkout", idempotencyKey)]: {
+        actorUid: "owner-1",
+        operation: "checkout",
+        requestFingerprint: lendingIdempotencyFingerprint("checkout", {
+          itemId: "item-2",
+          suggestedDonationCents: 300,
+        }),
+        responseData: {
+          loan: {
+            id: "loan-checkout-existing",
+            itemId: "item-2",
+            status: "checked_out",
+            dueAt: { seconds: 123 },
+            idempotentReplay: false,
+          },
+          item: {
+            itemId: "item-2",
+            status: "checked_out",
+            availableCopies: 0,
+          },
+        },
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: { loan: { id: string; idempotentReplay: boolean }; item: { itemId: string } };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.loan.id, "loan-checkout-existing");
+  assert.equal(body.data.loan.idempotentReplay, true);
+  assert.equal(body.data.item.itemId, "item-2");
+});
+
+test("handleApiV1 library checkout rejects idempotency key payload conflicts", async () => {
+  const idempotencyKey = "library-loan-checkout-key-conflict";
+  const request = {
+    ...makeRequest(
+      "/v1/library.loans.checkout",
+      { itemId: "item-3" },
+      firebaseContext({ uid: "owner-1" }),
+    ),
+    headers: {
+      "x-idempotency-key": idempotencyKey,
+    },
+  } satisfies shared.RequestLike;
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryLoanIdempotency: {
+      [lendingIdempotencyDocId("owner-1", "checkout", idempotencyKey)]: {
+        actorUid: "owner-1",
+        operation: "checkout",
+        requestFingerprint: lendingIdempotencyFingerprint("checkout", {
+          itemId: "item-2",
+          suggestedDonationCents: null,
+        }),
+        responseData: {
+          loan: {
+            id: "loan-checkout-existing",
+            itemId: "item-2",
+            status: "checked_out",
+            dueAt: { seconds: 123 },
+            idempotentReplay: false,
+          },
+          item: {
+            itemId: "item-2",
+            status: "checked_out",
+            availableCopies: 0,
+          },
+        },
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 409);
+  const body = response.body() as { ok: boolean; code: string; details?: { reasonCode?: string | null } };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "CONFLICT");
+  assert.equal(body.details?.reasonCode, "IDEMPOTENCY_KEY_CONFLICT");
+});
+
+test("handleApiV1 library check-in supports body idempotencyKey replay", async () => {
+  const idempotencyKey = "library-loan-checkin-key";
+  const request = makeRequest(
+    "/v1/library.loans.checkIn",
+    { loanId: "loan-1", idempotencyKey },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryLoanIdempotency: {
+      [lendingIdempotencyDocId("owner-1", "checkIn", idempotencyKey)]: {
+        actorUid: "owner-1",
+        operation: "checkIn",
+        requestFingerprint: lendingIdempotencyFingerprint("checkIn", {
+          loanId: "loan-1",
+        }),
+        responseData: {
+          loan: {
+            id: "loan-1",
+            status: "returned",
+            idempotentReplay: false,
+          },
+          item: {
+            itemId: "item-2",
+            status: "available",
+            availableCopies: 1,
+          },
+        },
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: { loan: { id: string; idempotentReplay: boolean }; item: { itemId: string } };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.loan.id, "loan-1");
+  assert.equal(body.data.loan.idempotentReplay, true);
+  assert.equal(body.data.item.itemId, "item-2");
+});
+
+test("handleApiV1 library replacement fee rejects idempotency key payload conflicts", async () => {
+  const idempotencyKey = "library-loan-assess-fee-key";
+  const request = makeRequest(
+    "/v1/library.loans.assessReplacementFee",
+    { loanId: "loan-2", amountCents: 5300, confirm: true, idempotencyKey },
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryLoanIdempotency: {
+      [lendingIdempotencyDocId("staff-1", "assessReplacementFee", idempotencyKey)]: {
+        actorUid: "staff-1",
+        operation: "assessReplacementFee",
+        requestFingerprint: lendingIdempotencyFingerprint("assessReplacementFee", {
+          loanId: "loan-2",
+          amountCents: 4200,
+          note: null,
+          confirm: true,
+        }),
+        responseData: {
+          fee: {
+            id: "lostfee_existing",
+            loanId: "loan-2",
+            itemId: "item-2",
+            amountCents: 4200,
+            status: "pending_charge",
+            idempotentReplay: false,
+          },
+        },
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 409);
+  const body = response.body() as { ok: boolean; code: string; details?: { reasonCode?: string | null } };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "CONFLICT");
+  assert.equal(body.details?.reasonCode, "IDEMPOTENCY_KEY_CONFLICT");
+});
+
+test("handleApiV1 dispatches /v1/library.items.overrideStatus for staff", async () => {
+  const request = makeRequest(
+    "/v1/library.items.overrideStatus",
+    { itemId: "item-2", status: "available", note: "Inventory reconciliation complete." },
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-2": {
+        title: "Kiln Maintenance Manual",
+        status: "checked_out",
+        totalCopies: 1,
+        availableCopies: 0,
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: { item: { id: string; status: string; availableCopies: number } };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.item.id, "item-2");
+  assert.equal(body.data.item.status, "available");
+  assert.equal(body.data.item.availableCopies, 1);
 });
 
 test("handleApiV1 dispatches /v1/agent.requests.listMine with projected rows and hidden unknown fields", async () => {
@@ -2852,6 +4991,31 @@ test("notifications.markRead rejects owner mismatch for non-staff caller", async
   assert.equal(response.status, 403);
   const body = response.body as Record<string, unknown>;
   assert.equal(body.code, "OWNER_MISMATCH");
+});
+
+test("notifications.markRead is idempotent when notification is already missing", async () => {
+  const state: MockDbState = {
+    "users/owner-1/notifications": {},
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/notifications.markRead",
+      body: {
+        notificationId: "notification-missing",
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const body = response.body as Record<string, unknown>;
+  const data = ((body.data ?? {}) as Record<string, unknown>) ?? {};
+  assert.equal(data.ownerUid, "owner-1");
+  assert.equal(data.notificationId, "notification-missing");
+  assert.equal(data.notificationMissing, true);
 });
 
 test("reservations.exportContinuity returns signed continuity bundle for owner", async () => {

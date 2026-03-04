@@ -101,6 +101,101 @@
   gap: 8px;
 }
 
+.industry-events-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--border);
+  background:
+    linear-gradient(158deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0)),
+    var(--surface-2);
+}
+
+.industry-events-head {
+  display: grid;
+  gap: 4px;
+}
+
+.industry-events-toolbar {
+  display: grid;
+  gap: 10px;
+}
+
+.industry-mode-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.industry-featured-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.industry-featured-card,
+.industry-event-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: var(--surface);
+  display: grid;
+  gap: 10px;
+}
+
+.industry-events-list {
+  display: grid;
+  gap: 10px;
+}
+
+.industry-event-title-row {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.industry-event-title-row h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.industry-event-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.industry-event-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.industry-featured-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.event-tag.mode-local {
+  border-color: rgba(97, 167, 119, 0.48);
+  color: #9fddb4;
+}
+
+.event-tag.mode-remote {
+  border-color: rgba(124, 151, 223, 0.48);
+  color: #b2c5ff;
+}
+
+.event-tag.mode-hybrid {
+  border-color: rgba(204, 152, 88, 0.5);
+  color: #f3c993;
+}
+
 .workshop-request-card {
   display: grid;
   gap: 12px;
@@ -928,6 +1023,9 @@ html[data-portal-theme="memoria"] .events-page .events-list .card,
 html[data-portal-theme="memoria"] .events-page .events-detail .card,
 html[data-portal-theme="memoria"] .events-page .events-staff .card,
 html[data-portal-theme="memoria"] .events-page .event-card,
+html[data-portal-theme="memoria"] .events-page .industry-events-card,
+html[data-portal-theme="memoria"] .events-page .industry-featured-card,
+html[data-portal-theme="memoria"] .events-page .industry-event-card,
 html[data-portal-theme="memoria"] .events-page .workshop-rails-card,
 html[data-portal-theme="memoria"] .events-page .rail-event-card,
 html[data-portal-theme="memoria"] .events-page .community-signals-panel,

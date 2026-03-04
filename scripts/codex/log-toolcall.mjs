@@ -46,6 +46,12 @@ function printUsage() {
       "    [--error-message <string>] \\",
       "    [--context-json <json-string>] \\",
       "    [--context-file <path>] \\",
+      "    [--input-tokens <number>] \\",
+      "    [--output-tokens <number>] \\",
+      "    [--reasoning-tokens <number>] \\",
+      "    [--cache-read-tokens <number>] \\",
+      "    [--cache-write-tokens <number>] \\",
+      "    [--total-tokens <number>] \\",
       "    [--ts-iso <iso>] \\",
       "    [--json]",
       "",
@@ -65,6 +71,15 @@ function parseDuration(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric < 0) {
     throw new Error(`Invalid --duration-ms value: ${value}`);
+  }
+  return Math.round(numeric);
+}
+
+function parseTokenCount(value, name) {
+  if (value == null || String(value).trim() === "") return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    throw new Error(`Invalid ${name} value: ${value}`);
   }
   return Math.round(numeric);
 }
@@ -121,6 +136,12 @@ function parseArgs(argv) {
     errorMessage: null,
     contextJson: "",
     contextFile: "",
+    inputTokens: null,
+    outputTokens: null,
+    reasoningTokens: null,
+    cacheReadTokens: null,
+    cacheWriteTokens: null,
+    totalTokens: null,
     tsIso: "",
     asJson: false,
   };
@@ -199,6 +220,42 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--input-tokens") {
+      options.inputTokens = parseTokenCount(next, "--input-tokens");
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--output-tokens") {
+      options.outputTokens = parseTokenCount(next, "--output-tokens");
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--reasoning-tokens") {
+      options.reasoningTokens = parseTokenCount(next, "--reasoning-tokens");
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--cache-read-tokens") {
+      options.cacheReadTokens = parseTokenCount(next, "--cache-read-tokens");
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--cache-write-tokens") {
+      options.cacheWriteTokens = parseTokenCount(next, "--cache-write-tokens");
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--total-tokens") {
+      options.totalTokens = parseTokenCount(next, "--total-tokens");
+      index += 1;
+      continue;
+    }
+
     if (arg === "--ts-iso") {
       options.tsIso = String(next).trim();
       index += 1;
@@ -214,6 +271,30 @@ function parseArgs(argv) {
   if (typeof options.ok !== "boolean") throw new Error("--ok is required");
 
   return options;
+}
+
+function buildUsagePayload(options) {
+  const usage = {
+    inputTokens: options.inputTokens,
+    outputTokens: options.outputTokens,
+    reasoningTokens: options.reasoningTokens,
+    cacheReadTokens: options.cacheReadTokens,
+    cacheWriteTokens: options.cacheWriteTokens,
+    totalTokens: options.totalTokens,
+  };
+
+  const hasAny = Object.values(usage).some((value) => typeof value === "number");
+  if (!hasAny) return null;
+
+  if (usage.totalTokens == null) {
+    usage.totalTokens =
+      Number(usage.inputTokens || 0) +
+      Number(usage.outputTokens || 0) +
+      Number(usage.reasoningTokens || 0) +
+      Number(usage.cacheWriteTokens || 0);
+  }
+
+  return usage;
 }
 
 async function readContext(options) {
@@ -243,6 +324,7 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const rawContext = await readContext(options);
   const tsIso = options.tsIso || new Date().toISOString();
+  const usage = buildUsagePayload(options);
 
   const payload = {
     tsIso,
@@ -254,6 +336,7 @@ async function main() {
     errorType: options.errorType,
     errorMessage: options.errorMessage ? sanitizeString(options.errorMessage) : null,
     context: rawContext == null ? null : sanitizeValue(rawContext),
+    usage,
   };
   assertContractShape(payload);
 
@@ -270,6 +353,7 @@ async function main() {
         `- tool: ${payload.tool}`,
         `- action: ${payload.action}`,
         `- ok: ${payload.ok}`,
+        `- usage.totalTokens: ${payload.usage?.totalTokens ?? "n/a"}`,
         "",
       ].join("\n")
     );
@@ -281,4 +365,3 @@ main().catch((error) => {
   console.error(`log-toolcall failed: ${message}`);
   process.exit(1);
 });
-

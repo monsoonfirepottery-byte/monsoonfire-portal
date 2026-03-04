@@ -41,6 +41,10 @@ The failure path was `scripts/start-emulators.mjs`, which passed `--host` direct
 3. Existing event-lane preflight remains green:
    - `npm run events:industry:check`
 
+Follow-up gate fix:
+
+4. Updated `studio-brain/.env.integrity.json` after script change so `functions:smoke:cors` integrity gate no longer fails CI.
+
 ## Notes
 
 - `start-emulators.mjs` still accepts `--host` as an input override; it is now mapped into runtime config host bindings rather than forwarded as a Firebase CLI flag.

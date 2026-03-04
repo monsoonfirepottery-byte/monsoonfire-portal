@@ -50,6 +50,8 @@ Notes:
 ## 6) Namecheap Portal Deploy Defaults
 - Primary portal deploy command:
   - `npm run deploy:namecheap:portal`
+- Deploy script now auto-loads `secrets/portal/portal-automation.env` before preflight/build/promotion gate.
+  - Optional override: `PORTAL_AUTOMATION_ENV_PATH=/abs/path/to/env npm run deploy:namecheap:portal`
 - Default SSH target is now configured in deploy tooling:
   - `monsggbd@66.29.137.142:21098`
 - Post-deploy promotion gate now runs by default after sync:

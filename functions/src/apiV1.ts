@@ -36,6 +36,18 @@ import {
   normalizeIntakeMode,
   type IntakeMode,
 } from "./intakeMode";
+import {
+  importLibraryIsbnBatch,
+  lookupLibraryExternalSources,
+  getLibraryExternalLookupProviderConfig,
+  setLibraryExternalLookupProviderConfig,
+  getLibraryRolloutConfig,
+  setLibraryRolloutConfig,
+  LIBRARY_ROLLOUT_PHASES,
+  resolveLibraryIsbn,
+  findExistingLibraryItemIdByIsbn,
+  type LibraryRolloutPhase,
+} from "./library";
 
 function boolEnv(name: string, fallback = false): boolean {
   const raw = process.env[name];
@@ -48,6 +60,7 @@ function boolEnv(name: string, fallback = false): boolean {
 
 const AUTO_COOLDOWN_ON_RATE_LIMIT = boolEnv("AUTO_COOLDOWN_ON_RATE_LIMIT", false);
 const AUTO_COOLDOWN_MINUTES = Math.max(1, Number(process.env.AUTO_COOLDOWN_MINUTES ?? 5) || 5);
+const LIBRARY_LOAN_IDEMPOTENCY_COL = "libraryLoanIdempotency";
 
 function readHeaderFirst(req: RequestLike, name: string): string {
   const key = name.toLowerCase();
@@ -64,6 +77,144 @@ function getRequestId(req: RequestLike): string {
   const provided = readHeaderFirst(req, "x-request-id");
   if (provided) return provided.slice(0, 128);
   return `req_${randomBytes(12).toString("base64url")}`;
+}
+
+type LibraryLoanWriteOperation = "checkout" | "checkIn" | "markLost" | "assessReplacementFee";
+
+function readIdempotencyKey(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed;
+}
+
+function resolveIdempotencyKey(
+  req: RequestLike,
+  bodyIdempotencyKey: unknown,
+): { ok: true; key: string | null } | { ok: false; message: string } {
+  const fromBody = readIdempotencyKey(bodyIdempotencyKey);
+  const fromHeader = readIdempotencyKey(readHeaderFirst(req, "x-idempotency-key"));
+  if (fromBody && fromHeader && fromBody !== fromHeader) {
+    return {
+      ok: false,
+      message: "Body idempotencyKey must match x-idempotency-key when both are provided.",
+    };
+  }
+  const key = fromBody ?? fromHeader ?? null;
+  if (key && key.length > 120) {
+    return { ok: false, message: "Idempotency key must be 120 characters or fewer." };
+  }
+  return { ok: true, key };
+}
+
+function libraryLoanIdempotencyRef(
+  actorUid: string,
+  operation: LibraryLoanWriteOperation,
+  key: string,
+) {
+  return db
+    .collection(LIBRARY_LOAN_IDEMPOTENCY_COL)
+    .doc(makeIdempotencyId(`library-loan-${operation}`, actorUid, key));
+}
+
+function libraryLoanIdempotencyFingerprint(
+  operation: LibraryLoanWriteOperation,
+  payload: Record<string, unknown>,
+): string {
+  return JSON.stringify({
+    operation,
+    payload,
+  });
+}
+
+function withLibraryLoanReplayFlag(
+  operation: LibraryLoanWriteOperation,
+  responseData: Record<string, unknown>,
+): Record<string, unknown> {
+  if (operation === "assessReplacementFee") {
+    const feeRaw = responseData.fee;
+    const fee =
+      feeRaw && typeof feeRaw === "object" && !Array.isArray(feeRaw)
+        ? { ...(feeRaw as Record<string, unknown>) }
+        : {};
+    fee.idempotentReplay = true;
+    return { ...responseData, fee };
+  }
+  const loanRaw = responseData.loan;
+  const loan =
+    loanRaw && typeof loanRaw === "object" && !Array.isArray(loanRaw)
+      ? { ...(loanRaw as Record<string, unknown>) }
+      : {};
+  loan.idempotentReplay = true;
+  return { ...responseData, loan };
+}
+
+async function readLibraryLoanIdempotencyReplay(params: {
+  actorUid: string;
+  operation: LibraryLoanWriteOperation;
+  key: string;
+  fingerprint: string;
+}): Promise<
+  | { kind: "none" }
+  | { kind: "conflict" }
+  | { kind: "replay"; responseData: Record<string, unknown> }
+> {
+  const snap = await libraryLoanIdempotencyRef(params.actorUid, params.operation, params.key).get();
+  if (!snap.exists) {
+    return { kind: "none" };
+  }
+
+  const row = (snap.data() ?? {}) as Record<string, unknown>;
+  const storedFingerprint = safeString(row.requestFingerprint).trim();
+  if (storedFingerprint && storedFingerprint !== params.fingerprint) {
+    return { kind: "conflict" };
+  }
+
+  const responseData = row.responseData;
+  if (!responseData || typeof responseData !== "object" || Array.isArray(responseData)) {
+    return { kind: "conflict" };
+  }
+
+  return {
+    kind: "replay",
+    responseData: withLibraryLoanReplayFlag(
+      params.operation,
+      responseData as Record<string, unknown>,
+    ),
+  };
+}
+
+async function persistLibraryLoanIdempotencyRecord(params: {
+  actorUid: string;
+  operation: LibraryLoanWriteOperation;
+  key: string;
+  fingerprint: string;
+  responseData: Record<string, unknown>;
+  requestId: string;
+}) {
+  const now = nowTs();
+  try {
+    await libraryLoanIdempotencyRef(params.actorUid, params.operation, params.key).set(
+      {
+        actorUid: params.actorUid,
+        operation: params.operation,
+        requestFingerprint: params.fingerprint,
+        responseData: params.responseData,
+        responseVersion: 1,
+        requestId: params.requestId,
+        createdAt: now,
+        updatedAt: now,
+      },
+      { merge: true },
+    );
+  } catch (error: unknown) {
+    logger.warn("library loan idempotency persist failed", {
+      requestId: params.requestId,
+      operation: params.operation,
+      actorUid: params.actorUid,
+      message: safeErrorMessage(error),
+    });
+  }
 }
 
 const ROUTE_FAMILY_V1 = "v1";
@@ -86,6 +237,26 @@ function includeRouteFamilyMetadata(
 }
 
 async function logReservationAuditEvent(
+  params: Parameters<typeof logAuditEvent>[0] & {
+    req: RequestLike;
+    requestId: string;
+    action: string;
+    resourceType: string;
+    ownerUid?: string | null;
+    result: "allow" | "deny" | "error";
+    resourceId?: string | null;
+    reasonCode?: string | null;
+    ctx?: AuthContext | null;
+    metadata?: Record<string, unknown> | null;
+  }
+) {
+  await logAuditEvent({
+    ...params,
+    metadata: includeRouteFamilyMetadata(params.req, params.metadata),
+  });
+}
+
+async function logLibraryAuditEvent(
   params: Parameters<typeof logAuditEvent>[0] & {
     req: RequestLike;
     requestId: string;
@@ -408,6 +579,355 @@ const firingsListUpcomingSchema = z.object({
   limit: z.number().int().min(1).max(500).optional(),
 });
 
+const libraryItemsListSchema = z.object({
+  q: z.string().max(200).optional().nullable(),
+  mediaType: z.array(z.string().min(1).max(80)).max(20).optional(),
+  genre: z.string().max(120).optional().nullable(),
+  studioCategory: z.array(z.string().min(1).max(120)).max(20).optional(),
+  availability: z
+    .enum(["available", "checked_out", "overdue", "lost", "unavailable", "archived"])
+    .optional()
+    .nullable(),
+  ratingMin: z.number().min(0).max(5).optional(),
+  ratingMax: z.number().min(0).max(5).optional(),
+  sort: z
+    .enum(["highest_rated", "most_borrowed", "recently_added", "recently_reviewed", "staff_picks"])
+    .optional(),
+  page: z.number().int().min(1).max(500).optional(),
+  pageSize: z.number().int().min(1).max(100).optional(),
+});
+
+const libraryItemGetSchema = z.object({
+  itemId: z.string().min(1).max(200).trim(),
+});
+
+const libraryDiscoverySchema = z.object({
+  limit: z.number().int().min(1).max(30).optional(),
+});
+
+const libraryExternalLookupSchema = z.object({
+  q: z.string().min(1).max(240),
+  limit: z.number().int().min(1).max(12).optional(),
+});
+
+const libraryRolloutGetSchema = z.object({});
+
+const libraryRolloutSetSchema = z.object({
+  phase: z.enum(LIBRARY_ROLLOUT_PHASES),
+  note: z.string().max(300).optional().nullable(),
+});
+
+const libraryExternalLookupProviderConfigSetSchema = z
+  .object({
+    openlibraryEnabled: z.boolean().optional(),
+    googlebooksEnabled: z.boolean().optional(),
+    note: z.string().max(300).optional().nullable(),
+  })
+  .superRefine((value, ctx) => {
+    if (typeof value.openlibraryEnabled !== "boolean" && typeof value.googlebooksEnabled !== "boolean") {
+      ctx.addIssue({
+        code: "custom",
+        path: [],
+        message: "Provide at least one provider toggle.",
+      });
+    }
+  });
+
+const libraryItemsImportIsbnsSchema = z.object({
+  isbns: z.array(z.string().min(1)).min(1).max(200),
+  source: z.string().max(80).optional().nullable(),
+});
+
+const libraryItemLifecycleStatusSchema = z.enum([
+  "available",
+  "checked_out",
+  "overdue",
+  "lost",
+  "unavailable",
+  "archived",
+]);
+
+const libraryItemResolveIsbnSchema = z.object({
+  isbn: z.string().min(1).max(80).trim(),
+  allowRemoteLookup: z.boolean().optional(),
+});
+
+const libraryItemCreateSchema = z
+  .object({
+    itemId: z.string().min(1).max(200).trim().optional().nullable(),
+    isbn: z.string().max(80).optional().nullable(),
+    title: z.string().max(240).optional().nullable(),
+    subtitle: z.string().max(240).optional().nullable(),
+    authors: z.array(z.string().min(1).max(240)).max(20).optional(),
+    description: z.string().max(4000).optional().nullable(),
+    publisher: z.string().max(240).optional().nullable(),
+    publishedDate: z.string().max(40).optional().nullable(),
+    pageCount: z.number().int().min(1).max(10000).optional().nullable(),
+    subjects: z.array(z.string().min(1).max(120)).max(40).optional(),
+    coverUrl: z.string().max(2000).optional().nullable(),
+    format: z.string().max(80).optional().nullable(),
+    mediaType: z.string().max(80).optional().nullable(),
+    totalCopies: z.number().int().min(1).max(500).optional(),
+    availableCopies: z.number().int().min(0).max(500).optional(),
+    status: libraryItemLifecycleStatusSchema.optional(),
+    replacementValueCents: z.number().int().min(0).max(5_000_000).optional().nullable(),
+    tags: z.array(z.string().min(1).max(80)).max(60).optional(),
+    source: z.string().max(120).optional().nullable(),
+    allowRemoteLookup: z.boolean().optional(),
+  })
+  .superRefine((value, ctx) => {
+    const hasTitle = safeString(value.title).trim().length > 0;
+    const hasIsbn = safeString(value.isbn).trim().length > 0;
+    if (!hasTitle && !hasIsbn) {
+      ctx.addIssue({
+        code: "custom",
+        path: [],
+        message: "Provide at least a title or ISBN when creating a library item.",
+      });
+    }
+  });
+
+const libraryItemUpdateSchema = z
+  .object({
+    itemId: z.string().min(1).max(200).trim(),
+    isbn: z.string().max(80).optional().nullable(),
+    title: z.string().max(240).optional().nullable(),
+    subtitle: z.string().max(240).optional().nullable(),
+    authors: z.array(z.string().min(1).max(240)).max(20).optional(),
+    description: z.string().max(4000).optional().nullable(),
+    publisher: z.string().max(240).optional().nullable(),
+    publishedDate: z.string().max(40).optional().nullable(),
+    pageCount: z.number().int().min(1).max(10000).optional().nullable(),
+    subjects: z.array(z.string().min(1).max(120)).max(40).optional(),
+    coverUrl: z.string().max(2000).optional().nullable(),
+    format: z.string().max(80).optional().nullable(),
+    mediaType: z.string().max(80).optional().nullable(),
+    totalCopies: z.number().int().min(1).max(500).optional(),
+    availableCopies: z.number().int().min(0).max(500).optional(),
+    status: libraryItemLifecycleStatusSchema.optional(),
+    replacementValueCents: z.number().int().min(0).max(5_000_000).optional().nullable(),
+    tags: z.array(z.string().min(1).max(80)).max(60).optional(),
+    source: z.string().max(120).optional().nullable(),
+    allowRemoteLookup: z.boolean().optional(),
+  })
+  .superRefine((value, ctx) => {
+    const hasPatchField = [
+      "isbn",
+      "title",
+      "subtitle",
+      "authors",
+      "description",
+      "publisher",
+      "publishedDate",
+      "pageCount",
+      "subjects",
+      "coverUrl",
+      "format",
+      "mediaType",
+      "totalCopies",
+      "availableCopies",
+      "status",
+      "replacementValueCents",
+      "tags",
+      "source",
+      "allowRemoteLookup",
+    ].some((field) => Object.prototype.hasOwnProperty.call(value, field));
+
+    if (!hasPatchField) {
+      ctx.addIssue({
+        code: "custom",
+        path: [],
+        message: "Provide at least one library item field to update.",
+      });
+    }
+  });
+
+const libraryItemDeleteSchema = z.object({
+  itemId: z.string().min(1).max(200).trim(),
+  note: z.string().max(400).optional().nullable(),
+});
+
+const libraryRecommendationModerationStatusSchema = z.enum(["pending_review", "approved", "rejected", "hidden"]);
+
+const libraryRecommendationsListSchema = z.object({
+  itemId: z.string().min(1).max(200).trim().optional().nullable(),
+  status: libraryRecommendationModerationStatusSchema.optional().nullable(),
+  sort: z.enum(["newest", "helpful"]).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+});
+
+const libraryRecommendationsCreateSchema = z
+  .object({
+    itemId: z.string().min(1).max(200).trim().optional().nullable(),
+    title: z.string().max(240).optional().nullable(),
+    author: z.string().max(240).optional().nullable(),
+    isbn: z.string().max(40).optional().nullable(),
+    rationale: z.string().max(1200).optional().nullable(),
+    tags: z.array(z.string().min(1).max(60)).max(20).optional(),
+  })
+  .superRefine((value, ctx) => {
+    const hasAnchor =
+      safeString(value.itemId).trim().length > 0 ||
+      safeString(value.title).trim().length > 0 ||
+      safeString(value.isbn).trim().length > 0;
+    if (!hasAnchor) {
+      ctx.addIssue({
+        code: "custom",
+        path: [],
+        message: "Provide at least one recommendation target: itemId, title, or isbn.",
+      });
+    }
+    if (safeString(value.rationale).trim().length < 8) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["rationale"],
+        message: "Recommendation rationale must be at least 8 characters.",
+      });
+    }
+  });
+
+const libraryRecommendationsFeedbackSubmitSchema = z
+  .object({
+    recommendationId: z.string().min(1).max(240).trim(),
+    helpful: z.boolean().optional(),
+    comment: z.string().max(500).optional().nullable(),
+  })
+  .superRefine((value, ctx) => {
+    const hasHelpfulVote = typeof value.helpful === "boolean";
+    const hasComment = safeString(value.comment).trim().length > 0;
+    if (!hasHelpfulVote && !hasComment) {
+      ctx.addIssue({
+        code: "custom",
+        path: [],
+        message: "Provide helpful vote or comment feedback.",
+      });
+    }
+  });
+
+const libraryRecommendationsModerateSchema = z.object({
+  recommendationId: z.string().min(1).max(240).trim(),
+  action: z.enum(["approve", "hide", "restore", "reject"]),
+  note: z.string().max(500).optional().nullable(),
+});
+
+const libraryRecommendationsFeedbackModerateSchema = z.object({
+  feedbackId: z.string().min(1).max(260).trim(),
+  action: z.enum(["approve", "hide", "restore", "reject"]),
+  note: z.string().max(500).optional().nullable(),
+});
+
+const libraryRatingUpsertSchema = z.object({
+  itemId: z.string().min(1).max(200).trim(),
+  stars: z.number().int().min(1).max(5),
+});
+
+const libraryReviewCreateSchema = z
+  .object({
+    itemId: z.string().min(1).max(200).trim(),
+    body: z.string().max(1000).optional().nullable(),
+    practicality: z.number().int().min(1).max(5).optional(),
+    difficulty: z.enum(["beginner", "intermediate", "advanced", "all-levels"]).optional(),
+    bestFor: z.string().max(120).optional().nullable(),
+    reflection: z.string().max(1000).optional().nullable(),
+  })
+  .superRefine((value, ctx) => {
+    const hasBody = safeString(value.body).trim().length > 0;
+    const hasStructured =
+      typeof value.practicality === "number" ||
+      typeof value.difficulty === "string" ||
+      safeString(value.bestFor).trim().length > 0 ||
+      safeString(value.reflection).trim().length > 0;
+    if (!hasBody && !hasStructured) {
+      ctx.addIssue({
+        code: "custom",
+        path: [],
+        message: "Provide body or at least one structured review field.",
+      });
+    }
+  });
+
+const libraryReviewUpdateSchema = z
+  .object({
+    reviewId: z.string().min(1).max(240).trim(),
+    body: z.string().max(1000).optional().nullable(),
+    practicality: z.number().int().min(1).max(5).optional().nullable(),
+    difficulty: z.enum(["beginner", "intermediate", "advanced", "all-levels"]).optional().nullable(),
+    bestFor: z.string().max(120).optional().nullable(),
+    reflection: z.string().max(1000).optional().nullable(),
+  })
+  .superRefine((value, ctx) => {
+    const hasPatchField =
+      Object.prototype.hasOwnProperty.call(value, "body") ||
+      Object.prototype.hasOwnProperty.call(value, "practicality") ||
+      Object.prototype.hasOwnProperty.call(value, "difficulty") ||
+      Object.prototype.hasOwnProperty.call(value, "bestFor") ||
+      Object.prototype.hasOwnProperty.call(value, "reflection");
+    if (!hasPatchField) {
+      ctx.addIssue({
+        code: "custom",
+        path: [],
+        message: "Provide at least one review field to update.",
+      });
+    }
+  });
+
+const libraryReadingStatusUpsertSchema = z.object({
+  itemId: z.string().min(1).max(200).trim(),
+  status: z.enum(["have", "borrowed", "want_to_read", "recommended"]),
+});
+
+const libraryTagSubmissionCreateSchema = z.object({
+  itemId: z.string().min(1).max(200).trim(),
+  tag: z.string().min(1).max(80).trim(),
+});
+
+const libraryTagSubmissionApproveSchema = z.object({
+  submissionId: z.string().min(1).max(240).trim(),
+  canonicalTagId: z.string().min(1).max(240).trim().optional().nullable(),
+  canonicalTagName: z.string().max(80).trim().optional().nullable(),
+});
+
+const libraryTagMergeSchema = z.object({
+  sourceTagId: z.string().min(1).max(240).trim(),
+  targetTagId: z.string().min(1).max(240).trim(),
+  note: z.string().max(300).optional().nullable(),
+});
+
+const libraryLoanCheckoutSchema = z.object({
+  itemId: z.string().min(1).max(200).trim(),
+  suggestedDonationCents: z.number().int().min(0).max(500000).optional(),
+  idempotencyKey: z.string().min(1).max(120).trim().optional(),
+});
+
+const libraryLoanCheckInSchema = z.object({
+  loanId: z.string().min(1).max(240).trim(),
+  idempotencyKey: z.string().min(1).max(120).trim().optional(),
+});
+
+const libraryLoansListMineSchema = z.object({
+  limit: z.number().int().min(1).max(200).optional(),
+});
+
+const libraryLoanMarkLostSchema = z.object({
+  loanId: z.string().min(1).max(240).trim(),
+  note: z.string().max(400).optional().nullable(),
+  idempotencyKey: z.string().min(1).max(120).trim().optional(),
+});
+
+const libraryLoanAssessReplacementFeeSchema = z.object({
+  loanId: z.string().min(1).max(240).trim(),
+  amountCents: z.number().int().min(0).max(5_000_000).optional().nullable(),
+  note: z.string().max(400).optional().nullable(),
+  confirm: z.boolean(),
+  idempotencyKey: z.string().min(1).max(120).trim().optional(),
+});
+
+const libraryItemOverrideStatusSchema = z.object({
+  itemId: z.string().min(1).max(200).trim(),
+  status: z.enum(["available", "checked_out", "overdue", "lost", "unavailable", "archived"]),
+  note: z.string().max(400).optional().nullable(),
+});
+
 const reservationCreateSchema = z.object({
   intakeMode: z.string().optional(),
   firingType: z
@@ -495,6 +1015,7 @@ const reservationCreateSchema = z.object({
     .object({
       rushRequested: z.boolean().optional().nullable(),
       wholeKilnRequested: z.boolean().optional().nullable(),
+      communityShelfFillInAllowed: z.boolean().optional().nullable(),
       pickupDeliveryRequested: z.boolean().optional().nullable(),
       returnDeliveryRequested: z.boolean().optional().nullable(),
       useStudioGlazes: z.boolean().optional().nullable(),
@@ -1643,6 +2164,8 @@ const AGENT_TERMS_EXEMPT_ROUTES = new Set<string>([
   "/v1/agent.terms.get",
   "/v1/agent.terms.accept",
 ]);
+const LIBRARY_ROUTE_ROLLOUT_GET = "/v1/library.rollout.get";
+const LIBRARY_ROUTE_ROLLOUT_SET = "/v1/library.rollout.set";
 const ROUTE_SCOPE_HINTS: Record<string, string | null> = {
   "/v1/agent.catalog": "catalog:read",
   "/v1/agent.quote": "quote:write",
@@ -1669,6 +2192,37 @@ const ROUTE_SCOPE_HINTS: Record<string, string | null> = {
   "/v1/reservations.get": "reservations:read",
   "/v1/reservations.list": "reservations:read",
   "/v1/reservations.exportContinuity": "reservations:read",
+  "/v1/library.items.list": null,
+  "/v1/library.items.get": null,
+  "/v1/library.discovery.get": null,
+  "/v1/library.externalLookup": null,
+  [LIBRARY_ROUTE_ROLLOUT_GET]: null,
+  [LIBRARY_ROUTE_ROLLOUT_SET]: null,
+  "/v1/library.externalLookup.providerConfig.get": null,
+  "/v1/library.externalLookup.providerConfig.set": null,
+  "/v1/library.items.resolveIsbn": null,
+  "/v1/library.items.create": null,
+  "/v1/library.items.update": null,
+  "/v1/library.items.delete": null,
+  "/v1/library.items.importIsbns": null,
+  "/v1/library.recommendations.list": null,
+  "/v1/library.recommendations.create": null,
+  "/v1/library.recommendations.feedback.submit": null,
+  "/v1/library.recommendations.moderate": null,
+  "/v1/library.recommendations.feedback.moderate": null,
+  "/v1/library.ratings.upsert": null,
+  "/v1/library.reviews.create": null,
+  "/v1/library.reviews.update": null,
+  "/v1/library.tags.submissions.create": null,
+  "/v1/library.tags.submissions.approve": null,
+  "/v1/library.tags.merge": null,
+  "/v1/library.readingStatus.upsert": null,
+  "/v1/library.loans.checkout": null,
+  "/v1/library.loans.checkIn": null,
+  "/v1/library.loans.listMine": null,
+  "/v1/library.loans.markLost": null,
+  "/v1/library.loans.assessReplacementFee": null,
+  "/v1/library.items.overrideStatus": null,
   "/v1/notifications.markRead": null,
 };
 const ALLOWED_API_V1_ROUTES = new Set<string>([
@@ -1708,7 +2262,114 @@ const ALLOWED_API_V1_ROUTES = new Set<string>([
   "/v1/reservations.update",
   "/v1/events.feed",
   "/v1/firings.listUpcoming",
+  "/v1/library.items.list",
+  "/v1/library.items.get",
+  "/v1/library.discovery.get",
+  "/v1/library.externalLookup",
+  LIBRARY_ROUTE_ROLLOUT_GET,
+  LIBRARY_ROUTE_ROLLOUT_SET,
+  "/v1/library.externalLookup.providerConfig.get",
+  "/v1/library.externalLookup.providerConfig.set",
+  "/v1/library.items.resolveIsbn",
+  "/v1/library.items.create",
+  "/v1/library.items.update",
+  "/v1/library.items.delete",
+  "/v1/library.items.importIsbns",
+  "/v1/library.recommendations.list",
+  "/v1/library.recommendations.create",
+  "/v1/library.recommendations.feedback.submit",
+  "/v1/library.recommendations.moderate",
+  "/v1/library.recommendations.feedback.moderate",
+  "/v1/library.ratings.upsert",
+  "/v1/library.reviews.create",
+  "/v1/library.reviews.update",
+  "/v1/library.tags.submissions.create",
+  "/v1/library.tags.submissions.approve",
+  "/v1/library.tags.merge",
+  "/v1/library.readingStatus.upsert",
+  "/v1/library.loans.checkout",
+  "/v1/library.loans.checkIn",
+  "/v1/library.loans.listMine",
+  "/v1/library.loans.markLost",
+  "/v1/library.loans.assessReplacementFee",
+  "/v1/library.items.overrideStatus",
 ]);
+
+const LIBRARY_V1_READ_ROUTES = new Set<string>([
+  "/v1/library.items.list",
+  "/v1/library.items.get",
+  "/v1/library.discovery.get",
+  "/v1/library.externalLookup",
+  LIBRARY_ROUTE_ROLLOUT_GET,
+  "/v1/library.recommendations.list",
+]);
+const LIBRARY_V1_MEMBER_WRITE_ROUTES = new Set<string>([
+  "/v1/library.recommendations.create",
+  "/v1/library.recommendations.feedback.submit",
+  "/v1/library.ratings.upsert",
+  "/v1/library.reviews.create",
+  "/v1/library.reviews.update",
+  "/v1/library.tags.submissions.create",
+  "/v1/library.readingStatus.upsert",
+  "/v1/library.loans.checkout",
+  "/v1/library.loans.checkIn",
+  "/v1/library.loans.listMine",
+]);
+const LIBRARY_V1_ADMIN_ROUTES = new Set<string>([
+  LIBRARY_ROUTE_ROLLOUT_SET,
+  "/v1/library.items.importIsbns",
+  "/v1/library.items.resolveIsbn",
+  "/v1/library.items.create",
+  "/v1/library.items.update",
+  "/v1/library.items.delete",
+  "/v1/library.externalLookup.providerConfig.get",
+  "/v1/library.externalLookup.providerConfig.set",
+  "/v1/library.recommendations.moderate",
+  "/v1/library.recommendations.feedback.moderate",
+  "/v1/library.tags.submissions.approve",
+  "/v1/library.tags.merge",
+  "/v1/library.loans.markLost",
+  "/v1/library.loans.assessReplacementFee",
+  "/v1/library.items.overrideStatus",
+]);
+const LIBRARY_V1_ROLLOUT_CONTROL_ROUTES = new Set<string>([
+  LIBRARY_ROUTE_ROLLOUT_SET,
+]);
+const LIBRARY_V1_PHASE_1_ALLOWED_ROUTES = new Set<string>([
+  ...LIBRARY_V1_READ_ROUTES,
+  ...LIBRARY_V1_ROLLOUT_CONTROL_ROUTES,
+]);
+const LIBRARY_V1_PHASE_2_ALLOWED_ROUTES = new Set<string>([
+  ...LIBRARY_V1_PHASE_1_ALLOWED_ROUTES,
+  ...LIBRARY_V1_MEMBER_WRITE_ROUTES,
+]);
+const LIBRARY_V1_PHASE_3_ALLOWED_ROUTES = new Set<string>([
+  ...LIBRARY_V1_PHASE_2_ALLOWED_ROUTES,
+  ...LIBRARY_V1_ADMIN_ROUTES,
+]);
+const LIBRARY_V1_ALLOWED_BY_ROLLOUT_PHASE: Record<LibraryRolloutPhase, ReadonlySet<string>> = {
+  phase_1_read_only: LIBRARY_V1_PHASE_1_ALLOWED_ROUTES,
+  phase_2_member_writes: LIBRARY_V1_PHASE_2_ALLOWED_ROUTES,
+  phase_3_admin_full: LIBRARY_V1_PHASE_3_ALLOWED_ROUTES,
+};
+
+function requiredLibraryRolloutPhaseForRoute(route: string): LibraryRolloutPhase | null {
+  if (LIBRARY_V1_MEMBER_WRITE_ROUTES.has(route)) return "phase_2_member_writes";
+  if (LIBRARY_V1_ADMIN_ROUTES.has(route) && !LIBRARY_V1_ROLLOUT_CONTROL_ROUTES.has(route)) {
+    return "phase_3_admin_full";
+  }
+  return null;
+}
+
+function libraryRolloutBlockedMessage(phase: LibraryRolloutPhase, route: string): string {
+  if (phase === "phase_1_read_only" && LIBRARY_V1_MEMBER_WRITE_ROUTES.has(route)) {
+    return "Library rollout phase phase_1_read_only allows read routes only.";
+  }
+  if (phase !== "phase_3_admin_full" && LIBRARY_V1_ADMIN_ROUTES.has(route)) {
+    return `Library rollout phase ${phase} does not allow admin routes yet.`;
+  }
+  return `Library rollout phase ${phase} does not allow this route yet.`;
+}
 
 const API_V1_ROUTE_AUTHZ_EVENTS: Record<string, { action: string; resourceType: string }> = {
   "/v1/agent.order.get": {
@@ -2066,6 +2727,618 @@ export function toAgentRequestRow(id: string, row: Record<string, unknown>): Age
   };
 }
 
+type LibraryListSort =
+  | "highest_rated"
+  | "most_borrowed"
+  | "recently_added"
+  | "recently_reviewed"
+  | "staff_picks";
+
+type LibraryReviewSignals = {
+  averageByItem: Map<string, number>;
+  countByItem: Map<string, number>;
+  latestMsByItem: Map<string, number>;
+  searchableTextByItem: Map<string, string>;
+};
+
+function readFiniteNumberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function normalizeToken(value: unknown): string {
+  return safeString(value).trim().toLowerCase();
+}
+
+function readTimestampLikeMs(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const tsSeconds = readTimestampSeconds(value);
+  if (tsSeconds > 0) return tsSeconds * 1000;
+  const iso = toIsoString(value);
+  if (!iso) return 0;
+  const parsed = Date.parse(iso);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeLibraryStatus(row: Record<string, unknown>): string {
+  const raw = normalizeToken(row.status || row.current_lending_status || row.currentLendingStatus);
+  if (raw === "checked_out" || raw === "checkedout" || raw === "checked-out") return "checked_out";
+  if (raw === "overdue") return "overdue";
+  if (raw === "lost") return "lost";
+  if (raw === "archived") return "archived";
+  if (raw === "unavailable") return "unavailable";
+  return "available";
+}
+
+function normalizeLibraryLoanStatus(value: unknown): string {
+  const raw = normalizeToken(value);
+  if (raw === "checked_out" || raw === "checkedout" || raw === "checked-out") return "checked_out";
+  if (raw === "return_requested" || raw === "returnrequested" || raw === "return-requested") return "return_requested";
+  if (raw === "overdue") return "overdue";
+  if (raw === "lost") return "lost";
+  if (raw === "returned") return "returned";
+  return "unknown";
+}
+
+type LibraryRecommendationModerationStatus = "pending_review" | "approved" | "rejected" | "hidden";
+
+function normalizeLibraryRecommendationModerationStatus(value: unknown): LibraryRecommendationModerationStatus {
+  const raw = normalizeToken(value);
+  if (raw === "approved" || raw === "published") return "approved";
+  if (raw === "rejected" || raw === "denied") return "rejected";
+  if (raw === "hidden" || raw === "removed") return "hidden";
+  return "pending_review";
+}
+
+function recommendationModerationStatusFromAction(
+  action: "approve" | "hide" | "restore" | "reject"
+): LibraryRecommendationModerationStatus {
+  if (action === "approve") return "approved";
+  if (action === "hide") return "hidden";
+  if (action === "reject") return "rejected";
+  return "approved";
+}
+
+function normalizeLibraryRecommendationTags(value: unknown): string[] {
+  const tags = readStringArray(value)
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.length > 0);
+  return Array.from(new Set(tags)).slice(0, 20);
+}
+
+function normalizeLibraryTagLabel(value: unknown): string | null {
+  const cleaned = safeString(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[_]+/g, " ")
+    .replace(/[^a-z0-9+\-/&.\s]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+function normalizeLibraryTagToken(value: unknown): string | null {
+  const label = normalizeLibraryTagLabel(value);
+  if (!label) return null;
+  const token = label
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return token.length > 0 ? token : null;
+}
+
+function readRecommendationRationale(value: unknown): string | null {
+  const direct = trimOrNull(value);
+  if (direct) return direct;
+  return null;
+}
+
+function toLibraryRecommendationRow(id: string, row: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id,
+    itemId: trimOrNull(row.itemId),
+    title: trimOrNull(row.title),
+    author: trimOrNull(row.author),
+    isbn: trimOrNull(row.isbn),
+    rationale: readRecommendationRationale(row.rationale),
+    tags: normalizeLibraryRecommendationTags(row.tags),
+    helpfulCount: Math.max(0, Math.trunc(readFiniteNumberOrNull(row.helpfulCount) ?? 0)),
+    feedbackCount: Math.max(0, Math.trunc(readFiniteNumberOrNull(row.feedbackCount) ?? 0)),
+    moderationStatus: normalizeLibraryRecommendationModerationStatus(row.moderationStatus),
+    recommenderUid: trimOrNull(row.recommenderUid),
+    createdAt: row.createdAt ?? null,
+    updatedAt: row.updatedAt ?? null,
+  };
+}
+
+function toLibraryRecommendationFeedbackRow(id: string, row: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id,
+    recommendationId: trimOrNull(row.recommendationId),
+    helpful: row.helpful === true,
+    comment: trimOrNull(row.comment),
+    moderationStatus: normalizeLibraryRecommendationModerationStatus(row.moderationStatus),
+    reviewerUid: trimOrNull(row.reviewerUid),
+    createdAt: row.createdAt ?? null,
+    updatedAt: row.updatedAt ?? null,
+  };
+}
+
+function isLibraryRowSoftDeleted(row: Record<string, unknown>): boolean {
+  return row.deletedAt != null || row.deleted_at != null || row.deletedAtIso != null;
+}
+
+function normalizeLibraryItemStringArray(value: unknown, maxItems: number): string[] {
+  const out = readStringArray(value)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  return Array.from(new Set(out)).slice(0, maxItems);
+}
+
+function computeLibraryItemCopyCounts(input: {
+  totalCopies?: number;
+  availableCopies?: number;
+}): { totalCopies: number; availableCopies: number } {
+  const totalCopies = Math.max(1, Math.trunc(input.totalCopies ?? 1));
+  const rawAvailable = input.availableCopies ?? totalCopies;
+  const availableCopies = Math.max(0, Math.min(totalCopies, Math.trunc(rawAvailable)));
+  return {
+    totalCopies,
+    availableCopies,
+  };
+}
+
+function libraryStatusFromCopies(inputStatus: string | undefined, availableCopies: number): string {
+  if (inputStatus) return inputStatus;
+  return availableCopies > 0 ? "available" : "checked_out";
+}
+
+function toLibraryLifecycleSummary(id: string, row: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id,
+    title: trimOrNull(row.title),
+    status: normalizeLibraryStatus(row),
+    isbn: trimOrNull(row.isbn),
+    isbn10: trimOrNull(row.isbn10),
+    isbn13: trimOrNull(row.isbn13),
+    source: trimOrNull(row.source),
+    deleted: isLibraryRowSoftDeleted(row),
+  };
+}
+
+function readLibraryCreatedMs(row: Record<string, unknown>): number {
+  return Math.max(
+    readTimestampLikeMs(row.dateAdded),
+    readTimestampLikeMs(row.date_added),
+    readTimestampLikeMs(row.createdAt),
+    readTimestampLikeMs(row.created_at),
+    readTimestampLikeMs(row.updatedAt),
+    readTimestampLikeMs(row.updated_at),
+  );
+}
+
+function readLibraryUpdatedMs(row: Record<string, unknown>): number {
+  return Math.max(
+    readTimestampLikeMs(row.updatedAt),
+    readTimestampLikeMs(row.updated_at),
+    readTimestampLikeMs(row.createdAt),
+    readTimestampLikeMs(row.created_at),
+  );
+}
+
+function readLibraryLastReviewedMs(
+  row: Record<string, unknown>,
+  itemId: string,
+  reviewSignals: LibraryReviewSignals,
+): number {
+  const fromSignals = reviewSignals.latestMsByItem.get(itemId) ?? 0;
+  const reviewSummary = readObjectOrEmpty(row.reviewSummary);
+  const fromSummary = Math.max(
+    readTimestampLikeMs(reviewSummary.lastReviewedAt),
+    readTimestampLikeMs(reviewSummary.last_reviewed_at),
+    readTimestampLikeMs(reviewSummary.updatedAt),
+    readTimestampLikeMs(reviewSummary.updated_at),
+  );
+  return Math.max(fromSignals, fromSummary);
+}
+
+function readLibraryRating(
+  row: Record<string, unknown>,
+  itemId: string,
+  reviewSignals: LibraryReviewSignals,
+): number | null {
+  const reviewSummary = readObjectOrEmpty(row.reviewSummary);
+  const explicit =
+    readFiniteNumberOrNull(reviewSummary.averagePracticality) ??
+    readFiniteNumberOrNull(reviewSummary.avgRating) ??
+    readFiniteNumberOrNull(row.aggregateRating) ??
+    readFiniteNumberOrNull(row.averageRating) ??
+    readFiniteNumberOrNull(row.avgRating);
+  if (explicit !== null) return Math.max(0, Math.min(5, explicit));
+  const fromSignals = reviewSignals.averageByItem.get(itemId);
+  if (typeof fromSignals === "number" && Number.isFinite(fromSignals)) {
+    return Math.max(0, Math.min(5, fromSignals));
+  }
+  return null;
+}
+
+function readLibraryRatingCount(
+  row: Record<string, unknown>,
+  itemId: string,
+  reviewSignals: LibraryReviewSignals,
+): number {
+  const reviewSummary = readObjectOrEmpty(row.reviewSummary);
+  const explicit = Math.max(
+    0,
+    Math.trunc(
+      readFiniteNumberOrNull(row.aggregateRatingCount) ??
+      readFiniteNumberOrNull(row.ratingCount) ??
+      readFiniteNumberOrNull(reviewSummary.ratingCount) ??
+      readFiniteNumberOrNull(reviewSummary.reviewCount) ??
+      0
+    )
+  );
+  if (explicit > 0) return explicit;
+  return Math.max(0, reviewSignals.countByItem.get(itemId) ?? 0);
+}
+
+function readLibraryBorrowCount(row: Record<string, unknown>, itemId: string, borrowCounts: Map<string, number>): number {
+  const fromSignals = borrowCounts.get(itemId);
+  if (typeof fromSignals === "number") return Math.max(0, Math.trunc(fromSignals));
+  return Math.max(
+    0,
+    Math.trunc(
+      readFiniteNumberOrNull(row.borrowCount) ??
+      readFiniteNumberOrNull(row.borrow_count) ??
+      readFiniteNumberOrNull(row.totalBorrows) ??
+      0
+    )
+  );
+}
+
+function readLibraryReplacementValueCents(row: Record<string, unknown>): number {
+  const directCents =
+    readFiniteNumberOrNull(row.replacementValueCents) ??
+    readFiniteNumberOrNull(row.replacement_value_cents);
+  if (directCents !== null) {
+    return Math.max(0, Math.trunc(directCents));
+  }
+
+  const directValue =
+    readFiniteNumberOrNull(row.replacementValue) ??
+    readFiniteNumberOrNull(row.replacement_value);
+  if (directValue === null) return 0;
+
+  if (directValue > 0 && directValue <= 999 && !Number.isInteger(directValue)) {
+    return Math.max(0, Math.round(directValue * 100));
+  }
+  return Math.max(0, Math.trunc(directValue));
+}
+
+function readLibraryMediaType(row: Record<string, unknown>): string {
+  return normalizeToken(row.mediaType || row.media_type || row.type || "book");
+}
+
+function isLibraryItemLendingEligible(row: Record<string, unknown>): boolean {
+  if (typeof row.lendingEligible === "boolean") return row.lendingEligible;
+  if (typeof row.lending_eligible === "boolean") return row.lending_eligible;
+  const mediaType = readLibraryMediaType(row);
+  return (
+    mediaType === "book" ||
+    mediaType === "physical_book" ||
+    mediaType === "physical-book" ||
+    mediaType === "print"
+  );
+}
+
+function readLibraryGenre(row: Record<string, unknown>): string {
+  return normalizeToken(row.primaryGenre || row.genre || row.primary_genre);
+}
+
+function readLibraryStudioCategory(row: Record<string, unknown>): string {
+  return normalizeToken(
+    row.studioCategory ||
+    row.studioRelevanceCategory ||
+    row.studio_relevance_category ||
+    row.studio_relevance
+  );
+}
+
+function readLibraryStaffPick(row: Record<string, unknown>): boolean {
+  const curation = readObjectOrEmpty(row.curation);
+  return row.staffPick === true || curation.staffPick === true;
+}
+
+function readLibraryShelfRank(row: Record<string, unknown>): number {
+  const curation = readObjectOrEmpty(row.curation);
+  const rank = readFiniteNumberOrNull(curation.shelfRank);
+  return rank === null ? Number.POSITIVE_INFINITY : rank;
+}
+
+function collectLibrarySearchText(id: string, row: Record<string, unknown>, reviewSignals: LibraryReviewSignals): string {
+  const identifiers = readObjectOrEmpty(row.identifiers);
+  const authors = readStringArray(row.authors);
+  const subjects = readStringArray(row.subjects);
+  const techniques = readStringArray(row.techniques);
+  const tags = readStringArray((row.tags ?? row.secondaryTags) as unknown);
+  const reviewText = reviewSignals.searchableTextByItem.get(id) ?? "";
+
+  return [
+    safeString(row.title),
+    safeString(row.subtitle),
+    safeString(row.author),
+    authors.join(" "),
+    safeString(row.description),
+    safeString(row.publisher),
+    safeString(row.primaryGenre),
+    subjects.join(" "),
+    techniques.join(" "),
+    tags.join(" "),
+    safeString(row.isbn),
+    safeString(row.isbn10),
+    safeString(row.isbn13),
+    safeString(row.isbn_normalized),
+    safeString(identifiers.isbn10),
+    safeString(identifiers.isbn13),
+    reviewText,
+  ]
+    .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+    .join(" ")
+    .toLowerCase();
+}
+
+function toLibraryApiItemRow(
+  id: string,
+  row: Record<string, unknown>,
+  reviewSignals: LibraryReviewSignals,
+  borrowCounts: Map<string, number>,
+): Record<string, unknown> {
+  const out = toBatchDetailRow(id, row);
+  const status = normalizeLibraryStatus(row);
+  const rating = readLibraryRating(row, id, reviewSignals);
+  const ratingCount = readLibraryRatingCount(row, id, reviewSignals);
+  const borrowCount = readLibraryBorrowCount(row, id, borrowCounts);
+  const lastReviewedMs = readLibraryLastReviewedMs(row, id, reviewSignals);
+
+  out.status = status;
+  if (rating !== null) out.aggregateRating = Math.round(rating * 100) / 100;
+  if (ratingCount > 0) out.aggregateRatingCount = ratingCount;
+  if (borrowCount > 0) out.borrowCount = borrowCount;
+  if (lastReviewedMs > 0) out.lastReviewedAtIso = new Date(lastReviewedMs).toISOString();
+  return out;
+}
+
+function emptyLibraryReviewSignals(): LibraryReviewSignals {
+  return {
+    averageByItem: new Map<string, number>(),
+    countByItem: new Map<string, number>(),
+    latestMsByItem: new Map<string, number>(),
+    searchableTextByItem: new Map<string, string>(),
+  };
+}
+
+async function loadLibraryReviewSignals(limit: number): Promise<LibraryReviewSignals> {
+  const signals = emptyLibraryReviewSignals();
+  const totalPracticality = new Map<string, number>();
+  const counts = new Map<string, number>();
+  const latest = new Map<string, number>();
+  const search = new Map<string, string[]>();
+
+  const snap = await db.collection("libraryReviews").limit(limit).get();
+  for (const docSnap of snap.docs) {
+    const row = docSnap.data() as Record<string, unknown>;
+    const itemId = safeString(row.itemId).trim();
+    if (!itemId) continue;
+
+    const practicality = readFiniteNumberOrNull(row.practicality);
+    if (practicality !== null) {
+      totalPracticality.set(itemId, (totalPracticality.get(itemId) ?? 0) + practicality);
+      counts.set(itemId, (counts.get(itemId) ?? 0) + 1);
+    }
+
+    const createdMs = readTimestampLikeMs(row.createdAt);
+    if (createdMs > 0) {
+      latest.set(itemId, Math.max(latest.get(itemId) ?? 0, createdMs));
+    }
+
+    const text = safeString(row.body).trim();
+    if (text) {
+      const existing = search.get(itemId) ?? [];
+      if (existing.length < 10) {
+        existing.push(text.toLowerCase());
+        search.set(itemId, existing);
+      }
+    }
+  }
+
+  for (const [itemId, count] of counts.entries()) {
+    if (count < 1) continue;
+    const avg = (totalPracticality.get(itemId) ?? 0) / count;
+    signals.averageByItem.set(itemId, avg);
+    signals.countByItem.set(itemId, count);
+  }
+  for (const [itemId, timestamp] of latest.entries()) {
+    signals.latestMsByItem.set(itemId, timestamp);
+  }
+  for (const [itemId, snippets] of search.entries()) {
+    signals.searchableTextByItem.set(itemId, snippets.join(" "));
+  }
+  return signals;
+}
+
+async function loadLibraryBorrowCounts(limit: number): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  const snap = await db.collection("libraryLoans").limit(limit).get();
+  for (const docSnap of snap.docs) {
+    const row = docSnap.data() as Record<string, unknown>;
+    const itemId = safeString(row.itemId).trim();
+    if (!itemId) continue;
+    counts.set(itemId, (counts.get(itemId) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function normalizeLibraryDifficultyToken(value: unknown): "beginner" | "intermediate" | "advanced" | "all-levels" | null {
+  const token = normalizeToken(value);
+  if (token === "beginner" || token === "intermediate" || token === "advanced" || token === "all-levels") {
+    return token;
+  }
+  return null;
+}
+
+function pickMostFrequentToken(
+  counts: Map<string, number>,
+  labelsByToken: Map<string, string>,
+): string | null {
+  let selectedToken: string | null = null;
+  let selectedCount = 0;
+  for (const [token, count] of counts.entries()) {
+    if (count > selectedCount) {
+      selectedToken = token;
+      selectedCount = count;
+      continue;
+    }
+    if (count === selectedCount && selectedToken !== null) {
+      const selectedLabel = labelsByToken.get(selectedToken) ?? selectedToken;
+      const contenderLabel = labelsByToken.get(token) ?? token;
+      if (contenderLabel.localeCompare(selectedLabel) < 0) {
+        selectedToken = token;
+      }
+    }
+  }
+  if (!selectedToken) return null;
+  return labelsByToken.get(selectedToken) ?? selectedToken;
+}
+
+async function refreshLibraryItemCommunitySignals(itemIdRaw: string): Promise<void> {
+  const itemId = safeString(itemIdRaw).trim();
+  if (!itemId) return;
+
+  const [ratingSnap, reviewSnap] = await Promise.all([
+    db.collection("libraryRatings").where("itemId", "==", itemId).limit(1500).get(),
+    db.collection("libraryReviews").where("itemId", "==", itemId).limit(1500).get(),
+  ]);
+
+  let ratingCount = 0;
+  let ratingTotal = 0;
+  for (const docSnap of ratingSnap.docs) {
+    const row = (docSnap.data() ?? {}) as Record<string, unknown>;
+    const rowItemId = safeString(row.itemId).trim();
+    if (rowItemId !== itemId) continue;
+    const stars = readFiniteNumberOrNull(row.stars);
+    if (stars === null) continue;
+    const normalizedStars = Math.max(1, Math.min(5, stars));
+    ratingTotal += normalizedStars;
+    ratingCount += 1;
+  }
+
+  let reviewCount = 0;
+  let practicalityCount = 0;
+  let practicalityTotal = 0;
+  let reflectionsCount = 0;
+  let latestReviewMs = 0;
+  let latestReflectionMs = 0;
+  let latestReflection: string | null = null;
+  const difficultyCounts = new Map<string, number>();
+  const difficultyLabels = new Map<string, string>();
+  const bestForCounts = new Map<string, number>();
+  const bestForLabels = new Map<string, string>();
+
+  for (const docSnap of reviewSnap.docs) {
+    const row = (docSnap.data() ?? {}) as Record<string, unknown>;
+    const rowItemId = safeString(row.itemId).trim();
+    if (rowItemId !== itemId) continue;
+    reviewCount += 1;
+
+    const practicality = readFiniteNumberOrNull(row.practicality);
+    if (practicality !== null) {
+      practicalityTotal += Math.max(1, Math.min(5, practicality));
+      practicalityCount += 1;
+    }
+
+    const difficulty = normalizeLibraryDifficultyToken(row.difficulty);
+    if (difficulty) {
+      difficultyCounts.set(difficulty, (difficultyCounts.get(difficulty) ?? 0) + 1);
+      difficultyLabels.set(difficulty, difficulty);
+    }
+
+    const bestForRaw = trimOrNull(row.bestFor);
+    if (bestForRaw) {
+      const bestForToken = normalizeToken(bestForRaw);
+      if (bestForToken) {
+        bestForCounts.set(bestForToken, (bestForCounts.get(bestForToken) ?? 0) + 1);
+        if (!bestForLabels.has(bestForToken)) {
+          bestForLabels.set(bestForToken, bestForRaw);
+        }
+      }
+    }
+
+    const rowUpdatedMs = Math.max(readTimestampLikeMs(row.updatedAt), readTimestampLikeMs(row.createdAt));
+    if (rowUpdatedMs > 0) {
+      latestReviewMs = Math.max(latestReviewMs, rowUpdatedMs);
+    }
+
+    const reflection = trimOrNull(row.reflection) ?? trimOrNull(row.body);
+    if (reflection) {
+      reflectionsCount += 1;
+      const reflectionMs = rowUpdatedMs > 0 ? rowUpdatedMs : readTimestampLikeMs(row.createdAt);
+      if (!latestReflection || reflectionMs >= latestReflectionMs) {
+        latestReflectionMs = reflectionMs;
+        latestReflection = reflection;
+      }
+    }
+  }
+
+  const averagePracticality =
+    practicalityCount > 0 ? Math.round((practicalityTotal / practicalityCount) * 100) / 100 : null;
+  const aggregateRatingRaw =
+    ratingCount > 0
+      ? ratingTotal / ratingCount
+      : practicalityCount > 0
+        ? practicalityTotal / practicalityCount
+        : null;
+  const aggregateRating = aggregateRatingRaw === null ? null : Math.round(aggregateRatingRaw * 100) / 100;
+  const aggregateRatingCount = ratingCount > 0 ? ratingCount : practicalityCount;
+  const topDifficulty = pickMostFrequentToken(difficultyCounts, difficultyLabels);
+  const topBestFor = pickMostFrequentToken(bestForCounts, bestForLabels);
+  const now = nowTs();
+
+  const reviewSummary: Record<string, unknown> = {
+    reviewCount,
+    averagePracticality,
+    topDifficulty,
+    topBestFor,
+    reflectionsCount,
+    latestReflection,
+    updatedAt: now,
+    lastReviewedAt: latestReviewMs > 0 ? Timestamp.fromMillis(latestReviewMs) : null,
+  };
+
+  await db.collection("libraryItems").doc(itemId).set(
+    {
+      aggregateRating,
+      aggregateRatingCount,
+      reviewSummary,
+      communitySignalsUpdatedAt: now,
+      lastReviewedAt: latestReviewMs > 0 ? Timestamp.fromMillis(latestReviewMs) : null,
+      updatedAt: now,
+    },
+    { merge: true }
+  );
+}
+
+async function refreshLibraryItemCommunitySignalsSafely(itemId: string, requestId: string): Promise<void> {
+  try {
+    await refreshLibraryItemCommunitySignals(itemId);
+  } catch (error: unknown) {
+    logger.warn("library community signal refresh failed", {
+      requestId,
+      itemId,
+      message: safeErrorMessage(error),
+    });
+  }
+}
+
 function evaluateCommissionPolicy(payload: {
   title: string;
   summary: string | null;
@@ -2331,6 +3604,43 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
     });
     jsonError(res, requestId, 404, "NOT_FOUND", "Unknown route", { route });
     return;
+  }
+
+  if (route.startsWith("/v1/library.")) {
+    const isLibraryReadRoute = LIBRARY_V1_READ_ROUTES.has(route);
+    const isLibraryWriteRoute = LIBRARY_V1_MEMBER_WRITE_ROUTES.has(route);
+    const isLibraryAdminRoute = LIBRARY_V1_ADMIN_ROUTES.has(route);
+    const isKnownLibraryRoute = isLibraryReadRoute || isLibraryWriteRoute || isLibraryAdminRoute;
+    if (isKnownLibraryRoute && ctx.mode !== "firebase") {
+      jsonError(res, requestId, 403, "FORBIDDEN", "Library routes require a member or staff firebase session.");
+      return;
+    }
+    if (isLibraryAdminRoute && !isStaff) {
+      const admin = await requireAdmin(req);
+      if (!admin.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", "Only staff can access this library route.");
+        return;
+      }
+    }
+    if (isKnownLibraryRoute) {
+      const rollout = await getLibraryRolloutConfig();
+      const allowedRoutes = LIBRARY_V1_ALLOWED_BY_ROLLOUT_PHASE[rollout.phase] ?? LIBRARY_V1_PHASE_3_ALLOWED_ROUTES;
+      if (!allowedRoutes.has(route)) {
+        jsonError(
+          res,
+          requestId,
+          403,
+          "LIBRARY_ROLLOUT_BLOCKED",
+          libraryRolloutBlockedMessage(rollout.phase, route),
+          {
+            route,
+            phase: rollout.phase,
+            requiredPhase: requiredLibraryRolloutPhaseForRoute(route),
+          }
+        );
+        return;
+      }
+    }
   }
 
   const rateLimit =
@@ -3109,6 +4419,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       const addOns = {
         rushRequested: !isCommunityShelf && addOnsInput.rushRequested === true,
         wholeKilnRequested: intakeMode === "WHOLE_KILN",
+        communityShelfFillInAllowed: intakeMode === "SHELF_PURCHASE" && addOnsInput.communityShelfFillInAllowed === true,
         pickupDeliveryRequested: !isCommunityShelf && addOnsInput.pickupDeliveryRequested === true,
         returnDeliveryRequested: !isCommunityShelf && addOnsInput.returnDeliveryRequested === true,
         useStudioGlazes: !isCommunityShelf && addOnsInput.useStudioGlazes === true,
@@ -3423,7 +4734,12 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         .doc(notificationId);
       const notificationSnap = await notificationRef.get();
       if (!notificationSnap.exists) {
-        jsonError(res, requestId, 404, "NOT_FOUND", "Notification not found");
+        jsonOk(res, requestId, {
+          ownerUid: targetOwnerUid,
+          notificationId,
+          readAt: null,
+          notificationMissing: true,
+        });
         return;
       }
 
@@ -5428,6 +6744,3535 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
 
       const firings = snap.docs.map((d) => toFiringRow(d.id, d.data() as Record<string, unknown>));
       jsonOk(res, requestId, { firings, now });
+      return;
+    }
+
+    if (route === "/v1/library.items.list") {
+      const parsed = parseBody(libraryItemsListSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const sort: LibraryListSort = parsed.data.sort ?? "recently_added";
+      const page = parsed.data.page ?? 1;
+      const pageSize = parsed.data.pageSize ?? 24;
+      const ratingMin = parsed.data.ratingMin;
+      const ratingMax = parsed.data.ratingMax;
+      const searchQuery = normalizeToken(parsed.data.q);
+      const genreFilter = normalizeToken(parsed.data.genre);
+      const availabilityFilter = normalizeToken(parsed.data.availability);
+      const mediaTypeFilters = new Set((parsed.data.mediaType ?? []).map((entry) => normalizeToken(entry)).filter(Boolean));
+      const studioFilters = new Set((parsed.data.studioCategory ?? []).map((entry) => normalizeToken(entry)).filter(Boolean));
+
+      let itemsSnap;
+      try {
+        itemsSnap = await db.collection("libraryItems").orderBy("title", "asc").limit(1200).get();
+      } catch (error) {
+        logger.warn("library.items.list orderBy fallback engaged", {
+          requestId,
+          message: safeErrorMessage(error),
+        });
+        itemsSnap = await db.collection("libraryItems").limit(1200).get();
+      }
+
+      const needsReviewSignals =
+        searchQuery.length > 0 ||
+        sort === "highest_rated" ||
+        sort === "recently_reviewed" ||
+        ratingMin !== undefined ||
+        ratingMax !== undefined;
+      const reviewSignals = needsReviewSignals ? await loadLibraryReviewSignals(3000) : emptyLibraryReviewSignals();
+      const borrowCounts = sort === "most_borrowed" ? await loadLibraryBorrowCounts(3000) : new Map<string, number>();
+
+      const rows: Array<{ id: string; row: Record<string, unknown> }> = [];
+      for (const docSnap of itemsSnap.docs) {
+        const row = docSnap.data() as Record<string, unknown>;
+        if (!row || typeof row !== "object") continue;
+        if (isLibraryRowSoftDeleted(row)) continue;
+
+        if (mediaTypeFilters.size > 0 && !mediaTypeFilters.has(readLibraryMediaType(row))) continue;
+        if (genreFilter && readLibraryGenre(row) !== genreFilter) continue;
+        if (studioFilters.size > 0 && !studioFilters.has(readLibraryStudioCategory(row))) continue;
+        if (availabilityFilter && normalizeLibraryStatus(row) !== availabilityFilter) continue;
+
+        const rating = readLibraryRating(row, docSnap.id, reviewSignals);
+        if (ratingMin !== undefined && (rating === null || rating < ratingMin)) continue;
+        if (ratingMax !== undefined && (rating === null || rating > ratingMax)) continue;
+
+        if (searchQuery) {
+          const haystack = collectLibrarySearchText(docSnap.id, row, reviewSignals);
+          if (!haystack.includes(searchQuery)) continue;
+        }
+
+        rows.push({ id: docSnap.id, row });
+      }
+
+      rows.sort((a, b) => {
+        const titleA = normalizeToken(a.row.title);
+        const titleB = normalizeToken(b.row.title);
+        const titleCompare = titleA.localeCompare(titleB);
+
+        if (sort === "staff_picks") {
+          const staffPickDelta = Number(readLibraryStaffPick(b.row)) - Number(readLibraryStaffPick(a.row));
+          if (staffPickDelta !== 0) return staffPickDelta;
+          const rankDelta = readLibraryShelfRank(a.row) - readLibraryShelfRank(b.row);
+          if (rankDelta !== 0) return rankDelta;
+          const updatedDelta = readLibraryUpdatedMs(b.row) - readLibraryUpdatedMs(a.row);
+          if (updatedDelta !== 0) return updatedDelta;
+          return titleCompare;
+        }
+
+        if (sort === "highest_rated") {
+          const ratingDelta =
+            (readLibraryRating(b.row, b.id, reviewSignals) ?? 0) - (readLibraryRating(a.row, a.id, reviewSignals) ?? 0);
+          if (ratingDelta !== 0) return ratingDelta;
+          const countDelta =
+            readLibraryRatingCount(b.row, b.id, reviewSignals) - readLibraryRatingCount(a.row, a.id, reviewSignals);
+          if (countDelta !== 0) return countDelta;
+          return titleCompare;
+        }
+
+        if (sort === "most_borrowed") {
+          const borrowDelta = readLibraryBorrowCount(b.row, b.id, borrowCounts) - readLibraryBorrowCount(a.row, a.id, borrowCounts);
+          if (borrowDelta !== 0) return borrowDelta;
+          const updatedDelta = readLibraryUpdatedMs(b.row) - readLibraryUpdatedMs(a.row);
+          if (updatedDelta !== 0) return updatedDelta;
+          return titleCompare;
+        }
+
+        if (sort === "recently_reviewed") {
+          const reviewedDelta =
+            readLibraryLastReviewedMs(b.row, b.id, reviewSignals) - readLibraryLastReviewedMs(a.row, a.id, reviewSignals);
+          if (reviewedDelta !== 0) return reviewedDelta;
+          return titleCompare;
+        }
+
+        const createdDelta = readLibraryCreatedMs(b.row) - readLibraryCreatedMs(a.row);
+        if (createdDelta !== 0) return createdDelta;
+        return titleCompare;
+      });
+
+      const total = rows.length;
+      const offset = Math.max(0, (page - 1) * pageSize);
+      const paged = rows.slice(offset, offset + pageSize);
+      const items = paged.map((entry) => toLibraryApiItemRow(entry.id, entry.row, reviewSignals, borrowCounts));
+
+      jsonOk(res, requestId, { items, page, pageSize, total, sort });
+      return;
+    }
+
+    if (route === "/v1/library.items.get") {
+      const parsed = parseBody(libraryItemGetSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const itemId = safeString(parsed.data.itemId).trim();
+      const snap = await db.collection("libraryItems").doc(itemId).get();
+      if (!snap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+        return;
+      }
+      const row = snap.data() as Record<string, unknown>;
+      if (!row || typeof row !== "object" || isLibraryRowSoftDeleted(row)) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+        return;
+      }
+
+      const reviewSignals = await loadLibraryReviewSignals(3000);
+      const borrowCounts = await loadLibraryBorrowCounts(3000);
+      const item = toLibraryApiItemRow(itemId, row, reviewSignals, borrowCounts);
+
+      jsonOk(res, requestId, { item });
+      return;
+    }
+
+    if (route === "/v1/library.discovery.get") {
+      const parsed = parseBody(libraryDiscoverySchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const limit = parsed.data.limit ?? 8;
+      let itemsSnap;
+      try {
+        itemsSnap = await db.collection("libraryItems").orderBy("title", "asc").limit(1200).get();
+      } catch (error) {
+        logger.warn("library.discovery.get orderBy fallback engaged", {
+          requestId,
+          message: safeErrorMessage(error),
+        });
+        itemsSnap = await db.collection("libraryItems").limit(1200).get();
+      }
+
+      const reviewSignals = await loadLibraryReviewSignals(3000);
+      const borrowCounts = await loadLibraryBorrowCounts(3000);
+      const rows = itemsSnap.docs
+        .map((docSnap) => ({ id: docSnap.id, row: docSnap.data() as Record<string, unknown> }))
+        .filter((entry) => entry.row && typeof entry.row === "object" && !isLibraryRowSoftDeleted(entry.row));
+
+      const byTitle = (a: { row: Record<string, unknown> }, b: { row: Record<string, unknown> }) =>
+        normalizeToken(a.row.title).localeCompare(normalizeToken(b.row.title));
+      const byCreatedDesc = (a: { row: Record<string, unknown> }, b: { row: Record<string, unknown> }) =>
+        readLibraryCreatedMs(b.row) - readLibraryCreatedMs(a.row);
+      const byReviewedDesc = (a: { id: string; row: Record<string, unknown> }, b: { id: string; row: Record<string, unknown> }) =>
+        readLibraryLastReviewedMs(b.row, b.id, reviewSignals) - readLibraryLastReviewedMs(a.row, a.id, reviewSignals);
+      const byBorrowedDesc = (a: { id: string; row: Record<string, unknown> }, b: { id: string; row: Record<string, unknown> }) =>
+        readLibraryBorrowCount(b.row, b.id, borrowCounts) - readLibraryBorrowCount(a.row, a.id, borrowCounts);
+
+      const staffPicks = rows
+        .filter((entry) => readLibraryStaffPick(entry.row))
+        .sort((a, b) => {
+          const rankDelta = readLibraryShelfRank(a.row) - readLibraryShelfRank(b.row);
+          if (rankDelta !== 0) return rankDelta;
+          const updatedDelta = readLibraryUpdatedMs(b.row) - readLibraryUpdatedMs(a.row);
+          if (updatedDelta !== 0) return updatedDelta;
+          return byTitle(a, b);
+        })
+        .slice(0, limit)
+        .map((entry) => toLibraryApiItemRow(entry.id, entry.row, reviewSignals, borrowCounts));
+
+      const mostBorrowed = [...rows]
+        .sort((a, b) => {
+          const borrowDelta = byBorrowedDesc(a, b);
+          if (borrowDelta !== 0) return borrowDelta;
+          return byTitle(a, b);
+        })
+        .slice(0, limit)
+        .map((entry) => toLibraryApiItemRow(entry.id, entry.row, reviewSignals, borrowCounts));
+
+      const recentlyAdded = [...rows]
+        .sort((a, b) => {
+          const createdDelta = byCreatedDesc(a, b);
+          if (createdDelta !== 0) return createdDelta;
+          return byTitle(a, b);
+        })
+        .slice(0, limit)
+        .map((entry) => toLibraryApiItemRow(entry.id, entry.row, reviewSignals, borrowCounts));
+
+      const recentlyReviewed = [...rows]
+        .sort((a, b) => {
+          const reviewedDelta = byReviewedDesc(a, b);
+          if (reviewedDelta !== 0) return reviewedDelta;
+          return byTitle(a, b);
+        })
+        .slice(0, limit)
+        .map((entry) => toLibraryApiItemRow(entry.id, entry.row, reviewSignals, borrowCounts));
+
+      jsonOk(res, requestId, {
+        limit,
+        staffPicks,
+        mostBorrowed,
+        recentlyAdded,
+        recentlyReviewed,
+      });
+      return;
+    }
+
+    if (route === "/v1/library.externalLookup") {
+      const parsed = parseBody(libraryExternalLookupSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const q = safeString(parsed.data.q).trim();
+      const limit = parsed.data.limit ?? 6;
+      if (!q) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Search query is required.");
+        return;
+      }
+
+      try {
+        const result = await lookupLibraryExternalSources({ q, limit });
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_external_lookup",
+          resourceType: "library_external_lookup",
+          resourceId: q.slice(0, 120),
+          ownerUid: ctx.uid,
+          result: "allow",
+          ctx,
+          metadata: {
+            queryLength: q.length,
+            requestedLimit: limit,
+            resultCount: result.items.length,
+            cacheHit: result.cacheHit,
+            degraded: result.degraded,
+            policyLimited: result.policyLimited === true,
+            providers: result.providers.map((provider) => ({
+              provider: provider.provider,
+              ok: provider.ok,
+              itemCount: provider.itemCount,
+              cached: provider.cached,
+              disabled: provider.disabled === true,
+            })),
+          },
+        });
+
+        jsonOk(res, requestId, result);
+      } catch (error: unknown) {
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_external_lookup",
+          resourceType: "library_external_lookup",
+          resourceId: q.slice(0, 120),
+          ownerUid: ctx.uid,
+          result: "error",
+          reasonCode: "LOOKUP_FAILURE",
+          ctx,
+          metadata: {
+            queryLength: q.length,
+            requestedLimit: limit,
+            message: safeErrorMessage(error),
+          },
+        });
+        jsonOk(res, requestId, {
+          q,
+          limit,
+          items: [],
+          cacheHit: false,
+          degraded: true,
+          policyLimited: false,
+          providers: [],
+        });
+      }
+      return;
+    }
+
+    if (route === LIBRARY_ROUTE_ROLLOUT_GET) {
+      const parsed = parseBody(libraryRolloutGetSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      try {
+        const config = await getLibraryRolloutConfig();
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_rollout_get",
+          resourceType: "library_rollout_config",
+          resourceId: "rolloutPhase",
+          ownerUid: ctx.uid,
+          result: "allow",
+          ctx,
+          metadata: {
+            phase: config.phase,
+            updatedAtMs: config.updatedAtMs,
+          },
+        });
+        jsonOk(res, requestId, {
+          phase: config.phase,
+          note: config.note,
+          updatedAtMs: config.updatedAtMs,
+          updatedByUid: config.updatedByUid,
+        });
+      } catch (error: unknown) {
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_rollout_get",
+          resourceType: "library_rollout_config",
+          resourceId: "rolloutPhase",
+          ownerUid: ctx.uid,
+          result: "error",
+          reasonCode: "LOOKUP_FAILURE",
+          ctx,
+          metadata: {
+            message: safeErrorMessage(error),
+          },
+        });
+        jsonError(res, requestId, 500, "INTERNAL", "Failed to load library rollout config");
+      }
+      return;
+    }
+
+    if (route === LIBRARY_ROUTE_ROLLOUT_SET) {
+      const parsed = parseBody(libraryRolloutSetSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      try {
+        const config = await setLibraryRolloutConfig({
+          phase: parsed.data.phase,
+          note: parsed.data.note,
+          updatedByUid: ctx.uid,
+        });
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_rollout_set",
+          resourceType: "library_rollout_config",
+          resourceId: "rolloutPhase",
+          ownerUid: ctx.uid,
+          result: "allow",
+          ctx,
+          metadata: {
+            phase: config.phase,
+            hasNote: Boolean(config.note),
+          },
+        });
+        jsonOk(res, requestId, {
+          phase: config.phase,
+          note: config.note,
+          updatedAtMs: config.updatedAtMs,
+          updatedByUid: config.updatedByUid,
+        });
+      } catch (error: unknown) {
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_rollout_set",
+          resourceType: "library_rollout_config",
+          resourceId: "rolloutPhase",
+          ownerUid: ctx.uid,
+          result: "error",
+          reasonCode: "UPDATE_FAILURE",
+          ctx,
+          metadata: {
+            message: safeErrorMessage(error),
+          },
+        });
+        jsonError(res, requestId, 500, "INTERNAL", "Failed to update library rollout config");
+      }
+      return;
+    }
+
+    if (route === "/v1/library.externalLookup.providerConfig.get") {
+      try {
+        const config = await getLibraryExternalLookupProviderConfig();
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_external_lookup_provider_config_get",
+          resourceType: "library_external_lookup_provider_config",
+          resourceId: "externalLookupProviders",
+          ownerUid: ctx.uid,
+          result: "allow",
+          ctx,
+          metadata: {
+            openlibraryEnabled: config.openlibraryEnabled,
+            googlebooksEnabled: config.googlebooksEnabled,
+            disabledProviders: config.disabledProviders,
+          },
+        });
+        jsonOk(res, requestId, {
+          openlibraryEnabled: config.openlibraryEnabled,
+          googlebooksEnabled: config.googlebooksEnabled,
+          disabledProviders: config.disabledProviders,
+          note: config.note,
+          updatedAtMs: config.updatedAtMs,
+          updatedByUid: config.updatedByUid,
+        });
+      } catch (error: unknown) {
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_external_lookup_provider_config_get",
+          resourceType: "library_external_lookup_provider_config",
+          resourceId: "externalLookupProviders",
+          ownerUid: ctx.uid,
+          result: "error",
+          reasonCode: "LOOKUP_FAILURE",
+          ctx,
+          metadata: {
+            message: safeErrorMessage(error),
+          },
+        });
+        jsonError(res, requestId, 500, "INTERNAL", "Failed to load provider config");
+      }
+      return;
+    }
+
+    if (route === "/v1/library.externalLookup.providerConfig.set") {
+      const parsed = parseBody(libraryExternalLookupProviderConfigSetSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      try {
+        const config = await setLibraryExternalLookupProviderConfig({
+          openlibraryEnabled: parsed.data.openlibraryEnabled,
+          googlebooksEnabled: parsed.data.googlebooksEnabled,
+          note: parsed.data.note ?? null,
+          updatedByUid: ctx.uid,
+        });
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_external_lookup_provider_config_set",
+          resourceType: "library_external_lookup_provider_config",
+          resourceId: "externalLookupProviders",
+          ownerUid: ctx.uid,
+          result: "allow",
+          ctx,
+          metadata: {
+            openlibraryEnabled: config.openlibraryEnabled,
+            googlebooksEnabled: config.googlebooksEnabled,
+            disabledProviders: config.disabledProviders,
+            hasNote: Boolean(config.note),
+          },
+        });
+        jsonOk(res, requestId, {
+          openlibraryEnabled: config.openlibraryEnabled,
+          googlebooksEnabled: config.googlebooksEnabled,
+          disabledProviders: config.disabledProviders,
+          note: config.note,
+          updatedAtMs: config.updatedAtMs,
+          updatedByUid: config.updatedByUid,
+        });
+      } catch (error: unknown) {
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_external_lookup_provider_config_set",
+          resourceType: "library_external_lookup_provider_config",
+          resourceId: "externalLookupProviders",
+          ownerUid: ctx.uid,
+          result: "error",
+          reasonCode: "UPDATE_FAILURE",
+          ctx,
+          metadata: {
+            message: safeErrorMessage(error),
+          },
+        });
+        jsonError(res, requestId, 500, "INTERNAL", "Failed to update provider config");
+      }
+      return;
+    }
+
+    if (route === "/v1/library.items.resolveIsbn") {
+      const parsed = parseBody(libraryItemResolveIsbnSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const allowRemoteLookup = parsed.data.allowRemoteLookup !== false;
+      try {
+        const resolved = await resolveLibraryIsbn({
+          isbn: parsed.data.isbn,
+          allowRemoteLookup,
+        });
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_item_resolve_isbn",
+          resourceType: "library_item",
+          resourceId: resolved.normalized.primary,
+          ownerUid: ctx.uid,
+          result: "allow",
+          ctx,
+          metadata: {
+            source: resolved.lookup.source,
+            fallback: resolved.fallback,
+            usedRemoteLookup: resolved.usedRemoteLookup,
+          },
+        });
+        jsonOk(res, requestId, {
+          isbn: resolved.normalized.primary,
+          isbn10: resolved.normalized.isbn10,
+          isbn13: resolved.normalized.isbn13,
+          source: resolved.lookup.source,
+          fallback: resolved.fallback,
+          usedRemoteLookup: resolved.usedRemoteLookup,
+          item: {
+            title: resolved.lookup.title,
+            subtitle: resolved.lookup.subtitle,
+            authors: resolved.lookup.authors,
+            description: resolved.lookup.description,
+            publisher: resolved.lookup.publisher,
+            publishedDate: resolved.lookup.publishedDate,
+            pageCount: resolved.lookup.pageCount,
+            subjects: resolved.lookup.subjects,
+            coverUrl: resolved.lookup.coverUrl,
+            format: resolved.lookup.format,
+            identifiers: {
+              isbn10: resolved.lookup.identifiers.isbn10,
+              isbn13: resolved.lookup.identifiers.isbn13,
+              olid: resolved.lookup.identifiers.olid,
+              googleVolumeId: resolved.lookup.identifiers.googleVolumeId,
+            },
+          },
+        });
+      } catch (error: unknown) {
+        const message = safeErrorMessage(error);
+        const invalid = message.toLowerCase().includes("isbn");
+        const code = invalid ? "INVALID_ARGUMENT" : "INTERNAL";
+        const httpStatus = invalid ? 400 : 500;
+        const reasonCode = invalid ? "INVALID_ISBN" : "LOOKUP_FAILURE";
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_item_resolve_isbn",
+          resourceType: "library_item",
+          resourceId: safeString(parsed.data.isbn).slice(0, 80),
+          ownerUid: ctx.uid,
+          result: invalid ? "deny" : "error",
+          reasonCode,
+          ctx,
+          metadata: {
+            message,
+            usedRemoteLookup: allowRemoteLookup,
+          },
+        });
+        jsonError(
+          res,
+          requestId,
+          httpStatus,
+          code,
+          invalid ? message : "Failed to resolve ISBN",
+          {
+            reasonCode,
+          },
+        );
+      }
+      return;
+    }
+
+    if (route === "/v1/library.items.create") {
+      const parsed = parseBody(libraryItemCreateSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const inputIsbn = trimOrNull(parsed.data.isbn);
+      const allowRemoteLookup = parsed.data.allowRemoteLookup !== false;
+      let resolved:
+        | Awaited<ReturnType<typeof resolveLibraryIsbn>>
+        | null = null;
+      if (inputIsbn) {
+        try {
+          resolved = await resolveLibraryIsbn({
+            isbn: inputIsbn,
+            allowRemoteLookup,
+          });
+        } catch (error: unknown) {
+          const message = safeErrorMessage(error);
+          await logLibraryAuditEvent({
+            req,
+            requestId,
+            action: "library_item_create",
+            resourceType: "library_item",
+            resourceId: inputIsbn,
+            ownerUid: ctx.uid,
+            result: "deny",
+            reasonCode: "INVALID_ISBN",
+            ctx,
+            metadata: { message },
+          });
+          jsonError(res, requestId, 400, "INVALID_ARGUMENT", message, {
+            reasonCode: "INVALID_ISBN",
+          });
+          return;
+        }
+
+        const duplicateItemId = await findExistingLibraryItemIdByIsbn({
+          isbn10: resolved.normalized.isbn10,
+          isbn13: resolved.normalized.isbn13,
+          includeSoftDeleted: false,
+        });
+        if (duplicateItemId) {
+          await logLibraryAuditEvent({
+            req,
+            requestId,
+            action: "library_item_create",
+            resourceType: "library_item",
+            resourceId: duplicateItemId,
+            ownerUid: ctx.uid,
+            result: "deny",
+            reasonCode: "ISBN_ALREADY_EXISTS",
+            ctx,
+            metadata: {
+              isbn10: resolved.normalized.isbn10,
+              isbn13: resolved.normalized.isbn13,
+            },
+          });
+          jsonError(res, requestId, 409, "CONFLICT", "An active library item already uses that ISBN.", {
+            reasonCode: "ISBN_ALREADY_EXISTS",
+            duplicateItemId,
+          });
+          return;
+        }
+      }
+
+      const requestedItemId = trimOrNull(parsed.data.itemId);
+      const normalizedIsbn = resolved?.normalized.primary ?? null;
+      let itemId = requestedItemId
+        ?? (normalizedIsbn ? `isbn-${normalizedIsbn}` : `item_${randomBytes(10).toString("hex")}`);
+      const existingSnap = await db.collection("libraryItems").doc(itemId).get();
+      if (existingSnap.exists) {
+        const existingRow = (existingSnap.data() ?? {}) as Record<string, unknown>;
+        if (requestedItemId || !isLibraryRowSoftDeleted(existingRow)) {
+          await logLibraryAuditEvent({
+            req,
+            requestId,
+            action: "library_item_create",
+            resourceType: "library_item",
+            resourceId: itemId,
+            ownerUid: ctx.uid,
+            result: "deny",
+            reasonCode: "ITEM_ID_EXISTS",
+            ctx,
+          });
+          jsonError(res, requestId, 409, "CONFLICT", "Library item id already exists.", {
+            reasonCode: "ITEM_ID_EXISTS",
+            itemId,
+          });
+          return;
+        }
+        itemId = `${itemId}-${randomBytes(4).toString("hex")}`;
+      }
+
+      const now = nowTs();
+      const copyCounts = computeLibraryItemCopyCounts({
+        totalCopies: parsed.data.totalCopies,
+        availableCopies: parsed.data.availableCopies,
+      });
+      const status = libraryStatusFromCopies(parsed.data.status, copyCounts.availableCopies);
+      const title = trimOrNull(parsed.data.title) ?? resolved?.lookup.title ?? (normalizedIsbn ? `ISBN ${normalizedIsbn}` : "Library item");
+      const tags = Object.prototype.hasOwnProperty.call(parsed.data, "tags")
+        ? normalizeLibraryItemStringArray(parsed.data.tags, 60)
+        : [];
+      const authors = Object.prototype.hasOwnProperty.call(parsed.data, "authors")
+        ? normalizeLibraryItemStringArray(parsed.data.authors, 20)
+        : (resolved?.lookup.authors ?? []);
+      const subjects = Object.prototype.hasOwnProperty.call(parsed.data, "subjects")
+        ? normalizeLibraryItemStringArray(parsed.data.subjects, 40)
+        : (resolved?.lookup.subjects ?? []);
+      const source = trimOrNull(parsed.data.source) ?? resolved?.lookup.source ?? "manual";
+
+      const itemRow: Record<string, unknown> = {
+        title,
+        subtitle: trimOrNull(parsed.data.subtitle) ?? resolved?.lookup.subtitle ?? null,
+        authors,
+        description: trimOrNull(parsed.data.description) ?? resolved?.lookup.description ?? null,
+        publisher: trimOrNull(parsed.data.publisher) ?? resolved?.lookup.publisher ?? null,
+        publishedDate: trimOrNull(parsed.data.publishedDate) ?? resolved?.lookup.publishedDate ?? null,
+        pageCount: parsed.data.pageCount ?? resolved?.lookup.pageCount ?? null,
+        subjects,
+        coverUrl: trimOrNull(parsed.data.coverUrl) ?? resolved?.lookup.coverUrl ?? null,
+        format: trimOrNull(parsed.data.format) ?? resolved?.lookup.format ?? null,
+        mediaType: trimOrNull(parsed.data.mediaType) ?? "book",
+        status,
+        current_lending_status: status,
+        totalCopies: copyCounts.totalCopies,
+        availableCopies: copyCounts.availableCopies,
+        isbn: normalizedIsbn,
+        isbn10: resolved?.normalized.isbn10 ?? null,
+        isbn13: resolved?.normalized.isbn13 ?? null,
+        isbn_normalized: normalizedIsbn,
+        identifiers: {
+          isbn10: resolved?.normalized.isbn10 ?? null,
+          isbn13: resolved?.normalized.isbn13 ?? null,
+          olid: resolved?.lookup.identifiers.olid ?? null,
+          googleVolumeId: resolved?.lookup.identifiers.googleVolumeId ?? null,
+        },
+        source,
+        metadataSource: "api_v1_create",
+        createdAt: now,
+        createdByUid: ctx.uid,
+        updatedAt: now,
+        updatedByUid: ctx.uid,
+        actorMode: ctx.mode,
+      };
+
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "replacementValueCents")) {
+        itemRow.replacementValueCents = parsed.data.replacementValueCents ?? null;
+      }
+      if (tags.length > 0) {
+        itemRow.tags = tags;
+        itemRow.secondaryTags = tags;
+      }
+
+      await db.collection("libraryItems").doc(itemId).set(itemRow, { merge: false });
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_item_create",
+        resourceType: "library_item",
+        resourceId: itemId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          source,
+          status,
+          hasIsbn: Boolean(normalizedIsbn),
+          usedRemoteLookup: resolved?.usedRemoteLookup === true,
+        },
+      });
+
+      jsonOk(res, requestId, {
+        item: toLibraryLifecycleSummary(itemId, itemRow),
+      });
+      return;
+    }
+
+    if (route === "/v1/library.items.update") {
+      const parsed = parseBody(libraryItemUpdateSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const itemId = safeString(parsed.data.itemId).trim();
+      const itemRef = db.collection("libraryItems").doc(itemId);
+      const itemSnap = await itemRef.get();
+      if (!itemSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+        return;
+      }
+      const existingRow = (itemSnap.data() ?? {}) as Record<string, unknown>;
+      if (!existingRow || typeof existingRow !== "object" || isLibraryRowSoftDeleted(existingRow)) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+        return;
+      }
+
+      const now = nowTs();
+      const patch: Record<string, unknown> = {
+        updatedAt: now,
+        updatedByUid: ctx.uid,
+        actorMode: ctx.mode,
+      };
+
+      let resolved:
+        | Awaited<ReturnType<typeof resolveLibraryIsbn>>
+        | null = null;
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "isbn")) {
+        const nextIsbn = trimOrNull(parsed.data.isbn);
+        if (!nextIsbn) {
+          patch.isbn = null;
+          patch.isbn10 = null;
+          patch.isbn13 = null;
+          patch.isbn_normalized = null;
+          const existingIdentifiers = readObjectOrEmpty(existingRow.identifiers);
+          patch.identifiers = {
+            isbn10: null,
+            isbn13: null,
+            olid: trimOrNull(existingIdentifiers.olid),
+            googleVolumeId: trimOrNull(existingIdentifiers.googleVolumeId),
+          };
+        } else {
+          try {
+            resolved = await resolveLibraryIsbn({
+              isbn: nextIsbn,
+              allowRemoteLookup: parsed.data.allowRemoteLookup !== false,
+            });
+          } catch (error: unknown) {
+            jsonError(res, requestId, 400, "INVALID_ARGUMENT", safeErrorMessage(error), {
+              reasonCode: "INVALID_ISBN",
+            });
+            return;
+          }
+
+          const duplicateItemId = await findExistingLibraryItemIdByIsbn({
+            isbn10: resolved.normalized.isbn10,
+            isbn13: resolved.normalized.isbn13,
+            includeSoftDeleted: false,
+            excludeItemId: itemId,
+          });
+          if (duplicateItemId) {
+            jsonError(res, requestId, 409, "CONFLICT", "An active library item already uses that ISBN.", {
+              reasonCode: "ISBN_ALREADY_EXISTS",
+              duplicateItemId,
+            });
+            return;
+          }
+
+          const existingIdentifiers = readObjectOrEmpty(existingRow.identifiers);
+          patch.isbn = resolved.normalized.primary;
+          patch.isbn10 = resolved.normalized.isbn10;
+          patch.isbn13 = resolved.normalized.isbn13;
+          patch.isbn_normalized = resolved.normalized.primary;
+          patch.identifiers = {
+            isbn10: resolved.normalized.isbn10,
+            isbn13: resolved.normalized.isbn13,
+            olid: resolved.lookup.identifiers.olid ?? trimOrNull(existingIdentifiers.olid),
+            googleVolumeId:
+              resolved.lookup.identifiers.googleVolumeId ?? trimOrNull(existingIdentifiers.googleVolumeId),
+          };
+          patch.source = trimOrNull(parsed.data.source) ?? resolved.lookup.source;
+        }
+      } else if (Object.prototype.hasOwnProperty.call(parsed.data, "source")) {
+        patch.source = trimOrNull(parsed.data.source);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "title")) {
+        patch.title = trimOrNull(parsed.data.title);
+      } else if (resolved) {
+        patch.title = resolved.lookup.title;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "subtitle")) {
+        patch.subtitle = trimOrNull(parsed.data.subtitle);
+      } else if (resolved) {
+        patch.subtitle = resolved.lookup.subtitle;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "authors")) {
+        patch.authors = normalizeLibraryItemStringArray(parsed.data.authors, 20);
+      } else if (resolved) {
+        patch.authors = resolved.lookup.authors;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "description")) {
+        patch.description = trimOrNull(parsed.data.description);
+      } else if (resolved) {
+        patch.description = resolved.lookup.description;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "publisher")) {
+        patch.publisher = trimOrNull(parsed.data.publisher);
+      } else if (resolved) {
+        patch.publisher = resolved.lookup.publisher;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "publishedDate")) {
+        patch.publishedDate = trimOrNull(parsed.data.publishedDate);
+      } else if (resolved) {
+        patch.publishedDate = resolved.lookup.publishedDate;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "pageCount")) {
+        patch.pageCount = parsed.data.pageCount ?? null;
+      } else if (resolved) {
+        patch.pageCount = resolved.lookup.pageCount;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "subjects")) {
+        patch.subjects = normalizeLibraryItemStringArray(parsed.data.subjects, 40);
+      } else if (resolved) {
+        patch.subjects = resolved.lookup.subjects;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "coverUrl")) {
+        patch.coverUrl = trimOrNull(parsed.data.coverUrl);
+      } else if (resolved) {
+        patch.coverUrl = resolved.lookup.coverUrl;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "format")) {
+        patch.format = trimOrNull(parsed.data.format);
+      } else if (resolved) {
+        patch.format = resolved.lookup.format;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "mediaType")) {
+        patch.mediaType = trimOrNull(parsed.data.mediaType);
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "replacementValueCents")) {
+        patch.replacementValueCents = parsed.data.replacementValueCents ?? null;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "tags")) {
+        const tags = normalizeLibraryItemStringArray(parsed.data.tags, 60);
+        patch.tags = tags;
+        patch.secondaryTags = tags;
+      }
+
+      const nextCopyCounts = computeLibraryItemCopyCounts({
+        totalCopies: Object.prototype.hasOwnProperty.call(parsed.data, "totalCopies")
+          ? parsed.data.totalCopies
+          : Math.max(1, Math.trunc(readFiniteNumberOrNull(existingRow.totalCopies) ?? 1)),
+        availableCopies: Object.prototype.hasOwnProperty.call(parsed.data, "availableCopies")
+          ? parsed.data.availableCopies
+          : Math.max(0, Math.trunc(readFiniteNumberOrNull(existingRow.availableCopies) ?? readFiniteNumberOrNull(existingRow.totalCopies) ?? 1)),
+      });
+
+      if (
+        Object.prototype.hasOwnProperty.call(parsed.data, "totalCopies") ||
+        Object.prototype.hasOwnProperty.call(parsed.data, "availableCopies")
+      ) {
+        patch.totalCopies = nextCopyCounts.totalCopies;
+        patch.availableCopies = nextCopyCounts.availableCopies;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "status")) {
+        patch.status = parsed.data.status;
+        patch.current_lending_status = parsed.data.status;
+      }
+
+      await itemRef.set(patch, { merge: true });
+      const itemRow = {
+        ...existingRow,
+        ...patch,
+      };
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_item_update",
+        resourceType: "library_item",
+        resourceId: itemId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          hasResolvedIsbn: Boolean(resolved),
+          status: trimOrNull(itemRow.status),
+        },
+      });
+
+      jsonOk(res, requestId, {
+        item: toLibraryLifecycleSummary(itemId, itemRow),
+      });
+      return;
+    }
+
+    if (route === "/v1/library.items.delete") {
+      const parsed = parseBody(libraryItemDeleteSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const itemId = safeString(parsed.data.itemId).trim();
+      const note = trimOrNull(parsed.data.note);
+      const itemRef = db.collection("libraryItems").doc(itemId);
+      const itemSnap = await itemRef.get();
+      if (!itemSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+        return;
+      }
+      const existingRow = (itemSnap.data() ?? {}) as Record<string, unknown>;
+      if (!existingRow || typeof existingRow !== "object" || isLibraryRowSoftDeleted(existingRow)) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+        return;
+      }
+
+      const now = nowTs();
+      const patch: Record<string, unknown> = {
+        deletedAt: now,
+        deletedByUid: ctx.uid,
+        deletedReason: note ?? null,
+        status: "archived",
+        current_lending_status: "archived",
+        availableCopies: 0,
+        updatedAt: now,
+        updatedByUid: ctx.uid,
+      };
+      await itemRef.set(patch, { merge: true });
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_item_delete",
+        resourceType: "library_item",
+        resourceId: itemId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          hasNote: Boolean(note),
+        },
+      });
+
+      jsonOk(res, requestId, {
+        item: {
+          id: itemId,
+          deleted: true,
+          status: "archived",
+        },
+      });
+      return;
+    }
+
+    if (route === "/v1/library.items.importIsbns") {
+      if (!isStaff) {
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_items_import_isbns",
+          resourceType: "library_items",
+          resourceId: "isbn_import_batch",
+          ownerUid: ctx.uid,
+          result: "deny",
+          reasonCode: "FORBIDDEN",
+          ctx,
+        });
+        jsonError(res, requestId, 403, "FORBIDDEN", "Only staff can import ISBN catalogs.");
+        return;
+      }
+      const parsed = parseBody(libraryItemsImportIsbnsSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      try {
+        const result = await importLibraryIsbnBatch({
+          isbns: parsed.data.isbns,
+          source: trimOrNull(parsed.data.source) ?? "api_v1",
+        });
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_items_import_isbns",
+          resourceType: "library_items",
+          resourceId: "isbn_import_batch",
+          ownerUid: ctx.uid,
+          result: "allow",
+          ctx,
+          metadata: {
+            requested: result.requested,
+            created: result.created,
+            updated: result.updated,
+            errors: result.errors.length,
+          },
+        });
+        jsonOk(res, requestId, result);
+      } catch (error: unknown) {
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_items_import_isbns",
+          resourceType: "library_items",
+          resourceId: "isbn_import_batch",
+          ownerUid: ctx.uid,
+          result: "error",
+          reasonCode: "INVALID_ARGUMENT",
+          ctx,
+          metadata: {
+            message: safeErrorMessage(error),
+          },
+        });
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", safeErrorMessage(error));
+      }
+      return;
+    }
+
+    if (route === "/v1/library.recommendations.list") {
+      const parsed = parseBody(libraryRecommendationsListSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const itemIdFilter = trimOrNull(parsed.data.itemId);
+      const statusFilter = parsed.data.status ?? null;
+      const sort = parsed.data.sort ?? "newest";
+      const limit = parsed.data.limit ?? 30;
+      const scanLimit = Math.max(limit * 5, 120);
+
+      let snap;
+      try {
+        snap = await db.collection("libraryRecommendations").orderBy("createdAt", "desc").limit(scanLimit).get();
+      } catch (error) {
+        logger.warn("library.recommendations.list orderBy fallback engaged", {
+          requestId,
+          message: safeErrorMessage(error),
+        });
+        snap = await db.collection("libraryRecommendations").limit(scanLimit).get();
+      }
+
+      const rows = snap.docs
+        .map((docSnap) => ({ id: docSnap.id, row: docSnap.data() as Record<string, unknown> }))
+        .filter((entry) => entry.row && typeof entry.row === "object")
+        .filter((entry) => {
+          const recommendationItemId = trimOrNull(entry.row.itemId);
+          if (itemIdFilter && recommendationItemId !== itemIdFilter) return false;
+
+          const moderationStatus = normalizeLibraryRecommendationModerationStatus(entry.row.moderationStatus);
+          const ownerUid = trimOrNull(entry.row.recommenderUid);
+          if (!isStaff && moderationStatus !== "approved" && ownerUid !== ctx.uid) return false;
+          if (statusFilter && moderationStatus !== statusFilter) return false;
+          return true;
+        });
+
+      rows.sort((a, b) => {
+        const helpfulDelta =
+          Math.max(0, Math.trunc(readFiniteNumberOrNull(b.row.helpfulCount) ?? 0)) -
+          Math.max(0, Math.trunc(readFiniteNumberOrNull(a.row.helpfulCount) ?? 0));
+        const createdDelta = readTimestampLikeMs(b.row.createdAt) - readTimestampLikeMs(a.row.createdAt);
+        if (sort === "helpful") {
+          if (helpfulDelta !== 0) return helpfulDelta;
+          return createdDelta;
+        }
+        if (createdDelta !== 0) return createdDelta;
+        return helpfulDelta;
+      });
+
+      const recommendations = rows.slice(0, limit).map((entry) => {
+        const recommendation = toLibraryRecommendationRow(entry.id, entry.row);
+        recommendation.isMine = trimOrNull(entry.row.recommenderUid) === ctx.uid;
+        return recommendation;
+      });
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_recommendations_list",
+        resourceType: "library_recommendation",
+        resourceId: itemIdFilter ?? "all",
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          itemId: itemIdFilter,
+          status: statusFilter,
+          sort,
+          requestedLimit: limit,
+          returned: recommendations.length,
+        },
+      });
+
+      jsonOk(res, requestId, {
+        recommendations,
+        itemId: itemIdFilter,
+        status: statusFilter,
+        sort,
+        limit,
+      });
+      return;
+    }
+
+    if (route === "/v1/library.recommendations.create") {
+      const parsed = parseBody(libraryRecommendationsCreateSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const itemId = trimOrNull(parsed.data.itemId);
+      let title = trimOrNull(parsed.data.title);
+      let author = trimOrNull(parsed.data.author);
+      let isbn = trimOrNull(parsed.data.isbn);
+      const rationale = trimOrNull(parsed.data.rationale);
+      const tags = normalizeLibraryRecommendationTags(parsed.data.tags);
+
+      if (!rationale || rationale.length < 8) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Recommendation rationale must be at least 8 characters.");
+        return;
+      }
+
+      if (isbn) {
+        const cleanedIsbn = isbn.replace(/[^0-9xX]/g, "").toUpperCase();
+        if (cleanedIsbn) isbn = cleanedIsbn;
+      }
+
+      if (itemId) {
+        const itemSnap = await db.collection("libraryItems").doc(itemId).get();
+        if (!itemSnap.exists) {
+          await logLibraryAuditEvent({
+            req,
+            requestId,
+            action: "library_recommendation_create",
+            resourceType: "library_recommendation",
+            resourceId: itemId,
+            ownerUid: ctx.uid,
+            result: "deny",
+            reasonCode: "ITEM_NOT_FOUND",
+            ctx,
+          });
+          jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+          return;
+        }
+        const itemRow = itemSnap.data() as Record<string, unknown>;
+        if (!itemRow || typeof itemRow !== "object" || isLibraryRowSoftDeleted(itemRow)) {
+          await logLibraryAuditEvent({
+            req,
+            requestId,
+            action: "library_recommendation_create",
+            resourceType: "library_recommendation",
+            resourceId: itemId,
+            ownerUid: ctx.uid,
+            result: "deny",
+            reasonCode: "ITEM_NOT_FOUND",
+            ctx,
+          });
+          jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+          return;
+        }
+        title = title ?? trimOrNull(itemRow.title);
+        author = author ?? trimOrNull(readStringArray(itemRow.authors)[0] ?? itemRow.author);
+        isbn = isbn ?? trimOrNull(itemRow.isbn13) ?? trimOrNull(itemRow.isbn10) ?? trimOrNull(itemRow.isbn);
+      }
+
+      const recommendationId = `rec_${randomBytes(12).toString("hex")}`;
+      const now = nowTs();
+      const recommendationRow: Record<string, unknown> = {
+        itemId: itemId ?? null,
+        title: title ?? null,
+        author: author ?? null,
+        isbn: isbn ?? null,
+        rationale,
+        tags,
+        helpfulCount: 0,
+        feedbackCount: 0,
+        moderationStatus: "pending_review",
+        recommenderUid: ctx.uid,
+        createdAt: now,
+        updatedAt: now,
+        actorMode: ctx.mode,
+      };
+      await db.collection("libraryRecommendations").doc(recommendationId).set(recommendationRow, { merge: false });
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_recommendation_create",
+        resourceType: "library_recommendation",
+        resourceId: recommendationId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          itemId: itemId ?? null,
+          hasIsbn: Boolean(isbn),
+          hasTags: tags.length > 0,
+          moderationStatus: "pending_review",
+        },
+      });
+
+      jsonOk(res, requestId, {
+        recommendation: toLibraryRecommendationRow(recommendationId, recommendationRow),
+      });
+      return;
+    }
+
+    if (route === "/v1/library.recommendations.feedback.submit") {
+      const parsed = parseBody(libraryRecommendationsFeedbackSubmitSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const recommendationId = trimOrNull(parsed.data.recommendationId);
+      if (!recommendationId) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Recommendation id is required.");
+        return;
+      }
+      const helpfulInput = parsed.data.helpful;
+      const commentInput = trimOrNull(parsed.data.comment);
+
+      const result = await db.runTransaction(async (tx) => {
+        const recommendationRef = db.collection("libraryRecommendations").doc(recommendationId);
+        const recommendationSnap = await tx.get(recommendationRef) as {
+          exists: boolean;
+          data: () => Record<string, unknown> | undefined;
+        };
+        if (!recommendationSnap.exists) {
+          return {
+            ok: false as const,
+            code: "NOT_FOUND",
+            message: "Recommendation not found",
+            reasonCode: "RECOMMENDATION_NOT_FOUND",
+          };
+        }
+        const recommendationRow = (recommendationSnap.data() ?? {}) as Record<string, unknown>;
+        const recommendationOwnerUid = trimOrNull(recommendationRow.recommenderUid);
+        const recommendationStatus = normalizeLibraryRecommendationModerationStatus(recommendationRow.moderationStatus);
+        if (!isStaff && recommendationStatus !== "approved" && recommendationOwnerUid !== ctx.uid) {
+          return {
+            ok: false as const,
+            code: "FORBIDDEN",
+            message: "Recommendation is not available for feedback",
+            reasonCode: "RECOMMENDATION_NOT_VISIBLE",
+          };
+        }
+
+        const feedbackId = `${recommendationId}__${ctx.uid}`;
+        const feedbackRef = db.collection("libraryRecommendationFeedback").doc(feedbackId);
+        const feedbackSnap = await tx.get(feedbackRef) as {
+          exists: boolean;
+          data: () => Record<string, unknown> | undefined;
+        };
+        const existingFeedback = (feedbackSnap.data() ?? {}) as Record<string, unknown>;
+        const existingHelpful = existingFeedback.helpful === true;
+        const nextHelpful = typeof helpfulInput === "boolean" ? helpfulInput : existingHelpful;
+        const nextComment = commentInput ?? trimOrNull(existingFeedback.comment);
+        const currentHelpfulCount = Math.max(0, Math.trunc(readFiniteNumberOrNull(recommendationRow.helpfulCount) ?? 0));
+        const helpfulDelta = nextHelpful === existingHelpful ? 0 : nextHelpful ? 1 : -1;
+        const nextHelpfulCount = Math.max(0, currentHelpfulCount + helpfulDelta);
+        const currentFeedbackCount = Math.max(0, Math.trunc(readFiniteNumberOrNull(recommendationRow.feedbackCount) ?? 0));
+        const nextFeedbackCount = feedbackSnap.exists ? currentFeedbackCount : currentFeedbackCount + 1;
+
+        const now = nowTs();
+        const feedbackModerationStatus = feedbackSnap.exists
+          ? normalizeLibraryRecommendationModerationStatus(existingFeedback.moderationStatus)
+          : "pending_review";
+        const feedbackRow: Record<string, unknown> = {
+          recommendationId,
+          recommendationItemId: trimOrNull(recommendationRow.itemId),
+          recommendationOwnerUid,
+          reviewerUid: ctx.uid,
+          helpful: nextHelpful,
+          comment: nextComment,
+          moderationStatus: feedbackModerationStatus,
+          updatedAt: now,
+          updatedByUid: ctx.uid,
+          actorMode: ctx.mode,
+        };
+        if (!feedbackSnap.exists) {
+          feedbackRow.createdAt = now;
+        }
+        tx.set(feedbackRef, feedbackRow, { merge: true });
+        tx.set(
+          recommendationRef,
+          {
+            helpfulCount: nextHelpfulCount,
+            feedbackCount: nextFeedbackCount,
+            updatedAt: now,
+            lastFeedbackAt: now,
+          },
+          { merge: true }
+        );
+
+        return {
+          ok: true as const,
+          recommendationId,
+          feedbackId,
+          feedbackRow,
+          helpfulCount: nextHelpfulCount,
+          feedbackCount: nextFeedbackCount,
+          wasCreate: !feedbackSnap.exists,
+        };
+      });
+
+      if (!result.ok) {
+        const httpStatus = result.code === "NOT_FOUND" ? 404 : result.code === "FORBIDDEN" ? 403 : 400;
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_recommendation_feedback_submit",
+          resourceType: "library_recommendation_feedback",
+          resourceId: recommendationId,
+          ownerUid: ctx.uid,
+          result: "deny",
+          reasonCode: result.reasonCode,
+          ctx,
+          metadata: {
+            code: result.code,
+          },
+        });
+        jsonError(res, requestId, httpStatus, result.code, result.message, {
+          reasonCode: result.reasonCode,
+        });
+        return;
+      }
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_recommendation_feedback_submit",
+        resourceType: "library_recommendation_feedback",
+        resourceId: result.feedbackId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          recommendationId: result.recommendationId,
+          helpfulCount: result.helpfulCount,
+          feedbackCount: result.feedbackCount,
+          created: result.wasCreate,
+          helpful: result.feedbackRow.helpful === true,
+          hasComment: Boolean(trimOrNull(result.feedbackRow.comment)),
+        },
+      });
+
+      jsonOk(res, requestId, {
+        feedback: toLibraryRecommendationFeedbackRow(result.feedbackId, result.feedbackRow),
+        recommendation: {
+          id: result.recommendationId,
+          helpfulCount: result.helpfulCount,
+          feedbackCount: result.feedbackCount,
+        },
+      });
+      return;
+    }
+
+    if (route === "/v1/library.recommendations.moderate") {
+      if (!isStaff) {
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_recommendation_moderate",
+          resourceType: "library_recommendation",
+          resourceId: "moderation",
+          ownerUid: ctx.uid,
+          result: "deny",
+          reasonCode: "FORBIDDEN",
+          ctx,
+        });
+        jsonError(res, requestId, 403, "FORBIDDEN", "Only staff can moderate recommendations.");
+        return;
+      }
+
+      const parsed = parseBody(libraryRecommendationsModerateSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const recommendationId = trimOrNull(parsed.data.recommendationId);
+      if (!recommendationId) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Recommendation id is required.");
+        return;
+      }
+
+      const moderationAction = parsed.data.action;
+      const moderationStatus = recommendationModerationStatusFromAction(moderationAction);
+      const moderationNote = trimOrNull(parsed.data.note);
+
+      const recommendationRef = db.collection("libraryRecommendations").doc(recommendationId);
+      const recommendationSnap = await recommendationRef.get();
+      if (!recommendationSnap.exists) {
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_recommendation_moderate",
+          resourceType: "library_recommendation",
+          resourceId: recommendationId,
+          ownerUid: ctx.uid,
+          result: "deny",
+          reasonCode: "RECOMMENDATION_NOT_FOUND",
+          ctx,
+        });
+        jsonError(res, requestId, 404, "NOT_FOUND", "Recommendation not found");
+        return;
+      }
+
+      const existingRecommendation = (recommendationSnap.data() ?? {}) as Record<string, unknown>;
+      const now = nowTs();
+      const moderationPatch: Record<string, unknown> = {
+        moderationStatus,
+        moderationAction,
+        moderationNote: moderationNote ?? null,
+        moderatedAt: now,
+        moderatedByUid: ctx.uid,
+        updatedAt: now,
+        updatedByUid: ctx.uid,
+      };
+      await recommendationRef.set(moderationPatch, { merge: true });
+      const recommendationRow = {
+        ...existingRecommendation,
+        ...moderationPatch,
+      };
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_recommendation_moderate",
+        resourceType: "library_recommendation",
+        resourceId: recommendationId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          action: moderationAction,
+          moderationStatus,
+          hasNote: Boolean(moderationNote),
+        },
+      });
+
+      jsonOk(res, requestId, {
+        recommendation: toLibraryRecommendationRow(recommendationId, recommendationRow),
+        moderation: {
+          action: moderationAction,
+          moderationStatus,
+          note: moderationNote,
+        },
+      });
+      return;
+    }
+
+    if (route === "/v1/library.recommendations.feedback.moderate") {
+      if (!isStaff) {
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_recommendation_feedback_moderate",
+          resourceType: "library_recommendation_feedback",
+          resourceId: "moderation",
+          ownerUid: ctx.uid,
+          result: "deny",
+          reasonCode: "FORBIDDEN",
+          ctx,
+        });
+        jsonError(res, requestId, 403, "FORBIDDEN", "Only staff can moderate recommendation feedback.");
+        return;
+      }
+
+      const parsed = parseBody(libraryRecommendationsFeedbackModerateSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const feedbackId = trimOrNull(parsed.data.feedbackId);
+      if (!feedbackId) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Feedback id is required.");
+        return;
+      }
+
+      const moderationAction = parsed.data.action;
+      const moderationStatus = recommendationModerationStatusFromAction(moderationAction);
+      const moderationNote = trimOrNull(parsed.data.note);
+
+      const feedbackRef = db.collection("libraryRecommendationFeedback").doc(feedbackId);
+      const feedbackSnap = await feedbackRef.get();
+      if (!feedbackSnap.exists) {
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_recommendation_feedback_moderate",
+          resourceType: "library_recommendation_feedback",
+          resourceId: feedbackId,
+          ownerUid: ctx.uid,
+          result: "deny",
+          reasonCode: "FEEDBACK_NOT_FOUND",
+          ctx,
+        });
+        jsonError(res, requestId, 404, "NOT_FOUND", "Recommendation feedback not found");
+        return;
+      }
+
+      const existingFeedback = (feedbackSnap.data() ?? {}) as Record<string, unknown>;
+      const recommendationId = trimOrNull(existingFeedback.recommendationId);
+      const now = nowTs();
+      const moderationPatch: Record<string, unknown> = {
+        moderationStatus,
+        moderationAction,
+        moderationNote: moderationNote ?? null,
+        moderatedAt: now,
+        moderatedByUid: ctx.uid,
+        updatedAt: now,
+        updatedByUid: ctx.uid,
+      };
+      await feedbackRef.set(moderationPatch, { merge: true });
+      if (recommendationId) {
+        await db.collection("libraryRecommendations").doc(recommendationId).set(
+          {
+            updatedAt: now,
+            lastFeedbackModeratedAt: now,
+          },
+          { merge: true }
+        );
+      }
+      const feedbackRow = {
+        ...existingFeedback,
+        ...moderationPatch,
+      };
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_recommendation_feedback_moderate",
+        resourceType: "library_recommendation_feedback",
+        resourceId: feedbackId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          recommendationId,
+          action: moderationAction,
+          moderationStatus,
+          hasNote: Boolean(moderationNote),
+        },
+      });
+
+      jsonOk(res, requestId, {
+        feedback: toLibraryRecommendationFeedbackRow(feedbackId, feedbackRow),
+        recommendationId,
+        moderation: {
+          action: moderationAction,
+          moderationStatus,
+          note: moderationNote,
+        },
+      });
+      return;
+    }
+
+    if (route === "/v1/library.ratings.upsert") {
+      const parsed = parseBody(libraryRatingUpsertSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const itemId = safeString(parsed.data.itemId).trim();
+      const itemSnap = await db.collection("libraryItems").doc(itemId).get();
+      if (!itemSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+        return;
+      }
+      const itemRow = itemSnap.data() as Record<string, unknown>;
+      if (!itemRow || typeof itemRow !== "object" || isLibraryRowSoftDeleted(itemRow)) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+        return;
+      }
+
+      const ratingId = `${ctx.uid}__${itemId}`;
+      const ratingRef = db.collection("libraryRatings").doc(ratingId);
+      const existing = await ratingRef.get();
+      const now = nowTs();
+      const payload: Record<string, unknown> = {
+        itemId,
+        userId: ctx.uid,
+        stars: parsed.data.stars,
+        updatedAt: now,
+        updatedByUid: ctx.uid,
+        actorMode: ctx.mode,
+      };
+      if (!existing.exists) {
+        payload.createdAt = now;
+      }
+      await ratingRef.set(payload, { merge: true });
+      await refreshLibraryItemCommunitySignalsSafely(itemId, requestId);
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_rating_upsert",
+        resourceType: "library_item",
+        resourceId: itemId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          stars: parsed.data.stars,
+          ratingId,
+        },
+      });
+
+      jsonOk(res, requestId, {
+        rating: {
+          id: ratingId,
+          itemId,
+          userId: ctx.uid,
+          stars: parsed.data.stars,
+        },
+      });
+      return;
+    }
+
+    if (route === "/v1/library.reviews.create") {
+      const parsed = parseBody(libraryReviewCreateSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const itemId = safeString(parsed.data.itemId).trim();
+      const itemSnap = await db.collection("libraryItems").doc(itemId).get();
+      if (!itemSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+        return;
+      }
+      const itemRow = itemSnap.data() as Record<string, unknown>;
+      if (!itemRow || typeof itemRow !== "object" || isLibraryRowSoftDeleted(itemRow)) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+        return;
+      }
+
+      const now = nowTs();
+      const bodyText = trimOrNull(parsed.data.body);
+      const bestFor = trimOrNull(parsed.data.bestFor);
+      const reflection = trimOrNull(parsed.data.reflection);
+      const reviewRef = await db.collection("libraryReviews").add({
+        itemId,
+        itemTitle: trimOrNull(itemRow.title) ?? "Library item",
+        body: bodyText,
+        practicality: parsed.data.practicality ?? null,
+        difficulty: parsed.data.difficulty ?? null,
+        bestFor,
+        reflection,
+        reviewerUid: ctx.uid,
+        createdAt: now,
+        updatedAt: now,
+        actorMode: ctx.mode,
+      });
+      await refreshLibraryItemCommunitySignalsSafely(itemId, requestId);
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_review_create",
+        resourceType: "library_item",
+        resourceId: itemId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          reviewId: reviewRef.id,
+          hasBody: Boolean(bodyText),
+          hasReflection: Boolean(reflection),
+        },
+      });
+
+      jsonOk(res, requestId, {
+        review: {
+          id: reviewRef.id,
+          itemId,
+        },
+      });
+      return;
+    }
+
+    if (route === "/v1/library.reviews.update") {
+      const parsed = parseBody(libraryReviewUpdateSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const reviewId = trimOrNull(parsed.data.reviewId);
+      if (!reviewId) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Review id is required.");
+        return;
+      }
+
+      const reviewRef = db.collection("libraryReviews").doc(reviewId);
+      const reviewSnap = await reviewRef.get();
+      if (!reviewSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Review not found");
+        return;
+      }
+
+      const existingReview = (reviewSnap.data() ?? {}) as Record<string, unknown>;
+      const reviewerUid = trimOrNull(existingReview.reviewerUid);
+      if (!isStaff && reviewerUid !== ctx.uid) {
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_review_update",
+          resourceType: "library_review",
+          resourceId: reviewId,
+          ownerUid: ctx.uid,
+          result: "deny",
+          reasonCode: "FORBIDDEN",
+          ctx,
+          metadata: {
+            reviewerUid,
+          },
+        });
+        jsonError(res, requestId, 403, "FORBIDDEN", "Only the review author or staff can edit this review.");
+        return;
+      }
+
+      const patch: Record<string, unknown> = {
+        updatedAt: nowTs(),
+        updatedByUid: ctx.uid,
+        actorMode: ctx.mode,
+      };
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "body")) {
+        patch.body = trimOrNull(parsed.data.body);
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "practicality")) {
+        patch.practicality = parsed.data.practicality ?? null;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "difficulty")) {
+        patch.difficulty = parsed.data.difficulty ?? null;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "bestFor")) {
+        patch.bestFor = trimOrNull(parsed.data.bestFor);
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "reflection")) {
+        patch.reflection = trimOrNull(parsed.data.reflection);
+      }
+
+      await reviewRef.set(patch, { merge: true });
+      const reviewItemId = trimOrNull(existingReview.itemId);
+      if (reviewItemId) {
+        await refreshLibraryItemCommunitySignalsSafely(reviewItemId, requestId);
+      }
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_review_update",
+        resourceType: "library_review",
+        resourceId: reviewId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          itemId: reviewItemId,
+          hasBody: Object.prototype.hasOwnProperty.call(patch, "body"),
+          hasPracticality: Object.prototype.hasOwnProperty.call(patch, "practicality"),
+          hasDifficulty: Object.prototype.hasOwnProperty.call(patch, "difficulty"),
+          hasBestFor: Object.prototype.hasOwnProperty.call(patch, "bestFor"),
+          hasReflection: Object.prototype.hasOwnProperty.call(patch, "reflection"),
+        },
+      });
+
+      jsonOk(res, requestId, {
+        review: {
+          id: reviewId,
+          itemId: trimOrNull(existingReview.itemId),
+        },
+      });
+      return;
+    }
+
+    if (route === "/v1/library.tags.submissions.create") {
+      const parsed = parseBody(libraryTagSubmissionCreateSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const itemId = safeString(parsed.data.itemId).trim();
+      const normalizedTagLabel = normalizeLibraryTagLabel(parsed.data.tag);
+      const normalizedTagToken = normalizeLibraryTagToken(parsed.data.tag);
+      if (!normalizedTagLabel || !normalizedTagToken) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Tag must include at least one alphanumeric character.");
+        return;
+      }
+
+      const itemSnap = await db.collection("libraryItems").doc(itemId).get();
+      if (!itemSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+        return;
+      }
+      const itemRow = itemSnap.data() as Record<string, unknown>;
+      if (!itemRow || typeof itemRow !== "object" || isLibraryRowSoftDeleted(itemRow)) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+        return;
+      }
+
+      const existingItemTags = readStringArray((itemRow.tags ?? itemRow.secondaryTags) as unknown)
+        .map((entry) => normalizeLibraryTagToken(entry))
+        .filter((entry): entry is string => Boolean(entry));
+      if (existingItemTags.includes(normalizedTagToken)) {
+        jsonError(res, requestId, 409, "CONFLICT", "This item already includes that tag.");
+        return;
+      }
+
+      let existingAssociationFound = false;
+      try {
+        const itemTagSnap = await db.collection("libraryItemTags").where("itemId", "==", itemId).limit(250).get();
+        for (const docSnap of itemTagSnap.docs) {
+          const row = (docSnap.data() ?? {}) as Record<string, unknown>;
+          const rowItemId = trimOrNull(row.itemId);
+          if (rowItemId !== itemId) continue;
+          const rowToken = normalizeLibraryTagToken(row.normalizedTag ?? row.tag ?? row.name);
+          const rowStatus = normalizeToken(row.status || "active");
+          if (rowToken === normalizedTagToken && rowStatus !== "merged") {
+            existingAssociationFound = true;
+            break;
+          }
+        }
+      } catch {
+        existingAssociationFound = false;
+      }
+      if (existingAssociationFound) {
+        jsonError(res, requestId, 409, "CONFLICT", "This item already includes that tag.");
+        return;
+      }
+
+      const submissionSnap = await db.collection("libraryTagSubmissions").limit(300).get();
+      const duplicatePending = submissionSnap.docs.some((docSnap) => {
+        const row = (docSnap.data() ?? {}) as Record<string, unknown>;
+        const rowItemId = trimOrNull(row.itemId);
+        const rowTagToken = normalizeLibraryTagToken(row.normalizedTag ?? row.tag);
+        const rowStatus = normalizeToken(row.status || "pending");
+        const rowOwner = trimOrNull(row.submittedByUid);
+        return rowItemId === itemId && rowTagToken === normalizedTagToken && rowStatus === "pending" && rowOwner === ctx.uid;
+      });
+      if (duplicatePending) {
+        jsonError(res, requestId, 409, "CONFLICT", "You already submitted this tag and it is pending review.");
+        return;
+      }
+
+      const submissionId = `tagsub_${randomBytes(10).toString("hex")}`;
+      const now = nowTs();
+      const submissionRow: Record<string, unknown> = {
+        itemId,
+        itemTitle: trimOrNull(itemRow.title) ?? "Library item",
+        tag: normalizedTagLabel,
+        normalizedTag: normalizedTagToken,
+        status: "pending",
+        submittedByUid: ctx.uid,
+        submittedByName: trimOrNull(ctx.decoded?.name) ?? null,
+        createdAt: now,
+        updatedAt: now,
+        actorMode: ctx.mode,
+      };
+      await db.collection("libraryTagSubmissions").doc(submissionId).set(submissionRow, { merge: false });
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_tag_submission_create",
+        resourceType: "library_tag_submission",
+        resourceId: submissionId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          itemId,
+          tag: normalizedTagLabel,
+        },
+      });
+
+      jsonOk(res, requestId, {
+        submission: {
+          id: submissionId,
+          itemId,
+          tag: normalizedTagLabel,
+          normalizedTag: normalizedTagToken,
+          status: "pending",
+        },
+      });
+      return;
+    }
+
+    if (route === "/v1/library.tags.submissions.approve") {
+      if (!isStaff) {
+        jsonError(res, requestId, 403, "FORBIDDEN", "Only staff can approve tag submissions.");
+        return;
+      }
+
+      const parsed = parseBody(libraryTagSubmissionApproveSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const submissionId = trimOrNull(parsed.data.submissionId);
+      if (!submissionId) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Submission id is required.");
+        return;
+      }
+
+      const submissionRef = db.collection("libraryTagSubmissions").doc(submissionId);
+      const submissionSnap = await submissionRef.get();
+      if (!submissionSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Tag submission not found");
+        return;
+      }
+
+      const submissionRow = (submissionSnap.data() ?? {}) as Record<string, unknown>;
+      const itemId = trimOrNull(submissionRow.itemId);
+      if (!itemId) {
+        jsonError(res, requestId, 400, "FAILED_PRECONDITION", "Submission is missing item reference.");
+        return;
+      }
+      const submissionTagLabel = normalizeLibraryTagLabel(submissionRow.tag);
+      const submissionTagToken = normalizeLibraryTagToken(submissionRow.normalizedTag ?? submissionRow.tag);
+      if (!submissionTagLabel || !submissionTagToken) {
+        jsonError(res, requestId, 400, "FAILED_PRECONDITION", "Submission tag is invalid.");
+        return;
+      }
+
+      let canonicalTagId = trimOrNull(parsed.data.canonicalTagId);
+      let canonicalTagLabel =
+        normalizeLibraryTagLabel(parsed.data.canonicalTagName) ??
+        submissionTagLabel;
+      let canonicalTagToken = normalizeLibraryTagToken(canonicalTagLabel) ?? submissionTagToken;
+      const now = nowTs();
+
+      if (canonicalTagId) {
+        const canonicalSnap = await db.collection("libraryTags").doc(canonicalTagId).get();
+        if (!canonicalSnap.exists) {
+          jsonError(res, requestId, 404, "NOT_FOUND", "Canonical tag not found");
+          return;
+        }
+        const canonicalRow = (canonicalSnap.data() ?? {}) as Record<string, unknown>;
+        canonicalTagLabel =
+          normalizeLibraryTagLabel(canonicalRow.name ?? canonicalRow.tag ?? canonicalTagLabel) ??
+          canonicalTagLabel;
+        canonicalTagToken =
+          normalizeLibraryTagToken(canonicalRow.normalizedTag ?? canonicalRow.token ?? canonicalTagLabel) ??
+          canonicalTagToken;
+      } else {
+        const tagsSnap = await db.collection("libraryTags").limit(500).get();
+        const existingTag = tagsSnap.docs.find((docSnap) => {
+          const row = (docSnap.data() ?? {}) as Record<string, unknown>;
+          const status = normalizeToken(row.status || "active");
+          const token = normalizeLibraryTagToken(row.normalizedTag ?? row.token ?? row.name ?? row.tag);
+          return status !== "merged" && token === canonicalTagToken;
+        });
+        if (existingTag) {
+          canonicalTagId = existingTag.id;
+          const existingRow = (existingTag.data() ?? {}) as Record<string, unknown>;
+          canonicalTagLabel =
+            normalizeLibraryTagLabel(existingRow.name ?? existingRow.tag ?? canonicalTagLabel) ??
+            canonicalTagLabel;
+          canonicalTagToken =
+            normalizeLibraryTagToken(existingRow.normalizedTag ?? existingRow.token ?? canonicalTagLabel) ??
+            canonicalTagToken;
+        } else {
+          canonicalTagId = `tag_${randomBytes(10).toString("hex")}`;
+          await db.collection("libraryTags").doc(canonicalTagId).set(
+            {
+              name: canonicalTagLabel,
+              tag: canonicalTagLabel,
+              normalizedTag: canonicalTagToken,
+              status: "active",
+              createdAt: now,
+              createdByUid: ctx.uid,
+              updatedAt: now,
+              updatedByUid: ctx.uid,
+            },
+            { merge: false }
+          );
+        }
+      }
+
+      const itemTagId = `${itemId}__${canonicalTagId}`;
+      await db.collection("libraryItemTags").doc(itemTagId).set(
+        {
+          itemId,
+          tagId: canonicalTagId,
+          tag: canonicalTagLabel,
+          normalizedTag: canonicalTagToken,
+          status: "active",
+          approvedFromSubmissionId: submissionId,
+          approvedByUid: ctx.uid,
+          createdAt: now,
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+
+      await submissionRef.set(
+        {
+          status: "approved",
+          canonicalTagId,
+          canonicalTag: canonicalTagLabel,
+          canonicalNormalizedTag: canonicalTagToken,
+          moderatedAt: now,
+          moderatedByUid: ctx.uid,
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+
+      const itemRef = db.collection("libraryItems").doc(itemId);
+      const itemSnap = await itemRef.get();
+      if (itemSnap.exists) {
+        const itemRow = (itemSnap.data() ?? {}) as Record<string, unknown>;
+        const existingTags = readStringArray((itemRow.tags ?? itemRow.secondaryTags) as unknown)
+          .map((entry) => normalizeLibraryTagLabel(entry))
+          .filter((entry): entry is string => Boolean(entry));
+        if (!existingTags.includes(canonicalTagLabel)) {
+          const nextTags = Array.from(new Set([...existingTags, canonicalTagLabel])).slice(0, 60);
+          await itemRef.set(
+            {
+              tags: nextTags,
+              secondaryTags: nextTags,
+              updatedAt: now,
+              updatedByUid: ctx.uid,
+            },
+            { merge: true }
+          );
+        }
+      }
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_tag_submission_approve",
+        resourceType: "library_tag_submission",
+        resourceId: submissionId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          itemId,
+          canonicalTagId,
+          canonicalTag: canonicalTagLabel,
+        },
+      });
+
+      jsonOk(res, requestId, {
+        submission: {
+          id: submissionId,
+          itemId,
+          status: "approved",
+          canonicalTagId,
+          canonicalTag: canonicalTagLabel,
+        },
+        tag: {
+          id: canonicalTagId,
+          name: canonicalTagLabel,
+          normalizedTag: canonicalTagToken,
+        },
+      });
+      return;
+    }
+
+    if (route === "/v1/library.tags.merge") {
+      if (!isStaff) {
+        jsonError(res, requestId, 403, "FORBIDDEN", "Only staff can merge tags.");
+        return;
+      }
+
+      const parsed = parseBody(libraryTagMergeSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const sourceTagId = trimOrNull(parsed.data.sourceTagId);
+      const targetTagId = trimOrNull(parsed.data.targetTagId);
+      const note = trimOrNull(parsed.data.note);
+      if (!sourceTagId || !targetTagId) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Source and target tag IDs are required.");
+        return;
+      }
+      if (sourceTagId === targetTagId) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Source and target tags must differ.");
+        return;
+      }
+
+      const sourceRef = db.collection("libraryTags").doc(sourceTagId);
+      const targetRef = db.collection("libraryTags").doc(targetTagId);
+      const [sourceSnap, targetSnap] = await Promise.all([sourceRef.get(), targetRef.get()]);
+      if (!sourceSnap.exists || !targetSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Source or target tag not found");
+        return;
+      }
+
+      const sourceRow = (sourceSnap.data() ?? {}) as Record<string, unknown>;
+      const targetRow = (targetSnap.data() ?? {}) as Record<string, unknown>;
+      const targetTagLabel =
+        normalizeLibraryTagLabel(targetRow.name ?? targetRow.tag) ??
+        normalizeLibraryTagLabel(sourceRow.name ?? sourceRow.tag) ??
+        "tag";
+      const targetTagToken = normalizeLibraryTagToken(targetRow.normalizedTag ?? targetTagLabel) ?? targetTagLabel;
+      const now = nowTs();
+
+      let migratedItemTags = 0;
+      const itemTagSnap = await db.collection("libraryItemTags").limit(2000).get();
+      for (const docSnap of itemTagSnap.docs) {
+        const row = (docSnap.data() ?? {}) as Record<string, unknown>;
+        const rowTagId = trimOrNull(row.tagId);
+        if (rowTagId !== sourceTagId) continue;
+        const itemId = trimOrNull(row.itemId);
+        if (!itemId) continue;
+
+        const targetAssociationId = `${itemId}__${targetTagId}`;
+        await db.collection("libraryItemTags").doc(targetAssociationId).set(
+          {
+            itemId,
+            tagId: targetTagId,
+            tag: targetTagLabel,
+            normalizedTag: targetTagToken,
+            status: "active",
+            mergedFromTagId: sourceTagId,
+            updatedAt: now,
+            updatedByUid: ctx.uid,
+          },
+          { merge: true }
+        );
+        await db.collection("libraryItemTags").doc(docSnap.id).set(
+          {
+            status: "merged",
+            mergedIntoTagId: targetTagId,
+            mergedAt: now,
+            mergedByUid: ctx.uid,
+            updatedAt: now,
+            updatedByUid: ctx.uid,
+          },
+          { merge: true }
+        );
+        migratedItemTags += 1;
+      }
+
+      let retargetedSubmissions = 0;
+      const submissionSnap = await db.collection("libraryTagSubmissions").limit(2000).get();
+      for (const docSnap of submissionSnap.docs) {
+        const row = (docSnap.data() ?? {}) as Record<string, unknown>;
+        const canonicalTagId = trimOrNull(row.canonicalTagId);
+        if (canonicalTagId !== sourceTagId) continue;
+        await db.collection("libraryTagSubmissions").doc(docSnap.id).set(
+          {
+            canonicalTagId: targetTagId,
+            canonicalTag: targetTagLabel,
+            canonicalNormalizedTag: targetTagToken,
+            updatedAt: now,
+            updatedByUid: ctx.uid,
+          },
+          { merge: true }
+        );
+        retargetedSubmissions += 1;
+      }
+
+      await sourceRef.set(
+        {
+          status: "merged",
+          mergedIntoTagId: targetTagId,
+          mergedAt: now,
+          mergedByUid: ctx.uid,
+          mergeNote: note ?? null,
+          updatedAt: now,
+          updatedByUid: ctx.uid,
+        },
+        { merge: true }
+      );
+      await targetRef.set(
+        {
+          updatedAt: now,
+          updatedByUid: ctx.uid,
+        },
+        { merge: true }
+      );
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_tags_merge",
+        resourceType: "library_tag",
+        resourceId: sourceTagId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          sourceTagId,
+          targetTagId,
+          migratedItemTags,
+          retargetedSubmissions,
+          hasNote: Boolean(note),
+        },
+      });
+
+      jsonOk(res, requestId, {
+        sourceTagId,
+        targetTagId,
+        migratedItemTags,
+        retargetedSubmissions,
+      });
+      return;
+    }
+
+    if (route === "/v1/library.readingStatus.upsert") {
+      const parsed = parseBody(libraryReadingStatusUpsertSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const itemId = safeString(parsed.data.itemId).trim();
+      const itemSnap = await db.collection("libraryItems").doc(itemId).get();
+      if (!itemSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+        return;
+      }
+      const itemRow = itemSnap.data() as Record<string, unknown>;
+      if (!itemRow || typeof itemRow !== "object" || isLibraryRowSoftDeleted(itemRow)) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+        return;
+      }
+
+      const statusId = `${ctx.uid}__${itemId}`;
+      const statusRef = db.collection("libraryReadingStatus").doc(statusId);
+      const existing = await statusRef.get();
+      const now = nowTs();
+      const payload: Record<string, unknown> = {
+        userId: ctx.uid,
+        itemId,
+        status: parsed.data.status,
+        updatedAt: now,
+        updatedByUid: ctx.uid,
+        actorMode: ctx.mode,
+      };
+      if (!existing.exists) {
+        payload.createdAt = now;
+      }
+      await statusRef.set(payload, { merge: true });
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_reading_status_upsert",
+        resourceType: "library_item",
+        resourceId: itemId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          status: parsed.data.status,
+          statusId,
+        },
+      });
+
+      jsonOk(res, requestId, {
+        readingStatus: {
+          id: statusId,
+          itemId,
+          userId: ctx.uid,
+          status: parsed.data.status,
+        },
+      });
+      return;
+    }
+
+    if (route === "/v1/library.loans.checkout") {
+      const parsed = parseBody(libraryLoanCheckoutSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const itemId = safeString(parsed.data.itemId).trim();
+      const loanWindowMs = 28 * 24 * 60 * 60 * 1000;
+      const nowMs = Date.now();
+      const dueAt = Timestamp.fromMillis(nowMs + loanWindowMs);
+      const suggestedDonationCents = parsed.data.suggestedDonationCents ?? null;
+      const idempotencyKeyResult = resolveIdempotencyKey(req, parsed.data.idempotencyKey);
+      if (!idempotencyKeyResult.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", idempotencyKeyResult.message);
+        return;
+      }
+      const idempotencyKey = idempotencyKeyResult.key;
+      const idempotencyFingerprint = libraryLoanIdempotencyFingerprint("checkout", {
+        itemId,
+        suggestedDonationCents,
+      });
+      if (idempotencyKey) {
+        const replay = await readLibraryLoanIdempotencyReplay({
+          actorUid: ctx.uid,
+          operation: "checkout",
+          key: idempotencyKey,
+          fingerprint: idempotencyFingerprint,
+        });
+        if (replay.kind === "conflict") {
+          await logLibraryAuditEvent({
+            req,
+            requestId,
+            action: "library_loan_checkout",
+            resourceType: "library_item",
+            resourceId: itemId,
+            ownerUid: ctx.uid,
+            result: "deny",
+            reasonCode: "IDEMPOTENCY_KEY_CONFLICT",
+            ctx,
+            metadata: {
+              code: "CONFLICT",
+              idempotencyKeyProvided: true,
+            },
+          });
+          jsonError(
+            res,
+            requestId,
+            409,
+            "CONFLICT",
+            "Idempotency key is already in use for a different checkout request.",
+            { reasonCode: "IDEMPOTENCY_KEY_CONFLICT" },
+          );
+          return;
+        }
+        if (replay.kind === "replay") {
+          await logLibraryAuditEvent({
+            req,
+            requestId,
+            action: "library_loan_checkout",
+            resourceType: "library_item",
+            resourceId: itemId,
+            ownerUid: ctx.uid,
+            result: "allow",
+            ctx,
+            metadata: {
+              idempotentReplay: true,
+              idempotencyKeyProvided: true,
+            },
+          });
+          jsonOk(res, requestId, replay.responseData);
+          return;
+        }
+      }
+
+      const result = await db.runTransaction(async (tx) => {
+        const itemRef = db.collection("libraryItems").doc(itemId);
+        const loanId = idempotencyKey
+          ? makeIdempotencyId("library-loan-checkout", ctx.uid, idempotencyKey)
+          : `loan_${randomBytes(12).toString("hex")}`;
+        const loanRef = db.collection("libraryLoans").doc(loanId);
+        const [itemSnap, existingLoanSnap] = await Promise.all([
+          tx.get(itemRef) as Promise<{ exists: boolean; data: () => Record<string, unknown> | undefined }>,
+          tx.get(loanRef) as Promise<{ exists: boolean; data: () => Record<string, unknown> | undefined }>,
+        ]);
+        if (existingLoanSnap.exists) {
+          const existingLoan = (existingLoanSnap.data() ?? {}) as Record<string, unknown>;
+          const existingItemId = safeString(existingLoan.itemId).trim();
+          const existingBorrowerUid = safeString(existingLoan.borrowerUid).trim();
+          const existingDonationRaw = readFiniteNumberOrNull(existingLoan.suggestedDonationCents);
+          const existingDonationCents = existingDonationRaw === null ? null : Math.trunc(existingDonationRaw);
+          if (
+            existingItemId !== itemId ||
+            existingBorrowerUid !== ctx.uid ||
+            existingDonationCents !== suggestedDonationCents
+          ) {
+            return {
+              ok: false as const,
+              code: "CONFLICT",
+              message: "Idempotency key is already in use for a different checkout request.",
+              reasonCode: "IDEMPOTENCY_KEY_CONFLICT",
+            };
+          }
+          const itemRow = itemSnap.exists
+            ? ((itemSnap.data() ?? {}) as Record<string, unknown>)
+            : null;
+          const availableCopies =
+            itemRow && !isLibraryRowSoftDeleted(itemRow)
+              ? Math.max(
+                0,
+                Math.trunc(
+                  readFiniteNumberOrNull(itemRow.availableCopies) ??
+                    readFiniteNumberOrNull(itemRow.totalCopies) ??
+                    0,
+                ),
+              )
+              : 0;
+          const itemStatus =
+            itemRow && !isLibraryRowSoftDeleted(itemRow)
+              ? normalizeLibraryStatus(itemRow)
+              : "checked_out";
+          return {
+            ok: true as const,
+            loanId,
+            itemId: existingItemId || itemId,
+            dueAt: existingLoan.dueAt ?? dueAt,
+            status: normalizeLibraryLoanStatus(existingLoan.status || "checked_out"),
+            nextItemStatus: itemStatus,
+            availableCopies,
+            idempotentReplay: true,
+          };
+        }
+
+        if (!itemSnap.exists) {
+          return { ok: false as const, code: "NOT_FOUND", message: "Library item not found", reasonCode: "ITEM_NOT_FOUND" };
+        }
+        const itemRow = (itemSnap.data() ?? {}) as Record<string, unknown>;
+        if (isLibraryRowSoftDeleted(itemRow)) {
+          return { ok: false as const, code: "NOT_FOUND", message: "Library item not found", reasonCode: "ITEM_NOT_FOUND" };
+        }
+        if (!isLibraryItemLendingEligible(itemRow)) {
+          return {
+            ok: false as const,
+            code: "CONFLICT",
+            message: "Item is not eligible for physical lending",
+            reasonCode: "ITEM_NOT_LENDABLE",
+          };
+        }
+
+        const status = normalizeLibraryStatus(itemRow);
+        const totalCopies = Math.max(1, Math.trunc(readFiniteNumberOrNull(itemRow.totalCopies) ?? 1));
+        const availableCopies = Math.max(
+          0,
+          Math.trunc(readFiniteNumberOrNull(itemRow.availableCopies) ?? totalCopies),
+        );
+        if (status === "lost") {
+          return {
+            ok: false as const,
+            code: "CONFLICT",
+            message: "Item is marked lost and cannot be checked out",
+            reasonCode: "ITEM_MARKED_LOST",
+          };
+        }
+        if (status === "archived" || status === "unavailable") {
+          return {
+            ok: false as const,
+            code: "CONFLICT",
+            message: "Item is not currently available for checkout",
+            reasonCode: "ITEM_NOT_AVAILABLE",
+          };
+        }
+        if (status !== "available" || availableCopies < 1) {
+          return {
+            ok: false as const,
+            code: "CONFLICT",
+            message: "Item is not currently available for checkout",
+            reasonCode: "NO_AVAILABLE_COPIES",
+          };
+        }
+
+        const nextAvailableCopies = Math.max(0, availableCopies - 1);
+        const nextStatus = nextAvailableCopies > 0 ? "available" : "checked_out";
+        const nowTsValue = nowTs();
+
+        tx.set(
+          loanRef,
+          {
+            itemId,
+            itemTitle: trimOrNull(itemRow.title) ?? "Library item",
+            borrowerUid: ctx.uid,
+            borrowerName: null,
+            borrowerEmail: null,
+            status: "checked_out",
+            loanedAt: nowTsValue,
+            dueAt,
+            returnedAt: null,
+            renewalEligible: true,
+            renewalCount: 0,
+            renewalLimit: 1,
+            renewalPolicyNote: "Standard 4-week lending cycle.",
+            suggestedDonationCents,
+            createdAt: nowTsValue,
+            updatedAt: nowTsValue,
+          },
+          { merge: true },
+        );
+
+        tx.set(
+          itemRef,
+          {
+            availableCopies: nextAvailableCopies,
+            status: nextStatus,
+            current_lending_status: nextStatus,
+            updatedAt: nowTsValue,
+          },
+          { merge: true },
+        );
+
+        return {
+          ok: true as const,
+          loanId,
+          itemId,
+          dueAt,
+          status: "checked_out",
+          nextItemStatus: nextStatus,
+          availableCopies: nextAvailableCopies,
+          idempotentReplay: false,
+        };
+      });
+
+      if (!result.ok) {
+        const httpStatus = result.code === "NOT_FOUND" ? 404 : result.code === "CONFLICT" ? 409 : 400;
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_loan_checkout",
+          resourceType: "library_item",
+          resourceId: itemId,
+          ownerUid: ctx.uid,
+          result: "deny",
+          reasonCode: result.reasonCode,
+          ctx,
+          metadata: {
+            code: result.code,
+            idempotencyKeyProvided: Boolean(idempotencyKey),
+          },
+        });
+        jsonError(res, requestId, httpStatus, result.code, result.message, {
+          reasonCode: result.reasonCode ?? null,
+        });
+        return;
+      }
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_loan_checkout",
+        resourceType: "library_item",
+        resourceId: result.itemId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          loanId: result.loanId,
+          dueAt: result.dueAt,
+          availableCopies: result.availableCopies,
+          idempotentReplay: result.idempotentReplay,
+          idempotencyKeyProvided: Boolean(idempotencyKey),
+        },
+      });
+      const responseData = {
+        loan: {
+          id: result.loanId,
+          itemId: result.itemId,
+          status: result.status,
+          dueAt: result.dueAt,
+          idempotentReplay: result.idempotentReplay,
+        },
+        item: {
+          itemId: result.itemId,
+          status: result.nextItemStatus,
+          availableCopies: result.availableCopies,
+        },
+      };
+      if (idempotencyKey) {
+        await persistLibraryLoanIdempotencyRecord({
+          actorUid: ctx.uid,
+          operation: "checkout",
+          key: idempotencyKey,
+          fingerprint: idempotencyFingerprint,
+          responseData,
+          requestId,
+        });
+      }
+      jsonOk(res, requestId, responseData);
+      return;
+    }
+
+    if (route === "/v1/library.loans.checkIn") {
+      const parsed = parseBody(libraryLoanCheckInSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const loanId = safeString(parsed.data.loanId).trim();
+      const idempotencyKeyResult = resolveIdempotencyKey(req, parsed.data.idempotencyKey);
+      if (!idempotencyKeyResult.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", idempotencyKeyResult.message);
+        return;
+      }
+      const idempotencyKey = idempotencyKeyResult.key;
+      const idempotencyFingerprint = libraryLoanIdempotencyFingerprint("checkIn", { loanId });
+      if (idempotencyKey) {
+        const replay = await readLibraryLoanIdempotencyReplay({
+          actorUid: ctx.uid,
+          operation: "checkIn",
+          key: idempotencyKey,
+          fingerprint: idempotencyFingerprint,
+        });
+        if (replay.kind === "conflict") {
+          await logLibraryAuditEvent({
+            req,
+            requestId,
+            action: "library_loan_checkin",
+            resourceType: "library_loan",
+            resourceId: loanId,
+            ownerUid: ctx.uid,
+            result: "deny",
+            reasonCode: "IDEMPOTENCY_KEY_CONFLICT",
+            ctx,
+            metadata: {
+              code: "CONFLICT",
+              idempotencyKeyProvided: true,
+            },
+          });
+          jsonError(
+            res,
+            requestId,
+            409,
+            "CONFLICT",
+            "Idempotency key is already in use for a different check-in request.",
+            { reasonCode: "IDEMPOTENCY_KEY_CONFLICT" },
+          );
+          return;
+        }
+        if (replay.kind === "replay") {
+          await logLibraryAuditEvent({
+            req,
+            requestId,
+            action: "library_loan_checkin",
+            resourceType: "library_loan",
+            resourceId: loanId,
+            ownerUid: ctx.uid,
+            result: "allow",
+            ctx,
+            metadata: {
+              idempotentReplay: true,
+              idempotencyKeyProvided: true,
+            },
+          });
+          jsonOk(res, requestId, replay.responseData);
+          return;
+        }
+      }
+      const result = await db.runTransaction(async (tx) => {
+        const loanRef = db.collection("libraryLoans").doc(loanId);
+        const loanSnap = await tx.get(loanRef) as { exists: boolean; data: () => Record<string, unknown> | undefined };
+        if (!loanSnap.exists) {
+          return { ok: false as const, code: "NOT_FOUND", message: "Loan not found", reasonCode: "LOAN_NOT_FOUND" };
+        }
+        const loanRow = (loanSnap.data() ?? {}) as Record<string, unknown>;
+        const borrowerUid = safeString(loanRow.borrowerUid).trim();
+        if (!isStaff && borrowerUid !== ctx.uid) {
+          return {
+            ok: false as const,
+            code: "FORBIDDEN",
+            message: "Only the borrower or staff can check in this loan",
+            reasonCode: "CHECKIN_FORBIDDEN",
+          };
+        }
+        const currentStatus = normalizeLibraryLoanStatus(loanRow.status);
+        const itemId = safeString(loanRow.itemId).trim();
+        if (!itemId) {
+          return {
+            ok: false as const,
+            code: "FAILED_PRECONDITION",
+            message: "Loan is missing item linkage",
+            reasonCode: "LOAN_MISSING_ITEM_LINKAGE",
+          };
+        }
+
+        const itemRef = db.collection("libraryItems").doc(itemId);
+        const itemSnap = await tx.get(itemRef) as { exists: boolean; data: () => Record<string, unknown> | undefined };
+        if (!itemSnap.exists) {
+          return {
+            ok: false as const,
+            code: "NOT_FOUND",
+            message: "Linked library item not found",
+            reasonCode: "ITEM_NOT_FOUND",
+          };
+        }
+        const itemRow = (itemSnap.data() ?? {}) as Record<string, unknown>;
+        if (isLibraryRowSoftDeleted(itemRow)) {
+          return {
+            ok: false as const,
+            code: "NOT_FOUND",
+            message: "Linked library item not found",
+            reasonCode: "ITEM_NOT_FOUND",
+          };
+        }
+
+        if (currentStatus === "returned") {
+          const availableCopies = Math.max(
+            0,
+            Math.trunc(readFiniteNumberOrNull(itemRow.availableCopies) ?? readFiniteNumberOrNull(itemRow.totalCopies) ?? 1),
+          );
+          return {
+            ok: true as const,
+            loanId,
+            itemId,
+            idempotentReplay: true,
+            availableCopies,
+          };
+        }
+        if (currentStatus !== "checked_out" && currentStatus !== "overdue" && currentStatus !== "return_requested") {
+          return {
+            ok: false as const,
+            code: "CONFLICT",
+            message: "Loan status cannot transition to returned",
+            reasonCode: "INVALID_LOAN_TRANSITION",
+          };
+        }
+
+        const nowTsValue = nowTs();
+        const totalCopies = Math.max(1, Math.trunc(readFiniteNumberOrNull(itemRow.totalCopies) ?? 1));
+        const availableCopies = Math.max(
+          0,
+          Math.trunc(readFiniteNumberOrNull(itemRow.availableCopies) ?? totalCopies),
+        );
+        const nextAvailableCopies = Math.min(totalCopies, availableCopies + 1);
+        tx.set(
+          loanRef,
+          {
+            status: "returned",
+            returnedAt: nowTsValue,
+            updatedAt: nowTsValue,
+            updatedByUid: ctx.uid,
+          },
+          { merge: true },
+        );
+        tx.set(
+          itemRef,
+          {
+            availableCopies: nextAvailableCopies,
+            status: "available",
+            current_lending_status: "available",
+            updatedAt: nowTsValue,
+          },
+          { merge: true },
+        );
+
+        return {
+          ok: true as const,
+          loanId,
+          itemId,
+          idempotentReplay: false,
+          availableCopies: nextAvailableCopies,
+        };
+      });
+
+      if (!result.ok) {
+        const httpStatus =
+          result.code === "NOT_FOUND" ? 404 : result.code === "FORBIDDEN" ? 403 : result.code === "CONFLICT" ? 409 : 400;
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_loan_checkin",
+          resourceType: "library_loan",
+          resourceId: loanId,
+          ownerUid: ctx.uid,
+          result: "deny",
+          reasonCode: result.reasonCode,
+          ctx,
+          metadata: {
+            code: result.code,
+            idempotencyKeyProvided: Boolean(idempotencyKey),
+          },
+        });
+        jsonError(res, requestId, httpStatus, result.code, result.message, {
+          reasonCode: result.reasonCode ?? null,
+        });
+        return;
+      }
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_loan_checkin",
+        resourceType: "library_loan",
+        resourceId: result.loanId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          itemId: result.itemId,
+          idempotentReplay: result.idempotentReplay,
+          availableCopies: result.availableCopies,
+          idempotencyKeyProvided: Boolean(idempotencyKey),
+        },
+      });
+
+      const responseData = {
+        loan: {
+          id: result.loanId,
+          status: "returned",
+          idempotentReplay: result.idempotentReplay,
+        },
+        item: {
+          itemId: result.itemId,
+          status: "available",
+          availableCopies: result.availableCopies,
+        },
+      };
+      if (idempotencyKey) {
+        await persistLibraryLoanIdempotencyRecord({
+          actorUid: ctx.uid,
+          operation: "checkIn",
+          key: idempotencyKey,
+          fingerprint: idempotencyFingerprint,
+          responseData,
+          requestId,
+        });
+      }
+      jsonOk(res, requestId, responseData);
+      return;
+    }
+
+    if (route === "/v1/library.loans.markLost") {
+      if (!isStaff) {
+        jsonError(res, requestId, 403, "FORBIDDEN", "Only staff can mark loans as lost.");
+        return;
+      }
+      const parsed = parseBody(libraryLoanMarkLostSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const loanId = safeString(parsed.data.loanId).trim();
+      const lostNote = trimOrNull(parsed.data.note);
+      const idempotencyKeyResult = resolveIdempotencyKey(req, parsed.data.idempotencyKey);
+      if (!idempotencyKeyResult.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", idempotencyKeyResult.message);
+        return;
+      }
+      const idempotencyKey = idempotencyKeyResult.key;
+      const idempotencyFingerprint = libraryLoanIdempotencyFingerprint("markLost", {
+        loanId,
+        note: lostNote,
+      });
+      if (idempotencyKey) {
+        const replay = await readLibraryLoanIdempotencyReplay({
+          actorUid: ctx.uid,
+          operation: "markLost",
+          key: idempotencyKey,
+          fingerprint: idempotencyFingerprint,
+        });
+        if (replay.kind === "conflict") {
+          await logLibraryAuditEvent({
+            req,
+            requestId,
+            action: "library_loan_mark_lost",
+            resourceType: "library_loan",
+            resourceId: loanId,
+            ownerUid: ctx.uid,
+            result: "deny",
+            reasonCode: "IDEMPOTENCY_KEY_CONFLICT",
+            ctx,
+            metadata: {
+              code: "CONFLICT",
+              idempotencyKeyProvided: true,
+            },
+          });
+          jsonError(
+            res,
+            requestId,
+            409,
+            "CONFLICT",
+            "Idempotency key is already in use for a different mark-lost request.",
+            { reasonCode: "IDEMPOTENCY_KEY_CONFLICT" },
+          );
+          return;
+        }
+        if (replay.kind === "replay") {
+          await logLibraryAuditEvent({
+            req,
+            requestId,
+            action: "library_loan_mark_lost",
+            resourceType: "library_loan",
+            resourceId: loanId,
+            ownerUid: ctx.uid,
+            result: "allow",
+            ctx,
+            metadata: {
+              idempotentReplay: true,
+              idempotencyKeyProvided: true,
+            },
+          });
+          jsonOk(res, requestId, replay.responseData);
+          return;
+        }
+      }
+      const result = await db.runTransaction(async (tx) => {
+        const loanRef = db.collection("libraryLoans").doc(loanId);
+        const loanSnap = await tx.get(loanRef) as { exists: boolean; data: () => Record<string, unknown> | undefined };
+        if (!loanSnap.exists) {
+          return { ok: false as const, code: "NOT_FOUND", message: "Loan not found", reasonCode: "LOAN_NOT_FOUND" };
+        }
+        const loanRow = (loanSnap.data() ?? {}) as Record<string, unknown>;
+        const itemId = safeString(loanRow.itemId).trim();
+        if (!itemId) {
+          return {
+            ok: false as const,
+            code: "FAILED_PRECONDITION",
+            message: "Loan is missing item linkage",
+            reasonCode: "LOAN_MISSING_ITEM_LINKAGE",
+          };
+        }
+        const itemRef = db.collection("libraryItems").doc(itemId);
+        const itemSnap = await tx.get(itemRef) as { exists: boolean; data: () => Record<string, unknown> | undefined };
+        if (!itemSnap.exists) {
+          return {
+            ok: false as const,
+            code: "NOT_FOUND",
+            message: "Linked library item not found",
+            reasonCode: "ITEM_NOT_FOUND",
+          };
+        }
+        const itemRow = (itemSnap.data() ?? {}) as Record<string, unknown>;
+        if (isLibraryRowSoftDeleted(itemRow)) {
+          return {
+            ok: false as const,
+            code: "NOT_FOUND",
+            message: "Linked library item not found",
+            reasonCode: "ITEM_NOT_FOUND",
+          };
+        }
+
+        const currentStatus = normalizeLibraryLoanStatus(loanRow.status);
+        const replacementValueCents = Math.max(
+          readLibraryReplacementValueCents(loanRow),
+          readLibraryReplacementValueCents(itemRow),
+        );
+        if (currentStatus === "returned") {
+          return {
+            ok: false as const,
+            code: "CONFLICT",
+            message: "Returned loans cannot be marked lost",
+            reasonCode: "LOAN_ALREADY_RETURNED",
+          };
+        }
+        if (currentStatus === "lost") {
+          return {
+            ok: true as const,
+            loanId,
+            itemId,
+            replacementValueCents,
+            idempotentReplay: true,
+          };
+        }
+        if (currentStatus !== "checked_out" && currentStatus !== "overdue" && currentStatus !== "return_requested") {
+          return {
+            ok: false as const,
+            code: "CONFLICT",
+            message: "Loan status cannot transition to lost",
+            reasonCode: "INVALID_LOAN_TRANSITION",
+          };
+        }
+
+        const nowTsValue = nowTs();
+        tx.set(
+          loanRef,
+          {
+            status: "lost",
+            lostAt: nowTsValue,
+            lostByUid: ctx.uid,
+            lostNote: lostNote ?? null,
+            replacementValueCents,
+            updatedAt: nowTsValue,
+            updatedByUid: ctx.uid,
+          },
+          { merge: true },
+        );
+        tx.set(
+          itemRef,
+          {
+            status: "lost",
+            current_lending_status: "lost",
+            lostAt: nowTsValue,
+            lostByUid: ctx.uid,
+            updatedAt: nowTsValue,
+            updatedByUid: ctx.uid,
+          },
+          { merge: true },
+        );
+        return {
+          ok: true as const,
+          loanId,
+          itemId,
+          replacementValueCents,
+          idempotentReplay: false,
+        };
+      });
+
+      if (!result.ok) {
+        const httpStatus =
+          result.code === "NOT_FOUND"
+            ? 404
+            : result.code === "CONFLICT"
+              ? 409
+              : result.code === "FAILED_PRECONDITION"
+                ? 412
+                : 400;
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_loan_mark_lost",
+          resourceType: "library_loan",
+          resourceId: loanId,
+          ownerUid: ctx.uid,
+          result: "deny",
+          reasonCode: result.reasonCode,
+          ctx,
+          metadata: {
+            code: result.code,
+            idempotencyKeyProvided: Boolean(idempotencyKey),
+          },
+        });
+        jsonError(res, requestId, httpStatus, result.code, result.message, {
+          reasonCode: result.reasonCode ?? null,
+        });
+        return;
+      }
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_loan_mark_lost",
+        resourceType: "library_loan",
+        resourceId: result.loanId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          itemId: result.itemId,
+          idempotentReplay: result.idempotentReplay,
+          replacementValueCents: result.replacementValueCents,
+          hasNote: Boolean(lostNote),
+          idempotencyKeyProvided: Boolean(idempotencyKey),
+        },
+      });
+
+      const responseData = {
+        loan: {
+          id: result.loanId,
+          status: "lost",
+          idempotentReplay: result.idempotentReplay,
+          replacementValueCents: result.replacementValueCents,
+        },
+        item: {
+          itemId: result.itemId,
+          status: "lost",
+        },
+      };
+      if (idempotencyKey) {
+        await persistLibraryLoanIdempotencyRecord({
+          actorUid: ctx.uid,
+          operation: "markLost",
+          key: idempotencyKey,
+          fingerprint: idempotencyFingerprint,
+          responseData,
+          requestId,
+        });
+      }
+      jsonOk(res, requestId, responseData);
+      return;
+    }
+
+    if (route === "/v1/library.loans.assessReplacementFee") {
+      if (!isStaff) {
+        jsonError(res, requestId, 403, "FORBIDDEN", "Only staff can assess replacement fees.");
+        return;
+      }
+      const parsed = parseBody(libraryLoanAssessReplacementFeeSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+      if (parsed.data.confirm !== true) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", "Replacement fee assessment requires confirm=true.");
+        return;
+      }
+
+      const loanId = safeString(parsed.data.loanId).trim();
+      const feeNote = trimOrNull(parsed.data.note);
+      const explicitAmountCents = parsed.data.amountCents ?? null;
+      const idempotencyKeyResult = resolveIdempotencyKey(req, parsed.data.idempotencyKey);
+      if (!idempotencyKeyResult.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", idempotencyKeyResult.message);
+        return;
+      }
+      const idempotencyKey = idempotencyKeyResult.key;
+      const idempotencyFingerprint = libraryLoanIdempotencyFingerprint("assessReplacementFee", {
+        loanId,
+        amountCents: explicitAmountCents,
+        note: feeNote,
+        confirm: true,
+      });
+      if (idempotencyKey) {
+        const replay = await readLibraryLoanIdempotencyReplay({
+          actorUid: ctx.uid,
+          operation: "assessReplacementFee",
+          key: idempotencyKey,
+          fingerprint: idempotencyFingerprint,
+        });
+        if (replay.kind === "conflict") {
+          await logLibraryAuditEvent({
+            req,
+            requestId,
+            action: "library_loan_assess_replacement_fee",
+            resourceType: "library_loan",
+            resourceId: loanId,
+            ownerUid: ctx.uid,
+            result: "deny",
+            reasonCode: "IDEMPOTENCY_KEY_CONFLICT",
+            ctx,
+            metadata: {
+              code: "CONFLICT",
+              hasExplicitAmount: explicitAmountCents !== null,
+              idempotencyKeyProvided: true,
+            },
+          });
+          jsonError(
+            res,
+            requestId,
+            409,
+            "CONFLICT",
+            "Idempotency key is already in use for a different replacement-fee request.",
+            { reasonCode: "IDEMPOTENCY_KEY_CONFLICT" },
+          );
+          return;
+        }
+        if (replay.kind === "replay") {
+          await logLibraryAuditEvent({
+            req,
+            requestId,
+            action: "library_loan_assess_replacement_fee",
+            resourceType: "library_loan",
+            resourceId: loanId,
+            ownerUid: ctx.uid,
+            result: "allow",
+            ctx,
+            metadata: {
+              idempotentReplay: true,
+              hasExplicitAmount: explicitAmountCents !== null,
+              idempotencyKeyProvided: true,
+            },
+          });
+          jsonOk(res, requestId, replay.responseData);
+          return;
+        }
+      }
+      const result = await db.runTransaction(async (tx) => {
+        const loanRef = db.collection("libraryLoans").doc(loanId);
+        const loanSnap = await tx.get(loanRef) as { exists: boolean; data: () => Record<string, unknown> | undefined };
+        if (!loanSnap.exists) {
+          return { ok: false as const, code: "NOT_FOUND", message: "Loan not found", reasonCode: "LOAN_NOT_FOUND" };
+        }
+        const loanRow = (loanSnap.data() ?? {}) as Record<string, unknown>;
+        const itemId = safeString(loanRow.itemId).trim();
+        if (!itemId) {
+          return {
+            ok: false as const,
+            code: "FAILED_PRECONDITION",
+            message: "Loan is missing item linkage",
+            reasonCode: "LOAN_MISSING_ITEM_LINKAGE",
+          };
+        }
+        const loanStatus = normalizeLibraryLoanStatus(loanRow.status);
+        if (loanStatus !== "lost") {
+          return {
+            ok: false as const,
+            code: "CONFLICT",
+            message: "Replacement fees can only be assessed for lost loans",
+            reasonCode: "REPLACEMENT_FEE_REQUIRES_LOST_STATUS",
+          };
+        }
+
+        const itemRef = db.collection("libraryItems").doc(itemId);
+        const itemSnap = await tx.get(itemRef) as { exists: boolean; data: () => Record<string, unknown> | undefined };
+        if (!itemSnap.exists) {
+          return {
+            ok: false as const,
+            code: "NOT_FOUND",
+            message: "Linked library item not found",
+            reasonCode: "ITEM_NOT_FOUND",
+          };
+        }
+        const itemRow = (itemSnap.data() ?? {}) as Record<string, unknown>;
+        if (isLibraryRowSoftDeleted(itemRow)) {
+          return {
+            ok: false as const,
+            code: "NOT_FOUND",
+            message: "Linked library item not found",
+            reasonCode: "ITEM_NOT_FOUND",
+          };
+        }
+
+        const existingFeeId = trimOrNull(loanRow.replacementFeeId);
+        const existingFeeStatus = normalizeToken(loanRow.replacementFeeStatus || "");
+        const existingAmountCents = Math.max(
+          0,
+          Math.trunc(readFiniteNumberOrNull(loanRow.replacementFeeAmountCents) ?? 0),
+        );
+        if (existingFeeId && (existingFeeStatus === "assessed" || existingFeeStatus === "pending_charge")) {
+          return {
+            ok: true as const,
+            idempotentReplay: true,
+            feeId: existingFeeId,
+            loanId,
+            itemId,
+            amountCents: existingAmountCents,
+          };
+        }
+
+        const fallbackAmountCents = Math.max(
+          readLibraryReplacementValueCents(loanRow),
+          readLibraryReplacementValueCents(itemRow),
+        );
+        const amountCents = Math.max(
+          0,
+          Math.trunc(explicitAmountCents === null ? fallbackAmountCents : explicitAmountCents),
+        );
+        if (amountCents < 1) {
+          return {
+            ok: false as const,
+            code: "FAILED_PRECONDITION",
+            message: "Replacement fee amount is required. Set replacement value or provide amountCents.",
+            reasonCode: "REPLACEMENT_AMOUNT_REQUIRED",
+          };
+        }
+
+        const nowTsValue = nowTs();
+        const feeId = `lostfee_${randomBytes(10).toString("hex")}`;
+        const feeRef = db.collection("libraryReplacementFees").doc(feeId);
+        tx.set(
+          feeRef,
+          {
+            loanId,
+            itemId,
+            borrowerUid: trimOrNull(loanRow.borrowerUid),
+            borrowerName: trimOrNull(loanRow.borrowerName),
+            borrowerEmail: trimOrNull(loanRow.borrowerEmail),
+            amountCents,
+            status: "pending_charge",
+            chargeWorkflow: "stripe_ready",
+            note: feeNote ?? null,
+            assessedAt: nowTsValue,
+            assessedByUid: ctx.uid,
+            createdAt: nowTsValue,
+            updatedAt: nowTsValue,
+          },
+          { merge: false },
+        );
+        tx.set(
+          loanRef,
+          {
+            replacementFeeId: feeId,
+            replacementFeeStatus: "assessed",
+            replacementFeeAmountCents: amountCents,
+            replacementFeeAssessedAt: nowTsValue,
+            replacementFeeAssessedByUid: ctx.uid,
+            replacementFeeNote: feeNote ?? null,
+            updatedAt: nowTsValue,
+            updatedByUid: ctx.uid,
+          },
+          { merge: true },
+        );
+
+        return {
+          ok: true as const,
+          idempotentReplay: false,
+          feeId,
+          loanId,
+          itemId,
+          amountCents,
+        };
+      });
+
+      if (!result.ok) {
+        const httpStatus =
+          result.code === "NOT_FOUND"
+            ? 404
+            : result.code === "CONFLICT"
+              ? 409
+              : result.code === "FAILED_PRECONDITION"
+                ? 412
+                : 400;
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_loan_assess_replacement_fee",
+          resourceType: "library_loan",
+          resourceId: loanId,
+          ownerUid: ctx.uid,
+          result: "deny",
+          reasonCode: result.reasonCode,
+          ctx,
+          metadata: {
+            code: result.code,
+            hasExplicitAmount: explicitAmountCents !== null,
+            idempotencyKeyProvided: Boolean(idempotencyKey),
+          },
+        });
+        jsonError(res, requestId, httpStatus, result.code, result.message, {
+          reasonCode: result.reasonCode ?? null,
+        });
+        return;
+      }
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_loan_assess_replacement_fee",
+        resourceType: "library_loan",
+        resourceId: result.loanId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          feeId: result.feeId,
+          itemId: result.itemId,
+          amountCents: result.amountCents,
+          idempotentReplay: result.idempotentReplay,
+          hasNote: Boolean(feeNote),
+          hasExplicitAmount: explicitAmountCents !== null,
+          idempotencyKeyProvided: Boolean(idempotencyKey),
+        },
+      });
+
+      const responseData = {
+        fee: {
+          id: result.feeId,
+          loanId: result.loanId,
+          itemId: result.itemId,
+          amountCents: result.amountCents,
+          status: "pending_charge",
+          idempotentReplay: result.idempotentReplay,
+        },
+      };
+      if (idempotencyKey) {
+        await persistLibraryLoanIdempotencyRecord({
+          actorUid: ctx.uid,
+          operation: "assessReplacementFee",
+          key: idempotencyKey,
+          fingerprint: idempotencyFingerprint,
+          responseData,
+          requestId,
+        });
+      }
+      jsonOk(res, requestId, responseData);
+      return;
+    }
+
+    if (route === "/v1/library.items.overrideStatus") {
+      if (!isStaff) {
+        jsonError(res, requestId, 403, "FORBIDDEN", "Only staff can override library item status.");
+        return;
+      }
+      const parsed = parseBody(libraryItemOverrideStatusSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const itemId = safeString(parsed.data.itemId).trim();
+      const overrideStatus = parsed.data.status;
+      const overrideNote = trimOrNull(parsed.data.note);
+      const itemRef = db.collection("libraryItems").doc(itemId);
+      const itemSnap = await itemRef.get();
+      if (!itemSnap.exists) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+        return;
+      }
+      const itemRow = (itemSnap.data() ?? {}) as Record<string, unknown>;
+      if (!itemRow || typeof itemRow !== "object" || isLibraryRowSoftDeleted(itemRow)) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+        return;
+      }
+
+      const totalCopies = Math.max(1, Math.trunc(readFiniteNumberOrNull(itemRow.totalCopies) ?? 1));
+      const currentAvailableCopies = Math.max(
+        0,
+        Math.trunc(readFiniteNumberOrNull(itemRow.availableCopies) ?? totalCopies),
+      );
+      let nextAvailableCopies = currentAvailableCopies;
+      if (overrideStatus === "available") {
+        nextAvailableCopies = Math.max(1, Math.min(totalCopies, currentAvailableCopies || totalCopies));
+      } else if (overrideStatus === "checked_out" || overrideStatus === "overdue") {
+        nextAvailableCopies = Math.max(0, Math.min(totalCopies - 1, currentAvailableCopies));
+      } else if (overrideStatus === "lost" || overrideStatus === "unavailable" || overrideStatus === "archived") {
+        nextAvailableCopies = 0;
+      }
+
+      const now = nowTs();
+      await itemRef.set(
+        {
+          status: overrideStatus,
+          current_lending_status: overrideStatus,
+          availableCopies: nextAvailableCopies,
+          statusOverrideAt: now,
+          statusOverrideByUid: ctx.uid,
+          statusOverrideNote: overrideNote ?? null,
+          updatedAt: now,
+          updatedByUid: ctx.uid,
+        },
+        { merge: true },
+      );
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_item_override_status",
+        resourceType: "library_item",
+        resourceId: itemId,
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          status: overrideStatus,
+          availableCopies: nextAvailableCopies,
+          hasNote: Boolean(overrideNote),
+        },
+      });
+
+      jsonOk(res, requestId, {
+        item: {
+          id: itemId,
+          status: overrideStatus,
+          availableCopies: nextAvailableCopies,
+        },
+      });
+      return;
+    }
+
+    if (route === "/v1/library.loans.listMine") {
+      const parsed = parseBody(libraryLoansListMineSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const limit = parsed.data.limit ?? 80;
+      const snap = await db.collection("libraryLoans").where("borrowerUid", "==", ctx.uid).limit(limit).get();
+      const loans = snap.docs
+        .map((docSnap) => ({ id: docSnap.id, row: docSnap.data() as Record<string, unknown> }))
+        .filter((entry) => safeString(entry.row.borrowerUid).trim() === ctx.uid)
+        .sort((a, b) => readTimestampLikeMs(b.row.loanedAt) - readTimestampLikeMs(a.row.loanedAt))
+        .map((entry) => toBatchDetailRow(entry.id, entry.row));
+
+      jsonOk(res, requestId, { loans, limit });
       return;
     }
 

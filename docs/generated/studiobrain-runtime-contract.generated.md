@@ -8,9 +8,9 @@
 
 ## Contract Summary
 - Schema version: `1.0.0`
-- Variables tracked: `81`
+- Variables tracked: `82`
 - Required variables: `15`
-- Optional variables: `66`
+- Optional variables: `67`
 - Sensitive variables (redacted defaults): `6`
 
 ## Network Profile Snapshot
@@ -112,6 +112,7 @@
 | STUDIO_BRAIN_SKILL_SANDBOX_ENTRY_TIMEOUT_MS | integer | no | 15000 |
 | STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS | string | no | (redacted) |
 | STUDIO_BRAIN_STATIC_IP | string | no |  |
+| STUDIO_BRAIN_STRIPE_READER_MODE | string | no | auto |
 | STUDIO_BRAIN_STRIPE_READ_ONLY | boolean | no | true |
 | STUDIO_BRAIN_SWARM_EVENT_POLL_MS | integer | no | 1000 |
 | STUDIO_BRAIN_SWARM_ID | string | no | default-swarm |
@@ -125,4 +126,4 @@
 2. Run `npm run docs:contract`.
 3. Validate drift with `npm run docs:contract:check` in PR checks.
 
-Source digest: `70e70fc003856199a84f176a98e17f1d6ac5e0de89ef88a8a94f181f71a67256`
+Source digest: `e1e3f05a31ff3c5e0aabee3c0a12aa20d2d7d63e7a4556b33e2fd20edf0af360`

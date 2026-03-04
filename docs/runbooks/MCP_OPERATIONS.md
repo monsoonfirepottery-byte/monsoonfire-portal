@@ -66,6 +66,32 @@ Use strict mode when you want warnings to fail:
 npm run codex:doctor:strict
 ```
 
+## Codex Agentic Rubric + Autopilot
+Run Codex performance rubric, telemetry random audit, and backlog autopilot loops:
+
+```bash
+npm run codex:rubric:daily
+npm run codex:telemetry:audit
+npm run codex:backlog:autopilot
+```
+
+Strict trust-but-verify lane:
+
+```bash
+npm run codex:rubric:strict
+npm run codex:telemetry:audit:strict
+```
+
+Artifact-emitting lane:
+
+```bash
+npm run codex:rubric:daily:write
+npm run codex:telemetry:audit:write
+node ./scripts/codex/backlog-autopilot.mjs --dry-run --write --json
+```
+
+Runbook: `docs/runbooks/CODEX_AGENTIC_RUBRIC_AND_AUTOPILOT.md`
+
 ## Local Memory Pipeline (Ignored Workspace)
 For local-only `memory/proposed -> memory/accepted` flow inside this repo:
 

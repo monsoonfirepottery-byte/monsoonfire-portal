@@ -1,5 +1,10 @@
 # Monsoon Fire Portal — Release Notes
 
+## v0.1.8 (2026-03-01)
+- Officially squashed auth UX leak: signed-out users now see a dedicated sign-in screen only.
+- Portal chrome (navbar, dock controls, app-shell layout/theme experience) now stays hidden until authentication succeeds.
+- Advanced diagnostics panel no longer appears for unauthenticated sessions.
+
 ## v0.1.0 (2026-01-20)
 - Branded client shell with mobile drawer navigation and top bar.
 - Live "My Pieces" view backed by Firestore (active + history batches).

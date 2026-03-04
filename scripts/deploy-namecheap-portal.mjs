@@ -8,6 +8,9 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, "..");
+const defaultPortalAutomationEnvPath = resolve(repoRoot, "secrets", "portal", "portal-automation.env");
+
+loadPortalAutomationEnv();
 
 const defaults = {
   server: process.env.WEBSITE_DEPLOY_SERVER || "monsggbd@66.29.137.142",
@@ -632,8 +635,41 @@ function printHelp() {
       "  --skip-evidence-pack       skip deploy evidence pack generation\n" +
       "  --help                     show this help\n" +
       "\n" +
+      "Env auto-load:\n" +
+      `  If present, ${defaultPortalAutomationEnvPath} is loaded before preflight/build.\n` +
+      "  Override path with PORTAL_AUTOMATION_ENV_PATH.\n" +
+      "\n" +
       "Any unknown args are forwarded to verify-cutover when --verify is enabled.\n"
   );
+}
+
+function loadPortalAutomationEnv() {
+  const configuredPath = String(process.env.PORTAL_AUTOMATION_ENV_PATH || "").trim();
+  const envPath = configuredPath || defaultPortalAutomationEnvPath;
+  if (!envPath || !existsSync(envPath)) return;
+
+  const raw = readFileSync(envPath, "utf8");
+  const lines = raw.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex <= 0) continue;
+
+    const key = trimmed.slice(0, separatorIndex).trim();
+    if (!key || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    if (String(process.env[key] || "").trim()) continue;
+
+    let value = trimmed.slice(separatorIndex + 1).trim();
+    if (
+      (value.startsWith("\"") && value.endsWith("\"")) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
 }
 
 function fail(message) {

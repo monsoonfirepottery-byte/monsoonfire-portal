@@ -11,8 +11,7 @@ import {
   FULL_KILN_CUSTOM_PRICE,
   DELIVERY_PRICE_PER_TRIP,
   RUSH_REQUEST_PRICE,
-  WAX_RESIST_ASSIST_PRICE,
-  GLAZE_SANITY_CHECK_PRICE,
+  STAFF_GLAZE_PREP_PER_HALF_SHELF_PRICE,
   applyHalfKilnPriceBreak,
   computeDeliveryCost,
   computeEstimatedCost,
@@ -66,7 +65,7 @@ const INTAKE_MODE_OPTIONS: Array<{
   {
     id: "COMMUNITY_SHELF",
     label: "Community shelf",
-    detail: "Free placement when space remains and permission is granted.",
+    detail: "Tiny-load lane for flexible timing when extra kiln space appears.",
   },
 ];
 
@@ -109,6 +108,7 @@ const KILN_OPTIONS = [
 
 const CHECKIN_PREFILL_KEY = "mf_checkin_prefill";
 const KILN_CAPACITY_HALF_SHELVES = 8;
+const COMMUNITY_SHELF_MAX_HALF_SHELVES = 1;
 const STATUS_ACTIONS: Array<{ status: StaffQueueStatus; label: string; tone: "primary" | "ghost" | "danger" }> = [
   { status: "CONFIRMED", label: "Confirm", tone: "primary" },
   { status: "WAITLISTED", label: "Waitlist", tone: "ghost" },
@@ -531,6 +531,42 @@ function sanitizeDateInput(value: string) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function playCheckinSuccessTone() {
+  if (typeof window === "undefined") return;
+  const AudioContextCtor =
+    window.AudioContext ||
+    ((window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext ??
+      null);
+  if (!AudioContextCtor) return;
+
+  try {
+    const context = new AudioContextCtor();
+    const notes = [523.25, 659.25, 783.99];
+    const now = context.currentTime;
+    notes.forEach((frequency, index) => {
+      const startAt = now + index * 0.11;
+      const oscillator = context.createOscillator();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(frequency, startAt);
+
+      const gain = context.createGain();
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.075, startAt + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.19);
+
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(startAt);
+      oscillator.stop(startAt + 0.2);
+    });
+    window.setTimeout(() => {
+      void context.close().catch(() => {});
+    }, 700);
+  } catch {
+    // Audio APIs can be blocked by browser policies; silently skip in that case.
+  }
+}
+
 function getFileExtension(file: File) {
   const name = file.name || "";
   const idx = name.lastIndexOf(".");
@@ -749,15 +785,16 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
   const [notesGeneral, setNotesGeneral] = useState("");
   const [notesTags, setNotesTags] = useState<string[]>([]);
   const [rushRequested, setRushRequested] = useState(false);
-  const [waxResistAssistRequested, setWaxResistAssistRequested] = useState(false);
-  const [glazeSanityCheckRequested, setGlazeSanityCheckRequested] = useState(false);
+  const [staffGlazePrepRequested, setStaffGlazePrepRequested] = useState(false);
   const [pickupDeliveryRequested, setPickupDeliveryRequested] = useState(false);
   const [returnDeliveryRequested, setReturnDeliveryRequested] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryInstructions, setDeliveryInstructions] = useState("");
   const [useStudioGlazes, setUseStudioGlazes] = useState(false);
   const [communityShelfFillInAllowed, setCommunityShelfFillInAllowed] = useState(false);
+  const [communityShelfSmallLoadConfirmed, setCommunityShelfSmallLoadConfirmed] = useState(false);
   const [glazeAccessCost, setGlazeAccessCost] = useState<number | null>(null);
+  const [submitCelebrationActive, setSubmitCelebrationActive] = useState(false);
 
   const [formError, setFormError] = useState("");
   const [formStatus, setFormStatus] = useState("");
@@ -873,6 +910,8 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
     const safeFootprint = Math.min(8, Math.max(1, footprintHalfShelves));
     return safeFootprint + (hasTallPieces ? 1 : 0);
   }, [footprintHalfShelves, hasTallPieces]);
+  const communityShelfSizeExceeded =
+    intakeMode === "COMMUNITY_SHELF" && computedHalfShelves > COMMUNITY_SHELF_MAX_HALF_SHELVES;
   const computedCost = useMemo(() => {
     if (intakeMode === "COMMUNITY_SHELF") return 0;
     if (intakeMode === "WHOLE_KILN") return FULL_KILN_CUSTOM_PRICE;
@@ -894,7 +933,6 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
     if (!Number.isFinite(estimatedHalfShelves)) return 0;
     return Math.round(estimatedHalfShelves as number);
   }, [estimatedHalfShelves]);
-  const spaceLabel = estimatedHalfShelvesRounded > 8 ? "8+" : String(estimatedHalfShelvesRounded);
   const showFitPrompt = (tiers ?? 1) > 1;
   const firingLabel =
     firingType === "bisque" ? "Bisque" : firingType === "glaze" ? "Glaze" : "Other";
@@ -905,16 +943,19 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
       : intakeMode === "WHOLE_KILN"
         ? "Whole kiln"
         : "Per-shelf purchase";
+  const canSuggestPriorityQueue = intakeMode !== "COMMUNITY_SHELF";
   const deliveryTrips = (pickupDeliveryRequested ? 1 : 0) + (returnDeliveryRequested ? 1 : 0);
   const deliveryCost = computeDeliveryCost(deliveryTrips);
   const estimatedCostWithDelivery =
     computedCost != null ? computedCost + deliveryCost : computedCost;
   const rushCost = rushRequested ? RUSH_REQUEST_PRICE : 0;
-  const waxResistCost = waxResistAssistRequested ? WAX_RESIST_ASSIST_PRICE : 0;
-  const glazeSanityCost = glazeSanityCheckRequested ? GLAZE_SANITY_CHECK_PRICE : 0;
+  const staffGlazePrepCost =
+    staffGlazePrepRequested && Number.isFinite(estimatedHalfShelvesRounded)
+      ? estimatedHalfShelvesRounded * STAFF_GLAZE_PREP_PER_HALF_SHELF_PRICE
+      : 0;
   const totalEstimate =
     estimatedCostWithDelivery != null
-      ? estimatedCostWithDelivery + (glazeAccessCost ?? 0) + rushCost + waxResistCost + glazeSanityCost
+      ? estimatedCostWithDelivery + (glazeAccessCost ?? 0) + rushCost + staffGlazePrepCost
       : estimatedCostWithDelivery;
   const priceBreakApplied = useMemo(() => {
     if (intakeMode !== "SHELF_PURCHASE") return false;
@@ -1266,9 +1307,12 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
 
   useEffect(() => {
     if (intakeMode !== "COMMUNITY_SHELF") return;
+    setFootprintHalfShelves(1);
+    setShowMoreFootprints(false);
+    setHasTallPieces(false);
+    setFitsOnOneLayer(null);
     setRushRequested(false);
-    setWaxResistAssistRequested(false);
-    setGlazeSanityCheckRequested(false);
+    setStaffGlazePrepRequested(false);
     setPickupDeliveryRequested(false);
     setReturnDeliveryRequested(false);
     setDeliveryAddress("");
@@ -1276,6 +1320,13 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
     setUseStudioGlazes(false);
     setGlazeAccessCost(null);
   }, [intakeMode]);
+
+  useEffect(() => {
+    if (intakeMode !== "SHELF_PURCHASE") return;
+    if (!rushRequested) return;
+    if (communityShelfFillInAllowed) return;
+    setCommunityShelfFillInAllowed(true);
+  }, [communityShelfFillInAllowed, intakeMode, rushRequested]);
 
   useEffect(() => {
     if (!useStudioGlazes) {
@@ -1295,6 +1346,12 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
     const timer = window.setTimeout(() => setAnimateEstimate(false), 320);
     return () => window.clearTimeout(timer);
   }, [totalEstimate]);
+
+  useEffect(() => {
+    if (!submitCelebrationActive) return;
+    const timer = window.setTimeout(() => setSubmitCelebrationActive(false), 1200);
+    return () => window.clearTimeout(timer);
+  }, [submitCelebrationActive]);
 
   useEffect(() => {
     if (!showFitPrompt) {
@@ -2725,14 +2782,6 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
     }
   };
 
-  const anyAddOnsSelected =
-    useStudioGlazes ||
-    rushRequested ||
-    waxResistAssistRequested ||
-    glazeSanityCheckRequested ||
-    pickupDeliveryRequested ||
-    returnDeliveryRequested;
-
   const handlePhotoChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
     if (!file) {
@@ -2792,33 +2841,41 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
     setNotesTags([]);
     setNotesGeneral("");
     setRushRequested(false);
-    setWaxResistAssistRequested(false);
-    setGlazeSanityCheckRequested(false);
+    setStaffGlazePrepRequested(false);
     setPickupDeliveryRequested(false);
     setReturnDeliveryRequested(false);
     setDeliveryAddress("");
     setDeliveryInstructions("");
     setUseStudioGlazes(false);
     setCommunityShelfFillInAllowed(false);
+    setCommunityShelfSmallLoadConfirmed(false);
     setGlazeAccessCost(null);
     setSubmitRequestId(null);
     setPrefillNote(null);
     setDevError(null);
     setDevCopyStatus("");
+    setSubmitCelebrationActive(false);
   };
 
   const beginCommunityShelfFlow = useCallback(() => {
+    setCommunityShelfSmallLoadConfirmed(false);
     setCommunityShelfInfoOpen(true);
   }, []);
 
   const cancelCommunityShelfFlow = useCallback(() => {
+    setCommunityShelfSmallLoadConfirmed(false);
     setCommunityShelfInfoOpen(false);
   }, []);
 
   const confirmCommunityShelfFlow = useCallback(() => {
+    if (!communityShelfSmallLoadConfirmed) return;
     setIntakeMode("COMMUNITY_SHELF");
+    setFootprintHalfShelves(1);
+    setShowMoreFootprints(false);
+    setHasTallPieces(false);
+    setFitsOnOneLayer(null);
     setCommunityShelfInfoOpen(false);
-  }, []);
+  }, [communityShelfSmallLoadConfirmed]);
 
   const chooseIntakeMode = useCallback(
     (nextMode: IntakeMode) => {
@@ -2828,6 +2885,7 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
         return;
       }
       setCommunityShelfInfoOpen(false);
+      setCommunityShelfSmallLoadConfirmed(false);
       setIntakeMode(nextMode);
     },
     [beginCommunityShelfFlow, intakeMode]
@@ -2868,6 +2926,19 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
       return;
     }
 
+    if (intakeMode === "COMMUNITY_SHELF") {
+      if (!communityShelfSmallLoadConfirmed) {
+        setFormError("Confirm the tiny-load community shelf policy before submitting this check-in.");
+        return;
+      }
+      if (communityShelfSizeExceeded || footprintHalfShelves > COMMUNITY_SHELF_MAX_HALF_SHELVES || hasTallPieces) {
+        setFormError(
+          "Community shelf is limited to tiny drops under one half-shelf. Switch to Per-shelf purchase for larger work."
+        );
+        return;
+      }
+    }
+
     if (pickupDeliveryRequested || returnDeliveryRequested) {
       if (!deliveryAddress.trim()) {
         setFormError("Add the delivery address so we can schedule pickup/return.");
@@ -2880,6 +2951,40 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
     }
 
     const latestDate = sanitizeDateInput(latest);
+    let rushRequestedForSubmission = rushRequested;
+    if (canSuggestPriorityQueue && latestDate && Number.isFinite(latestDate.getTime())) {
+      const leadTimeMs = latestDate.getTime() - Date.now();
+      const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
+      const twoWeeksMs = 14 * 24 * 60 * 60 * 1000;
+      if (leadTimeMs < twoWeeksMs) {
+        if (leadTimeMs <= oneWeekMs) {
+          if (!rushRequestedForSubmission) {
+            rushRequestedForSubmission = true;
+            setRushRequested(true);
+          }
+          const keepPriorityQueue = window.confirm(
+            "Your need-by date is within 1 week, so Priority Queue is pre-selected to protect timing. Press OK to keep it, or Cancel to continue without it."
+          );
+          if (!keepPriorityQueue) {
+            rushRequestedForSubmission = false;
+            setRushRequested(false);
+          }
+        } else {
+          const addPriorityQueue = window.confirm(
+            "Your need-by date is within 2 weeks. Priority Queue can help avoid misses when the kiln queue is long. Press OK to add it, or Cancel to continue without it."
+          );
+          if (addPriorityQueue) {
+            rushRequestedForSubmission = true;
+            setRushRequested(true);
+          }
+        }
+      }
+    }
+    const communityShelfFillInAllowedForSubmission =
+      intakeMode === "SHELF_PURCHASE" && (communityShelfFillInAllowed || rushRequestedForSubmission);
+    if (communityShelfFillInAllowedForSubmission && !communityShelfFillInAllowed) {
+      setCommunityShelfFillInAllowed(true);
+    }
 
     const requestId = submitRequestId ?? makeRequestId("req");
     if (!submitRequestId) {
@@ -2931,11 +3036,14 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
         },
         pieces: null,
         addOns: {
-          rushRequested: !isCommunityShelf && rushRequested,
-          waxResistAssistRequested: !isCommunityShelf && waxResistAssistRequested,
-          glazeSanityCheckRequested: !isCommunityShelf && glazeSanityCheckRequested,
+          rushRequested: !isCommunityShelf && rushRequestedForSubmission,
+          waxResistAssistRequested: !isCommunityShelf && staffGlazePrepRequested,
+          glazeSanityCheckRequested: false,
+          staffGlazePrepRequested: !isCommunityShelf && staffGlazePrepRequested,
+          staffGlazePrepRatePerHalfShelf:
+            !isCommunityShelf && staffGlazePrepRequested ? STAFF_GLAZE_PREP_PER_HALF_SHELF_PRICE : null,
           wholeKilnRequested: intakeMode === "WHOLE_KILN",
-          communityShelfFillInAllowed: intakeMode === "SHELF_PURCHASE" && communityShelfFillInAllowed,
+          communityShelfFillInAllowed: communityShelfFillInAllowedForSubmission,
           pickupDeliveryRequested: !isCommunityShelf && pickupDeliveryRequested,
           returnDeliveryRequested: !isCommunityShelf && returnDeliveryRequested,
           useStudioGlazes: !isCommunityShelf && useStudioGlazes,
@@ -2961,7 +3069,9 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
         kilnId,
         intakeMode,
       });
-      setFormStatus(mode === "staff" ? "Staff check-in saved." : "Check-in sent.");
+      setFormStatus(mode === "staff" ? "Check-in saved. You're ready for the next one." : "Check-in sent. You're all set.");
+      setSubmitCelebrationActive(true);
+      playCheckinSuccessTone();
       resetForm();
     } catch (error: unknown) {
       const recentReq = client.getLastRequest();
@@ -3214,12 +3324,13 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                   </button>
                 ))}
               </div>
-              <p className="form-helper">
+              <p className="form-helper checkin-policy-chip">
                 We bill by shelf space or whole kiln only. We do not bill by kiln volume.
               </p>
               {intakeMode === "COMMUNITY_SHELF" ? (
                 <div className="notice inline-alert">
-                  Community shelf is free, lowest priority, and excluded from firing triggers.
+                  Community shelf is for tiny drops only (under one half shelf), remains lowest priority, and does
+                  not trigger firings.
                 </div>
               ) : null}
             </div>
@@ -3243,21 +3354,26 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                           footprintHalfShelves === count ? "selected" : ""
                         }`}
                         onClick={() => setFootprintHalfShelves(count)}
+                        disabled={
+                          intakeMode === "COMMUNITY_SHELF" && count > COMMUNITY_SHELF_MAX_HALF_SHELVES
+                        }
                         aria-pressed={footprintHalfShelves === count}
                       >
                         <span className="segmented-main">{count}</span>
                       </button>
                     ))}
-                    <button
-                      type="button"
-                      className={`segmented-button ${showMoreFootprints ? "selected" : ""}`}
-                      onClick={() => setShowMoreFootprints((prev) => !prev)}
-                      aria-label="Show more shelf options"
-                      aria-pressed={showMoreFootprints}
-                    >
-                      <span className="segmented-main">More</span>
-                    </button>
-                    {showMoreFootprints
+                    {intakeMode !== "COMMUNITY_SHELF" ? (
+                      <button
+                        type="button"
+                        className={`segmented-button ${showMoreFootprints ? "selected" : ""}`}
+                        onClick={() => setShowMoreFootprints((prev) => !prev)}
+                        aria-label="Show more shelf options"
+                        aria-pressed={showMoreFootprints}
+                      >
+                        <span className="segmented-main">More</span>
+                      </button>
+                    ) : null}
+                    {intakeMode !== "COMMUNITY_SHELF" && showMoreFootprints
                       ? Array.from({ length: 5 }, (_, index) => index + 4).map((count) => (
                           <button
                             type="button"
@@ -3280,7 +3396,9 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                       : null}
                   </div>
                   <p className="form-helper">
-                    About one carry-on suitcase laid flat.
+                    {intakeMode === "COMMUNITY_SHELF"
+                      ? "Community shelf is for tiny drops only: under one half shelf per check-in."
+                      : "About one carry-on suitcase laid flat."}
                   </p>
                   {intakeMode === "SHELF_PURCHASE" ? (
                     <div className="community-overflow-optin">
@@ -3288,7 +3406,11 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                         <input
                           type="checkbox"
                           checked={communityShelfFillInAllowed}
-                          onChange={(event) => setCommunityShelfFillInAllowed(event.target.checked)}
+                          disabled={rushRequested}
+                          onChange={(event) => {
+                            if (rushRequested) return;
+                            setCommunityShelfFillInAllowed(event.target.checked);
+                          }}
                         />
                         <span className="addon-text">
                           <span className="addon-title">Allow community shelf fill-in on unused space</span>
@@ -3299,7 +3421,9 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                         </span>
                       </label>
                       <p className="form-helper">
-                        Optional. This does not change your billing or move your own work back in the queue.
+                        {rushRequested
+                          ? "Priority Queue policy keeps this on to help offset line-cut pressure."
+                          : "Optional. This does not change your billing or move your own work back in the queue."}
                       </p>
                     </div>
                   ) : null}
@@ -3345,7 +3469,11 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                       <button
                         type="button"
                         className={`segmented-button ${hasTallPieces ? "selected" : ""}`}
-                        onClick={() => setHasTallPieces(true)}
+                        onClick={() => {
+                          if (intakeMode === "COMMUNITY_SHELF") return;
+                          setHasTallPieces(true);
+                        }}
+                        disabled={intakeMode === "COMMUNITY_SHELF"}
                         aria-pressed={hasTallPieces}
                       >
                         Yes, it&apos;s tall
@@ -3362,12 +3490,25 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                     {hasTallPieces ? (
                       <div className="form-helper">Tall pieces usually count as 2–3 half-shelves.</div>
                     ) : null}
+                    {intakeMode === "COMMUNITY_SHELF" ? (
+                      <div className="form-helper">
+                        Tall pieces and larger loads are not eligible for community shelf. Choose Per-shelf purchase
+                        for those.
+                      </div>
+                    ) : null}
                     <div className="form-helper">
                       Not sure? Choose standard height. We&apos;ll measure it with you.
                     </div>
                   </div>
+                </div>
 
-                  <aside className={`estimate-summary ${animateEstimate ? "animate" : ""}`}>
+                {communityShelfSizeExceeded ? (
+                  <div className="notice inline-alert">
+                    This load exceeds the community shelf tiny-load cap. Switch to Per-shelf purchase to continue.
+                  </div>
+                ) : null}
+
+                <aside className={`estimate-summary ${animateEstimate ? "animate" : ""}`}>
                   <details className="shelf-guide">
                     <summary>How to count half shelves</summary>
                     <div className="shelf-guide-grid" aria-hidden="true">
@@ -3411,8 +3552,7 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                     <span>
                       {useStudioGlazes ||
                       rushRequested ||
-                      waxResistAssistRequested ||
-                      glazeSanityCheckRequested
+                      staffGlazePrepRequested
                         ? "Total estimate"
                         : "Estimated cost"}
                     </span>
@@ -3429,8 +3569,7 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                   {estimatedCostWithDelivery != null &&
                   (useStudioGlazes ||
                     rushRequested ||
-                    waxResistAssistRequested ||
-                    glazeSanityCheckRequested) ? (
+                    staffGlazePrepRequested) ? (
                     <div className="estimate-breakdown">
                       <div className="estimate-line">
                         <span>Firing estimate</span>
@@ -3448,16 +3587,10 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                           <span>{formatUsd(RUSH_REQUEST_PRICE)}</span>
                         </div>
                       ) : null}
-                      {waxResistAssistRequested ? (
+                      {staffGlazePrepRequested ? (
                         <div className="estimate-line">
-                          <span>Wax resist assist</span>
-                          <span>{formatUsd(WAX_RESIST_ASSIST_PRICE)}</span>
-                        </div>
-                      ) : null}
-                      {glazeSanityCheckRequested ? (
-                        <div className="estimate-line">
-                          <span>Glaze sanity check</span>
-                          <span>{formatUsd(GLAZE_SANITY_CHECK_PRICE)}</span>
+                          <span>Staff glaze prep ({formatHalfShelfCount(estimatedHalfShelvesRounded)})</span>
+                          <span>{formatUsd(staffGlazePrepCost)}</span>
                         </div>
                       ) : null}
                       <div className="estimate-line total">
@@ -3470,7 +3603,6 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                     Based on: {kilnLabel} · {firingLabel} · {intakeModeLabel} ·{" "}
                     {formatHalfShelfCount(estimatedHalfShelvesRounded)}
                   </div>
-                  <div className="estimate-hint">Most people start here.</div>
                   {selectedKiln?.id === "reduction-raku" ? (
                     <div className="estimate-meta">
                       Raku is always glaze pricing. We&apos;ll confirm space together.
@@ -3482,25 +3614,10 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                       {formatUsd(deliveryCost)}
                     </div>
                   ) : null}
-                  <div className="space-meter">
-                    <progress
-                      className="space-meter-track"
-                      value={Math.min(estimatedHalfShelvesRounded, 8)}
-                      max={8}
-                      aria-label="Estimated kiln space used"
-                    />
-                    <div className="space-meter-label">
-                      Space used: {spaceLabel} / 8 half shelves
-                    </div>
-                  </div>
                   {priceBreakApplied ? (
                     <div className="estimate-note">Price break starts at 4 half shelves.</div>
                   ) : null}
-                  <div className="estimate-disclaimer">
-                    Estimate only. Final charge after check-in review + shelf-space confirmation.
-                  </div>
                   </aside>
-                </div>
               </div>
             </div>
 
@@ -3548,34 +3665,29 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                       onChange={(event) => setRushRequested(event.target.checked)}
                     />
                     <span className="addon-text">
-                      <span className="addon-title">Priority queue (next available firing)</span>
-                      <span className="addon-copy">Jump to the next opening without a custom schedule.</span>
+                      <span className="addon-title">Priority queue lane (line-cut penalty)</span>
+                      <span className="addon-copy">
+                        Move ahead when queues are long. Includes a fairness surcharge and automatically enables
+                        community shelf fill-in on your unused shelf space.
+                      </span>
                     </span>
                     <span className="addon-tag">{formatUsd(RUSH_REQUEST_PRICE)}</span>
                   </label>
                   <label className="addon-toggle">
                     <input
                       type="checkbox"
-                      checked={waxResistAssistRequested}
-                      onChange={(event) => setWaxResistAssistRequested(event.target.checked)}
+                      checked={staffGlazePrepRequested}
+                      onChange={(event) => setStaffGlazePrepRequested(event.target.checked)}
                     />
                     <span className="addon-text">
-                      <span className="addon-title">Wax resist assist</span>
-                      <span className="addon-copy">We&apos;ll help you prep clean bottoms.</span>
+                      <span className="addon-title">Staff glaze prep (wax + glaze directions)</span>
+                      <span className="addon-copy">
+                        Staff follows your prep instructions before loading so you can skip wax/glaze prep at drop-off.
+                      </span>
                     </span>
-                    <span className="addon-tag">{formatUsd(WAX_RESIST_ASSIST_PRICE)}</span>
-                  </label>
-                  <label className="addon-toggle">
-                    <input
-                      type="checkbox"
-                      checked={glazeSanityCheckRequested}
-                      onChange={(event) => setGlazeSanityCheckRequested(event.target.checked)}
-                    />
-                    <span className="addon-text">
-                      <span className="addon-title">Glaze sanity check</span>
-                      <span className="addon-copy">Reduce surprises before the kiln goes hot.</span>
+                    <span className="addon-tag">
+                      {formatUsd(STAFF_GLAZE_PREP_PER_HALF_SHELF_PRICE)} per half-shelf
                     </span>
-                    <span className="addon-tag">{formatUsd(GLAZE_SANITY_CHECK_PRICE)}</span>
                   </label>
                   <label className="addon-toggle">
                     <input
@@ -3622,18 +3734,13 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                   </div>
                 ) : null}
                 {(rushRequested ||
-                  waxResistAssistRequested ||
-                  glazeSanityCheckRequested ||
+                  staffGlazePrepRequested ||
                   pickupDeliveryRequested ||
                   returnDeliveryRequested) &&
                 totalEstimate != null ? (
                   <div className="addon-total">New estimate: {formatUsd(totalEstimate)}</div>
                 ) : null}
               </div>
-              <div className="addon-helper">Add only what you need. We&apos;ll confirm together.</div>
-              {anyAddOnsSelected && totalEstimate != null ? (
-                <div className="addon-total">New estimate: {formatUsd(totalEstimate)}</div>
-              ) : null}
               </fieldset>
             </details>
 
@@ -3655,11 +3762,21 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                     value={latest}
                     onChange={(event) => setLatest(event.target.value)}
                   />
-                  <span className="deadline-helper">Optional deadline. Approximate timing is okay.</span>
+                  {canSuggestPriorityQueue ? (
+                    <span className="deadline-helper">
+                      2+ weeks auto-approves timing. Inside 2 weeks, we suggest Priority Queue. Inside 1 week,
+                      Priority Queue is pre-selected (you can opt out).
+                    </span>
+                  ) : (
+                    <span className="deadline-helper">
+                      Optional timing target. Community shelf stays lowest priority, and staff will confirm what timing
+                      is realistic.
+                    </span>
+                  )}
                 </label>
               </div>
-              <details className="notes-details">
-                <summary>More details (optional)</summary>
+              <div className="piece-linker">
+                <div className="piece-linker-title">Quick tags (optional)</div>
                 <div className="notes-tags">
                   {CHECKIN_NOTE_TAGS.map((tag) => (
                     <button
@@ -3674,73 +3791,71 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                   ))}
                 </div>
                 <div className="form-helper">Pick any tags that apply. We&apos;ll confirm at drop-off.</div>
-                <div className="piece-linker">
-                  <div className="piece-linker-title">Link one of your recent pieces (optional)</div>
-                  {primaryRecentPieceChoices.length ? (
-                    <div className="notes-tags">
-                      {primaryRecentPieceChoices.map((choice) => (
-                        <button
-                          key={choice.id}
-                          type="button"
-                          className={`note-tag ${linkedBatchId === choice.id ? "selected" : ""}`}
-                          onClick={() => setLinkedBatchId(choice.id)}
-                          aria-pressed={linkedBatchId === choice.id}
-                        >
-                          {choice.label}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="form-helper">
-                      No recent pieces found yet. You can skip this for now and we&apos;ll still process your check-in.
-                    </div>
-                  )}
-                  {overflowRecentPieceChoices.length ? (
-                    <button
-                      type="button"
-                      className="btn btn-ghost piece-linker-more"
-                      onClick={() => setShowAllRecentPieceChoices((prev) => !prev)}
-                    >
-                      {showAllRecentPieceChoices
-                        ? "Show fewer piece choices"
-                        : `Show ${overflowRecentPieceChoices.length} more piece choices`}
-                    </button>
-                  ) : null}
-                  {showAllRecentPieceChoices && overflowRecentPieceChoices.length ? (
-                    <div className="notes-tags">
-                      {overflowRecentPieceChoices.map((choice) => (
-                        <button
-                          key={choice.id}
-                          type="button"
-                          className={`note-tag ${linkedBatchId === choice.id ? "selected" : ""}`}
-                          onClick={() => setLinkedBatchId(choice.id)}
-                          aria-pressed={linkedBatchId === choice.id}
-                        >
-                          {choice.label}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                  {selectedRecentPieceChoice ? (
-                    <div className="piece-linker-selected">
-                      Linked piece: <code>{selectedRecentPieceChoice.detail}</code>
-                    </div>
-                  ) : null}
-                  <div className="piece-linker-actions">
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => setLinkedBatchId("")}
-                      disabled={!linkedBatchId}
-                    >
-                      Clear linked piece
-                    </button>
+                <div className="piece-linker-title">Link one of your recent pieces (optional)</div>
+                {primaryRecentPieceChoices.length ? (
+                  <div className="notes-tags">
+                    {primaryRecentPieceChoices.map((choice) => (
+                      <button
+                        key={choice.id}
+                        type="button"
+                        className={`note-tag ${linkedBatchId === choice.id ? "selected" : ""}`}
+                        onClick={() => setLinkedBatchId(choice.id)}
+                        aria-pressed={linkedBatchId === choice.id}
+                      >
+                        {choice.label}
+                      </button>
+                    ))}
                   </div>
+                ) : (
                   <div className="form-helper">
-                    Need more options? Open <strong>My Pieces</strong> from the sidebar.
+                    No recent pieces found yet. You can skip this for now and we&apos;ll still process your check-in.
                   </div>
+                )}
+                {overflowRecentPieceChoices.length ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost piece-linker-more"
+                    onClick={() => setShowAllRecentPieceChoices((prev) => !prev)}
+                  >
+                    {showAllRecentPieceChoices
+                      ? "Show fewer piece choices"
+                      : `Show ${overflowRecentPieceChoices.length} more piece choices`}
+                  </button>
+                ) : null}
+                {showAllRecentPieceChoices && overflowRecentPieceChoices.length ? (
+                  <div className="notes-tags">
+                    {overflowRecentPieceChoices.map((choice) => (
+                      <button
+                        key={choice.id}
+                        type="button"
+                        className={`note-tag ${linkedBatchId === choice.id ? "selected" : ""}`}
+                        onClick={() => setLinkedBatchId(choice.id)}
+                        aria-pressed={linkedBatchId === choice.id}
+                      >
+                        {choice.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {selectedRecentPieceChoice ? (
+                  <div className="piece-linker-selected">
+                    Linked piece: <code>{selectedRecentPieceChoice.detail}</code>
+                  </div>
+                ) : null}
+                <div className="piece-linker-actions">
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => setLinkedBatchId("")}
+                    disabled={!linkedBatchId}
+                  >
+                    Clear linked piece
+                  </button>
                 </div>
-              </details>
+                <div className="form-helper">
+                  Need more options? Open <strong>My Pieces</strong> from the sidebar.
+                </div>
+              </div>
               {prefillNote ? <div className="notice inline-alert">{prefillNote}</div> : null}
               <p className="form-helper">
                 Add anything that helps the studio load and fire safely.
@@ -3750,20 +3865,14 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
             {formError ? <div className="alert card card-3d form-error">{formError}</div> : null}
             {formStatus ? <div className="notice card card-3d form-status">{formStatus}</div> : null}
 
-            <div className="submit-note">We&apos;ll confirm space + pricing together at drop-off.</div>
             <button
               type="submit"
-              className="btn btn-primary checkin-submit-btn"
+              className={`btn btn-primary checkin-submit-btn ${
+                submitCelebrationActive ? "celebrating" : ""
+              }`.trim()}
               disabled={isSaving || communityShelfInfoOpen}
             >
-              {isSaving ? (
-                "Submitting..."
-              ) : (
-                <>
-                  <span className="checkin-submit-title">Submit check-in</span>
-                  <span className="checkin-submit-sub">Billing starts after your firing is complete</span>
-                </>
-              )}
+              {isSaving ? "Saving check-in..." : mode === "staff" ? "Save check-in" : "Send my check-in"}
             </button>
             {communityShelfInfoOpen ? (
               <div className="intake-modal-backdrop" role="presentation">
@@ -3781,17 +3890,33 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                     </ul>
                     <p className="community-shelf-summary-title">Tradeoffs</p>
                     <ul>
+                      <li>Tiny-load lane only: under one half shelf per check-in.</li>
                       <li>Placed last and only when donated shelf space is open.</li>
                       <li>Does not trigger firing schedules or move dates forward.</li>
                       <li>Rush and paid shelf add-ons stay disabled in this mode.</li>
                     </ul>
                   </div>
+                  <label className="community-shelf-attest">
+                    <input
+                      type="checkbox"
+                      checked={communityShelfSmallLoadConfirmed}
+                      onChange={(event) => setCommunityShelfSmallLoadConfirmed(event.target.checked)}
+                    />
+                    <span>
+                      I confirm this drop-off is under one half shelf and can wait for leftover kiln space.
+                    </span>
+                  </label>
                   <div className="intake-modal-actions">
                     <button type="button" className="btn btn-ghost" onClick={cancelCommunityShelfFlow}>
                       Keep Shelf Purchase
                     </button>
-                    <button type="button" className="btn btn-primary" onClick={confirmCommunityShelfFlow}>
-                      Use Community Shelf
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={confirmCommunityShelfFlow}
+                      disabled={!communityShelfSmallLoadConfirmed}
+                    >
+                      Use Community Shelf (tiny load)
                     </button>
                   </div>
                 </div>

@@ -69,6 +69,16 @@ jobs:
 
           node ./scripts/codex/daily-improvement.mjs ${MODE} --json ${FORCE}
 
+      - name: Build codex rubric scorecard
+        run: |
+          set -euo pipefail
+          node ./scripts/codex/rubric-scorecard.mjs --window-hours 24 --write --json
+
+      - name: Run telemetry random audit (strict)
+        run: |
+          set -euo pipefail
+          node ./scripts/codex/telemetry-random-audit.mjs --window-hours 72 --sample-size 25 --max-anomaly-rate 0.15 --strict --write --json
+
       - name: Upload codex improvement artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -79,5 +89,9 @@ jobs:
             .codex/improvement-state.json
             .codex/toolcalls.ndjson
             docs/runbooks/codex-improvement
+            output/qa/codex-agentic-rubric-scorecard.json
+            output/qa/codex-agentic-rubric-scorecard.md
+            output/qa/codex-telemetry-random-audit.json
+            output/qa/codex-telemetry-random-audit.md
           if-no-files-found: ignore
           retention-days: 7

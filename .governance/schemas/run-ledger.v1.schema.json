@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://monsoonfire.com/governance/schemas/run-ledger.v1.schema.json",
+  "title": "Governance Run Ledger v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "agent_id",
+    "agent_version",
+    "intent_id",
+    "intent_version",
+    "steps",
+    "tool_log_pointers",
+    "cost_counters"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 180
+    },
+    "agent_id": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 120
+    },
+    "agent_version": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 120
+    },
+    "intent_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 140
+    },
+    "intent_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "step_id",
+          "started_at",
+          "ended_at",
+          "outcome"
+        ],
+        "properties": {
+          "step_id": {
+            "type": "string",
+            "minLength": 2
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ended_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "success",
+              "failure",
+              "blocked",
+              "deferred"
+            ]
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 2
+            }
+          }
+        }
+      }
+    },
+    "tool_log_pointers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 2
+      }
+    },
+    "cost_counters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tokens_used",
+        "runtime_seconds",
+        "retries_used"
+      ],
+      "properties": {
+        "tokens_used": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "runtime_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "retries_used": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "claim_id",
+          "statement"
+        ],
+        "properties": {
+          "claim_id": {
+            "type": "string",
+            "minLength": 3
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 3
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 2
+            }
+          }
+        }
+      }
+    }
+  }
+}
+

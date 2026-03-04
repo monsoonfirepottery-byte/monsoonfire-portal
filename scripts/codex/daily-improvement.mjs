@@ -1297,8 +1297,25 @@ async function main() {
     .filter(([path]) => isMetadataPath(path))
     .map(([path, touches]) => ({ path, commitTouches: touches }));
   const metadataTouchTotal24 = metadataEntries24.reduce((sum, entry) => sum + entry.commitTouches, 0);
-  const metadataUnstable =
-    metadataTouchTotal24 >= 4 || metadataEntries24.some((entry) => entry.commitTouches >= 3);
+  const metadataHotspots24 = metadataEntries24.filter((entry) => entry.commitTouches >= 3);
+  const metadataDualTouchFiles24 = metadataEntries24.filter((entry) => entry.commitTouches >= 2);
+  const metadataTouchRatio24 = commits24.length > 0 ? metadataTouchTotal24 / commits24.length : 0;
+  const metadataInstabilitySignals = [];
+  if (metadataEntries24.some((entry) => entry.commitTouches >= 4)) {
+    metadataInstabilitySignals.push("single-file-hotspot>=4");
+  }
+  if (metadataHotspots24.length >= 2 && metadataTouchTotal24 >= 8) {
+    metadataInstabilitySignals.push("multi-hotspot>=2-files");
+  }
+  if (
+    metadataTouchTotal24 >= 12 &&
+    metadataDualTouchFiles24.length >= 3 &&
+    metadataTouchRatio24 >= 0.75 &&
+    reverts24 >= 1
+  ) {
+    metadataInstabilitySignals.push("high-ratio-with-reverts");
+  }
+  const metadataUnstable = metadataInstabilitySignals.length > 0;
 
   const toolcallData = await readToolcalls();
   const calls12 = filterByTimeWindow(toolcallData.entries, "tsIso", start12Ms);
@@ -1470,10 +1487,14 @@ async function main() {
     ensureRecommendation(recommendations, {
       id: "metadata-churn-unstable",
       title: "Stabilize metadata/config churn",
-      trigger: `Metadata/config files show unstable churn (${metadataTouchTotal24} touches in 24h).`,
+      trigger: `Metadata/config churn crossed instability thresholds (${metadataTouchTotal24} touches in 24h across ${metadataEntries24.length} files).`,
       why: "Frequent metadata churn can destabilize deploys and CI behavior.",
       action: "Consolidate config changes behind explicit runbooks and add stricter policy checks.",
-      evidence: metadataEntries24.map((entry) => `${entry.path}: ${entry.commitTouches}`),
+      evidence: [
+        ...metadataEntries24.map((entry) => `${entry.path}: ${entry.commitTouches}`),
+        `touches-per-commit: ${metadataTouchRatio24.toFixed(2)}`,
+        `signals: ${metadataInstabilitySignals.join(", ")}`,
+      ],
     });
   } else if (metadataUnstable) {
     notes.push(
@@ -2219,6 +2240,8 @@ async function main() {
       changedFiles: metadataEntries24,
       unstable: metadataUnstable,
       touches24h: metadataTouchTotal24,
+      touchesPerCommit24h: Number(metadataTouchRatio24.toFixed(3)),
+      instabilitySignals: metadataInstabilitySignals,
     },
     impact: {
       prMergedSinceLast: prSummary.mergedSinceLast,

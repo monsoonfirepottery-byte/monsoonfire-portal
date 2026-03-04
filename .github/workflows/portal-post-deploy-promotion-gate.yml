@@ -96,7 +96,12 @@ jobs:
 
       - name: Mint Rules API access token (promotion gate)
         id: rules_token
-        run: echo "access_token=$(gcloud auth print-access-token)" >> "$GITHUB_OUTPUT"
+        run: |
+          token="$(gcloud auth print-access-token)"
+          if [ -n "$token" ]; then
+            echo "::add-mask::$token"
+            echo "access_token=$token" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Run post-deploy promotion gate
         env:

@@ -1091,16 +1091,35 @@ async function collectWorkflowSummary(automation, options, lookbackStartMs, scra
     const files = artifact.files;
     const signatures = extractSignatures(automation, run, files);
     if (signatures.length === 0 && run.conclusion === "failure") {
-      pushSignature(
-        signatures,
-        automation.key,
-        automation.label,
-        `${automation.key}.run.failure-generic`,
-        `${automation.label} run failed without parsed signature`,
-        run,
-        "Inspect run logs/artifacts and promote the exact failure signature into parser rules.",
-        ""
+      const missingArtifactNote = (Array.isArray(artifact.downloadNotes) ? artifact.downloadNotes : []).find((note) =>
+        String(note || "").startsWith("Artifact unavailable:")
       );
+      if (missingArtifactNote) {
+        const missingArtifact = String(missingArtifactNote || "")
+          .replace(/^Artifact unavailable:\s*/i, "")
+          .trim();
+        pushSignature(
+          signatures,
+          automation.key,
+          automation.label,
+          `${automation.key}.artifact.unavailable.${slug(missingArtifact) || "unknown"}`,
+          `${automation.label} missing artifact: ${missingArtifact || "unknown"}`,
+          run,
+          "Ensure the workflow uploads its expected artifacts on failure paths, then extend parser coverage.",
+          missingArtifactNote
+        );
+      } else {
+        pushSignature(
+          signatures,
+          automation.key,
+          automation.label,
+          `${automation.key}.run.failure-generic`,
+          `${automation.label} run failed without parsed signature`,
+          run,
+          "Inspect run logs/artifacts and promote the exact failure signature into parser rules.",
+          ""
+        );
+      }
     }
 
     signatureInputs.push(...signatures);

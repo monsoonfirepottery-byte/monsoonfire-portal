@@ -1,6 +1,6 @@
 # P2 — Events: Sourcing Connectors and Freshness Automation
 
-Status: Active
+Status: Closed
 Date: 2026-03-01
 Priority: P2
 Owner: Platform + Automation

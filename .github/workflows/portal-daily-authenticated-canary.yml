@@ -119,12 +119,26 @@ jobs:
           PORTAL_STAFF_PASSWORD: ${{ secrets.PORTAL_STAFF_PASSWORD }}
           PORTAL_AGENT_STAFF_CREDENTIALS_JSON: ${{ secrets.PORTAL_AGENT_STAFF_CREDENTIALS_JSON }}
         run: |
+          set +e
           node ./scripts/portal-authenticated-canary.mjs \
             --base-url "${{ steps.base_url.outputs.value }}" \
             --output-dir output/qa/portal-authenticated-canary \
             --report output/qa/portal-authenticated-canary.json \
             --feedback output/qa/portal-authenticated-canary-feedback.json \
             --json
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "First canary attempt failed; retrying once after cooldown."
+            sleep 20
+            node ./scripts/portal-authenticated-canary.mjs \
+              --base-url "${{ steps.base_url.outputs.value }}" \
+              --output-dir output/qa/portal-authenticated-canary \
+              --report output/qa/portal-authenticated-canary.json \
+              --feedback output/qa/portal-authenticated-canary-feedback.json \
+              --json
+            status=$?
+          fi
+          exit "$status"
 
       - name: Escalate after consecutive failures
         if: always()

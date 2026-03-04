@@ -46,7 +46,12 @@ jobs:
       - name: Mint Rules API access token (rules checks)
         if: ${{ env.IS_DEPENDABOT_PR != 'true' }}
         id: rules_token
-        run: echo "access_token=$(gcloud auth print-access-token)" >> "$GITHUB_OUTPUT"
+        run: |
+          token="$(gcloud auth print-access-token)"
+          if [ -n "$token" ]; then
+            echo "::add-mask::$token"
+            echo "access_token=$token" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Enforce Firestore rules release drift check
         if: ${{ env.IS_DEPENDABOT_PR != 'true' }}

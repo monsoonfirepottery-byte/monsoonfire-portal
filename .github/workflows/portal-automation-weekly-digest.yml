@@ -13,10 +13,6 @@ on:
         required: false
         default: 7
         type: number
-  schedule:
-    # Mondays 08:10 America/Phoenix (MST year-round) = 15:10 UTC
-    - cron: "10 15 * * 1"
-
 permissions:
   actions: read
   contents: read

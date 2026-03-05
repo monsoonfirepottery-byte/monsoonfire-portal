@@ -14,8 +14,8 @@ on:
         default: 48
         type: number
   schedule:
-    # Every 6 hours to keep 24-48h tuning current.
-    - cron: "15 */6 * * *"
+    # Daily snapshot keeps trends visible without turning health checks into issue churn.
+    - cron: "15 14 * * *"
 
 permissions:
   actions: read
@@ -76,9 +76,9 @@ jobs:
           node ./scripts/portal-automation-issue-loop.mjs \
             ${MODE} \
             --dashboard output/qa/portal-automation-health-dashboard.json \
-            --repeated-threshold 2 \
-            --max-issues 6 \
-            --max-per-workflow 2 \
+            --repeated-threshold 3 \
+            --max-issues 3 \
+            --max-per-workflow 1 \
             --report-json output/qa/portal-automation-issue-loop.json \
             --report-markdown output/qa/portal-automation-issue-loop.md \
             --json

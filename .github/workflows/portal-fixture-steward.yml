@@ -13,7 +13,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 concurrency:
   group: portal-fixture-steward
@@ -82,21 +81,6 @@ jobs:
           name: portal-fixture-steward-${{ github.run_id }}
           path: |
             output/qa/portal-fixture-steward.json
-            output/qa/workflow-failure-ticket-fixture-steward.json
             .codex/fixture-steward-state.json
           if-no-files-found: ignore
           retention-days: 14
-
-      - name: Open rolling failure ticket
-        if: failure()
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          node ./scripts/workflow-failure-ticket.mjs \
-            --workflow-name "${{ github.workflow }}" \
-            --run-id "${{ github.run_id }}" \
-            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --report output/qa/workflow-failure-ticket-fixture-steward.json \
-            --json

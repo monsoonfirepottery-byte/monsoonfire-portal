@@ -8,8 +8,8 @@ on:
         required: false
         default: "https://portal.monsoonfire.com"
   schedule:
-    # Every 30 minutes for early regression detection.
-    - cron: "*/30 * * * *"
+    # Every 4 hours balances regression coverage with workflow cost.
+    - cron: "15 */4 * * *"
 
 permissions:
   actions: read
@@ -73,7 +73,8 @@ jobs:
             --report output/qa/portal-authenticated-canary-feedback.json \
             --json
 
-      - name: Build fixture self-healing profile
+      - name: Build fixture self-healing profile (manual only)
+        if: github.event_name == 'workflow_dispatch'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -87,7 +88,8 @@ jobs:
             --report output/qa/portal-fixture-self-healing.json \
             --json
 
-      - name: Optional pre-canary fixture self-heal
+      - name: Optional pre-canary fixture self-heal (manual only)
+        if: github.event_name == 'workflow_dispatch'
         continue-on-error: true
         env:
           PORTAL_AGENT_STAFF_CREDENTIALS_JSON: ${{ secrets.PORTAL_AGENT_STAFF_CREDENTIALS_JSON }}

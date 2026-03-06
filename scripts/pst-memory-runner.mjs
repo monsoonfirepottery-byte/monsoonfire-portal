@@ -37,8 +37,14 @@ function usage() {
       "  --pst <path>                  PST file path",
       "  --run-dir <path>              Run artifacts directory (default: imports/pst/runs/<run-id>)",
       "  --resume <t/f>                Resume from existing runner checkpoint (default: true)",
+      "  --fresh <t/f>                 Rebuild canonical corpus outputs from scratch",
       "  --force-stage <name>          Re-run specific stage (repeatable)",
       "  --skip-extract <t/f>          Skip libratom report stage if DB exists",
+      "  --extract-timeout-ms <ms>     Timeout for libratom report extraction (default: 7200000)",
+      "  --libratom-memory <value>     Docker memory limit for libratom stages (default: 6g)",
+      "  --libratom-memory-swap <value> Docker memory+swap ceiling for libratom stages",
+      "  --libratom-cpus <value>       Docker CPU limit for libratom stages (default: 2)",
+      "  --libratom-jobs <n>           ratom report concurrency (default: 1)",
       "  --chunk-size <n>              Import chunk size (default: 300)",
       "  --max-retries <n>             Import retries per chunk (default: 3)",
       "  --llm-enrich <t/f>            Enable hybrid analysis LLM enrich",
@@ -82,14 +88,26 @@ function runStage({
   resume,
   command,
   args,
+  env,
+  timeoutMs,
 }) {
   const prior = checkpoint.stageStatus[name];
   const alreadyCompleted = prior?.status === "completed";
   if (resume && alreadyCompleted && !forced) {
     return { skipped: true, reason: "already_completed" };
   }
-  appendStageStatus(checkpoint, name, "running", { command, args });
-  const result = runCommand(command, args, { cwd: REPO_ROOT, allowFailure: true });
+  appendStageStatus(checkpoint, name, "running", {
+    command,
+    args,
+    timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : null,
+    envOverrides: env || {},
+  });
+  const result = runCommand(command, args, {
+    cwd: REPO_ROOT,
+    env: env ? { ...process.env, ...env } : process.env,
+    allowFailure: true,
+    timeoutMs,
+  });
   if (!result.ok) {
     appendStageStatus(checkpoint, name, "failed", {
       error: String(result.stderr || result.stdout || "unknown stage failure").trim(),
@@ -141,7 +159,34 @@ function run() {
   }
   const runDir = resolve(REPO_ROOT, readStringFlag(flags, "run-dir", `./imports/pst/runs/${runId}`));
   const resume = readBoolFlag(flags, "resume", true);
+  const fresh = readBoolFlag(flags, "fresh", false);
   const skipExtract = readBoolFlag(flags, "skip-extract", false);
+  const extractTimeoutMs = readNumberFlag(flags, "extract-timeout-ms", 7_200_000, {
+    min: 60_000,
+    max: 86_400_000,
+  });
+  const libratomMemory = readStringFlag(
+    flags,
+    "libratom-memory",
+    process.env.LIBRATOM_DOCKER_MEMORY || "6g"
+  ).trim();
+  const libratomMemorySwap = readStringFlag(
+    flags,
+    "libratom-memory-swap",
+    process.env.LIBRATOM_DOCKER_MEMORY_SWAP || ""
+  ).trim();
+  const libratomCpus = readStringFlag(
+    flags,
+    "libratom-cpus",
+    process.env.LIBRATOM_DOCKER_CPUS || "2"
+  ).trim();
+  const libratomJobsDefault = Number.parseInt(process.env.LIBRATOM_REPORT_JOBS || "1", 10);
+  const libratomJobs = readNumberFlag(
+    flags,
+    "libratom-jobs",
+    Number.isFinite(libratomJobsDefault) && libratomJobsDefault > 0 ? libratomJobsDefault : 1,
+    { min: 1, max: 32 }
+  );
   const llmEnrich = readBoolFlag(flags, "llm-enrich", false);
   const reconcileStats = readBoolFlag(flags, "reconcile-stats", true);
   const chunkSize = readNumberFlag(flags, "chunk-size", 300, { min: 1, max: 500 });
@@ -168,6 +213,12 @@ function run() {
       throw new Error(`--skip-extract was set but report DB does not exist: ${assumedReportDb}`);
     }
   }
+
+  const libratomEnv = {};
+  if (libratomMemory) libratomEnv.LIBRATOM_DOCKER_MEMORY = libratomMemory;
+  if (libratomMemorySwap) libratomEnv.LIBRATOM_DOCKER_MEMORY_SWAP = libratomMemorySwap;
+  if (libratomCpus) libratomEnv.LIBRATOM_DOCKER_CPUS = libratomCpus;
+  libratomEnv.LIBRATOM_REPORT_JOBS = String(libratomJobs);
 
   const paths = {
     reportDb: resolve(runDir, "mailbox-report.sqlite3"),
@@ -197,6 +248,12 @@ function run() {
       REPO_ROOT,
       "./output/memory/relationship-quality/dashboard-latest.json"
     ),
+    canonicalCorpusDir: resolve(runDir, "canonical-corpus"),
+    canonicalCorpusManifest: resolve(runDir, "canonical-corpus/manifest.json"),
+    canonicalCorpusCheckpointDir: resolve(runDir, "canonical-corpus/checkpoints"),
+    canonicalCorpusDeadLetterDir: resolve(runDir, "canonical-corpus/dead-letter"),
+    canonicalCorpusRawSidecarDir: resolve(runDir, "canonical-corpus/raw-sidecars"),
+    canonicalCorpusSourceIndexDir: resolve(runDir, "canonical-corpus/source-index"),
   };
 
   const checkpoint = readJson(paths.runnerCheckpoint, null) || {
@@ -226,6 +283,8 @@ function run() {
         relPath(pstPath),
       ],
       enabled: !skipExtract || !existsSync(paths.reportDb),
+      env: libratomEnv,
+      timeoutMs: extractTimeoutMs,
     },
     {
       name: "export_messages",
@@ -237,6 +296,7 @@ function run() {
         "1200",
       ],
       enabled: true,
+      env: libratomEnv,
     },
     {
       name: "extract_attachments",
@@ -369,6 +429,8 @@ function run() {
       resume,
       command: stage.command,
       args: stage.args,
+      env: stage.env,
+      timeoutMs: stage.timeoutMs,
     });
     saveCheckpoint(paths.runnerCheckpoint, checkpoint);
     if (result.ok === false) {
@@ -409,6 +471,11 @@ function run() {
     options: {
       resume,
       skipExtract,
+      extractTimeoutMs,
+      libratomMemory,
+      libratomMemorySwap,
+      libratomCpus,
+      libratomJobs,
       llmEnrich,
       chunkSize,
       maxRetries,
@@ -440,6 +507,35 @@ function run() {
     relationshipQualityArtifact,
     continuityArtifact,
   });
+  const canonicalCorpusExport = runCommand(
+    process.execPath,
+    [
+      "./scripts/pst-memory-corpus-export.mjs",
+      "--run-id",
+      runId,
+      "--units",
+      relPath(paths.units),
+      "--promoted",
+      relPath(paths.promoted),
+      "--output-dir",
+      relPath(paths.canonicalCorpusDir),
+      "--manifest",
+      relPath(paths.canonicalCorpusManifest),
+      "--checkpoint-dir",
+      relPath(paths.canonicalCorpusCheckpointDir),
+      "--dead-letter-dir",
+      relPath(paths.canonicalCorpusDeadLetterDir),
+      "--raw-sidecar-dir",
+      relPath(paths.canonicalCorpusRawSidecarDir),
+      "--resume",
+      resume ? "true" : "false",
+      "--fresh",
+      fresh ? "true" : "false",
+      "--json",
+    ],
+    { cwd: REPO_ROOT, allowFailure: true }
+  );
+  const canonicalCorpusManifest = readJson(paths.canonicalCorpusManifest, null);
   writeJson(paths.relationshipQualityArtifact, relationshipQualityArtifact);
   writeJson(paths.continuityArtifact, continuityArtifact);
   writeJson(paths.relationshipMonitoringArtifact, relationshipMonitoringArtifact);
@@ -448,6 +544,37 @@ function run() {
     relationshipQuality: paths.relationshipQualityArtifact,
     relationshipMonitoring: paths.relationshipMonitoringArtifact,
   };
+  if (canonicalCorpusExport.ok && canonicalCorpusManifest) {
+    report.artifacts.canonicalCorpus = {
+      dir: paths.canonicalCorpusDir,
+      manifest: paths.canonicalCorpusManifest,
+      status: canonicalCorpusManifest.status || "completed",
+      checkpointDir: paths.canonicalCorpusCheckpointDir,
+      deadLetterDir: paths.canonicalCorpusDeadLetterDir,
+      rawSidecarDir: paths.canonicalCorpusRawSidecarDir,
+      sourceIndexDir: paths.canonicalCorpusSourceIndexDir,
+      resumeMode: canonicalCorpusManifest.resumeMode || (fresh ? "fresh" : resume ? "resume" : "fresh-start"),
+      freshWipePerformed: Boolean(canonicalCorpusManifest.freshWipePerformed),
+    };
+    if (canonicalCorpusManifest.status && canonicalCorpusManifest.status !== "completed") {
+      report.warnings = [
+        ...(Array.isArray(report.warnings) ? report.warnings : []),
+        {
+          artifact: "canonicalCorpus",
+          status: canonicalCorpusManifest.status,
+          message: "canonical corpus export finished without a clean completed status",
+        },
+      ];
+    }
+  } else {
+    report.warnings = [
+      ...(Array.isArray(report.warnings) ? report.warnings : []),
+      {
+        artifact: "canonicalCorpus",
+        error: String(canonicalCorpusExport.stderr || canonicalCorpusExport.stdout || "export failed").trim(),
+      },
+    ];
+  }
   writeJson(paths.runnerReport, report);
   if (printJson) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
@@ -459,6 +586,11 @@ function run() {
     process.stdout.write(`continuity: ${paths.continuityArtifact}\n`);
     process.stdout.write(`relationship-quality: ${paths.relationshipQualityArtifact}\n`);
     process.stdout.write(`relationship-monitoring: ${paths.relationshipMonitoringArtifact}\n`);
+    if (canonicalCorpusExport.ok) {
+      process.stdout.write(`canonical-corpus: ${paths.canonicalCorpusManifest}\n`);
+    } else {
+      process.stdout.write("canonical-corpus: export failed (see runner report warnings)\n");
+    }
   }
 }
 

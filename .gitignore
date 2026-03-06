@@ -27,14 +27,36 @@ output/real-estate/public-data/
 
 # Local temp
 tmp-firebase.json
+tmp/
+
+# Local import/runtime datasets
+imports/
+artifacts/runs/
+artifacts/auth/
+artifacts/industry-events/
+artifacts/intent-plan.generated.json
+artifacts/ga/reports/website-ga-roadmap-readiness-*.json
+artifacts/ga/reports/website-ga-roadmap-readiness-*.md
+artifacts/ga/reports/website-ga-roadmap-readiness-latest.json
+artifacts/ga/reports/website-ga-roadmap-readiness-latest.md
+
 # Codex local memory pipeline (local-only workspace)
 memory/
+!studio-brain/src/memory/
+!studio-brain/src/memory/**
+!studio-brain/lib/memory/
+!studio-brain/lib/memory/**
 exports/
 *.jsonl
 /.tmp/
 /.codex/toolcalls.ndjson
+/.codex/tools/
+/.codex/friction-feedback-state.json
+/.codex/interaction-run-lock.json
 /.studiobrain-host-state.json
 *openai*export*
+studio-brain/.studio-brain*.lock
+scripts/.tmp-*
 
 # Env / secrets
 .env

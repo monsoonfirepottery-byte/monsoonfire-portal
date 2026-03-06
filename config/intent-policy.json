@@ -75,7 +75,7 @@
     "capabilityTokens": {
       "requireForDestructive": false,
       "acceptedPrefixes": [
-        "cap_"
+        "capref_"
       ]
     },
     "twoPhaseCommit": {

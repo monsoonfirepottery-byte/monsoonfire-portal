@@ -53,6 +53,14 @@ function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function slugify(value, fallback = "item") {
+  const normalized = String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || fallback;
+}
+
 function digestFileIfExists(path) {
   if (!existsSync(path)) return null;
   return sha256(readFileSync(path, "utf8"));
@@ -616,7 +624,7 @@ export function buildCompiledPlan(repoRoot, validEntries) {
               canaryPercent: 10,
               rollbackOnDriftIncreasePct: 10,
             },
-        capabilityToken: `cap_${sha256(entry.intent.intentId).slice(0, 12)}`,
+        capabilityToken: `capref_${slugify(entry.intent.intentId, "intent_capability")}`,
         dependsOnIntents: Array.isArray(entry.intent.dependsOnIntents) ? entry.intent.dependsOnIntents : [],
         doneCriteria: entry.intent.doneCriteria,
         simulation: isPlainObject(entry.intent.simulation)

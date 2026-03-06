@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+if command -v readlink >/dev/null 2>&1; then
+  SCRIPT_PATH="$(readlink -f "${SCRIPT_PATH}")"
+  SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd)"
+fi
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# One-word launcher for Codex continuity resume
+exec "${REPO_ROOT}/scripts/codex-mcp.sh" resume "$@"

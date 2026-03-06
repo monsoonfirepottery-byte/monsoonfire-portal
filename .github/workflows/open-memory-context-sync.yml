@@ -1,0 +1,77 @@
+name: Open Memory Context Sync
+
+on:
+  schedule:
+    - cron: "45 7 * * *"
+  workflow_dispatch:
+    inputs:
+      include_resumable:
+        description: Include resumable session extraction/import in this run.
+        required: true
+        default: false
+        type: boolean
+      strict_import:
+        description: Fail workflow if Open Memory import fails.
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  context-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+      STUDIO_BRAIN_BASE_URL: ${{ secrets.STUDIO_BRAIN_BASE_URL }}
+      STUDIO_BRAIN_AUTH_TOKEN: ${{ secrets.STUDIO_BRAIN_AUTH_TOKEN }}
+      STUDIO_BRAIN_ID_TOKEN: ${{ secrets.STUDIO_BRAIN_ID_TOKEN }}
+      STUDIO_BRAIN_ADMIN_TOKEN: ${{ secrets.STUDIO_BRAIN_ADMIN_TOKEN }}
+      PORTAL_FIREBASE_API_KEY: ${{ secrets.PORTAL_FIREBASE_API_KEY }}
+      FIREBASE_WEB_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
+      PORTAL_STAFF_EMAIL: ${{ secrets.PORTAL_STAFF_EMAIL }}
+      PORTAL_STAFF_PASSWORD: ${{ secrets.PORTAL_STAFF_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Build + sync bounded context slice
+        run: |
+          set -euo pipefail
+          EXTRA_ARGS=()
+          if [ "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.include_resumable || 'false' }}" = "true" ]; then
+            EXTRA_ARGS+=(--include-resumable true)
+          fi
+          if [ "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.strict_import || 'false' }}" = "true" ]; then
+            EXTRA_ARGS+=(--strict-import true)
+          fi
+          node ./scripts/open-memory-context-sync.mjs \
+            --source "context-slice:automation" \
+            --output "./imports/memory-context-slice-${GITHUB_RUN_ID}.jsonl" \
+            --summary-output "./output/open-memory/context-sync-${GITHUB_RUN_ID}.json" \
+            "${EXTRA_ARGS[@]}"
+
+      - name: Upload context sync artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: open-memory-context-sync-${{ github.run_id }}
+          path: |
+            imports/memory-context-slice-*.jsonl
+            imports/codex-resumable-memory*.jsonl
+            output/open-memory/context-sync-*.json
+            output/open-memory/context-sync-latest.json
+          if-no-files-found: ignore
+          retention-days: 14

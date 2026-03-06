@@ -25,6 +25,7 @@ type MessagesTab = "inbox" | "studio";
 type Props = {
   user: User;
   supportEmail: string;
+  initialThreadId?: string | null;
   threads: DirectMessageThread[];
   threadsLoading: boolean;
   threadsError: string;
@@ -153,6 +154,7 @@ function useDirectMessageMessages(threadId: string | null, fetchLimit: number) {
 export default function MessagesView({
   user,
   supportEmail,
+  initialThreadId = null,
   threads,
   threadsLoading,
   threadsError,
@@ -168,6 +170,7 @@ export default function MessagesView({
   const motionEnabled = themeName === "memoria" && portalMotion === "enhanced";
   const [messagesTab, setMessagesTab] = useState<MessagesTab>("inbox");
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(threads[0]?.id || null);
+  const appliedInitialThreadRef = useRef<string | null>(null);
   const [composerText, setComposerText] = useState("");
   const [composerBusy, setComposerBusy] = useState(false);
   const [newThreadOpen, setNewThreadOpen] = useState(false);
@@ -187,6 +190,14 @@ export default function MessagesView({
       setSelectedThreadId(threads[0].id);
     }
   }, [threads, selectedThreadId]);
+
+  useEffect(() => {
+    if (!initialThreadId) return;
+    if (appliedInitialThreadRef.current === initialThreadId) return;
+    if (!threads.some((thread) => thread.id === initialThreadId)) return;
+    setSelectedThreadId(initialThreadId);
+    appliedInitialThreadRef.current = initialThreadId;
+  }, [initialThreadId, threads]);
 
   useEffect(() => {
     setMessageFetchLimit(DEFAULT_MESSAGE_FETCH_LIMIT);

@@ -124,6 +124,12 @@ function buildSteps(currentMode) {
       required: true,
     },
     {
+      name: "continueJourney endpoint runtime checks",
+      command: "node",
+      args: ["--test", "functions/lib/continueJourneyEndpoint.test.js"],
+      required: true,
+    },
+    {
       name: "journey fixture contract check",
       command: "node",
       args: ["./scripts/check-journey-fixtures.mjs", "--strict", "--json"],

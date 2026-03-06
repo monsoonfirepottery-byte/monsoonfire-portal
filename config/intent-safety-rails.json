@@ -1,0 +1,20 @@
+{
+  "schema": "intent-safety-rails.v1",
+  "defaults": {
+    "maxRepeatedErrorSignature": 3,
+    "maxRepeatedErrorWindowSteps": 8,
+    "maxPlanChurnInWindow": 3,
+    "planChurnWindowMinutes": 15,
+    "maxNoProgressChecks": 6,
+    "maxNoEvidenceCycles": 3
+  },
+  "infraPhaseOverrides": {
+    "ingestion": {
+      "maxRepeatedErrorSignature": 6,
+      "maxRepeatedErrorWindowSteps": 12
+    }
+  },
+  "replayDeterminism": {
+    "minScore": 0.9
+  }
+}

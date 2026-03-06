@@ -40,7 +40,7 @@ This plan is the authoritative matrix for Epic 12.
 | J-007 | Continue journey | continueJourney success with `{uid, fromBatchId}` | unit + integration | response includes deterministic batch linkage fields | Implemented |
 | J-008 | Continue journey | continueJourney missing input | unit + integration | explicit validation error envelope | Existing |
 | J-009 | Continue journey | history/timeline sync after continuation | unit + contract | active/history/timeline linkage remains consistent | Implemented |
-| J-010 | Continue journey | ownership mismatch on continuation | integration | authz/ownership error with no data drift | Planned |
+| J-010 | Continue journey | ownership mismatch on continuation | integration | authz/ownership error with no data drift | Implemented (endpoint runtime) |
 | S-001 | Stripe negative | Invalid webhook signature | unit | request rejected with signature error code | Existing |
 | S-002 | Stripe negative | Livemode mismatch | unit | request rejected with livemode mismatch code | Existing |
 | S-003 | Stripe negative | payment_intent.payment_failed | unit + integration | mapped status/error outcome is explicit and deterministic | Implemented |
@@ -75,6 +75,7 @@ This plan is the authoritative matrix for Epic 12.
 1. Completed 2026-02-23: Added deterministic `continueJourney` post-condition contract helper/tests (`functions/src/continueJourneyContract.ts` + `.test.ts`) and wired contract checks into `scripts/check-continue-journey-contract.mjs`.
 2. Completed 2026-02-23: Added `charge.dispute.closed` event simulation plus dispute lifecycle metadata in audit trails (`functions/src/stripeConfig.ts` + `.test.ts`).
 3. Completed 2026-02-23: Promoted reservations Playwright deep-lane step from optional to required when `MF_REQUIRE_RESERVATIONS_PLAYWRIGHT=1`, with CI env wiring in `.github/workflows/ci-smoke.yml`.
+4. Completed 2026-03-04: Added `continueJourney` endpoint runtime test coverage (`functions/src/continueJourneyEndpoint.test.ts`) and wired it into fast/deep journey suite lanes via `scripts/run-journey-suite.mjs`.
 
 ## Command map (current)
 

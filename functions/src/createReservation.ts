@@ -37,12 +37,12 @@ const VALID_PIECE_STATUSES: ReadonlySet<ReservationPieceStatus> = new Set([
 const reservationSchema = z.object({
   intakeMode: z.string().optional(),
   firingType: z.enum(["bisque", "glaze", "other"]).optional(),
-  shelfEquivalent: z.number().optional(),
-  footprintHalfShelves: z.number().optional(),
-  heightInches: z.number().optional(),
-  tiers: z.number().optional(),
-  estimatedHalfShelves: z.number().optional(),
-  estimatedCost: z.number().optional(),
+  shelfEquivalent: z.number().optional().nullable(),
+  footprintHalfShelves: z.number().optional().nullable(),
+  heightInches: z.number().optional().nullable(),
+  tiers: z.number().optional().nullable(),
+  estimatedHalfShelves: z.number().optional().nullable(),
+  estimatedCost: z.number().optional().nullable(),
   preferredWindow: z
     .object({
       earliestDate: z.any().optional().nullable(),

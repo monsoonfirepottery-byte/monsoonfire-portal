@@ -8,10 +8,10 @@
 
 ## Contract Summary
 - Schema version: `1.0.0`
-- Variables tracked: `82`
+- Variables tracked: `90`
 - Required variables: `15`
-- Optional variables: `67`
-- Sensitive variables (redacted defaults): `6`
+- Optional variables: `75`
+- Sensitive variables (redacted defaults): `7`
 
 ## Network Profile Snapshot
 | Field | Value |
@@ -66,6 +66,9 @@
 | STUDIO_BRAIN_ARTIFACT_STORE_USE_SSL | boolean | no | false |
 | STUDIO_BRAIN_DEFAULT_TENANT_ID | string | no | monsoonfire-main |
 | STUDIO_BRAIN_DHCP_HOST | string | no |  |
+| STUDIO_BRAIN_EMBEDDING_DIMENSIONS | integer | no | 1536 |
+| STUDIO_BRAIN_EMBEDDING_PROVIDER | string | no | none |
+| STUDIO_BRAIN_EMBEDDING_TIMEOUT_MS | integer | no | 15000 |
 | STUDIO_BRAIN_ENABLE_RETENTION_PRUNE | boolean | no | false |
 | STUDIO_BRAIN_ENABLE_STARTUP_COMPUTE | boolean | no | true |
 | STUDIO_BRAIN_ENABLE_WRITE_EXECUTION | boolean | no | false |
@@ -83,6 +86,8 @@
 | STUDIO_BRAIN_LOCAL_HOST | string | no | 127.0.0.1 |
 | STUDIO_BRAIN_LOG_LEVEL | string | no | info |
 | STUDIO_BRAIN_NETWORK_PROFILE | string | no | local |
+| STUDIO_BRAIN_OPENAI_API_KEY | string | no | (redacted) |
+| STUDIO_BRAIN_OPENAI_EMBEDDING_MODEL | string | no | text-embedding-3-small |
 | STUDIO_BRAIN_OTEL_ENABLED | boolean | no | false |
 | STUDIO_BRAIN_OTEL_ENDPOINT | url | no |  |
 | STUDIO_BRAIN_OTEL_SERVICE_NAME | string | no | studiobrain |
@@ -120,10 +125,13 @@
 | STUDIO_BRAIN_SWARM_RUN_ID | string | no |  |
 | STUDIO_BRAIN_VECTOR_STORE_ENABLED | boolean | no | false |
 | STUDIO_BRAIN_VECTOR_STORE_TABLE | string | no | swarm_memory |
+| STUDIO_BRAIN_VERTEX_EMBEDDING_MODEL | string | no | text-embedding-005 |
+| STUDIO_BRAIN_VERTEX_LOCATION | string | no | us-central1 |
+| STUDIO_BRAIN_VERTEX_PROJECT_ID | string | no |  |
 
 ## Update Workflow
 1. Edit `studio-brain/.env.contract.schema.json` or `studio-brain/.env.network.profile`.
 2. Run `npm run docs:contract`.
 3. Validate drift with `npm run docs:contract:check` in PR checks.
 
-Source digest: `e1e3f05a31ff3c5e0aabee3c0a12aa20d2d7d63e7a4556b33e2fd20edf0af360`
+Source digest: `a61894bb05534b3a2f248a806680fa7ad08048e5e07ad89430adcf6c9c6c2ad6`

@@ -1,6 +1,6 @@
 # P2 — Library Frontend: Filtering, Search, and Mobile Polish
 
-Status: In Progress
+Status: Completed
 Date: 2026-03-01
 Priority: P2
 Owner: Frontend UX
@@ -63,3 +63,11 @@ Completed in this pass:
    - sticky mobile filter action area in filter drawer,
    - sticky detail action bar for reserve/waitlist/return + notify affordances.
 4. Added visible active-filter summary and one-tap reset for faster browse recovery when query state gets dense.
+
+## Execution Update (2026-03-01, Regression Closeout)
+
+Completed in this pass:
+1. Revalidated URL-synced search/filter/sort behavior and mobile drawer/detail sticky ergonomics in `web/src/views/LendingLibraryView.tsx`.
+2. Verified regression coverage and build stability with:
+   - `npm --prefix web run test -- src/views/LendingLibraryView.test.ts`
+   - `npm --prefix web run build`

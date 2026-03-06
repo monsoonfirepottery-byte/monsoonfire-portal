@@ -331,51 +331,6 @@
   box-shadow: 0 12px 30px rgba(90, 60, 30, 0.08);
 }
 
-.shelf-guide {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  border-radius: 14px;
-  border: 1px dashed var(--border-strong);
-  background: rgba(180, 79, 53, 0.06);
-}
-
-.shelf-guide summary {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.shelf-guide-title {
-  display: none;
-}
-
-.shelf-guide-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.shelf-guide-cell {
-  height: 18px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.shelf-guide-cell.active {
-  border-color: rgba(180, 79, 53, 0.5);
-  background: rgba(180, 79, 53, 0.35);
-}
-
-.shelf-guide-caption {
-  font-size: 11px;
-  color: var(--muted);
-}
-
 .estimate-summary-header {
   display: flex;
   justify-content: space-between;
@@ -611,7 +566,8 @@
 }
 
 .addon-fields input,
-.addon-fields textarea {
+.addon-fields textarea,
+.addon-fields select {
   border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -845,6 +801,10 @@
 .community-overflow-optin {
   display: grid;
   gap: 8px;
+}
+
+.community-overflow-optin-below-estimate {
+  grid-column: 1 / -1;
 }
 
 .addon-text {
@@ -1723,9 +1683,19 @@ html[data-portal-theme="memoria"] .reservations-page .notes-grid input,
 html[data-portal-theme="memoria"] .reservations-page .notes-grid textarea,
 html[data-portal-theme="memoria"] .reservations-page .staff-client-grid select,
 html[data-portal-theme="memoria"] .reservations-page .addon-fields input,
-html[data-portal-theme="memoria"] .reservations-page .addon-fields textarea {
+html[data-portal-theme="memoria"] .reservations-page .addon-fields textarea,
+html[data-portal-theme="memoria"] .reservations-page .addon-fields select {
   border-color: rgba(161, 178, 208, 0.34);
   background: linear-gradient(170deg, rgba(29, 39, 58, 0.9), rgba(20, 28, 42, 0.92));
+}
+
+html[data-portal-theme="memoria"] .reservations-page .staff-client-grid select {
+  color: rgba(241, 246, 255, 0.95);
+}
+
+html[data-portal-theme="memoria"] .reservations-page .staff-client-grid select option {
+  background: #182133;
+  color: #eef3ff;
 }
 
 html[data-portal-theme="memoria"] .reservations-page .option-card:hover {

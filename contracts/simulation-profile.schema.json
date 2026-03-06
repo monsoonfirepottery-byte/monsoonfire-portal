@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://monsoonfire.com/contracts/simulation-profile.schema.json",
+  "title": "Intent Simulation Profile",
+  "type": "object",
+  "required": ["schema", "profileId"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "type": "string", "const": "intent-simulation-profile.v1" },
+    "profileId": { "type": "string", "minLength": 2, "maxLength": 120 },
+    "description": { "type": "string", "minLength": 3, "maxLength": 400 },
+    "maxChecksPerTask": { "type": "integer", "minimum": 1, "maximum": 500 },
+    "maxTotalChecks": { "type": "integer", "minimum": 1, "maximum": 100000 },
+    "requiredEnv": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 160 }
+    },
+    "denyCommandPatterns": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 400 }
+    },
+    "allowNetworkWrites": { "type": "boolean" }
+  }
+}

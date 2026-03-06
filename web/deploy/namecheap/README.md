@@ -6,6 +6,7 @@ Goals:
 - deep links do not 404 (SPA rewrite)
 - `/.well-known/*` files are served as real files (no rewrite)
 - hashed assets cache long; `index.html` stays fresh
+- deep links (including staff workspace paths like `/staff/cockpit`, `/staff/workshops`, `/staff/system`) resolve through SPA fallback in production
 
 ## Deploy steps (typical)
 

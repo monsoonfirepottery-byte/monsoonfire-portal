@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pst-checkpoint.schema.json",
+  "title": "PST Import Checkpoint",
+  "type": "object",
+  "required": [
+    "schema",
+    "runId",
+    "inputPath",
+    "source",
+    "createdAt",
+    "updatedAt",
+    "nextIndex",
+    "chunkSize",
+    "totals",
+    "status"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "pst-memory-import-checkpoint.v1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "nextIndex": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "chunkSize": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "totals": {
+      "type": "object",
+      "required": [
+        "imported",
+        "failed",
+        "chunksSucceeded",
+        "chunksFailed"
+      ],
+      "properties": {
+        "imported": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "chunksSucceeded": { "type": "integer", "minimum": 0 },
+        "chunksFailed": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "status": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": true
+}

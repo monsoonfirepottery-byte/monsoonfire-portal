@@ -1,6 +1,6 @@
 # P1 — Library Backend: Lending Lifecycle and Overdue Operations
 
-Status: In Progress
+Status: Completed
 Date: 2026-03-01
 Priority: P1
 Owner: Platform Backend + Library Ops
@@ -70,9 +70,6 @@ Completed in this slice:
    - idempotent reminder-event emission for 7-day, 1-day, and 3-day overdue stages,
    - manual ops trigger route `runLibraryOverdueSyncNow`.
 
-Remaining:
-1. Add deeper overdue worker integration assertions that validate reminder-stage emission persistence under mixed-status loan sets.
-
 ## Execution Update (2026-03-01, Deep Pass)
 
 Completed in this pass:
@@ -84,3 +81,17 @@ Completed in this pass:
 2. Added deterministic replay + conflict semantics for reused idempotency keys with payload mismatch (`409 CONFLICT`, `IDEMPOTENCY_KEY_CONFLICT`).
 3. Added checkout race regression coverage in `functions/src/apiV1.test.ts`:
    - concurrent checkout attempts against a single-copy item now assert one success + one conflict (`NO_AVAILABLE_COPIES`).
+
+## Execution Update (2026-03-01, Overdue Worker Assertions Closeout)
+
+Completed in this pass:
+1. Added mixed-status overdue worker integration coverage in `functions/src/library.overdueSync.test.ts`.
+2. Added explicit reminder-stage assertions for:
+   - `library.borrow_due_7d`
+   - `library.borrow_due_1d`
+   - `library.borrow_overdue_3d`
+3. Added transition/skip assertions in mixed-status sets (`checked_out`, `return_requested`, `overdue`, plus returned/lost/unknown/missing-due rows).
+4. Added idempotent rerun assertions verifying reminder persistence and zero duplicate stage emissions.
+5. Verified with:
+   - `npm --prefix functions run build`
+   - `node --test functions/lib/library.test.js functions/lib/library.overdueSync.test.js`

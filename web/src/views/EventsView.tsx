@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  getDocs,
+  limit,
+  query,
+  serverTimestamp,
+  Timestamp,
+  orderBy,
+  where,
+} from "firebase/firestore";
 import type {
   EventDetail,
   EventSignupRosterEntry,
@@ -11,6 +21,9 @@ import type {
   ListIndustryEventsResponse,
   ListEventSignupsResponse,
   ListEventsResponse,
+  ListWorkshopDemandSignalsRequest,
+  WorkshopDemandSignalAction,
+  WorkshopDemandSignalSource,
   RunIndustryEventsFreshnessNowResponse,
   SignupForEventResponse,
   CancelEventSignupResponse,
@@ -19,13 +32,20 @@ import type {
   CreateEventCheckoutSessionResponse,
 } from "../api/portalContracts";
 import { createFunctionsClient } from "../api/functionsClient";
+import { createPortalApi } from "../api/portalApi";
 import { db } from "../firebase";
 import { track } from "../lib/analytics";
+import {
+  buildIndustryEventGoogleCalendarUrl,
+  buildIndustryEventIcsContent,
+  industryEventReminderCopy,
+} from "../lib/industryEventCalendar";
 import {
   filterIndustryEvents as filterIndustryBrowseEvents,
   industryEventLocationLabel,
   industryEventModeLabel,
 } from "../lib/industryEvents";
+import type { IndustryEventBrowseWindow } from "../lib/industryEvents";
 import { formatCents, formatDateTime } from "../utils/format";
 import { checkoutErrorMessage, requestErrorMessage } from "../utils/userFacingErrors";
 import { toVoidHandler } from "../utils/toVoidHandler";
@@ -97,6 +117,12 @@ const INDUSTRY_MODE_OPTIONS = [
   { key: "hybrid", label: "Hybrid" },
 ] as const;
 
+const INDUSTRY_WINDOW_OPTIONS = [
+  { key: "all", label: "Any time" },
+  { key: "this_month", label: "This month" },
+  { key: "next_90_days", label: "Next 90 days" },
+] as const;
+
 const INDUSTRY_STATUS_OPTIONS = [
   { key: "draft", label: "Draft" },
   { key: "published", label: "Published" },
@@ -151,6 +177,37 @@ const LOCAL_NAV_SECTION_KEY = "mf_nav_section_key";
 const WORKSHOP_CURATION_STORAGE_KEY = "mf_workshops_curation_v1";
 const WORKSHOP_REQUEST_LEDGER_STORAGE_KEY = "mf_workshop_requests_v1";
 const LENDING_HANDOFF_STORAGE_SLOT = "mf_lending_handoff_v1";
+const WORKSHOP_HANDOFF_STORAGE_SLOT = "mf_workshop_handoff_v1";
+const WORKSHOP_SIGNAL_DOC_ID_PATTERN = /^[a-zA-Z0-9_-]{6,120}$/;
+const INDUSTRY_SAVED_STORAGE_KEY = "mf_industry_saved_events_v1";
+const WORKSHOP_INTEREST_SIGNAL_STORAGE_KEY = "mf_workshop_interest_signals_v1";
+const WORKSHOP_REQUEST_SIGNAL_EVENT_SOURCES = [
+  "events-request-form",
+  "cluster-routing",
+] as const;
+const WORKSHOP_COMMUNITY_SIGNAL_EVENT_SOURCES = [
+  "events-interest-toggle",
+  "events-interest",
+  "events-interest-withdrawal",
+  "events-showcase",
+] as const;
+const WORKSHOP_DEMAND_SIGNAL_EVENT_SOURCES = [
+  ...WORKSHOP_REQUEST_SIGNAL_EVENT_SOURCES,
+  ...WORKSHOP_COMMUNITY_SIGNAL_EVENT_SOURCES,
+] as const;
+const WORKSHOP_SIGNAL_NOTE_PREFIXES = [
+  "Outcome note",
+  "Outcome",
+  "Result",
+  "Notes",
+  "Reason",
+  "Why",
+] as const;
+// Firestore "in" filters support up to 10 IDs per query.
+const WORKSHOP_SIGNAL_EVENT_ID_QUERY_CHUNK_SIZE = 10;
+const WORKSHOP_SIGNAL_SOURCE_QUERY_CHUNK_SIZE = 30;
+const WORKSHOP_SIGNAL_FUNCTION_EVENT_ID_CHUNK_SIZE = 500;
+const WORKSHOP_COMMUNITY_SIGNAL_QUERY_LIMIT = 500;
 const REQUEST_LIFECYCLE_STATUSES = [
   "new",
   "reviewing",
@@ -172,6 +229,7 @@ type MemberSchedule = (typeof MEMBER_SCHEDULE_OPTIONS)[number]["key"];
 type BuddyMode = (typeof BUDDY_MODES)[number]["key"];
 type TechniqueId = (typeof TECHNIQUE_TAXONOMY)[number]["id"];
 type IndustryModeFilter = (typeof INDUSTRY_MODE_OPTIONS)[number]["key"];
+type IndustryWindowFilter = (typeof INDUSTRY_WINDOW_OPTIONS)[number]["key"];
 type IndustryStatus = (typeof INDUSTRY_STATUS_OPTIONS)[number]["key"];
 
 type IndustryEventDraft = {
@@ -219,6 +277,7 @@ type ProfiledWorkshop = {
 type WorkshopDemandSignal = {
   id: string;
   kind: "request" | "interest";
+  action?: WorkshopDemandSignalAction;
   techniqueIds: TechniqueId[];
   techniqueLabel: string;
   level: RequestLevel;
@@ -226,6 +285,15 @@ type WorkshopDemandSignal = {
   buddyMode: BuddyMode;
   createdAt: number;
   sourceEventId?: string | null;
+  source?: WorkshopDemandSignalSource;
+  sourceEventTitle?: string | null;
+  sourceLabel?: string | null;
+  signalNote?: string;
+};
+
+type WorkshopInterestSignalsState = {
+  interested: Record<string, boolean>;
+  sent: Record<string, boolean>;
 };
 
 type DemandCluster = {
@@ -256,6 +324,35 @@ type WorkshopRequestEntry = {
   createdAt: number;
   updatedAt: number;
   source: "events-request-form" | "cluster-routing";
+};
+
+type WorkshopSupportSignalSource = WorkshopDemandSignalSource;
+type WorkshopCommunitySignalSource = WorkshopDemandSignalSource;
+
+type WorkshopCommunitySignalAction = WorkshopDemandSignalAction;
+
+type LendingToWorkshopsHandoffPayload = {
+  eventId?: string;
+  eventTitle?: string;
+  search?: string;
+  focusTechnique?: string;
+  source?: string;
+  atIso?: string;
+};
+
+type WorkshopCommunitySignalSourceState = {
+  uid: string;
+  eventId?: string | null;
+  action: WorkshopCommunitySignalAction;
+  createdAt: number;
+  level: RequestLevel;
+  schedule: RequestSchedule;
+  buddyMode: BuddyMode;
+  techniqueIds: TechniqueId[];
+  techniqueLabel: string;
+  source: WorkshopCommunitySignalSource;
+  signalNote?: string;
+  sourceEventTitle?: string | null;
 };
 
 type RequestTriageCluster = {
@@ -415,6 +512,93 @@ function writeWorkshopCurationConfig(config: WorkshopCurationConfig): void {
   }
 }
 
+function loadSavedIndustryEvents(uid: string): Record<string, boolean> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(`${INDUSTRY_SAVED_STORAGE_KEY}:${uid}`);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return {};
+    const out: Record<string, boolean> = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof key === "string" && key.trim() && value === true) {
+        out[key.trim()] = true;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function writeSavedIndustryEvents(uid: string, saved: Record<string, boolean>): void {
+  if (typeof window === "undefined") return;
+  try {
+    const next: Record<string, boolean> = {};
+    Object.entries(saved).forEach(([eventId, isSaved]) => {
+      if (!isSaved || !eventId.trim()) return;
+      next[eventId.trim()] = true;
+    });
+    window.localStorage.setItem(`${INDUSTRY_SAVED_STORAGE_KEY}:${uid}`, JSON.stringify(next));
+  } catch {
+    // Ignore storage failures; save state still works for current session.
+  }
+}
+
+function loadWorkshopInterestSignals(uid: string): WorkshopInterestSignalsState {
+  if (typeof window === "undefined") return { interested: {}, sent: {} };
+  try {
+    const raw = window.localStorage.getItem(`${WORKSHOP_INTEREST_SIGNAL_STORAGE_KEY}:${uid}`);
+    if (!raw) return { interested: {}, sent: {} };
+    const parsed = JSON.parse(raw) as {
+      interested?: unknown;
+      sent?: unknown;
+    };
+    if (!parsed || typeof parsed !== "object") return { interested: {}, sent: {} };
+
+    const normalizeMap = (value: unknown): Record<string, boolean> => {
+      if (!value || typeof value !== "object") return {};
+      const out: Record<string, boolean> = {};
+      Object.entries(value as Record<string, unknown>).forEach(([eventId, isActive]) => {
+        if (typeof eventId === "string" && eventId.trim() && isActive === true) {
+          out[eventId.trim()] = true;
+        }
+      });
+      return out;
+    };
+
+    return {
+      interested: normalizeMap(parsed.interested),
+      sent: normalizeMap(parsed.sent),
+    };
+  } catch {
+    return { interested: {}, sent: {} };
+  }
+}
+
+function writeWorkshopInterestSignals(uid: string, state: WorkshopInterestSignalsState): void {
+  if (typeof window === "undefined") return;
+  try {
+    const nextInterested: Record<string, boolean> = {};
+    const nextSent: Record<string, boolean> = {};
+    Object.entries(state.interested).forEach(([eventId, isActive]) => {
+      const id = eventId.trim();
+      if (id && isActive) nextInterested[id] = true;
+    });
+    Object.entries(state.sent).forEach(([eventId, isActive]) => {
+      const id = eventId.trim();
+      if (id && isActive) nextSent[id] = true;
+    });
+
+    window.localStorage.setItem(
+      `${WORKSHOP_INTEREST_SIGNAL_STORAGE_KEY}:${uid}`,
+      JSON.stringify({ interested: nextInterested, sent: nextSent })
+    );
+  } catch {
+    // Ignore persistence failures; support signal state remains in memory for this session.
+  }
+}
+
 function loadWorkshopRequestLedger(uid: string): WorkshopRequestEntry[] {
   if (typeof window === "undefined") return [];
   try {
@@ -511,6 +695,26 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function downloadIndustryEventCalendarFile(event: IndustryEventSummary): boolean {
+  if (typeof window === "undefined") return false;
+  const ics = buildIndustryEventIcsContent(event);
+  if (!ics) return false;
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  const safeId = String(event.id || "event")
+    .toLowerCase()
+    .replace(/[^\w-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  link.download = `monsoonfire-industry-${safeId || "event"}.ics`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+  return true;
+}
+
 function labelForStatus(status?: string | null) {
   if (!status) return "-";
   return STATUS_LABELS[status] || status;
@@ -567,6 +771,11 @@ function topRecordKey<T extends string>(record: Record<T, number>, fallback: T):
 function scheduleLabelFor(schedule: RequestSchedule | MemberSchedule) {
   const key = schedule === "any" ? "any" : schedule;
   return MEMBER_SCHEDULE_OPTIONS.find((option) => option.key === key)?.label ?? "Any schedule";
+}
+
+function formatCommunitySignalCount(value: number) {
+  if (!Number.isFinite(value)) return "0";
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 function levelLabelFor(level: RequestLevel) {
@@ -641,6 +850,235 @@ function parseTechniqueIds(input: string): TechniqueId[] {
   return inferTechniquesFromText(normalized, normalized.includes("firing") || normalized.includes("kiln"));
 }
 
+function asString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function parseTimestampMs(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (value instanceof Timestamp) {
+    return value.toMillis();
+  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.getTime();
+  }
+  return Number.NaN;
+}
+
+function parseSignalLineValue(body: string, prefix: string): string {
+  if (!body) return "";
+  const target = prefix.toLowerCase();
+  const found = body
+    .split("\n")
+    .map((entry) => entry.trim())
+    .find((entry) => entry.toLowerCase().startsWith(`${target}:`));
+
+  if (!found) return "";
+  return found
+    .slice(found.indexOf(":") + 1)
+    .trim()
+    .replace(/^\((.*)\)$/, "$1");
+}
+
+function parseSignalLineValueFromAliases(body: string, prefixes: string[]): string {
+  for (const prefix of prefixes) {
+    const value = parseSignalLineValue(body, prefix);
+    if (value) return value;
+  }
+  return "";
+}
+
+function isWorkshopDemandSignalRequestSource(source: WorkshopDemandSignalSource): boolean {
+  return source === "events-request-form" || source === "cluster-routing";
+}
+
+function parseSupportEventSource(value: unknown): WorkshopDemandSignalSource | null {
+  const normalized = asString(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  const source = normalized.startsWith("workshop-")
+    ? normalized.replace(/^workshop-/, "events-")
+    : normalized.startsWith("event-")
+      ? normalized.replace(/^event-/, "events-")
+      : normalized;
+
+  if (!source) return null;
+  if ((WORKSHOP_DEMAND_SIGNAL_EVENT_SOURCES as ReadonlyArray<string>).includes(source)) {
+    return source as WorkshopDemandSignalSource;
+  }
+
+  if (source === "showcase-follow-up" || source === "showcase") return "events-showcase";
+  if (source === "withdrawn" || source === "interest-withdrawn") return "events-interest-withdrawal";
+  if (source === "request-form" || source === "workshop-request") return "events-request-form";
+  if (source === "interest-toggle") return "events-interest-toggle";
+  if (source === "interest-signal") return "events-interest";
+
+  return null;
+}
+
+function inferSupportEventSource(value: unknown, subject: string, body: string): WorkshopDemandSignalSource | null {
+  const source = parseSupportEventSource(value);
+  if (source) return source;
+  const normalizedSubject = subject.toLowerCase();
+  if (normalizedSubject.includes("workshop request:")) return "events-request-form";
+  if (normalizedSubject.includes("workshop interest withdrawn")) return "events-interest-withdrawal";
+  if (normalizedSubject.includes("showcase follow-up")) return "events-showcase";
+  if (normalizedSubject.includes("workshop showcase")) return "events-showcase";
+  if (normalizedSubject.includes("workshop interest:")) return "events-interest-toggle";
+  if (
+    normalizedSubject.includes("workshop interest") ||
+    normalizedSubject.includes("i'm interested") ||
+    normalizedSubject.includes("i am interested")
+  ) {
+    return "events-interest";
+  }
+
+  const normalizedBody = body.toLowerCase();
+  if (normalizedBody.includes("workshop request:")) return "events-request-form";
+  if (normalizedBody.includes("workshop interest withdrawn")) return "events-interest-withdrawal";
+  if (normalizedBody.includes("showcase follow-up")) return "events-showcase";
+  if (normalizedBody.includes("workshop showcase")) return "events-showcase";
+  if (normalizedBody.includes("workshop interest:")) return "events-interest-toggle";
+  if (
+    normalizedBody.includes("workshop interest") ||
+    normalizedBody.includes("i'm interested") ||
+    normalizedBody.includes("i am interested")
+  ) {
+    return "events-interest";
+  }
+
+  return null;
+}
+
+function splitArrayIntoChunks<T>(values: ReadonlyArray<T>, chunkSize: number): T[][] {
+  if (chunkSize <= 0) return [];
+  const out: T[][] = [];
+  for (let index = 0; index < values.length; index += chunkSize) {
+    out.push(values.slice(index, index + chunkSize));
+  }
+  return out;
+}
+
+function parseSupportEventId(rawEventId: unknown, body: string): string | null {
+  const direct = normalizeWorkshopSignalDocumentId(asString(rawEventId));
+  if (direct) return direct;
+  const lineValue = parseSignalLineValueFromAliases(body, [
+    "Event id",
+    "Event",
+    "Workshop id",
+    "Workshop",
+    "Workshop event id",
+    "Session id",
+    "Session",
+  ]);
+  return normalizeWorkshopSignalDocumentId(lineValue);
+}
+
+function normalizeWorkshopSignalDocumentId(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed || !WORKSHOP_SIGNAL_DOC_ID_PATTERN.test(trimmed)) return null;
+  return trimmed;
+}
+
+function parseSupportSignalTechniqueIds(rawTechniqueIds: unknown): TechniqueId[] {
+  if (Array.isArray(rawTechniqueIds) && rawTechniqueIds.length > 0) {
+    const deduped: TechniqueId[] = [];
+    rawTechniqueIds.forEach((entry) => {
+      const value = asString(entry).toLowerCase();
+      if (!value || !TECHNIQUE_ID_SET.has(value as TechniqueId)) return;
+      const normalized = value as TechniqueId;
+      if (!deduped.includes(normalized)) {
+        deduped.push(normalized);
+      }
+    });
+    return deduped;
+  }
+
+  const fromString = asString(rawTechniqueIds)
+    .split(/[,;\n]+/)
+    .map((entry) => asString(entry).toLowerCase())
+    .filter((entry): entry is TechniqueId => TECHNIQUE_ID_SET.has(entry as TechniqueId));
+  return fromString.length > 0 ? Array.from(new Set(fromString)) : [];
+}
+
+function parseSupportLevel(value: string): RequestLevel {
+  const normalized = asString(value).toLowerCase();
+  if (normalized === "beginner" || normalized === "intermediate" || normalized === "advanced") {
+    return normalized;
+  }
+  if (normalized === "all levels" || normalized === "all-levels") return "all-levels";
+  return "all-levels";
+}
+
+function parseSupportSchedule(value: string): RequestSchedule {
+  const normalized = asString(value).toLowerCase();
+  if (
+    normalized === "any" ||
+    normalized === "any schedule" ||
+    normalized === "anytime" ||
+    normalized === "any time" ||
+    normalized === "flex"
+  ) {
+    return "flexible";
+  }
+  return normalized === "weekday-evening" || normalized === "weekday-daytime" || normalized === "weekend-morning" || normalized === "weekend-afternoon" || normalized === "flexible"
+    ? normalized
+    : "weekday-evening";
+}
+
+function normalizeRequestSchedule(value: RequestSchedule | MemberSchedule): RequestSchedule {
+  return value === "any" ? "flexible" : value;
+}
+
+function parseSupportBuddyMode(value: string): BuddyMode {
+  const normalized = asString(value).toLowerCase();
+  if (normalized.includes("circle")) return "circle";
+  if (normalized.includes("buddy")) return "buddy";
+  return "solo";
+}
+
+function workshopDemandSignalSourceLabel(
+  source: WorkshopCommunitySignalSource | null
+): string {
+  if (source === "events-request-form") return "Workshop request form";
+  if (source === "cluster-routing") return "Routing brief";
+  if (source === "events-showcase") return "Showcase follow-up";
+  if (source === "events-interest-withdrawal") return "Interest withdrawn";
+  if (source === "events-interest") return "Interest signal";
+  if (source === "events-interest-toggle") return "Interest toggle";
+  return "Workshop signal";
+}
+
+function workshopSignalCountsForDemand(signal: WorkshopDemandSignal): boolean {
+  if (signal.kind === "request") return true;
+  if (signal.kind !== "interest") return false;
+  if (!signal.action) return true;
+  return signal.action !== "showcase" && signal.action !== "withdrawal";
+}
+
+function workshopWaitlistMetaLabel(event: {
+  waitlistEnabled: boolean;
+  waitlistCount?: number | null;
+  remainingCapacity?: number | null;
+}): string | null {
+  if (!event.waitlistEnabled) return null;
+
+  const waitlistCount = typeof event.waitlistCount === "number" ? event.waitlistCount : null;
+  if (waitlistCount !== null && waitlistCount > 0) {
+    return `${waitlistCount} on waitlist`;
+  }
+
+  if ((event.remainingCapacity ?? null) === 0) {
+    return "Waitlist open";
+  }
+
+  return null;
+}
+
 function navigateToCommunityNav(
   navKey: "lendingLibrary",
   handoff?: { search?: string; focusTechnique?: string; source?: string }
@@ -666,6 +1104,43 @@ function navigateToCommunityNav(
   window.location.assign(window.location.pathname);
 }
 
+function readWorkshopsToLendingHandoffPayload(): LendingToWorkshopsHandoffPayload | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(WORKSHOP_HANDOFF_STORAGE_SLOT);
+    if (!raw) return null;
+    window.localStorage.removeItem(WORKSHOP_HANDOFF_STORAGE_SLOT);
+    const parsed = JSON.parse(raw) as LendingToWorkshopsHandoffPayload;
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeWorkshopHandoffText(value?: string): string {
+  return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function resolveTechniqueFromWorkshopHandoff(value?: string): TechniqueId | null {
+  const normalized = normalizeWorkshopHandoffText(value);
+  if (!normalized) return null;
+
+  if (TECHNIQUE_ID_SET.has(normalized as TechniqueId)) {
+    return normalized as TechniqueId;
+  }
+
+  const exactLabel = TECHNIQUE_TAXONOMY.find(
+    (entry) => entry.label.toLowerCase() === normalized
+  );
+  if (exactLabel) return exactLabel.id;
+
+  const keywordMatch = TECHNIQUE_TAXONOMY.find((entry) =>
+    entry.keywords.some((keyword) => normalized.includes(keyword))
+  );
+  return keywordMatch ? keywordMatch.id : null;
+}
+
 export default function EventsView({ user, adminToken, isStaff }: Props) {
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -675,12 +1150,17 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
   const [industryEventsError, setIndustryEventsError] = useState("");
   const [industrySearch, setIndustrySearch] = useState("");
   const [industryModeFilter, setIndustryModeFilter] = useState<IndustryModeFilter>("all");
+  const [industryWindowFilter, setIndustryWindowFilter] = useState<IndustryWindowFilter>("all");
+  const [industryNationalOnly, setIndustryNationalOnly] = useState(false);
   const [industryEditorId, setIndustryEditorId] = useState<string>("new");
   const [industryDraft, setIndustryDraft] = useState<IndustryEventDraft>(() => toIndustryEventDraft());
   const [industryEditorBusy, setIndustryEditorBusy] = useState(false);
   const [industryEditorStatus, setIndustryEditorStatus] = useState("");
   const [industrySweepBusy, setIndustrySweepBusy] = useState(false);
   const [industrySweepStatus, setIndustrySweepStatus] = useState("");
+  const [savedIndustryEventIds, setSavedIndustryEventIds] = useState<Record<string, boolean>>(() =>
+    loadSavedIndustryEvents(user.uid)
+  );
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<EventDetail | null>(null);
@@ -706,14 +1186,20 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
   const [memberScheduleFocus, setMemberScheduleFocus] = useState<MemberSchedule>("any");
   const [buddyMode, setBuddyMode] = useState<BuddyMode>("solo");
   const [buddyCircleName, setBuddyCircleName] = useState("");
-  const [interestedEventIds, setInterestedEventIds] = useState<Record<string, boolean>>({});
-  const [interestSignalsSent, setInterestSignalsSent] = useState<Record<string, boolean>>({});
+  const [interestedEventIds, setInterestedEventIds] = useState<Record<string, boolean>>(() =>
+    loadWorkshopInterestSignals(user.uid).interested
+  );
+  const [interestSignalsSent, setInterestSignalsSent] = useState<Record<string, boolean>>(() =>
+    loadWorkshopInterestSignals(user.uid).sent
+  );
   const [interestBusy, setInterestBusy] = useState(false);
   const [interestStatus, setInterestStatus] = useState("");
   const [showcaseNote, setShowcaseNote] = useState("");
   const [showcaseBusy, setShowcaseBusy] = useState(false);
   const [showcaseStatus, setShowcaseStatus] = useState("");
+  const [railSelectionSource, setRailSelectionSource] = useState<string | null>(null);
   const [demandSignals, setDemandSignals] = useState<WorkshopDemandSignal[]>([]);
+  const [communityDemandSignals, setCommunityDemandSignals] = useState<WorkshopDemandSignal[]>([]);
   const [requestTechnique, setRequestTechnique] = useState("");
   const [requestLevel, setRequestLevel] = useState<RequestLevel>("all-levels");
   const [requestSchedule, setRequestSchedule] = useState<RequestSchedule>("weekday-evening");
@@ -732,6 +1218,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
   );
   const requestCardRef = useRef<HTMLElement | null>(null);
   const railTelemetrySignatureRef = useRef("");
+  const industryFilterTelemetrySignatureRef = useRef("");
 
   const baseUrl = useMemo(() => resolveFunctionsBaseUrl(), []);
   const hasAdmin = isStaff || !!adminToken?.trim();
@@ -743,6 +1230,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       getAdminToken: () => adminToken,
     });
   }, [adminToken, baseUrl, user]);
+  const portalApi = useMemo(() => createPortalApi({ baseUrl }), [baseUrl]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -772,6 +1260,27 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
   useEffect(() => {
     writeWorkshopRequestLedger(user.uid, workshopRequestLedger);
   }, [user.uid, workshopRequestLedger]);
+
+  useEffect(() => {
+    setSavedIndustryEventIds(loadSavedIndustryEvents(user.uid));
+  }, [user.uid]);
+
+  useEffect(() => {
+    writeSavedIndustryEvents(user.uid, savedIndustryEventIds);
+  }, [savedIndustryEventIds, user.uid]);
+
+  useEffect(() => {
+    const nextSignals = loadWorkshopInterestSignals(user.uid);
+    setInterestedEventIds(nextSignals.interested);
+    setInterestSignalsSent(nextSignals.sent);
+  }, [user.uid]);
+
+  useEffect(() => {
+    writeWorkshopInterestSignals(user.uid, {
+      interested: interestedEventIds,
+      sent: interestSignalsSent,
+    });
+  }, [user.uid, interestedEventIds, interestSignalsSent]);
 
   const filteredEvents = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -808,9 +1317,35 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
   const filteredIndustryEvents = useMemo(() => {
     return filterIndustryBrowseEvents(industryEvents, {
       mode: industryModeFilter,
+      window: industryWindowFilter as IndustryEventBrowseWindow,
+      nationalOnly: industryNationalOnly,
       search: industrySearch,
     });
-  }, [industryEvents, industryModeFilter, industrySearch]);
+  }, [industryEvents, industryModeFilter, industryNationalOnly, industrySearch, industryWindowFilter]);
+
+  useEffect(() => {
+    const signature = [
+      industryModeFilter,
+      industryWindowFilter,
+      industryNationalOnly ? "national" : "all-scope",
+      industrySearch.trim().toLowerCase(),
+    ].join("|");
+    if (industryFilterTelemetrySignatureRef.current === signature) return;
+    industryFilterTelemetrySignatureRef.current = signature;
+    track("industry_events_filter_updated", {
+      mode: industryModeFilter,
+      window: industryWindowFilter,
+      nationalOnly: industryNationalOnly,
+      searchActive: industrySearch.trim().length > 0,
+      resultCount: filteredIndustryEvents.length,
+    });
+  }, [
+    filteredIndustryEvents.length,
+    industryModeFilter,
+    industryNationalOnly,
+    industrySearch,
+    industryWindowFilter,
+  ]);
 
   const featuredIndustryEvents = useMemo(
     () => filteredIndustryEvents.filter((event) => event.featured).slice(0, 3),
@@ -822,8 +1357,12 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
   }, [industryEvents]);
 
   const selectedSummary = useMemo(
-    () => events.find((event) => event.id === selectedId) || null,
-    [events, selectedId]
+    () => {
+      const base = events.find((event) => event.id === selectedId) || null;
+      if (!base || !detail || detail.id !== base.id) return base;
+      return detail.communitySignalCounts ? { ...base, communitySignalCounts: detail.communitySignalCounts } : base;
+    },
+    [detail, events, selectedId]
   );
 
   const activeAddOns = useMemo(() => {
@@ -882,6 +1421,57 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     return profiledEvents.filter((row) => filteredEventIds.has(row.event.id));
   }, [filteredEventIds, profiledEvents]);
 
+  const allDemandSignals = useMemo(
+    () => [...communityDemandSignals, ...demandSignals],
+    [communityDemandSignals, demandSignals]
+  );
+
+  const eventCommunitySignalCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    events.forEach((event) => {
+      const signalCounts = event.communitySignalCounts;
+      if (!signalCounts) return;
+      const showcaseSignals = typeof signalCounts.showcaseSignals === "number" && Number.isFinite(signalCounts.showcaseSignals)
+        ? signalCounts.showcaseSignals
+        : 0;
+      const totalSignals = Number.isFinite(signalCounts.totalSignals)
+        ? signalCounts.totalSignals
+        : signalCounts.requestSignals + signalCounts.interestSignals + showcaseSignals;
+      if (!Number.isFinite(totalSignals) || totalSignals <= 0) return;
+      counts.set(event.id, Math.round(totalSignals));
+    });
+    return counts;
+  }, [events]);
+
+  const demandSignalsByEvent = useMemo(() => {
+    const buckets = new Map<string, number>();
+    allDemandSignals.forEach((signal) => {
+      if (!workshopSignalCountsForDemand(signal)) return;
+      const eventId = String(signal.sourceEventId ?? "").trim();
+      if (!eventId) return;
+      buckets.set(eventId, (buckets.get(eventId) ?? 0) + 1);
+    });
+    eventCommunitySignalCounts.forEach((count, eventId) => {
+      const existingCount = buckets.get(eventId) ?? 0;
+      if (count > existingCount) {
+        buckets.set(eventId, count);
+      }
+    });
+    return buckets;
+  }, [allDemandSignals, eventCommunitySignalCounts]);
+
+  const demandSignalsByTechnique = useMemo(() => {
+    const buckets = new Map<TechniqueId, number>();
+    allDemandSignals.forEach((signal) => {
+      if (signal.kind !== "request") return;
+      signal.techniqueIds.forEach((techniqueId) => {
+        if (!TECHNIQUE_ID_SET.has(techniqueId)) return;
+        buckets.set(techniqueId, (buckets.get(techniqueId) ?? 0) + 1);
+      });
+    });
+    return buckets;
+  }, [allDemandSignals]);
+
   const recommendationRows = useMemo(() => {
     const now = Date.now();
     const selectedTechniqueSet = new Set(selectedProfile?.techniqueIds ?? []);
@@ -889,6 +1479,11 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     return discoverableProfiles
       .map((row) => {
         let score = row.event.status === "published" ? 10 : -10;
+        const eventDemandCount = demandSignalsByEvent.get(row.event.id) ?? 0;
+        const requestDemandCount = row.techniqueIds.reduce((count, techniqueId) => {
+          const requestSignals = demandSignalsByTechnique.get(techniqueId) ?? 0;
+          return count + requestSignals;
+        }, 0);
 
         if (typeof row.event.remainingCapacity === "number") {
           if (row.event.remainingCapacity === 0) {
@@ -923,6 +1518,13 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
           score += 5;
         }
 
+        if (eventDemandCount > 0) {
+          score += Math.min(eventDemandCount, 4);
+        }
+        if (requestDemandCount > 0) {
+          score += Math.min(requestDemandCount, 3);
+        }
+
         if (row.startAtMs !== null) {
           const deltaDays = (row.startAtMs - now) / (1000 * 60 * 60 * 24);
           if (deltaDays < -1) score -= 20;
@@ -939,6 +1541,8 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     memberLevelFocus,
     memberScheduleFocus,
     memberTechniqueFocus,
+    demandSignalsByTechnique,
+    demandSignalsByEvent,
     selectedId,
     selectedProfile?.techniqueIds,
   ]);
@@ -1075,14 +1679,119 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       : Math.max(rosterCounts.ticketed + rosterCounts.offered + rosterCounts.checked_in, 0);
   const selectedFillRatio =
     selectedCapacity > 0 ? Math.max(0, Math.min(selectedFilledSeats / selectedCapacity, 1)) : 0;
-  const selectedWaitlistPressure = hasAdmin
-    ? rosterCounts.waitlisted
-    : selectedRemaining === 0 && detail?.waitlistEnabled
-      ? Math.max(Math.round(selectedCapacity * 0.18), 1)
-      : 0;
+  const selectedWaitlistCount = selectedSummary?.waitlistCount ?? null;
+  const selectedWaitlistSignalPressure = hasAdmin
+    ? Math.max(selectedWaitlistCount ?? 0, rosterCounts.waitlisted)
+    : selectedWaitlistCount ?? 0;
+  const selectedWaitlistPressure =
+    selectedWaitlistSignalPressure > 0
+      ? selectedWaitlistSignalPressure
+      : selectedRemaining === 0 && detail?.waitlistEnabled
+        ? Math.max(Math.round(selectedCapacity * 0.18), 1)
+        : 0;
+  const selectedIsInterested = selectedSummary ? !!interestedEventIds[selectedSummary.id] : false;
+  const selectedInterestSignalSent = selectedSummary ? Boolean(interestSignalsSent[selectedSummary.id]) : false;
+  const selectedEventDemandSignals = useMemo(() => {
+    if (!selectedSummary?.id) return [];
+    const targetEventId = selectedSummary.id.trim();
+    if (!targetEventId) return [];
+    return allDemandSignals.filter(
+      (signal) =>
+        signal.kind === "interest" &&
+        workshopSignalCountsForDemand(signal) &&
+        String(signal.sourceEventId ?? "").trim() === targetEventId
+    );
+  }, [allDemandSignals, selectedSummary?.id]);
+  const selectedTechniqueDemandSignals = useMemo(() => {
+    if (!selectedProfile) return [];
+    const techniqueSet = new Set(selectedProfile.techniqueIds);
+    return allDemandSignals.filter(
+      (signal) =>
+        signal.kind === "request" &&
+        workshopSignalCountsForDemand(signal) &&
+        signal.techniqueIds.some((techniqueId) => techniqueSet.has(techniqueId))
+    );
+  }, [allDemandSignals, selectedProfile?.techniqueIds.join("|")]);
+  const selectedInterestSignals = selectedEventDemandSignals.length;
+  const selectedRequestSignals = selectedTechniqueDemandSignals.length;
+  const selectedServerCommunitySignalCounts = useMemo(() => {
+    if (!selectedSummary?.id) return null;
+    const counts = selectedSummary.communitySignalCounts;
+    if (!counts) return null;
+
+    const requestSignals = Number.isFinite(counts.requestSignals) ? counts.requestSignals : 0;
+    const interestSignals = Number.isFinite(counts.interestSignals) ? counts.interestSignals : 0;
+    const showcaseSignals =
+      typeof counts.showcaseSignals === "number" && Number.isFinite(counts.showcaseSignals)
+        ? counts.showcaseSignals
+        : 0;
+    const withdrawnSignals =
+      typeof counts.withdrawnSignals === "number" && Number.isFinite(counts.withdrawnSignals)
+        ? counts.withdrawnSignals
+        : 0;
+
+    return {
+      requestSignals: Math.max(0, Math.round(requestSignals)),
+      interestSignals: Math.max(0, Math.round(interestSignals)),
+      showcaseSignals: Math.max(0, Math.round(showcaseSignals)),
+      withdrawnSignals: Math.max(0, Math.round(withdrawnSignals)),
+    };
+  }, [selectedSummary]);
+  const selectedCommunityInterestSignals = Math.max(
+    selectedInterestSignals,
+    selectedServerCommunitySignalCounts?.interestSignals ?? 0
+  );
+  const selectedCommunityRequestSignals = Math.max(
+    selectedRequestSignals,
+    selectedServerCommunitySignalCounts?.requestSignals ?? 0
+  );
+  const selectedShowcaseSignals = useMemo(() => {
+    if (!selectedSummary?.id) return [];
+    const targetEventId = selectedSummary.id.trim();
+    if (!targetEventId) return [];
+    return allDemandSignals.filter(
+      (signal) =>
+        signal.action === "showcase" &&
+        signal.kind === "interest" &&
+        workshopSignalCountsForDemand(signal) &&
+        String(signal.sourceEventId ?? "").trim() === targetEventId
+    );
+  }, [allDemandSignals, selectedSummary?.id]);
+  const selectedCommunityShowcaseSignals = Math.max(
+    selectedShowcaseSignals.length,
+    selectedServerCommunitySignalCounts?.showcaseSignals ?? 0
+  );
+  const selectedCommunityWithdrawnSignals = selectedServerCommunitySignalCounts?.withdrawnSignals ?? 0;
+  const selectedEventShowcaseSignals = useMemo(() => {
+    if (!selectedSummary?.id) return [];
+    const targetEventId = selectedSummary.id.trim();
+    if (!targetEventId) return [];
+    return allDemandSignals
+      .filter(
+        (signal) =>
+          signal.action === "showcase" &&
+          signal.kind === "interest" &&
+          String(signal.sourceEventId ?? "").trim() === targetEventId &&
+          Boolean(signal.signalNote && signal.signalNote.trim())
+      )
+      .sort((left, right) => right.createdAt - left.createdAt)
+      .slice(0, 3);
+  }, [allDemandSignals, selectedSummary?.id]);
+  const interestSignalsByEvent = demandSignalsByEvent;
+  const projectedInterestCount =
+    selectedIsInterested && interestBusy && !selectedInterestSignalSent
+      ? selectedCommunityInterestSignals + 1
+      : selectedCommunityInterestSignals;
+  const selectedCommunityDemandSignals = projectedInterestCount + selectedCommunityRequestSignals + selectedCommunityShowcaseSignals;
+  const momentumSignalPressure = Math.min(selectedCommunityDemandSignals * 2, 12);
   const momentumScore = Math.max(
     0,
-    Math.min(100, Math.round(selectedFillRatio * 72 + Math.min(selectedWaitlistPressure * 8, 28)))
+    Math.min(
+      100,
+      Math.round(
+        selectedFillRatio * 64 + Math.min(selectedWaitlistPressure * 8, 24) + momentumSignalPressure
+      )
+    )
   );
   const momentumTone = momentumScore >= 72 ? "high" : momentumScore >= 44 ? "medium" : "steady";
   const momentumLabel =
@@ -1091,18 +1800,12 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       : momentumTone === "medium"
         ? "Building momentum"
         : "Steady momentum";
-  const selectedIsInterested = selectedSummary ? !!interestedEventIds[selectedSummary.id] : false;
-  const selectedInterestSignals = selectedSummary
-    ? demandSignals.filter((signal) => signal.kind === "interest" && signal.sourceEventId === selectedSummary.id)
-        .length
-    : 0;
-  const projectedInterestCount = selectedIsInterested ? selectedInterestSignals + 1 : selectedInterestSignals;
 
-  const buddyIntentCount = demandSignals.filter(
-    (signal) => signal.kind === "interest" && signal.buddyMode !== "solo"
+  const buddyIntentCount = selectedEventDemandSignals.filter(
+    (signal) => signal.buddyMode !== "solo"
   ).length;
-  const circleIntentCount = demandSignals.filter(
-    (signal) => signal.kind === "interest" && signal.buddyMode === "circle"
+  const circleIntentCount = selectedEventDemandSignals.filter(
+    (signal) => signal.buddyMode === "circle"
   ).length;
 
   const demandClusters = useMemo<DemandCluster[]>(() => {
@@ -1169,7 +1872,9 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       }
     });
 
-    demandSignals.forEach((signal) => {
+    allDemandSignals
+      .filter((signal) => workshopSignalCountsForDemand(signal))
+      .forEach((signal) => {
       signal.techniqueIds.forEach((techniqueId) => {
         const row = ensure(techniqueId);
         if (signal.kind === "request") {
@@ -1182,7 +1887,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         row.levelCounts[signal.level] += 1;
         row.scheduleCounts[signal.schedule] += 1;
       });
-    });
+      });
 
     workshopRequestLedger.forEach((entry) => {
       entry.techniqueIds.forEach((techniqueId) => {
@@ -1193,9 +1898,9 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       });
     });
 
-    if (selectedProfile && rosterCounts.waitlisted > 0) {
+    if (selectedProfile && selectedWaitlistSignalPressure > 0) {
       selectedProfile.techniqueIds.forEach((techniqueId) => {
-        ensure(techniqueId).waitlistSignals += Math.max(1, Math.round(rosterCounts.waitlisted / 2));
+        ensure(techniqueId).waitlistSignals += Math.max(1, Math.round(selectedWaitlistSignalPressure / 2));
       });
     }
 
@@ -1224,7 +1929,13 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         return right.demandScore - left.demandScore;
       })
       .slice(0, 6);
-  }, [demandSignals, profiledEvents, rosterCounts.waitlisted, selectedProfile, workshopRequestLedger]);
+  }, [
+    allDemandSignals,
+    selectedWaitlistSignalPressure,
+    profiledEvents,
+    selectedProfile,
+    workshopRequestLedger,
+  ]);
 
   const staffDemandKpis = useMemo(() => {
     const constrainedSessions = profiledEvents.filter((row) => {
@@ -1233,12 +1944,12 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     }).length;
 
     return {
-      trackedSignals: demandSignals.length + workshopRequestLedger.length,
+      trackedSignals: allDemandSignals.length + workshopRequestLedger.length,
       activeInterests: Object.values(interestedEventIds).filter(Boolean).length,
       constrainedSessions,
       highestDemandGap: demandClusters[0]?.gapScore ?? 0,
     };
-  }, [demandClusters, demandSignals.length, interestedEventIds, profiledEvents, workshopRequestLedger.length]);
+  }, [demandClusters, allDemandSignals.length, interestedEventIds, profiledEvents, workshopRequestLedger.length]);
 
   const memberWorkshopRequests = useMemo(() => {
     return workshopRequestLedger
@@ -1314,14 +2025,55 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       const resp = await client.postJson<ListEventsResponse>("listEvents", {
         includeDrafts: hasAdmin ? includeDrafts : false,
         includeCancelled: hasAdmin ? includeCancelled : false,
+        includeCommunitySignals: true,
       });
 
       const nextEvents = resp.events ?? [];
+      const handoff = readWorkshopsToLendingHandoffPayload();
+      const requestedId = normalizeWorkshopHandoffText(handoff?.eventId);
+      const requestedTitle = normalizeWorkshopHandoffText(handoff?.eventTitle);
+      const requestedTechniqueId = resolveTechniqueFromWorkshopHandoff(handoff?.focusTechnique);
+      const requestedSearch = normalizeWorkshopHandoffText(handoff?.search);
+      const requestedById = requestedId
+        ? nextEvents.find((event) => event.id === requestedId)
+        : null;
+      const requestedByTitle = !requestedById && requestedTitle
+        ? nextEvents.find((event) => {
+            const normalizedEventTitle = normalizeWorkshopHandoffText(event.title);
+            return (
+              normalizedEventTitle === requestedTitle ||
+              normalizedEventTitle.includes(requestedTitle) ||
+              requestedTitle.includes(normalizedEventTitle)
+            );
+          })
+        : null;
+      const requestedEventId = requestedById?.id ?? requestedByTitle?.id ?? null;
+
       setEvents(nextEvents);
       setSelectedId((prev) => {
+        if (requestedEventId) return requestedEventId;
         if (prev && nextEvents.some((event) => event.id === prev)) return prev;
         return nextEvents[0]?.id ?? null;
       });
+
+      if (requestedSearch) {
+        setSearch(requestedSearch);
+      }
+      if (requestedTechniqueId) {
+        setMemberTechniqueFocus(requestedTechniqueId);
+      }
+
+      if (handoff) {
+        track("workshops_handoff_applied", {
+          direction: "lending->workshops",
+          hasEventId: Boolean(handoff.eventId),
+          hasEventTitle: Boolean(handoff.eventTitle),
+          hasSearch: Boolean(handoff.search),
+          hasTechnique: Boolean(handoff.focusTechnique),
+          source: handoff.source || "unknown",
+          selectedEventId: requestedEventId || "",
+        });
+      }
     } catch (error: unknown) {
       setEventsError(getErrorMessage(error));
     } finally {
@@ -1354,7 +2106,10 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     setDetailError("");
 
     try {
-      const resp = await client.postJson<GetEventResponse>("getEvent", { eventId });
+      const resp = await client.postJson<GetEventResponse>("getEvent", {
+        eventId,
+        includeCommunitySignals: true,
+      });
       setDetail(resp.event);
       setSignup(resp.signup ?? null);
     } catch (error: unknown) {
@@ -1390,9 +2145,409 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     }
   }, [client, hasAdmin, rosterIncludeCancelled, rosterIncludeExpired]);
 
+  const loadCommunitySignals = useCallback(async () => {
+    const eventIds = events
+      .map((event) => event.id)
+      .map((eventId) => eventId.trim())
+      .filter(Boolean);
+
+    try {
+      const functionPayloadBase: Omit<ListWorkshopDemandSignalsRequest, "eventIds"> = {
+        limit: 500,
+        sources: [...WORKSHOP_DEMAND_SIGNAL_EVENT_SOURCES],
+      };
+      const eventIdChunks = eventIds.length > 0
+        ? splitArrayIntoChunks(eventIds, WORKSHOP_SIGNAL_FUNCTION_EVENT_ID_CHUNK_SIZE)
+        : [undefined];
+      const signalById = new Map<string, WorkshopDemandSignal>();
+
+      for (const eventIdChunk of eventIdChunks) {
+        const functionResponse = await portalApi.listWorkshopDemandSignals({
+          idToken: await user.getIdToken(),
+          adminToken,
+          payload: {
+            ...functionPayloadBase,
+            ...(eventIdChunk ? { eventIds: eventIdChunk } : {}),
+          },
+        });
+
+        functionResponse.data.signals.forEach((signal) => {
+          if (signal.kind !== "interest" && signal.kind !== "request") return;
+
+          const sourceEventId = asString(signal.sourceEventId);
+          if (!sourceEventId && signal.kind === "interest") return;
+          const signalAction = signal.action === "request"
+            ? "request"
+            : signal.kind === "request"
+              ? "request"
+              : signal.action ?? "interest";
+
+          const createdAt = Number.isFinite(signal.createdAt) ? signal.createdAt : Number.NaN;
+          if (!Number.isFinite(createdAt)) return;
+
+          const profile = profiledById.get(sourceEventId);
+          const parsedTechniqueIds = signal.techniqueIds.filter(
+            (entry): entry is TechniqueId => TECHNIQUE_ID_SET.has(entry as TechniqueId)
+          );
+
+          const techniqueIds: TechniqueId[] =
+            parsedTechniqueIds.length > 0
+              ? parsedTechniqueIds
+              : profile?.techniqueIds?.length
+                ? profile.techniqueIds
+                : ["studio-practice"];
+
+          const demandSignal: WorkshopDemandSignal = {
+            id:
+              asString(signal.id) ||
+              `remote-${signal.kind}-${sourceEventId || "request"}-${createdAt}`,
+            kind: signal.kind,
+            action: signalAction,
+            techniqueIds,
+            techniqueLabel:
+              signal.techniqueLabel ||
+              techniqueIds.map((id) => techniqueById(id)?.label ?? "Studio practice").join(", "),
+            level: parseSupportLevel(signal.level),
+            schedule: parseSupportSchedule(signal.schedule),
+            buddyMode: parseSupportBuddyMode(signal.buddyMode),
+            createdAt,
+            sourceEventId,
+            signalNote: asString(signal.signalNote),
+            source: signal.source ?? undefined,
+            sourceEventTitle: signal.sourceEventTitle ? asString(signal.sourceEventTitle) : null,
+            sourceLabel: signal.sourceLabel
+              ? asString(signal.sourceLabel)
+              : workshopDemandSignalSourceLabel(signal.source ?? null),
+          };
+
+          const existing = signalById.get(demandSignal.id);
+          if (!existing || demandSignal.createdAt > existing.createdAt) {
+            signalById.set(demandSignal.id, demandSignal);
+          }
+        });
+      }
+
+      setCommunityDemandSignals(
+        Array.from(signalById.values()).sort((left, right) => right.createdAt - left.createdAt)
+      );
+      return;
+    } catch (_error: unknown) {
+      // fall through to Firestore fallback
+    }
+
+    const requestSignalSources = WORKSHOP_REQUEST_SIGNAL_EVENT_SOURCES as ReadonlyArray<string>;
+    const communitySignalSources = WORKSHOP_COMMUNITY_SIGNAL_EVENT_SOURCES as ReadonlyArray<string>;
+    const supportSignalDocsById = new Map<string, { id: string; raw: Record<string, unknown> }>();
+    const supportSignalCollection = collection(db, "supportRequests");
+
+    const addSupportSignalDoc = (docSnapshot: { id: string; data: () => Record<string, unknown> }) => {
+      if (!docSnapshot?.id) return;
+      if (supportSignalDocsById.has(docSnapshot.id)) return;
+      supportSignalDocsById.set(docSnapshot.id, {
+        id: docSnapshot.id,
+        raw: docSnapshot.data(),
+      });
+    };
+
+    const collectSupportSignalDocs = async (sources: ReadonlyArray<string>, filterEventIds: string[] = []) => {
+      if (sources.length === 0) return;
+      const sourceChunks = splitArrayIntoChunks(sources, WORKSHOP_SIGNAL_SOURCE_QUERY_CHUNK_SIZE);
+
+      const collectSignalSnapshot = async (
+        sourceChunk: ReadonlyArray<string>,
+        eventIdChunk: string[] = [],
+        ordered = true
+      ) => {
+        let signalQuery = query(
+          supportSignalCollection,
+          where("category", "==", "Workshops"),
+          where("source", "in", sourceChunk)
+        );
+        if (eventIdChunk.length > 0) {
+          signalQuery = query(signalQuery, where("eventId", "in", eventIdChunk));
+        }
+        if (ordered) {
+          signalQuery = query(signalQuery, orderBy("createdAt", "desc"));
+        }
+        return await getDocs(query(signalQuery, limit(WORKSHOP_COMMUNITY_SIGNAL_QUERY_LIMIT)));
+      };
+
+      const collectSupportSignalChunk = async (
+        sourceChunk: ReadonlyArray<string>,
+        eventIdChunk: string[] = [],
+        ordered = true
+      ) => {
+        try {
+          const snaps = await collectSignalSnapshot(sourceChunk, eventIdChunk, ordered);
+          snaps.forEach(addSupportSignalDoc);
+          return;
+        } catch (_error) {
+          if (!ordered) throw _error;
+          try {
+            const fallbackSnaps = await collectSignalSnapshot(sourceChunk, eventIdChunk, false);
+            fallbackSnaps.forEach(addSupportSignalDoc);
+          } catch (fallbackError) {
+            console.warn("collectSupportSignalDocs fallback without orderBy failed", {
+              sources: sourceChunk,
+              eventIdChunkSize: eventIdChunk.length,
+              error: (fallbackError as { message?: string })?.message,
+            });
+          }
+        }
+      };
+
+      if (filterEventIds.length > 0) {
+        for (const sourceChunk of sourceChunks) {
+          const eventIdChunks = splitArrayIntoChunks(filterEventIds, WORKSHOP_SIGNAL_EVENT_ID_QUERY_CHUNK_SIZE);
+          for (const eventIdChunk of eventIdChunks) {
+            await collectSupportSignalChunk(sourceChunk, eventIdChunk, true);
+          }
+        }
+        return;
+      }
+
+      for (const sourceChunk of sourceChunks) {
+        await collectSupportSignalChunk(sourceChunk, [], true);
+      }
+    };
+
+    const collectSupportSignalDocsWithoutSource = async (filterEventIds: string[] = []) => {
+      const buildQuery = (eventIdChunk: string[] = [], ordered = true) => {
+        let signalQuery = query(
+          supportSignalCollection,
+          where("category", "==", "Workshops"),
+        );
+        if (eventIdChunk.length > 0) {
+          signalQuery = query(signalQuery, where("eventId", "in", eventIdChunk));
+        }
+        if (ordered) {
+          signalQuery = query(signalQuery, orderBy("createdAt", "desc"));
+        }
+        return signalQuery;
+      };
+
+      const collectSnapshot = async (eventIdChunk: string[] = [], ordered = true) => {
+        try {
+          const snaps = await getDocs(query(buildQuery(eventIdChunk, ordered), limit(WORKSHOP_COMMUNITY_SIGNAL_QUERY_LIMIT)));
+          snaps.forEach(addSupportSignalDoc);
+        } catch (_error) {
+          if (!ordered) {
+            throw _error;
+          }
+          try {
+            const fallbackSnaps = await getDocs(
+              query(buildQuery(eventIdChunk, false), limit(WORKSHOP_COMMUNITY_SIGNAL_QUERY_LIMIT))
+            );
+            fallbackSnaps.forEach(addSupportSignalDoc);
+          } catch (fallbackError) {
+            console.warn("collectSupportSignalDocsWithoutSource fallback failed", {
+              eventIdChunkSize: eventIdChunk.length,
+              error: (fallbackError as { message?: string })?.message,
+            });
+          }
+        }
+      };
+
+      if (filterEventIds.length === 0) {
+        await collectSnapshot([], true);
+        return;
+      }
+
+      const eventIdChunks = splitArrayIntoChunks(filterEventIds, WORKSHOP_SIGNAL_EVENT_ID_QUERY_CHUNK_SIZE);
+      for (const eventIdChunk of eventIdChunks) {
+        await collectSnapshot(eventIdChunk, true);
+      }
+    };
+
+    await collectSupportSignalDocs(requestSignalSources);
+    await collectSupportSignalDocs(communitySignalSources, eventIds);
+
+    if (supportSignalDocsById.size === 0) {
+      await collectSupportSignalDocs(WORKSHOP_DEMAND_SIGNAL_EVENT_SOURCES);
+      if (supportSignalDocsById.size === 0) {
+        await collectSupportSignalDocsWithoutSource(eventIds);
+      }
+    }
+
+    try {
+      const latestCommunityByMemberEvent = new Map<string, WorkshopCommunitySignalSourceState>();
+      const latestRequestByMemberEvent = new Map<string, WorkshopCommunitySignalSourceState>();
+
+      supportSignalDocsById.forEach(({ id: docId, raw }) => {
+        const body = asString(raw.body);
+        const source = inferSupportEventSource(raw.source, asString(raw.subject), body);
+        const uid = asString(raw.uid);
+        if (!source || !uid || uid === user.uid) return;
+
+        const isRequestSignalSource = isWorkshopDemandSignalRequestSource(source);
+        const eventId = parseSupportEventId(raw.eventId, body);
+        if (!isRequestSignalSource && !eventId) return;
+        const signalEventTitle = asString(raw.sourceEventTitle) || asString(raw.eventTitle);
+
+        const profile = eventId ? profiledById.get(eventId) : null;
+
+        const createdAt = parseTimestampMs(raw.createdAt);
+        if (!Number.isFinite(createdAt)) return;
+
+        const level = parseSupportLevel(
+          isRequestSignalSource
+            ? asString(raw.level) ||
+              parseSignalLineValueFromAliases(
+                body,
+                ["Level", "Level focus", "Preferred level", "Requested level"]
+              )
+            : parseSignalLineValueFromAliases(body, [
+                "Member level focus",
+                "Member level",
+                "Level",
+                "Preferred level",
+              ])
+        );
+        const schedule = parseSupportSchedule(
+          isRequestSignalSource
+            ? asString(raw.schedule) ||
+              parseSignalLineValueFromAliases(body, [
+                "Schedule preference",
+                "Preferred schedule",
+                "Requested schedule",
+                "Schedule",
+              ])
+            : parseSignalLineValueFromAliases(body, [
+                "Member schedule focus",
+                "Member schedule",
+                "Schedule preference",
+                "Preferred schedule",
+              ])
+        );
+        const buddyMode = parseSupportBuddyMode(
+          asString(raw.buddyMode) ||
+            parseSignalLineValueFromAliases(body, ["Buddy mode", "Buddy", "Buddy group", "Presence mode"])
+        );
+        const techniqueLine = isRequestSignalSource
+          ? parseSignalLineValueFromAliases(body, ["Technique/topic", "Technique", "Techniques", "Technique focus"])
+          : parseSignalLineValueFromAliases(body, [
+              "Technique focus",
+              "Technique",
+              "Techniques",
+              "Member techniques",
+            ]);
+        const derivedTechniqueIds = parseSupportSignalTechniqueIds(raw.techniqueIds);
+        const techniqueFallback = isRequestSignalSource
+          ? []
+          : parseTechniqueIds(signalEventTitle || (profile?.event?.title ? profile.event.title : ""));
+        const techniqueIds =
+          derivedTechniqueIds.length > 0
+            ? derivedTechniqueIds
+            : profile && profile.techniqueIds.length > 0
+              ? profile.techniqueIds
+              : techniqueFallback.length > 0
+                ? techniqueFallback
+                : parseTechniqueIds(techniqueLine);
+        const techniqueLabel = techniqueIds
+          .map((id) => techniqueById(id)?.label ?? "Studio practice")
+          .join(", ");
+
+        const action: WorkshopCommunitySignalAction =
+          isRequestSignalSource
+            ? "request"
+            : source === "events-interest-withdrawal"
+              ? "withdrawal"
+              : source === "events-showcase"
+                ? "showcase"
+                : "interest";
+        const signalNote = parseSignalLineValueFromAliases(body, [...WORKSHOP_SIGNAL_NOTE_PREFIXES]);
+
+        const signal: WorkshopCommunitySignalSourceState = {
+          uid,
+          eventId,
+          action,
+          createdAt,
+          level,
+          schedule,
+          buddyMode,
+          techniqueIds,
+          techniqueLabel,
+          source,
+          signalNote,
+          sourceEventTitle: signalEventTitle,
+        };
+
+        if (isRequestSignalSource) {
+          const requestTarget = eventId || docId;
+          const requestKey = `${uid}|request|${requestTarget}`;
+          const existing = latestRequestByMemberEvent.get(requestKey);
+          if (!existing || createdAt > existing.createdAt) {
+            latestRequestByMemberEvent.set(requestKey, signal);
+          }
+          return;
+        }
+
+        if (!eventId) return;
+        const eventKey = `${uid}|${eventId}`;
+        const existing = latestCommunityByMemberEvent.get(eventKey);
+        if (!existing || createdAt > existing.createdAt) {
+          latestCommunityByMemberEvent.set(eventKey, signal);
+        }
+      });
+
+      const nextCommunityDemandSignals: WorkshopDemandSignal[] = [];
+      const pushCommunitySignal = (signal: WorkshopCommunitySignalSourceState, kind: "interest" | "request") => {
+        const signalSource = signal.source;
+        const signalProfile = signal.eventId ? profiledById.get(signal.eventId) : null;
+        nextCommunityDemandSignals.push({
+          id: `remote-${signal.action}-${signal.eventId ?? "request"}-${signal.uid}`,
+          kind,
+          action: signal.action,
+          techniqueIds: signal.techniqueIds,
+          techniqueLabel: signal.techniqueLabel,
+          level: signal.level,
+          schedule: signal.schedule,
+          buddyMode: signal.buddyMode,
+          createdAt: signal.createdAt,
+          sourceEventId: signal.eventId,
+          signalNote: signal.signalNote,
+          source: signalSource,
+          sourceEventTitle: signal.sourceEventTitle || signalProfile?.event?.title || null,
+          sourceLabel: workshopDemandSignalSourceLabel(signalSource),
+        });
+      };
+
+      latestRequestByMemberEvent.forEach((signal) => {
+        if (
+          signal.action !== "interest" &&
+          signal.action !== "request" &&
+          signal.action !== "showcase"
+        ) {
+          return;
+        }
+        if (signal.action === "request") {
+          pushCommunitySignal(signal, "request");
+        } else if (signal.action === "showcase") {
+          pushCommunitySignal(signal, "interest");
+        }
+      });
+
+      latestCommunityByMemberEvent.forEach((signal) => {
+        if (signal.action === "withdrawal") return;
+        pushCommunitySignal(signal, "interest");
+      });
+      setCommunityDemandSignals(
+        nextCommunityDemandSignals
+          .filter((signal): signal is WorkshopDemandSignal => Number.isFinite(signal.createdAt))
+          .sort((left, right) => right.createdAt - left.createdAt)
+      );
+    } catch (_error: unknown) {
+      setCommunityDemandSignals([]);
+    }
+  }, [portalApi, events, user, adminToken, profiledById]);
+
   useEffect(() => {
     void loadEvents();
   }, [loadEvents]);
+
+  useEffect(() => {
+    void loadCommunitySignals();
+  }, [loadCommunitySignals]);
 
   useEffect(() => {
     void loadIndustryEvents();
@@ -1428,6 +2583,50 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     setShowcaseStatus("");
   }, [selectedId]);
 
+  useEffect(() => {
+    const now = Date.now();
+    setDemandSignals((prev) => {
+      const existingByEventId = new Set(
+        prev
+          .filter((signal): signal is WorkshopDemandSignal =>
+            signal.kind === "interest" && Boolean(signal.sourceEventId?.trim())
+          )
+          .map((signal) => String(signal.sourceEventId).trim())
+      );
+
+      let mutated = false;
+      const next = [...prev];
+      events.forEach((event) => {
+        const sourceEventId = event.id.trim();
+        if (!sourceEventId || !interestedEventIds[sourceEventId] || existingByEventId.has(sourceEventId)) {
+          return;
+        }
+
+        const profile = profiledById.get(sourceEventId);
+        const techniqueIds = profile?.techniqueIds ?? parseTechniqueIds(event.title);
+        const techniqueLabel = techniqueIds
+          .map((id) => techniqueById(id)?.label ?? "Studio practice")
+          .join(", ");
+        next.unshift({
+          id: `restored-interest-${now}-${sourceEventId}`,
+          kind: "interest",
+          techniqueIds,
+          techniqueLabel,
+          level: "all-levels",
+          schedule: guessScheduleBucket(event.startAt),
+          buddyMode: "solo",
+          createdAt: now,
+          sourceEventId,
+        });
+        existingByEventId.add(sourceEventId);
+        mutated = true;
+      });
+
+      if (!mutated) return prev;
+      return next.slice(0, 160);
+    });
+  }, [events, interestedEventIds, profiledById]);
+
   const refreshAll = useCallback(async () => {
     if (!selectedId) {
       await Promise.all([loadEvents(), loadIndustryEvents()]);
@@ -1447,8 +2646,31 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
   }, []);
 
   const submitWorkshopSupportSignal = useCallback(
-    async (subject: string, lines: string[]) => {
+    async (
+      subject: string,
+      lines: string[],
+      options?: {
+        source?: WorkshopSupportSignalSource;
+        eventId?: string;
+        eventTitle?: string;
+        techniqueIds?: readonly string[];
+        level?: RequestLevel;
+        schedule?: RequestSchedule;
+        buddyMode?: BuddyMode;
+      }
+    ) => {
       const body = lines.filter((line) => line.trim().length > 0).join("\n");
+      const signalSource = options?.source;
+      const signalEventId = options?.eventId?.trim();
+      const signalEventTitle = options?.eventTitle?.trim();
+      const techniqueIds = Array.from(
+        new Set(
+          (options?.techniqueIds ?? [])
+            .map((entry) => asString(entry).trim().toLowerCase())
+            .filter((entry): entry is TechniqueId => TECHNIQUE_ID_SET.has(entry as TechniqueId))
+        )
+      );
+
       const docRef = await addDoc(collection(db, "supportRequests"), {
         uid: user.uid,
         subject,
@@ -1457,6 +2679,13 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         status: "new",
         urgency: "non-urgent",
         channel: "portal",
+        ...(signalSource ? { source: signalSource } : {}),
+        ...(signalEventId ? { eventId: signalEventId } : {}),
+        ...(signalEventTitle ? { sourceEventTitle: signalEventTitle, eventTitle: signalEventTitle } : {}),
+        ...(techniqueIds.length ? { techniqueIds } : {}),
+        ...(options?.level ? { level: options.level } : {}),
+        ...(options?.schedule ? { schedule: options.schedule } : {}),
+        ...(options?.buddyMode ? { buddyMode: options.buddyMode } : {}),
         createdAt: serverTimestamp(),
         displayName: user.displayName || null,
         email: user.email || null,
@@ -1630,6 +2859,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
 
   const handleSelectRailEvent = useCallback(
     (railId: string, row: ProfiledWorkshop) => {
+      setRailSelectionSource(railId);
       setSelectedId(row.event.id);
       track("workshops_rail_event_selected", {
         railId,
@@ -1642,11 +2872,31 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     []
   );
 
+  const handleSelectEvent = useCallback((eventId: string) => {
+    setRailSelectionSource(null);
+    setSelectedId(eventId);
+  }, []);
+
   const handleInterestToggle = useCallback(async () => {
     if (!selectedSummary) return;
 
     const eventId = selectedSummary.id;
+    const interestSchedule = normalizeRequestSchedule(memberScheduleFocus);
     const nextInterested = !interestedEventIds[eventId];
+    const profile = profiledById.get(eventId);
+    const techniqueIds = profile?.techniqueIds ?? parseTechniqueIds(selectedSummary.title);
+    track("workshops_interest_toggled", {
+      eventId,
+      nextInterested,
+      railSource: railSelectionSource ?? "direct",
+      level: memberLevelFocus,
+      schedule: interestSchedule,
+      buddyMode,
+    });
+    if (nextInterested && buddyMode === "circle" && !buddyCircleName.trim()) {
+      setInterestStatus("Add a circle cue before joining as a circle.");
+      return;
+    }
     setInterestedEventIds((prev) => ({ ...prev, [eventId]: nextInterested }));
 
     if (!nextInterested) {
@@ -1660,11 +2910,23 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
 
       setInterestBusy(true);
       try {
-        await submitWorkshopSupportSignal(`Workshop interest withdrawn: ${selectedSummary.title}`, [
-          `Event id: ${selectedSummary.id}`,
-          `Workshop: ${selectedSummary.title}`,
-          "Reason: member toggled off interest",
-        ]);
+        await submitWorkshopSupportSignal(
+          `Workshop interest withdrawn: ${selectedSummary.title}`,
+          [
+            `Event id: ${selectedSummary.id}`,
+            `Workshop: ${selectedSummary.title}`,
+            "Reason: member toggled off interest",
+          ],
+          {
+            source: "events-interest-withdrawal",
+            eventId,
+            eventTitle: selectedSummary.title,
+            techniqueIds,
+            level: memberLevelFocus,
+            schedule: interestSchedule,
+            buddyMode,
+          }
+        );
         setInterestSignalsSent((prev) => ({ ...prev, [eventId]: false }));
         setInterestStatus("Interest removed and staff was notified to adjust demand signals.");
       } catch (error: unknown) {
@@ -1680,8 +2942,6 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
 
     setInterestBusy(true);
     try {
-      const profile = profiledById.get(eventId);
-      const techniqueIds = profile?.techniqueIds ?? parseTechniqueIds(selectedSummary.title);
       const techniqueLabel = techniqueIds
         .map((techniqueId) => techniqueById(techniqueId)?.label ?? "Studio practice")
         .join(", ");
@@ -1697,9 +2957,18 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
           `Workshop: ${selectedSummary.title}`,
           `Technique focus: ${techniqueLabel}`,
           `Member level focus: ${memberLevelFocus}`,
-          `Member schedule focus: ${memberScheduleFocus}`,
+          `Member schedule focus: ${interestSchedule}`,
           buddyLine,
-        ]
+        ],
+        {
+          source: "events-interest-toggle",
+          eventId,
+          eventTitle: selectedSummary.title,
+          techniqueIds,
+          level: memberLevelFocus,
+          schedule: interestSchedule,
+          buddyMode,
+        }
       );
 
       setInterestSignalsSent((prev) => ({ ...prev, [eventId]: true }));
@@ -1709,7 +2978,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         techniqueIds,
         techniqueLabel,
         level: memberLevelFocus,
-        schedule: memberScheduleFocus === "any" ? "weekday-evening" : memberScheduleFocus,
+        schedule: interestSchedule,
         buddyMode,
         createdAt: Date.now(),
         sourceEventId: selectedSummary.id,
@@ -1731,6 +3000,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     memberLevelFocus,
     memberScheduleFocus,
     profiledById,
+    railSelectionSource,
     recordDemandSignal,
     selectedSummary,
     submitWorkshopSupportSignal,
@@ -1747,12 +3017,21 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     setShowcaseBusy(true);
     setShowcaseStatus("");
     try {
-      await submitWorkshopSupportSignal(`Workshop showcase follow-up: ${selectedSummary.title}`, [
-        `Event id: ${selectedSummary.id}`,
-        `Workshop: ${selectedSummary.title}`,
-        `Outcome note: ${note}`,
-        `Buddy mode at submit: ${buddyMode}`,
-      ]);
+      await submitWorkshopSupportSignal(
+        `Workshop showcase follow-up: ${selectedSummary.title}`,
+        [
+          `Event id: ${selectedSummary.id}`,
+          `Workshop: ${selectedSummary.title}`,
+          `Outcome note: ${note}`,
+          `Buddy mode at submit: ${buddyMode}`,
+        ],
+        {
+          source: "events-showcase",
+          eventId: selectedSummary.id,
+          eventTitle: selectedSummary.title,
+          buddyMode,
+        }
+      );
       setShowcaseStatus("Showcase follow-up sent. Staff can now route this into community highlights.");
       setShowcaseNote("");
       track("workshops_showcase_followup_submitted", {
@@ -1767,8 +3046,15 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
 
   const handleSignup = async () => {
     if (!detail || actionBusy) return;
+    const source = railSelectionSource ?? "direct";
     setActionBusy(true);
     setStatus("");
+
+    track("workshops_signup_start", {
+      eventId: detail.id,
+      source,
+      status: detail.status,
+    });
 
     try {
       const resp = await client.postJson<SignupForEventResponse>("signupForEvent", {
@@ -1887,17 +3173,26 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     setRequestBusy(true);
     setRequestStatus("");
     try {
-      const ticketId = await submitWorkshopSupportSignal(`Workshop request: ${technique}`, [
-        `Technique/topic: ${technique}`,
-        `Level: ${requestLevel}`,
-        `Schedule preference: ${requestSchedule}`,
-        buddyMode === "circle" && buddyCircleName.trim()
-          ? `Buddy mode: circle (${buddyCircleName.trim()})`
-          : `Buddy mode: ${buddyMode}`,
-        note ? `Notes: ${note}` : "Notes: (none)",
-      ]);
-
       const techniqueIds = parseTechniqueIds(technique);
+      const ticketId = await submitWorkshopSupportSignal(
+        `Workshop request: ${technique}`,
+        [
+          `Technique/topic: ${technique}`,
+          `Level: ${requestLevel}`,
+          `Schedule preference: ${requestSchedule}`,
+          buddyMode === "circle" && buddyCircleName.trim()
+            ? `Buddy mode: circle (${buddyCircleName.trim()})`
+            : `Buddy mode: ${buddyMode}`,
+          note ? `Notes: ${note}` : "Notes: (none)",
+        ],
+        {
+          source: requestSource,
+          techniqueIds,
+          level: requestLevel,
+          schedule: requestSchedule,
+          buddyMode,
+        }
+      );
       const createdAt = Date.now();
       const nextEntry: WorkshopRequestEntry = {
         id: makeSignalId("request-log"),
@@ -1931,16 +3226,69 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
   const routeNoMatchToRequestFlow = () => {
     if (memberTechniqueFocus === "any") return;
     const suggestion = techniqueById(memberTechniqueFocus)?.label ?? "Studio practice";
+    const schedule = normalizeRequestSchedule(memberScheduleFocus);
     focusRequestForm({
       technique: suggestion,
       level: memberLevelFocus,
-      schedule: memberScheduleFocus === "any" ? "weekday-evening" : memberScheduleFocus,
+      schedule,
       source: "cluster-routing",
     });
     setRequestStatus(
       `No current workshop match for "${suggestion}". We prefilled the request flow so program ops can cluster demand.`
     );
   };
+
+  const handleIndustryOutboundClick = useCallback(
+    (event: IndustryEventSummary, target: "primary" | "source" | "google_calendar", url: string | null) => {
+      let host = "";
+      if (url) {
+        try {
+          host = new URL(url).host;
+        } catch {
+          host = "";
+        }
+      }
+      track("industry_event_outbound_click", {
+        eventId: event.id,
+        mode: event.mode,
+        target,
+        host,
+      });
+    },
+    []
+  );
+
+  const handleToggleIndustrySave = useCallback((event: IndustryEventSummary) => {
+    setSavedIndustryEventIds((prev) => {
+      const next = { ...prev };
+      const currentlySaved = prev[event.id] === true;
+      if (currentlySaved) {
+        delete next[event.id];
+      } else {
+        next[event.id] = true;
+      }
+      track("industry_event_saved", {
+        eventId: event.id,
+        saved: !currentlySaved,
+        mode: event.mode,
+      });
+      return next;
+    });
+  }, []);
+
+  const handleIndustryCalendarDownload = useCallback((event: IndustryEventSummary) => {
+    const ok = downloadIndustryEventCalendarFile(event);
+    if (!ok) {
+      setStatus("Calendar export needs a valid event start time.");
+      return;
+    }
+    track("industry_event_calendar_export", {
+      eventId: event.id,
+      method: "ics",
+      mode: event.mode,
+    });
+    setStatus("Calendar file downloaded.");
+  }, []);
 
   const handleIndustryEditorPick = useCallback(
     (nextId: string) => {
@@ -2238,15 +3586,37 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
               </button>
             ))}
           </div>
+          <div className="industry-mode-filters">
+            {INDUSTRY_WINDOW_OPTIONS.map((option) => (
+              <button
+                key={option.key}
+                className={`events-chip ${industryWindowFilter === option.key ? "active" : ""}`}
+                onClick={() => setIndustryWindowFilter(option.key)}
+              >
+                {option.label}
+              </button>
+            ))}
+            <button
+              className={`events-chip ${industryNationalOnly ? "active" : ""}`}
+              onClick={() => setIndustryNationalOnly((prev) => !prev)}
+            >
+              National
+            </button>
+          </div>
         </div>
 
         {industryEventsLoading ? <div className="events-loading">Loading industry events...</div> : null}
         {industryEventsError ? <div className="alert inline-alert">{industryEventsError}</div> : null}
+        {!industryEventsLoading ? (
+          <div className="events-copy">Saved events: {Object.keys(savedIndustryEventIds).length}</div>
+        ) : null}
 
         {!industryEventsLoading && !industryEventsError && featuredIndustryEvents.length > 0 ? (
           <div className="industry-featured-grid">
             {featuredIndustryEvents.map((event) => {
               const primaryLink = event.registrationUrl || event.remoteUrl || event.sourceUrl;
+              const googleCalendarUrl = buildIndustryEventGoogleCalendarUrl(event);
+              const saved = savedIndustryEventIds[event.id] === true;
               return (
                 <article key={`featured-${event.id}`} className="industry-featured-card">
                   <div className="industry-event-title-row">
@@ -2259,16 +3629,44 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                     <span>{industryEventModeLabel(event.mode)}</span>
                     <span>{industryEventLocationLabel(event)}</span>
                   </div>
-                  {primaryLink ? (
-                    <a
-                      className="btn btn-ghost btn-small"
-                      href={primaryLink}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Open event
-                    </a>
-                  ) : null}
+                  <div className="events-copy">{industryEventReminderCopy(event)}</div>
+                  <div className="industry-event-actions">
+                    {primaryLink ? (
+                      <a
+                        className="btn btn-ghost btn-small"
+                        href={primaryLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={() => handleIndustryOutboundClick(event, "primary", primaryLink)}
+                      >
+                        Open event
+                      </a>
+                    ) : null}
+                    {googleCalendarUrl ? (
+                      <a
+                        className="btn btn-ghost btn-small"
+                        href={googleCalendarUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={() => {
+                          handleIndustryOutboundClick(event, "google_calendar", googleCalendarUrl);
+                          track("industry_event_calendar_export", {
+                            eventId: event.id,
+                            method: "google",
+                            mode: event.mode,
+                          });
+                        }}
+                      >
+                        Google calendar
+                      </a>
+                    ) : null}
+                    <button className="btn btn-ghost btn-small" onClick={() => handleIndustryCalendarDownload(event)}>
+                      Download .ics
+                    </button>
+                    <button className="btn btn-ghost btn-small" onClick={() => handleToggleIndustrySave(event)}>
+                      {saved ? "Saved" : "Save"}
+                    </button>
+                  </div>
                 </article>
               );
             })}
@@ -2285,6 +3683,8 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
           {filteredIndustryEvents.map((event) => {
             const primaryLink = event.registrationUrl || event.remoteUrl || event.sourceUrl;
             const sourceLink = event.sourceUrl && event.sourceUrl !== primaryLink ? event.sourceUrl : null;
+            const googleCalendarUrl = buildIndustryEventGoogleCalendarUrl(event);
+            const saved = savedIndustryEventIds[event.id] === true;
             return (
               <article key={event.id} className="industry-event-card">
                 <div className="industry-event-title-row">
@@ -2299,6 +3699,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                 </div>
                 <div className="event-tags">
                   {event.featured ? <span className="event-tag accent">Featured</span> : null}
+                  {saved ? <span className="event-tag accent">Saved</span> : null}
                   <span className={`event-tag status-${event.status}`}>{event.status}</span>
                   {hasAdmin && event.needsReview ? <span className="event-tag">Needs review</span> : null}
                   {event.tags?.slice(0, 3).map((tag) => (
@@ -2310,19 +3711,56 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                     <span className="event-tag">Verified {new Date(event.verifiedAt).toLocaleDateString()}</span>
                   ) : null}
                 </div>
+                <div className="events-copy">{industryEventReminderCopy(event)}</div>
                 <div className="industry-event-actions">
                   {primaryLink ? (
-                    <a className="btn btn-secondary btn-small" href={primaryLink} target="_blank" rel="noreferrer">
+                    <a
+                      className="btn btn-secondary btn-small"
+                      href={primaryLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={() => handleIndustryOutboundClick(event, "primary", primaryLink)}
+                    >
                       Open event
                     </a>
                   ) : (
                     <span className="events-copy">Link pending</span>
                   )}
                   {sourceLink ? (
-                    <a className="btn btn-ghost btn-small" href={sourceLink} target="_blank" rel="noreferrer">
+                    <a
+                      className="btn btn-ghost btn-small"
+                      href={sourceLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={() => handleIndustryOutboundClick(event, "source", sourceLink)}
+                    >
                       Source
                     </a>
                   ) : null}
+                  {googleCalendarUrl ? (
+                    <a
+                      className="btn btn-ghost btn-small"
+                      href={googleCalendarUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={() => {
+                        handleIndustryOutboundClick(event, "google_calendar", googleCalendarUrl);
+                        track("industry_event_calendar_export", {
+                          eventId: event.id,
+                          method: "google",
+                          mode: event.mode,
+                        });
+                      }}
+                    >
+                      Google calendar
+                    </a>
+                  ) : null}
+                  <button className="btn btn-ghost btn-small" onClick={() => handleIndustryCalendarDownload(event)}>
+                    Download .ics
+                  </button>
+                  <button className="btn btn-ghost btn-small" onClick={() => handleToggleIndustrySave(event)}>
+                    {saved ? "Saved" : "Save"}
+                  </button>
                 </div>
               </article>
             );
@@ -2462,6 +3900,16 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                 <div className="workshop-rail-scroll">
                   {rail.rows.map((row) => {
                     const isActive = row.event.id === selectedId;
+                    const railInterestCount = interestSignalsByEvent.get(row.event.id) ?? 0;
+                    const railRequestDemandCount = row.techniqueIds.reduce(
+                      (count, techniqueId) => count + (demandSignalsByTechnique.get(techniqueId) ?? 0),
+                      0
+                    );
+                    const railDemandSignalCount = railInterestCount + railRequestDemandCount;
+                    const railWithdrawnCount = Math.max(
+                      0,
+                      row.event.communitySignalCounts?.withdrawnSignals ?? 0
+                    );
                     const tags = row.techniqueIds
                       .map((id) => techniqueById(id)?.label ?? "Studio practice")
                       .slice(0, 2);
@@ -2479,6 +3927,29 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                           {formatDateTime(row.event.startAt)} · {scheduleLabelFor(row.scheduleBucket)}
                         </div>
                         <div className="rail-event-tags">
+                          {railWithdrawnCount > 0 ? (
+                            <span className="event-tag">
+                              {railWithdrawnCount} withdrawal signal{railWithdrawnCount === 1 ? "" : "s"}
+                            </span>
+                          ) : null}
+                          {railDemandSignalCount > 0 ? (
+                            <span className="event-tag accent">
+                              {railDemandSignalCount} community demand signal{railDemandSignalCount === 1 ? "" : "s"}
+                            </span>
+                          ) : null}
+                          {railInterestCount > 0 ? (
+                            <span className="event-tag">
+                              {railInterestCount} {railInterestCount === 1 ? "community signal" : "community signals"}
+                            </span>
+                          ) : null}
+                          {railRequestDemandCount > 0 ? (
+                            <span className="event-tag accent">
+                              {railRequestDemandCount}{" "}
+                              request {railRequestDemandCount === 1
+                                ? "signal"
+                                : "signals"}
+                            </span>
+                          ) : null}
                           {tags.map((label) => (
                             <span key={`${row.event.id}-${label}`} className="event-tag">
                               {label}
@@ -2584,6 +4055,9 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                       {requestStatusLabel(entry.status)}
                     </span>
                     <span className="events-copy">Ticket {entry.ticketId.slice(0, 8)}</span>
+                    <span className="event-tag">
+                      {entry.source === "cluster-routing" ? "Routing brief" : "Request form"}
+                    </span>
                   </div>
                 </article>
               ))}
@@ -2609,6 +4083,9 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
               const isActive = event.id === selectedId;
               const remaining = event.remainingCapacity ?? null;
               const remainingLabel = remaining === null ? "-" : `${remaining} left`;
+              const waitlistMeta = workshopWaitlistMetaLabel(event);
+              const eventInterestCount = interestSignalsByEvent.get(event.id) ?? 0;
+              const isInterested = interestedEventIds[event.id] === true;
               const profile = profiledById.get(event.id);
               const techniqueBadges =
                 profile?.techniqueIds
@@ -2618,7 +4095,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                 <button
                   key={event.id}
                   className={`event-card ${isActive ? "active" : ""}`}
-                  onClick={() => setSelectedId(event.id)}
+                  onClick={() => handleSelectEvent(event.id)}
                 >
                   <div className="event-card-header">
                     <div>
@@ -2640,7 +4117,13 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                         {label}
                       </span>
                     ))}
-                    {event.waitlistEnabled ? <span className="event-tag">Waitlist</span> : null}
+                    {waitlistMeta ? <span className="event-tag">{waitlistMeta}</span> : null}
+                    {isInterested ? <span className="event-tag accent">Interested</span> : null}
+                    {eventInterestCount > 0 ? (
+                      <span className="event-tag">
+                        {eventInterestCount} community signal{eventInterestCount === 1 ? "" : "s"}
+                      </span>
+                    ) : null}
                     <span className="event-tag">{remainingLabel}</span>
                     <span className={`event-tag status-${event.status}`}>{event.status}</span>
                   </div>
@@ -2714,12 +4197,12 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                     <span className="summary-value">{momentumLabel}</span>
                   </div>
                   <div>
-                    <span className="summary-label">Waitlist pressure</span>
-                    <span className="summary-value">{selectedWaitlistPressure}</span>
+                    <span className="summary-label">Demand signals</span>
+                    <span className="summary-value">{selectedCommunityDemandSignals}</span>
                   </div>
                   <div>
-                    <span className="summary-label">Interest signals</span>
-                    <span className="summary-value">{projectedInterestCount}</span>
+                    <span className="summary-label">Waitlist pressure</span>
+                    <span className="summary-value">{selectedWaitlistPressure}</span>
                   </div>
                 </div>
                 <div
@@ -2734,7 +4217,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                   <button
                     className={`btn ${selectedIsInterested ? "btn-ghost" : "btn-primary"}`}
                     onClick={toVoidHandler(handleInterestToggle)}
-                    disabled={interestBusy || !selectedSummary}
+                    disabled={interestBusy || !selectedSummary || (buddyMode === "circle" && !buddyCircleName.trim())}
                   >
                     {interestBusy
                       ? "Saving..."
@@ -2756,7 +4239,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                 </div>
                 {buddyMode === "circle" ? (
                   <label className="workshop-request-field">
-                    Circle cue (optional)
+                    Circle cue
                     <input
                       type="text"
                       value={buddyCircleName}
@@ -2765,12 +4248,53 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                     />
                   </label>
                 ) : null}
+                {buddyMode === "circle" && !buddyCircleName.trim() ? (
+                  <div className="events-copy" role="note">
+                    Add a circle cue to connect with peers when signaling interest.
+                  </div>
+                ) : null}
                 <div className="events-copy community-presence-copy">{activeBuddyMode.copy}</div>
                 <div className="community-loop-strip">
+                  <span className="event-tag">{selectedCommunityInterestSignals} interest signals</span>
+                  {selectedCommunityRequestSignals > 0 ? (
+                    <span className="event-tag">
+                      {selectedCommunityRequestSignals} request signals
+                    </span>
+                  ) : null}
+                  {selectedCommunityShowcaseSignals > 0 ? (
+                  <span className="event-tag">
+                    {selectedCommunityShowcaseSignals} showcase signals
+                  </span>
+                  ) : null}
+                  {selectedCommunityWithdrawnSignals > 0 ? (
+                    <span className="event-tag">
+                      {selectedCommunityWithdrawnSignals} withdrawal signals
+                    </span>
+                  ) : null}
                   <span className="event-tag">{buddyIntentCount} buddy opt-ins</span>
                   <span className="event-tag">{circleIntentCount} circle signals</span>
                   <span className="event-tag">Post-workshop showcase prompt enabled</span>
                 </div>
+                {selectedSummary ? (
+                  selectedEventShowcaseSignals.length > 0 ? (
+                    <div className="workshop-showcase-summary">
+                      <div className="summary-label">Recent showcase outcomes</div>
+                      <div className="workshop-showcase-list">
+                        {selectedEventShowcaseSignals.map((signal) => (
+                          <article key={signal.id} className="workshop-showcase-item">
+                            <div className="workshop-showcase-item-head">
+                              <span className="event-tag">{signal.sourceLabel || "Showcase follow-up"}</span>
+                              <span className="workshop-showcase-time">{formatDateTime(signal.createdAt)}</span>
+                            </div>
+                            {signal.signalNote ? <p className="workshop-showcase-note">{signal.signalNote}</p> : null}
+                          </article>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="events-copy">No showcase outcomes yet for this session.</div>
+                  )
+                ) : null}
                 <div className="workshop-showcase-flow">
                   <label className="workshop-request-field">
                     Post-workshop outcome note
@@ -3250,7 +4774,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                           <span>Demand score {cluster.demandScore}</span>
                           <span>Supply {cluster.supplyCount}</span>
                           <span>Requests {cluster.requestCount}</span>
-                          <span>Interest {cluster.interestCount}</span>
+                          <span>Interest {formatCommunitySignalCount(cluster.interestCount)}</span>
                         </div>
                         <div className="demand-cluster-metrics">
                           <span>Waitlist pressure {cluster.waitlistSignals}</span>

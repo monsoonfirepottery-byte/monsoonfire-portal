@@ -29,6 +29,7 @@ This runbook covers the loops added around:
   - per-workflow cap (`--max-per-workflow`, default 2)
   - dedupe by normalized signature family
   - generic placeholder signature suppression unless explicitly enabled
+  - promotion risk signature freshness guard (stale risk snapshots do not re-open issues)
 - Creates/updates focused GitHub issues with evidence and remediation guidance.
 - Updates rolling tuning threads, including canary feedback directives.
 

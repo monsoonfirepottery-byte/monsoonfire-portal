@@ -1,6 +1,6 @@
 # P1 — Library Frontend: Functional Browse and Selection UX Path
 
-Status: In Progress
+Status: Completed
 Date: 2026-03-01
 Priority: P1
 Owner: Frontend UX + Member Experience
@@ -48,6 +48,8 @@ Use browsing/selection interaction patterns inspired by:
 3. Move deep metadata into expandable panels/tabs.
 4. Keep filter controls powerful but visually quiet.
 5. Preserve mobile ergonomics and accessibility.
+6. Prioritize carousel/shelf browsing before structured search so members can orient visually first.
+7. Use member context (membership level, project history, requests, profile notes) to guide shelf ordering and recommendation rails.
 
 ## Tasks
 
@@ -79,3 +81,12 @@ Completed in this pass:
 2. Added contextual action guidance text in detail view so members can understand the current state without scanning multiple panels.
 3. Added active filter/search state summary and direct reset control in browse header to reduce decision fatigue during deep filtering.
 4. Added mobile sticky behavior for detail action bar in `web/src/views/LendingLibraryView.css` so primary actions stay reachable while reviewing metadata.
+
+## Execution Update (2026-03-01, Validation Closeout)
+
+Completed in this pass:
+1. Revalidated Variant B browse/select behavior in `web/src/views/LendingLibraryView.tsx` and `web/src/views/LendingLibraryView.css`.
+2. Verified member library view regression coverage with:
+   - `npm --prefix web run test -- src/views/LendingLibraryView.test.ts`
+3. Verified production build integrity with:
+   - `npm --prefix web run build`

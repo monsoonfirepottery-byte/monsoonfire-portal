@@ -7,11 +7,11 @@ Priority: P2
 
 ## Mission
 
-Turn high-volume PST/data exports into continuity-preserving memory so each Codex session can restart with context and continue seamlessly:
+Turn high-volume PST/data exports into a canonical, provenance-rich evidence corpus that future memory systems, context loaders, and analysis tools can consume reliably:
 - who you are and what role-context applies,
-- what we were doing in the last active shell,
-- which workstreams are live,
-- and which worker/process handoff was pending.
+- what decisions, commitments, and influence patterns emerged,
+- which workstreams and relationship channels were active,
+- and what timeline of evidence explains those conclusions.
 
 ## Why This Exists
 
@@ -20,7 +20,7 @@ The corpus is rich but noisy: years of email threads, correspondence, social log
 - conflict checks
 - related context recall
 - cross-ticket/station/workflow tracing
-- resume continuity from restart to restart with sub-second retrieval
+- downstream memory/context adapters without reprocessing the raw exports every time
 
 ## Scope
 
@@ -28,38 +28,32 @@ The corpus is rich but noisy: years of email threads, correspondence, social log
   - deterministic identity extraction (people, orgs, aliases, email/channel IDs),
   - thread and reply reconstruction with quoted-message stitching,
   - dedupe and near-dedupe collapse for duplicated logs,
-  - high-signal event extraction (decisions, commitments, blockers, asks, approvals, handoffs, open loops),
-  - provenance capture (source, timestamp, sender/recipient, reply depth, thread root).
-- Relationship indexing model:
-  - directional edges with explicit types such as `references`, `dependsOn`, `conflictsWith`, `follows`, `causedBy`,
-  - confidence + reason + provenance + effective time window metadata.
-- Cross-reference graph and entity graph construction:
-  - people/project/ticket/workflow nodes,
+  - high-signal event extraction (decisions, commitments, blockers, asks, approvals, handoffs, open loops, contact facts, attachment/document signals),
+  - provenance capture (source, timestamp, sender/recipient, reply depth, thread root, headers, mailbox/folder routing, attachment metadata).
+- Canonical layered corpus model:
+  - append-only `source_unit`, `fact_event`, `hypothesis`, and `dossier` records,
+  - confidence + reason + provenance + effective time window metadata,
+  - support for attachments, docs, contacts, headers, and other source-enriched metadata as first-class signal.
+- Cross-reference graph and entity graph construction inside the corpus:
+  - people/project/ticket/workflow/contact/document nodes,
   - explicit and inferred edge paths,
-  - conflict-aware edge representation.
-- Relationship-aware query and neighborhood discovery:
-  - `/api/memory/search?expandRelationships=true&maxHops=N`,
-  - `/api/memory/context` continuity projection consumed at startup.
-  - `/api/memory/neighborhood` for seed-id neighborhood retrieval with explicit hop/node budgets.
-  - `/api/memory/relationship-diagnostics` for edge summary + relationship-type diagnostics previews.
-- Continuity projection to support shell handoff:
-  - active identity/profile anchors,
-  - “what we were doing 3 seconds ago” reconstruction,
-  - active worker/process handoff state,
-  - unresolved actions + evidence links.
+  - conflict-aware representation.
+- Timeline-first organization:
+  - global chronological ledger,
+  - local threads for subject/reply/contact/project views,
+  - derived dossiers and influence summaries built from the record graph.
+- Downstream adapters and local analysis:
+  - SQLite materialization for local interrogation,
+  - optional Open Memory / Studio Brain adapter output,
+  - optional bounded context exports without making the runtime adapter the source of truth.
 - Migration and reliability:
-  - backfill and idempotent recompute for existing rows,
-  - dry-run + bounded batching + resumable checkpoints.
-- Observability:
-  - edge cardinality trend,
-  - orphan/topology quality,
-  - stale link ratio,
-  - inverse-link mismatch and unresolved conflict edges.
-- Keep schema migration safe under stateless function execution and preserve existing API contracts.
+  - resumable, idempotent recompute for corpus artifacts,
+  - dry-run + bounded batching + append-only outputs.
+- Keep schema migration safe under stateless function execution and preserve compatibility for any still-used legacy adapter APIs.
 
 ## Out of Scope
 
-- Full LLM-based semantic summarization in this epic.
+- Rebuilding a bespoke long-lived runtime memory system as the primary product.
 - Replacing source-of-truth documents or operational Firestore schemas in the Portal app.
 
 ## Tickets
@@ -68,45 +62,25 @@ The corpus is rich but noisy: years of email threads, correspondence, social log
 
 ## Acceptance Criteria
 
-1. PST parsing increases continuity recall against the same input sample (with no increase in false positives for existing search baseline).
-2. API returns relationship-aware suggestions for both an item ID and query without breaking existing query semantics.
-3. New relationships are created automatically for new ingests and can be appended for legacy imports.
-4. Conflicting/contradictory relationships are represented with explicit edge types and conflict metadata.
-5. Continuity projection can answer:
-   - "who are we",
-   - "what we were doing in the last active shell",
-   - and "what is the current worker/process handoff state" after restart.
-6. Continuity bootstrap artifacts for restart are regenerated deterministically and consume within startup budget.
-7. Recompute/migration path for existing memory data is idempotent and auditable.
+1. PST parsing produces a canonical append-only corpus with layered records and provenance-rich source capture.
+2. Attachments, docs, contacts, headers, and mailbox routing metadata are preserved as first-class corpus signal instead of being dropped into incidental metadata only.
+3. New relationships and influence hypotheses are created automatically for new ingests and can be appended for legacy imports without destructive rewrites.
+4. Conflicting or contradictory relationships are represented explicitly in corpus records or derived edges.
+5. The same corpus can drive downstream bounded context exports, SQLite interrogation, and optional runtime adapters without reprocessing raw exports.
+6. Recompute and migration for corpus artifacts are idempotent and auditable.
+7. At least one end-to-end regression validates thread reconstruction, cross-reference linking, and derived dossier generation from the same corpus run.
 
-## API Contracts (2026-03-04)
+## Corpus Contracts (2026-03-05)
 
-### `POST /api/memory/neighborhood`
+Primary durable interfaces are artifact contracts rather than runtime memory APIs:
 
-Request body:
-- `seedMemoryId` (required, string)
-- `maxHops` (optional, int `1..4`, default `2`)
-- `maxItems` (optional, int `1..100`, default `24`)
-- `includeSeed` (optional, boolean, default `true`)
-- optional pass-through controls: `tenantId`, `agentId`, `runId`, `query`, `sourceAllowlist`, `sourceDenylist`, `retrievalMode`, `temporalAnchorAt`, `includeTenantFallback`, `maxChars`, `scanLimit`
+- `source_unit`
+  - raw imported unit with normalized participants, timestamps, thread/header/mailbox metadata, and original-source pointers
+- `fact_event`
+  - extracted event or claim grounded in one or more `source_unit` ids
+- `hypothesis`
+  - inferred explanation or influence thesis with supporting and counter-evidence links
+- `dossier`
+  - human-readable markdown/report artifact built only from existing record ids
 
-Response body:
-- `neighborhood` with `seedMemoryId`, `maxHops`, `maxItems`, `nodes[]`, `selection`, `budget`
-- `edgeSummary` with `nodeCount`, `edgeCount`, `internalEdgeCount`, `externalEdgeCount`, `relationshipTypes`, `unresolvedConflictCount`
-- `relationshipTypeCounts` map
-- `diagnostics.previewSummaries[]` for quick human inspection
-
-### `POST /api/memory/relationship-diagnostics`
-
-Request body:
-- requires at least one of:
-  - `seedMemoryId` (string)
-  - `query` (string)
-- supports `maxHops`, `maxItems`, `includeSeed`, and the same optional pass-through controls as neighborhood.
-
-Response body:
-- `diagnostics.edgeSummary` with edge totals + unresolved conflict count
-- `diagnostics.relationshipTypeCounts` map
-- `diagnostics.unresolvedConflicts[]` sample rows
-- `diagnostics.previewSummaries[]` short node previews
-- includes resolved request envelope (`query`, `maxHops`, `maxItems`, `selection`, `budget`) for traceability
+Optional downstream APIs or adapters may still consume this corpus, but they are no longer the primary contract of the epic.

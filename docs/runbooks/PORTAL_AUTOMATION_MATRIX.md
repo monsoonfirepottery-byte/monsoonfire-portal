@@ -129,25 +129,37 @@ Purpose: define the active automation guardrails for portal functionality, UX co
 - Staff console routing now uses only canonical deep link `/staff/cockpit` for cockpit launch; legacy `/cockpit` alias handling was removed to avoid ambiguous route state and preserve deterministic staff-workspace state.
 - Staff console path canonicalization now retains `/staff` as the durable full console path; focused workspaces still own `/staff/cockpit`, `/staff/workshops`, and `/staff/system`, and unknown `/staff/*` paths fall back to `/staff` for lower-friction recovery.
 - Staff workspace transitions from the active staff page now prefer in-app canonical staff-route updates (history push/replace) rather than full reloads, reducing low-value route-friction when moving between dedicated workspaces.
+- Cockpit-mode exit now also stays in-app (no `window.location.assign`) by using the same canonical staff workspace opener, reducing one extra reload cycle when staff operators return from `/staff/cockpit` to `/staff`.
 - Unknown dedicated-cockpit deep links now normalize to the nearest supported cockpit segment (for example `/staff/cockpit/does-not-exist` -> `/staff/cockpit`) so stale links can’t strand operators in unsupported URLs.
 - Hash deep-link fallbacks now preserve dedicated workspace intent when the path is the staff root (for example `/staff#/staff/workshops`) while still preserving route determinism for explicit non-root staff paths.
 - Staff workspace request resolution now uses one shared helper for path+hash intent (`resolveStaffWorkspaceRequestedPath`) so URL normalization and deterministic canonicalization are centralized, reducing duplicate branching and recovery ambiguity.
+- Staff path variants now also normalize common shorthand/copy/paste forms (`/staff/workshop`, `/staff/ops`, `/staff/cockpit/ops`) to focused operations workspace targets so operators don’t hit a fallback mode from quick links.
 - `/staff#/staff/...` links now normalize to deterministic dedicated workspace URLs (for example `/staff/workshops`) so staff links are copy/paste-safe and avoid legacy hash-route ambiguity.
 - Staff-path canonicalization and canary checks now strip hash fragments as well as query strings before slash normalization so noisy links like `/staff/workshops#utm=ci` stay deterministic.
 - Staff path canonicalization now also tolerates legacy hash-bang route prefixes (`/#!/...`, `#!/...`) so staff deep links resolve to deterministic workspace mode without extra navigation friction.
+- Staff path normalization now also accepts protocol-less staff links that include host ports (for example `portal.monsoonfire.com:5173/staff/system`, `localhost:5173/staff/cockpit`) so local/dev copy-paste URLs land in a canonical staff workspace.
 - Staff-console workspace navigation now normalizes redundant slashes and trailing separators before path checks, which prevents ambiguous route state from `/staff/.../` style links and keeps dedicated-workspace handoff deterministic.
 - Staff canonicalization and canary checks now also cover noisy path variants (`/staff/.../`, mixed-case legacy forms, and `/#/staff/...`) so operational routing remains deterministic before dedicated workspace rendering.
 - Staff path handling now tolerates absolute URLs in staff route payloads (for example `https://portal.monsoonfire.com/staff/workshops` and `.../#/staff/system`) so helper callers and automation logs can pass URL-like inputs without bypassing routing hardening.
 - Staff workspace open normalization also resolves staff fragments on absolute URLs where the main path is non-staff (for example `https://portal.monsoonfire.com/dashboard#/staff/workshops`) so full copied URLs continue to land in the intended dedicated workspace.
+- Staff absolute URLs now also preserve staff-only hash intents when the base path is already `/staff` (for example `https://portal.monsoonfire.com/staff#/system`) so deep links from old/legacy formats no longer collapse to the console root.
+- Staff path normalization now preserves staff hash intent even when staff query parameters precede the hash (for example `/staff?from=legacy#finance`) so query-only copy/paste variants resolve to the intended dedicated workspace tab.
+- App-level staff route sync now immediately canonicalizes requested staff paths on hash/popstate updates (including already-open staff sessions), so hash-only deep links like `/dashboard#/staff/system` no longer linger in non-canonical form.
+- Split pathname/hash routing now also preserves bare staff-root hash intents in app-launch flow (for example browser path `/staff` with `window.location.hash = "#finance"`) so runtime workspace handoff stays on dedicated cockpit paths.
 - Staff path canonicalization now also handles encoded hash markers in staff deep links (for example `/%23/staff/cockpit`), preserving deterministic workspace resolution from link-safe variants.
+- Staff canonicalization also now handles fully URL-encoded absolute staff links (for example `https%3A%2F%2Fportal.monsoonfire.com%2Fstaff%2Fsystem`) so encoded transport channels do not reintroduce workspace-friction ambiguity.
 - Staff canonicalization also handles protocol-relative URLs (for example `//portal.monsoonfire.com/staff/cockpit`) so link variants shared across environments continue resolving deterministically.
 - Legacy hash variants are also normalized when the hash marker omits a leading slash (for example `#staff/workshops`), so staff deep links remain deterministic even with mixed copy/paste formats.
 - Staff workspace open action now hardens empty or whitespace-only targets by defaulting to `/staff` so low-value "click/no-op" outcomes are avoided.
 - Staff path handling now also accepts protocol-less staff links such as `portal.monsoonfire.com/staff/cockpit` by treating them as staff URLs before canonicalization, reducing copy/paste friction from shared links that omit a scheme.
+- Staff path normalization now also accepts Windows-style backslash fragments (for example `\staff\system` and `portal.monsoonfire.com\staff\cockpit\finance`) so clipboard copies from mixed environments stay deterministic.
+- `/staff/cockpit#finance` style hash links now preserve the cockpit tab intent as a dedicated path (`/staff/cockpit/finance`) instead of collapsing to `/staff/cockpit` root.
+- Staff path matching is now resilient to punctuation-wrapped/trimmed copy-paste links (for example `/staff/workshops)`, `"https://portal.monsoonfire.com/staff/system,"`, `(https://portal.monsoonfire.com/staff/cockpit/finance,)`) so accidental trailing punctuation does not strand operators on fallback routes.
 
 - Staff canonicalization now also decodes percent-encoded separators and removes `.` / `..` path fragments (for example `/staff%2fcockpit`, `/staff/%2e%2e/system`) so noisy encoded deep links route deterministically before workspace mode selection.
 
 - Staff console navigation now preserves cockpit/workshop/system module path segments on path recovery (for example `/staff#/staff/cockpit/commerce`) instead of collapsing to the workspace root, preventing low-value friction for direct deep links into dedicated staff modules.
+- App-level route synchronization now reacts to `hashchange` events, so staff hash-only deep links can re-resolve workspace mode/path without requiring a reload.
 
 ## Local commands
 

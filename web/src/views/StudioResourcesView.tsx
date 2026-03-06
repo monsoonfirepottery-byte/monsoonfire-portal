@@ -4,14 +4,14 @@ type Props = {
   onOpenPieces: () => void;
   onOpenMaterials: () => void;
   onOpenMembership: () => void;
-  onOpenBilling: () => void;
+  onOpenProfile: () => void;
 };
 
 export default function StudioResourcesView({
   onOpenPieces,
   onOpenMaterials,
   onOpenMembership,
-  onOpenBilling,
+  onOpenProfile,
 }: Props) {
   return (
     <div className="page studio-resources-page">
@@ -46,10 +46,10 @@ export default function StudioResourcesView({
                 See what your plan includes and what’s coming next.
               </div>
             </button>
-            <button className="studio-step-button" onClick={onOpenBilling}>
-              <div className="studio-step-title">4. Billing</div>
+            <button className="studio-step-button" onClick={onOpenProfile}>
+              <div className="studio-step-title">4. Profile &amp; Billing</div>
               <div className="studio-step-copy">
-                Keep receipts and payments clear, simple, and up to date.
+                Manage account details and open billing from your profile.
               </div>
             </button>
           </div>
@@ -61,7 +61,7 @@ export default function StudioResourcesView({
             <li>Check your pieces for status updates or pickup readiness.</li>
             <li>Restock materials before you run out mid‑session.</li>
             <li>Confirm membership access if you’re changing your studio routine.</li>
-            <li>Review billing if something looks off or needs a receipt.</li>
+            <li>Use Profile to reach billing receipts and payment details.</li>
           </ul>
         </div>
       </section>

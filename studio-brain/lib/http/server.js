@@ -20,6 +20,7 @@ const scorecard_1 = require("../observability/scorecard");
 const auditExport_1 = require("../observability/auditExport");
 const policyLint_1 = require("../observability/policyLint");
 const policyMetadata_1 = require("../capabilities/policyMetadata");
+const service_1 = require("../memory/service");
 function withSecurityHeaders(headers) {
     return {
         "x-content-type-options": "nosniff",
@@ -32,15 +33,340 @@ function parseIsoToMillis(value) {
     const parsed = Date.parse(value);
     return Number.isFinite(parsed) ? parsed : null;
 }
-async function readJsonBody(req) {
+function toBooleanFlag(value, fallback = false) {
+    if (value === null)
+        return fallback;
+    const normalized = value.trim().toLowerCase();
+    if (!normalized)
+        return fallback;
+    if (normalized === "0" || normalized === "false" || normalized === "no" || normalized === "off")
+        return false;
+    return true;
+}
+function toObjectRecord(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value))
+        return {};
+    return value;
+}
+function toTrimmedString(value) {
+    if (typeof value !== "string")
+        return "";
+    return value.trim();
+}
+function toBoundedInt(value, fallback, min, max) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed))
+        return fallback;
+    return Math.max(min, Math.min(max, Math.trunc(parsed)));
+}
+function toStringList(value, maxItems = 64) {
+    if (!Array.isArray(value))
+        return [];
+    return value
+        .map((entry) => toTrimmedString(entry))
+        .filter(Boolean)
+        .slice(0, Math.max(1, maxItems));
+}
+function isTransientMemoryQueryError(error) {
+    if (!(error instanceof Error))
+        return false;
+    const message = String(error.message ?? "").toLowerCase();
+    if (!message)
+        return false;
+    return (/timeout/.test(message) ||
+        /timed\s*out/.test(message) ||
+        /aborted/.test(message) ||
+        /temporarily unavailable/.test(message) ||
+        /connection/.test(message) ||
+        /too many clients/.test(message) ||
+        /remaining connection slots/.test(message) ||
+        /request-failed/.test(message) ||
+        /connect/.test(message) ||
+        /cancel/.test(message));
+}
+async function withRouteTimeout(promise, timeoutMs, label) {
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+        return promise;
+    }
+    let timer = null;
+    try {
+        return await Promise.race([
+            promise,
+            new Promise((_, reject) => {
+                timer = setTimeout(() => {
+                    reject(new Error(`${label} timed out after ${Math.max(1, Math.floor(timeoutMs))}ms`));
+                }, timeoutMs);
+            }),
+        ]);
+    }
+    finally {
+        if (timer)
+            clearTimeout(timer);
+    }
+}
+function normalizeRelationshipType(value) {
+    const token = String(value ?? "related")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+    return token || "related";
+}
+function readStringValues(input, limit = 24) {
+    if (Array.isArray(input)) {
+        return input
+            .map((entry) => toTrimmedString(entry))
+            .filter(Boolean)
+            .slice(0, Math.max(1, limit));
+    }
+    const single = toTrimmedString(input);
+    return single ? [single] : [];
+}
+function extractRelationshipEdgesFromMetadata(sourceId, metadataRaw) {
+    const metadata = toObjectRecord(metadataRaw);
+    const edges = [];
+    const seen = new Set();
+    const pushEdge = (targetCandidate, relationTypeCandidate) => {
+        const targetId = toTrimmedString(targetCandidate);
+        if (!targetId || targetId === sourceId)
+            return;
+        const relationType = normalizeRelationshipType(relationTypeCandidate);
+        const key = `${sourceId}|${targetId}|${relationType}`;
+        if (seen.has(key))
+            return;
+        seen.add(key);
+        edges.push({ sourceId, targetId, relationType });
+    };
+    const pushFromKeys = (keys, relationType) => {
+        for (const key of keys) {
+            for (const value of readStringValues(metadata[key], 32)) {
+                pushEdge(value, relationType);
+            }
+        }
+    };
+    pushFromKeys(["relatedMemoryIds", "relatedIds", "relatedTo", "relatedMemoryIdList", "relationshipsIds"], "related");
+    pushFromKeys(["parentMemoryId", "parentId", "inReplyToParentId"], "parent");
+    pushFromKeys(["replyToMemoryId", "replyToId", "replyToMessageId"], "reply-to");
+    pushFromKeys(["threadRootMemoryId", "threadRootId", "threadId"], "thread-root");
+    pushFromKeys(["resolvesMemoryId", "resolvesId", "resolvedMemoryId"], "resolves");
+    pushFromKeys(["reopensMemoryId", "reopensId", "reopenedMemoryId"], "reopens");
+    pushFromKeys(["supersedesMemoryId", "supersedesId", "supersededMemoryId"], "supersedes");
+    pushFromKeys(["referencesMemoryId", "referencesId"], "references");
+    pushFromKeys(["dependsOnMemoryId", "dependsOnId"], "depends-on");
+    pushFromKeys(["conflictsWithMemoryId", "conflictsWithId"], "conflicts-with");
+    for (const key of ["resolvesMemoryIds", "reopensMemoryIds", "supersedesMemoryIds", "referencesMemoryIds"]) {
+        const relationType = key
+            .replace(/MemoryIds?$/i, "")
+            .replace(/([a-z])([A-Z])/g, "$1-$2")
+            .toLowerCase();
+        for (const value of readStringValues(metadata[key], 48)) {
+            pushEdge(value, relationType);
+        }
+    }
+    const relationships = metadata.relationships;
+    if (Array.isArray(relationships)) {
+        for (const entry of relationships.slice(0, 64)) {
+            if (typeof entry === "string") {
+                pushEdge(entry, "related");
+                continue;
+            }
+            if (!entry || typeof entry !== "object" || Array.isArray(entry))
+                continue;
+            const row = entry;
+            const targetId = row.targetId ?? row.relatedId ?? row.memoryId ?? row.id;
+            const relationType = row.relationType ?? row.type ?? row.kind;
+            pushEdge(targetId, relationType);
+        }
+    }
+    const relationship = metadata.relationship;
+    if (relationship && typeof relationship === "object" && !Array.isArray(relationship)) {
+        const row = relationship;
+        pushEdge(row.targetId ?? row.relatedId ?? row.memoryId ?? row.id, row.relationType ?? row.type ?? row.kind);
+    }
+    return edges;
+}
+function summarizePreview(text, maxChars = 180) {
+    const value = typeof text === "string" ? text.trim() : "";
+    if (!value)
+        return "";
+    if (value.length <= maxChars)
+        return value;
+    return `${value.slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`;
+}
+function buildRelationshipDiagnosticsFromNodes(seedMemoryId, rows) {
+    const nodeIds = new Set(rows.map((row) => row.id));
+    const relationshipTypeCountsMap = new Map();
+    const edgeTypesByPair = new Map();
+    let edgeCount = 0;
+    let internalEdgeCount = 0;
+    let externalEdgeCount = 0;
+    for (const row of rows) {
+        const edges = extractRelationshipEdgesFromMetadata(row.id, row.metadata);
+        for (const edge of edges) {
+            edgeCount += 1;
+            if (nodeIds.has(edge.targetId))
+                internalEdgeCount += 1;
+            else
+                externalEdgeCount += 1;
+            relationshipTypeCountsMap.set(edge.relationType, Number(relationshipTypeCountsMap.get(edge.relationType) ?? 0) + 1);
+            const pairKey = `${edge.sourceId}|${edge.targetId}`;
+            const bucket = edgeTypesByPair.get(pairKey) ?? new Set();
+            bucket.add(edge.relationType);
+            edgeTypesByPair.set(pairKey, bucket);
+        }
+    }
+    const conflictingPairs = [];
+    const conflictTypeSets = [
+        ["resolves", "reopens"],
+        ["resolves", "supersedes"],
+        ["reopens", "supersedes"],
+        ["depends-on", "conflicts-with"],
+    ];
+    for (const [pairKey, typeSet] of edgeTypesByPair.entries()) {
+        const types = Array.from(typeSet);
+        const isConflict = conflictTypeSets.some(([left, right]) => typeSet.has(left) && typeSet.has(right));
+        if (!isConflict)
+            continue;
+        const [sourceId, targetId] = pairKey.split("|");
+        conflictingPairs.push({
+            sourceId: sourceId ?? "",
+            targetId: targetId ?? "",
+            relationTypes: types.sort((left, right) => left.localeCompare(right)),
+        });
+    }
+    const relationshipTypeCounts = Object.fromEntries(Array.from(relationshipTypeCountsMap.entries()).sort((left, right) => {
+        if (right[1] !== left[1])
+            return right[1] - left[1];
+        return left[0].localeCompare(right[0]);
+    }));
+    return {
+        edgeSummary: {
+            seedMemoryId,
+            nodeCount: rows.length,
+            edgeCount,
+            internalEdgeCount,
+            externalEdgeCount,
+            relationshipTypes: relationshipTypeCounts,
+            unresolvedConflictCount: conflictingPairs.length,
+        },
+        relationshipTypeCounts,
+        unresolvedConflicts: conflictingPairs.slice(0, 24),
+        previewSummaries: rows.slice(0, 10).map((row) => ({
+            id: row.id,
+            summary: summarizePreview(row.content, 200),
+        })),
+    };
+}
+function formatLoopDigestMarkdown(payload) {
+    const lines = [];
+    lines.push(`# Loop Incident Digest`);
+    lines.push(`Generated: ${payload.generatedAt}`);
+    if (payload.query) {
+        lines.push(`Query: ${payload.query}`);
+    }
+    const incidentCount = payload.incidents.length;
+    lines.push(`Incidents: ${incidentCount}`);
+    if (payload.summary && typeof payload.summary === "object") {
+        const summaryRow = payload.summary;
+        const highestEscalation = Number(summaryRow.highestEscalationScore ?? 0);
+        const highestBlast = Number(summaryRow.highestBlastRadiusScore ?? 0);
+        const sla = summaryRow.sla ?? {};
+        const ownerQueues = Array.isArray(summaryRow.ownerQueues) ? summaryRow.ownerQueues : [];
+        lines.push(`Top escalation score: ${highestEscalation.toFixed(2)} | Top blast radius: ${highestBlast.toFixed(2)}`);
+        lines.push(`SLA: healthy ${Number(sla.healthy ?? 0)}, at-risk ${Number(sla.atRisk ?? 0)}, breached ${Number(sla.breached ?? 0)}, soonest breach ${sla.soonestBreachHours === null || sla.soonestBreachHours === undefined ? "n/a" : `${Number(sla.soonestBreachHours).toFixed(1)}h`}`);
+        if (ownerQueues.length > 0) {
+            const topOwners = ownerQueues
+                .slice(0, 3)
+                .map((row) => `${String(row.owner ?? "unassigned")}:${Number(row.total ?? 0)}`)
+                .join(", ");
+            lines.push(`Top owner queues: ${topOwners}`);
+        }
+    }
+    lines.push("");
+    if (incidentCount === 0) {
+        lines.push(`No incidents matched the current thresholds.`);
+        return lines.join("\n");
+    }
+    payload.incidents.forEach((incident, index) => {
+        lines.push(`${index + 1}. [${incident.lane.toUpperCase()}] ${incident.loopKey} (${incident.currentState})`);
+        lines.push(`   Escalation ${incident.escalationScore.toFixed(2)} | Blast ${incident.blastRadiusScore.toFixed(2)} | Anomaly ${incident.anomalyScore.toFixed(2)}`);
+        lines.push(`   Owner: ${incident.suggestedOwner ?? "unassigned"}`);
+        lines.push(`   SLA: ${incident.slaStatus} (${incident.hoursUntilBreach.toFixed(1)}h until breach)`);
+        lines.push(`   Action: ${incident.recommendedAction}`);
+        lines.push(`   Narrative: ${incident.narrative}`);
+        lines.push("");
+    });
+    return lines.join("\n").trim();
+}
+async function readRawBody(req) {
     const chunks = [];
     for await (const chunk of req) {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     }
     if (!chunks.length)
+        return "";
+    return Buffer.concat(chunks).toString("utf8");
+}
+function parseJsonBody(raw) {
+    if (!raw.trim())
         return {};
-    const raw = Buffer.concat(chunks).toString("utf8");
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("JSON body must be an object.");
+    }
+    return parsed;
+}
+async function readJsonBodyWithRaw(req) {
+    const raw = await readRawBody(req);
+    return {
+        raw,
+        json: parseJsonBody(raw),
+    };
+}
+async function readJsonBody(req) {
+    return (await readJsonBodyWithRaw(req)).json;
+}
+function normalizeHmacSignature(value) {
+    if (!value)
+        return null;
+    const trimmed = value.trim();
+    if (!trimmed)
+        return null;
+    const candidate = trimmed.includes("=") ? trimmed.slice(trimmed.lastIndexOf("=") + 1).trim() : trimmed;
+    return /^[a-f0-9]{64}$/i.test(candidate) ? candidate.toLowerCase() : null;
+}
+function parseEpochSeconds(raw) {
+    if (!raw)
+        return null;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed))
+        return null;
+    const value = Math.trunc(parsed);
+    return value > 0 ? value : null;
+}
+function isTimestampWithinSkew(timestampSeconds, nowMs, maxSkewSeconds) {
+    const deltaMs = Math.abs(nowMs - timestampSeconds * 1000);
+    return deltaMs <= maxSkewSeconds * 1000;
+}
+function verifyHmacSignature(expectedHex, providedHex) {
+    if (expectedHex.length !== providedHex.length)
+        return false;
+    try {
+        const expected = Buffer.from(expectedHex, "hex");
+        const provided = Buffer.from(providedHex, "hex");
+        if (expected.length !== provided.length)
+            return false;
+        return node_crypto_1.default.timingSafeEqual(expected, provided);
+    }
+    catch {
+        return false;
+    }
+}
+function toNormalizedSet(values) {
+    return new Set((values ?? [])
+        .map((entry) => entry.trim().toLowerCase())
+        .filter(Boolean));
 }
 function parseActor(payload) {
     const ownerUid = String(payload.ownerUid ?? "unknown");
@@ -106,12 +432,252 @@ async function verifyFirebaseAuthHeader(authorizationHeader) {
     };
 }
 function startHttpServer(params) {
-    const { host, port, logger, stateStore, eventStore, requireFreshSnapshotForReady = false, readyMaxSnapshotAgeMinutes = 240, pgCheck = postgres_1.checkPgConnection, getRuntimeStatus, getRuntimeMetrics, capabilityRuntime, allowedOrigins = [], adminToken, verifyFirebaseAuth = verifyFirebaseAuthHeader, backendHealth, endpointRateLimits, abuseQuotaStore = new policy_1.InMemoryQuotaStore(), pilotWriteExecutor = null, } = params;
+    const { host, port, logger, stateStore, eventStore, requireFreshSnapshotForReady = false, readyMaxSnapshotAgeMinutes = 240, pgCheck = postgres_1.checkPgConnection, getRuntimeStatus, getRuntimeMetrics, capabilityRuntime, allowedOrigins = [], adminToken, verifyFirebaseAuth = verifyFirebaseAuthHeader, backendHealth, memoryService = null, memoryIngestConfig, endpointRateLimits, abuseQuotaStore = new policy_1.InMemoryQuotaStore(), pilotWriteExecutor = null, } = params;
     const rateLimits = {
         createProposalPerMinute: Math.max(1, endpointRateLimits?.createProposalPerMinute ?? 20),
         executeProposalPerMinute: Math.max(1, endpointRateLimits?.executeProposalPerMinute ?? 20),
         intakeOverridePerMinute: Math.max(1, endpointRateLimits?.intakeOverridePerMinute ?? 10),
         marketingReviewPerMinute: Math.max(1, endpointRateLimits?.marketingReviewPerMinute ?? 20),
+    };
+    const memoryIngest = {
+        enabled: memoryIngestConfig?.enabled === true,
+        hmacSecret: memoryIngestConfig?.hmacSecret?.trim() ?? "",
+        maxSkewSeconds: Math.max(30, memoryIngestConfig?.maxSkewSeconds ?? 300),
+        requireClientRequestId: memoryIngestConfig?.requireClientRequestId !== false,
+        allowedSources: toNormalizedSet(memoryIngestConfig?.allowedSources),
+        allowedDiscordGuildIds: toNormalizedSet(memoryIngestConfig?.allowedDiscordGuildIds),
+        allowedDiscordChannelIds: toNormalizedSet(memoryIngestConfig?.allowedDiscordChannelIds),
+    };
+    const parseBoundedEnvInt = (name, fallback, min = 0, max = 10_000) => {
+        const raw = String(process.env[name] ?? "").trim();
+        if (!raw)
+            return fallback;
+        const parsed = Number.parseInt(raw, 10);
+        if (!Number.isFinite(parsed))
+            return fallback;
+        return Math.max(min, Math.min(max, parsed));
+    };
+    const parseBoundedEnvFloat = (name, fallback, min = 0, max = 10_000) => {
+        const raw = String(process.env[name] ?? "").trim();
+        if (!raw)
+            return fallback;
+        const parsed = Number.parseFloat(raw);
+        if (!Number.isFinite(parsed))
+            return fallback;
+        return Math.max(min, Math.min(max, parsed));
+    };
+    const parseBoundedEnvBool = (name, fallback) => {
+        const raw = String(process.env[name] ?? "").trim().toLowerCase();
+        if (!raw)
+            return fallback;
+        if (raw === "1" || raw === "true" || raw === "yes" || raw === "on")
+            return true;
+        if (raw === "0" || raw === "false" || raw === "no" || raw === "off")
+            return false;
+        return fallback;
+    };
+    const memoryPressureConfig = {
+        maxActiveImportsBeforeBackfill: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORTS_BEFORE_BACKFILL", 8, 0, 10_000),
+        maxConcurrentBackfills: parseBoundedEnvInt("STUDIO_BRAIN_MAX_CONCURRENT_BACKFILLS", 1, 1, 100),
+        retryAfterSeconds: parseBoundedEnvInt("STUDIO_BRAIN_BACKFILL_RETRY_AFTER_SECONDS", 20, 1, 3600),
+        maxActiveImportsBeforeQueryDegrade: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORTS_BEFORE_QUERY_DEGRADE", 4, 0, 10_000),
+        maxActiveImportsBeforeQueryShed: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORTS_BEFORE_QUERY_SHED", 14, 0, 10_000),
+        maxActiveSearchRequests: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_SEARCH_REQUESTS", 20, 1, 2_000),
+        maxActiveContextRequests: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_CONTEXT_REQUESTS", 12, 1, 2_000),
+        maxActiveQueryRequests: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_MEMORY_QUERY_REQUESTS", 28, 1, 4_000),
+        queryRetryAfterSeconds: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_RETRY_AFTER_SECONDS", 5, 1, 3600),
+        queryDegradeLimitCap: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_DEGRADE_LIMIT_CAP", 10, 1, 100),
+        queryDegradeScanLimitCap: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_DEGRADE_SCAN_LIMIT_CAP", 120, 10, 500),
+        queryDegradeMaxItemsCap: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_DEGRADE_MAX_ITEMS_CAP", 10, 1, 100),
+        queryDegradeMaxCharsCap: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_DEGRADE_MAX_CHARS_CAP", 6000, 512, 100_000),
+        queryRouteTimeoutMs: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_ROUTE_TIMEOUT_MS", 16_000, 1_000, 120_000),
+    };
+    const memoryAdaptiveConfig = {
+        enabled: parseBoundedEnvBool("STUDIO_BRAIN_MEMORY_QUERY_ADAPTIVE_ENABLED", true),
+        p95TargetMs: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_ADAPTIVE_P95_TARGET_MS", 1200, 100, 60_000),
+        minFactor: parseBoundedEnvFloat("STUDIO_BRAIN_MEMORY_QUERY_ADAPTIVE_MIN_FACTOR", 0.45, 0.1, 1),
+        maxFactor: parseBoundedEnvFloat("STUDIO_BRAIN_MEMORY_QUERY_ADAPTIVE_MAX_FACTOR", 1.2, 0.4, 3),
+        sampleWindow: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_ADAPTIVE_SAMPLE_WINDOW", 240, 20, 5_000),
+    };
+    const memoryQueueConfig = {
+        enabled: parseBoundedEnvBool("STUDIO_BRAIN_MEMORY_QUERY_QUEUE_ENABLED", true),
+        interactiveWaitMs: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_INTERACTIVE_QUEUE_WAIT_MS", 1200, 0, 30_000),
+        pollMs: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_QUEUE_POLL_MS", 120, 20, 2_000),
+    };
+    const memorySearchLatencySamples = [];
+    const memoryContextLatencySamples = [];
+    const pushLatencySample = (bucket, latencyMs) => {
+        if (!Number.isFinite(latencyMs) || latencyMs < 0)
+            return;
+        bucket.push(Math.round(latencyMs));
+        if (bucket.length > memoryAdaptiveConfig.sampleWindow) {
+            bucket.splice(0, bucket.length - memoryAdaptiveConfig.sampleWindow);
+        }
+    };
+    const percentile = (values, p) => {
+        if (values.length === 0)
+            return 0;
+        const sorted = [...values].sort((left, right) => left - right);
+        const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * p) - 1));
+        return sorted[idx] ?? 0;
+    };
+    const latencySnapshot = () => ({
+        searchP95Ms: percentile(memorySearchLatencySamples, 0.95),
+        contextP95Ms: percentile(memoryContextLatencySamples, 0.95),
+        searchSamples: memorySearchLatencySamples.length,
+        contextSamples: memoryContextLatencySamples.length,
+    });
+    const recordMemoryLatency = (kind, startedAtMs) => {
+        const duration = Date.now() - startedAtMs;
+        if (kind === "search") {
+            pushLatencySample(memorySearchLatencySamples, duration);
+            return;
+        }
+        pushLatencySample(memoryContextLatencySamples, duration);
+    };
+    const clampInt = (value, min, max) => {
+        if (!Number.isFinite(value))
+            return min;
+        return Math.max(min, Math.min(max, Math.trunc(value)));
+    };
+    const resolveDynamicMemoryThresholds = () => {
+        if (!memoryAdaptiveConfig.enabled) {
+            return {
+                ...memoryPressureConfig,
+            };
+        }
+        const latency = latencySnapshot();
+        const p95Target = Math.max(100, memoryAdaptiveConfig.p95TargetMs);
+        const p95Observed = Math.max(latency.searchP95Ms, latency.contextP95Ms);
+        const ratio = p95Observed > 0 ? p95Target / p95Observed : 1;
+        const factor = Math.max(memoryAdaptiveConfig.minFactor, Math.min(memoryAdaptiveConfig.maxFactor, ratio));
+        return {
+            ...memoryPressureConfig,
+            maxActiveSearchRequests: clampInt(memoryPressureConfig.maxActiveSearchRequests * factor, 4, memoryPressureConfig.maxActiveSearchRequests),
+            maxActiveContextRequests: clampInt(memoryPressureConfig.maxActiveContextRequests * factor, 2, memoryPressureConfig.maxActiveContextRequests),
+            maxActiveQueryRequests: clampInt(memoryPressureConfig.maxActiveQueryRequests * factor, 4, memoryPressureConfig.maxActiveQueryRequests),
+        };
+    };
+    let activeImportRequests = 0;
+    let activeBackfillRequests = 0;
+    let activeSearchRequests = 0;
+    let activeContextRequests = 0;
+    const memoryPressureSnapshot = (thresholds = resolveDynamicMemoryThresholds()) => ({
+        activeImportRequests,
+        activeBackfillRequests,
+        activeSearchRequests,
+        activeContextRequests,
+        activeQueryRequests: activeSearchRequests + activeContextRequests,
+        latency: latencySnapshot(),
+        thresholds: {
+            maxActiveImportsBeforeBackfill: thresholds.maxActiveImportsBeforeBackfill,
+            maxConcurrentBackfills: thresholds.maxConcurrentBackfills,
+            retryAfterSeconds: thresholds.retryAfterSeconds,
+            maxActiveImportsBeforeQueryDegrade: thresholds.maxActiveImportsBeforeQueryDegrade,
+            maxActiveImportsBeforeQueryShed: thresholds.maxActiveImportsBeforeQueryShed,
+            maxActiveSearchRequests: thresholds.maxActiveSearchRequests,
+            maxActiveContextRequests: thresholds.maxActiveContextRequests,
+            maxActiveQueryRequests: thresholds.maxActiveQueryRequests,
+            queryRetryAfterSeconds: thresholds.queryRetryAfterSeconds,
+            queryDegradeLimitCap: thresholds.queryDegradeLimitCap,
+            queryDegradeScanLimitCap: thresholds.queryDegradeScanLimitCap,
+            queryDegradeMaxItemsCap: thresholds.queryDegradeMaxItemsCap,
+            queryDegradeMaxCharsCap: thresholds.queryDegradeMaxCharsCap,
+            queryRouteTimeoutMs: thresholds.queryRouteTimeoutMs,
+        },
+    });
+    const deriveMemoryQueryLane = (payload, fallback = "interactive") => {
+        const requestedLane = toTrimmedString(payload.queryLane).toLowerCase();
+        if (requestedLane === "interactive" || requestedLane === "ops" || requestedLane === "bulk") {
+            return requestedLane;
+        }
+        if (toBooleanFlag(toTrimmedString(payload.bulk), false)) {
+            return "bulk";
+        }
+        const hasSessionScope = Boolean(toTrimmedString(payload.runId) || toTrimmedString(payload.agentId));
+        if (hasSessionScope) {
+            return "interactive";
+        }
+        return fallback;
+    };
+    const classifyMemoryQueryPressure = (lane, kind) => {
+        const thresholds = resolveDynamicMemoryThresholds();
+        const pressure = memoryPressureSnapshot(thresholds);
+        const reasons = [];
+        const querySaturated = pressure.activeQueryRequests >= thresholds.maxActiveQueryRequests;
+        if (querySaturated) {
+            reasons.push("query-concurrency-saturated");
+        }
+        const importDegrade = pressure.activeImportRequests >= thresholds.maxActiveImportsBeforeQueryDegrade;
+        const importShed = pressure.activeImportRequests >= thresholds.maxActiveImportsBeforeQueryShed;
+        if (importDegrade) {
+            reasons.push("active-import-pressure");
+        }
+        if (pressure.activeBackfillRequests >= thresholds.maxConcurrentBackfills) {
+            reasons.push("backfill-pressure");
+        }
+        const kindSaturated = kind === "search"
+            ? pressure.activeSearchRequests >= thresholds.maxActiveSearchRequests
+            : pressure.activeContextRequests >= thresholds.maxActiveContextRequests;
+        if (kindSaturated) {
+            reasons.push(`${kind}-concurrency-saturated`);
+        }
+        const backfillAtCapacity = pressure.activeBackfillRequests >= thresholds.maxConcurrentBackfills;
+        const backfillDegrade = backfillAtCapacity && (lane !== "interactive" || importDegrade || querySaturated || kindSaturated);
+        if (backfillDegrade) {
+            reasons.push("backfill-pressure");
+        }
+        const degrade = importDegrade || querySaturated || kindSaturated || backfillDegrade;
+        const interactiveContextShed = kind === "context" && kindSaturated;
+        const shed = lane === "bulk"
+            ? importShed || querySaturated || kindSaturated
+            : importShed || querySaturated || interactiveContextShed;
+        return {
+            pressure,
+            thresholds,
+            reasons: Array.from(new Set(reasons)),
+            degrade,
+            shed,
+            queued: false,
+            queueWaitMs: 0,
+        };
+    };
+    const waitForMemoryQuerySlot = async (lane, kind, requestId) => {
+        let policy = classifyMemoryQueryPressure(lane, kind);
+        if (!policy.shed || lane !== "interactive" || !memoryQueueConfig.enabled || memoryQueueConfig.interactiveWaitMs <= 0) {
+            return {
+                ...policy,
+                queued: false,
+                queueWaitMs: 0,
+            };
+        }
+        const startedAt = Date.now();
+        let queued = false;
+        while (Date.now() - startedAt < memoryQueueConfig.interactiveWaitMs) {
+            const waitMs = Math.min(memoryQueueConfig.pollMs, memoryQueueConfig.interactiveWaitMs);
+            await new Promise((resolveWait) => setTimeout(resolveWait, waitMs));
+            policy = classifyMemoryQueryPressure(lane, kind);
+            if (!policy.shed) {
+                queued = true;
+                break;
+            }
+        }
+        const queueWaitMs = Date.now() - startedAt;
+        if (queued) {
+            logger.info("memory_query_queue_admitted", {
+                requestId,
+                endpoint: kind === "search" ? "/api/memory/search" : "/api/memory/context",
+                lane,
+                queueWaitMs,
+                reasons: policy.reasons,
+                pressure: policy.pressure,
+            });
+        }
+        return {
+            ...policy,
+            queued,
+            queueWaitMs,
+        };
     };
     const isOriginAllowed = (origin) => {
         if (!origin)
@@ -123,7 +689,7 @@ function startHttpServer(params) {
             return {};
         return {
             "access-control-allow-origin": origin,
-            "access-control-allow-headers": "content-type, authorization, x-studio-brain-admin-token",
+            "access-control-allow-headers": "content-type, authorization, x-studio-brain-admin-token, x-memory-ingest-signature, x-memory-ingest-timestamp",
             "access-control-allow-methods": "GET,POST,OPTIONS",
             "access-control-max-age": "600",
             vary: "Origin",
@@ -255,6 +821,1634 @@ function startHttpServer(params) {
                 statusCode = 200;
                 res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
                 res.end(JSON.stringify({ ok: true, snapshot }));
+                return;
+            }
+            if (memoryService && method === "POST" && url.pathname === "/api/memory/capture") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const payload = await readJsonBody(req);
+                    const metadata = payload.metadata && typeof payload.metadata === "object" && !Array.isArray(payload.metadata)
+                        ? payload.metadata
+                        : {};
+                    const memory = await memoryService.capture({
+                        ...payload,
+                        metadata: {
+                            ...metadata,
+                            writerUid: auth.principal?.uid ?? "staff:unknown",
+                        },
+                    });
+                    statusCode = 201;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, memory }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "POST" && url.pathname === "/api/memory/ingest") {
+                if (!memoryIngest.enabled) {
+                    statusCode = 404;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "Memory ingest endpoint is disabled." }));
+                    return;
+                }
+                if (!memoryIngest.hmacSecret) {
+                    statusCode = 503;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: "Memory ingest endpoint is misconfigured." }));
+                    return;
+                }
+                try {
+                    const timestampRaw = firstHeader(req.headers["x-memory-ingest-timestamp"]);
+                    const signatureRaw = firstHeader(req.headers["x-memory-ingest-signature"]);
+                    const timestampSeconds = parseEpochSeconds(timestampRaw);
+                    const providedSignature = normalizeHmacSignature(signatureRaw);
+                    if (!timestampSeconds || !providedSignature) {
+                        statusCode = 401;
+                        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                        res.end(JSON.stringify({ ok: false, message: "Missing or invalid ingest signature headers." }));
+                        return;
+                    }
+                    if (!isTimestampWithinSkew(timestampSeconds, Date.now(), memoryIngest.maxSkewSeconds)) {
+                        statusCode = 401;
+                        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                        res.end(JSON.stringify({ ok: false, message: "Ingest signature timestamp is outside allowed skew." }));
+                        return;
+                    }
+                    const parsedBody = await readJsonBodyWithRaw(req);
+                    const expectedSignature = node_crypto_1.default
+                        .createHmac("sha256", memoryIngest.hmacSecret)
+                        .update(`${timestampSeconds}.${parsedBody.raw}`)
+                        .digest("hex");
+                    if (!verifyHmacSignature(expectedSignature, providedSignature)) {
+                        statusCode = 401;
+                        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                        res.end(JSON.stringify({ ok: false, message: "Invalid ingest signature." }));
+                        return;
+                    }
+                    const payload = parsedBody.json;
+                    const sourceRaw = typeof payload.source === "string" ? payload.source.trim() : "";
+                    const source = sourceRaw.toLowerCase();
+                    if (memoryIngest.allowedSources.size > 0 && (!source || !memoryIngest.allowedSources.has(source))) {
+                        statusCode = 403;
+                        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                        res.end(JSON.stringify({ ok: false, message: "Memory ingest source is not allowed." }));
+                        return;
+                    }
+                    const metadata = payload.metadata && typeof payload.metadata === "object" && !Array.isArray(payload.metadata)
+                        ? payload.metadata
+                        : {};
+                    if (source === "discord") {
+                        const guildId = String(metadata.discordGuildId ?? metadata.guildId ?? "").trim().toLowerCase();
+                        const channelId = String(metadata.discordChannelId ?? metadata.channelId ?? "").trim().toLowerCase();
+                        if (memoryIngest.allowedDiscordGuildIds.size > 0 && (!guildId || !memoryIngest.allowedDiscordGuildIds.has(guildId))) {
+                            statusCode = 403;
+                            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                            res.end(JSON.stringify({ ok: false, message: "Discord guild is not allowed for ingest." }));
+                            return;
+                        }
+                        if (memoryIngest.allowedDiscordChannelIds.size > 0 && (!channelId || !memoryIngest.allowedDiscordChannelIds.has(channelId))) {
+                            statusCode = 403;
+                            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                            res.end(JSON.stringify({ ok: false, message: "Discord channel is not allowed for ingest." }));
+                            return;
+                        }
+                    }
+                    if (memoryIngest.requireClientRequestId) {
+                        const clientRequestIdRaw = typeof payload.clientRequestId === "string" ? payload.clientRequestId.trim() : "";
+                        if (!clientRequestIdRaw) {
+                            statusCode = 400;
+                            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                            res.end(JSON.stringify({ ok: false, message: "clientRequestId is required for memory ingest." }));
+                            return;
+                        }
+                    }
+                    let memory;
+                    activeImportRequests += 1;
+                    try {
+                        memory = await memoryService.capture(payload);
+                    }
+                    finally {
+                        activeImportRequests = Math.max(0, activeImportRequests - 1);
+                    }
+                    statusCode = 201;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, memory }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError ||
+                        (error instanceof Error && error.message === "JSON body must be an object.");
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "POST" && url.pathname === "/api/memory/context") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                let payload = {};
+                let lane = "interactive";
+                let routeStartedAtMs = Date.now();
+                let policy = classifyMemoryQueryPressure(lane, "context");
+                try {
+                    payload = toObjectRecord(await readJsonBody(req));
+                    lane = deriveMemoryQueryLane(payload, "interactive");
+                    routeStartedAtMs = Date.now();
+                    policy = await waitForMemoryQuerySlot(lane, "context", requestId);
+                    if (policy.shed) {
+                        logger.warn("memory_query_shed", {
+                            requestId,
+                            endpoint: "/api/memory/context",
+                            lane,
+                            reasons: policy.reasons,
+                            pressure: policy.pressure,
+                        });
+                        statusCode = 503;
+                        res.writeHead(statusCode, withSecurityHeaders({
+                            "content-type": "application/json",
+                            ...corsHeaders,
+                            "x-request-id": requestId,
+                            "retry-after": String(policy.thresholds.queryRetryAfterSeconds),
+                        }));
+                        res.end(JSON.stringify({
+                            ok: false,
+                            message: "Memory context deferred due ingest/query pressure.",
+                            reason: "query-shed",
+                            lane,
+                            retryAfterSeconds: policy.thresholds.queryRetryAfterSeconds,
+                            pressure: policy.pressure,
+                            degradation: {
+                                applied: true,
+                                lane,
+                                shed: true,
+                                reasons: policy.reasons,
+                                queued: policy.queued,
+                                queueWaitMs: policy.queueWaitMs,
+                            },
+                        }));
+                        return;
+                    }
+                    const requestedMaxItems = toBoundedInt(payload.maxItems, 12, 1, 100);
+                    const requestedMaxChars = toBoundedInt(payload.maxChars, 8_000, 256, 100_000);
+                    const requestedScanLimit = toBoundedInt(payload.scanLimit, 200, 1, 500);
+                    const requestedModeRaw = toTrimmedString(payload.retrievalMode).toLowerCase();
+                    const requestedRetrievalMode = requestedModeRaw === "lexical" || requestedModeRaw === "semantic" || requestedModeRaw === "hybrid"
+                        ? requestedModeRaw
+                        : "hybrid";
+                    const effectivePayload = {
+                        ...payload,
+                        maxItems: requestedMaxItems,
+                        maxChars: requestedMaxChars,
+                        scanLimit: requestedScanLimit,
+                        retrievalMode: requestedRetrievalMode,
+                    };
+                    const adjustments = [];
+                    if (policy.degrade) {
+                        const preferredMode = lane === "interactive" ? "hybrid" : "lexical";
+                        if (requestedRetrievalMode !== preferredMode) {
+                            effectivePayload.retrievalMode = preferredMode;
+                            adjustments.push(`retrievalMode:${requestedRetrievalMode}->${preferredMode}`);
+                        }
+                        const maxItemsCap = lane === "interactive"
+                            ? Math.min(100, Math.max(4, policy.thresholds.queryDegradeMaxItemsCap + 4))
+                            : Math.max(3, policy.thresholds.queryDegradeMaxItemsCap);
+                        const scanLimitCap = lane === "interactive"
+                            ? Math.min(500, Math.max(40, policy.thresholds.queryDegradeScanLimitCap + 60))
+                            : Math.max(24, policy.thresholds.queryDegradeScanLimitCap);
+                        const maxCharsCap = lane === "interactive"
+                            ? Math.min(100_000, Math.max(1_500, policy.thresholds.queryDegradeMaxCharsCap + 1_500))
+                            : Math.max(1_024, policy.thresholds.queryDegradeMaxCharsCap);
+                        const effectiveMaxItems = Math.min(requestedMaxItems, maxItemsCap);
+                        const effectiveScanLimit = Math.min(requestedScanLimit, scanLimitCap);
+                        const effectiveMaxChars = Math.min(requestedMaxChars, maxCharsCap);
+                        if (effectiveMaxItems !== requestedMaxItems) {
+                            effectivePayload.maxItems = effectiveMaxItems;
+                            adjustments.push(`maxItems:${requestedMaxItems}->${effectiveMaxItems}`);
+                        }
+                        if (effectiveScanLimit !== requestedScanLimit) {
+                            effectivePayload.scanLimit = effectiveScanLimit;
+                            adjustments.push(`scanLimit:${requestedScanLimit}->${effectiveScanLimit}`);
+                        }
+                        if (effectiveMaxChars !== requestedMaxChars) {
+                            effectivePayload.maxChars = effectiveMaxChars;
+                            adjustments.push(`maxChars:${requestedMaxChars}->${effectiveMaxChars}`);
+                        }
+                        if (payload.includeTenantFallback !== true) {
+                            effectivePayload.includeTenantFallback = true;
+                            adjustments.push("includeTenantFallback:true");
+                        }
+                    }
+                    let context;
+                    activeContextRequests += 1;
+                    try {
+                        context = await withRouteTimeout(memoryService.context(effectivePayload), policy.thresholds.queryRouteTimeoutMs, "memory context query route");
+                    }
+                    finally {
+                        activeContextRequests = Math.max(0, activeContextRequests - 1);
+                    }
+                    recordMemoryLatency("context", routeStartedAtMs);
+                    const degradation = {
+                        applied: policy.degrade || adjustments.length > 0,
+                        lane,
+                        shed: false,
+                        reasons: Array.from(new Set([...policy.reasons, ...adjustments])),
+                        retryAfterSeconds: policy.degrade ? policy.thresholds.queryRetryAfterSeconds : 0,
+                        requested: {
+                            retrievalMode: requestedRetrievalMode,
+                            maxItems: requestedMaxItems,
+                            scanLimit: requestedScanLimit,
+                            maxChars: requestedMaxChars,
+                        },
+                        effective: {
+                            retrievalMode: String(effectivePayload.retrievalMode ?? requestedRetrievalMode),
+                            maxItems: Number(effectivePayload.maxItems ?? requestedMaxItems),
+                            scanLimit: Number(effectivePayload.scanLimit ?? requestedScanLimit),
+                            maxChars: Number(effectivePayload.maxChars ?? requestedMaxChars),
+                        },
+                        pressure: memoryPressureSnapshot(),
+                        queued: policy.queued,
+                        queueWaitMs: policy.queueWaitMs,
+                    };
+                    if (degradation.applied) {
+                        logger.info("memory_query_degraded", {
+                            requestId,
+                            endpoint: "/api/memory/context",
+                            lane,
+                            reasons: degradation.reasons,
+                            requested: degradation.requested,
+                            effective: degradation.effective,
+                            pressure: degradation.pressure,
+                        });
+                    }
+                    const contextWithDiagnostics = {
+                        ...context,
+                        diagnostics: {
+                            ...(context.diagnostics ?? {}),
+                            queryDegradation: degradation,
+                        },
+                    };
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({
+                        ok: true,
+                        context: contextWithDiagnostics,
+                        payload: contextWithDiagnostics,
+                        items: contextWithDiagnostics.items,
+                        summary: contextWithDiagnostics.summary,
+                        degradation,
+                    }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    if (!isValidation && isTransientMemoryQueryError(error)) {
+                        const requestedMaxItems = toBoundedInt(payload.maxItems, 12, 1, 100);
+                        const requestedMaxChars = toBoundedInt(payload.maxChars, 8_000, 256, 100_000);
+                        const requestedScanLimit = toBoundedInt(payload.scanLimit, 200, 1, 500);
+                        const requestedModeRaw = toTrimmedString(payload.retrievalMode).toLowerCase();
+                        const requestedRetrievalMode = requestedModeRaw === "lexical" || requestedModeRaw === "semantic" || requestedModeRaw === "hybrid"
+                            ? requestedModeRaw
+                            : "hybrid";
+                        const fallbackRecentTimeoutMs = 2_500;
+                        const fallbackRecentLimit = Math.max(2, Math.min(12, requestedMaxItems));
+                        let fallbackRows = [];
+                        try {
+                            const recentRows = await withRouteTimeout(memoryService.recent({
+                                tenantId: toTrimmedString(payload.tenantId) || undefined,
+                                limit: Math.max(8, fallbackRecentLimit * 2),
+                            }), fallbackRecentTimeoutMs, "memory context transient recent fallback");
+                            fallbackRows = recentRows
+                                .filter((row) => row.status !== "quarantined")
+                                .slice(0, fallbackRecentLimit)
+                                .map((row) => ({
+                                ...row,
+                                score: 0.24 + row.sourceConfidence * 0.24 + row.importance * 0.24,
+                                scoreBreakdown: {
+                                    rrf: 0.16,
+                                    sourceTrust: row.sourceConfidence,
+                                    recency: 0.24,
+                                    importance: row.importance,
+                                    session: 0,
+                                    lexical: 0,
+                                    semantic: 0,
+                                    sessionLane: 0,
+                                },
+                                matchedBy: ["transient-recent-fallback", "backend-timeout"],
+                            }));
+                        }
+                        catch { }
+                        const fallbackUsedChars = fallbackRows.reduce((acc, row) => acc + String(row.content ?? "").length, 0);
+                        const pressure = memoryPressureSnapshot();
+                        const degradation = {
+                            applied: true,
+                            lane,
+                            shed: false,
+                            reasons: fallbackRows.length > 0 ? ["backend-timeout", "recent-fallback"] : ["backend-timeout", "graceful-empty-context"],
+                            retryAfterSeconds: policy.thresholds.queryRetryAfterSeconds,
+                            requested: {
+                                retrievalMode: requestedRetrievalMode,
+                                maxItems: requestedMaxItems,
+                                scanLimit: requestedScanLimit,
+                                maxChars: requestedMaxChars,
+                            },
+                            effective: {
+                                retrievalMode: "lexical",
+                                maxItems: fallbackRows.length,
+                                scanLimit: fallbackRows.length,
+                                maxChars: fallbackUsedChars,
+                            },
+                            pressure,
+                            warning: message,
+                            queued: policy.queued,
+                            queueWaitMs: policy.queueWaitMs,
+                        };
+                        const fallbackContext = {
+                            summary: fallbackRows.length > 0
+                                ? "Context degraded due backend timeout; serving recent fallback items to keep workflow continuity."
+                                : "Context temporarily unavailable due backend timeout; returning empty result to keep the workflow responsive.",
+                            items: fallbackRows,
+                            budget: {
+                                maxItems: requestedMaxItems,
+                                maxChars: requestedMaxChars,
+                                usedChars: fallbackUsedChars,
+                                scanLimit: requestedScanLimit,
+                                scanned: fallbackRows.length,
+                                droppedByBudget: Math.max(0, fallbackRows.length - requestedMaxItems),
+                            },
+                            selection: {
+                                tenantId: null,
+                                requestedTenantId: toTrimmedString(payload.tenantId) || null,
+                                tenantFallbackApplied: false,
+                                agentId: toTrimmedString(payload.agentId) || null,
+                                runId: toTrimmedString(payload.runId) || null,
+                                query: toTrimmedString(payload.query) || null,
+                                seedMemoryId: toTrimmedString(payload.seedMemoryId) || null,
+                                retrievalMode: "lexical",
+                                sourceAllowlist: toStringList(payload.sourceAllowlist),
+                                sourceDenylist: toStringList(payload.sourceDenylist),
+                                temporalAnchorAt: toTrimmedString(payload.temporalAnchorAt) || null,
+                                includeExplain: payload.explain === true,
+                                expandRelationships: payload.expandRelationships === true,
+                                requestedMaxHops: toBoundedInt(payload.maxHops, 2, 1, 4),
+                                tenantFallbackUsedForEmptyScope: false,
+                                relationshipExpansion: {
+                                    hopsUsed: 0,
+                                    addedFromRelationships: 0,
+                                    attempted: payload.expandRelationships === true,
+                                    frontierSeedCount: 0,
+                                },
+                            },
+                            diagnostics: {
+                                candidateCounts: {
+                                    tenantRows: fallbackRows.length,
+                                    scopedRows: fallbackRows.length,
+                                    searchRows: fallbackRows.length,
+                                    mergedRows: fallbackRows.length,
+                                },
+                                retrievalModeUsed: "lexical",
+                                includeTenantFallback: payload.includeTenantFallback === true,
+                                queryDegradation: degradation,
+                            },
+                        };
+                        logger.warn("memory_query_transient_error", {
+                            requestId,
+                            endpoint: "/api/memory/context",
+                            lane,
+                            message,
+                            pressure,
+                        });
+                        recordMemoryLatency("context", routeStartedAtMs);
+                        statusCode = 200;
+                        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                        res.end(JSON.stringify({
+                            ok: true,
+                            context: fallbackContext,
+                            payload: fallbackContext,
+                            items: fallbackRows,
+                            summary: fallbackContext.summary,
+                            degradation,
+                        }));
+                        return;
+                    }
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "POST" && url.pathname === "/api/memory/search") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                let payload = {};
+                let lane = "ops";
+                let routeStartedAtMs = Date.now();
+                let policy = classifyMemoryQueryPressure(lane, "search");
+                try {
+                    payload = toObjectRecord(await readJsonBody(req));
+                    lane = deriveMemoryQueryLane(payload, "ops");
+                    routeStartedAtMs = Date.now();
+                    policy = await waitForMemoryQuerySlot(lane, "search", requestId);
+                    if (policy.shed) {
+                        logger.warn("memory_query_shed", {
+                            requestId,
+                            endpoint: "/api/memory/search",
+                            lane,
+                            reasons: policy.reasons,
+                            pressure: policy.pressure,
+                        });
+                        statusCode = 503;
+                        res.writeHead(statusCode, withSecurityHeaders({
+                            "content-type": "application/json",
+                            ...corsHeaders,
+                            "x-request-id": requestId,
+                            "retry-after": String(policy.thresholds.queryRetryAfterSeconds),
+                        }));
+                        res.end(JSON.stringify({
+                            ok: false,
+                            message: "Memory search deferred due ingest/query pressure.",
+                            reason: "query-shed",
+                            lane,
+                            retryAfterSeconds: policy.thresholds.queryRetryAfterSeconds,
+                            pressure: policy.pressure,
+                            degradation: {
+                                applied: true,
+                                lane,
+                                shed: true,
+                                reasons: policy.reasons,
+                                queued: policy.queued,
+                                queueWaitMs: policy.queueWaitMs,
+                            },
+                        }));
+                        return;
+                    }
+                    const requestedLimit = toBoundedInt(payload.limit, 10, 1, 100);
+                    const requestedModeRaw = toTrimmedString(payload.retrievalMode).toLowerCase();
+                    const requestedRetrievalMode = requestedModeRaw === "lexical" || requestedModeRaw === "semantic" || requestedModeRaw === "hybrid"
+                        ? requestedModeRaw
+                        : "hybrid";
+                    const effectivePayload = {
+                        ...payload,
+                        limit: requestedLimit,
+                        retrievalMode: requestedRetrievalMode,
+                    };
+                    const adjustments = [];
+                    if (policy.degrade) {
+                        const preferredMode = lane === "interactive" ? "hybrid" : "lexical";
+                        if (requestedRetrievalMode !== preferredMode) {
+                            effectivePayload.retrievalMode = preferredMode;
+                            adjustments.push(`retrievalMode:${requestedRetrievalMode}->${preferredMode}`);
+                        }
+                        const limitCap = lane === "interactive"
+                            ? Math.min(100, Math.max(4, policy.thresholds.queryDegradeLimitCap + 4))
+                            : Math.max(3, policy.thresholds.queryDegradeLimitCap);
+                        const effectiveLimit = Math.min(requestedLimit, limitCap);
+                        if (effectiveLimit !== requestedLimit) {
+                            effectivePayload.limit = effectiveLimit;
+                            adjustments.push(`limit:${requestedLimit}->${effectiveLimit}`);
+                        }
+                    }
+                    let rows;
+                    activeSearchRequests += 1;
+                    try {
+                        rows = await withRouteTimeout(memoryService.search(effectivePayload), policy.thresholds.queryRouteTimeoutMs, "memory search query route");
+                    }
+                    finally {
+                        activeSearchRequests = Math.max(0, activeSearchRequests - 1);
+                    }
+                    recordMemoryLatency("search", routeStartedAtMs);
+                    const degradation = {
+                        applied: policy.degrade || adjustments.length > 0,
+                        lane,
+                        shed: false,
+                        reasons: Array.from(new Set([...policy.reasons, ...adjustments])),
+                        retryAfterSeconds: policy.degrade ? policy.thresholds.queryRetryAfterSeconds : 0,
+                        requested: {
+                            retrievalMode: requestedRetrievalMode,
+                            limit: requestedLimit,
+                        },
+                        effective: {
+                            retrievalMode: String(effectivePayload.retrievalMode ?? requestedRetrievalMode),
+                            limit: Number(effectivePayload.limit ?? requestedLimit),
+                        },
+                        pressure: memoryPressureSnapshot(),
+                        queued: policy.queued,
+                        queueWaitMs: policy.queueWaitMs,
+                    };
+                    if (degradation.applied) {
+                        logger.info("memory_query_degraded", {
+                            requestId,
+                            endpoint: "/api/memory/search",
+                            lane,
+                            reasons: degradation.reasons,
+                            requested: degradation.requested,
+                            effective: degradation.effective,
+                            pressure: degradation.pressure,
+                        });
+                    }
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, rows, results: rows, degradation }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    if (!isValidation && isTransientMemoryQueryError(error)) {
+                        const requestedLimit = toBoundedInt(payload.limit, 10, 1, 100);
+                        const requestedModeRaw = toTrimmedString(payload.retrievalMode).toLowerCase();
+                        const requestedRetrievalMode = requestedModeRaw === "lexical" || requestedModeRaw === "semantic" || requestedModeRaw === "hybrid"
+                            ? requestedModeRaw
+                            : "hybrid";
+                        const fallbackRecentTimeoutMs = 2_500;
+                        const fallbackRecentLimit = Math.max(2, Math.min(12, requestedLimit));
+                        let fallbackRows = [];
+                        try {
+                            const recentRows = await withRouteTimeout(memoryService.recent({
+                                tenantId: toTrimmedString(payload.tenantId) || undefined,
+                                limit: Math.max(8, fallbackRecentLimit * 2),
+                            }), fallbackRecentTimeoutMs, "memory search transient recent fallback");
+                            fallbackRows = recentRows
+                                .filter((row) => row.status !== "quarantined")
+                                .slice(0, fallbackRecentLimit)
+                                .map((row) => ({
+                                ...row,
+                                score: 0.24 + row.sourceConfidence * 0.24 + row.importance * 0.24,
+                                scoreBreakdown: {
+                                    rrf: 0.16,
+                                    sourceTrust: row.sourceConfidence,
+                                    recency: 0.24,
+                                    importance: row.importance,
+                                    session: 0,
+                                    lexical: 0,
+                                    semantic: 0,
+                                    sessionLane: 0,
+                                },
+                                matchedBy: ["transient-recent-fallback", "backend-timeout"],
+                            }));
+                        }
+                        catch { }
+                        const pressure = memoryPressureSnapshot();
+                        const degradation = {
+                            applied: true,
+                            lane,
+                            shed: false,
+                            reasons: fallbackRows.length > 0 ? ["backend-timeout", "recent-fallback"] : ["backend-timeout", "graceful-empty-search"],
+                            retryAfterSeconds: policy.thresholds.queryRetryAfterSeconds,
+                            requested: {
+                                retrievalMode: requestedRetrievalMode,
+                                limit: requestedLimit,
+                            },
+                            effective: {
+                                retrievalMode: "lexical",
+                                limit: fallbackRows.length,
+                            },
+                            pressure,
+                            warning: message,
+                            queued: policy.queued,
+                            queueWaitMs: policy.queueWaitMs,
+                        };
+                        logger.warn("memory_query_transient_error", {
+                            requestId,
+                            endpoint: "/api/memory/search",
+                            lane,
+                            message,
+                            pressure,
+                        });
+                        recordMemoryLatency("search", routeStartedAtMs);
+                        statusCode = 200;
+                        res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                        res.end(JSON.stringify({ ok: true, rows: fallbackRows, results: fallbackRows, degradation }));
+                        return;
+                    }
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "POST" && url.pathname === "/api/memory/neighborhood") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const payload = await readJsonBody(req);
+                    const seedMemoryId = toTrimmedString(payload.seedMemoryId);
+                    if (!seedMemoryId) {
+                        throw new service_1.MemoryValidationError("seedMemoryId is required.");
+                    }
+                    const maxItems = toBoundedInt(payload.maxItems, 24, 1, 100);
+                    const maxHops = toBoundedInt(payload.maxHops, 2, 1, 4);
+                    const includeSeed = payload.includeSeed !== false;
+                    const maxChars = toBoundedInt(payload.maxChars, Math.max(8_000, maxItems * 1_200), 256, 100_000);
+                    const scanLimit = toBoundedInt(payload.scanLimit, Math.max(200, maxItems * 10), 1, 500);
+                    const context = await memoryService.context({
+                        tenantId: toTrimmedString(payload.tenantId) || undefined,
+                        agentId: toTrimmedString(payload.agentId) || undefined,
+                        runId: toTrimmedString(payload.runId) || undefined,
+                        query: toTrimmedString(payload.query) || undefined,
+                        seedMemoryId,
+                        sourceAllowlist: toStringList(payload.sourceAllowlist),
+                        sourceDenylist: toStringList(payload.sourceDenylist),
+                        retrievalMode: toTrimmedString(payload.retrievalMode) || undefined,
+                        temporalAnchorAt: toTrimmedString(payload.temporalAnchorAt) || undefined,
+                        explain: payload.explain === true,
+                        includeTenantFallback: payload.includeTenantFallback === true,
+                        expandRelationships: true,
+                        maxHops,
+                        maxItems: includeSeed ? maxItems : Math.min(100, maxItems + 1),
+                        maxChars,
+                        scanLimit,
+                    });
+                    let nodes = context.items;
+                    if (!includeSeed) {
+                        nodes = nodes.filter((row) => row.id !== seedMemoryId);
+                    }
+                    nodes = nodes.slice(0, maxItems);
+                    const diagnostics = buildRelationshipDiagnosticsFromNodes(seedMemoryId, nodes);
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({
+                        ok: true,
+                        neighborhood: {
+                            seedMemoryId,
+                            maxItems,
+                            maxHops,
+                            includeSeed,
+                            nodes,
+                            selection: context.selection,
+                            budget: context.budget,
+                        },
+                        edgeSummary: diagnostics.edgeSummary,
+                        relationshipTypeCounts: diagnostics.relationshipTypeCounts,
+                        diagnostics,
+                    }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "POST" && url.pathname === "/api/memory/relationship-diagnostics") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const payload = await readJsonBody(req);
+                    const seedMemoryId = toTrimmedString(payload.seedMemoryId);
+                    const query = toTrimmedString(payload.query);
+                    if (!seedMemoryId && !query) {
+                        throw new service_1.MemoryValidationError("seedMemoryId or query is required.");
+                    }
+                    const maxItems = toBoundedInt(payload.maxItems, 24, 1, 100);
+                    const maxHops = toBoundedInt(payload.maxHops, 2, 1, 4);
+                    const includeSeed = payload.includeSeed !== false;
+                    const maxChars = toBoundedInt(payload.maxChars, Math.max(8_000, maxItems * 1_200), 256, 100_000);
+                    const scanLimit = toBoundedInt(payload.scanLimit, Math.max(200, maxItems * 10), 1, 500);
+                    const context = await memoryService.context({
+                        tenantId: toTrimmedString(payload.tenantId) || undefined,
+                        agentId: toTrimmedString(payload.agentId) || undefined,
+                        runId: toTrimmedString(payload.runId) || undefined,
+                        query: query || undefined,
+                        seedMemoryId: seedMemoryId || undefined,
+                        sourceAllowlist: toStringList(payload.sourceAllowlist),
+                        sourceDenylist: toStringList(payload.sourceDenylist),
+                        retrievalMode: toTrimmedString(payload.retrievalMode) || undefined,
+                        temporalAnchorAt: toTrimmedString(payload.temporalAnchorAt) || undefined,
+                        explain: payload.explain === true,
+                        includeTenantFallback: payload.includeTenantFallback === true,
+                        expandRelationships: true,
+                        maxHops,
+                        maxItems: includeSeed ? maxItems : Math.min(100, maxItems + 1),
+                        maxChars,
+                        scanLimit,
+                    });
+                    let nodes = context.items;
+                    if (!includeSeed && seedMemoryId) {
+                        nodes = nodes.filter((row) => row.id !== seedMemoryId);
+                    }
+                    nodes = nodes.slice(0, maxItems);
+                    const diagnostics = buildRelationshipDiagnosticsFromNodes(seedMemoryId || null, nodes);
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({
+                        ok: true,
+                        diagnostics: {
+                            ...diagnostics,
+                            query: query || null,
+                            maxItems,
+                            maxHops,
+                            includeSeed,
+                            selection: context.selection,
+                            budget: context.budget,
+                        },
+                    }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "GET" && url.pathname === "/api/memory/recent") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const limitRaw = Number(url.searchParams.get("limit") ?? "20");
+                    const tenantParam = url.searchParams.get("tenantId");
+                    const rows = await memoryService.recent({
+                        limit: Number.isFinite(limitRaw) ? limitRaw : 20,
+                        tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+                    });
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, rows }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "GET" && url.pathname === "/api/memory/stats") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const tenantParam = url.searchParams.get("tenantId");
+                    const stats = await memoryService.stats({
+                        tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+                    });
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, stats }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "GET" && url.pathname === "/api/memory/pressure") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                statusCode = 200;
+                res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                res.end(JSON.stringify({
+                    ok: true,
+                    pressure: memoryPressureSnapshot(),
+                }));
+                return;
+            }
+            if (memoryService && method === "GET" && url.pathname === "/api/memory/loops") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const tenantParam = url.searchParams.get("tenantId");
+                    const limitRaw = Number(url.searchParams.get("limit") ?? "30");
+                    const query = url.searchParams.get("query");
+                    const sortBy = url.searchParams.get("sortBy");
+                    const includeMemoryRaw = url.searchParams.get("includeMemory");
+                    const includeIncidentsRaw = url.searchParams.get("includeIncidents");
+                    const minAttentionParam = url.searchParams.get("minAttention");
+                    const minVolatilityParam = url.searchParams.get("minVolatility");
+                    const minAnomalyParam = url.searchParams.get("minAnomaly");
+                    const minCentralityParam = url.searchParams.get("minCentrality");
+                    const minEscalationParam = url.searchParams.get("minEscalation");
+                    const minBlastRadiusParam = url.searchParams.get("minBlastRadius");
+                    const incidentLimitParam = url.searchParams.get("incidentLimit");
+                    const incidentMinEscalationParam = url.searchParams.get("incidentMinEscalation");
+                    const incidentMinBlastRadiusParam = url.searchParams.get("incidentMinBlastRadius");
+                    const minAttentionRaw = minAttentionParam === null ? Number.NaN : Number(minAttentionParam);
+                    const minVolatilityRaw = minVolatilityParam === null ? Number.NaN : Number(minVolatilityParam);
+                    const minAnomalyRaw = minAnomalyParam === null ? Number.NaN : Number(minAnomalyParam);
+                    const minCentralityRaw = minCentralityParam === null ? Number.NaN : Number(minCentralityParam);
+                    const minEscalationRaw = minEscalationParam === null ? Number.NaN : Number(minEscalationParam);
+                    const minBlastRadiusRaw = minBlastRadiusParam === null ? Number.NaN : Number(minBlastRadiusParam);
+                    const incidentLimitRaw = incidentLimitParam === null ? Number.NaN : Number(incidentLimitParam);
+                    const incidentMinEscalationRaw = incidentMinEscalationParam === null ? Number.NaN : Number(incidentMinEscalationParam);
+                    const incidentMinBlastRadiusRaw = incidentMinBlastRadiusParam === null ? Number.NaN : Number(incidentMinBlastRadiusParam);
+                    const states = String(url.searchParams.get("states") ?? "")
+                        .split(",")
+                        .map((entry) => entry.trim())
+                        .filter(Boolean);
+                    const lanes = String(url.searchParams.get("lanes") ?? "")
+                        .split(",")
+                        .map((entry) => entry.trim())
+                        .filter(Boolean);
+                    const loopKeys = String(url.searchParams.get("loopKeys") ?? "")
+                        .split(",")
+                        .map((entry) => entry.trim())
+                        .filter(Boolean);
+                    const loops = await memoryService.loops({
+                        tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+                        limit: Number.isFinite(limitRaw) ? limitRaw : 30,
+                        query: query === null || query.trim().length === 0 ? undefined : query.trim(),
+                        sortBy: sortBy === null || sortBy.trim().length === 0 ? undefined : sortBy.trim(),
+                        includeMemory: includeMemoryRaw === null ? undefined : includeMemoryRaw.trim().toLowerCase() !== "false",
+                        includeIncidents: includeIncidentsRaw === null ? undefined : includeIncidentsRaw.trim().toLowerCase() !== "false",
+                        states,
+                        lanes,
+                        loopKeys,
+                        minAttention: Number.isFinite(minAttentionRaw) ? minAttentionRaw : undefined,
+                        minVolatility: Number.isFinite(minVolatilityRaw) ? minVolatilityRaw : undefined,
+                        minAnomaly: Number.isFinite(minAnomalyRaw) ? minAnomalyRaw : undefined,
+                        minCentrality: Number.isFinite(minCentralityRaw) ? minCentralityRaw : undefined,
+                        minEscalation: Number.isFinite(minEscalationRaw) ? minEscalationRaw : undefined,
+                        minBlastRadius: Number.isFinite(minBlastRadiusRaw) ? minBlastRadiusRaw : undefined,
+                        incidentLimit: Number.isFinite(incidentLimitRaw) ? incidentLimitRaw : undefined,
+                        incidentMinEscalation: Number.isFinite(incidentMinEscalationRaw)
+                            ? incidentMinEscalationRaw
+                            : undefined,
+                        incidentMinBlastRadius: Number.isFinite(incidentMinBlastRadiusRaw)
+                            ? incidentMinBlastRadiusRaw
+                            : undefined,
+                    });
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, loops, rows: loops.rows, incidents: loops.incidents, summary: loops.summary }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "GET" && url.pathname === "/api/memory/loops/incidents") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const tenantParam = url.searchParams.get("tenantId");
+                    const query = url.searchParams.get("query");
+                    const limitRaw = Number(url.searchParams.get("limit") ?? "12");
+                    const incidentMinEscalationRaw = Number(url.searchParams.get("incidentMinEscalation") ?? "NaN");
+                    const incidentMinBlastRadiusRaw = Number(url.searchParams.get("incidentMinBlastRadius") ?? "NaN");
+                    const states = String(url.searchParams.get("states") ?? "")
+                        .split(",")
+                        .map((entry) => entry.trim())
+                        .filter(Boolean);
+                    const lanes = String(url.searchParams.get("lanes") ?? "")
+                        .split(",")
+                        .map((entry) => entry.trim())
+                        .filter(Boolean);
+                    const loopKeys = String(url.searchParams.get("loopKeys") ?? "")
+                        .split(",")
+                        .map((entry) => entry.trim())
+                        .filter(Boolean);
+                    const loops = await memoryService.loops({
+                        tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+                        query: query === null || query.trim().length === 0 ? undefined : query.trim(),
+                        sortBy: "escalation",
+                        includeMemory: true,
+                        includeIncidents: true,
+                        states,
+                        lanes,
+                        loopKeys,
+                        limit: Math.min(200, Math.max(30, Number.isFinite(limitRaw) ? limitRaw * 3 : 36)),
+                        incidentLimit: Number.isFinite(limitRaw) ? limitRaw : 12,
+                        incidentMinEscalation: Number.isFinite(incidentMinEscalationRaw) ? incidentMinEscalationRaw : undefined,
+                        incidentMinBlastRadius: Number.isFinite(incidentMinBlastRadiusRaw) ? incidentMinBlastRadiusRaw : undefined,
+                    });
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({
+                        ok: true,
+                        incidents: loops.incidents,
+                        summary: loops.summary,
+                    }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "POST" && url.pathname === "/api/memory/loops/incident-action") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const payload = await readJsonBody(req);
+                    const result = await memoryService.incidentAction(payload);
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, result }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "POST" && url.pathname === "/api/memory/loops/incident-action/batch") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const payload = await readJsonBody(req);
+                    const result = await memoryService.incidentActionBatch(payload);
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, result }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "GET" && url.pathname === "/api/memory/loops/feedback-stats") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const tenantParam = url.searchParams.get("tenantId");
+                    const limitRaw = Number(url.searchParams.get("limit") ?? "120");
+                    const windowDaysRaw = Number(url.searchParams.get("windowDays") ?? "180");
+                    const loopKeys = String(url.searchParams.get("loopKeys") ?? "")
+                        .split(",")
+                        .map((entry) => entry.trim())
+                        .filter(Boolean);
+                    const report = await memoryService.loopFeedbackStats({
+                        tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+                        loopKeys,
+                        limit: Number.isFinite(limitRaw) ? limitRaw : 120,
+                        windowDays: Number.isFinite(windowDaysRaw) ? windowDaysRaw : 180,
+                    });
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, report, rows: report.rows, summary: report.summary }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "GET" && url.pathname === "/api/memory/loops/owner-queues") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const tenantParam = url.searchParams.get("tenantId");
+                    const query = url.searchParams.get("query");
+                    const limitRaw = Number(url.searchParams.get("limit") ?? "50");
+                    const incidentLimitRaw = Number(url.searchParams.get("incidentLimit") ?? "20");
+                    const incidentMinEscalationRaw = Number(url.searchParams.get("incidentMinEscalation") ?? "NaN");
+                    const incidentMinBlastRadiusRaw = Number(url.searchParams.get("incidentMinBlastRadius") ?? "NaN");
+                    const states = String(url.searchParams.get("states") ?? "")
+                        .split(",")
+                        .map((entry) => entry.trim())
+                        .filter(Boolean);
+                    const lanes = String(url.searchParams.get("lanes") ?? "")
+                        .split(",")
+                        .map((entry) => entry.trim())
+                        .filter(Boolean);
+                    const loopKeys = String(url.searchParams.get("loopKeys") ?? "")
+                        .split(",")
+                        .map((entry) => entry.trim())
+                        .filter(Boolean);
+                    const report = await memoryService.ownerQueues({
+                        tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+                        query: query === null || query.trim().length === 0 ? undefined : query.trim(),
+                        states,
+                        lanes,
+                        loopKeys,
+                        limit: Number.isFinite(limitRaw) ? limitRaw : 50,
+                        incidentLimit: Number.isFinite(incidentLimitRaw) ? incidentLimitRaw : 20,
+                        incidentMinEscalation: Number.isFinite(incidentMinEscalationRaw) ? incidentMinEscalationRaw : undefined,
+                        incidentMinBlastRadius: Number.isFinite(incidentMinBlastRadiusRaw) ? incidentMinBlastRadiusRaw : undefined,
+                    });
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({
+                        ok: true,
+                        report,
+                        queues: report.queues,
+                        sla: report.sla,
+                        incidents: report.incidents,
+                        summary: report.summary,
+                    }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "GET" && url.pathname === "/api/memory/loops/action-plan") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const tenantParam = url.searchParams.get("tenantId");
+                    const query = url.searchParams.get("query");
+                    const limitRaw = Number(url.searchParams.get("limit") ?? "50");
+                    const incidentLimitRaw = Number(url.searchParams.get("incidentLimit") ?? "30");
+                    const maxActionsRaw = Number(url.searchParams.get("maxActions") ?? "40");
+                    const includeBatchPayloadRaw = url.searchParams.get("includeBatchPayload");
+                    const incidentMinEscalationRaw = Number(url.searchParams.get("incidentMinEscalation") ?? "NaN");
+                    const incidentMinBlastRadiusRaw = Number(url.searchParams.get("incidentMinBlastRadius") ?? "NaN");
+                    const states = String(url.searchParams.get("states") ?? "")
+                        .split(",")
+                        .map((entry) => entry.trim())
+                        .filter(Boolean);
+                    const lanes = String(url.searchParams.get("lanes") ?? "")
+                        .split(",")
+                        .map((entry) => entry.trim())
+                        .filter(Boolean);
+                    const loopKeys = String(url.searchParams.get("loopKeys") ?? "")
+                        .split(",")
+                        .map((entry) => entry.trim())
+                        .filter(Boolean);
+                    const plan = await memoryService.actionPlan({
+                        tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+                        query: query === null || query.trim().length === 0 ? undefined : query.trim(),
+                        states,
+                        lanes,
+                        loopKeys,
+                        limit: Number.isFinite(limitRaw) ? limitRaw : 50,
+                        incidentLimit: Number.isFinite(incidentLimitRaw) ? incidentLimitRaw : 30,
+                        maxActions: Number.isFinite(maxActionsRaw) ? maxActionsRaw : 40,
+                        includeBatchPayload: toBooleanFlag(includeBatchPayloadRaw, true),
+                        incidentMinEscalation: Number.isFinite(incidentMinEscalationRaw) ? incidentMinEscalationRaw : undefined,
+                        incidentMinBlastRadius: Number.isFinite(incidentMinBlastRadiusRaw) ? incidentMinBlastRadiusRaw : undefined,
+                    });
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, plan }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "POST" && url.pathname === "/api/memory/loops/automation-tick") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const payload = await readJsonBody(req);
+                    const tick = await memoryService.automationTick(payload);
+                    const shouldDispatch = toBooleanFlag(String(payload.dispatch ?? "").trim(), false);
+                    const webhookUrl = String(payload.webhookUrl ?? "").trim() ||
+                        String(process.env.STUDIO_BRAIN_LOOP_DIGEST_WEBHOOK ?? "").trim();
+                    const incidents = tick.plan.actions.slice(0, 20).map((action) => ({
+                        loopKey: action.loopKey,
+                        lane: action.lane,
+                        currentState: action.currentState,
+                        escalationScore: action.escalationScore,
+                        blastRadiusScore: action.blastRadiusScore,
+                        anomalyScore: action.anomalyScore,
+                        suggestedOwner: action.suggestedOwner,
+                        hoursUntilBreach: action.hoursUntilBreach,
+                        slaStatus: action.slaStatus,
+                        recommendedAction: action.reason,
+                        narrative: action.reason,
+                    }));
+                    const markdown = formatLoopDigestMarkdown({
+                        generatedAt: tick.generatedAt,
+                        query: tick.plan.query,
+                        incidents,
+                        summary: {
+                            highestEscalationScore: tick.plan.actions.length > 0 ? Math.max(...tick.plan.actions.map((row) => row.escalationScore)) : 0,
+                            highestBlastRadiusScore: tick.plan.actions.length > 0 ? Math.max(...tick.plan.actions.map((row) => row.blastRadiusScore)) : 0,
+                            ownerQueues: tick.plan.ownerQueues,
+                            sla: tick.plan.sla,
+                        },
+                    });
+                    let dispatchResult = {
+                        requested: shouldDispatch,
+                        delivered: false,
+                    };
+                    if (shouldDispatch) {
+                        if (!webhookUrl) {
+                            dispatchResult = {
+                                requested: true,
+                                delivered: false,
+                                message: "Missing webhook URL. Set STUDIO_BRAIN_LOOP_DIGEST_WEBHOOK or pass webhookUrl.",
+                            };
+                        }
+                        else {
+                            try {
+                                const response = await fetch(webhookUrl, {
+                                    method: "POST",
+                                    headers: {
+                                        "content-type": "application/json",
+                                    },
+                                    body: JSON.stringify({
+                                        text: markdown,
+                                        tick,
+                                    }),
+                                });
+                                dispatchResult = {
+                                    requested: true,
+                                    delivered: response.ok,
+                                    status: response.status,
+                                    webhookUrl,
+                                    message: response.ok ? "Delivered." : `Webhook returned HTTP ${response.status}.`,
+                                };
+                            }
+                            catch (error) {
+                                dispatchResult = {
+                                    requested: true,
+                                    delivered: false,
+                                    webhookUrl,
+                                    message: error instanceof Error ? error.message : String(error),
+                                };
+                            }
+                        }
+                    }
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({
+                        ok: true,
+                        tick,
+                        dispatch: dispatchResult,
+                    }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "GET" && url.pathname === "/api/memory/loops/digest") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const tenantParam = url.searchParams.get("tenantId");
+                    const query = url.searchParams.get("query");
+                    const limitRaw = Number(url.searchParams.get("limit") ?? "12");
+                    const incidentMinEscalationRaw = Number(url.searchParams.get("incidentMinEscalation") ?? "NaN");
+                    const incidentMinBlastRadiusRaw = Number(url.searchParams.get("incidentMinBlastRadius") ?? "NaN");
+                    const dispatch = toBooleanFlag(url.searchParams.get("dispatch"), false);
+                    const webhookUrl = String(url.searchParams.get("webhookUrl") ?? "").trim() ||
+                        String(process.env.STUDIO_BRAIN_LOOP_DIGEST_WEBHOOK ?? "").trim();
+                    const states = String(url.searchParams.get("states") ?? "")
+                        .split(",")
+                        .map((entry) => entry.trim())
+                        .filter(Boolean);
+                    const lanes = String(url.searchParams.get("lanes") ?? "")
+                        .split(",")
+                        .map((entry) => entry.trim())
+                        .filter(Boolean);
+                    const loopKeys = String(url.searchParams.get("loopKeys") ?? "")
+                        .split(",")
+                        .map((entry) => entry.trim())
+                        .filter(Boolean);
+                    const loops = await memoryService.loops({
+                        tenantId: tenantParam === null || tenantParam.trim().length === 0 ? undefined : tenantParam.trim(),
+                        query: query === null || query.trim().length === 0 ? undefined : query.trim(),
+                        sortBy: "escalation",
+                        includeMemory: true,
+                        includeIncidents: true,
+                        states,
+                        lanes,
+                        loopKeys,
+                        limit: Math.min(200, Math.max(30, Number.isFinite(limitRaw) ? limitRaw * 3 : 36)),
+                        incidentLimit: Number.isFinite(limitRaw) ? limitRaw : 12,
+                        incidentMinEscalation: Number.isFinite(incidentMinEscalationRaw) ? incidentMinEscalationRaw : undefined,
+                        incidentMinBlastRadius: Number.isFinite(incidentMinBlastRadiusRaw) ? incidentMinBlastRadiusRaw : undefined,
+                    });
+                    const digest = {
+                        generatedAt: new Date().toISOString(),
+                        query: query === null || query.trim().length === 0 ? null : query.trim(),
+                        incidentCount: loops.incidents.length,
+                        incidents: loops.incidents,
+                        summary: loops.summary,
+                    };
+                    const markdown = formatLoopDigestMarkdown({
+                        generatedAt: digest.generatedAt,
+                        query: digest.query,
+                        incidents: loops.incidents,
+                        summary: loops.summary,
+                    });
+                    let dispatchResult = {
+                        requested: dispatch,
+                        delivered: false,
+                    };
+                    if (dispatch) {
+                        if (!webhookUrl) {
+                            dispatchResult = {
+                                requested: true,
+                                delivered: false,
+                                message: "Missing webhook URL. Set STUDIO_BRAIN_LOOP_DIGEST_WEBHOOK or pass webhookUrl.",
+                            };
+                        }
+                        else {
+                            try {
+                                const response = await fetch(webhookUrl, {
+                                    method: "POST",
+                                    headers: {
+                                        "content-type": "application/json",
+                                    },
+                                    body: JSON.stringify({
+                                        text: markdown,
+                                        digest,
+                                    }),
+                                });
+                                dispatchResult = {
+                                    requested: true,
+                                    delivered: response.ok,
+                                    status: response.status,
+                                    webhookUrl,
+                                    message: response.ok ? "Delivered." : `Webhook returned HTTP ${response.status}.`,
+                                };
+                            }
+                            catch (error) {
+                                dispatchResult = {
+                                    requested: true,
+                                    delivered: false,
+                                    webhookUrl,
+                                    message: error instanceof Error ? error.message : String(error),
+                                };
+                            }
+                        }
+                    }
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({
+                        ok: true,
+                        digest: {
+                            ...digest,
+                            markdown,
+                        },
+                        dispatch: dispatchResult,
+                    }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "POST" && url.pathname === "/api/memory/import") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const payload = await readJsonBody(req);
+                    let result;
+                    activeImportRequests += 1;
+                    try {
+                        result = await memoryService.importBatch(payload);
+                    }
+                    finally {
+                        activeImportRequests = Math.max(0, activeImportRequests - 1);
+                    }
+                    const shouldDispatch = toBooleanFlag(String(payload.dispatch ?? "").trim(), false);
+                    const webhookUrl = String(payload.webhookUrl ?? "").trim() ||
+                        String(process.env.STUDIO_BRAIN_LOOP_DIGEST_WEBHOOK ?? "").trim();
+                    let dispatchResult = {
+                        requested: shouldDispatch,
+                        delivered: false,
+                    };
+                    if (shouldDispatch) {
+                        if (!result.briefing) {
+                            dispatchResult = {
+                                requested: true,
+                                delivered: false,
+                                message: "No briefing was generated for this import. Enable generateBriefing or import mail-like sources.",
+                            };
+                        }
+                        else if (!webhookUrl) {
+                            dispatchResult = {
+                                requested: true,
+                                delivered: false,
+                                message: "Missing webhook URL. Set STUDIO_BRAIN_LOOP_DIGEST_WEBHOOK or pass webhookUrl.",
+                            };
+                        }
+                        else {
+                            const markdown = formatLoopDigestMarkdown({
+                                generatedAt: result.briefing.generatedAt,
+                                query: result.briefing.query,
+                                incidents: result.briefing.incidents,
+                                summary: result.briefing.summary,
+                            });
+                            const actionHeadlines = result.briefing.actionPlan.actions
+                                .slice(0, 5)
+                                .map((row, index) => `${index + 1}. [${row.priority.toUpperCase()}] ${row.action} ${row.loopKey} (${row.reason})`)
+                                .join("\n");
+                            const text = actionHeadlines
+                                ? `${markdown}\n\n# Recommended Actions\n${actionHeadlines}`
+                                : markdown;
+                            try {
+                                const response = await fetch(webhookUrl, {
+                                    method: "POST",
+                                    headers: {
+                                        "content-type": "application/json",
+                                    },
+                                    body: JSON.stringify({
+                                        text,
+                                        briefing: result.briefing,
+                                        result,
+                                    }),
+                                });
+                                dispatchResult = {
+                                    requested: true,
+                                    delivered: response.ok,
+                                    status: response.status,
+                                    webhookUrl,
+                                    message: response.ok ? "Delivered." : `Webhook returned HTTP ${response.status}.`,
+                                };
+                            }
+                            catch (error) {
+                                dispatchResult = {
+                                    requested: true,
+                                    delivered: false,
+                                    webhookUrl,
+                                    message: error instanceof Error ? error.message : String(error),
+                                };
+                            }
+                        }
+                    }
+                    statusCode = 201;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({
+                        ok: true,
+                        result,
+                        briefing: result.briefing ?? null,
+                        dispatch: dispatchResult,
+                    }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "POST" && url.pathname === "/api/memory/backfill-email-threading") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const pressure = memoryPressureSnapshot();
+                if (pressure.activeImportRequests >= memoryPressureConfig.maxActiveImportsBeforeBackfill ||
+                    pressure.activeBackfillRequests >= memoryPressureConfig.maxConcurrentBackfills) {
+                    const reason = pressure.activeImportRequests >= memoryPressureConfig.maxActiveImportsBeforeBackfill
+                        ? "active-import-pressure"
+                        : "backfill-concurrency-limit";
+                    statusCode = 503;
+                    res.writeHead(statusCode, withSecurityHeaders({
+                        "content-type": "application/json",
+                        ...corsHeaders,
+                        "x-request-id": requestId,
+                        "retry-after": String(memoryPressureConfig.retryAfterSeconds),
+                    }));
+                    res.end(JSON.stringify({
+                        ok: false,
+                        message: "Backfill deferred due current memory ingest pressure.",
+                        reason,
+                        retryAfterSeconds: memoryPressureConfig.retryAfterSeconds,
+                        pressure,
+                    }));
+                    return;
+                }
+                try {
+                    const payload = await readJsonBody(req);
+                    let result;
+                    activeBackfillRequests += 1;
+                    try {
+                        result = await memoryService.backfillEmailThreading(payload);
+                    }
+                    finally {
+                        activeBackfillRequests = Math.max(0, activeBackfillRequests - 1);
+                    }
+                    logger.info("memory_backfill_email_threading_summary", {
+                        requestId,
+                        tenantId: result.tenantId ?? null,
+                        dryRun: result.dryRun,
+                        scanned: result.scanned,
+                        eligible: result.eligible,
+                        updated: result.updated,
+                        skipped: result.skipped,
+                        failed: result.failed,
+                        writesAttempted: result.writesAttempted ?? 0,
+                        maxWrites: result.maxWrites ?? 0,
+                        timeoutErrors: result.timeoutErrors ?? 0,
+                        stopReason: result.stopReason ?? null,
+                        convergence: result.convergence ?? null,
+                        pressure: memoryPressureSnapshot(),
+                    });
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, result }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
+            if (memoryService && method === "POST" && url.pathname === "/api/memory/backfill-signal-indexing") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                const pressure = memoryPressureSnapshot();
+                if (pressure.activeImportRequests >= memoryPressureConfig.maxActiveImportsBeforeBackfill ||
+                    pressure.activeBackfillRequests >= memoryPressureConfig.maxConcurrentBackfills) {
+                    const reason = pressure.activeImportRequests >= memoryPressureConfig.maxActiveImportsBeforeBackfill
+                        ? "active-import-pressure"
+                        : "backfill-concurrency-limit";
+                    statusCode = 503;
+                    res.writeHead(statusCode, withSecurityHeaders({
+                        "content-type": "application/json",
+                        ...corsHeaders,
+                        "x-request-id": requestId,
+                        "retry-after": String(memoryPressureConfig.retryAfterSeconds),
+                    }));
+                    res.end(JSON.stringify({
+                        ok: false,
+                        message: "Backfill deferred due current memory ingest pressure.",
+                        reason,
+                        retryAfterSeconds: memoryPressureConfig.retryAfterSeconds,
+                        pressure,
+                    }));
+                    return;
+                }
+                try {
+                    const payload = await readJsonBody(req);
+                    let result;
+                    activeBackfillRequests += 1;
+                    try {
+                        result = await memoryService.backfillSignalIndexing(payload);
+                    }
+                    finally {
+                        activeBackfillRequests = Math.max(0, activeBackfillRequests - 1);
+                    }
+                    logger.info("memory_backfill_signal_indexing_summary", {
+                        requestId,
+                        tenantId: result.tenantId ?? null,
+                        dryRun: result.dryRun,
+                        scanned: result.scanned,
+                        eligible: result.eligible,
+                        updated: result.updated,
+                        skipped: result.skipped,
+                        failed: result.failed,
+                        writesAttempted: result.writesAttempted ?? 0,
+                        maxWrites: result.maxWrites ?? 0,
+                        timeoutErrors: result.timeoutErrors ?? 0,
+                        alreadyIndexedSkipped: result.alreadyIndexedSkipped ?? 0,
+                        loopStateUpdates: result.loopStateUpdates ?? 0,
+                        relationshipInference: result.relationshipInference ?? null,
+                        relationshipProbes: result.relationshipInference?.probes ?? 0,
+                        relationshipEdgesAdded: result.relationshipInference?.inferredEdgesAdded ?? 0,
+                        stopReason: result.stopReason ?? null,
+                        convergence: result.convergence ?? null,
+                        pressure: memoryPressureSnapshot(),
+                    });
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, result }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
                 return;
             }
             if (capabilityRuntime && method === "GET" && url.pathname === "/api/capabilities") {

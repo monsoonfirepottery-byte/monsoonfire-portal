@@ -1,0 +1,13 @@
+{
+  "schema": "pst-signal-quality-baseline.v1",
+  "updatedAt": "2026-03-06T02:39:00Z",
+  "runId": "pst-signal-quality-run-2026-03-06-finalcandidate",
+  "reportPath": "./output/memory/pst-signal-quality-run-2026-03-06-finalcandidate/signal-quality/report.json",
+  "productionReadinessPath": "./output/memory/pst-signal-quality-run-2026-03-06-finalcandidate/signal-quality/production-readiness.json",
+  "reviewPackPath": "./output/memory/pst-signal-quality-run-2026-03-06-finalcandidate/signal-quality/review-pack.md",
+  "pipelineLogPath": "./output/memory/pst-signal-quality-run-2026-03-06-finalcandidate/pipeline.log",
+  "notes": [
+    "First PST signal-quality run that passed the full production gate.",
+    "Evidence pruning now preserves this run as the full retained corpus baseline."
+  ]
+}

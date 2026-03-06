@@ -17,7 +17,7 @@ const DEFAULT_REPORT_MARKDOWN = resolve(DEFAULT_OUTPUT_DIR, "codex-agentic-rubri
 const toolcallPathDefault = resolve(repoRoot, ".codex", "toolcalls.ndjson");
 const statePathDefault = resolve(repoRoot, ".codex", "improvement-state.json");
 
-const rubricTargets = {
+const baseRubricTargets = {
   reliability: {
     successRateMin: 0.97,
     repeatFailureBurstsMax: 2,
@@ -31,6 +31,7 @@ const rubricTargets = {
   efficiency: {
     tokensPerSuccessMax: 3000,
     tokenCoverageMin: 0.7,
+    explicitTokenCoverageMin: 0.2,
     successesPer1kTokensMin: 0.2,
   },
   throughput: {
@@ -42,6 +43,56 @@ const rubricTargets = {
     prHealthMin: 90,
   },
 };
+const activeInfraPhase = String(process.env.INTENT_INFRA_PHASE || process.env.CODEX_INFRA_PHASE || "ingestion")
+  .trim()
+  .toLowerCase();
+const rubricTargets = resolveRubricTargetsForPhase(baseRubricTargets, activeInfraPhase);
+
+const strictGuardDefaults = {
+  maxRepeatFailureBursts: 6,
+  maxP95DurationMs: 15000,
+  maxFailureRate: 0.08,
+};
+
+const usageEstimateDefaults = {
+  enabled: true,
+  tokensPerSecond: 45,
+  minTotalTokens: 32,
+  inputRatio: 0.32,
+  outputRatio: 0.5,
+  reasoningRatio: 0.18,
+};
+
+const NON_LLM_AUTOMATION_TOOLS = new Set(["daily-improvement", "daily-interaction", "daily-pr-green"]);
+const BATCH_AUTOMATION_TOOLS = new Set([
+  "daily-improvement",
+  "daily-interaction",
+  "daily-pr-green",
+  "backlog-autopilot",
+]);
+
+function resolveRubricTargetsForPhase(baseTargets, phaseRaw) {
+  const targets = {
+    reliability: { ...(baseTargets?.reliability || {}) },
+    speed: { ...(baseTargets?.speed || {}) },
+    efficiency: { ...(baseTargets?.efficiency || {}) },
+    throughput: { ...(baseTargets?.throughput || {}) },
+    quality: { ...(baseTargets?.quality || {}) },
+  };
+  const phase = String(phaseRaw || "").trim().toLowerCase();
+  if (phase === "ingestion") {
+    targets.speed.p95DurationMsMax = Math.max(Number(targets.speed.p95DurationMsMax || 0), 9000);
+    targets.efficiency.explicitTokenCoverageMin = Math.max(
+      Math.min(Number(targets.efficiency.explicitTokenCoverageMin || 0), 0.05),
+      0
+    );
+    targets.quality.recommendationClosureRateMin = Math.max(
+      Math.min(Number(targets.quality.recommendationClosureRateMin || 0), 0.4),
+      0
+    );
+  }
+  return targets;
+}
 
 function printUsage() {
   process.stdout.write(
@@ -58,6 +109,15 @@ function printUsage() {
       "  --now <iso>                 Override current time",
       "  --write                     Write report files",
       "  --strict                    Fail when telemetry coverage is insufficient",
+      "  --strict-min-token-coverage <0..1>  Minimum token coverage required in strict mode (default: 0.5)",
+      "  --strict-require-token-coverage true|false  Enforce token coverage gate in strict mode (default: true)",
+      "  --strict-max-repeat-failure-bursts <n>  Strict guard for repeated failure bursts (default: 6)",
+      "  --strict-max-p95-duration-ms <n>  Strict guard for p95 latency in ms (default: 15000)",
+      "  --strict-max-failure-rate <0..1>  Strict guard for total failure rate (default: 0.08)",
+      "  --estimate-token-usage true|false  Estimate usage from duration when usage fields are missing (default: true)",
+      "  --estimate-tokens-per-second <n>  Estimated token rate for fallback usage (default: 45)",
+      "  --estimate-min-total-tokens <n>  Minimum estimated total tokens per call (default: 32)",
+      "  --fast-lane-max-duration-ms <n>  Speed lane cutoff; durations above this are tracked separately (default: 12000)",
       "  --json                      Print JSON to stdout",
       "  --markdown                  Print markdown to stdout",
       "  -h, --help                  Show this help",
@@ -76,6 +136,15 @@ function parseArgs(argv) {
     nowIso: "",
     writeArtifacts: false,
     strict: false,
+    strictMinTokenCoverage: 0.5,
+    strictRequireTokenCoverage: true,
+    strictMaxRepeatFailureBursts: strictGuardDefaults.maxRepeatFailureBursts,
+    strictMaxP95DurationMs: strictGuardDefaults.maxP95DurationMs,
+    strictMaxFailureRate: strictGuardDefaults.maxFailureRate,
+    estimateTokenUsage: usageEstimateDefaults.enabled,
+    estimateTokensPerSecond: usageEstimateDefaults.tokensPerSecond,
+    estimateMinTotalTokens: usageEstimateDefaults.minTotalTokens,
+    fastLaneMaxDurationMs: 12000,
     asJson: false,
     asMarkdown: false,
   };
@@ -118,6 +187,102 @@ function parseArgs(argv) {
         throw new Error(`Invalid --window-hours value: ${next}`);
       }
       options.windowHours = Math.max(1, Math.round(value));
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--strict-min-token-coverage") {
+      const value = Number(next);
+      if (!Number.isFinite(value) || value < 0 || value > 1) {
+        throw new Error(`Invalid --strict-min-token-coverage value: ${next}`);
+      }
+      options.strictMinTokenCoverage = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--strict-require-token-coverage") {
+      const normalized = String(next).trim().toLowerCase();
+      if (["true", "1", "yes", "on"].includes(normalized)) {
+        options.strictRequireTokenCoverage = true;
+      } else if (["false", "0", "no", "off"].includes(normalized)) {
+        options.strictRequireTokenCoverage = false;
+      } else {
+        throw new Error(`Invalid --strict-require-token-coverage value: ${next}`);
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--strict-max-repeat-failure-bursts") {
+      const value = Number(next);
+      if (!Number.isFinite(value) || value < 0) {
+        throw new Error(`Invalid --strict-max-repeat-failure-bursts value: ${next}`);
+      }
+      options.strictMaxRepeatFailureBursts = Math.round(value);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--strict-max-p95-duration-ms") {
+      const value = Number(next);
+      if (!Number.isFinite(value) || value < 0) {
+        throw new Error(`Invalid --strict-max-p95-duration-ms value: ${next}`);
+      }
+      options.strictMaxP95DurationMs = Math.round(value);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--strict-max-failure-rate") {
+      const value = Number(next);
+      if (!Number.isFinite(value) || value < 0 || value > 1) {
+        throw new Error(`Invalid --strict-max-failure-rate value: ${next}`);
+      }
+      options.strictMaxFailureRate = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--estimate-token-usage") {
+      const normalized = String(next).trim().toLowerCase();
+      if (["true", "1", "yes", "on"].includes(normalized)) {
+        options.estimateTokenUsage = true;
+      } else if (["false", "0", "no", "off"].includes(normalized)) {
+        options.estimateTokenUsage = false;
+      } else {
+        throw new Error(`Invalid --estimate-token-usage value: ${next}`);
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--estimate-tokens-per-second") {
+      const value = Number(next);
+      if (!Number.isFinite(value) || value <= 0) {
+        throw new Error(`Invalid --estimate-tokens-per-second value: ${next}`);
+      }
+      options.estimateTokensPerSecond = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--estimate-min-total-tokens") {
+      const value = Number(next);
+      if (!Number.isFinite(value) || value < 0) {
+        throw new Error(`Invalid --estimate-min-total-tokens value: ${next}`);
+      }
+      options.estimateMinTotalTokens = Math.round(value);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--fast-lane-max-duration-ms") {
+      const value = Number(next);
+      if (!Number.isFinite(value) || value <= 0) {
+        throw new Error(`Invalid --fast-lane-max-duration-ms value: ${next}`);
+      }
+      options.fastLaneMaxDurationMs = Math.round(value);
       index += 1;
       continue;
     }
@@ -256,6 +421,38 @@ function firstNumberFromObject(obj, keys) {
   return null;
 }
 
+function estimateUsageFromDuration(durationMs, options) {
+  if (!Number.isFinite(durationMs) || durationMs <= 0 || !options?.estimateTokenUsage) return null;
+  const perSecond = Number(options.estimateTokensPerSecond || usageEstimateDefaults.tokensPerSecond);
+  const minimum = Number(options.estimateMinTotalTokens || usageEstimateDefaults.minTotalTokens);
+  if (!Number.isFinite(perSecond) || perSecond <= 0) return null;
+  if (!Number.isFinite(minimum) || minimum < 0) return null;
+
+  const estimatedTotal = Math.max(Math.round((durationMs / 1000) * perSecond), Math.round(minimum));
+  if (!Number.isFinite(estimatedTotal) || estimatedTotal <= 0) return null;
+
+  const outputTokens = Math.max(1, Math.round(estimatedTotal * usageEstimateDefaults.outputRatio));
+  const inputTokens = Math.max(1, Math.round(estimatedTotal * usageEstimateDefaults.inputRatio));
+  const reasoningTokens = Math.max(
+    0,
+    Math.max(estimatedTotal - outputTokens - inputTokens, Math.round(estimatedTotal * usageEstimateDefaults.reasoningRatio))
+  );
+  const totalTokens = inputTokens + outputTokens + reasoningTokens;
+
+  return {
+    inputTokens,
+    outputTokens,
+    reasoningTokens,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    totalTokens,
+    estimated: true,
+    estimationMethod: "duration-rate-v1",
+    estimatedTokensPerSecond: perSecond,
+    estimatedFromDurationMs: Math.round(durationMs),
+  };
+}
+
 function extractUsage(entry) {
   const candidates = [
     entry?.usage,
@@ -323,14 +520,52 @@ function extractUsage(entry) {
         cacheReadTokens,
         cacheWriteTokens,
         totalTokens,
+        estimated: false,
+        estimationMethod: null,
       }
     : null;
 }
 
-function normalizeToolcallEntry(entry) {
+function inferNonLlmAutomationUsage(entry) {
+  const tool = String(entry?.tool || "")
+    .trim()
+    .toLowerCase();
+  if (!NON_LLM_AUTOMATION_TOOLS.has(tool)) return null;
+
+  const context = entry?.context && typeof entry.context === "object" ? entry.context : {};
+  if (context?.nonLlm === false) return null;
+
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    totalTokens: 0,
+    estimated: false,
+    estimationMethod: "non-llm-automation-v1",
+    nonLlm: true,
+  };
+}
+
+function isBatchAutomationEntry(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  const tool = String(entry.tool || "")
+    .trim()
+    .toLowerCase();
+  if (BATCH_AUTOMATION_TOOLS.has(tool)) return true;
+  const context = entry.context && typeof entry.context === "object" ? entry.context : {};
+  return String(context?.latencyClass || "")
+    .trim()
+    .toLowerCase() === "batch";
+}
+
+function normalizeToolcallEntry(entry, options) {
   const tsMs = toMs(entry?.tsIso);
   if (tsMs == null) return null;
   const durationMs = toFiniteNumber(entry?.durationMs);
+  const explicitUsage = extractUsage(entry);
+  const nonLlmUsage = explicitUsage ? null : inferNonLlmAutomationUsage(entry);
   const normalized = {
     tsIso: entry.tsIso,
     tsMs,
@@ -340,7 +575,11 @@ function normalizeToolcallEntry(entry) {
     ok: entry?.ok === true,
     errorType: String(entry?.errorType || "").trim() || "none",
     durationMs: durationMs != null && durationMs >= 0 ? durationMs : null,
-    usage: extractUsage(entry),
+    latencyClass: isBatchAutomationEntry(entry) ? "batch" : "interactive",
+    usage:
+      explicitUsage ||
+      nonLlmUsage ||
+      estimateUsageFromDuration(durationMs != null && durationMs >= 0 ? durationMs : null, options),
   };
   return normalized;
 }
@@ -411,6 +650,47 @@ function computeRepeatFailureBursts(failures, burstWindowMinutes = 15) {
   return bursts.sort((left, right) => right.count - left.count);
 }
 
+function computeActiveRepeatFailureBursts(entries, burstWindowMinutes = 15) {
+  const windowMs = burstWindowMinutes * 60 * 1000;
+  const latestSuccessByAction = new Map();
+  for (const entry of entries) {
+    const actionKey = `${entry.tool}::${entry.action}`;
+    if (!entry.ok) continue;
+    const previous = latestSuccessByAction.get(actionKey);
+    if (!Number.isFinite(previous) || entry.tsMs > previous) {
+      latestSuccessByAction.set(actionKey, entry.tsMs);
+    }
+  }
+
+  const grouped = new Map();
+  for (const entry of entries) {
+    if (entry.ok) continue;
+    const actionKey = `${entry.tool}::${entry.action}`;
+    const latestSuccessTs = latestSuccessByAction.get(actionKey);
+    if (Number.isFinite(latestSuccessTs) && entry.tsMs <= latestSuccessTs) {
+      continue;
+    }
+    const signatureKey = `${entry.tool}::${entry.action}::${entry.errorType || "none"}`;
+    if (!grouped.has(signatureKey)) grouped.set(signatureKey, []);
+    grouped.get(signatureKey).push(entry.tsMs);
+  }
+
+  const bursts = [];
+  for (const [key, timestamps] of grouped.entries()) {
+    const ordered = timestamps.slice().sort((left, right) => left - right);
+    let localBurstCount = 0;
+    for (let index = 1; index < ordered.length; index += 1) {
+      if (ordered[index] - ordered[index - 1] <= windowMs) {
+        localBurstCount += 1;
+      }
+    }
+    if (localBurstCount > 0) {
+      bursts.push({ key, count: localBurstCount, events: ordered.length });
+    }
+  }
+  return bursts.sort((left, right) => right.count - left.count);
+}
+
 function computeMttrMinutes(entries) {
   const bySignature = new Map();
   for (const entry of entries) {
@@ -456,8 +736,15 @@ function computeRecommendationClosureRate(state) {
     ? state.recommendationOutcomes.filter((entry) => entry && typeof entry === "object")
     : [];
   if (outcomes.length === 0) return null;
-  const latest = outcomes.slice(-60);
-  const closedStatuses = new Set(["achieved", "done", "closed"]);
+  const latestByRecommendation = new Map();
+  for (const outcome of outcomes.slice(-180)) {
+    const recommendationId = String(outcome?.recommendationId || "").trim();
+    if (!recommendationId) continue;
+    latestByRecommendation.set(recommendationId, outcome);
+  }
+  const latest = Array.from(latestByRecommendation.values());
+  if (latest.length === 0) return null;
+  const closedStatuses = new Set(["achieved", "done", "closed", "resolved", "completed", "shipped"]);
   let closed = 0;
   for (const outcome of latest) {
     const status = String(outcome.status || "").toLowerCase().trim();
@@ -475,9 +762,10 @@ function computeRubricReport({
   toolcalls,
   invalidLines,
   state,
+  options,
 }) {
   const normalized = toolcalls
-    .map((entry) => normalizeToolcallEntry(entry))
+    .map((entry) => normalizeToolcallEntry(entry, options))
     .filter(Boolean)
     .sort((left, right) => left.tsMs - right.tsMs);
 
@@ -490,10 +778,23 @@ function computeRubricReport({
   const p50DurationMs = percentile(durations, 0.5);
   const p95DurationMs = percentile(durations, 0.95);
   const avgDurationMs = average(durations);
+  const interactiveDurations = normalized
+    .filter((entry) => entry.latencyClass !== "batch")
+    .map((entry) => entry.durationMs)
+    .filter((value) => Number.isFinite(value));
+  const batchDurations = normalized
+    .filter((entry) => entry.latencyClass === "batch")
+    .map((entry) => entry.durationMs)
+    .filter((value) => Number.isFinite(value));
+  const fastLaneDurations = interactiveDurations.filter((value) => value <= options.fastLaneMaxDurationMs);
+  const fastLaneP95DurationMs = percentile(fastLaneDurations, 0.95);
+  const batchP95DurationMs = percentile(batchDurations, 0.95);
 
   const failures = normalized.filter((entry) => !entry.ok);
   const repeatBursts = computeRepeatFailureBursts(failures);
   const repeatFailureBursts = repeatBursts.reduce((sum, cluster) => sum + cluster.count, 0);
+  const activeRepeatBursts = computeActiveRepeatFailureBursts(normalized);
+  const activeRepeatFailureBursts = activeRepeatBursts.reduce((sum, cluster) => sum + cluster.count, 0);
 
   const mttr = computeMttrMinutes(normalized);
   const successfulCallsPerHour = windowHours <= 0 ? null : successfulCalls / windowHours;
@@ -504,8 +805,11 @@ function computeRubricReport({
       usage: entry.usage,
     }))
     .filter((entry) => entry.usage && Number.isFinite(entry.usage.totalTokens));
+  const explicitUsageEntries = usageEntries.filter((entry) => !entry?.usage?.estimated);
+  const estimatedUsageEntries = usageEntries.filter((entry) => entry?.usage?.estimated);
 
   const tokenCoverage = totalCalls === 0 ? null : usageEntries.length / totalCalls;
+  const explicitTokenCoverage = totalCalls === 0 ? null : explicitUsageEntries.length / totalCalls;
   const usageTotals = usageEntries.reduce(
     (acc, entry) => {
       const usage = entry.usage;
@@ -548,12 +852,12 @@ function computeRubricReport({
 
   const reliabilityScore = weightedAverage([
     { score: scoreHigherBetter(successRate, rubricTargets.reliability.successRateMin, 0.75), weight: 0.65 },
-    { score: scoreLowerBetter(repeatFailureBursts, rubricTargets.reliability.repeatFailureBurstsMax, 4), weight: 0.2 },
+    { score: scoreLowerBetter(activeRepeatFailureBursts, rubricTargets.reliability.repeatFailureBurstsMax, 4), weight: 0.2 },
     { score: scoreLowerBetter(invalidLines, rubricTargets.reliability.invalidLinesMax, 8), weight: 0.15 },
   ]);
 
   const speedScore = weightedAverage([
-    { score: scoreLowerBetter(p95DurationMs, rubricTargets.speed.p95DurationMsMax, 3.5), weight: 0.55 },
+    { score: scoreLowerBetter(fastLaneP95DurationMs, rubricTargets.speed.p95DurationMsMax, 3.5), weight: 0.55 },
     { score: scoreLowerBetter(mttr.mttrMinutes, rubricTargets.speed.mttrMinutesMax, 4), weight: 0.25 },
     { score: scoreLowerBetter(p50DurationMs, rubricTargets.speed.p50DurationMsMax, 4), weight: 0.2 },
   ]);
@@ -588,17 +892,17 @@ function computeRubricReport({
       score: reliabilityScore,
       status: reliabilityScore == null ? "insufficient-data" : reliabilityScore >= 85 ? "healthy" : "needs-attention",
       target: `successRate>=${pct(rubricTargets.reliability.successRateMin, 0)}%, repeatBursts<=${rubricTargets.reliability.repeatFailureBurstsMax}`,
-      actual: `successRate=${pct(successRate, 1) ?? "n/a"}%, repeatBursts=${repeatFailureBursts}`,
+      actual: `successRate=${pct(successRate, 1) ?? "n/a"}%, repeatBurstsActive=${activeRepeatFailureBursts}, repeatBurstsHistorical=${repeatFailureBursts}`,
     },
-    {
-      id: "speed",
-      label: "Speed",
-      weight: 0.23,
-      score: speedScore,
-      status: speedScore == null ? "insufficient-data" : speedScore >= 85 ? "healthy" : "needs-attention",
-      target: `p95<=${rubricTargets.speed.p95DurationMsMax}ms, MTTR<=${rubricTargets.speed.mttrMinutesMax}m`,
-      actual: `p95=${p95DurationMs == null ? "n/a" : Math.round(p95DurationMs)}ms, MTTR=${mttr.mttrMinutes == null ? "n/a" : mttr.mttrMinutes.toFixed(1)}m`,
-    },
+      {
+        id: "speed",
+        label: "Speed",
+        weight: 0.23,
+        score: speedScore,
+        status: speedScore == null ? "insufficient-data" : speedScore >= 85 ? "healthy" : "needs-attention",
+        target: `p95<=${rubricTargets.speed.p95DurationMsMax}ms, MTTR<=${rubricTargets.speed.mttrMinutesMax}m`,
+      actual: `p95FastLane=${fastLaneP95DurationMs == null ? "n/a" : Math.round(fastLaneP95DurationMs)}ms (batch=${batchP95DurationMs == null ? "n/a" : Math.round(batchP95DurationMs)}ms, all=${p95DurationMs == null ? "n/a" : Math.round(p95DurationMs)}ms), MTTR=${mttr.mttrMinutes == null ? "n/a" : mttr.mttrMinutes.toFixed(1)}m`,
+      },
     {
       id: "efficiency",
       label: "Token Efficiency",
@@ -611,7 +915,7 @@ function computeRubricReport({
             ? "healthy"
             : "needs-attention",
       target: `tokenCoverage>=${pct(rubricTargets.efficiency.tokenCoverageMin, 0)}%, tokens/success<=${rubricTargets.efficiency.tokensPerSuccessMax}`,
-      actual: `coverage=${pct(tokenCoverage, 1) ?? "n/a"}%, tokens/success=${tokensPerSuccessfulCall == null ? "n/a" : Math.round(tokensPerSuccessfulCall)}`,
+      actual: `coverage=${pct(tokenCoverage, 1) ?? "n/a"}% (explicit ${pct(explicitTokenCoverage, 1) ?? "n/a"}%), tokens/success=${tokensPerSuccessfulCall == null ? "n/a" : Math.round(tokensPerSuccessfulCall)}`,
     },
     {
       id: "throughput",
@@ -661,10 +965,10 @@ function computeRubricReport({
       "Reliability below target: cluster by tool/action and add fallback paths before retrying identical failing calls."
     );
   }
-  if (repeatFailureBursts > rubricTargets.reliability.repeatFailureBurstsMax) {
+  if (activeRepeatFailureBursts > rubricTargets.reliability.repeatFailureBurstsMax) {
     recommendations.push("Retry-loop burst detected: cap repeated retries and escalate after first repeated signature.");
   }
-  if (p95DurationMs != null && p95DurationMs > rubricTargets.speed.p95DurationMsMax) {
+  if (fastLaneP95DurationMs != null && fastLaneP95DurationMs > rubricTargets.speed.p95DurationMsMax) {
     recommendations.push("p95 latency exceeded target: prioritize high-duration actions and add bounded timeouts.");
   }
   if (mttr.mttrMinutes != null && mttr.mttrMinutes > rubricTargets.speed.mttrMinutesMax) {
@@ -673,6 +977,11 @@ function computeRubricReport({
   if ((tokenCoverage ?? 0) < rubricTargets.efficiency.tokenCoverageMin) {
     recommendations.push(
       "Token telemetry coverage is low. Log usage for each call using codex toolcall usage fields for better cost/efficiency tracking."
+    );
+  }
+  if ((explicitTokenCoverage ?? 0) < rubricTargets.efficiency.explicitTokenCoverageMin) {
+    recommendations.push(
+      "Explicit token telemetry coverage is low. Wire real usage fields from tool/runtime outputs instead of relying on estimates."
     );
   }
   if (
@@ -695,6 +1004,7 @@ function computeRubricReport({
     sources: {
       toolcallsPath: relative(repoRoot, toolcallsPath),
       statePath: relative(repoRoot, statePath),
+      infraPhase: activeInfraPhase || "default",
     },
     metrics: {
       calls: {
@@ -706,9 +1016,15 @@ function computeRubricReport({
       },
       latency: {
         durationSamples: durations.length,
+        interactiveDurationSamples: interactiveDurations.length,
+        batchDurationSamples: batchDurations.length,
+        fastLaneDurationSamples: fastLaneDurations.length,
+        fastLaneMaxDurationMs: options.fastLaneMaxDurationMs,
         averageDurationMs: avgDurationMs,
         p50DurationMs,
         p95DurationMs,
+        p95FastLaneDurationMs: fastLaneP95DurationMs,
+        p95BatchDurationMs: batchP95DurationMs,
         mttrMinutes: mttr.mttrMinutes,
         failureEvents: mttr.failureEvents,
         recoveredFailures: mttr.recoveredFailures,
@@ -716,14 +1032,53 @@ function computeRubricReport({
       },
       reliability: {
         repeatFailureBursts,
+        activeRepeatFailureBursts,
         topRepeatFailureBursts: repeatBursts.slice(0, 6),
+        topActiveRepeatFailureBursts: activeRepeatBursts.slice(0, 6),
       },
       throughput: {
         successfulCallsPerHour,
       },
+      governors: {
+        retryBurst: {
+          max: options.strictMaxRepeatFailureBursts,
+          observed: activeRepeatFailureBursts,
+          status:
+            activeRepeatFailureBursts > options.strictMaxRepeatFailureBursts
+              ? "fail"
+              : activeRepeatFailureBursts > rubricTargets.reliability.repeatFailureBurstsMax
+                ? "warn"
+                : "pass",
+        },
+        p95Latency: {
+          maxMs: options.strictMaxP95DurationMs,
+          observedMs: fastLaneP95DurationMs,
+          status:
+            fastLaneP95DurationMs == null
+              ? "insufficient-data"
+              : fastLaneP95DurationMs > options.strictMaxP95DurationMs
+              ? "fail"
+              : fastLaneP95DurationMs > rubricTargets.speed.p95DurationMsMax
+                ? "warn"
+                : "pass",
+        },
+        failureRate: {
+          max: options.strictMaxFailureRate,
+          observed: totalCalls === 0 ? null : failedCalls / totalCalls,
+          status:
+            totalCalls > 0 && failedCalls / totalCalls > options.strictMaxFailureRate
+              ? "fail"
+              : totalCalls > 0 && failedCalls / totalCalls > 0.04
+                ? "warn"
+                : "pass",
+        },
+      },
       tokens: {
         telemetryEntries: usageEntries.length,
+        explicitTelemetryEntries: explicitUsageEntries.length,
+        estimatedTelemetryEntries: estimatedUsageEntries.length,
         telemetryCoverage: tokenCoverage,
+        explicitTelemetryCoverage: explicitTokenCoverage,
         inputTokens: usageTotals.inputTokens,
         outputTokens: usageTotals.outputTokens,
         reasoningTokens: usageTotals.reasoningTokens,
@@ -743,6 +1098,7 @@ function computeRubricReport({
       },
     },
     rubric: {
+      profile: activeInfraPhase || "default",
       targets: rubricTargets,
       dimensions,
       overallScore,
@@ -759,6 +1115,7 @@ function buildMarkdown(report) {
   lines.push("");
   lines.push(`- Generated at: ${report.generatedAtIso}`);
   lines.push(`- Window: last ${report.windowHours}h (since ${report.analysisStartIso})`);
+  lines.push(`- Profile: ${report.rubric.profile || "default"}`);
   lines.push(`- Overall score: ${report.rubric.overallScore == null ? "n/a" : report.rubric.overallScore} (${report.rubric.grade})`);
   lines.push(`- Data completeness: ${pct(report.rubric.dataCompleteness, 1) ?? "n/a"}%`);
   lines.push("");
@@ -780,8 +1137,11 @@ function buildMarkdown(report) {
   lines.push(`- Success rate: ${pct(report.metrics.calls.successRate, 1) ?? "n/a"}%`);
   lines.push(`- p50 latency: ${report.metrics.latency.p50DurationMs == null ? "n/a" : Math.round(report.metrics.latency.p50DurationMs)}ms`);
   lines.push(`- p95 latency: ${report.metrics.latency.p95DurationMs == null ? "n/a" : Math.round(report.metrics.latency.p95DurationMs)}ms`);
+  lines.push(`- p95 latency (fast lane <= ${report.metrics.latency.fastLaneMaxDurationMs}ms): ${report.metrics.latency.p95FastLaneDurationMs == null ? "n/a" : Math.round(report.metrics.latency.p95FastLaneDurationMs)}ms`);
+  lines.push(`- p95 latency (batch lane): ${report.metrics.latency.p95BatchDurationMs == null ? "n/a" : Math.round(report.metrics.latency.p95BatchDurationMs)}ms`);
   lines.push(`- MTTR: ${report.metrics.latency.mttrMinutes == null ? "n/a" : report.metrics.latency.mttrMinutes.toFixed(1)} minutes`);
   lines.push(`- Token coverage: ${pct(report.metrics.tokens.telemetryCoverage, 1) ?? "n/a"}%`);
+  lines.push(`- Explicit token coverage: ${pct(report.metrics.tokens.explicitTelemetryCoverage, 1) ?? "n/a"}%`);
   lines.push(`- Tokens per successful call: ${report.metrics.tokens.tokensPerSuccessfulCall == null ? "n/a" : Math.round(report.metrics.tokens.tokensPerSuccessfulCall)}`);
   lines.push(`- Failed-token share: ${pct(report.metrics.tokens.failedTokenShare, 1) ?? "n/a"}%`);
   lines.push(`- Recommendation closure: ${pct(report.metrics.outcomes.recommendationClosureRate, 1) ?? "n/a"}%`);
@@ -805,14 +1165,44 @@ async function writeArtifacts(options, report, markdown) {
   await writeFile(options.reportMarkdownPath, markdown, "utf8");
 }
 
-function enforceStrictMode(report) {
+function enforceStrictMode(report, options) {
   if (report.metrics.calls.total === 0) {
     throw new Error("Strict mode failed: no toolcall entries in selected window.");
   }
-  const coverage = report.metrics.tokens.telemetryCoverage ?? 0;
-  if (coverage < 0.5) {
+  if (options.strictRequireTokenCoverage) {
+    const coverage = report.metrics.tokens.telemetryCoverage ?? 0;
+    if (coverage < options.strictMinTokenCoverage) {
+      throw new Error(
+        `Strict mode failed: token telemetry coverage ${pct(coverage, 1)}% is below required ${pct(
+          options.strictMinTokenCoverage,
+          1
+        )}%.`
+      );
+    }
+  }
+  const repeatBursts = Number(report.metrics?.reliability?.activeRepeatFailureBursts ?? 0);
+  if (repeatBursts > options.strictMaxRepeatFailureBursts) {
     throw new Error(
-      `Strict mode failed: token telemetry coverage ${pct(coverage, 1)}% is below required 50%.`
+      `Strict mode failed: repeat failure bursts ${repeatBursts} exceed max ${options.strictMaxRepeatFailureBursts}.`
+    );
+  }
+  const p95DurationMs = Number(report.metrics?.latency?.p95FastLaneDurationMs ?? 0);
+  if (p95DurationMs > options.strictMaxP95DurationMs) {
+    throw new Error(
+      `Strict mode failed: p95 latency ${Math.round(p95DurationMs)}ms exceeds max ${Math.round(
+        options.strictMaxP95DurationMs
+      )}ms.`
+    );
+  }
+  const failedCalls = Number(report.metrics?.calls?.failed ?? 0);
+  const totalCalls = Math.max(1, Number(report.metrics?.calls?.total ?? 0));
+  const failureRate = failedCalls / totalCalls;
+  if (failureRate > options.strictMaxFailureRate) {
+    throw new Error(
+      `Strict mode failed: failure rate ${pct(failureRate, 1)}% exceeds max ${pct(
+        options.strictMaxFailureRate,
+        1
+      )}%.`
     );
   }
 }
@@ -840,12 +1230,13 @@ async function main() {
     toolcalls: inWindow,
     invalidLines: toolcallData.invalidLines,
     state,
+    options,
   });
 
   const markdown = buildMarkdown(report);
 
   if (options.strict) {
-    enforceStrictMode(report);
+    enforceStrictMode(report, options);
   }
 
   if (options.writeArtifacts) {

@@ -5,19 +5,38 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const node_test_1 = __importDefault(require("node:test"));
 const strict_1 = __importDefault(require("node:assert/strict"));
+const node_crypto_1 = __importDefault(require("node:crypto"));
 const server_1 = require("./server");
 const memoryStores_1 = require("../stores/memoryStores");
 const runtime_1 = require("../capabilities/runtime");
+const inMemoryAdapter_1 = require("../memory/inMemoryAdapter");
+const service_1 = require("../memory/service");
 const logger = {
     debug: () => { },
     info: () => { },
     warn: () => { },
     error: () => { },
 };
+function buildIngestHeaders(secret, payload, timestampSeconds = Math.trunc(Date.now() / 1000)) {
+    const raw = JSON.stringify(payload);
+    const signature = node_crypto_1.default.createHmac("sha256", secret).update(`${timestampSeconds}.${raw}`).digest("hex");
+    return {
+        "content-type": "application/json",
+        "x-memory-ingest-timestamp": `${timestampSeconds}`,
+        "x-memory-ingest-signature": `v1=${signature}`,
+    };
+}
 async function withServer(options, run) {
     const stateStore = options.stateStore ?? new memoryStores_1.MemoryStateStore();
     const eventStore = options.eventStore ?? new memoryStores_1.MemoryEventStore();
     const capabilityRuntime = new runtime_1.CapabilityRuntime(runtime_1.defaultCapabilities, eventStore);
+    const memoryService = options.memoryService ??
+        (0, service_1.createMemoryService)({
+            store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+            defaultTenantId: "monsoonfire-main",
+            defaultAgentId: "test-agent",
+            defaultRunId: "test-run",
+        });
     const server = (0, server_1.startHttpServer)({
         host: "127.0.0.1",
         port: 0,
@@ -26,6 +45,7 @@ async function withServer(options, run) {
         eventStore,
         pgCheck: async () => ({ ok: true, latencyMs: 1 }),
         capabilityRuntime,
+        memoryService,
         verifyFirebaseAuth: async (authorizationHeader) => {
             if (authorizationHeader === "Bearer test-staff") {
                 return { uid: "staff-test-uid", isStaff: true, roles: ["staff"] };
@@ -113,6 +133,336 @@ async function withServer(options, run) {
         strict_1.default.equal(payload.ok, true);
         strict_1.default.ok(payload.metrics.process.pid > 0);
         strict_1.default.ok(payload.metrics.process.uptimeSec >= 0);
+    });
+});
+(0, node_test_1.default)("memory endpoints capture, search, recent, stats, and import", async () => {
+    await withServer({}, async (baseUrl) => {
+        const captured = await fetch(`${baseUrl}/api/memory/capture`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                content: "Decision: move launch to March 15 after QA payment blockers.",
+                source: "manual",
+                tags: ["decision", "launch"],
+                metadata: { owner: "rachel" },
+            }),
+        });
+        strict_1.default.equal(captured.status, 201);
+        const capturePayload = (await captured.json());
+        strict_1.default.equal(capturePayload.ok, true);
+        strict_1.default.ok(capturePayload.memory.id.startsWith("mem_"));
+        const searched = await fetch(`${baseUrl}/api/memory/search`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({ query: "QA payment blockers", limit: 5 }),
+        });
+        strict_1.default.equal(searched.status, 200);
+        const searchPayload = (await searched.json());
+        strict_1.default.equal(searchPayload.ok, true);
+        strict_1.default.ok(searchPayload.rows.some((row) => row.id === capturePayload.memory.id));
+        const recent = await fetch(`${baseUrl}/api/memory/recent?limit=5`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(recent.status, 200);
+        const recentPayload = (await recent.json());
+        strict_1.default.equal(recentPayload.ok, true);
+        strict_1.default.ok(recentPayload.rows.length >= 1);
+        const stats = await fetch(`${baseUrl}/api/memory/stats`, {
+            headers: { authorization: "Bearer test-staff" },
+        });
+        strict_1.default.equal(stats.status, 200);
+        const statsPayload = (await stats.json());
+        strict_1.default.equal(statsPayload.ok, true);
+        strict_1.default.ok(statsPayload.stats.total >= 1);
+        strict_1.default.ok(statsPayload.stats.bySource.some((entry) => entry.source === "manual"));
+        const context = await fetch(`${baseUrl}/api/memory/context`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                agentId: "test-agent",
+                runId: "test-run",
+                query: "QA blockers",
+                maxItems: 3,
+                maxChars: 512,
+            }),
+        });
+        strict_1.default.equal(context.status, 200);
+        const contextPayload = (await context.json());
+        strict_1.default.equal(contextPayload.ok, true);
+        strict_1.default.ok(contextPayload.context.items.length >= 1);
+        strict_1.default.equal(contextPayload.context.budget.maxItems, 3);
+        strict_1.default.equal(contextPayload.context.budget.maxChars, 512);
+        const imported = await fetch(`${baseUrl}/api/memory/import`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                sourceOverride: "import",
+                items: [
+                    { content: "Marcus mentioned onboarding confusion around permissions." },
+                    { content: "Insight: pricing FAQ needs examples for kiln scheduling." },
+                ],
+            }),
+        });
+        strict_1.default.equal(imported.status, 201);
+        const importPayload = (await imported.json());
+        strict_1.default.equal(importPayload.ok, true);
+        strict_1.default.equal(importPayload.result.imported, 2);
+        strict_1.default.equal(importPayload.result.failed, 0);
+    });
+});
+(0, node_test_1.default)("memory neighborhood endpoint returns ranked rows with relationship diagnostics", async () => {
+    await withServer({}, async (baseUrl) => {
+        const first = await fetch(`${baseUrl}/api/memory/capture`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                content: "Parent decision for glaze sequencing.",
+                source: "manual",
+                metadata: { owner: "ops" },
+            }),
+        });
+        strict_1.default.equal(first.status, 201);
+        const firstPayload = (await first.json());
+        const second = await fetch(`${baseUrl}/api/memory/capture`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                content: "Follow-up thread item with kiln loading constraints.",
+                source: "manual",
+                metadata: { owner: "ops" },
+            }),
+        });
+        strict_1.default.equal(second.status, 201);
+        const secondPayload = (await second.json());
+        const seed = await fetch(`${baseUrl}/api/memory/capture`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                content: "Seed note: reopen and resolve conflict now visible for diagnostics.",
+                source: "manual",
+                metadata: {
+                    relatedMemoryIds: [firstPayload.memory.id, secondPayload.memory.id],
+                    resolvesMemoryId: firstPayload.memory.id,
+                    reopensMemoryId: firstPayload.memory.id,
+                    relationships: [{ targetId: secondPayload.memory.id, relationType: "dependsOn" }],
+                },
+            }),
+        });
+        strict_1.default.equal(seed.status, 201);
+        const seedPayload = (await seed.json());
+        const response = await fetch(`${baseUrl}/api/memory/neighborhood`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                seedMemoryId: seedPayload.memory.id,
+                maxHops: 2,
+                maxItems: 8,
+            }),
+        });
+        strict_1.default.equal(response.status, 200);
+        const payload = (await response.json());
+        strict_1.default.equal(payload.ok, true);
+        strict_1.default.equal(payload.neighborhood.seedMemoryId, seedPayload.memory.id);
+        strict_1.default.ok(payload.neighborhood.nodes.some((row) => row.id === seedPayload.memory.id));
+        strict_1.default.ok(payload.edgeSummary.nodeCount >= 1);
+        strict_1.default.ok(Number(payload.relationshipTypeCounts.related ?? 0) >= 1);
+        strict_1.default.ok(payload.edgeSummary.unresolvedConflictCount >= 1);
+        strict_1.default.ok(payload.diagnostics.previewSummaries.length >= 1);
+    });
+});
+(0, node_test_1.default)("relationship diagnostics endpoint validates requests and returns edge summary contract", async () => {
+    await withServer({}, async (baseUrl) => {
+        const capture = await fetch(`${baseUrl}/api/memory/capture`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                content: "Ticket handoff note with continuity and queue context.",
+                source: "manual",
+            }),
+        });
+        strict_1.default.equal(capture.status, 201);
+        const invalid = await fetch(`${baseUrl}/api/memory/relationship-diagnostics`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({ maxItems: 8 }),
+        });
+        strict_1.default.equal(invalid.status, 400);
+        const response = await fetch(`${baseUrl}/api/memory/relationship-diagnostics`, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
+            body: JSON.stringify({
+                query: "handoff continuity queue",
+                maxItems: 8,
+                maxHops: 2,
+            }),
+        });
+        strict_1.default.equal(response.status, 200);
+        const payload = (await response.json());
+        strict_1.default.equal(payload.ok, true);
+        strict_1.default.equal(payload.diagnostics.query, "handoff continuity queue");
+        strict_1.default.ok(payload.diagnostics.edgeSummary.nodeCount >= 1);
+        strict_1.default.ok(payload.diagnostics.edgeSummary.edgeCount >= 0);
+        strict_1.default.equal(typeof payload.diagnostics.relationshipTypeCounts, "object");
+        strict_1.default.ok(payload.diagnostics.previewSummaries.length >= 1);
+    });
+});
+(0, node_test_1.default)("memory endpoints require staff auth", async () => {
+    await withServer({}, async (baseUrl) => {
+        const unauth = await fetch(`${baseUrl}/api/memory/stats`);
+        strict_1.default.equal(unauth.status, 401);
+        const contextUnauth = await fetch(`${baseUrl}/api/memory/context`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ maxItems: 5 }),
+        });
+        strict_1.default.equal(contextUnauth.status, 401);
+        const nonStaff = await fetch(`${baseUrl}/api/memory/stats`, {
+            headers: { authorization: "Bearer test-member" },
+        });
+        strict_1.default.equal(nonStaff.status, 401);
+    });
+});
+(0, node_test_1.default)("memory ingest endpoint is disabled by default", async () => {
+    await withServer({}, async (baseUrl) => {
+        const payload = {
+            content: "Insight: permissions onboarding needs simpler defaults.",
+            source: "discord",
+            clientRequestId: "req-disabled-1",
+            metadata: {
+                discordGuildId: "guild-1",
+                discordChannelId: "channel-1",
+            },
+        };
+        const response = await fetch(`${baseUrl}/api/memory/ingest`, {
+            method: "POST",
+            headers: buildIngestHeaders("unused-secret", payload),
+            body: JSON.stringify(payload),
+        });
+        strict_1.default.equal(response.status, 404);
+    });
+});
+(0, node_test_1.default)("memory ingest accepts valid signed discord payloads when enabled", async () => {
+    await withServer({
+        memoryIngestConfig: {
+            enabled: true,
+            hmacSecret: "ingest-secret",
+            allowedSources: ["discord"],
+            allowedDiscordGuildIds: ["guild-1"],
+            allowedDiscordChannelIds: ["channel-1"],
+            requireClientRequestId: true,
+        },
+    }, async (baseUrl) => {
+        const payload = {
+            content: "Decision: keep onboarding copy in plain language for Discord users.",
+            source: "discord",
+            clientRequestId: "discord-msg-123",
+            metadata: {
+                discordGuildId: "guild-1",
+                discordChannelId: "channel-1",
+                authorId: "user-99",
+            },
+        };
+        const response = await fetch(`${baseUrl}/api/memory/ingest`, {
+            method: "POST",
+            headers: buildIngestHeaders("ingest-secret", payload),
+            body: JSON.stringify(payload),
+        });
+        strict_1.default.equal(response.status, 201);
+        const body = (await response.json());
+        strict_1.default.equal(body.ok, true);
+        strict_1.default.ok(body.memory.id.startsWith("mem_req_"));
+        strict_1.default.equal(body.memory.source, "discord");
+    });
+});
+(0, node_test_1.default)("memory ingest rejects stale signatures, invalid signature, and missing client request id", async () => {
+    await withServer({
+        memoryIngestConfig: {
+            enabled: true,
+            hmacSecret: "ingest-secret",
+            allowedSources: ["discord"],
+            allowedDiscordGuildIds: ["guild-1"],
+            allowedDiscordChannelIds: ["channel-1"],
+            requireClientRequestId: true,
+        },
+    }, async (baseUrl) => {
+        const stalePayload = {
+            content: "Stale payload should be rejected.",
+            source: "discord",
+            clientRequestId: "req-stale-1",
+            metadata: { discordGuildId: "guild-1", discordChannelId: "channel-1" },
+        };
+        const staleResponse = await fetch(`${baseUrl}/api/memory/ingest`, {
+            method: "POST",
+            headers: buildIngestHeaders("ingest-secret", stalePayload, Math.trunc(Date.now() / 1000) - 10_000),
+            body: JSON.stringify(stalePayload),
+        });
+        strict_1.default.equal(staleResponse.status, 401);
+        const invalidSigPayload = {
+            content: "Invalid signature should be rejected.",
+            source: "discord",
+            clientRequestId: "req-bad-signature-1",
+            metadata: { discordGuildId: "guild-1", discordChannelId: "channel-1" },
+        };
+        const invalidSigResponse = await fetch(`${baseUrl}/api/memory/ingest`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                "x-memory-ingest-timestamp": `${Math.trunc(Date.now() / 1000)}`,
+                "x-memory-ingest-signature": "v1=deadbeef",
+            },
+            body: JSON.stringify(invalidSigPayload),
+        });
+        strict_1.default.equal(invalidSigResponse.status, 401);
+        const missingRequestIdPayload = {
+            content: "Missing request id should be rejected.",
+            source: "discord",
+            metadata: { discordGuildId: "guild-1", discordChannelId: "channel-1" },
+        };
+        const missingRequestIdResponse = await fetch(`${baseUrl}/api/memory/ingest`, {
+            method: "POST",
+            headers: buildIngestHeaders("ingest-secret", missingRequestIdPayload),
+            body: JSON.stringify(missingRequestIdPayload),
+        });
+        strict_1.default.equal(missingRequestIdResponse.status, 400);
+    });
+});
+(0, node_test_1.default)("memory ingest enforces source and discord allowlists", async () => {
+    await withServer({
+        memoryIngestConfig: {
+            enabled: true,
+            hmacSecret: "ingest-secret",
+            allowedSources: ["discord"],
+            allowedDiscordGuildIds: ["guild-1"],
+            allowedDiscordChannelIds: ["channel-1"],
+            requireClientRequestId: true,
+        },
+    }, async (baseUrl) => {
+        const blockedSourcePayload = {
+            content: "This webhook source should be blocked.",
+            source: "webhook",
+            clientRequestId: "blocked-source-1",
+        };
+        const blockedSource = await fetch(`${baseUrl}/api/memory/ingest`, {
+            method: "POST",
+            headers: buildIngestHeaders("ingest-secret", blockedSourcePayload),
+            body: JSON.stringify(blockedSourcePayload),
+        });
+        strict_1.default.equal(blockedSource.status, 403);
+        const blockedGuildPayload = {
+            content: "This guild should be blocked.",
+            source: "discord",
+            clientRequestId: "blocked-guild-1",
+            metadata: {
+                discordGuildId: "guild-x",
+                discordChannelId: "channel-1",
+            },
+        };
+        const blockedGuild = await fetch(`${baseUrl}/api/memory/ingest`, {
+            method: "POST",
+            headers: buildIngestHeaders("ingest-secret", blockedGuildPayload),
+            body: JSON.stringify(blockedGuildPayload),
+        });
+        strict_1.default.equal(blockedGuild.status, 403);
     });
 });
 (0, node_test_1.default)("ops scorecard endpoint returns KPI status and records compute event", async () => {

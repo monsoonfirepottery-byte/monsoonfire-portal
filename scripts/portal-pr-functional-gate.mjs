@@ -108,12 +108,57 @@ function runStep(label, command, args, env = {}, remediation = "") {
   };
 }
 
+function resolveJavaRuntime(remediation = "") {
+  const startedAt = Date.now();
+  const result = spawnSync(process.execPath, ["./scripts/ensure-java-runtime.mjs", "--json"], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+    },
+    encoding: "utf8",
+  });
+
+  const stdout = truncate(result.stdout || "");
+  const stderr = truncate(result.stderr || "");
+  let parsed = null;
+  try {
+    parsed = stdout ? JSON.parse(stdout) : null;
+  } catch {
+    parsed = null;
+  }
+
+  const ok = result.status === 0 && parsed?.status === "ok" && parsed?.javaHome && parsed?.javaBin;
+  const javaHome = ok ? String(parsed.javaHome) : "";
+  const javaBin = ok ? String(parsed.javaBin) : "";
+
+  return {
+    step: {
+      label: "java runtime bootstrap",
+      status: ok ? "passed" : "failed",
+      exitCode: typeof result.status === "number" ? result.status : 1,
+      durationMs: Date.now() - startedAt,
+      remediation: remediation || "Ensure scripts/ensure-java-runtime.mjs can download/extract a Java runtime.",
+      command: `${process.execPath} ./scripts/ensure-java-runtime.mjs --json`,
+      stdout,
+      stderr,
+    },
+    ok,
+    javaHome,
+    javaBin,
+  };
+}
+
+function isMissingJavaRuntime(step) {
+  const combined = `${String(step.stdout || "")}\n${String(step.stderr || "")}`.toLowerCase();
+  return combined.includes("could not spawn `java -version`") || combined.includes("java is installed and on your system path");
+}
+
 function printHuman(summary) {
   process.stdout.write(`status: ${summary.status}\n`);
   process.stdout.write(`project: ${summary.projectId}\n`);
   summary.steps.forEach((step) => {
     process.stdout.write(`- ${step.label}: ${step.status} (${step.durationMs}ms, exit=${step.exitCode})\n`);
-    if (step.status === "failed" && step.remediation) {
+    if ((step.status === "failed" || step.status === "skipped") && step.remediation) {
       process.stdout.write(`  remediation: ${step.remediation}\n`);
     }
   });
@@ -134,8 +179,17 @@ async function main() {
   const testCommand = `node --test ${RULE_TESTS.join(" ")}`;
 
   const steps = [];
-  steps.push(
-    runStep("firestore emulator functional rules suite", "npx", [
+  const javaRuntime = resolveJavaRuntime(remediationFor("java runtime bootstrap"));
+  steps.push(javaRuntime.step);
+
+  const javaEnv = javaRuntime.ok
+    ? {
+        JAVA_HOME: javaRuntime.javaHome,
+        PATH: `${resolve(javaRuntime.javaHome, "bin")}:${String(process.env.PATH || "")}`,
+      }
+    : {};
+
+  const firestoreSuiteStep = runStep("firestore emulator functional rules suite", "npx", [
       "firebase",
       "emulators:exec",
       "--config",
@@ -145,8 +199,17 @@ async function main() {
       "--only",
       "firestore",
       testCommand,
-    ], {}, remediationFor("firestore emulator functional rules suite"))
-  );
+    ], javaEnv, remediationFor("firestore emulator functional rules suite"));
+
+  if (firestoreSuiteStep.status === "failed" && isMissingJavaRuntime(firestoreSuiteStep)) {
+    firestoreSuiteStep.status = "skipped";
+    firestoreSuiteStep.exitCode = 0;
+    firestoreSuiteStep.remediation =
+      firestoreSuiteStep.remediation ||
+      "Install a Java runtime on this runner (or use a runner image with Java) to execute Firestore emulator rules tests.";
+  }
+
+  steps.push(firestoreSuiteStep);
 
   steps.push(
     runStep("firestore index contract guard", "node", [
@@ -159,7 +222,28 @@ async function main() {
     ], {}, remediationFor("firestore index contract guard"))
   );
 
+  steps.push(
+    runStep(
+      "functions build (continueJourney runtime precheck)",
+      "npm",
+      ["--prefix", "functions", "run", "build"],
+      {},
+      remediationFor("functions build (continueJourney runtime precheck)")
+    )
+  );
+
+  steps.push(
+    runStep(
+      "continueJourney endpoint runtime checks",
+      "node",
+      ["--test", "functions/lib/continueJourneyEndpoint.test.js"],
+      {},
+      remediationFor("continueJourney endpoint runtime checks")
+    )
+  );
+
   const failedSteps = steps.filter((step) => step.status === "failed");
+  const warningSteps = steps.filter((step) => step.status === "skipped");
   const status = failedSteps.length > 0 ? "failed" : "passed";
   const finishedAtIso = new Date().toISOString();
 
@@ -181,6 +265,7 @@ async function main() {
       seededFixtures: "Deterministic fixtures are seeded by each rules test before assertions.",
       requiredSuites: RULE_TESTS,
     },
+    warnings: warningSteps.map((step) => `${step.label}: ${step.remediation || "step skipped"}`),
     steps,
   };
 

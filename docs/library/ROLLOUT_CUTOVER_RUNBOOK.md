@@ -74,6 +74,37 @@ Test identities:
 6. Announce rollback in staff comms (template below).
 7. Record rollback start/end timestamps and total duration.
 
+## Automation Assist (Rollback Drill)
+
+1. Dry run (read-only, no phase changes):
+   - `npm run library:rollout:drill`
+2. Executed drill (applies phase toggle + safe-state probes + optional restore):
+   - `npm run library:rollout:drill -- --execute`
+3. Generated artifacts:
+   - `output/qa/library-rollout-rollback-drill.json`
+   - `output/qa/library-rollout-rollback-drill.md`
+4. Optional flags:
+   - `--skip-restore` (leave the target rollback phase active)
+   - `--rollback-to phase_1_read_only|phase_2_member_writes|phase_3_admin_full`
+   - `--allow-promote-from-phase1` (permits promote-then-rollback rehearsal when baseline is Phase 1)
+5. Safety:
+   - only run `--execute` during an approved rollout-change window because it mutates live phase config.
+
+## Production Deploy Compliance (Quota-Aware)
+
+1. Use the safe deploy wrapper for production Functions:
+   - `npm run deploy:functions -- --functions <comma-separated-function-list>`
+2. Broad production Functions deploys are blocked by default to avoid quota-throttle waves.
+3. Quota-sensitive Functions are auto-staged as singleton waves by deploy policy:
+   - `adminSkipNowPlaying`
+   - `adminSetPlaybackState`
+   - `getEvent`
+   - `listEventSignups`
+   - `listIndustryEvents`
+   - `createReservation`
+   - `refreshLibraryIsbnMetadata`
+4. Use legacy broad deploy commands only for explicit break-glass scenarios with operator approval.
+
 ## Cutover Communications
 
 ### Staff Template

@@ -1,6 +1,6 @@
 # EPIC: LENDING-LIBRARY-EXPERIENCE-AND-LEARNING-JOURNEYS
 
-Status: In Progress (Reopened)
+Status: Completed
 Date: 2026-03-01
 Priority: P1
 Owner: Library Ops + Program Ops + Member Experience
@@ -39,6 +39,10 @@ Transform Lending Library into a learning pathway surface that increases member 
    1. Goodreads-style cover-first discovery and list scanning behavior.
    2. Amazon-style product detail hierarchy with clear primary decision fields.
    3. Apply these as interaction references only; keep Monsoon Fire visual identity and reduced clutter.
+6. Discovery-first browse requirement:
+   1. Members should see a visual carousel/shelf of covers before being asked to run structured search.
+   2. Guide browse order using member context (membership level, project history, requests, and profile notes) before exposing advanced filters.
+   3. Keep structured search as a secondary refinement step after visual orientation.
 
 ## Tasks
 
@@ -176,3 +180,32 @@ Transform Lending Library into a learning pathway surface that increases member 
    1. runtime phase toggles now support read-only/member-write/admin-full progression without redeploys,
    2. Staff -> Lending includes a phase metrics snapshot panel (error/conflict/route-error/latency rollups),
    3. staff can copy structured metrics artifacts for phase gate evidence capture.
+
+## Execution Update (2026-03-01, Closeout Sprint)
+
+1. Closed overdue-worker assertion loop with new mixed-status/idempotency integration tests:
+   1. `functions/src/library.overdueSync.test.ts`
+   2. reminder-stage coverage for `due_7d`, `due_1d`, and `overdue_3d`.
+2. Closed cover-quality unit-test loop:
+   1. exported `evaluateCoverQuality` in `functions/src/library.ts`,
+   2. added focused cases in `functions/src/library.test.ts`.
+3. Closed staff admin payload contract loop:
+   1. Staff create/update/delete API dispatch now sends contract-clean payloads,
+   2. added automated payload contract coverage in `web/src/views/staff/lendingAdminPayload.test.ts`.
+4. Added authenticated browser QA evidence:
+   1. ran `portal:smoke:playwright --with-auth` against production,
+   2. captured artifacts in `output/playwright/portal/library-epic-auth`,
+   3. run completed with pass status and zero reported issues.
+5. Added rollback drill automation readiness:
+   1. command path: `npm run library:rollout:drill`,
+   2. dry-run artifacts: `output/qa/library-rollout-rollback-drill.json` and `output/qa/library-rollout-rollback-drill.md`,
+   3. runbook automation and safety guidance recorded in `docs/library/ROLLOUT_CUTOVER_RUNBOOK.md`.
+6. Final operational blocker is now closed:
+   1. executed rollback drill timing capture in production with `npm run library:rollout:drill -- --execute`,
+   2. rollback completed within target and rollout restored to baseline phase.
+
+## Completion Update (2026-03-01)
+
+1. Epic child ticket execution is complete.
+2. Rollback drill timing evidence is captured in `output/qa/library-rollout-rollback-drill.json`.
+3. Epic status is now `Completed`.

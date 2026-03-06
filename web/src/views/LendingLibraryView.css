@@ -455,6 +455,63 @@
   overflow: hidden;
 }
 
+.discovery-workshop-row {
+  display: grid;
+  gap: 8px;
+}
+
+.discovery-workshop-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.discovery-workshop-card {
+  appearance: none;
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.discovery-workshop-card:hover,
+.discovery-workshop-card:focus-visible {
+  border-color: rgba(82, 132, 207, 0.45);
+  outline: none;
+}
+
+.discovery-workshop-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.discovery-workshop-summary {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.discovery-workshop-meta {
+  display: grid;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .library-empty-state {
   grid-column: 1 / -1;
   border: 1px dashed var(--border);
@@ -724,6 +781,9 @@
 }
 
 .related-workshop-link {
+  appearance: none;
+  border: none;
+  background: transparent;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -733,10 +793,21 @@
   background: var(--surface-2);
   color: var(--text);
   text-decoration: none;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
 }
 
 .related-workshop-link:hover {
+  cursor: pointer;
   border-color: rgba(82, 132, 207, 0.45);
+}
+
+.related-workshop-link:focus-visible {
+  outline: 2px solid rgba(82, 132, 207, 0.45);
+  outline-offset: 2px;
 }
 
 .workshop-request-inline {

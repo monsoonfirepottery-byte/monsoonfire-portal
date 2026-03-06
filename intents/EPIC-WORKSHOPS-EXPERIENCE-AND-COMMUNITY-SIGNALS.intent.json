@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "intent.v1",
+  "intentId": "workshops-experience-community-signals-v1",
+  "title": "Workshops Experience and Community Signals",
+  "objective": "Evolve workshops into a community learning hub with stronger discovery, demand signaling, and feedback loops while preserving transactional reliability.",
+  "epic": {
+    "path": "docs/epics/EPIC-WORKSHOPS-EXPERIENCE-AND-COMMUNITY-SIGNALS.md",
+    "owner": "Program Ops + Member Experience + Community"
+  },
+  "nonGoals": [
+    "No degradation of workshop signup reliability.",
+    "No removal of existing support or intake paths without replacement.",
+    "No unverified UX changes without QA evidence."
+  ],
+  "constraints": {
+    "riskTier": "medium",
+    "writePolicy": "pr-only-no-main",
+    "maxChangedFiles": 45,
+    "maxWriteActions": 8
+  },
+  "autonomy": {
+    "mode": "bounded",
+    "maxRunMinutes": 35,
+    "allowedTools": [
+      "functions.exec_command",
+      "functions.apply_patch",
+      "functions.write_stdin"
+    ],
+    "requiresHumanApprovalFor": [
+      "force-push",
+      "history-rewrite",
+      "credential-rotation"
+    ],
+    "haltConditions": [
+      "strict-check-failure",
+      "blocking-runtime-error",
+      "confidence-below-threshold"
+    ]
+  },
+  "doneCriteria": {
+    "requiredChecks": [
+      "npm run portal:pricing:intake:check",
+      "npm run portal:pr:functional:gate",
+      "PORTAL_CANARY_ENFORCE_STAFF_ROUTES=true npm run portal:canary:auth"
+    ],
+    "requiredArtifacts": [
+      "output/qa/portal-pr-functional-gate.json"
+    ],
+    "requiredDocs": [
+      "docs/epics/EPIC-WORKSHOPS-EXPERIENCE-AND-COMMUNITY-SIGNALS.md",
+      "docs/runbooks/PORTAL_AUTOMATION_MATRIX.md"
+    ]
+  },
+  "executionSlices": [
+    {
+      "id": "validate-intake-and-demand-flows",
+      "title": "Validate workshop intake and demand signal flows",
+      "dependsOn": [],
+      "checks": [
+        "npm run portal:pricing:intake:check"
+      ],
+      "writeScope": "none"
+    },
+    {
+      "id": "ship-discovery-and-community-improvements",
+      "title": "Ship workshop discovery and community-signal improvements",
+      "dependsOn": [
+        "validate-intake-and-demand-flows"
+      ],
+      "checks": [
+        "npm run portal:pr:functional:gate"
+      ],
+      "writeScope": "workshops-ui-and-supporting-functions"
+    },
+    {
+      "id": "verify-member-surface-reliability",
+      "title": "Verify member-facing reliability after workshop updates",
+      "dependsOn": [
+        "ship-discovery-and-community-improvements"
+      ],
+      "checks": [
+        "PORTAL_CANARY_ENFORCE_STAFF_ROUTES=true npm run portal:canary:auth"
+      ],
+      "writeScope": "artifact-only"
+    }
+  ],
+  "escalation": {
+    "channel": "github-issue:Workshops Experience and Community Signals",
+    "when": [
+      "Workshop intake checks fail in strict mode.",
+      "Member canary indicates navigation or auth regressions.",
+      "Community signal flows fail data-contract checks."
+    ]
+  }
+}

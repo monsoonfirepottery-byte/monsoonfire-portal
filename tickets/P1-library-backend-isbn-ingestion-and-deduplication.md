@@ -1,6 +1,6 @@
 # P1 — Library Backend: ISBN Ingestion and Deduplication
 
-Status: In Progress
+Status: Completed
 Date: 2026-03-01
 Priority: P1
 Owner: Platform Backend + Library Ops
@@ -68,3 +68,16 @@ Completed in this slice:
 4. Added scheduled metadata refresh pipeline (`refreshLibraryIsbnMetadata`) with cover-quality re-evaluation.
 5. Added admin/staff API route `POST /v1/library.items.importIsbns` in `functions/src/apiV1.ts`.
 6. Aligned legacy `importLibraryIsbns` authorization with staff workflows (staff allowed, not only full admin) to keep fallback behavior consistent with v1 route.
+
+## Execution Update (2026-03-01, API Contract Closeout)
+
+Completed in this pass:
+1. Confirmed ISBN admin routes are active and covered in `functions/src/apiV1.ts`:
+   - `/v1/library.items.resolveIsbn`
+   - `/v1/library.items.create`
+   - `/v1/library.items.update`
+   - `/v1/library.items.delete`
+2. Confirmed duplicate/conflict and soft-delete re-ingestion behavior via `functions/src/apiV1.test.ts`.
+3. Aligned Staff -> Lending admin payloads with backend schemas to avoid wrapper/non-contract field drift on create/update/delete dispatch.
+4. Verified with:
+   - `node --test functions/lib/apiV1.test.js`

@@ -155,6 +155,7 @@ export default function BillingView({ user }: Props) {
   const [payBusyId, setPayBusyId] = useState("");
   const [commissionPayBusyId, setCommissionPayBusyId] = useState("");
   const [receiptFilter, setReceiptFilter] = useState<"all" | "events" | "store">("all");
+  const [billingDetailsOpen, setBillingDetailsOpen] = useState(false);
 
   const baseUrl = useMemo(() => resolveFunctionsBaseUrl(), []);
   const client = useMemo(
@@ -377,6 +378,13 @@ export default function BillingView({ user }: Props) {
     return materials.filter((order) => (order.status || "").toLowerCase() !== "paid").length;
   }, [materials]);
 
+  const actionableBillingTasks = useMemo(() => {
+    return checkIns.length + pendingMaterialsCount + pendingCommissionCheckouts.length;
+  }, [checkIns, pendingCommissionCheckouts, pendingMaterialsCount]);
+  const secondaryPaymentTasks = useMemo(() => {
+    return pendingMaterialsCount + pendingCommissionCheckouts.length;
+  }, [pendingCommissionCheckouts.length, pendingMaterialsCount]);
+
   const receipts = useMemo<ReceiptItem[]>(() => {
     const eventReceipts = charges
       .filter((charge) => (charge.paymentStatus || "").toLowerCase() === "paid")
@@ -513,6 +521,11 @@ export default function BillingView({ user }: Props) {
 
       <section className="billing-summary">
         <article className="billing-summary-card">
+          <div className="summary-label">Action queue</div>
+          <div className="summary-value">{actionableBillingTasks}</div>
+          <div className="summary-note">Items waiting for payment or follow-up.</div>
+        </article>
+        <article className="billing-summary-card">
           <div className="summary-label">Unpaid check-ins</div>
           <div className="summary-value">{checkIns.length}</div>
           <div className="summary-note">You only pay after you attend (3-hour cutoff applies).</div>
@@ -520,17 +533,7 @@ export default function BillingView({ user }: Props) {
         <article className="billing-summary-card">
           <div className="summary-label">Paid in last 30 days</div>
           <div className="summary-value">{formatCents(paidLast30Days)}</div>
-          <div className="summary-note">Includes events + store receipts.</div>
-        </article>
-        <article className="billing-summary-card">
-          <div className="summary-label">Pending store orders</div>
-          <div className="summary-value">{pendingMaterialsCount}</div>
-          <div className="summary-note">Checkout or confirm pickup to close the order.</div>
-        </article>
-        <article className="billing-summary-card">
-          <div className="summary-label">Pending commission checkouts</div>
-          <div className="summary-value">{pendingCommissionCheckouts.length}</div>
-          <div className="summary-note">Pay approved commission requests from Billing.</div>
+          <div className="summary-note">Includes events and store receipts.</div>
         </article>
         <button
           className="btn btn-ghost billing-refresh"
@@ -592,136 +595,175 @@ export default function BillingView({ user }: Props) {
         )}
       </section>
 
-      <section className="card billing-section">
-        <div className="card-title">Store orders</div>
-        {materialsLoading ? (
-          <div className="billing-empty">Loading orders...</div>
-        ) : materialsError ? (
-          <div className="billing-empty">{materialsError}</div>
-        ) : materials.length === 0 ? (
-          <div className="billing-empty">No store orders yet.</div>
-        ) : (
-          <div className="billing-materials">
-            {materials.map((order) => (
-              <div className="billing-material-row" key={order.id}>
-                <div>
-                  <div className="billing-row-title">Order {order.id}</div>
-                  <div className="billing-row-meta">
-                    Status: {order.status || "pending"} · {formatCents(order.totalCents ?? 0)}
-                  </div>
-                  {order.pickupNotes ? (
-                    <div className="billing-row-meta">Pickup notes: {order.pickupNotes}</div>
-                  ) : null}
-                  {order.items && order.items.length ? (
-                    <div className="billing-row-meta">
-                      {order.items.map((item, index) => (
-                        <span key={index}>
-                          {item.name ?? "Item"} × {item.quantity ?? 0}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-                <div>
-                  {order.checkoutUrl ? (
-                    <a
-                      className="btn btn-ghost"
-                      href={order.checkoutUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Open receipt
-                    </a>
-                  ) : null}
-                </div>
-              </div>
-            ))}
+      <section className="card billing-section billing-details-shell">
+        <div className="billing-details-header">
+          <div>
+            <div className="card-title">Billing details</div>
+            <p className="billing-copy">
+              Store orders, commission checkouts, receipts, and support are tucked away to keep pay-now tasks front and center.
+            </p>
+            {secondaryPaymentTasks > 0 ? (
+              <p className="billing-copy">
+                {secondaryPaymentTasks} follow-up payment item{secondaryPaymentTasks === 1 ? "" : "s"} available in
+                this section.
+              </p>
+            ) : null}
           </div>
-        )}
-      </section>
-
-      <section className="card billing-section">
-        <div className="card-title">Commission payments</div>
-        {commissionLoading ? (
-          <div className="billing-empty">Loading commission payment actions...</div>
-        ) : pendingCommissionCheckouts.length === 0 ? (
-          <div className="billing-empty">No pending commission checkouts.</div>
-        ) : (
-          <div className="billing-materials">
-            {pendingCommissionCheckouts.map((entry) => (
-              <div className="billing-material-row" key={entry.requestId}>
-                <div>
-                  <div className="billing-row-title">{entry.title}</div>
-                  <div className="billing-row-meta">
-                    Request {entry.requestId} · Status: {entry.status} · Payment: {entry.commissionPaymentStatus}
-                  </div>
-                </div>
-                <div>
-                  <button
-                    className="btn btn-primary"
-                    disabled={Boolean(commissionPayBusyId)}
-                    onClick={toVoidHandler(
-                      () => handleCommissionCheckout(entry),
-                      handleCheckoutHandlerError,
-                      "billing.commissionCheckout"
-                    )}
-                  >
-                    {commissionPayBusyId === entry.requestId ? "Preparing checkout..." : "Open commission checkout"}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="card billing-section">
-        <div className="card-title">Receipts</div>
-        <div className="receipt-tabs">
-          {receiptFilters.map((filter) => (
-            <button
-              key={filter.key}
-              className={`receipt-tab ${receiptFilter === filter.key ? "active" : ""}`}
-              onClick={() => setReceiptFilter(filter.key)}
-            >
-              {filter.label}
-            </button>
-          ))}
+          <button
+            type="button"
+            className="btn btn-ghost btn-small"
+            aria-expanded={billingDetailsOpen}
+            aria-controls="billing-details-panels"
+            onClick={() => setBillingDetailsOpen((previous) => !previous)}
+          >
+            {billingDetailsOpen ? "Hide billing details" : "Open billing details"}
+          </button>
         </div>
-        {receiptsFiltered.length === 0 ? (
-          <div className="billing-empty">No receipts to show yet.</div>
-        ) : (
-          <div className="billing-receipts">
-            {receiptsFiltered.map((item) => (
-              <div className="receipt-row" key={`${item.kind}-${item.id}`}>
-                <div>
-                  <div className="receipt-title">{item.title}</div>
-                  <div className="receipt-meta">{item.subtitle}</div>
-                </div>
-                <div className="receipt-date">{formatDateTime(item.createdAt)}</div>
-                <div className="receipt-amount">{formatCents(item.totalCents)}</div>
-                {item.link ? (
-                  <a href={item.link} target="_blank" rel="noreferrer" className="receipt-link">
-                    Open receipt
-                  </a>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
 
-      <section className="card billing-section">
-        <div className="card-title">Need help?</div>
-        <p className="billing-copy">
-          Billing is attendance-only: we only charge you after a staff or self check-in. Cancel anytime up
-          to 3 hours before the event. Orders and approved commissions are paid via hosted Stripe Checkout;
-          use the actions on this page.
-        </p>
-        <p className="billing-copy">
-          Questions? Visit the Support tab or email{" "}
-          <a href="mailto:support@monsoonfire.com">support@monsoonfire.com</a>.
-        </p>
+        {!billingDetailsOpen && (pendingMaterialsCount > 0 || pendingCommissionCheckouts.length > 0) ? (
+          <div className="billing-status inline-alert">
+            {pendingCommissionCheckouts.length > 0 || pendingMaterialsCount > 0
+              ? `${pendingCommissionCheckouts.length + pendingMaterialsCount} payment item${pendingCommissionCheckouts.length + pendingMaterialsCount === 1 ? "" : "s"} available in billing details.`
+              : ""}
+          </div>
+        ) : null}
+
+        <div
+          id="billing-details-panels"
+          className={`billing-details-panels ${billingDetailsOpen ? "is-open" : ""}`}
+        >
+          <article className="billing-detail-panel">
+            <div className="card-title">Store orders</div>
+            {materialsLoading ? (
+              <div className="billing-empty">Loading orders...</div>
+            ) : materialsError ? (
+              <div className="billing-empty">{materialsError}</div>
+            ) : materials.length === 0 ? (
+              <div className="billing-empty">No store orders yet.</div>
+            ) : (
+              <div className="billing-materials">
+                {materials.map((order) => (
+                  <div className="billing-material-row" key={order.id}>
+                    <div>
+                      <div className="billing-row-title">Order {order.id}</div>
+                      <div className="billing-row-meta">
+                        Status: {order.status || "pending"} · {formatCents(order.totalCents ?? 0)}
+                      </div>
+                      {order.pickupNotes ? (
+                        <div className="billing-row-meta">Pickup notes: {order.pickupNotes}</div>
+                      ) : null}
+                      {order.items && order.items.length ? (
+                        <div className="billing-row-meta">
+                          {order.items.map((item, index) => (
+                            <span key={index}>
+                              {item.name ?? "Item"} × {item.quantity ?? 0}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div>
+                      {order.checkoutUrl ? (
+                        <a
+                          className="btn btn-ghost"
+                          href={order.checkoutUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open receipt
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </article>
+
+          <article className="billing-detail-panel">
+            <div className="card-title">Commission payments</div>
+            {commissionLoading ? (
+              <div className="billing-empty">Loading commission payment actions...</div>
+            ) : pendingCommissionCheckouts.length === 0 ? (
+              <div className="billing-empty">No pending commission checkouts.</div>
+            ) : (
+              <div className="billing-materials">
+                {pendingCommissionCheckouts.map((entry) => (
+                  <div className="billing-material-row" key={entry.requestId}>
+                    <div>
+                      <div className="billing-row-title">{entry.title}</div>
+                      <div className="billing-row-meta">
+                        Request {entry.requestId} · Status: {entry.status} · Payment: {entry.commissionPaymentStatus}
+                      </div>
+                    </div>
+                    <div>
+                      <button
+                        className="btn btn-primary"
+                        disabled={Boolean(commissionPayBusyId)}
+                        onClick={toVoidHandler(
+                          () => handleCommissionCheckout(entry),
+                          handleCheckoutHandlerError,
+                          "billing.commissionCheckout"
+                        )}
+                      >
+                        {commissionPayBusyId === entry.requestId ? "Preparing checkout..." : "Open commission checkout"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </article>
+
+          <article className="billing-detail-panel">
+            <div className="card-title">Receipts</div>
+            <div className="receipt-tabs">
+              {receiptFilters.map((filter) => (
+                <button
+                  key={filter.key}
+                  className={`receipt-tab ${receiptFilter === filter.key ? "active" : ""}`}
+                  onClick={() => setReceiptFilter(filter.key)}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+            {receiptsFiltered.length === 0 ? (
+              <div className="billing-empty">No receipts to show yet.</div>
+            ) : (
+              <div className="billing-receipts">
+                {receiptsFiltered.map((item) => (
+                  <div className="receipt-row" key={`${item.kind}-${item.id}`}>
+                    <div>
+                      <div className="receipt-title">{item.title}</div>
+                      <div className="receipt-meta">{item.subtitle}</div>
+                    </div>
+                    <div className="receipt-date">{formatDateTime(item.createdAt)}</div>
+                    <div className="receipt-amount">{formatCents(item.totalCents)}</div>
+                    {item.link ? (
+                      <a href={item.link} target="_blank" rel="noreferrer" className="receipt-link">
+                        Open receipt
+                      </a>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </article>
+
+          <article className="billing-detail-panel">
+            <div className="card-title">Need help?</div>
+            <p className="billing-copy">
+              Billing is attendance-only: we only charge you after a staff or self check-in. Cancel anytime up
+              to 3 hours before the event. Orders and approved commissions are paid via hosted Stripe Checkout;
+              use the actions on this page.
+            </p>
+            <p className="billing-copy">
+              Questions? Visit the Support tab or email{" "}
+              <a href="mailto:support@monsoonfire.com">support@monsoonfire.com</a>.
+            </p>
+          </article>
+        </div>
       </section>
 
     </div>

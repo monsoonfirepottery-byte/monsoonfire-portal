@@ -1,6 +1,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { createHash } from "node:crypto";
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
@@ -35,6 +36,28 @@ const EVENTS_COL = "events";
 const INDUSTRY_EVENTS_COL = "industryEvents";
 const SIGNUPS_COL = "eventSignups";
 const CHARGES_COL = "eventCharges";
+const SUPPORT_REQUESTS_COL = "supportRequests";
+
+const WORKSHOP_COMMUNITY_SIGNAL_EVENT_SOURCES = [
+  "events-interest-toggle",
+  "events-interest",
+  "events-interest-withdrawal",
+  "events-showcase",
+] as const;
+const WORKSHOP_REQUEST_SIGNAL_EVENT_SOURCES = ["events-request-form", "cluster-routing"] as const;
+const WORKSHOP_DEMAND_SIGNAL_EVENT_SOURCES = [
+  ...WORKSHOP_COMMUNITY_SIGNAL_EVENT_SOURCES,
+  ...WORKSHOP_REQUEST_SIGNAL_EVENT_SOURCES,
+] as const;
+const WORKSHOP_SIGNAL_QUERY_LIMIT_DEFAULT = 250;
+const WORKSHOP_SIGNAL_QUERY_LIMIT_MAX = 500;
+const WORKSHOP_SIGNAL_QUERY_PAGE_LIMIT = 12;
+const WORKSHOP_SIGNAL_EVENT_ID_BATCH_SIZE = 30;
+// Firestore "in" filters support up to 10 IDs per query.
+const WORKSHOP_SIGNAL_EVENT_ID_QUERY_CHUNK_SIZE = 10;
+const WORKSHOP_SIGNAL_SOURCE_QUERY_CHUNK_SIZE = 30;
+const WORKSHOP_SIGNAL_NOTE_PREFIXES = ["Notes", "Outcome note", "Outcome", "Result", "Why", "Reason"];
+const WORKSHOP_SIGNAL_DOC_ID_PATTERN = /^[a-zA-Z0-9_-]{6,120}$/;
 
 const DEFAULT_OFFER_HOURS = 12;
 const DEFAULT_CANCEL_HOURS = 3;
@@ -44,6 +67,7 @@ let stripeClient: Stripe | null = null;
 const listEventsSchema = z.object({
   includeDrafts: z.boolean().optional(),
   includeCancelled: z.boolean().optional(),
+  includeCommunitySignals: z.boolean().optional(),
 });
 
 const listIndustryEventsSchema = z.object({
@@ -64,6 +88,7 @@ const listEventSignupsSchema = z.object({
 
 const eventIdSchema = z.object({
   eventId: z.string().min(1),
+  includeCommunitySignals: z.boolean().optional(),
 });
 
 const industryEventIdSchema = z.object({
@@ -100,11 +125,869 @@ const runIndustryEventsFreshnessSchema = z.object({
   retirePastHours: z.number().int().min(1).max(336).optional(),
 });
 
+const listWorkshopDemandSignalsSchema = z.object({
+  eventIds: z.array(z.string().trim().min(1)).max(WORKSHOP_SIGNAL_QUERY_LIMIT_MAX).optional(),
+  sources: z
+    .array(z.string().trim().min(1))
+    .min(1)
+    .max(WORKSHOP_SIGNAL_QUERY_LIMIT_MAX)
+    .optional(),
+  limit: z.number().int().min(1).max(WORKSHOP_SIGNAL_QUERY_LIMIT_MAX).optional(),
+});
+
 const publishEventSchema = z.object({
   eventId: z.string().min(1),
   forcePublish: z.boolean().optional(),
   overrideReason: z.string().max(500).optional().nullable(),
 });
+
+const WORKSHOP_SIGNAL_TECHNIQUE_RULES = [
+  {
+    id: "wheel-throwing",
+    labels: ["wheel throwing", "throwing", "wheel", "centering", "throw"],
+  },
+  {
+    id: "handbuilding",
+    labels: ["handbuilding", "hand build", "hand-built", "coil", "slab", "pinch"],
+  },
+  {
+    id: "surface-decoration",
+    labels: ["surface decoration", "surface", "underglaze", "slip trail", "carving", "sgraffito", "glaze"],
+  },
+  {
+    id: "glazing-firing",
+    labels: ["glazing", "firing", "kiln", "cone", "raku", "reduction", "oxidation", "glaze"],
+  },
+  {
+    id: "studio-practice",
+    labels: ["studio practice", "workflow", "production", "shelf", "placement", "planning"],
+  },
+] as const;
+
+const WORKSHOP_SIGNAL_TECHNIQUE_LABEL_BY_ID: Record<string, string> = {
+  "wheel-throwing": "Wheel throwing",
+  handbuilding: "Handbuilding",
+  "surface-decoration": "Surface decoration",
+  "glazing-firing": "Glazing + firing",
+  "studio-practice": "Studio practice",
+} as const;
+
+const WORKSHOP_SIGNAL_ALLOWED_TECHNIQUE_IDS = new Set<string>([
+  "wheel-throwing",
+  "handbuilding",
+  "surface-decoration",
+  "glazing-firing",
+  "studio-practice",
+]);
+
+type WorkshopDemandSignalSource = (typeof WORKSHOP_DEMAND_SIGNAL_EVENT_SOURCES)[number];
+type WorkshopDemandSignalAction = "interest" | "withdrawal" | "showcase" | "request";
+type WorkshopDemandSignalLevel = "all-levels" | "beginner" | "intermediate" | "advanced";
+type WorkshopDemandSignalSchedule =
+  | "weekday-evening"
+  | "weekday-daytime"
+  | "weekend-morning"
+  | "weekend-afternoon"
+  | "flexible";
+type WorkshopDemandSignalBuddyMode = "solo" | "buddy" | "circle";
+
+type WorkshopDemandSignalCandidate = {
+  id: string;
+  uid: string;
+  sourceEventId?: string;
+  sourceEventTitle?: string;
+  action: WorkshopDemandSignalAction;
+  createdAtMs: number;
+  level: WorkshopDemandSignalLevel;
+  schedule: WorkshopDemandSignalSchedule;
+  buddyMode: WorkshopDemandSignalBuddyMode;
+  techniqueIds: string[];
+  techniqueLine: string;
+  source: WorkshopDemandSignalSource;
+  signalNote?: string;
+};
+
+function parseSignalLineValue(body: string, prefix: string): string {
+  if (!body) return "";
+  const target = prefix.toLowerCase();
+  const line = body
+    .split("\n")
+    .map((entry) => entry.trim())
+    .find((entry) => entry.toLowerCase().startsWith(`${target}:`));
+
+  if (!line) return "";
+  const sep = line.indexOf(":");
+  if (sep < 0) return "";
+  return line.slice(sep + 1).trim().replace(/^\((.*)\)$/, "$1");
+}
+
+function parseSignalLineValueFromAliases(body: string, prefixes: string[]): string {
+  for (const prefix of prefixes) {
+    const value = parseSignalLineValue(body, prefix);
+    if (value) return value;
+  }
+  return "";
+}
+
+function parseWorkshopSignalNote(body: string): string {
+  const note = parseSignalLineValueFromAliases(body, WORKSHOP_SIGNAL_NOTE_PREFIXES);
+  return note;
+}
+
+function parseWorkshopSignalSource(value: unknown): WorkshopDemandSignalSource | null {
+  const normalized = safeString(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  const source = normalized.startsWith("workshop-")
+    ? normalized.replace(/^workshop-/, "events-")
+    : normalized.startsWith("event-")
+      ? normalized.replace(/^event-/, "events-")
+      : normalized;
+
+  if (!source) return null;
+  if ((WORKSHOP_DEMAND_SIGNAL_EVENT_SOURCES as ReadonlyArray<string>).includes(source)) {
+    return source as WorkshopDemandSignalSource;
+  }
+
+  if (source === "showcase-follow-up" || source === "showcase") return "events-showcase";
+  if (source === "withdrawn" || source === "interest-withdrawn") return "events-interest-withdrawal";
+  if (source === "request-form" || source === "workshop-request") return "events-request-form";
+  if (source === "interest-toggle") return "events-interest-toggle";
+  if (source === "interest-signal") return "events-interest";
+
+  return null;
+}
+
+function inferWorkshopSignalSource(
+  rawSource: unknown,
+  subject: unknown,
+  body: unknown
+): WorkshopDemandSignalSource | null {
+  const source = parseWorkshopSignalSource(rawSource);
+  if (source) return source;
+
+  const normalizedSubject = safeString(subject).trim().toLowerCase();
+  if (normalizedSubject.includes("workshop request:")) return "events-request-form";
+  if (normalizedSubject.includes("workshop interest withdrawn")) return "events-interest-withdrawal";
+  if (normalizedSubject.includes("showcase follow-up")) return "events-showcase";
+  if (normalizedSubject.includes("workshop interest:")) return "events-interest-toggle";
+  if (
+    normalizedSubject.includes("workshop interest") ||
+    normalizedSubject.includes("i'm interested") ||
+    normalizedSubject.includes("i am interested")
+  ) {
+    return "events-interest";
+  }
+
+  const normalizedBody = safeString(body).trim().toLowerCase();
+  if (normalizedBody.includes("workshop request:")) return "events-request-form";
+  if (normalizedBody.includes("workshop interest withdrawn")) return "events-interest-withdrawal";
+  if (normalizedBody.includes("showcase follow-up")) return "events-showcase";
+  if (normalizedBody.includes("workshop showcase")) return "events-showcase";
+  if (normalizedBody.includes("workshop interest:")) return "events-interest-toggle";
+  if (
+    normalizedBody.includes("workshop interest") ||
+    normalizedBody.includes("i'm interested") ||
+    normalizedBody.includes("i am interested")
+  ) {
+    return "events-interest";
+  }
+
+  return null;
+}
+
+function parseWorkshopSignalAction(source: WorkshopDemandSignalSource): WorkshopDemandSignalAction {
+  return source === "events-interest-withdrawal"
+    ? "withdrawal"
+    : source === "events-showcase"
+      ? "showcase"
+      : source === "events-request-form" || source === "cluster-routing"
+        ? "request"
+      : "interest";
+}
+
+function parseWorkshopSignalEventTitle(rawEventTitle: unknown, rawWorkshopTitle: unknown, body: string): string {
+  const direct = safeString(rawEventTitle).trim();
+  if (direct) return direct;
+  const workshop = safeString(rawWorkshopTitle).trim();
+  if (workshop) return workshop;
+
+  return (
+    parseSignalLineValueFromAliases(body, [
+      "Workshop title",
+      "Event title",
+      "Workshop",
+      "Event",
+      "Session",
+      "Session title",
+    ]) || ""
+  );
+}
+
+function normalizeWorkshopSignalDocumentId(value: string): string | null {
+  const trimmed = safeString(value).trim();
+  if (!trimmed || !WORKSHOP_SIGNAL_DOC_ID_PATTERN.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
+function parseWorkshopSignalEventId(rawEventId: unknown, body: string): string | null {
+  const direct = safeString(rawEventId).trim();
+  const normalizedDirect = normalizeWorkshopSignalDocumentId(direct);
+  if (normalizedDirect) {
+    return normalizedDirect;
+  }
+
+  const fromBody = parseSignalLineValueFromAliases(body, [
+    "Event id",
+    "Workshop id",
+    "Session id",
+    "Workshop event id",
+    "Event",
+    "Workshop",
+    "Session",
+  ]);
+
+  return normalizeWorkshopSignalDocumentId(fromBody);
+}
+
+function isWorkshopDemandSignalRequestSource(source: WorkshopDemandSignalSource): boolean {
+  return source === "events-request-form" || source === "cluster-routing";
+}
+
+function parseWorkshopSignalLevel(raw: unknown): WorkshopDemandSignalLevel {
+  const value = safeString(raw).trim().toLowerCase();
+  if (value === "beginner" || value === "intermediate" || value === "advanced") return value;
+  if (value === "all levels" || value === "all-levels") return "all-levels";
+  return "all-levels";
+}
+
+function parseWorkshopSignalSchedule(raw: unknown): WorkshopDemandSignalSchedule {
+  const value = safeString(raw).trim().toLowerCase();
+  if (
+    value === "any" ||
+    value === "any schedule" ||
+    value === "anytime" ||
+    value === "any time" ||
+    value === "flex"
+  ) {
+    return "flexible";
+  }
+  if (
+    value === "weekday-evening" ||
+    value === "weekday-daytime" ||
+    value === "weekend-morning" ||
+    value === "weekend-afternoon" ||
+    value === "flexible"
+  ) {
+    return value;
+  }
+  return "weekday-evening";
+}
+
+function parseWorkshopSignalBuddyMode(raw: unknown): WorkshopDemandSignalBuddyMode {
+  const value = safeString(raw).trim().toLowerCase();
+  if (value.includes("circle")) return "circle";
+  if (value.includes("buddy")) return "buddy";
+  return "solo";
+}
+
+function parseWorkshopSignalTechniqueIdsFromText(rawLine: string, fallbackTitle: string): string[] {
+  const tokens = [rawLine, fallbackTitle]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .split(/[,;\n]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  const out: string[] = [];
+  WORKSHOP_SIGNAL_TECHNIQUE_RULES.forEach((rule) => {
+    const hasMatch = tokens.some((token) =>
+      rule.labels.some((label) => token.includes(label) || label.includes(token))
+    );
+    if (hasMatch) out.push(rule.id);
+  });
+
+  if (!out.length) {
+    const flat = tokens.join(" ").toLowerCase();
+    WORKSHOP_SIGNAL_TECHNIQUE_RULES.forEach((rule) => {
+      const matches = rule.labels.some((label) => flat.includes(label));
+      if (matches) out.push(rule.id);
+    });
+  }
+
+  const deduped: string[] = [];
+  out.forEach((id) => {
+    if (!deduped.includes(id)) deduped.push(id);
+  });
+  return deduped.length > 0 ? deduped : ["studio-practice"];
+}
+
+function parseWorkshopSignalTechniqueIds(
+  rawTechniqueIds: unknown,
+  techniqueLine: string,
+  fallbackTitle: string
+): string[] {
+  const explicit: string[] = [];
+  if (Array.isArray(rawTechniqueIds)) {
+    rawTechniqueIds.forEach((entry) => {
+      const value = safeString(entry).trim().toLowerCase();
+      if (!value) return;
+      if (WORKSHOP_SIGNAL_ALLOWED_TECHNIQUE_IDS.has(value) && !explicit.includes(value)) {
+        explicit.push(value);
+      }
+    });
+  } else {
+    const raw = safeString(rawTechniqueIds);
+    if (raw) {
+      raw
+        .toLowerCase()
+        .split(/[,;\n]+/)
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .forEach((value) => {
+          if (WORKSHOP_SIGNAL_ALLOWED_TECHNIQUE_IDS.has(value) && !explicit.includes(value)) {
+            explicit.push(value);
+          }
+        });
+    }
+  }
+
+  if (explicit.length > 0) {
+    return explicit;
+  }
+
+  return parseWorkshopSignalTechniqueIdsFromText(techniqueLine, fallbackTitle);
+}
+
+function normalizeWorkshopSignalTechniques(raw: string[]): string[] {
+  const out = raw.filter((entry) => WORKSHOP_SIGNAL_ALLOWED_TECHNIQUE_IDS.has(entry));
+  return out.length > 0 ? out : ["studio-practice"];
+}
+
+function techniqueLabelFromIds(ids: string[]): string {
+  return ids.map((id) => WORKSHOP_SIGNAL_TECHNIQUE_LABEL_BY_ID[id] ?? "Studio practice").join(", ");
+}
+
+function workshopDemandSignalSourceLabel(source: WorkshopDemandSignalSource): string {
+  if (source === "events-interest-toggle") return "Interest toggle";
+  if (source === "events-interest") return "Interest signal";
+  if (source === "events-request-form") return "Workshop request form";
+  if (source === "cluster-routing") return "Routing brief";
+  if (source === "events-showcase") return "Showcase follow-up";
+  if (source === "events-interest-withdrawal") return "Interest withdrawn";
+  return "Workshop signal";
+}
+
+function normalizeWorkshopSignalLimit(value: unknown): number {
+  return Math.min(Math.max(asInt(value, WORKSHOP_SIGNAL_QUERY_LIMIT_DEFAULT), 1), WORKSHOP_SIGNAL_QUERY_LIMIT_MAX);
+}
+
+function normalizeWorkshopSignalEventIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  value.forEach((entry) => {
+    const raw = safeString(entry).trim();
+    if (!raw || out.includes(raw)) return;
+    out.push(raw);
+  });
+  return out;
+}
+
+async function fetchEventTitlesById(
+  eventIds: string[]
+): Promise<Map<string, string>> {
+  const eventTitleById = new Map<string, string>();
+  for (let index = 0; index < eventIds.length; index += WORKSHOP_SIGNAL_EVENT_ID_BATCH_SIZE) {
+    const chunk = eventIds.slice(index, index + WORKSHOP_SIGNAL_EVENT_ID_BATCH_SIZE);
+    const snaps = await Promise.all(chunk.map((eventId) => db.collection(EVENTS_COL).doc(eventId).get()));
+    snaps.forEach((snap) => {
+      if (!snap.exists) return;
+      const data = snap.data();
+      if (!data) return;
+      const title = safeString(data.title);
+      if (!title) return;
+      eventTitleById.set(snap.id, title);
+    });
+  }
+  return eventTitleById;
+}
+
+type WorkshopCommunitySignalEventCount = {
+  requestSignals: number;
+  interestSignals: number;
+  showcaseSignals: number;
+  withdrawnSignals: number;
+  latestSignalAtMs: number | null;
+};
+
+type WorkshopCommunitySignalRequestEventCandidate = {
+  uid: string;
+  sourceEventId: string;
+  action: "request";
+  createdAtMs: number;
+};
+
+type WorkshopCommunitySignalEventCandidate = {
+  uid: string;
+  sourceEventId: string;
+  action: Exclude<WorkshopDemandSignalAction, "request">;
+  createdAtMs: number;
+};
+
+export async function collectWorkshopCommunitySignalCountsByEventIds(
+  authUid: string,
+  eventIds: string[]
+): Promise<Map<string, WorkshopCommunitySignalEventCount>> {
+  const normalizedEventIds = normalizeWorkshopSignalEventIds(eventIds);
+  if (!normalizedEventIds.length) return new Map();
+  const toErrorMessage = (error: unknown): string => {
+    if (error instanceof Error) return error.message || "Unknown error";
+    if (typeof error === "string") return error;
+    if (error && typeof error === "object" && "message" in error) {
+      return String((error as { message?: unknown }).message ?? "Unknown error");
+    }
+    return "Unknown error";
+  };
+
+  const eventIdSet = new Set(normalizedEventIds);
+  const sourceFilter = [...WORKSHOP_DEMAND_SIGNAL_EVENT_SOURCES];
+  const signalDocsById = new Map<string, { id: string; raw: Record<string, any> }>();
+  const eventIdsWithRecognizedSourceSignals = new Set<string>();
+  const queryLimit = WORKSHOP_SIGNAL_QUERY_LIMIT_DEFAULT;
+  const queryPageLimit = WORKSHOP_SIGNAL_QUERY_PAGE_LIMIT;
+
+  const addSignalDoc = (docSnap: any) => {
+    if (!docSnap?.id) return;
+    if (signalDocsById.has(docSnap.id)) return;
+    const raw = docSnap.data() as Record<string, any>;
+    const eventId = parseWorkshopSignalEventId(raw.eventId, safeString(raw.body) || "");
+    if (eventId && eventIdSet.has(eventId)) {
+      eventIdsWithRecognizedSourceSignals.add(eventId);
+    }
+    signalDocsById.set(docSnap.id, { id: docSnap.id, raw });
+  };
+
+  const collectPaged = async (
+    buildQuery: (pageCursor: unknown | undefined) => any,
+    options: {
+      ordered: boolean;
+      sourceFilter?: WorkshopDemandSignalSource[];
+      sourceValue?: null | "";
+      eventIdChunkSize?: number;
+      label: string;
+    }
+  ): Promise<void> => {
+    const ordered = options.ordered === false ? false : true;
+    const firstQuery = buildQuery(undefined);
+
+    if (!ordered) {
+      const snaps = await firstQuery.get();
+      snaps.forEach((docSnap: any) => addSignalDoc(docSnap));
+      return;
+    }
+
+    let pageCursor: unknown | undefined;
+    for (let pageIndex = 0; pageIndex < queryPageLimit; pageIndex += 1) {
+      const pageQuery = pageCursor ? buildQuery(pageCursor) : firstQuery;
+      const pageSnaps = await pageQuery.limit(queryLimit).get();
+      const docs = pageSnaps.docs ?? [];
+      for (const docSnap of docs) {
+        addSignalDoc(docSnap);
+      }
+
+      if (!Array.isArray(docs) || docs.length < queryLimit) {
+        return;
+      }
+      if (typeof pageQuery.startAfter !== "function") {
+        logger.warn("collectWorkshopCommunitySignalCountsByEventIds query pagination unsupported", {
+          message: options.label,
+          sourceFilter: options.sourceFilter,
+          sourceValue: options.sourceValue,
+          eventIdChunkSize: options.eventIdChunkSize ?? 0,
+        });
+        return;
+      }
+      pageCursor = docs[docs.length - 1];
+    }
+
+    logger.warn("collectWorkshopCommunitySignalCountsByEventIds query pagination reached cap", {
+      message: options.label,
+      sourceFilter: options.sourceFilter,
+      sourceValue: options.sourceValue,
+      eventIdChunkSize: options.eventIdChunkSize ?? 0,
+      pageLimit: queryPageLimit,
+    });
+  };
+
+  const collectBySourceFilter = async (
+    sources: WorkshopDemandSignalSource[],
+    eventIdChunk?: string[],
+    includeOrder = true
+  ) => {
+    if (sources.length === 0) return;
+    const sourceChunks = splitArrayIntoChunks(sources, WORKSHOP_SIGNAL_SOURCE_QUERY_CHUNK_SIZE);
+
+    const buildQuery = (sourceChunk: WorkshopDemandSignalSource[], chunk?: string[], ordered = true) => {
+      let query = db
+        .collection(SUPPORT_REQUESTS_COL)
+        .where("category", "==", "Workshops")
+        .where("source", "in", sourceChunk) as any;
+      if (chunk?.length) {
+        query = query.where("eventId", "in", chunk);
+      }
+      if (ordered) {
+        query = query.orderBy("createdAt", "desc");
+      }
+      return query;
+    };
+
+    const collectChunk = async (
+      sourceChunk: WorkshopDemandSignalSource[],
+      chunk?: string[],
+      ordered = true
+    ) => {
+      const context = {
+        ordered,
+        sourceFilter: sourceChunk,
+        eventIdChunkSize: chunk?.length ?? 0,
+        label: "collectWorkshopCommunitySignalCountsByEventIds source query",
+      };
+
+      try {
+        await collectPaged(
+          (cursor) => {
+            const baseQuery = buildQuery(sourceChunk, chunk, ordered);
+            if (!cursor) return baseQuery;
+            return baseQuery.startAfter(cursor);
+          },
+          context,
+        );
+        return;
+      } catch (error: any) {
+        if (!ordered) {
+          logger.warn("collectWorkshopCommunitySignalCountsByEventIds source query failed", {
+            message: toErrorMessage(error),
+            sourceFilter: sourceChunk,
+            sourceCount: sourceChunk.length,
+            eventIdChunkSize: chunk?.length ?? 0,
+            ordered: false,
+          });
+          return;
+        }
+        logger.warn("collectWorkshopCommunitySignalCountsByEventIds source query fallback w/o orderBy", {
+          message: toErrorMessage(error),
+          sourceFilter: sourceChunk,
+          sourceCount: sourceChunk.length,
+          eventIdChunkSize: chunk?.length ?? 0,
+        });
+        try {
+          const fallbackSnaps = await buildQuery(sourceChunk, chunk, false).get();
+          fallbackSnaps.forEach((docSnap: any) => addSignalDoc(docSnap));
+        } catch (fallbackError: any) {
+          logger.warn("collectWorkshopCommunitySignalCountsByEventIds source query fallback failed", {
+            message: toErrorMessage(fallbackError),
+            sourceFilter: sourceChunk,
+            sourceCount: sourceChunk.length,
+            eventIdChunkSize: chunk?.length ?? 0,
+          });
+        }
+      }
+    };
+
+    if (!eventIdChunk?.length) {
+      for (const sourceChunk of sourceChunks) {
+        await collectChunk(sourceChunk, undefined, includeOrder);
+      }
+    } else {
+      for (const sourceChunk of sourceChunks) {
+        for (const eventIdChunkPart of splitArrayIntoChunks(eventIdChunk, WORKSHOP_SIGNAL_EVENT_ID_QUERY_CHUNK_SIZE)) {
+          await collectChunk(sourceChunk, eventIdChunkPart, includeOrder);
+        }
+      }
+    }
+  };
+
+  const collectWithoutSource = async (eventIdChunk?: string[]) => {
+    const collectChunk = async (
+      sourceValue: null | "",
+      chunk?: string[],
+      ordered = true,
+    ) => {
+      try {
+        const buildQuery = () => {
+          let query = db
+            .collection(SUPPORT_REQUESTS_COL)
+            .where("category", "==", "Workshops")
+            .where("source", "==", sourceValue) as any;
+          if (ordered) {
+            query = query.orderBy("createdAt", "desc");
+          }
+          if (chunk?.length) {
+            query = query.where("eventId", "in", chunk);
+          }
+          return query;
+        };
+        await collectPaged(
+          (cursor) => {
+            const baseQuery = buildQuery();
+            if (!cursor) return baseQuery;
+            return baseQuery.startAfter(cursor);
+          },
+          {
+            ordered,
+            sourceValue,
+            eventIdChunkSize: chunk?.length ?? 0,
+            label: "collectWorkshopCommunitySignalCountsByEventIds null-source query",
+          },
+        );
+        return;
+      } catch (error: any) {
+        if (!ordered) {
+          logger.warn("collectWorkshopCommunitySignalCountsByEventIds null-source query failed", {
+            message: toErrorMessage(error),
+            eventIdChunkSize: chunk?.length ?? 0,
+            sourceValue,
+            ordered: false,
+          });
+          return;
+        }
+        logger.warn("collectWorkshopCommunitySignalCountsByEventIds null-source fallback w/o orderBy", {
+          message: toErrorMessage(error),
+          eventIdChunkSize: chunk?.length ?? 0,
+          sourceValue,
+        });
+        let fallbackQuery = db
+          .collection(SUPPORT_REQUESTS_COL)
+          .where("category", "==", "Workshops")
+          .where("source", "==", sourceValue) as any;
+        if (chunk?.length) {
+          fallbackQuery = fallbackQuery.where("eventId", "in", chunk);
+        }
+        try {
+          const snaps = await fallbackQuery.limit(queryLimit).get();
+          snaps.forEach((docSnap: any) => addSignalDoc(docSnap));
+        } catch (fallbackError: any) {
+          logger.warn("collectWorkshopCommunitySignalCountsByEventIds null-source fallback failed", {
+            message: toErrorMessage(fallbackError),
+            eventIdChunkSize: chunk?.length ?? 0,
+            sourceValue,
+          });
+        }
+      }
+    };
+
+    if (!eventIdChunk?.length) {
+      await collectChunk(null, undefined, true);
+      await collectChunk("", undefined, true);
+      return;
+    }
+    for (const eventIdChunkPart of splitArrayIntoChunks(eventIdChunk, WORKSHOP_SIGNAL_EVENT_ID_QUERY_CHUNK_SIZE)) {
+      await collectChunk(null, eventIdChunkPart, true);
+      await collectChunk("", eventIdChunkPart, true);
+    }
+  };
+
+  const collectWithoutSourceFilter = async (eventIdChunk?: string[]) => {
+    const collectChunk = async (
+      chunk?: string[],
+      ordered = true,
+    ) => {
+      try {
+        const buildQuery = () => {
+          let query = db
+            .collection(SUPPORT_REQUESTS_COL)
+            .where("category", "==", "Workshops") as any;
+          if (ordered) {
+            query = query.orderBy("createdAt", "desc");
+          }
+          if (chunk?.length) {
+            query = query.where("eventId", "in", chunk);
+          }
+          return query;
+        }
+        await collectPaged(
+          (cursor) => {
+            const baseQuery = buildQuery();
+            if (!cursor) return baseQuery;
+            return baseQuery.startAfter(cursor);
+          },
+          {
+            ordered,
+            eventIdChunkSize: chunk?.length ?? 0,
+            label: "collectWorkshopCommunitySignalCountsByEventIds source-free query",
+          },
+        );
+        return;
+      } catch (error: any) {
+        if (!ordered) {
+          logger.warn("collectWorkshopCommunitySignalCountsByEventIds source-free query failed", {
+            message: toErrorMessage(error),
+            eventIdChunkSize: chunk?.length ?? 0,
+            ordered: false,
+          });
+          return;
+        }
+        logger.warn("collectWorkshopCommunitySignalCountsByEventIds source-free query fallback w/o orderBy", {
+          message: toErrorMessage(error),
+          eventIdChunkSize: chunk?.length ?? 0,
+        });
+        let fallbackQuery = db
+          .collection(SUPPORT_REQUESTS_COL)
+          .where("category", "==", "Workshops") as any;
+        if (chunk?.length) {
+          fallbackQuery = fallbackQuery.where("eventId", "in", chunk);
+        }
+        try {
+          const snaps = await fallbackQuery.limit(queryLimit).get();
+          snaps.forEach((docSnap: any) => addSignalDoc(docSnap));
+        } catch (fallbackError: any) {
+          logger.warn("collectWorkshopCommunitySignalCountsByEventIds source-free fallback failed", {
+            message: toErrorMessage(fallbackError),
+            eventIdChunkSize: chunk?.length ?? 0,
+          });
+        }
+      }
+    };
+
+    if (!eventIdChunk?.length) {
+      await collectChunk(undefined, true);
+      return;
+    }
+    for (const eventIdChunkPart of splitArrayIntoChunks(eventIdChunk, WORKSHOP_SIGNAL_EVENT_ID_QUERY_CHUNK_SIZE)) {
+      await collectChunk(eventIdChunkPart, true);
+    }
+  };
+
+  try {
+    await collectBySourceFilter(sourceFilter, normalizedEventIds);
+    const eventsWithoutRecognizedSourceSignal = normalizedEventIds.filter(
+      (eventId) => !eventIdsWithRecognizedSourceSignals.has(eventId)
+    );
+
+    if (eventsWithoutRecognizedSourceSignal.length > 0) {
+      await collectWithoutSource(eventsWithoutRecognizedSourceSignal);
+      await collectWithoutSourceFilter(eventsWithoutRecognizedSourceSignal);
+    }
+
+    const createEmptySignalCounts = (): WorkshopCommunitySignalEventCount => ({
+      requestSignals: 0,
+      interestSignals: 0,
+      showcaseSignals: 0,
+      withdrawnSignals: 0,
+      latestSignalAtMs: null,
+    });
+
+    const latestRequestByMemberEvent = new Map<string, WorkshopCommunitySignalRequestEventCandidate>();
+    const latestCommunityByMemberEvent = new Map<string, WorkshopCommunitySignalEventCandidate>();
+    for (const { raw } of signalDocsById.values()) {
+      const uid = safeString(raw.uid);
+      if (!uid || uid === authUid) continue;
+
+      const subject = safeString(raw.subject);
+      const source = inferWorkshopSignalSource(raw.source, subject, safeString(raw.body));
+      if (!source) continue;
+
+      const action = parseWorkshopSignalAction(source);
+
+      const body = safeString(raw.body);
+      const eventId = parseWorkshopSignalEventId(raw.eventId, body);
+      if (!eventId || !eventIdSet.has(eventId)) continue;
+      eventIdsWithRecognizedSourceSignals.add(eventId);
+
+      const createdAt = parseTimestamp(raw.createdAt);
+      if (!createdAt) continue;
+      const createdAtMs = createdAt.toMillis();
+      if (!Number.isFinite(createdAtMs)) continue;
+
+      if (action === "request") {
+        const requestKey = `${uid}|request|${eventId}`;
+        const existingRequest = latestRequestByMemberEvent.get(requestKey);
+        if (existingRequest && existingRequest.createdAtMs >= createdAtMs) continue;
+        latestRequestByMemberEvent.set(requestKey, { uid, sourceEventId: eventId, action, createdAtMs });
+        continue;
+      }
+
+      const latestKey = `${uid}|${eventId}`;
+      const latestCommunitySignal = latestCommunityByMemberEvent.get(latestKey);
+      if (latestCommunitySignal && latestCommunitySignal.createdAtMs >= createdAtMs) continue;
+      latestCommunityByMemberEvent.set(latestKey, { uid, sourceEventId: eventId, action, createdAtMs });
+    }
+
+    const countsByEvent = new Map<string, WorkshopCommunitySignalEventCount>();
+    latestRequestByMemberEvent.forEach((signal) => {
+      const next = countsByEvent.get(signal.sourceEventId) ?? createEmptySignalCounts();
+      next.requestSignals += 1;
+      next.latestSignalAtMs = next.latestSignalAtMs === null
+        ? signal.createdAtMs
+        : Math.max(next.latestSignalAtMs, signal.createdAtMs);
+      countsByEvent.set(signal.sourceEventId, next);
+    });
+
+    latestCommunityByMemberEvent.forEach((signal) => {
+      const next = countsByEvent.get(signal.sourceEventId) ?? createEmptySignalCounts();
+      const action = signal.action as WorkshopDemandSignalAction;
+      if (action === "withdrawal") {
+        next.withdrawnSignals += 1;
+      } else if (action === "showcase") {
+        next.showcaseSignals += 1;
+      } else {
+        next.interestSignals += 1;
+      }
+      next.latestSignalAtMs = next.latestSignalAtMs === null
+        ? signal.createdAtMs
+        : Math.max(next.latestSignalAtMs, signal.createdAtMs);
+      countsByEvent.set(signal.sourceEventId, next);
+    });
+
+    return countsByEvent;
+  } catch (error: unknown) {
+    logger.warn("collectWorkshopCommunitySignalCountsByEventIds failed; returning empty community signal counts", {
+      message: toErrorMessage(error),
+      authUid,
+      requestedEventCount: normalizedEventIds.length,
+    });
+    return new Map<string, WorkshopCommunitySignalEventCount>();
+  }
+}
+
+function normalizeWorkshopDemandSignalSourceList(value: unknown): WorkshopDemandSignalSource[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    return [...WORKSHOP_DEMAND_SIGNAL_EVENT_SOURCES];
+  }
+
+  const out: WorkshopDemandSignalSource[] = [];
+  value.forEach((entry) => {
+    const source = parseWorkshopSignalSource(entry);
+    if (source) out.push(source);
+  });
+
+  if (!out.length) {
+    return [...WORKSHOP_DEMAND_SIGNAL_EVENT_SOURCES];
+  }
+
+  const deduped: WorkshopDemandSignalSource[] = [];
+  out.forEach((source) => {
+    if (!deduped.includes(source)) deduped.push(source);
+  });
+
+  return deduped;
+}
+
+function splitArrayIntoChunks<T>(values: T[], chunkSize: number): T[][] {
+  if (chunkSize <= 0) return [];
+  const out: T[][] = [];
+  for (let index = 0; index < values.length; index += chunkSize) {
+    out.push(values.slice(index, index + chunkSize));
+  }
+  return out;
+}
 
 const staffSetEventStatusSchema = z.object({
   eventId: z.string().min(1),
@@ -253,6 +1136,56 @@ function normalizeTags(raw: unknown): string[] {
     out.push(normalized);
   });
   return out.slice(0, 20);
+}
+
+function normalizeTitleForHash(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^\w\s]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hostForDedupe(url: string | null): string {
+  if (!url) return "manual";
+  try {
+    return new URL(url).host.toLowerCase();
+  } catch {
+    return "manual";
+  }
+}
+
+function industryEventDedupeHash(params: {
+  title: string;
+  startAt: Timestamp | null;
+  sourceUrl: string | null;
+}): string {
+  const dateKey = params.startAt ? params.startAt.toDate().toISOString().slice(0, 10) : "no-date";
+  const raw = `${normalizeTitleForHash(params.title)}|${dateKey}|${hostForDedupe(params.sourceUrl)}`;
+  return createHash("sha256").update(raw).digest("hex").slice(0, 24);
+}
+
+function industryEventQualityScore(params: {
+  summary: string;
+  startAt: Timestamp | null;
+  remoteUrl: string | null;
+  registrationUrl: string | null;
+  sourceUrl: string | null;
+  verifiedAt: Timestamp | null;
+}): number {
+  let score = 35;
+  if (params.summary.trim().length >= 24) score += 10;
+  if (params.startAt) score += 20;
+  if (params.remoteUrl || params.registrationUrl) score += 15;
+  if (params.sourceUrl) score += 10;
+  if (params.verifiedAt) score += 10;
+  return Math.min(100, Math.max(0, score));
+}
+
+function industryCurationStateForStatus(status: "draft" | "published" | "cancelled"): string {
+  if (status === "published") return "published";
+  if (status === "cancelled") return "retired";
+  return "draft";
 }
 
 type SweepIndustryEventsFreshnessOptions = {
@@ -466,6 +1399,7 @@ export const listEvents = onRequest({ region: REGION, cors: true }, async (req, 
 
   const includeDrafts = parsed.data.includeDrafts === true;
   const includeCancelled = parsed.data.includeCancelled === true;
+  const includeCommunitySignals = parsed.data.includeCommunitySignals === true;
 
   if (includeDrafts || includeCancelled) {
     const admin = await requireAdmin(req);
@@ -483,32 +1417,80 @@ export const listEvents = onRequest({ region: REGION, cors: true }, async (req, 
       snaps = await db.collection(EVENTS_COL).where("status", "==", "published").get();
     }
 
-    const events = snaps.docs
-      .map((docSnap) => {
-        const data = (docSnap.data() as Record<string, any>) ?? {};
-        const status = safeString(data.status).trim();
-        if (!includeDrafts && status === "draft") return null;
-        if (!includeCancelled && status === "cancelled") return null;
+    let events = snaps.docs.reduce<
+      {
+        id: string;
+        title: string;
+        summary: string;
+        startAt: string | null;
+        endAt: string | null;
+        timezone: string;
+        location: string;
+        priceCents: number;
+        currency: string;
+        includesFiring: boolean;
+        firingDetails: string | null;
+        capacity: number;
+        waitlistEnabled: boolean;
+        waitlistCount?: number | null;
+        status: string;
+        remainingCapacity: number;
+      }[]
+    >((acc, docSnap) => {
+      const data = (docSnap.data() as Record<string, any>) ?? {};
+      const status = safeString(data.status).trim();
+      if (!includeDrafts && status === "draft") return acc;
+      if (!includeCancelled && status === "cancelled") return acc;
 
-        return {
-          id: docSnap.id,
-          title: safeString(data.title),
-          summary: safeString(data.summary),
-          startAt: toIso(data.startAt),
-          endAt: toIso(data.endAt),
-          timezone: safeString(data.timezone),
-          location: safeString(data.location),
-          priceCents: asInt(data.priceCents, 0),
-          currency: normalizeCurrency(data.currency),
-          includesFiring: data.includesFiring === true,
-          firingDetails: data.firingDetails ?? null,
-          capacity: Math.max(asInt(data.capacity, 0), 0),
-          waitlistEnabled: data.waitlistEnabled !== false,
-          status: status || "draft",
-          remainingCapacity: computeRemainingCapacity(data),
-        };
-      })
-      .filter((event) => Boolean(event));
+      const counts = readCounts(data);
+      acc.push({
+        id: docSnap.id,
+        title: safeString(data.title),
+        summary: safeString(data.summary),
+        startAt: toIso(data.startAt),
+        endAt: toIso(data.endAt),
+        timezone: safeString(data.timezone),
+        location: safeString(data.location),
+        priceCents: asInt(data.priceCents, 0),
+        currency: normalizeCurrency(data.currency),
+        includesFiring: data.includesFiring === true,
+        firingDetails: data.firingDetails ?? null,
+        capacity: Math.max(asInt(data.capacity, 0), 0),
+        waitlistEnabled: data.waitlistEnabled !== false,
+        status: status || "draft",
+        waitlistCount: counts.waitlistCount,
+        remainingCapacity: computeRemainingCapacity(data),
+      });
+      return acc;
+    }, []);
+
+    if (includeCommunitySignals) {
+      const eventIds = events.map((event) => event.id);
+      const communitySignalCounts = await collectWorkshopCommunitySignalCountsByEventIds(auth.uid, eventIds);
+      if (communitySignalCounts.size > 0) {
+        events = events.map((event) => {
+          const communitySignalCount = communitySignalCounts.get(event.id);
+          if (!communitySignalCount) return event;
+          const totalSignals = Math.max(
+            communitySignalCount.requestSignals +
+              communitySignalCount.interestSignals +
+              communitySignalCount.showcaseSignals,
+            0,
+          );
+          return {
+            ...event,
+            communitySignalCounts: {
+              requestSignals: communitySignalCount.requestSignals,
+              interestSignals: communitySignalCount.interestSignals,
+              showcaseSignals: communitySignalCount.showcaseSignals,
+              withdrawnSignals: communitySignalCount.withdrawnSignals,
+              totalSignals,
+              latestSignalAtMs: communitySignalCount.latestSignalAtMs,
+            },
+          };
+        });
+      }
+    }
 
     res.status(200).json({ ok: true, events });
   } catch (err: any) {
@@ -747,6 +1729,16 @@ export const upsertIndustryEvent = onRequest({ region: REGION }, async (req, res
 
   try {
     const t = nowTs();
+    const dedupeHash = industryEventDedupeHash({ title, startAt, sourceUrl });
+    const qualityScore = industryEventQualityScore({
+      summary,
+      startAt,
+      remoteUrl,
+      registrationUrl,
+      sourceUrl,
+      verifiedAt,
+    });
+    const curationState = industryCurationStateForStatus(status);
     const eventRef = eventIdInput
       ? db.collection(INDUSTRY_EVENTS_COL).doc(eventIdInput)
       : db.collection(INDUSTRY_EVENTS_COL).doc();
@@ -771,6 +1763,10 @@ export const upsertIndustryEvent = onRequest({ region: REGION }, async (req, res
         registrationUrl,
         sourceName,
         sourceUrl,
+        curationState,
+        qualityScore,
+        dedupeHash,
+        ingestedAt: existing?.ingestedAt ?? t,
         featured,
         tags: normalizeTags(parsed.data.tags),
         verifiedAt: verifiedAt ?? null,
@@ -877,6 +1873,397 @@ export const listEventSignups = onRequest({ region: REGION }, async (req, res) =
   }
 });
 
+export const listWorkshopDemandSignals = onRequest({ region: REGION }, async (req, res) => {
+  if (applyCors(req, res)) return;
+
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, message: "Use POST" });
+    return;
+  }
+
+  const auth = await requireAuthUid(req);
+  if (!auth.ok) {
+    res.status(401).json({ ok: false, message: auth.message });
+    return;
+  }
+
+  const parsed = parseBody(listWorkshopDemandSignalsSchema, req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ ok: false, message: parsed.message });
+    return;
+  }
+
+  const rate = await enforceRateLimit({
+    req,
+    key: "listWorkshopDemandSignals",
+    max: 20,
+    windowMs: 60_000,
+  });
+  if (!rate.ok) {
+    res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+    res.status(429).json({ ok: false, message: "Too many requests" });
+    return;
+  }
+
+  const sourceFilter = normalizeWorkshopDemandSignalSourceList(parsed.data.sources);
+  const requestSourceFilter = sourceFilter.filter(isWorkshopDemandSignalRequestSource);
+  const communitySourceFilter = sourceFilter.filter((entry) => !isWorkshopDemandSignalRequestSource(entry));
+  const sourceFilterSet = new Set(sourceFilter);
+  const limit = normalizeWorkshopSignalLimit(parsed.data.limit);
+  const eventIdFilter = normalizeWorkshopSignalEventIds(parsed.data.eventIds);
+  const eventIdFilterSet = new Set(eventIdFilter);
+  const requestId = String(
+    ((req.get && req.get("x-request-id")) || (req.headers["x-request-id"] as unknown) || "") ?? ""
+  ).trim();
+  const toErrorMessage = (error: unknown): string => {
+    if (error instanceof Error) return error.message || "Unknown error";
+    if (typeof error === "string") return error;
+    if (error && typeof error === "object" && "message" in error) {
+      return String((error as { message?: unknown }).message ?? "Unknown error");
+    }
+    return "Unknown error";
+  };
+
+  try {
+    const signalDocsById = new Map<string, { id: string; raw: Record<string, any> }>();
+    const eventIdsWithRecognizedSourceSignals = new Set<string>();
+
+    const addSignalDoc = (docSnap: any) => {
+      if (!docSnap?.id) return;
+      if (signalDocsById.has(docSnap.id)) return;
+      const raw = docSnap.data() as Record<string, any>;
+      const eventId = parseWorkshopSignalEventId(raw.eventId, safeString(raw.body) || "");
+      if (eventId && eventIdFilterSet.has(eventId)) {
+        eventIdsWithRecognizedSourceSignals.add(eventId);
+      }
+      signalDocsById.set(docSnap.id, { id: docSnap.id, raw });
+    };
+
+    const collectBySourceFilter = async (
+      sources: WorkshopDemandSignalSource[],
+      eventIds: string[] = []
+    ) => {
+      if (sources.length === 0) return;
+      const sourceChunks = splitArrayIntoChunks(sources, WORKSHOP_SIGNAL_SOURCE_QUERY_CHUNK_SIZE);
+
+      const buildQuery = (
+        sourceChunk: WorkshopDemandSignalSource[],
+        eventIdChunk?: string[],
+        includeOrder = true
+      ) => {
+        let query = db
+          .collection(SUPPORT_REQUESTS_COL)
+          .where("category", "==", "Workshops")
+          .where("source", "in", sourceChunk) as any;
+        if (eventIdChunk?.length) {
+          query = query.where("eventId", "in", eventIdChunk);
+        }
+        if (includeOrder) {
+          query = query.orderBy("createdAt", "desc");
+        }
+        return query.limit(limit);
+      };
+
+    const collectChunk = async (
+      sourceChunk: WorkshopDemandSignalSource[],
+      eventIdChunk?: string[],
+      includeOrder = true
+    ) => {
+        try {
+          const snaps = await buildQuery(sourceChunk, eventIdChunk, includeOrder).get();
+          snaps.forEach((docSnap: any) => addSignalDoc(docSnap));
+          return;
+        } catch (error: any) {
+          if (!includeOrder) throw error;
+          logger.warn("listWorkshopDemandSignals source query fallback w/o orderBy", {
+            requestId,
+            message: toErrorMessage(error),
+            sourceFilter: sourceChunk,
+            sourceCount: sourceChunk.length,
+            eventIdChunkSize: eventIdChunk?.length ?? 0,
+          });
+          const fallbackSnaps = await buildQuery(sourceChunk, eventIdChunk, false).get();
+          fallbackSnaps.forEach((docSnap: any) => addSignalDoc(docSnap));
+        }
+      };
+
+      if (eventIds.length === 0) {
+        for (const sourceChunk of sourceChunks) {
+          await collectChunk(sourceChunk, undefined, true);
+        }
+        return;
+      }
+
+      for (const sourceChunk of sourceChunks) {
+        for (const eventIdChunk of splitArrayIntoChunks(eventIds, WORKSHOP_SIGNAL_EVENT_ID_QUERY_CHUNK_SIZE)) {
+          await collectChunk(sourceChunk, eventIdChunk, true);
+        }
+      }
+    };
+
+    const collectWithoutSource = async (eventIds: string[] = []) => {
+      const collectChunk = async (sourceValue: null | "", eventIdChunk: string[] = [], ordered = true) => {
+        try {
+          let query = db
+            .collection(SUPPORT_REQUESTS_COL)
+            .where("category", "==", "Workshops")
+            .where("source", "==", sourceValue) as any;
+          if (ordered) {
+            query = query.orderBy("createdAt", "desc");
+          }
+          if (eventIdChunk.length > 0) {
+            query = query.where("eventId", "in", eventIdChunk);
+          }
+          const snaps = await query.limit(limit).get();
+          snaps.forEach((docSnap: any) => addSignalDoc(docSnap));
+        } catch (error: any) {
+          if (!ordered) throw error;
+          logger.warn("listWorkshopDemandSignals null-source query fallback w/o orderBy", {
+            requestId,
+            message: toErrorMessage(error),
+            eventIdChunkSize: eventIdChunk.length,
+            sourceValue,
+          });
+          let fallbackQuery = db
+            .collection(SUPPORT_REQUESTS_COL)
+            .where("category", "==", "Workshops")
+            .where("source", "==", sourceValue) as any;
+          if (eventIdChunk.length > 0) {
+            fallbackQuery = fallbackQuery.where("eventId", "in", eventIdChunk);
+          }
+          const fallbackSnaps = await fallbackQuery.limit(limit).get();
+          fallbackSnaps.forEach((docSnap: any) => addSignalDoc(docSnap));
+        }
+      };
+
+      if (eventIds.length === 0) {
+        await collectChunk(null, [], true);
+        await collectChunk("", [], true);
+        return;
+      }
+
+      for (const eventIdChunk of splitArrayIntoChunks(eventIds, WORKSHOP_SIGNAL_EVENT_ID_QUERY_CHUNK_SIZE)) {
+        await collectChunk(null, eventIdChunk, true);
+        await collectChunk("", eventIdChunk, true);
+      }
+    };
+
+    const collectWithoutSourceFilter = async (eventIds: string[] = []) => {
+      const collectChunk = async (eventIdChunk: string[] = [], ordered = true) => {
+        try {
+          let query = db.collection(SUPPORT_REQUESTS_COL).where("category", "==", "Workshops") as any;
+          if (ordered) {
+            query = query.orderBy("createdAt", "desc");
+          }
+          if (eventIdChunk.length > 0) {
+            query = query.where("eventId", "in", eventIdChunk);
+          }
+          const snaps = await query.limit(limit).get();
+          snaps.forEach((docSnap: any) => addSignalDoc(docSnap));
+        } catch (error: any) {
+          if (!ordered) throw error;
+          logger.warn("listWorkshopDemandSignals source-free query fallback w/o orderBy", {
+            requestId,
+            message: toErrorMessage(error),
+            eventIdChunkSize: eventIdChunk.length,
+          });
+          let fallbackQuery = db.collection(SUPPORT_REQUESTS_COL).where("category", "==", "Workshops") as any;
+          if (eventIdChunk.length > 0) {
+            fallbackQuery = fallbackQuery.where("eventId", "in", eventIdChunk);
+          }
+          const fallbackSnaps = await fallbackQuery.limit(limit).get();
+          fallbackSnaps.forEach((docSnap: any) => addSignalDoc(docSnap));
+        }
+      };
+
+      if (eventIds.length === 0) {
+        await collectChunk([], true);
+        return;
+      }
+
+      for (const eventIdChunk of splitArrayIntoChunks(eventIds, WORKSHOP_SIGNAL_EVENT_ID_QUERY_CHUNK_SIZE)) {
+        await collectChunk(eventIdChunk, true);
+      }
+    };
+
+    if (eventIdFilter.length === 0) {
+      await collectBySourceFilter(sourceFilter);
+      await collectWithoutSource();
+      await collectWithoutSourceFilter();
+    } else {
+      if (requestSourceFilter.length > 0) {
+        await collectBySourceFilter(requestSourceFilter);
+      }
+      if (communitySourceFilter.length > 0) {
+        await collectBySourceFilter(communitySourceFilter, eventIdFilter);
+      }
+
+      if (signalDocsById.size === 0) {
+        await collectBySourceFilter(sourceFilter);
+        await collectWithoutSource();
+        await collectWithoutSourceFilter(eventIdFilter);
+      } else {
+        const eventsWithoutRecognizedSourceSignal = eventIdFilter.filter(
+          (eventId) => !eventIdsWithRecognizedSourceSignals.has(eventId)
+        );
+        if (eventsWithoutRecognizedSourceSignal.length > 0) {
+          await collectWithoutSourceFilter(eventsWithoutRecognizedSourceSignal);
+        }
+      }
+
+      await collectWithoutSource(eventIdFilter);
+    }
+
+    const latestByMemberEvent = new Map<string, WorkshopDemandSignalCandidate>();
+    for (const { id, raw } of signalDocsById.values()) {
+      const uid = safeString(raw.uid);
+      if (!uid || uid === auth.uid) continue;
+
+      const subject = safeString(raw.subject);
+      const source = inferWorkshopSignalSource(raw.source, subject, safeString(raw.body));
+      if (!source) continue;
+      if (!sourceFilterSet.has(source)) continue;
+
+      const body = safeString(raw.body) || "";
+      const eventId = parseWorkshopSignalEventId(raw.eventId, body);
+      if (!eventId && eventIdFilterSet.size > 0 && source !== "events-request-form" && source !== "cluster-routing") {
+        continue;
+      }
+      if (eventId && eventIdFilterSet.size > 0 && !eventIdFilterSet.has(eventId)) {
+        continue;
+      }
+
+      const createdAt = parseTimestamp(raw.createdAt);
+      if (!createdAt) continue;
+
+      const createdAtMs = createdAt.toMillis();
+      if (!Number.isFinite(createdAtMs)) continue;
+
+      const action = parseWorkshopSignalAction(source);
+      const sourceEventTitle = parseWorkshopSignalEventTitle(raw.eventTitle, raw.workshopTitle, body);
+      const rawLevel = safeString(raw.level);
+      const rawSchedule = safeString(raw.schedule);
+      const rawBuddyMode = safeString(raw.buddyMode);
+      const techniqueLine =
+        action === "request"
+          ? parseSignalLineValueFromAliases(body, ["Technique/topic", "Technique", "Techniques", "Technique focus"])
+          : parseSignalLineValueFromAliases(body, [
+              "Technique focus",
+              "Technique",
+              "Techniques",
+              "Member techniques",
+            ]);
+      const signalNote = parseWorkshopSignalNote(body);
+      const level = parseWorkshopSignalLevel(
+        action === "request"
+          ? rawLevel || parseSignalLineValueFromAliases(body, ["Level", "Level focus", "Preferred level", "Requested level"])
+          : parseSignalLineValueFromAliases(body, [
+              "Member level focus",
+              "Member level",
+              "Level",
+              "Preferred level",
+            ])
+      );
+      const schedule = parseWorkshopSignalSchedule(
+        action === "request"
+          ? rawSchedule || parseSignalLineValueFromAliases(body, [
+              "Schedule preference",
+              "Preferred schedule",
+              "Requested schedule",
+              "Schedule",
+            ])
+          : parseSignalLineValueFromAliases(body, [
+              "Member schedule focus",
+              "Member schedule",
+              "Schedule preference",
+              "Preferred schedule",
+            ])
+      );
+      const buddyMode = parseWorkshopSignalBuddyMode(
+        rawBuddyMode || parseSignalLineValueFromAliases(body, ["Buddy mode", "Buddy", "Buddy group", "Presence mode"])
+      );
+
+      const nextSignal: WorkshopDemandSignalCandidate = {
+        id,
+        uid,
+        action,
+        createdAtMs,
+        sourceEventId: eventId || undefined,
+        sourceEventTitle,
+        level,
+        schedule,
+        buddyMode,
+        source,
+        techniqueIds: parseWorkshopSignalTechniqueIds(raw.techniqueIds, techniqueLine, sourceEventTitle),
+        techniqueLine,
+        signalNote,
+      };
+
+      if (action === "request") {
+        const requestBucketKey = nextSignal.sourceEventId
+          ? `${uid}|request|${nextSignal.sourceEventId}`
+          : `${uid}|request|${id}`;
+        const existing = latestByMemberEvent.get(requestBucketKey);
+        if (existing && existing.createdAtMs >= createdAtMs) continue;
+        latestByMemberEvent.set(requestBucketKey, nextSignal);
+        continue;
+      }
+
+      if (!eventId) continue;
+      const key = `${uid}|${eventId}`;
+      const existing = latestByMemberEvent.get(key);
+      if (existing && existing.createdAtMs >= createdAtMs) continue;
+
+      latestByMemberEvent.set(key, nextSignal);
+    }
+
+    const eventIdsForTechniqueLookup = Array.from(
+      new Set(
+        Array.from(latestByMemberEvent.values())
+          .map((row) => row.sourceEventId)
+          .filter((eventId): eventId is string => Boolean(eventId))
+      )
+    );
+    const eventTitleById = await fetchEventTitlesById(eventIdsForTechniqueLookup);
+
+    const signals = Array.from(latestByMemberEvent.values())
+      .filter((signal) => signal.action !== "withdrawal")
+      .map((signal) => {
+        const eventTitle =
+          signal.sourceEventTitle ||
+          (signal.sourceEventId ? eventTitleById.get(signal.sourceEventId) ?? "" : "");
+        const techniqueIds = normalizeWorkshopSignalTechniques(
+          signal.techniqueIds.length > 0
+            ? signal.techniqueIds
+            : parseWorkshopSignalTechniqueIdsFromText("", eventTitle)
+        );
+      return {
+          id: signal.id,
+          kind: signal.action === "request" ? "request" : "interest",
+          techniqueIds,
+          techniqueLabel: techniqueLabelFromIds(techniqueIds),
+          level: signal.level,
+          schedule: signal.schedule,
+          buddyMode: signal.buddyMode,
+          action: signal.action,
+          createdAt: signal.createdAtMs,
+          sourceEventId: signal.sourceEventId,
+          source: signal.source,
+          sourceEventTitle: eventTitle || null,
+          sourceLabel: workshopDemandSignalSourceLabel(signal.source),
+          signalNote: signal.signalNote || "",
+        };
+      })
+      .sort((left, right) => right.createdAt - left.createdAt)
+      .slice(0, limit);
+
+    res.status(200).json({ ok: true, signals });
+  } catch (err: any) {
+    logger.error("listWorkshopDemandSignals failed", err);
+    res.status(500).json({ ok: false, message: err?.message ?? String(err) });
+  }
+});
+
 
 export const getEvent = onRequest({ region: REGION }, async (req, res) => {
   if (applyCors(req, res)) return;
@@ -899,6 +2286,7 @@ export const getEvent = onRequest({ region: REGION }, async (req, res) => {
   }
 
   const eventId = safeString(parsed.data.eventId).trim();
+  const includeCommunitySignals = parsed.data.includeCommunitySignals === true;
 
   try {
     const eventRef = db.collection(EVENTS_COL).doc(eventId);
@@ -911,6 +2299,7 @@ export const getEvent = onRequest({ region: REGION }, async (req, res) => {
     const eventData = (eventSnap.data() as Record<string, any>) ?? {};
     const status = safeString(eventData.status).trim();
     const admin = await requireAdmin(req);
+    const counts = readCounts(eventData);
 
     if (status !== "published" && !admin.ok) {
       res.status(403).json({ ok: false, message: "Forbidden" });
@@ -934,6 +2323,11 @@ export const getEvent = onRequest({ region: REGION }, async (req, res) => {
         }
       : null;
 
+    const eventCommunitySignalCounts = includeCommunitySignals
+      ? await collectWorkshopCommunitySignalCountsByEventIds(auth.uid, [eventSnap.id])
+      : null;
+    const communitySignalCount = eventCommunitySignalCounts?.get(eventSnap.id) ?? null;
+
     const responseEvent = {
       id: eventSnap.id,
       title: safeString(eventData.title),
@@ -951,9 +2345,28 @@ export const getEvent = onRequest({ region: REGION }, async (req, res) => {
       addOns: normalizeAddOns(eventData.addOns ?? []),
       capacity: Math.max(asInt(eventData.capacity, 0), 0),
       waitlistEnabled: eventData.waitlistEnabled !== false,
+      waitlistCount: counts.waitlistCount,
       offerClaimWindowHours: Math.max(asInt(eventData.offerClaimWindowHours, DEFAULT_OFFER_HOURS), 1),
       cancelCutoffHours: Math.max(asInt(eventData.cancelCutoffHours, DEFAULT_CANCEL_HOURS), 0),
       status: status || "draft",
+        ...(communitySignalCount
+          ? {
+              communitySignalCounts: {
+                requestSignals: communitySignalCount.requestSignals,
+                interestSignals: communitySignalCount.interestSignals,
+                showcaseSignals: communitySignalCount.showcaseSignals,
+                withdrawnSignals: communitySignalCount.withdrawnSignals,
+                totalSignals:
+                  Math.max(
+                    communitySignalCount.requestSignals +
+                      communitySignalCount.interestSignals +
+                      communitySignalCount.showcaseSignals,
+                    0,
+                  ),
+                latestSignalAtMs: communitySignalCount.latestSignalAtMs,
+              },
+            }
+          : {}),
     };
 
     res.status(200).json({ ok: true, event: responseEvent, signup });

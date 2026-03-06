@@ -550,16 +550,19 @@ function extractPromotionSignatures(run, files, workflowKey, workflowLabel) {
   if (feedback?.signals?.riskLevel && String(feedback.signals.riskLevel) !== "low") {
     const riskLevel = String(feedback.signals.riskLevel);
     const riskScore = Number(feedback.signals.riskScore || 0);
-    pushSignature(
-      signatures,
-      workflowKey,
-      workflowLabel,
-      `promotion.risk.${slug(riskLevel) || "unknown"}`,
-      `Promotion risk level is ${riskLevel}`,
-      run,
-      "Retain full promotion checks (theme, virtual staff, index guard) until risk returns to low.",
-      `riskScore=${riskScore}`
-    );
+    const riskSignalFresh = feedback?.signals?.riskSignalFresh;
+    if (riskSignalFresh !== false) {
+      pushSignature(
+        signatures,
+        workflowKey,
+        workflowLabel,
+        `promotion.risk.${slug(riskLevel) || "unknown"}`,
+        `Promotion risk level is ${riskLevel}`,
+        run,
+        "Retain full promotion checks (theme, virtual staff, index guard) until risk returns to low.",
+        `riskScore=${riskScore}`
+      );
+    }
   }
 
   return signatures;

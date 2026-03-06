@@ -172,6 +172,7 @@ export type LibraryExternalLookupProviderConfig = {
   openlibraryEnabled: boolean;
   googlebooksEnabled: boolean;
   disabledProviders: ProviderName[];
+  coverReviewGuardrailEnabled: boolean;
   updatedAtMs: number;
   updatedByUid: string | null;
   note: string | null;
@@ -695,6 +696,7 @@ type CoverQualityContext = {
   mediaType?: unknown;
   format?: unknown;
   source?: unknown;
+  googleVolumeId?: unknown;
 };
 
 function normalizeCoverMediaSignal(value: unknown): CoverMediaKind {
@@ -829,7 +831,7 @@ function hasLowConfidenceCoverPattern(normalizedUrl: string, parsedUrl: URL): bo
   return false;
 }
 
-function evaluateCoverQuality(coverUrl: unknown, context?: CoverQualityContext): {
+export function evaluateCoverQuality(coverUrl: unknown, context?: CoverQualityContext): {
   status: CoverQualityStatus;
   needsReview: boolean;
   reason: string | null;
@@ -878,6 +880,8 @@ function evaluateCoverQuality(coverUrl: unknown, context?: CoverQualityContext):
   const provider = detectCoverProvider(parsedUrl);
   const trustedSource = isTrustedCoverSource(provider, parsedUrl);
   const mediaKind = resolveCoverMediaKind(context);
+  const source = safeString(context?.source).trim().toLowerCase();
+  const hasGoogleVolumeIdSignal = safeString(context?.googleVolumeId).trim().length > 0;
   const providerIsBookCentric =
     provider === "openlibrary" || provider === "googlebooks" || provider === "amazon";
   if (trustedSource) {
@@ -886,6 +890,13 @@ function evaluateCoverQuality(coverUrl: unknown, context?: CoverQualityContext):
         status: "needs_review",
         needsReview: true,
         reason: "provider_book_cover_for_non_book_media",
+      };
+    }
+    if (provider === "openlibrary" && source === "openlibrary" && !hasGoogleVolumeIdSignal) {
+      return {
+        status: "needs_review",
+        needsReview: true,
+        reason: "openlibrary_cover_requires_verification",
       };
     }
     return {
@@ -899,6 +910,39 @@ function evaluateCoverQuality(coverUrl: unknown, context?: CoverQualityContext):
     status: "needs_review",
     needsReview: true,
     reason: "untrusted_cover_source",
+  };
+}
+
+function applyCoverReviewGuardrailPolicy(params: {
+  evaluated: {
+    status: CoverQualityStatus;
+    needsReview: boolean;
+    reason: string | null;
+  };
+  coverUrl: unknown;
+  guardrailEnabled: boolean;
+}): {
+  status: CoverQualityStatus;
+  needsReview: boolean;
+  reason: string | null;
+} {
+  if (params.guardrailEnabled) return params.evaluated;
+  const url = textOrNull(params.coverUrl);
+  if (!url) return params.evaluated;
+  const highRiskReasons = new Set([
+    "invalid_cover_url",
+    "low_confidence_cover_url",
+    "untrusted_cover_source",
+    "provider_book_cover_for_non_book_media",
+    "openlibrary_cover_requires_verification",
+  ]);
+  if (params.evaluated.needsReview && params.evaluated.reason && highRiskReasons.has(params.evaluated.reason)) {
+    return params.evaluated;
+  }
+  return {
+    status: "approved",
+    needsReview: false,
+    reason: "cover_guardrail_temporarily_disabled",
   };
 }
 
@@ -1179,6 +1223,8 @@ const envDisabledExternalLookupProviders = new Set<ProviderName>(
     .map((entry) => entry.trim().toLowerCase())
     .filter((entry): entry is ProviderName => KNOWN_EXTERNAL_LOOKUP_PROVIDERS.includes(entry as ProviderName))
 );
+const envCoverReviewGuardrailEnabled =
+  boolOrNull(process.env.LIBRARY_COVER_REVIEW_GUARDRAIL_ENABLED) ?? true;
 type ExternalLookupProviderConfigCacheEntry = {
   expiresAtMs: number;
   value: LibraryExternalLookupProviderConfig;
@@ -1225,6 +1271,7 @@ function defaultExternalLookupProviderConfig(): LibraryExternalLookupProviderCon
     openlibraryEnabled: !envDisabledExternalLookupProviders.has("openlibrary"),
     googlebooksEnabled: !envDisabledExternalLookupProviders.has("googlebooks"),
     disabledProviders,
+    coverReviewGuardrailEnabled: envCoverReviewGuardrailEnabled,
     updatedAtMs: 0,
     updatedByUid: null,
     note: null,
@@ -1233,6 +1280,8 @@ function defaultExternalLookupProviderConfig(): LibraryExternalLookupProviderCon
 
 function toExternalLookupProviderConfig(row: Record<string, unknown> | null | undefined): LibraryExternalLookupProviderConfig {
   const disabled = new Set<ProviderName>(envDisabledExternalLookupProviders);
+  const guardrailOverride = boolOrNull(row?.coverReviewGuardrailEnabled);
+  const coverReviewGuardrailEnabled = guardrailOverride === null ? envCoverReviewGuardrailEnabled : guardrailOverride;
   if (row) {
     for (const rawProvider of asStringArray(row.disabledProviders)) {
       const provider = normalizeLookupProviderName(rawProvider);
@@ -1252,6 +1301,7 @@ function toExternalLookupProviderConfig(row: Record<string, unknown> | null | un
     openlibraryEnabled: !disabled.has("openlibrary"),
     googlebooksEnabled: !disabled.has("googlebooks"),
     disabledProviders,
+    coverReviewGuardrailEnabled,
     updatedAtMs: Math.max(0, tsToMs(row?.updatedAt), tsToMs(row?.createdAt)),
     updatedByUid: textOrNull(row?.updatedByUid),
     note: textOrNull(row?.note),
@@ -1309,6 +1359,7 @@ export async function getLibraryExternalLookupProviderConfig(): Promise<LibraryE
 export async function setLibraryExternalLookupProviderConfig(input: {
   openlibraryEnabled?: boolean;
   googlebooksEnabled?: boolean;
+  coverReviewGuardrailEnabled?: boolean;
   note?: string | null;
   updatedByUid?: string | null;
 }): Promise<LibraryExternalLookupProviderConfig> {
@@ -1319,6 +1370,9 @@ export async function setLibraryExternalLookupProviderConfig(input: {
   const nextGooglebooksEnabled = typeof input.googlebooksEnabled === "boolean"
     ? input.googlebooksEnabled
     : current.googlebooksEnabled;
+  const nextCoverReviewGuardrailEnabled = typeof input.coverReviewGuardrailEnabled === "boolean"
+    ? input.coverReviewGuardrailEnabled
+    : current.coverReviewGuardrailEnabled;
   const nextNote = textOrNull(input.note) ?? current.note ?? null;
   const nextUpdatedByUid = textOrNull(input.updatedByUid) ?? null;
 
@@ -1333,6 +1387,7 @@ export async function setLibraryExternalLookupProviderConfig(input: {
       openlibraryEnabled: nextOpenlibraryEnabled,
       googlebooksEnabled: nextGooglebooksEnabled,
       disabledProviders: disabledProvidersList,
+      coverReviewGuardrailEnabled: nextCoverReviewGuardrailEnabled,
       note: nextNote,
       updatedByUid: nextUpdatedByUid,
       updatedAt: now,
@@ -1347,6 +1402,7 @@ export async function setLibraryExternalLookupProviderConfig(input: {
       openlibraryEnabled: nextOpenlibraryEnabled,
       googlebooksEnabled: nextGooglebooksEnabled,
       disabledProviders: disabledProvidersList,
+      coverReviewGuardrailEnabled: nextCoverReviewGuardrailEnabled,
       note: nextNote,
       updatedByUid: nextUpdatedByUid,
       updatedAtMs: Date.now(),
@@ -1777,6 +1833,8 @@ export async function importLibraryIsbnBatch(input: ImportRequest): Promise<Impo
   }
 
   const capped = deduped.slice(0, 200);
+  const providerConfig = await getLibraryExternalLookupProviderConfig();
+  const coverReviewGuardrailEnabled = providerConfig.coverReviewGuardrailEnabled !== false;
   const created: string[] = [];
   const updated: string[] = [];
   const errors: Array<{ isbn: string; message: string }> = [];
@@ -1799,10 +1857,16 @@ export async function importLibraryIsbnBatch(input: ImportRequest): Promise<Impo
         ...(lookup.authors ?? []),
         ...(lookup.subjects ?? []),
       ]);
-      const coverQuality = evaluateCoverQuality(lookup.coverUrl, {
+      const evaluatedCoverQuality = evaluateCoverQuality(lookup.coverUrl, {
         mediaType: "book",
         format: lookup.format,
         source: lookup.source,
+        googleVolumeId: lookup.identifiers.googleVolumeId,
+      });
+      const coverQuality = applyCoverReviewGuardrailPolicy({
+        evaluated: evaluatedCoverQuality,
+        coverUrl: lookup.coverUrl,
+        guardrailEnabled: coverReviewGuardrailEnabled,
       });
 
       const docRef = db.collection("libraryItems").doc(targetItemId);
@@ -1913,6 +1977,8 @@ export async function refreshLibraryMetadataBatch(input?: {
   const requestId = textOrNull(input?.requestId);
   const scanLimit = Math.max(maxItems * 6, 180);
   const nowMs = Date.now();
+  const providerConfig = await getLibraryExternalLookupProviderConfig();
+  const coverReviewGuardrailEnabled = providerConfig.coverReviewGuardrailEnabled !== false;
 
   let itemsSnap = await db.collection("libraryItems").orderBy("updatedAt", "asc").limit(scanLimit).get();
   if (itemsSnap.empty) {
@@ -2005,10 +2071,17 @@ export async function refreshLibraryMetadataBatch(input?: {
       if (nextCover) {
         patch.coverUrl = nextCover;
       }
-      const coverQuality = evaluateCoverQuality(nextCover ?? row.coverUrl, {
+      const existingIdentifiers = asRecord(row.identifiers) ? (row.identifiers as Record<string, unknown>) : {};
+      const evaluatedCoverQuality = evaluateCoverQuality(nextCover ?? row.coverUrl, {
         mediaType: row.mediaType,
         format: patch.format ?? row.format ?? lookup.format,
         source: lookup.source || row.source,
+        googleVolumeId: lookup.identifiers.googleVolumeId ?? maybeText(existingIdentifiers.googleVolumeId),
+      });
+      const coverQuality = applyCoverReviewGuardrailPolicy({
+        evaluated: evaluatedCoverQuality,
+        coverUrl: nextCover ?? row.coverUrl,
+        guardrailEnabled: coverReviewGuardrailEnabled,
       });
       patch.coverQualityStatus = coverQuality.status;
       patch.needsCoverReview = coverQuality.needsReview;
@@ -2027,7 +2100,6 @@ export async function refreshLibraryMetadataBatch(input?: {
       }
       if (!hasMeaningfulText(row.isbn_normalized) && candidate.isbn) patch.isbn_normalized = candidate.isbn;
 
-      const existingIdentifiers = asRecord(row.identifiers) ? (row.identifiers as Record<string, unknown>) : {};
       patch.identifiers = {
         isbn10: incomingIsbn10 ?? maybeText(existingIdentifiers.isbn10),
         isbn13: incomingIsbn13 ?? maybeText(existingIdentifiers.isbn13),

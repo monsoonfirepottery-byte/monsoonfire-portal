@@ -1,6 +1,6 @@
 # P2 — Library Release Plan: Phased Rollout and Cutover
 
-Status: In Progress
+Status: Completed
 Date: 2026-03-01
 Priority: P2
 Owner: Product + Frontend + Platform + Library Ops
@@ -83,7 +83,7 @@ Completed in this pass:
    - cover-quality gating and placeholder behavior.
 
 Remaining before ticket can close:
-1. Execute authenticated browser QA pass and cutover rehearsal with rollback drill timing evidence.
+1. Execute cutover rehearsal with rollback drill timing evidence in an approved rollout-change window.
 
 ## Execution Update (2026-03-01, Rollout Controls + Metrics Snapshot)
 
@@ -97,3 +97,70 @@ Completed in this pass:
    - endpoint-level breakdown for critical routes.
 4. Added one-click JSON artifact copy action for attaching phase evidence to release records.
 5. Added telemetry duration capture in both API clients so latency metrics are based on real request durations.
+
+## Execution Update (2026-03-01, Authenticated QA Evidence Pass)
+
+Completed in this pass:
+1. Ran authenticated portal smoke against production with staff credentials and auth-required navigation checks:
+   - command: `npm run portal:smoke:playwright -- --with-auth --base-url https://monsoonfire-portal.web.app --output-dir output/playwright/portal/library-epic-auth --json`
+   - result: `PASS`
+   - issues: `0`
+2. Captured artifact output for release evidence at:
+   - `output/playwright/portal/library-epic-auth`
+
+Remaining:
+1. Rollback drill timing evidence is pending an explicit rollout-change window because rehearsing rollback requires controlled phase toggles and operator coordination.
+
+## Execution Update (2026-03-01, Rollback Drill Automation Readiness)
+
+Completed in this pass:
+1. Added a repeatable rollback drill automation command:
+   - `npm run library:rollout:drill`
+   - implementation: `scripts/library-rollout-rollback-drill.mjs`
+2. Added runbook automation instructions and safety notes:
+   - `docs/library/ROLLOUT_CUTOVER_RUNBOOK.md`
+3. Captured live-environment dry-run evidence (no phase mutation):
+   - command: `npm run library:rollout:drill -- --json`
+   - observed baseline phase: `phase_3_admin_full`
+   - computed rollback target: `phase_2_member_writes`
+   - artifacts:
+     - `output/qa/library-rollout-rollback-drill.json`
+     - `output/qa/library-rollout-rollback-drill.md`
+
+Remaining:
+1. Execute `npm run library:rollout:drill -- --execute` in an approved rollout-change window to capture timing evidence for rollback under the 15-minute target.
+
+## Execution Update (2026-03-01, Production Rollback Drill Executed)
+
+Completed in this pass:
+1. Executed live rollback drill in production:
+   - command: `npm run library:rollout:drill -- --execute --json`
+   - artifact: `output/qa/library-rollout-rollback-drill.json`
+2. Verified rollback timing target:
+   - rollback duration: `1119ms` (`0.02` minutes)
+   - target: `< 15 minutes`
+   - result: `withinTarget=true`
+3. Verified safe-state route behavior during rollback target phase:
+   - discovery route stayed available (`200`),
+   - member write route was not rollout-blocked (returned expected payload validation error),
+   - admin write route was rollout-blocked with `LIBRARY_ROLLOUT_BLOCKED`.
+4. Verified restoration:
+   - original phase: `phase_3_admin_full`
+   - rollback target: `phase_2_member_writes`
+   - restored phase: `phase_3_admin_full`
+
+Remaining:
+1. None. Ticket closed.
+
+## Execution Update (2026-03-01, Production Deploy + Quota Compliance)
+
+Completed in this pass:
+1. Production deploy completed for this epic scope:
+   - hosting: `https://monsoonfire-portal.web.app`
+   - functions (scoped staged waves): `apiV1`, `importLibraryIsbns`, `runLibraryMetadataRefreshNow`, `syncLibraryLoanOverdues`, `runLibraryOverdueSyncNow`, `refreshLibraryIsbnMetadata`
+2. Added quota-aware production deploy enforcement:
+   - script: `scripts/deploy-firebase-safe.mjs`
+   - `package.json` deploy scripts now route through the safe deploy wrapper by default for Functions and Functions+Hosting.
+3. Compliance behavior is now explicit:
+   - broad production Functions deploys are blocked by default unless explicitly overridden,
+   - quota-sensitive functions are auto-staged as singleton waves.

@@ -1,0 +1,315 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://monsoonfire.com/contracts/intent.schema.json",
+  "title": "Autonomy Intent Contract",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "intentId",
+    "title",
+    "objective",
+    "epic",
+    "nonGoals",
+    "constraints",
+    "autonomy",
+    "doneCriteria",
+    "executionSlices"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "enum": ["intent.v1", "intent.v2"]
+    },
+    "intentId": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 120
+    },
+    "title": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 200
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 5000
+    },
+    "epic": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "minLength": 5 },
+        "owner": { "type": "string", "minLength": 2 }
+      }
+    },
+    "nonGoals": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 3 }
+    },
+    "constraints": {
+      "type": "object",
+      "required": ["riskTier", "writePolicy"],
+      "additionalProperties": false,
+      "properties": {
+        "riskTier": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"]
+        },
+        "writePolicy": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "maxChangedFiles": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        },
+        "maxWriteActions": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 500
+        }
+      }
+    },
+    "autonomy": {
+      "type": "object",
+      "required": ["mode", "maxRunMinutes", "allowedTools"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["manual", "bounded", "semi_auto"]
+        },
+        "maxRunMinutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1440
+        },
+        "allowedTools": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 2 }
+        },
+        "requiresHumanApprovalFor": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 2 }
+        },
+        "haltConditions": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 2 }
+        }
+      }
+    },
+    "doneCriteria": {
+      "type": "object",
+      "required": ["requiredChecks"],
+      "additionalProperties": false,
+      "properties": {
+        "requiredChecks": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 3 }
+        },
+        "requiredArtifacts": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 3 }
+        },
+        "requiredDocs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 3 }
+        }
+      }
+    },
+    "dependsOnIntents": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 120
+      }
+    },
+    "executionSlices": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "dependsOn", "checks"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,80}$"
+          },
+          "title": { "type": "string", "minLength": 3, "maxLength": 240 },
+          "dependsOn": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,80}$" }
+          },
+          "checks": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 3 }
+          },
+          "writeScope": { "type": "string", "minLength": 2, "maxLength": 120 }
+        }
+      }
+    },
+    "simulation": {
+      "type": "object",
+      "required": ["profile"],
+      "additionalProperties": false,
+      "properties": {
+        "profile": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "required": { "type": "boolean" },
+        "strict": { "type": "boolean" }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "required": ["required", "threshold", "suite"],
+      "additionalProperties": false,
+      "properties": {
+        "required": { "type": "boolean" },
+        "threshold": { "type": "number", "minimum": 0, "maximum": 1 },
+        "suite": { "type": "string", "minLength": 3, "maxLength": 240 }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxTasks": { "type": "integer", "minimum": 1, "maximum": 5000 },
+        "maxChecks": { "type": "integer", "minimum": 1, "maximum": 50000 },
+        "maxRuntimeMs": { "type": "integer", "minimum": 1000, "maximum": 86400000 },
+        "maxRetriesPerCheck": { "type": "integer", "minimum": 0, "maximum": 5 }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "allowUntrustedMcp": { "type": "boolean" }
+      }
+    },
+    "memoryGovernance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "minConfidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "maxAgeDays": { "type": "integer", "minimum": 1, "maximum": 3650 }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tier": { "type": "string", "enum": ["T0", "T1", "T2", "T3", "T4"] },
+        "approvalRequiredFor": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 2 }
+        }
+      }
+    },
+    "priorityClass": {
+      "type": "string",
+      "enum": ["P0", "P1", "P2", "P3"]
+    },
+    "progressModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["criteria", "milestone", "incident_state"] },
+        "minimumEvidenceCoverage": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "requiredEvidenceTypes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "tool_output",
+          "repo_state",
+          "test_result",
+          "memory_citation",
+          "external_signal",
+          "hypothesis_test"
+        ]
+      }
+    },
+    "verificationProfile": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "preemptionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "preemptibleBy": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["P0", "P1", "P2", "P3"] }
+        },
+        "resumeAllowed": { "type": "boolean" }
+      }
+    },
+    "degradedModePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allowReadOnlyContinuation": { "type": "boolean" },
+        "reduceMutationScopeOnOutage": { "type": "boolean" }
+      }
+    },
+    "compensationPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": ["none", "logical_undo", "forward_fix", "manual_required"]
+        }
+      }
+    },
+    "idempotencyProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "keyTemplate": { "type": "string", "minLength": 3, "maxLength": 240 }
+      }
+    },
+    "dataHandlingPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "redactSecrets": { "type": "boolean" },
+        "retentionDays": { "type": "integer", "minimum": 1, "maximum": 3650 }
+      }
+    },
+    "modelGovernancePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "canaryPercent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "rollbackOnDriftIncreasePct": { "type": "number", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "escalation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "channel": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "when": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 3 }
+        }
+      }
+    }
+  }
+}

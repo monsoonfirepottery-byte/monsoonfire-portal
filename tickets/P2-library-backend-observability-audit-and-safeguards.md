@@ -1,6 +1,6 @@
 # P2 — Library Backend: Observability, Audit, and Safeguards
 
-Status: In Progress
+Status: Completed
 Date: 2026-03-01
 Priority: P2
 Owner: Platform Backend + SRE + Library Ops
@@ -69,3 +69,12 @@ Completed in this pass:
    - mark-lost,
    - assess-replacement-fee.
 4. Added regression tests in `functions/src/apiV1.test.ts` for idempotent replay and key-conflict behavior across lending write routes.
+
+## Execution Update (2026-03-01, Safeguard Test Closeout)
+
+Completed in this pass:
+1. Added overdue worker mixed-status/idempotency coverage in `functions/src/library.overdueSync.test.ts` to complement route-level idempotency assertions.
+2. Added focused cover-quality test harness in `functions/src/library.test.ts` to keep observability/debug signals tied to deterministic quality outcomes.
+3. Re-verified observability/idempotency routes and error envelopes with:
+   - `node --test functions/lib/apiV1.test.js`
+   - `node --test functions/lib/library.test.js functions/lib/library.overdueSync.test.js`

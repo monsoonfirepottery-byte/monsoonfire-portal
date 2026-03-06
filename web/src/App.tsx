@@ -45,6 +45,15 @@ import { PROFILE_DEFAULT_AVATAR_URL } from "./lib/profileAvatars";
 import { setTelemetryView, trackedGetDoc, trackedGetDocs } from "./lib/firestoreTelemetry";
 import { safeReadBoolean, safeStorageGetItem, safeStorageRemoveItem, safeStorageSetItem } from "./lib/safeStorage";
 import { parseStaffRoleFromClaims } from "./auth/staffRole";
+import {
+  STAFF_COCKPIT_PATH,
+  normalizeStaffPath,
+  resolveStaffWorkspaceOpenTarget,
+  resolveStaffWorkspaceLaunch,
+  resolveStaffWorkspaceMatch,
+  resolveStaffWorkspaceRequestedPath,
+  type StaffWorkspaceMode,
+} from "./utils/staffWorkspacePaths";
 import "./App.css";
 
 const BillingView = React.lazy(() => import("./views/BillingView"));
@@ -140,13 +149,6 @@ type LegacyRequestsDestination = "support" | "lendingLibrary" | "events";
 type LegacyRequestsRedirect = {
   targetNav: LegacyRequestsDestination;
   notice: string;
-};
-
-type StaffWorkspaceMode = "default" | "cockpit" | "workshops" | "system";
-
-type StaffWorkspaceLaunch = {
-  targetNav: "staff";
-  mode: StaffWorkspaceMode;
 };
 
 const NAV_TOP_ITEMS: NavItem[] = [
@@ -354,7 +356,6 @@ const SUPPORT_MESSAGE_PREFIX = "welcome";
 const WELCOME_NOTIFICATION_ID = "welcome-messaging-infra";
 const WELCOME_MESSAGE_SUBJECT = "Welcome to Monsoon Fire Support";
 const WELCOME_NOTIFICATION_TITLE = "Welcome to your Monsoon Fire portal";
-
 const NAV_SECTION_KEYS: NavSectionKey[] = ["kilnRentals", "studioResources", "community"];
 const NAV_DOCK_POSITIONS: NavDockPosition[] = ["left", "top", "right", "bottom"];
 const NAV_DOCK_LABELS: Record<NavDockPosition, string> = {
@@ -365,51 +366,24 @@ const NAV_DOCK_LABELS: Record<NavDockPosition, string> = {
 };
 const NAV_DOCK_DRAG_THRESHOLD_PX = 130;
 
+function normalizeAppPath(pathname: string): string {
+  if (!pathname) return "";
+  const lower = pathname.trim().toLowerCase().replace(/^#/, "").replace(/^!/, "");
+  if (!lower) return "";
+  const withLeadingSlash = lower.startsWith("/") ? lower : `/${lower}`;
+  const pathOnly = withLeadingSlash.split("?")[0] ?? "";
+  if (!pathOnly) return "";
+  const collapsed = pathOnly.replace(/\/{2,}/g, "/");
+  if (collapsed === "/") return "/";
+  return collapsed.replace(/\/+$/, "");
+}
+
 function normalizeHashPath(hash: string): string {
-  if (!hash) return "";
-  const trimmed = hash.replace(/^#/, "").replace(/^!/, "").trim();
-  if (!trimmed) return "";
-  const pathCandidate = trimmed.split("?")[0] ?? "";
-  if (!pathCandidate) return "";
-  return pathCandidate.startsWith("/") ? pathCandidate : `/${pathCandidate}`;
+  return normalizeStaffPath(hash);
 }
 
 function isLegacyRequestsPath(pathname: string): boolean {
-  return /^\/(?:community\/)?requests(?:\/|$)/i.test(pathname);
-}
-
-function isStaffPath(pathname: string): boolean {
-  return /^\/staff(?:\/|$)/i.test(pathname);
-}
-
-function isStaffCockpitPath(pathname: string): boolean {
-  return /^\/staff\/cockpit(?:\/|$)/i.test(pathname) || /^\/cockpit(?:\/|$)/i.test(pathname);
-}
-
-function isStaffWorkshopsPath(pathname: string): boolean {
-  return /^\/staff\/workshops(?:\/|$)/i.test(pathname);
-}
-
-function isStaffSystemPath(pathname: string): boolean {
-  return /^\/staff\/system(?:\/|$)/i.test(pathname);
-}
-
-function resolveStaffWorkspaceLaunch(pathname: string, hash: string): StaffWorkspaceLaunch | null {
-  const normalizedHashPath = normalizeHashPath(hash);
-  const candidates = [pathname, normalizedHashPath].filter(Boolean);
-  if (candidates.some((value) => isStaffSystemPath(value))) {
-    return { targetNav: "staff", mode: "system" };
-  }
-  if (candidates.some((value) => isStaffWorkshopsPath(value))) {
-    return { targetNav: "staff", mode: "workshops" };
-  }
-  if (candidates.some((value) => isStaffCockpitPath(value))) {
-    return { targetNav: "staff", mode: "cockpit" };
-  }
-  if (candidates.some((value) => isStaffPath(value))) {
-    return { targetNav: "staff", mode: "default" };
-  }
-  return null;
+  return /^\/(?:community\/)?requests(?:\/|$)/i.test(normalizeAppPath(pathname));
 }
 
 function getLegacyRequestsNotice(targetNav: LegacyRequestsDestination): string {
@@ -851,29 +825,30 @@ export default function App() {
   const [emailLinkPending, setEmailLinkPending] = useState(false);
   const [nav, setNav] = useState<NavKey>(() => {
     if (typeof window === "undefined") return "dashboard";
-    const staffWorkspaceLaunch = resolveStaffWorkspaceLaunch(window.location.pathname, window.location.hash);
+  const normalizedPathname = normalizeAppPath(window.location.pathname);
+    const staffWorkspaceLaunch = resolveStaffWorkspaceLaunch(normalizedPathname, window.location.hash);
     if (staffWorkspaceLaunch) return staffWorkspaceLaunch.targetNav;
     const legacyRedirect = resolveLegacyRequestsRedirect(
-      window.location.pathname,
+      normalizedPathname,
       window.location.search,
       window.location.hash
     );
     if (legacyRedirect) return legacyRedirect.targetNav;
-    const path = window.location.pathname;
+    const path = normalizeAppPath(window.location.pathname);
     if (path === "/glazes" || path === "/community/glazes") return "glazes";
     const saved = readLocalItem(LOCAL_NAV_KEY);
     if (saved && isNavKey(saved)) return saved;
     return "dashboard";
   });
-  const [staffWorkspaceMode] = useState<StaffWorkspaceMode>(() => {
+  const [staffWorkspaceMode, setStaffWorkspaceMode] = useState<StaffWorkspaceMode>(() => {
     if (typeof window === "undefined") return "default";
-    const launch = resolveStaffWorkspaceLaunch(window.location.pathname, window.location.hash);
+    const launch = resolveStaffWorkspaceLaunch(normalizeAppPath(window.location.pathname), window.location.hash);
     return launch?.mode ?? "default";
   });
   const [legacyRouteNotice] = useState(() => {
     if (typeof window === "undefined") return "";
     const legacyRedirect = resolveLegacyRequestsRedirect(
-      window.location.pathname,
+      normalizeAppPath(window.location.pathname),
       window.location.search,
       window.location.hash
     );
@@ -996,6 +971,25 @@ export default function App() {
       // Best effort.
     }
   }, [syncUserFromAuth]);
+
+  const openStaffWorkspace = useCallback((target: string) => {
+    if (typeof window === "undefined") return;
+    const match = resolveStaffWorkspaceOpenTarget(target);
+    if (!match) return;
+    const currentPath = normalizeStaffPath(window.location.pathname);
+    const isCurrentlyInStaffWorkspace = Boolean(resolveStaffWorkspaceMatch(currentPath));
+    if (currentPath !== match.canonicalPath) {
+      if (isCurrentlyInStaffWorkspace) {
+        window.history.replaceState({}, "", match.canonicalPath);
+      } else {
+        window.history.pushState({}, "", match.canonicalPath);
+      }
+    }
+    setStaffWorkspaceMode(match.mode);
+    if (nav !== "staff") {
+      setNav("staff");
+    }
+  }, [nav, setStaffWorkspaceMode]);
 
   useEffect(() => {
     const theme = PORTAL_THEMES[themeName] ?? PORTAL_THEMES[DEFAULT_PORTAL_THEME];
@@ -1134,40 +1128,96 @@ export default function App() {
   useEffect(() => {
     writeLocalItem(LOCAL_NAV_KEY, nav);
     if (typeof window === "undefined") return;
-    const hasLegacyRequestsPath = isLegacyRequestsPath(window.location.pathname);
-    const hasLegacyRequestsHash = isLegacyRequestsPath(normalizeHashPath(window.location.hash));
-    const hasStaffPath = isStaffPath(window.location.pathname);
-    const hasStaffHashPath = isStaffPath(normalizeHashPath(window.location.hash));
-    const hasStaffCockpitPath = isStaffCockpitPath(window.location.pathname);
-    const hasStaffCockpitHashPath = isStaffCockpitPath(normalizeHashPath(window.location.hash));
-    const hasStaffSystemPath = isStaffSystemPath(window.location.pathname);
-    const hasStaffSystemHashPath = isStaffSystemPath(normalizeHashPath(window.location.hash));
+    const pathname = normalizeAppPath(window.location.pathname);
+    const hashPath = normalizeHashPath(window.location.hash);
+    const pathnameStaffMatch = resolveStaffWorkspaceMatch(pathname);
+    const hashStaffMatch = resolveStaffWorkspaceMatch(hashPath);
+    const requestedStaffPath = resolveStaffWorkspaceRequestedPath(pathname, window.location.hash);
+    const requestedStaffMode = requestedStaffPath ? resolveStaffWorkspaceMatch(requestedStaffPath)?.mode : null;
+    const hasLegacyRequestsPath = isLegacyRequestsPath(pathname);
+    const hasLegacyRequestsHash = isLegacyRequestsPath(hashPath);
+    const hasStaffWorkspaceRequest = requestedStaffPath !== null;
+    const hasStaffCockpitPath = pathnameStaffMatch?.mode === "cockpit";
+    const hasStaffCockpitHashPath = hashStaffMatch?.mode === "cockpit";
+    if (requestedStaffMode && requestedStaffMode !== staffWorkspaceMode) {
+      setStaffWorkspaceMode(requestedStaffMode);
+    }
     if (nav === "glazes") {
       window.history.replaceState({}, "", "/glazes");
-    } else if (nav === "staff" && staffWorkspaceMode === "cockpit") {
-      if (!hasStaffCockpitPath && !hasStaffCockpitHashPath) {
-        window.history.replaceState({}, "", "/staff/cockpit");
+    } else if (hasStaffWorkspaceRequest) {
+      if (requestedStaffPath && pathname !== requestedStaffPath) {
+        window.history.replaceState({}, "", requestedStaffPath);
       }
-    } else if (nav === "staff" && staffWorkspaceMode === "system") {
-      if (!hasStaffSystemPath && !hasStaffSystemHashPath) {
-        window.history.replaceState({}, "", "/staff/system");
+      if (nav !== "staff") {
+        setNav("staff");
       }
-    } else if (nav === "staff" && staffWorkspaceMode === "workshops") {
-      if (!hasStaffPath || window.location.pathname !== "/staff/workshops") {
-        window.history.replaceState({}, "", "/staff/workshops");
+      if (nav === "staff" && staffWorkspaceMode === "cockpit") {
+        if (!hasStaffCockpitPath && !hasStaffCockpitHashPath) {
+          window.history.replaceState({}, "", STAFF_COCKPIT_PATH);
+        }
       }
-    } else if (window.location.pathname === "/glazes" || hasLegacyRequestsPath || hasLegacyRequestsHash) {
-      window.history.replaceState({}, "", "/");
     } else if (
-      hasStaffPath ||
-      hasStaffHashPath ||
-      hasStaffCockpitPath ||
-      hasStaffCockpitHashPath ||
-      hasStaffSystemPath ||
-      hasStaffSystemHashPath
+      (pathname === "/glazes" || hasLegacyRequestsPath || hasLegacyRequestsHash)
     ) {
       window.history.replaceState({}, "", "/");
     }
+  }, [nav, staffUi, staffWorkspaceMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const syncStateWithBrowserLocation = () => {
+      const pathname = normalizeAppPath(window.location.pathname);
+      const staffLaunch = resolveStaffWorkspaceLaunch(pathname, window.location.hash);
+      const requestedStaffPath = resolveStaffWorkspaceRequestedPath(pathname, window.location.hash);
+
+      if (requestedStaffPath && pathname !== requestedStaffPath) {
+        window.history.replaceState({}, "", requestedStaffPath);
+      }
+
+      if (staffLaunch) {
+        if (staffWorkspaceMode !== staffLaunch.mode) {
+          setStaffWorkspaceMode(staffLaunch.mode);
+        }
+        if (nav !== "staff") {
+          setNav("staff");
+        }
+        return;
+      }
+
+      const legacyRedirect = resolveLegacyRequestsRedirect(pathname, window.location.search, window.location.hash);
+      if (legacyRedirect) {
+        if (nav !== legacyRedirect.targetNav) {
+          setNav(legacyRedirect.targetNav);
+        }
+        return;
+      }
+
+      if (pathname === "/glazes" || pathname === "/community/glazes") {
+        if (nav !== "glazes") {
+          setNav("glazes");
+        }
+        if (staffWorkspaceMode !== "default") {
+          setStaffWorkspaceMode("default");
+        }
+        return;
+      }
+
+      if (staffWorkspaceMode !== "default") {
+        setStaffWorkspaceMode("default");
+      }
+
+      if (nav === "staff") {
+        setNav("dashboard");
+      }
+    };
+
+    window.addEventListener("popstate", syncStateWithBrowserLocation);
+    window.addEventListener("hashchange", syncStateWithBrowserLocation);
+    return () => {
+      window.removeEventListener("popstate", syncStateWithBrowserLocation);
+      window.removeEventListener("hashchange", syncStateWithBrowserLocation);
+    };
   }, [nav, staffWorkspaceMode]);
 
   useEffect(() => {
@@ -1819,6 +1869,12 @@ export default function App() {
 
   useEffect(() => {
     if (!staffUi && nav === "staff") {
+      if (typeof window === "undefined") return;
+      const pathname = normalizeAppPath(window.location.pathname);
+      const hashPath = normalizeHashPath(window.location.hash);
+      if (resolveStaffWorkspaceMatch(pathname) || resolveStaffWorkspaceMatch(hashPath)) {
+        return;
+      }
       setNav("dashboard");
     }
   }, [staffUi, nav]);
@@ -2031,24 +2087,25 @@ export default function App() {
           />
         );
       case "profile":
-        return (
-          <ProfileView
-            user={user}
-            themeName={themeName}
-            onThemeChange={(next) => {
-              void persistThemeName(next);
-            }}
-            enhancedMotion={enhancedMotion}
-            onEnhancedMotionChange={(next) => {
-              setEnhancedMotion(next);
-              writeStoredEnhancedMotion(next);
-            }}
-            onOpenIntegrations={() => setNav("integrations")}
-            onAvatarUpdated={() => {
-              void syncUserFromAuth();
-            }}
-          />
-        );
+      return (
+        <ProfileView
+          user={user}
+          themeName={themeName}
+          onThemeChange={(next) => {
+            void persistThemeName(next);
+          }}
+          enhancedMotion={enhancedMotion}
+          onEnhancedMotionChange={(next) => {
+            setEnhancedMotion(next);
+            writeStoredEnhancedMotion(next);
+          }}
+          onOpenIntegrations={() => setNav("integrations")}
+          onOpenBilling={() => setNav("billing")}
+          onAvatarUpdated={() => {
+            void syncUserFromAuth();
+          }}
+        />
+      );
       case "integrations":
         return (
           <IntegrationsView
@@ -2094,14 +2151,14 @@ export default function App() {
       case "kilnLaunch":
         return <KilnLaunchView user={user} isStaff={staffUi} />;
       case "studioResources":
-        return (
-          <StudioResourcesView
-            onOpenPieces={() => openPieces()}
-            onOpenMaterials={() => setNav("materials")}
-            onOpenMembership={() => setNav("membership")}
-            onOpenBilling={() => setNav("billing")}
-          />
-        );
+      return (
+        <StudioResourcesView
+          onOpenPieces={() => openPieces()}
+          onOpenMaterials={() => setNav("materials")}
+          onOpenMembership={() => setNav("membership")}
+          onOpenProfile={() => setNav("profile")}
+        />
+      );
       case "messages":
         return (
           <MessagesView
@@ -2154,18 +2211,13 @@ export default function App() {
             onOpenMessageThread={() => setNav("messages")}
             onOpenFirings={() => setNav("kiln")}
             onStartFiring={() => setNav("kilnLaunch")}
+            onOpenStaffWorkspace={openStaffWorkspace}
             initialModule={
               staffWorkspaceMode === "cockpit"
                 ? "cockpit"
-                : staffWorkspaceMode === "workshops"
-                  ? "events"
-                  : staffWorkspaceMode === "system"
-                    ? "system"
-                    : undefined
+                : undefined
             }
             forceCockpitWorkspace={staffWorkspaceMode === "cockpit"}
-            forceEventsWorkspace={staffWorkspaceMode === "workshops"}
-            forceSystemWorkspace={staffWorkspaceMode === "system"}
             messageThreads={threads}
             messageThreadsLoading={threadsLoading}
             messageThreadsError={threadsError}

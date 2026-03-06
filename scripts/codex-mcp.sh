@@ -7,6 +7,16 @@ LOCAL_CODEX_BIN="${REPO_ROOT}/node_modules/.bin/codex"
 CODEX_BIN=""
 CODEX_SOURCE=""
 CODEX_VERSION=""
+CODEX_FULL_PERMISSIONS="${CODEX_FULL_PERMISSIONS:-1}"
+CODEX_DEFAULT_ARGS=()
+
+build_codex_default_args() {
+  CODEX_DEFAULT_ARGS=()
+  if [[ "${CODEX_FULL_PERMISSIONS}" != "0" ]]; then
+    # Ensure codex sessions launched by this wrapper default to full access.
+    CODEX_DEFAULT_ARGS+=(--dangerously-bypass-approvals-and-sandbox)
+  fi
+}
 
 resolve_codex_bin() {
   if [[ -n "${CODEX_BIN_OVERRIDE:-}" ]]; then
@@ -38,7 +48,11 @@ WARN_LOCAL
 }
 
 codex_cmd() {
-  "${CODEX_BIN}" "$@"
+  "${CODEX_BIN}" "${CODEX_DEFAULT_ARGS[@]}" "$@"
+}
+
+run_in_repo() {
+  (cd "${REPO_ROOT}" && "$@")
 }
 
 print_banner() {
@@ -47,7 +61,8 @@ MCP operator wrapper:
 - Profiles are source of truth, but Codex profile-scoped MCP activation can be flaky.
 - This script forces the intended servers on each run with:
   -c 'mcp_servers.<id>.enabled=true'
-- Keep top-level MCP defaults disabled in ~/.codex/config.toml.
+- Keep top-level MCP defaults disabled in ~/.codex/config.toml, except
+  intentionally persistent servers (for example `open_memory`).
 - Codex CLI 0.106+ expects top-level model config (`model`, optional `model_provider`);
   legacy `[model_providers.*]` / `[models.*]` blocks are deprecated.
 BANNER
@@ -63,6 +78,12 @@ Usage:
   ./scripts/codex-mcp.sh home
   ./scripts/codex-mcp.sh apple
   ./scripts/codex-mcp.sh cloudflare
+  ./scripts/codex-mcp.sh memory
+  ./scripts/codex-mcp.sh context
+  ./scripts/codex-mcp.sh shell [codex-shell args...]
+  ./scripts/codex-mcp.sh resume [codex-shell args...]
+  ./scripts/codex-mcp.sh resume-fresh [codex-shell args...]
+  ./scripts/codex-mcp.sh resume-status
 USAGE
 }
 
@@ -71,7 +92,7 @@ run_list_with_overrides() {
   shift
   local server_ids=("$@")
 
-  local cmd=("${CODEX_BIN}" --profile "$profile")
+  local cmd=("${CODEX_BIN}" "${CODEX_DEFAULT_ARGS[@]}" --profile "$profile")
   local server_id
   for server_id in "${server_ids[@]}"; do
     cmd+=(-c "mcp_servers.${server_id}.enabled=true")
@@ -91,6 +112,17 @@ smoke_docs() {
     -c 'mcp_servers.mcp_registry.enabled=true' \
     exec "Run one read-only MCP call against openai_docs by invoking list_openai_docs with limit=1 and print a one-line success summary."; then
     echo "WARN: docs smoke call failed. MCP servers are listed above; verify connectivity/auth and retry."
+  fi
+}
+
+smoke_context() {
+  echo "==> context profile smoke (read-only MCP call)"
+  if ! codex_cmd \
+    --profile docs_research \
+    -c 'mcp_servers.context7_docs.enabled=true' \
+    -c 'mcp_servers.mcp_registry.enabled=true' \
+    exec "Run one read-only MCP call against context7_docs (for example a docs search) and print a one-line success summary."; then
+    echo "WARN: context smoke call failed. Verify context7_docs auth/connectivity and retry."
   fi
 }
 
@@ -123,6 +155,7 @@ KNOWN_ISSUES
 
 subcommand="${1:-}"
 resolve_codex_bin
+build_codex_default_args
 case "$subcommand" in
   list)
     print_banner
@@ -149,10 +182,58 @@ case "$subcommand" in
     print_banner
     run_list_with_overrides apple_home apple_fetch
     ;;
-  cloudflare)
+cloudflare)
     print_banner
     run_list_with_overrides cloudflare cloudflare_docs cloudflare_browser_rendering
     smoke_cloudflare
+    ;;
+  shell)
+    shift
+    print_banner
+    : "${CODEX_ENABLE_CONTEXT7_ON_SHELL:=1}"
+    run_in_repo node ./scripts/codex-shell.mjs "$@"
+    ;;
+  resume)
+    shift
+    print_banner
+    : "${CODEX_ENABLE_CONTEXT7_ON_SHELL:=1}"
+    CODEX_OPEN_MEMORY_REUSE_LAST_RUN_ID=true \
+    CODEX_OPEN_MEMORY_SESSION_STATE_PATH="${CODEX_OPEN_MEMORY_SESSION_STATE_PATH:-output/codex-shell-state.json}" \
+    run_in_repo node ./scripts/codex-shell.mjs "$@"
+    ;;
+  resume-fresh)
+    shift
+    print_banner
+    : "${CODEX_ENABLE_CONTEXT7_ON_SHELL:=1}"
+    CODEX_OPEN_MEMORY_REUSE_LAST_RUN_ID=false \
+    CODEX_OPEN_MEMORY_BOOTSTRAP_QUERY="" \
+    run_in_repo node ./scripts/codex-shell.mjs --no-bootstrap "$@"
+    ;;
+  resume-status)
+    shift || true
+    session_state="${CODEX_OPEN_MEMORY_SESSION_STATE_PATH:-output/codex-shell-state.json}"
+    resolved_state_path="${session_state}"
+    if [[ "${session_state}" != /* ]]; then
+      resolved_state_path="${REPO_ROOT}/${session_state}"
+    fi
+    if [[ ! -f "${resolved_state_path}" ]]; then
+      cat <<'NO_STATE'
+No persisted shell state found.
+Start a shell session first (e.g., ./scripts/codex-mcp.sh resume) to seed state.
+NO_STATE
+      exit 1
+    fi
+    echo "Shell continuity state: ${resolved_state_path}"
+    cat "${resolved_state_path}"
+    ;;
+  memory)
+    print_banner
+    run_list_with_overrides open_memory open_memory
+    ;;
+  context)
+    print_banner
+    run_list_with_overrides docs_research context7_docs mcp_registry
+    smoke_context
     ;;
   *)
     usage

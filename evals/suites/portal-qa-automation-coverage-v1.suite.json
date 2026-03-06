@@ -1,0 +1,47 @@
+{
+  "schema": "intent-eval-suite.v1",
+  "suiteId": "portal-qa-automation-coverage-v1",
+  "intentId": "portal-qa-automation-coverage-v1",
+  "cases": [
+    {
+      "id": "no-failed-tasks",
+      "title": "Intent task failures must remain zero",
+      "type": "summary.failed_max",
+      "max": 0,
+      "weight": 0.35,
+      "required": true
+    },
+    {
+      "id": "no-blocked-tasks",
+      "title": "Intent blocked tasks must remain zero",
+      "type": "summary.blocked_max",
+      "max": 0,
+      "weight": 0.2,
+      "required": true
+    },
+    {
+      "id": "pr-gate-succeeded",
+      "title": "PR functional gate check must pass",
+      "type": "check.succeeded",
+      "command": "npm run portal:pr:functional:gate",
+      "weight": 0.15,
+      "required": true
+    },
+    {
+      "id": "canary-auth-succeeded",
+      "title": "Authenticated canary check must pass",
+      "type": "check.succeeded",
+      "command": "npm run portal:canary:auth",
+      "weight": 0.15,
+      "required": true
+    },
+    {
+      "id": "index-guard-succeeded",
+      "title": "Strict index guard must pass",
+      "type": "check.succeeded",
+      "command": "npm run portal:index:guard",
+      "weight": 0.15,
+      "required": true
+    }
+  ]
+}

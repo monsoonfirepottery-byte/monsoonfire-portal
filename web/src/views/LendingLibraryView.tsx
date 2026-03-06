@@ -34,8 +34,10 @@ import {
   type LibraryRecommendationsCreateResponse,
   type LibraryRecommendationsListRequest,
   type LibraryRecommendationsListResponse,
+  type LibraryWorkshopDiscoverySignalSummary,
   type LibraryTagSubmissionCreateRequest,
   type LibraryTagSubmissionCreateResponse,
+  type EventSummary,
 } from "../api/portalContracts";
 import { createFunctionsClient } from "../api/functionsClient";
 import { createPortalApi } from "../api/portalApi";
@@ -59,7 +61,7 @@ import type {
   LibraryRecommendationFeedbackKind,
   LibraryRequest,
 } from "../types/library";
-import { formatMaybeTimestamp } from "../utils/format";
+import { formatMaybeTimestamp, formatDateTime } from "../utils/format";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./LendingLibraryView.css";
 
@@ -70,10 +72,14 @@ const MAX_LOANS = 2;
 const LOAN_LENGTH_LABEL = "1 month";
 const NOTIFY_PREFS_STORAGE_KEY = "mf_lending_notify_prefs";
 const LENDING_HANDOFF_STORAGE_SLOT = "mf_lending_handoff_v1";
+const LOCAL_NAV_KEY = "mf_nav_key";
+const LOCAL_NAV_SECTION_KEY = "mf_nav_section_key";
+const WORKSHOP_HANDOFF_STORAGE_SLOT = "mf_workshop_handoff_v1";
 const ACQUISITION_REQUEST_SECTION_ID = "acquisition-request-panel";
 const PUBLIC_LIBRARY_SEARCH_BASE_URL = "https://www.worldcat.org/search?q=";
 const CATALOG_SEARCH_DEBOUNCE_MS = 280;
 const DISCOVERY_RAIL_LIMIT = 8;
+const WORKSHOP_DISCOVERY_LIMIT = 4;
 const STAFF_PICKS_LIMIT = 2;
 const LIBRARY_ITEMS_API_PAGE_SIZE = 100;
 const LIBRARY_RECOMMENDATIONS_API_LIMIT = 100;
@@ -100,6 +106,15 @@ type LendingHandoffPayload = {
   search?: string;
   focusTechnique?: string;
   filter?: CatalogAvailability;
+  source?: string;
+  atIso?: string;
+};
+
+type WorkshopsToEventsHandoffPayload = {
+  eventId?: string;
+  eventTitle?: string;
+  search?: string;
+  focusTechnique?: string;
   source?: string;
   atIso?: string;
 };
@@ -711,12 +726,411 @@ function readLendingHandoffPayload(): LendingHandoffPayload | null {
   }
 }
 
+function writeWorkshopHandoffPayload(payload: WorkshopsToEventsHandoffPayload): void {
+  if (typeof window === "undefined") return;
+
+  const eventId =
+    typeof payload.eventId === "string" && payload.eventId.trim()
+      ? payload.eventId.trim()
+      : undefined;
+  const eventTitle =
+    typeof payload.eventTitle === "string" && payload.eventTitle.trim()
+      ? payload.eventTitle.trim()
+      : undefined;
+  const search =
+    typeof payload.search === "string" && payload.search.trim()
+      ? payload.search.trim()
+      : undefined;
+  const focusTechnique =
+    typeof payload.focusTechnique === "string" && payload.focusTechnique.trim()
+      ? payload.focusTechnique.trim()
+      : undefined;
+  const nextPayload: WorkshopsToEventsHandoffPayload = {};
+
+  if (eventId) {
+    nextPayload.eventId = eventId;
+  }
+  if (eventTitle) {
+    nextPayload.eventTitle = eventTitle;
+  }
+  if (search) {
+    nextPayload.search = search;
+  }
+  if (focusTechnique) {
+    nextPayload.focusTechnique = focusTechnique;
+  }
+  if (payload.source) {
+    nextPayload.source = payload.source;
+  }
+
+  if (Object.keys(nextPayload).length > 0) {
+    nextPayload.atIso = new Date().toISOString();
+  }
+
+  try {
+    window.localStorage.setItem(LOCAL_NAV_KEY, "events");
+    window.localStorage.setItem(LOCAL_NAV_SECTION_KEY, "community");
+    if (Object.keys(nextPayload).length > 0) {
+      window.localStorage.setItem(WORKSHOP_HANDOFF_STORAGE_SLOT, JSON.stringify(nextPayload));
+    }
+  } catch {
+    // Ignore storage failures and continue with best-effort handoff.
+  }
+}
+
+function navigateToWorkshops(handoff?: WorkshopsToEventsHandoffPayload) {
+  if (typeof window === "undefined") return;
+
+  writeWorkshopHandoffPayload(handoff ?? {});
+  window.location.assign(window.location.pathname);
+}
+
 function safeString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
 function safeBoolean(value: unknown): boolean {
   return value === true;
+}
+
+function safeNonNegativeInt(value: unknown, fallback = 0): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.floor(parsed));
+}
+
+function safeNonNegativeNumber(value: unknown, fallback = 0): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, parsed);
+}
+
+type WorkshopDiscoverySectionSource = "signals" | "fallback" | "unknown";
+type WorkshopDiscoverySignalSummary = LibraryWorkshopDiscoverySignalSummary;
+
+function normalizeWorkshopDiscoverySource(value: unknown): WorkshopDiscoverySectionSource {
+  if (value === "fallback") return "fallback";
+  if (value === "signals") return "signals";
+  return "unknown";
+}
+
+function normalizeWorkshopSignalCounts(value: unknown): EventSummary["communitySignalCounts"] {
+  if (!value || typeof value !== "object") return null;
+  const source = value as Record<string, unknown>;
+  const requestSignals = safeNonNegativeInt(source.requestSignals);
+  const interestSignals = safeNonNegativeInt(source.interestSignals);
+  const showcaseSignals = safeNonNegativeInt(source.showcaseSignals);
+  const withdrawnSignals = safeNonNegativeInt(source.withdrawnSignals);
+  const totalSignals = requestSignals + interestSignals + showcaseSignals;
+  if (totalSignals <= 0 && withdrawnSignals <= 0) return null;
+  const latestSignalAtRaw = (source as { latestSignalAtMs?: unknown }).latestSignalAtMs;
+  const latestSignalAtMs = latestSignalAtRaw === null ? null : safeNonNegativeInt(latestSignalAtRaw, 0);
+  const demandScore = safeNonNegativeNumber((source as { demandScore?: unknown }).demandScore, 0);
+
+  return {
+    requestSignals,
+    interestSignals,
+    showcaseSignals,
+    withdrawnSignals,
+    totalSignals,
+    demandScore,
+    latestSignalAtMs,
+  };
+}
+
+function normalizeWorkshopDiscoverySignalSummary(
+  value: unknown,
+): WorkshopDiscoverySignalSummary | null {
+  if (!value || typeof value !== "object") return null;
+  const source = normalizeWorkshopDiscoverySource((value as { source?: unknown }).source);
+  if (source === "unknown") return null;
+
+  const summary = value as Record<string, unknown>;
+  const workshopCount = safeNonNegativeInt(summary.workshopCount);
+  const signalWorkshopCount = safeNonNegativeInt(
+    (summary as { signalWorkshopCount?: unknown }).signalWorkshopCount,
+  );
+  const totalSignals = safeNonNegativeInt(summary.totalSignals);
+  const requestSignals = safeNonNegativeInt(summary.requestSignals);
+  const interestSignals = safeNonNegativeInt(summary.interestSignals);
+  const showcaseSignals = safeNonNegativeInt(summary.showcaseSignals);
+  const withdrawnSignals = safeNonNegativeInt(summary.withdrawnSignals);
+  const latestSignalAtRaw = summary.latestSignalAtMs;
+  const latestSignalAtMs = latestSignalAtRaw === null ? null : safeNonNegativeInt(latestSignalAtRaw, 0);
+  const topDemandScoreRaw = summary.topDemandScore;
+  const topDemandScore =
+    topDemandScoreRaw === null || topDemandScoreRaw === undefined
+      ? undefined
+      : safeNonNegativeNumber(topDemandScoreRaw, 0);
+
+  return {
+    source,
+    workshopCount,
+    signalWorkshopCount,
+    totalSignals,
+    requestSignals,
+    interestSignals,
+    showcaseSignals,
+    withdrawnSignals,
+    topDemandScore,
+    latestSignalAtMs,
+  };
+}
+
+function synthesizeWorkshopDiscoverySignalSummary(
+  workshops: readonly EventSummary[],
+  sourceHint: WorkshopDiscoverySectionSource,
+): WorkshopDiscoverySignalSummary | null {
+  if (workshops.length === 0) return null;
+
+  const workshopHasCommunitySignal = (workshop: EventSummary): boolean => {
+    const activeSignals = safeNonNegativeInt(workshop.communitySignalCounts?.totalSignals ?? 0);
+    const withdrawnSignals = safeNonNegativeInt(workshop.communitySignalCounts?.withdrawnSignals ?? 0);
+    return activeSignals + withdrawnSignals > 0;
+  };
+
+  const workshopsWithSignals = workshops.filter((workshop) => {
+    return workshopHasCommunitySignal(workshop);
+  });
+  const signalWorkshopCount = workshopsWithSignals.length;
+  const totalSignals = workshopsWithSignals.reduce(
+    (sum, workshop) => sum + safeNonNegativeInt(workshop.communitySignalCounts?.totalSignals ?? 0),
+    0,
+  );
+  const requestSignals = workshopsWithSignals.reduce(
+    (sum, workshop) => sum + safeNonNegativeInt(workshop.communitySignalCounts?.requestSignals ?? 0),
+    0,
+  );
+  const interestSignals = workshopsWithSignals.reduce(
+    (sum, workshop) => sum + safeNonNegativeInt(workshop.communitySignalCounts?.interestSignals ?? 0),
+    0,
+  );
+  const showcaseSignals = workshopsWithSignals.reduce(
+    (sum, workshop) => sum + safeNonNegativeInt(workshop.communitySignalCounts?.showcaseSignals ?? 0),
+    0,
+  );
+  const withdrawnSignals = workshopsWithSignals.reduce(
+    (sum, workshop) => sum + safeNonNegativeInt(workshop.communitySignalCounts?.withdrawnSignals ?? 0),
+    0,
+  );
+  const latestSignalAtMs = workshopsWithSignals.reduce((maxSignalAtMs, workshop) => {
+    const latest = safeNonNegativeInt(workshop.communitySignalCounts?.latestSignalAtMs, 0);
+    return latest > maxSignalAtMs ? latest : maxSignalAtMs;
+  }, 0);
+  const topDemandScore = workshopsWithSignals.reduce(
+    (maxScore, workshop) =>
+      Math.max(
+        maxScore,
+        safeNonNegativeNumber(workshop.communitySignalCounts?.demandScore ?? 0, 0),
+      ),
+    0,
+  );
+
+  const hasSignalActivity = totalSignals + withdrawnSignals > 0;
+
+  const source: WorkshopDiscoverySectionSource = sourceHint === "signals" || hasSignalActivity ? "signals" : "fallback";
+  return {
+    source,
+    workshopCount: workshops.length,
+    signalWorkshopCount,
+    totalSignals,
+    requestSignals,
+    interestSignals,
+    showcaseSignals,
+    withdrawnSignals,
+    topDemandScore: topDemandScore > 0 ? topDemandScore : undefined,
+    latestSignalAtMs: latestSignalAtMs > 0 ? latestSignalAtMs : null,
+  };
+}
+
+function formatWorkshopDiscoverySignalSummary(summary: WorkshopDiscoverySignalSummary): string {
+  const totalSignals = safeNonNegativeInt(summary.totalSignals);
+  const requestSignals = safeNonNegativeInt(summary.requestSignals);
+  const interestSignals = safeNonNegativeInt(summary.interestSignals);
+  const showcaseSignals = safeNonNegativeInt(summary.showcaseSignals);
+  const withdrawnSignals = safeNonNegativeInt(summary.withdrawnSignals);
+  const activeSignals = requestSignals + interestSignals + showcaseSignals;
+  const displaySignals = activeSignals > 0 ? activeSignals : withdrawnSignals;
+
+  if (!displaySignals) {
+    return "no active community signals";
+  }
+
+  const parts: string[] = [];
+
+  if (requestSignals > 0) {
+    parts.push(`${requestSignals} request${requestSignals === 1 ? "" : "s"}`);
+  }
+  if (interestSignals > 0) {
+    parts.push(`${interestSignals} interested`);
+  }
+  if (showcaseSignals > 0) {
+    parts.push(`${showcaseSignals} showcase${showcaseSignals === 1 ? "" : "s"}`);
+  }
+  if (withdrawnSignals > 0) {
+    parts.push(`${withdrawnSignals} withdrawn`);
+  }
+
+  const breakdown = parts.length > 0 ? ` (${parts.join(", ")})` : "";
+  const signalFreshness = workshopSignalFreshnessLabel(summary.latestSignalAtMs);
+  const visibleSignals = activeSignals > 0 ? totalSignals : withdrawnSignals;
+  const peakDemandScore =
+    summary.topDemandScore === null ||
+    summary.topDemandScore === undefined ||
+    !Number.isFinite(summary.topDemandScore) ||
+    summary.topDemandScore <= 0
+      ? null
+      : summary.topDemandScore;
+  const peakDemandScoreLabel = peakDemandScore === null ? "" : ` • peak demand ${formatWorkshopDemandScore(peakDemandScore)}`;
+  return `${visibleSignals} community signal${visibleSignals === 1 ? "" : "s"}${breakdown}${
+    signalFreshness ? ` • latest signal ${signalFreshness}` : ""
+  }${peakDemandScoreLabel}`;
+}
+
+function formatWorkshopDemandScore(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)}`;
+}
+
+function normalizeWorkshopDiscoveryEvent(raw: Record<string, unknown>, fallbackId: string): EventSummary {
+  const requestSignals = normalizeWorkshopSignalCounts(raw.communitySignalCounts);
+  return {
+    id: safeString(raw.id) || fallbackId,
+    title: safeString(raw.title) || "Untitled workshop",
+    summary: safeString(raw.summary) || "",
+    startAt: safeString(raw.startAt),
+    endAt: safeString(raw.endAt),
+    timezone: safeString(raw.timezone) || "UTC",
+    location: safeString(raw.location) || "Studio",
+    priceCents: safeNonNegativeInt(raw.priceCents),
+    currency: safeString(raw.currency) || "USD",
+    includesFiring: raw.includesFiring === true,
+    firingDetails: safeString(raw.firingDetails),
+    capacity: safeNonNegativeInt(raw.capacity),
+    waitlistEnabled: raw.waitlistEnabled !== false,
+    waitlistCount: raw.waitlistCount === null ? null : safeNonNegativeInt(raw.waitlistCount),
+    status: (safeString(raw.status) || "published") as EventSummary["status"],
+    remainingCapacity: raw.remainingCapacity === null ? null : safeNonNegativeInt(raw.remainingCapacity, 0),
+    ...(requestSignals ? { communitySignalCounts: requestSignals } : {}),
+  };
+}
+
+function workshopSignalText(event: EventSummary): string {
+  const counts = event.communitySignalCounts;
+  if (!counts) return "";
+
+  const requestSignals = safeNonNegativeInt(counts.requestSignals);
+  const interestSignals = safeNonNegativeInt(counts.interestSignals);
+  const showcaseSignals = safeNonNegativeInt(counts.showcaseSignals);
+  const withdrawnSignals = safeNonNegativeInt(counts.withdrawnSignals);
+  const demandScore = safeNonNegativeNumber(counts.demandScore, 0);
+
+  const activeSignals = requestSignals + interestSignals + showcaseSignals;
+  const totalSignalsForDisplay = activeSignals > 0 ? activeSignals : withdrawnSignals;
+  if (totalSignalsForDisplay <= 0) return "";
+
+  const parts: string[] = [];
+  if (requestSignals > 0) {
+    parts.push(`${requestSignals} request${requestSignals === 1 ? "" : "s"}`);
+  }
+  if (interestSignals > 0) {
+    parts.push(`${interestSignals} interested member${interestSignals === 1 ? "" : "s"}`);
+  }
+  if (showcaseSignals > 0) {
+    parts.push(`${showcaseSignals} showcase member${showcaseSignals === 1 ? "" : "s"}`);
+  }
+  if (withdrawnSignals > 0) {
+    parts.push(`${withdrawnSignals} withdrawn signal${withdrawnSignals === 1 ? "" : "s"}`);
+  }
+  const breakdown = parts.join(", ");
+  const demandText =
+    activeSignals > 0 && demandScore > 0 ? ` • demand ${formatWorkshopDemandScore(demandScore)}` : "";
+  const baseText = breakdown
+    ? `${totalSignalsForDisplay} community signal${totalSignalsForDisplay === 1 ? "" : "s"} • ${breakdown}`
+    : `${totalSignalsForDisplay} community signal${totalSignalsForDisplay === 1 ? "" : "s"}`;
+  return `${baseText}${demandText}`;
+}
+
+function workshopSignalMetaLine(
+  event: EventSummary,
+  sectionSource: WorkshopDiscoverySectionSource,
+): string {
+  const baseSignalText = workshopSignalText(event);
+  if (baseSignalText) {
+    const signalFreshness = workshopSignalFreshnessLabel(event.communitySignalCounts?.latestSignalAtMs);
+    return signalFreshness ? `${baseSignalText} • last activity ${signalFreshness}` : baseSignalText;
+  }
+
+  if (sectionSource === "signals") {
+    return "This workshop is in the community-signal rail, but has no current activity yet";
+  }
+
+  return "No community signals yet";
+}
+
+function workshopSignalFreshnessLabel(latestSignalAtMs: number | null | undefined): string {
+  if (!latestSignalAtMs || latestSignalAtMs <= 0) return "";
+
+  const ageMs = Date.now() - latestSignalAtMs;
+  if (!Number.isFinite(ageMs) || ageMs <= 0) {
+    return "just now";
+  }
+
+  const minuteMs = 60_000;
+  const hourMs = 60 * minuteMs;
+  const dayMs = 24 * hourMs;
+  if (ageMs < minuteMs) {
+    return "just now";
+  }
+  if (ageMs < hourMs) {
+    const minutes = Math.floor(ageMs / minuteMs);
+    return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  }
+  if (ageMs < dayMs) {
+    const hours = Math.floor(ageMs / hourMs);
+    return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  }
+  const days = Math.floor(ageMs / dayMs);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
+function workshopSignalCountsForAnalytics(event: EventSummary): {
+  totalSignals: number | null;
+  requestSignals: number | null;
+  interestSignals: number | null;
+  showcaseSignals: number | null;
+  demandScore: number | null;
+  latestSignalAtMs: number | null;
+} {
+  const counts = event.communitySignalCounts;
+  if (!counts) {
+    return {
+      totalSignals: null,
+      requestSignals: null,
+      interestSignals: null,
+      showcaseSignals: null,
+      demandScore: null,
+      latestSignalAtMs: null,
+    };
+  }
+
+  return {
+    totalSignals: safeNonNegativeInt(counts.totalSignals),
+    requestSignals: safeNonNegativeInt(counts.requestSignals),
+    interestSignals: safeNonNegativeInt(counts.interestSignals),
+    showcaseSignals: safeNonNegativeInt(counts.showcaseSignals),
+    demandScore: safeNonNegativeNumber(counts.demandScore, 0),
+    latestSignalAtMs: counts.latestSignalAtMs === null ? null : safeNonNegativeInt(counts.latestSignalAtMs, 0),
+  };
+}
+
+function workshopWaitlistLabel(event: EventSummary): string | null {
+  if (!event.waitlistEnabled) return null;
+  const waitlistCount = event.waitlistCount;
+  if (typeof waitlistCount !== "number" || !Number.isFinite(waitlistCount) || waitlistCount < 0) return null;
+  if (waitlistCount > 0) return `${waitlistCount} on waitlist`;
+  if (event.remainingCapacity === 0) return "Waitlist open";
+  return null;
 }
 
 function normalizeLibraryRolloutPhase(
@@ -889,8 +1303,12 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
   const [itemsTotal, setItemsTotal] = useState<number>(0);
 
   const [discoveryRails, setDiscoveryRails] = useState<DiscoveryRail[]>(() => createEmptyDiscoveryRails());
+  const [discoveryWorkshops, setDiscoveryWorkshops] = useState<EventSummary[]>([]);
   const [discoveryLoading, setDiscoveryLoading] = useState(true);
   const [discoveryError, setDiscoveryError] = useState("");
+  const [discoveryWorkshopsSource, setDiscoveryWorkshopsSource] = useState<WorkshopDiscoverySectionSource>("unknown");
+  const [discoveryWorkshopSignalSummary, setDiscoveryWorkshopSignalSummary] =
+    useState<WorkshopDiscoverySignalSummary | null>(null);
 
   const [requests, setRequests] = useState<LibraryRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(true);
@@ -1187,16 +1605,24 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
 
     setDiscoveryLoading(true);
     setDiscoveryError("");
+    setDiscoveryWorkshopSignalSummary(null);
     try {
       const limit = DISCOVERY_RAIL_LIMIT;
       let rails = createEmptyDiscoveryRails();
+      let featuredWorkshops: EventSummary[] = [];
+      let featuredWorkshopsSource: WorkshopDiscoverySectionSource = "unknown";
+      let featuredWorkshopsSignalSummary: WorkshopDiscoverySignalSummary | null = null;
       let source: "api_v1" | "firestore" = "api_v1";
       try {
         const idToken = await user.getIdToken();
         const response = await portalApi.getLibraryDiscovery({
           idToken,
           adminToken,
-          payload: { limit },
+          payload: {
+            limit,
+            includeWorkshopDiscovery: true,
+            workshopDiscoveryLimit: WORKSHOP_DISCOVERY_LIMIT,
+          },
           signal: abortController.signal,
         });
         const payload =
@@ -1215,6 +1641,27 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
         const recentlyReviewed = readDiscoverySectionRows(payload?.recentlyReviewed).map((row, index) =>
           normalizeLibraryItem(safeString(row.id) ?? `recently-reviewed-${index + 1}`, row as Partial<LibraryItem>)
         );
+        featuredWorkshops = readDiscoverySectionRows(payload?.featuredWorkshops)
+          .map((row, index) => normalizeWorkshopDiscoveryEvent(row, `featured-workshop-${index + 1}`))
+          .slice(0, WORKSHOP_DISCOVERY_LIMIT);
+        featuredWorkshopsSource = normalizeWorkshopDiscoverySource((payload as { featuredWorkshopsSource?: unknown })?.featuredWorkshopsSource);
+        featuredWorkshopsSignalSummary = normalizeWorkshopDiscoverySignalSummary(
+          (payload as { featuredWorkshopsSignalSummary?: unknown })?.featuredWorkshopsSignalSummary,
+        );
+        if (!featuredWorkshopsSignalSummary) {
+          featuredWorkshopsSignalSummary = synthesizeWorkshopDiscoverySignalSummary(
+            featuredWorkshops,
+            featuredWorkshopsSource,
+          );
+        } else if (
+          featuredWorkshopsSignalSummary.workshopCount <= 0 &&
+          featuredWorkshops.length > 0
+        ) {
+          featuredWorkshopsSignalSummary = {
+            ...featuredWorkshopsSignalSummary,
+            workshopCount: featuredWorkshops.length,
+          };
+        }
         const byKey: Record<DiscoverySectionKey, LibraryItem[]> = {
           staff_picks: staffPicks.slice(0, STAFF_PICKS_LIMIT),
           most_borrowed: mostBorrowed,
@@ -1231,14 +1678,30 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
 
       if (abortController.signal.aborted || requestSeq !== discoveryRequestSeqRef.current) return;
       setDiscoveryRails(rails);
+      setDiscoveryWorkshops(featuredWorkshops);
+      setDiscoveryWorkshopsSource(featuredWorkshopsSource);
+      setDiscoveryWorkshopSignalSummary(featuredWorkshopsSignalSummary);
       trackLending("lending_discovery_loaded", {
         section: "discovery",
         source,
         railsWithItems: rails.filter((entry) => entry.items.length > 0).length,
+        featuredWorkshops: featuredWorkshops.length,
+        ...(source === "api_v1"
+          ? {
+              workshopDiscoverySectionSource: featuredWorkshopsSource,
+              workshopDiscoverySource: featuredWorkshopsSignalSummary?.source ?? "unknown",
+              workshopDiscoveryTotalSignals: featuredWorkshopsSignalSummary?.totalSignals ?? null,
+              workshopDiscoverySignalWorkshopCount:
+                featuredWorkshopsSignalSummary?.signalWorkshopCount ?? null,
+              workshopDiscoveryLatestSignalAtMs: featuredWorkshopsSignalSummary?.latestSignalAtMs ?? null,
+              workshopDiscoveryWorkshopCount: featuredWorkshopsSignalSummary?.workshopCount ?? null,
+            }
+          : {}),
       });
     } catch (error: unknown) {
       if (isAbortError(error)) return;
       setDiscoveryError(`Discovery rails unavailable: ${getErrorMessage(error)}`);
+      setDiscoveryWorkshopSignalSummary(null);
     } finally {
       if (requestSeq === discoveryRequestSeqRef.current) {
         setDiscoveryLoading(false);
@@ -1638,6 +2101,55 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
     });
     return map;
   }, [discoveryRails]);
+
+  const discoveryWorkshopSectionMeta = useMemo(() => {
+    if (!discoveryWorkshops.length) {
+      return "No workshop discoveries available yet.";
+    }
+
+    if (discoveryWorkshopSignalSummary?.source === "signals") {
+      const signalLabel = formatWorkshopDiscoverySignalSummary(discoveryWorkshopSignalSummary);
+      const featuredSignalCount = Math.max(
+        0,
+        discoveryWorkshopSignalSummary.signalWorkshopCount ??
+          discoveryWorkshopSignalSummary.workshopCount,
+      );
+      return `${featuredSignalCount} featured by ${signalLabel}`;
+    }
+
+    if (discoveryWorkshopSignalSummary?.source === "fallback") {
+      return `${discoveryWorkshopSignalSummary.workshopCount} upcoming workshops`;
+    }
+
+    if (discoveryWorkshopsSource === "signals") {
+      return `${discoveryWorkshops.length} featured by community signal`;
+    }
+
+    if (discoveryWorkshopsSource === "fallback") {
+      return `${discoveryWorkshops.length} upcoming workshops`;
+    }
+
+    const hasCommunitySignal = discoveryWorkshops.some((workshop) => {
+      const totalSignals = safeNonNegativeInt(workshop.communitySignalCounts?.totalSignals ?? 0);
+      const withdrawnSignals = safeNonNegativeInt(workshop.communitySignalCounts?.withdrawnSignals ?? 0);
+      return totalSignals + withdrawnSignals > 0;
+    });
+    return hasCommunitySignal
+      ? `${discoveryWorkshops.length} featured by community signal`
+      : `${discoveryWorkshops.length} upcoming workshops`;
+  }, [discoveryWorkshopSignalSummary, discoveryWorkshops, discoveryWorkshopsSource]);
+
+  const discoveryWorkshopsAreSignal = useMemo(() => {
+    if (!discoveryWorkshops.length) return false;
+    if (discoveryWorkshopsSource === "fallback") return false;
+    if (discoveryWorkshopsSource === "signals") return true;
+    if (discoveryWorkshopSignalSummary?.source === "signals") return true;
+    return discoveryWorkshops.some((workshop) => {
+      const totalSignals = safeNonNegativeInt(workshop.communitySignalCounts?.totalSignals ?? 0);
+      const withdrawnSignals = safeNonNegativeInt(workshop.communitySignalCounts?.withdrawnSignals ?? 0);
+      return totalSignals + withdrawnSignals > 0;
+    });
+  }, [discoveryWorkshops, discoveryWorkshopSignalSummary, discoveryWorkshopsSource]);
 
   const filteredItems = useMemo(() => {
     if (itemsSource === "api_v1") return items;
@@ -3398,29 +3910,73 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
 
                 <div className="related-workshops">
                   {(selectedItem.relatedWorkshops ?? []).length > 0 ? (
-                    selectedItem.relatedWorkshops?.map((workshop) => (
-                      <a
-                        className="related-workshop-link"
-                        key={`${selectedItem.id}-workshop-${workshop.id ?? workshop.title}`}
-                        href={workshop.url || "#"}
-                        target={workshop.url ? "_blank" : undefined}
-                        rel={workshop.url ? "noreferrer" : undefined}
-                        onClick={() => {
-                          trackLending("lending_workshop_link_opened", {
-                            section: "technique_workshop_bridge",
-                            itemId: selectedItem.id,
-                            workshopTitle: workshop.title,
-                            hasUrl: Boolean(workshop.url),
-                          });
-                        }}
-                      >
-                        <span>{workshop.title}</span>
-                        <span className="library-meta">
-                          {[workshop.scheduleLabel, workshop.status].filter(Boolean).join(" - ") ||
-                            "Related workshop"}
-                        </span>
-                      </a>
-                    ))
+                    selectedItem.relatedWorkshops?.map((workshop) => {
+                      const workshopTitle = workshop.title || "Untitled workshop";
+                      const workshopMeta = [workshop.scheduleLabel, workshop.status].filter(Boolean).join(" - ") ||
+                        "Related workshop";
+                      const hasDirectWorkshopRoute = Boolean(workshop.id && String(workshop.id).trim());
+                      const directWorkshopId = hasDirectWorkshopRoute ? String(workshop.id).trim() : "";
+                      const workshopLinkKey = `${selectedItem.id}-workshop-${directWorkshopId || workshopTitle}`;
+                      const relatedTechnique = selectedItem.techniques?.[0] ?? "";
+
+                      if (hasDirectWorkshopRoute) {
+                        return (
+                          <button
+                            type="button"
+                            className="related-workshop-link"
+                            key={workshopLinkKey}
+                            onClick={() => {
+                              navigateToWorkshops({
+                                eventId: directWorkshopId,
+                                eventTitle: workshopTitle,
+                                search: workshopTitle,
+                                focusTechnique: relatedTechnique,
+                                source: "lending-technique-related-workshop",
+                              });
+                              trackLending("lending_workshop_link_opened", {
+                                section: "technique_workshop_bridge",
+                                itemId: selectedItem.id,
+                                workshopTitle,
+                                hasUrl: false,
+                              });
+                            }}
+                          >
+                            <span>{workshopTitle}</span>
+                            <span className="library-meta">{workshopMeta}</span>
+                          </button>
+                        );
+                      }
+
+                      if (workshop.url) {
+                        return (
+                          <a
+                            className="related-workshop-link"
+                            key={workshopLinkKey}
+                            href={workshop.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={() => {
+                              trackLending("lending_workshop_link_opened", {
+                                section: "technique_workshop_bridge",
+                                itemId: selectedItem.id,
+                                workshopTitle,
+                                hasUrl: true,
+                              });
+                            }}
+                          >
+                            <span>{workshopTitle}</span>
+                            <span className="library-meta">{workshopMeta}</span>
+                          </a>
+                        );
+                      }
+
+                      return (
+                        <div className="related-workshop-link related-workshop-link--disabled" key={workshopLinkKey}>
+                          <span>{workshopTitle}</span>
+                          <span className="library-meta">{workshopMeta}</span>
+                        </div>
+                      );
+                    })
                   ) : (
                     <div className="empty-state">No linked workshop yet for these techniques.</div>
                   )}
@@ -3667,6 +4223,82 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
         >
           {discoveryLoading ? <div className="notice inline-alert">Loading discovery rails...</div> : null}
           {discoveryError ? <div className="notice inline-alert">{discoveryError}</div> : null}
+          <article className="discovery-workshop-row">
+            <div className="discovery-rail-header">
+              <div className="summary-label">
+                {discoveryWorkshopsAreSignal ? "Community-signal workshops" : "Upcoming workshops"}
+              </div>
+              <div className="library-meta">
+                {discoveryWorkshopSectionMeta}
+              </div>
+            </div>
+            {discoveryWorkshops.length === 0 ? (
+              <div className="empty-state">
+                {discoveryWorkshopsAreSignal
+                  ? "No community-signal workshops are available yet."
+                  : "No upcoming workshops are available right now."}
+              </div>
+            ) : (
+              <div className="discovery-workshop-grid">
+                {discoveryWorkshops.map((workshop) => {
+                    const workshopSignalCounts = workshopSignalCountsForAnalytics(workshop);
+                    const when = formatDateTime(workshop.startAt);
+                    const signalMeta = workshopSignalMetaLine(workshop, discoveryWorkshopsSource);
+                    const waitlistMeta = workshopWaitlistLabel(workshop);
+                    const slots =
+                      typeof workshop.remainingCapacity === "number" && workshop.remainingCapacity >= 0
+                        ? `${workshop.remainingCapacity} spots`
+                        : "Spots open";
+                    return (
+                    <button
+                      key={workshop.id}
+                      type="button"
+                      className="discovery-workshop-card"
+                      onClick={() => {
+                        navigateToWorkshops({
+                          eventId: workshop.id,
+                          eventTitle: workshop.title,
+                          search: workshop.title,
+                          source: "lending-discovery-workshop",
+                        });
+                        trackLending("lending_workshop_link_opened", {
+                          section: "community_signal_discovery",
+                          itemId: workshop.id,
+                          workshopTitle: workshop.title,
+                          hasUrl: false,
+                          workshopDiscoverySectionSource: discoveryWorkshopsSource,
+                          workshopDiscoverySource: discoveryWorkshopSignalSummary?.source ?? "unknown",
+                          workshopDiscoveryTotalSignals: discoveryWorkshopSignalSummary?.totalSignals ?? null,
+                          workshopDiscoverySignalWorkshopCount:
+                            discoveryWorkshopSignalSummary?.signalWorkshopCount ?? null,
+                          workshopDiscoveryLatestSignalAtMs: discoveryWorkshopSignalSummary?.latestSignalAtMs ?? null,
+                          workshopDiscoveryWorkshopCount: discoveryWorkshopSignalSummary?.workshopCount ?? null,
+                          workshopSignalTotalSignals: workshopSignalCounts.totalSignals,
+                          workshopSignalRequestSignals: workshopSignalCounts.requestSignals,
+                          workshopSignalInterestSignals: workshopSignalCounts.interestSignals,
+                          workshopSignalShowcaseSignals: workshopSignalCounts.showcaseSignals,
+                          workshopSignalDemandScore: workshopSignalCounts.demandScore,
+                          workshopSignalLatestSignalAtMs: workshopSignalCounts.latestSignalAtMs,
+                        });
+                      }}
+                    >
+                      <div className="discovery-workshop-title">{workshop.title}</div>
+                      <p className="discovery-workshop-summary">
+                        {workshop.summary || "No summary provided yet."}
+                      </p>
+                      <div className="discovery-workshop-meta">
+                          <span>{workshop.location || "Studio"}</span>
+                          {when ? <span>{when}</span> : null}
+                          <span>{slots}</span>
+                          {waitlistMeta ? <span>{waitlistMeta}</span> : null}
+                          <span>{signalMeta}</span>
+                        </div>
+                    </button>
+                    );
+                  })}
+                </div>
+            )}
+          </article>
           {rails.map((rail) => {
             const railItems =
               rail.key === "staff_picks"

@@ -125,6 +125,41 @@ const loadDotenv = (filePath, { overwrite = true } = {}) => {
   });
 };
 
+const ensureJavaRuntime = () => {
+  const result = spawnSync(
+    process.execPath,
+    ["./scripts/ensure-java-runtime.mjs", "--json"],
+    {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+      },
+      encoding: "utf8",
+    }
+  );
+
+  if (result.status !== 0) {
+    const stderr = String(result.stderr || "").trim();
+    console.error(`Java bootstrap failed: ${stderr || `exit ${result.status || 1}`}`);
+    process.exit(result.status || 1);
+  }
+
+  try {
+    const parsed = JSON.parse(String(result.stdout || "").trim());
+    if (parsed?.status === "ok" && parsed?.javaHome) {
+      process.env.JAVA_HOME = String(parsed.javaHome);
+      process.env.PATH = `${resolve(parsed.javaHome, "bin")}:${String(process.env.PATH || "")}`;
+      console.log(`Using Java runtime: ${parsed.versionLine || "unknown version"} (${parsed.source || "unknown source"})`);
+      return;
+    }
+  } catch {
+    // Fall through to explicit error below.
+  }
+
+  console.error("Java bootstrap returned invalid response.");
+  process.exit(1);
+};
+
 const { only, project, config, host, networkProfile, skipNetworkCheck, skipContractCheck } = parseArgs();
 const functionsEnvFile = resolve(repoRoot, "functions", ".env.local");
 const webEnvFile = resolve(repoRoot, "web", ".env.local");
@@ -132,6 +167,7 @@ const resolvedConfig = resolve(repoRoot, config);
 
 loadDotenv(functionsEnvFile, { overwrite: false });
 loadDotenv(webEnvFile, { overwrite: false });
+ensureJavaRuntime();
 
 const network = resolveStudioBrainNetworkProfile({
   env: {
@@ -215,6 +251,57 @@ const maybeApplyHostToConfig = (configPath, selectedEmulators, targetHost) => {
   const configJson = JSON.parse(readFileSync(configPath, "utf8"));
   if (!configJson.emulators || typeof configJson.emulators !== "object") {
     return configPath;
+  }
+
+  const toAbsolutePath = (value) => {
+    if (typeof value !== "string") return value;
+    const trimmed = value.trim();
+    if (!trimmed) return value;
+    if (trimmed.startsWith("/") || /^[A-Za-z]:[\\/]/.test(trimmed)) return value;
+    return resolve(dirname(configPath), trimmed);
+  };
+
+  if (configJson.firestore && typeof configJson.firestore === "object") {
+    if (typeof configJson.firestore.rules === "string") {
+      configJson.firestore.rules = toAbsolutePath(configJson.firestore.rules);
+    }
+    if (typeof configJson.firestore.indexes === "string") {
+      configJson.firestore.indexes = toAbsolutePath(configJson.firestore.indexes);
+    }
+  }
+
+  if (configJson.storage && typeof configJson.storage === "object" && typeof configJson.storage.rules === "string") {
+    configJson.storage.rules = toAbsolutePath(configJson.storage.rules);
+  }
+
+  if (configJson.database && typeof configJson.database === "object" && typeof configJson.database.rules === "string") {
+    configJson.database.rules = toAbsolutePath(configJson.database.rules);
+  }
+
+  if (Array.isArray(configJson.functions)) {
+    configJson.functions = configJson.functions.map((entry) =>
+      entry && typeof entry === "object" && typeof entry.source === "string"
+        ? { ...entry, source: toAbsolutePath(entry.source) }
+        : entry
+    );
+  } else if (configJson.functions && typeof configJson.functions === "object" && typeof configJson.functions.source === "string") {
+    configJson.functions = {
+      ...configJson.functions,
+      source: toAbsolutePath(configJson.functions.source),
+    };
+  }
+
+  if (Array.isArray(configJson.hosting)) {
+    configJson.hosting = configJson.hosting.map((entry) =>
+      entry && typeof entry === "object" && typeof entry.public === "string"
+        ? { ...entry, public: toAbsolutePath(entry.public) }
+        : entry
+    );
+  } else if (configJson.hosting && typeof configJson.hosting === "object" && typeof configJson.hosting.public === "string") {
+    configJson.hosting = {
+      ...configJson.hosting,
+      public: toAbsolutePath(configJson.hosting.public),
+    };
   }
 
   let patched = false;

@@ -2,6 +2,11 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  background:
+    radial-gradient(circle at 12% -20%, rgba(120, 164, 220, 0.14), transparent 42%),
+    radial-gradient(circle at 88% 0%, rgba(70, 116, 181, 0.12), transparent 44%);
+  border-radius: 22px;
+  padding: 8px;
 }
 
 .billing-summary {
@@ -17,13 +22,15 @@
   padding: 18px;
   display: grid;
   gap: 6px;
+  justify-items: center;
+  text-align: center;
   box-shadow: var(--shadow-soft);
 }
 
 .billing-refresh {
-  justify-self: flex-end;
+  grid-column: 1 / -1;
+  justify-self: center;
   align-self: center;
-  margin-left: auto;
 }
 
 .summary-label {
@@ -43,6 +50,7 @@
   font-size: 13px;
   color: var(--muted);
   line-height: 1.5;
+  max-width: 28ch;
 }
 
 .billing-status {
@@ -63,6 +71,38 @@
   flex-direction: column;
   gap: 16px;
   box-shadow: var(--shadow);
+}
+
+.billing-details-shell {
+  gap: 14px;
+}
+
+.billing-details-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.billing-details-panels {
+  display: none;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.billing-details-panels.is-open {
+  display: grid;
+}
+
+.billing-detail-panel {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .billing-empty {
@@ -172,6 +212,10 @@
     flex-direction: column;
     align-items: flex-start;
   }
+
+  .billing-details-panels {
+    grid-template-columns: 1fr;
+  }
 }
 
 html[data-portal-theme="memoria"] .billing-page {
@@ -189,6 +233,11 @@ html[data-portal-theme="memoria"] .billing-section {
     linear-gradient(168deg, rgba(30, 42, 62, 0.9), rgba(20, 29, 44, 0.92)),
     radial-gradient(circle at 84% -16%, rgba(141, 171, 223, 0.2), transparent 58%);
   box-shadow: inset 0 1px 0 rgba(194, 211, 239, 0.08), 0 16px 30px rgba(4, 9, 18, 0.34);
+}
+
+html[data-portal-theme="memoria"] .billing-detail-panel {
+  border-color: rgba(154, 176, 212, 0.34);
+  background: linear-gradient(170deg, rgba(34, 46, 67, 0.86), rgba(23, 33, 50, 0.9));
 }
 
 html[data-portal-theme="memoria"] .summary-label,

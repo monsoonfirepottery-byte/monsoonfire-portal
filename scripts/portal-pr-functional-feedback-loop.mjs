@@ -19,7 +19,7 @@ const DEFAULT_LIMIT = 20;
 
 const BASE_REMEDIATION = {
   "firestore emulator functional rules suite":
-    "Run `npx firebase emulators:exec --config firebase.emulators.local.json --project monsoonfire-portal --only firestore \"node --test scripts/rules/myPieces.rules.test.mjs scripts/rules/notifications.rules.test.mjs scripts/rules/directMessages.rules.test.mjs scripts/rules/reservations.rules.test.mjs\"` locally and inspect first failing rule assertion.",
+    "Run `npm run test:rules` locally (auto-bootstraps Java runtime) and inspect the first failing rule assertion.",
   "firestore index contract guard":
     "Run `node ./scripts/firestore-index-contract-guard.mjs --strict --json --no-github --report output/qa/firestore-index-contract-guard-pr.json` locally, then deploy missing indexes if required.",
 };

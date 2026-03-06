@@ -6,6 +6,7 @@ import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
 import { access } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -345,7 +346,37 @@ function createAlertIssue(repoSlug, summary) {
   return created.stdout.split(/\s+/).find((token) => /^https:\/\/github\.com\//.test(token)) || "";
 }
 
-function buildRollingComment(summary) {
+function buildRollingCommentSignature(summary) {
+  const payload = {
+    status: summary.status,
+    projectId: summary.projectId,
+    requiredCount: summary.requiredCount,
+    missing: (Array.isArray(summary.missing) ? summary.missing : []).map((item) => ({
+      id: String(item?.id || ""),
+      reason: String(item?.reason || ""),
+    })),
+  };
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 20);
+}
+
+function getLatestIssueCommentBody(repoSlug, issueNumber) {
+  const view = runCommand(
+    "gh",
+    ["issue", "view", String(issueNumber), "--repo", repoSlug, "--json", "comments"],
+    { allowFailure: true }
+  );
+  if (!view.ok) return "";
+  try {
+    const parsed = JSON.parse(view.stdout || "{}");
+    const comments = Array.isArray(parsed?.comments) ? parsed.comments : [];
+    const latest = comments.length > 0 ? comments[comments.length - 1] : null;
+    return String(latest?.body || "");
+  } catch {
+    return "";
+  }
+}
+
+function buildRollingComment(summary, marker) {
   const lines = [];
   lines.push(`## ${summary.runAtIso} (Index Guard)`);
   lines.push("");
@@ -363,6 +394,8 @@ function buildRollingComment(summary) {
     lines.push("- Update firestore.indexes.json and deploy firestore:indexes.");
     lines.push("- Re-run authenticated canary to verify messages/check-ins stability.");
   }
+  lines.push("");
+  lines.push(`<!-- ${marker} -->`);
   return lines.join("\n");
 }
 
@@ -388,6 +421,8 @@ async function main() {
     strict: options.strict,
     apply: options.apply,
     rollingIssueUrl: "",
+    rollingCommentSignature: "",
+    rollingCommentSkipped: false,
     ticketUrl: "",
     feedback: {
       enabled: Boolean(options.feedbackPath),
@@ -419,11 +454,19 @@ async function main() {
       const rolling = ensureRollingIssue(repoSlug);
       if (rolling.number > 0) {
         summary.rollingIssueUrl = rolling.url;
-        runCommand(
-          "gh",
-          ["issue", "comment", String(rolling.number), "--repo", repoSlug, "--body", buildRollingComment(summary)],
-          { allowFailure: true }
-        );
+        const signature = buildRollingCommentSignature(summary);
+        summary.rollingCommentSignature = signature;
+        const marker = `index-guard-signature:${signature}`;
+        const latestBody = getLatestIssueCommentBody(repoSlug, rolling.number);
+        const unchanged = latestBody.includes(`<!-- ${marker} -->`);
+        summary.rollingCommentSkipped = unchanged;
+        if (!unchanged) {
+          runCommand(
+            "gh",
+            ["issue", "comment", String(rolling.number), "--repo", repoSlug, "--body", buildRollingComment(summary, marker)],
+            { allowFailure: true }
+          );
+        }
       }
 
       if (summary.missing.length > 0) {

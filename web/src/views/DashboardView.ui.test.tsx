@@ -150,6 +150,7 @@ describe("DashboardView kiln reload", () => {
   render(
       <DashboardView
         user={user}
+        isStaff={false}
         name="Maker"
         themeName="portal"
         threads={[]}
@@ -189,6 +190,7 @@ describe("DashboardView kiln reload", () => {
     render(
       <DashboardView
         user={user}
+        isStaff={false}
         name="Maker"
         themeName="portal"
         threads={[]}
@@ -231,6 +233,7 @@ describe("DashboardView kiln reload", () => {
     render(
       <DashboardView
         user={user}
+        isStaff={false}
         name="Maker"
         themeName="portal"
         threads={[]}

@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "intent.v1",
+  "intentId": "events-industry-local-remote-v1",
+  "title": "Events Page Industry Events Expansion",
+  "objective": "Expand events discovery to include trusted local and remote industry events with curation, freshness, and member-facing reliability safeguards.",
+  "epic": {
+    "path": "docs/epics/EPIC-EVENTS-PAGE-INDUSTRY-EVENTS-LOCAL-REMOTE.md",
+    "owner": "Program Ops + Member Experience + Community"
+  },
+  "nonGoals": [
+    "No replacement of workshop checkout flows.",
+    "No unbounded scraping without source quality controls.",
+    "No removal of existing event reliability safeguards."
+  ],
+  "constraints": {
+    "riskTier": "medium",
+    "writePolicy": "pr-only-no-main",
+    "maxChangedFiles": 45,
+    "maxWriteActions": 8
+  },
+  "autonomy": {
+    "mode": "bounded",
+    "maxRunMinutes": 35,
+    "allowedTools": [
+      "functions.exec_command",
+      "functions.apply_patch",
+      "functions.write_stdin"
+    ],
+    "requiresHumanApprovalFor": [
+      "force-push",
+      "history-rewrite",
+      "credential-rotation"
+    ],
+    "haltConditions": [
+      "strict-check-failure",
+      "blocking-runtime-error",
+      "confidence-below-threshold"
+    ]
+  },
+  "doneCriteria": {
+    "requiredChecks": [
+      "npm run events:industry:check",
+      "npm run events:industry:import",
+      "npm run events:industry:canary"
+    ],
+    "requiredArtifacts": [
+      "output/qa/industry-events-canary.json"
+    ],
+    "requiredDocs": [
+      "docs/epics/EPIC-EVENTS-PAGE-INDUSTRY-EVENTS-LOCAL-REMOTE.md"
+    ]
+  },
+  "executionSlices": [
+    {
+      "id": "ingest-industry-sources",
+      "title": "Ingest and normalize industry event sources",
+      "dependsOn": [],
+      "checks": [
+        "npm run events:industry:import"
+      ],
+      "writeScope": "events-source-ingest"
+    },
+    {
+      "id": "validate-event-contracts",
+      "title": "Validate local/remote event contracts and freshness rules",
+      "dependsOn": [
+        "ingest-industry-sources"
+      ],
+      "checks": [
+        "npm run events:industry:check"
+      ],
+      "writeScope": "none"
+    },
+    {
+      "id": "canary-industry-surface",
+      "title": "Run canary coverage for listing and stale-content regressions",
+      "dependsOn": [
+        "validate-event-contracts"
+      ],
+      "checks": [
+        "npm run events:industry:canary"
+      ],
+      "writeScope": "artifact-only"
+    }
+  ],
+  "escalation": {
+    "channel": "github-issue:Events Industry Expansion",
+    "when": [
+      "Freshness or attribution checks fail in strict mode.",
+      "Canary reports stale-content regressions.",
+      "Duplicate event suppression rules regress."
+    ]
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "memory-candidate.schema.json",
+  "title": "Promoted Memory Candidate",
+  "type": "object",
+  "required": [
+    "content",
+    "source",
+    "metadata",
+    "clientRequestId"
+  ],
+  "properties": {
+    "content": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "memoryLayer",
+        "confidence",
+        "analysisVersion",
+        "policyVersion"
+      ],
+      "properties": {
+        "memoryLayer": {
+          "type": "string",
+          "enum": ["episodic", "semantic"]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "reinforcementCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "analysisVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policyVersion": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "clientRequestId": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": true
+}

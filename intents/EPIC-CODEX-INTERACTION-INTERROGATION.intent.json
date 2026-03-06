@@ -1,0 +1,96 @@
+{
+  "schemaVersion": "intent.v1",
+  "intentId": "codex-interaction-interrogation-v1",
+  "title": "Codex Interaction Interrogation Loop",
+  "objective": "Continuously interrogate recent Codex/human collaboration patterns and apply structural instruction improvements that reduce ambiguity and workflow drift.",
+  "epic": {
+    "path": "docs/epics/EPIC-CODEX-INTERACTION-INTERROGATION.md",
+    "owner": "Platform / DevEx"
+  },
+  "nonGoals": [
+    "No personality rewriting or cosmetic wording churn.",
+    "No high-frequency micro-edits with no structural impact.",
+    "No direct push to main."
+  ],
+  "constraints": {
+    "riskTier": "medium",
+    "writePolicy": "pr-only-no-main",
+    "maxChangedFiles": 45,
+    "maxWriteActions": 8
+  },
+  "autonomy": {
+    "mode": "bounded",
+    "maxRunMinutes": 35,
+    "allowedTools": [
+      "functions.exec_command",
+      "functions.apply_patch",
+      "functions.write_stdin"
+    ],
+    "requiresHumanApprovalFor": [
+      "force-push",
+      "history-rewrite",
+      "credential-rotation"
+    ],
+    "haltConditions": [
+      "strict-check-failure",
+      "blocking-runtime-error",
+      "confidence-below-threshold"
+    ]
+  },
+  "doneCriteria": {
+    "requiredChecks": [
+      "npm run codex:interaction:daily -- --dry-run --json",
+      "npm run codex:docs:drift:strict",
+      "npm run codex:doctor:strict"
+    ],
+    "requiredArtifacts": [
+      "output/codex-docs-drift/latest.json"
+    ],
+    "requiredDocs": [
+      "docs/epics/EPIC-CODEX-INTERACTION-INTERROGATION.md",
+      "docs/runbooks/MCP_OPERATIONS.md"
+    ]
+  },
+  "executionSlices": [
+    {
+      "id": "collect-interaction-signals",
+      "title": "Collect recent interaction and tooling signals",
+      "dependsOn": [],
+      "checks": [
+        "npm run codex:interaction:daily -- --dry-run --json"
+      ],
+      "writeScope": "none"
+    },
+    {
+      "id": "propose-instruction-updates",
+      "title": "Propose structural instruction updates with bounded scope",
+      "dependsOn": [
+        "collect-interaction-signals"
+      ],
+      "checks": [
+        "npm run codex:interaction:apply -- --json"
+      ],
+      "writeScope": "codex-docs-only"
+    },
+    {
+      "id": "verify-doc-drift-and-health",
+      "title": "Verify docs drift and codex harness health",
+      "dependsOn": [
+        "propose-instruction-updates"
+      ],
+      "checks": [
+        "npm run codex:docs:drift:strict",
+        "npm run codex:doctor:strict"
+      ],
+      "writeScope": "artifact-only"
+    }
+  ],
+  "escalation": {
+    "channel": "github-issue:Codex Interaction Interrogation (Rolling)",
+    "when": [
+      "Instructions updates trigger repeated drift failures.",
+      "Codex doctor reports hard errors after attempted improvements.",
+      "Tool-call ambiguity cannot be resolved in bounded retries."
+    ]
+  }
+}

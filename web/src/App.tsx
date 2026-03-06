@@ -52,6 +52,7 @@ import {
   resolveStaffWorkspaceLaunch,
   resolveStaffWorkspaceMatch,
   resolveStaffWorkspaceRequestedPath,
+  shouldNavigateToStaffWorkspaceTarget,
   type StaffWorkspaceMode,
 } from "./utils/staffWorkspacePaths";
 import "./App.css";
@@ -978,7 +979,7 @@ export default function App() {
     if (!match) return;
     const currentPath = normalizeStaffPath(window.location.pathname);
     const isCurrentlyInStaffWorkspace = Boolean(resolveStaffWorkspaceMatch(currentPath));
-    if (currentPath !== match.canonicalPath) {
+    if (shouldNavigateToStaffWorkspaceTarget(currentPath, match.canonicalPath, window.location.hash)) {
       if (isCurrentlyInStaffWorkspace) {
         window.history.replaceState({}, "", match.canonicalPath);
       } else {

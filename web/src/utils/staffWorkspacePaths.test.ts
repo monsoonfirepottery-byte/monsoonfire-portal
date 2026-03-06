@@ -7,6 +7,7 @@ import {
   resolveStaffWorkspaceOpenTarget,
   resolveStaffWorkspaceLaunch,
   resolveStaffWorkspaceMatch,
+  shouldNavigateToStaffWorkspaceTarget,
 } from "./staffWorkspacePaths";
 
 describe("resolveStaffWorkspaceMatch", () => {
@@ -785,6 +786,27 @@ describe("resolveStaffWorkspaceLaunch", () => {
       targetNav: "staff",
       mode: "cockpit",
     });
+  });
+});
+
+describe("shouldNavigateToStaffWorkspaceTarget", () => {
+  it("rewrites when current path differs from the canonical staff target", () => {
+    expect(shouldNavigateToStaffWorkspaceTarget("/staff/system", "/staff/cockpit/platform", "")).toBe(true);
+    expect(shouldNavigateToStaffWorkspaceTarget("/dashboard", "/staff/cockpit/finance", "")).toBe(true);
+  });
+
+  it("rewrites same-path staff targets when a hash fragment is still active", () => {
+    expect(shouldNavigateToStaffWorkspaceTarget("/staff", "/staff", "#system")).toBe(true);
+    expect(shouldNavigateToStaffWorkspaceTarget("/staff/cockpit/finance", "/staff/cockpit/finance", "#finance")).toBe(true);
+  });
+
+  it("keeps same-path staff targets stable when no hash fragment remains", () => {
+    expect(shouldNavigateToStaffWorkspaceTarget("/staff", "/staff", "")).toBe(false);
+    expect(shouldNavigateToStaffWorkspaceTarget("/staff/cockpit/finance", "/staff/cockpit/finance", "   ")).toBe(false);
+  });
+
+  it("does not rewrite same-path non-staff targets just because a hash exists", () => {
+    expect(shouldNavigateToStaffWorkspaceTarget("/dashboard", "/dashboard", "#finance")).toBe(false);
   });
 });
 

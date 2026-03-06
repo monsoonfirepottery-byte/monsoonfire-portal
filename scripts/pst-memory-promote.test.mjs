@@ -148,7 +148,7 @@ test("pst-memory-promote adds deterministic memory ids and relationship links", 
       "--semantic-min-score",
       "7",
       "--episodic-min-score",
-      "1",
+      "2",
       "--max-output",
       "5",
     ]);

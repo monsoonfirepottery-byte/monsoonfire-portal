@@ -2,7 +2,7 @@
   "schema": "intent-plan.v1",
   "controlPlaneDigests": {
     "intentSchema": "400cf76c55079f23690993fe76a661f11ebc451016f2462b4bd5cd7d7a26fc5f",
-    "policyConfig": "0f26012ce2c466adf5e33fc0a4b00f6bce03f70bb7d6042eb9f002998b85e860",
+    "policyConfig": "1b376142dd8cb4efb789b83a949155381574e565b81a3f38a8fa83b5d6a5b4eb",
     "budgetConfig": "54dd893f7affaa280b4faaafe32cf2c0f834f854bf833369c8e36e95fd6c6989",
     "memoryGovernanceConfig": "15bf3034e45631a57fca01056e66714939904486b1c3e42d50bc3a6ab4a2d39f",
     "safetyRailsConfig": "bbc21b745c69da277eb938200646ee4c035efc8c9c48c548cfc19bce3fd29e9b",
@@ -76,7 +76,7 @@
         "canaryPercent": 10,
         "rollbackOnDriftIncreasePct": 10
       },
-      "capabilityToken": "cap_f9934eb97904",
+      "capabilityToken": "capref_codex_continuous_improvement_v1",
       "dependsOnIntents": [],
       "doneCriteria": {
         "requiredChecks": [
@@ -200,7 +200,7 @@
         "canaryPercent": 10,
         "rollbackOnDriftIncreasePct": 10
       },
-      "capabilityToken": "cap_921f8501b538",
+      "capabilityToken": "capref_codex_interaction_interrogation_v1",
       "dependsOnIntents": [],
       "doneCriteria": {
         "requiredChecks": [
@@ -323,7 +323,7 @@
         "canaryPercent": 10,
         "rollbackOnDriftIncreasePct": 10
       },
-      "capabilityToken": "cap_f6f4d23c164c",
+      "capabilityToken": "capref_codex_pr_green_daily_v1",
       "dependsOnIntents": [],
       "doneCriteria": {
         "requiredChecks": [
@@ -445,7 +445,7 @@
         "canaryPercent": 10,
         "rollbackOnDriftIncreasePct": 10
       },
-      "capabilityToken": "cap_92e3ea61b867",
+      "capabilityToken": "capref_events_industry_local_remote_v1",
       "dependsOnIntents": [],
       "doneCriteria": {
         "requiredChecks": [
@@ -566,7 +566,7 @@
         "canaryPercent": 10,
         "rollbackOnDriftIncreasePct": 10
       },
-      "capabilityToken": "cap_324e967d8936",
+      "capabilityToken": "capref_portal_qa_automation_coverage_v1",
       "dependsOnIntents": [],
       "doneCriteria": {
         "requiredChecks": [
@@ -711,7 +711,7 @@
         "canaryPercent": 10,
         "rollbackOnDriftIncreasePct": 10
       },
-      "capabilityToken": "cap_78161fc3e449",
+      "capabilityToken": "capref_staff_console_usability_signal_hardening_v1",
       "dependsOnIntents": [],
       "doneCriteria": {
         "requiredChecks": [
@@ -833,7 +833,7 @@
         "canaryPercent": 10,
         "rollbackOnDriftIncreasePct": 10
       },
-      "capabilityToken": "cap_54df65865ae9",
+      "capabilityToken": "capref_staff_portal_module_consolidation_v1",
       "dependsOnIntents": [],
       "doneCriteria": {
         "requiredChecks": [
@@ -954,7 +954,7 @@
         "canaryPercent": 10,
         "rollbackOnDriftIncreasePct": 10
       },
-      "capabilityToken": "cap_0f74cf71e84c",
+      "capabilityToken": "capref_workshops_experience_community_signals_v1",
       "dependsOnIntents": [],
       "doneCriteria": {
         "requiredChecks": [
@@ -1023,7 +1023,7 @@
       "writeScope": "none",
       "actionType": "analyze",
       "lockScope": "none",
-      "capabilityToken": "cap_f9934eb97904",
+      "capabilityToken": "capref_codex_continuous_improvement_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1042,7 +1042,7 @@
       "writeScope": "issues-and-bot-pr-branch",
       "actionType": "mutate",
       "lockScope": "issues-and-bot-pr-branch",
-      "capabilityToken": "cap_f9934eb97904",
+      "capabilityToken": "capref_codex_continuous_improvement_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1062,7 +1062,7 @@
       "writeScope": "artifact-only",
       "actionType": "verify",
       "lockScope": "artifact-only",
-      "capabilityToken": "cap_f9934eb97904",
+      "capabilityToken": "capref_codex_continuous_improvement_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1079,7 +1079,7 @@
       "writeScope": "none",
       "actionType": "analyze",
       "lockScope": "none",
-      "capabilityToken": "cap_921f8501b538",
+      "capabilityToken": "capref_codex_interaction_interrogation_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1098,7 +1098,7 @@
       "writeScope": "codex-docs-only",
       "actionType": "mutate",
       "lockScope": "codex-docs-only",
-      "capabilityToken": "cap_921f8501b538",
+      "capabilityToken": "capref_codex_interaction_interrogation_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1118,7 +1118,7 @@
       "writeScope": "artifact-only",
       "actionType": "verify",
       "lockScope": "artifact-only",
-      "capabilityToken": "cap_921f8501b538",
+      "capabilityToken": "capref_codex_interaction_interrogation_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1135,7 +1135,7 @@
       "writeScope": "none",
       "actionType": "analyze",
       "lockScope": "none",
-      "capabilityToken": "cap_f6f4d23c164c",
+      "capabilityToken": "capref_codex_pr_green_daily_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1154,7 +1154,7 @@
       "writeScope": "external-api-readwrite-bounded",
       "actionType": "mutate",
       "lockScope": "external-api-readwrite-bounded",
-      "capabilityToken": "cap_f6f4d23c164c",
+      "capabilityToken": "capref_codex_pr_green_daily_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1173,7 +1173,7 @@
       "writeScope": "codex-artifacts-only",
       "actionType": "mutate",
       "lockScope": "codex-artifacts-only",
-      "capabilityToken": "cap_f6f4d23c164c",
+      "capabilityToken": "capref_codex_pr_green_daily_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1192,7 +1192,7 @@
       "writeScope": "artifact-only",
       "actionType": "verify",
       "lockScope": "artifact-only",
-      "capabilityToken": "cap_92e3ea61b867",
+      "capabilityToken": "capref_events_industry_local_remote_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1209,7 +1209,7 @@
       "writeScope": "events-source-ingest",
       "actionType": "mutate",
       "lockScope": "events-source-ingest",
-      "capabilityToken": "cap_92e3ea61b867",
+      "capabilityToken": "capref_events_industry_local_remote_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1228,7 +1228,7 @@
       "writeScope": "none",
       "actionType": "analyze",
       "lockScope": "none",
-      "capabilityToken": "cap_92e3ea61b867",
+      "capabilityToken": "capref_events_industry_local_remote_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1248,7 +1248,7 @@
       "writeScope": "artifact-only",
       "actionType": "verify",
       "lockScope": "artifact-only",
-      "capabilityToken": "cap_324e967d8936",
+      "capabilityToken": "capref_portal_qa_automation_coverage_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1265,7 +1265,7 @@
       "writeScope": "artifact-only",
       "actionType": "verify",
       "lockScope": "artifact-only",
-      "capabilityToken": "cap_324e967d8936",
+      "capabilityToken": "capref_portal_qa_automation_coverage_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1285,7 +1285,7 @@
       "writeScope": "artifact-only",
       "actionType": "verify",
       "lockScope": "artifact-only",
-      "capabilityToken": "cap_324e967d8936",
+      "capabilityToken": "capref_portal_qa_automation_coverage_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1304,7 +1304,7 @@
       "writeScope": "staff-console-ui-and-ops-docs",
       "actionType": "mutate",
       "lockScope": "staff-console-ui-and-ops-docs",
-      "capabilityToken": "cap_78161fc3e449",
+      "capabilityToken": "capref_staff_console_usability_signal_hardening_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1321,7 +1321,7 @@
       "writeScope": "none",
       "actionType": "analyze",
       "lockScope": "none",
-      "capabilityToken": "cap_78161fc3e449",
+      "capabilityToken": "capref_staff_console_usability_signal_hardening_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1340,7 +1340,7 @@
       "writeScope": "artifact-only",
       "actionType": "verify",
       "lockScope": "artifact-only",
-      "capabilityToken": "cap_78161fc3e449",
+      "capabilityToken": "capref_staff_console_usability_signal_hardening_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1359,7 +1359,7 @@
       "writeScope": "staff-portal-ui",
       "actionType": "mutate",
       "lockScope": "staff-portal-ui",
-      "capabilityToken": "cap_54df65865ae9",
+      "capabilityToken": "capref_staff_portal_module_consolidation_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1376,7 +1376,7 @@
       "writeScope": "none",
       "actionType": "analyze",
       "lockScope": "none",
-      "capabilityToken": "cap_54df65865ae9",
+      "capabilityToken": "capref_staff_portal_module_consolidation_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1395,7 +1395,7 @@
       "writeScope": "artifact-only",
       "actionType": "verify",
       "lockScope": "artifact-only",
-      "capabilityToken": "cap_54df65865ae9",
+      "capabilityToken": "capref_staff_portal_module_consolidation_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1414,7 +1414,7 @@
       "writeScope": "workshops-ui-and-supporting-functions",
       "actionType": "mutate",
       "lockScope": "workshops-ui-and-supporting-functions",
-      "capabilityToken": "cap_0f74cf71e84c",
+      "capabilityToken": "capref_workshops_experience_community_signals_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1431,7 +1431,7 @@
       "writeScope": "none",
       "actionType": "analyze",
       "lockScope": "none",
-      "capabilityToken": "cap_0f74cf71e84c",
+      "capabilityToken": "capref_workshops_experience_community_signals_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
@@ -1450,14 +1450,14 @@
       "writeScope": "artifact-only",
       "actionType": "verify",
       "lockScope": "artifact-only",
-      "capabilityToken": "cap_0f74cf71e84c",
+      "capabilityToken": "capref_workshops_experience_community_signals_v1",
       "riskTier": "medium",
       "priorityClass": "P2",
       "authorityTier": "T2"
     }
   ],
-  "generatedAt": "2026-03-06T20:47:21.057Z",
+  "generatedAt": "2026-03-06T20:49:58.106Z",
   "intentCount": 8,
   "taskCount": 24,
-  "planDigestSha256": "42f42f6d632cc754954eacdc2f78d68286f412e5077924318275a98f16139483"
+  "planDigestSha256": "1bd780fb0713024ed116b9f27f831b900728fa54501f3d161757800e1cff4e7d"
 }

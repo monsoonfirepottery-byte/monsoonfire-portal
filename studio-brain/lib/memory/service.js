@@ -4677,9 +4677,7 @@ function createMemoryService(options) {
             });
             const merged = [...rowsInput];
             for (const row of fetched) {
-                if (row.status === "quarantined")
-                    continue;
-                if (!sourceAllowed(row.source, sourceAllowlist, sourceDenylist))
+                if (!matchesContextScope(row))
                     continue;
                 if (existingIds.has(row.id))
                     continue;
@@ -4761,6 +4759,19 @@ function createMemoryService(options) {
             ? tenantRows.filter((row) => sourceAllowed(row.source, sourceAllowlist, sourceDenylist) && row.status !== "quarantined")
             : scopedRows;
         const tenantFallbackUsedForEmptyScope = effectiveRows.length > 0 && scopedRows.length === 0 && (agentId !== null || runId !== null) && parsed.includeTenantFallback;
+        const matchesContextScope = (row) => {
+            if (!sourceAllowed(row.source, sourceAllowlist, sourceDenylist))
+                return false;
+            if (row.status === "quarantined")
+                return false;
+            if (tenantFallbackUsedForEmptyScope)
+                return true;
+            if (agentId && row.agentId !== agentId)
+                return false;
+            if (runId && row.runId !== runId)
+                return false;
+            return true;
+        };
         const knownRows = new Map();
         const threadBuckets = new Map();
         for (const row of effectiveRows) {
@@ -4955,9 +4966,7 @@ function createMemoryService(options) {
                             tenantId: tenantResolution.tenantId,
                         });
                         for (const row of fetched) {
-                            if (row.status === "quarantined")
-                                continue;
-                            if (!sourceAllowed(row.source, sourceAllowlist, sourceDenylist))
+                            if (!matchesContextScope(row))
                                 continue;
                             const asSearch = toSearchResultFromRecord(row, {
                                 matchedBy: ["relationship"],
@@ -5103,7 +5112,7 @@ function createMemoryService(options) {
                         tenantId: tenantResolution.tenantId,
                     });
                     for (const row of fetched) {
-                        if (!visited.has(row.id) && sourceAllowed(row.source, sourceAllowlist, sourceDenylist) && row.status !== "quarantined") {
+                        if (!visited.has(row.id) && matchesContextScope(row)) {
                             knownRows.set(row.id, row);
                         }
                     }

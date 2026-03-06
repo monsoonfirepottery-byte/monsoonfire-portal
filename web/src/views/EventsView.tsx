@@ -54,6 +54,7 @@ import "./EventsView.css";
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
 type ImportMetaEnvShape = { VITE_FUNCTIONS_BASE_URL?: string };
 const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
+const EMPTY_TECHNIQUE_IDS: readonly string[] = [];
 
 const STATUS_LABELS: Record<string, string> = {
   ticketed: "Ticketed",
@@ -1691,6 +1692,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         : 0;
   const selectedIsInterested = selectedSummary ? !!interestedEventIds[selectedSummary.id] : false;
   const selectedInterestSignalSent = selectedSummary ? Boolean(interestSignalsSent[selectedSummary.id]) : false;
+  const selectedTechniqueIds = selectedProfile?.techniqueIds ?? EMPTY_TECHNIQUE_IDS;
   const selectedEventDemandSignals = useMemo(() => {
     if (!selectedSummary?.id) return [];
     const targetEventId = selectedSummary.id.trim();
@@ -1703,15 +1705,15 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     );
   }, [allDemandSignals, selectedSummary?.id]);
   const selectedTechniqueDemandSignals = useMemo(() => {
-    if (!selectedProfile) return [];
-    const techniqueSet = new Set(selectedProfile.techniqueIds);
+    if (selectedTechniqueIds.length === 0) return [];
+    const techniqueSet = new Set(selectedTechniqueIds);
     return allDemandSignals.filter(
       (signal) =>
         signal.kind === "request" &&
         workshopSignalCountsForDemand(signal) &&
         signal.techniqueIds.some((techniqueId) => techniqueSet.has(techniqueId))
     );
-  }, [allDemandSignals, selectedProfile?.techniqueIds.join("|")]);
+  }, [allDemandSignals, selectedTechniqueIds]);
   const selectedInterestSignals = selectedEventDemandSignals.length;
   const selectedRequestSignals = selectedTechniqueDemandSignals.length;
   const selectedServerCommunitySignalCounts = useMemo(() => {

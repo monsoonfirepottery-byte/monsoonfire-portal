@@ -80,8 +80,8 @@ const STAFF_COCKPIT_ROOT_SEGMENT_ALIASES: Readonly<Record<string, string>> = {
   policyagentops: "policy-agent-ops",
 };
 
-const STAFF_PATH_COPY_PUNCTUATION_PREFIX_RE = /^[\s"'`<{(\[]+/;
-const STAFF_PATH_COPY_PUNCTUATION_SUFFIX_RE = /[\])}>\"'`,.;:!?]+$/;
+const STAFF_PATH_COPY_PUNCTUATION_PREFIX_RE = /^[\s"'`<{([]+/;
+const STAFF_PATH_COPY_PUNCTUATION_SUFFIX_RE = /[\])}>"'`,.;:!?]+$/;
 
 function stripCopyPastePathNoise(value: string): string {
   let normalized = value;

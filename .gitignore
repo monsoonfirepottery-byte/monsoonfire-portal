@@ -34,7 +34,6 @@ imports/
 artifacts/runs/
 artifacts/auth/
 artifacts/industry-events/
-artifacts/intent-plan.generated.json
 artifacts/ga/reports/website-ga-roadmap-readiness-*.json
 artifacts/ga/reports/website-ga-roadmap-readiness-*.md
 artifacts/ga/reports/website-ga-roadmap-readiness-latest.json

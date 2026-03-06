@@ -144,7 +144,7 @@ function main() {
 
   if (hasDeprecatedModelConfig(codexToml)) {
     addError(
-      'Found deprecated model config blocks (`model_providers` / `models`) in ~/.codex/config.toml. Codex CLI 0.107.0+ expects top-level `model` + optional `model_provider`.'
+      'Found deprecated model config blocks (`model_providers` / `models`) in ~/.codex/config.toml. Current Codex CLI expects top-level `model` + optional `model_provider`.'
     );
   }
 

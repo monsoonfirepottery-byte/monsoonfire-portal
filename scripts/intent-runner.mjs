@@ -751,7 +751,7 @@ function main() {
   );
 
   let preflightBlocked = false;
-  if (mode === "execute") {
+  if (mode === "execute" && args.enableScoring) {
     const policyArtifactPath = resolve(runArtifactsAbsolutePath, "policy-gate.json");
     const policyArgs = [
       "./scripts/intent-policy-gate.mjs",
@@ -1216,7 +1216,7 @@ function main() {
   });
   writeReport(reportAbsolutePath, provisionalReport);
 
-  if (mode === "execute") {
+  if (mode === "execute" && args.enableScoring) {
     for (const intentId of selectedIntentIds) {
       const intent = intentMap.get(intentId) || null;
       const evaluation = intent?.evaluation || null;

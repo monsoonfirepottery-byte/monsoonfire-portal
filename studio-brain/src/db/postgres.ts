@@ -9,6 +9,31 @@ function createQueryTimeout(env: ReturnType<typeof readEnv>): number {
   return Math.max(500, env.STUDIO_BRAIN_PG_QUERY_TIMEOUT_MS ?? 5_000);
 }
 
+function createSessionOptions(env: ReturnType<typeof readEnv>): string {
+  return [
+    `-c statement_timeout=${Math.max(500, env.STUDIO_BRAIN_PG_STATEMENT_TIMEOUT_MS)}`,
+    `-c lock_timeout=${Math.max(100, env.STUDIO_BRAIN_PG_LOCK_TIMEOUT_MS)}`,
+    `-c idle_in_transaction_session_timeout=${Math.max(1_000, env.STUDIO_BRAIN_PG_IDLE_IN_TRANSACTION_TIMEOUT_MS)}`,
+  ].join(" ");
+}
+
+function createPoolConfig(env: ReturnType<typeof readEnv>) {
+  return {
+    host: env.PGHOST,
+    port: env.PGPORT,
+    database: env.PGDATABASE,
+    user: env.PGUSER,
+    password: env.PGPASSWORD,
+    ssl: env.PGSSLMODE === "require" ? { rejectUnauthorized: false } : false,
+    max: env.STUDIO_BRAIN_PG_POOL_MAX,
+    idleTimeoutMillis: env.STUDIO_BRAIN_PG_IDLE_TIMEOUT_MS,
+    connectionTimeoutMillis: env.STUDIO_BRAIN_PG_CONNECTION_TIMEOUT_MS,
+    application_name: env.STUDIO_BRAIN_PG_APPLICATION_NAME,
+    query_timeout: createQueryTimeout(env),
+    options: createSessionOptions(env),
+  };
+}
+
 function withQueryTimeout<T>(
   timeoutMs: number,
   label: string,
@@ -28,17 +53,7 @@ function withQueryTimeout<T>(
 export function getPgPool(): Pool {
   if (pool) return pool;
   const env = readEnv();
-  pool = new Pool({
-    host: env.PGHOST,
-    port: env.PGPORT,
-    database: env.PGDATABASE,
-    user: env.PGUSER,
-    password: env.PGPASSWORD,
-    ssl: env.PGSSLMODE === "require" ? { rejectUnauthorized: false } : false,
-    max: env.STUDIO_BRAIN_PG_POOL_MAX,
-    idleTimeoutMillis: env.STUDIO_BRAIN_PG_IDLE_TIMEOUT_MS,
-    connectionTimeoutMillis: env.STUDIO_BRAIN_PG_CONNECTION_TIMEOUT_MS,
-  });
+  pool = new Pool(createPoolConfig(env));
   return pool;
 }
 
@@ -51,17 +66,7 @@ export type PgCheckResult = {
 
 export async function createPgPool(): Promise<Pool> {
   const env = readEnv();
-  const next = new Pool({
-    host: env.PGHOST,
-    port: env.PGPORT,
-    database: env.PGDATABASE,
-    user: env.PGUSER,
-    password: env.PGPASSWORD,
-    ssl: env.PGSSLMODE === "require" ? { rejectUnauthorized: false } : false,
-    max: env.STUDIO_BRAIN_PG_POOL_MAX,
-    idleTimeoutMillis: env.STUDIO_BRAIN_PG_IDLE_TIMEOUT_MS,
-    connectionTimeoutMillis: env.STUDIO_BRAIN_PG_CONNECTION_TIMEOUT_MS,
-  });
+  const next = new Pool(createPoolConfig(env));
   return next;
 }
 

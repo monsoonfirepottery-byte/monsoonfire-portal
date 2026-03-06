@@ -10,8 +10,10 @@ const requiredProfiles = [
   'home_automation',
   'apple_home',
   'cloudflare',
+  'open_memory',
 ];
 const cloudflareManagedIds = ['cloudflare_docs', 'cloudflare_browser_rendering'];
+const topLevelEnabledAllowlist = new Set(['open_memory']);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -142,7 +144,7 @@ function main() {
 
   if (hasDeprecatedModelConfig(codexToml)) {
     addError(
-      'Found deprecated model config blocks (`model_providers` / `models`) in ~/.codex/config.toml. Codex CLI 0.106.0+ expects top-level `model` + optional `model_provider`.'
+      'Found deprecated model config blocks (`model_providers` / `models`) in ~/.codex/config.toml. Codex CLI 0.107.0+ expects top-level `model` + optional `model_provider`.'
     );
   }
 
@@ -164,12 +166,20 @@ function main() {
     const hasUrl = typeof serverConfig.url === 'string' && serverConfig.url.length > 0;
     const hasCommand = typeof serverConfig.command === 'string' && serverConfig.command.length > 0;
 
-    if (serverConfig.enabled === true) {
-      addError(`Top-level mcp_servers.${serverId}.enabled is true. Keep all top-level MCP servers disabled by default.`);
-    }
+    if (topLevelEnabledAllowlist.has(serverId)) {
+      if (serverConfig.enabled !== true) {
+        addError(
+          `Top-level mcp_servers.${serverId}.enabled must be true for persistent MCP usage (found: ${String(serverConfig.enabled)}).`
+        );
+      }
+    } else {
+      if (serverConfig.enabled === true) {
+        addError(`Top-level mcp_servers.${serverId}.enabled is true. Keep non-allowlisted top-level MCP servers disabled by default.`);
+      }
 
-    if (serverConfig.enabled !== false) {
-      addError(`Top-level mcp_servers.${serverId}.enabled must be false (found: ${String(serverConfig.enabled)}).`);
+      if (serverConfig.enabled !== false) {
+        addError(`Top-level mcp_servers.${serverId}.enabled must be false (found: ${String(serverConfig.enabled)}).`);
+      }
     }
 
     if (hasUrl === hasCommand) {

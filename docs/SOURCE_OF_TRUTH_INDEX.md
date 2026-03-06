@@ -59,6 +59,7 @@ It also tracks public agent-readable discovery surfaces for website and portal.
 | Domain | Authoritative Source | Derived/Validated By | Trust |
 |---|---|---|---|
 | OpenAI docs / MCP reference | `~/.codex/config.toml` (`mcp_servers.openai_docs`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
+| Open Memory bridge (Studio Brain-backed agent memory tools) | `~/.codex/config.toml` (`mcp_servers.open_memory`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
 | Docs research helpers | `~/.codex/config.toml` (`mcp_servers.context7_docs`, `mcp_servers.mcp_registry`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
 | Cloudflare managed MCP docs/browser rendering (OAuth behavior remains endpoint/client-version dependent: `cloudflare_docs` may still report unsupported auth and return \"No authorization support detected\" on login attempts, while `cloudflare_browser_rendering` may support login prompts. Fallback: endpoint remains usable when no auth is required; otherwise wait for CLI support/fix.) | `~/.codex/config.toml` (`mcp_servers.cloudflare_docs`, `mcp_servers.cloudflare_browser_rendering`) | `scripts/source-of-truth-index-audit.mjs` | advisory |
 | Ubuntu server administration/networking/lifecycle | `~/.codex/config.toml` (`mcp_servers.ubuntu_docs`) | `scripts/source-of-truth-index-audit.mjs` | advisory |

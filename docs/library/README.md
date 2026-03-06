@@ -30,6 +30,7 @@ This folder defines the production architecture for the next-stage hybrid Lendin
    Member/admin API contracts and state-transition rules.
 4. `docs/library/ROLLOUT_CUTOVER_RUNBOOK.md`
    Phase smoke checklist, rollback drill steps, metrics artifact capture, and cutover communication templates.
+   Automation entrypoint: `npm run library:rollout:drill`.
 
 ## Decision Rules
 

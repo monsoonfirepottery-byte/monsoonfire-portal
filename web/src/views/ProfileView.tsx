@@ -214,6 +214,7 @@ export default function ProfileView({
   enhancedMotion,
   onEnhancedMotionChange,
   onOpenIntegrations,
+  onOpenBilling,
   onAvatarUpdated,
 }: {
   user: User;
@@ -222,6 +223,7 @@ export default function ProfileView({
   enhancedMotion: boolean;
   onEnhancedMotionChange: (next: boolean) => void;
   onOpenIntegrations: () => void;
+  onOpenBilling: () => void;
   onAvatarUpdated: () => void;
 }) {
   const { active, history } = useBatches(user);
@@ -544,6 +546,9 @@ export default function ProfileView({
           <p className="page-subtitle">See what we know about your journey at Monsoon Fire.</p>
         </div>
         <div className="header-actions">
+          <button type="button" className="btn btn-ghost" onClick={onOpenBilling}>
+            Billing
+          </button>
           <button type="button" className="btn" onClick={onOpenIntegrations}>
             Integrations
           </button>

@@ -27,7 +27,8 @@ Operational guide for running and maintaining journey + Stripe negative-outcome 
 2. Stripe webhook contracts and negative-event mapping tests.
 3. Targeted reservation/dropoff/pickup journey tests in `functions/src/apiV1.test.ts`.
 4. `continueJourney` contract consistency across functions/docs/web contracts.
-5. Fixture schema + secret-marker checks.
+5. `continueJourney` endpoint runtime behavior (mocked auth/db) covering success + authz/ownership/input denials.
+6. Fixture schema + secret-marker checks.
 
 ### Deep lane
 
@@ -96,6 +97,7 @@ For release candidates, capture:
 3. Contract check failures:
    - inspect:
      - `functions/src/index.ts`
+     - `functions/src/continueJourneyEndpoint.test.ts`
      - `web/src/api/portalContracts.ts`
      - `docs/API_CONTRACTS.md`
      - `docs/CONTINUE_JOURNEY_AGENT_QUICKSTART.md`

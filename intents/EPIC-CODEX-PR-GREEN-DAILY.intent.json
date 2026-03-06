@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "intent.v1",
+  "intentId": "codex-pr-green-daily-v1",
+  "title": "Codex PR Green Daily Automation",
+  "objective": "Keep open pull requests moving toward green by detecting blocked checks, requesting safe reruns for flaky failures, and publishing unblock summaries.",
+  "epic": {
+    "path": "docs/epics/EPIC-CODEX-PR-GREEN-DAILY.md",
+    "owner": "Platform / DevEx"
+  },
+  "nonGoals": [
+    "No direct code mutation on PR branches.",
+    "No direct push to main.",
+    "No repeated reruns for same workflow run id."
+  ],
+  "constraints": {
+    "riskTier": "medium",
+    "writePolicy": "pr-only-no-main",
+    "maxChangedFiles": 45,
+    "maxWriteActions": 8
+  },
+  "autonomy": {
+    "mode": "bounded",
+    "maxRunMinutes": 35,
+    "allowedTools": [
+      "functions.exec_command",
+      "functions.apply_patch",
+      "functions.write_stdin"
+    ],
+    "requiresHumanApprovalFor": [
+      "force-push",
+      "history-rewrite",
+      "credential-rotation"
+    ],
+    "haltConditions": [
+      "strict-check-failure",
+      "blocking-runtime-error",
+      "confidence-below-threshold"
+    ]
+  },
+  "doneCriteria": {
+    "requiredChecks": [
+      "npm run codex:pr-green:daily -- --dry-run --json",
+      "npm run codex:pr-green:daily:persist",
+      "npm run codex:pr-green:apply -- --json"
+    ],
+    "requiredArtifacts": [
+      "output/qa/codex-agentic-rubric-scorecard.json"
+    ],
+    "requiredDocs": [
+      "docs/epics/EPIC-CODEX-PR-GREEN-DAILY.md",
+      "docs/runbooks/CODEX_AGENTIC_RUBRIC_AND_AUTOPILOT.md"
+    ]
+  },
+  "executionSlices": [
+    {
+      "id": "collect-pr-signal-state",
+      "title": "Collect PR check-run health and classify status",
+      "dependsOn": [],
+      "checks": [
+        "npm run codex:pr-green:daily -- --dry-run --json"
+      ],
+      "writeScope": "none"
+    },
+    {
+      "id": "execute-safe-reruns",
+      "title": "Execute bounded rerun requests for flaky check classes",
+      "dependsOn": [
+        "collect-pr-signal-state"
+      ],
+      "checks": [
+        "npm run codex:pr-green:apply -- --json"
+      ],
+      "writeScope": "external-api-readwrite-bounded"
+    },
+    {
+      "id": "publish-unblock-summary",
+      "title": "Persist and publish unblock summary artifacts",
+      "dependsOn": [
+        "execute-safe-reruns"
+      ],
+      "checks": [
+        "npm run codex:pr-green:daily:persist"
+      ],
+      "writeScope": "codex-artifacts-only"
+    }
+  ],
+  "escalation": {
+    "channel": "github-issue:Codex PR Green Daily (Rolling)",
+    "when": [
+      "Rerun limits are exhausted and PRs remain blocked.",
+      "API/auth failures prevent status retrieval.",
+      "Repeated blocked signatures exceed threshold."
+    ]
+  }
+}

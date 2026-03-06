@@ -1,0 +1,31 @@
+{
+  "schema": "analyst-context-assumptions.v1",
+  "subject": "Micah",
+  "generatedAt": "2026-03-05T00:00:00.000Z",
+  "assumptions": [
+    {
+      "id": "clinical-context-generalized-anxiety",
+      "type": "clinical_context",
+      "scope": "always-on",
+      "source": "self-report",
+      "status": "active",
+      "label": "Generalized anxiety",
+      "notes": "Treat as background interpretive context, not as deterministic cause for any single record or behavior."
+    },
+    {
+      "id": "clinical-context-trd",
+      "type": "clinical_context",
+      "scope": "always-on",
+      "source": "self-report",
+      "status": "active",
+      "label": "Treatment-resistant depression",
+      "notes": "As of 2026-03-05 this is reported as well controlled with medication, though earlier eras may show stronger effect."
+    }
+  ],
+  "guardrails": [
+    "Do not infer diagnosis from source text alone.",
+    "Do not collapse ambiguous behavior into pathology when situational explanations remain plausible.",
+    "Treat clinical context as one explanatory lens among several.",
+    "Keep analyst context separate from evidence-bearing fact_event and source_unit records."
+  ]
+}

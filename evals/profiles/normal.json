@@ -1,0 +1,13 @@
+{
+  "schema": "intent-simulation-profile.v1",
+  "profileId": "normal",
+  "description": "Balanced simulation profile for routine autonomous execution.",
+  "maxChecksPerTask": 28,
+  "maxTotalChecks": 700,
+  "requiredEnv": [],
+  "denyCommandPatterns": [
+    "git reset --hard",
+    "git checkout --"
+  ],
+  "allowNetworkWrites": true
+}

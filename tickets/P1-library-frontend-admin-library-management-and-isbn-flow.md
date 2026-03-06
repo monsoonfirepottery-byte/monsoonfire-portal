@@ -1,6 +1,6 @@
 # P1 — Library Frontend: Admin Library Management and ISBN Flow
 
-Status: In Progress
+Status: Completed
 Date: 2026-03-01
 Priority: P1
 Owner: Frontend UX + Library Ops + Platform
@@ -90,7 +90,23 @@ Previously implemented and still active:
 4. Provider diagnostics/policy controls and cover review queue guardrails.
 5. Recovery route wiring for mark lost / replacement fee / override status.
 
-Remaining before this ticket can move to Done:
+## Execution Update (2026-03-01, Contract Alignment + Coverage Closeout)
 
-1. Confirm backend-admin route contracts for create/update/delete/resolve ISBN and remove temporary route-name assumptions if they differ.
-2. Add dedicated automated UI coverage for the new Staff catalog admin flows.
+Completed in this pass:
+
+1. Confirmed backend route names and aligned payload contracts for:
+   - `apiV1/v1/library.items.resolveIsbn`
+   - `apiV1/v1/library.items.create`
+   - `apiV1/v1/library.items.update`
+   - `apiV1/v1/library.items.delete`
+2. Removed temporary wrapper/extra payload keys from Staff admin route dispatch:
+   - removed `item` wrapper on create,
+   - removed `patch` wrapper on update,
+   - removed non-contract delete fields (`confirm`, `softDelete`) from API dispatch,
+   - ensured API payload remains contract-clean while preserving Firestore fallback metadata path.
+3. Added dedicated automated coverage for catalog admin contract payload generation:
+   - `web/src/views/staff/lendingAdminPayload.test.ts`
+   - `web/src/views/staff/lendingAdminPayload.ts`
+4. Verified with:
+   - `npm --prefix web run test -- src/views/staff/lendingAdminPayload.test.ts`
+   - `npm --prefix web run build`

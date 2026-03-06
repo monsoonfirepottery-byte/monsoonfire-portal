@@ -1,6 +1,6 @@
 # P1 — EPIC 20: Events Page Industry Events (Local + Remote) Expansion
 
-Status: Active
+Status: Completed
 Date: 2026-03-01
 Priority: P1
 Owner: Program Ops + Member Experience + Community
@@ -44,3 +44,21 @@ Deliver a trusted industry-events lane inside the Events page with curated local
 - tickets/P2-events-sourcing-connectors-and-freshness-automation.md
 - tickets/P2-events-calendar-export-and-reminder-paths.md
 - tickets/P2-events-qa-runbook-and-canary-regression-gate.md
+
+## Completion Update (2026-03-03)
+
+1. All child tickets are now marked `Completed` with deterministic evidence and artifact outputs.
+2. Member lane now includes:
+   - local/remote/hybrid + national/time-window filtering
+   - source-attributed cards
+   - save + calendar follow-through actions
+3. Staff lane now includes:
+   - curation + featured controls
+   - publish quality gates
+   - freshness sweep controls
+4. Automation coverage now includes:
+   - connector ingest dry-run + dedupe artifact
+   - freshness audit artifact
+   - canary checks for feed/filter/link/stale/card-shape regressions
+5. Verification command:
+   - `npm run events:industry:check`

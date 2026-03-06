@@ -1,0 +1,133 @@
+.my-pieces-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  background:
+    radial-gradient(circle at 12% -20%, rgba(120, 164, 220, 0.14), transparent 42%),
+    radial-gradient(circle at 88% 0%, rgba(70, 116, 181, 0.12), transparent 44%);
+  border-radius: 22px;
+  padding: 8px;
+}
+
+.my-pieces-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.my-pieces-summary-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 18px;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  text-align: center;
+  box-shadow: var(--shadow-soft);
+}
+
+.my-pieces-summary-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+.my-pieces-summary-value {
+  font-size: 32px;
+  font-weight: 700;
+}
+
+.my-pieces-summary-copy {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+  max-width: 30ch;
+}
+
+.my-pieces-summary-cta {
+  grid-column: 1 / -1;
+  justify-self: center;
+}
+
+.my-pieces-browser-shell,
+.my-pieces-secondary-shell,
+.my-piece-detail-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.my-pieces-browser-header,
+.my-pieces-secondary-header,
+.my-piece-detail-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.my-pieces-browser-copy {
+  margin: 6px 0 0;
+  max-width: 62ch;
+}
+
+.my-pieces-filter-chips {
+  justify-content: flex-start;
+}
+
+.my-pieces-toolbar-fields {
+  justify-content: flex-start;
+}
+
+.my-pieces-browser-meta {
+  font-size: 12px;
+}
+
+.my-pieces-layout {
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.my-piece-detail-shell .detail-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 760px) {
+  .my-pieces-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .my-pieces-summary-cta {
+    width: 100%;
+  }
+}
+
+html[data-portal-theme="memoria"] .my-pieces-page {
+  background:
+    radial-gradient(circle at 8% -10%, rgba(146, 178, 226, 0.12), transparent 40%),
+    radial-gradient(circle at 90% 0%, rgba(122, 155, 214, 0.12), transparent 42%);
+  border-radius: 20px;
+  padding: 4px;
+}
+
+html[data-portal-theme="memoria"] .my-pieces-summary-card,
+html[data-portal-theme="memoria"] .my-pieces-browser-shell,
+html[data-portal-theme="memoria"] .my-pieces-secondary-shell,
+html[data-portal-theme="memoria"] .my-piece-detail-shell {
+  border-color: rgba(153, 174, 207, 0.36);
+  background:
+    linear-gradient(168deg, rgba(30, 42, 62, 0.9), rgba(20, 29, 44, 0.92)),
+    radial-gradient(circle at 84% -16%, rgba(141, 171, 223, 0.2), transparent 58%);
+  box-shadow: inset 0 1px 0 rgba(194, 211, 239, 0.08), 0 16px 30px rgba(4, 9, 18, 0.34);
+}
+
+html[data-portal-theme="memoria"] .my-pieces-summary-label,
+html[data-portal-theme="memoria"] .my-pieces-summary-copy,
+html[data-portal-theme="memoria"] .my-pieces-browser-copy,
+html[data-portal-theme="memoria"] .my-pieces-browser-meta {
+  color: rgba(223, 232, 247, 0.72);
+}

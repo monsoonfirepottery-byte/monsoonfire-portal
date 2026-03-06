@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "intent.v1",
+  "intentId": "staff-console-usability-signal-hardening-v1",
+  "title": "Staff Console Usability and Signal Hardening",
+  "objective": "Improve staff-console trust and triage velocity by hardening health signals, reducing noisy controls, and strengthening supporting operations checks.",
+  "epic": {
+    "path": "docs/epics/EPIC-STAFF-CONSOLE-USABILITY-AND-SIGNAL-HARDENING.md",
+    "owner": "Portal Staff Console + Studio Ops"
+  },
+  "nonGoals": [
+    "No removal of critical staff operational controls without replacements.",
+    "No regression in health signal accuracy.",
+    "No changes that increase operator cognitive load."
+  ],
+  "constraints": {
+    "riskTier": "medium",
+    "writePolicy": "pr-only-no-main",
+    "maxChangedFiles": 45,
+    "maxWriteActions": 8
+  },
+  "autonomy": {
+    "mode": "bounded",
+    "maxRunMinutes": 35,
+    "allowedTools": [
+      "functions.exec_command",
+      "functions.apply_patch",
+      "functions.write_stdin"
+    ],
+    "requiresHumanApprovalFor": [
+      "force-push",
+      "history-rewrite",
+      "credential-rotation"
+    ],
+    "haltConditions": [
+      "strict-check-failure",
+      "blocking-runtime-error",
+      "confidence-below-threshold"
+    ]
+  },
+  "doneCriteria": {
+    "requiredChecks": [
+      "npm run studio:check:safe -- --no-evidence --no-host-scan",
+      "npm run portal:canary:auth",
+      "npm run portal:fixture:steward"
+    ],
+    "requiredArtifacts": [
+      "output/host-contract-evidence/latest.json"
+    ],
+    "requiredDocs": [
+      "docs/epics/EPIC-STAFF-CONSOLE-USABILITY-AND-SIGNAL-HARDENING.md",
+      "docs/runbooks/PORTAL_AUTOMATION_MATRIX.md"
+    ]
+  },
+  "executionSlices": [
+    {
+      "id": "verify-health-signals",
+      "title": "Verify Studio Brain and staff health signal surfaces",
+      "dependsOn": [],
+      "checks": [
+        "npm run studio:check:safe -- --no-evidence --no-host-scan"
+      ],
+      "writeScope": "none"
+    },
+    {
+      "id": "harden-staff-console-paths",
+      "title": "Harden staff-console paths and remove low-value friction points",
+      "dependsOn": [
+        "verify-health-signals"
+      ],
+      "checks": [
+        "npm run portal:canary:auth"
+      ],
+      "writeScope": "staff-console-ui-and-ops-docs"
+    },
+    {
+      "id": "verify-operational-supporting-loops",
+      "title": "Verify fixtures and ops support loops remain stable",
+      "dependsOn": [
+        "harden-staff-console-paths"
+      ],
+      "checks": [
+        "npm run portal:fixture:steward"
+      ],
+      "writeScope": "artifact-only"
+    }
+  ],
+  "escalation": {
+    "channel": "github-issue:Staff Console Hardening",
+    "when": [
+      "Health signal mismatch remains unresolved after patch.",
+      "Staff canary fails repeatedly.",
+      "Operational loops surface data-integrity risk."
+    ]
+  }
+}

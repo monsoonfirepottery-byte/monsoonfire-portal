@@ -2624,6 +2624,7 @@ export {
   listEvents,
   listIndustryEvents,
   listEventSignups,
+  listWorkshopDemandSignals,
   getEvent,
   getIndustryEvent,
   upsertIndustryEvent,

@@ -24,7 +24,7 @@
   # SPA fallback: if it's not a real file or directory, serve index.html
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
-  RewriteRule ^ index.html [L,E=MF_HTML_CACHE:1]
+  RewriteRule . index.html [L,E=MF_HTML_CACHE:1]
 </IfModule>
 
 

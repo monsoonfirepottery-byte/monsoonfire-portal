@@ -8,8 +8,12 @@ import { makeRequestId } from "../api/requestId";
 import { parseStaffRoleFromClaims } from "../auth/staffRole";
 import { db } from "../firebase";
 import {
+  ADD_ON_HALF_SHELF_CAP,
   FULL_KILN_CUSTOM_PRICE,
   DELIVERY_PRICE_PER_TRIP,
+  FRAGILE_HANDLING_PER_HALF_SHELF_PRICE,
+  PLACEMENT_PREFERENCE_PRICE,
+  PREPAID_STORAGE_WEEKLY_PRICE,
   RUSH_REQUEST_PRICE,
   STAFF_GLAZE_PREP_PER_HALF_SHELF_PRICE,
   applyHalfKilnPriceBreak,
@@ -89,6 +93,12 @@ const CHECKIN_NOTE_TAGS = [
   "Keep together",
   "Separate pieces",
   "First firing",
+] as const;
+
+const PLACEMENT_PREFERENCE_ZONES = [
+  { id: "top", label: "Top" },
+  { id: "middle", label: "Middle" },
+  { id: "bottom", label: "Bottom" },
 ] as const;
 
 const KILN_OPTIONS = [
@@ -691,6 +701,7 @@ type Props = {
   isStaff: boolean;
   adminToken?: string;
   viewMode?: "full" | "listOnly";
+  focusReservationId?: string | null;
 };
 
 type KilnOption = (typeof KILN_OPTIONS)[number] & {
@@ -741,7 +752,13 @@ type ArrivalLookupOutstanding = {
   needsResourceProfile?: boolean;
 };
 
-export default function ReservationsView({ user, isStaff, adminToken, viewMode = "full" }: Props) {
+export default function ReservationsView({
+  user,
+  isStaff,
+  adminToken,
+  viewMode = "full",
+  focusReservationId = null,
+}: Props) {
   const { themeName, portalMotion } = useUiSettings();
   const motionEnabled = themeName === "memoria" && portalMotion === "enhanced";
   const [reservations, setReservations] = useState<ReservationRecord[]>([]);
@@ -786,6 +803,13 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
   const [notesTags, setNotesTags] = useState<string[]>([]);
   const [rushRequested, setRushRequested] = useState(false);
   const [staffGlazePrepRequested, setStaffGlazePrepRequested] = useState(false);
+  const [fragileHandlingRequested, setFragileHandlingRequested] = useState(false);
+  const [placementPreferenceRequested, setPlacementPreferenceRequested] = useState(false);
+  const [placementPreferenceZone, setPlacementPreferenceZone] = useState<
+    (typeof PLACEMENT_PREFERENCE_ZONES)[number]["id"]
+  >("middle");
+  const [prepaidStorageRequested, setPrepaidStorageRequested] = useState(false);
+  const [prepaidStorageWeeks, setPrepaidStorageWeeks] = useState(1);
   const [pickupDeliveryRequested, setPickupDeliveryRequested] = useState(false);
   const [returnDeliveryRequested, setReturnDeliveryRequested] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState("");
@@ -953,9 +977,24 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
     staffGlazePrepRequested && Number.isFinite(estimatedHalfShelvesRounded)
       ? estimatedHalfShelvesRounded * STAFF_GLAZE_PREP_PER_HALF_SHELF_PRICE
       : 0;
+  const fragileHandlingCost =
+    fragileHandlingRequested && Number.isFinite(estimatedHalfShelvesRounded)
+      ? estimatedHalfShelvesRounded * FRAGILE_HANDLING_PER_HALF_SHELF_PRICE
+      : 0;
+  const placementPreferenceCost = placementPreferenceRequested ? PLACEMENT_PREFERENCE_PRICE : 0;
+  const prepaidStorageWeeksClamped = Math.max(1, Math.min(12, Math.round(prepaidStorageWeeks)));
+  const prepaidStorageCost = prepaidStorageRequested
+    ? prepaidStorageWeeksClamped * PREPAID_STORAGE_WEEKLY_PRICE
+    : 0;
   const totalEstimate =
     estimatedCostWithDelivery != null
-      ? estimatedCostWithDelivery + (glazeAccessCost ?? 0) + rushCost + staffGlazePrepCost
+      ? estimatedCostWithDelivery +
+        (glazeAccessCost ?? 0) +
+        rushCost +
+        staffGlazePrepCost +
+        fragileHandlingCost +
+        placementPreferenceCost +
+        prepaidStorageCost
       : estimatedCostWithDelivery;
   const priceBreakApplied = useMemo(() => {
     if (intakeMode !== "SHELF_PURCHASE") return false;
@@ -1313,6 +1352,11 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
     setFitsOnOneLayer(null);
     setRushRequested(false);
     setStaffGlazePrepRequested(false);
+    setFragileHandlingRequested(false);
+    setPlacementPreferenceRequested(false);
+    setPlacementPreferenceZone("middle");
+    setPrepaidStorageRequested(false);
+    setPrepaidStorageWeeks(1);
     setPickupDeliveryRequested(false);
     setReturnDeliveryRequested(false);
     setDeliveryAddress("");
@@ -1707,6 +1751,17 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
       }
     });
   }, [sortedReservations, reservationFilter, laneFilter, capacityFilter, stationUsage, pieceLookupNeedle]);
+
+  useEffect(() => {
+    if (!focusReservationId || loading) return;
+    if (!filteredReservations.some((reservation) => reservation.id === focusReservationId)) return;
+    const timer = window.setTimeout(() => {
+      const target = document.getElementById(`reservation-${focusReservationId}`);
+      if (!target) return;
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [filteredReservations, focusReservationId, loading]);
 
   const storageTriageSummary = useMemo(() => {
     let enteringHold = 0;
@@ -2842,6 +2897,11 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
     setNotesGeneral("");
     setRushRequested(false);
     setStaffGlazePrepRequested(false);
+    setFragileHandlingRequested(false);
+    setPlacementPreferenceRequested(false);
+    setPlacementPreferenceZone("middle");
+    setPrepaidStorageRequested(false);
+    setPrepaidStorageWeeks(1);
     setPickupDeliveryRequested(false);
     setReturnDeliveryRequested(false);
     setDeliveryAddress("");
@@ -3042,6 +3102,17 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
           staffGlazePrepRequested: !isCommunityShelf && staffGlazePrepRequested,
           staffGlazePrepRatePerHalfShelf:
             !isCommunityShelf && staffGlazePrepRequested ? STAFF_GLAZE_PREP_PER_HALF_SHELF_PRICE : null,
+          fragileHandlingRequested: !isCommunityShelf && fragileHandlingRequested,
+          fragileHandlingCost: !isCommunityShelf && fragileHandlingRequested ? fragileHandlingCost : null,
+          placementPreferenceRequested: !isCommunityShelf && placementPreferenceRequested,
+          placementPreferenceZone:
+            !isCommunityShelf && placementPreferenceRequested ? placementPreferenceZone : null,
+          placementPreferenceCost:
+            !isCommunityShelf && placementPreferenceRequested ? placementPreferenceCost : null,
+          prepaidStorageRequested: !isCommunityShelf && prepaidStorageRequested,
+          prepaidStorageWeeks:
+            !isCommunityShelf && prepaidStorageRequested ? prepaidStorageWeeksClamped : null,
+          prepaidStorageCost: !isCommunityShelf && prepaidStorageRequested ? prepaidStorageCost : null,
           wholeKilnRequested: intakeMode === "WHOLE_KILN",
           communityShelfFillInAllowed: communityShelfFillInAllowedForSubmission,
           pickupDeliveryRequested: !isCommunityShelf && pickupDeliveryRequested,
@@ -3400,33 +3471,6 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                       ? "Community shelf is for tiny drops only: under one half shelf per check-in."
                       : "About one carry-on suitcase laid flat."}
                   </p>
-                  {intakeMode === "SHELF_PURCHASE" ? (
-                    <div className="community-overflow-optin">
-                      <label className="addon-toggle">
-                        <input
-                          type="checkbox"
-                          checked={communityShelfFillInAllowed}
-                          disabled={rushRequested}
-                          onChange={(event) => {
-                            if (rushRequested) return;
-                            setCommunityShelfFillInAllowed(event.target.checked);
-                          }}
-                        />
-                        <span className="addon-text">
-                          <span className="addon-title">Allow community shelf fill-in on unused space</span>
-                          <span className="addon-copy">
-                            If your shelf has open space after your pieces are loaded, staff may use only that extra
-                            area for community shelf work.
-                          </span>
-                        </span>
-                      </label>
-                      <p className="form-helper">
-                        {rushRequested
-                          ? "Priority Queue policy keeps this on to help offset line-cut pressure."
-                          : "Optional. This does not change your billing or move your own work back in the queue."}
-                      </p>
-                    </div>
-                  ) : null}
                 </div>
 
                   {showFitPrompt ? (
@@ -3509,24 +3553,6 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                 ) : null}
 
                 <aside className={`estimate-summary ${animateEstimate ? "animate" : ""}`}>
-                  <details className="shelf-guide">
-                    <summary>How to count half shelves</summary>
-                    <div className="shelf-guide-grid" aria-hidden="true">
-                      {Array.from({ length: 8 }, (_, index) => {
-                        const active = index < Math.min(estimatedHalfShelvesRounded, 8);
-                        return (
-                          <span
-                            key={`guide-${index}`}
-                            className={`shelf-guide-cell ${active ? "active" : ""}`}
-                          />
-                        );
-                      })}
-                    </div>
-                    <div className="shelf-guide-caption">
-                      Each box is a half-shelf. 1–2 for small drops, 4 for a half kiln (price break),
-                      8 for a full load. Tall pieces add one extra half shelf.
-                    </div>
-                  </details>
                   <div className="estimate-summary-header">
                     <div className="estimate-label">Estimate summary</div>
                     <span className="estimate-chip soft">Reviewed with you in person</span>
@@ -3552,7 +3578,10 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                     <span>
                       {useStudioGlazes ||
                       rushRequested ||
-                      staffGlazePrepRequested
+                      staffGlazePrepRequested ||
+                      fragileHandlingRequested ||
+                      placementPreferenceRequested ||
+                      prepaidStorageRequested
                         ? "Total estimate"
                         : "Estimated cost"}
                     </span>
@@ -3569,7 +3598,10 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                   {estimatedCostWithDelivery != null &&
                   (useStudioGlazes ||
                     rushRequested ||
-                    staffGlazePrepRequested) ? (
+                    staffGlazePrepRequested ||
+                    fragileHandlingRequested ||
+                    placementPreferenceRequested ||
+                    prepaidStorageRequested) ? (
                     <div className="estimate-breakdown">
                       <div className="estimate-line">
                         <span>Firing estimate</span>
@@ -3593,6 +3625,30 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                           <span>{formatUsd(staffGlazePrepCost)}</span>
                         </div>
                       ) : null}
+                      {fragileHandlingRequested ? (
+                        <div className="estimate-line">
+                          <span>Fragile handling ({formatHalfShelfCount(estimatedHalfShelvesRounded)})</span>
+                          <span>{formatUsd(fragileHandlingCost)}</span>
+                        </div>
+                      ) : null}
+                      {placementPreferenceRequested ? (
+                        <div className="estimate-line">
+                          <span>
+                            Placement preference ({placementPreferenceZone.slice(0, 1).toUpperCase()}
+                            {placementPreferenceZone.slice(1)})
+                          </span>
+                          <span>{formatUsd(placementPreferenceCost)}</span>
+                        </div>
+                      ) : null}
+                      {prepaidStorageRequested ? (
+                        <div className="estimate-line">
+                          <span>
+                            Prepaid storage ({prepaidStorageWeeksClamped} week
+                            {prepaidStorageWeeksClamped === 1 ? "" : "s"})
+                          </span>
+                          <span>{formatUsd(prepaidStorageCost)}</span>
+                        </div>
+                      ) : null}
                       <div className="estimate-line total">
                         <span>Total estimate</span>
                         <span>{formatUsd(totalEstimate ?? 0)}</span>
@@ -3603,6 +3659,7 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                     Based on: {kilnLabel} · {firingLabel} · {intakeModeLabel} ·{" "}
                     {formatHalfShelfCount(estimatedHalfShelvesRounded)}
                   </div>
+                  <div className="estimate-meta">We confirm final shelf count together at drop-off.</div>
                   {selectedKiln?.id === "reduction-raku" ? (
                     <div className="estimate-meta">
                       Raku is always glaze pricing. We&apos;ll confirm space together.
@@ -3617,7 +3674,34 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                   {priceBreakApplied ? (
                     <div className="estimate-note">Price break starts at 4 half shelves.</div>
                   ) : null}
-                  </aside>
+                </aside>
+                {intakeMode === "SHELF_PURCHASE" ? (
+                  <div className="community-overflow-optin community-overflow-optin-below-estimate">
+                    <label className="addon-toggle">
+                      <input
+                        type="checkbox"
+                        checked={communityShelfFillInAllowed}
+                        disabled={rushRequested}
+                        onChange={(event) => {
+                          if (rushRequested) return;
+                          setCommunityShelfFillInAllowed(event.target.checked);
+                        }}
+                      />
+                      <span className="addon-text">
+                        <span className="addon-title">Allow community shelf fill-in on unused space</span>
+                        <span className="addon-copy">
+                          If your shelf has open space after your pieces are loaded, staff may use only that extra
+                          area for community shelf work.
+                        </span>
+                      </span>
+                    </label>
+                    {rushRequested ? (
+                      <p className="form-helper">
+                        Priority Queue policy keeps this on to help offset line-cut pressure.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -3656,7 +3740,11 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                 ) : null}
               </div>
               <div className="addon-section">
-                <div className="addon-subtitle">Firing boosts</div>
+                <div className="addon-subtitle">Firing boosts + handling</div>
+                <div className="addon-helper">
+                  New care add-ons stay under {formatUsd(ADD_ON_HALF_SHELF_CAP)} each (35% cap of one bisque
+                  half-shelf).
+                </div>
                 <div className="addon-grid">
                   <label className="addon-toggle">
                     <input
@@ -3692,6 +3780,50 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                   <label className="addon-toggle">
                     <input
                       type="checkbox"
+                      checked={fragileHandlingRequested}
+                      onChange={(event) => setFragileHandlingRequested(event.target.checked)}
+                    />
+                    <span className="addon-text">
+                      <span className="addon-title">Fragile handling</span>
+                      <span className="addon-copy">
+                        Added care for delicate work during loading and unloading.
+                      </span>
+                    </span>
+                    <span className="addon-tag">
+                      {formatUsd(FRAGILE_HANDLING_PER_HALF_SHELF_PRICE)} per half-shelf
+                    </span>
+                  </label>
+                  <label className="addon-toggle">
+                    <input
+                      type="checkbox"
+                      checked={placementPreferenceRequested}
+                      onChange={(event) => setPlacementPreferenceRequested(event.target.checked)}
+                    />
+                    <span className="addon-text">
+                      <span className="addon-title">Placement preference (best effort)</span>
+                      <span className="addon-copy">
+                        Request top, middle, or bottom placement. We&apos;ll honor when safe and possible.
+                      </span>
+                    </span>
+                    <span className="addon-tag">{formatUsd(PLACEMENT_PREFERENCE_PRICE)} flat</span>
+                  </label>
+                  <label className="addon-toggle">
+                    <input
+                      type="checkbox"
+                      checked={prepaidStorageRequested}
+                      onChange={(event) => setPrepaidStorageRequested(event.target.checked)}
+                    />
+                    <span className="addon-text">
+                      <span className="addon-title">Need extra pickup time?</span>
+                      <span className="addon-copy">
+                        Prepay dedicated shelf storage beyond the first 7 days and pause reminder nudges.
+                      </span>
+                    </span>
+                    <span className="addon-tag">{formatUsd(PREPAID_STORAGE_WEEKLY_PRICE)} per week</span>
+                  </label>
+                  <label className="addon-toggle">
+                    <input
+                      type="checkbox"
                       checked={pickupDeliveryRequested}
                       onChange={(event) => setPickupDeliveryRequested(event.target.checked)}
                     />
@@ -3712,29 +3844,77 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                     <span className="addon-tag">{formatUsd(DELIVERY_PRICE_PER_TRIP)}</span>
                   </label>
                 </div>
-                {pickupDeliveryRequested || returnDeliveryRequested ? (
+                {placementPreferenceRequested || prepaidStorageRequested || pickupDeliveryRequested || returnDeliveryRequested ? (
                   <div className="addon-fields">
-                    <label>
-                      Delivery address
-                      <textarea
-                        value={deliveryAddress}
-                        onChange={(event) => setDeliveryAddress(event.target.value)}
-                        placeholder="Street, city, and any delivery notes"
-                      />
-                    </label>
-                    <label>
-                      Gate code / instructions
-                      <input
-                        type="text"
-                        value={deliveryInstructions}
-                        onChange={(event) => setDeliveryInstructions(event.target.value)}
-                        placeholder="Gate code, parking, call box, etc."
-                      />
-                    </label>
+                    {placementPreferenceRequested ? (
+                      <label>
+                        Preferred kiln shelf position
+                        <select
+                          value={placementPreferenceZone}
+                          onChange={(event) =>
+                            setPlacementPreferenceZone(
+                              (event.target.value as (typeof PLACEMENT_PREFERENCE_ZONES)[number]["id"]) || "middle"
+                            )
+                          }
+                        >
+                          {PLACEMENT_PREFERENCE_ZONES.map((zone) => (
+                            <option key={zone.id} value={zone.id}>
+                              {zone.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+                    {prepaidStorageRequested ? (
+                      <label>
+                        Extra storage weeks after day 7
+                        <select
+                          value={String(prepaidStorageWeeksClamped)}
+                          onChange={(event) => {
+                            const parsed = Number(event.target.value);
+                            if (!Number.isFinite(parsed)) {
+                              setPrepaidStorageWeeks(1);
+                              return;
+                            }
+                            setPrepaidStorageWeeks(Math.max(1, Math.min(12, Math.round(parsed))));
+                          }}
+                        >
+                          {Array.from({ length: 12 }, (_, index) => index + 1).map((week) => (
+                            <option key={`storage-week-${week}`} value={week}>
+                              {week} week{week === 1 ? "" : "s"}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+                    {pickupDeliveryRequested || returnDeliveryRequested ? (
+                      <>
+                        <label>
+                          Delivery address
+                          <textarea
+                            value={deliveryAddress}
+                            onChange={(event) => setDeliveryAddress(event.target.value)}
+                            placeholder="Street, city, and any delivery notes"
+                          />
+                        </label>
+                        <label>
+                          Gate code / instructions
+                          <input
+                            type="text"
+                            value={deliveryInstructions}
+                            onChange={(event) => setDeliveryInstructions(event.target.value)}
+                            placeholder="Gate code, parking, call box, etc."
+                          />
+                        </label>
+                      </>
+                    ) : null}
                   </div>
                 ) : null}
                 {(rushRequested ||
                   staffGlazePrepRequested ||
+                  fragileHandlingRequested ||
+                  placementPreferenceRequested ||
+                  prepaidStorageRequested ||
                   pickupDeliveryRequested ||
                   returnDeliveryRequested) &&
                 totalEstimate != null ? (
@@ -3872,7 +4052,11 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
               }`.trim()}
               disabled={isSaving || communityShelfInfoOpen}
             >
-              {isSaving ? "Saving check-in..." : mode === "staff" ? "Save check-in" : "Send my check-in"}
+              {isSaving
+                ? "Checking in..."
+                : mode === "staff"
+                  ? "Check in and start next"
+                  : "Check in my work"}
             </button>
             {communityShelfInfoOpen ? (
               <div className="intake-modal-backdrop" role="presentation">
@@ -4307,6 +4491,10 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                 queueFairnessOverrideUntilByReservationId[reservation.id] ??
                 toDateTimeInputValue(queueOverrideUntil);
               const queueFairnessBusy = queueFairnessBusyId === reservation.id;
+              const prepaidStorageWeeksRaw = Number(reservation.addOns?.prepaidStorageWeeks);
+              const prepaidStorageWeeksLabel = Number.isFinite(prepaidStorageWeeksRaw)
+                ? Math.max(1, Math.round(prepaidStorageWeeksRaw))
+                : 1;
               const reservationIntakeMode = normalizeIntakeMode(
                 reservation.intakeMode,
                 reservation.addOns?.wholeKilnRequested ? "WHOLE_KILN" : "SHELF_PURCHASE"
@@ -4320,7 +4508,7 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
               return (
                 <article
                   id={`reservation-${reservation.id}`}
-                  className={`reservation-card ${pieceLookupHit ? "lookup-hit" : ""}`}
+                  className={`reservation-card ${pieceLookupHit || focusReservationId === reservation.id ? "lookup-hit" : ""}`}
                   key={reservation.id}
                 >
                   <header className="reservation-card-header">
@@ -4574,7 +4762,10 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                   ) : null}
                   {reservation.addOns?.pickupDeliveryRequested ||
                   reservation.addOns?.returnDeliveryRequested ||
-                  reservation.addOns?.communityShelfFillInAllowed ? (
+                  reservation.addOns?.communityShelfFillInAllowed ||
+                  reservation.addOns?.fragileHandlingRequested ||
+                  reservation.addOns?.placementPreferenceRequested ||
+                  reservation.addOns?.prepaidStorageRequested ? (
                     <div className="reservation-addons-inline">
                       {reservation.addOns?.pickupDeliveryRequested ? (
                         <span className="reservation-addon-pill">Pickup delivery</span>
@@ -4584,6 +4775,22 @@ export default function ReservationsView({ user, isStaff, adminToken, viewMode =
                       ) : null}
                       {reservation.addOns?.communityShelfFillInAllowed ? (
                         <span className="reservation-addon-pill">Community shelf fill-in allowed</span>
+                      ) : null}
+                      {reservation.addOns?.fragileHandlingRequested ? (
+                        <span className="reservation-addon-pill">Fragile handling</span>
+                      ) : null}
+                      {reservation.addOns?.placementPreferenceRequested ? (
+                        <span className="reservation-addon-pill">
+                          Placement: {String(reservation.addOns?.placementPreferenceZone ?? "middle")
+                            .slice(0, 1)
+                            .toUpperCase()}
+                          {String(reservation.addOns?.placementPreferenceZone ?? "middle").slice(1)}
+                        </span>
+                      ) : null}
+                      {reservation.addOns?.prepaidStorageRequested ? (
+                        <span className="reservation-addon-pill">
+                          Storage: {prepaidStorageWeeksLabel} week{prepaidStorageWeeksLabel === 1 ? "" : "s"}
+                        </span>
                       ) : null}
                     </div>
                   ) : null}

@@ -12,6 +12,18 @@ Use this as the single source for runtime vars introduced by the backend-orchest
 | `STUDIO_BRAIN_ALLOWED_ORIGINS` | Comma list for CORS allowlist | No | `http://127.0.0.1:5173,http://localhost:5173` |
 | `STUDIO_BRAIN_ADMIN_TOKEN` | Optional extra token gate for capability endpoints | No | empty |
 
+## Memory ingest (bot/webhook)
+
+| Variable | Description | Required | Default |
+|---|---|---|---|
+| `STUDIO_BRAIN_MEMORY_INGEST_ENABLED` | Enables signed machine-ingest endpoint (`POST /api/memory/ingest`) | No | `false` |
+| `STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET` | Shared secret used to verify HMAC signatures for ingest requests | Yes (when ingest enabled) | empty |
+| `STUDIO_BRAIN_MEMORY_INGEST_MAX_SKEW_SECONDS` | Max allowed clock skew for ingest signature timestamp headers | No | `300` |
+| `STUDIO_BRAIN_MEMORY_INGEST_REQUIRE_CLIENT_REQUEST_ID` | Requires `clientRequestId` in ingest payload for idempotent writes | No | `true` |
+| `STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_SOURCES` | Comma list allowlist of `source` values for ingest payloads | No | empty |
+| `STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_DISCORD_GUILD_IDS` | Optional Discord guild allowlist when source is `discord` | No | empty |
+| `STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_DISCORD_CHANNEL_IDS` | Optional Discord channel allowlist when source is `discord` | No | empty |
+
 ## Database connectivity
 
 | Variable | Description | Required | Default |
@@ -59,6 +71,14 @@ Use this as the single source for runtime vars introduced by the backend-orchest
 |---|---|---|---|
 | `STUDIO_BRAIN_VECTOR_STORE_ENABLED` | Enable swarm memory table hooks | No | `false` |
 | `STUDIO_BRAIN_VECTOR_STORE_TABLE` | Memory table name | No | `swarm_memory` |
+| `STUDIO_BRAIN_EMBEDDING_PROVIDER` | Embedding backend (`none` \| `openai` \| `vertex`) | No | `none` |
+| `STUDIO_BRAIN_EMBEDDING_DIMENSIONS` | Expected embedding vector dimensions | No | `1536` |
+| `STUDIO_BRAIN_EMBEDDING_TIMEOUT_MS` | Embedding request timeout in ms | No | `15000` |
+| `STUDIO_BRAIN_OPENAI_API_KEY` | OpenAI API key for embeddings when provider is `openai` | No | empty |
+| `STUDIO_BRAIN_OPENAI_EMBEDDING_MODEL` | OpenAI embeddings model id | No | `text-embedding-3-small` |
+| `STUDIO_BRAIN_VERTEX_PROJECT_ID` | Vertex project id override (falls back to `FIREBASE_PROJECT_ID`) | No | empty |
+| `STUDIO_BRAIN_VERTEX_LOCATION` | Vertex location | No | `us-central1` |
+| `STUDIO_BRAIN_VERTEX_EMBEDDING_MODEL` | Vertex embedding model id | No | `text-embedding-005` |
 
 ## Swarm orchestration behavior
 

@@ -23,6 +23,10 @@ const pilotWriteExecutor_1 = require("./capabilities/pilotWriteExecutor");
 const orchestrator_1 = require("./swarm/orchestrator");
 const registry_2 = require("./skills/registry");
 const sandbox_1 = require("./skills/sandbox");
+const service_1 = require("./memory/service");
+const postgresAdapter_1 = require("./memory/postgresAdapter");
+const embedding_1 = require("./memory/embedding");
+const processLock_1 = require("./runtime/processLock");
 function parseArtifactPort(endpoint, fallback) {
     try {
         const parsed = new URL(endpoint);
@@ -37,6 +41,15 @@ async function main() {
     const env = (0, env_1.readEnv)();
     const logger = (0, logger_1.createLogger)(env.STUDIO_BRAIN_LOG_LEVEL);
     const runtimeStartedAt = new Date().toISOString();
+    const rawEnforceSingleRuntime = String(process.env.STUDIO_BRAIN_ENFORCE_SINGLE_RUNTIME ?? "true").trim().toLowerCase();
+    const enforceSingleRuntime = rawEnforceSingleRuntime === ""
+        || rawEnforceSingleRuntime === "1"
+        || rawEnforceSingleRuntime === "true"
+        || rawEnforceSingleRuntime === "yes"
+        || rawEnforceSingleRuntime === "on";
+    const processLockPath = String(process.env.STUDIO_BRAIN_PROCESS_LOCK_PATH ?? ".studio-brain.runtime.lock").trim()
+        || ".studio-brain.runtime.lock";
+    let processLock = null;
     const schedulerState = {
         intervalMs: env.STUDIO_BRAIN_JOB_INTERVAL_MS,
         jitterMs: env.STUDIO_BRAIN_JOB_JITTER_MS,
@@ -57,6 +70,27 @@ async function main() {
         requireApprovalForExternalWrites: env.STUDIO_BRAIN_REQUIRE_APPROVAL_FOR_EXTERNAL_WRITES,
         env: (0, env_1.redactEnvForLogs)(env),
     });
+    if (enforceSingleRuntime) {
+        try {
+            processLock = (0, processLock_1.acquireProcessLock)({
+                lockPath: processLockPath,
+                cwd: process.cwd(),
+                cmd: process.argv.join(" "),
+                startedAt: runtimeStartedAt,
+            });
+            logger.info("studio_brain_runtime_lock_acquired", {
+                lockPath: processLock.lockPath,
+                pid: processLock.payload.pid,
+            });
+        }
+        catch (error) {
+            logger.error("studio_brain_runtime_lock_failed", {
+                lockPath: processLockPath,
+                message: error instanceof Error ? error.message : String(error),
+            });
+            throw error;
+        }
+    }
     logger.info("studio_brain_connectivity_boot", {});
     const dbConnection = await (0, database_1.createDatabaseConnection)(logger);
     const skillRegistry = env.STUDIO_BRAIN_SKILL_REGISTRY_REMOTE_BASE_URL
@@ -75,9 +109,23 @@ async function main() {
         bucket: env.STUDIO_BRAIN_ARTIFACT_STORE_BUCKET,
         timeoutMs: env.STUDIO_BRAIN_ARTIFACT_STORE_TIMEOUT_MS,
     }, logger);
-    const vectorStore = env.STUDIO_BRAIN_VECTOR_STORE_ENABLED
-        ? await (0, vectorStore_1.createVectorStore)(logger)
-        : null;
+    const vectorStoreForMemory = await (0, vectorStore_1.createVectorStore)(logger);
+    const vectorStore = env.STUDIO_BRAIN_VECTOR_STORE_ENABLED ? vectorStoreForMemory : null;
+    const allowedTenantIds = env.STUDIO_BRAIN_ALLOWED_TENANT_IDS.split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+    const memoryService = (0, service_1.createMemoryService)({
+        store: (0, postgresAdapter_1.createPostgresMemoryStoreAdapter)({
+            vectorStore: vectorStoreForMemory,
+            tableName: env.STUDIO_BRAIN_VECTOR_STORE_TABLE,
+        }),
+        embeddingAdapter: (0, embedding_1.createEmbeddingAdapterFromEnv)(env, logger),
+        defaultTenantId: env.STUDIO_BRAIN_DEFAULT_TENANT_ID,
+        defaultAgentId: "studio-brain-memory",
+        defaultRunId: "open-memory-v1",
+        allowedTenantIds,
+        expectedEmbeddingDimensions: env.STUDIO_BRAIN_EMBEDDING_DIMENSIONS,
+    });
     let redisConnection = null;
     let eventBus = null;
     let orchestrator = null;
@@ -295,6 +343,16 @@ async function main() {
             .filter(Boolean),
         adminToken: env.STUDIO_BRAIN_ADMIN_TOKEN,
         backendHealth,
+        memoryService,
+        memoryIngestConfig: {
+            enabled: env.STUDIO_BRAIN_MEMORY_INGEST_ENABLED,
+            hmacSecret: env.STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET,
+            maxSkewSeconds: env.STUDIO_BRAIN_MEMORY_INGEST_MAX_SKEW_SECONDS,
+            requireClientRequestId: env.STUDIO_BRAIN_MEMORY_INGEST_REQUIRE_CLIENT_REQUEST_ID,
+            allowedSources: env.STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_SOURCES,
+            allowedDiscordGuildIds: env.STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_DISCORD_GUILD_IDS,
+            allowedDiscordChannelIds: env.STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_DISCORD_CHANNEL_IDS,
+        },
         pilotWriteExecutor: env.STUDIO_BRAIN_ENABLE_WRITE_EXECUTION
             ? (0, pilotWriteExecutor_1.createPilotWriteExecutor)({ functionsBaseUrl: env.STUDIO_BRAIN_FUNCTIONS_BASE_URL })
             : null,
@@ -366,6 +424,10 @@ async function main() {
             await skillSandbox.close();
         }
         await dbConnection.close();
+        if (processLock) {
+            processLock.release();
+            processLock = null;
+        }
         logger.info("studio_brain_shutdown_complete", {});
         process.exitCode = exitCode;
     };

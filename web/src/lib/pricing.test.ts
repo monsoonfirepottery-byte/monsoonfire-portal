@@ -1,9 +1,13 @@
 import { describe, expect, test } from "vitest";
 import {
+  ADD_ON_HALF_SHELF_CAP,
   HALF_SHELF_BISQUE_PRICE,
   HALF_SHELF_GLAZE_PRICE,
   DELIVERY_PRICE_PER_TRIP,
+  FRAGILE_HANDLING_PER_HALF_SHELF_PRICE,
   FULL_KILN_CUSTOM_PRICE,
+  PLACEMENT_PREFERENCE_PRICE,
+  PREPAID_STORAGE_WEEKLY_PRICE,
   applyHalfKilnPriceBreak,
   applyConservativeBump,
   computeDeliveryCost,
@@ -79,5 +83,11 @@ describe("pricing helpers", () => {
   test("computeDeliveryCost uses per-trip pricing", () => {
     expect(computeDeliveryCost(0)).toBe(0);
     expect(computeDeliveryCost(2)).toBe(2 * DELIVERY_PRICE_PER_TRIP);
+  });
+
+  test("new add-ons stay below 35% of a bisque half-shelf", () => {
+    expect(FRAGILE_HANDLING_PER_HALF_SHELF_PRICE).toBeLessThanOrEqual(ADD_ON_HALF_SHELF_CAP);
+    expect(PLACEMENT_PREFERENCE_PRICE).toBeLessThanOrEqual(ADD_ON_HALF_SHELF_CAP);
+    expect(PREPAID_STORAGE_WEEKLY_PRICE).toBeLessThanOrEqual(ADD_ON_HALF_SHELF_CAP);
   });
 });

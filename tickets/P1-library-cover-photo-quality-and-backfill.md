@@ -1,6 +1,6 @@
 # P1 — Library: Cover Photo Quality and Backfill
 
-Status: In Progress
+Status: Completed
 Date: 2026-03-01
 Priority: P1
 Owner: Library Ops + Catalog Data + Frontend UX
@@ -58,9 +58,9 @@ Completed in this slice:
    - approve current cover,
    - set replacement cover URL and approve.
 
-Remaining:
-1. Expand quality heuristics with richer confidence signals (provider-specific image semantics).
-2. Add stricter media-type-specific validation for non-book objects.
+Resolved in this pass:
+1. Expanded quality heuristics with richer confidence signals (provider-specific image semantics).
+2. Added stricter media-type-specific validation for non-book objects.
 
 ## Execution Update (2026-03-01, Cover Hardening Addendum)
 
@@ -74,5 +74,16 @@ Completed in this pass:
 3. Preserved existing staff cover review workflow by keeping `coverQualityStatus`, `needsCoverReview`, and `coverQualityReason` compatibility intact.
 4. Updated member catalog/discovery cover rendering in `web/src/views/LendingLibraryView.tsx` to use approved-cover gating with a controlled placeholder when cover quality is missing or pending review.
 
-Remaining:
-1. Add focused backend unit tests around `evaluateCoverQuality` once a stable unit-test harness exists for `functions/src/library.ts` without widening ownership scope.
+## Execution Update (2026-03-01, Test Harness Closeout)
+
+Completed in this pass:
+1. Exported `evaluateCoverQuality` from `functions/src/library.ts` for focused unit coverage.
+2. Added focused backend unit tests in `functions/src/library.test.ts` covering:
+   - missing/invalid cover URLs,
+   - low-confidence URL pattern precedence,
+   - trusted provider approvals for books,
+   - non-book media guardrails for book-centric providers,
+   - untrusted-source review routing.
+3. Verified with:
+   - `npm --prefix functions run build`
+   - `node --test functions/lib/library.test.js functions/lib/library.overdueSync.test.js`

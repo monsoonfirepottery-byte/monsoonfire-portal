@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pst-dead-letter.schema.json",
+  "title": "PST Pipeline Dead Letter Row",
+  "type": "object",
+  "required": [
+    "stage",
+    "reason"
+  ],
+  "properties": {
+    "stage": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runId": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "error": {
+      "type": "string"
+    },
+    "raw": {
+      "type": "string"
+    },
+    "row": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true
+}

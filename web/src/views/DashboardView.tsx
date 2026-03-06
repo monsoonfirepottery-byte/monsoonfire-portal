@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
-import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
+import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
 import RevealCard from "../components/RevealCard";
 import { useUiSettings } from "../context/UiSettingsContext";
 import { db } from "../firebase";
@@ -9,6 +9,10 @@ import { mockFirings, mockKilns } from "../data/kilnScheduleMock";
 import { useBatches } from "../hooks/useBatches";
 import { shortId, track } from "../lib/analytics";
 import { normalizeFiringDoc as normalizeFiringRow, normalizeKilnDoc as normalizeKilnRow } from "../lib/normalizers/kiln";
+import {
+  normalizeReservationRecord,
+  type ReservationRecord,
+} from "../lib/normalizers/reservations";
 import type { Kiln, KilnFiring } from "../types/kiln";
 import type { Announcement, DirectMessageThread } from "../types/messaging";
 import { formatMaybeTimestamp } from "../utils/format";
@@ -106,6 +110,28 @@ function inferFiringTypeLabel(value?: string) {
   if (normalized.includes("glaze")) return "Glaze";
   if (normalized.includes("raku")) return "Raku";
   return "Firing";
+}
+
+function isMissingIndexError(err: unknown) {
+  const code = (err as { code?: unknown })?.code;
+  const message = String((err as { message?: unknown })?.message || "");
+  return code === "failed-precondition" || /index/i.test(message);
+}
+
+function getTimestampMs(value: unknown) {
+  const date = coerceDate(value);
+  return date ? date.getTime() : 0;
+}
+
+function reservationStatusLabel(reservation: ReservationRecord) {
+  const status = String(reservation.status || "").toUpperCase();
+  if (status === "CONFIRMED") return "Confirmed";
+  if (status === "WAITLISTED") return "Waitlisted";
+  if (status === "CANCELLED") return "Cancelled";
+  const loadStatus = String(reservation.loadStatus || "").toLowerCase();
+  if (loadStatus === "loaded") return "Loaded";
+  if (loadStatus === "loading") return "Loading";
+  return "Queued";
 }
 
 function useKilnDashboardRows(actor: { uid?: string | null; email?: string | null }) {
@@ -353,6 +379,7 @@ function useKilnDashboardRows(actor: { uid?: string | null; email?: string | nul
 
 type Props = {
   user: User;
+  isStaff?: boolean;
   name: string;
   themeName: PortalThemeName;
   onThemeChange: (next: PortalThemeName) => void;
@@ -371,6 +398,7 @@ type Props = {
 
 export default function DashboardView({
   user,
+  isStaff = false,
   name,
   themeName,
   onThemeChange,
@@ -392,6 +420,7 @@ export default function DashboardView({
   const nextTheme = isDarkTheme ? "portal" : "memoria";
   const nextThemeLabel = isDarkTheme ? "light" : "dark";
   const { active, history } = useBatches(user);
+  const [recentReservations, setRecentReservations] = useState<ReservationRecord[]>([]);
   const activePreview = active.slice(0, DASHBOARD_PIECES_PREVIEW);
   const archivedCount = history.length;
   const messagePreview = threads.slice(0, 3);
@@ -428,7 +457,80 @@ export default function DashboardView({
   const nextPieceEta = nextPiece?.updatedAt
     ? formatMaybeTimestamp(nextPiece.updatedAt)
     : "Check back soon";
+  const reservationPreview = useMemo(
+    () =>
+      recentReservations
+        .filter((item) => String(item.status || "").toUpperCase() !== "CANCELLED")
+        .slice(0, DASHBOARD_PIECES_PREVIEW),
+    [recentReservations]
+  );
+  const nextReservation = reservationPreview[0] ?? null;
+  const nextReservationStatus = nextReservation ? reservationStatusLabel(nextReservation) : "Queued";
+  const nextReservationEta = nextReservation
+    ? formatMaybeTimestamp(nextReservation.createdAt ?? nextReservation.updatedAt)
+    : "Check back soon";
+  const nextReservationOwnerUid = nextReservation?.ownerUid ?? null;
+  const nextReservationOwnerLabel =
+    isStaff && nextReservationOwnerUid && nextReservationOwnerUid !== user.uid
+      ? shortId(nextReservationOwnerUid)
+      : null;
   const kilnEmptyStateLabel = statusNotice || "No kiln status available yet.";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadReservationsPreview = async () => {
+      try {
+        const loadByField = async (field: "ownerUid" | "createdByUid", value: string) => {
+          try {
+            const byCreatedAt = query(
+              collection(db, "reservations"),
+              where(field, "==", value),
+              orderBy("createdAt", "desc"),
+              limit(12)
+            );
+            return await getDocs(byCreatedAt);
+          } catch (error: unknown) {
+            if (!isMissingIndexError(error)) throw error;
+            const fallback = query(collection(db, "reservations"), where(field, "==", value), limit(200));
+            return await getDocs(fallback);
+          }
+        };
+
+        const snapshots = [await loadByField("ownerUid", user.uid)];
+        if (isStaff) {
+          snapshots.push(await loadByField("createdByUid", user.uid));
+        }
+        if (cancelled) return;
+
+        const uniqueRows = new Map<string, ReservationRecord>();
+        for (const snap of snapshots) {
+          for (const docSnap of snap.docs) {
+            const normalized = normalizeReservationRecord(
+              docSnap.id,
+              docSnap.data() as Partial<ReservationRecord>
+            );
+            uniqueRows.set(normalized.id, normalized);
+          }
+        }
+
+        const rows = Array.from(uniqueRows.values()).sort((left, right) => {
+          const leftMs = getTimestampMs(left.createdAt ?? left.updatedAt);
+          const rightMs = getTimestampMs(right.createdAt ?? right.updatedAt);
+          if (leftMs !== rightMs) return rightMs - leftMs;
+          return right.id.localeCompare(left.id);
+        });
+        setRecentReservations(rows);
+      } catch {
+        if (!cancelled) setRecentReservations([]);
+      }
+    };
+
+    void loadReservationsPreview();
+    return () => {
+      cancelled = true;
+    };
+  }, [isStaff, user.uid]);
 
   return (
     <div className="dashboard">
@@ -517,19 +619,51 @@ export default function DashboardView({
           <div className="card-title">Your pieces</div>
           <div className="card-subtitle">Personal queue</div>
           {activePreview.length === 0 ? (
-            <div className="empty-block">
-              <div className="empty-state">Nothing in the kiln line yet.</div>
-              <div className="empty-meta">Add work to the next firing.</div>
-              <button className="btn btn-primary" onClick={onOpenCheckin}>
-                Start a Check-In
-              </button>
-            </div>
+            reservationPreview.length > 0 ? (
+              <div className="pieces-preview">
+                <div className="pieces-next">
+                  <div className="pieces-next-label">Latest check-in</div>
+                  <div className="pieces-next-title">{nextReservationStatus}</div>
+                  <div className="pieces-next-meta">{nextReservationEta}</div>
+                </div>
+                <div className="pieces-thumbs">
+                  {reservationPreview.map((reservation, index) => (
+                    <button
+                      type="button"
+                      key={reservation.id}
+                      className="piece-thumb"
+                      aria-label={`Open check-in ${reservation.id}`}
+                      title={`Check-in ${reservation.id}`}
+                      data-index={index + 1}
+                      onClick={onOpenCheckin}
+                    >
+                      {index + 1}
+                    </button>
+                  ))}
+                </div>
+                <div className="pieces-next-meta">Your recent check-ins are queued in ware intake.</div>
+              </div>
+            ) : (
+              <div className="empty-block">
+                <div className="empty-state">Nothing in the kiln line yet.</div>
+                <div className="empty-meta">Add work to the next firing.</div>
+                <button className="btn btn-primary" onClick={onOpenCheckin}>
+                  Start a Check-In
+                </button>
+              </div>
+            )
           ) : (
             <div className="pieces-preview">
               <div className="pieces-next">
                 <div className="pieces-next-label">Next status</div>
                 <div className="pieces-next-title">{nextPieceStatus}</div>
                 <div className="pieces-next-meta">{nextPieceEta}</div>
+                {nextReservation ? (
+                  <div className="pieces-next-meta">
+                    Latest check-in queued{nextReservationOwnerLabel ? ` for ${nextReservationOwnerLabel}` : ""}:{" "}
+                    {nextReservationStatus} ({nextReservationEta})
+                  </div>
+                ) : null}
               </div>
               <div className="pieces-thumbs">
                 {activePreview.map((piece, index) => {

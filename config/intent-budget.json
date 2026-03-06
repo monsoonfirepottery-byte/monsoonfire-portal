@@ -1,0 +1,48 @@
+{
+  "schema": "intent-budget.v1",
+  "defaults": {
+    "maxTasksPerRun": 120,
+    "softMaxTasksPerRun": 120,
+    "hardMaxTasksPerRun": 180,
+    "maxChecksPerRun": 800,
+    "softMaxChecksPerRun": 800,
+    "hardMaxChecksPerRun": 1200,
+    "maxChecksPerTask": 20,
+    "softMaxChecksPerTask": 20,
+    "hardMaxChecksPerTask": 30,
+    "maxRuntimeMsPerRun": 28800000,
+    "softMaxRuntimeMsPerRun": 28800000,
+    "hardMaxRuntimeMsPerRun": 43200000,
+    "maxRetriesPerCheck": 1,
+    "softMaxRetriesPerCheck": 1,
+    "hardMaxRetriesPerCheck": 3,
+    "softMaxWriteActionsPerRun": 20,
+    "hardMaxWriteActionsPerRun": 30,
+    "softMaxChangedFilesPerRun": 360,
+    "hardMaxChangedFilesPerRun": 500
+  },
+  "riskTierOverrides": {
+    "critical": {
+      "maxChecksPerTask": 12,
+      "hardMaxChecksPerTask": 16,
+      "maxRetriesPerCheck": 0,
+      "hardMaxRetriesPerCheck": 1
+    },
+    "high": {
+      "maxChecksPerTask": 16
+    }
+  },
+  "infraPhaseOverrides": {
+    "ingestion": {
+      "runtimeMultiplier": 1.25,
+      "maxRetriesPerCheck": 3,
+      "hardMaxRetriesPerCheck": 6
+    }
+  },
+  "errorBudgetSlo": {
+    "windowDays": 7,
+    "maxRunFailureRate": 0.25,
+    "maxAbortRate": 0.1,
+    "maxDriftEventsPer100Checks": 8
+  }
+}

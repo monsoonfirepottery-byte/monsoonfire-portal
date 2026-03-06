@@ -49,11 +49,19 @@ Portal functions:
 Fast local checks:
 
 1. `npm run events:industry:check`
+2. `npm run events:industry:import` (dry-run connector ingest + dedupe artifact)
+3. `npm run events:industry:freshness:audit` (freshness audit artifact)
+4. `npm run events:industry:canary` (canary assertions for feed/filter/link/stale suppression)
 
 Seed starter marquee rows (defaults to draft status unless `--publish` is passed to the underlying function script):
 
 1. `npm run events:industry:seed:dry`
 2. `npm run events:industry:seed`
+
+Connector ingest note:
+
+1. Baseline connector fixture lives at `functions/scripts/fixtures/industry-events-source-fixture.json`.
+2. Imported connector rows are written in `draft` + `curationState=triage` with deterministic `dedupeHash`.
 
 ## Featured Event Policy
 
@@ -74,6 +82,10 @@ Automation contract:
 1. Scheduled job `sweepIndustryEvents` runs every 6 hours (America/Phoenix).
 2. Sweep sets `freshnessState` (`fresh`, `stale_review`, `retired`, `non_published`) and `needsReview`.
 3. Published events older than 48 hours past end/start are auto-transitioned to `cancelled` with `retiredReason: past_event_auto_retire`.
+4. Freshness and ingest artifacts are written under `artifacts/industry-events/`:
+   - `industry-events-import-latest.json`
+   - `industry-events-freshness-audit-latest.json`
+   - `industry-events-canary-latest.json`
 
 ## Weekly Operating Rhythm
 

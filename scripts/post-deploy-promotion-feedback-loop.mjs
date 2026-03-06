@@ -16,6 +16,7 @@ const DEFAULT_WORKFLOW_NAME = "Portal Post-Deploy Promotion Gate";
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "post-deploy-promotion-feedback.json");
 const DEFAULT_ARTIFACT_PREFIX = "portal-post-deploy-promotion-gate-";
 const DEFAULT_LIMIT = 12;
+const DEFAULT_STALE_RUN_HOURS = 24;
 
 const STEP_KEYS = {
   canary: "authenticated portal canary",
@@ -31,6 +32,8 @@ function parseArgs(argv) {
     artifactPrefix: DEFAULT_ARTIFACT_PREFIX,
     reportPath: DEFAULT_REPORT_PATH,
     limit: DEFAULT_LIMIT,
+    staleRunHours: Number.parseInt(String(process.env.PORTAL_PROMOTION_STALE_RUN_HOURS || ""), 10)
+      || DEFAULT_STALE_RUN_HOURS,
     asJson: false,
   };
 
@@ -77,6 +80,13 @@ function parseArgs(argv) {
       const value = Number(next);
       if (!Number.isFinite(value) || value < 1) throw new Error("--limit must be >= 1");
       options.limit = Math.min(30, Math.round(value));
+      index += 1;
+      continue;
+    }
+    if (arg === "--stale-run-hours") {
+      const value = Number(next);
+      if (!Number.isFinite(value) || value < 1) throw new Error("--stale-run-hours must be >= 1");
+      options.staleRunHours = Math.min(168, Math.round(value));
       index += 1;
       continue;
     }
@@ -142,12 +152,22 @@ function findStep(report, label) {
   return steps.find((item) => String(item?.label || "") === label) || null;
 }
 
-function analyze(records) {
+function analyze(records, options) {
   const runsWithReports = records
     .filter((item) => item.hasReport && item.report)
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
   const recent = runsWithReports.slice(-6);
+  const latestRun = runsWithReports.length > 0 ? runsWithReports[runsWithReports.length - 1] : null;
+  const latestRunCreatedAt = String(latestRun?.createdAt || "");
+  const latestRunTimestamp = toTimestamp(latestRunCreatedAt);
+  const latestRunAgeHours = latestRunTimestamp > 0
+    ? Number(((Date.now() - latestRunTimestamp) / 3600000).toFixed(2))
+    : null;
+  const riskSignalFresh = latestRunAgeHours !== null
+    ? latestRunAgeHours <= Number(options.staleRunHours || DEFAULT_STALE_RUN_HOURS)
+    : false;
+
   const stepStats = {};
   for (const [key, label] of Object.entries(STEP_KEYS)) {
     let failures = 0;
@@ -185,10 +205,24 @@ function analyze(records) {
   else if (riskScore >= 2) riskLevel = "elevated";
 
   const includeThemeSweep = !(consecutivePasses >= 4 && stepStats.canary.failures === 0 && riskLevel === "low");
+  const reasons = [
+    includeThemeSweep
+      ? "Theme sweep retained due recent risk signal or insufficient stable streak."
+      : "Theme sweep can be skipped after stable streak with no recent canary failures.",
+  ];
+  if (!riskSignalFresh) {
+    reasons.push(
+      `Latest promotion signal is older than ${String(options.staleRunHours)}h; risk escalation is stale until a fresh promotion run lands.`
+    );
+  }
 
   return {
     sourceRunCount: runsWithReports.length,
     recentRunCount: recent.length,
+    latestRunCreatedAt,
+    latestRunAgeHours,
+    staleRunHours: Number(options.staleRunHours || DEFAULT_STALE_RUN_HOURS),
+    riskSignalFresh,
     consecutivePasses,
     riskLevel,
     riskScore,
@@ -198,12 +232,9 @@ function analyze(records) {
       includeVirtualStaff: true,
       includeIndexDeploy: true,
       includeIndexGuard: true,
+      includeJourneyCheck: true,
       riskLevel,
-      reasons: [
-        includeThemeSweep
-          ? "Theme sweep retained due recent risk signal or insufficient stable streak."
-          : "Theme sweep can be skipped after stable streak with no recent canary failures.",
-      ],
+      reasons,
     },
   };
 }
@@ -219,6 +250,10 @@ async function main() {
     sourceRuns: [],
     signals: {
       recentRunCount: 0,
+      latestRunCreatedAt: "",
+      latestRunAgeHours: null,
+      staleRunHours: options.staleRunHours,
+      riskSignalFresh: true,
       consecutivePasses: 0,
       riskLevel: "low",
       riskScore: 0,
@@ -229,6 +264,7 @@ async function main() {
       includeVirtualStaff: true,
       includeIndexDeploy: true,
       includeIndexGuard: true,
+      includeJourneyCheck: true,
       riskLevel: "low",
       reasons: [],
     },
@@ -295,9 +331,13 @@ async function main() {
     }
   }
 
-  const analysis = analyze(report.sourceRuns);
+  const analysis = analyze(report.sourceRuns, options);
   report.sourceRunCount = analysis.sourceRunCount;
   report.signals.recentRunCount = analysis.recentRunCount;
+  report.signals.latestRunCreatedAt = analysis.latestRunCreatedAt;
+  report.signals.latestRunAgeHours = analysis.latestRunAgeHours;
+  report.signals.staleRunHours = analysis.staleRunHours;
+  report.signals.riskSignalFresh = analysis.riskSignalFresh;
   report.signals.consecutivePasses = analysis.consecutivePasses;
   report.signals.riskLevel = analysis.riskLevel;
   report.signals.riskScore = analysis.riskScore;
@@ -323,6 +363,7 @@ async function main() {
     process.stdout.write(`status: ${report.status}\n`);
     process.stdout.write(`sourceRuns: ${String(report.sourceRunCount)}\n`);
     process.stdout.write(`riskLevel: ${report.feedback.riskLevel}\n`);
+    process.stdout.write(`riskSignalFresh: ${String(report.signals.riskSignalFresh)}\n`);
     process.stdout.write(`includeThemeSweep: ${String(report.feedback.includeThemeSweep)}\n`);
     process.stdout.write(`report: ${options.reportPath}\n`);
   }

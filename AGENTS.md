@@ -93,6 +93,16 @@ Codex, treat this file as your **ground truth** for how to work here: what matte
 ### Completion claims require visual verification
 - Agents must not report a bug/task as “done” until a direct visual check confirms the UI behavior in the target surface (local, staging, or production). Evidence does not need to be saved, but the check must be performed.
 
+### SSH completion requires live deploy
+- In SSH-led collaboration, treat “done” as “deployed to the live portal URL the user tests,” not only local edits/builds.
+- Default live portal target is `https://portal.monsoonfire.com` (Namecheap deploy path), so run the portal deploy flow before closing the loop.
+- Firebase Hosting (`https://monsoonfire-portal.web.app`) is useful for smoke checks, but does not replace the required live portal deploy when user feedback is on `portal.monsoonfire.com`.
+
+### Headless automation default (SSH environments)
+- Most execution happens over SSH from a laptop with no X server available on the network/server.
+- Default all browser automation and visual checks to **headless** mode.
+- Use headed flags only when an X server is explicitly available (or via `xvfb-run`).
+
 ### Safety rails by default
 - Disable double-submit
 - In-flight guards for network actions
@@ -143,17 +153,24 @@ Use these defaults unless the user explicitly overrides them in-session.
   - The user can request a self-improvement/interrogation loop at any time (not only on schedule).
   - Fast entry points: `npm run codex:improve:daily`, `npm run codex:interaction:daily`, `npm run codex:pr-green:daily`.
 - Durable memory workflow:
-  - Treat external memory workspace as source of truth:
+  - Canonical corpus artifacts are the primary durable memory asset.
+    - PST corpus export: `npm run open-memory:pst:corpus -- --run-id <id> --units <path> --promoted <path>`
+    - Mail corpus export: `npm run open-memory:mail:corpus -- --run-id <id> --snapshot <path>`
+    - SQLite materialization: `npm run open-memory:corpus:sqlite -- --manifest <path>`
+    - Local corpus query: `npm run open-memory:corpus:query -- --db <path> --record-type hypothesis --text <term>`
+  - Open Memory / Studio Brain is now an optional adapter and lookup surface, not the source of truth.
+    - Health check: `npm run open-memory -- stats`
+  - Treat external memory workspace as a downstream review/import workspace:
     - `C:\Users\micah\.codex\memory`
   - Read from `accepted/accepted.jsonl` for stable preferences/decisions/open loops.
   - Write new inferred items to `proposed/proposed.jsonl` first; do not auto-accept weak inferences.
-  - Local fallback memory pipeline is available in this repo:
+  - Local JSONL memory pipeline remains available as fallback/offline review cache:
     - `npm run codex:memory:init`
     - `npm run codex:memory:status`
     - `npm run codex:memory:propose -- --statement \"...\"`
     - `npm run codex:memory:accept -- --id <memory-id>`
 - Known durable decision:
-  - Maintain an external memory ingestion pipeline sourced from exported conversation data.
+  - Maintain an external memory ingestion pipeline sourced from exported conversation data and canonical corpus artifacts.
 - Strategic open loop to keep visible:
   - Track West Valley/Phoenix studio real-estate opportunities for expansion timing (while home studio remains baseline).
 

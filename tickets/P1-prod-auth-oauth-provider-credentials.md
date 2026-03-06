@@ -80,3 +80,16 @@ Redirect URI note:
 ## Update (2026-02-13 - operator progress)
 - Microsoft provider authentication has been configured and tested successfully on hosted portal.
 - Remaining provider-console work: Apple and Facebook credential setup + hosted sign-in verification evidence.
+
+## Update (2026-03-03)
+- Added deterministic provider-config audit command:
+  - `npm run portal:auth:providers:check`
+  - artifact: `artifacts/auth/auth-provider-config-latest.json`
+- Latest config audit result:
+  - `google.com` configured + enabled
+  - `microsoft.com` configured + enabled
+  - `facebook.com` missing (active blocker)
+  - `apple.com` intentionally deferred for now (`npm run portal:auth:providers:check:full` still reports Apple as missing)
+- Hosted authenticated portal canary remains green for baseline portal auth/session flow:
+  - `node ./scripts/portal-authenticated-canary.mjs --functional-only --no-theme-sweep --output-dir ./output/qa/industry-events-visual-check --json`
+- Ticket remains `Blocked` until Facebook provider app setup/configuration + hosted sign-in evidence is completed.

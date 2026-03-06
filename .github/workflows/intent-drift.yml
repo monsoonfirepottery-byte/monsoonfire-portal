@@ -1,0 +1,54 @@
+name: Intent Drift Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: intent-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  intent-drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Validate intent contracts
+        run: npm run intent:validate:strict
+
+      - name: Eval contract gate for changed intents
+        run: npm run intent:eval:gate
+
+      - name: Enforce intent plan drift gate
+        run: npm run intent:drift:strict
+
+      - name: Upload intent artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: intent-drift-${{ github.run_id }}
+          path: |
+            output/intent/intent-validate-report.json
+            output/intent/intent-drift-report.json
+            artifacts/intent-plan.generated.json
+          if-no-files-found: ignore
+          retention-days: 14

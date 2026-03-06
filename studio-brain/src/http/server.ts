@@ -76,6 +76,43 @@ function toStringList(value: unknown, maxItems = 64): string[] {
     .slice(0, Math.max(1, maxItems));
 }
 
+function isTransientMemoryQueryError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = String(error.message ?? "").toLowerCase();
+  if (!message) return false;
+  return (
+    /timeout/.test(message) ||
+    /timed\s*out/.test(message) ||
+    /aborted/.test(message) ||
+    /temporarily unavailable/.test(message) ||
+    /connection/.test(message) ||
+    /too many clients/.test(message) ||
+    /remaining connection slots/.test(message) ||
+    /request-failed/.test(message) ||
+    /connect/.test(message) ||
+    /cancel/.test(message)
+  );
+}
+
+async function withRouteTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return promise;
+  }
+  let timer: NodeJS.Timeout | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`${label} timed out after ${Math.max(1, Math.floor(timeoutMs))}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function normalizeRelationshipType(value: unknown): string {
   const token = String(value ?? "related")
     .trim()
@@ -562,22 +599,248 @@ export function startHttpServer(params: {
     if (!Number.isFinite(parsed)) return fallback;
     return Math.max(min, Math.min(max, parsed));
   };
+  const parseBoundedEnvFloat = (name: string, fallback: number, min = 0, max = 10_000): number => {
+    const raw = String(process.env[name] ?? "").trim();
+    if (!raw) return fallback;
+    const parsed = Number.parseFloat(raw);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(min, Math.min(max, parsed));
+  };
+  const parseBoundedEnvBool = (name: string, fallback: boolean): boolean => {
+    const raw = String(process.env[name] ?? "").trim().toLowerCase();
+    if (!raw) return fallback;
+    if (raw === "1" || raw === "true" || raw === "yes" || raw === "on") return true;
+    if (raw === "0" || raw === "false" || raw === "no" || raw === "off") return false;
+    return fallback;
+  };
   const memoryPressureConfig = {
     maxActiveImportsBeforeBackfill: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORTS_BEFORE_BACKFILL", 8, 0, 10_000),
     maxConcurrentBackfills: parseBoundedEnvInt("STUDIO_BRAIN_MAX_CONCURRENT_BACKFILLS", 1, 1, 100),
     retryAfterSeconds: parseBoundedEnvInt("STUDIO_BRAIN_BACKFILL_RETRY_AFTER_SECONDS", 20, 1, 3600),
+    maxActiveImportsBeforeQueryDegrade: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORTS_BEFORE_QUERY_DEGRADE", 4, 0, 10_000),
+    maxActiveImportsBeforeQueryShed: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_IMPORTS_BEFORE_QUERY_SHED", 14, 0, 10_000),
+    maxActiveSearchRequests: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_SEARCH_REQUESTS", 20, 1, 2_000),
+    maxActiveContextRequests: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_CONTEXT_REQUESTS", 12, 1, 2_000),
+    maxActiveQueryRequests: parseBoundedEnvInt("STUDIO_BRAIN_MAX_ACTIVE_MEMORY_QUERY_REQUESTS", 28, 1, 4_000),
+    queryRetryAfterSeconds: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_RETRY_AFTER_SECONDS", 5, 1, 3600),
+    queryDegradeLimitCap: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_DEGRADE_LIMIT_CAP", 10, 1, 100),
+    queryDegradeScanLimitCap: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_DEGRADE_SCAN_LIMIT_CAP", 120, 10, 500),
+    queryDegradeMaxItemsCap: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_DEGRADE_MAX_ITEMS_CAP", 10, 1, 100),
+    queryDegradeMaxCharsCap: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_DEGRADE_MAX_CHARS_CAP", 6000, 512, 100_000),
+    queryRouteTimeoutMs: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_ROUTE_TIMEOUT_MS", 16_000, 1_000, 120_000),
+  };
+  const memoryAdaptiveConfig = {
+    enabled: parseBoundedEnvBool("STUDIO_BRAIN_MEMORY_QUERY_ADAPTIVE_ENABLED", true),
+    p95TargetMs: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_ADAPTIVE_P95_TARGET_MS", 1200, 100, 60_000),
+    minFactor: parseBoundedEnvFloat("STUDIO_BRAIN_MEMORY_QUERY_ADAPTIVE_MIN_FACTOR", 0.45, 0.1, 1),
+    maxFactor: parseBoundedEnvFloat("STUDIO_BRAIN_MEMORY_QUERY_ADAPTIVE_MAX_FACTOR", 1.2, 0.4, 3),
+    sampleWindow: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_ADAPTIVE_SAMPLE_WINDOW", 240, 20, 5_000),
+  };
+  const memoryQueueConfig = {
+    enabled: parseBoundedEnvBool("STUDIO_BRAIN_MEMORY_QUERY_QUEUE_ENABLED", true),
+    interactiveWaitMs: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_INTERACTIVE_QUEUE_WAIT_MS", 1200, 0, 30_000),
+    pollMs: parseBoundedEnvInt("STUDIO_BRAIN_MEMORY_QUERY_QUEUE_POLL_MS", 120, 20, 2_000),
+  };
+  const memorySearchLatencySamples: number[] = [];
+  const memoryContextLatencySamples: number[] = [];
+  const pushLatencySample = (bucket: number[], latencyMs: number): void => {
+    if (!Number.isFinite(latencyMs) || latencyMs < 0) return;
+    bucket.push(Math.round(latencyMs));
+    if (bucket.length > memoryAdaptiveConfig.sampleWindow) {
+      bucket.splice(0, bucket.length - memoryAdaptiveConfig.sampleWindow);
+    }
+  };
+  const percentile = (values: number[], p: number): number => {
+    if (values.length === 0) return 0;
+    const sorted = [...values].sort((left, right) => left - right);
+    const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * p) - 1));
+    return sorted[idx] ?? 0;
+  };
+  const latencySnapshot = () => ({
+    searchP95Ms: percentile(memorySearchLatencySamples, 0.95),
+    contextP95Ms: percentile(memoryContextLatencySamples, 0.95),
+    searchSamples: memorySearchLatencySamples.length,
+    contextSamples: memoryContextLatencySamples.length,
+  });
+  const recordMemoryLatency = (kind: "search" | "context", startedAtMs: number): void => {
+    const duration = Date.now() - startedAtMs;
+    if (kind === "search") {
+      pushLatencySample(memorySearchLatencySamples, duration);
+      return;
+    }
+    pushLatencySample(memoryContextLatencySamples, duration);
+  };
+  const clampInt = (value: number, min: number, max: number): number => {
+    if (!Number.isFinite(value)) return min;
+    return Math.max(min, Math.min(max, Math.trunc(value)));
+  };
+  const resolveDynamicMemoryThresholds = () => {
+    if (!memoryAdaptiveConfig.enabled) {
+      return {
+        ...memoryPressureConfig,
+      };
+    }
+    const latency = latencySnapshot();
+    const p95Target = Math.max(100, memoryAdaptiveConfig.p95TargetMs);
+    const p95Observed = Math.max(latency.searchP95Ms, latency.contextP95Ms);
+    const ratio = p95Observed > 0 ? p95Target / p95Observed : 1;
+    const factor = Math.max(memoryAdaptiveConfig.minFactor, Math.min(memoryAdaptiveConfig.maxFactor, ratio));
+    return {
+      ...memoryPressureConfig,
+      maxActiveSearchRequests: clampInt(
+        memoryPressureConfig.maxActiveSearchRequests * factor,
+        4,
+        memoryPressureConfig.maxActiveSearchRequests
+      ),
+      maxActiveContextRequests: clampInt(
+        memoryPressureConfig.maxActiveContextRequests * factor,
+        2,
+        memoryPressureConfig.maxActiveContextRequests
+      ),
+      maxActiveQueryRequests: clampInt(
+        memoryPressureConfig.maxActiveQueryRequests * factor,
+        4,
+        memoryPressureConfig.maxActiveQueryRequests
+      ),
+    };
   };
   let activeImportRequests = 0;
   let activeBackfillRequests = 0;
-  const memoryPressureSnapshot = () => ({
+  let activeSearchRequests = 0;
+  let activeContextRequests = 0;
+  const memoryPressureSnapshot = (thresholds = resolveDynamicMemoryThresholds()) => ({
     activeImportRequests,
     activeBackfillRequests,
+    activeSearchRequests,
+    activeContextRequests,
+    activeQueryRequests: activeSearchRequests + activeContextRequests,
+    latency: latencySnapshot(),
     thresholds: {
-      maxActiveImportsBeforeBackfill: memoryPressureConfig.maxActiveImportsBeforeBackfill,
-      maxConcurrentBackfills: memoryPressureConfig.maxConcurrentBackfills,
-      retryAfterSeconds: memoryPressureConfig.retryAfterSeconds,
+      maxActiveImportsBeforeBackfill: thresholds.maxActiveImportsBeforeBackfill,
+      maxConcurrentBackfills: thresholds.maxConcurrentBackfills,
+      retryAfterSeconds: thresholds.retryAfterSeconds,
+      maxActiveImportsBeforeQueryDegrade: thresholds.maxActiveImportsBeforeQueryDegrade,
+      maxActiveImportsBeforeQueryShed: thresholds.maxActiveImportsBeforeQueryShed,
+      maxActiveSearchRequests: thresholds.maxActiveSearchRequests,
+      maxActiveContextRequests: thresholds.maxActiveContextRequests,
+      maxActiveQueryRequests: thresholds.maxActiveQueryRequests,
+      queryRetryAfterSeconds: thresholds.queryRetryAfterSeconds,
+      queryDegradeLimitCap: thresholds.queryDegradeLimitCap,
+      queryDegradeScanLimitCap: thresholds.queryDegradeScanLimitCap,
+      queryDegradeMaxItemsCap: thresholds.queryDegradeMaxItemsCap,
+      queryDegradeMaxCharsCap: thresholds.queryDegradeMaxCharsCap,
+      queryRouteTimeoutMs: thresholds.queryRouteTimeoutMs,
     },
   });
+  type MemoryQueryLane = "interactive" | "ops" | "bulk";
+  type MemoryQueryKind = "search" | "context";
+  const deriveMemoryQueryLane = (payload: Record<string, unknown>, fallback: MemoryQueryLane = "interactive"): MemoryQueryLane => {
+    const requestedLane = toTrimmedString(payload.queryLane).toLowerCase();
+    if (requestedLane === "interactive" || requestedLane === "ops" || requestedLane === "bulk") {
+      return requestedLane;
+    }
+    if (toBooleanFlag(toTrimmedString(payload.bulk), false)) {
+      return "bulk";
+    }
+    const hasSessionScope = Boolean(toTrimmedString(payload.runId) || toTrimmedString(payload.agentId));
+    if (hasSessionScope) {
+      return "interactive";
+    }
+    return fallback;
+  };
+  const classifyMemoryQueryPressure = (lane: MemoryQueryLane, kind: MemoryQueryKind) => {
+    const thresholds = resolveDynamicMemoryThresholds();
+    const pressure = memoryPressureSnapshot(thresholds);
+    const reasons: string[] = [];
+    const querySaturated = pressure.activeQueryRequests >= thresholds.maxActiveQueryRequests;
+    if (querySaturated) {
+      reasons.push("query-concurrency-saturated");
+    }
+    const importDegrade = pressure.activeImportRequests >= thresholds.maxActiveImportsBeforeQueryDegrade;
+    const importShed = pressure.activeImportRequests >= thresholds.maxActiveImportsBeforeQueryShed;
+    if (importDegrade) {
+      reasons.push("active-import-pressure");
+    }
+    if (pressure.activeBackfillRequests >= thresholds.maxConcurrentBackfills) {
+      reasons.push("backfill-pressure");
+    }
+    const kindSaturated =
+      kind === "search"
+        ? pressure.activeSearchRequests >= thresholds.maxActiveSearchRequests
+        : pressure.activeContextRequests >= thresholds.maxActiveContextRequests;
+    if (kindSaturated) {
+      reasons.push(`${kind}-concurrency-saturated`);
+    }
+    const backfillAtCapacity = pressure.activeBackfillRequests >= thresholds.maxConcurrentBackfills;
+    const backfillDegrade = backfillAtCapacity && (lane !== "interactive" || importDegrade || querySaturated || kindSaturated);
+    if (backfillDegrade) {
+      reasons.push("backfill-pressure");
+    }
+    const degrade = importDegrade || querySaturated || kindSaturated || backfillDegrade;
+    const interactiveContextShed = kind === "context" && kindSaturated;
+    const shed =
+      lane === "bulk"
+        ? importShed || querySaturated || kindSaturated
+        : importShed || querySaturated || interactiveContextShed;
+    return {
+      pressure,
+      thresholds,
+      reasons: Array.from(new Set(reasons)),
+      degrade,
+      shed,
+      queued: false,
+      queueWaitMs: 0,
+    };
+  };
+  const waitForMemoryQuerySlot = async (
+    lane: MemoryQueryLane,
+    kind: MemoryQueryKind,
+    requestId: string
+  ): Promise<{
+    pressure: ReturnType<typeof memoryPressureSnapshot>;
+    thresholds: ReturnType<typeof resolveDynamicMemoryThresholds>;
+    reasons: string[];
+    degrade: boolean;
+    shed: boolean;
+    queued: boolean;
+    queueWaitMs: number;
+  }> => {
+    let policy = classifyMemoryQueryPressure(lane, kind);
+    if (!policy.shed || lane !== "interactive" || !memoryQueueConfig.enabled || memoryQueueConfig.interactiveWaitMs <= 0) {
+      return {
+        ...policy,
+        queued: false,
+        queueWaitMs: 0,
+      };
+    }
+    const startedAt = Date.now();
+    let queued = false;
+    while (Date.now() - startedAt < memoryQueueConfig.interactiveWaitMs) {
+      const waitMs = Math.min(memoryQueueConfig.pollMs, memoryQueueConfig.interactiveWaitMs);
+      await new Promise((resolveWait) => setTimeout(resolveWait, waitMs));
+      policy = classifyMemoryQueryPressure(lane, kind);
+      if (!policy.shed) {
+        queued = true;
+        break;
+      }
+    }
+    const queueWaitMs = Date.now() - startedAt;
+    if (queued) {
+      logger.info("memory_query_queue_admitted", {
+        requestId,
+        endpoint: kind === "search" ? "/api/memory/search" : "/api/memory/context",
+        lane,
+        queueWaitMs,
+        reasons: policy.reasons,
+        pressure: policy.pressure,
+      });
+    }
+    return {
+      ...policy,
+      queued,
+      queueWaitMs,
+    };
+  };
 
   const isOriginAllowed = (origin: string | null): boolean => {
     if (!origin) return true;
@@ -866,7 +1129,13 @@ export function startHttpServer(params: {
             }
           }
 
-          const memory = await memoryService.capture(payload);
+          let memory;
+          activeImportRequests += 1;
+          try {
+            memory = await memoryService.capture(payload);
+          } finally {
+            activeImportRequests = Math.max(0, activeImportRequests - 1);
+          }
           statusCode = 201;
           res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
           res.end(JSON.stringify({ ok: true, memory }));
@@ -890,23 +1159,314 @@ export function startHttpServer(params: {
           res.end(JSON.stringify({ ok: false, message: auth.message }));
           return;
         }
+        let payload: Record<string, unknown> = {};
+        let lane: MemoryQueryLane = "interactive";
+        let routeStartedAtMs = Date.now();
+        let policy = classifyMemoryQueryPressure(lane, "context");
         try {
-          const payload = await readJsonBody(req);
-          const context = await memoryService.context(payload);
+          payload = toObjectRecord(await readJsonBody(req));
+          lane = deriveMemoryQueryLane(payload, "interactive");
+          routeStartedAtMs = Date.now();
+          policy = await waitForMemoryQuerySlot(lane, "context", requestId);
+          if (policy.shed) {
+            logger.warn("memory_query_shed", {
+              requestId,
+              endpoint: "/api/memory/context",
+              lane,
+              reasons: policy.reasons,
+              pressure: policy.pressure,
+            });
+            statusCode = 503;
+            res.writeHead(
+              statusCode,
+              withSecurityHeaders({
+                "content-type": "application/json",
+                ...corsHeaders,
+                "x-request-id": requestId,
+                "retry-after": String(policy.thresholds.queryRetryAfterSeconds),
+              })
+            );
+            res.end(
+              JSON.stringify({
+                ok: false,
+                message: "Memory context deferred due ingest/query pressure.",
+                reason: "query-shed",
+                lane,
+                retryAfterSeconds: policy.thresholds.queryRetryAfterSeconds,
+                pressure: policy.pressure,
+                degradation: {
+                  applied: true,
+                  lane,
+                  shed: true,
+                  reasons: policy.reasons,
+                  queued: policy.queued,
+                  queueWaitMs: policy.queueWaitMs,
+                },
+              })
+            );
+            return;
+          }
+
+          const requestedMaxItems = toBoundedInt(payload.maxItems, 12, 1, 100);
+          const requestedMaxChars = toBoundedInt(payload.maxChars, 8_000, 256, 100_000);
+          const requestedScanLimit = toBoundedInt(payload.scanLimit, 200, 1, 500);
+          const requestedModeRaw = toTrimmedString(payload.retrievalMode).toLowerCase();
+          const requestedRetrievalMode =
+            requestedModeRaw === "lexical" || requestedModeRaw === "semantic" || requestedModeRaw === "hybrid"
+              ? requestedModeRaw
+              : "hybrid";
+
+          const effectivePayload: Record<string, unknown> = {
+            ...payload,
+            maxItems: requestedMaxItems,
+            maxChars: requestedMaxChars,
+            scanLimit: requestedScanLimit,
+            retrievalMode: requestedRetrievalMode,
+          };
+          const adjustments: string[] = [];
+          if (policy.degrade) {
+            const preferredMode = lane === "interactive" ? "hybrid" : "lexical";
+            if (requestedRetrievalMode !== preferredMode) {
+              effectivePayload.retrievalMode = preferredMode;
+              adjustments.push(`retrievalMode:${requestedRetrievalMode}->${preferredMode}`);
+            }
+            const maxItemsCap =
+              lane === "interactive"
+                ? Math.min(100, Math.max(4, policy.thresholds.queryDegradeMaxItemsCap + 4))
+                : Math.max(3, policy.thresholds.queryDegradeMaxItemsCap);
+            const scanLimitCap =
+              lane === "interactive"
+                ? Math.min(500, Math.max(40, policy.thresholds.queryDegradeScanLimitCap + 60))
+                : Math.max(24, policy.thresholds.queryDegradeScanLimitCap);
+            const maxCharsCap =
+              lane === "interactive"
+                ? Math.min(100_000, Math.max(1_500, policy.thresholds.queryDegradeMaxCharsCap + 1_500))
+                : Math.max(1_024, policy.thresholds.queryDegradeMaxCharsCap);
+
+            const effectiveMaxItems = Math.min(requestedMaxItems, maxItemsCap);
+            const effectiveScanLimit = Math.min(requestedScanLimit, scanLimitCap);
+            const effectiveMaxChars = Math.min(requestedMaxChars, maxCharsCap);
+            if (effectiveMaxItems !== requestedMaxItems) {
+              effectivePayload.maxItems = effectiveMaxItems;
+              adjustments.push(`maxItems:${requestedMaxItems}->${effectiveMaxItems}`);
+            }
+            if (effectiveScanLimit !== requestedScanLimit) {
+              effectivePayload.scanLimit = effectiveScanLimit;
+              adjustments.push(`scanLimit:${requestedScanLimit}->${effectiveScanLimit}`);
+            }
+            if (effectiveMaxChars !== requestedMaxChars) {
+              effectivePayload.maxChars = effectiveMaxChars;
+              adjustments.push(`maxChars:${requestedMaxChars}->${effectiveMaxChars}`);
+            }
+            if (payload.includeTenantFallback !== true) {
+              effectivePayload.includeTenantFallback = true;
+              adjustments.push("includeTenantFallback:true");
+            }
+          }
+
+          let context;
+          activeContextRequests += 1;
+          try {
+            context = await withRouteTimeout(
+              memoryService.context(effectivePayload),
+              policy.thresholds.queryRouteTimeoutMs,
+              "memory context query route"
+            );
+          } finally {
+            activeContextRequests = Math.max(0, activeContextRequests - 1);
+          }
+          recordMemoryLatency("context", routeStartedAtMs);
+          const degradation = {
+            applied: policy.degrade || adjustments.length > 0,
+            lane,
+            shed: false,
+            reasons: Array.from(new Set([...policy.reasons, ...adjustments])),
+            retryAfterSeconds: policy.degrade ? policy.thresholds.queryRetryAfterSeconds : 0,
+            requested: {
+              retrievalMode: requestedRetrievalMode,
+              maxItems: requestedMaxItems,
+              scanLimit: requestedScanLimit,
+              maxChars: requestedMaxChars,
+            },
+            effective: {
+              retrievalMode: String(effectivePayload.retrievalMode ?? requestedRetrievalMode),
+              maxItems: Number(effectivePayload.maxItems ?? requestedMaxItems),
+              scanLimit: Number(effectivePayload.scanLimit ?? requestedScanLimit),
+              maxChars: Number(effectivePayload.maxChars ?? requestedMaxChars),
+            },
+            pressure: memoryPressureSnapshot(),
+            queued: policy.queued,
+            queueWaitMs: policy.queueWaitMs,
+          };
+          if (degradation.applied) {
+            logger.info("memory_query_degraded", {
+              requestId,
+              endpoint: "/api/memory/context",
+              lane,
+              reasons: degradation.reasons,
+              requested: degradation.requested,
+              effective: degradation.effective,
+              pressure: degradation.pressure,
+            });
+          }
+          const contextWithDiagnostics = {
+            ...context,
+            diagnostics: {
+              ...(context.diagnostics ?? {}),
+              queryDegradation: degradation,
+            },
+          };
           statusCode = 200;
           res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
           res.end(
             JSON.stringify({
               ok: true,
-              context,
-              payload: context,
-              items: context.items,
-              summary: context.summary,
+              context: contextWithDiagnostics,
+              payload: contextWithDiagnostics,
+              items: contextWithDiagnostics.items,
+              summary: contextWithDiagnostics.summary,
+              degradation,
             })
           );
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           const isValidation = error instanceof MemoryValidationError;
+          if (!isValidation && isTransientMemoryQueryError(error)) {
+            const requestedMaxItems = toBoundedInt(payload.maxItems, 12, 1, 100);
+            const requestedMaxChars = toBoundedInt(payload.maxChars, 8_000, 256, 100_000);
+            const requestedScanLimit = toBoundedInt(payload.scanLimit, 200, 1, 500);
+            const requestedModeRaw = toTrimmedString(payload.retrievalMode).toLowerCase();
+            const requestedRetrievalMode =
+              requestedModeRaw === "lexical" || requestedModeRaw === "semantic" || requestedModeRaw === "hybrid"
+                ? requestedModeRaw
+                : "hybrid";
+            const fallbackRecentTimeoutMs = 2_500;
+            const fallbackRecentLimit = Math.max(2, Math.min(12, requestedMaxItems));
+            let fallbackRows: Array<Record<string, unknown>> = [];
+            try {
+              const recentRows = await withRouteTimeout(
+                memoryService.recent({
+                  tenantId: toTrimmedString(payload.tenantId) || undefined,
+                  limit: Math.max(8, fallbackRecentLimit * 2),
+                }),
+                fallbackRecentTimeoutMs,
+                "memory context transient recent fallback"
+              );
+              fallbackRows = recentRows
+                .filter((row) => row.status !== "quarantined")
+                .slice(0, fallbackRecentLimit)
+                .map((row) => ({
+                  ...row,
+                  score: 0.24 + row.sourceConfidence * 0.24 + row.importance * 0.24,
+                  scoreBreakdown: {
+                    rrf: 0.16,
+                    sourceTrust: row.sourceConfidence,
+                    recency: 0.24,
+                    importance: row.importance,
+                    session: 0,
+                    lexical: 0,
+                    semantic: 0,
+                    sessionLane: 0,
+                  },
+                  matchedBy: ["transient-recent-fallback", "backend-timeout"],
+                }));
+            } catch {}
+            const fallbackUsedChars = fallbackRows.reduce((acc, row) => acc + String(row.content ?? "").length, 0);
+            const pressure = memoryPressureSnapshot();
+            const degradation = {
+              applied: true,
+              lane,
+              shed: false,
+              reasons: fallbackRows.length > 0 ? ["backend-timeout", "recent-fallback"] : ["backend-timeout", "graceful-empty-context"],
+              retryAfterSeconds: policy.thresholds.queryRetryAfterSeconds,
+              requested: {
+                retrievalMode: requestedRetrievalMode,
+                maxItems: requestedMaxItems,
+                scanLimit: requestedScanLimit,
+                maxChars: requestedMaxChars,
+              },
+              effective: {
+                retrievalMode: "lexical",
+                maxItems: fallbackRows.length,
+                scanLimit: fallbackRows.length,
+                maxChars: fallbackUsedChars,
+              },
+              pressure,
+              warning: message,
+              queued: policy.queued,
+              queueWaitMs: policy.queueWaitMs,
+            };
+            const fallbackContext = {
+              summary:
+                fallbackRows.length > 0
+                  ? "Context degraded due backend timeout; serving recent fallback items to keep workflow continuity."
+                  : "Context temporarily unavailable due backend timeout; returning empty result to keep the workflow responsive.",
+              items: fallbackRows,
+              budget: {
+                maxItems: requestedMaxItems,
+                maxChars: requestedMaxChars,
+                usedChars: fallbackUsedChars,
+                scanLimit: requestedScanLimit,
+                scanned: fallbackRows.length,
+                droppedByBudget: Math.max(0, fallbackRows.length - requestedMaxItems),
+              },
+              selection: {
+                tenantId: null,
+                requestedTenantId: toTrimmedString(payload.tenantId) || null,
+                tenantFallbackApplied: false,
+                agentId: toTrimmedString(payload.agentId) || null,
+                runId: toTrimmedString(payload.runId) || null,
+                query: toTrimmedString(payload.query) || null,
+                seedMemoryId: toTrimmedString(payload.seedMemoryId) || null,
+                retrievalMode: "lexical",
+                sourceAllowlist: toStringList(payload.sourceAllowlist),
+                sourceDenylist: toStringList(payload.sourceDenylist),
+                temporalAnchorAt: toTrimmedString(payload.temporalAnchorAt) || null,
+                includeExplain: payload.explain === true,
+                expandRelationships: payload.expandRelationships === true,
+                requestedMaxHops: toBoundedInt(payload.maxHops, 2, 1, 4),
+                tenantFallbackUsedForEmptyScope: false,
+                relationshipExpansion: {
+                  hopsUsed: 0,
+                  addedFromRelationships: 0,
+                  attempted: payload.expandRelationships === true,
+                  frontierSeedCount: 0,
+                },
+              },
+              diagnostics: {
+                candidateCounts: {
+                  tenantRows: fallbackRows.length,
+                  scopedRows: fallbackRows.length,
+                  searchRows: fallbackRows.length,
+                  mergedRows: fallbackRows.length,
+                },
+                retrievalModeUsed: "lexical",
+                includeTenantFallback: payload.includeTenantFallback === true,
+                queryDegradation: degradation,
+              },
+            };
+            logger.warn("memory_query_transient_error", {
+              requestId,
+              endpoint: "/api/memory/context",
+              lane,
+              message,
+              pressure,
+            });
+            recordMemoryLatency("context", routeStartedAtMs);
+            statusCode = 200;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(
+              JSON.stringify({
+                ok: true,
+                context: fallbackContext,
+                payload: fallbackContext,
+                items: fallbackRows,
+                summary: fallbackContext.summary,
+                degradation,
+              })
+            );
+            return;
+          }
           statusCode = isValidation ? 400 : 500;
           res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
           res.end(JSON.stringify({ ok: false, message }));
@@ -922,15 +1482,200 @@ export function startHttpServer(params: {
           res.end(JSON.stringify({ ok: false, message: auth.message }));
           return;
         }
+        let payload: Record<string, unknown> = {};
+        let lane: MemoryQueryLane = "ops";
+        let routeStartedAtMs = Date.now();
+        let policy = classifyMemoryQueryPressure(lane, "search");
         try {
-          const payload = await readJsonBody(req);
-          const rows = await memoryService.search(payload);
+          payload = toObjectRecord(await readJsonBody(req));
+          lane = deriveMemoryQueryLane(payload, "ops");
+          routeStartedAtMs = Date.now();
+          policy = await waitForMemoryQuerySlot(lane, "search", requestId);
+          if (policy.shed) {
+            logger.warn("memory_query_shed", {
+              requestId,
+              endpoint: "/api/memory/search",
+              lane,
+              reasons: policy.reasons,
+              pressure: policy.pressure,
+            });
+            statusCode = 503;
+            res.writeHead(
+              statusCode,
+              withSecurityHeaders({
+                "content-type": "application/json",
+                ...corsHeaders,
+                "x-request-id": requestId,
+                "retry-after": String(policy.thresholds.queryRetryAfterSeconds),
+              })
+            );
+            res.end(
+              JSON.stringify({
+                ok: false,
+                message: "Memory search deferred due ingest/query pressure.",
+                reason: "query-shed",
+                lane,
+                retryAfterSeconds: policy.thresholds.queryRetryAfterSeconds,
+                pressure: policy.pressure,
+                degradation: {
+                  applied: true,
+                  lane,
+                  shed: true,
+                  reasons: policy.reasons,
+                  queued: policy.queued,
+                  queueWaitMs: policy.queueWaitMs,
+                },
+              })
+            );
+            return;
+          }
+          const requestedLimit = toBoundedInt(payload.limit, 10, 1, 100);
+          const requestedModeRaw = toTrimmedString(payload.retrievalMode).toLowerCase();
+          const requestedRetrievalMode =
+            requestedModeRaw === "lexical" || requestedModeRaw === "semantic" || requestedModeRaw === "hybrid"
+              ? requestedModeRaw
+              : "hybrid";
+          const effectivePayload: Record<string, unknown> = {
+            ...payload,
+            limit: requestedLimit,
+            retrievalMode: requestedRetrievalMode,
+          };
+          const adjustments: string[] = [];
+          if (policy.degrade) {
+            const preferredMode = lane === "interactive" ? "hybrid" : "lexical";
+            if (requestedRetrievalMode !== preferredMode) {
+              effectivePayload.retrievalMode = preferredMode;
+              adjustments.push(`retrievalMode:${requestedRetrievalMode}->${preferredMode}`);
+            }
+            const limitCap =
+              lane === "interactive"
+                ? Math.min(100, Math.max(4, policy.thresholds.queryDegradeLimitCap + 4))
+                : Math.max(3, policy.thresholds.queryDegradeLimitCap);
+            const effectiveLimit = Math.min(requestedLimit, limitCap);
+            if (effectiveLimit !== requestedLimit) {
+              effectivePayload.limit = effectiveLimit;
+              adjustments.push(`limit:${requestedLimit}->${effectiveLimit}`);
+            }
+          }
+
+          let rows;
+          activeSearchRequests += 1;
+          try {
+            rows = await withRouteTimeout(
+              memoryService.search(effectivePayload),
+              policy.thresholds.queryRouteTimeoutMs,
+              "memory search query route"
+            );
+          } finally {
+            activeSearchRequests = Math.max(0, activeSearchRequests - 1);
+          }
+          recordMemoryLatency("search", routeStartedAtMs);
+          const degradation = {
+            applied: policy.degrade || adjustments.length > 0,
+            lane,
+            shed: false,
+            reasons: Array.from(new Set([...policy.reasons, ...adjustments])),
+            retryAfterSeconds: policy.degrade ? policy.thresholds.queryRetryAfterSeconds : 0,
+            requested: {
+              retrievalMode: requestedRetrievalMode,
+              limit: requestedLimit,
+            },
+            effective: {
+              retrievalMode: String(effectivePayload.retrievalMode ?? requestedRetrievalMode),
+              limit: Number(effectivePayload.limit ?? requestedLimit),
+            },
+            pressure: memoryPressureSnapshot(),
+            queued: policy.queued,
+            queueWaitMs: policy.queueWaitMs,
+          };
+          if (degradation.applied) {
+            logger.info("memory_query_degraded", {
+              requestId,
+              endpoint: "/api/memory/search",
+              lane,
+              reasons: degradation.reasons,
+              requested: degradation.requested,
+              effective: degradation.effective,
+              pressure: degradation.pressure,
+            });
+          }
           statusCode = 200;
           res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
-          res.end(JSON.stringify({ ok: true, rows, results: rows }));
+          res.end(JSON.stringify({ ok: true, rows, results: rows, degradation }));
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           const isValidation = error instanceof MemoryValidationError;
+          if (!isValidation && isTransientMemoryQueryError(error)) {
+            const requestedLimit = toBoundedInt(payload.limit, 10, 1, 100);
+            const requestedModeRaw = toTrimmedString(payload.retrievalMode).toLowerCase();
+            const requestedRetrievalMode =
+              requestedModeRaw === "lexical" || requestedModeRaw === "semantic" || requestedModeRaw === "hybrid"
+                ? requestedModeRaw
+                : "hybrid";
+            const fallbackRecentTimeoutMs = 2_500;
+            const fallbackRecentLimit = Math.max(2, Math.min(12, requestedLimit));
+            let fallbackRows: Array<Record<string, unknown>> = [];
+            try {
+              const recentRows = await withRouteTimeout(
+                memoryService.recent({
+                  tenantId: toTrimmedString(payload.tenantId) || undefined,
+                  limit: Math.max(8, fallbackRecentLimit * 2),
+                }),
+                fallbackRecentTimeoutMs,
+                "memory search transient recent fallback"
+              );
+              fallbackRows = recentRows
+                .filter((row) => row.status !== "quarantined")
+                .slice(0, fallbackRecentLimit)
+                .map((row) => ({
+                  ...row,
+                  score: 0.24 + row.sourceConfidence * 0.24 + row.importance * 0.24,
+                  scoreBreakdown: {
+                    rrf: 0.16,
+                    sourceTrust: row.sourceConfidence,
+                    recency: 0.24,
+                    importance: row.importance,
+                    session: 0,
+                    lexical: 0,
+                    semantic: 0,
+                    sessionLane: 0,
+                  },
+                  matchedBy: ["transient-recent-fallback", "backend-timeout"],
+                }));
+            } catch {}
+            const pressure = memoryPressureSnapshot();
+            const degradation = {
+              applied: true,
+              lane,
+              shed: false,
+              reasons: fallbackRows.length > 0 ? ["backend-timeout", "recent-fallback"] : ["backend-timeout", "graceful-empty-search"],
+              retryAfterSeconds: policy.thresholds.queryRetryAfterSeconds,
+              requested: {
+                retrievalMode: requestedRetrievalMode,
+                limit: requestedLimit,
+              },
+              effective: {
+                retrievalMode: "lexical",
+                limit: fallbackRows.length,
+              },
+              pressure,
+              warning: message,
+              queued: policy.queued,
+              queueWaitMs: policy.queueWaitMs,
+            };
+            logger.warn("memory_query_transient_error", {
+              requestId,
+              endpoint: "/api/memory/search",
+              lane,
+              message,
+              pressure,
+            });
+            recordMemoryLatency("search", routeStartedAtMs);
+            statusCode = 200;
+            res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+            res.end(JSON.stringify({ ok: true, rows: fallbackRows, results: fallbackRows, degradation }));
+            return;
+          }
           statusCode = isValidation ? 400 : 500;
           res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
           res.end(JSON.stringify({ ok: false, message }));

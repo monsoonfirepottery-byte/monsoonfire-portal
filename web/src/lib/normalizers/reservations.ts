@@ -12,6 +12,8 @@ export type ReservationPieceRecord = {
 
 export type ReservationRecord = {
   id: string;
+  ownerUid?: string | null;
+  createdByUid?: string | null;
   status: ReservationStatus;
   loadStatus?: "queued" | "loading" | "loaded" | string | null;
   firingType: string;
@@ -156,6 +158,14 @@ export type ReservationRecord = {
     glazeAccessCost?: number | null;
     waxResistAssistRequested?: boolean;
     glazeSanityCheckRequested?: boolean;
+    fragileHandlingRequested?: boolean;
+    fragileHandlingCost?: number | null;
+    placementPreferenceRequested?: boolean;
+    placementPreferenceZone?: "top" | "middle" | "bottom" | string | null;
+    placementPreferenceCost?: number | null;
+    prepaidStorageRequested?: boolean;
+    prepaidStorageWeeks?: number | null;
+    prepaidStorageCost?: number | null;
     deliveryAddress?: string | null;
     deliveryInstructions?: string | null;
   } | null;
@@ -170,6 +180,11 @@ export function normalizeReservationRecord(
 ): ReservationRecord {
   return {
     id,
+    ownerUid: typeof raw.ownerUid === "string" && raw.ownerUid.trim().length > 0 ? raw.ownerUid.trim() : null,
+    createdByUid:
+      typeof raw.createdByUid === "string" && raw.createdByUid.trim().length > 0
+        ? raw.createdByUid.trim()
+        : null,
     status: raw.status ?? "REQUESTED",
     loadStatus: raw.loadStatus ?? null,
     firingType: raw.firingType ?? "other",

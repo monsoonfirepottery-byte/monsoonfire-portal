@@ -6,6 +6,11 @@ export const RUSH_REQUEST_PRICE = 20;
 export const WAX_RESIST_ASSIST_PRICE = 10;
 export const GLAZE_SANITY_CHECK_PRICE = 12;
 export const STAFF_GLAZE_PREP_PER_HALF_SHELF_PRICE = 10;
+export const ADD_ON_HALF_SHELF_CAP_RATIO = 0.35;
+export const ADD_ON_HALF_SHELF_CAP = Number((HALF_SHELF_BISQUE_PRICE * ADD_ON_HALF_SHELF_CAP_RATIO).toFixed(2));
+export const FRAGILE_HANDLING_PER_HALF_SHELF_PRICE = 4;
+export const PLACEMENT_PREFERENCE_PRICE = 3;
+export const PREPAID_STORAGE_WEEKLY_PRICE = 2;
 
 export type FiringType = "bisque" | "glaze" | "other";
 

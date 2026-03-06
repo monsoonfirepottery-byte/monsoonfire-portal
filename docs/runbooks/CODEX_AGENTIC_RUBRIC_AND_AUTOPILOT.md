@@ -31,6 +31,7 @@ Define a measurable, repeatable operating loop for Codex automation that optimiz
 - `npm run codex:rubric:daily`
 - `npm run codex:rubric:daily:write`
 - `npm run codex:rubric:strict`
+- `npm run codex:rubric:strict:compat`
 - `npm run codex:telemetry:audit`
 - `npm run codex:telemetry:audit:write`
 - `npm run codex:telemetry:audit:strict`
@@ -123,6 +124,7 @@ npm run codex:telemetry:audit:strict
 
 Note:
 - `codex:rubric:strict` currently requires token telemetry coverage >= 50%.
+- `codex:rubric:strict:compat` keeps strict call-presence enforcement but disables token-coverage hard-fail when token telemetry is unavailable.
 
 ## Success Criteria
 

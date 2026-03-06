@@ -53,6 +53,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STUDIO_BRAIN_BASE_URL: ${{ vars.STUDIO_BRAIN_BASE_URL }}
+          STUDIO_BRAIN_AUTH_TOKEN: ${{ secrets.STUDIO_BRAIN_AUTH_TOKEN }}
+          STUDIO_BRAIN_ADMIN_TOKEN: ${{ secrets.STUDIO_BRAIN_ADMIN_TOKEN }}
+          OPEN_MEMORY_TENANT_ID: ${{ vars.OPEN_MEMORY_TENANT_ID }}
         run: |
           set -euo pipefail
 

@@ -84,6 +84,7 @@ const requiredMcpKeys = new Set([
   "homeAssistantAqaraIntegration",
   "hubitatMCP",
   "hubitatMakerAPI",
+  "open_memory",
   "appleHomeDocumentation",
   "appleHomeKitAppStoreGuidance",
   "appleHomeAppSiteAssociation",

@@ -257,8 +257,16 @@ service cloud.firestore {
           "urgency",
           "channel",
           "createdAt",
+          "eventId",
+          "sourceEventTitle",
+          "eventTitle",
+          "techniqueIds",
+          "level",
+          "schedule",
+          "buddyMode",
           "displayName",
-          "email"
+          "email",
+          "source"
         ])
         && isNonEmptyString(request.resource.data.subject)
         && isNonEmptyString(request.resource.data.body)

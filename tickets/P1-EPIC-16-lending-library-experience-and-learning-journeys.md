@@ -1,6 +1,6 @@
 # P1 — EPIC 16: Lending Library Experience and Learning Journeys
 
-Status: In Progress (Reopened)
+Status: Completed
 Date: 2026-03-01
 Priority: P1
 Owner: Library Ops + Program Ops + Member Experience
@@ -107,3 +107,31 @@ Epic reopened for an additional UI/UX and catalog-media quality path:
    1. runtime phase toggles now gate library write surfaces without deploys,
    2. Staff -> Lending now includes a phase metrics snapshot with error/conflict/route-error/latency rollups,
    3. staff can copy a structured phase metrics JSON artifact for release gate evidence.
+
+## Execution Update (2026-03-01, Closeout Sprint)
+
+1. Closed backend overdue-worker assertion loop:
+   1. added mixed-status and idempotent rerun integration coverage in `functions/src/library.overdueSync.test.ts`,
+   2. validated stage emission coverage for `due_7d`, `due_1d`, and `overdue_3d`.
+2. Closed cover-quality test harness loop:
+   1. exported `evaluateCoverQuality`,
+   2. added focused unit coverage in `functions/src/library.test.ts`.
+3. Closed staff admin contract-alignment loop:
+   1. cleaned create/update/delete API payloads to match backend contracts,
+   2. added automated payload contract tests in `web/src/views/staff/lendingAdminPayload.test.ts`.
+4. Ran authenticated browser QA evidence pass:
+   1. `portal:smoke:playwright --with-auth` passed with zero reported issues,
+   2. artifacts captured under `output/playwright/portal/library-epic-auth`.
+5. Added rollback drill automation readiness:
+   1. command: `npm run library:rollout:drill`,
+   2. dry-run evidence artifacts: `output/qa/library-rollout-rollback-drill.json` and `.md`,
+   3. runbook updated with execution/safety guidance in `docs/library/ROLLOUT_CUTOVER_RUNBOOK.md`.
+6. Executed final operational loop in production:
+   1. rollback drill timing capture completed with `npm run library:rollout:drill -- --execute`,
+   2. duration verified within target and rollout phase restored to `phase_3_admin_full`.
+
+## Completion Update (2026-03-01)
+
+1. All Epic 16 child tickets are now complete.
+2. Release-plan rollback drill timing evidence is captured and accepted.
+3. Epic status is now `Completed`.

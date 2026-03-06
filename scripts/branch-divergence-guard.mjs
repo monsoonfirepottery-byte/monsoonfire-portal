@@ -345,6 +345,7 @@ async function main() {
     deletedBranches: [],
     previousStateCapturedAtIso: "",
     rollingIssue: { number: 0, url: "" },
+    rollingCommentSkipped: false,
     alertIssue: { number: 0, url: "" },
     reportPath: options.reportPath,
   };
@@ -385,7 +386,17 @@ async function main() {
     };
 
     if (rollingIssue.number > 0) {
-      postIssueComment(repoSlug, rollingIssue.number, buildRollingComment(summary, statePayload));
+      const hasBranchStateChanges =
+        summary.rewrites.length > 0 ||
+        summary.deletedBranches.length > 0 ||
+        summary.fastForwards.length > 0 ||
+        summary.newBranches.length > 0;
+      const hasBaseline = Boolean(summary.previousStateCapturedAtIso);
+      if (hasBranchStateChanges || !hasBaseline) {
+        postIssueComment(repoSlug, rollingIssue.number, buildRollingComment(summary, statePayload));
+      } else {
+        summary.rollingCommentSkipped = true;
+      }
     }
 
     if (summary.status === "failed") {

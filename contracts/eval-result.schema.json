@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://monsoonfire.com/contracts/eval-result.schema.json",
+  "title": "Intent Eval Result",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "intentId",
+    "suiteId",
+    "threshold",
+    "score",
+    "status",
+    "summary",
+    "cases"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "type": "string", "const": "intent-eval-result.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "intentId": { "type": "string", "minLength": 3, "maxLength": 120 },
+    "suiteId": { "type": "string", "minLength": 3, "maxLength": 160 },
+    "threshold": { "type": "number", "minimum": 0, "maximum": 1 },
+    "score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "status": { "type": "string", "enum": ["pass", "fail", "deferred_missing_eval"] },
+    "summary": {
+      "type": "object",
+      "required": ["totalCases", "passedCases", "failedCases", "requiredFailures"],
+      "additionalProperties": false,
+      "properties": {
+        "totalCases": { "type": "integer", "minimum": 0 },
+        "passedCases": { "type": "integer", "minimum": 0 },
+        "failedCases": { "type": "integer", "minimum": 0 },
+        "requiredFailures": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "type", "required", "weight", "passed"],
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "type": { "type": "string" },
+          "required": { "type": "boolean" },
+          "weight": { "type": "number", "minimum": 0, "maximum": 1 },
+          "passed": { "type": "boolean" },
+          "details": { "type": "object" }
+        }
+      }
+    }
+  }
+}

@@ -337,7 +337,7 @@ describe("MyPiecesView permission resiliency", () => {
     renderMyPieces(user);
     await screen.findByText("QA-DETAIL");
 
-    fireEvent.click(screen.getByRole("button", { name: "View details" }));
+    fireEvent.click(screen.getByRole("button", { name: /^(View details|Open detail)$/i }));
 
     await screen.findByText("Some piece detail sections are unavailable due to permissions.");
     expect(screen.getByText("Looks good")).toBeDefined();

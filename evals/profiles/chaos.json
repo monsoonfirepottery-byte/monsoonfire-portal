@@ -1,0 +1,15 @@
+{
+  "schema": "intent-simulation-profile.v1",
+  "profileId": "chaos",
+  "description": "Stress profile that intentionally tightens limits to expose brittle automation edges early.",
+  "maxChecksPerTask": 10,
+  "maxTotalChecks": 180,
+  "requiredEnv": [],
+  "denyCommandPatterns": [
+    "git reset --hard",
+    "git checkout --",
+    "npm run deploy",
+    "npx firebase-tools deploy"
+  ],
+  "allowNetworkWrites": false
+}

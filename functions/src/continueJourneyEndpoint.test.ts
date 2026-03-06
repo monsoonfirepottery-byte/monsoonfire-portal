@@ -5,9 +5,9 @@ import { continueJourney } from "./index";
 import type * as SharedModule from "./shared";
 import type * as IntegrationEventsModule from "./integrationEvents";
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 const shared = require("./shared") as typeof SharedModule;
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 const integrationEvents = require("./integrationEvents") as typeof IntegrationEventsModule;
 
 type MockReq = {

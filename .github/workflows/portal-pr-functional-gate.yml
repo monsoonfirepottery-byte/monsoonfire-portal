@@ -27,10 +27,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
 
       - name: Install root deps
         run: npm ci
+
+      - name: Install functions deps
+        run: npm ci --prefix functions
 
       - name: Authenticate to Google Cloud (rules checks)
         if: ${{ env.IS_DEPENDABOT_PR != 'true' }}

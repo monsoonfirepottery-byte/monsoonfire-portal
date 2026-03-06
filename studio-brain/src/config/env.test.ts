@@ -168,14 +168,16 @@ test("signature policy requires trust anchors", () => {
   );
 });
 
-test("openai embedding provider requires API key", () => {
+test("openai embedding provider allows missing API key for null-adapter fallback", () => {
   withPatchedEnv(
     {
       STUDIO_BRAIN_EMBEDDING_PROVIDER: "openai",
       STUDIO_BRAIN_OPENAI_API_KEY: "",
     },
     () => {
-      assert.throws(() => readEnv(), /STUDIO_BRAIN_OPENAI_API_KEY/);
+      const env = readEnv();
+      assert.equal(env.STUDIO_BRAIN_EMBEDDING_PROVIDER, "openai");
+      assert.equal(env.STUDIO_BRAIN_OPENAI_API_KEY, "");
     }
   );
 

@@ -131,12 +131,14 @@ function withPatchedEnv(patch, run) {
         strict_1.default.equal(env.STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS, "root-v1=anchor-secret");
     });
 });
-(0, node_test_1.default)("openai embedding provider requires API key", () => {
+(0, node_test_1.default)("openai embedding provider allows missing API key for null-adapter fallback", () => {
     withPatchedEnv({
         STUDIO_BRAIN_EMBEDDING_PROVIDER: "openai",
         STUDIO_BRAIN_OPENAI_API_KEY: "",
     }, () => {
-        strict_1.default.throws(() => (0, env_1.readEnv)(), /STUDIO_BRAIN_OPENAI_API_KEY/);
+        const env = (0, env_1.readEnv)();
+        strict_1.default.equal(env.STUDIO_BRAIN_EMBEDDING_PROVIDER, "openai");
+        strict_1.default.equal(env.STUDIO_BRAIN_OPENAI_API_KEY, "");
     });
     withPatchedEnv({
         STUDIO_BRAIN_EMBEDDING_PROVIDER: "openai",

@@ -180,7 +180,7 @@ async function withServer(options, run) {
             headers: { "content-type": "application/json", authorization: "Bearer test-staff" },
             body: JSON.stringify({
                 agentId: "test-agent",
-                runId: "test-run",
+                runId: "test-agent:main",
                 query: "QA blockers",
                 maxItems: 3,
                 maxChars: 512,

@@ -5161,8 +5161,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
       });
       const merged = [...rowsInput];
       for (const row of fetched) {
-        if (row.status === "quarantined") continue;
-        if (!sourceAllowed(row.source, sourceAllowlist, sourceDenylist)) continue;
+        if (!matchesContextScope(row)) continue;
         if (existingIds.has(row.id)) continue;
         const loopState = pointerById.get(row.id);
         const base = toSearchResultFromRecord(
@@ -5252,6 +5251,14 @@ export function createMemoryService(options: MemoryServiceOptions) {
         : scopedRows;
     const tenantFallbackUsedForEmptyScope =
       effectiveRows.length > 0 && scopedRows.length === 0 && (agentId !== null || runId !== null) && parsed.includeTenantFallback;
+    const matchesContextScope = (row: Pick<MemoryRecord, "agentId" | "runId" | "source" | "status">): boolean => {
+      if (!sourceAllowed(row.source, sourceAllowlist, sourceDenylist)) return false;
+      if (row.status === "quarantined") return false;
+      if (tenantFallbackUsedForEmptyScope) return true;
+      if (agentId && row.agentId !== agentId) return false;
+      if (runId && row.runId !== runId) return false;
+      return true;
+    };
 
     const knownRows = new Map<string, MemoryRecord>();
     const threadBuckets = new Map<string, MemoryRecord[]>();
@@ -5478,8 +5485,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
               tenantId: tenantResolution.tenantId,
             });
             for (const row of fetched) {
-              if (row.status === "quarantined") continue;
-              if (!sourceAllowed(row.source, sourceAllowlist, sourceDenylist)) continue;
+              if (!matchesContextScope(row)) continue;
               const asSearch = toSearchResultFromRecord(
                 row,
                 {
@@ -5628,7 +5634,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
             tenantId: tenantResolution.tenantId,
           });
           for (const row of fetched) {
-            if (!visited.has(row.id) && sourceAllowed(row.source, sourceAllowlist, sourceDenylist) && row.status !== "quarantined") {
+            if (!visited.has(row.id) && matchesContextScope(row)) {
               knownRows.set(row.id, row);
             }
           }

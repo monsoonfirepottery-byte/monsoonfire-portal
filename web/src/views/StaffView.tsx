@@ -71,6 +71,7 @@ import {
   resolveStaffWorkspaceOpenTarget,
   resolveStaffWorkspaceMatch,
   resolveStaffWorkspaceRequestedPath,
+  shouldNavigateToStaffWorkspaceTarget,
   STAFF_COCKPIT_PATH,
   STAFF_PATH,
   resolveStaffCockpitWorkspaceTabSegment,
@@ -6785,12 +6786,13 @@ const loadEvents = useCallback(async () => {
       const match = resolveStaffWorkspaceOpenTarget(target);
       if (!match) return;
       const targetPath = match.canonicalPath;
-      if (currentPath === targetPath) return;
       const isCurrentlyInStaffWorkspace = Boolean(resolveStaffWorkspaceMatch(currentPath));
-      if (isCurrentlyInStaffWorkspace) {
-        window.history.replaceState({}, "", targetPath);
-      } else {
-        window.history.pushState({}, "", targetPath);
+      if (shouldNavigateToStaffWorkspaceTarget(currentPath, targetPath, window.location.hash)) {
+        if (isCurrentlyInStaffWorkspace) {
+          window.history.replaceState({}, "", targetPath);
+        } else {
+          window.history.pushState({}, "", targetPath);
+        }
       }
     }
   }, [onOpenStaffWorkspace]);

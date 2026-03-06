@@ -336,6 +336,23 @@ export function resolveStaffWorkspaceOpenTarget(pathname: StaffPathInput): Staff
   return resolveStaffWorkspaceMatch(normalizedTarget);
 }
 
+export function shouldNavigateToStaffWorkspaceTarget(
+  currentPath: StaffPathInput,
+  targetPath: StaffPathInput,
+  hash: StaffPathInput
+): boolean {
+  const normalizedCurrentPath = normalizeStaffPath(currentPath);
+  const normalizedTargetPath = normalizeStaffPath(targetPath);
+  if (!normalizedTargetPath) return false;
+  if (normalizedCurrentPath !== normalizedTargetPath) return true;
+
+  const currentIsStaffWorkspace = Boolean(resolveStaffWorkspaceMatch(normalizedCurrentPath));
+  if (!currentIsStaffWorkspace) return false;
+
+  const trimmedHash = typeof hash === "string" ? hash.trim() : "";
+  return trimmedHash.length > 0;
+}
+
 export function resolveStaffWorkspaceLaunch(pathname: StaffPathInput, hash: StaffPathInput): StaffWorkspaceLaunch | null {
   const normalizedHashPath = normalizeStaffPath(hash);
   const normalizedPath = normalizeStaffPath(pathname);

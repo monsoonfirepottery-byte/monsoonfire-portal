@@ -1,10 +1,10 @@
 # P2 — PST Canonical Corpus, Relationship Graph, and Timeline Indexing
 
-Status: Open  
-Date: 2026-03-03  
-Priority: P2  
-Owner: Platform / Studio Brain / Codex  
-Type: Ticket  
+Status: Open
+Date: 2026-03-03
+Priority: P2
+Owner: Platform / Studio Brain / Codex
+Type: Ticket
 Parent Epic: docs/epics/EPIC-PST-INGESTION-RELATIONSHIP-INDEXING.md
 
 ## Problem

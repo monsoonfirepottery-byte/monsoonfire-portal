@@ -18,7 +18,6 @@ function parseArgs(argv) {
   }
   return args;
 }
-
 function toInt(value, fallback) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -305,4 +304,3 @@ function main() {
 }
 
 main();
-

@@ -18,7 +18,7 @@ const defaultOutputDir = resolve(repoRoot, "output", "qa");
 const defaultReportJsonPath = resolve(defaultOutputDir, "codex-backlog-autopilot.json");
 const defaultReportMarkdownPath = resolve(defaultOutputDir, "codex-backlog-autopilot.md");
 
-const rollingIssueTitle = "Codex Backlog Autopilot (Rolling)";
+const rollingIssueTitle = "Codex Automation (Rolling)";
 const defaultLendingLibraryExclusionRegex =
   "(lending[ -]?library|tickets/p1-epic-16|tickets/p1-library-|tickets/p2-library-|tickets/p1-lending-library-|tickets/p2-lending-library-)";
 

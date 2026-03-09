@@ -16,7 +16,7 @@ const codexDir = resolve(repoRoot, ".codex");
 const toolcallPath = resolve(codexDir, "toolcalls.ndjson");
 const improvementStatePath = resolve(codexDir, "improvement-state.json");
 const prGreenLogPath = resolve(codexDir, "pr-green-log.md");
-const rollingIssueTitle = "Codex PR Green Daily (Rolling)";
+const rollingIssueTitle = "Codex Automation (Rolling)";
 
 const secretKeyPattern = /(token|secret|password|authorization|api[_-]?key|cookie|session|private[_-]?key)/i;
 const secretValuePatterns = [

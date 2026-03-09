@@ -6,6 +6,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { buildAutomationFamilyBody, getAutomationFamily } from "./lib/automation-issue-families.mjs";
+import { ensureGhLabels, ensureIssueWithMarker, listRepoIssues } from "./lib/github-issues.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
@@ -13,11 +15,10 @@ const repoRoot = resolve(dirname(__filename), "..");
 const DEFAULT_DASHBOARD_PATH = resolve(repoRoot, "output", "qa", "portal-automation-health-dashboard.json");
 const DEFAULT_REPORT_JSON_PATH = resolve(repoRoot, "output", "qa", "portal-automation-issue-loop.json");
 const DEFAULT_REPORT_MARKDOWN_PATH = resolve(repoRoot, "output", "qa", "portal-automation-issue-loop.md");
-const DEFAULT_REPEATED_THRESHOLD = 2;
-const DEFAULT_MAX_ISSUES = 6;
-const DEFAULT_MAX_PER_WORKFLOW = 2;
-const TUNING_ROLLING_ISSUE = "Portal Automation Threshold Tuning (Rolling)";
-const CANARY_ROLLING_ISSUE = "Portal Authenticated Canary Failures (Rolling)";
+const DEFAULT_REPEATED_THRESHOLD = 3;
+const DEFAULT_MAX_ISSUES = 3;
+const DEFAULT_MAX_PER_WORKFLOW = 1;
+const PORTAL_QA_FAMILY = getAutomationFamily("portal-qa");
 const ROLLING_ONLY_SIGNATURE_KEYS = new Set(["promotion::promotion.risk.high"]);
 const NON_GATING_SIGNATURE_PATTERNS = [
   /deploy to firebase hosting on pr/i,
@@ -722,16 +723,14 @@ async function main() {
 
   const rollingConfigs = [
     {
-      title: TUNING_ROLLING_ISSUE,
-      labels: ["automation", "portal-qa", "self-improvement"],
+      lane: "tuning",
       markerPrefix: "portal-tuning-snapshot-signature",
       markerAliases: ["portal-tuning-signature", "portal-automation-tuning-signature"],
       signaturePayload: dashboard.tuning?.recommendations || {},
       buildComment: (marker) => createTuningComment(dashboard, marker),
     },
     {
-      title: CANARY_ROLLING_ISSUE,
-      labels: ["automation", "portal-qa"],
+      lane: "canary-directives",
       markerPrefix: "portal-canary-directive-signature",
       markerAliases: ["portal-canary-signature", "portal-automation-canary-signature"],
       signaturePayload: extractCanaryDirectiveCandidates(dashboard),
@@ -739,15 +738,42 @@ async function main() {
     },
   ];
 
+  let familyIssue = null;
+  if (options.apply) {
+    const openIssuesResp = listRepoIssues(repoSlug, { state: "open", maxPages: 2, cwd: repoRoot });
+    if (openIssuesResp.ok) {
+      ensureGhLabels(repoSlug, PORTAL_QA_FAMILY.labels, { cwd: repoRoot });
+      const ensured = ensureIssueWithMarker(
+        repoSlug,
+        {
+          title: PORTAL_QA_FAMILY.title,
+          body: buildAutomationFamilyBody(PORTAL_QA_FAMILY),
+          labels: PORTAL_QA_FAMILY.labels.map((item) => item.name),
+          marker: PORTAL_QA_FAMILY.marker,
+          preferredNumber: PORTAL_QA_FAMILY.preferredNumber,
+          openIssues: openIssuesResp.data,
+        },
+        { cwd: repoRoot }
+      );
+      if (ensured.ok) {
+        familyIssue = ensured.issue;
+      } else {
+        report.notes.push(`Could not resolve portal QA family issue: ${ensured.error}`);
+      }
+    } else {
+      report.notes.push(`Could not read portal QA family issue list: ${openIssuesResp.error}`);
+    }
+  }
+
   for (const config of rollingConfigs) {
     const markerCandidates = buildRollingMarkerCandidates(config);
     const marker = markerCandidates[0];
     const commentBody = config.buildComment(marker);
-    const existing = findIssueByTitle(repoSlug, config.title);
     const update = {
-      title: config.title,
+      title: PORTAL_QA_FAMILY.title,
+      lane: config.lane,
       result: options.apply ? "pending" : "dry-run",
-      url: existing?.url || "",
+      url: familyIssue?.url || "",
       marker,
     };
 
@@ -756,50 +782,27 @@ async function main() {
       continue;
     }
 
-    let issueNumber = existing?.number || 0;
-    let issueUrl = existing?.url || "";
-    if (!issueNumber) {
-      const created = runGh(
-        [
-          "issue",
-          "create",
-          "--repo",
-          repoSlug,
-          "--title",
-          config.title,
-          "--body",
-          "Rolling thread for portal automation loop updates.",
-          ...config.labels.flatMap((label) => ["--label", label]),
-        ],
-        { allowFailure: true }
-      );
-      if (created.ok) {
-        issueUrl = created.stdout.trim();
-        issueNumber = parseIssueNumberFromUrl(issueUrl);
-      } else {
-        update.result = "failed-create";
-        report.notes.push(`Could not create rolling issue "${config.title}".`);
-      }
-    }
-
-    if (issueNumber) {
-      const latestComment = fetchLatestIssueCommentBody(repoSlug, issueNumber);
+    if (familyIssue?.number) {
+      const latestComment = fetchLatestIssueCommentBody(repoSlug, familyIssue.number);
       if (markerCandidates.some((candidate) => latestComment.includes(`<!-- ${candidate} -->`))) {
         update.result = "unchanged-skip";
-        update.url = issueUrl || existing?.url || "";
+        update.url = familyIssue.url || "";
       } else {
         const commented = runGh(
-          ["issue", "comment", String(issueNumber), "--repo", repoSlug, "--body", commentBody],
+          ["issue", "comment", String(familyIssue.number), "--repo", repoSlug, "--body", commentBody],
           { allowFailure: true }
         );
         if (commented.ok) {
           update.result = "commented";
-          update.url = issueUrl || existing?.url || "";
+          update.url = familyIssue.url || "";
         } else {
           update.result = "failed-comment";
-          report.notes.push(`Could not comment on rolling issue "${config.title}".`);
+          report.notes.push(`Could not comment on portal QA family issue for lane "${config.lane}".`);
         }
       }
+    } else {
+      update.result = "failed-create";
+      report.notes.push(`Portal QA family issue missing for lane "${config.lane}".`);
     }
 
     report.rollingUpdates.push(update);

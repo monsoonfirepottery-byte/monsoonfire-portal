@@ -6,12 +6,14 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { buildAutomationFamilyBody, getAutomationFamily } from "./lib/automation-issue-families.mjs";
+import { ensureGhLabels, ensureIssueWithMarker, listRepoIssues } from "./lib/github-issues.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
 
-const ROLLING_ISSUE_TITLE = "Branch Divergence / Force-Push Guard (Rolling)";
 const ALERT_ISSUE_TITLE = "[Branch Guard] Non-fast-forward update detected";
+const PORTAL_INFRA_FAMILY = getAutomationFamily("portal-infra");
 const STATE_START = "<!-- branch-divergence-state:start -->";
 const STATE_END = "<!-- branch-divergence-state:end -->";
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "branch-divergence-guard.json");
@@ -351,14 +353,31 @@ async function main() {
   };
 
   const repoSlug = options.includeGithub ? parseRepoSlug() : "";
-  const rollingIssue = repoSlug && options.apply
-    ? ensureIssue(
+  let rollingIssue = { number: 0, url: "" };
+  if (repoSlug && options.apply) {
+    const openIssuesResp = listRepoIssues(repoSlug, { state: "open", maxPages: 2, cwd: repoRoot });
+    if (openIssuesResp.ok) {
+      ensureGhLabels(repoSlug, PORTAL_INFRA_FAMILY.labels, { cwd: repoRoot });
+      const ensured = ensureIssueWithMarker(
         repoSlug,
-        ROLLING_ISSUE_TITLE,
-        "Rolling branch divergence and force-push monitoring log.",
-        ["automation", "infra"]
-      )
-    : { number: 0, url: "" };
+        {
+          title: PORTAL_INFRA_FAMILY.title,
+          body: buildAutomationFamilyBody(PORTAL_INFRA_FAMILY),
+          labels: PORTAL_INFRA_FAMILY.labels.map((label) => label.name),
+          marker: PORTAL_INFRA_FAMILY.marker,
+          preferredNumber: PORTAL_INFRA_FAMILY.preferredNumber,
+          openIssues: openIssuesResp.data,
+        },
+        { cwd: repoRoot }
+      );
+      if (ensured.ok && ensured.issue) {
+        rollingIssue = {
+          number: ensured.issue.number,
+          url: ensured.issue.url,
+        };
+      }
+    }
+  }
   summary.rollingIssue = rollingIssue;
 
   const previousState = repoSlug && rollingIssue.number > 0

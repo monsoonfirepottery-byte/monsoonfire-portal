@@ -22,7 +22,7 @@ const improvementLogPath = resolve(codexDir, "improvement-log.md");
 const improvementStatePath = resolve(codexDir, "improvement-state.json");
 const improvementReportsDir = resolve(repoRoot, "docs", "runbooks", "codex-improvement");
 
-const rollingIssueTitle = "Codex Continuous Improvement (Rolling)";
+const rollingIssueTitle = "Codex Automation (Rolling)";
 const ignoreAnalysisFiles = new Set([
   ".codex/improvement-log.md",
   ".codex/improvement-state.json",

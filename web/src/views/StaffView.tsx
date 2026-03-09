@@ -814,22 +814,28 @@ const AUTOMATION_WORKFLOW_SOURCES: AutomationWorkflowSource[] = [
 ];
 const AUTOMATION_ISSUE_SOURCES: AutomationIssueSource[] = [
   {
-    key: "thresholdTuning",
-    title: "Portal Automation Threshold Tuning (Rolling)",
-    issueNumber: 115,
-    purpose: "loop threshold recommendations",
-  },
-  {
-    key: "weeklyDigest",
-    title: "Portal Automation Weekly Digest (Rolling)",
+    key: "portalQa",
+    title: "Portal QA Automation (Rolling)",
     issueNumber: 116,
-    purpose: "weekly trend digest for loops",
+    purpose: "portal workflow failures, canary state changes, tuning, and digest updates",
   },
   {
-    key: "canaryRolling",
-    title: "Portal Authenticated Canary Failures (Rolling)",
-    issueNumber: 85,
-    purpose: "canary incident history and directives",
+    key: "portalInfra",
+    title: "Portal Infra and Security Guards (Rolling)",
+    issueNumber: 103,
+    purpose: "credential, index, and branch-integrity guard updates",
+  },
+  {
+    key: "governanceTuning",
+    title: "Governance Weekly Tuning (Rolling)",
+    issueNumber: 309,
+    purpose: "weekly governance tuning summaries and threshold proposals",
+  },
+  {
+    key: "codexAutomation",
+    title: "Codex Automation (Rolling)",
+    issueNumber: 84,
+    purpose: "Codex improvement, interaction, PR-green, and backlog reporting",
   },
 ];
 const WORKSHOP_PROGRAMMING_TECHNIQUES: WorkshopProgrammingTechnique[] = [

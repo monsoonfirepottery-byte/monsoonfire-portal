@@ -6,7 +6,15 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
+import { buildAutomationFamilyBody, getAutomationFamily } from "./lib/automation-issue-families.mjs";
+import {
+  ensureGhLabels,
+  ensureIssueWithMarker,
+  listRepoIssues,
+  markerComment,
+  parseRepoSlug,
+  runCommand,
+} from "./lib/github-issues.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
@@ -15,7 +23,7 @@ const DEFAULT_WORKFLOW_NAME = "Portal Daily Authenticated Canary";
 const DEFAULT_THRESHOLD = 2;
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "portal-authenticated-canary-escalation.json");
 const DEFAULT_CANARY_REPORT = resolve(repoRoot, "output", "qa", "portal-authenticated-canary.json");
-const ROLLING_ISSUE_TITLE = "Portal Authenticated Canary Failures (Rolling)";
+const PORTAL_QA_FAMILY = getAutomationFamily("portal-qa");
 
 function parseArgs(argv) {
   const options = {
@@ -109,37 +117,6 @@ function buildRunUrl() {
   return `${server}/${repo}/actions/runs/${runId}`;
 }
 
-function runCommand(command, args, { allowFailure = false } = {}) {
-  const result = spawnSync(command, args, { cwd: repoRoot, encoding: "utf8" });
-  const code = typeof result.status === "number" ? result.status : 1;
-  const stdout = String(result.stdout || "");
-  const stderr = String(result.stderr || "");
-  if (!allowFailure && code !== 0) {
-    throw new Error(`Command failed (${code}): ${command} ${args.join(" ")}\n${stderr || stdout}`);
-  }
-  return {
-    ok: code === 0,
-    code,
-    stdout,
-    stderr,
-  };
-}
-
-function parseRepoSlug() {
-  const envSlug = String(process.env.GITHUB_REPOSITORY || "").trim();
-  if (envSlug) return envSlug;
-
-  const remote = runCommand("git", ["config", "--get", "remote.origin.url"], { allowFailure: true });
-  if (!remote.ok) return "";
-
-  const value = remote.stdout.trim();
-  const sshMatch = value.match(/^git@github\.com:([^/]+\/[^/.]+)(?:\.git)?$/i);
-  if (sshMatch) return sshMatch[1];
-  const httpsMatch = value.match(/^https:\/\/github\.com\/([^/]+\/[^/.]+)(?:\.git)?$/i);
-  if (httpsMatch) return httpsMatch[1];
-  return "";
-}
-
 async function readJsonSafe(path) {
   if (!existsSync(path)) return null;
   try {
@@ -173,78 +150,6 @@ function countConsecutiveFailures(conclusions) {
     break;
   }
   return count;
-}
-
-function ensureGhLabel(repoSlug, name, color, description) {
-  runCommand(
-    "gh",
-    ["label", "create", name, "--repo", repoSlug, "--color", color, "--description", description, "--force"],
-    { allowFailure: true }
-  );
-}
-
-function ensureRollingIssue(repoSlug) {
-  const existing = runCommand(
-    "gh",
-    [
-      "issue",
-      "list",
-      "--repo",
-      repoSlug,
-      "--state",
-      "open",
-      "--search",
-      `in:title \"${ROLLING_ISSUE_TITLE}\"`,
-      "--json",
-      "number,title,url",
-    ],
-    { allowFailure: true }
-  );
-
-  if (existing.ok) {
-    try {
-      const parsed = JSON.parse(existing.stdout || "[]");
-      const match = parsed.find((item) => String(item?.title || "") === ROLLING_ISSUE_TITLE);
-      if (match) {
-        return {
-          number: Number(match.number || 0),
-          url: String(match.url || ""),
-        };
-      }
-    } catch {
-      // no-op
-    }
-  }
-
-  const created = runCommand(
-    "gh",
-    [
-      "issue",
-      "create",
-      "--repo",
-      repoSlug,
-      "--title",
-      ROLLING_ISSUE_TITLE,
-      "--body",
-      "Rolling alert log for authenticated portal canary outcomes.",
-      "--label",
-      "automation",
-      "--label",
-      "qa",
-      "--label",
-      "oncall",
-    ],
-    { allowFailure: true }
-  );
-
-  if (!created.ok) return { number: 0, url: "" };
-
-  const issueUrl = created.stdout.split(/\s+/).find((token) => token.startsWith("https://github.com/")) || "";
-  const issueNumberMatch = issueUrl.match(/\/issues\/(\d+)/);
-  return {
-    number: issueNumberMatch ? Number(issueNumberMatch[1]) : 0,
-    url: issueUrl,
-  };
 }
 
 function issueHasRunMarker(repoSlug, issueNumber, marker) {
@@ -382,23 +287,42 @@ async function main() {
   };
 
   if (options.apply && options.includeGithub) {
-    const repoSlug = parseRepoSlug();
+    const repoSlug = parseRepoSlug({ cwd: repoRoot });
     if (repoSlug) {
-      ensureGhLabel(repoSlug, "automation", "0e8a16", "Automated monitoring and remediation.");
-      ensureGhLabel(repoSlug, "qa", "1d76db", "Quality assurance automation coverage.");
-      ensureGhLabel(repoSlug, "oncall", "d73a4a", "Operational attention required.");
+      const openIssuesResp = listRepoIssues(repoSlug, { state: "open", maxPages: 2, cwd: repoRoot });
+      if (openIssuesResp.ok) {
+        ensureGhLabels(repoSlug, PORTAL_QA_FAMILY.labels, { cwd: repoRoot });
+        const ensured = ensureIssueWithMarker(
+          repoSlug,
+          {
+            title: PORTAL_QA_FAMILY.title,
+            body: buildAutomationFamilyBody(PORTAL_QA_FAMILY),
+            labels: PORTAL_QA_FAMILY.labels.map((label) => label.name),
+            marker: PORTAL_QA_FAMILY.marker,
+            preferredNumber: PORTAL_QA_FAMILY.preferredNumber,
+            openIssues: openIssuesResp.data,
+          },
+          { cwd: repoRoot }
+        );
+        if (ensured.ok && ensured.issue) {
+          summary.rollingIssue = {
+            number: ensured.issue.number,
+            url: ensured.issue.url,
+          };
+        }
+      }
 
-      const rollingIssue = ensureRollingIssue(repoSlug);
-      summary.rollingIssue = rollingIssue;
-
-      if (rollingIssue.number > 0 && (shouldEscalate || shouldPostRecovery)) {
-        const marker = `<!-- portal-canary-run:${options.runId || "manual"} -->`;
-        const alreadyPosted = issueHasRunMarker(repoSlug, rollingIssue.number, marker);
+      if (summary.rollingIssue.number > 0 && (shouldEscalate || shouldPostRecovery)) {
+        const marker = markerComment(`portal-canary-run:${options.runId || "manual"}`);
+        const alreadyPosted = issueHasRunMarker(repoSlug, summary.rollingIssue.number, marker);
         if (!alreadyPosted) {
           const body = shouldEscalate
             ? buildEscalationComment(summary, marker)
             : buildRecoveryComment(summary, marker);
-          postIssueComment(repoSlug, rollingIssue.number, body);
+          runCommand("gh", ["issue", "comment", String(summary.rollingIssue.number), "--repo", repoSlug, "--body", body], {
+            cwd: repoRoot,
+            allowFailure: true,
+          });
         }
       }
     }

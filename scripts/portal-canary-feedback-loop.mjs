@@ -8,6 +8,8 @@ import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { getAutomationFamily } from "./lib/automation-issue-families.mjs";
+import { listRepoIssues, parseRepoSlug as parseGhRepoSlug, pickCanonicalIssue } from "./lib/github-issues.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
@@ -17,7 +19,7 @@ const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "portal-authentica
 const DEFAULT_ARTIFACT_PREFIX = "portal-authenticated-canary-";
 const DEFAULT_LIMIT = 12;
 const DEFAULT_RECOVERY_WINDOW = 2;
-const ROLLING_ISSUE_TITLE = "Portal Authenticated Canary Failures (Rolling)";
+const PORTAL_QA_FAMILY = getAutomationFamily("portal-qa");
 const MY_PIECES_CHECK = "dashboard piece click-through opens my pieces detail";
 const NOTIFICATIONS_CHECK = "notifications mark read gives user feedback";
 
@@ -121,21 +123,6 @@ function clampInteger(value, min, max, fallback) {
   return rounded;
 }
 
-function parseRepoSlug() {
-  const envSlug = String(process.env.GITHUB_REPOSITORY || "").trim();
-  if (envSlug) return envSlug;
-
-  const remote = runCommand("git", ["config", "--get", "remote.origin.url"], { allowFailure: true });
-  if (!remote.ok) return "";
-  const value = remote.stdout.trim();
-
-  const sshMatch = value.match(/^git@github\.com:([^/]+\/[^/.]+)(?:\.git)?$/i);
-  if (sshMatch) return sshMatch[1];
-  const httpsMatch = value.match(/^https:\/\/github\.com\/([^/]+\/[^/.]+)(?:\.git)?$/i);
-  if (httpsMatch) return httpsMatch[1];
-  return "";
-}
-
 function normalizeConclusion(value) {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return "unknown";
@@ -194,33 +181,17 @@ function extractEmptyStatePatternsFromWarnings(warnings) {
   return Array.from(new Set(patterns)).slice(0, 20);
 }
 
-function findRollingIssue(repoSlug) {
+function findPortalQaIssue(repoSlug) {
   if (!repoSlug) return { number: 0, url: "", comments: [] };
-  const list = runCommand(
-    "gh",
-    [
-      "issue",
-      "list",
-      "--repo",
-      repoSlug,
-      "--state",
-      "open",
-      "--search",
-      `in:title \"${ROLLING_ISSUE_TITLE}\"`,
-      "--json",
-      "number,title,url",
-    ],
-    { allowFailure: true }
-  );
-  if (!list.ok) return { number: 0, url: "", comments: [] };
-
-  let issue = null;
-  try {
-    const parsed = JSON.parse(list.stdout || "[]");
-    issue = parsed.find((item) => String(item?.title || "") === ROLLING_ISSUE_TITLE) || null;
-  } catch {
+  const openIssuesResp = listRepoIssues(repoSlug, { state: "open", maxPages: 2, cwd: repoRoot });
+  if (!openIssuesResp.ok) {
     return { number: 0, url: "", comments: [] };
   }
+  const { issue } = pickCanonicalIssue(openIssuesResp.data, {
+    marker: PORTAL_QA_FAMILY.marker,
+    title: PORTAL_QA_FAMILY.title,
+    preferredNumber: PORTAL_QA_FAMILY.preferredNumber,
+  });
   if (!issue?.number) return { number: 0, url: "", comments: [] };
 
   const view = runCommand(
@@ -530,8 +501,8 @@ async function main() {
     }
   }
 
-  const repoSlug = options.includeGithub ? parseRepoSlug() : "";
-  const rollingIssue = options.includeGithub && repoSlug ? findRollingIssue(repoSlug) : { number: 0, url: "", comments: [] };
+  const repoSlug = options.includeGithub ? parseGhRepoSlug({ cwd: repoRoot }) : "";
+  const rollingIssue = options.includeGithub && repoSlug ? findPortalQaIssue(repoSlug) : { number: 0, url: "", comments: [] };
   const directives = extractCanaryFeedbackDirectives(rollingIssue.comments);
   report.agenticFeedback.rollingIssue.number = rollingIssue.number;
   report.agenticFeedback.rollingIssue.url = rollingIssue.url;

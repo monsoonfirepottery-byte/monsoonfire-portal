@@ -8,6 +8,9 @@ import { formatDateTime } from "../utils/format";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./NotificationsView.css";
 
+type ReadFilter = "inbox" | "all";
+const PENDING_NOTIFICATION_READS_STORAGE_KEY = "mf-notifications-pending-read-ids";
+
 type NotificationItem = {
   id: string;
   title?: string;
@@ -29,6 +32,35 @@ type Props = {
   onOpenFirings: () => void;
 };
 
+function readStoredPendingReadIds(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.sessionStorage.getItem(PENDING_NOTIFICATION_READS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredPendingReadIds(ids: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    if (ids.length === 0) {
+      window.sessionStorage.removeItem(PENDING_NOTIFICATION_READS_STORAGE_KEY);
+      return;
+    }
+    window.sessionStorage.setItem(
+      PENDING_NOTIFICATION_READS_STORAGE_KEY,
+      JSON.stringify(Array.from(new Set(ids)))
+    );
+  } catch {
+    // Best effort only.
+  }
+}
+
 function coerceDate(value: unknown): Date | null {
   if (!value) return null;
   if (value instanceof Date) return value;
@@ -37,6 +69,13 @@ function coerceDate(value: unknown): Date | null {
     if (typeof maybe.toDate === "function") return maybe.toDate();
   }
   return null;
+}
+
+function isNotificationRead(
+  notification: NotificationItem,
+  optimisticReadIds: ReadonlySet<string>
+) {
+  return optimisticReadIds.has(notification.id) || Boolean(coerceDate(notification.readAt));
 }
 
 function getErrorMessage(error: unknown): string {
@@ -117,8 +156,9 @@ export default function NotificationsView({
   error,
   onOpenFirings,
 }: Props) {
+  const [readFilter, setReadFilter] = useState<ReadFilter>("inbox");
   const [markingId, setMarkingId] = useState<string | null>(null);
-  const [optimisticReadIds, setOptimisticReadIds] = useState<string[]>([]);
+  const [optimisticReadIds, setOptimisticReadIds] = useState<string[]>(() => readStoredPendingReadIds());
   const [lastMarkedId, setLastMarkedId] = useState<string | null>(null);
   const [markStatus, setMarkStatus] = useState<{ tone: "notice" | "alert"; message: string } | null>(
     null
@@ -135,9 +175,26 @@ export default function NotificationsView({
 
   const optimisticReadSet = useMemo(() => new Set(optimisticReadIds), [optimisticReadIds]);
 
+  useEffect(() => {
+    const stillPendingIds = optimisticReadIds.filter((id) => {
+      const match = notifications.find((item) => item.id === id);
+      return match ? !coerceDate(match.readAt) : true;
+    });
+    if (stillPendingIds.length === optimisticReadIds.length) return;
+    setOptimisticReadIds(stillPendingIds);
+    writeStoredPendingReadIds(stillPendingIds);
+  }, [notifications, optimisticReadIds]);
+
   const unreadCount = useMemo(
-    () => notifications.filter((item) => !item.readAt && !optimisticReadSet.has(item.id)).length,
+    () => notifications.filter((item) => !isNotificationRead(item, optimisticReadSet)).length,
     [notifications, optimisticReadSet]
+  );
+  const visibleNotifications = useMemo(
+    () =>
+      readFilter === "all"
+        ? notifications
+        : notifications.filter((item) => !isNotificationRead(item, optimisticReadSet)),
+    [notifications, optimisticReadSet, readFilter]
   );
 
   useEffect(() => {
@@ -148,12 +205,20 @@ export default function NotificationsView({
     return () => window.clearTimeout(timeoutId);
   }, [lastMarkedId]);
 
-  const applyMarkedReadState = useCallback((notificationId: string) => {
+  const applyOptimisticReadState = useCallback((notificationId: string) => {
+    const storedIds = readStoredPendingReadIds();
+    if (!storedIds.includes(notificationId)) {
+      writeStoredPendingReadIds([...storedIds, notificationId]);
+    }
     setOptimisticReadIds((current) =>
       current.includes(notificationId) ? current : [...current, notificationId]
     );
-    setLastMarkedId(notificationId);
-    setMarkStatus({ tone: "notice", message: "Notification marked as read." });
+  }, []);
+
+  const revertOptimisticReadState = useCallback((notificationId: string) => {
+    writeStoredPendingReadIds(readStoredPendingReadIds().filter((entry) => entry !== notificationId));
+    setOptimisticReadIds((current) => current.filter((entry) => entry !== notificationId));
+    setLastMarkedId((current) => (current === notificationId ? null : current));
   }, []);
 
   const markReadViaApi = useCallback(
@@ -197,57 +262,90 @@ export default function NotificationsView({
     [user]
   );
 
-  const handleMarkRead = async (notificationId: string) => {
-    if (!user || markingId || optimisticReadSet.has(notificationId)) return;
-    setMarkingId(notificationId);
-    let primaryErrorMessage = "";
-    try {
-      await markReadViaFirestore(notificationId);
-      applyMarkedReadState(notificationId);
-    } catch (error: unknown) {
-      primaryErrorMessage = getErrorMessage(error);
-      if (isPermissionDeniedError(error) || isAuthRelatedError(error)) {
-        try {
-          await markReadViaFirestore(notificationId, true);
-          applyMarkedReadState(notificationId);
-          return;
-        } catch (retryError: unknown) {
-          primaryErrorMessage = getErrorMessage(retryError);
-        }
+  const markNotificationRead = useCallback(
+    async (
+      notificationId: string,
+      options: {
+        successMessage?: string;
+      } = {}
+    ) => {
+      if (!user || markingId || optimisticReadSet.has(notificationId)) return false;
+      applyOptimisticReadState(notificationId);
+      setLastMarkedId(notificationId);
+      setMarkStatus(null);
+      if (options.successMessage) {
+        setMarkStatus({ tone: "notice", message: options.successMessage });
       }
-
+      setMarkingId(notificationId);
+      let primaryErrorMessage = "";
       try {
-        await markReadViaApi(notificationId);
-        applyMarkedReadState(notificationId);
-        return;
-      } catch (fallbackError: unknown) {
-        const fallbackMessage = getErrorMessage(fallbackError);
-        const usePrimaryMessage =
-          primaryErrorMessage &&
-          isGenericMarkReadFailure(fallbackMessage) &&
-          !isGenericMarkReadFailure(primaryErrorMessage);
+        await markReadViaFirestore(notificationId);
+        return true;
+      } catch (error: unknown) {
+        primaryErrorMessage = getErrorMessage(error);
+        if (isPermissionDeniedError(error) || isAuthRelatedError(error)) {
+          try {
+            await markReadViaFirestore(notificationId, true);
+            return true;
+          } catch (retryError: unknown) {
+            primaryErrorMessage = getErrorMessage(retryError);
+          }
+        }
 
-        if (usePrimaryMessage) {
+        try {
+          await markReadViaApi(notificationId);
+          return true;
+        } catch (fallbackError: unknown) {
+          const fallbackMessage = getErrorMessage(fallbackError);
+          const usePrimaryMessage =
+            primaryErrorMessage &&
+            isGenericMarkReadFailure(fallbackMessage) &&
+            !isGenericMarkReadFailure(primaryErrorMessage);
+
+          revertOptimisticReadState(notificationId);
+          if (usePrimaryMessage) {
+            setMarkStatus({
+              tone: "alert",
+              message: `Mark read failed: ${primaryErrorMessage}`,
+            });
+            return false;
+          }
           setMarkStatus({
             tone: "alert",
-            message: `Mark read failed: ${primaryErrorMessage}`,
+            message: `Mark read failed: ${fallbackMessage}`,
           });
-          return;
+          return false;
         }
-        setMarkStatus({
-          tone: "alert",
-          message: `Mark read failed: ${fallbackMessage}`,
-        });
-        return;
+      } finally {
+        setMarkingId((current) => (current === notificationId ? null : current));
       }
+    },
+    [
+      applyOptimisticReadState,
+      markReadViaApi,
+      markReadViaFirestore,
+      markingId,
+      optimisticReadSet,
+      revertOptimisticReadState,
+      user,
+    ]
+  );
 
-      setMarkStatus({
-        tone: "alert",
-        message: `Mark read failed: ${primaryErrorMessage || getErrorMessage(error)}`,
-      });
-    } finally {
-      setMarkingId(null);
+  const handleMarkRead = async (notificationId: string) => {
+    if (!user || markingId || optimisticReadSet.has(notificationId)) return;
+    const marked = await markNotificationRead(notificationId, {
+      successMessage: "Notification marked as read.",
+    });
+    if (!marked) {
+      return;
     }
+  };
+
+  const handleOpenFirings = (item: NotificationItem) => {
+    if (!isNotificationRead(item, optimisticReadSet) && !markingId) {
+      void markNotificationRead(item.id);
+    }
+    onOpenFirings();
   };
 
   return (
@@ -264,6 +362,21 @@ export default function NotificationsView({
             {unreadCount > 0 ? `${unreadCount} unread` : "All caught up"}
           </span>
         </div>
+      </div>
+
+      <div className="segmented notifications-filter" aria-label="Notification filter">
+        <button
+          className={readFilter === "inbox" ? "active" : ""}
+          onClick={() => setReadFilter("inbox")}
+        >
+          Inbox
+        </button>
+        <button
+          className={readFilter === "all" ? "active" : ""}
+          onClick={() => setReadFilter("all")}
+        >
+          All
+        </button>
       </div>
 
       {loading ? (
@@ -287,11 +400,16 @@ export default function NotificationsView({
       <div className="notifications-list">
         {notifications.length === 0 ? (
           <div className="card card-3d empty-state">No notifications yet.</div>
+        ) : visibleNotifications.length === 0 ? (
+          <div className="card card-3d empty-state">
+            {readFilter === "inbox"
+              ? "You're caught up. Switch to All to review earlier notifications."
+              : "No notifications yet."}
+          </div>
         ) : (
-          notifications.map((item) => {
+          visibleNotifications.map((item) => {
             const createdAt = coerceDate(item.createdAt);
-            const readAt = coerceDate(item.readAt);
-            const isRead = Boolean(readAt) || optimisticReadSet.has(item.id);
+            const isRead = isNotificationRead(item, optimisticReadSet);
             const firingLabel =
               item.data?.kilnName || item.data?.firingType ? (
                 <span className="chip subtle">
@@ -303,6 +421,7 @@ export default function NotificationsView({
             return (
               <article
                 key={item.id}
+                data-testid={`notification-card-${item.id}`}
                 className={`card card-3d notification-card ${isRead ? "read" : "unread"} ${
                   lastMarkedId === item.id ? "read-recent" : ""
                 }`}
@@ -316,7 +435,7 @@ export default function NotificationsView({
                   </div>
                 </div>
                 <div className="notification-actions">
-                  <button className="btn btn-ghost" onClick={onOpenFirings}>
+                  <button className="btn btn-ghost" onClick={() => handleOpenFirings(item)}>
                     View firings
                   </button>
                   {!isRead ? (

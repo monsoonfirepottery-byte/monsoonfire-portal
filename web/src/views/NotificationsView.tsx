@@ -37,7 +37,7 @@ function readStoredPendingReadIds(): string[] {
   try {
     const raw = window.sessionStorage.getItem(PENDING_NOTIFICATION_READS_STORAGE_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((value): value is string => typeof value === "string" && value.trim().length > 0);
   } catch {

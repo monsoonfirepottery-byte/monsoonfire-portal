@@ -19,9 +19,14 @@ type TrackedGetDocsCall = {
   view: string;
   queryRef: MockQuery;
 };
+type TrackedUpdateDocFn = (
+  view: string,
+  docRef: unknown,
+  data: Record<string, unknown>
+) => Promise<void>;
 
 let trackedGetDocsCalls: TrackedGetDocsCall[] = [];
-let trackedUpdateDocMock: ReturnType<typeof vi.fn>;
+let trackedUpdateDocMock: TrackedUpdateDocFn = vi.fn(async () => undefined);
 
 function createSnapshot(rows: MockDoc[]): Snapshot {
   return {
@@ -115,7 +120,10 @@ vi.mock("../lib/firestoreTelemetry", () => ({
     return createSnapshot([]);
   }),
   trackedSetDoc: vi.fn(async () => undefined),
-  trackedUpdateDoc: (...args: Parameters<typeof trackedUpdateDocMock>) => trackedUpdateDocMock(...args),
+  trackedUpdateDoc: vi.fn(
+    async (view: string, docRef: unknown, data: Record<string, unknown>) =>
+      trackedUpdateDocMock(view, docRef, data)
+  ),
 }));
 
 vi.mock("../context/UiSettingsContext", () => ({

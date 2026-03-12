@@ -3032,6 +3032,14 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   color: #fff;
 }
 
+.messages-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
 .messages-layout {
   display: grid;
   grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
@@ -3223,6 +3231,12 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
 .announcements-list {
   display: grid;
   gap: 12px;
+}
+
+.announcement-preview {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
 }
 
 .announcement-card {

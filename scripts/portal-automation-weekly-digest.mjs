@@ -7,6 +7,15 @@ import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { buildAutomationFamilyBody, getAutomationFamily } from "./lib/automation-issue-families.mjs";
+import {
+  commentIssue,
+  ensureGhLabels,
+  ensureIssueWithMarker,
+  fetchLatestIssueCommentBody,
+  listRepoIssues,
+  parseRepoSlug,
+} from "./lib/github-issues.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
@@ -17,7 +26,7 @@ const DEFAULT_RUN_LIMIT = 25;
 const DEFAULT_ARTIFACT_PREFIX = "portal-automation-health-dashboard-";
 const DEFAULT_REPORT_JSON_PATH = resolve(repoRoot, "output", "qa", "portal-automation-weekly-digest.json");
 const DEFAULT_REPORT_MARKDOWN_PATH = resolve(repoRoot, "output", "qa", "portal-automation-weekly-digest.md");
-const ROLLING_DIGEST_ISSUE = "Portal Automation Weekly Digest (Rolling)";
+const PORTAL_QA_FAMILY = getAutomationFamily("portal-qa");
 
 function parseArgs(argv) {
   const options = {
@@ -113,51 +122,6 @@ function runGh(args, options = {}) {
   return runCommand("gh", args, options);
 }
 
-function parseRepoSlug() {
-  const fromEnv = String(process.env.GITHUB_REPOSITORY || "").trim();
-  if (fromEnv && fromEnv.includes("/")) return fromEnv;
-
-  const remote = runCommand("git", ["remote", "get-url", "origin"], { allowFailure: true });
-  if (!remote.ok) return "";
-
-  const raw = remote.stdout.trim();
-  const match = raw.match(/github\.com[:/](.+?)(?:\.git)?$/);
-  return match ? match[1] : "";
-}
-
-function findIssueByTitle(repoSlug, title) {
-  const list = runGh(
-    [
-      "issue",
-      "list",
-      "--repo",
-      repoSlug,
-      "--state",
-      "open",
-      "--search",
-      `"${title}" in:title`,
-      "--limit",
-      "10",
-      "--json",
-      "number,title,url",
-    ],
-    { allowFailure: true }
-  );
-  if (!list.ok) return null;
-  try {
-    const parsed = JSON.parse(list.stdout || "[]");
-    if (!Array.isArray(parsed)) return null;
-    return parsed.find((entry) => String(entry?.title || "") === title) || null;
-  } catch {
-    return null;
-  }
-}
-
-function parseIssueNumberFromUrl(url) {
-  const match = String(url || "").match(/\/issues\/(\d+)$/);
-  return match ? Number(match[1]) : 0;
-}
-
 async function findFilesRecursive(rootPath, fileName) {
   const matches = [];
   async function walk(dir) {
@@ -200,22 +164,6 @@ function stableHash(value) {
     hash = Math.imul(hash, 16777619);
   }
   return `f${(hash >>> 0).toString(16).padStart(8, "0")}`;
-}
-
-function fetchLatestIssueCommentBody(repoSlug, issueNumber) {
-  const view = runGh(
-    ["issue", "view", String(issueNumber), "--repo", repoSlug, "--json", "comments"],
-    { allowFailure: true }
-  );
-  if (!view.ok) return "";
-  try {
-    const parsed = JSON.parse(view.stdout || "{}");
-    const comments = Array.isArray(parsed?.comments) ? parsed.comments : [];
-    const latest = comments.length > 0 ? comments[comments.length - 1] : null;
-    return String(latest?.body || "");
-  } catch {
-    return "";
-  }
 }
 
 function buildDigestSignature(report) {
@@ -544,55 +492,46 @@ async function main() {
   const digestComment = buildDigestComment(report, digestMarker);
   report.digestMarker = digestMarker;
   if (options.apply) {
-    const repoSlug = parseRepoSlug();
+    const repoSlug = parseRepoSlug({ cwd: repoRoot });
     if (!repoSlug) {
       report.notes.push("Could not resolve repository slug; digest issue update skipped.");
     } else {
-      let issue = findIssueByTitle(repoSlug, ROLLING_DIGEST_ISSUE);
-      if (!issue) {
-        const create = runGh(
-          [
-            "issue",
-            "create",
-            "--repo",
-            repoSlug,
-            "--title",
-            ROLLING_DIGEST_ISSUE,
-            "--body",
-            "Rolling weekly digest for portal automation self-improvement loops.",
-            "--label",
-            "automation",
-            "--label",
-            "portal-qa",
-          ],
-          { allowFailure: true }
+      const openIssuesResp = listRepoIssues(repoSlug, { state: "open", maxPages: 2, cwd: repoRoot });
+      if (!openIssuesResp.ok) {
+        report.notes.push(`Could not read portal QA issue list: ${openIssuesResp.error}`);
+      } else {
+        ensureGhLabels(repoSlug, PORTAL_QA_FAMILY.labels, { cwd: repoRoot });
+        const ensured = ensureIssueWithMarker(
+          repoSlug,
+          {
+            title: PORTAL_QA_FAMILY.title,
+            body: buildAutomationFamilyBody(PORTAL_QA_FAMILY),
+            labels: PORTAL_QA_FAMILY.labels.map((label) => label.name),
+            marker: PORTAL_QA_FAMILY.marker,
+            preferredNumber: PORTAL_QA_FAMILY.preferredNumber,
+            openIssues: openIssuesResp.data,
+          },
+          { cwd: repoRoot }
         );
-        if (create.ok) {
-          const url = create.stdout.trim();
-          const number = parseIssueNumberFromUrl(url);
-          issue = { number, url, title: ROLLING_DIGEST_ISSUE };
-        } else {
-          report.notes.push("Could not create weekly digest rolling issue.");
-        }
-      }
 
-      if (issue?.number) {
-        const latestCommentBody = fetchLatestIssueCommentBody(repoSlug, issue.number);
+        if (!ensured.ok || !ensured.issue) {
+          report.notes.push(`Could not resolve portal QA family issue: ${ensured.error || "unknown error"}`);
+        } else {
+          const issue = ensured.issue;
+          const latestCommentBody = fetchLatestIssueCommentBody(repoSlug, issue.number, { cwd: repoRoot });
         const knownDigestMarkers = [digestMarker, legacyDigestMarker];
         if (knownDigestMarkers.some((marker) => latestCommentBody.includes(`<!-- ${marker} -->`))) {
           report.digestIssue = String(issue.url || "");
           report.notes.push("Weekly digest unchanged; skipped duplicate rolling comment.");
         } else {
-          const comment = runGh(
-            ["issue", "comment", String(issue.number), "--repo", repoSlug, "--body", digestComment],
-            { allowFailure: true }
-          );
+          const comment = commentIssue(repoSlug, issue.number, digestComment, { cwd: repoRoot });
           if (comment.ok) {
             report.digestIssue = String(issue.url || "");
           } else {
             report.notes.push("Could not post weekly digest comment.");
           }
         }
+      }
       }
     }
   }

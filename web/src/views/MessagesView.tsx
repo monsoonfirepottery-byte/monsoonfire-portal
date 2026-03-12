@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
 import {
   arrayUnion,
@@ -21,11 +21,13 @@ const DEFAULT_MESSAGE_FETCH_LIMIT = 50;
 const MAX_MESSAGE_FETCH_LIMIT = 200;
 
 type MessagesTab = "inbox" | "studio";
+type ReadFilter = "inbox" | "all";
 
 type Props = {
   user: User;
   supportEmail: string;
   initialThreadId?: string | null;
+  onInitialThreadIdConsumed?: () => void;
   threads: DirectMessageThread[];
   threadsLoading: boolean;
   threadsError: string;
@@ -35,7 +37,7 @@ type Props = {
   announcements: Announcement[];
   announcementsLoading: boolean;
   announcementsError: string;
-  unreadAnnouncements: number;
+  unreadAnnouncements?: number;
 };
 
 function getDisplayName(user: User) {
@@ -96,6 +98,22 @@ function isAnnouncementUnread(announcement: Announcement, uid: string) {
   return !announcement.readBy.includes(uid);
 }
 
+function isThreadRead(
+  thread: DirectMessageThread,
+  uid: string,
+  optimisticReadThreadIds: ReadonlySet<string>
+) {
+  return optimisticReadThreadIds.has(thread.id) || !isDirectMessageUnread(thread, uid);
+}
+
+function isAnnouncementRead(
+  announcement: Announcement,
+  uid: string,
+  optimisticReadAnnouncementIds: ReadonlySet<string>
+) {
+  return optimisticReadAnnouncementIds.has(announcement.id) || !isAnnouncementUnread(announcement, uid);
+}
+
 function isLegacyRecipientLabel(value: string) {
   const text = value
     .toLowerCase()
@@ -104,6 +122,16 @@ function isLegacyRecipientLabel(value: string) {
     .trim();
 
   return text === "cc" || text === "bcc";
+}
+
+function resolveSelectedThreadId(
+  threads: DirectMessageThread[],
+  initialThreadId: string | null | undefined
+): string | null {
+  if (initialThreadId && threads.some((thread) => thread.id === initialThreadId)) {
+    return initialThreadId;
+  }
+  return threads[0]?.id || null;
 }
 
 function useDirectMessageMessages(threadId: string | null, fetchLimit: number) {
@@ -155,6 +183,7 @@ export default function MessagesView({
   user,
   supportEmail,
   initialThreadId = null,
+  onInitialThreadIdConsumed,
   threads,
   threadsLoading,
   threadsError,
@@ -164,13 +193,17 @@ export default function MessagesView({
   announcements,
   announcementsLoading,
   announcementsError,
-  unreadAnnouncements,
 }: Props) {
   const { themeName, portalMotion } = useUiSettings();
   const motionEnabled = themeName === "memoria" && portalMotion === "enhanced";
   const [messagesTab, setMessagesTab] = useState<MessagesTab>("inbox");
-  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(threads[0]?.id || null);
+  const [readFilter, setReadFilter] = useState<ReadFilter>("inbox");
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(() =>
+    resolveSelectedThreadId(threads, initialThreadId)
+  );
   const appliedInitialThreadRef = useRef<string | null>(null);
+  const [optimisticReadThreadIds, setOptimisticReadThreadIds] = useState<string[]>([]);
+  const [optimisticReadAnnouncementIds, setOptimisticReadAnnouncementIds] = useState<string[]>([]);
   const [composerText, setComposerText] = useState("");
   const [composerBusy, setComposerBusy] = useState(false);
   const [newThreadOpen, setNewThreadOpen] = useState(false);
@@ -182,26 +215,55 @@ export default function MessagesView({
   const [sendStatus, setSendStatus] = useState("");
   const [messageFetchLimit, setMessageFetchLimit] = useState(DEFAULT_MESSAGE_FETCH_LIMIT);
   const newThreadFormRef = useRef<HTMLDivElement>(null);
+  const optimisticReadThreadSet = useMemo(
+    () => new Set(optimisticReadThreadIds),
+    [optimisticReadThreadIds]
+  );
+  const optimisticReadAnnouncementSet = useMemo(
+    () => new Set(optimisticReadAnnouncementIds),
+    [optimisticReadAnnouncementIds]
+  );
 
   const { messages, loading, error } = useDirectMessageMessages(selectedThreadId, messageFetchLimit);
 
   useEffect(() => {
     if (!selectedThreadId && threads.length > 0) {
-      setSelectedThreadId(threads[0].id);
+      setSelectedThreadId(resolveSelectedThreadId(threads, initialThreadId));
     }
-  }, [threads, selectedThreadId]);
+  }, [initialThreadId, selectedThreadId, threads]);
 
   useEffect(() => {
     if (!initialThreadId) return;
     if (appliedInitialThreadRef.current === initialThreadId) return;
     if (!threads.some((thread) => thread.id === initialThreadId)) return;
-    setSelectedThreadId(initialThreadId);
+    setSelectedThreadId((current) => (current === initialThreadId ? current : initialThreadId));
     appliedInitialThreadRef.current = initialThreadId;
-  }, [initialThreadId, threads]);
+    onInitialThreadIdConsumed?.();
+  }, [initialThreadId, onInitialThreadIdConsumed, threads]);
 
   useEffect(() => {
     setMessageFetchLimit(DEFAULT_MESSAGE_FETCH_LIMIT);
   }, [selectedThreadId]);
+
+  const applyThreadReadState = useCallback((threadId: string) => {
+    setOptimisticReadThreadIds((current) =>
+      current.includes(threadId) ? current : [...current, threadId]
+    );
+  }, []);
+
+  const applyAnnouncementReadState = useCallback((announcementId: string) => {
+    setOptimisticReadAnnouncementIds((current) =>
+      current.includes(announcementId) ? current : [...current, announcementId]
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!selectedThreadId) return;
+    const thread = threads.find((entry) => entry.id === selectedThreadId);
+    if (!thread) return;
+    if (isThreadRead(thread, user.uid, optimisticReadThreadSet)) return;
+    applyThreadReadState(selectedThreadId);
+  }, [applyThreadReadState, optimisticReadThreadSet, selectedThreadId, threads, user.uid]);
 
   useEffect(() => {
     if (!selectedThreadId) return;
@@ -301,6 +363,43 @@ export default function MessagesView({
     if (!selectedThreadId) return null;
     return threads.find((thread) => thread.id === selectedThreadId) || null;
   }, [threads, selectedThreadId]);
+  const selectedAnnouncement = useMemo(() => {
+    if (!selectedAnnouncementId) return null;
+    return announcements.find((announcement) => announcement.id === selectedAnnouncementId) || null;
+  }, [announcements, selectedAnnouncementId]);
+  const unreadThreadCount = useMemo(
+    () => threads.filter((thread) => !isThreadRead(thread, user.uid, optimisticReadThreadSet)).length,
+    [optimisticReadThreadSet, threads, user.uid]
+  );
+  const unreadAnnouncementCount = useMemo(
+    () =>
+      announcements.filter(
+        (announcement) => !isAnnouncementRead(announcement, user.uid, optimisticReadAnnouncementSet)
+      ).length,
+    [announcements, optimisticReadAnnouncementSet, user.uid]
+  );
+  const visibleThreads = useMemo(
+    () =>
+      readFilter === "all"
+        ? threads
+        : threads.filter((thread) => !isThreadRead(thread, user.uid, optimisticReadThreadSet)),
+    [optimisticReadThreadSet, readFilter, threads, user.uid]
+  );
+  const visibleAnnouncements = useMemo(
+    () =>
+      readFilter === "all"
+        ? announcements
+        : announcements.filter(
+            (announcement) =>
+              !isAnnouncementRead(announcement, user.uid, optimisticReadAnnouncementSet)
+          ),
+    [announcements, optimisticReadAnnouncementSet, readFilter, user.uid]
+  );
+  const selectedAnnouncementHiddenFromInbox = Boolean(
+    selectedAnnouncement &&
+      readFilter === "inbox" &&
+      isAnnouncementRead(selectedAnnouncement, user.uid, optimisticReadAnnouncementSet)
+  );
 
   const shouldExpandAnnouncements = useMemo(() => messagesTab === "studio", [messagesTab]);
 
@@ -492,7 +591,8 @@ export default function MessagesView({
     setSelectedAnnouncementId(announcement.id);
     setMessagesTab("studio");
 
-    if (!announcement.readBy?.includes(user.uid)) {
+    if (!isAnnouncementRead(announcement, user.uid, optimisticReadAnnouncementSet)) {
+      applyAnnouncementReadState(announcement.id);
       const annRef = doc(db, "announcements", announcement.id);
       trackedUpdateDoc("messages:announcement", annRef, { readBy: arrayUnion(user.uid) }).catch(() => null);
     }
@@ -515,22 +615,39 @@ export default function MessagesView({
 
       {sendStatus ? <div className="status-line">{sendStatus}</div> : null}
 
-      <div className="segmented">
-        <button
-          className={messagesTab === "inbox" ? "active" : ""}
-          onClick={() => setMessagesTab("inbox")}
-        >
-          Direct messages
-        </button>
-        <button
-          className={messagesTab === "studio" ? "active" : ""}
-          onClick={() => setMessagesTab("studio")}
-        >
-          Studio updates
-          {unreadAnnouncements > 0 ? (
-            <span className="segmented-count">{unreadAnnouncements}</span>
-          ) : null}
-        </button>
+      <div className="messages-controls">
+        <div className="segmented">
+          <button
+            className={messagesTab === "inbox" ? "active" : ""}
+            onClick={() => setMessagesTab("inbox")}
+          >
+            Direct messages
+            {unreadThreadCount > 0 ? <span className="segmented-count">{unreadThreadCount}</span> : null}
+          </button>
+          <button
+            className={messagesTab === "studio" ? "active" : ""}
+            onClick={() => setMessagesTab("studio")}
+          >
+            Studio updates
+            {unreadAnnouncementCount > 0 ? (
+              <span className="segmented-count">{unreadAnnouncementCount}</span>
+            ) : null}
+          </button>
+        </div>
+        <div className="segmented" aria-label="Inbox filter">
+          <button
+            className={readFilter === "inbox" ? "active" : ""}
+            onClick={() => setReadFilter("inbox")}
+          >
+            Inbox
+          </button>
+          <button
+            className={readFilter === "all" ? "active" : ""}
+            onClick={() => setReadFilter("all")}
+          >
+            All
+          </button>
+        </div>
       </div>
 
       {sendError ? <div className="card card-3d alert">{sendError}</div> : null}
@@ -595,10 +712,18 @@ export default function MessagesView({
             <div className="empty-state">Loading direct messages...</div>
           ) : threads.length === 0 ? (
             <div className="empty-state">No direct messages yet. Start a new thread with Studio Support for any questions.</div>
+          ) : visibleThreads.length === 0 ? (
+            <div className="empty-state">
+              {readFilter === "inbox"
+                ? selectedThread
+                  ? "Inbox cleared. You're still viewing the last conversation you opened."
+                  : "You're caught up on direct messages. Switch to All to review earlier conversations."
+                : "No direct messages yet. Start a new thread with Studio Support for any questions."}
+            </div>
           ) : (
             <div className="thread-list" data-testid="messages-thread-list">
-              {threads.map((thread) => {
-                const isUnread = isDirectMessageUnread(thread, user.uid);
+              {visibleThreads.map((thread) => {
+                const isUnread = !isThreadRead(thread, user.uid, optimisticReadThreadSet);
                 return (
                   <button
                     className={`thread-item ${selectedThreadId === thread.id ? "active" : ""} ${
@@ -704,18 +829,41 @@ export default function MessagesView({
         enabled={motionEnabled}
       >
         <div className="card-title">Studio announcements</div>
+        {selectedAnnouncementHiddenFromInbox && selectedAnnouncement ? (
+          <article className="announcement-preview card card-3d" data-testid="selected-announcement-preview">
+            <div className="announcement-title">{selectedAnnouncement.title || "Studio update"}</div>
+            <div className="announcement-meta">{formatMaybeTimestamp(selectedAnnouncement.createdAt)}</div>
+            <div className="announcement-body">{selectedAnnouncement.body || "Details coming soon."}</div>
+            {selectedAnnouncement.ctaLabel ? (
+              <div className="announcement-cta">{selectedAnnouncement.ctaLabel}</div>
+            ) : null}
+          </article>
+        ) : null}
         {announcementsLoading ? (
           <div className="empty-state">Loading announcements...</div>
         ) : announcements.length === 0 ? (
           <div className="empty-state">No announcements yet.</div>
+        ) : visibleAnnouncements.length === 0 ? (
+          <div className="empty-state">
+            {readFilter === "inbox"
+              ? selectedAnnouncementHiddenFromInbox
+                ? "Inbox cleared. You're reviewing a previously read studio update."
+                : "You're caught up on studio updates. Switch to All to review earlier posts."
+              : "No announcements yet."}
+          </div>
         ) : (
           <div className="announcements-list">
-            {announcements.map((announcement) => {
-              const unread = isAnnouncementUnread(announcement, user.uid);
+            {visibleAnnouncements.map((announcement) => {
+              const unread = !isAnnouncementRead(
+                announcement,
+                user.uid,
+                optimisticReadAnnouncementSet
+              );
               const isSelected = selectedAnnouncementId === announcement.id;
               return (
                 <button
                   key={announcement.id}
+                  data-testid={`announcement-card-${announcement.id}`}
                   className={`announcement-card ${unread ? "unread" : ""} ${
                     isSelected ? "active" : ""
                   }`}

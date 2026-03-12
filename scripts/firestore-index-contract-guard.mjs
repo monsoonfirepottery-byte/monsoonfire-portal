@@ -9,13 +9,20 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildAutomationFamilyBody, getAutomationFamily } from "./lib/automation-issue-families.mjs";
+import {
+  ensureGhLabels,
+  ensureIssueWithMarker,
+  fetchLatestIssueCommentBody,
+  listRepoIssues,
+} from "./lib/github-issues.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
 const indexesPath = resolve(repoRoot, "firestore.indexes.json");
 const codexDir = resolve(repoRoot, ".codex");
 const logPath = resolve(codexDir, "index-guard-log.md");
-const rollingIssueTitle = "Portal Firestore Index Guard (Rolling)";
+const PORTAL_INFRA_FAMILY = getAutomationFamily("portal-infra");
 
 const requiredIndexes = [
   {
@@ -207,75 +214,6 @@ async function appendLog(summary) {
   await appendFile(logPath, `${lines.join("\n")}\n`, "utf8");
 }
 
-function ensureGhLabel(repoSlug, name, color, description) {
-  runCommand(
-    "gh",
-    ["label", "create", name, "--repo", repoSlug, "--color", color, "--description", description, "--force"],
-    { allowFailure: true }
-  );
-}
-
-function ensureRollingIssue(repoSlug) {
-  const existing = runCommand(
-    "gh",
-    [
-      "issue",
-      "list",
-      "--repo",
-      repoSlug,
-      "--state",
-      "open",
-      "--search",
-      `in:title \"${rollingIssueTitle}\"`,
-      "--json",
-      "number,title,url",
-    ],
-    { allowFailure: true }
-  );
-
-  if (existing.ok) {
-    try {
-      const parsed = JSON.parse(existing.stdout || "[]");
-      const match = parsed.find((item) => String(item?.title || "") === rollingIssueTitle);
-      if (match) {
-        return { number: match.number, url: match.url };
-      }
-    } catch {
-      // fall through to create
-    }
-  }
-
-  const created = runCommand(
-    "gh",
-    [
-      "issue",
-      "create",
-      "--repo",
-      repoSlug,
-      "--title",
-      rollingIssueTitle,
-      "--body",
-      "Rolling index guard findings for portal query stability.",
-      "--label",
-      "automation",
-      "--label",
-      "infra",
-    ],
-    { allowFailure: true }
-  );
-
-  if (!created.ok || !created.stdout) {
-    return { number: 0, url: "" };
-  }
-
-  const issueUrl = created.stdout.split(/\s+/).find((token) => /^https:\/\/github\.com\//.test(token)) || "";
-  const issueNumberMatch = issueUrl.match(/\/issues\/(\d+)/);
-  return {
-    number: issueNumberMatch ? Number(issueNumberMatch[1]) : 0,
-    url: issueUrl,
-  };
-}
-
 function createAlertIssue(repoSlug, summary) {
   const title = "[Index Guard] Missing required Firestore indexes";
   const existing = runCommand(
@@ -359,23 +297,6 @@ function buildRollingCommentSignature(summary) {
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 20);
 }
 
-function getLatestIssueCommentBody(repoSlug, issueNumber) {
-  const view = runCommand(
-    "gh",
-    ["issue", "view", String(issueNumber), "--repo", repoSlug, "--json", "comments"],
-    { allowFailure: true }
-  );
-  if (!view.ok) return "";
-  try {
-    const parsed = JSON.parse(view.stdout || "{}");
-    const comments = Array.isArray(parsed?.comments) ? parsed.comments : [];
-    const latest = comments.length > 0 ? comments[comments.length - 1] : null;
-    return String(latest?.body || "");
-  } catch {
-    return "";
-  }
-}
-
 function buildRollingComment(summary, marker) {
   const lines = [];
   lines.push(`## ${summary.runAtIso} (Index Guard)`);
@@ -447,25 +368,37 @@ async function main() {
   if (options.apply && options.includeGithub) {
     const repoSlug = parseRepoSlug();
     if (repoSlug) {
-      ensureGhLabel(repoSlug, "automation", "5319e7", "Automation generated task/update.");
-      ensureGhLabel(repoSlug, "infra", "1f6feb", "Infrastructure or platform guardrails.");
-      ensureGhLabel(repoSlug, "firestore", "0e8a16", "Firestore indexes/rules/contracts.");
-
-      const rolling = ensureRollingIssue(repoSlug);
-      if (rolling.number > 0) {
-        summary.rollingIssueUrl = rolling.url;
-        const signature = buildRollingCommentSignature(summary);
-        summary.rollingCommentSignature = signature;
-        const marker = `index-guard-signature:${signature}`;
-        const latestBody = getLatestIssueCommentBody(repoSlug, rolling.number);
-        const unchanged = latestBody.includes(`<!-- ${marker} -->`);
-        summary.rollingCommentSkipped = unchanged;
-        if (!unchanged) {
-          runCommand(
-            "gh",
-            ["issue", "comment", String(rolling.number), "--repo", repoSlug, "--body", buildRollingComment(summary, marker)],
-            { allowFailure: true }
-          );
+      const openIssuesResp = listRepoIssues(repoSlug, { state: "open", maxPages: 2, cwd: repoRoot });
+      if (openIssuesResp.ok) {
+        ensureGhLabels(repoSlug, PORTAL_INFRA_FAMILY.labels, { cwd: repoRoot });
+        const ensured = ensureIssueWithMarker(
+          repoSlug,
+          {
+            title: PORTAL_INFRA_FAMILY.title,
+            body: buildAutomationFamilyBody(PORTAL_INFRA_FAMILY),
+            labels: PORTAL_INFRA_FAMILY.labels.map((label) => label.name),
+            marker: PORTAL_INFRA_FAMILY.marker,
+            preferredNumber: PORTAL_INFRA_FAMILY.preferredNumber,
+            openIssues: openIssuesResp.data,
+          },
+          { cwd: repoRoot }
+        );
+        if (ensured.ok && ensured.issue) {
+          summary.rollingIssueUrl = ensured.issue.url;
+          const rollingNumber = ensured.issue.number;
+          const signature = buildRollingCommentSignature(summary);
+          summary.rollingCommentSignature = signature;
+          const marker = `index-guard-signature:${signature}`;
+          const latestBody = fetchLatestIssueCommentBody(repoSlug, rollingNumber, { cwd: repoRoot });
+          const unchanged = latestBody.includes(`<!-- ${marker} -->`);
+          summary.rollingCommentSkipped = unchanged;
+          if (!unchanged) {
+            runCommand(
+              "gh",
+              ["issue", "comment", String(rollingNumber), "--repo", repoSlug, "--body", buildRollingComment(summary, marker)],
+              { allowFailure: true }
+            );
+          }
         }
       }
 

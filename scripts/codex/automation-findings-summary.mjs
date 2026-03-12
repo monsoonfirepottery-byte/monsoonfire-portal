@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..", "..");
 
-const summaryIssueTitle = "Codex Automation Findings Digest (Rolling)";
+const summaryIssueTitle = "Codex Automation (Rolling)";
 const outputDir = resolve(repoRoot, "output", "qa");
 const markdownArtifactPath = resolve(outputDir, "codex-automation-findings-summary.md");
 const jsonArtifactPath = resolve(outputDir, "codex-automation-findings-summary.json");
@@ -19,26 +19,30 @@ const sources = [
   {
     key: "improvement",
     label: "Continuous Improvement",
-    issueTitle: "Codex Continuous Improvement (Rolling)",
+    issueTitle: summaryIssueTitle,
     workflowName: "Codex Self Improvement",
+    commentMarkers: ["codex-improvement-rollup-run:"],
   },
   {
     key: "interaction",
     label: "Interaction Interrogation",
-    issueTitle: "Codex Interaction Interrogation (Rolling)",
+    issueTitle: summaryIssueTitle,
     workflowName: "Codex Interaction Interrogation",
+    commentMarkers: ["codex-interaction-rollup-run:"],
   },
   {
     key: "prGreen",
     label: "PR Green Daily",
-    issueTitle: "Codex PR Green Daily (Rolling)",
+    issueTitle: summaryIssueTitle,
     workflowName: "Codex PR Green Daily",
+    commentMarkers: ["codex-pr-green-rollup-run:"],
   },
   {
     key: "backlogAutopilot",
     label: "Backlog Autopilot",
-    issueTitle: "Codex Backlog Autopilot (Rolling)",
+    issueTitle: summaryIssueTitle,
     workflowName: "Codex Backlog Autopilot",
+    commentMarkers: ["codex-backlog-rollup-signature:"],
   },
 ];
 
@@ -219,7 +223,7 @@ function findIssueByTitle(repoSlug, title) {
   return response.data.find((issue) => issue.title === title) || null;
 }
 
-function fetchLatestIssueComment(repoSlug, issueNumber) {
+function fetchIssueComments(repoSlug, issueNumber) {
   const response = runGhJson([
     "issue",
     "view",
@@ -230,15 +234,21 @@ function fetchLatestIssueComment(repoSlug, issueNumber) {
     "comments",
   ]);
 
-  if (!response.ok || !response.data || typeof response.data !== "object") return null;
+  if (!response.ok || !response.data || typeof response.data !== "object") return [];
   const comments = Array.isArray(response.data.comments) ? response.data.comments : [];
-  if (comments.length === 0) return null;
-  const latest = comments[comments.length - 1];
-  return {
-    url: String(latest.url || latest.html_url || ""),
-    createdAt: String(latest.createdAt || latest.created_at || ""),
-    body: String(latest.body || ""),
-  };
+  return comments.map((comment) => ({
+    url: String(comment?.url || comment?.html_url || ""),
+    createdAt: String(comment?.createdAt || comment?.created_at || ""),
+    body: String(comment?.body || ""),
+  }));
+}
+
+function findLatestSourceComment(comments, markerPrefixes = []) {
+  const prefixes = Array.isArray(markerPrefixes) ? markerPrefixes.filter(Boolean) : [];
+  const matched = comments.filter((comment) => prefixes.some((prefix) => String(comment?.body || "").includes(prefix)));
+  if (matched.length === 0) return null;
+  matched.sort((left, right) => Date.parse(String(right?.createdAt || 0)) - Date.parse(String(left?.createdAt || 0)));
+  return matched[0];
 }
 
 function fetchLatestWorkflowRun(repoSlug, workflowName) {
@@ -352,6 +362,7 @@ async function main() {
   if (!githubAvailable) notes.push("GitHub CLI unavailable or not authenticated; reporting is local-only.");
 
   const sourceSummaries = [];
+  const sharedIssueCache = new Map();
   for (const source of sources) {
     const summary = {
       key: source.key,
@@ -367,10 +378,17 @@ async function main() {
     };
 
     if (githubAvailable) {
-      const issue = findIssueByTitle(repoSlug, source.issueTitle);
+      const issue = sharedIssueCache.get(source.issueTitle) || findIssueByTitle(repoSlug, source.issueTitle);
       if (issue) {
+        sharedIssueCache.set(source.issueTitle, issue);
         summary.issueUrl = String(issue.url || "");
-        const latestComment = fetchLatestIssueComment(repoSlug, issue.number);
+        const commentsCacheKey = `comments:${issue.number}`;
+        let issueComments = sharedIssueCache.get(commentsCacheKey);
+        if (!issueComments) {
+          issueComments = fetchIssueComments(repoSlug, issue.number);
+          sharedIssueCache.set(commentsCacheKey, issueComments);
+        }
+        const latestComment = findLatestSourceComment(issueComments, source.commentMarkers);
         if (latestComment) {
           summary.latestFindingAt = latestComment.createdAt;
           summary.highlights = extractHighlights(latestComment.body);
@@ -479,7 +497,7 @@ async function main() {
 
     if (digestIssue?.number) {
       digestIssueUrl = digestIssue.url;
-      const latestDigestComment = fetchLatestIssueComment(repoSlug, digestIssue.number);
+      const latestDigestComment = findLatestSourceComment(fetchIssueComments(repoSlug, digestIssue.number), [digestMarker]);
       if (latestDigestComment?.body?.includes(`<!-- ${digestMarker} -->`)) {
         notes.push("Digest unchanged; skipped duplicate rolling digest comment.");
       } else {

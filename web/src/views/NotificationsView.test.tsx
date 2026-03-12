@@ -41,6 +41,7 @@ function createUser(uid = "user-1"): User {
 }
 
 beforeEach(() => {
+  window.sessionStorage.clear();
   updateDocMock.mockReset();
   updateDocMock.mockResolvedValue(undefined);
   postJsonMock.mockReset();
@@ -51,6 +52,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  window.sessionStorage.clear();
   vi.clearAllMocks();
 });
 
@@ -84,6 +86,10 @@ describe("NotificationsView mark-read feedback", () => {
 
     expect(screen.queryByText("Notification marked as read.")).not.toBeNull();
     expect(screen.queryByText("All caught up")).not.toBeNull();
+    expect(screen.queryByTestId("notification-card-notif-1")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /^All$/i }));
+
     expect(screen.queryByText("Marked just now")).not.toBeNull();
   });
 
@@ -252,5 +258,124 @@ describe("NotificationsView mark-read feedback", () => {
     expect(postJsonMock.mock.calls[0]?.[0]).toBe("apiV1/v1/notifications.markRead");
     expect(postJsonMock.mock.calls[1]?.[0]).toBe("v1/notifications.markRead");
     expect(screen.queryByText("Notification marked as read.")).not.toBeNull();
+  });
+
+  it("defaults to inbox items and restores read notifications in all", async () => {
+    render(
+      <NotificationsView
+        user={createUser()}
+        notifications={[
+          {
+            id: "notif-unread",
+            title: "Unread update",
+            body: "Needs action.",
+            createdAt: { toDate: () => new Date("2026-02-26T00:00:00.000Z") },
+            readAt: null,
+          },
+          {
+            id: "notif-read",
+            title: "Read update",
+            body: "Already handled.",
+            createdAt: { toDate: () => new Date("2026-02-25T00:00:00.000Z") },
+            readAt: { toDate: () => new Date("2026-02-26T01:00:00.000Z") },
+          },
+        ]}
+        loading={false}
+        error=""
+        onOpenFirings={() => undefined}
+      />
+    );
+
+    expect(screen.getByTestId("notification-card-notif-unread")).toBeTruthy();
+    expect(screen.queryByTestId("notification-card-notif-read")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /^All$/i }));
+
+    expect(screen.getByTestId("notification-card-notif-unread")).toBeTruthy();
+    expect(screen.getByTestId("notification-card-notif-read")).toBeTruthy();
+  });
+
+  it("removes a notification from inbox when viewing firings", async () => {
+    const onOpenFirings = vi.fn();
+
+    render(
+      <NotificationsView
+        user={createUser()}
+        notifications={[
+          {
+            id: "notif-open",
+            title: "Kiln update",
+            body: "Your firing is ready.",
+            createdAt: { toDate: () => new Date("2026-02-26T00:00:00.000Z") },
+            readAt: null,
+            data: {
+              firingId: "firing-1",
+              kilnName: "Electric kiln",
+              firingType: "bisque",
+            },
+          },
+        ]}
+        loading={false}
+        error=""
+        onOpenFirings={onOpenFirings}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^View firings$/i }));
+
+    expect(onOpenFirings).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(updateDocMock).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByTestId("notification-card-notif-open")).toBeNull();
+    expect(screen.queryByText("You're caught up. Switch to All to review earlier notifications.")).not.toBeNull();
+  });
+
+  it("keeps view-firings notifications out of inbox across a remount while read sync finishes", async () => {
+    const notification = {
+      id: "notif-remount",
+      title: "Kiln update",
+      body: "Your firing is ready.",
+      createdAt: { toDate: () => new Date("2026-02-26T00:00:00.000Z") },
+      readAt: null,
+      data: {
+        firingId: "firing-2",
+        kilnName: "Gas kiln",
+        firingType: "glaze",
+      },
+    };
+
+    const firstRender = render(
+      <NotificationsView
+        user={createUser()}
+        notifications={[notification]}
+        loading={false}
+        error=""
+        onOpenFirings={() => undefined}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^View firings$/i }));
+    await waitFor(() => {
+      expect(updateDocMock).toHaveBeenCalledTimes(1);
+    });
+
+    firstRender.unmount();
+
+    render(
+      <NotificationsView
+        user={createUser()}
+        notifications={[notification]}
+        loading={false}
+        error=""
+        onOpenFirings={() => undefined}
+      />
+    );
+
+    expect(screen.queryByTestId("notification-card-notif-remount")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /^All$/i }));
+
+    expect(screen.getByTestId("notification-card-notif-remount")).toBeTruthy();
   });
 });

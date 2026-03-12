@@ -104,6 +104,18 @@ export default defineConfig(({ mode }) => {
       },
     },
     build: {
+      minify: "terser",
+      terserOptions: {
+        module: true,
+        compress: {
+          passes: 2,
+          pure_getters: true,
+          drop_debugger: true,
+        },
+        format: {
+          comments: false,
+        },
+      },
       rollupOptions: {
         output: {
           manualChunks(id) {

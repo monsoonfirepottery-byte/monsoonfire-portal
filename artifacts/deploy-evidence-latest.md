@@ -1,11 +1,11 @@
 # Deploy Evidence Pack
 
-- Generated: 2026-03-12T03:00:20.644Z
+- Generated: 2026-03-01T17:25:26.126Z
 - Target: namecheap-portal
-- Status: failed
+- Status: passed
 - Base URL: https://portal.monsoonfire.com
-- Commit: 943d865e36453ce33a79ad5ffdb492a7cc20bd75
-- Branch: codex/lending-v1-shippable
+- Commit: 687397ba972b291197ad08478f1a5518f06618d1
+- Branch: main
 
 ## Artifact Status
 
@@ -18,11 +18,7 @@
 | Post-deploy virtual staff regression | no | pass | output/qa/post-deploy-virtual-staff-regression.json |
 | Post-deploy Firestore index guard | no | pass | output/qa/post-deploy-index-guard.json |
 | Auto rollback report | no | unk | output/qa/post-deploy-rollback.json |
-| Post-rollback verify | no | fail | output/qa/post-deploy-rollback-verify.json |
-
-## Attention
-
-- Failed: Post-rollback verify
+| Post-rollback verify | no | pass | output/qa/post-deploy-rollback-verify.json |
 
 ## Notes
 

@@ -1,12 +1,12 @@
 {
-  "generatedAtIso": "2026-03-12T03:00:20.644Z",
+  "generatedAtIso": "2026-03-01T17:25:26.126Z",
   "target": "namecheap-portal",
   "baseUrl": "https://portal.monsoonfire.com",
-  "status": "failed",
+  "status": "passed",
   "strict": true,
   "git": {
-    "sha": "943d865e36453ce33a79ad5ffdb492a7cc20bd75",
-    "branch": "codex/lending-v1-shippable"
+    "sha": "687397ba972b291197ad08478f1a5518f06618d1",
+    "branch": "main"
   },
   "artifacts": [
     {
@@ -21,7 +21,7 @@
         "status": "passed",
         "target": "namecheap-portal",
         "requirePromotionGate": true,
-        "runAtIso": "2026-03-12T02:58:44.624Z",
+        "runAtIso": "2026-03-01T17:24:21.749Z",
         "reportPath": "/home/wuff/monsoonfire-portal/output/qa/deploy-preflight.json",
         "checks": [
           {
@@ -65,13 +65,6 @@
             "required": true,
             "detail": "/home/wuff/monsoonfire-portal/web/deploy/namecheap/.htaccess",
             "hint": "Restore web/deploy/namecheap/.htaccess before deploy."
-          },
-          {
-            "label": ".well-known asset exists (openapi.json)",
-            "status": "passed",
-            "required": true,
-            "detail": "/home/wuff/monsoonfire-portal/web/public/.well-known/openapi.json",
-            "hint": "Restore required .well-known file before deploy."
           },
           {
             "label": ".well-known asset exists (apple-app-site-association)",
@@ -131,7 +124,7 @@
           }
         ],
         "totals": {
-          "checks": 15,
+          "checks": 14,
           "requiredFailures": 0,
           "optionalFailures": 0
         },
@@ -160,20 +153,20 @@
             "error": ""
           },
           {
-            "path": "https://portal.monsoonfire.com/reserve",
+            "path": "https://portal.monsoonfire.com/reservations",
             "status": 200,
             "ok": true,
-            "bodySnippet": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n    <title>Reserve Kiln Firing | Monsoon Fire Portal</title>\n    <meta\n      name=\"description\"\n      content=\"Reserve kiln firing at Monsoon Fire. This public landing page h...",
-            "bodyLength": 5408,
-            "cacheControl": "",
+            "bodySnippet": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <link rel=\"icon\" type=\"image/png\" href=\"/pwa-192.png\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <link rel=\"dns-prefetch\" href=\"//firestore.googleapis.com\" />\n    <link rel=\"dns-prefetch\" href=\"//identity...",
+            "bodyLength": 4784,
+            "cacheControl": "no-cache",
             "error": ""
           },
           {
-            "path": "https://portal.monsoonfire.com/.well-known/openapi.json",
+            "path": "https://portal.monsoonfire.com/.well-known/apple-app-site-association",
             "status": 200,
             "ok": true,
-            "bodySnippet": "{\n  \"openapi\": \"3.1.0\",\n  \"jsonSchemaDialect\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"info\": {\n    \"title\": \"Monsoon Fire Portal Public API\",\n    \"version\": \"2026-03-10\",\n    \"summary\": \"Member-safe reservations and memberships contract for portal.monsoonfire.com\",\n    \"description\": \"Public machine-readabl...",
-            "bodyLength": 48558,
+            "bodySnippet": "{\n  \"applinks\": {\n    \"apps\": [],\n    \"details\": [\n      {\n        \"appID\": \"TEAMID.com.monsoonfire.portal.reference\",\n        \"paths\": [\n          \"/materials*\",\n          \"/events*\",\n          \"/kiln*\",\n          \"/pieces*\",\n          \"/notifications*\"\n        ]\n      }\n    ]\n  }\n}\n",
+            "bodyLength": 285,
             "cacheControl": "",
             "error": ""
           }
@@ -184,41 +177,41 @@
             "rootRoute",
             "deepRoute",
             "wellKnownRoute",
-            "asset/assets/index-DbDpkkvj.js",
-            "asset/assets/vendor-D0RFdUzJ.js",
-            "asset/assets/vendor-react-CH4lcrwF.js",
-            "rootCache"
+            "asset/assets/index-66buFH56.js",
+            "asset/assets/vendor-DuPUYBON.js",
+            "asset/assets/vendor-react-DPkGgiPW.js",
+            "rootCache",
+            "deepCache"
           ],
           "warnings": [
-            "deepCache missing cache-control header at https://portal.monsoonfire.com/reserve",
             "protected function check skipped (set --id-token <token> or PORTAL_CUTOVER_ID_TOKEN=<token> in env)"
           ],
           "failures": []
         },
-        "deepPath": "/reserve",
-        "wellKnownPath": "/.well-known/openapi.json",
+        "deepPath": "/reservations",
+        "wellKnownPath": "/.well-known/apple-app-site-association",
         "sampleAssets": [
-          "/assets/index-DbDpkkvj.js",
-          "/assets/vendor-D0RFdUzJ.js",
-          "/assets/vendor-react-CH4lcrwF.js"
+          "/assets/index-66buFH56.js",
+          "/assets/vendor-DuPUYBON.js",
+          "/assets/vendor-react-DPkGgiPW.js"
         ],
         "assetChecks": [
           {
-            "path": "/assets/index-DbDpkkvj.js",
+            "path": "/assets/index-66buFH56.js",
             "status": 200,
             "cacheControl": "public, max-age=31536000, immutable",
             "hasCacheHeader": true,
             "ok": true
           },
           {
-            "path": "/assets/vendor-D0RFdUzJ.js",
+            "path": "/assets/vendor-DuPUYBON.js",
             "status": 200,
             "cacheControl": "public, max-age=31536000, immutable",
             "hasCacheHeader": true,
             "ok": true
           },
           {
-            "path": "/assets/vendor-react-CH4lcrwF.js",
+            "path": "/assets/vendor-react-DPkGgiPW.js",
             "status": 200,
             "cacheControl": "public, max-age=31536000, immutable",
             "hasCacheHeader": true,
@@ -253,8 +246,8 @@
       "payload": {
         "status": "passed",
         "baseUrl": "https://portal.monsoonfire.com",
-        "startedAtIso": "2026-03-12T02:59:06.638Z",
-        "finishedAtIso": "2026-03-12T03:00:20.609Z",
+        "startedAtIso": "2026-03-01T17:24:37.948Z",
+        "finishedAtIso": "2026-03-01T17:25:26.090Z",
         "reportPath": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-promotion-gate.json",
         "feedback": {
           "enabled": false,
@@ -266,7 +259,6 @@
             "includeVirtualStaff": true,
             "includeIndexDeploy": true,
             "includeIndexGuard": true,
-            "includeJourneyCheck": true,
             "softFailPermissionDenied": false
           }
         },
@@ -277,9 +269,9 @@
             "status": "passed",
             "failureCategory": "",
             "exitCode": 0,
-            "durationMs": 3280,
+            "durationMs": 4128,
             "command": "node ./scripts/firestore-indexes-deploy.mjs --project monsoonfire-portal --report output/qa/post-deploy-index-deploy.json --json",
-            "stdout": "{\n  \"status\": \"passed\",\n  \"projectId\": \"monsoonfire-portal\",\n  \"startedAtIso\": \"2026-03-12T02:59:06.667Z\",\n  \"finishedAtIso\": \"2026-03-12T02:59:09.913Z\",\n  \"reportPath\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-index-deploy.json\",\n  \"authSource\": \"GOOGLE_APPLICATION_CREDENTIALS\",\n  \"command\": \"npx firebase-tools deploy --only firestore:indexes --project monsoonfire-portal --non-interactive\",\n  \"exitCode\": 0,\n  \"stdout\": \"\\n=== Deploying to 'monsoonfire-portal'...\\n\\ni  deploying firestore\\ni  firestore: ensuring required API firestore.googleapis.com is enabled...\\ni  firestore: ensuring required API firestore.googleapis.com is enabled...\\ni  firestore: reading indexes from firestore.indexes.json...\\ni  cloud.firestore: checking firestore.rules for compilation errors...\\n✔  cloud.firestore: rules file firestore.rules compiled successfully\\ni  firestore: deploying indexes...\\ni  firestore: there are 2 indexes defined in your project that are not present in your firestore indexes file. To delete them, run this command with the --force flag.\\n✔  firestore: deployed indexes in firestore.indexes.json successfully for default database\\n\\n✔  Deploy complete!\\n\\nProject Console: https://console.firebase.google.com/project/monsoonfire-portal/overview\\n\",\n  \"stderr\": \"\",\n  \"notes\": []\n}\n",
+            "stdout": "{\n  \"status\": \"passed\",\n  \"projectId\": \"monsoonfire-portal\",\n  \"startedAtIso\": \"2026-03-01T17:24:37.977Z\",\n  \"finishedAtIso\": \"2026-03-01T17:24:42.067Z\",\n  \"reportPath\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-index-deploy.json\",\n  \"authSource\": \"firebase-cli-session\",\n  \"command\": \"npx firebase-tools deploy --only firestore:indexes --project monsoonfire-portal --non-interactive\",\n  \"exitCode\": 0,\n  \"stdout\": \"\\n=== Deploying to 'monsoonfire-portal'...\\n\\ni  deploying firestore\\ni  firestore: ensuring required API firestore.googleapis.com is enabled...\\ni  firestore: ensuring required API firestore.googleapis.com is enabled...\\ni  firestore: reading indexes from firestore.indexes.json...\\ni  cloud.firestore: checking firestore.rules for compilation errors...\\n✔  cloud.firestore: rules file firestore.rules compiled successfully\\ni  firestore: deploying indexes...\\n✔  firestore: deployed indexes in firestore.indexes.json successfully for default database\\n\\n✔  Deploy complete!\\n\\nProject Console: https://console.firebase.google.com/project/monsoonfire-portal/overview\\n\",\n  \"stderr\": \"\",\n  \"notes\": []\n}\n",
             "stderr": ""
           },
           {
@@ -287,9 +279,9 @@
             "status": "passed",
             "failureCategory": "",
             "exitCode": 0,
-            "durationMs": 67324,
-            "command": "node ./scripts/portal-authenticated-canary.mjs --base-url https://portal.monsoonfire.com --output-dir output/qa/post-deploy-canary --report output/qa/post-deploy-authenticated-canary.json --json --journey-check --journey-piece-prefix QA- --journey-cleanup-mode best-effort",
-            "stdout": "{\n  \"status\": \"passed\",\n  \"baseUrl\": \"https://portal.monsoonfire.com\",\n  \"projectId\": \"monsoonfire-portal\",\n  \"startedAtIso\": \"2026-03-12T02:59:10.217Z\",\n  \"finishedAtIso\": \"2026-03-12T03:00:17.232Z\",\n  \"reportPath\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-authenticated-canary.json\",\n  \"auth\": {\n    \"requireAuth\": true,\n    \"adminTokenProvided\": false,\n    \"credentialSource\": \"PORTAL_STAFF_EMAIL / PORTAL_STAFF_PASSWORD\",\n    \"attemptedSources\": [],\n    \"warnings\": []\n  },\n  \"feedback\": {\n    \"enabled\": false,\n    \"loaded\": false,\n    \"profilePath\": \"\",\n    \"sourceRunCount\": 0,\n    \"agenticDirectiveCount\": 0,\n    \"myPiecesReadyTimeoutMs\": 18000,\n    \"myPiecesReloadRetryCount\": 1,\n    \"markReadRetryCount\": 1,\n    \"myPiecesEmptyStatePatterns\": []\n  },\n  \"checks\": [\n    {\n      \"label\": \"base URL reachable\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"authenticate staff account\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"staff workspace route checks\",\n      \"status\": \"passed\",\n      \"message\": \"Skipped strict staff-route assertions for synthetic production credentials.\"\n    },\n    {\n      \"label\": \"navigation dock controls switch left/top/right/bottom\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"navigation flyouts open in top/bottom docks\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"legacy requests deep links route to supported pages\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"dashboard piece click-through opens my pieces detail\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"continue journey runtime linkage (ui + firestore)\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"notifications mark read gives user feedback\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"workshops page shows event feed content\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"messages page loads without index/precondition errors\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"ware check-in page loads without check-in/index errors\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"ware check-in optional sections stay collapsed by default and preserve values\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"advanced diagnostics panel renders\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"theme contrast sweep (light)\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"theme contrast sweep (dark)\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"theme contrast sweep (mono)\",\n      \"status\": \"passed\"\n    }\n  ],\n  \"errors\": [],\n  \"warnings\": [\n    \"Skipping staff workspace route checks because configured credentials look synthetic for production (for example *.local). Set --enforce-staff-routes (or PORTAL_CANARY_ENFORCE_STAFF_ROUTES=true) to force strict staff route assertions.\"\n  ],\n  \"screenshots\": [\n    {\n      \"label\": \"home\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-01-home.png\"\n    },\n    {\n      \"label\": \"authenticated dashboard\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02-authenticated-dashboard.png\"\n    },\n    {\n      \"label\": \"nav dock left\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02f-nav-dock-left.png\"\n    },\n    {\n      \"label\": \"nav dock top\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02g-nav-dock-top.png\"\n    },\n    {\n      \"label\": \"nav dock right\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02h-nav-dock-right.png\"\n    },\n    {\n      \"label\": \"nav dock bottom\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02i-nav-dock-bottom.png\"\n    },\n    {\n      \"label\": \"nav flyout top dock\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02j-nav-flyout-top.png\"\n    },\n    {\n      \"label\": \"nav flyout bottom dock\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02k-nav-flyout-bottom.png\"\n    },\n    {\n      \"label\": \"legacy requests support fallback\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02b-legacy-requests-support.png\"\n    },\n    {\n      \"label\": \"legacy requests lending fallback\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02c-legacy-requests-lending.png\"\n    },\n    {\n      \"label\": \"legacy requests workshops fallback\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02d-legacy-requests-workshops.png\"\n    },\n    {\n      \"label\": \"legacy requests hash-route fallback\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02e-legacy-requests-hash-workshops.png\"\n    },\n    {\n      \"label\": \"my pieces detail\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-03-my-pieces-detail.png\"\n    },\n    {\n      \"label\": \"continue journey runtime check\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-03b-continue-journey-created.png\"\n    },\n    {\n      \"label\": \"notifications\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-04-notifications.png\"\n    },\n    {\n      \"label\": \"workshops seeded\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-04b-workshops-seeded.png\"\n    },\n    {\n      \"label\": \"messages\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-05-messages.png\"\n    },\n    {\n      \"label\": \"ware check-in\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-06-ware-checkin.png\"\n    },\n    {\n      \"label\": \"ware check-in optional sections\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-06b-ware-checkin-optional-sections.png\"\n    },\n    {\n      \"label\": \"advanced diagnostics\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-07-advanced-diagnostics.png\"\n    },\n    {\n      \"label\": \"light Dashboard\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-light-dashboard.png\"\n    },\n    {\n      \"label\": \"light Notifications\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-light-notifications.png\"\n    },\n    {\n      \"label\": \"light Messages\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-light-messages.png\"\n    },\n    {\n      \"label\": \"light Ware Check-in\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-light-ware-check-in.png\"\n    },\n    {\n      \"label\": \"dark Dashboard\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-dark-dashboard.png\"\n    },\n    {\n      \"label\": \"dark Notifications\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-dark-notifications.png\"\n    },\n    {\n      \"label\": \"dark Messages\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-dark-messages.png\"\n    },\n    {\n      \"label\": \"dark Ware Check-in\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-dark-ware-check-in.png\"\n    },\n    {\n      \"label\": \"mono Dashboard\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-mono-dashboard.png\"\n    },\n    {\n      \"label\": \"mono Notifications\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-mono-notifications.png\"\n    },\n    {\n      \"label\": \"mono Messages\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-mono-messages.png\"\n    },\n    {\n      \"label\": \"mono Ware Check-in\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-mono-ware-check-in.png\"\n    }\n  ],\n  \"contrast\": {\n    \"light\": [\n      {\n        \"page\": \"Dashboard\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Notifications\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Messages\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Ware Check-in\",\n        \"issueCount\": 0,\n        \"issues\": []\n      }\n    ],\n    \"dark\": [\n      {\n        \"page\": \"Dashboard\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Notifications\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Messages\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Ware Check-in\",\n        \"issueCount\": 0,\n        \"issues\": []\n      }\n    ],\n    \"mono\": [\n      {\n        \"page\": \"Dashboard\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Notifications\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Messages\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Ware Check-in\",\n        \"issueCount\": 0,\n        \"issues\": []\n      }\n    ]\n  },\n  \"journeyCheck\": {\n    \"enabled\": true,\n    \"piecePrefix\": \"QA-\",\n    \"sourceBatchId\": \"batch-5b617e35df28956a8a75\",\n    \"createdBatchId\": \"sPKYC6TPCbB9hp8WB2ji\",\n    \"rootId\": \"batch-5b617e35df28956a8a75\",\n    \"request\": {\n      \"uid\": \"6qU0XDdJ32e4PUFVvdBfQKuAF7u1\",\n      \"fromBatchId\": \"batch-5b617e35df28956a8a75\"\n    },\n    \"response\": {\n      \"url\": \"https://us-central1-monsoonfire-portal.cloudfunctions.net/continueJourney\",\n      \"status\": 200,\n      \"ok\": true,\n      \"batchId\": \"sPKYC6TPCbB9hp8WB2ji\",\n      \"rootId\": \"batch-5b617e35df28956a8a75\"\n    },\n    \"assertions\": [\n      {\n        \"label\": \"new batch state is DRAFT\",\n        \"status\": \"passed\",\n        \"details\": \"observed=\\\"DRAFT\\\"\"\n      },\n      {\n        \"label\": \"new batch is open\",\n        \"status\": \"passed\",\n        \"details\": \"observed=\\\"false\\\"\"\n      },\n      {\n        \"label\": \"new batch links journeyParentBatchId\",\n        \"status\": \"passed\",\n        \"details\": \"observed=\\\"batch-5b617e35df28956a8a75\\\" expected=\\\"batch-5b617e35df28956a8a75\\\"\"\n      },\n      {\n        \"label\": \"new batch links journeyRootBatchId\",\n        \"status\": \"passed\",\n        \"details\": \"observed=\\\"batch-5b617e35df28956a8a75\\\" expected=\\\"batch-5b617e35df28956a8a75\\\"\"\n      },\n      {\n        \"label\": \"new batch ownerUid matches authenticated uid\",\n        \"status\": \"passed\",\n        \"details\": \"observed=\\\"6qU0XDdJ32e4PUFVvdBfQKuAF7u1\\\" expected=\\\"6qU0XDdJ32e4PUFVvdBfQKuAF7u1\\\"\"\n      },\n      {\n        \"label\": \"timeline contains CONTINUE_JOURNEY event\",\n        \"status\": \"passed\",\n        \"details\": \"timelineCount=1\"\n      },\n      {\n        \"label\": \"timeline continue event references source batch\",\n        \"status\": \"passed\",\n        \"details\": \"observed=\\\"batch-5b617e35df28956a8a75\\\" expected=\\\"batch-5b617e35df28956a8a75\\\"\"\n      }\n    ],\n    \"cleanup\": {\n      \"mode\": \"best-effort\",\n      \"attempted\": true,\n      \"status\": \"clean\",\n      \"deletedPaths\": [\n        \"batches/sPKYC6TPCbB9hp8WB2ji (closed via pickedUpAndClose)\"\n      ],\n      \"lifecycleTransitions\": [\n        {\n          \"action\": \"pickedUpAndClose\",\n          \"url\": \"https://us-central1-monsoonfire-portal.cloudfunctions.net/pickedUpAndClose\",\n          \"status\": 200,\n          \"ok\": true\n        }\n      ],\n      \"debt\": []\n    }\n  }\n}\n",
+            "durationMs": 40846,
+            "command": "node ./scripts/portal-authenticated-canary.mjs --base-url https://portal.monsoonfire.com --output-dir output/qa/post-deploy-canary --report output/qa/post-deploy-authenticated-canary.json --json",
+            "stdout": "{\n  \"status\": \"passed\",\n  \"baseUrl\": \"https://portal.monsoonfire.com\",\n  \"startedAtIso\": \"2026-03-01T17:24:42.385Z\",\n  \"finishedAtIso\": \"2026-03-01T17:25:22.911Z\",\n  \"reportPath\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-authenticated-canary.json\",\n  \"auth\": {\n    \"requireAuth\": true,\n    \"credentialSource\": \"PORTAL_STAFF_EMAIL / PORTAL_STAFF_PASSWORD\",\n    \"attemptedSources\": [],\n    \"warnings\": []\n  },\n  \"feedback\": {\n    \"enabled\": false,\n    \"loaded\": false,\n    \"profilePath\": \"\",\n    \"sourceRunCount\": 0,\n    \"agenticDirectiveCount\": 0,\n    \"myPiecesReadyTimeoutMs\": 18000,\n    \"myPiecesReloadRetryCount\": 1,\n    \"markReadRetryCount\": 1,\n    \"myPiecesEmptyStatePatterns\": []\n  },\n  \"checks\": [\n    {\n      \"label\": \"base URL reachable\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"authenticate staff account\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"navigation dock controls switch left/top/right\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"legacy requests deep links route to supported pages\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"dashboard piece click-through opens my pieces detail\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"notifications mark read gives user feedback\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"workshops page shows event feed content\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"messages page loads without index/precondition errors\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"ware check-in page loads without check-in/index errors\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"ware check-in optional sections stay collapsed by default and preserve values\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"advanced diagnostics panel renders\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"theme contrast sweep (light)\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"theme contrast sweep (dark)\",\n      \"status\": \"passed\"\n    },\n    {\n      \"label\": \"theme contrast sweep (mono)\",\n      \"status\": \"passed\"\n    }\n  ],\n  \"errors\": [],\n  \"warnings\": [],\n  \"screenshots\": [\n    {\n      \"label\": \"home\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-01-home.png\"\n    },\n    {\n      \"label\": \"authenticated dashboard\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02-authenticated-dashboard.png\"\n    },\n    {\n      \"label\": \"nav dock left\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02f-nav-dock-left.png\"\n    },\n    {\n      \"label\": \"nav dock top\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02g-nav-dock-top.png\"\n    },\n    {\n      \"label\": \"nav dock right\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02h-nav-dock-right.png\"\n    },\n    {\n      \"label\": \"legacy requests support fallback\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02b-legacy-requests-support.png\"\n    },\n    {\n      \"label\": \"legacy requests lending fallback\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02c-legacy-requests-lending.png\"\n    },\n    {\n      \"label\": \"legacy requests workshops fallback\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02d-legacy-requests-workshops.png\"\n    },\n    {\n      \"label\": \"legacy requests hash-route fallback\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02e-legacy-requests-hash-workshops.png\"\n    },\n    {\n      \"label\": \"my pieces detail\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-03-my-pieces-detail.png\"\n    },\n    {\n      \"label\": \"notifications\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-04-notifications.png\"\n    },\n    {\n      \"label\": \"workshops seeded\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-04b-workshops-seeded.png\"\n    },\n    {\n      \"label\": \"messages\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-05-messages.png\"\n    },\n    {\n      \"label\": \"ware check-in\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-06-ware-checkin.png\"\n    },\n    {\n      \"label\": \"ware check-in optional sections\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-06b-ware-checkin-optional-sections.png\"\n    },\n    {\n      \"label\": \"advanced diagnostics\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-07-advanced-diagnostics.png\"\n    },\n    {\n      \"label\": \"light Dashboard\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-light-dashboard.png\"\n    },\n    {\n      \"label\": \"light Notifications\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-light-notifications.png\"\n    },\n    {\n      \"label\": \"light Messages\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-light-messages.png\"\n    },\n    {\n      \"label\": \"light Ware Check-in\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-light-ware-check-in.png\"\n    },\n    {\n      \"label\": \"dark Dashboard\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-dark-dashboard.png\"\n    },\n    {\n      \"label\": \"dark Notifications\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-dark-notifications.png\"\n    },\n    {\n      \"label\": \"dark Messages\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-dark-messages.png\"\n    },\n    {\n      \"label\": \"dark Ware Check-in\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-dark-ware-check-in.png\"\n    },\n    {\n      \"label\": \"mono Dashboard\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-mono-dashboard.png\"\n    },\n    {\n      \"label\": \"mono Notifications\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-mono-notifications.png\"\n    },\n    {\n      \"label\": \"mono Messages\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-mono-messages.png\"\n    },\n    {\n      \"label\": \"mono Ware Check-in\",\n      \"path\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-theme-mono-ware-check-in.png\"\n    }\n  ],\n  \"contrast\": {\n    \"light\": [\n      {\n        \"page\": \"Dashboard\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Notifications\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Messages\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Ware Check-in\",\n        \"issueCount\": 0,\n        \"issues\": []\n      }\n    ],\n    \"dark\": [\n      {\n        \"page\": \"Dashboard\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Notifications\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Messages\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Ware Check-in\",\n        \"issueCount\": 0,\n        \"issues\": []\n      }\n    ],\n    \"mono\": [\n      {\n        \"page\": \"Dashboard\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Notifications\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Messages\",\n        \"issueCount\": 0,\n        \"issues\": []\n      },\n      {\n        \"page\": \"Ware Check-in\",\n        \"issueCount\": 0,\n        \"issues\": []\n      }\n    ]\n  }\n}\n",
             "stderr": ""
           },
           {
@@ -297,9 +289,9 @@
             "status": "passed",
             "failureCategory": "",
             "exitCode": 0,
-            "durationMs": 3286,
+            "durationMs": 3089,
             "command": "node ./scripts/run-portal-virtual-staff-regression.mjs --project monsoonfire-portal --base-url https://portal.monsoonfire.com --skip-ui-smoke --report output/qa/post-deploy-virtual-staff-regression.json --json",
-            "stdout": "{\n  \"status\": \"passed\",\n  \"projectId\": \"monsoonfire-portal\",\n  \"baseUrl\": \"https://portal.monsoonfire.com\",\n  \"functionsBaseUrl\": \"https://us-central1-monsoonfire-portal.cloudfunctions.net\",\n  \"startedAtIso\": \"2026-03-12T03:00:17.272Z\",\n  \"finishedAtIso\": \"2026-03-12T03:00:20.499Z\",\n  \"reportPath\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-virtual-staff-regression.json\",\n  \"notes\": [\n    \"UI smoke step skipped (--skip-ui-smoke).\"\n  ],\n  \"warnings\": [],\n  \"steps\": [\n    {\n      \"label\": \"firestore release drift check\",\n      \"status\": \"passed\",\n      \"failureCategory\": \"\",\n      \"exitCode\": 0,\n      \"durationMs\": 742,\n      \"command\": \"/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/sync-firestore-rules-releases.mjs --check --project monsoonfire-portal --json\",\n      \"stdout\": \"{\\n  \\\"projectId\\\": \\\"monsoonfire-portal\\\",\\n  \\\"status\\\": \\\"in_sync\\\",\\n  \\\"legacyRelease\\\": {\\n    \\\"name\\\": \\\"projects/monsoonfire-portal/releases/cloud.firestore\\\",\\n    \\\"rulesetName\\\": \\\"projects/monsoonfire-portal/rulesets/831292c4-61b4-4257-a311-4c6eee6eccc6\\\",\\n    \\\"updateTime\\\": \\\"2026-02-26T06:11:18.534484Z\\\"\\n  },\\n  \\\"defaultRelease\\\": {\\n    \\\"name\\\": \\\"projects/monsoonfire-portal/releases/cloud.firestore/default\\\",\\n    \\\"rulesetName\\\": \\\"projects/monsoonfire-portal/rulesets/831292c4-61b4-4257-a311-4c6eee6eccc6\\\",\\n    \\\"updateTime\\\": \\\"2026-02-26T06:06:51.165906Z\\\"\\n  },\\n  \\\"tokenSource\\\": \\\"env-refresh-token-fallback-access\\\",\\n  \\\"message\\\": \\\"Firestore releases are already aligned.\\\"\\n}\\n\",\n      \"stderr\": \"\"\n    },\n    {\n      \"label\": \"pricing + intake policy check\",\n      \"status\": \"passed\",\n      \"failureCategory\": \"\",\n      \"exitCode\": 0,\n      \"durationMs\": 81,\n      \"command\": \"/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/check-pricing-and-intake-policy.mjs\",\n      \"stdout\": \"{\\n  \\\"ok\\\": true,\\n  \\\"check\\\": \\\"pricing_and_intake_policy\\\"\\n}\\n\",\n      \"stderr\": \"\"\n    },\n    {\n      \"label\": \"my pieces authz probe\",\n      \"status\": \"passed\",\n      \"failureCategory\": \"\",\n      \"exitCode\": 0,\n      \"durationMs\": 1541,\n      \"command\": \"/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/check-portal-mypieces-authz.mjs --project monsoonfire-portal --functions-base-url https://us-central1-monsoonfire-portal.cloudfunctions.net --json --credentials /home/wuff/monsoonfire-portal/secrets/portal/portal-agent-staff.json\",\n      \"stdout\": \"{\\n  \\\"status\\\": \\\"passed\\\",\\n  \\\"projectId\\\": \\\"monsoonfire-portal\\\",\\n  \\\"actor\\\": {\\n    \\\"uid\\\": \\\"6qU0XDdJ32e4PUFVvdBfQKuAF7u1\\\",\\n    \\\"email\\\": \\\"agent.staff.bot@monsoonfire.local\\\"\\n  },\\n  \\\"batch\\\": {\\n    \\\"batchId\\\": \\\"batch-976c9dcf240dc36245f0\\\",\\n    \\\"status\\\": 200,\\n    \\\"ok\\\": true,\\n    \\\"error\\\": null\\n  },\\n  \\\"piece\\\": {\\n    \\\"pieceId\\\": \\\"piece-1773284418386\\\",\\n    \\\"create\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"error\\\": null\\n    },\\n    \\\"get\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"error\\\": null\\n    },\\n    \\\"list\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"error\\\": null\\n    }\\n  },\\n  \\\"message\\\": \\\"My Pieces permission path passed create/get/list checks.\\\"\\n}\\n\",\n      \"stderr\": \"\"\n    },\n    {\n      \"label\": \"notifications mark-read authz probe\",\n      \"status\": \"passed\",\n      \"failureCategory\": \"\",\n      \"exitCode\": 0,\n      \"durationMs\": 862,\n      \"command\": \"/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/check-portal-notifications-authz.mjs --project monsoonfire-portal --functions-base-url https://us-central1-monsoonfire-portal.cloudfunctions.net --json --credentials /home/wuff/monsoonfire-portal/secrets/portal/portal-agent-staff.json\",\n      \"stdout\": \"{\\n  \\\"status\\\": \\\"passed\\\",\\n  \\\"projectId\\\": \\\"monsoonfire-portal\\\",\\n  \\\"actor\\\": {\\n    \\\"uid\\\": \\\"6qU0XDdJ32e4PUFVvdBfQKuAF7u1\\\",\\n    \\\"email\\\": \\\"agent.staff.bot@monsoonfire.local\\\"\\n  },\\n  \\\"notification\\\": {\\n    \\\"targetId\\\": \\\"90f70a59fb54d38a862ecadae4db6f99a8a77ffb2e2cab311bf9498f99a694b5\\\",\\n    \\\"list\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"count\\\": 20,\\n      \\\"error\\\": null\\n    },\\n    \\\"read\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"error\\\": null\\n    },\\n    \\\"markRead\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"error\\\": null\\n    },\\n    \\\"verify\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"error\\\": null\\n    }\\n  },\\n  \\\"message\\\": \\\"Notifications permission path passed list/read/mark-read checks.\\\"\\n}\\n\",\n      \"stderr\": \"\"\n    }\n  ]\n}\n",
+            "stdout": "{\n  \"status\": \"passed\",\n  \"projectId\": \"monsoonfire-portal\",\n  \"baseUrl\": \"https://portal.monsoonfire.com\",\n  \"functionsBaseUrl\": \"https://us-central1-monsoonfire-portal.cloudfunctions.net\",\n  \"startedAtIso\": \"2026-03-01T17:25:22.952Z\",\n  \"finishedAtIso\": \"2026-03-01T17:25:25.984Z\",\n  \"reportPath\": \"/home/wuff/monsoonfire-portal/output/qa/post-deploy-virtual-staff-regression.json\",\n  \"notes\": [\n    \"UI smoke step skipped (--skip-ui-smoke).\"\n  ],\n  \"steps\": [\n    {\n      \"label\": \"firestore release drift check\",\n      \"status\": \"passed\",\n      \"exitCode\": 0,\n      \"durationMs\": 697,\n      \"command\": \"/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/sync-firestore-rules-releases.mjs --check --project monsoonfire-portal --json\",\n      \"stdout\": \"{\\n  \\\"projectId\\\": \\\"monsoonfire-portal\\\",\\n  \\\"status\\\": \\\"in_sync\\\",\\n  \\\"legacyRelease\\\": {\\n    \\\"name\\\": \\\"projects/monsoonfire-portal/releases/cloud.firestore\\\",\\n    \\\"rulesetName\\\": \\\"projects/monsoonfire-portal/rulesets/831292c4-61b4-4257-a311-4c6eee6eccc6\\\",\\n    \\\"updateTime\\\": \\\"2026-02-26T06:11:18.534484Z\\\"\\n  },\\n  \\\"defaultRelease\\\": {\\n    \\\"name\\\": \\\"projects/monsoonfire-portal/releases/cloud.firestore/default\\\",\\n    \\\"rulesetName\\\": \\\"projects/monsoonfire-portal/rulesets/831292c4-61b4-4257-a311-4c6eee6eccc6\\\",\\n    \\\"updateTime\\\": \\\"2026-02-26T06:06:51.165906Z\\\"\\n  },\\n  \\\"tokenSource\\\": \\\"env-refresh-token\\\",\\n  \\\"message\\\": \\\"Firestore releases are already aligned.\\\"\\n}\\n\",\n      \"stderr\": \"\"\n    },\n    {\n      \"label\": \"pricing + intake policy check\",\n      \"status\": \"passed\",\n      \"exitCode\": 0,\n      \"durationMs\": 91,\n      \"command\": \"/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/check-pricing-and-intake-policy.mjs\",\n      \"stdout\": \"{\\n  \\\"ok\\\": true,\\n  \\\"check\\\": \\\"pricing_and_intake_policy\\\"\\n}\\n\",\n      \"stderr\": \"\"\n    },\n    {\n      \"label\": \"my pieces authz probe\",\n      \"status\": \"passed\",\n      \"exitCode\": 0,\n      \"durationMs\": 1385,\n      \"command\": \"/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/check-portal-mypieces-authz.mjs --project monsoonfire-portal --functions-base-url https://us-central1-monsoonfire-portal.cloudfunctions.net --json --credentials /home/wuff/monsoonfire-portal/secrets/portal/portal-agent-staff.json\",\n      \"stdout\": \"{\\n  \\\"status\\\": \\\"passed\\\",\\n  \\\"projectId\\\": \\\"monsoonfire-portal\\\",\\n  \\\"actor\\\": {\\n    \\\"uid\\\": \\\"6qU0XDdJ32e4PUFVvdBfQKuAF7u1\\\",\\n    \\\"email\\\": \\\"agent.staff.bot@monsoonfire.local\\\"\\n  },\\n  \\\"batch\\\": {\\n    \\\"batchId\\\": \\\"batch-8dc22cb0cfa3120a2176\\\",\\n    \\\"status\\\": 200,\\n    \\\"ok\\\": true,\\n    \\\"error\\\": null\\n  },\\n  \\\"piece\\\": {\\n    \\\"pieceId\\\": \\\"piece-1772385924027\\\",\\n    \\\"create\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"error\\\": null\\n    },\\n    \\\"get\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"error\\\": null\\n    },\\n    \\\"list\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"error\\\": null\\n    }\\n  },\\n  \\\"message\\\": \\\"My Pieces permission path passed create/get/list checks.\\\"\\n}\\n\",\n      \"stderr\": \"\"\n    },\n    {\n      \"label\": \"notifications mark-read authz probe\",\n      \"status\": \"passed\",\n      \"exitCode\": 0,\n      \"durationMs\": 857,\n      \"command\": \"/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/check-portal-notifications-authz.mjs --project monsoonfire-portal --functions-base-url https://us-central1-monsoonfire-portal.cloudfunctions.net --json --credentials /home/wuff/monsoonfire-portal/secrets/portal/portal-agent-staff.json\",\n      \"stdout\": \"{\\n  \\\"status\\\": \\\"passed\\\",\\n  \\\"projectId\\\": \\\"monsoonfire-portal\\\",\\n  \\\"actor\\\": {\\n    \\\"uid\\\": \\\"6qU0XDdJ32e4PUFVvdBfQKuAF7u1\\\",\\n    \\\"email\\\": \\\"agent.staff.bot@monsoonfire.local\\\"\\n  },\\n  \\\"notification\\\": {\\n    \\\"targetId\\\": \\\"90f70a59fb54d38a862ecadae4db6f99a8a77ffb2e2cab311bf9498f99a694b5\\\",\\n    \\\"list\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"count\\\": 1,\\n      \\\"error\\\": null\\n    },\\n    \\\"read\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"error\\\": null\\n    },\\n    \\\"markRead\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"error\\\": null\\n    },\\n    \\\"verify\\\": {\\n      \\\"status\\\": 200,\\n      \\\"ok\\\": true,\\n      \\\"error\\\": null\\n    }\\n  },\\n  \\\"message\\\": \\\"Notifications permission path passed list/read/mark-read checks.\\\"\\n}\\n\",\n      \"stderr\": \"\"\n    }\n  ]\n}\n",
             "stderr": ""
           },
           {
@@ -307,9 +299,9 @@
             "status": "passed",
             "failureCategory": "",
             "exitCode": 0,
-            "durationMs": 79,
+            "durationMs": 77,
             "command": "node ./scripts/firestore-index-contract-guard.mjs --strict --json --no-github --report output/qa/post-deploy-index-guard.json",
-            "stdout": "{\n  \"status\": \"passed\",\n  \"projectId\": \"monsoonfire-portal\",\n  \"runAtIso\": \"2026-03-12T03:00:20.604Z\",\n  \"durationMs\": 2,\n  \"requiredCount\": 3,\n  \"missing\": [],\n  \"strict\": true,\n  \"apply\": false,\n  \"rollingIssueUrl\": \"\",\n  \"rollingCommentSignature\": \"\",\n  \"rollingCommentSkipped\": false,\n  \"ticketUrl\": \"\",\n  \"feedback\": {\n    \"enabled\": false,\n    \"loaded\": false,\n    \"path\": \"\",\n    \"suggestedApplyMode\": false,\n    \"suggestedKeepStrictMode\": true,\n    \"candidateMissingIds\": []\n  },\n  \"notes\": []\n}\n",
+            "stdout": "{\n  \"status\": \"passed\",\n  \"projectId\": \"monsoonfire-portal\",\n  \"runAtIso\": \"2026-03-01T17:25:26.085Z\",\n  \"durationMs\": 1,\n  \"requiredCount\": 3,\n  \"missing\": [],\n  \"strict\": true,\n  \"apply\": false,\n  \"rollingIssueUrl\": \"\",\n  \"ticketUrl\": \"\",\n  \"feedback\": {\n    \"enabled\": false,\n    \"loaded\": false,\n    \"path\": \"\",\n    \"suggestedApplyMode\": false,\n    \"suggestedKeepStrictMode\": true,\n    \"candidateMissingIds\": []\n  },\n  \"notes\": []\n}\n",
             "stderr": ""
           }
         ]
@@ -326,13 +318,11 @@
       "payload": {
         "status": "passed",
         "baseUrl": "https://portal.monsoonfire.com",
-        "projectId": "monsoonfire-portal",
-        "startedAtIso": "2026-03-12T02:59:10.217Z",
-        "finishedAtIso": "2026-03-12T03:00:17.232Z",
+        "startedAtIso": "2026-03-01T17:24:42.385Z",
+        "finishedAtIso": "2026-03-01T17:25:22.911Z",
         "reportPath": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-authenticated-canary.json",
         "auth": {
           "requireAuth": true,
-          "adminTokenProvided": false,
           "credentialSource": "PORTAL_STAFF_EMAIL / PORTAL_STAFF_PASSWORD",
           "attemptedSources": [],
           "warnings": []
@@ -358,16 +348,7 @@
             "status": "passed"
           },
           {
-            "label": "staff workspace route checks",
-            "status": "passed",
-            "message": "Skipped strict staff-route assertions for synthetic production credentials."
-          },
-          {
-            "label": "navigation dock controls switch left/top/right/bottom",
-            "status": "passed"
-          },
-          {
-            "label": "navigation flyouts open in top/bottom docks",
+            "label": "navigation dock controls switch left/top/right",
             "status": "passed"
           },
           {
@@ -376,10 +357,6 @@
           },
           {
             "label": "dashboard piece click-through opens my pieces detail",
-            "status": "passed"
-          },
-          {
-            "label": "continue journey runtime linkage (ui + firestore)",
             "status": "passed"
           },
           {
@@ -420,9 +397,7 @@
           }
         ],
         "errors": [],
-        "warnings": [
-          "Skipping staff workspace route checks because configured credentials look synthetic for production (for example *.local). Set --enforce-staff-routes (or PORTAL_CANARY_ENFORCE_STAFF_ROUTES=true) to force strict staff route assertions."
-        ],
+        "warnings": [],
         "screenshots": [
           {
             "label": "home",
@@ -445,18 +420,6 @@
             "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02h-nav-dock-right.png"
           },
           {
-            "label": "nav dock bottom",
-            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02i-nav-dock-bottom.png"
-          },
-          {
-            "label": "nav flyout top dock",
-            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02j-nav-flyout-top.png"
-          },
-          {
-            "label": "nav flyout bottom dock",
-            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02k-nav-flyout-bottom.png"
-          },
-          {
             "label": "legacy requests support fallback",
             "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-02b-legacy-requests-support.png"
           },
@@ -475,10 +438,6 @@
           {
             "label": "my pieces detail",
             "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-03-my-pieces-detail.png"
-          },
-          {
-            "label": "continue journey runtime check",
-            "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-canary/canary-03b-continue-journey-created.png"
           },
           {
             "label": "notifications",
@@ -620,78 +579,6 @@
               "issues": []
             }
           ]
-        },
-        "journeyCheck": {
-          "enabled": true,
-          "piecePrefix": "QA-",
-          "sourceBatchId": "batch-5b617e35df28956a8a75",
-          "createdBatchId": "sPKYC6TPCbB9hp8WB2ji",
-          "rootId": "batch-5b617e35df28956a8a75",
-          "request": {
-            "uid": "6qU0XDdJ32e4PUFVvdBfQKuAF7u1",
-            "fromBatchId": "batch-5b617e35df28956a8a75"
-          },
-          "response": {
-            "url": "https://us-central1-monsoonfire-portal.cloudfunctions.net/continueJourney",
-            "status": 200,
-            "ok": true,
-            "batchId": "sPKYC6TPCbB9hp8WB2ji",
-            "rootId": "batch-5b617e35df28956a8a75"
-          },
-          "assertions": [
-            {
-              "label": "new batch state is DRAFT",
-              "status": "passed",
-              "details": "observed=\"DRAFT\""
-            },
-            {
-              "label": "new batch is open",
-              "status": "passed",
-              "details": "observed=\"false\""
-            },
-            {
-              "label": "new batch links journeyParentBatchId",
-              "status": "passed",
-              "details": "observed=\"batch-5b617e35df28956a8a75\" expected=\"batch-5b617e35df28956a8a75\""
-            },
-            {
-              "label": "new batch links journeyRootBatchId",
-              "status": "passed",
-              "details": "observed=\"batch-5b617e35df28956a8a75\" expected=\"batch-5b617e35df28956a8a75\""
-            },
-            {
-              "label": "new batch ownerUid matches authenticated uid",
-              "status": "passed",
-              "details": "observed=\"6qU0XDdJ32e4PUFVvdBfQKuAF7u1\" expected=\"6qU0XDdJ32e4PUFVvdBfQKuAF7u1\""
-            },
-            {
-              "label": "timeline contains CONTINUE_JOURNEY event",
-              "status": "passed",
-              "details": "timelineCount=1"
-            },
-            {
-              "label": "timeline continue event references source batch",
-              "status": "passed",
-              "details": "observed=\"batch-5b617e35df28956a8a75\" expected=\"batch-5b617e35df28956a8a75\""
-            }
-          ],
-          "cleanup": {
-            "mode": "best-effort",
-            "attempted": true,
-            "status": "clean",
-            "deletedPaths": [
-              "batches/sPKYC6TPCbB9hp8WB2ji (closed via pickedUpAndClose)"
-            ],
-            "lifecycleTransitions": [
-              {
-                "action": "pickedUpAndClose",
-                "url": "https://us-central1-monsoonfire-portal.cloudfunctions.net/pickedUpAndClose",
-                "status": 200,
-                "ok": true
-              }
-            ],
-            "debt": []
-          }
         }
       }
     },
@@ -708,30 +595,27 @@
         "projectId": "monsoonfire-portal",
         "baseUrl": "https://portal.monsoonfire.com",
         "functionsBaseUrl": "https://us-central1-monsoonfire-portal.cloudfunctions.net",
-        "startedAtIso": "2026-03-12T03:00:17.272Z",
-        "finishedAtIso": "2026-03-12T03:00:20.499Z",
+        "startedAtIso": "2026-03-01T17:25:22.952Z",
+        "finishedAtIso": "2026-03-01T17:25:25.984Z",
         "reportPath": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-virtual-staff-regression.json",
         "notes": [
           "UI smoke step skipped (--skip-ui-smoke)."
         ],
-        "warnings": [],
         "steps": [
           {
             "label": "firestore release drift check",
             "status": "passed",
-            "failureCategory": "",
             "exitCode": 0,
-            "durationMs": 742,
+            "durationMs": 697,
             "command": "/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/sync-firestore-rules-releases.mjs --check --project monsoonfire-portal --json",
-            "stdout": "{\n  \"projectId\": \"monsoonfire-portal\",\n  \"status\": \"in_sync\",\n  \"legacyRelease\": {\n    \"name\": \"projects/monsoonfire-portal/releases/cloud.firestore\",\n    \"rulesetName\": \"projects/monsoonfire-portal/rulesets/831292c4-61b4-4257-a311-4c6eee6eccc6\",\n    \"updateTime\": \"2026-02-26T06:11:18.534484Z\"\n  },\n  \"defaultRelease\": {\n    \"name\": \"projects/monsoonfire-portal/releases/cloud.firestore/default\",\n    \"rulesetName\": \"projects/monsoonfire-portal/rulesets/831292c4-61b4-4257-a311-4c6eee6eccc6\",\n    \"updateTime\": \"2026-02-26T06:06:51.165906Z\"\n  },\n  \"tokenSource\": \"env-refresh-token-fallback-access\",\n  \"message\": \"Firestore releases are already aligned.\"\n}\n",
+            "stdout": "{\n  \"projectId\": \"monsoonfire-portal\",\n  \"status\": \"in_sync\",\n  \"legacyRelease\": {\n    \"name\": \"projects/monsoonfire-portal/releases/cloud.firestore\",\n    \"rulesetName\": \"projects/monsoonfire-portal/rulesets/831292c4-61b4-4257-a311-4c6eee6eccc6\",\n    \"updateTime\": \"2026-02-26T06:11:18.534484Z\"\n  },\n  \"defaultRelease\": {\n    \"name\": \"projects/monsoonfire-portal/releases/cloud.firestore/default\",\n    \"rulesetName\": \"projects/monsoonfire-portal/rulesets/831292c4-61b4-4257-a311-4c6eee6eccc6\",\n    \"updateTime\": \"2026-02-26T06:06:51.165906Z\"\n  },\n  \"tokenSource\": \"env-refresh-token\",\n  \"message\": \"Firestore releases are already aligned.\"\n}\n",
             "stderr": ""
           },
           {
             "label": "pricing + intake policy check",
             "status": "passed",
-            "failureCategory": "",
             "exitCode": 0,
-            "durationMs": 81,
+            "durationMs": 91,
             "command": "/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/check-pricing-and-intake-policy.mjs",
             "stdout": "{\n  \"ok\": true,\n  \"check\": \"pricing_and_intake_policy\"\n}\n",
             "stderr": ""
@@ -739,21 +623,19 @@
           {
             "label": "my pieces authz probe",
             "status": "passed",
-            "failureCategory": "",
             "exitCode": 0,
-            "durationMs": 1541,
+            "durationMs": 1385,
             "command": "/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/check-portal-mypieces-authz.mjs --project monsoonfire-portal --functions-base-url https://us-central1-monsoonfire-portal.cloudfunctions.net --json --credentials /home/wuff/monsoonfire-portal/secrets/portal/portal-agent-staff.json",
-            "stdout": "{\n  \"status\": \"passed\",\n  \"projectId\": \"monsoonfire-portal\",\n  \"actor\": {\n    \"uid\": \"6qU0XDdJ32e4PUFVvdBfQKuAF7u1\",\n    \"email\": \"agent.staff.bot@monsoonfire.local\"\n  },\n  \"batch\": {\n    \"batchId\": \"batch-976c9dcf240dc36245f0\",\n    \"status\": 200,\n    \"ok\": true,\n    \"error\": null\n  },\n  \"piece\": {\n    \"pieceId\": \"piece-1773284418386\",\n    \"create\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"error\": null\n    },\n    \"get\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"error\": null\n    },\n    \"list\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"error\": null\n    }\n  },\n  \"message\": \"My Pieces permission path passed create/get/list checks.\"\n}\n",
+            "stdout": "{\n  \"status\": \"passed\",\n  \"projectId\": \"monsoonfire-portal\",\n  \"actor\": {\n    \"uid\": \"6qU0XDdJ32e4PUFVvdBfQKuAF7u1\",\n    \"email\": \"agent.staff.bot@monsoonfire.local\"\n  },\n  \"batch\": {\n    \"batchId\": \"batch-8dc22cb0cfa3120a2176\",\n    \"status\": 200,\n    \"ok\": true,\n    \"error\": null\n  },\n  \"piece\": {\n    \"pieceId\": \"piece-1772385924027\",\n    \"create\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"error\": null\n    },\n    \"get\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"error\": null\n    },\n    \"list\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"error\": null\n    }\n  },\n  \"message\": \"My Pieces permission path passed create/get/list checks.\"\n}\n",
             "stderr": ""
           },
           {
             "label": "notifications mark-read authz probe",
             "status": "passed",
-            "failureCategory": "",
             "exitCode": 0,
-            "durationMs": 862,
+            "durationMs": 857,
             "command": "/home/wuff/.nvm/versions/node/v25.6.1/bin/node ./scripts/check-portal-notifications-authz.mjs --project monsoonfire-portal --functions-base-url https://us-central1-monsoonfire-portal.cloudfunctions.net --json --credentials /home/wuff/monsoonfire-portal/secrets/portal/portal-agent-staff.json",
-            "stdout": "{\n  \"status\": \"passed\",\n  \"projectId\": \"monsoonfire-portal\",\n  \"actor\": {\n    \"uid\": \"6qU0XDdJ32e4PUFVvdBfQKuAF7u1\",\n    \"email\": \"agent.staff.bot@monsoonfire.local\"\n  },\n  \"notification\": {\n    \"targetId\": \"90f70a59fb54d38a862ecadae4db6f99a8a77ffb2e2cab311bf9498f99a694b5\",\n    \"list\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"count\": 20,\n      \"error\": null\n    },\n    \"read\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"error\": null\n    },\n    \"markRead\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"error\": null\n    },\n    \"verify\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"error\": null\n    }\n  },\n  \"message\": \"Notifications permission path passed list/read/mark-read checks.\"\n}\n",
+            "stdout": "{\n  \"status\": \"passed\",\n  \"projectId\": \"monsoonfire-portal\",\n  \"actor\": {\n    \"uid\": \"6qU0XDdJ32e4PUFVvdBfQKuAF7u1\",\n    \"email\": \"agent.staff.bot@monsoonfire.local\"\n  },\n  \"notification\": {\n    \"targetId\": \"90f70a59fb54d38a862ecadae4db6f99a8a77ffb2e2cab311bf9498f99a694b5\",\n    \"list\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"count\": 1,\n      \"error\": null\n    },\n    \"read\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"error\": null\n    },\n    \"markRead\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"error\": null\n    },\n    \"verify\": {\n      \"status\": 200,\n      \"ok\": true,\n      \"error\": null\n    }\n  },\n  \"message\": \"Notifications permission path passed list/read/mark-read checks.\"\n}\n",
             "stderr": ""
           }
         ]
@@ -770,15 +652,13 @@
       "payload": {
         "status": "passed",
         "projectId": "monsoonfire-portal",
-        "runAtIso": "2026-03-12T03:00:20.604Z",
-        "durationMs": 2,
+        "runAtIso": "2026-03-01T17:25:26.085Z",
+        "durationMs": 1,
         "requiredCount": 3,
         "missing": [],
         "strict": true,
         "apply": false,
         "rollingIssueUrl": "",
-        "rollingCommentSignature": "",
-        "rollingCommentSkipped": false,
         "ticketUrl": "",
         "feedback": {
           "enabled": false,
@@ -800,7 +680,7 @@
       "exists": true,
       "status": "unknown",
       "payload": {
-        "timestampIso": "2026-03-10T02:15:32.113Z",
+        "timestampIso": "2026-03-01T17:23:17.803Z",
         "portalUrl": "https://portal.monsoonfire.com",
         "server": "monsggbd@66.29.137.142",
         "remotePath": "portal/",
@@ -808,15 +688,15 @@
           "exitCode": 1
         },
         "rollback": {
-          "status": "rollback_failed",
+          "status": "rolled_back",
           "triggeredBy": "promotion-gate-failure",
           "rollbackApplied": true,
           "rollbackExitCode": 0,
           "rollbackVerify": {
             "attempted": true,
-            "exitCode": 1
+            "exitCode": 0
           },
-          "details": "Rollback restored files but post-rollback verification failed."
+          "details": "Rollback applied because promotion gate failed."
         }
       }
     },
@@ -827,9 +707,9 @@
       "path": "/home/wuff/monsoonfire-portal/output/qa/post-deploy-rollback-verify.json",
       "relativePath": "output/qa/post-deploy-rollback-verify.json",
       "exists": true,
-      "status": "failed",
+      "status": "passed",
       "payload": {
-        "ok": false,
+        "ok": true,
         "portalUrl": "https://portal.monsoonfire.com",
         "checks": [
           {
@@ -842,7 +722,7 @@
             "error": ""
           },
           {
-            "path": "https://portal.monsoonfire.com/reserve",
+            "path": "https://portal.monsoonfire.com/reservations",
             "status": 200,
             "ok": true,
             "bodySnippet": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <link rel=\"icon\" type=\"image/png\" href=\"/pwa-192.png\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <link rel=\"dns-prefetch\" href=\"//firestore.googleapis.com\" />\n    <link rel=\"dns-prefetch\" href=\"//identity...",
@@ -851,57 +731,56 @@
             "error": ""
           },
           {
-            "path": "https://portal.monsoonfire.com/.well-known/openapi.json",
-            "status": 404,
-            "ok": false,
-            "bodySnippet": "<!DOCTYPE html>\n<html style=\"height:100%\">\n<head>\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, shrink-to-fit=no\" />\n<title> 404 Not Found\r\n</title><style>@media (prefers-color-scheme:dark){body{background-color:#000!important}}</style></head>\n<body style=\"color: #444; margin:0;font: normal 14px/2...",
-            "bodyLength": 1251,
-            "cacheControl": "private, no-cache, no-store, must-revalidate, max-age=0",
+            "path": "https://portal.monsoonfire.com/.well-known/apple-app-site-association",
+            "status": 200,
+            "ok": true,
+            "bodySnippet": "{\n  \"applinks\": {\n    \"apps\": [],\n    \"details\": [\n      {\n        \"appID\": \"TEAMID.com.monsoonfire.portal.reference\",\n        \"paths\": [\n          \"/materials*\",\n          \"/events*\",\n          \"/kiln*\",\n          \"/pieces*\",\n          \"/notifications*\"\n        ]\n      }\n    ]\n  }\n}\n",
+            "bodyLength": 285,
+            "cacheControl": "",
             "error": ""
           }
         ],
         "summary": {
-          "ok": false,
+          "ok": true,
           "passed": [
             "rootRoute",
             "deepRoute",
-            "asset/assets/index-DNRnMTql.js",
-            "asset/assets/vendor-D0RFdUzJ.js",
-            "asset/assets/vendor-react-CH4lcrwF.js",
+            "wellKnownRoute",
+            "asset/assets/index-BFQAx18p.js",
+            "asset/assets/vendor-DuPUYBON.js",
+            "asset/assets/vendor-react-DPkGgiPW.js",
             "rootCache",
             "deepCache"
           ],
           "warnings": [
             "protected function check skipped (set --id-token <token> or PORTAL_CUTOVER_ID_TOKEN=<token> in env)"
           ],
-          "failures": [
-            "wellKnownRoute returned status 404"
-          ]
+          "failures": []
         },
-        "deepPath": "/reserve",
-        "wellKnownPath": "/.well-known/openapi.json",
+        "deepPath": "/reservations",
+        "wellKnownPath": "/.well-known/apple-app-site-association",
         "sampleAssets": [
-          "/assets/index-DNRnMTql.js",
-          "/assets/vendor-D0RFdUzJ.js",
-          "/assets/vendor-react-CH4lcrwF.js"
+          "/assets/index-BFQAx18p.js",
+          "/assets/vendor-DuPUYBON.js",
+          "/assets/vendor-react-DPkGgiPW.js"
         ],
         "assetChecks": [
           {
-            "path": "/assets/index-DNRnMTql.js",
+            "path": "/assets/index-BFQAx18p.js",
             "status": 200,
             "cacheControl": "public, max-age=31536000, immutable",
             "hasCacheHeader": true,
             "ok": true
           },
           {
-            "path": "/assets/vendor-D0RFdUzJ.js",
+            "path": "/assets/vendor-DuPUYBON.js",
             "status": 200,
             "cacheControl": "public, max-age=31536000, immutable",
             "hasCacheHeader": true,
             "ok": true
           },
           {
-            "path": "/assets/vendor-react-CH4lcrwF.js",
+            "path": "/assets/vendor-react-DPkGgiPW.js",
             "status": 200,
             "cacheControl": "public, max-age=31536000, immutable",
             "hasCacheHeader": true,

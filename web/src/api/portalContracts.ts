@@ -4,6 +4,11 @@
 export const V1_RESERVATION_CREATE_FN = "apiV1/v1/reservations.create";
 export const V1_RESERVATION_UPDATE_FN = "apiV1/v1/reservations.update";
 export const V1_RESERVATION_ASSIGN_STATION_FN = "apiV1/v1/reservations.assignStation";
+export const V1_RESERVATION_GET_FN = "apiV1/v1/reservations.get";
+export const V1_RESERVATION_LIST_FN = "apiV1/v1/reservations.list";
+export const V1_RESERVATION_CHECK_IN_FN = "apiV1/v1/reservations.checkIn";
+export const V1_RESERVATION_LOOKUP_ARRIVAL_FN = "apiV1/v1/reservations.lookupArrival";
+export const V1_RESERVATION_ROTATE_ARRIVAL_TOKEN_FN = "apiV1/v1/reservations.rotateArrivalToken";
 export const V1_RESERVATION_PICKUP_WINDOW_FN = "apiV1/v1/reservations.pickupWindow";
 export const V1_RESERVATION_QUEUE_FAIRNESS_FN = "apiV1/v1/reservations.queueFairness";
 export const V1_RESERVATION_EXPORT_CONTINUITY_FN = "apiV1/v1/reservations.exportContinuity";
@@ -17,6 +22,8 @@ export const V1_STUDIO_RESERVATIONS_JOIN_WAITLIST_FN = "apiV1/v1/studioReservati
 export const V1_STUDIO_RESERVATIONS_STAFF_UPSERT_SPACE_FN = "apiV1/v1/studioReservations.staffUpsertSpace";
 export const V1_STUDIO_RESERVATIONS_STAFF_UPSERT_BLOCK_FN = "apiV1/v1/studioReservations.staffUpsertBlock";
 export const V1_STUDIO_RESERVATIONS_STAFF_MANAGE_FN = "apiV1/v1/studioReservations.staffManage";
+export const V1_MEMBERSHIPS_SUMMARY_FN = "apiV1/v1/memberships.summary";
+export const V1_MEMBERSHIPS_CHANGE_PLAN_FN = "apiV1/v1/memberships.changePlan";
 export const V1_LIBRARY_ITEMS_LIST_FN = "apiV1/v1/library.items.list";
 export const V1_LIBRARY_ITEMS_GET_FN = "apiV1/v1/library.items.get";
 export const V1_LIBRARY_DISCOVERY_GET_FN = "apiV1/v1/library.discovery.get";
@@ -27,6 +34,9 @@ export const V1_LIBRARY_EXTERNAL_LOOKUP_PROVIDER_CONFIG_SET_FN =
   "apiV1/v1/library.externalLookup.providerConfig.set";
 export const V1_LIBRARY_ROLLOUT_CONFIG_GET_FN = "apiV1/v1/library.rollout.get";
 export const V1_LIBRARY_ROLLOUT_CONFIG_SET_FN = "apiV1/v1/library.rollout.set";
+export const V1_LIBRARY_STAFF_DASHBOARD_FN = "apiV1/v1/library.staff.dashboard";
+export const V1_LIBRARY_COVER_REVIEWS_RECONCILE_FN = "apiV1/v1/library.coverReviews.reconcile";
+export const V1_LIBRARY_METADATA_ENRICHMENT_RUN_FN = "apiV1/v1/library.metadata.enrichment.run";
 export const V1_LIBRARY_RECOMMENDATIONS_LIST_FN = "apiV1/v1/library.recommendations.list";
 export const V1_LIBRARY_RECOMMENDATIONS_CREATE_FN = "apiV1/v1/library.recommendations.create";
 export const V1_LIBRARY_RECOMMENDATIONS_FEEDBACK_SUBMIT_FN =
@@ -72,6 +82,8 @@ export type PortalFnName =
   | typeof V1_STUDIO_RESERVATIONS_STAFF_UPSERT_SPACE_FN
   | typeof V1_STUDIO_RESERVATIONS_STAFF_UPSERT_BLOCK_FN
   | typeof V1_STUDIO_RESERVATIONS_STAFF_MANAGE_FN
+  | typeof V1_MEMBERSHIPS_SUMMARY_FN
+  | typeof V1_MEMBERSHIPS_CHANGE_PLAN_FN
   | typeof V1_LIBRARY_ITEMS_LIST_FN
   | typeof V1_LIBRARY_ITEMS_GET_FN
   | typeof V1_LIBRARY_DISCOVERY_GET_FN
@@ -80,6 +92,9 @@ export type PortalFnName =
   | typeof V1_LIBRARY_EXTERNAL_LOOKUP_PROVIDER_CONFIG_SET_FN
   | typeof V1_LIBRARY_ROLLOUT_CONFIG_GET_FN
   | typeof V1_LIBRARY_ROLLOUT_CONFIG_SET_FN
+  | typeof V1_LIBRARY_STAFF_DASHBOARD_FN
+  | typeof V1_LIBRARY_COVER_REVIEWS_RECONCILE_FN
+  | typeof V1_LIBRARY_METADATA_ENRICHMENT_RUN_FN
   | typeof V1_LIBRARY_RECOMMENDATIONS_LIST_FN
   | typeof V1_LIBRARY_RECOMMENDATIONS_CREATE_FN
   | typeof V1_LIBRARY_RECOMMENDATIONS_FEEDBACK_SUBMIT_FN
@@ -289,6 +304,10 @@ export type CreateReservationRequest = {
     returnDeliveryRequested?: boolean;
     useStudioGlazes?: boolean;
     glazeAccessCost?: number | null;
+    waxResistAssistRequested?: boolean;
+    glazeSanityCheckRequested?: boolean;
+    staffGlazePrepRequested?: boolean;
+    staffGlazePrepRatePerHalfShelf?: number | null;
     fragileHandlingRequested?: boolean;
     fragileHandlingCost?: number | null;
     placementPreferenceRequested?: boolean;
@@ -297,6 +316,8 @@ export type CreateReservationRequest = {
     prepaidStorageRequested?: boolean;
     prepaidStorageWeeks?: number | null;
     prepaidStorageCost?: number | null;
+    deliveryAddress?: string | null;
+    deliveryInstructions?: string | null;
   } | null;
 };
 
@@ -335,6 +356,145 @@ export type ReservationPickupWindowAction =
   | "member_request_reschedule"
   | "staff_mark_missed"
   | "staff_mark_completed";
+
+export type ReservationRole = "client" | "staff" | "dev" | "system" | (string & {});
+
+export type ReservationRecord = {
+  id: string;
+  ownerUid?: string | null;
+  status?: string | null;
+  intakeMode?: string | null;
+  firingType?: string | null;
+  shelfEquivalent?: number | null;
+  footprintHalfShelves?: number | null;
+  heightInches?: number | null;
+  tiers?: number | null;
+  estimatedHalfShelves?: number | null;
+  estimatedCost?: number | null;
+  preferredWindow?: ReservationPreferredWindow | null;
+  linkedBatchId?: string | null;
+  wareType?: string | null;
+  kilnId?: string | null;
+  kilnLabel?: string | null;
+  quantityTier?: string | null;
+  quantityLabel?: string | null;
+  dropOffQuantity?: Record<string, unknown> | null;
+  dropOffProfile?: Record<string, unknown> | null;
+  photoUrl?: string | null;
+  photoPath?: string | null;
+  notes?: Record<string, unknown> | null;
+  pieces?: ReservationPieceInput[] | null;
+  notesHistory?: unknown[] | null;
+  addOns?: Record<string, unknown> | null;
+  loadStatus?: "queued" | "loading" | "loaded" | null | string;
+  queuePositionHint?: number | null;
+  queueFairness?: {
+    noShowCount?: number | null;
+    lateArrivalCount?: number | null;
+    overrideBoost?: number | null;
+    overrideReason?: string | null;
+    overrideUntil?: string | null;
+    updatedAt?: string | null;
+    updatedByUid?: string | null;
+    updatedByRole?: ReservationRole | null;
+    lastPolicyNote?: string | null;
+    lastEvidenceId?: string | null;
+  } | null;
+  queueFairnessPolicy?: {
+    noShowCount?: number | null;
+    lateArrivalCount?: number | null;
+    penaltyPoints?: number | null;
+    effectivePenaltyPoints?: number | null;
+    overrideBoostApplied?: number | null;
+    reasonCodes?: string[];
+    policyVersion?: string | null;
+    computedAt?: string | null;
+  } | null;
+  queueClass?: string | null;
+  queueLaneHint?: string | null;
+  assignedStationId?: string | null;
+  requiredResources?: {
+    kilnProfile?: string | null;
+    rackCount?: number | null;
+    specialHandling?: string[];
+  } | null;
+  stageStatus?: {
+    stage?: string | null;
+    at?: string | null;
+    source?: string | null;
+    reason?: string | null;
+    notes?: string | null;
+    actorUid?: string | null;
+    actorRole?: ReservationRole | null;
+  } | null;
+  stageHistory?: unknown[] | null;
+  estimatedWindow?: {
+    currentStart?: string | null;
+    currentEnd?: string | null;
+    updatedAt?: string | null;
+    slaState?: string | null;
+    confidence?: string | null;
+  } | null;
+  pickupWindow?: {
+    requestedStart?: string | null;
+    requestedEnd?: string | null;
+    confirmedStart?: string | null;
+    confirmedEnd?: string | null;
+    status?: PickupWindowStatus | null;
+    confirmedAt?: string | null;
+    completedAt?: string | null;
+    missedCount?: number | null;
+    rescheduleCount?: number | null;
+    lastMissedAt?: string | null;
+    lastRescheduleRequestedAt?: string | null;
+  } | null;
+  storageStatus?: string | null;
+  readyForPickupAt?: string | null;
+  pickupReminderCount?: number | null;
+  lastReminderAt?: string | null;
+  pickupReminderFailureCount?: number | null;
+  lastReminderFailureAt?: string | null;
+  storageNoticeHistory?: unknown[] | null;
+  arrivalStatus?: string | null;
+  arrivedAt?: string | null;
+  arrivalToken?: string | null;
+  arrivalTokenIssuedAt?: string | null;
+  arrivalTokenExpiresAt?: string | null;
+  arrivalTokenVersion?: number | null;
+  staffNotes?: string | null;
+  createdByUid?: string | null;
+  createdByRole?: ReservationRole | null;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+};
+
+export type ReservationGetRequest = {
+  reservationId: string;
+};
+
+export type ReservationListRequest = {
+  ownerUid?: string | null;
+  limit?: number;
+  status?: string | null;
+  includeCancelled?: boolean;
+};
+
+export type ReservationLookupArrivalRequest = {
+  arrivalToken: string;
+};
+
+export type ReservationCheckInRequest = {
+  reservationId?: string;
+  arrivalToken?: string;
+  note?: string | null;
+  photoUrl?: string | null;
+  photoPath?: string | null;
+};
+
+export type ReservationRotateArrivalTokenRequest = {
+  reservationId: string;
+  reason?: string | null;
+};
 
 export type ReservationPickupWindowRequest = {
   reservationId: string;
@@ -406,6 +566,26 @@ export type ReservationQueueFairnessResponse = PortalApiOkEnvelope & {
     policyVersion?: string | null;
     computedAt?: string | null;
   } | null;
+};
+
+export type MembershipPlanKey = "a_la_carte" | "apprentice" | "journeyman" | "master";
+
+export type MembershipPlanCatalogEntry = {
+  key: MembershipPlanKey;
+  priceKey: string;
+  label: string;
+  stage: string;
+  summary: string;
+  focus: string;
+  priceConfigured: boolean;
+  checkoutEnabled: boolean;
+  isCurrent: boolean;
+};
+
+export type MembershipSummaryRequest = Record<string, never>;
+
+export type MembershipChangePlanRequest = {
+  planKey: MembershipPlanKey;
 };
 
 export type ReservationExportContinuityRequest = {
@@ -805,7 +985,12 @@ export type ListEventSignupsRequest = {
 export type WorkshopDemandSignalLevel = "all-levels" | "beginner" | "intermediate" | "advanced";
 export type WorkshopDemandSignalSchedule = "weekday-evening" | "weekday-daytime" | "weekend-morning" | "weekend-afternoon" | "flexible";
 export type WorkshopDemandSignalBuddyMode = "solo" | "buddy" | "circle";
-export type WorkshopDemandSignalKind = "request" | "interest";
+export type WorkshopDemandSignalKind =
+  | "request"
+  | "interest"
+  | "showcase"
+  | "withdrawal"
+  | (string & {});
 export type WorkshopDemandSignalSource =
   | "events-interest-toggle"
   | "events-interest-withdrawal"
@@ -938,6 +1123,7 @@ export type LibraryItemContract = {
   title?: string | null;
   subtitle?: string | null;
   authors?: string[] | null;
+  summary?: string | null;
   description?: string | null;
   publisher?: string | null;
   publishedDate?: string | null;
@@ -966,6 +1152,7 @@ export type LibraryItemContract = {
   aggregateRatingCount?: number | null;
   borrowCount?: number | null;
   lastReviewedAtIso?: string | null;
+  detailStatus?: "ready" | "enriching" | "sparse" | null | string;
   curation?: {
     staffPick?: boolean | null;
     staffRationale?: string | null;
@@ -1025,6 +1212,100 @@ export type LibraryDiscoveryGetRequest = {
   limit?: number;
   includeWorkshopDiscovery?: boolean;
   workshopDiscoveryLimit?: number;
+};
+
+export type LibraryStaffDashboardRequest = {
+  requestLimit?: number;
+  loanLimit?: number;
+  coverReviewLimit?: number;
+  tagSubmissionLimit?: number;
+};
+
+export type LibraryCoverReviewReconcileRequest = {
+  limit?: number;
+};
+
+export type LibraryMetadataEnrichmentRunRequest = {
+  scope?: "pending" | "recent_imports" | "thin_backfill" | "item_ids";
+  itemIds?: string[];
+  limit?: number;
+};
+
+export type LibraryStaffDashboardRequestContract = {
+  id?: string;
+  title?: string | null;
+  status?: string | null;
+  requesterUid?: string | null;
+  requesterName?: string | null;
+  requesterEmail?: string | null;
+  createdAtMs?: number | null;
+};
+
+export type LibraryStaffDashboardLoanContract = {
+  id?: string;
+  title?: string | null;
+  status?: string | null;
+  borrowerUid?: string | null;
+  borrowerName?: string | null;
+  borrowerEmail?: string | null;
+  createdAtMs?: number | null;
+  dueAtMs?: number | null;
+  returnedAtMs?: number | null;
+  itemId?: string | null;
+};
+
+export type LibraryStaffDashboardCoverReviewContract = {
+  id?: string;
+  title?: string | null;
+  isbn?: string | null;
+  source?: string | null;
+  mediaType?: string | null;
+  coverUrl?: string | null;
+  coverProvider?: string | null;
+  coverQualityStatus?: string | null;
+  coverQualityReason?: string | null;
+  coverIssueKind?: string | null;
+  updatedAtMs?: number | null;
+};
+
+export type LibraryStaffDashboardMetadataGapContract = {
+  itemId?: string | null;
+  title?: string | null;
+  isbn?: string | null;
+  source?: string | null;
+  mediaType?: string | null;
+  coverQualityStatus?: string | null;
+  coverQualityReason?: string | null;
+  detailStatus?: string | null;
+  gapReasons?: string[] | null;
+  updatedAtMs?: number | null;
+};
+
+export type LibraryStaffDashboardTagSubmissionContract = {
+  id?: string;
+  itemId?: string | null;
+  itemTitle?: string | null;
+  tag?: string | null;
+  normalizedTag?: string | null;
+  status?: string | null;
+  submittedByUid?: string | null;
+  submittedByName?: string | null;
+  createdAtMs?: number | null;
+  updatedAtMs?: number | null;
+};
+
+export type LibraryMetadataEnrichmentSummaryContract = {
+  pendingCount?: number | null;
+  thinBacklogCount?: number | null;
+  lastRunAtMs?: number | null;
+  lastRunStatus?: string | null;
+  lastRunSource?: string | null;
+  lastRunQueued?: number | null;
+  lastRunAttempted?: number | null;
+  lastRunEnriched?: number | null;
+  lastRunSkipped?: number | null;
+  lastRunErrors?: number | null;
+  lastRunStillPending?: number | null;
 };
 
 export type LibraryWorkshopDiscoverySource = "signals" | "fallback";
@@ -1253,6 +1534,66 @@ export type ContinueJourneyResponse = PortalApiOkEnvelope & {
 export type CreateReservationResponse = PortalApiOkEnvelope & {
   reservationId?: string;
   status?: string;
+  idempotentReplay?: boolean;
+};
+
+export type ReservationGetResponse = PortalApiOkEnvelope & {
+  reservation?: ReservationRecord | null;
+};
+
+export type ReservationListResponse = PortalApiOkEnvelope & {
+  ownerUid?: string | null;
+  reservations: ReservationRecord[];
+};
+
+export type ReservationLookupArrivalResponse = PortalApiOkEnvelope & {
+  reservation?: ReservationRecord | null;
+  outstandingRequirements?: {
+    needsArrivalCheckIn?: boolean;
+    needsStationAssignment?: boolean;
+    needsQueuePlacement?: boolean;
+    needsResourceProfile?: boolean;
+  } | null;
+};
+
+export type ReservationCheckInResponse = PortalApiOkEnvelope & {
+  reservationId?: string;
+  arrivalStatus?: string | null;
+  arrivedAt?: string | null;
+  idempotentReplay?: boolean;
+};
+
+export type ReservationRotateArrivalTokenResponse = PortalApiOkEnvelope & {
+  reservationId?: string;
+  arrivalToken?: string | null;
+  arrivalTokenExpiresAt?: string | null;
+  arrivalTokenVersion?: number | null;
+};
+
+export type MembershipSummaryResponse = PortalApiOkEnvelope & {
+  membership: {
+    planKey?: MembershipPlanKey | null;
+    label?: string | null;
+    status?: string | null;
+    checkoutEligible?: boolean;
+    since?: string | null;
+    renewalAt?: string | null;
+    checkoutSessionId?: string | null;
+    pendingPlanKey?: MembershipPlanKey | null;
+    pendingPlanLabel?: string | null;
+  } | null;
+  availablePlans: MembershipPlanCatalogEntry[];
+  checkoutEnabled: boolean;
+  mode?: "test" | "live" | string | null;
+};
+
+export type MembershipChangePlanResponse = PortalApiOkEnvelope & {
+  planKey?: MembershipPlanKey | null;
+  checkoutUrl?: string | null;
+  sessionId?: string | null;
+  mode?: "test" | "live" | string | null;
+  successUrl?: string | null;
+  cancelUrl?: string | null;
 };
 
 export type MaterialProduct = {
@@ -1485,6 +1826,17 @@ export type ImportLibraryIsbnsResponse = PortalApiOkEnvelope & {
   requested: number;
   created: number;
   updated: number;
+  manualPassRequired?: Array<{
+    isbn: string;
+    itemId?: string | null;
+    reason?: string | null;
+    message?: string | null;
+  }>;
+  rejected?: Array<{
+    isbn: string;
+    reason?: string | null;
+    message?: string | null;
+  }>;
   errors?: Array<{ isbn: string; message: string }>;
 };
 
@@ -1528,6 +1880,39 @@ export type LibraryDiscoveryGetResponse = PortalApiOkEnvelope & {
     featuredWorkshops?: EventSummary[];
     featuredWorkshopsSource?: LibraryWorkshopDiscoverySource;
     featuredWorkshopsSignalSummary?: LibraryWorkshopDiscoverySignalSummary;
+  };
+};
+
+export type LibraryStaffDashboardResponse = PortalApiOkEnvelope & {
+  data?: {
+    requests?: LibraryStaffDashboardRequestContract[];
+    loans?: LibraryStaffDashboardLoanContract[];
+    coverReviews?: LibraryStaffDashboardCoverReviewContract[];
+    metadataGaps?: LibraryStaffDashboardMetadataGapContract[];
+    tagSubmissions?: LibraryStaffDashboardTagSubmissionContract[];
+    metadataEnrichmentSummary?: LibraryMetadataEnrichmentSummaryContract;
+  };
+};
+
+export type LibraryCoverReviewReconcileResponse = PortalApiOkEnvelope & {
+  data?: {
+    limit?: number;
+    scanned?: number;
+    approved?: number;
+    stillNeedsReview?: number;
+    missing?: number;
+  };
+};
+
+export type LibraryMetadataEnrichmentRunResponse = PortalApiOkEnvelope & {
+  data?: {
+    queued?: number;
+    attempted?: number;
+    enriched?: number;
+    skipped?: number;
+    errors?: number;
+    stillPending?: number;
+    summary?: LibraryMetadataEnrichmentSummaryContract;
   };
 };
 

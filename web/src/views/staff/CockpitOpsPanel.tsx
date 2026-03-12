@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
 import { safeJsonStringify, type LastRequest } from "../../api/functionsClient";
+import type { ShiftStatusSummary } from "./shiftStatus";
 
 const COCKPIT_TABS = [
   { key: "triage", label: "Action queue" },
@@ -109,6 +110,7 @@ type Props = {
   cockpitTab: CockpitTabKey;
   setCockpitTab: (next: CockpitTabKey) => void;
   overviewAlerts: CockpitOverviewAlert[];
+  shiftStatus: ShiftStatusSummary;
   cockpitKpis: CockpitKpis;
   automationKpis: CockpitAutomationKpis;
   automationDashboard: CockpitAutomationDashboard;
@@ -116,6 +118,7 @@ type Props = {
   onRefreshCockpit: () => void;
   run: (key: string, fn: () => Promise<void>) => Promise<void>;
   openModuleFromCockpit: (module: string) => void;
+  openMessagesInbox: () => void;
   loadReportOps: () => Promise<void>;
   loadSystemStats: () => Promise<void>;
   loadAutomationHealthDashboard: () => Promise<void>;
@@ -196,6 +199,7 @@ export default function CockpitOpsPanel({
   cockpitTab,
   setCockpitTab,
   overviewAlerts,
+  shiftStatus,
   cockpitKpis,
   automationKpis,
   automationDashboard,
@@ -203,6 +207,7 @@ export default function CockpitOpsPanel({
   onRefreshCockpit,
   run,
   openModuleFromCockpit,
+  openMessagesInbox,
   loadReportOps,
   loadSystemStats,
   loadAutomationHealthDashboard,
@@ -241,6 +246,22 @@ export default function CockpitOpsPanel({
   reportsContent,
   githubRepoSlug,
 }: Props) {
+  const actionableOverviewAlerts = overviewAlerts.filter((alert) => alert.severity !== "low");
+  const shiftStatusNoteClass =
+    shiftStatus.tone === "action"
+      ? "staff-note-error"
+      : shiftStatus.tone === "watch"
+        ? "staff-note-warn"
+        : "staff-note-ok";
+
+  const openShiftStatusTarget = (target: string) => {
+    if (target === "messages") {
+      void openMessagesInbox();
+      return;
+    }
+    openModuleFromCockpit(target);
+  };
+
   return (
     <section className="staff-module-grid">
       <section className="card staff-console-card">
@@ -286,25 +307,71 @@ export default function CockpitOpsPanel({
         </nav>
         {cockpitTab === "triage" ? (
           <>
+            <section className="staff-shift-status-card" data-tone={shiftStatus.tone}>
+              <div className="staff-shift-status-header">
+                <div className="staff-column">
+                  <div className="staff-subtitle">Shift status</div>
+                  <div className="staff-shift-status-headline">{shiftStatus.headline}</div>
+                </div>
+                <span className={`pill staff-shift-status-pill staff-shift-status-pill-${shiftStatus.tone}`}>
+                  {shiftStatus.label}
+                </span>
+              </div>
+              <div className={`staff-note ${shiftStatusNoteClass}`}>
+                {shiftStatus.tone === "clear"
+                  ? "Start with the action queue only if a new issue appears during the shift."
+                  : "Start with the first reason below, then work down the queue if more items remain."}
+              </div>
+              {shiftStatus.reasons.length > 0 ? (
+                <div className="staff-shift-status-reasons">
+                  {shiftStatus.reasons.map((reason) => (
+                    <div key={reason.id} className="staff-shift-status-reason">
+                      <div className="staff-shift-status-reason-top">
+                        <span className={`pill ${reason.tone === "action" ? "staff-pill-danger" : "staff-pill-warn"}`}>
+                          {reason.tone === "action" ? "Now" : "Watch"}
+                        </span>
+                        <div className="staff-shift-status-reason-label">{reason.label}</div>
+                      </div>
+                      <div className="staff-actions-row">
+                        <button
+                          className="btn btn-ghost btn-small"
+                          onClick={() => openShiftStatusTarget(reason.actionTarget)}
+                        >
+                          {reason.actionLabel}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </section>
             <div className="staff-subtitle">Action queue</div>
-            <div className="staff-log-list">
-              {overviewAlerts.map((alert) => (
-                <div key={alert.id} className="staff-log-entry">
-                  <div className="staff-log-meta">
-                    <span className="staff-log-label">{alert.severity.toUpperCase()}</span>
-                    <span>{whenDate(alert.createdAtMs)}</span>
-                  </div>
-                  <div className="staff-log-message">
-                    {alert.label}
-                    <div className="staff-actions-row staff-actions-row--mt8">
-                      <button className="btn btn-ghost btn-small" onClick={() => openModuleFromCockpit(alert.module)}>
-                        {alert.actionLabel}
-                      </button>
+            {actionableOverviewAlerts.length === 0 ? (
+              <div className={`staff-note ${shiftStatus.reasons.length === 0 ? "staff-note-ok" : "staff-note-muted"}`}>
+                {shiftStatus.reasons.length === 0
+                  ? "No open triage actions right now."
+                  : "No additional queue items beyond the shift-status reasons above."}
+              </div>
+            ) : (
+              <div className="staff-log-list">
+                {actionableOverviewAlerts.map((alert) => (
+                  <div key={alert.id} className="staff-log-entry">
+                    <div className="staff-log-meta">
+                      <span className="staff-log-label">{alert.severity.toUpperCase()}</span>
+                      <span>{whenDate(alert.createdAtMs)}</span>
+                    </div>
+                    <div className="staff-log-message">
+                      {alert.label}
+                      <div className="staff-actions-row staff-actions-row--mt8">
+                        <button className="btn btn-ghost btn-small" onClick={() => openModuleFromCockpit(alert.module)}>
+                          {alert.actionLabel}
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </>
         ) : null}
         {cockpitTab === "automation" ? (
@@ -445,7 +512,7 @@ export default function CockpitOpsPanel({
           <>
             <div className="staff-subtitle">Platform diagnostics</div>
             <div className="staff-note">
-              Legacy System diagnostics now live here so operators can work from one place.
+              Technical probes and raw diagnostics live here. Use this tab when shift status flags tool degradation.
             </div>
             <div className="staff-kpi-grid">
               <div className="staff-kpi"><span>Functions base</span><strong>{usingLocalFunctions ? "Local" : "Remote"}</strong></div>
@@ -628,7 +695,6 @@ export default function CockpitOpsPanel({
         ) : null}
         {cockpitTab === "operations" ? (
           <>
-            <div className="staff-subtitle">Operational modules in cockpit scope</div>
             {operationsContent}
           </>
         ) : null}

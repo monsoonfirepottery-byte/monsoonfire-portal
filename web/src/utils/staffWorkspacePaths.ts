@@ -12,6 +12,16 @@ export type StaffWorkspaceLaunch = {
   mode: StaffWorkspaceMode;
 };
 
+export type StaffCockpitOperationsModule =
+  | "operations"
+  | "checkins"
+  | "members"
+  | "pieces"
+  | "firings"
+  | "events"
+  | "lending"
+  | "lending-intake";
+
 type StaffPathInput = string | null | undefined;
 
 export const STAFF_WORKSPACE_PATHS: readonly string[] = [
@@ -25,6 +35,14 @@ const STAFF_HOST_STAFF_PATH_RE = /(?:^|\/)staff(?:$|(\/|\?|#))/i;
 
 const STAFF_COCKPIT_MODULE_SEGMENTS = new Set([
   "reports",
+  "operations",
+  "checkins",
+  "members",
+  "pieces",
+  "firings",
+  "events",
+  "lending",
+  "lending-intake",
 ]);
 
 const STAFF_COCKPIT_TAB_ONLY_SEGMENTS = new Set([
@@ -44,6 +62,8 @@ const STAFF_COCKPIT_SEGMENT_ALIASES: Readonly<Record<string, string>> = {
   billing: "finance",
   payments: "finance",
   ops: "operations",
+  lendingintake: "lending-intake",
+  lending_intake: "lending-intake",
   "policyagentops": "policy-agent-ops",
   "moduletelemetry": "module-telemetry",
   module_telemetry: "module-telemetry",
@@ -60,20 +80,39 @@ const STAFF_COCKPIT_TAB_SEGMENT_ALIASES: Readonly<Record<string, string>> = {
   "policy_agent_ops": "policy-agent-ops",
 };
 
+const STAFF_COCKPIT_OPERATIONS_ROOT_ALIASES: Readonly<Record<string, StaffCockpitOperationsModule>> = {
+  operations: "operations",
+  checkins: "checkins",
+  checkin: "checkins",
+  members: "members",
+  member: "members",
+  pieces: "pieces",
+  piece: "pieces",
+  firings: "firings",
+  firing: "firings",
+  events: "events",
+  event: "events",
+  lending: "lending",
+  "lending-intake": "lending-intake",
+  workshop: "operations",
+  workshops: "operations",
+};
+
 const STAFF_COCKPIT_ROOT_SEGMENT_ALIASES: Readonly<Record<string, string>> = {
   workshop: "operations",
   workshops: "operations",
-  checkins: "operations",
-  checkin: "operations",
-  members: "operations",
-  member: "operations",
-  pieces: "operations",
-  piece: "operations",
-  firings: "operations",
-  firing: "operations",
-  events: "operations",
-  event: "operations",
-  lending: "operations",
+  checkins: "checkins",
+  checkin: "checkins",
+  members: "members",
+  member: "members",
+  pieces: "pieces",
+  piece: "pieces",
+  firings: "firings",
+  firing: "firings",
+  events: "events",
+  event: "events",
+  lending: "lending",
+  "lending-intake": "lending-intake",
   system: "platform",
   commerce: "finance",
   stripe: "finance",
@@ -458,6 +497,15 @@ export function isStaffWorkspaceRequest(pathname: StaffPathInput, hash: StaffPat
   return resolveStaffWorkspaceRequestedPath(pathname, hash) !== null;
 }
 
+export function shouldExitStaffWorkspaceForTargetNav(
+  pathname: StaffPathInput,
+  hash: StaffPathInput,
+  targetNav: string
+): boolean {
+  if (targetNav === "staff") return false;
+  return isStaffWorkspaceRequest(pathname, hash);
+}
+
 function resolveStaffCockpitWorkspaceSegment(pathname: string): string | null {
   const normalized = normalizeStaffPath(pathname);
   if (!normalized) return null;
@@ -467,9 +515,40 @@ function resolveStaffCockpitWorkspaceSegment(pathname: string): string | null {
   const next = modulePath.split("/")[0];
   if (!next) return null;
   const normalizedModule = normalizeCockpitSegment(next);
+  const operationsFocusModule = STAFF_COCKPIT_OPERATIONS_ROOT_ALIASES[normalizedModule] ?? null;
+  if (operationsFocusModule) return operationsFocusModule;
   const canonicalModule = resolveConsolidatedCockpitSegment(normalizedModule);
   if (!STAFF_COCKPIT_KNOWN_SEGMENTS.has(canonicalModule)) return null;
   return canonicalModule;
+}
+
+export function resolveStaffCockpitOperationsModule(pathname: StaffPathInput): StaffCockpitOperationsModule | null {
+  const normalized = normalizeStaffPath(pathname);
+  if (!normalized) return null;
+  if (!isStaffPath(normalized)) return null;
+
+  const subPath = normalized.startsWith(`${STAFF_COCKPIT_PATH}/`)
+    ? normalized.slice(STAFF_COCKPIT_PATH.length + 1)
+    : normalized.startsWith(`${STAFF_PATH}/`)
+      ? normalized.slice(STAFF_PATH.length + 1)
+      : "";
+  if (!subPath) return null;
+
+  const next = subPath.split("/")[0];
+  if (!next) return null;
+
+  const normalizedSegment = normalizeCockpitSegment(next);
+  const operationsFocusModule = STAFF_COCKPIT_OPERATIONS_ROOT_ALIASES[normalizedSegment];
+  if (operationsFocusModule) {
+    return operationsFocusModule;
+  }
+
+  const normalizedOperationsSegment = resolveConsolidatedCockpitSegment(normalizedSegment);
+  if (normalizedOperationsSegment !== "operations") {
+    return null;
+  }
+
+  return STAFF_COCKPIT_OPERATIONS_ROOT_ALIASES[normalizedSegment] ?? "operations";
 }
 
 export function resolveStaffCockpitWorkspaceModule(pathname: string): string | null {
@@ -479,5 +558,9 @@ export function resolveStaffCockpitWorkspaceModule(pathname: string): string | n
 }
 
 export function resolveStaffCockpitWorkspaceTabSegment(pathname: string): string | null {
-  return resolveStaffCockpitWorkspaceSegment(pathname);
+  const canonicalSegment = resolveStaffCockpitWorkspaceSegment(pathname);
+  if (!canonicalSegment) return null;
+  if (canonicalSegment === "operations") return "operations";
+  if (STAFF_COCKPIT_MODULE_SEGMENTS.has(canonicalSegment)) return null;
+  return canonicalSegment;
 }

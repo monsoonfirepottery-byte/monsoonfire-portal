@@ -8,6 +8,10 @@ export type LibraryItemStatus =
   | (string & {});
 export type LibraryMediaType =
   | "book"
+  | "comic"
+  | "tabletop_rpg"
+  | "board_game"
+  | "video_game"
   | "media"
   | "tool"
   | "other"
@@ -20,7 +24,17 @@ export type LibraryCoverQualityStatus =
   | "needs_review"
   | "missing"
   | (string & {});
-export type LibrarySource = "local_reference" | "openlibrary" | "googlebooks" | "manual" | "donation";
+export type LibrarySource =
+  | "local_reference"
+  | "openlibrary"
+  | "googlebooks"
+  | "loc"
+  | "wikidata"
+  | "boardgamegeek"
+  | "rpggeek"
+  | "videogamegeek"
+  | "manual"
+  | "donation";
 export type LibraryDifficulty = "beginner" | "intermediate" | "advanced" | "all-levels";
 
 export type LibraryIdentifiers = {
@@ -67,11 +81,14 @@ export type LibraryReviewSummary = {
   latestReflection?: string | null;
 };
 
+export type LibraryItemDetailStatus = "ready" | "enriching" | "sparse";
+
 export type LibraryItem = {
   id: string;
   title: string;
   subtitle?: string | null;
   authors: string[];
+  summary?: string | null;
   description?: string | null;
   publisher?: string | null;
   publishedDate?: string | null;
@@ -99,6 +116,7 @@ export type LibraryItem = {
   aggregateRatingCount?: number | null;
   borrowCount?: number | null;
   lastReviewedAtIso?: string | null;
+  detailStatus?: LibraryItemDetailStatus | null;
   lendingEligible?: boolean | null;
   curation?: LibraryCuration | null;
   lifecycle?: LibraryLifecycle | null;

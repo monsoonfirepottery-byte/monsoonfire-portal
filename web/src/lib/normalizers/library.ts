@@ -1,5 +1,6 @@
 import type {
   LibraryExternalLookupResult,
+  LibraryItemDetailStatus,
   LibraryItem,
   LibraryLoan,
   LibraryRecommendation,
@@ -66,6 +67,14 @@ function feedbackKind(value: unknown): LibraryRecommendationFeedbackKind | null 
   return value === "helpful" || value === "not_helpful" ? value : null;
 }
 
+function detailStatus(value: unknown): LibraryItemDetailStatus | null {
+  return value === "ready" || value === "enriching" || value === "sparse" ? value : null;
+}
+
+function titleLooksManualPlaceholder(value: unknown): boolean {
+  return typeof value === "string" && /^isbn\s+[0-9x-]+$/i.test(value.trim());
+}
+
 function timestampFromUnknown(value: unknown): { toDate?: () => Date } | null {
   if (value && typeof value === "object" && typeof (value as { toDate?: unknown }).toDate === "function") {
     return value as { toDate?: () => Date };
@@ -88,6 +97,37 @@ export function resolveMemberApprovedLibraryCoverUrl(
   return item.coverQualityStatus === "approved" ? coverUrl : null;
 }
 
+export function resolveMemberLibraryCoverDisplay(
+  item: Pick<LibraryItem, "title" | "coverUrl" | "coverQualityStatus" | "needsCoverReview">
+):
+  | { kind: "approved"; coverUrl: string }
+  | { kind: "placeholder"; label: string; accent: string; ariaLabel: string } {
+  const approvedCoverUrl = resolveMemberApprovedLibraryCoverUrl(item);
+  if (approvedCoverUrl) {
+    return {
+      kind: "approved",
+      coverUrl: approvedCoverUrl,
+    };
+  }
+  return {
+    kind: "placeholder",
+    label: item.needsCoverReview ? "Cover pending" : "Library title",
+    accent: item.coverQualityStatus === "missing" ? "Metadata in progress" : "Staff review",
+    ariaLabel: `${item.title} cover unavailable`,
+  };
+}
+
+export function deriveMemberLibraryPendingBadges(
+  item: Pick<LibraryItem, "title" | "source" | "detailStatus" | "coverUrl" | "coverQualityStatus" | "needsCoverReview">
+): string[] {
+  const badges: string[] = [];
+  const coverMissing = !resolveMemberApprovedLibraryCoverUrl(item);
+  if (coverMissing) badges.push("Cover pending");
+  if (item.detailStatus === "enriching" || item.detailStatus === "sparse") badges.push("Details pending");
+  if (item.source === "manual" && titleLooksManualPlaceholder(item.title)) badges.push("Staff finishing metadata");
+  return Array.from(new Set(badges));
+}
+
 export function normalizeLibraryItem(id: string, raw: Partial<LibraryItem>): LibraryItem {
   const reviewSummaryRaw = raw.reviewSummary ?? null;
   const curationRaw = raw.curation ?? null;
@@ -99,6 +139,7 @@ export function normalizeLibraryItem(id: string, raw: Partial<LibraryItem>): Lib
     title: typeof raw.title === "string" ? raw.title : "Untitled",
     subtitle: raw.subtitle ?? null,
     authors: strList(raw.authors),
+    summary: raw.summary ?? null,
     description: raw.description ?? null,
     publisher: raw.publisher ?? null,
     publishedDate: raw.publishedDate ?? null,
@@ -126,6 +167,7 @@ export function normalizeLibraryItem(id: string, raw: Partial<LibraryItem>): Lib
     aggregateRatingCount: num(raw.aggregateRatingCount),
     borrowCount: num(raw.borrowCount),
     lastReviewedAtIso: str(raw.lastReviewedAtIso),
+    detailStatus: detailStatus(raw.detailStatus),
     lendingEligible: bool(raw.lendingEligible),
     curation: curationRaw
       ? {

@@ -41,6 +41,7 @@ import { readStoredEnhancedMotion, writeStoredEnhancedMotion } from "./theme/mot
 import { computeEnhancedMotionDefault, resolvePortalMotion } from "./theme/motionPreference";
 import { usePrefersReducedMotion } from "./hooks/usePrefersReducedMotion";
 import { UiSettingsProvider } from "./context/UiSettingsContext";
+import { filterVisibleAnnouncements } from "./lib/announcements";
 import { PROFILE_DEFAULT_AVATAR_URL } from "./lib/profileAvatars";
 import { setTelemetryView, trackedGetDoc, trackedGetDocs } from "./lib/firestoreTelemetry";
 import { safeReadBoolean, safeStorageGetItem, safeStorageRemoveItem, safeStorageSetItem } from "./lib/safeStorage";
@@ -722,6 +723,8 @@ function useAnnouncements(user: User | null, canLoad: boolean) {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const rawLimit = 60;
+  const visibleLimit = 30;
 
   useEffect(() => {
     let canceled = false;
@@ -740,7 +743,7 @@ function useAnnouncements(user: User | null, canLoad: boolean) {
         const announcementsQuery = query(
           collection(db, "announcements"),
           orderBy("createdAt", "desc"),
-          limit(30)
+          limit(rawLimit)
         );
         const snap = await trackedGetDocs("messages:announcements", announcementsQuery);
         if (canceled) return;
@@ -748,7 +751,7 @@ function useAnnouncements(user: User | null, canLoad: boolean) {
           ...(docSnap.data() as Partial<Announcement>),
           id: docSnap.id,
         }));
-        setAnnouncements(rows);
+        setAnnouncements(filterVisibleAnnouncements(rows).slice(0, visibleLimit));
       } catch (error: unknown) {
         if (!canceled) setError(`Announcements failed: ${getErrorMessage(error)}`);
       } finally {
@@ -760,7 +763,7 @@ function useAnnouncements(user: User | null, canLoad: boolean) {
     return () => {
       canceled = true;
     };
-  }, [user, canLoad]);
+  }, [user, canLoad, rawLimit, visibleLimit]);
 
   return { announcements, loading, error };
 }

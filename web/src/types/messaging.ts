@@ -44,6 +44,11 @@ export type Announcement = {
   title?: string;
   body?: string;
   type?: string;
+  source?: string;
+  audience?: string;
+  digestDateKey?: string;
+  digestFingerprint?: string;
+  authorName?: string;
   createdAt?: unknown;
   pinned?: boolean;
   readBy?: string[];

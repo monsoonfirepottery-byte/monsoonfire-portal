@@ -24,6 +24,21 @@ const GOOGLE_OAUTH_TOKEN_ENDPOINT = "https://www.googleapis.com/oauth2/v3/token"
 const FIREBASE_CLI_OAUTH_CLIENT_ID =
   "563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com";
 const FIREBASE_CLI_OAUTH_CLIENT_SECRET = String(process.env.FIREBASE_CLI_OAUTH_CLIENT_SECRET || "").trim();
+const FIXTURE_FLAG_BY_ARG = {
+  "batch-piece": "seedBatchPiece",
+  announcement: "seedAnnouncement",
+  notification: "seedNotification",
+  "direct-messages": "seedDirectMessages",
+  "workshop-event": "seedWorkshopEvent",
+};
+
+export const DEFAULT_FIXTURE_FLAGS = Object.freeze({
+  seedBatchPiece: true,
+  seedAnnouncement: false,
+  seedNotification: true,
+  seedDirectMessages: true,
+  seedWorkshopEvent: true,
+});
 
 function loadPortalAutomationEnv() {
   const configuredPath = String(process.env.PORTAL_AUTOMATION_ENV_PATH || "").trim();
@@ -54,7 +69,67 @@ function loadPortalAutomationEnv() {
 
 loadPortalAutomationEnv();
 
-function parseArgs(argv) {
+function withDefaultFixtureFlags(flags = {}) {
+  return {
+    ...DEFAULT_FIXTURE_FLAGS,
+    ...flags,
+  };
+}
+
+export function buildFixtureIds({ prefix, runDateKey }) {
+  const compact = String(runDateKey || "").replace(/-/g, "");
+  const messageDocId = `${prefix}-message-${compact}`;
+  return {
+    compact,
+    batchClientRequestId: `${prefix}-batch-${compact}`,
+    pieceId: `${prefix}-piece-${compact}`,
+    announcementId: `${prefix}-studio-update-${compact}`,
+    notificationId: `${prefix}-notification-${compact}`,
+    workshopEventId: `${prefix}-workshop-${compact}`,
+    threadId: `${prefix}-thread-${compact}`,
+    messageId: messageDocId,
+    messageRfc822Id: `<${messageDocId}@monsoonfire.local>`,
+  };
+}
+
+export function mergeFixtureState(existingFixture, currentFixture) {
+  const existing = existingFixture && typeof existingFixture === "object" ? existingFixture : {};
+  const current = currentFixture && typeof currentFixture === "object" ? currentFixture : {};
+  return {
+    runDate: String(current.runDate || existing.runDate || ""),
+    uid: String(current.uid || existing.uid || ""),
+    batchId: current.batchId ?? existing.batchId ?? null,
+    pieceId: current.pieceId ?? existing.pieceId ?? null,
+    announcementId: current.announcementId ?? existing.announcementId ?? null,
+    notificationId: current.notificationId ?? existing.notificationId ?? null,
+    workshopEventId: current.workshopEventId ?? existing.workshopEventId ?? null,
+    threadId: current.threadId ?? existing.threadId ?? null,
+    messageId: current.messageId ?? existing.messageId ?? null,
+    fixtureFlags: withDefaultFixtureFlags({
+      ...(existing.fixtureFlags || {}),
+      ...(current.fixtureFlags || {}),
+    }),
+  };
+}
+
+export function buildFixtureCleanupPaths(fixture) {
+  if (!fixture || typeof fixture !== "object") return [];
+  return [
+    fixture.threadId && fixture.messageId
+      ? `directMessages/${fixture.threadId}/messages/${fixture.messageId}`
+      : null,
+    fixture.threadId ? `directMessages/${fixture.threadId}` : null,
+    fixture.uid && fixture.notificationId
+      ? `users/${fixture.uid}/notifications/${fixture.notificationId}`
+      : null,
+    fixture.announcementId ? `announcements/${fixture.announcementId}` : null,
+    fixture.workshopEventId ? `events/${fixture.workshopEventId}` : null,
+    fixture.batchId && fixture.pieceId ? `batches/${fixture.batchId}/pieces/${fixture.pieceId}` : null,
+    fixture.batchId ? `batches/${fixture.batchId}` : null,
+  ].filter(Boolean);
+}
+
+export function parseArgs(argv) {
   const options = {
     apiKey: String(process.env.PORTAL_FIREBASE_API_KEY || "").trim(),
     projectId: process.env.PORTAL_PROJECT_ID || DEFAULT_PROJECT_ID,
@@ -67,6 +142,7 @@ function parseArgs(argv) {
     statePath: process.env.PORTAL_FIXTURE_STEWARD_STATE || DEFAULT_STATE_PATH,
     ttlDays: Number.parseInt(process.env.PORTAL_FIXTURE_STEWARD_TTL_DAYS || "21", 10) || 21,
     prefix: (process.env.PORTAL_FIXTURE_PREFIX || "qa-fixture").trim(),
+    fixtureFlags: withDefaultFixtureFlags(),
     asJson: false,
   };
 
@@ -142,6 +218,17 @@ function parseArgs(argv) {
 
     if (arg === "--json") {
       options.asJson = true;
+      continue;
+    }
+
+    if (arg.startsWith("--seed-") || arg.startsWith("--no-seed-")) {
+      const enable = arg.startsWith("--seed-");
+      const rawKey = enable ? arg.slice("--seed-".length) : arg.slice("--no-seed-".length);
+      const fixtureKey = FIXTURE_FLAG_BY_ARG[rawKey];
+      if (!fixtureKey) {
+        throw new Error(`Unknown fixture flag ${arg}`);
+      }
+      options.fixtureFlags[fixtureKey] = enable;
       continue;
     }
   }
@@ -374,25 +461,48 @@ async function exchangeRefreshToken(refreshToken, source) {
   return String(response.json.access_token);
 }
 
-function loadFirebaseCliAccessToken() {
+function loadFirebaseCliTokens() {
   try {
     const configPath = resolve(homedir(), ".config", "configstore", "firebase-tools.json");
-    if (!existsSync(configPath)) return "";
+    if (!existsSync(configPath)) {
+      return {
+        accessToken: "",
+        refreshToken: "",
+      };
+    }
     const raw = readFileSync(configPath, "utf8");
     const parsed = JSON.parse(raw);
-    const accessToken = String(parsed?.tokens?.access_token || "").trim();
-    return accessToken || "";
+    return {
+      accessToken: String(parsed?.tokens?.access_token || "").trim(),
+      refreshToken: String(parsed?.tokens?.refresh_token || "").trim(),
+    };
   } catch {
-    return "";
+    return {
+      accessToken: "",
+      refreshToken: "",
+    };
   }
 }
 
 async function resolveEnvAdminTokenCandidates() {
+  const firebaseCliTokens = loadFirebaseCliTokens();
   const candidateSources = [
     { source: "FIREBASE_RULES_API_TOKEN", value: process.env.FIREBASE_RULES_API_TOKEN },
     { source: "FIREBASE_ACCESS_TOKEN", value: process.env.FIREBASE_ACCESS_TOKEN },
     { source: "FIREBASE_TOKEN", value: process.env.FIREBASE_TOKEN },
   ];
+  if (firebaseCliTokens.refreshToken) {
+    candidateSources.push({
+      source: "firebase-tools refresh token",
+      value: firebaseCliTokens.refreshToken,
+    });
+  }
+  if (firebaseCliTokens.accessToken) {
+    candidateSources.push({
+      source: "firebase-tools access token",
+      value: firebaseCliTokens.accessToken,
+    });
+  }
   const candidates = [];
 
   for (const entry of candidateSources) {
@@ -407,7 +517,7 @@ async function resolveEnvAdminTokenCandidates() {
           error: "",
         });
       } catch (error) {
-        const fallbackAccessToken = loadFirebaseCliAccessToken();
+        const fallbackAccessToken = firebaseCliTokens.accessToken;
         if (fallbackAccessToken) {
           candidates.push({
             source: `${entry.source} (firebase-tools access fallback)`,
@@ -526,6 +636,7 @@ async function main() {
     reportPath: options.reportPath,
     statePath: options.statePath,
     ttlDays: options.ttlDays,
+    fixtureFlags: options.fixtureFlags,
     usedAdminToken: false,
     warnings: [],
     steps: [],
@@ -610,184 +721,198 @@ async function main() {
     summary.warnings.push(...adminTokenProbeWarnings);
   }
   const now = new Date();
-  const runNonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const batchClientRequestId = `${options.prefix}-batch-${runDate.compact}-${runNonce}`;
-
-  const createBatchResp = await requestJson(`${options.functionsBaseUrl}/createBatch`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      Authorization: `Bearer ${idToken}`,
-    },
-    body: JSON.stringify({
-      ownerUid: uid,
-      ownerDisplayName: displayName,
-      title: `QA Fixture ${runDate.dateKey}`,
-      intakeMode: "STAFF_HANDOFF",
-      estimatedCostCents: 1200,
-      estimateNotes: "QA fixture steward seeded batch",
-      clientRequestId: batchClientRequestId,
-    }),
+  const fixtureIds = buildFixtureIds({
+    prefix: options.prefix,
+    runDateKey: runDate.dateKey,
   });
+  let batchId = null;
 
-  if (!createBatchResp.ok) {
-    throw new Error(`createBatch failed with status ${createBatchResp.status}`);
+  if (options.fixtureFlags.seedBatchPiece) {
+    const createBatchResp = await requestJson(`${options.functionsBaseUrl}/createBatch`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        ownerUid: uid,
+        ownerDisplayName: displayName,
+        title: `QA Fixture ${runDate.dateKey}`,
+        intakeMode: "STAFF_HANDOFF",
+        estimatedCostCents: 1200,
+        estimateNotes: "QA fixture steward seeded batch",
+        clientRequestId: fixtureIds.batchClientRequestId,
+      }),
+    });
+
+    if (!createBatchResp.ok) {
+      throw new Error(`createBatch failed with status ${createBatchResp.status}`);
+    }
+
+    batchId =
+      String(createBatchResp.json?.batchId || "").trim() ||
+      String(createBatchResp.json?.existingBatchId || "").trim();
+    if (!batchId) {
+      throw new Error("createBatch response did not include a batchId.");
+    }
   }
-
-  const batchId =
-    String(createBatchResp.json?.batchId || "").trim() ||
-    String(createBatchResp.json?.existingBatchId || "").trim();
-  if (!batchId) {
-    throw new Error("createBatch response did not include a batchId.");
-  }
-
-  const pieceId = `${options.prefix}-piece-${runDate.compact}-${runNonce}`;
-  const announcementId = `${options.prefix}-studio-update-${runDate.compact}-${runNonce}`;
-  const notificationId = `${options.prefix}-notification-${runDate.compact}-${runNonce}`;
-  const workshopEventId = `${options.prefix}-workshop-${runDate.compact}-${runNonce}`;
-  const threadId = `${options.prefix}-thread-${runDate.compact}-${runNonce}`;
-  const messageId = `${options.prefix}-message-${runDate.compact}-${runNonce}`;
 
   summary.seeded = {
     uid,
     email,
     batchId,
-    pieceId,
-    announcementId,
-    notificationId,
-    workshopEventId,
-    threadId,
-    messageId,
+    pieceId: options.fixtureFlags.seedBatchPiece ? fixtureIds.pieceId : null,
+    announcementId: options.fixtureFlags.seedAnnouncement ? fixtureIds.announcementId : null,
+    notificationId: options.fixtureFlags.seedNotification ? fixtureIds.notificationId : null,
+    workshopEventId: options.fixtureFlags.seedWorkshopEvent ? fixtureIds.workshopEventId : null,
+    threadId: options.fixtureFlags.seedDirectMessages ? fixtureIds.threadId : null,
+    messageId: options.fixtureFlags.seedDirectMessages ? fixtureIds.messageId : null,
   };
 
   const upsertResults = [];
 
-  upsertResults.push({
-    step: "upsert piece",
-    response: await fireUpsert(options.projectId, firestoreToken, `batches/${batchId}/pieces/${pieceId}`, {
-      pieceCode: `QA-${runDate.compact.slice(-6)}`,
-      shortDesc: "QA fixture piece for dashboard + my pieces canary",
-      ownerName: displayName,
-      stage: "GREENWARE",
-      wareCategory: "STONEWARE",
-      isArchived: false,
-      createdAt: now,
-      updatedAt: now,
-    }),
-  });
+  if (options.fixtureFlags.seedBatchPiece && batchId) {
+    upsertResults.push({
+      step: "upsert piece",
+      response: await fireUpsert(options.projectId, firestoreToken, `batches/${batchId}/pieces/${fixtureIds.pieceId}`, {
+        pieceCode: `QA-${fixtureIds.compact.slice(-6)}`,
+        shortDesc: "QA fixture piece for dashboard + my pieces canary",
+        ownerName: displayName,
+        stage: "GREENWARE",
+        wareCategory: "STONEWARE",
+        isArchived: false,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    });
+  }
 
-  upsertResults.push({
-    step: "upsert announcement",
-    response: await fireUpsert(options.projectId, firestoreToken, `announcements/${announcementId}`, {
-      title: "QA fixture studio update",
-      body: "QA fixture: validating dashboard Studio updates visibility.",
-      kind: "studio_update",
-      createdAt: now,
-      updatedAt: now,
-      authorUid: uid,
-      authorName: displayName,
-      readBy: [],
-    }),
-  });
+  if (options.fixtureFlags.seedAnnouncement) {
+    upsertResults.push({
+      step: "upsert announcement",
+      response: await fireUpsert(options.projectId, firestoreToken, `announcements/${fixtureIds.announcementId}`, {
+        title: "QA fixture studio update",
+        body: "QA fixture: validating dashboard Studio updates visibility.",
+        kind: "studio_update",
+        source: "qa_fixture",
+        audience: "qa",
+        createdAt: now,
+        updatedAt: now,
+        authorUid: uid,
+        authorName: displayName,
+        readBy: [],
+      }),
+    });
+  }
 
-  const workshopStartAt = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
-  const workshopEndAt = new Date(workshopStartAt.getTime() + 2 * 60 * 60 * 1000);
-  upsertResults.push({
-    step: "upsert workshop event",
-    response: await fireUpsert(options.projectId, firestoreToken, `events/${workshopEventId}`, {
-      title: `QA Fixture Workshop ${runDate.dateKey}`,
-      summary: "Seeded workshop fixture for deterministic canary coverage.",
-      description:
-        "QA fixture workshop. Used by staff/event canaries to verify workshop rails and deterministic content availability.",
-      location: "Monsoon Fire Studio",
-      timezone: "America/Phoenix",
-      startAt: workshopStartAt,
-      endAt: workshopEndAt,
-      capacity: 12,
-      priceCents: 1800,
-      currency: "USD",
-      includesFiring: true,
-      firingDetails: "Bisque + glaze discussion included",
-      policyCopy:
-        "Fixture policy: attendance-only billing for canary verification. Cancel anytime up to 3 hours before start.",
-      addOns: [],
-      waitlistEnabled: true,
-      offerClaimWindowHours: 12,
-      cancelCutoffHours: 3,
-      status: "published",
-      ticketedCount: 0,
-      offeredCount: 0,
-      checkedInCount: 0,
-      waitlistCount: 0,
-      fixture: {
-        seededBy: "portal-fixture-steward",
-        runDate: runDate.dateKey,
-        prefix: options.prefix,
-      },
-      createdAt: now,
-      updatedAt: now,
-      publishedAt: now,
-    }),
-  });
+  if (options.fixtureFlags.seedWorkshopEvent) {
+    const workshopStartAt = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const workshopEndAt = new Date(workshopStartAt.getTime() + 2 * 60 * 60 * 1000);
+    upsertResults.push({
+      step: "upsert workshop event",
+      response: await fireUpsert(options.projectId, firestoreToken, `events/${fixtureIds.workshopEventId}`, {
+        title: `QA Fixture Workshop ${runDate.dateKey}`,
+        summary: "Seeded workshop fixture for deterministic canary coverage.",
+        description:
+          "QA fixture workshop. Used by staff/event canaries to verify workshop rails and deterministic content availability.",
+        location: "Monsoon Fire Studio",
+        timezone: "America/Phoenix",
+        startAt: workshopStartAt,
+        endAt: workshopEndAt,
+        capacity: 12,
+        priceCents: 1800,
+        currency: "USD",
+        includesFiring: true,
+        firingDetails: "Bisque + glaze discussion included",
+        policyCopy:
+          "Fixture policy: attendance-only billing for canary verification. Cancel anytime up to 3 hours before start.",
+        addOns: [],
+        waitlistEnabled: true,
+        offerClaimWindowHours: 12,
+        cancelCutoffHours: 3,
+        status: "published",
+        ticketedCount: 0,
+        offeredCount: 0,
+        checkedInCount: 0,
+        waitlistCount: 0,
+        fixture: {
+          seededBy: "portal-fixture-steward",
+          runDate: runDate.dateKey,
+          prefix: options.prefix,
+        },
+        createdAt: now,
+        updatedAt: now,
+        publishedAt: now,
+      }),
+    });
+  }
 
-  const notificationResult = await fireUpsert(
-    options.projectId,
-    firestoreToken,
-    `users/${uid}/notifications/${notificationId}`,
-    {
-      title: "QA fixture notification",
-      body: "QA fixture: mark-read workflow validation target.",
-      kind: "qa",
-      status: "new",
-      createdAt: now,
-      updatedAt: now,
-      readAt: null,
-    }
-  );
-  upsertResults.push({ step: "upsert notification", response: notificationResult });
-
-  upsertResults.push({
-    step: "upsert direct message thread",
-    response: await fireUpsert(options.projectId, firestoreToken, `directMessages/${threadId}`, {
-      subject: "QA fixture direct message",
-      kind: "support",
-      participantUids: [uid],
-      createdAt: now,
-      updatedAt: now,
-      lastMessagePreview: "QA fixture message preview",
-      lastMessageAt: now,
-      lastMessageId: `<${messageId}@monsoonfire.local>`,
-      lastSenderName: displayName,
-      lastSenderEmail: email,
-      references: [],
-      lastReadAtByUid: {
-        [uid]: now,
-      },
-    }),
-  });
-
-  upsertResults.push({
-    step: "upsert direct message",
-    response: await fireUpsert(
+  if (options.fixtureFlags.seedNotification) {
+    const notificationResult = await fireUpsert(
       options.projectId,
       firestoreToken,
-      `directMessages/${threadId}/messages/${messageId}`,
+      `users/${uid}/notifications/${fixtureIds.notificationId}`,
       {
-        messageId: `<${messageId}@monsoonfire.local>`,
-        subject: "QA fixture direct message",
-        body: "QA fixture message for messages page canary.",
-        fromUid: uid,
-        fromName: displayName,
-        fromEmail: email,
-        replyToEmail: email,
-        toUids: [],
-        toEmails: [],
-        sentAt: now,
-        inReplyTo: null,
-        references: [],
+        title: "QA fixture notification",
+        body: "QA fixture: mark-read workflow validation target.",
+        kind: "qa",
+        status: "new",
+        createdAt: now,
+        updatedAt: now,
+        readAt: null,
       }
-    ),
-  });
+    );
+    upsertResults.push({ step: "upsert notification", response: notificationResult });
+  }
+
+  if (options.fixtureFlags.seedDirectMessages) {
+    upsertResults.push({
+      step: "upsert direct message thread",
+      response: await fireUpsert(options.projectId, firestoreToken, `directMessages/${fixtureIds.threadId}`, {
+        subject: "QA fixture direct message",
+        kind: "support",
+        participantUids: [uid],
+        createdAt: now,
+        updatedAt: now,
+        lastMessagePreview: "QA fixture message preview",
+        lastMessageAt: now,
+        lastMessageId: fixtureIds.messageRfc822Id,
+        lastSenderName: displayName,
+        lastSenderEmail: email,
+        references: [],
+        lastReadAtByUid: {
+          [uid]: now,
+        },
+      }),
+    });
+
+    upsertResults.push({
+      step: "upsert direct message",
+      response: await fireUpsert(
+        options.projectId,
+        firestoreToken,
+        `directMessages/${fixtureIds.threadId}/messages/${fixtureIds.messageId}`,
+        {
+          messageId: fixtureIds.messageRfc822Id,
+          subject: "QA fixture direct message",
+          body: "QA fixture message for messages page canary.",
+          fromUid: uid,
+          fromName: displayName,
+          fromEmail: email,
+          replyToEmail: email,
+          toUids: [],
+          toEmails: [],
+          sentAt: now,
+          inReplyTo: null,
+          references: [],
+        }
+      ),
+    });
+  }
+
+  if (!Object.values(options.fixtureFlags).some(Boolean)) {
+    summary.warnings.push("No fixture categories enabled for this run; steward performed TTL cleanup only.");
+  }
 
   for (const result of upsertResults) {
     const ok = result.response.ok;
@@ -823,14 +948,29 @@ async function main() {
     }
   }
 
-  const validations = [
-    { key: "piece", path: `batches/${batchId}/pieces/${pieceId}` },
-    { key: "announcement", path: `announcements/${announcementId}` },
-    { key: "thread", path: `directMessages/${threadId}` },
-    { key: "message", path: `directMessages/${threadId}/messages/${messageId}` },
-    { key: "notification", path: `users/${uid}/notifications/${notificationId}` },
-    { key: "workshopEvent", path: `events/${workshopEventId}` },
-  ];
+  const validations = [];
+  if (options.fixtureFlags.seedBatchPiece && batchId) {
+    validations.push({ key: "piece", path: `batches/${batchId}/pieces/${fixtureIds.pieceId}` });
+  }
+  if (options.fixtureFlags.seedAnnouncement) {
+    validations.push({ key: "announcement", path: `announcements/${fixtureIds.announcementId}` });
+  }
+  if (options.fixtureFlags.seedDirectMessages) {
+    validations.push({ key: "thread", path: `directMessages/${fixtureIds.threadId}` });
+    validations.push({
+      key: "message",
+      path: `directMessages/${fixtureIds.threadId}/messages/${fixtureIds.messageId}`,
+    });
+  }
+  if (options.fixtureFlags.seedNotification) {
+    validations.push({
+      key: "notification",
+      path: `users/${uid}/notifications/${fixtureIds.notificationId}`,
+    });
+  }
+  if (options.fixtureFlags.seedWorkshopEvent) {
+    validations.push({ key: "workshopEvent", path: `events/${fixtureIds.workshopEventId}` });
+  }
 
   for (const checkItem of validations) {
     const response = await fireGet(options.projectId, firestoreToken, checkItem.path);
@@ -866,21 +1006,28 @@ async function main() {
 
   const state = await readJsonFile(options.statePath, { fixtures: [] });
   const fixtures = Array.isArray(state.fixtures) ? state.fixtures : [];
+  const existingFixtureForDate =
+    fixtures.find((entry) => String(entry?.runDate || "") === runDate.dateKey) || null;
 
-  const currentFixture = {
+  const currentFixture = mergeFixtureState(existingFixtureForDate, {
     runDate: runDate.dateKey,
     uid,
-    batchId,
-    pieceId,
-    announcementId,
-    notificationId,
-    workshopEventId,
-    threadId,
-    messageId,
-  };
+    batchId: options.fixtureFlags.seedBatchPiece ? batchId : null,
+    pieceId: options.fixtureFlags.seedBatchPiece ? fixtureIds.pieceId : null,
+    announcementId: options.fixtureFlags.seedAnnouncement ? fixtureIds.announcementId : null,
+    notificationId: options.fixtureFlags.seedNotification ? fixtureIds.notificationId : null,
+    workshopEventId: options.fixtureFlags.seedWorkshopEvent ? fixtureIds.workshopEventId : null,
+    threadId: options.fixtureFlags.seedDirectMessages ? fixtureIds.threadId : null,
+    messageId: options.fixtureFlags.seedDirectMessages ? fixtureIds.messageId : null,
+    fixtureFlags: options.fixtureFlags,
+  });
 
   const deduped = fixtures.filter((entry) => String(entry?.runDate || "") !== runDate.dateKey);
-  deduped.push(currentFixture);
+  const shouldPersistCurrentFixture =
+    Boolean(existingFixtureForDate) || Object.values(currentFixture.fixtureFlags || {}).some(Boolean);
+  if (shouldPersistCurrentFixture) {
+    deduped.push(currentFixture);
+  }
 
   const cleaned = [];
   const retained = [];
@@ -899,15 +1046,7 @@ async function main() {
       continue;
     }
 
-    const stalePaths = [
-      `directMessages/${fixture.threadId}/messages/${fixture.messageId}`,
-      `directMessages/${fixture.threadId}`,
-      `users/${fixture.uid}/notifications/${fixture.notificationId}`,
-      `announcements/${fixture.announcementId}`,
-      fixture.workshopEventId ? `events/${fixture.workshopEventId}` : null,
-      `batches/${fixture.batchId}/pieces/${fixture.pieceId}`,
-      `batches/${fixture.batchId}`,
-    ].filter(Boolean);
+    const stalePaths = buildFixtureCleanupPaths(fixture);
 
     let cleanupOk = true;
     for (const path of stalePaths) {
@@ -944,8 +1083,8 @@ async function main() {
   } else {
     process.stdout.write(`status: ${summary.status}\n`);
     process.stdout.write(`run date: ${summary.runDateKey}\n`);
-    process.stdout.write(`seeded batch: ${batchId}\n`);
-    process.stdout.write(`seeded notification: ${notificationId}\n`);
+    process.stdout.write(`seeded batch: ${summary.seeded.batchId || "none"}\n`);
+    process.stdout.write(`seeded notification: ${summary.seeded.notificationId || "none"}\n`);
     if (summary.warnings.length > 0) {
       summary.warnings.forEach((warning) => process.stdout.write(`warning: ${warning}\n`));
     }
@@ -957,8 +1096,12 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`portal-fixture-steward failed: ${message}`);
-  process.exit(1);
-});
+const isDirectRun = process.argv[1] ? resolve(process.argv[1]) === __filename : false;
+
+if (isDirectRun) {
+  main().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`portal-fixture-steward failed: ${message}`);
+    process.exit(1);
+  });
+}

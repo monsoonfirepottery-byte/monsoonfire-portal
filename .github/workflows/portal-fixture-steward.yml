@@ -72,6 +72,7 @@ jobs:
             --ttl-days "${{ steps.ttl.outputs.value }}" \
             --report output/qa/portal-fixture-steward.json \
             --state .codex/fixture-steward-state.json \
+            --no-seed-announcement \
             --json
 
       - name: Upload fixture steward artifacts

@@ -105,11 +105,28 @@ jobs:
             exit 0
           fi
 
-          node ./scripts/portal-fixture-steward.mjs \
-            --ttl-days 14 \
-            --report output/qa/pre-canary-fixture-self-heal.json \
-            --state .codex/pre-canary-fixture-state.json \
+          read_hints() {
+            node -e 'const fs=require("fs");try{const p=JSON.parse(fs.readFileSync("output/qa/portal-fixture-self-healing.json","utf8"));const hints=p?.feedback?.fixtureHints||{};process.stdout.write(JSON.stringify({seedBatchPiece:Boolean(hints.seedBatchPiece),seedNotification:Boolean(hints.seedNotification),seedDirectMessages:Boolean(hints.seedDirectMessages)}));}catch{process.stdout.write(JSON.stringify({seedBatchPiece:false,seedNotification:false,seedDirectMessages:false}));}'
+          }
+
+          HINTS_JSON="$(read_hints)"
+          SEED_BATCH_PIECE="$(node -e 'const hints=JSON.parse(process.argv[1]);process.stdout.write(hints.seedBatchPiece?"true":"false")' "$HINTS_JSON")"
+          SEED_NOTIFICATION="$(node -e 'const hints=JSON.parse(process.argv[1]);process.stdout.write(hints.seedNotification?"true":"false")' "$HINTS_JSON")"
+          SEED_DIRECT_MESSAGES="$(node -e 'const hints=JSON.parse(process.argv[1]);process.stdout.write(hints.seedDirectMessages?"true":"false")' "$HINTS_JSON")"
+
+          ARGS=(
+            --ttl-days 14
+            --report output/qa/pre-canary-fixture-self-heal.json
+            --state .codex/pre-canary-fixture-state.json
+            --no-seed-announcement
+            --no-seed-workshop-event
             --json
+          )
+          if [ "$SEED_BATCH_PIECE" = "true" ]; then ARGS+=(--seed-batch-piece); else ARGS+=(--no-seed-batch-piece); fi
+          if [ "$SEED_NOTIFICATION" = "true" ]; then ARGS+=(--seed-notification); else ARGS+=(--no-seed-notification); fi
+          if [ "$SEED_DIRECT_MESSAGES" = "true" ]; then ARGS+=(--seed-direct-messages); else ARGS+=(--no-seed-direct-messages); fi
+
+          node ./scripts/portal-fixture-steward.mjs "${ARGS[@]}"
 
       - name: Run authenticated canary (functional + theme)
         id: canary

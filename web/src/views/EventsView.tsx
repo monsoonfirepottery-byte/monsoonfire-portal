@@ -2198,12 +2198,13 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
               : profile?.techniqueIds?.length
                 ? profile.techniqueIds
                 : ["studio-practice"];
+          const demandKind: "request" | "interest" = signal.kind === "request" ? "request" : "interest";
 
           const demandSignal: WorkshopDemandSignal = {
             id:
               asString(signal.id) ||
               `remote-${signal.kind}-${sourceEventId || "request"}-${createdAt}`,
-            kind: signal.kind,
+            kind: demandKind,
             action: signalAction,
             techniqueIds,
             techniqueLabel:

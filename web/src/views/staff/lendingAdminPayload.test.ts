@@ -9,6 +9,7 @@ import {
 const BASE_DRAFT: LendingAdminPayloadDraft = {
   title: "The Kiln Book",
   subtitle: "Materials, Specs, and Firing",
+  summary: "A practical studio guide for kiln workflows and maintenance.",
   description: "A practical guide for shared studio operations.",
   publisher: "Monsoon Press",
   publishedDate: "2025-10-12",
@@ -19,6 +20,8 @@ const BASE_DRAFT: LendingAdminPayloadDraft = {
   availableCopies: "2",
   status: "available",
   source: "manual",
+  staffPick: true,
+  staffRationale: "Strong for shared-studio kiln routines.",
 };
 
 describe("buildLendingAdminApiPayload", () => {
@@ -35,6 +38,7 @@ describe("buildLendingAdminApiPayload", () => {
       title: "The Kiln Book",
       subtitle: "Materials, Specs, and Firing",
       authors: ["Nils Lou"],
+      summary: "A practical studio guide for kiln workflows and maintenance.",
       description: "A practical guide for shared studio operations.",
       publisher: "Monsoon Press",
       publishedDate: "2025-10-12",
@@ -47,6 +51,8 @@ describe("buildLendingAdminApiPayload", () => {
       source: "manual",
       subjects: ["Kilns", "Ceramics"],
       tags: ["firing", "kiln-ops"],
+      staffPick: true,
+      staffRationale: "Strong for shared-studio kiln routines.",
       isbn: "9781234567890",
     });
 
@@ -75,6 +81,7 @@ describe("buildLendingAdminApiPayload", () => {
       title: "The Kiln Book",
       subtitle: "Materials, Specs, and Firing",
       authors: ["Monsoon Fire Team"],
+      summary: "A practical studio guide for kiln workflows and maintenance.",
       description: "A practical guide for shared studio operations.",
       publisher: "Monsoon Press",
       publishedDate: "2025-10-12",
@@ -87,6 +94,8 @@ describe("buildLendingAdminApiPayload", () => {
       source: "manual",
       subjects: [],
       tags: [],
+      staffPick: true,
+      staffRationale: "Strong for shared-studio kiln routines.",
     });
   });
 });

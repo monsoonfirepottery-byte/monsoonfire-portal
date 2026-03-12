@@ -15,6 +15,7 @@ export type LendingAdminIsbnVariants = {
 export type LendingAdminPayloadDraft = {
   title: string;
   subtitle: string;
+  summary: string;
   description: string;
   publisher: string;
   publishedDate: string;
@@ -25,12 +26,15 @@ export type LendingAdminPayloadDraft = {
   availableCopies: string;
   status: string;
   source: string;
+  staffPick: boolean;
+  staffRationale: string;
 };
 
 export type LendingAdminApiPayload = {
   title: string;
   subtitle: string | null;
   authors: string[];
+  summary: string | null;
   description: string | null;
   publisher: string | null;
   publishedDate: string | null;
@@ -43,6 +47,8 @@ export type LendingAdminApiPayload = {
   source: string;
   subjects: string[];
   tags: string[];
+  staffPick: boolean;
+  staffRationale: string | null;
   isbn?: string;
 };
 
@@ -83,6 +89,7 @@ export function buildLendingAdminApiPayload(input: {
     title: input.draft.title.trim(),
     subtitle: nullableText(input.draft.subtitle),
     authors: input.authors,
+    summary: nullableText(input.draft.summary),
     description: nullableText(input.draft.description),
     publisher: nullableText(input.draft.publisher),
     publishedDate: nullableText(input.draft.publishedDate),
@@ -95,6 +102,8 @@ export function buildLendingAdminApiPayload(input: {
     source: firstNonBlankString(input.draft.source, "manual"),
     subjects: input.subjects,
     tags: input.techniques,
+    staffPick: input.draft.staffPick === true,
+    staffRationale: nullableText(input.draft.staffRationale),
   };
 
   if (input.isbn.primary) {

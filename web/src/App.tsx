@@ -45,6 +45,7 @@ import { PROFILE_DEFAULT_AVATAR_URL } from "./lib/profileAvatars";
 import { setTelemetryView, trackedGetDoc, trackedGetDocs } from "./lib/firestoreTelemetry";
 import { safeReadBoolean, safeStorageGetItem, safeStorageRemoveItem, safeStorageSetItem } from "./lib/safeStorage";
 import { parseStaffRoleFromClaims } from "./auth/staffRole";
+import { preloadMaterialsCatalog } from "./views/materialsCatalog";
 import {
   STAFF_COCKPIT_PATH,
   normalizeStaffPath,
@@ -832,10 +833,20 @@ function useNotifications(user: User | null, canLoad: boolean) {
   return { notifications, loading, error };
 }
 
-function prefetchLikelyNextViews() {
+function prefetchLikelyNextViews({
+  user,
+  adminToken,
+}: {
+  user?: User | null;
+  adminToken?: string;
+} = {}) {
   void import("./views/KilnRentalsView");
   void import("./views/ReservationsView");
   void import("./views/KilnLaunchView");
+  void import("./views/MaterialsView");
+  if (user) {
+    void preloadMaterialsCatalog({ user, adminToken }).catch(() => undefined);
+  }
 }
 
 export default function App() {
@@ -1951,7 +1962,10 @@ export default function App() {
     let canceled = false;
     const runPrefetch = () => {
       if (canceled) return;
-      prefetchLikelyNextViews();
+      prefetchLikelyNextViews({
+        user,
+        adminToken: devAdminTokenValue || undefined,
+      });
     };
 
     if (idleWindow.requestIdleCallback) {
@@ -1967,7 +1981,7 @@ export default function App() {
       canceled = true;
       window.clearTimeout(timer);
     };
-  }, [authReady, user, nav]);
+  }, [authReady, devAdminTokenValue, nav, user]);
 
   const handleSectionToggle = (sectionKey: NavSectionKey) => {
     if (navIsHorizontalDock) {

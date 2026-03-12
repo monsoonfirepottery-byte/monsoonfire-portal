@@ -1,29 +1,32 @@
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
-import { collection, doc, getDocs, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import type {
   CreateMaterialsCheckoutSessionResponse,
-  ListMaterialsProductsResponse,
   MaterialProduct,
   SeedMaterialsCatalogResponse,
 } from "../api/portalContracts";
 import { createFunctionsClient } from "../api/functionsClient";
 import { db } from "../firebase";
-import { toVoidHandler } from "../utils/toVoidHandler";
 import { formatCents } from "../utils/format";
-import { safeStorageReadJson, safeStorageSetItem } from "../lib/safeStorage";
+import { resolveFunctionsBaseUrl } from "../utils/functionsBaseUrl";
+import { toVoidHandler } from "../utils/toVoidHandler";
 import {
   checkoutErrorMessage,
   isConnectivityError,
   serviceOfflineMessage,
 } from "../utils/userFacingErrors";
+import {
+  filterMaterialsGroups,
+  groupMaterialsProducts,
+  loadMaterialsCatalog,
+  readCachedMaterialsCatalog,
+  slugify,
+  sortMaterialsGroups,
+  type MaterialsCatalogLoadResult,
+  type MaterialsCatalogSort,
+} from "./materialsCatalog";
 import "./MaterialsView.css";
-
-const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
-type ImportMetaEnvShape = { VITE_FUNCTIONS_BASE_URL?: string };
-const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
-const CATALOG_CACHE_KEY = "mf_materials_catalog_v1";
-const CATALOG_CACHE_TTL_MS = 5 * 60 * 1000;
 
 type Props = {
   user: User;
@@ -34,39 +37,6 @@ type Props = {
 type CartLine = {
   product: MaterialProduct;
   quantity: number;
-};
-
-type CachedCatalog = {
-  cachedAt: number;
-  products: MaterialProduct[];
-};
-
-type VariantOption = {
-  product: MaterialProduct;
-  label: string;
-};
-
-type ProductGroup = {
-  id: string;
-  name: string;
-  description: string | null;
-  category: string | null;
-  variants: VariantOption[];
-};
-
-type MaterialProductFirestoreDoc = {
-  name?: string;
-  description?: string | null;
-  category?: string | null;
-  sku?: string | null;
-  priceCents?: number;
-  currency?: string;
-  stripePriceId?: string | null;
-  imageUrl?: string | null;
-  trackInventory?: boolean;
-  inventoryOnHand?: number | null;
-  inventoryReserved?: number | null;
-  active?: boolean;
 };
 
 const LOCAL_SEED_PRODUCTS: Array<{
@@ -104,14 +74,6 @@ const LOCAL_SEED_PRODUCTS: Array<{
   },
 ];
 
-function resolveFunctionsBaseUrl() {
-  const env =
-    typeof import.meta !== "undefined" && ENV.VITE_FUNCTIONS_BASE_URL
-      ? String(ENV.VITE_FUNCTIONS_BASE_URL)
-      : "";
-  return env || DEFAULT_FUNCTIONS_BASE_URL;
-}
-
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -125,91 +87,113 @@ function isAuthTokenError(error: unknown): boolean {
   );
 }
 
-function readCachedCatalog(): CachedCatalog | null {
-  const parsed = safeStorageReadJson<CachedCatalog>("localStorage", CATALOG_CACHE_KEY, null);
-  if (!parsed || !parsed.cachedAt || !Array.isArray(parsed.products)) return null;
-  if (Date.now() - parsed.cachedAt > CATALOG_CACHE_TTL_MS) return null;
-  return parsed;
+function formatRelativeCatalogTime(value: string | null) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  const deltaMs = Date.now() - parsed.getTime();
+  if (Math.abs(deltaMs) < 45_000) return "Updated just now";
+
+  const minutes = Math.round(deltaMs / 60_000);
+  if (minutes < 60) return `Updated ${minutes} min ago`;
+
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `Updated ${hours} hr ago`;
+
+  return `Updated ${parsed.toLocaleString()}`;
 }
 
-function writeCachedCatalog(products: MaterialProduct[]) {
-  const payload: CachedCatalog = {
-    cachedAt: Date.now(),
-    products,
-  };
-  try {
-    safeStorageSetItem("localStorage", CATALOG_CACHE_KEY, JSON.stringify(payload));
-  } catch {
-    // ignore cache write failures
+function formatSavedCatalogAge(cachedAt: number | null) {
+  if (!cachedAt || !Number.isFinite(cachedAt)) return "";
+  const deltaMs = Math.max(Date.now() - cachedAt, 0);
+  if (deltaMs < 45_000) return "Saved just now";
+  const minutes = Math.round(deltaMs / 60_000);
+  if (minutes < 60) return `Saved ${minutes} min ago`;
+  return `Saved ${new Date(cachedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+}
+
+function getCatalogNote({
+  source,
+  refreshing,
+  fetchedAtIso,
+  catalogUpdatedAtIso,
+  cachedAt,
+}: {
+  source: MaterialsCatalogLoadResult["source"] | null;
+  refreshing: boolean;
+  fetchedAtIso: string | null;
+  catalogUpdatedAtIso: string | null;
+  cachedAt: number | null;
+}) {
+  const updatedLabel = formatRelativeCatalogTime(catalogUpdatedAtIso ?? fetchedAtIso);
+  if (refreshing) {
+    return updatedLabel ? `${updatedLabel}. Refreshing catalog...` : "Refreshing catalog...";
   }
-}
-
-function parseVariantName(name: string) {
-  const dashIndex = name.lastIndexOf(" - ");
-  if (dashIndex > 0) {
-    return {
-      baseName: name.slice(0, dashIndex).trim(),
-      variantLabel: name.slice(dashIndex + 3).trim(),
-    };
+  if (source === "firestore_fallback") {
+    return updatedLabel
+      ? `${updatedLabel}. Local fallback mode while functions auth catches up.`
+      : "Loaded from local fallback mode.";
   }
-
-  const match = name.match(/^(.*)\s*\(([^)]+)\)\s*$/);
-  if (match) {
-    return { baseName: match[1].trim(), variantLabel: match[2].trim() };
+  if (source === "cache") {
+    const savedLabel = formatSavedCatalogAge(cachedAt);
+    return savedLabel || updatedLabel;
   }
-
-  return { baseName: name.trim(), variantLabel: "" };
+  return updatedLabel;
 }
 
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
+function getResultsLabel(count: number) {
+  if (count === 1) return "1 listing";
+  return `${count} listings`;
 }
 
-function normalizeProductFromDoc(id: string, data: MaterialProductFirestoreDoc): MaterialProduct {
-  const trackInventory = data.trackInventory === true;
-  const inventoryOnHand = trackInventory ? Number(data.inventoryOnHand ?? 0) : null;
-  const inventoryReserved = trackInventory ? Number(data.inventoryReserved ?? 0) : null;
-  const inventoryAvailable =
-    trackInventory && inventoryOnHand !== null && inventoryReserved !== null
-      ? Math.max(inventoryOnHand - inventoryReserved, 0)
-      : null;
+function getMobileCartLabel(count: number) {
+  if (count === 1) return "1 item";
+  return `${count} items`;
+}
 
-  return {
-    id,
-    name: String(data.name ?? "").trim(),
-    description: data.description ?? null,
-    category: data.category ?? null,
-    sku: data.sku ?? null,
-    priceCents: Number(data.priceCents ?? 0),
-    currency: String(data.currency ?? "USD").toUpperCase(),
-    stripePriceId: data.stripePriceId ?? null,
-    imageUrl: data.imageUrl ?? null,
-    trackInventory,
-    inventoryOnHand,
-    inventoryReserved,
-    inventoryAvailable,
-    active: data.active !== false,
-  };
+function resolveProductMediaTone(category: string | null) {
+  const tone = slugify(category ?? "studio");
+  return `product-media--${tone || "studio"}`;
+}
+
+function resolveProductPlaceholderLabel(category: string | null) {
+  const normalized = String(category ?? "").trim();
+  return normalized || "Studio staple";
 }
 
 export default function MaterialsView({ user, adminToken, isStaff }: Props) {
-  const [products, setProducts] = useState<MaterialProduct[]>([]);
-  const [loading, setLoading] = useState(false);
+  const initialCachedCatalog = useMemo(() => readCachedMaterialsCatalog(), []);
+  const [products, setProducts] = useState<MaterialProduct[]>(() => initialCachedCatalog?.products ?? []);
+  const [loading, setLoading] = useState(() => !(initialCachedCatalog?.products?.length));
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
   const [category, setCategory] = useState("All");
+  const [sort, setSort] = useState<MaterialsCatalogSort>("recommended");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [pickupNotes, setPickupNotes] = useState("");
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [seedBusy, setSeedBusy] = useState(false);
-  const [cacheNote, setCacheNote] = useState("");
   const [selectedVariant, setSelectedVariant] = useState<Record<string, string>>({});
   const [serviceOffline, setServiceOffline] = useState(false);
+  const [catalogSource, setCatalogSource] = useState<MaterialsCatalogLoadResult["source"] | null>(
+    initialCachedCatalog ? "cache" : null
+  );
+  const [catalogCachedAt, setCatalogCachedAt] = useState<number | null>(
+    initialCachedCatalog?.cachedAt ?? null
+  );
+  const [catalogFetchedAtIso, setCatalogFetchedAtIso] = useState<string | null>(
+    initialCachedCatalog?.fetchedAtIso ?? null
+  );
+  const [catalogUpdatedAtIso, setCatalogUpdatedAtIso] = useState<string | null>(
+    initialCachedCatalog?.catalogUpdatedAtIso ?? null
+  );
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
 
+  const cartRef = useRef<HTMLElement | null>(null);
   const baseUrl = useMemo(() => resolveFunctionsBaseUrl(), []);
 
   const client = useMemo(() => {
@@ -220,12 +204,67 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
     });
   }, [adminToken, baseUrl, user]);
 
+  const applyCatalogResult = (
+    result: MaterialsCatalogLoadResult,
+    options: { announceFallback?: boolean } = {}
+  ) => {
+    setProducts(result.products);
+    setCatalogSource(result.source);
+    setCatalogCachedAt(result.cachedAt);
+    setCatalogFetchedAtIso(result.fetchedAtIso);
+    setCatalogUpdatedAtIso(result.catalogUpdatedAtIso);
+    setServiceOffline(false);
+    setError("");
+    if (result.source === "firestore_fallback" && options.announceFallback !== false) {
+      setStatus("Store is running in fallback mode while functions auth is unavailable.");
+    }
+  };
+
+  const refreshCatalog = async ({
+    forceRefresh = false,
+    announceFallback = true,
+  }: {
+    forceRefresh?: boolean;
+    announceFallback?: boolean;
+  } = {}) => {
+    const cached = readCachedMaterialsCatalog();
+    const hasVisibleCatalog = (cached?.products?.length ?? 0) > 0 || products.length > 0;
+
+    setError("");
+    setServiceOffline(false);
+    if (hasVisibleCatalog) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    try {
+      const result = await loadMaterialsCatalog({
+        user,
+        adminToken,
+        baseUrl,
+        forceRefresh,
+      });
+      applyCatalogResult(result, { announceFallback });
+    } catch (nextError: unknown) {
+      if (isConnectivityError(nextError)) {
+        setServiceOffline(true);
+        setError(serviceOfflineMessage());
+      } else {
+        setError(getErrorMessage(nextError));
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const statusParam = params.get("status");
 
     if (statusParam === "success") {
-      setStatus("Payment received — we will be ready for pickup soon.");
+      setStatus("Payment received. We’ll prep your pickup order now.");
       setCart({});
     } else if (statusParam === "cancel") {
       setStatus("Checkout canceled. Your cart is still here if you want to try again.");
@@ -233,115 +272,82 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
   }, []);
 
   useEffect(() => {
-    let mounted = true;
-    const cached = readCachedCatalog();
+    const cached = readCachedMaterialsCatalog();
     if (cached?.products?.length) {
       setProducts(cached.products);
-      const ageMinutes = Math.round((Date.now() - cached.cachedAt) / 60000);
-      setCacheNote(`Showing cached catalog (${ageMinutes} min old).`);
+      setCatalogSource("cache");
+      setCatalogCachedAt(cached.cachedAt);
+      setCatalogFetchedAtIso(cached.fetchedAtIso ?? null);
+      setCatalogUpdatedAtIso(cached.catalogUpdatedAtIso ?? null);
+      setLoading(false);
     }
 
-    const load = async () => {
-      setLoading(true);
+    const shouldRefresh = !cached?.products?.length || !cached.isFresh;
+    if (!shouldRefresh) {
+      return;
+    }
+
+    let canceled = false;
+    const run = async () => {
+      if (canceled) return;
       setError("");
       setServiceOffline(false);
+      if (cached?.products?.length) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
 
       try {
-        const resp = await client.postJson<ListMaterialsProductsResponse>("listMaterialsProducts", {
-          includeInactive: false,
+        const result = await loadMaterialsCatalog({
+          user,
+          adminToken,
+          baseUrl,
         });
-        if (!mounted) return;
-        setProducts(resp.products ?? []);
-        writeCachedCatalog(resp.products ?? []);
-        setCacheNote("");
-      } catch (error: unknown) {
-        if (!mounted) return;
-        if (isConnectivityError(error)) {
+        if (canceled) return;
+        setProducts(result.products);
+        setCatalogSource(result.source);
+        setCatalogCachedAt(result.cachedAt);
+        setCatalogFetchedAtIso(result.fetchedAtIso);
+        setCatalogUpdatedAtIso(result.catalogUpdatedAtIso);
+        setServiceOffline(false);
+        setError("");
+        if (result.source === "firestore_fallback") {
+          setStatus("Store is running in fallback mode while functions auth is unavailable.");
+        }
+      } catch (nextError: unknown) {
+        if (canceled) return;
+        if (isConnectivityError(nextError)) {
           setServiceOffline(true);
           setError(serviceOfflineMessage());
-          return;
+        } else {
+          setError(getErrorMessage(nextError));
         }
-        if (isAuthTokenError(error)) {
-          try {
-            const snap = await getDocs(collection(db, "materialsProducts"));
-            if (!mounted) return;
-            const fallbackProducts = snap.docs
-              .map((docSnap) =>
-                normalizeProductFromDoc(
-                  docSnap.id,
-                  (docSnap.data() as MaterialProductFirestoreDoc) ?? {}
-                )
-              )
-              .filter((product) => product.active);
-            setProducts(fallbackProducts);
-            writeCachedCatalog(fallbackProducts);
-            setCacheNote("Loaded from Firestore fallback (local functions auth mismatch).");
-            setStatus("Store is running in fallback mode while functions auth is unavailable.");
-            setError("");
-            return;
-          } catch {
-            // fall through to standard error handling
-          }
-        }
-        setError(getErrorMessage(error));
       } finally {
-        if (mounted) setLoading(false);
+        if (!canceled) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     };
 
-    void load();
+    void run();
     return () => {
-      mounted = false;
+      canceled = true;
     };
-  }, [client]);
+  }, [adminToken, baseUrl, user]);
 
-  const productMap = useMemo(() => {
-    const map = new Map<string, MaterialProduct>();
-    products.forEach((product) => map.set(product.id, product));
-    return map;
+  const groupedProducts = useMemo(() => {
+    return groupMaterialsProducts(products);
   }, [products]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
-    products.forEach((product) => {
-      if (product.category) set.add(product.category);
+    groupedProducts.forEach((group) => {
+      if (group.category) set.add(group.category);
     });
     return ["All", ...Array.from(set).sort()];
-  }, [products]);
-
-  const groupedProducts = useMemo(() => {
-    const map = new Map<string, ProductGroup>();
-    products.forEach((product) => {
-      const { baseName, variantLabel } = parseVariantName(product.name);
-      const id = slugify(baseName);
-      const existing = map.get(id);
-      const variantLabelFinal = variantLabel || "Standard";
-      const option: VariantOption = {
-        product,
-        label: variantLabelFinal,
-      };
-
-      if (!existing) {
-        map.set(id, {
-          id,
-          name: baseName,
-          description: product.description ?? null,
-          category: product.category ?? null,
-          variants: [option],
-        });
-      } else {
-        existing.variants.push(option);
-        if (!existing.description && product.description) {
-          existing.description = product.description;
-        }
-      }
-    });
-
-    return Array.from(map.values()).map((group) => ({
-      ...group,
-      variants: group.variants.sort((a, b) => a.label.localeCompare(b.label)),
-    }));
-  }, [products]);
+  }, [groupedProducts]);
 
   useEffect(() => {
     setSelectedVariant((prev) => {
@@ -360,22 +366,32 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
   }, [groupedProducts]);
 
   const filteredGroups = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return groupedProducts.filter((group) => {
-      const matchesCategory = category === "All" || group.category === category;
-      if (!matchesCategory) return false;
-      if (!term) return true;
-      return (
-        group.name.toLowerCase().includes(term) ||
-        (group.description ?? "").toLowerCase().includes(term) ||
-        group.variants.some((variant) => {
-          const label = variant.label.toLowerCase();
-          const name = variant.product.name.toLowerCase();
-          return label.includes(term) || name.includes(term);
-        })
-      );
+    return sortMaterialsGroups(
+      filterMaterialsGroups(groupedProducts, deferredSearch, category),
+      sort
+    );
+  }, [category, deferredSearch, groupedProducts, sort]);
+
+  const productMap = useMemo(() => {
+    const map = new Map<string, MaterialProduct>();
+    products.forEach((product) => map.set(product.id, product));
+    return map;
+  }, [products]);
+
+  useEffect(() => {
+    setCart((prev) => {
+      let changed = false;
+      const next: Record<string, number> = {};
+      Object.entries(prev).forEach(([productId, quantity]) => {
+        if (!productMap.has(productId) || quantity <= 0) {
+          changed = true;
+          return;
+        }
+        next[productId] = quantity;
+      });
+      return changed ? next : prev;
     });
-  }, [category, groupedProducts, search]);
+  }, [productMap]);
 
   const cartLines: CartLine[] = useMemo(() => {
     return Object.entries(cart)
@@ -391,8 +407,23 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
     return cartLines.reduce((total, line) => total + line.product.priceCents * line.quantity, 0);
   }, [cartLines]);
 
+  const cartCount = useMemo(() => {
+    return cartLines.reduce((total, line) => total + line.quantity, 0);
+  }, [cartLines]);
+
+  const catalogNote = useMemo(() => {
+    return getCatalogNote({
+      source: catalogSource,
+      refreshing,
+      fetchedAtIso: catalogFetchedAtIso,
+      catalogUpdatedAtIso,
+      cachedAt: catalogCachedAt,
+    });
+  }, [catalogCachedAt, catalogFetchedAtIso, catalogSource, catalogUpdatedAtIso, refreshing]);
+
   const canSeed = isStaff || !!adminToken?.trim();
   const canCheckout = cartLines.length > 0 && !checkoutBusy;
+  const isInitialLoad = loading && products.length === 0;
 
   const updateCart = (productId: string, delta: number, maxAvailable: number | null) => {
     setCart((prev) => {
@@ -411,6 +442,10 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
 
       return { ...prev, [productId]: next };
     });
+  };
+
+  const scrollToCart = () => {
+    cartRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const handleCheckout = async () => {
@@ -443,15 +478,15 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
       }
 
       window.location.assign(resp.checkoutUrl);
-    } catch (error: unknown) {
-      setStatus(checkoutErrorMessage(error));
+    } catch (nextError: unknown) {
+      setStatus(checkoutErrorMessage(nextError));
     } finally {
       setCheckoutBusy(false);
     }
   };
 
-  const handleCheckoutHandlerError = (error: unknown) => {
-    setStatus(checkoutErrorMessage(error));
+  const handleCheckoutHandlerError = (nextError: unknown) => {
+    setStatus(checkoutErrorMessage(nextError));
     setCheckoutBusy(false);
   };
 
@@ -467,62 +502,43 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
         reason: "materials_view_staff_seed",
       });
       setStatus(`Sample catalog seeded (${resp.created} new, ${resp.updated} updated).`);
-      const refreshed = await client.postJson<ListMaterialsProductsResponse>(
-        "listMaterialsProducts",
-        { includeInactive: false }
-      );
-      setProducts(refreshed.products ?? []);
-      writeCachedCatalog(refreshed.products ?? []);
-      setCacheNote("");
-    } catch (error: unknown) {
-      if (isAuthTokenError(error) && isStaff) {
-        try {
-          for (const product of LOCAL_SEED_PRODUCTS) {
-            const id = slugify(product.sku);
-            await setDoc(
-              doc(db, "materialsProducts", id),
-              {
-                sku: product.sku,
-                name: product.name,
-                description: product.description,
-                category: product.category,
-                priceCents: product.priceCents,
-                currency: "USD",
-                stripePriceId: null,
-                imageUrl: null,
-                trackInventory: product.trackInventory,
-                inventoryOnHand: product.trackInventory ? 30 : 0,
-                inventoryReserved: 0,
-                active: true,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-              },
-              { merge: true }
-            );
-          }
-
-          const snap = await getDocs(collection(db, "materialsProducts"));
-          const fallbackProducts = snap.docs
-            .map((docSnap) =>
-              normalizeProductFromDoc(
-                docSnap.id,
-                (docSnap.data() as MaterialProductFirestoreDoc) ?? {}
-              )
-            )
-            .filter((product) => product.active);
-          setProducts(fallbackProducts);
-          writeCachedCatalog(fallbackProducts);
-          setCacheNote("Seeded via Firestore fallback.");
-          setStatus("Sample catalog seeded via Firestore fallback.");
-          setError("");
-          return;
-        } catch (fallbackError: unknown) {
-          setStatus(getErrorMessage(fallbackError));
-          return;
-        }
+      await refreshCatalog({ forceRefresh: true, announceFallback: false });
+    } catch (nextError: unknown) {
+      if (!isStaff || !isAuthTokenError(nextError)) {
+        setStatus(getErrorMessage(nextError));
+        return;
       }
 
-      setStatus(getErrorMessage(error));
+      try {
+        for (const product of LOCAL_SEED_PRODUCTS) {
+          const id = slugify(product.sku);
+          await setDoc(
+            doc(db, "materialsProducts", id),
+            {
+              sku: product.sku,
+              name: product.name,
+              description: product.description,
+              category: product.category,
+              priceCents: product.priceCents,
+              currency: "USD",
+              stripePriceId: null,
+              imageUrl: null,
+              trackInventory: product.trackInventory,
+              inventoryOnHand: product.trackInventory ? 30 : 0,
+              inventoryReserved: 0,
+              active: true,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        }
+
+        setStatus("Sample catalog seeded via Firestore fallback.");
+        await refreshCatalog({ forceRefresh: true, announceFallback: false });
+      } catch (fallbackError: unknown) {
+        setStatus(getErrorMessage(fallbackError || nextError));
+      }
     } finally {
       setSeedBusy(false);
     }
@@ -537,11 +553,11 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
       </div>
 
       <section className="card card-3d materials-banner">
-        <div>
-          <div className="card-title">Pickup-only checkout</div>
+        <div className="materials-banner-copy">
+          <div className="card-title">Studio pickup, built for quick reorders</div>
           <p className="materials-copy">
-            Stripe handles payment and taxes. We will prep your supplies for pickup at the studio — no
-            shipping, no pressure.
+            Grab clay, tools, and studio access without leaving the portal. Payment stays secure with
+            Stripe, and the studio will prep everything for pickup.
           </p>
         </div>
         <div className="materials-banner-meta">
@@ -550,18 +566,14 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
             <span className="summary-value">1–2 business days</span>
           </div>
           <div>
-            <span className="summary-label">Status</span>
-            <span className="summary-value">{status || "Ready when you are"}</span>
+            <span className="summary-label">How it works</span>
+            <span className="summary-value">Pay now, pick up at the studio</span>
           </div>
         </div>
       </section>
 
       <section className="materials-toolbar">
-        {serviceOffline ? (
-          <div className="alert inline-alert">
-            {serviceOfflineMessage()}
-          </div>
-        ) : null}
+        {serviceOffline ? <div className="alert inline-alert">{serviceOfflineMessage()}</div> : null}
         <div className="materials-search">
           <label htmlFor="materials-search">Search</label>
           <input
@@ -584,30 +596,66 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
           ))}
         </div>
         <div className="materials-actions">
-          <button className="btn btn-ghost" onClick={() => window.location.reload()}>
-            Refresh catalog
+          <button
+            className="btn btn-ghost"
+            onClick={toVoidHandler(() => refreshCatalog({ forceRefresh: true }))}
+            disabled={loading || refreshing}
+          >
+            {loading || refreshing ? "Refreshing..." : "Refresh catalog"}
           </button>
           {products.length === 0 && canSeed ? (
-            <button className="btn btn-primary" onClick={toVoidHandler(handleSeedCatalog)} disabled={seedBusy}>
+            <button
+              className="btn btn-primary"
+              onClick={toVoidHandler(handleSeedCatalog)}
+              disabled={seedBusy}
+            >
               {seedBusy ? "Seeding..." : "Seed sample catalog"}
             </button>
           ) : null}
         </div>
-        {cacheNote ? <div className="materials-cache-note">{cacheNote}</div> : null}
+        {catalogNote ? <div className="materials-cache-note">{catalogNote}</div> : null}
       </section>
+
+      {cartLines.length > 0 ? (
+        <button className="materials-mobile-cart-bar" onClick={scrollToCart}>
+          <span>{getMobileCartLabel(cartCount)}</span>
+          <strong>{formatCents(subtotalCents)}</strong>
+          <span>View cart</span>
+        </button>
+      ) : null}
 
       <div className="materials-layout">
         <section className="materials-list">
-          {loading ? (
+          <div className="materials-results-bar">
+            <div className="materials-results-copy">
+              <span className="summary-label">Browse</span>
+              <strong>{getResultsLabel(filteredGroups.length)}</strong>
+              <span className="materials-results-detail">
+                {category === "All" ? "All categories" : category}
+              </span>
+            </div>
+            <label className="materials-sort">
+              <span>Sort</span>
+              <select value={sort} onChange={(event) => setSort(event.target.value as MaterialsCatalogSort)}>
+                <option value="recommended">Recommended</option>
+                <option value="priceLow">Price low to high</option>
+                <option value="priceHigh">Price high to low</option>
+                <option value="name">Name A-Z</option>
+              </select>
+            </label>
+          </div>
+
+          {isInitialLoad ? (
             <div className="materials-skeleton-grid" aria-hidden="true">
               <div className="materials-skeleton-card" />
               <div className="materials-skeleton-card" />
               <div className="materials-skeleton-card" />
             </div>
           ) : null}
+
           {error ? <div className="alert inline-alert">{error}</div> : null}
 
-          {!loading && filteredGroups.length === 0 ? (
+          {!isInitialLoad && products.length === 0 ? (
             <div className="card card-3d materials-empty">
               <div className="card-title">Catalog is empty</div>
               <p className="materials-copy">
@@ -617,10 +665,18 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
             </div>
           ) : null}
 
+          {!isInitialLoad && products.length > 0 && filteredGroups.length === 0 ? (
+            <div className="card card-3d materials-empty">
+              <div className="card-title">No matches yet</div>
+              <p className="materials-copy">
+                Try a broader search or switch categories to see more studio supplies.
+              </p>
+            </div>
+          ) : null}
+
           <div className="materials-grid">
             {filteredGroups.map((group) => {
-              const selectedId =
-                selectedVariant[group.id] ?? group.variants[0]?.product.id ?? "";
+              const selectedId = selectedVariant[group.id] ?? group.variants[0]?.product.id ?? "";
               const selected =
                 group.variants.find((variant) => variant.product.id === selectedId) ??
                 group.variants[0];
@@ -633,23 +689,48 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
               const inCart = cart[selectedProduct.id] ?? 0;
               const limited = available !== null && available <= 5;
               const disabled = available !== null && available <= 0;
+              const mediaUrl = selectedProduct.imageUrl ?? group.imageUrl;
+              const mediaKey = mediaUrl ? `${group.id}:${selectedProduct.id}` : group.id;
+              const showImage = Boolean(mediaUrl) && failedImages[mediaKey] !== true;
 
               return (
                 <div key={group.id} className="card card-3d product-card">
+                  <div className={`product-media ${resolveProductMediaTone(group.category)}`}>
+                    {showImage ? (
+                      <img
+                        src={mediaUrl ?? ""}
+                        alt={group.name}
+                        loading="lazy"
+                        onError={() =>
+                          setFailedImages((prev) => ({
+                            ...prev,
+                            [mediaKey]: true,
+                          }))
+                        }
+                      />
+                    ) : (
+                      <div className="product-placeholder">
+                        <span className="product-placeholder-eyebrow">
+                          {resolveProductPlaceholderLabel(group.category)}
+                        </span>
+                        <strong>{selected.label !== "Standard" ? selected.label : group.name}</strong>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="product-header">
                     <div>
                       <div className="product-title">{group.name}</div>
-                      {group.category ? (
-                        <div className="product-category">{group.category}</div>
-                      ) : null}
+                      <div className="product-subtitle">
+                        {selected.label !== "Standard" ? selected.label : group.category ?? "Studio pickup"}
+                      </div>
+                      {group.category ? <div className="product-category">{group.category}</div> : null}
                     </div>
-                    <div className="product-price">
-                      {formatCents(selectedProduct.priceCents)}
-                    </div>
+                    <div className="product-price">{formatCents(selectedProduct.priceCents)}</div>
                   </div>
-                  {group.description ? (
-                    <p className="materials-copy">{group.description}</p>
-                  ) : null}
+
+                  {group.description ? <p className="materials-copy">{group.description}</p> : null}
+
                   {group.variants.length > 1 ? (
                     <div className="product-variants">
                       <div className="variant-label">Sizes & options</div>
@@ -677,38 +758,44 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
                       </div>
                     </div>
                   ) : null}
+
                   {selectedProduct.trackInventory ? (
                     <div className={`inventory-badge ${disabled ? "empty" : ""}`}>
                       {disabled
                         ? "Out of stock"
                         : limited
-                        ? `Only ${available} left`
-                        : `${available} available`}
+                          ? `Only ${available} left`
+                          : `${available} available`}
                     </div>
                   ) : null}
+
                   <div className="product-actions">
                     <button
-                      className="btn btn-ghost"
-                      onClick={() => updateCart(selectedProduct.id, -1, available)}
-                      disabled={inCart <= 0}
-                    >
-                      −
-                    </button>
-                    <span className="product-qty">{inCart}</span>
-                    <button
-                      className="btn btn-ghost"
+                      className="btn btn-primary product-add-button"
                       onClick={() => updateCart(selectedProduct.id, 1, available)}
                       disabled={disabled}
                     >
-                      +
+                      {disabled ? "Out of stock" : inCart > 0 ? "Add another" : "Add to cart"}
                     </button>
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => updateCart(selectedProduct.id, 1, available)}
-                      disabled={disabled}
-                    >
-                      Add to cart
-                    </button>
+                    {inCart > 0 ? (
+                      <div className="product-stepper" aria-label={`${group.name} quantity in cart`}>
+                        <button
+                          className="btn btn-ghost"
+                          onClick={() => updateCart(selectedProduct.id, -1, available)}
+                          disabled={inCart <= 0}
+                        >
+                          −
+                        </button>
+                        <span className="product-qty">{inCart} in cart</span>
+                        <button
+                          className="btn btn-ghost"
+                          onClick={() => updateCart(selectedProduct.id, 1, available)}
+                          disabled={disabled}
+                        >
+                          +
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -716,10 +803,16 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
           </div>
         </section>
 
-        <aside className="card card-3d materials-cart">
-          <div className="card-title">Your cart</div>
+        <aside ref={cartRef} className="card card-3d materials-cart">
+          <div className="materials-cart-header">
+            <div className="card-title">Your cart</div>
+            <div className="materials-cart-count">{getMobileCartLabel(cartCount)}</div>
+          </div>
+
+          {status ? <div className="notice inline-alert">{status}</div> : null}
+
           {cartLines.length === 0 ? (
-            <p className="materials-copy">No items yet. Add what you need to get started.</p>
+            <p className="materials-copy">No items yet. Add what you need and we’ll hold your place.</p>
           ) : (
             <div className="cart-lines">
               {cartLines.map((line) => (
@@ -765,18 +858,16 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
             <textarea
               value={pickupNotes}
               onChange={(event) => setPickupNotes(event.target.value)}
-              placeholder="Let us know about timing or substitutions."
+              placeholder="Let us know about timing, substitutions, or anything the studio should know."
             />
           </label>
-
-          {status ? <div className="notice inline-alert">{status}</div> : null}
 
           <button
             className="btn btn-primary"
             onClick={toVoidHandler(handleCheckout, handleCheckoutHandlerError, "materials.checkout")}
             disabled={!canCheckout}
           >
-            {checkoutBusy ? "Starting checkout..." : "Checkout (Stripe)"}
+            {checkoutBusy ? "Starting checkout..." : "Continue to secure checkout"}
           </button>
 
           <button className="btn btn-ghost" onClick={() => setCart({})} disabled={cartLines.length === 0}>
@@ -788,11 +879,10 @@ export default function MaterialsView({ user, adminToken, isStaff }: Props) {
       <section className="card card-3d materials-help">
         <div className="card-title">Need something special?</div>
         <p className="materials-copy">
-          If you cannot find the clay body or tool you need, send a note to the studio. We will try to
-          source it for you.
+          If you don’t see the clay body, tool, or add-on you need, send the studio a note and we’ll
+          try to source it for you.
         </p>
       </section>
-
     </div>
   );
 }

@@ -1327,6 +1327,8 @@ export type MaterialProduct = {
 
 export type ListMaterialsProductsResponse = PortalApiOkEnvelope & {
   products: MaterialProduct[];
+  fetchedAtIso?: string | null;
+  catalogUpdatedAtIso?: string | null;
 };
 
 export type CreateMaterialsCheckoutSessionResponse = PortalApiOkEnvelope & {

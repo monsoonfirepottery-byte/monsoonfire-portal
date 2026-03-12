@@ -181,6 +181,145 @@ function slugify(value: string): string {
     .replace(/(^-|-$)/g, "");
 }
 
+const MATERIALS_CATEGORY_PRIORITY = [
+  "Studio Access",
+  "Clays",
+  "Tools",
+  "Glazes",
+  "Finishing",
+  "Resources",
+];
+
+export type MaterialsCatalogRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  sku: string | null;
+  priceCents: number;
+  currency: string;
+  stripePriceId: string | null;
+  imageUrl: string | null;
+  trackInventory: boolean;
+  inventoryOnHand: number | null;
+  inventoryReserved: number | null;
+  inventoryAvailable: number | null;
+  active: boolean;
+  updatedAtMs: number;
+};
+
+function getMaterialsCategoryPriority(category: string | null) {
+  const normalized = safeString(category).trim().toLowerCase();
+  const index = MATERIALS_CATEGORY_PRIORITY.findIndex(
+    (entry) => entry.toLowerCase() === normalized
+  );
+  return index >= 0 ? index : MATERIALS_CATEGORY_PRIORITY.length;
+}
+
+function parseMaterialVariantName(name: string) {
+  const dashIndex = name.lastIndexOf(" - ");
+  if (dashIndex > 0) {
+    return {
+      baseName: name.slice(0, dashIndex).trim(),
+      variantLabel: name.slice(dashIndex + 3).trim(),
+    };
+  }
+
+  const match = name.match(/^(.*)\s*\(([^)]+)\)\s*$/);
+  if (match) {
+    return { baseName: match[1].trim(), variantLabel: match[2].trim() };
+  }
+
+  return { baseName: name.trim(), variantLabel: "" };
+}
+
+export function readTimestampMillis(value: unknown): number {
+  if (!value) return 0;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (typeof value === "object") {
+    const maybe = value as {
+      toMillis?: () => number;
+      toDate?: () => Date;
+      seconds?: number;
+      nanoseconds?: number;
+    };
+    if (typeof maybe.toMillis === "function") {
+      try {
+        const millis = maybe.toMillis();
+        return Number.isFinite(millis) ? millis : 0;
+      } catch {
+        return 0;
+      }
+    }
+    if (typeof maybe.toDate === "function") {
+      try {
+        const millis = maybe.toDate().getTime();
+        return Number.isFinite(millis) ? millis : 0;
+      } catch {
+        return 0;
+      }
+    }
+    if (typeof maybe.seconds === "number") {
+      return Math.round(maybe.seconds * 1000 + (maybe.nanoseconds ?? 0) / 1_000_000);
+    }
+  }
+  return 0;
+}
+
+export function compareMaterialsCatalogRows(left: MaterialsCatalogRow, right: MaterialsCatalogRow) {
+  const categoryDelta =
+    getMaterialsCategoryPriority(left.category) - getMaterialsCategoryPriority(right.category);
+  if (categoryDelta !== 0) return categoryDelta;
+
+  const leftVariant = parseMaterialVariantName(left.name);
+  const rightVariant = parseMaterialVariantName(right.name);
+  const baseNameDelta = leftVariant.baseName
+    .toLowerCase()
+    .localeCompare(rightVariant.baseName.toLowerCase());
+  if (baseNameDelta !== 0) return baseNameDelta;
+
+  return leftVariant.variantLabel
+    .toLowerCase()
+    .localeCompare(rightVariant.variantLabel.toLowerCase());
+}
+
+function mapMaterialsCatalogRow(
+  docSnap: FirebaseFirestore.QueryDocumentSnapshot
+): MaterialsCatalogRow {
+  const rawData = docSnap.data() as Record<string, unknown>;
+  const data = parseMaterialProductDoc(rawData);
+  const trackInventory = data.trackInventory;
+  const inventoryOnHand = trackInventory ? asInt(data.inventoryOnHand, 0) : null;
+  const inventoryReserved = trackInventory ? asInt(data.inventoryReserved, 0) : null;
+  const inventoryAvailable =
+    trackInventory && inventoryOnHand !== null && inventoryReserved !== null
+      ? Math.max(inventoryOnHand - inventoryReserved, 0)
+      : null;
+
+  return {
+    id: docSnap.id,
+    name: data.name,
+    description: data.description,
+    category: data.category,
+    sku: data.sku,
+    priceCents: asInt(data.priceCents, 0),
+    currency: normalizeCurrency(data.currency),
+    stripePriceId: data.stripePriceId,
+    imageUrl: data.imageUrl,
+    trackInventory,
+    inventoryOnHand,
+    inventoryReserved,
+    inventoryAvailable,
+    active: data.active,
+    updatedAtMs: Math.max(readTimestampMillis(rawData.updatedAt), readTimestampMillis(rawData.createdAt)),
+  };
+}
+
 export const listMaterialsProducts = onRequest({ region: REGION, cors: true }, async (req, res) => {
   if (applyCors(req, res)) return;
 
@@ -223,40 +362,19 @@ export const listMaterialsProducts = onRequest({ region: REGION, cors: true }, a
   }
 
   try {
-    const snap = await db.collection(PRODUCTS_COL).get();
+    const queryRef = includeInactive
+      ? db.collection(PRODUCTS_COL)
+      : db.collection(PRODUCTS_COL).where("active", "==", true);
+    const snap = await queryRef.get();
+    const rows = snap.docs.map(mapMaterialsCatalogRow).sort(compareMaterialsCatalogRows);
+    const latestUpdatedMs = rows.reduce((maxValue, row) => Math.max(maxValue, row.updatedAtMs), 0);
+    const products = rows
+      .filter((product) => (includeInactive ? true : product.active))
+      .map(({ updatedAtMs: _, ...product }) => product);
+    const fetchedAtIso = new Date().toISOString();
+    const catalogUpdatedAtIso = latestUpdatedMs > 0 ? new Date(latestUpdatedMs).toISOString() : null;
 
-    const products = snap.docs
-      .map((docSnap) => {
-        const data = parseMaterialProductDoc(docSnap.data());
-        const active = data.active;
-        const trackInventory = data.trackInventory;
-        const inventoryOnHand = trackInventory ? asInt(data.inventoryOnHand, 0) : null;
-        const inventoryReserved = trackInventory ? asInt(data.inventoryReserved, 0) : null;
-        const inventoryAvailable =
-          trackInventory && inventoryOnHand !== null && inventoryReserved !== null
-            ? Math.max(inventoryOnHand - inventoryReserved, 0)
-            : null;
-
-        return {
-          id: docSnap.id,
-          name: data.name,
-          description: data.description,
-          category: data.category,
-          sku: data.sku,
-          priceCents: asInt(data.priceCents, 0),
-          currency: normalizeCurrency(data.currency),
-          stripePriceId: data.stripePriceId,
-          imageUrl: data.imageUrl,
-          trackInventory,
-          inventoryOnHand,
-          inventoryReserved,
-          inventoryAvailable,
-          active,
-        };
-      })
-      .filter((product) => (includeInactive ? true : product.active));
-
-    res.status(200).json({ ok: true, products });
+    res.status(200).json({ ok: true, products, fetchedAtIso, catalogUpdatedAtIso });
   } catch (err: unknown) {
     logger.error("listMaterialsProducts failed", err);
     const message = err instanceof Error ? err.message : String(err);

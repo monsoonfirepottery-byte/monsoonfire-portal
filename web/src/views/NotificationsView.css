@@ -2,6 +2,10 @@
   align-items: flex-end;
 }
 
+.notifications-filter {
+  margin: 0 0 16px;
+}
+
 .notifications-header-meta {
   display: flex;
   gap: 12px;

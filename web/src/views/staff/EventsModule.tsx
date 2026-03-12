@@ -133,12 +133,24 @@ export default function EventsModule(props: Props) {
           onClick={() =>
             void props.run("refreshEvents", async () => {
               await props.loadEvents();
-              if (props.selectedEventId) await props.loadSignups(props.selectedEventId);
-              props.setStatus("Events refreshed");
+              props.setStatus("Event list refreshed");
             })
           }
         >
-          Refresh events
+          {props.busy === "refreshEvents" ? "Refreshing..." : "Refresh events"}
+        </button>
+        <button
+          className="btn btn-ghost"
+          disabled={Boolean(props.busy) || !props.selectedEventId}
+          onClick={() =>
+            void props.run("refreshEventSignups", async () => {
+              if (!props.selectedEventId) return;
+              await props.loadSignups(props.selectedEventId);
+              props.setStatus("Event signups refreshed");
+            })
+          }
+        >
+          {props.busy === "refreshEventSignups" ? "Refreshing..." : "Refresh signups"}
         </button>
       </div>
       {props.hasFunctionsAuthMismatch ? (

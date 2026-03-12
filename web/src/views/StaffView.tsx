@@ -89,6 +89,8 @@ import EventsModule from "./staff/EventsModule";
 import LendingModule from "./staff/LendingModule";
 import OperationsCockpitModule from "./staff/OperationsCockpitModule";
 import { buildLendingAdminApiPayload } from "./staff/lendingAdminPayload";
+import { resolveStaffToolbarRefreshPlan } from "./staff/staffRefreshPlan";
+import { useStaffEventSignupAutoLoad } from "./staff/useStaffEventSignupAutoLoad";
 import ReservationsView from "./ReservationsView";
 import { formatDateTime } from "../utils/format";
 
@@ -814,22 +816,28 @@ const AUTOMATION_WORKFLOW_SOURCES: AutomationWorkflowSource[] = [
 ];
 const AUTOMATION_ISSUE_SOURCES: AutomationIssueSource[] = [
   {
-    key: "thresholdTuning",
-    title: "Portal Automation Threshold Tuning (Rolling)",
-    issueNumber: 115,
-    purpose: "loop threshold recommendations",
-  },
-  {
-    key: "weeklyDigest",
-    title: "Portal Automation Weekly Digest (Rolling)",
+    key: "portalQa",
+    title: "Portal QA Automation (Rolling)",
     issueNumber: 116,
-    purpose: "weekly trend digest for loops",
+    purpose: "portal workflow failures, canary state changes, tuning, and digest updates",
   },
   {
-    key: "canaryRolling",
-    title: "Portal Authenticated Canary Failures (Rolling)",
-    issueNumber: 85,
-    purpose: "canary incident history and directives",
+    key: "portalInfra",
+    title: "Portal Infra and Security Guards (Rolling)",
+    issueNumber: 103,
+    purpose: "credential, index, and branch-integrity guard updates",
+  },
+  {
+    key: "governanceTuning",
+    title: "Governance Weekly Tuning (Rolling)",
+    issueNumber: 309,
+    purpose: "weekly governance tuning summaries and threshold proposals",
+  },
+  {
+    key: "codexAutomation",
+    title: "Codex Automation (Rolling)",
+    issueNumber: 84,
+    purpose: "Codex improvement, interaction, PR-green, and backlog reporting",
   },
 ];
 const WORKSHOP_PROGRAMMING_TECHNIQUES: WorkshopProgrammingTechnique[] = [
@@ -1708,6 +1716,7 @@ export default function StaffView({
     forceCockpitWorkspace ||
     (isCockpitModule && cockpitWorkspaceMode);
   const [busy, setBusy] = useState("");
+  const busyRef = useRef("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
@@ -1727,6 +1736,7 @@ export default function StaffView({
   const [todayReservationsError, setTodayReservationsError] = useState("");
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [signups, setSignups] = useState<SignupRecord[]>([]);
+  const signupsRequestIdRef = useRef(0);
   const [summary, setSummary] = useState<{
     unpaidCheckInsCount: number;
     unpaidCheckInsAmountCents: number;
@@ -2922,7 +2932,8 @@ export default function StaffView({
 
   const run = useCallback(
     async (key: string, fn: () => Promise<void>) => {
-      if (busy) return;
+      if (busyRef.current) return;
+      busyRef.current = key;
       setBusy(key);
       setError("");
       setStatus("");
@@ -2931,10 +2942,11 @@ export default function StaffView({
       } catch (err) {
         markErr(err);
       } finally {
+        busyRef.current = "";
         setBusy("");
       }
     },
-    [busy, markErr]
+    [markErr]
   );
 
   const qTrace = useCallback((collectionName: string, params: Record<string, unknown>) => {
@@ -3524,7 +3536,7 @@ export default function StaffView({
     }
   }, [qTrace, selectedFiringId]);
 
-const loadEvents = useCallback(async () => {
+  const loadEvents = useCallback(async () => {
     let next: EventRecord[] = [];
     if (hasFunctionsAuthMismatch) {
       qTrace("events", { limit: 200, fallback: "firestore" });
@@ -3575,9 +3587,12 @@ const loadEvents = useCallback(async () => {
   const loadSignups = useCallback(
     async (eventId: string) => {
       if (!eventId) {
+        signupsRequestIdRef.current += 1;
         setSignups([]);
         return;
       }
+      const requestId = signupsRequestIdRef.current + 1;
+      signupsRequestIdRef.current = requestId;
       let next: SignupRecord[] = [];
       if (hasFunctionsAuthMismatch) {
         qTrace("eventSignups", { eventId, limit: 250, fallback: "firestore" });
@@ -3615,6 +3630,7 @@ const loadEvents = useCallback(async () => {
           checkedInAtMs: toTsMs(s.checkedInAt),
         } satisfies SignupRecord));
       }
+      if (signupsRequestIdRef.current !== requestId) return;
       setSignups(next);
     },
     [client, hasFunctionsAuthMismatch, qTrace]
@@ -5346,46 +5362,51 @@ const loadEvents = useCallback(async () => {
     }
   }, []);
 
-  const loadAll = useCallback(async () => {
-    const tasks: Array<Promise<unknown>> = [
-      loadTodayReservations(),
-      loadUsers(),
-      loadBatches(),
-      loadFirings(),
-      loadLending(),
-      loadEvents(),
-      loadReportOps(),
-      loadStudioBrainStatus(),
-      loadAutomationHealthDashboard(),
-    ];
-    if (!hasFunctionsAuthMismatch) {
-      tasks.push(loadCommerce(), loadSystemStats());
-    } else {
-      setSummary(null);
-      setOrders([]);
-      setUnpaidCheckIns([]);
-      setReceipts([]);
-      setIntegrationTokenCount(null);
-    }
-    await Promise.allSettled(tasks);
-    if (selectedEventId) await loadSignups(selectedEventId);
-  }, [hasFunctionsAuthMismatch, loadAutomationHealthDashboard, loadBatches, loadCommerce, loadEvents, loadFirings, loadLending, loadReportOps, loadSignups, loadStudioBrainStatus, loadSystemStats, loadTodayReservations, loadUsers, selectedEventId]);
+  const toolbarRefreshPlan = useMemo(
+    () => resolveStaffToolbarRefreshPlan(cockpitTab),
+    [cockpitTab]
+  );
 
-  const loadCockpitModule = useCallback(async () => {
-    await Promise.allSettled([
-      loadTodayReservations(),
-      loadUsers(),
-      loadBatches(),
-      loadFirings(),
-      loadEvents(),
-      loadLending(),
-      loadReportOps(),
-      loadStudioBrainStatus(),
-      loadAutomationHealthDashboard(),
-    ]);
-    if (!hasFunctionsAuthMismatch) {
-      await Promise.allSettled([loadCommerce(), loadSystemStats()]);
+  const refreshVisibleData = useCallback(async () => {
+    switch (toolbarRefreshPlan.key) {
+      case "refreshVisibleTriage": {
+        const tasks: Array<Promise<unknown>> = [
+          loadTodayReservations(),
+          loadFirings(),
+          loadBatches(),
+          loadEvents(),
+          loadReportOps(),
+          loadStudioBrainStatus(),
+        ];
+        if (!hasFunctionsAuthMismatch) {
+          tasks.push(loadCommerce());
+        } else {
+          setSummary(null);
+          setOrders([]);
+          setUnpaidCheckIns([]);
+          setReceipts([]);
+        }
+        await Promise.allSettled(tasks);
+        break;
+      }
+      case "refreshVisibleAutomation":
+        await Promise.allSettled([loadAutomationHealthDashboard(), loadStudioBrainStatus()]);
+        break;
+      case "refreshVisiblePlatform":
+        if (hasFunctionsAuthMismatch) {
+          setIntegrationTokenCount(null);
+          await loadStudioBrainStatus();
+        } else {
+          await Promise.allSettled([loadSystemStats(), loadStudioBrainStatus()]);
+        }
+        break;
+      case "refreshVisibleFinance":
+        await loadCommerce();
+        break;
+      case null:
+        return;
     }
+    setStatus(toolbarRefreshPlan.statusMessage);
   }, [
     hasFunctionsAuthMismatch,
     loadAutomationHealthDashboard,
@@ -5393,52 +5414,23 @@ const loadEvents = useCallback(async () => {
     loadCommerce,
     loadEvents,
     loadFirings,
-    loadLending,
     loadReportOps,
     loadStudioBrainStatus,
     loadSystemStats,
     loadTodayReservations,
-    loadUsers,
+    toolbarRefreshPlan,
   ]);
 
-  const loadSystemModule = useCallback(async () => {
-    if (!hasFunctionsAuthMismatch) {
-      await loadSystemStats();
-    }
-    await loadStudioBrainStatus();
-  }, [hasFunctionsAuthMismatch, loadStudioBrainStatus, loadSystemStats]);
-
-  const loadModule = useCallback(async (target: ModuleKey) => {
-    if (target === "reports") {
-      await loadReportOps();
-      return;
-    }
-    if (target === "cockpit" && cockpitTab === "reports") {
-      await loadReportOps();
-      return;
-    }
-    if (target === "system") {
-      await loadSystemModule();
-      return;
-    }
-    if (target === "events") {
-      if (selectedEventId) {
-        await loadSignups(selectedEventId);
-      }
-      await loadCockpitModule();
-      return;
-    }
-    await loadCockpitModule();
-  }, [cockpitTab, loadCockpitModule, loadReportOps, loadSignups, loadSystemModule, selectedEventId]);
-
   useEffect(() => {
-    setStatus("Today Console loads key shift data automatically. Use Load current module for deeper module refreshes.");
+    setStatus("Today Console loads key shift data automatically. Use the visible refresh controls when you want focused updates.");
   }, []);
 
-  useEffect(() => {
-    if (!selectedEventId) return;
-    void run("signups", async () => await loadSignups(selectedEventId));
-  }, [loadSignups, selectedEventId, run]);
+  useStaffEventSignupAutoLoad({
+    cockpitTab,
+    selectedEventId,
+    loadSignups,
+    onError: markErr,
+  });
 
   useEffect(() => {
     if (!studioBrainStatus) return;
@@ -7618,30 +7610,15 @@ const loadEvents = useCallback(async () => {
           Manage members, pieces, firings, events, billing, lending, and system health.
         </p>
         <div className="staff-actions-row">
-          <button
-            className="btn btn-secondary"
-            disabled={Boolean(busy)}
-            onClick={() =>
-              void run("refreshModule", async () => {
-                await loadModule(moduleKey);
-                setStatus(`Loaded ${moduleKey} module.`);
-              })
-            }
-          >
-            {busy ? "Working..." : "Load current module"}
-          </button>
-          <button
-            className="btn btn-ghost"
-            disabled={Boolean(busy)}
-            onClick={() =>
-              void run("refreshAll", async () => {
-                await loadAll();
-                setStatus("Refreshed all modules");
-              })
-            }
-          >
-            Refresh all
-          </button>
+          {toolbarRefreshPlan.visible ? (
+            <button
+              className="btn btn-secondary"
+              disabled={Boolean(busy)}
+              onClick={() => void run(toolbarRefreshPlan.key, refreshVisibleData)}
+            >
+              {busy === toolbarRefreshPlan.key ? "Refreshing..." : "Refresh visible data"}
+            </button>
+          ) : null}
           {onOpenCheckin ? (
             <button className="btn btn-ghost" type="button" onClick={onOpenCheckin}>
               Open ware check-in
@@ -7670,7 +7647,9 @@ const loadEvents = useCallback(async () => {
           ) : null}
         </div>
         <div className="staff-mini">
-          Data loads lazily. Start with <strong>Load current module</strong> when you want focused refreshes.
+          {toolbarRefreshPlan.visible
+            ? "Data loads lazily. Use Refresh visible data for the current cockpit surface, and keep deep module refreshes inside their cards."
+            : "Data loads lazily. Use the refresh controls inside the visible module cards to avoid runaway reload chains."}
         </div>
         {hasFunctionsAuthMismatch ? <div className="staff-note">Functions emulator is local, but Auth emulator is off. StaffView is running in Firestore-only safe mode for function-backed modules.</div> : null}
         {studioBrainUiState ? (

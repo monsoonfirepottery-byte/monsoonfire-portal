@@ -9,6 +9,13 @@ import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { buildAutomationFamilyBody, getAutomationFamily } from "./lib/automation-issue-families.mjs";
+import {
+  ensureGhLabels,
+  ensureIssueWithMarker,
+  fetchLatestIssueCommentBody,
+  listRepoIssues,
+} from "./lib/github-issues.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..");
@@ -16,7 +23,7 @@ const repoRoot = resolve(dirname(__filename), "..");
 const DEFAULT_PROJECT_ID = "monsoonfire-portal";
 const DEFAULT_BASE_URL = "https://portal.monsoonfire.com";
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "credential-health-check.json");
-const ROLLING_ISSUE_TITLE = "Portal Credential Health (Rolling)";
+const PORTAL_INFRA_FAMILY = getAutomationFamily("portal-infra");
 const GOOGLE_OAUTH_TOKEN_ENDPOINT = "https://www.googleapis.com/oauth2/v3/token";
 const FIREBASE_CLI_OAUTH_CLIENT_ID =
   "563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com";
@@ -143,101 +150,12 @@ function parseRepoSlug() {
   return "";
 }
 
-function ensureGhLabel(repoSlug, name, color, description) {
-  runCommand(
-    "gh",
-    ["label", "create", name, "--repo", repoSlug, "--color", color, "--description", description, "--force"],
-    { allowFailure: true }
-  );
-}
-
-function ensureRollingIssue(repoSlug) {
-  const existing = runCommand(
-    "gh",
-    [
-      "issue",
-      "list",
-      "--repo",
-      repoSlug,
-      "--state",
-      "open",
-      "--search",
-      `in:title \"${ROLLING_ISSUE_TITLE}\"`,
-      "--json",
-      "number,title,url",
-    ],
-    { allowFailure: true }
-  );
-
-  if (existing.ok) {
-    try {
-      const parsed = JSON.parse(existing.stdout || "[]");
-      const match = parsed.find((item) => String(item?.title || "") === ROLLING_ISSUE_TITLE);
-      if (match) {
-        return {
-          number: Number(match.number || 0),
-          url: String(match.url || ""),
-        };
-      }
-    } catch {
-      // no-op
-    }
-  }
-
-  const created = runCommand(
-    "gh",
-    [
-      "issue",
-      "create",
-      "--repo",
-      repoSlug,
-      "--title",
-      ROLLING_ISSUE_TITLE,
-      "--body",
-      "Rolling credential and secret-health monitor for portal automation.",
-      "--label",
-      "automation",
-      "--label",
-      "infra",
-      "--label",
-      "security",
-    ],
-    { allowFailure: true }
-  );
-
-  if (!created.ok) return { number: 0, url: "" };
-
-  const issueUrl = created.stdout.split(/\s+/).find((token) => token.startsWith("https://github.com/")) || "";
-  const issueNumberMatch = issueUrl.match(/\/issues\/(\d+)/);
-  return {
-    number: issueNumberMatch ? Number(issueNumberMatch[1]) : 0,
-    url: issueUrl,
-  };
-}
-
 function postIssueComment(repoSlug, issueNumber, body) {
   runCommand(
     "gh",
     ["issue", "comment", String(issueNumber), "--repo", repoSlug, "--body", body],
     { allowFailure: true }
   );
-}
-
-function getLatestIssueCommentBody(repoSlug, issueNumber) {
-  const view = runCommand(
-    "gh",
-    ["issue", "view", String(issueNumber), "--repo", repoSlug, "--json", "comments"],
-    { allowFailure: true }
-  );
-  if (!view.ok) return "";
-  try {
-    const parsed = JSON.parse(view.stdout || "{}");
-    const comments = Array.isArray(parsed?.comments) ? parsed.comments : [];
-    const latest = comments.length > 0 ? comments[comments.length - 1] : null;
-    return String(latest?.body || "");
-  } catch {
-    return "";
-  }
 }
 
 function stableHash(value, len = 20) {
@@ -670,21 +588,40 @@ async function main() {
   if (options.apply && options.includeGithub) {
     const repoSlug = parseRepoSlug();
     if (repoSlug) {
-      ensureGhLabel(repoSlug, "automation", "0e8a16", "Automated monitoring and remediation.");
-      ensureGhLabel(repoSlug, "infra", "5319e7", "Infrastructure and operational controls.");
-      ensureGhLabel(repoSlug, "security", "d73a4a", "Security and credential hygiene.");
+      const openIssuesResp = listRepoIssues(repoSlug, { state: "open", maxPages: 2, cwd: repoRoot });
+      if (openIssuesResp.ok) {
+        ensureGhLabels(repoSlug, PORTAL_INFRA_FAMILY.labels, { cwd: repoRoot });
+        const ensured = ensureIssueWithMarker(
+          repoSlug,
+          {
+            title: PORTAL_INFRA_FAMILY.title,
+            body: buildAutomationFamilyBody(PORTAL_INFRA_FAMILY),
+            labels: PORTAL_INFRA_FAMILY.labels.map((label) => label.name),
+            marker: PORTAL_INFRA_FAMILY.marker,
+            preferredNumber: PORTAL_INFRA_FAMILY.preferredNumber,
+            openIssues: openIssuesResp.data,
+          },
+          { cwd: repoRoot }
+        );
+        if (ensured.ok && ensured.issue) {
+          summary.rollingIssue = {
+            number: ensured.issue.number,
+            url: ensured.issue.url,
+            signature: "",
+            commentSkipped: false,
+          };
+        }
+      }
 
-      const rollingIssue = ensureRollingIssue(repoSlug);
-      summary.rollingIssue = rollingIssue;
-      if (rollingIssue.number > 0) {
+      if (summary.rollingIssue.number > 0) {
         const signature = buildSummarySignature(summary);
         const marker = `<!-- credential-health-signature:${signature} -->`;
-        const latestBody = getLatestIssueCommentBody(repoSlug, rollingIssue.number);
+        const latestBody = fetchLatestIssueCommentBody(repoSlug, summary.rollingIssue.number, { cwd: repoRoot });
         const unchanged = latestBody.includes(marker);
         summary.rollingIssue.signature = signature;
         summary.rollingIssue.commentSkipped = unchanged;
         if (!unchanged) {
-          postIssueComment(repoSlug, rollingIssue.number, buildIssueComment(summary, marker));
+          postIssueComment(repoSlug, summary.rollingIssue.number, buildIssueComment(summary, marker));
         }
       }
     }

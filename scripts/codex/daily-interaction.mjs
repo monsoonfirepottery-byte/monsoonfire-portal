@@ -23,7 +23,7 @@ const interactionLogPath = resolve(codexDir, "interaction-log.md");
 const userDocPath = resolve(codexDir, "user.md");
 const agentsDocPath = resolve(codexDir, "agents.md");
 
-const rollingIssueTitle = "Codex Interaction Interrogation (Rolling)";
+const rollingIssueTitle = "Codex Automation (Rolling)";
 const epicPath = "docs/epics/EPIC-CODEX-INTERACTION-INTERROGATION.md";
 
 const ignoreChurnPaths = new Set([

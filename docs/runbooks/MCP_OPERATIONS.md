@@ -201,6 +201,7 @@ When using `npm run codex:interaction:apply` or `npm run codex:interaction:daily
 
 - If output status is `skipped` for duplicate run-id, keep that run blocked, record blocker evidence (`command`, `runId`, reason), and rerun only after changing strategy (`--run-id`, next AM/PM cadence, or explicit task shift).
 - If output status is `structural edit cooldown active`, do not rerun the same command signature. Record the blocker and one concrete unblock action for the next execution window.
+- If output error is workspace-level refusal (for example `Refusing --apply run on dirty worktree`), treat it as a single workspace-block signature: record blocker evidence (`command`, `runId`, `first signal`), then run exactly one unblock action (cleanup/commit/stash, or one `--allow-dirty` retry) before any broader retry.
 - If output status is `applied` but `structuralDecision.mode: Defer` (no `.codex/user.md` or `.codex/agents.md` edits), treat as a signal-only pass:
   - log trigger IDs and reason in the interaction blocker log,
   - capture the exact unblock action (usually `next AM/PM`),

@@ -146,6 +146,85 @@ Success response (`ContinueJourneyResponse`):
 }
 ```
 
+## Public API V1 (OpenAPI surfaced)
+
+Public discovery artifact:
+- `https://portal.monsoonfire.com/.well-known/openapi.json`
+
+These routes are the member-safe reservation and membership operations published in the public OpenAPI document.
+
+### reservations.create
+
+POST `${BASE_URL}/apiV1/v1/reservations.create`
+
+Request body (`CreateReservationRequest`)
+
+Success response (`CreateReservationResponse`)
+
+### reservations.get
+
+POST `${BASE_URL}/apiV1/v1/reservations.get`
+
+Request body (`ReservationGetRequest`)
+
+Success response (`ReservationGetResponse`)
+
+### reservations.list
+
+POST `${BASE_URL}/apiV1/v1/reservations.list`
+
+Request body (`ReservationListRequest`)
+
+Success response (`ReservationListResponse`)
+
+### reservations.lookupArrival
+
+POST `${BASE_URL}/apiV1/v1/reservations.lookupArrival`
+
+Request body (`ReservationLookupArrivalRequest`)
+
+Success response (`ReservationLookupArrivalResponse`)
+
+### reservations.checkIn
+
+POST `${BASE_URL}/apiV1/v1/reservations.checkIn`
+
+Request body (`ReservationCheckInRequest`)
+
+Success response (`ReservationCheckInResponse`)
+
+### reservations.rotateArrivalToken
+
+POST `${BASE_URL}/apiV1/v1/reservations.rotateArrivalToken`
+
+Request body (`ReservationRotateArrivalTokenRequest`)
+
+Success response (`ReservationRotateArrivalTokenResponse`)
+
+### reservations.pickupWindow
+
+POST `${BASE_URL}/apiV1/v1/reservations.pickupWindow`
+
+Request body (`ReservationPickupWindowRequest`)
+
+Success response (`ReservationPickupWindowResponse`)
+
+### memberships.summary
+
+POST `${BASE_URL}/apiV1/v1/memberships.summary`
+
+Request body (`MembershipSummaryRequest`)
+
+Success response (`MembershipSummaryResponse`)
+
+### memberships.changePlan
+
+POST `${BASE_URL}/apiV1/v1/memberships.changePlan`
+
+Request body (`MembershipChangePlanRequest`)
+
+Success response (`MembershipChangePlanResponse`)
+
 ---
 
 ## Client parity note

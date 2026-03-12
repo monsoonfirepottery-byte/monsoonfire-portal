@@ -48,6 +48,16 @@ jobs:
             echo "value=https://monsoonfire.com" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Verify production discovery endpoints
+        run: |
+          curl -fsS "${{ steps.base_url.outputs.value }}/llms.txt" >/dev/null
+          curl -fsS "${{ steps.base_url.outputs.value }}/ai.txt" >/dev/null
+          curl -fsS "${{ steps.base_url.outputs.value }}/robots.txt" >/dev/null
+          curl -fsS "${{ steps.base_url.outputs.value }}/sitemap.xml" >/dev/null
+          curl -fsS "${{ steps.base_url.outputs.value }}/agent-docs/" >/dev/null
+          curl -fsS "${{ steps.base_url.outputs.value }}/.well-known/apple-app-site-association" >/dev/null
+          curl -fsS "${{ steps.base_url.outputs.value }}/.well-known/assetlinks.json" >/dev/null
+
       - name: Run production smoke
         run: node ./scripts/website-playwright-smoke.mjs --base-url "${{ steps.base_url.outputs.value }}" --output-dir output/playwright/prod-ci
 

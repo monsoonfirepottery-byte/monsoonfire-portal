@@ -1,0 +1,2002 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Monsoon Fire Portal Public API",
+    "version": "2026-03-10",
+    "summary": "Member-safe reservations and memberships contract for portal.monsoonfire.com",
+    "description": "Public machine-readable contract for Monsoon Fire portal discovery. This document intentionally exposes only member-safe reservation and membership operations.",
+    "contact": {
+      "name": "Monsoon Fire Portal Agent Docs",
+      "url": "https://portal.monsoonfire.com/agent-docs/"
+    }
+  },
+  "externalDocs": {
+    "description": "Portal agent docs and discovery hub",
+    "url": "https://portal.monsoonfire.com/agent-docs/"
+  },
+  "servers": [
+    {
+      "url": "https://us-central1-monsoonfire-portal.cloudfunctions.net/apiV1",
+      "description": "Production Firebase Cloud Functions apiV1 gateway"
+    }
+  ],
+  "tags": [
+    {
+      "name": "reservations",
+      "description": "Reservation intake, lookup, arrival, and pickup-window operations.",
+      "externalDocs": {
+        "url": "https://portal.monsoonfire.com/reserve",
+        "description": "Public reserve landing page"
+      }
+    },
+    {
+      "name": "memberships",
+      "description": "Membership summary and Stripe-backed plan change operations.",
+      "externalDocs": {
+        "url": "https://portal.monsoonfire.com/membership",
+        "description": "Public membership landing page"
+      }
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/reservations.create": {
+      "post": {
+        "tags": [
+          "reservations"
+        ],
+        "operationId": "reservations.create",
+        "summary": "Create a reservation request",
+        "description": "Creates a kiln reservation request for the authenticated member. The optional ownerUid must match the authenticated user unless the caller is staff.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReservationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reservation created or replayed successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateReservationEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          }
+        }
+      }
+    },
+    "/v1/reservations.get": {
+      "post": {
+        "tags": [
+          "reservations"
+        ],
+        "operationId": "reservations.get",
+        "summary": "Fetch one reservation",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReservationGetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reservation returned successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReservationGetEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          }
+        }
+      }
+    },
+    "/v1/reservations.list": {
+      "post": {
+        "tags": [
+          "reservations"
+        ],
+        "operationId": "reservations.list",
+        "summary": "List reservations for an owner",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReservationListRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reservation list returned successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReservationListEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          }
+        }
+      }
+    },
+    "/v1/reservations.lookupArrival": {
+      "post": {
+        "tags": [
+          "reservations"
+        ],
+        "operationId": "reservations.lookupArrival",
+        "summary": "Look up a reservation by arrival token",
+        "description": "Resolves a reservation from an arrival token and returns readiness hints for check-in and pickup flow completion.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReservationLookupArrivalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reservation lookup returned successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReservationLookupArrivalEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          }
+        }
+      }
+    },
+    "/v1/reservations.checkIn": {
+      "post": {
+        "tags": [
+          "reservations"
+        ],
+        "operationId": "reservations.checkIn",
+        "summary": "Check in a confirmed reservation arrival",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReservationCheckInRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Arrival check-in recorded successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReservationCheckInEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          }
+        }
+      }
+    },
+    "/v1/reservations.rotateArrivalToken": {
+      "post": {
+        "tags": [
+          "reservations"
+        ],
+        "operationId": "reservations.rotateArrivalToken",
+        "summary": "Rotate the arrival token for a reservation",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReservationRotateArrivalTokenRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Arrival token rotated successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReservationRotateArrivalTokenEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          }
+        }
+      }
+    },
+    "/v1/reservations.pickupWindow": {
+      "post": {
+        "tags": [
+          "reservations"
+        ],
+        "operationId": "reservations.pickupWindow",
+        "summary": "Manage pickup-window state for a reservation",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReservationPickupWindowRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Pickup-window state updated successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReservationPickupWindowEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          }
+        }
+      }
+    },
+    "/v1/memberships.summary": {
+      "post": {
+        "tags": [
+          "memberships"
+        ],
+        "operationId": "memberships.summary",
+        "summary": "Read the current membership summary",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MembershipSummaryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Membership summary returned successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipSummaryEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          }
+        }
+      }
+    },
+    "/v1/memberships.changePlan": {
+      "post": {
+        "tags": [
+          "memberships"
+        ],
+        "operationId": "memberships.changePlan",
+        "summary": "Create a Stripe Checkout session for a membership plan",
+        "description": "Creates a hosted checkout session and returns success and cancel handoff URLs on the portal host.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XRequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MembershipChangePlanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Checkout session created successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipChangePlanEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "429": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorEnvelope"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Firebase ID token"
+      }
+    },
+    "parameters": {
+      "XRequestId": {
+        "name": "x-request-id",
+        "in": "header",
+        "required": false,
+        "description": "Optional request correlation id echoed back by the API.",
+        "schema": {
+          "type": "string",
+          "maxLength": 128
+        }
+      }
+    },
+    "responses": {
+      "ErrorEnvelope": {
+        "description": "Structured error response.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": [
+          "ok",
+          "requestId",
+          "code",
+          "message"
+        ],
+        "properties": {
+          "ok": {
+            "const": false
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {}
+        },
+        "additionalProperties": true
+      },
+      "PreferredWindow": {
+        "type": "object",
+        "properties": {
+          "earliestDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "latestDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DropOffProfile": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pieceCount": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "single",
+              "many",
+              null
+            ]
+          },
+          "hasTall": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "stackable": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "bisqueOnly": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "specialHandling": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "DropOffQuantity": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pieceRange": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReservationNotesInput": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "general": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "clayBody": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "glazeNotes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReservationPieceInput": {
+        "type": "object",
+        "properties": {
+          "pieceId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pieceLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pieceCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 500
+          },
+          "piecePhotoUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "pieceStatus": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "awaiting_placement",
+              "loaded",
+              "fired",
+              "ready",
+              "picked_up",
+              null
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReservationAddOnsInput": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "rushRequested": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "wholeKilnRequested": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "communityShelfFillInAllowed": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "pickupDeliveryRequested": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "returnDeliveryRequested": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "useStudioGlazes": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "glazeAccessCost": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "waxResistAssistRequested": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "glazeSanityCheckRequested": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "staffGlazePrepRequested": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "staffGlazePrepRatePerHalfShelf": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "fragileHandlingRequested": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "fragileHandlingCost": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "placementPreferenceRequested": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "placementPreferenceZone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "top",
+              "middle",
+              "bottom",
+              null
+            ]
+          },
+          "placementPreferenceCost": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "prepaidStorageRequested": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "prepaidStorageWeeks": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 12
+          },
+          "prepaidStorageCost": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "deliveryAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deliveryInstructions": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateReservationRequest": {
+        "type": "object",
+        "required": [
+          "firingType",
+          "shelfEquivalent"
+        ],
+        "properties": {
+          "intakeMode": {
+            "type": "string"
+          },
+          "firingType": {
+            "type": "string",
+            "enum": [
+              "bisque",
+              "glaze",
+              "other"
+            ]
+          },
+          "shelfEquivalent": {
+            "type": "number",
+            "minimum": 0.25
+          },
+          "footprintHalfShelves": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "heightInches": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "tiers": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "estimatedHalfShelves": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "estimatedCost": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "preferredWindow": {
+            "$ref": "#/components/schemas/PreferredWindow"
+          },
+          "linkedBatchId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "clientRequestId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ownerUid": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "wareType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kilnId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kilnLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quantityTier": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quantityLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "photoUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "photoPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dropOffProfile": {
+            "$ref": "#/components/schemas/DropOffProfile"
+          },
+          "dropOffQuantity": {
+            "$ref": "#/components/schemas/DropOffQuantity"
+          },
+          "notes": {
+            "$ref": "#/components/schemas/ReservationNotesInput"
+          },
+          "pieces": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "maxItems": 250,
+            "items": {
+              "$ref": "#/components/schemas/ReservationPieceInput"
+            }
+          },
+          "addOns": {
+            "$ref": "#/components/schemas/ReservationAddOnsInput"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReservationGetRequest": {
+        "type": "object",
+        "required": [
+          "reservationId"
+        ],
+        "properties": {
+          "reservationId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReservationListRequest": {
+        "type": "object",
+        "properties": {
+          "ownerUid": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 250
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "includeCancelled": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReservationLookupArrivalRequest": {
+        "type": "object",
+        "required": [
+          "arrivalToken"
+        ],
+        "properties": {
+          "arrivalToken": {
+            "type": "string",
+            "minLength": 4,
+            "maxLength": 120
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReservationCheckInRequest": {
+        "type": "object",
+        "properties": {
+          "reservationId": {
+            "type": "string"
+          },
+          "arrivalToken": {
+            "type": "string",
+            "minLength": 4,
+            "maxLength": 120
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          },
+          "photoUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "photoPath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "reservationId"
+            ]
+          },
+          {
+            "required": [
+              "arrivalToken"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      },
+      "ReservationRotateArrivalTokenRequest": {
+        "type": "object",
+        "required": [
+          "reservationId"
+        ],
+        "properties": {
+          "reservationId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 240
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReservationPickupWindowRequest": {
+        "type": "object",
+        "required": [
+          "reservationId",
+          "action"
+        ],
+        "properties": {
+          "reservationId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "staff_set_open_window",
+              "member_confirm_window",
+              "member_request_reschedule",
+              "staff_mark_missed",
+              "staff_mark_completed"
+            ]
+          },
+          "confirmedStart": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "confirmedEnd": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "requestedStart": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "requestedEnd": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          },
+          "force": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MembershipSummaryRequest": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "MembershipPlanKey": {
+        "type": "string",
+        "enum": [
+          "a_la_carte",
+          "apprentice",
+          "journeyman",
+          "master"
+        ]
+      },
+      "MembershipChangePlanRequest": {
+        "type": "object",
+        "required": [
+          "planKey"
+        ],
+        "properties": {
+          "planKey": {
+            "$ref": "#/components/schemas/MembershipPlanKey"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReservationRole": {
+        "type": "string",
+        "enum": [
+          "client",
+          "staff",
+          "dev",
+          "system"
+        ]
+      },
+      "ReservationPickupWindow": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "requestedStart": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "requestedEnd": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "confirmedStart": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "confirmedEnd": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "open",
+              "confirmed",
+              "missed",
+              "expired",
+              "completed",
+              null
+            ]
+          },
+          "confirmedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "missedCount": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "rescheduleCount": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "lastMissedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastRescheduleRequestedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": true
+      },
+      "ReservationRecord": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ownerUid": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "intakeMode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "firingType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "shelfEquivalent": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "estimatedHalfShelves": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "estimatedCost": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "preferredWindow": {
+            "$ref": "#/components/schemas/PreferredWindow"
+          },
+          "kilnId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kilnLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "addOns": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "pieces": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ReservationPieceInput"
+            }
+          },
+          "loadStatus": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "queuePositionHint": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "queueClass": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "assignedStationId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pickupWindow": {
+            "$ref": "#/components/schemas/ReservationPickupWindow"
+          },
+          "storageStatus": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "arrivalStatus": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "arrivedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "arrivalToken": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "arrivalTokenIssuedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "arrivalTokenExpiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "arrivalTokenVersion": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": true
+      },
+      "MembershipPlanCatalogEntry": {
+        "type": "object",
+        "required": [
+          "key",
+          "priceKey",
+          "label",
+          "stage",
+          "summary",
+          "focus",
+          "priceConfigured",
+          "checkoutEnabled",
+          "isCurrent"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/MembershipPlanKey"
+          },
+          "priceKey": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "focus": {
+            "type": "string"
+          },
+          "priceConfigured": {
+            "type": "boolean"
+          },
+          "checkoutEnabled": {
+            "type": "boolean"
+          },
+          "isCurrent": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MembershipState": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "planKey": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MembershipPlanKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checkoutEligible": {
+            "type": "boolean"
+          },
+          "since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "renewalAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "checkoutSessionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pendingPlanKey": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MembershipPlanKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pendingPlanLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateReservationEnvelope": {
+        "type": "object",
+        "required": [
+          "ok",
+          "requestId",
+          "data"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "reservationId",
+              "status",
+              "idempotentReplay"
+            ],
+            "properties": {
+              "reservationId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "idempotentReplay": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReservationGetEnvelope": {
+        "type": "object",
+        "required": [
+          "ok",
+          "requestId",
+          "data"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "reservation"
+            ],
+            "properties": {
+              "reservation": {
+                "$ref": "#/components/schemas/ReservationRecord"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReservationListEnvelope": {
+        "type": "object",
+        "required": [
+          "ok",
+          "requestId",
+          "data"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "ownerUid",
+              "reservations"
+            ],
+            "properties": {
+              "ownerUid": {
+                "type": "string"
+              },
+              "reservations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ReservationRecord"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReservationLookupArrivalEnvelope": {
+        "type": "object",
+        "required": [
+          "ok",
+          "requestId",
+          "data"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "reservation",
+              "outstandingRequirements"
+            ],
+            "properties": {
+              "reservation": {
+                "$ref": "#/components/schemas/ReservationRecord"
+              },
+              "outstandingRequirements": {
+                "type": "object",
+                "required": [
+                  "needsArrivalCheckIn",
+                  "needsStationAssignment",
+                  "needsQueuePlacement",
+                  "needsResourceProfile"
+                ],
+                "properties": {
+                  "needsArrivalCheckIn": {
+                    "type": "boolean"
+                  },
+                  "needsStationAssignment": {
+                    "type": "boolean"
+                  },
+                  "needsQueuePlacement": {
+                    "type": "boolean"
+                  },
+                  "needsResourceProfile": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReservationCheckInEnvelope": {
+        "type": "object",
+        "required": [
+          "ok",
+          "requestId",
+          "data"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "reservationId",
+              "arrivalStatus",
+              "arrivedAt",
+              "idempotentReplay"
+            ],
+            "properties": {
+              "reservationId": {
+                "type": "string"
+              },
+              "arrivalStatus": {
+                "type": "string"
+              },
+              "arrivedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "idempotentReplay": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReservationRotateArrivalTokenEnvelope": {
+        "type": "object",
+        "required": [
+          "ok",
+          "requestId",
+          "data"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "reservationId",
+              "arrivalToken",
+              "arrivalTokenExpiresAt",
+              "arrivalTokenVersion"
+            ],
+            "properties": {
+              "reservationId": {
+                "type": "string"
+              },
+              "arrivalToken": {
+                "type": "string"
+              },
+              "arrivalTokenExpiresAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "arrivalTokenVersion": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReservationPickupWindowEnvelope": {
+        "type": "object",
+        "required": [
+          "ok",
+          "requestId",
+          "data"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "reservationId",
+              "pickupWindowStatus",
+              "pickupWindow",
+              "storageStatus",
+              "idempotentReplay"
+            ],
+            "properties": {
+              "reservationId": {
+                "type": "string"
+              },
+              "pickupWindowStatus": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "open",
+                  "confirmed",
+                  "missed",
+                  "expired",
+                  "completed",
+                  null
+                ]
+              },
+              "pickupWindow": {
+                "$ref": "#/components/schemas/ReservationPickupWindow"
+              },
+              "storageStatus": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "idempotentReplay": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "MembershipSummaryEnvelope": {
+        "type": "object",
+        "required": [
+          "ok",
+          "requestId",
+          "data"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "membership",
+              "availablePlans",
+              "checkoutEnabled",
+              "mode"
+            ],
+            "properties": {
+              "membership": {
+                "$ref": "#/components/schemas/MembershipState"
+              },
+              "availablePlans": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MembershipPlanCatalogEntry"
+                }
+              },
+              "checkoutEnabled": {
+                "type": "boolean"
+              },
+              "mode": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "MembershipChangePlanEnvelope": {
+        "type": "object",
+        "required": [
+          "ok",
+          "requestId",
+          "data"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "planKey",
+              "checkoutUrl",
+              "sessionId",
+              "mode",
+              "successUrl",
+              "cancelUrl"
+            ],
+            "properties": {
+              "planKey": {
+                "$ref": "#/components/schemas/MembershipPlanKey"
+              },
+              "checkoutUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uri"
+              },
+              "sessionId": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "successUrl": {
+                "type": "string",
+                "format": "uri"
+              },
+              "cancelUrl": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

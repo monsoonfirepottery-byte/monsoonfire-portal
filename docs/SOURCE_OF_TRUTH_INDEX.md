@@ -18,6 +18,8 @@ It also tracks public agent-readable discovery surfaces for website and portal.
 | Legacy endpoint behavior | `functions/src/index.ts` + `functions/src/apiV1.ts` | `scripts/source-of-truth-contract-matrix.mjs` | authoritative |
 | API docs/tests alignment | `functions/src/apiV1.ts` | `scripts/source-of-truth-contract-matrix.mjs` | authoritative |
 | Portal contracts static discovery artifact | `web/public/contracts/portal-contracts.json` | `scripts/check-agent-surfaces.mjs` | authoritative |
+| Portal public OpenAPI discovery artifact | `web/public/.well-known/openapi.json` | `scripts/validate-well-known.mjs`, `scripts/verify-well-known.mjs` | authoritative |
+| Portal public API index | `web/public/apis.json` | `scripts/check-agent-surfaces.mjs`, `scripts/verify-well-known.mjs` | authoritative |
 | iOS API contract mirror | `ios/PortalContracts.swift` | `scripts/source-of-truth-contract-matrix.mjs` | derived |
 | Android API contract mirror | `android/app/src/main/java/com/monsoonfire/portal/reference/PortalContracts.kt` | `scripts/source-of-truth-contract-matrix.mjs` | derived |
 
@@ -51,7 +53,7 @@ It also tracks public agent-readable discovery surfaces for website and portal.
 | Website deploy target profile evidence | `website/scripts/deploy.mjs`, `website/scripts/serve.mjs` | `docs/EMULATOR_RUNBOOK.md` | authoritative |
 | Website agent-readable static surfaces | `website/llms.txt`, `website/ai.txt`, `website/agent-docs/index.html` | `scripts/check-agent-surfaces.mjs` | authoritative |
 | Website ncsitebuilder agent-readable static surfaces | `website/ncsitebuilder/llms.txt`, `website/ncsitebuilder/ai.txt`, `website/ncsitebuilder/agent-docs/index.html` | `scripts/check-agent-surfaces.mjs` | authoritative |
-| Portal agent-readable static surfaces | `web/public/llms.txt`, `web/public/ai.txt`, `web/public/agent-docs/index.html`, `web/public/robots.txt`, `web/public/sitemap.xml` | `scripts/check-agent-surfaces.mjs` | authoritative |
+| Portal agent-readable static surfaces | `web/public/llms.txt`, `web/public/ai.txt`, `web/public/agent-docs/index.html`, `web/public/robots.txt`, `web/public/sitemap.xml`, `web/public/reserve/index.html`, `web/public/membership/index.html` | `scripts/check-agent-surfaces.mjs`, `scripts/verify-well-known.mjs` | authoritative |
 | Network runtime contract and host state | `scripts/studiobrain-network-check.mjs`, `studio-brain/.env.network.profile`, `studio-brain/.env.local` | `scripts/studiobrain-network-check.mjs` | authoritative |
 
 ## 3) MCP & External Sources
@@ -79,6 +81,7 @@ It also tracks public agent-readable discovery surfaces for website and portal.
 | Deployment matrix definition | `scripts/source-of-truth-deployment-gate-matrix.json` | `docs/SOURCE_OF_TRUTH_INDEX.md` |
 | Deployment gates | `output/source-of-truth-deployment-gates/latest.json` | `scripts/source-of-truth-deployment-gates.mjs` |
 | Well-known validation | `output/well-known/latest.json` | `scripts/validate-well-known.mjs` |
+| Well-known endpoint verification | `output/well-known/verify.json` | `scripts/verify-well-known.mjs` |
 | Studio network contract runtime | `output/studio-network-check/latest.json`, `output/studio-network-check/pr-gate.json`, `output/studio-network-check/cutover-gate.json` | `scripts/studiobrain-network-check.mjs` |
 | Store readiness | `output/mobile-store-readiness/latest.json` | `scripts/mobile-store-readiness-gate.mjs` |
 | Phased smoke evidence | `output/phased-smoke-gate/latest.json`, `output/phased-smoke-gate/staging/*.json`, `output/phased-smoke-gate/beta/*.json`, `output/phased-smoke-gate/production/*.json`, `output/phased-smoke-gate/store-readiness/*.json` | `scripts/phased-smoke-gate.mjs` |
@@ -109,6 +112,7 @@ It also tracks public agent-readable discovery surfaces for website and portal.
 - `scripts/source-of-truth-deployment-gates.mjs`: Platform + SRE + Release
 - `scripts/phased-smoke-gate.mjs`: Platform + QA + Mobile
 - `scripts/validate-well-known.mjs`: Mobile + Security
+- `scripts/verify-well-known.mjs`: Platform + Security + Release
 - `scripts/mobile-store-readiness-gate.mjs`: Mobile + Product
 - `scripts/check-agent-surfaces.mjs`: Platform + Security + Docs
 - `scripts/epic-hub.mjs`: Product + Ops Coordination

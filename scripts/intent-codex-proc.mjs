@@ -5,6 +5,11 @@ import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadAutomationStartupMemoryContext } from "./codex/open-memory-automation.mjs";
+import {
+  evaluateAutomationGate,
+  isQuotaFailureText,
+  recordAutomationQuotaFailure,
+} from "./lib/codex-automation-control.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -19,9 +24,11 @@ function parseArgs(argv) {
     riskTier: "",
     timeoutMs: Number(process.env.CODEX_PROC_TIMEOUT_MS || 45 * 60 * 1000),
     outputDir: "output/intent/codex-procs",
-    model: process.env.CODEX_PROC_MODEL || "gpt-5.3-codex-spark",
+    model: String(process.env.CODEX_PROC_MODEL || "").trim(),
     reasoningEffort: process.env.CODEX_PROC_REASONING_EFFORT || "xhigh",
     fullPermissions: String(process.env.CODEX_FULL_PERMISSIONS || "1") !== "0",
+    launcher: String(process.env.CODEX_AUTOMATION_LAUNCHER || "intent-codex-proc").trim() || "intent-codex-proc",
+    automated: String(process.env.CODEX_AUTOMATION_MODE || "automated").trim().toLowerCase() !== "manual",
     promptOverride: "",
     dryRun: false,
   };
@@ -134,6 +141,23 @@ function parseArgs(argv) {
       parsed.dryRun = true;
       continue;
     }
+    if (arg === "--launcher" && argv[i + 1]) {
+      parsed.launcher = String(argv[i + 1]).trim() || parsed.launcher;
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--launcher=")) {
+      parsed.launcher = arg.slice("--launcher=".length).trim() || parsed.launcher;
+      continue;
+    }
+    if (arg === "--manual") {
+      parsed.automated = false;
+      continue;
+    }
+    if (arg === "--automated") {
+      parsed.automated = true;
+      continue;
+    }
     if (arg === "--limited-permissions") {
       parsed.fullPermissions = false;
       continue;
@@ -156,8 +180,11 @@ function parseArgs(argv) {
           "  --write-scope <scope>        Intent write scope hint",
           "  --risk-tier <tier>           Risk tier hint",
           "  --timeout-ms <ms>            Subprocess timeout (default: 2700000)",
-          "  --model <name>               Codex model (default: gpt-5.3-codex-spark)",
+          "  --model <name>               Codex model (default: CLI default)",
           "  --reasoning-effort <level>   Reasoning effort (default: xhigh)",
+          "  --launcher <id>              Automation launcher id",
+          "  --manual                     Treat invocation as manual (skip automation guard)",
+          "  --automated                  Treat invocation as automation (default)",
           "  --full-permissions           Force full permissions (default)",
           "  --limited-permissions        Disable full-permissions override",
           "  --output-dir <path>          Artifact directory",
@@ -279,9 +306,77 @@ async function buildPrompt(args) {
   return lines.join("\n");
 }
 
+function buildCodexArgs(args, lastMessagePath, prompt) {
+  const codexArgs = [
+    ...(args.fullPermissions ? ["--dangerously-bypass-approvals-and-sandbox"] : []),
+    "exec",
+    "-c",
+    "mcp_servers.open_memory.enabled=true",
+    "--skip-git-repo-check",
+  ];
+
+  if (args.model) {
+    codexArgs.push("--model", args.model);
+  }
+
+  codexArgs.push(
+    "-c",
+    `model_reasoning_effort="${args.reasoningEffort}"`,
+    "--output-last-message",
+    lastMessagePath,
+    prompt
+  );
+
+  return codexArgs;
+}
+
+function buildBlockedReport(args, reportPath, artifacts, gateDecision) {
+  return {
+    schema: "intent-codex-proc.v2",
+    generatedAt: new Date().toISOString(),
+    status: "blocked",
+    intentId: args.intentId,
+    taskId: args.taskId,
+    title: args.title,
+    writeScope: args.writeScope,
+    riskTier: args.riskTier,
+    model: args.model || null,
+    reasoningEffort: args.reasoningEffort,
+    fullPermissions: args.fullPermissions,
+    dryRun: args.dryRun,
+    timeoutMs: args.timeoutMs,
+    durationMs: 0,
+    command: {
+      binary: "codex",
+      args: [],
+    },
+    automation: {
+      automated: args.automated,
+      launcher: args.launcher,
+      guard: gateDecision,
+      quotaTripwire: null,
+    },
+    artifacts: {
+      ...artifacts,
+      reportPath,
+    },
+    result: {
+      ok: true,
+      blocked: true,
+      exitCode: 0,
+      signal: null,
+      timedOut: false,
+      stdoutPreview: "",
+      stderrPreview: "",
+      lastMessage: "",
+      reasonCode: gateDecision.reasonCode,
+      reason: gateDecision.reason,
+    },
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const prompt = await buildPrompt(args);
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const outputDir = resolve(REPO_ROOT, args.outputDir);
@@ -292,21 +387,26 @@ async function main() {
   const stderrPath = resolve(outputDir, `${baseName}.stderr.log`);
   const lastMessagePath = resolve(outputDir, `${baseName}.last-message.txt`);
   const reportPath = resolve(outputDir, `${baseName}.report.json`);
-
-  const codexArgs = [
-    ...(args.fullPermissions ? ["--dangerously-bypass-approvals-and-sandbox"] : []),
-    "exec",
-    "-c",
-    "mcp_servers.open_memory.enabled=true",
-    "--skip-git-repo-check",
-    "--model",
-    args.model,
-    "-c",
-    `model_reasoning_effort="${args.reasoningEffort}"`,
-    "--output-last-message",
+  const artifactPaths = {
+    stdoutPath,
+    stderrPath,
     lastMessagePath,
-    prompt,
-  ];
+  };
+
+  const gateDecision = evaluateAutomationGate({
+    launcher: args.launcher,
+    model: args.model,
+    automated: args.automated,
+  });
+  if (!gateDecision.allowed) {
+    const report = buildBlockedReport(args, reportPath, artifactPaths, gateDecision);
+    writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    return;
+  }
+
+  const prompt = await buildPrompt(args);
+  const codexArgs = buildCodexArgs(args, lastMessagePath, prompt);
 
   const startMs = Date.now();
   let result = null;
@@ -340,8 +440,19 @@ async function main() {
     lastMessage = "";
   }
 
+  const combinedOutput = `${String(result?.stderr || "")}\n${String(result?.stdout || "")}`;
+  const quotaFailure = isQuotaFailureText(combinedOutput);
+  const quotaTripwire =
+    quotaFailure && args.automated
+      ? recordAutomationQuotaFailure({
+          launcher: args.launcher,
+          model: args.model,
+          message: combinedOutput,
+        })
+      : null;
+
   const report = {
-    schema: "intent-codex-proc.v1",
+    schema: "intent-codex-proc.v2",
     generatedAt: new Date().toISOString(),
     status: exitCode === 0 ? "pass" : "fail",
     intentId: args.intentId,
@@ -355,14 +466,18 @@ async function main() {
     dryRun: args.dryRun,
     timeoutMs: args.timeoutMs,
     durationMs,
+    automation: {
+      automated: args.automated,
+      launcher: args.launcher,
+      guard: gateDecision,
+      quotaTripwire,
+    },
     command: {
       binary: "codex",
       args: codexArgs,
     },
     artifacts: {
-      stdoutPath,
-      stderrPath,
-      lastMessagePath,
+      ...artifactPaths,
       reportPath,
     },
     result: {
@@ -370,6 +485,7 @@ async function main() {
       exitCode,
       signal: result?.signal || null,
       timedOut,
+      quotaFailure,
       stdoutPreview: truncate(result?.stdout || ""),
       stderrPreview: truncate(result?.stderr || ""),
       lastMessage: truncate(lastMessage, 3000),

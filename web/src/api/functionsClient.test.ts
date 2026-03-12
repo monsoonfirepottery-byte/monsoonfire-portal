@@ -25,6 +25,7 @@ function readHeaders(init?: RequestInit): Record<string, string> {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("functionsClient", () => {
@@ -221,5 +222,45 @@ describe("functionsClient", () => {
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toContain("try again");
     expect(((error as Error & { debugMessage?: string }).debugMessage ?? "").toLowerCase()).toContain("timeout");
+  });
+
+  it("lets a request override the default timeout window", async () => {
+    vi.useFakeTimers();
+
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      return new Promise<Response>((resolve, reject) => {
+        const done = setTimeout(() => {
+          resolve(jsonResponse({ ok: true, value: 11 }));
+        }, 20);
+        const signal = init?.signal;
+        const rejectWithAbort = () => {
+          clearTimeout(done);
+          reject(new DOMException("Request timeout", "AbortError"));
+        };
+        if (signal instanceof AbortSignal) {
+          if (signal.aborted) {
+            rejectWithAbort();
+            return;
+          }
+          signal.addEventListener("abort", rejectWithAbort, { once: true });
+        }
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const client = createFunctionsClient({
+      baseUrl: "https://example.test/functions",
+      getIdToken: async () => "id-token-123",
+      requestTimeoutMs: 5,
+    });
+
+    const op = client.postJson<{ ok: boolean; value: number }>(
+      "createBatch",
+      { uid: "user_1" },
+      { requestTimeoutMs: 50 }
+    );
+
+    await vi.advanceTimersByTimeAsync(20);
+    await expect(op).resolves.toEqual({ ok: true, value: 11 });
   });
 });

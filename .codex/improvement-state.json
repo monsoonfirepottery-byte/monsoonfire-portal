@@ -1,41 +1,43 @@
 {
-  "lastRunAtIso": "2026-02-26T07:07:04.069Z",
-  "lastRunId": "2026-02-26-AM",
-  "lastSeenCommitSha": "d023aee92ff778e3250696f63381d49c6b9d80a4",
+  "lastRunAtIso": "2026-03-11T07:01:00.797Z",
+  "lastRunId": "2026-03-11-AM",
+  "lastSeenCommitSha": "943d865e36453ce33a79ad5ffdb492a7cc20bd75",
   "rolling7Day": {
-    "errorCounts": {},
-    "ciFailures": 46,
+    "errorCounts": {
+      "runtime_error": 14
+    },
+    "ciFailures": 7,
     "churnFiles": {
-      "package.json": 19,
-      "WORKLOG.md": 11,
-      "web/src/App.tsx": 10,
-      "docs/runbooks/PR_GATE.md": 7,
-      "docs/sprints/SWARM_BOARD.md": 6,
-      "functions/src/index.ts": 6,
-      "web/src/api/portalApi.ts": 6,
-      "functions/src/apiV1.test.ts": 5,
-      "web/src/views/ReservationsView.tsx": 5,
-      "web/src/views/StaffView.tsx": 5,
-      "package-lock.json": 5,
-      "website/ncsitebuilder/assets/js/main.js": 4,
-      "functions/src/apiV1.ts": 4,
-      "web/src/api/portalContracts.ts": 4,
-      "docs/SOURCE_OF_TRUTH_INDEX.md": 4,
-      "docs/EMULATOR_RUNBOOK.md": 4,
-      "tickets/P1-EPIC-14-reliability-hardening-failure-mode-first-ux.md": 4,
-      "web/src/api/functionsClient.ts": 4,
-      "web/src/views/DashboardView.tsx": 3,
-      "web/src/views/MyPiecesView.tsx": 3,
-      "web/index.html": 3,
-      "docs/cutover-verify.json": 3,
-      "web/deploy/namecheap/.htaccess": 3,
-      "web/deploy/namecheap/README.md": 3,
-      "docs/SCHEMA_RESERVATIONS.md": 3,
-      "web/src/views/SupportView.tsx": 3,
-      "functions/.env.local.example": 3,
-      "studio-brain/.env.contract.schema.json": 3,
-      "studio-brain/lib/config/env.js": 3,
-      "studio-brain/src/config/env.ts": 3
+      "scripts/codex/daily-improvement.mjs": 15,
+      "scripts/portal-automation-issue-loop.mjs": 8,
+      "scripts/codex/backlog-autopilot.mjs": 5,
+      "scripts/codex/daily-interaction.mjs": 5,
+      "package.json": 5,
+      "web/src/views/StaffView.tsx": 4,
+      "docs/runbooks/codex-improvement/2026-03-04-AM.md": 4,
+      ".github/workflows/governance-weekly-tuning.yml": 3,
+      "scripts/portal-automation-weekly-digest.mjs": 3,
+      "web/src/utils/staffWorkspacePaths.ts": 3,
+      ".github/workflows/ci-smoke.yml": 3,
+      "web/src/views/MessagesView.test.tsx": 2,
+      "web/src/views/NotificationsView.tsx": 2,
+      "web/src/views/MessagesView.tsx": 2,
+      "web/src/views/staff/EventsModule.tsx": 2,
+      "web/package-lock.json": 2,
+      "web/package.json": 2,
+      "scripts/branch-divergence-guard.mjs": 2,
+      "scripts/codex/automation-findings-summary.mjs": 2,
+      "scripts/codex/daily-pr-green.mjs": 2,
+      "scripts/credentials-health-check.mjs": 2,
+      "scripts/firestore-index-contract-guard.mjs": 2,
+      "docs/runbooks/PORTAL_AUTOMATION_MATRIX.md": 2,
+      "web/src/App.tsx": 2,
+      "web/src/utils/staffWorkspacePaths.test.ts": 2,
+      "scripts/audit-codex-mcp.mjs": 2,
+      "studio-brain/lib/config/env.test.js": 2,
+      "studio-brain/lib/http/server.test.js": 2,
+      "studio-brain/lib/memory/service.js": 2,
+      "studio-brain/src/config/env.test.ts": 2
     },
     "ticketsCreated": 0,
     "ticketsClosed": 0
@@ -43,21 +45,18 @@
   "lastRecommendations": [],
   "recommendationOutcomes": [],
   "interactionInterrogation": {
-    "lastRunAtIso": "2026-03-03T14:26:57.939Z",
-    "lastRunId": "2026-03-03-AM",
-    "lastPatternIds": [
-      "workflow-restatement-cluster",
-      "skill-density-spike"
-    ],
-    "lastTopRecommendations": [
-      "workflow-restatement-cluster",
-      "skill-density-spike"
-    ],
-    "lastImpactScore": 80,
+    "lastRunAtIso": "2026-03-11T07:46:28.935Z",
+    "lastRunId": "2026-03-11-AM",
+    "lastPatternIds": [],
+    "lastTopRecommendations": [],
+    "lastImpactScore": 100,
     "recentImpactScores": [
       100,
+      98,
       100,
-      80
+      98,
+      100,
+      100
     ],
     "activeRuleIds": {
       "user": [
@@ -76,18 +75,18 @@
     "lastRuleUpdateRunId": "2026-03-03-AM",
     "lastStructuralEditAtIso": "2026-03-03T14:26:57.939Z",
     "lastSkillDensity": {
-      "firestore": 17,
+      "firestore": 0,
       "cloudFunctions": 0,
-      "schedulingLogic": 7,
-      "metadataConfig": 9,
+      "schedulingLogic": 0,
+      "metadataConfig": 0,
       "tooling": 0,
-      "workflowPolicy": 12,
-      "automation": 32
+      "workflowPolicy": 0,
+      "automation": 0
     },
     "lastToolFailureRate24": 0,
-    "lastErrorClusterCount": 1,
+    "lastErrorClusterCount": 0,
     "lastHighChurnCount": 0,
-    "lastCiFailureRepeats": 3,
+    "lastCiFailureRepeats": 0,
     "followThroughHistory": [
       {
         "runId": "2026-02-25-PM",
@@ -102,6 +101,91 @@
       {
         "runId": "2026-03-03-AM",
         "generatedAtIso": "2026-03-03T14:26:57.939Z",
+        "outcomes": []
+      },
+      {
+        "runId": "2026-03-10-PM",
+        "generatedAtIso": "2026-03-11T03:09:10.532Z",
+        "outcomes": [
+          {
+            "id": "workflow-restatement-cluster",
+            "status": "Blocked",
+            "evidence": []
+          },
+          {
+            "id": "skill-density-spike",
+            "status": "Blocked",
+            "evidence": []
+          }
+        ]
+      },
+      {
+        "runId": "codex-interaction-interrogation-v1::propose-instruction-updates",
+        "generatedAtIso": "2026-03-11T03:27:07.746Z",
+        "outcomes": []
+      },
+      {
+        "runId": "2026-03-10-PM",
+        "generatedAtIso": "2026-03-11T03:27:52.654Z",
+        "outcomes": [
+          {
+            "id": "skill-density-spike",
+            "status": "Blocked",
+            "evidence": []
+          }
+        ]
+      },
+      {
+        "runId": "codex-interaction-interrogation-v1::codex-interaction-interrogation-v1::propose-instruction-updates",
+        "generatedAtIso": "2026-03-11T03:47:08.526Z",
+        "outcomes": []
+      },
+      {
+        "runId": "2026-03-10-PM",
+        "generatedAtIso": "2026-03-11T03:47:47.499Z",
+        "outcomes": [
+          {
+            "id": "skill-density-spike",
+            "status": "Blocked",
+            "evidence": []
+          }
+        ]
+      },
+      {
+        "runId": "codex-interaction-interrogation-v1::propose-instruction-updates",
+        "generatedAtIso": "2026-03-11T04:06:48.924Z",
+        "outcomes": []
+      },
+      {
+        "runId": "2026-03-10-PM",
+        "generatedAtIso": "2026-03-11T04:07:23.966Z",
+        "outcomes": [
+          {
+            "id": "skill-density-spike",
+            "status": "Blocked",
+            "evidence": []
+          }
+        ]
+      },
+      {
+        "runId": "codex-interaction-interrogation-v1::propose-instruction-updates::2",
+        "generatedAtIso": "2026-03-11T04:24:25.106Z",
+        "outcomes": []
+      },
+      {
+        "runId": "2026-03-10-PM",
+        "generatedAtIso": "2026-03-11T04:24:54.075Z",
+        "outcomes": [
+          {
+            "id": "skill-density-spike",
+            "status": "Blocked",
+            "evidence": []
+          }
+        ]
+      },
+      {
+        "runId": "2026-03-11-AM",
+        "generatedAtIso": "2026-03-11T07:46:28.935Z",
         "outcomes": []
       }
     ]
@@ -122,6 +206,8 @@
     100,
     100,
     100,
+    100,
+    100,
     100
   ],
   "skillDensityLast": {
@@ -134,18 +220,20 @@
     "automation": 0
   },
   "prGreenDaily": {
-    "lastRunAtIso": "2026-02-26T07:13:56.409Z",
-    "lastRunId": "2026-02-26-PR-GREEN",
+    "lastRunAtIso": "2026-03-11T07:01:38.961Z",
+    "lastRunId": "2026-03-11-PR-GREEN",
     "rerunRunIds": [],
     "rerunHistory": [],
     "lastSummary": {
-      "prsAnalyzed": 1,
-      "prsGreen": 1,
+      "prsAnalyzed": 7,
+      "prsGreen": 7,
       "prsPending": 0,
       "prsBlocked": 0,
       "failingChecks": 0,
       "pendingChecks": 0,
       "healthScore": 100
     }
-  }
+  },
+  "lastMetadataUnstable24": false,
+  "lastMetadataTouchTotal24": 0
 }

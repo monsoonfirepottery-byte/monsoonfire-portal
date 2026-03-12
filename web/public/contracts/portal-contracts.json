@@ -1,40 +1,65 @@
 {
   "artifact": "portal-contracts",
-  "version": "2026-02-22",
-  "status": "public-read-only",
-  "scope": "Contract discovery for portal.monsoonfire.com",
+  "version": "2026-03-10",
+  "status": "public-index",
+  "scope": "Contract discovery index for portal.monsoonfire.com",
   "authoritativeDocs": {
     "apiContracts": "https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/API_CONTRACTS.md",
     "deepLinkContract": "https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/DEEP_LINK_CONTRACT.md",
     "sourceOfTruthIndex": "https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/SOURCE_OF_TRUTH_INDEX.md",
     "continueJourneyQuickstart": "https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/CONTINUE_JOURNEY_AGENT_QUICKSTART.md"
   },
-  "endpoints": [
+  "canonicalRoutes": {
+    "portalRoot": "https://portal.monsoonfire.com/",
+    "reserve": "https://portal.monsoonfire.com/reserve",
+    "reserveIntent": "https://portal.monsoonfire.com/?intent=reserve",
+    "membership": "https://portal.monsoonfire.com/membership",
+    "membershipIntent": "https://portal.monsoonfire.com/?intent=membership",
+    "openApi": "https://portal.monsoonfire.com/.well-known/openapi.json",
+    "apisJson": "https://portal.monsoonfire.com/apis.json"
+  },
+  "landingPages": [
     {
-      "name": "createBatch",
-      "method": "POST",
-      "path": "/createBatch",
-      "auth": "bearer-id-token-required"
+      "name": "reserve",
+      "canonicalUrl": "https://portal.monsoonfire.com/reserve",
+      "handoffUrl": "https://portal.monsoonfire.com/?intent=reserve",
+      "potentialAction": "ReserveAction"
     },
     {
-      "name": "continueJourney",
-      "method": "POST",
-      "path": "/continueJourney",
-      "auth": "bearer-id-token-required",
-      "requiredBody": ["uid", "fromBatchId"]
-    },
-    {
-      "name": "pickedUpAndClose",
-      "method": "POST",
-      "path": "/pickedUpAndClose",
-      "auth": "bearer-id-token-required"
+      "name": "membership",
+      "canonicalUrl": "https://portal.monsoonfire.com/membership",
+      "handoffUrl": "https://portal.monsoonfire.com/?intent=membership",
+      "potentialAction": "JoinAction"
     }
+  ],
+  "indexes": [
+    {
+      "name": "portal-openapi",
+      "type": "openapi",
+      "url": "https://portal.monsoonfire.com/.well-known/openapi.json"
+    },
+    {
+      "name": "portal-apis-json",
+      "type": "apis.json",
+      "url": "https://portal.monsoonfire.com/apis.json"
+    }
+  ],
+  "publicOperations": [
+    "apiV1/v1/reservations.create",
+    "apiV1/v1/reservations.get",
+    "apiV1/v1/reservations.list",
+    "apiV1/v1/reservations.lookupArrival",
+    "apiV1/v1/reservations.checkIn",
+    "apiV1/v1/reservations.rotateArrivalToken",
+    "apiV1/v1/reservations.pickupWindow",
+    "apiV1/v1/memberships.summary",
+    "apiV1/v1/memberships.changePlan"
   ],
   "security": {
     "notes": [
       "No admin tokens are published in this artifact.",
       "No private infrastructure URLs are exposed.",
-      "This artifact is for discovery and contract routing only."
+      "This artifact is an index only; the OpenAPI document is the canonical machine-readable contract."
     ]
   }
 }

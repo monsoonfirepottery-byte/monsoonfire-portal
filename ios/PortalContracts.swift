@@ -165,6 +165,40 @@ struct UpdateReservationRequest: Codable {
     let staffNotes: String?
 }
 
+struct ReservationGetRequest: Codable {
+    let reservationId: String
+}
+
+struct ReservationListRequest: Codable {
+    let ownerUid: String?
+    let limit: Int?
+    let status: String?
+    let includeCancelled: Bool?
+}
+
+struct ReservationLookupArrivalRequest: Codable {
+    let arrivalToken: String
+}
+
+struct ReservationCheckInRequest: Codable {
+    let reservationId: String?
+    let arrivalToken: String?
+    let note: String?
+    let photoUrl: String?
+    let photoPath: String?
+}
+
+struct ReservationRotateArrivalTokenRequest: Codable {
+    let reservationId: String
+    let reason: String?
+}
+
+struct MembershipSummaryRequest: Codable {}
+
+struct MembershipChangePlanRequest: Codable {
+    let planKey: String
+}
+
 struct AssignReservationStationRequest: Codable {
     let reservationId: String
     let assignedStationId: String
@@ -334,6 +368,72 @@ struct CreateReservationResponse: Codable {
     let ok: Bool
     let reservationId: String?
     let status: String?
+}
+
+struct ReservationRecord: Codable {
+    let id: String
+}
+
+struct ReservationGetResponse: Codable {
+    let ok: Bool
+    let reservation: ReservationRecord?
+}
+
+struct ReservationListResponse: Codable {
+    let ok: Bool
+    let ownerUid: String?
+    let reservations: [ReservationRecord]
+}
+
+struct ReservationLookupArrivalResponse: Codable {
+    let ok: Bool
+    let reservation: ReservationRecord?
+}
+
+struct ReservationCheckInResponse: Codable {
+    let ok: Bool
+    let reservationId: String?
+    let arrivalStatus: String?
+    let arrivedAt: String?
+    let idempotentReplay: Bool?
+}
+
+struct ReservationRotateArrivalTokenResponse: Codable {
+    let ok: Bool
+    let reservationId: String?
+    let arrivalToken: String?
+    let arrivalTokenExpiresAt: String?
+    let arrivalTokenVersion: Int?
+}
+
+struct MembershipPlanCatalogEntry: Codable {
+    let key: String
+    let priceKey: String
+    let label: String
+    let stage: String
+    let summary: String
+    let focus: String
+    let priceConfigured: Bool
+    let checkoutEnabled: Bool
+    let isCurrent: Bool
+}
+
+struct MembershipSummaryResponse: Codable {
+    let ok: Bool
+    let membership: JSONValue?
+    let availablePlans: [MembershipPlanCatalogEntry]
+    let checkoutEnabled: Bool
+    let mode: String?
+}
+
+struct MembershipChangePlanResponse: Codable {
+    let ok: Bool
+    let planKey: String?
+    let checkoutUrl: String?
+    let sessionId: String?
+    let mode: String?
+    let successUrl: String?
+    let cancelUrl: String?
 }
 
 struct UpdateReservationResponse: Codable {

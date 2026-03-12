@@ -9,6 +9,39 @@
       "notificationId": "qa-fixture-notification-20260226-mm36az6u-twette",
       "threadId": "qa-fixture-thread-20260226-mm36az6u-twette",
       "messageId": "qa-fixture-message-20260226-mm36az6u-twette"
+    },
+    {
+      "runDate": "2026-03-09",
+      "uid": "6qU0XDdJ32e4PUFVvdBfQKuAF7u1",
+      "batchId": "batch-137bff07d8e5f5bc00e7",
+      "pieceId": "qa-fixture-piece-20260309-mmk9cosd-qvxsr4",
+      "announcementId": "qa-fixture-studio-update-20260309-mmk9cosd-qvxsr4",
+      "notificationId": "qa-fixture-notification-20260309-mmk9cosd-qvxsr4",
+      "workshopEventId": "qa-fixture-workshop-20260309-mmk9cosd-qvxsr4",
+      "threadId": "qa-fixture-thread-20260309-mmk9cosd-qvxsr4",
+      "messageId": "qa-fixture-message-20260309-mmk9cosd-qvxsr4"
+    },
+    {
+      "runDate": "2026-03-10",
+      "uid": "6qU0XDdJ32e4PUFVvdBfQKuAF7u1",
+      "batchId": "batch-5b61c1f49445d0692cb7",
+      "pieceId": "qa-fixture-piece-20260310-mmlonucv-cg2xop",
+      "announcementId": "qa-fixture-studio-update-20260310-mmlonucv-cg2xop",
+      "notificationId": "qa-fixture-notification-20260310-mmlonucv-cg2xop",
+      "workshopEventId": "qa-fixture-workshop-20260310-mmlonucv-cg2xop",
+      "threadId": "qa-fixture-thread-20260310-mmlonucv-cg2xop",
+      "messageId": "qa-fixture-message-20260310-mmlonucv-cg2xop"
+    },
+    {
+      "runDate": "2026-03-11",
+      "uid": "6qU0XDdJ32e4PUFVvdBfQKuAF7u1",
+      "batchId": "batch-fc5b3c4eb4ae44ad12ea",
+      "pieceId": "qa-fixture-piece-20260311-mmm50fqf-3euafl",
+      "announcementId": "qa-fixture-studio-update-20260311-mmm50fqf-3euafl",
+      "notificationId": "qa-fixture-notification-20260311-mmm50fqf-3euafl",
+      "workshopEventId": "qa-fixture-workshop-20260311-mmm50fqf-3euafl",
+      "threadId": "qa-fixture-thread-20260311-mmm50fqf-3euafl",
+      "messageId": "qa-fixture-message-20260311-mmm50fqf-3euafl"
     }
   ]
 }

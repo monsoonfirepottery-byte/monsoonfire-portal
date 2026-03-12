@@ -6,10 +6,12 @@ This guide defines the stable local contract for Studio Brain backend dependenci
 
 | Service | Purpose | Host port -> container port | Health signal | Runtime env override |
 |---|---|---|---|---|
-| `postgres` | primary shared state | `${PGPORT:-5433}` -> `5432` | `pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-monsoonfire_studio_os}` | `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` |
-| `redis` | event bus + queue primitives | `${REDIS_PORT:-6379}` -> `6379` | `redis-cli ping` -> `PONG` | `REDIS_HOST`, `REDIS_PORT`, optional `REDIS_USERNAME` / `REDIS_PASSWORD` |
-| `minio` | artifact/object storage | `${MINIO_API_PORT:-9010}` -> `9000`, `${MINIO_CONSOLE_PORT:-9011}` -> `9001` | `GET /minio/health/live` (HTTP 200) | `STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT`, `STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY`, `STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY`, optional `MINIO_API_PORT`, `MINIO_CONSOLE_PORT` |
-| `otel-collector` (optional) | local telemetry sink | `4317`, `4318`, `8889` | collector process up | enable via compose profile `observability` |
+| `postgres` | primary shared state | `${STUDIO_BRAIN_POSTGRES_BIND_HOST:-127.0.0.1}:${PGPORT:-5433}` -> `5432` | `pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-monsoonfire_studio_os}` | `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, optional `STUDIO_BRAIN_POSTGRES_BIND_HOST` |
+| `redis` | event bus + queue primitives | `${STUDIO_BRAIN_REDIS_BIND_HOST:-127.0.0.1}:${REDIS_PORT:-6379}` -> `6379` | `redis-cli ping` -> `PONG` | `REDIS_HOST`, `REDIS_PORT`, optional `REDIS_USERNAME` / `REDIS_PASSWORD`, optional `STUDIO_BRAIN_REDIS_BIND_HOST` |
+| `minio` | artifact/object storage | `${STUDIO_BRAIN_MINIO_BIND_HOST:-127.0.0.1}:${MINIO_API_PORT:-9010}` -> `9000`, `${STUDIO_BRAIN_MINIO_BIND_HOST:-127.0.0.1}:${MINIO_CONSOLE_PORT:-9011}` -> `9001` | `GET /minio/health/live` (HTTP 200) | `STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT`, `STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY`, `STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY`, optional `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`, optional `STUDIO_BRAIN_MINIO_BIND_HOST` |
+| `otel-collector` (optional) | local telemetry sink | `${STUDIO_BRAIN_OTEL_BIND_HOST:-127.0.0.1}:4317`, `4318`, `8889` | collector process up | enable via compose profile `observability`; optional `STUDIO_BRAIN_OTEL_BIND_HOST` |
+| `studiobrain-public-proxy` | public HTTPS edge | host network `80/443` -> loopback Studio Brain | `GET /healthz` through `brain.monsoonfire.com` | `STUDIO_BRAIN_PUBLIC_HOST`, `STUDIO_BRAIN_PUBLIC_UPSTREAM` |
+| `crowdsec` (optional) | HTTP/SSH log detection plane | `127.0.0.1:${STUDIO_BRAIN_CROWDSEC_LAPI_PORT:-8080}` | `cscli metrics` | enable via compose profile `security`; `STUDIO_BRAIN_CROWDSEC_COLLECTIONS` |
 
 ### Startup order (expected)
 
@@ -18,6 +20,7 @@ This guide defines the stable local contract for Studio Brain backend dependenci
 3. `minio`
 4. Studio Brain app (`npm run dev` / `npm start`)
 5. Optional `otel-collector` profile
+6. Optional `studiobrain-public-proxy` / `crowdsec`
 
 ## From-zero sequence (clean checkout)
 
@@ -86,6 +89,25 @@ Expected runtime:
 - `ops-status`: usually under 5 seconds
 - `ops-reset`: usually under 20 seconds
 
+## Security bundle (optional)
+
+Use this when the host is internet-facing and you want repeatable surface scans plus CrowdSec log detection.
+
+```bash
+# from repo root
+npm run studio:security:scan
+npm run studio:security:up
+npm run studio:security:status
+npm run studio:security:down
+npm run studio:secret:rotate -- --apply
+```
+
+What this does:
+1. keeps Postgres / Redis / MinIO / OTEL loopback-bound by default
+2. writes structured public Caddy access logs under `output/security/public-proxy`
+3. starts CrowdSec with `crowdsecurity/linux`, `crowdsecurity/caddy`, and `crowdsecurity/sshd`
+4. runs Trivy scans against the live images and local filesystem
+
 ## Reverse proxy bundle (optional)
 
 Use this when you want route-based access from one local endpoint:
@@ -110,8 +132,8 @@ Do not edit scripts for host changes. Use env values only.
 | Workflow | `PGHOST` | `REDIS_HOST` | `STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT` | Notes |
 |---|---|---|---|---|
 | Local on same machine | `127.0.0.1` | `127.0.0.1` | `http://127.0.0.1:9010` | default and recommended for single-host dev |
-| LAN to Studiobrain hostname | `studiobrain.local` | `studiobrain.local` | `http://studiobrain.local:9010` | requires LAN/DNS resolution to studiobrain host |
-| LAN to static IP | `<static-ip>` | `<static-ip>` | `http://<static-ip>:9010` | use when DNS hostname is unavailable |
+| LAN to Studiobrain hostname | `studiobrain.local` | `studiobrain.local` | `http://studiobrain.local:9010` | requires overriding the `STUDIO_BRAIN_*_BIND_HOST` values away from loopback |
+| LAN to static IP | `<static-ip>` | `<static-ip>` | `http://<static-ip>:9010` | use only when you intentionally widen the backend surface |
 
 When hostname or DHCP context changes, update `.env` host values and re-run `npm run preflight`. No code edits should be required.
 
@@ -239,3 +261,4 @@ Artifacts:
 3. `docs/SWARM_BACKEND_EXTEND_GUIDE.md`
 4. `docs/SWARM_BACKEND_DECISIONS.md`
 5. `docs/OPS_DASHBOARD.md`
+6. `docs/SECURITY_HARDENING.md`

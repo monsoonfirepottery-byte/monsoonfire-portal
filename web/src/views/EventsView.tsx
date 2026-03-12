@@ -17,12 +17,14 @@ import type {
   EventSignupSummary,
   EventSummary,
   GetEventResponse,
+  LibraryDiscoveryGetResponse,
   IndustryEventSummary,
   ListIndustryEventsResponse,
   ListEventSignupsResponse,
   ListEventsResponse,
   ListWorkshopDemandSignalsRequest,
   WorkshopDemandSignalAction,
+  WorkshopDemandSignalKind,
   WorkshopDemandSignalSource,
   RunIndustryEventsFreshnessNowResponse,
   SignupForEventResponse,
@@ -30,6 +32,7 @@ import type {
   ClaimEventOfferResponse,
   CheckInEventResponse,
   CreateEventCheckoutSessionResponse,
+  LibraryWorkshopDiscoverySignalSummary,
 } from "../api/portalContracts";
 import { createFunctionsClient } from "../api/functionsClient";
 import { createPortalApi } from "../api/portalApi";
@@ -277,7 +280,7 @@ type ProfiledWorkshop = {
 
 type WorkshopDemandSignal = {
   id: string;
-  kind: "request" | "interest";
+  kind: WorkshopDemandSignalKind;
   action?: WorkshopDemandSignalAction;
   techniqueIds: TechniqueId[];
   techniqueLabel: string;
@@ -303,6 +306,7 @@ type DemandCluster = {
   requestCount: number;
   interestCount: number;
   waitlistSignals: number;
+  withdrawnSignals: number;
   supplyCount: number;
   demandScore: number;
   gapScore: number;
@@ -331,6 +335,8 @@ type WorkshopSupportSignalSource = WorkshopDemandSignalSource;
 type WorkshopCommunitySignalSource = WorkshopDemandSignalSource;
 
 type WorkshopCommunitySignalAction = WorkshopDemandSignalAction;
+
+type WorkshopDiscoverySignalSummary = NonNullable<LibraryDiscoveryGetResponse["featuredWorkshopsSignalSummary"]>;
 
 type LendingToWorkshopsHandoffPayload = {
   eventId?: string;
@@ -779,6 +785,16 @@ function formatCommunitySignalCount(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
+function formatSignalCountLabel(count: number, singular: string, plural: string) {
+  const safeCount = Number.isFinite(count) ? count : 0;
+  return `${safeCount} ${safeCount === 1 ? singular : plural}`;
+}
+
+function formatSignalLatestAt(latestSignalAtMs: number | null | undefined): string | null {
+  if (latestSignalAtMs == null || !Number.isFinite(latestSignalAtMs) || latestSignalAtMs <= 0) return null;
+  return formatDateTime(latestSignalAtMs);
+}
+
 function levelLabelFor(level: RequestLevel) {
   return LEVEL_OPTIONS.find((option) => option.key === level)?.label ?? "All levels";
 }
@@ -855,6 +871,169 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function safeNonNegativeInt(value: unknown, fallback = 0): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.floor(parsed));
+}
+
+function safeNonNegativeNumber(value: unknown, fallback = 0): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, parsed);
+}
+
+function readDiscoverySectionRows(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is Record<string, unknown> => entry !== null && typeof entry === "object");
+}
+
+function normalizeWorkshopDiscoverySource(value: unknown): "signals" | "fallback" | "unknown" {
+  if (value === "signals") return "signals";
+  if (value === "fallback") return "fallback";
+  return "unknown";
+}
+
+function normalizeWorkshopSignalCounts(value: unknown): EventSummary["communitySignalCounts"] {
+  if (!value || typeof value !== "object") return null;
+  const source = value as Record<string, unknown>;
+  const requestSignals = safeNonNegativeInt(source.requestSignals);
+  const interestSignals = safeNonNegativeInt(source.interestSignals);
+  const showcaseSignals = safeNonNegativeInt(source.showcaseSignals);
+  const withdrawnSignals = safeNonNegativeInt(source.withdrawnSignals);
+  const totalSignals = requestSignals + interestSignals + showcaseSignals;
+  if (totalSignals <= 0 && withdrawnSignals <= 0) return null;
+  const latestSignalAtRaw = (source as { latestSignalAtMs?: unknown }).latestSignalAtMs;
+  const latestSignalAtMs = latestSignalAtRaw === null ? null : safeNonNegativeInt(latestSignalAtRaw, 0);
+  const demandScore = safeNonNegativeNumber((source as { demandScore?: unknown }).demandScore, 0);
+
+  return {
+    requestSignals,
+    interestSignals,
+    showcaseSignals,
+    withdrawnSignals,
+    totalSignals,
+    demandScore,
+    latestSignalAtMs,
+  };
+}
+
+function normalizeWorkshopDiscoveryEvent(raw: Record<string, unknown>, fallbackId: string): EventSummary {
+  const requestSignals = normalizeWorkshopSignalCounts(raw.communitySignalCounts);
+  return {
+    id: asString(raw.id) || fallbackId,
+    title: asString(raw.title) || "Untitled workshop",
+    summary: asString(raw.summary) || "",
+    startAt: asString(raw.startAt) || null,
+    endAt: asString(raw.endAt) || null,
+    timezone: asString(raw.timezone) || "UTC",
+    location: asString(raw.location) || "Studio",
+    priceCents: safeNonNegativeInt(raw.priceCents),
+    currency: asString(raw.currency) || "USD",
+    includesFiring: raw.includesFiring === true,
+    firingDetails: asString(raw.firingDetails) || null,
+    capacity: safeNonNegativeInt(raw.capacity),
+    waitlistEnabled: raw.waitlistEnabled !== false,
+    waitlistCount: raw.waitlistCount === null ? null : safeNonNegativeInt(raw.waitlistCount),
+    status: (asString(raw.status) || "published") as EventSummary["status"],
+    remainingCapacity: raw.remainingCapacity === null ? null : safeNonNegativeInt(raw.remainingCapacity, 0),
+    ...(requestSignals ? { communitySignalCounts: requestSignals } : {}),
+  };
+}
+
+function normalizeWorkshopDiscoverySignalSummary(value: unknown): WorkshopDiscoverySignalSummary | null {
+  if (!value || typeof value !== "object") return null;
+  const source = normalizeWorkshopDiscoverySource((value as { source?: unknown }).source);
+  if (source === "unknown") return null;
+
+  const record = value as Record<string, unknown>;
+  const workshopCount = safeNonNegativeInt(record.workshopCount);
+  const signalWorkshopCount = safeNonNegativeInt((record as { signalWorkshopCount?: unknown }).signalWorkshopCount);
+  const totalSignals = safeNonNegativeInt(record.totalSignals);
+  const requestSignals = safeNonNegativeInt(record.requestSignals);
+  const interestSignals = safeNonNegativeInt(record.interestSignals);
+  const showcaseSignals = safeNonNegativeInt(record.showcaseSignals);
+  const withdrawnSignals = safeNonNegativeInt(record.withdrawnSignals);
+  const topDemandScoreRaw = record.topDemandScore;
+  const topDemandScore = topDemandScoreRaw === null || topDemandScoreRaw === undefined
+    ? undefined
+    : safeNonNegativeNumber(topDemandScoreRaw, 0);
+  const latestSignalAtRaw = record.latestSignalAtMs;
+  const latestSignalAtMs = latestSignalAtRaw === null ? null : safeNonNegativeInt(latestSignalAtRaw, 0);
+
+  return {
+    source,
+    workshopCount,
+    signalWorkshopCount,
+    totalSignals,
+    requestSignals,
+    interestSignals,
+    showcaseSignals,
+    withdrawnSignals,
+    topDemandScore,
+    latestSignalAtMs,
+  };
+}
+
+function synthesizeWorkshopDiscoverySignalSummary(
+  workshops: readonly EventSummary[],
+  sourceHint: "signals" | "fallback",
+): WorkshopDiscoverySignalSummary | null {
+  if (workshops.length === 0) return null;
+
+  const workshopHasCommunitySignal = (workshop: EventSummary): boolean => {
+    const activeSignals = safeNonNegativeInt(workshop.communitySignalCounts?.totalSignals ?? 0);
+    const withdrawnSignals = safeNonNegativeInt(workshop.communitySignalCounts?.withdrawnSignals ?? 0);
+    return activeSignals > 0 || withdrawnSignals > 0;
+  };
+
+  const workshopsWithSignals = workshops.filter((workshop) => workshopHasCommunitySignal(workshop));
+  const signalWorkshopCount = workshopsWithSignals.length;
+  const totalSignals = workshopsWithSignals.reduce(
+    (sum, workshop) => sum + safeNonNegativeInt(workshop.communitySignalCounts?.totalSignals ?? 0),
+    0
+  );
+  const requestSignals = workshopsWithSignals.reduce(
+    (sum, workshop) => sum + safeNonNegativeInt(workshop.communitySignalCounts?.requestSignals ?? 0),
+    0
+  );
+  const interestSignals = workshopsWithSignals.reduce(
+    (sum, workshop) => sum + safeNonNegativeInt(workshop.communitySignalCounts?.interestSignals ?? 0),
+    0
+  );
+  const showcaseSignals = workshopsWithSignals.reduce(
+    (sum, workshop) => sum + safeNonNegativeInt(workshop.communitySignalCounts?.showcaseSignals ?? 0),
+    0
+  );
+  const withdrawnSignals = workshopsWithSignals.reduce(
+    (sum, workshop) => sum + safeNonNegativeInt(workshop.communitySignalCounts?.withdrawnSignals ?? 0),
+    0
+  );
+  const latestSignalAtMs = workshopsWithSignals.reduce((maxSignalAtMs, workshop) => {
+    const latest = safeNonNegativeInt(workshop.communitySignalCounts?.latestSignalAtMs, 0);
+    return latest > maxSignalAtMs ? latest : maxSignalAtMs;
+  }, 0);
+  const topDemandScore = workshopsWithSignals.reduce(
+    (maxScore, workshop) => Math.max(maxScore, safeNonNegativeNumber(workshop.communitySignalCounts?.demandScore ?? 0, 0)),
+    0
+  );
+
+  const hasSignalActivity = totalSignals > 0 || withdrawnSignals > 0;
+
+  return {
+    source: sourceHint === "signals" || hasSignalActivity ? "signals" : "fallback",
+    workshopCount: workshops.length,
+    signalWorkshopCount,
+    totalSignals,
+    requestSignals,
+    interestSignals,
+    showcaseSignals,
+    withdrawnSignals,
+    topDemandScore: topDemandScore > 0 ? topDemandScore : undefined,
+    latestSignalAtMs: latestSignalAtMs > 0 ? latestSignalAtMs : null,
+  };
+}
+
 function parseTimestampMs(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (value instanceof Timestamp) {
@@ -913,10 +1092,22 @@ function parseSupportEventSource(value: unknown): WorkshopDemandSignalSource | n
   }
 
   if (source === "showcase-follow-up" || source === "showcase") return "events-showcase";
-  if (source === "withdrawn" || source === "interest-withdrawn") return "events-interest-withdrawal";
-  if (source === "request-form" || source === "workshop-request") return "events-request-form";
-  if (source === "interest-toggle") return "events-interest-toggle";
-  if (source === "interest-signal") return "events-interest";
+  if (
+    source === "withdrawn" ||
+    source === "withdraw" ||
+    source === "interest-withdrawn"
+  ) {
+    return "events-interest-withdrawal";
+  }
+  if (
+    source === "request-form" ||
+    source === "workshop-request" ||
+    source === "request"
+  ) {
+    return "events-request-form";
+  }
+  if (source === "interest-toggle" || source === "toggle-interest") return "events-interest-toggle";
+  if (source === "interest-signal" || source === "interest") return "events-interest";
 
   return null;
 }
@@ -1056,9 +1247,30 @@ function workshopDemandSignalSourceLabel(
 
 function workshopSignalCountsForDemand(signal: WorkshopDemandSignal): boolean {
   if (signal.kind === "request") return true;
-  if (signal.kind !== "interest") return false;
+  if (signal.kind === "withdrawal") return false;
+  if (signal.kind === "showcase") return false;
   if (!signal.action) return true;
   return signal.action !== "showcase" && signal.action !== "withdrawal";
+}
+
+function isWorkshopDemandSignalKind(value: unknown): value is WorkshopDemandSignalKind {
+  return value === "request" || value === "interest" || value === "showcase" || value === "withdrawal";
+}
+
+function isWorkshopDemandSignalRequest(signal: WorkshopDemandSignal): boolean {
+  if (signal.kind === "request") return true;
+  return signal.action === "request";
+}
+
+function normalizeWorkshopDemandSignalAction(
+  kind: WorkshopDemandSignalKind,
+  action?: WorkshopDemandSignalAction
+): WorkshopDemandSignalAction {
+  if (action === "request" || action === "showcase" || action === "withdrawal" || action === "interest") return action;
+  if (kind === "showcase") return "showcase";
+  if (kind === "withdrawal") return "withdrawal";
+  if (kind === "request") return "request";
+  return "interest";
 }
 
 function workshopWaitlistMetaLabel(event: {
@@ -1201,6 +1413,13 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
   const [railSelectionSource, setRailSelectionSource] = useState<string | null>(null);
   const [demandSignals, setDemandSignals] = useState<WorkshopDemandSignal[]>([]);
   const [communityDemandSignals, setCommunityDemandSignals] = useState<WorkshopDemandSignal[]>([]);
+  const [discoveryFeaturedWorkshops, setDiscoveryFeaturedWorkshops] = useState<EventSummary[]>([]);
+  const [discoveryWorkshopsLoading, setDiscoveryWorkshopsLoading] = useState(false);
+  const [discoveryWorkshopsError, setDiscoveryWorkshopsError] = useState("");
+  const [discoveryWorkshopsSource, setDiscoveryWorkshopsSource] =
+    useState<LibraryWorkshopDiscoverySignalSummary["source"] | null>(null);
+  const [discoveryWorkshopsSignalSummary, setDiscoveryWorkshopsSignalSummary] =
+    useState<WorkshopDiscoverySignalSummary | null>(null);
   const [requestTechnique, setRequestTechnique] = useState("");
   const [requestLevel, setRequestLevel] = useState<RequestLevel>("all-levels");
   const [requestSchedule, setRequestSchedule] = useState<RequestSchedule>("weekday-evening");
@@ -1699,7 +1918,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     if (!targetEventId) return [];
     return allDemandSignals.filter(
       (signal) =>
-        signal.kind === "interest" &&
+        !isWorkshopDemandSignalRequest(signal) &&
         workshopSignalCountsForDemand(signal) &&
         String(signal.sourceEventId ?? "").trim() === targetEventId
     );
@@ -1709,7 +1928,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     const techniqueSet = new Set(selectedTechniqueIds);
     return allDemandSignals.filter(
       (signal) =>
-        signal.kind === "request" &&
+        isWorkshopDemandSignalRequest(signal) &&
         workshopSignalCountsForDemand(signal) &&
         signal.techniqueIds.some((techniqueId) => techniqueSet.has(techniqueId))
     );
@@ -1754,7 +1973,6 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     return allDemandSignals.filter(
       (signal) =>
         signal.action === "showcase" &&
-        signal.kind === "interest" &&
         workshopSignalCountsForDemand(signal) &&
         String(signal.sourceEventId ?? "").trim() === targetEventId
     );
@@ -1764,6 +1982,9 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     selectedServerCommunitySignalCounts?.showcaseSignals ?? 0
   );
   const selectedCommunityWithdrawnSignals = selectedServerCommunitySignalCounts?.withdrawnSignals ?? 0;
+  const selectedCommunitySignalLatestLabel = formatSignalLatestAt(
+    selectedSummary?.communitySignalCounts?.latestSignalAtMs
+  );
   const selectedEventShowcaseSignals = useMemo(() => {
     if (!selectedSummary?.id) return [];
     const targetEventId = selectedSummary.id.trim();
@@ -1772,7 +1993,6 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       .filter(
         (signal) =>
           signal.action === "showcase" &&
-          signal.kind === "interest" &&
           String(signal.sourceEventId ?? "").trim() === targetEventId &&
           Boolean(signal.signalNote && signal.signalNote.trim())
       )
@@ -1784,7 +2004,11 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     selectedIsInterested && interestBusy && !selectedInterestSignalSent
       ? selectedCommunityInterestSignals + 1
       : selectedCommunityInterestSignals;
-  const selectedCommunityDemandSignals = projectedInterestCount + selectedCommunityRequestSignals + selectedCommunityShowcaseSignals;
+  const selectedCommunityNetDemandSignals = Math.max(
+    0,
+    projectedInterestCount + selectedCommunityRequestSignals + selectedCommunityShowcaseSignals - selectedCommunityWithdrawnSignals
+  );
+  const selectedCommunityDemandSignals = selectedCommunityNetDemandSignals;
   const momentumSignalPressure = Math.min(selectedCommunityDemandSignals * 2, 12);
   const momentumScore = Math.max(
     0,
@@ -1803,6 +2027,28 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         ? "Building momentum"
         : "Steady momentum";
 
+  const discoverySignalSummary = useMemo(() => {
+    if (!discoveryWorkshopsSignalSummary) return null;
+    const requestSignals = Math.max(0, Math.round(discoveryWorkshopsSignalSummary.requestSignals ?? 0));
+    const interestSignals = Math.max(0, Math.round(discoveryWorkshopsSignalSummary.interestSignals ?? 0));
+    const showcaseSignals = Math.max(0, Math.round(discoveryWorkshopsSignalSummary.showcaseSignals ?? 0));
+    const withdrawnSignals = Math.max(0, Math.round(discoveryWorkshopsSignalSummary.withdrawnSignals ?? 0));
+    return {
+      signalWorkshopCount: Math.max(0, Math.round(discoveryWorkshopsSignalSummary.signalWorkshopCount ?? 0)),
+      workshopCount: Math.max(0, Math.round(discoveryWorkshopsSignalSummary.workshopCount ?? 0)),
+      totalSignals: Math.max(0, Math.round(discoveryWorkshopsSignalSummary.totalSignals ?? 0)),
+      topDemandScore:
+        discoveryWorkshopsSignalSummary.topDemandScore === null || discoveryWorkshopsSignalSummary.topDemandScore === undefined
+          ? 0
+          : Math.max(0, Math.round(discoveryWorkshopsSignalSummary.topDemandScore)),
+      requestSignals,
+      interestSignals,
+      showcaseSignals,
+      withdrawnSignals,
+      latestSignalAtLabel: formatSignalLatestAt(discoveryWorkshopsSignalSummary.latestSignalAtMs),
+    };
+  }, [discoveryWorkshopsSignalSummary]);
+
   const buddyIntentCount = selectedEventDemandSignals.filter(
     (signal) => signal.buddyMode !== "solo"
   ).length;
@@ -1820,6 +2066,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         interestCount: number;
         waitlistSignals: number;
         supplyCount: number;
+        withdrawnSignals: number;
         levelCounts: Record<RequestLevel, number>;
         scheduleCounts: Record<RequestSchedule, number>;
       }
@@ -1835,6 +2082,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         requestCount: 0,
         interestCount: 0,
         waitlistSignals: 0,
+        withdrawnSignals: 0,
         supplyCount: 0,
         levelCounts: {
           "all-levels": 0,
@@ -1858,9 +2106,16 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     profiledEvents.forEach((row) => {
       if (row.event.status !== "published") return;
       if (row.startAtMs !== null && row.startAtMs < now) return;
+      const eventWithdrawnSignals = Math.max(
+        0,
+        Number(row.event.communitySignalCounts?.withdrawnSignals) || 0
+      );
 
       row.techniqueIds.forEach((techniqueId) => {
         ensure(techniqueId).supplyCount += 1;
+        if (eventWithdrawnSignals > 0) {
+          ensure(techniqueId).withdrawnSignals += eventWithdrawnSignals;
+        }
       });
 
       if (row.event.waitlistEnabled && row.event.remainingCapacity === 0) {
@@ -1909,7 +2164,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     return Array.from(aggregate.values())
       .map((item) => {
         const demandScore = Math.round(
-          item.requestCount * 3 + item.interestCount * 2 + item.waitlistSignals * 2
+          item.requestCount * 3 + item.interestCount * 2 + item.waitlistSignals * 2 - item.withdrawnSignals * 0.5
         );
         const gapScore = demandScore - item.supplyCount * 2;
         return {
@@ -1918,6 +2173,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
           requestCount: item.requestCount,
           interestCount: item.interestCount,
           waitlistSignals: item.waitlistSignals,
+          withdrawnSignals: item.withdrawnSignals,
           supplyCount: item.supplyCount,
           demandScore,
           gapScore,
@@ -2103,6 +2359,43 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     }
   }, [client, hasAdmin]);
 
+  const loadDiscoveryWorkshops = useCallback(async () => {
+    setDiscoveryWorkshopsLoading(true);
+    setDiscoveryWorkshopsError("");
+
+    try {
+      const response = await portalApi.getLibraryDiscovery({
+        idToken: await user.getIdToken(),
+        adminToken,
+        payload: {
+          includeWorkshopDiscovery: true,
+          workshopDiscoveryLimit: 6,
+        },
+      });
+
+      const payload = (response.data as { data?: Record<string, unknown> }).data ?? response.data;
+      const payloadObject = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+      const featuredWorkshops = readDiscoverySectionRows(payloadObject.featuredWorkshops).map((row, index) =>
+        normalizeWorkshopDiscoveryEvent(row, `featured-workshop-${index + 1}`),
+      );
+      const source = normalizeWorkshopDiscoverySource(payloadObject.featuredWorkshopsSource);
+      const sourceSummary = normalizeWorkshopDiscoverySignalSummary(payloadObject.featuredWorkshopsSignalSummary);
+
+      setDiscoveryFeaturedWorkshops(featuredWorkshops);
+      setDiscoveryWorkshopsSource(source === "unknown" ? null : source);
+      setDiscoveryWorkshopsSignalSummary(
+        sourceSummary ?? synthesizeWorkshopDiscoverySignalSummary(featuredWorkshops, source === "signals" ? "signals" : "fallback"),
+      );
+    } catch (error: unknown) {
+      setDiscoveryFeaturedWorkshops([]);
+      setDiscoveryWorkshopsSource(null);
+      setDiscoveryWorkshopsSignalSummary(null);
+      setDiscoveryWorkshopsError(getErrorMessage(error));
+    } finally {
+      setDiscoveryWorkshopsLoading(false);
+    }
+  }, [adminToken, portalApi, user]);
+
   const loadDetail = useCallback(async (eventId: string) => {
     setDetailLoading(true);
     setDetailError("");
@@ -2174,15 +2467,10 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         });
 
         functionResponse.data.signals.forEach((signal) => {
-          if (signal.kind !== "interest" && signal.kind !== "request") return;
-
+          const signalKind = isWorkshopDemandSignalKind(signal.kind) ? signal.kind : "interest";
           const sourceEventId = asString(signal.sourceEventId);
-          if (!sourceEventId && signal.kind === "interest") return;
-          const signalAction = signal.action === "request"
-            ? "request"
-            : signal.kind === "request"
-              ? "request"
-              : signal.action ?? "interest";
+          if (!sourceEventId && signalKind !== "request") return;
+          const signalAction = normalizeWorkshopDemandSignalAction(signalKind, signal.action);
 
           const createdAt = Number.isFinite(signal.createdAt) ? signal.createdAt : Number.NaN;
           if (!Number.isFinite(createdAt)) return;
@@ -2202,8 +2490,8 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
           const demandSignal: WorkshopDemandSignal = {
             id:
               asString(signal.id) ||
-              `remote-${signal.kind}-${sourceEventId || "request"}-${createdAt}`,
-            kind: signal.kind,
+              `remote-${signalKind}-${sourceEventId || "request"}-${createdAt}`,
+            kind: signalKind,
             action: signalAction,
             techniqueIds,
             techniqueLabel:
@@ -2556,6 +2844,10 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
   }, [loadIndustryEvents]);
 
   useEffect(() => {
+    void loadDiscoveryWorkshops();
+  }, [loadDiscoveryWorkshops]);
+
+  useEffect(() => {
     if (industryEditorId === "new") return;
     const exists = curationIndustryEvents.some((event) => event.id === industryEditorId);
     if (exists) return;
@@ -2591,7 +2883,7 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       const existingByEventId = new Set(
         prev
           .filter((signal): signal is WorkshopDemandSignal =>
-            signal.kind === "interest" && Boolean(signal.sourceEventId?.trim())
+            !isWorkshopDemandSignalRequest(signal) && Boolean(signal.sourceEventId?.trim())
           )
           .map((signal) => String(signal.sourceEventId).trim())
       );
@@ -2635,13 +2927,14 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
       return;
     }
 
-    await Promise.all([
-      loadEvents(),
-      loadIndustryEvents(),
-      loadDetail(selectedId),
-      hasAdmin ? loadRoster(selectedId) : Promise.resolve(),
-    ]);
-  }, [selectedId, hasAdmin, loadEvents, loadIndustryEvents, loadDetail, loadRoster]);
+      await Promise.all([
+        loadEvents(),
+        loadIndustryEvents(),
+        loadDiscoveryWorkshops(),
+        loadDetail(selectedId),
+        hasAdmin ? loadRoster(selectedId) : Promise.resolve(),
+      ]);
+  }, [selectedId, hasAdmin, loadDiscoveryWorkshops, loadEvents, loadIndustryEvents, loadDetail, loadRoster]);
 
   const recordDemandSignal = useCallback((signal: WorkshopDemandSignal) => {
     setDemandSignals((prev) => [signal, ...prev].slice(0, 160));
@@ -2874,6 +3167,16 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
     []
   );
 
+  const handleSelectDiscoveryEvent = useCallback((event: EventSummary) => {
+    setRailSelectionSource("discovery-featured");
+    setSelectedId(event.id);
+    track("workshops_discovery_event_selected", {
+      eventId: event.id,
+      source: discoveryWorkshopsSource ?? "fallback",
+      demandSignals: Math.max(0, Math.round(event.communitySignalCounts?.totalSignals ?? 0)),
+    });
+  }, [discoveryWorkshopsSource]);
+
   const handleSelectEvent = useCallback((eventId: string) => {
     setRailSelectionSource(null);
     setSelectedId(eventId);
@@ -2903,7 +3206,9 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
 
     if (!nextInterested) {
       setDemandSignals((prev) =>
-        prev.filter((signal) => !(signal.kind === "interest" && signal.sourceEventId === eventId))
+        prev.filter(
+          (signal) => !(signal.sourceEventId === eventId && !isWorkshopDemandSignalRequest(signal))
+        )
       );
       if (!interestSignalsSent[eventId] || interestBusy) {
         setInterestStatus("Interest removed for this workshop.");
@@ -3770,6 +4075,167 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
         </div>
       </section>
 
+      <section className="card card-3d workshop-discovery-card">
+        <div className="card-title">Community-discovered featured workshops</div>
+        <p className="events-copy">
+          Sessions surfaced from live member demand activity and community signal momentum.
+        </p>
+        <div className="event-tags">
+          <span className={`event-tag ${discoveryWorkshopsSource ? "accent" : ""}`}>
+            {discoveryWorkshopsSource === "signals"
+              ? "Powered by community demand signals"
+              : "Recent upcoming signal fallback"}
+          </span>
+          {discoveryWorkshopsSignalSummary ? (
+            discoverySignalSummary ? (
+              <>
+                <span className="event-tag">
+                  {discoverySignalSummary.signalWorkshopCount} signal-backed workshops
+                </span>
+                <span className="event-tag">
+                  {discoverySignalSummary.workshopCount} featured workshops
+                </span>
+                {discoverySignalSummary.totalSignals > 0 ? (
+                  <span className="event-tag">
+                    {formatSignalCountLabel(discoverySignalSummary.totalSignals, "active signal", "active signals")}
+                  </span>
+                ) : null}
+                {discoverySignalSummary.topDemandScore > 0 ? (
+                  <span className="event-tag">Top demand score {discoverySignalSummary.topDemandScore}</span>
+                ) : null}
+                {discoverySignalSummary.requestSignals > 0 ? (
+                  <span className="event-tag">
+                    {formatSignalCountLabel(
+                      discoverySignalSummary.requestSignals,
+                      "request signal",
+                      "request signals"
+                    )}
+                  </span>
+                ) : null}
+                {discoverySignalSummary.interestSignals > 0 ? (
+                  <span className="event-tag">
+                    {formatSignalCountLabel(
+                      discoverySignalSummary.interestSignals,
+                      "interest signal",
+                      "interest signals"
+                    )}
+                  </span>
+                ) : null}
+                {discoverySignalSummary.showcaseSignals > 0 ? (
+                  <span className="event-tag">
+                    {formatSignalCountLabel(
+                      discoverySignalSummary.showcaseSignals,
+                      "showcase signal",
+                      "showcase signals"
+                    )}
+                  </span>
+                ) : null}
+                {discoverySignalSummary.withdrawnSignals > 0 ? (
+                  <span className="event-tag">
+                    {formatSignalCountLabel(
+                      discoverySignalSummary.withdrawnSignals,
+                      "withdrawal",
+                      "withdrawals"
+                    )}
+                  </span>
+                ) : null}
+                {discoverySignalSummary.latestSignalAtLabel ? (
+                  <span className="event-tag">Latest signal {discoverySignalSummary.latestSignalAtLabel}</span>
+                ) : null}
+              </>
+            ) : null
+          ) : null}
+        </div>
+        {discoveryWorkshopsLoading ? <div className="events-loading">Loading featured workshops...</div> : null}
+        {discoveryWorkshopsError ? <div className="alert inline-alert">{discoveryWorkshopsError}</div> : null}
+
+        {!discoveryWorkshopsLoading && !discoveryWorkshopsError && discoveryFeaturedWorkshops.length === 0 ? (
+          <div className="events-empty">No featured workshops yet. Publish more sessions to seed discovery.</div>
+        ) : null}
+
+        {discoveryFeaturedWorkshops.length > 0 ? (
+          <div className="events-cards">
+            {discoveryFeaturedWorkshops.map((event) => {
+              const isActive = event.id === selectedId;
+              const demandScore = Math.max(
+                0,
+                Math.round(event.communitySignalCounts?.demandScore ?? 0)
+              );
+              const requestSignals = Math.max(0, Math.round(event.communitySignalCounts?.requestSignals ?? 0));
+              const interestSignals = Math.max(0, Math.round(event.communitySignalCounts?.interestSignals ?? 0));
+              const showcaseSignals = Math.max(0, Math.round(event.communitySignalCounts?.showcaseSignals ?? 0));
+              const demandSignalTotal = requestSignals + interestSignals + showcaseSignals;
+              const demandSignalsWithdrawn =
+                Math.max(0, Math.round(event.communitySignalCounts?.withdrawnSignals ?? 0));
+              const remaining = event.remainingCapacity ?? null;
+              const remainingLabel = remaining === null ? "-" : `${remaining} left`;
+              const latestSignalLabel = formatSignalLatestAt(event.communitySignalCounts?.latestSignalAtMs);
+              return (
+                <button
+                  key={event.id}
+                  className={`event-card ${isActive ? "active" : ""}`}
+                  onClick={() => handleSelectDiscoveryEvent(event)}
+                >
+                  <div className="event-card-header">
+                    <div>
+                      <div className="event-title">{event.title}</div>
+                      <div className="event-summary">{event.summary}</div>
+                    </div>
+                    <div className="event-price">{formatCents(event.priceCents)}</div>
+                  </div>
+                  <div className="event-meta">
+                    <span>{formatDateTime(event.startAt)}</span>
+                    <span>{event.location || "Studio"}</span>
+                  </div>
+                  <div className="event-tags">
+                    <span className={`event-tag ${event.includesFiring ? "accent" : ""}`}>
+                      {event.includesFiring ? "Firing included" : "Studio event"}
+                    </span>
+                    <span className="event-tag">{remainingLabel}</span>
+                    <span className={`event-tag status-${event.status}`}>{event.status}</span>
+                    {demandSignalTotal > 0 ? (
+                      <span className="event-tag accent">
+                        {formatSignalCountLabel(demandSignalTotal, "demand signal", "demand signals")}
+                      </span>
+                    ) : null}
+                    {demandScore > 0 ? (
+                      <span className="event-tag">
+                        Demand score: {demandScore}
+                      </span>
+                    ) : null}
+                    {demandSignalsWithdrawn > 0 ? (
+                      <span className="event-tag">
+                        {formatSignalCountLabel(demandSignalsWithdrawn, "withdrawal signal", "withdrawal signals")}
+                      </span>
+                    ) : null}
+                    {requestSignals > 0 ? (
+                      <span className="event-tag">
+                        {formatSignalCountLabel(requestSignals, "request signal", "request signals")}
+                      </span>
+                    ) : null}
+                    {interestSignals > 0 ? (
+                      <span className="event-tag">
+                        {formatSignalCountLabel(interestSignals, "interest signal", "interest signals")}
+                      </span>
+                    ) : null}
+                    {showcaseSignals > 0 ? (
+                      <span className="event-tag">
+                        {formatSignalCountLabel(showcaseSignals, "showcase signal", "showcase signals")}
+                      </span>
+                    ) : null}
+                    {latestSignalLabel ? (
+                      <span className="event-tag">
+                        Latest signal {latestSignalLabel}
+                      </span>
+                    ) : null}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </section>
+
       <section className="card card-3d workshop-rails-card">
         <div className="card-title">Discovery rails</div>
         <p className="events-copy">
@@ -4258,11 +4724,11 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                 <div className="events-copy community-presence-copy">{activeBuddyMode.copy}</div>
                 <div className="community-loop-strip">
                   <span className="event-tag">{selectedCommunityInterestSignals} interest signals</span>
-                  {selectedCommunityRequestSignals > 0 ? (
-                    <span className="event-tag">
-                      {selectedCommunityRequestSignals} request signals
-                    </span>
-                  ) : null}
+                {selectedCommunityRequestSignals > 0 ? (
+                  <span className="event-tag">
+                    {selectedCommunityRequestSignals} request signals
+                  </span>
+                ) : null}
                   {selectedCommunityShowcaseSignals > 0 ? (
                   <span className="event-tag">
                     {selectedCommunityShowcaseSignals} showcase signals
@@ -4272,6 +4738,9 @@ export default function EventsView({ user, adminToken, isStaff }: Props) {
                     <span className="event-tag">
                       {selectedCommunityWithdrawnSignals} withdrawal signals
                     </span>
+                  ) : null}
+                  {selectedCommunitySignalLatestLabel ? (
+                    <span className="event-tag">Latest signal {selectedCommunitySignalLatestLabel}</span>
                   ) : null}
                   <span className="event-tag">{buddyIntentCount} buddy opt-ins</span>
                   <span className="event-tag">{circleIntentCount} circle signals</span>

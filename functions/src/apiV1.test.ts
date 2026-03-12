@@ -29,7 +29,7 @@ type MockQuery = {
 };
 type MockTransaction = {
   get: (docRef: unknown) => Promise<unknown>;
-  set: () => Promise<void>;
+  set: (docRef: unknown, value: unknown, options?: { merge?: boolean }) => Promise<void>;
 };
 const AGENT_TERMS_VERSION = "2026-02-12.v1";
 
@@ -84,7 +84,11 @@ function withMockFirestore<T>(
       limit: (_limit: number) => MockQuery;
       get: () => Promise<{ docs: MockSnapshot[]; empty: boolean }>;
     };
-    doc: (path: string) => { exists: boolean; get: () => Promise<MockSnapshot>; set: () => Promise<void> };
+    doc: (path: string) => {
+      exists: boolean;
+      get: () => Promise<MockSnapshot>;
+      set: (value: Record<string, unknown>, options?: { merge?: boolean }) => Promise<void>;
+    };
     runTransaction: (cb: (tx: MockTransaction) => Promise<unknown>) => Promise<unknown>;
   };
 
@@ -116,6 +120,24 @@ function withMockFirestore<T>(
     return createSnapshot(id, row);
   };
 
+  const applySet = (
+    collectionName: string,
+    docId: string,
+    value: Record<string, unknown>,
+    options?: { merge?: boolean },
+  ) => {
+    const rows = getCollectionRows(collectionName);
+    const existing = rows[docId];
+    const base =
+      options?.merge === true && existing && typeof existing === "object"
+        ? { ...(existing as Record<string, unknown>) }
+        : {};
+    rows[docId] = {
+      ...base,
+      ...value,
+    };
+  };
+
   const createCollectionRef = (collectionName: string) => {
     const rows = getCollectionRows(collectionName);
     return {
@@ -130,8 +152,8 @@ function withMockFirestore<T>(
           __mfCollection: collectionName,
           __mfDocId: id,
           get: async () => createSnapshot(id, Object.prototype.hasOwnProperty.call(rows, id) ? collectionRow : null),
-          set: async () => {
-            return undefined;
+          set: async (value: Record<string, unknown>, options?: { merge?: boolean }) => {
+            applySet(collectionName, id, value, options);
           },
           collection: (sub: string) => createCollectionRef(`${collectionName}/${id}/${sub}`),
         };
@@ -162,8 +184,8 @@ function withMockFirestore<T>(
     const raw = Object.prototype.hasOwnProperty.call(rows, docId) ? rows[docId] : null;
     return {
       get: async () => createSnapshot(docId, raw),
-      set: async () => {
-        return undefined;
+      set: async (value: Record<string, unknown>, options?: { merge?: boolean }) => {
+        applySet(collectionName, docId, value, options);
       },
       exists: raw !== null,
     };
@@ -1256,6 +1278,8 @@ test("handleApiV1 dispatches /v1/library.items.get with projected item payload",
       "item-2": {
         title: "Kiln Maintenance Manual",
         author: "B. Fire",
+        description:
+          "A practical guide to kiln upkeep, shared studio loading habits, maintenance intervals, and troubleshooting routines.",
         mediaType: "book",
         status: "checked_out",
       },
@@ -1287,6 +1311,11 @@ test("handleApiV1 dispatches /v1/library.items.get with projected item payload",
   assert.equal(body.data.item.status, "checked_out");
   assert.equal(body.data.item.aggregateRating, 3);
   assert.equal(body.data.item.borrowCount, 2);
+  assert.equal(
+    body.data.item.summary,
+    "A practical guide to kiln upkeep, shared studio loading habits, maintenance intervals, and troubleshooting routines."
+  );
+  assert.equal(body.data.item.detailStatus, "ready");
 });
 
 test("handleApiV1 dispatches /v1/library.discovery.get with required sections", async () => {
@@ -1506,7 +1535,7 @@ test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery a
       assert.equal(counts?.showcaseSignals, 1);
       assert.equal(counts?.totalSignals, 3);
       assert.equal(counts?.withdrawnSignals, 1);
-      assert.equal(counts?.demandScore, 5.5);
+      assert.equal(counts?.demandScore, 4.5);
       assert.ok(typeof counts?.latestSignalAtMs === "number");
       assert.ok((counts?.latestSignalAtMs ?? 0) > 0);
       const signalSummary = (body.data as { featuredWorkshopsSignalSummary?: Record<string, unknown> })
@@ -1518,7 +1547,7 @@ test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery a
       assert.equal(signalSummary?.interestSignals, 1);
       assert.equal(signalSummary?.showcaseSignals, 1);
       assert.equal(signalSummary?.withdrawnSignals, 1);
-      assert.equal(signalSummary?.topDemandScore, 5.5);
+      assert.equal(signalSummary?.topDemandScore, 4.5);
       assert.ok(typeof signalSummary?.latestSignalAtMs === "number");
       assert.ok((signalSummary?.latestSignalAtMs ?? 0) > 0);
 });
@@ -1714,6 +1743,128 @@ test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery w
   assert.equal(signalSummary?.showcaseSignals, 0);
 });
 
+test("handleApiV1 dispatches /v1/library.discovery.get with compact workshop source aliases", async () => {
+  const request = makeRequest(
+    "/v1/library.discovery.get",
+    {
+      limit: 2,
+      includeWorkshopDiscovery: true,
+      workshopDiscoveryLimit: 4,
+    },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    events: {
+      "event-compact-source-aliases": {
+        title: "Compact Source Workshop",
+        summary: "Aliases should normalize across the community signal pipeline",
+        status: "published",
+        startAt: "2032-03-20T10:00:00.000Z",
+        endAt: "2032-03-20T12:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Main Studio",
+        priceCents: 3200,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 12,
+        waitlistEnabled: true,
+        waitlistCount: 0,
+        publishedState: "published",
+      },
+    },
+    supportRequests: {
+      "support-compact-request": {
+        category: "Workshops",
+        source: "request",
+        eventId: "event-compact-source-aliases",
+        uid: "member-request",
+        createdAt: "2024-02-01T09:00:00.000Z",
+        subject: "Studio request",
+        body: "Event id: event-compact-source-aliases",
+      },
+      "support-compact-interest": {
+        category: "Workshops",
+        source: "interest",
+        eventId: "event-compact-source-aliases",
+        uid: "member-interest",
+        createdAt: "2024-02-01T09:30:00.000Z",
+        subject: "Signal",
+        body: "Event id: event-compact-source-aliases",
+      },
+      "support-compact-toggle": {
+        category: "Workshops",
+        source: "toggle-interest",
+        eventId: "event-compact-source-aliases",
+        uid: "member-toggle",
+        createdAt: "2024-02-01T10:00:00.000Z",
+        subject: "Signal",
+        body: "Event id: event-compact-source-aliases",
+      },
+      "support-compact-withdraw": {
+        category: "Workshops",
+        source: "withdraw",
+        eventId: "event-compact-source-aliases",
+        uid: "member-withdraw",
+        createdAt: "2024-02-01T10:30:00.000Z",
+        subject: "Update",
+        body: "Event id: event-compact-source-aliases",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      limit: number;
+      featuredWorkshopsSource?: string;
+      featuredWorkshops: Array<
+        Record<string, unknown> & {
+          id: string;
+          communitySignalCounts?: {
+            requestSignals: number;
+            interestSignals: number;
+            showcaseSignals: number;
+            withdrawnSignals?: number;
+            totalSignals: number;
+            latestSignalAtMs: number | null;
+          };
+        }
+      >;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.limit, 2);
+  assert.equal(body.data.featuredWorkshopsSource, "signals");
+  assert.equal(body.data.featuredWorkshops.length, 1);
+  assert.equal(body.data.featuredWorkshops[0]?.id, "event-compact-source-aliases");
+
+  const counts = body.data.featuredWorkshops[0]?.communitySignalCounts;
+  assert.ok(counts);
+  assert.equal(counts?.requestSignals, 1);
+  assert.equal(counts?.interestSignals, 2);
+  assert.equal(counts?.showcaseSignals, 0);
+  assert.equal(counts?.withdrawnSignals, 1);
+  assert.equal(counts?.totalSignals, 3);
+
+  const signalSummary = (body.data as { featuredWorkshopsSignalSummary?: Record<string, unknown> })
+    .featuredWorkshopsSignalSummary;
+  assert.equal(signalSummary?.source, "signals");
+  assert.equal(signalSummary?.workshopCount, 1);
+  assert.equal(signalSummary?.totalSignals, 3);
+  assert.equal(signalSummary?.requestSignals, 1);
+  assert.equal(signalSummary?.interestSignals, 2);
+  assert.equal(signalSummary?.showcaseSignals, 0);
+  assert.equal(signalSummary?.withdrawnSignals, 1);
+});
+
 test("handleApiV1 dispatches /v1/library.discovery.get with mixed workshop discovery signals and upcoming fill", async () => {
   const request = makeRequest(
     "/v1/library.discovery.get",
@@ -1867,6 +2018,157 @@ test("handleApiV1 dispatches /v1/library.discovery.get with mixed workshop disco
   assert.equal(signalSummary?.requestSignals, 2);
   assert.equal(signalSummary?.interestSignals, 1);
   assert.equal(signalSummary?.showcaseSignals, 0);
+});
+
+test("handleApiV1 discovery summary includes withdrawal-only fallback workshops in feature signal totals", async () => {
+  const request = makeRequest(
+    "/v1/library.discovery.get",
+    {
+      limit: 2,
+      includeWorkshopDiscovery: true,
+      workshopDiscoveryLimit: 4,
+    },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    events: {
+      "event-signal-hot": {
+        title: "High Demand Workshop",
+        summary: "Strong request demand",
+        status: "published",
+        startAt: "2032-02-15T10:00:00.000Z",
+        endAt: "2032-02-15T12:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Main Studio",
+        priceCents: 2800,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 16,
+        waitlistEnabled: true,
+        waitlistCount: 1,
+      },
+      "event-with-withdrawal": {
+        title: "Withdrawn-Interest Workshop",
+        summary: "Only recent withdrawals",
+        status: "published",
+        startAt: "2032-02-10T10:00:00.000Z",
+        endAt: "2032-02-10T12:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Gallery",
+        priceCents: 2500,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 12,
+        waitlistEnabled: false,
+        waitlistCount: 0,
+      },
+      "event-upcoming-early": {
+        title: "Quiet Intro",
+        summary: "No signals yet",
+        status: "published",
+        startAt: "2032-02-05T09:00:00.000Z",
+        endAt: "2032-02-05T11:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Studio Annex",
+        priceCents: 2200,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 12,
+        waitlistEnabled: true,
+        waitlistCount: 0,
+      },
+      "event-upcoming-late": {
+        title: "Later Quiet Session",
+        summary: "No signals yet",
+        status: "published",
+        startAt: "2032-02-22T13:00:00.000Z",
+        endAt: "2032-02-22T15:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Main Studio",
+        priceCents: 2400,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 20,
+        waitlistEnabled: false,
+        waitlistCount: 2,
+      },
+    },
+    supportRequests: {
+      "support-hot-request": {
+        category: "Workshops",
+        source: "events-request-form",
+        eventId: "event-signal-hot",
+        uid: "member-a",
+        createdAt: "2024-01-10T10:00:00.000Z",
+        subject: "Workshop request",
+        body: "Event id: event-signal-hot",
+      },
+      "support-withdrawal-only": {
+        category: "Workshops",
+        source: "events-interest-withdrawal",
+        eventId: "event-with-withdrawal",
+        uid: "member-b",
+        createdAt: "2024-01-10T10:01:00.000Z",
+        subject: "Workshop interest withdrawn",
+        body: "Event id: event-with-withdrawal",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      limit: number;
+      featuredWorkshopsSource?: string;
+      featuredWorkshops: Array<
+        Record<string, unknown> & {
+          id: string;
+          communitySignalCounts?: {
+            requestSignals: number;
+            interestSignals: number;
+            showcaseSignals: number;
+            withdrawnSignals: number;
+            totalSignals: number;
+            latestSignalAtMs: number | null;
+          };
+        }
+      >;
+    };
+  };
+
+  assert.equal(body.ok, true);
+  assert.equal(body.data.limit, 2);
+  assert.equal(body.data.featuredWorkshopsSource, "signals");
+  assert.equal(body.data.featuredWorkshops.length, 4);
+  assert.equal(body.data.featuredWorkshops[0]?.id, "event-signal-hot");
+  assert.equal(body.data.featuredWorkshops[1]?.id, "event-upcoming-early");
+  assert.equal(body.data.featuredWorkshops[2]?.id, "event-with-withdrawal");
+  assert.equal(body.data.featuredWorkshops[3]?.id, "event-upcoming-late");
+
+  const withdrawalWorkshopCounts = body.data.featuredWorkshops.find(
+    (workshop) => workshop.id === "event-with-withdrawal",
+  )?.communitySignalCounts;
+  assert.ok(withdrawalWorkshopCounts);
+  assert.equal(withdrawalWorkshopCounts?.withdrawnSignals, 1);
+
+  const signalSummary = (body.data as { featuredWorkshopsSignalSummary?: Record<string, unknown> })
+    .featuredWorkshopsSignalSummary;
+  assert.equal(signalSummary?.source, "signals");
+  assert.equal(signalSummary?.workshopCount, 4);
+  assert.equal(signalSummary?.signalWorkshopCount, 2);
+  assert.equal(signalSummary?.totalSignals, 1);
+  assert.equal(signalSummary?.requestSignals, 1);
+  assert.equal(signalSummary?.interestSignals, 0);
+  assert.equal(signalSummary?.showcaseSignals, 0);
+  assert.equal(signalSummary?.withdrawnSignals, 1);
 });
 
 test("handleApiV1 dispatches /v1/library.discovery.get with short workshop signal ids from body aliases", async () => {
@@ -2441,11 +2743,23 @@ test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery v
   };
   assert.equal(body.ok, true);
   assert.equal(body.data.limit, 2);
-  assert.equal(body.data.featuredWorkshopsSource, "signals");
+  assert.equal(body.data.featuredWorkshopsSource, "fallback");
   assert.equal(body.data.featuredWorkshops.length, 2);
-  assert.equal(body.data.featuredWorkshops[0]?.id, "event-1");
-  assert.equal(body.data.featuredWorkshops[1]?.id, "event-2");
-  assert.ok(!("communitySignalCounts" in body.data.featuredWorkshops[1]));
+  assert.equal(body.data.featuredWorkshops[0]?.id, "event-2");
+  assert.equal(body.data.featuredWorkshops[1]?.id, "event-1");
+  const signalSummary = (body.data as { featuredWorkshopsSignalSummary?: Record<string, unknown> })
+    .featuredWorkshopsSignalSummary;
+  assert.equal(signalSummary?.source, "fallback");
+  assert.equal(signalSummary?.workshopCount, 2);
+  assert.equal(signalSummary?.signalWorkshopCount, 1);
+  assert.equal(signalSummary?.totalSignals, 0);
+  assert.equal(signalSummary?.withdrawnSignals, 1);
+  assert.equal(signalSummary?.requestSignals, 0);
+  assert.equal(signalSummary?.interestSignals, 0);
+  assert.equal(signalSummary?.showcaseSignals, 0);
+  assert.ok(typeof signalSummary?.latestSignalAtMs === "number");
+  assert.ok((signalSummary?.latestSignalAtMs ?? 0) > 0);
+  assert.ok(!("communitySignalCounts" in body.data.featuredWorkshops[0]));
   const featuredWorkshopSignalCounts = body.data.featuredWorkshops[0]?.communitySignalCounts as
     | {
       requestSignals?: number;
@@ -2456,9 +2770,22 @@ test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery v
       latestSignalAtMs?: number | null;
     }
     | undefined;
-  assert.equal(featuredWorkshopSignalCounts?.withdrawnSignals, 1);
-  assert.equal(featuredWorkshopSignalCounts?.totalSignals, 0);
-  assert.equal(typeof featuredWorkshopSignalCounts?.latestSignalAtMs, "number");
+  assert.equal(featuredWorkshopSignalCounts?.withdrawnSignals, undefined);
+  assert.equal(featuredWorkshopSignalCounts?.totalSignals, undefined);
+  assert.equal(featuredWorkshopSignalCounts?.latestSignalAtMs, undefined);
+  const secondWorkshopSignalCounts = body.data.featuredWorkshops[1]?.communitySignalCounts as
+    | {
+      requestSignals?: number;
+      interestSignals?: number;
+      showcaseSignals?: number;
+      withdrawnSignals?: number;
+      totalSignals?: number;
+      latestSignalAtMs?: number | null;
+    }
+    | undefined;
+  assert.equal(secondWorkshopSignalCounts?.withdrawnSignals, 1);
+  assert.equal(secondWorkshopSignalCounts?.totalSignals, 0);
+  assert.equal(typeof secondWorkshopSignalCounts?.latestSignalAtMs, "number");
 });
 
 test("handleApiV1 rejects /v1/library.items.importIsbns for non-staff firebase caller", async () => {
@@ -2550,7 +2877,7 @@ test("handleApiV1 dispatches /v1/library.items.resolveIsbn with success and fall
 
   const fallbackRequest = makeRequest(
     "/v1/library.items.resolveIsbn",
-    { isbn: "9780000000000", allowRemoteLookup: false },
+    { isbn: "9780306406157", allowRemoteLookup: false },
     staffContext({ uid: "staff-1" }),
   );
   const fallbackResponse = createResponse();
@@ -2573,7 +2900,7 @@ test("handleApiV1 dispatches /v1/library.items.resolveIsbn with success and fall
   assert.equal(fallbackBody.ok, true);
   assert.equal(fallbackBody.data.source, "manual");
   assert.equal(fallbackBody.data.fallback, true);
-  assert.equal(fallbackBody.data.item.title, "ISBN 9780000000000");
+  assert.equal(fallbackBody.data.item.title, "ISBN 9780306406157");
 });
 
 test("handleApiV1 /v1/library.items.resolveIsbn rejects invalid isbn input", async () => {
@@ -2638,6 +2965,85 @@ test("handleApiV1 /v1/library.items.create returns conflict for duplicate active
   assert.equal(body.code, "CONFLICT");
   assert.equal(body.details.reasonCode, "ISBN_ALREADY_EXISTS");
   assert.equal(body.details.duplicateItemId, "item-existing");
+});
+
+test("handleApiV1 /v1/library.items.create derives summary and stores member-facing curation", async () => {
+  const request = makeRequest(
+    "/v1/library.items.create",
+    {
+      title: "Glaze Lab Notebook",
+      authors: ["Studio Staff"],
+      description:
+        "A practical glaze lab guide for line blends, kiln notes, and shelf-test comparisons across shared firings.",
+      staffPick: true,
+      staffRationale: "Strong for members who want better test discipline before production.",
+      totalCopies: 2,
+      availableCopies: 2,
+      status: "available",
+      source: "manual",
+    },
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {},
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200, JSON.stringify(response.body()));
+  const createdEntry = Object.entries(state.libraryItems ?? {})[0];
+  assert.ok(createdEntry, "expected a created library item");
+  const [, createdRow] = createdEntry as [string, Record<string, unknown>];
+  assert.equal(
+    createdRow.summary,
+    "A practical glaze lab guide for line blends, kiln notes, and shelf-test comparisons across shared firings."
+  );
+  assert.deepEqual(createdRow.curation, {
+    staffPick: true,
+    staffRationale: "Strong for members who want better test discipline before production.",
+  });
+});
+
+test("handleApiV1 /v1/library.items.create rejects retail-hosted cover urls", async () => {
+  const request = makeRequest(
+    "/v1/library.items.create",
+    {
+      title: "Retail Cover Attempt",
+      authors: ["Studio Staff"],
+      coverUrl: "https://m.media-amazon.com/images/I/cover.jpg",
+      totalCopies: 1,
+      availableCopies: 1,
+      status: "available",
+      source: "manual",
+    },
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {},
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 400, JSON.stringify(response.body()));
+  const body = response.body() as {
+    ok: boolean;
+    code: string;
+    details: { reasonCode?: string };
+  };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "INVALID_ARGUMENT");
+  assert.equal(body.details.reasonCode, "DISALLOWED_RETAIL_COVER_URL");
+  assert.deepEqual(state.libraryItems, {});
 });
 
 test("handleApiV1 /v1/library.items.delete soft deletes item and allows recreate when prior copy is soft-deleted", async () => {
@@ -2877,6 +3283,578 @@ test("handleApiV1 library recommendations list never leaks other users non-appro
     assert.deepEqual(recommendationIds.sort(), [...scenario.expectedIds].sort());
     assert.equal(recommendationIds.includes(`rec-${scenario.status}-other`), false);
   }
+});
+
+test("handleApiV1 dispatches /v1/library.staff.dashboard for staff and returns the requested sections", async () => {
+  const state: MockDbState = {
+    libraryRequests: {
+      "request-newer": {
+        itemTitle: "Glaze Notes",
+        status: "open",
+        requesterUid: "owner-1",
+        requesterName: "Owner One",
+        requesterEmail: "owner1@example.com",
+        createdAt: { seconds: 200 },
+      },
+      "request-older": {
+        itemTitle: "Clay Body Guide",
+        status: "closed",
+        requesterUid: "owner-2",
+        requesterName: "Owner Two",
+        requesterEmail: "owner2@example.com",
+        createdAt: { seconds: 100 },
+      },
+    },
+    libraryLoans: {
+      "loan-newer": {
+        itemTitle: "Kiln Logbook",
+        status: "active",
+        borrowerUid: "owner-3",
+        borrowerName: "Owner Three",
+        borrowerEmail: "owner3@example.com",
+        itemId: "item-1",
+        createdAt: { seconds: 210 },
+        dueAt: { seconds: 300 },
+      },
+      "loan-older": {
+        itemTitle: "Slip Casting",
+        status: "returned",
+        borrowerUid: "owner-4",
+        borrowerName: "Owner Four",
+        borrowerEmail: "owner4@example.com",
+        itemId: "item-2",
+        createdAt: { seconds: 110 },
+        returnedAt: { seconds: 150 },
+      },
+    },
+    libraryItems: {
+      "item-cover-needed": {
+        title: "Cover Needed",
+        isbn13: "9780596007126",
+        source: "openlibrary",
+        mediaType: "book",
+        coverUrl: "https://covers.openlibrary.org/b/id/12345-M.jpg",
+        needsCoverReview: true,
+        coverQualityStatus: "needs_review",
+        coverQualityReason: "low_confidence_cover_url",
+        updatedAt: { seconds: 220 },
+      },
+      "item-cover-ok": {
+        title: "Cover Approved",
+        needsCoverReview: false,
+        coverQualityStatus: "approved",
+        updatedAt: { seconds: 230 },
+      },
+    },
+    libraryTagSubmissions: {
+      "tag-newer": {
+        itemId: "item-1",
+        itemTitle: "Kiln Logbook",
+        tag: "glaze chemistry",
+        normalizedTag: "glaze-chemistry",
+        status: "pending",
+        submittedByUid: "owner-5",
+        submittedByName: "Owner Five",
+        createdAt: { seconds: 240 },
+      },
+      "tag-older": {
+        itemId: "item-2",
+        itemTitle: "Slip Casting",
+        tag: "molds",
+        normalizedTag: "molds",
+        status: "approved",
+        submittedByUid: "owner-6",
+        submittedByName: "Owner Six",
+        createdAt: { seconds: 140 },
+      },
+    },
+  };
+
+  const request = makeRequest(
+    "/v1/library.staff.dashboard",
+    { requestLimit: 1, loanLimit: 1, coverReviewLimit: 5, tagSubmissionLimit: 1 },
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(cloneState(state), async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200, JSON.stringify(response.body()));
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      requests: Array<Record<string, unknown>>;
+      loans: Array<Record<string, unknown>>;
+      coverReviews: Array<Record<string, unknown>>;
+      tagSubmissions: Array<Record<string, unknown>>;
+      metadataGaps: Array<Record<string, unknown>>;
+      metadataEnrichmentSummary: Record<string, unknown>;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.deepEqual(body.data.requests.map((row) => row.id), ["request-newer"]);
+  assert.deepEqual(body.data.loans.map((row) => row.id), ["loan-newer"]);
+  assert.deepEqual(body.data.coverReviews.map((row) => row.id), ["item-cover-needed"]);
+  assert.deepEqual(body.data.metadataGaps.map((row) => row.itemId), [
+    "item-cover-ok",
+    "item-cover-needed",
+  ]);
+  assert.deepEqual(body.data.coverReviews[0], {
+    id: "item-cover-needed",
+    title: "Cover Needed",
+    isbn: "9780596007126",
+    source: "openlibrary",
+    mediaType: "book",
+    coverUrl: "https://covers.openlibrary.org/b/id/12345-M.jpg",
+    coverProvider: "openlibrary",
+    coverQualityStatus: "needs_review",
+    coverQualityReason: "low_confidence_cover_url",
+    coverIssueKind: "low_confidence",
+    updatedAtMs: 220000,
+  });
+  assert.deepEqual(body.data.tagSubmissions.map((row) => row.id), ["tag-newer"]);
+  assert.deepEqual(body.data.metadataEnrichmentSummary, {
+    pendingCount: 0,
+    thinBacklogCount: 2,
+    lastRunAtMs: 0,
+    lastRunStatus: "",
+    lastRunSource: "",
+    lastRunQueued: 0,
+    lastRunAttempted: 0,
+    lastRunEnriched: 0,
+    lastRunSkipped: 0,
+    lastRunErrors: 0,
+    lastRunStillPending: 0,
+  });
+});
+
+test("handleApiV1 library.staff.dashboard still surfaces older metadata gaps outside the recent slice", async () => {
+  const libraryItems: Record<string, Record<string, unknown>> = {};
+  for (let index = 0; index < 400; index += 1) {
+    libraryItems[`item-complete-${index + 1}`] = {
+      title: `Complete Title ${index + 1}`,
+      authors: ["Staff Curated"],
+      summary: "A complete summary for the lending catalog.",
+      description:
+        "A complete lending catalog description that is comfortably longer than the thin metadata threshold and should not be flagged for remediation.",
+      publisher: "Monsoon Fire Press",
+      publishedDate: "2025",
+      pageCount: 220,
+      subjects: ["ceramics"],
+      coverUrl: "https://covers.openlibrary.org/b/id/12345-M.jpg",
+      coverQualityStatus: "approved",
+      source: "openlibrary",
+      mediaType: "book",
+      updatedAt: { seconds: 5000 - index },
+    };
+  }
+  libraryItems["item-older-gap"] = {
+    title: "ISBN 9789188805553",
+    authors: [],
+    summary: "",
+    description: "",
+    coverQualityStatus: "missing",
+    source: "manual",
+    mediaType: "book",
+    isbn13: "9789188805553",
+    detailStatus: "sparse",
+    updatedAt: { seconds: 5 },
+  };
+
+  const response = await invokeApiV1Route(
+    {
+      libraryItems,
+    },
+    makeApiV1Request({
+      path: "/v1/library.staff.dashboard",
+      body: {
+        requestLimit: 5,
+        loanLimit: 5,
+        coverReviewLimit: 5,
+        metadataGapLimit: 5,
+        tagSubmissionLimit: 5,
+      },
+      ctx: staffContext({ uid: "staff-1" }),
+      routeFamily: "v1",
+      staffAuthUid: "staff-1",
+    }),
+  );
+
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const body = response.body as {
+    ok: boolean;
+    data: {
+      coverReviews: Array<Record<string, unknown>>;
+      metadataGaps: Array<Record<string, unknown>>;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.deepEqual(body.data.coverReviews.map((row) => row.id), ["item-older-gap"]);
+  assert.deepEqual(body.data.metadataGaps.map((row) => row.itemId), ["item-older-gap"]);
+});
+
+test("handleApiV1 rejects /v1/library.staff.dashboard for non-staff", async () => {
+  const request = makeRequest(
+    "/v1/library.staff.dashboard",
+    {},
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore({}, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 403);
+  const body = response.body() as { ok: boolean; code: string };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "FORBIDDEN");
+});
+
+test("handleApiV1 dispatches /v1/library.coverReviews.reconcile for staff and auto-approves trusted imported book covers", async () => {
+  const state: MockDbState = {
+    librarySettings: {
+      externalLookupProviders: {
+        openlibraryEnabled: true,
+        googlebooksEnabled: true,
+        coverReviewGuardrailEnabled: true,
+      },
+    },
+    libraryItems: {
+      "item-openlibrary-review": {
+        title: "Open Library Match",
+        source: "openlibrary",
+        mediaType: "book",
+        coverUrl: "https://covers.openlibrary.org/b/id/12345-M.jpg",
+        needsCoverReview: true,
+        coverQualityStatus: "needs_review",
+        coverQualityReason: "openlibrary_cover_requires_verification",
+        updatedAt: { seconds: 240 },
+      },
+      "item-missing-cover": {
+        title: "Missing Cover",
+        source: "manual",
+        mediaType: "book",
+        needsCoverReview: true,
+        coverQualityStatus: "missing",
+        coverQualityReason: "missing_cover",
+        updatedAt: { seconds: 220 },
+      },
+    },
+  };
+  const firestoreState = cloneState(state);
+  const request = makeRequest(
+    "/v1/library.coverReviews.reconcile",
+    { limit: 10 },
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(firestoreState, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200, JSON.stringify(response.body()));
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      limit: number;
+      scanned: number;
+      approved: number;
+      stillNeedsReview: number;
+      missing: number;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.deepEqual(body.data, {
+    limit: 10,
+    scanned: 2,
+    approved: 1,
+    stillNeedsReview: 1,
+    missing: 1,
+  });
+
+  const approvedRow = firestoreState.libraryItems["item-openlibrary-review"] as Record<string, unknown>;
+  assert.equal(approvedRow.coverQualityStatus, "approved");
+  assert.equal(approvedRow.needsCoverReview, false);
+  assert.ok(approvedRow.coverQualityValidatedAt);
+
+  const missingRow = firestoreState.libraryItems["item-missing-cover"] as Record<string, unknown>;
+  assert.equal(missingRow.coverQualityStatus, "missing");
+  assert.equal(missingRow.needsCoverReview, true);
+});
+
+test("handleApiV1 rejects /v1/library.coverReviews.reconcile for non-staff", async () => {
+  const request = makeRequest(
+    "/v1/library.coverReviews.reconcile",
+    { limit: 20 },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore({}, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 403);
+  const body = response.body() as { ok: boolean; code: string };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "FORBIDDEN");
+});
+
+test("handleApiV1 dispatches /v1/library.metadata.enrichment.run for staff and enriches queued rows", async () => {
+  const state: MockDbState = {
+    librarySettings: {
+      externalLookupProviders: {
+        openlibraryEnabled: true,
+        googlebooksEnabled: true,
+        coverReviewGuardrailEnabled: true,
+      },
+    },
+    libraryItems: {
+      "isbn-9780132350884": {
+        title: "ISBN 9780132350884",
+        authors: [],
+        description: null,
+        publisher: null,
+        publishedDate: null,
+        pageCount: null,
+        subjects: [],
+        coverUrl: null,
+        mediaType: "book",
+        isbn: "9780132350884",
+        isbn13: "9780132350884",
+        isbn_normalized: "9780132350884",
+        source: "local_reference",
+        metadataEnrichmentPending: true,
+        metadataEnrichmentReason: "recent_import",
+        metadataEnrichmentQueuedAt: { seconds: 200 },
+        metadataEnrichmentStatus: "pending",
+        updatedAt: { seconds: 210 },
+      },
+    },
+  };
+  const firestoreState = cloneState(state);
+  const request = makeRequest(
+    "/v1/library.metadata.enrichment.run",
+    { scope: "pending", limit: 10 },
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(firestoreState, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200, JSON.stringify(response.body()));
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      queued: number;
+      attempted: number;
+      enriched: number;
+      skipped: number;
+      errors: number;
+      stillPending: number;
+      summary: { pendingCount: number; thinBacklogCount: number };
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.deepEqual(body.data.queued, 0);
+  assert.deepEqual(body.data.attempted, 1);
+  assert.deepEqual(body.data.enriched, 1);
+  assert.deepEqual(body.data.skipped, 0);
+  assert.deepEqual(body.data.errors, 0);
+  assert.deepEqual(body.data.stillPending, 0);
+  assert.equal(body.data.summary.pendingCount, 0);
+
+  const itemRow = firestoreState.libraryItems?.["isbn-9780132350884"] as Record<string, unknown>;
+  assert.equal(itemRow.title, "Clean Code");
+  assert.ok(Array.isArray(itemRow.authors) && itemRow.authors.length > 0);
+  assert.equal(itemRow.metadataEnrichmentPending, false);
+  assert.equal(itemRow.metadataEnrichmentStatus, "enriched");
+  assert.ok(itemRow.metadataEnrichedAt);
+});
+
+test("handleApiV1 /v1/library.items.update locks changed metadata fields and queues thin manual saves", async () => {
+  const request = makeRequest(
+    "/v1/library.items.update",
+    {
+      itemId: "item-1",
+      title: "Revised Kiln Notebook",
+      subtitle: "2nd shelf copy",
+      authors: ["Studio Staff"],
+      summary: "Fresh staff-curated notes for daily kiln loading and maintenance.",
+      description: "Fresh staff-curated notes for kiln loading and maintenance.",
+      publisher: "Monsoon Fire Press",
+      publishedDate: "2026",
+      subjects: ["kiln care"],
+      coverUrl: null,
+      format: "paperback",
+      mediaType: "book",
+      totalCopies: 1,
+      availableCopies: 1,
+      status: "available",
+      source: "manual",
+      staffPick: true,
+      staffRationale: "A reliable first-stop reference for shared studio firing routines.",
+      tags: ["kiln-care"],
+    },
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-1": {
+        title: "Kiln Notebook",
+        subtitle: "",
+        authors: ["Old Author"],
+        description: "Old description",
+        publisher: "Old Publisher",
+        publishedDate: "",
+        subjects: [],
+        coverUrl: null,
+        format: "",
+        mediaType: "book",
+        totalCopies: 1,
+        availableCopies: 1,
+        status: "available",
+        source: "manual",
+        isbn: "9780132350884",
+        isbn13: "9780132350884",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200, JSON.stringify(response.body()));
+  const updatedRow = state.libraryItems?.["item-1"] as Record<string, unknown>;
+  const metadataLocks = updatedRow.metadataLocks as Record<string, unknown>;
+  assert.equal(metadataLocks.title, true);
+  assert.equal(metadataLocks.subtitle, true);
+  assert.equal(metadataLocks.authors, true);
+  assert.equal(metadataLocks.summary, true);
+  assert.equal(metadataLocks.description, true);
+  assert.equal(metadataLocks.publisher, true);
+  assert.equal(metadataLocks.publishedDate, true);
+  assert.equal(metadataLocks.subjects, true);
+  assert.equal(metadataLocks.format, true);
+  assert.deepEqual(updatedRow.curation, {
+    staffPick: true,
+    staffRationale: "A reliable first-stop reference for shared studio firing routines.",
+  });
+  assert.equal(updatedRow.metadataEnrichmentPending, true);
+  assert.equal(updatedRow.metadataEnrichmentReason, "manual_save");
+  assert.equal(updatedRow.metadataEnrichmentStatus, "pending");
+});
+
+test("handleApiV1 /v1/library.items.update rejects retail-hosted cover urls", async () => {
+  const request = makeRequest(
+    "/v1/library.items.update",
+    {
+      itemId: "item-1",
+      coverUrl: "https://i.ebayimg.com/images/g/123/s-l1600.jpg",
+    },
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-1": {
+        title: "Research copy",
+        authors: ["Studio Staff"],
+        status: "available",
+        coverUrl: null,
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 400, JSON.stringify(response.body()));
+  const body = response.body() as {
+    ok: boolean;
+    code: string;
+    details: { reasonCode?: string };
+  };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "INVALID_ARGUMENT");
+  assert.equal(body.details.reasonCode, "DISALLOWED_RETAIL_COVER_URL");
+  const updatedRow = state.libraryItems?.["item-1"] as Record<string, unknown>;
+  assert.equal(updatedRow.coverUrl, null);
+});
+
+test("handleApiV1 /v1/library.items.update still allows approved catalog cover urls", async () => {
+  const request = makeRequest(
+    "/v1/library.items.update",
+    {
+      itemId: "item-1",
+      coverUrl: "https://covers.openlibrary.org/b/id/12345-L.jpg",
+    },
+    staffContext({ uid: "staff-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    libraryItems: {
+      "item-1": {
+        title: "Research copy",
+        authors: ["Studio Staff"],
+        status: "available",
+        coverUrl: null,
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200, JSON.stringify(response.body()));
+  const updatedRow = state.libraryItems?.["item-1"] as Record<string, unknown>;
+  assert.equal(updatedRow.coverUrl, "https://covers.openlibrary.org/b/id/12345-L.jpg");
+});
+
+test("handleApiV1 rejects /v1/library.metadata.enrichment.run for non-staff", async () => {
+  const request = makeRequest(
+    "/v1/library.metadata.enrichment.run",
+    { scope: "recent_imports", limit: 20 },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore({}, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 403);
+  const body = response.body() as { ok: boolean; code: string };
+  assert.equal(body.ok, false);
+  assert.equal(body.code, "FORBIDDEN");
 });
 
 test("handleApiV1 dispatches /v1/library.recommendations.moderate for staff and rejects non-staff", async () => {

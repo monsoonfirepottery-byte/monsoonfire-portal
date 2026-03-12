@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down dev-logs dev-reset healthcheck infra-validate infra-healthcheck ops-up ops-down ops-status ops-reset proxy-up proxy-down proxy-status
+.PHONY: dev-up dev-down dev-logs dev-reset healthcheck infra-validate infra-healthcheck ops-up ops-down ops-status ops-reset proxy-up proxy-down proxy-status security-up security-down security-status security-scan security-host-audit security-root-print secret-rotate
 
 COMPOSE := docker compose
 ENV_FILE ?= $(if $(wildcard .env),.env,.env.example)
@@ -62,3 +62,31 @@ proxy-down:
 # Print optional reverse proxy profile status.
 proxy-status:
 	node ../scripts/studiobrain-proxy-bundle.mjs status
+
+# Start optional security profile.
+security-up:
+	node ../scripts/studiobrain-security-bundle.mjs up
+
+# Stop optional security profile.
+security-down:
+	node ../scripts/studiobrain-security-bundle.mjs down
+
+# Print optional security profile status.
+security-status:
+	node ../scripts/studiobrain-security-bundle.mjs status
+
+# Run one-shot security scan bundle.
+security-scan:
+	node ../scripts/studiobrain-security-bundle.mjs scan
+
+# Print root-required host hardening gaps without applying them.
+security-host-audit:
+	node ../scripts/studiobrain-host-hardening-audit.mjs
+
+# Print the root-run hardening command and resolved defaults.
+security-root-print:
+	node ../scripts/studiobrain-root-hardening.mjs --print
+
+# Rotate Postgres / Redis / MinIO credentials for the local env.
+secret-rotate:
+	node ../scripts/studiobrain-secret-rotate.mjs --apply

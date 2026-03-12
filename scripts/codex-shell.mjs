@@ -375,7 +375,7 @@ async function main() {
   const statePath = resolveShellSessionStatePath();
   const reusableState = getReusableShellState(statePath);
   const runId = buildStartupRunId(options, process.env, reusableState);
-  const shellModel = clean(process.env.CODEX_SHELL_MODEL || process.env.CODEX_PROC_MODEL || "gpt-5.3-codex-spark");
+  const shellModel = clean(process.env.CODEX_SHELL_MODEL || "");
   const localContextPath = resolveLocalContextPath(options, process.env);
   const localContextMaxChars = parsePositiveInt(
     options.contextMaxChars || process.env.CODEX_SHELL_CONTEXT_MAX_CHARS || "",

@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Membership Plans | Monsoon Fire Portal</title>
+    <meta
+      name="description"
+      content="Explore Monsoon Fire membership plans and hand off into the authenticated membership flow inside the portal."
+    />
+    <link rel="canonical" href="https://portal.monsoonfire.com/membership" />
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #eff4eb;
+        --panel: rgba(248, 252, 245, 0.88);
+        --ink: #193020;
+        --muted: #4f6654;
+        --accent: #2f6a48;
+        --accent-deep: #193b29;
+        --line: rgba(25, 48, 32, 0.12);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Georgia, "Times New Roman", serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top right, rgba(47, 106, 72, 0.17), transparent 30%),
+          radial-gradient(circle at bottom left, rgba(129, 161, 119, 0.18), transparent 28%),
+          linear-gradient(160deg, #f7fbf2 0%, var(--bg) 56%, #e0ead9 100%);
+      }
+      main {
+        width: min(980px, calc(100% - 2rem));
+        margin: 0 auto;
+        padding: 3rem 0 4rem;
+      }
+      .hero,
+      .detail {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 18px 50px rgba(25, 48, 32, 0.08);
+      }
+      .hero {
+        padding: 2.75rem;
+      }
+      .eyebrow {
+        display: inline-flex;
+        padding: 0.45rem 0.75rem;
+        border-radius: 999px;
+        background: rgba(47, 106, 72, 0.1);
+        color: var(--accent-deep);
+        font-size: 0.78rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 1rem 0 0.75rem;
+        font-size: clamp(2.5rem, 4vw, 4.4rem);
+        line-height: 0.95;
+      }
+      .lede {
+        max-width: 42rem;
+        font-size: 1.08rem;
+        line-height: 1.7;
+        color: var(--muted);
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.9rem;
+        margin-top: 1.75rem;
+      }
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 3rem;
+        padding: 0.9rem 1.2rem;
+        border-radius: 999px;
+        text-decoration: none;
+        font-weight: 700;
+      }
+      .button-primary {
+        color: #f8fdf9;
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%);
+      }
+      .button-secondary {
+        color: var(--ink);
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.62);
+      }
+      .detail {
+        margin-top: 1.25rem;
+        padding: 1.5rem;
+      }
+      .grid {
+        display: grid;
+        gap: 1rem;
+      }
+      @media (min-width: 760px) {
+        .grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+      h2 {
+        margin: 0 0 0.5rem;
+        font-size: 1.15rem;
+      }
+      p {
+        margin: 0;
+        line-height: 1.65;
+      }
+      code {
+        font-family: "Courier New", monospace;
+        font-size: 0.92em;
+      }
+    </style>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "name": "Monsoon Fire Membership Plans",
+        "url": "https://portal.monsoonfire.com/membership",
+        "description": "Public landing page for Monsoon Fire membership discovery and portal handoff.",
+        "potentialAction": {
+          "@type": "JoinAction",
+          "name": "Join or change a Monsoon Fire membership plan",
+          "target": {
+            "@type": "EntryPoint",
+            "urlTemplate": "https://portal.monsoonfire.com/?intent=membership"
+          }
+        },
+        "isPartOf": {
+          "@type": "WebSite",
+          "name": "Monsoon Fire Portal",
+          "url": "https://portal.monsoonfire.com/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <div class="eyebrow">Portal handoff</div>
+        <h1>Find the membership tier that fits your studio rhythm.</h1>
+        <p class="lede">
+          This page is the public discovery surface for Monsoon Fire memberships. It tells agents
+          and developers where the membership flow lives, then hands authenticated users into the
+          portal checkout path.
+        </p>
+        <div class="actions">
+          <a class="button button-primary" href="/?intent=membership">Open membership plans</a>
+          <a class="button button-secondary" href="/.well-known/openapi.json">View the public API</a>
+        </div>
+      </section>
+
+      <section class="detail">
+        <div class="grid">
+          <div>
+            <h2>Canonical route</h2>
+            <p><code>https://portal.monsoonfire.com/membership</code></p>
+          </div>
+          <div>
+            <h2>Portal handoff</h2>
+            <p><code>https://portal.monsoonfire.com/?intent=membership</code></p>
+          </div>
+          <div>
+            <h2>Machine contract</h2>
+            <p><code>https://portal.monsoonfire.com/.well-known/openapi.json</code></p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

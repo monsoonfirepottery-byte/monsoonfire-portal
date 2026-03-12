@@ -30,6 +30,23 @@ import { getAgentOpsConfig } from "./agentCommerce";
 const REGION = "us-central1";
 const CONFIG_DOC_PATH = "config/stripe";
 const AUDIT_SUBCOLLECTION = "stripe_audit";
+const DEFAULT_PORTAL_PUBLIC_URL = "https://portal.monsoonfire.com";
+
+export const STRIPE_CONFIG_DOC_PATH = CONFIG_DOC_PATH;
+export const MEMBERSHIP_PLAN_LABELS = {
+  a_la_carte: "A la carte",
+  apprentice: "Apprentice",
+  journeyman: "Journeyman",
+  master: "Master",
+} as const;
+
+type MembershipPlanKey = keyof typeof MEMBERSHIP_PLAN_LABELS;
+type MembershipStripeMetadata = {
+  uid: string;
+  planKey: MembershipPlanKey;
+  tierLabel: string;
+  priceKey: string | null;
+};
 
 const stripeConfigSchema = z.object({
   mode: z.enum(["test", "live"]).default("test"),
@@ -265,7 +282,7 @@ StripeWebhookEventContract
 
 const STRIPE_CLIENTS: Partial<Record<StripeMode, Stripe>> = {};
 
-function getStripeClient(mode: StripeMode): Stripe {
+export function getStripeClient(mode: StripeMode): Stripe {
   const cached = STRIPE_CLIENTS[mode];
   if (cached) return cached;
   const client = new Stripe(getStripeSecretKey(mode));
@@ -307,7 +324,7 @@ function getWebhookEndpointUrl(): string {
   return `https://${REGION}-${projectId}.cloudfunctions.net/stripePortalWebhook`;
 }
 
-function normalizeStripeConfig(data: Record<string, unknown> | null | undefined): StripeConfigInput {
+export function normalizeStripeConfig(data: Record<string, unknown> | null | undefined): StripeConfigInput {
   return stripeConfigSchema.parse({
     mode: safeString(data?.mode, "test"),
     publishableKeys: {
@@ -324,6 +341,55 @@ function normalizeStripeConfig(data: Record<string, unknown> | null | undefined)
     successUrl: safeString(data?.successUrl),
     cancelUrl: safeString(data?.cancelUrl),
   });
+}
+
+function normalizeMembershipPlanKey(value: unknown): MembershipPlanKey | null {
+  const candidate = safeString(value).trim().toLowerCase();
+  if (!candidate) return null;
+  if (candidate === "alacarte") return "a_la_carte";
+  if (candidate === "a-la-carte") return "a_la_carte";
+  if (candidate in MEMBERSHIP_PLAN_LABELS) {
+    return candidate as MembershipPlanKey;
+  }
+  return null;
+}
+
+function resolvePortalPublicUrl(): string {
+  const configured = safeString(process.env.PORTAL_PUBLIC_URL).trim();
+  if (!configured) return DEFAULT_PORTAL_PUBLIC_URL;
+  try {
+    const parsed = new URL(configured);
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return DEFAULT_PORTAL_PUBLIC_URL;
+  }
+}
+
+export function buildMembershipReturnUrl(
+  status: "success" | "cancel",
+  planKey: MembershipPlanKey
+): string {
+  const url = new URL("/", resolvePortalPublicUrl());
+  url.searchParams.set("intent", "membership");
+  url.searchParams.set("status", status);
+  url.searchParams.set("plan", planKey);
+  return url.toString();
+}
+
+function readMembershipStripeMetadata(
+  raw: Record<string, unknown> | null | undefined
+): MembershipStripeMetadata | null {
+  const uid = safeString(raw?.uid).trim();
+  const planKey = normalizeMembershipPlanKey(raw?.membershipPlanKey);
+  if (!uid || !planKey) return null;
+  const tierLabel = safeString(raw?.membershipTierLabel).trim() || MEMBERSHIP_PLAN_LABELS[planKey];
+  const priceKey = safeString(raw?.membershipPriceKey).trim() || null;
+  return {
+    uid,
+    planKey,
+    tierLabel,
+    priceKey,
+  };
 }
 
 function validatePublishableKeys(config: StripeConfigInput) {
@@ -473,6 +539,65 @@ export function buildStripePaymentAuditDetails(params: {
         ? params.disputeLifecycle
         : null,
   };
+}
+
+function timestampFromUnixSeconds(value: unknown): Timestamp | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  return Timestamp.fromMillis(Math.round(value * 1000));
+}
+
+async function resolveMembershipSubscriptionDetails(
+  mode: StripeMode,
+  subscriptionId: string | null
+): Promise<{
+  id: string | null;
+  status: string | null;
+  currentPeriodStart: Timestamp | null;
+  currentPeriodEnd: Timestamp | null;
+  metadata: Record<string, string> | null;
+}> {
+  const trimmedId = safeString(subscriptionId).trim();
+  if (!trimmedId) {
+    return {
+      id: null,
+      status: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      metadata: null,
+    };
+  }
+  try {
+    const subscription = await getStripeClient(mode).subscriptions.retrieve(trimmedId);
+    return {
+      id: subscription.id ?? trimmedId,
+      status: typeof subscription.status === "string" ? subscription.status : null,
+      currentPeriodStart: timestampFromUnixSeconds(
+        (subscription as Stripe.Subscription & { current_period_start?: number }).current_period_start
+      ),
+      currentPeriodEnd: timestampFromUnixSeconds(
+        (subscription as Stripe.Subscription & { current_period_end?: number }).current_period_end
+      ),
+      metadata:
+        subscription.metadata && typeof subscription.metadata === "object"
+          ? (subscription.metadata as Record<string, string>)
+          : null,
+    };
+  } catch (error) {
+    logger.warn("membership subscription lookup failed", {
+      subscriptionId: trimmedId,
+      mode,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return {
+      id: trimmedId,
+      status: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      metadata: null,
+    };
+  }
 }
 
 function parseCheckoutSessionPayload(session: Stripe.Checkout.Session): PaymentUpdate {
@@ -1791,6 +1916,134 @@ async function applyPaymentUpdate(params: {
   }
 }
 
+async function applyMembershipPlanUpdate(params: {
+  event: Stripe.Event;
+  update: PaymentUpdate;
+  mode: StripeMode;
+  eventType: string;
+}) {
+  const { event, update, mode, eventType } = params;
+  if (eventType !== "checkout.session.completed" && eventType !== "invoice.paid") {
+    return;
+  }
+
+  let metadata: MembershipStripeMetadata | null = null;
+  let checkoutSessionId = safeString(update.sessionId).trim() || null;
+  let stripeInvoiceId = safeString(update.invoiceId).trim() || null;
+  let stripePaymentIntentId = safeString(update.paymentIntentId).trim() || null;
+  let stripeSubscriptionId: string | null = null;
+  let renewalAt: Timestamp | null = null;
+  let activatedAt: Timestamp | null = nowTs();
+  let membershipStatus = "active";
+
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object as Stripe.Checkout.Session;
+    metadata = readMembershipStripeMetadata(
+      session.metadata && typeof session.metadata === "object"
+        ? (session.metadata as Record<string, unknown>)
+        : null
+    );
+    checkoutSessionId = typeof session.id === "string" ? session.id : checkoutSessionId;
+    stripeInvoiceId =
+      typeof session.invoice === "string" ? session.invoice : stripeInvoiceId;
+    stripePaymentIntentId =
+      typeof session.payment_intent === "string" ? session.payment_intent : stripePaymentIntentId;
+    stripeSubscriptionId =
+      typeof session.subscription === "string" ? session.subscription : null;
+    const subscription = await resolveMembershipSubscriptionDetails(mode, stripeSubscriptionId);
+    if (!metadata) {
+      metadata = readMembershipStripeMetadata(subscription.metadata);
+    }
+    stripeSubscriptionId = subscription.id ?? stripeSubscriptionId;
+    renewalAt = subscription.currentPeriodEnd;
+    activatedAt = subscription.currentPeriodStart ?? activatedAt;
+    membershipStatus = subscription.status ?? membershipStatus;
+  } else if (event.type === "invoice.paid") {
+    const invoice = event.data.object as Stripe.Invoice;
+    const invoiceRecord = invoice as unknown as {
+      payment_intent?: unknown;
+      subscription?: unknown;
+    };
+    metadata = readMembershipStripeMetadata(
+      invoice.metadata && typeof invoice.metadata === "object"
+        ? (invoice.metadata as Record<string, unknown>)
+        : null
+    );
+    stripeInvoiceId = typeof invoice.id === "string" ? invoice.id : stripeInvoiceId;
+    stripePaymentIntentId =
+      typeof invoiceRecord.payment_intent === "string"
+        ? invoiceRecord.payment_intent
+        : stripePaymentIntentId;
+    stripeSubscriptionId =
+      typeof invoiceRecord.subscription === "string" ? invoiceRecord.subscription : null;
+    const subscription = await resolveMembershipSubscriptionDetails(mode, stripeSubscriptionId);
+    if (!metadata) {
+      metadata = readMembershipStripeMetadata(subscription.metadata);
+    }
+    stripeSubscriptionId = subscription.id ?? stripeSubscriptionId;
+    renewalAt = subscription.currentPeriodEnd;
+    activatedAt = subscription.currentPeriodStart ?? activatedAt;
+    membershipStatus = subscription.status ?? membershipStatus;
+  }
+
+  if (!metadata) {
+    return;
+  }
+
+  const now = nowTs();
+  const profileRef = db.collection("profiles").doc(metadata.uid);
+  const userRef = db.collection("users").doc(metadata.uid);
+  const [profileSnap, userSnap] = await Promise.all([profileRef.get(), userRef.get()]);
+  const profileData = profileSnap.exists ? (profileSnap.data() as Record<string, unknown>) : {};
+  const userData = userSnap.exists ? (userSnap.data() as Record<string, unknown>) : {};
+
+  const existingMembershipSince =
+    (profileData.membershipSince as Timestamp | undefined) ??
+    (userData.membershipSince as Timestamp | undefined) ??
+    activatedAt ??
+    now;
+  const existingMembership = profileData.membership && typeof profileData.membership === "object"
+    ? (profileData.membership as Record<string, unknown>)
+    : userData.membership && typeof userData.membership === "object"
+      ? (userData.membership as Record<string, unknown>)
+      : {};
+  const existingActivatedAt =
+    (existingMembership.activatedAt as Timestamp | undefined) ?? activatedAt ?? existingMembershipSince;
+
+  const membershipPayload = {
+    planKey: metadata.planKey,
+    planPriceKey: metadata.priceKey,
+    label: metadata.tierLabel,
+    status: membershipStatus,
+    source: "stripe_checkout",
+    checkoutSessionId,
+    stripeSubscriptionId,
+    stripePaymentIntentId,
+    stripeInvoiceId,
+    mode,
+    activatedAt: existingActivatedAt,
+    renewalAt: renewalAt ?? null,
+    pendingPlanKey: null,
+    pendingPlanLabel: null,
+    pendingCheckoutSessionId: null,
+    checkoutStatus: safeString(update.status) || "checkout_completed",
+    updatedAt: now,
+  };
+
+  const writePayload = {
+    membershipTier: metadata.tierLabel,
+    membershipSince: existingMembershipSince,
+    membershipExpiresAt: renewalAt ?? null,
+    membership: membershipPayload,
+    updatedAt: now,
+  };
+
+  await Promise.all([
+    profileRef.set(writePayload, { merge: true }),
+    userRef.set(writePayload, { merge: true }),
+  ]);
+}
+
 export const stripePortalWebhook = onRequest(
   { region: REGION, timeoutSeconds: 60, secrets: [...STRIPE_SECRET_PARAMS] },
   async (req, res) => {
@@ -1991,6 +2244,12 @@ export const stripePortalWebhook = onRequest(
         update,
         mode,
         eventId: event.id,
+        eventType: event.type,
+      });
+      await applyMembershipPlanUpdate({
+        event,
+        update,
+        mode,
         eventType: event.type,
       });
     } catch (err) {

@@ -9,7 +9,7 @@ import { join, relative, resolve } from "node:path";
 const repoRoot = process.cwd();
 const DEFAULT_OUTPUT_DIR = join(repoRoot, "artifacts", "ga", "reports");
 const SCAN_ROOTS = ["website", "website/ncsitebuilder"];
-const AUTO_TAG_HOSTS = ["monsoonfire.kilnfire.com", "portal.monsoonfire.com", "instagram.com", "discord.com", "discord.gg", "phoenixcenterforthearts.org"];
+const AUTO_TAG_HOSTS = ["portal.monsoonfire.com", "instagram.com", "discord.com", "discord.gg", "phoenixcenterforthearts.org"];
 
 function parseArgs(argv) {
   const options = {
@@ -242,4 +242,3 @@ main().catch((error) => {
   console.error(`audit-website-ga-campaign-links failed: ${message}`);
   process.exit(1);
 });
-

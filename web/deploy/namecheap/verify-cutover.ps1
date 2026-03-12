@@ -1,7 +1,7 @@
 param(
   [string]$PortalUrl = "https://portal.monsoonfire.com",
-  [string]$DeepPath = "/reservations",
-  [string]$WellKnownPath = "/.well-known/apple-app-site-association",
+  [string]$DeepPath = "/reserve",
+  [string]$WellKnownPath = "/.well-known/openapi.json",
   [string]$ReportPath = "",
   [string]$FunctionsBaseUrl = "https://us-central1-monsoonfire-portal.cloudfunctions.net",
   [string]$ProtectedFn = "listMaterialsProducts",

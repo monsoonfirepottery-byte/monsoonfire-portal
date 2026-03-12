@@ -60,18 +60,29 @@ if (!existsSync(keyPath)) {
 
 const webDist = resolve(repoRoot, "web", "dist");
 const htaccessTemplate = resolve(repoRoot, "web", "deploy", "namecheap", ".htaccess");
-const wellKnownSourceDir = resolve(repoRoot, "website", ".well-known");
-const requiredWellKnownFiles = ["apple-app-site-association", "assetlinks.json"];
+const portalWellKnownSourceDir = resolve(repoRoot, "web", "public", ".well-known");
+const websiteWellKnownSourceDir = resolve(repoRoot, "website", ".well-known");
+const requiredPortalWellKnownFiles = ["openapi.json"];
+const requiredWebsiteWellKnownFiles = ["apple-app-site-association", "assetlinks.json"];
 if (!existsSync(htaccessTemplate)) {
   fail(`Missing template: ${htaccessTemplate}`);
 }
-if (!existsSync(wellKnownSourceDir)) {
-  fail(`Missing well-known source directory: ${wellKnownSourceDir}`);
+if (!existsSync(portalWellKnownSourceDir)) {
+  fail(`Missing portal well-known source directory: ${portalWellKnownSourceDir}`);
 }
-for (const fileName of requiredWellKnownFiles) {
-  const sourcePath = resolve(wellKnownSourceDir, fileName);
+if (!existsSync(websiteWellKnownSourceDir)) {
+  fail(`Missing website well-known source directory: ${websiteWellKnownSourceDir}`);
+}
+for (const fileName of requiredPortalWellKnownFiles) {
+  const sourcePath = resolve(portalWellKnownSourceDir, fileName);
   if (!existsSync(sourcePath)) {
-    fail(`Missing well-known source file: ${sourcePath}`);
+    fail(`Missing portal well-known source file: ${sourcePath}`);
+  }
+}
+for (const fileName of requiredWebsiteWellKnownFiles) {
+  const sourcePath = resolve(websiteWellKnownSourceDir, fileName);
+  if (!existsSync(sourcePath)) {
+    fail(`Missing website well-known source file: ${sourcePath}`);
   }
 }
 
@@ -132,9 +143,11 @@ try {
 
   cpSync(webDist, stageDir, { recursive: true });
   cpSync(htaccessTemplate, resolve(stageDir, ".htaccess"));
-  // Use website/.well-known as the single source and mirror both paths for host compatibility.
-  cpSync(wellKnownSourceDir, resolve(stageDir, ".well-known"), { recursive: true });
-  cpSync(wellKnownSourceDir, resolve(stageDir, "well-known"), { recursive: true });
+  // Preserve portal-owned machine contracts while still mirroring app-link files for host compatibility.
+  const stagedWellKnownDir = resolve(stageDir, ".well-known");
+  mergeDirectoryInto(portalWellKnownSourceDir, stagedWellKnownDir);
+  mergeDirectoryInto(websiteWellKnownSourceDir, stagedWellKnownDir);
+  cpSync(stagedWellKnownDir, resolve(stageDir, "well-known"), { recursive: true });
 
   const sshTransport = `ssh -i ${keyPath} -p ${String(options.port)} -o StrictHostKeyChecking=accept-new`;
   const remotePathWithSlash = ensureTrailingSlash(options.remotePath);
@@ -603,6 +616,20 @@ function assertFirebaseApiKeyIsEmbedded(distDir) {
     "Build output does not include a compiled VITE_FIREBASE_API_KEY value; refusing deploy.\n" +
       "Set VITE_FIREBASE_API_KEY (or ensure web build injects it) before deploy."
   );
+}
+
+function mergeDirectoryInto(sourceDir, targetDir) {
+  mkdirSync(targetDir, { recursive: true });
+  const entries = readdirSync(sourceDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const sourcePath = resolve(sourceDir, entry.name);
+    const targetPath = resolve(targetDir, entry.name);
+    if (entry.isDirectory()) {
+      mergeDirectoryInto(sourcePath, targetPath);
+      continue;
+    }
+    cpSync(sourcePath, targetPath);
+  }
 }
 
 function writeJson(path, payload) {

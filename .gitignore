@@ -26,6 +26,7 @@ output/
 output/real-estate/public-data/
 
 # Local temp
+.cache/
 tmp-firebase.json
 tmp/
 

@@ -37,18 +37,37 @@ import {
   type IntakeMode,
 } from "./intakeMode";
 import {
+  LIBRARY_METADATA_LOCK_FIELDS,
+  assessLibraryThinMetadata,
+  classifyLibraryCoverIssueKind,
+  deriveLibraryItemSummary,
+  detectCoverProviderFromUrl,
+  emitLibraryRunAudit,
+  getLibraryMetadataEnrichmentSummary,
+  listLibraryMetadataGapRows,
   importLibraryIsbnBatch,
+  isDisallowedRetailCoverUrl,
+  KNOWN_EXTERNAL_LOOKUP_PROVIDERS,
   lookupLibraryExternalSources,
   getLibraryExternalLookupProviderConfig,
   setLibraryExternalLookupProviderConfig,
   getLibraryRolloutConfig,
   setLibraryRolloutConfig,
   LIBRARY_ROLLOUT_PHASES,
+  reconcileLibraryCoverReviews,
   resolveLibraryIsbn,
+  runLibraryMetadataEnrichmentBatch,
   findExistingLibraryItemIdByIsbn,
   type LibraryRolloutPhase,
 } from "./library";
 import { collectWorkshopCommunitySignalCountsByEventIds } from "./events";
+import {
+  buildMembershipReturnUrl,
+  getStripeClient,
+  MEMBERSHIP_PLAN_LABELS,
+  normalizeStripeConfig,
+  STRIPE_CONFIG_DOC_PATH,
+} from "./stripeConfig";
 
 function boolEnv(name: string, fallback = false): boolean {
   const raw = process.env[name];
@@ -62,6 +81,56 @@ function boolEnv(name: string, fallback = false): boolean {
 const AUTO_COOLDOWN_ON_RATE_LIMIT = boolEnv("AUTO_COOLDOWN_ON_RATE_LIMIT", false);
 const AUTO_COOLDOWN_MINUTES = Math.max(1, Number(process.env.AUTO_COOLDOWN_MINUTES ?? 5) || 5);
 const LIBRARY_LOAN_IDEMPOTENCY_COL = "libraryLoanIdempotency";
+const MEMBERSHIP_PLAN_PRICE_KEYS = {
+  a_la_carte: "membership_a_la_carte",
+  apprentice: "membership_apprentice",
+  journeyman: "membership_journeyman",
+  master: "membership_master",
+} as const;
+
+type MembershipPlanKey = keyof typeof MEMBERSHIP_PLAN_PRICE_KEYS;
+
+const MEMBERSHIP_PLAN_CATALOG: ReadonlyArray<{
+  key: MembershipPlanKey;
+  priceKey: typeof MEMBERSHIP_PLAN_PRICE_KEYS[MembershipPlanKey];
+  label: string;
+  stage: string;
+  summary: string;
+  focus: string;
+}> = [
+  {
+    key: "a_la_carte",
+    priceKey: MEMBERSHIP_PLAN_PRICE_KEYS.a_la_carte,
+    label: MEMBERSHIP_PLAN_LABELS.a_la_carte,
+    stage: "Home studio starter",
+    summary: "Flexible access when you're still finding your rhythm and experimenting with your voice.",
+    focus: "Try things, learn tools, and keep the pressure low.",
+  },
+  {
+    key: "apprentice",
+    priceKey: MEMBERSHIP_PLAN_PRICE_KEYS.apprentice,
+    label: MEMBERSHIP_PLAN_LABELS.apprentice,
+    stage: "Consistent maker",
+    summary: "A steady bridge for artists ready for predictable firings, storage, and support.",
+    focus: "Build routines and small production runs with less friction.",
+  },
+  {
+    key: "journeyman",
+    priceKey: MEMBERSHIP_PLAN_PRICE_KEYS.journeyman,
+    label: MEMBERSHIP_PLAN_LABELS.journeyman,
+    stage: "Production momentum",
+    summary: "More credits and priority help when you need a firing partner you can trust.",
+    focus: "Scale output without juggling last-minute kiln logistics.",
+  },
+  {
+    key: "master",
+    priceKey: MEMBERSHIP_PLAN_PRICE_KEYS.master,
+    label: MEMBERSHIP_PLAN_LABELS.master,
+    stage: "Established studio practice",
+    summary: "Maximum capacity for makers running full bodies of work and multiple drops.",
+    focus: "Keep quality high while volume grows.",
+  },
+];
 
 function readHeaderFirst(req: RequestLike, name: string): string {
   const key = name.toLowerCase();
@@ -311,6 +380,33 @@ function safeErrorMessage(error: unknown): string {
   } catch {
     return "Request failed";
   }
+}
+
+function normalizeMembershipPlanKey(value: unknown): MembershipPlanKey | null {
+  const raw = safeString(value).trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === "alacarte" || raw === "a-la-carte" || raw === "studiomember" || raw === "studio") {
+    return "a_la_carte";
+  }
+  if (raw === "premium") {
+    return "apprentice";
+  }
+  if (raw === "founding") {
+    return "master";
+  }
+  if (raw in MEMBERSHIP_PLAN_PRICE_KEYS) {
+    return raw as MembershipPlanKey;
+  }
+  for (const plan of MEMBERSHIP_PLAN_CATALOG) {
+    if (safeString(plan.label).trim().toLowerCase().replace(/[^a-z]/g, "") === raw.replace(/[^a-z]/g, "")) {
+      return plan.key;
+    }
+  }
+  return null;
+}
+
+function getMembershipPlanCatalogEntry(planKey: MembershipPlanKey) {
+  return MEMBERSHIP_PLAN_CATALOG.find((plan) => plan.key === planKey) ?? MEMBERSHIP_PLAN_CATALOG[0];
 }
 
 type DelegatedRiskPolicy = {
@@ -608,6 +704,24 @@ const libraryDiscoverySchema = z.object({
   workshopDiscoveryLimit: z.number().int().min(1).max(12).optional(),
 });
 
+const libraryStaffDashboardSchema = z.object({
+  requestLimit: z.number().int().min(1).max(120).optional(),
+  loanLimit: z.number().int().min(1).max(120).optional(),
+  coverReviewLimit: z.number().int().min(1).max(120).optional(),
+  tagSubmissionLimit: z.number().int().min(1).max(240).optional(),
+  metadataGapLimit: z.number().int().min(1).max(200).optional(),
+});
+
+const libraryCoverReviewReconcileSchema = z.object({
+  limit: z.number().int().min(1).max(250).optional(),
+});
+
+const libraryMetadataEnrichmentRunSchema = z.object({
+  scope: z.enum(["pending", "recent_imports", "thin_backfill", "item_ids"]).optional(),
+  itemIds: z.array(z.string().min(1).max(200).trim()).max(200).optional(),
+  limit: z.number().int().min(1).max(250).optional(),
+});
+
 const libraryExternalLookupSchema = z.object({
   q: z.string().min(1).max(240),
   limit: z.number().int().min(1).max(12).optional(),
@@ -624,6 +738,7 @@ const libraryExternalLookupProviderConfigSetSchema = z
   .object({
     openlibraryEnabled: z.boolean().optional(),
     googlebooksEnabled: z.boolean().optional(),
+    disabledProviders: z.array(z.string().min(1).max(40)).max(KNOWN_EXTERNAL_LOOKUP_PROVIDERS.length).optional(),
     coverReviewGuardrailEnabled: z.boolean().optional(),
     note: z.string().max(300).optional().nullable(),
   })
@@ -631,6 +746,7 @@ const libraryExternalLookupProviderConfigSetSchema = z
     if (
       typeof value.openlibraryEnabled !== "boolean" &&
       typeof value.googlebooksEnabled !== "boolean" &&
+      !Array.isArray(value.disabledProviders) &&
       typeof value.coverReviewGuardrailEnabled !== "boolean"
     ) {
       ctx.addIssue({
@@ -638,6 +754,17 @@ const libraryExternalLookupProviderConfigSetSchema = z
         path: [],
         message: "Provide at least one provider policy toggle.",
       });
+    }
+    if (Array.isArray(value.disabledProviders)) {
+      for (const [index, provider] of value.disabledProviders.entries()) {
+        if (!KNOWN_EXTERNAL_LOOKUP_PROVIDERS.includes(provider as typeof KNOWN_EXTERNAL_LOOKUP_PROVIDERS[number])) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["disabledProviders", index],
+            message: "Unknown provider.",
+          });
+        }
+      }
     }
   });
 
@@ -667,6 +794,7 @@ const libraryItemCreateSchema = z
     title: z.string().max(240).optional().nullable(),
     subtitle: z.string().max(240).optional().nullable(),
     authors: z.array(z.string().min(1).max(240)).max(20).optional(),
+    summary: z.string().max(500).optional().nullable(),
     description: z.string().max(4000).optional().nullable(),
     publisher: z.string().max(240).optional().nullable(),
     publishedDate: z.string().max(40).optional().nullable(),
@@ -681,6 +809,8 @@ const libraryItemCreateSchema = z
     replacementValueCents: z.number().int().min(0).max(5_000_000).optional().nullable(),
     tags: z.array(z.string().min(1).max(80)).max(60).optional(),
     source: z.string().max(120).optional().nullable(),
+    staffPick: z.boolean().optional().nullable(),
+    staffRationale: z.string().max(500).optional().nullable(),
     allowRemoteLookup: z.boolean().optional(),
   })
   .superRefine((value, ctx) => {
@@ -702,6 +832,7 @@ const libraryItemUpdateSchema = z
     title: z.string().max(240).optional().nullable(),
     subtitle: z.string().max(240).optional().nullable(),
     authors: z.array(z.string().min(1).max(240)).max(20).optional(),
+    summary: z.string().max(500).optional().nullable(),
     description: z.string().max(4000).optional().nullable(),
     publisher: z.string().max(240).optional().nullable(),
     publishedDate: z.string().max(40).optional().nullable(),
@@ -716,6 +847,8 @@ const libraryItemUpdateSchema = z
     replacementValueCents: z.number().int().min(0).max(5_000_000).optional().nullable(),
     tags: z.array(z.string().min(1).max(80)).max(60).optional(),
     source: z.string().max(120).optional().nullable(),
+    staffPick: z.boolean().optional().nullable(),
+    staffRationale: z.string().max(500).optional().nullable(),
     allowRemoteLookup: z.boolean().optional(),
   })
   .superRefine((value, ctx) => {
@@ -724,6 +857,7 @@ const libraryItemUpdateSchema = z
       "title",
       "subtitle",
       "authors",
+      "summary",
       "description",
       "publisher",
       "publishedDate",
@@ -738,6 +872,8 @@ const libraryItemUpdateSchema = z
       "replacementValueCents",
       "tags",
       "source",
+      "staffPick",
+      "staffRationale",
       "allowRemoteLookup",
     ].some((field) => Object.prototype.hasOwnProperty.call(value, field));
 
@@ -1030,6 +1166,8 @@ const reservationCreateSchema = z.object({
       glazeAccessCost: z.number().optional().nullable(),
       waxResistAssistRequested: z.boolean().optional().nullable(),
       glazeSanityCheckRequested: z.boolean().optional().nullable(),
+      staffGlazePrepRequested: z.boolean().optional().nullable(),
+      staffGlazePrepRatePerHalfShelf: z.number().optional().nullable(),
       fragileHandlingRequested: z.boolean().optional().nullable(),
       fragileHandlingCost: z.number().optional().nullable(),
       placementPreferenceRequested: z.boolean().optional().nullable(),
@@ -1054,6 +1192,12 @@ const reservationsListSchema = z.object({
   limit: z.number().int().min(1).max(250).optional(),
   status: z.string().optional().nullable(),
   includeCancelled: z.boolean().optional(),
+});
+
+const membershipsSummarySchema = z.object({}).passthrough();
+
+const membershipsChangePlanSchema = z.object({
+  planKey: z.enum(["a_la_carte", "apprentice", "journeyman", "master"]),
 });
 
 const notificationsMarkReadSchema = z.object({
@@ -2182,6 +2326,9 @@ const AGENT_TERMS_EXEMPT_ROUTES = new Set<string>([
 ]);
 const LIBRARY_ROUTE_ROLLOUT_GET = "/v1/library.rollout.get";
 const LIBRARY_ROUTE_ROLLOUT_SET = "/v1/library.rollout.set";
+const LIBRARY_ROUTE_STAFF_DASHBOARD = "/v1/library.staff.dashboard";
+const LIBRARY_ROUTE_COVER_REVIEWS_RECONCILE = "/v1/library.coverReviews.reconcile";
+const LIBRARY_ROUTE_METADATA_ENRICHMENT_RUN = "/v1/library.metadata.enrichment.run";
 const ROUTE_SCOPE_HINTS: Record<string, string | null> = {
   "/v1/agent.catalog": "catalog:read",
   "/v1/agent.quote": "quote:write",
@@ -2208,12 +2355,17 @@ const ROUTE_SCOPE_HINTS: Record<string, string | null> = {
   "/v1/reservations.get": "reservations:read",
   "/v1/reservations.list": "reservations:read",
   "/v1/reservations.exportContinuity": "reservations:read",
+  "/v1/memberships.summary": "memberships:read",
+  "/v1/memberships.changePlan": "memberships:write",
   "/v1/library.items.list": null,
   "/v1/library.items.get": null,
   "/v1/library.discovery.get": null,
   "/v1/library.externalLookup": null,
   [LIBRARY_ROUTE_ROLLOUT_GET]: null,
   [LIBRARY_ROUTE_ROLLOUT_SET]: null,
+  [LIBRARY_ROUTE_STAFF_DASHBOARD]: null,
+  [LIBRARY_ROUTE_COVER_REVIEWS_RECONCILE]: null,
+  [LIBRARY_ROUTE_METADATA_ENRICHMENT_RUN]: null,
   "/v1/library.externalLookup.providerConfig.get": null,
   "/v1/library.externalLookup.providerConfig.set": null,
   "/v1/library.items.resolveIsbn": null,
@@ -2270,6 +2422,8 @@ const ALLOWED_API_V1_ROUTES = new Set<string>([
   "/v1/reservations.get",
   "/v1/reservations.list",
   "/v1/reservations.exportContinuity",
+  "/v1/memberships.summary",
+  "/v1/memberships.changePlan",
   "/v1/notifications.markRead",
   "/v1/reservations.lookupArrival",
   "/v1/reservations.rotateArrivalToken",
@@ -2284,6 +2438,9 @@ const ALLOWED_API_V1_ROUTES = new Set<string>([
   "/v1/library.externalLookup",
   LIBRARY_ROUTE_ROLLOUT_GET,
   LIBRARY_ROUTE_ROLLOUT_SET,
+  LIBRARY_ROUTE_STAFF_DASHBOARD,
+  LIBRARY_ROUTE_COVER_REVIEWS_RECONCILE,
+  LIBRARY_ROUTE_METADATA_ENRICHMENT_RUN,
   "/v1/library.externalLookup.providerConfig.get",
   "/v1/library.externalLookup.providerConfig.set",
   "/v1/library.items.resolveIsbn",
@@ -2333,6 +2490,9 @@ const LIBRARY_V1_MEMBER_WRITE_ROUTES = new Set<string>([
 ]);
 const LIBRARY_V1_ADMIN_ROUTES = new Set<string>([
   LIBRARY_ROUTE_ROLLOUT_SET,
+  LIBRARY_ROUTE_STAFF_DASHBOARD,
+  LIBRARY_ROUTE_COVER_REVIEWS_RECONCILE,
+  LIBRARY_ROUTE_METADATA_ENRICHMENT_RUN,
   "/v1/library.items.importIsbns",
   "/v1/library.items.resolveIsbn",
   "/v1/library.items.create",
@@ -2452,6 +2612,14 @@ const API_V1_ROUTE_AUTHZ_EVENTS: Record<string, { action: string; resourceType: 
     action: "reservations_assign_station",
     resourceType: "reservation",
   },
+  "/v1/memberships.summary": {
+    action: "memberships_summary",
+    resourceType: "membership",
+  },
+  "/v1/memberships.changePlan": {
+    action: "memberships_change_plan",
+    resourceType: "membership",
+  },
 };
 const X1C_VALIDATION_VERSION = "2026-02-12.v1";
 const AGENT_ACCOUNT_DEFAULT_DAILY_SPEND_CAP_CENTS = 200_000;
@@ -2500,6 +2668,74 @@ function readStringArray(value: unknown): string[] {
     }
   }
   return out;
+}
+
+function normalizeMetadataLockString(value: unknown): string | null {
+  const text = readStringOrNull(value)?.trim() ?? null;
+  return text && text.length > 0 ? text : null;
+}
+
+function normalizeMetadataLockNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.round(parsed);
+}
+
+function normalizeMetadataLockStringArray(value: unknown): string[] {
+  return Array.from(new Set(readStringArray(value).map((entry) => entry.trim()).filter((entry) => entry.length > 0)));
+}
+
+function metadataFieldValuesEqual(field: (typeof LIBRARY_METADATA_LOCK_FIELDS)[number], left: unknown, right: unknown): boolean {
+  if (field === "authors" || field === "subjects") {
+    return normalizeMetadataLockStringArray(left).join("\u0000") === normalizeMetadataLockStringArray(right).join("\u0000");
+  }
+  if (field === "pageCount") {
+    return normalizeMetadataLockNumber(left) === normalizeMetadataLockNumber(right);
+  }
+  return normalizeMetadataLockString(left) === normalizeMetadataLockString(right);
+}
+
+function buildLibraryMetadataLocksForMutation(input: {
+  existingRow: Record<string, unknown>;
+  nextValues: Record<string, unknown>;
+}): Record<string, true> | null {
+  const priorLocks = readObjectOrEmpty(input.existingRow.metadataLocks);
+  const nextLocks: Record<string, true> = {};
+  for (const [key, value] of Object.entries(priorLocks)) {
+    if ((LIBRARY_METADATA_LOCK_FIELDS as readonly string[]).includes(key) && value === true) {
+      nextLocks[key] = true;
+    }
+  }
+
+  for (const field of LIBRARY_METADATA_LOCK_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(input.nextValues, field)) continue;
+    if (metadataFieldValuesEqual(field, input.existingRow[field], input.nextValues[field])) continue;
+    nextLocks[field] = true;
+  }
+
+  return Object.keys(nextLocks).length > 0 ? nextLocks : null;
+}
+
+function buildMetadataEnrichmentStateForSavedRow(input: {
+  row: Record<string, unknown>;
+  reason: string;
+  now: unknown;
+}): Record<string, unknown> {
+  const thin = assessLibraryThinMetadata(input.row).thin;
+  if (!thin) {
+    return {
+      metadataEnrichmentPending: false,
+      metadataEnrichmentReason: null,
+      metadataEnrichmentQueuedAt: null,
+      metadataEnrichmentStatus: "skipped",
+    };
+  }
+  return {
+    metadataEnrichmentPending: true,
+    metadataEnrichmentReason: input.reason,
+    metadataEnrichmentQueuedAt: input.now,
+    metadataEnrichmentStatus: "pending",
+  };
 }
 
 function toIsoString(value: unknown): string | null {
@@ -2785,6 +3021,14 @@ function normalizeLibraryStatus(row: Record<string, unknown>): string {
   return "available";
 }
 
+function deriveLibraryItemDetailStatus(row: Record<string, unknown>): "ready" | "enriching" | "sparse" {
+  const explicitSummary = readStringOrNull(row.summary);
+  const derivedSummary = explicitSummary?.trim() || deriveLibraryItemSummary(row.description);
+  if (derivedSummary) return "ready";
+  if (row.metadataEnrichmentPending === true) return "enriching";
+  return "sparse";
+}
+
 function normalizeLibraryLoanStatus(value: unknown): string {
   const raw = normalizeToken(value);
   if (raw === "checked_out" || raw === "checkedout" || raw === "checked-out") return "checked_out";
@@ -2880,8 +3124,113 @@ function toLibraryRecommendationFeedbackRow(id: string, row: Record<string, unkn
   };
 }
 
+function toLibraryStaffDashboardRequestRow(id: string, row: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id,
+    title: trimOrNull(row.itemTitle) ?? trimOrNull(row.title) ?? trimOrNull(row.bookTitle),
+    status: trimOrNull(row.status) ?? "open",
+    requesterUid: trimOrNull(row.requesterUid) ?? trimOrNull(row.uid),
+    requesterName: trimOrNull(row.requesterName) ?? trimOrNull(row.displayName),
+    requesterEmail: trimOrNull(row.requesterEmail) ?? trimOrNull(row.email),
+    createdAtMs: readTimestampLikeMs(row.createdAt),
+  };
+}
+
+function toLibraryStaffDashboardLoanRow(id: string, row: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id,
+    itemId: trimOrNull(row.itemId) ?? trimOrNull(row.libraryItemId) ?? trimOrNull(row.item_id),
+    title: trimOrNull(row.itemTitle) ?? trimOrNull(row.title) ?? trimOrNull(row.bookTitle),
+    status: trimOrNull(row.status) ?? normalizeLibraryLoanStatus(row.status),
+    borrowerUid: trimOrNull(row.borrowerUid) ?? trimOrNull(row.uid),
+    borrowerName: trimOrNull(row.borrowerName) ?? trimOrNull(row.displayName),
+    borrowerEmail: trimOrNull(row.borrowerEmail) ?? trimOrNull(row.email),
+    createdAtMs: readTimestampLikeMs(row.createdAt),
+    dueAtMs: readTimestampLikeMs(row.dueAt),
+    returnedAtMs: readTimestampLikeMs(row.returnedAt),
+  };
+}
+
+function toLibraryStaffDashboardCoverReviewRow(id: string, row: Record<string, unknown>): Record<string, unknown> {
+  const identifiers =
+    row.identifiers && typeof row.identifiers === "object" && !Array.isArray(row.identifiers)
+      ? (row.identifiers as Record<string, unknown>)
+      : null;
+  return {
+    id,
+    title: trimOrNull(row.itemTitle) ?? trimOrNull(row.title) ?? trimOrNull(row.bookTitle),
+    isbn: trimOrNull(row.isbn13) ?? trimOrNull(row.isbn) ?? trimOrNull(row.isbn10) ?? trimOrNull(identifiers?.isbn13) ?? trimOrNull(identifiers?.isbn10),
+    source: trimOrNull(row.source),
+    mediaType: trimOrNull(row.mediaType) ?? trimOrNull(row.format),
+    coverUrl: trimOrNull(row.coverUrl),
+    coverProvider: detectCoverProviderFromUrl(row.coverUrl),
+    coverQualityStatus: trimOrNull(row.coverQualityStatus) ?? "needs_review",
+    coverQualityReason: trimOrNull(row.coverQualityReason),
+    coverIssueKind: classifyLibraryCoverIssueKind({
+      coverUrl: row.coverUrl,
+      coverQualityStatus: row.coverQualityStatus,
+      coverQualityReason: row.coverQualityReason,
+    }),
+    updatedAtMs: readTimestampLikeMs(row.updatedAt),
+  };
+}
+
+function toLibraryStaffDashboardTagSubmissionRow(id: string, row: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id,
+    itemId: trimOrNull(row.itemId),
+    itemTitle: trimOrNull(row.itemTitle) ?? trimOrNull(row.title) ?? trimOrNull(row.bookTitle),
+    tag: trimOrNull(row.tag),
+    normalizedTag: trimOrNull(row.normalizedTag),
+    status: trimOrNull(row.status) ?? "pending",
+    submittedByUid: trimOrNull(row.submittedByUid) ?? trimOrNull(row.uid),
+    submittedByName: trimOrNull(row.submittedByName) ?? trimOrNull(row.displayName),
+    createdAtMs: readTimestampLikeMs(row.createdAt),
+    updatedAtMs: readTimestampLikeMs(row.updatedAt),
+  };
+}
+
+function toLibraryStaffDashboardMetadataGapRow(row: {
+  itemId: string;
+  title: string;
+  source: string | null;
+  mediaType: string | null;
+  coverQualityStatus: string | null;
+  coverQualityReason: string | null;
+  detailStatus: string | null;
+  gapReasons: string[];
+  updatedAtMs: number;
+  isbn: string | null;
+}): Record<string, unknown> {
+  return {
+    itemId: row.itemId,
+    title: row.title,
+    source: row.source,
+    mediaType: row.mediaType,
+    coverQualityStatus: row.coverQualityStatus,
+    coverQualityReason: row.coverQualityReason,
+    detailStatus: row.detailStatus,
+    gapReasons: row.gapReasons,
+    updatedAtMs: row.updatedAtMs,
+    isbn: row.isbn,
+  };
+}
+
 function isLibraryRowSoftDeleted(row: Record<string, unknown>): boolean {
   return row.deletedAt != null || row.deleted_at != null || row.deletedAtIso != null;
+}
+
+function readLibraryCatalogVisibility(row: Record<string, unknown>): string {
+  return normalizeToken(row.catalogVisibility || row.catalog_visibility || "public");
+}
+
+function isLibraryRowMemberVisible(row: Record<string, unknown>): boolean {
+  return readLibraryCatalogVisibility(row) !== "manual_only";
+}
+
+function isPlaceholderLibraryTitle(value: unknown): boolean {
+  const title = trimOrNull(value)?.toLowerCase() ?? "";
+  return /^isbn\s+[0-9x-]+$/i.test(title);
 }
 
 function normalizeLibraryItemStringArray(value: unknown, maxItems: number): string[] {
@@ -3115,8 +3464,14 @@ function toLibraryApiItemRow(
   const ratingCount = readLibraryRatingCount(row, id, reviewSignals);
   const borrowCount = readLibraryBorrowCount(row, id, borrowCounts);
   const lastReviewedMs = readLibraryLastReviewedMs(row, id, reviewSignals);
+  const summary = readStringOrNull(row.summary)?.trim() || deriveLibraryItemSummary(row.description);
 
   out.status = status;
+  out.summary = summary ?? null;
+  out.detailStatus = deriveLibraryItemDetailStatus({
+    ...row,
+    summary,
+  });
   if (rating !== null) out.aggregateRating = Math.round(rating * 100) / 100;
   if (ratingCount > 0) out.aggregateRatingCount = ratingCount;
   if (borrowCount > 0) out.borrowCount = borrowCount;
@@ -3137,8 +3492,18 @@ const WORKSHOP_DEMAND_SCORE_WEIGHTS = {
   request: 3,
   interest: 1,
   showcase: 1,
-  withdrawn: 0.5,
+  withdrawn: -0.5,
 } as const;
+
+function computeWorkshopDemandFreshnessBonus(latestSignalAtMs: number | null): number {
+  if (latestSignalAtMs === null || latestSignalAtMs <= 0) return 0;
+  const ageDays = Math.max(0, (nowTs().toMillis() - latestSignalAtMs) / 86_400_000);
+  if (ageDays <= 3) return 2;
+  if (ageDays <= 14) return 1.25;
+  if (ageDays <= 30) return 0.75;
+  if (ageDays <= 90) return 0.35;
+  return 0;
+}
 
 function computeWorkshopDemandScore(
   counts: {
@@ -3158,6 +3523,12 @@ function computeWorkshopDemandScore(
     showcaseSignals * WORKSHOP_DEMAND_SCORE_WEIGHTS.showcase +
     withdrawnSignals * WORKSHOP_DEMAND_SCORE_WEIGHTS.withdrawn;
   return Math.round(weightedScore * 10) / 10;
+}
+
+function computeWorkshopDemandSortScore(counts: WorkshopDiscoverySignalCounts): number {
+  const demandScore = Math.max(0, counts.demandScore ?? computeWorkshopDemandScore(counts));
+  const freshnessBonus = computeWorkshopDemandFreshnessBonus(counts.latestSignalAtMs);
+  return Math.round((demandScore + freshnessBonus) * 10) / 10;
 }
 
 type LibraryDiscoveryWorkshopSummary = {
@@ -3208,7 +3579,7 @@ function normalizeWorkshopSignalCounts(
     showcaseSignals: counts.showcaseSignals,
     withdrawnSignals: counts.withdrawnSignals,
     totalSignals,
-    demandScore: counts.demandScore ?? computeWorkshopDemandScore(counts),
+    demandScore: Math.max(0, counts.demandScore ?? computeWorkshopDemandScore(counts)),
     latestSignalAtMs: counts.latestSignalAtMs,
   };
 }
@@ -3278,6 +3649,7 @@ type WorkshopDiscoveryWorkshopRow = LibraryDiscoveryWorkshopSummary & {
   latestSignalAtMs: number;
   totalSignalCount: number;
   demandScore: number;
+  sortDemandScore: number;
   hasCommunitySignalActivity: boolean;
 };
 
@@ -3289,6 +3661,7 @@ function sanitizeWorkshopDiscoveryRow(
   delete copy.latestSignalAtMs;
   delete copy.totalSignalCount;
   delete copy.demandScore;
+  delete copy.sortDemandScore;
   delete copy.hasCommunitySignalActivity;
   return copy as LibraryDiscoveryWorkshopSummary;
 }
@@ -3348,22 +3721,30 @@ async function loadWorkshopDiscoverySection(
       const eventSummary = normalizeLibraryDiscoveryWorkshopSummary(entry.id, entry.row, count);
       const startAtMs = parseWorkshopStartMs(eventSummary.startAt);
       const totalSignalCount = eventSummary.communitySignalCounts?.totalSignals ?? 0;
-      const withdrawnSignalCount = eventSummary.communitySignalCounts?.withdrawnSignals ?? 0;
+      const sortDemandScore = computeWorkshopDemandSortScore({
+        requestSignals: eventSummary.communitySignalCounts?.requestSignals ?? 0,
+        interestSignals: eventSummary.communitySignalCounts?.interestSignals ?? 0,
+        showcaseSignals: eventSummary.communitySignalCounts?.showcaseSignals ?? 0,
+        withdrawnSignals: eventSummary.communitySignalCounts?.withdrawnSignals ?? 0,
+        demandScore: eventSummary.communitySignalCounts?.demandScore,
+        latestSignalAtMs: eventSummary.communitySignalCounts?.latestSignalAtMs ?? null,
+      });
       return {
         ...eventSummary,
         startAtMs,
         latestSignalAtMs: eventSummary.communitySignalCounts?.latestSignalAtMs ?? 0,
         totalSignalCount,
         demandScore: eventSummary.communitySignalCounts?.demandScore ?? 0,
-        hasCommunitySignalActivity: totalSignalCount + withdrawnSignalCount > 0,
+        sortDemandScore,
+        hasCommunitySignalActivity: totalSignalCount > 0,
       };
     });
 
   const featuredBySignals = discoveryRows
     .filter((entry) => entry.hasCommunitySignalActivity)
     .sort((left, right) => {
-      if ((right.demandScore - left.demandScore) !== 0) {
-        return right.demandScore - left.demandScore;
+      if ((right.sortDemandScore - left.sortDemandScore) !== 0) {
+        return right.sortDemandScore - left.sortDemandScore;
       }
       if ((right.totalSignalCount - left.totalSignalCount) !== 0) {
         return right.totalSignalCount - left.totalSignalCount;
@@ -3392,7 +3773,11 @@ async function loadWorkshopDiscoverySection(
       .slice(0, fillCount);
 
     const featuredWorkshops = [...featuredBySignals, ...featuredFallbackByStart];
-    const summarySignalRows = featuredWorkshops.filter((entry) => entry.hasCommunitySignalActivity);
+    const summarySignalRows = featuredWorkshops.filter((entry) => {
+      const totalSignals = entry.communitySignalCounts?.totalSignals ?? 0;
+      const withdrawnSignals = entry.communitySignalCounts?.withdrawnSignals ?? 0;
+      return totalSignals > 0 || withdrawnSignals > 0;
+    });
     const signalWorkshopCount = summarySignalRows.length;
     const summaryTotalSignals = summarySignalRows.reduce(
       (sum, entry) => sum + (entry.communitySignalCounts?.totalSignals ?? 0),
@@ -3444,21 +3829,60 @@ async function loadWorkshopDiscoverySection(
       }
       return left.id.localeCompare(right.id);
     })
-    .slice(0, limit)
-    .map(sanitizeWorkshopDiscoveryRow);
+    .slice(0, limit);
+
+  const summaryFallbackRequestSignals = fallbackWorkshops.reduce(
+    (sum, entry) => sum + (entry.communitySignalCounts?.requestSignals ?? 0),
+    0,
+  );
+  const summaryFallbackInterestSignals = fallbackWorkshops.reduce(
+    (sum, entry) => sum + (entry.communitySignalCounts?.interestSignals ?? 0),
+    0,
+  );
+  const summaryFallbackShowcaseSignals = fallbackWorkshops.reduce(
+    (sum, entry) => sum + (entry.communitySignalCounts?.showcaseSignals ?? 0),
+    0,
+  );
+  const summaryFallbackTotalSignals =
+    summaryFallbackRequestSignals + summaryFallbackInterestSignals + summaryFallbackShowcaseSignals;
+  const summaryFallbackWithdrawnSignals = fallbackWorkshops.reduce(
+    (sum, entry) => sum + (entry.communitySignalCounts?.withdrawnSignals ?? 0),
+    0,
+  );
+  const summaryFallbackLatestSignalAtMs = fallbackWorkshops.reduce((acc, entry) => {
+    if (!Number.isFinite(entry.latestSignalAtMs)) return acc;
+    return Math.max(acc, entry.latestSignalAtMs);
+  }, 0);
+
+  const fallbackWorkshopsSanitized = fallbackWorkshops.map(sanitizeWorkshopDiscoveryRow);
+  const fallbackSignalWorkshopCount = fallbackWorkshops.reduce(
+    (sum, entry) => {
+      const activeSignals =
+        (entry.communitySignalCounts?.requestSignals ?? 0) +
+        (entry.communitySignalCounts?.interestSignals ?? 0) +
+        (entry.communitySignalCounts?.showcaseSignals ?? 0);
+      const withdrawnSignals = entry.communitySignalCounts?.withdrawnSignals ?? 0;
+      return sum + (activeSignals + withdrawnSignals > 0 ? 1 : 0);
+    },
+    0,
+  );
+  const fallbackTopDemandScore = fallbackWorkshops.reduce(
+    (maxScore, entry) => Math.max(maxScore, entry.communitySignalCounts?.demandScore ?? 0),
+    0,
+  );
 
   return {
-    workshops: fallbackWorkshops,
+    workshops: fallbackWorkshopsSanitized,
     source: "fallback",
-    topDemandScore: null,
-    totalSignals: 0,
-    requestSignals: 0,
-    interestSignals: 0,
-    showcaseSignals: 0,
-    withdrawnSignals: 0,
+    topDemandScore: fallbackTopDemandScore > 0 ? fallbackTopDemandScore : null,
+    totalSignals: summaryFallbackTotalSignals,
+    requestSignals: summaryFallbackRequestSignals,
+    interestSignals: summaryFallbackInterestSignals,
+    showcaseSignals: summaryFallbackShowcaseSignals,
+    withdrawnSignals: summaryFallbackWithdrawnSignals,
     workshopCount: fallbackWorkshops.length,
-    signalWorkshopCount: 0,
-    latestSignalAtMs: null,
+    signalWorkshopCount: fallbackSignalWorkshopCount,
+    latestSignalAtMs: summaryFallbackLatestSignalAtMs > 0 ? summaryFallbackLatestSignalAtMs : null,
   };
 }
 
@@ -4780,6 +5204,13 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       const fragileHandlingRatePerHalfShelf = 4;
       const placementPreferenceFlatCost = 3;
       const prepaidStorageWeeklyCost = 2;
+      const staffGlazePrepRatePerHalfShelfRaw = normalizeNumber(
+        addOnsInput.staffGlazePrepRatePerHalfShelf
+      );
+      const staffGlazePrepRequested =
+        !isCommunityShelf &&
+        (addOnsInput.staffGlazePrepRequested === true ||
+          addOnsInput.waxResistAssistRequested === true);
       const placementPreferenceZoneInput = addOnsInput.placementPreferenceZone;
       const placementPreferenceZone =
         placementPreferenceZoneInput === "top" ||
@@ -4804,8 +5235,15 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           addOnsInput.useStudioGlazes === true
           ? resolvedEstimatedHalfShelves * 3
           : null,
-        waxResistAssistRequested: !isCommunityShelf && addOnsInput.waxResistAssistRequested === true,
+        waxResistAssistRequested: staffGlazePrepRequested,
         glazeSanityCheckRequested: !isCommunityShelf && addOnsInput.glazeSanityCheckRequested === true,
+        staffGlazePrepRequested,
+        staffGlazePrepRatePerHalfShelf:
+          staffGlazePrepRequested &&
+          typeof staffGlazePrepRatePerHalfShelfRaw === "number" &&
+          staffGlazePrepRatePerHalfShelfRaw > 0
+            ? staffGlazePrepRatePerHalfShelfRaw
+            : null,
         fragileHandlingRequested: !isCommunityShelf && addOnsInput.fragileHandlingRequested === true,
         fragileHandlingCost:
           !isCommunityShelf &&
@@ -5102,6 +5540,246 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         .slice(0, limit);
 
       jsonOk(res, requestId, { ownerUid: targetOwnerUid, reservations });
+      return;
+    }
+
+    if (route === "/v1/memberships.summary") {
+      const scopeCheck = requireScopes(ctx, ["memberships:read"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(membershipsSummarySchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const [profileSnap, userSnap, configSnap] = await Promise.all([
+        db.collection("profiles").doc(ctx.uid).get(),
+        db.collection("users").doc(ctx.uid).get(),
+        db.doc(STRIPE_CONFIG_DOC_PATH).get(),
+      ]);
+      const profileData = profileSnap.exists ? (profileSnap.data() as Record<string, unknown>) : {};
+      const userData = userSnap.exists ? (userSnap.data() as Record<string, unknown>) : {};
+      const config = normalizeStripeConfig(
+        configSnap.exists ? (configSnap.data() as Record<string, unknown>) : {}
+      );
+
+      const membershipRaw =
+        profileData.membership && typeof profileData.membership === "object"
+          ? (profileData.membership as Record<string, unknown>)
+          : userData.membership && typeof userData.membership === "object"
+            ? (userData.membership as Record<string, unknown>)
+            : {};
+      const currentPlanKey =
+        normalizeMembershipPlanKey(membershipRaw.planKey) ??
+        normalizeMembershipPlanKey(profileData.membershipTier) ??
+        normalizeMembershipPlanKey(userData.membershipTier) ??
+        "a_la_carte";
+      const currentPlan = getMembershipPlanCatalogEntry(currentPlanKey);
+      const pendingPlanKey = normalizeMembershipPlanKey(membershipRaw.pendingPlanKey);
+      const pendingPlan = pendingPlanKey ? getMembershipPlanCatalogEntry(pendingPlanKey) : null;
+
+      const availablePlans = MEMBERSHIP_PLAN_CATALOG.map((plan) => {
+        const priceConfigured = safeString(config.priceIds[plan.priceKey]).trim().length > 0;
+        return {
+          key: plan.key,
+          priceKey: plan.priceKey,
+          label: plan.label,
+          stage: plan.stage,
+          summary: plan.summary,
+          focus: plan.focus,
+          priceConfigured,
+          checkoutEnabled: config.enabledFeatures.checkout && priceConfigured,
+          isCurrent: plan.key === currentPlanKey,
+        };
+      });
+
+      jsonOk(res, requestId, {
+        membership: {
+          planKey: currentPlanKey,
+          label: safeString(membershipRaw.label) || currentPlan.label,
+          status: safeString(membershipRaw.status) || "active",
+          checkoutEligible: availablePlans.some((plan) => plan.checkoutEnabled),
+          since: toIsoString(profileData.membershipSince) ?? toIsoString(userData.membershipSince),
+          renewalAt:
+            toIsoString(membershipRaw.renewalAt) ??
+            toIsoString(profileData.membershipExpiresAt) ??
+            toIsoString(userData.membershipExpiresAt),
+          checkoutSessionId:
+            safeString(membershipRaw.pendingCheckoutSessionId) ||
+            safeString(membershipRaw.checkoutSessionId) ||
+            null,
+          pendingPlanKey: pendingPlan?.key ?? null,
+          pendingPlanLabel: pendingPlan?.label ?? null,
+        },
+        availablePlans,
+        checkoutEnabled: config.enabledFeatures.checkout,
+        mode: config.mode,
+      });
+      return;
+    }
+
+    if (route === "/v1/memberships.changePlan") {
+      const scopeCheck = requireScopes(ctx, ["memberships:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(membershipsChangePlanSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const rate = await enforceRateLimit({
+        req,
+        key: `memberships.changePlan:${ctx.uid}`,
+        max: 8,
+        windowMs: 60_000,
+      });
+      if (!rate.ok) {
+        res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+        jsonError(res, requestId, 429, "RATE_LIMITED", "Too many membership checkout attempts");
+        return;
+      }
+
+      const configSnap = await db.doc(STRIPE_CONFIG_DOC_PATH).get();
+      const config = normalizeStripeConfig(
+        configSnap.exists ? (configSnap.data() as Record<string, unknown>) : {}
+      );
+      if (!config.enabledFeatures.checkout) {
+        jsonError(res, requestId, 403, "FAILED_PRECONDITION", "Membership checkout is disabled right now.");
+        return;
+      }
+
+      const plan = getMembershipPlanCatalogEntry(parsed.data.planKey);
+      const selectedPriceId = safeString(config.priceIds[plan.priceKey]).trim();
+      if (!selectedPriceId) {
+        jsonError(
+          res,
+          requestId,
+          400,
+          "FAILED_PRECONDITION",
+          `Stripe price is not configured for ${plan.label}.`
+        );
+        return;
+      }
+
+      const successUrl = buildMembershipReturnUrl("success", plan.key);
+      const cancelUrl = buildMembershipReturnUrl("cancel", plan.key);
+      const stripe = getStripeClient(config.mode);
+
+      try {
+        const price = await stripe.prices.retrieve(selectedPriceId);
+        const sessionMode = price.type === "recurring" ? "subscription" : "payment";
+        const metadata = {
+          uid: ctx.uid,
+          mode: config.mode,
+          source: "portal_membership_change",
+          priceKey: plan.priceKey,
+          membershipPlanKey: plan.key,
+          membershipTierLabel: plan.label,
+          membershipPriceKey: plan.priceKey,
+        };
+        const session = await stripe.checkout.sessions.create({
+          mode: sessionMode,
+          line_items: [{ price: selectedPriceId, quantity: 1 }],
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          client_reference_id: ctx.uid,
+          metadata,
+          ...(sessionMode === "subscription"
+            ? {
+              subscription_data: {
+                metadata,
+              },
+            }
+            : {}),
+        });
+
+        const now = nowTs();
+        const paymentRef = db.collection("payments").doc(session.id);
+        const userPaymentRef = db.collection("users").doc(ctx.uid).collection("payments").doc(session.id);
+        const membershipPendingWrite = {
+          membership: {
+            pendingPlanKey: plan.key,
+            pendingPlanLabel: plan.label,
+            pendingCheckoutSessionId: session.id,
+            checkoutStatus: "checkout_created",
+            updatedAt: now,
+          },
+          updatedAt: now,
+        };
+
+        await Promise.all([
+          paymentRef.set(
+            {
+              uid: ctx.uid,
+              mode: config.mode,
+              status: "checkout_created",
+              source: "portal_membership_change",
+              purpose: "membership_plan_change",
+              priceId: selectedPriceId,
+              priceKey: plan.priceKey,
+              membershipPlanKey: plan.key,
+              membershipTierLabel: plan.label,
+              checkoutSessionId: session.id,
+              stripePaymentIntentId:
+                typeof session.payment_intent === "string" ? session.payment_intent : null,
+              amountTotal:
+                typeof session.amount_total === "number" ? session.amount_total : null,
+              currency: typeof session.currency === "string" ? session.currency : null,
+              updatedAt: now,
+              createdAt: now,
+            },
+            { merge: true }
+          ),
+          userPaymentRef.set(
+            {
+              uid: ctx.uid,
+              mode: config.mode,
+              status: "checkout_created",
+              source: "portal_membership_change",
+              purpose: "membership_plan_change",
+              priceId: selectedPriceId,
+              priceKey: plan.priceKey,
+              membershipPlanKey: plan.key,
+              membershipTierLabel: plan.label,
+              checkoutSessionId: session.id,
+              stripePaymentIntentId:
+                typeof session.payment_intent === "string" ? session.payment_intent : null,
+              amountTotal:
+                typeof session.amount_total === "number" ? session.amount_total : null,
+              currency: typeof session.currency === "string" ? session.currency : null,
+              updatedAt: now,
+              createdAt: now,
+            },
+            { merge: true }
+          ),
+          db.collection("profiles").doc(ctx.uid).set(membershipPendingWrite, { merge: true }),
+          db.collection("users").doc(ctx.uid).set(membershipPendingWrite, { merge: true }),
+        ]);
+
+        jsonOk(res, requestId, {
+          planKey: plan.key,
+          checkoutUrl: session.url ?? null,
+          sessionId: session.id,
+          mode: config.mode,
+          successUrl,
+          cancelUrl,
+        });
+      } catch (error) {
+        logger.error("memberships.changePlan failed", {
+          uid: ctx.uid,
+          planKey: plan.key,
+          message: safeErrorMessage(error),
+        });
+        jsonError(res, requestId, 500, "INTERNAL", "Unable to create membership checkout session");
+      }
       return;
     }
 
@@ -5538,22 +6216,6 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         return;
       }
 
-      const admin = await requireAdmin(req);
-      if (!admin.ok) {
-        await logReservationAuditEvent({
-          req,
-          requestId,
-          action: "reservations_lookup_arrival_admin_auth",
-          resourceType: "reservation",
-          resourceId: route,
-          result: "deny",
-          reasonCode: admin.code,
-          ctx,
-        });
-        jsonError(res, requestId, admin.httpStatus, admin.code, admin.message);
-        return;
-      }
-
       const parsed = parseBody(reservationsLookupArrivalSchema, req.body);
       if (!parsed.ok) {
         jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
@@ -5570,6 +6232,23 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       const ownerUid = safeString(row.ownerUid, "");
       if (!ownerUid) {
         jsonError(res, requestId, 500, "INTERNAL", "Reservation missing owner");
+        return;
+      }
+
+      const admin = await requireAdmin(req);
+      if (!admin.ok) {
+        await logReservationAuditEvent({
+          req,
+          requestId,
+          action: "reservations_lookup_arrival_admin_auth",
+          resourceType: "reservation",
+          resourceId: route,
+          ownerUid,
+          result: "deny",
+          reasonCode: admin.code,
+          ctx,
+        });
+        jsonError(res, requestId, admin.httpStatus, admin.code, admin.message);
         return;
       }
 
@@ -5783,22 +6462,6 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         return;
       }
 
-      const admin = await requireAdmin(req);
-      if (!admin.ok) {
-        await logReservationAuditEvent({
-          req,
-          requestId,
-          action: "reservations_rotate_arrival_token_admin_auth",
-          resourceType: "reservation",
-          resourceId: route,
-          result: "deny",
-          reasonCode: admin.code,
-          ctx,
-        });
-        jsonError(res, requestId, admin.httpStatus, admin.code, admin.message);
-        return;
-      }
-
       const parsed = parseBody(reservationsRotateArrivalTokenSchema, req.body);
       if (!parsed.ok) {
         jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
@@ -5817,6 +6480,23 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       const ownerUid = safeString(row.ownerUid, "");
       if (!ownerUid) {
         jsonError(res, requestId, 500, "INTERNAL", "Reservation missing owner");
+        return;
+      }
+
+      const admin = await requireAdmin(req);
+      if (!admin.ok) {
+        await logReservationAuditEvent({
+          req,
+          requestId,
+          action: "reservations_rotate_arrival_token_admin_auth",
+          resourceType: "reservation",
+          resourceId: route,
+          ownerUid,
+          result: "deny",
+          reasonCode: admin.code,
+          ctx,
+        });
+        jsonError(res, requestId, admin.httpStatus, admin.code, admin.message);
         return;
       }
 
@@ -5859,7 +6539,12 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       const nextLookup = normalizeArrivalTokenLookup(nextToken);
       const nextExpiry = Timestamp.fromDate(resolveArrivalTokenExpiryDate(row, new Date()));
       const reason = trimOrNull(parsed.data.reason) || "Arrival token reissued";
-      const actorRole = admin.mode === "staff" ? "staff" : "dev";
+      const actorRole =
+        admin.ok
+          ? admin.mode === "staff"
+            ? "staff"
+            : "dev"
+          : "client";
       const loadStatus = normalizeLoadStatus(row.loadStatus);
       const lifecycleStage = stageForCurrentState(status, loadStatus);
       const stageHistory = normalizeReservationStageHistory(row.stageHistory);
@@ -7190,6 +7875,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         const row = docSnap.data() as Record<string, unknown>;
         if (!row || typeof row !== "object") continue;
         if (isLibraryRowSoftDeleted(row)) continue;
+        if (!isStaff && !isLibraryRowMemberVisible(row)) continue;
 
         if (mediaTypeFilters.size > 0 && !mediaTypeFilters.has(readLibraryMediaType(row))) continue;
         if (genreFilter && readLibraryGenre(row) !== genreFilter) continue;
@@ -7280,6 +7966,10 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
         return;
       }
+      if (!isStaff && !isLibraryRowMemberVisible(row)) {
+        jsonError(res, requestId, 404, "NOT_FOUND", "Library item not found");
+        return;
+      }
 
       const reviewSignals = await loadLibraryReviewSignals(3000);
       const borrowCounts = await loadLibraryBorrowCounts(3000);
@@ -7315,7 +8005,12 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       const borrowCounts = await loadLibraryBorrowCounts(3000);
       const rows = itemsSnap.docs
         .map((docSnap) => ({ id: docSnap.id, row: docSnap.data() as Record<string, unknown> }))
-        .filter((entry) => entry.row && typeof entry.row === "object" && !isLibraryRowSoftDeleted(entry.row));
+        .filter((entry) =>
+          entry.row &&
+          typeof entry.row === "object" &&
+          !isLibraryRowSoftDeleted(entry.row) &&
+          (isStaff || isLibraryRowMemberVisible(entry.row))
+        );
 
       const byTitle = (a: { row: Record<string, unknown> }, b: { row: Record<string, unknown> }) =>
         normalizeToken(a.row.title).localeCompare(normalizeToken(b.row.title));
@@ -7602,6 +8297,11 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
             googlebooksEnabled: config.googlebooksEnabled,
             coverReviewGuardrailEnabled: config.coverReviewGuardrailEnabled,
             disabledProviders: config.disabledProviders,
+            providers: config.providers.map((provider) => ({
+              provider: provider.provider,
+              enabled: provider.enabled,
+              available: provider.available,
+            })),
           },
         });
         jsonOk(res, requestId, {
@@ -7609,6 +8309,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           googlebooksEnabled: config.googlebooksEnabled,
           coverReviewGuardrailEnabled: config.coverReviewGuardrailEnabled,
           disabledProviders: config.disabledProviders,
+          providers: config.providers,
           note: config.note,
           updatedAtMs: config.updatedAtMs,
           updatedByUid: config.updatedByUid,
@@ -7644,6 +8345,11 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         const config = await setLibraryExternalLookupProviderConfig({
           openlibraryEnabled: parsed.data.openlibraryEnabled,
           googlebooksEnabled: parsed.data.googlebooksEnabled,
+          disabledProviders: Array.isArray(parsed.data.disabledProviders)
+            ? parsed.data.disabledProviders.filter((provider): provider is typeof KNOWN_EXTERNAL_LOOKUP_PROVIDERS[number] =>
+                KNOWN_EXTERNAL_LOOKUP_PROVIDERS.includes(provider as typeof KNOWN_EXTERNAL_LOOKUP_PROVIDERS[number])
+              )
+            : undefined,
           coverReviewGuardrailEnabled: parsed.data.coverReviewGuardrailEnabled,
           note: parsed.data.note ?? null,
           updatedByUid: ctx.uid,
@@ -7662,6 +8368,11 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
             googlebooksEnabled: config.googlebooksEnabled,
             coverReviewGuardrailEnabled: config.coverReviewGuardrailEnabled,
             disabledProviders: config.disabledProviders,
+            providers: config.providers.map((provider) => ({
+              provider: provider.provider,
+              enabled: provider.enabled,
+              available: provider.available,
+            })),
             hasNote: Boolean(config.note),
           },
         });
@@ -7670,6 +8381,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           googlebooksEnabled: config.googlebooksEnabled,
           coverReviewGuardrailEnabled: config.coverReviewGuardrailEnabled,
           disabledProviders: config.disabledProviders,
+          providers: config.providers,
           note: config.note,
           updatedAtMs: config.updatedAtMs,
           updatedByUid: config.updatedByUid,
@@ -7884,7 +8596,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         availableCopies: parsed.data.availableCopies,
       });
       const status = libraryStatusFromCopies(parsed.data.status, copyCounts.availableCopies);
-      const title = trimOrNull(parsed.data.title) ?? resolved?.lookup.title ?? (normalizedIsbn ? `ISBN ${normalizedIsbn}` : "Library item");
+      const title =
+        trimOrNull(parsed.data.title) ?? resolved?.lookup.title ?? (normalizedIsbn ? `ISBN ${normalizedIsbn}` : "Library item");
       const tags = Object.prototype.hasOwnProperty.call(parsed.data, "tags")
         ? normalizeLibraryItemStringArray(parsed.data.tags, 60)
         : [];
@@ -7895,18 +8608,47 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         ? normalizeLibraryItemStringArray(parsed.data.subjects, 40)
         : (resolved?.lookup.subjects ?? []);
       const source = trimOrNull(parsed.data.source) ?? resolved?.lookup.source ?? "manual";
+      const subtitle = trimOrNull(parsed.data.subtitle) ?? resolved?.lookup.subtitle ?? null;
+      const description = trimOrNull(parsed.data.description) ?? resolved?.lookup.description ?? null;
+      const summary = trimOrNull(parsed.data.summary) ?? deriveLibraryItemSummary(description);
+      const publisher = trimOrNull(parsed.data.publisher) ?? resolved?.lookup.publisher ?? null;
+      const publishedDate = trimOrNull(parsed.data.publishedDate) ?? resolved?.lookup.publishedDate ?? null;
+      const pageCount = parsed.data.pageCount ?? resolved?.lookup.pageCount ?? null;
+      const coverUrl = trimOrNull(parsed.data.coverUrl) ?? resolved?.lookup.coverUrl ?? null;
+      if (isDisallowedRetailCoverUrl(coverUrl)) {
+        jsonError(
+          res,
+          requestId,
+          400,
+          "INVALID_ARGUMENT",
+          "Retail-hosted cover URLs are not allowed. Use retail pages as reference only and save an approved catalog/community cover instead.",
+          {
+            reasonCode: "DISALLOWED_RETAIL_COVER_URL",
+          }
+        );
+        return;
+      }
+      const format = trimOrNull(parsed.data.format) ?? resolved?.lookup.format ?? null;
+      const curationPatch: Record<string, unknown> = {};
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "staffPick")) {
+        curationPatch.staffPick = parsed.data.staffPick === true;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "staffRationale")) {
+        curationPatch.staffRationale = trimOrNull(parsed.data.staffRationale);
+      }
 
       const itemRow: Record<string, unknown> = {
         title,
-        subtitle: trimOrNull(parsed.data.subtitle) ?? resolved?.lookup.subtitle ?? null,
+        subtitle,
         authors,
-        description: trimOrNull(parsed.data.description) ?? resolved?.lookup.description ?? null,
-        publisher: trimOrNull(parsed.data.publisher) ?? resolved?.lookup.publisher ?? null,
-        publishedDate: trimOrNull(parsed.data.publishedDate) ?? resolved?.lookup.publishedDate ?? null,
-        pageCount: parsed.data.pageCount ?? resolved?.lookup.pageCount ?? null,
+        summary,
+        description,
+        publisher,
+        publishedDate,
+        pageCount,
         subjects,
-        coverUrl: trimOrNull(parsed.data.coverUrl) ?? resolved?.lookup.coverUrl ?? null,
-        format: trimOrNull(parsed.data.format) ?? resolved?.lookup.format ?? null,
+        coverUrl,
+        format,
         mediaType: trimOrNull(parsed.data.mediaType) ?? "book",
         status,
         current_lending_status: status,
@@ -7924,12 +8666,18 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         },
         source,
         metadataSource: "api_v1_create",
+        catalogVisibility: "public",
+        manualPassRequired: false,
+        manualPassRequiredAt: null,
         createdAt: now,
         createdByUid: ctx.uid,
         updatedAt: now,
         updatedByUid: ctx.uid,
         actorMode: ctx.mode,
       };
+      if (Object.keys(curationPatch).length > 0) {
+        itemRow.curation = curationPatch;
+      }
 
       if (Object.prototype.hasOwnProperty.call(parsed.data, "replacementValueCents")) {
         itemRow.replacementValueCents = parsed.data.replacementValueCents ?? null;
@@ -7938,6 +8686,24 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         itemRow.tags = tags;
         itemRow.secondaryTags = tags;
       }
+      const createLocks = buildLibraryMetadataLocksForMutation({
+        existingRow: {},
+        nextValues: itemRow,
+      });
+      if (createLocks && !Object.prototype.hasOwnProperty.call(parsed.data, "summary")) {
+        delete createLocks.summary;
+      }
+      if (createLocks && Object.keys(createLocks).length > 0) {
+        itemRow.metadataLocks = createLocks;
+      }
+      Object.assign(
+        itemRow,
+        buildMetadataEnrichmentStateForSavedRow({
+          row: itemRow,
+          reason: "manual_save",
+          now,
+        }),
+      );
 
       await db.collection("libraryItems").doc(itemId).set(itemRow, { merge: false });
 
@@ -8073,6 +8839,17 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       } else if (resolved) {
         patch.description = resolved.lookup.description;
       }
+      const existingSummary = readStringOrNull(existingRow.summary)?.trim() ?? null;
+      const priorDerivedSummary = deriveLibraryItemSummary(existingRow.description);
+      const summaryLooksAutoDerived = !existingSummary || existingSummary === priorDerivedSummary;
+      const nextDescriptionForSummary = Object.prototype.hasOwnProperty.call(patch, "description")
+        ? patch.description
+        : existingRow.description;
+      if (Object.prototype.hasOwnProperty.call(parsed.data, "summary")) {
+        patch.summary = trimOrNull(parsed.data.summary) ?? deriveLibraryItemSummary(nextDescriptionForSummary);
+      } else if (Object.prototype.hasOwnProperty.call(patch, "description") && summaryLooksAutoDerived) {
+        patch.summary = deriveLibraryItemSummary(nextDescriptionForSummary);
+      }
       if (Object.prototype.hasOwnProperty.call(parsed.data, "publisher")) {
         patch.publisher = trimOrNull(parsed.data.publisher);
       } else if (resolved) {
@@ -8098,6 +8875,19 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       } else if (resolved) {
         patch.coverUrl = resolved.lookup.coverUrl;
       }
+      if (Object.prototype.hasOwnProperty.call(patch, "coverUrl") && isDisallowedRetailCoverUrl(patch.coverUrl)) {
+        jsonError(
+          res,
+          requestId,
+          400,
+          "INVALID_ARGUMENT",
+          "Retail-hosted cover URLs are not allowed. Use retail pages as reference only and save an approved catalog/community cover instead.",
+          {
+            reasonCode: "DISALLOWED_RETAIL_COVER_URL",
+          }
+        );
+        return;
+      }
       if (Object.prototype.hasOwnProperty.call(parsed.data, "format")) {
         patch.format = trimOrNull(parsed.data.format);
       } else if (resolved) {
@@ -8113,6 +8903,21 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         const tags = normalizeLibraryItemStringArray(parsed.data.tags, 60);
         patch.tags = tags;
         patch.secondaryTags = tags;
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(parsed.data, "staffPick") ||
+        Object.prototype.hasOwnProperty.call(parsed.data, "staffRationale")
+      ) {
+        const existingCuration = readObjectOrEmpty(existingRow.curation);
+        patch.curation = {
+          ...existingCuration,
+          ...(Object.prototype.hasOwnProperty.call(parsed.data, "staffPick")
+            ? { staffPick: parsed.data.staffPick === true }
+            : {}),
+          ...(Object.prototype.hasOwnProperty.call(parsed.data, "staffRationale")
+            ? { staffRationale: trimOrNull(parsed.data.staffRationale) }
+            : {}),
+        };
       }
 
       const nextCopyCounts = computeLibraryItemCopyCounts({
@@ -8135,6 +8940,39 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         patch.status = parsed.data.status;
         patch.current_lending_status = parsed.data.status;
       }
+
+      const nextLocks = buildLibraryMetadataLocksForMutation({
+        existingRow,
+        nextValues: patch,
+      });
+      if (nextLocks && !Object.prototype.hasOwnProperty.call(parsed.data, "summary")) {
+        delete nextLocks.summary;
+      }
+      if (nextLocks && Object.keys(nextLocks).length > 0) {
+        patch.metadataLocks = nextLocks;
+      }
+      const nextRow = {
+        ...existingRow,
+        ...patch,
+      };
+      if (readLibraryCatalogVisibility(existingRow) === "manual_only" || existingRow.manualPassRequired === true) {
+        const nextTitle = trimOrNull(nextRow.title);
+        const nextAuthors = Array.isArray(nextRow.authors)
+          ? nextRow.authors.filter((entry: unknown): entry is string => typeof entry === "string" && entry.trim().length > 0)
+          : [];
+        const stillManualOnly = !nextTitle || isPlaceholderLibraryTitle(nextTitle) || nextAuthors.length === 0;
+        patch.catalogVisibility = stillManualOnly ? "manual_only" : "public";
+        patch.manualPassRequired = stillManualOnly;
+        patch.manualPassRequiredAt = stillManualOnly ? (existingRow.manualPassRequiredAt ?? now) : null;
+      }
+      Object.assign(
+        patch,
+        buildMetadataEnrichmentStateForSavedRow({
+          row: nextRow,
+          reason: "manual_save",
+          now,
+        }),
+      );
 
       await itemRef.set(patch, { merge: true });
       const itemRow = {
@@ -8261,6 +9099,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
             requested: result.requested,
             created: result.created,
             updated: result.updated,
+            manualPassRequired: result.manualPassRequired.length,
+            rejected: result.rejected.length,
             errors: result.errors.length,
           },
         });
@@ -8281,6 +9121,321 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           },
         });
         jsonError(res, requestId, 400, "INVALID_ARGUMENT", safeErrorMessage(error));
+      }
+      return;
+    }
+
+    if (route === LIBRARY_ROUTE_STAFF_DASHBOARD) {
+      if (!isStaff) {
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_staff_dashboard",
+          resourceType: "library_dashboard",
+          resourceId: "staff",
+          ownerUid: ctx.uid,
+          result: "deny",
+          reasonCode: "FORBIDDEN",
+          ctx,
+        });
+        jsonError(res, requestId, 403, "FORBIDDEN", "Only staff can load the lending dashboard.");
+        return;
+      }
+
+      const parsed = parseBody(libraryStaffDashboardSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const requestLimit = parsed.data.requestLimit ?? 60;
+      const loanLimit = parsed.data.loanLimit ?? 60;
+      const coverReviewLimit = parsed.data.coverReviewLimit ?? 80;
+      const tagSubmissionLimit = parsed.data.tagSubmissionLimit ?? 160;
+      const metadataGapLimit = parsed.data.metadataGapLimit ?? 80;
+
+      const readRecentRows = async (input: {
+        collectionName: string;
+        timestampField: string;
+        fallbackLimit: number;
+        primaryLimit: number;
+      }): Promise<Array<{ id: string; row: Record<string, unknown> }>> => {
+        let snap;
+        try {
+          snap = await db
+            .collection(input.collectionName)
+            .orderBy(input.timestampField, "desc")
+            .limit(input.primaryLimit)
+            .get();
+        } catch (error) {
+          logger.warn(`${input.collectionName} orderBy fallback engaged`, {
+            requestId,
+            message: safeErrorMessage(error),
+          });
+          snap = await db.collection(input.collectionName).limit(input.fallbackLimit).get();
+        }
+
+        return snap.docs
+          .map((docSnap) => ({ id: docSnap.id, row: (docSnap.data() ?? {}) as Record<string, unknown> }))
+          .sort((left, right) => {
+            return readTimestampLikeMs(right.row[input.timestampField]) - readTimestampLikeMs(left.row[input.timestampField]);
+          });
+      };
+
+      const requests = (await readRecentRows({
+        collectionName: "libraryRequests",
+        timestampField: "createdAt",
+        primaryLimit: requestLimit,
+        fallbackLimit: Math.max(requestLimit * 3, 120),
+      }))
+        .slice(0, requestLimit)
+        .map((entry) => toLibraryStaffDashboardRequestRow(entry.id, entry.row));
+
+      const loans = (await readRecentRows({
+        collectionName: "libraryLoans",
+        timestampField: "createdAt",
+        primaryLimit: loanLimit,
+        fallbackLimit: Math.max(loanLimit * 3, 120),
+      }))
+        .slice(0, loanLimit)
+        .map((entry) => toLibraryStaffDashboardLoanRow(entry.id, entry.row));
+
+      let coverReviewSnap;
+      try {
+        coverReviewSnap = await db
+          .collection("libraryItems")
+          .orderBy("updatedAt", "desc")
+          .limit(Math.max(coverReviewLimit * 8, 1200))
+          .get();
+      } catch (error) {
+        logger.warn("libraryItems cover review orderBy fallback engaged", {
+          requestId,
+          message: safeErrorMessage(error),
+        });
+        coverReviewSnap = await db.collection("libraryItems").limit(Math.max(coverReviewLimit * 8, 1200)).get();
+      }
+
+      const coverReviews = coverReviewSnap.docs
+        .map((docSnap) => ({ id: docSnap.id, row: (docSnap.data() ?? {}) as Record<string, unknown> }))
+        .filter((entry) => {
+          const row = entry.row;
+          const rawNeedsReview = row.needsCoverReview === true;
+          const coverQualityStatus = safeString(row.coverQualityStatus).trim().toLowerCase();
+          return rawNeedsReview || coverQualityStatus === "needs_review" || coverQualityStatus === "missing";
+        })
+        .sort((left, right) => readTimestampLikeMs(right.row.updatedAt) - readTimestampLikeMs(left.row.updatedAt))
+        .slice(0, coverReviewLimit)
+        .map((entry) => toLibraryStaffDashboardCoverReviewRow(entry.id, entry.row));
+
+      const tagSubmissions = (await readRecentRows({
+        collectionName: "libraryTagSubmissions",
+        timestampField: "createdAt",
+        primaryLimit: tagSubmissionLimit,
+        fallbackLimit: Math.max(tagSubmissionLimit * 2, 240),
+      }))
+        .slice(0, tagSubmissionLimit)
+        .map((entry) => toLibraryStaffDashboardTagSubmissionRow(entry.id, entry.row));
+
+      const metadataEnrichmentSummary = await getLibraryMetadataEnrichmentSummary();
+      const metadataGaps = (await listLibraryMetadataGapRows({ limit: metadataGapLimit })).map((row) =>
+        toLibraryStaffDashboardMetadataGapRow(row)
+      );
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_staff_dashboard",
+        resourceType: "library_dashboard",
+        resourceId: "staff",
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: {
+          requests: requests.length,
+          loans: loans.length,
+          coverReviews: coverReviews.length,
+          tagSubmissions: tagSubmissions.length,
+          metadataGaps: metadataGaps.length,
+          metadataEnrichmentPending: metadataEnrichmentSummary.pendingCount,
+          metadataThinBacklog: metadataEnrichmentSummary.thinBacklogCount,
+        },
+      });
+      jsonOk(res, requestId, {
+        requests,
+        loans,
+        coverReviews,
+        tagSubmissions,
+        metadataGaps,
+        metadataEnrichmentSummary,
+      });
+      return;
+    }
+
+    if (route === LIBRARY_ROUTE_COVER_REVIEWS_RECONCILE) {
+      if (!isStaff) {
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_cover_review_reconcile",
+          resourceType: "library_dashboard",
+          resourceId: "cover_reviews",
+          ownerUid: ctx.uid,
+          result: "deny",
+          reasonCode: "FORBIDDEN",
+          ctx,
+        });
+        jsonError(res, requestId, 403, "FORBIDDEN", "Only staff can reconcile library cover reviews.");
+        return;
+      }
+
+      const parsed = parseBody(libraryCoverReviewReconcileSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const result = await reconcileLibraryCoverReviews({
+        limit: parsed.data.limit,
+      });
+
+      await logLibraryAuditEvent({
+        req,
+        requestId,
+        action: "library_cover_review_reconcile",
+        resourceType: "library_dashboard",
+        resourceId: "cover_reviews",
+        ownerUid: ctx.uid,
+        result: "allow",
+        ctx,
+        metadata: result,
+      });
+      jsonOk(res, requestId, result);
+      return;
+    }
+
+    if (route === LIBRARY_ROUTE_METADATA_ENRICHMENT_RUN) {
+      if (!isStaff) {
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_metadata_enrichment_run",
+          resourceType: "library_dashboard",
+          resourceId: "metadata_enrichment",
+          ownerUid: ctx.uid,
+          result: "deny",
+          reasonCode: "FORBIDDEN",
+          ctx,
+        });
+        jsonError(res, requestId, 403, "FORBIDDEN", "Only staff can run library metadata enrichment.");
+        return;
+      }
+
+      const parsed = parseBody(libraryMetadataEnrichmentRunSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const rate = await enforceRateLimit({
+        req,
+        key: "libraryMetadataEnrichmentRun",
+        max: 2,
+        windowMs: 10 * 60_000,
+      });
+      if (!rate.ok) {
+        res.set("Retry-After", String(Math.ceil(rate.retryAfterMs / 1000)));
+        jsonError(res, requestId, 429, "RATE_LIMITED", "Too many metadata enrichment requests");
+        return;
+      }
+
+      const scope = parsed.data.scope ?? "recent_imports";
+      const limit = parsed.data.limit ?? 80;
+      const itemIds = parsed.data.itemIds ?? [];
+
+      await emitLibraryRunAudit({
+        requestId,
+        job: "library.metadata.enrichment",
+        trigger: "manual",
+        source: "manual",
+        status: "started",
+        actorUid: ctx.uid,
+        input: {
+          maxItems: limit,
+          scope,
+          itemIdCount: itemIds.length,
+        },
+      });
+
+      try {
+        const result = await runLibraryMetadataEnrichmentBatch({
+          maxItems: limit,
+          scope,
+          source: "manual",
+          requestId,
+          itemIds,
+        });
+        const summary = await getLibraryMetadataEnrichmentSummary();
+        await emitLibraryRunAudit({
+          requestId,
+          job: "library.metadata.enrichment",
+          trigger: "manual",
+          source: "manual",
+          status: "success",
+          actorUid: ctx.uid,
+          result,
+        });
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_metadata_enrichment_run",
+          resourceType: "library_dashboard",
+          resourceId: "metadata_enrichment",
+          ownerUid: ctx.uid,
+          result: "allow",
+          ctx,
+          metadata: {
+            scope,
+            itemIdCount: itemIds.length,
+            ...result,
+            pendingCount: summary.pendingCount,
+            thinBacklogCount: summary.thinBacklogCount,
+          },
+        });
+        jsonOk(res, requestId, {
+          ...result,
+          summary,
+        });
+      } catch (error: unknown) {
+        const message = safeErrorMessage(error);
+        await emitLibraryRunAudit({
+          requestId,
+          job: "library.metadata.enrichment",
+          trigger: "manual",
+          source: "manual",
+          status: "error",
+          actorUid: ctx.uid,
+          code: "MANUAL_RUN_FAILED",
+          message,
+        });
+        await logLibraryAuditEvent({
+          req,
+          requestId,
+          action: "library_metadata_enrichment_run",
+          resourceType: "library_dashboard",
+          resourceId: "metadata_enrichment",
+          ownerUid: ctx.uid,
+          result: "error",
+          reasonCode: "MANUAL_RUN_FAILED",
+          ctx,
+          metadata: {
+            scope,
+            itemIdCount: itemIds.length,
+            message,
+          },
+        });
+        jsonError(res, requestId, 500, "INTERNAL", "Library metadata enrichment failed", {
+          message,
+        });
       }
       return;
     }

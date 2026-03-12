@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+
+umask 027
+mkdir -p /var/log/security-audits/lynis
+stamp="$(date +%Y%m%d-%H%M%S)"
+log_file="/var/log/security-audits/lynis/weekly-${stamp}.log"
+
+/usr/bin/lynis audit system --quick --cronjob >"${log_file}" 2>&1
+ln -sfn "${log_file}" /var/log/security-audits/lynis/latest.log

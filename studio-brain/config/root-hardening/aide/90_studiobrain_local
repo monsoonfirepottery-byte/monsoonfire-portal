@@ -1,0 +1,21 @@
+/home/__STUDIO_USER__/monitoring$ d VarDir
+/home/__STUDIO_USER__/monitoring/Caddyfile$ f VarFile
+/home/__STUDIO_USER__/monitoring/docker-compose\\.yml$ f VarFile
+/home/__STUDIO_USER__/monitoring/\\.env$ f VarFile
+
+/home/__STUDIO_USER__/\\.config$ d VarDir
+/home/__STUDIO_USER__/\\.config/systemd$ d VarDir
+/home/__STUDIO_USER__/\\.config/systemd/user$ d VarDir
+/home/__STUDIO_USER__/\\.config/systemd/user/[-_[:alnum:]@.]+\\.(service|timer)$ f VarFile
+
+__REPO_ROOT__/studio-brain$ d VarDir
+__REPO_ROOT__/studio-brain/docker-compose\\.yml$ f VarFile
+__REPO_ROOT__/studio-brain/docker-compose\\.public-proxy\\.yml$ f VarFile
+__REPO_ROOT__/studio-brain/docker-compose\\.security\\.yml$ f VarFile
+__REPO_ROOT__/studio-brain/\\.env$ f VarFile
+__REPO_ROOT__/studio-brain/\\.env\\.integrity\\.json$ f VarFile
+
+__REPO_ROOT__/studio-brain/docker$ d VarDir
+__REPO_ROOT__/studio-brain/docker/Caddyfile\\.public$ f VarFile
+__REPO_ROOT__/studio-brain/docker/crowdsec$ d VarDir
+__REPO_ROOT__/studio-brain/docker/crowdsec/acquis\\.yaml$ f VarFile

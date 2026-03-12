@@ -2,6 +2,12 @@
 
 Local-first orchestration runtime for Monsoon Fire Studio OS v3.
 
+## Security posture
+- Public HTTPS belongs on the Caddy edge only (`80/443`).
+- Studio Brain itself should bind to loopback (`127.0.0.1:8787`) on internet-facing hosts.
+- Postgres, Redis, MinIO, and OTEL default to loopback-only host publishing and should stay that way unless a LAN workflow explicitly needs wider access.
+- Example credentials in `.env.example` are placeholders, not safe runtime defaults.
+
 ## Anchor Mode
 - Cloud remains authoritative for identity, payments, and user-facing records.
 - Studio Brain computes local snapshots, drafts proposals, and monitors systems.
@@ -131,6 +137,28 @@ Notes:
   - `npm run studio:observability:down`
 - Reset local observability artifacts (destructive; requires acknowledgement):
   - `npm run studio:observability:reset -- --yes-i-know --reason "maintenance-window"`
+
+## Security Bundle (Optional)
+- Run the hardened surface + Trivy scan set:
+  - `npm run studio:security:scan`
+- Start CrowdSec on the loopback-only Local API port:
+  - `npm run studio:security:up`
+- Check CrowdSec / scan status:
+  - `npm run studio:security:status`
+- Check root-required host hardening gaps:
+  - `npm run studio:security:host-audit`
+- Print the root-run hardening command and defaults:
+  - `npm run studio:security:root:print`
+- Root hardening now runs in phases. The safe order is:
+  - `sudo node ../scripts/studiobrain-root-hardening.mjs --apply`
+  - `sudo node ../scripts/studiobrain-root-hardening.mjs --apply --phases firewall --i-confirm-second-ssh --ssh-allow-cidr <admin-cidr> --monitor-allow-cidr 192.168.1.0/24`
+  - `sudo node ../scripts/studiobrain-root-hardening.mjs --apply --phases firewall --enable-ufw --rollback-window 5m --i-confirm-second-ssh --ssh-allow-cidr <admin-cidr> --monitor-allow-cidr 192.168.1.0/24`
+  - Validate SSH and web access, then cancel the printed rollback timer
+  - `sudo node ../scripts/studiobrain-root-hardening.mjs --apply --phases ssh --i-confirm-second-ssh`
+- Stop CrowdSec:
+  - `npm run studio:security:down`
+- Rotate Postgres / Redis / MinIO credentials and tighten `.env` permissions:
+  - `npm run studio:secret:rotate -- --apply`
 
 ## Local Proxy Bundle (Optional)
 - Start optional reverse proxy profile:

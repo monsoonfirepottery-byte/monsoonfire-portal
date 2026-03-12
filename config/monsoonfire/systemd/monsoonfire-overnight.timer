@@ -1,0 +1,10 @@
+[Unit]
+Description=Monsoonfire Overnight Intent Automation (Nightly)
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+Unit=monsoonfire-overnight.service
+
+[Install]
+WantedBy=timers.target

@@ -28,6 +28,16 @@
   - resolve workspace state (`git status` -> `git stash`/commit/rebase target), or
   - rerun the command with explicit `--allow-dirty` only when `writeScope: codex-docs-only` and this run is intentionally scoped.
 - Do not use `--allow-dirty` for non-doc-only runs without explicit user confirmation.
+- If startup continuity fails with unchanged `(query + runId)` on:
+  - `missing-auth-token`
+  - HTTP `401`
+  - transport/status `0`
+  - command not run to completion (timeout/context CLI transport class),
+  treat this as `startup-blocked` for that signature. Log one blocker record first (`command`, `runId`, `query`, `first signal`), then execute exactly one unblock action (`--run-id` shift, AM/PM defer, or auth-path recovery) before any broader retry.
+- For that one unblock, run the bootstrap sequence in order and only once:
+  - `npm run open-memory -- context --agent-id agent:codex --query "<task query>" --run-id "<run-id>" --expand-relationships=true --max-hops 3`
+  - `mcp__open_memory__startup_memory_context --query "<task query>" --runId "<runId>" --expandRelationships true --maxHops 3`
+- If either bootstrap step fails again with the same unchanged `(query + runId)` signature, stop further retries and keep the run in hard pause until a different unblock action is chosen.
 - If a `daily-interaction` or similar Codex automation call returns deterministic run-level status (`skip`, `duplicate`, `cooldown`) without state mutation, record:
   - exact blocker evidence (`status`/`reason`),
   - the current command signature that produced it,
@@ -37,6 +47,7 @@
 - In `codex-docs-only` tasks, include strict docs + health harness checks before declaring completion:
   - `npm run codex:docs:drift:strict`
   - `npm run codex:doctor:strict`
+  - If either strict check fails first in a command signature, stop that signature, log blocker evidence, and rerun once only after exactly one unblock action.
 
 ### Codex docs-only blocked-state protocol
 - For `writeScope: codex-docs-only`, treat the first unchanged startup continuity miss (`missing-auth-token`, `401`, timeout, transport error, `structuralDecision.mode=Deferred`, run-lock, or deterministic no-op status) as a hard pause.
@@ -52,6 +63,7 @@
   - command/signature
   - exit status
   - first signal line (`status`/`reason`/first failure line)
+- For deferred states that cite a running blocker context (`rollingIssue` / PR lock), include that URL or identifier in the evidence record.
 - Record blocker evidence and unblock action immediately in `.codex/interaction-log.md` before any broader command retries.
 
 ## Collaboration defaults from durable memory

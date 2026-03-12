@@ -52,7 +52,8 @@ If you already have the build on disk and do not need to rebuild:
 The script:
 - copies `web/dist` to a temporary staging directory,
 - copies `web/deploy/namecheap/.htaccess` into staging root,
-- mirrors `website/.well-known/*` into both `/.well-known/*` and `/well-known/*` in staging,
+- merges `web/public/.well-known/*` and `website/.well-known/*` into `/.well-known/*`,
+- mirrors that combined set into `/well-known/*` for host compatibility,
 - `rsync --delete`s into the destination, and
 - runs the optional cutover verifier (`--verify`).
 
@@ -61,9 +62,9 @@ The script:
 1. Build and upload the contents of `web/dist/` into the subdomain root for `portal.monsoonfire.com`.
 2. Copy `web/deploy/namecheap/.htaccess` into that same subdomain root.
    - This template now includes a compatibility rewrite for hosts that do not serve hidden `.well-known` paths directly.
-3. If using universal links/app links:
-  - Ensure `/.well-known/` and `/well-known/` can be read and return the same JSON payload.
-  - Copy the canonical files from `website/.well-known/` into both directories on the host.
+3. If using universal links/app links and public API discovery:
+  - Ensure `/.well-known/` and `/well-known/` can be read without SPA rewrites.
+  - Copy the combined canonical files from `web/public/.well-known/` and `website/.well-known/` into both directories on the host.
 5. Run the preflight verifier:
   - Primary path:
     - `node ./web/deploy/namecheap/verify-cutover.mjs --portal-url https://portal.monsoonfire.com --report-path docs/cutover-verify.json`
@@ -80,7 +81,7 @@ The script:
 - `verify-cutover` checks:
   - root route is reachable
   - deep link route returns HTML instead of 404
-  - `/.well-known/*` can be read without SPA rewrite
+  - `/.well-known/openapi.json` can be read without SPA rewrite
   - cache headers on `index.html`
   - sample `/assets/*` files for long-lived cache hints (`immutable` or high `max-age`)
   - optional protected function call with a provided ID token (`PORTAL_CUTOVER_ID_TOKEN` or `--id-token`)

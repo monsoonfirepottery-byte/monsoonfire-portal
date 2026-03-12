@@ -1,20 +1,34 @@
 import { useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
-import { db } from "../firebase";
+import { createFunctionsClient } from "../api/functionsClient";
+import type {
+  MembershipChangePlanResponse,
+  MembershipPlanCatalogEntry,
+  MembershipPlanKey,
+  MembershipSummaryResponse,
+} from "../api/portalContracts";
+import {
+  V1_MEMBERSHIPS_CHANGE_PLAN_FN,
+  V1_MEMBERSHIPS_SUMMARY_FN,
+} from "../api/portalContracts";
+import { resolveFunctionsBaseUrl } from "../utils/functionsBaseUrl";
 import { formatDateTime } from "../utils/format";
+import { checkoutErrorMessage, requestErrorMessage } from "../utils/userFacingErrors";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import "./MembershipView.css";
 
-type ProfileDoc = {
-  displayName?: string | null;
-  membershipTier?: string;
-  membershipSince?: { toDate?: () => Date } | null;
-  membershipExpiresAt?: { toDate?: () => Date } | null;
+type ApiV1Envelope<TData> = {
+  ok: boolean;
+  requestId?: string;
+  code?: string;
+  message?: string;
+  data?: TData;
 };
 
+type MembershipSummaryData = MembershipSummaryResponse;
+
 type Tier = {
-  key: string;
+  key: MembershipPlanKey;
   label: string;
   stage: string;
   summary: string;
@@ -30,7 +44,7 @@ type FeatureClip = {
 
 const TIERS: Tier[] = [
   {
-    key: "a-la-carte",
+    key: "a_la_carte",
     label: "A la carte",
     stage: "Home studio starter",
     summary:
@@ -50,8 +64,8 @@ const TIERS: Tier[] = [
     focus: "Build routines and small production runs with less friction.",
     milestones: [
       "Two successful firings with staff review",
-      "Kiln loading basics sign‑off",
-      "Stewardship habit check‑in",
+      "Kiln loading basics sign-off",
+      "Stewardship habit check-in",
     ],
   },
   {
@@ -76,7 +90,7 @@ const TIERS: Tier[] = [
     focus: "Keep quality high while volume grows.",
     milestones: [
       "Advanced scheduling coordination",
-      "Large‑batch handling plan",
+      "Large-batch handling plan",
       "Studio stewardship leadership",
     ],
   },
@@ -162,7 +176,7 @@ const FEATURE_CLIPS: FeatureClip[] = [
     title: "Snack & beverage station",
     summary: "Keep your energy steady without leaving the studio.",
     details:
-      "Coffee, tea, and simple snacks so your creative momentum doesn’t stall mid-session.",
+      "Coffee, tea, and simple snacks so your creative momentum doesn't stall mid-session.",
   },
   {
     title: "Gym access",
@@ -178,96 +192,137 @@ const FEATURE_CLIPS: FeatureClip[] = [
   },
 ];
 
+const TIER_ALIASES: Record<string, MembershipPlanKey> = {
+  studio: "a_la_carte",
+  studiomember: "a_la_carte",
+  premium: "apprentice",
+  founding: "master",
+  alacarte: "a_la_carte",
+};
+
 const normalizeTier = (value: string | undefined | null) =>
   (value ?? "").toLowerCase().replace(/[^a-z]/g, "");
 
-const TIER_ALIASES: Record<string, string> = {
-  studio: "A la carte",
-  studiomember: "A la carte",
-  premium: "Apprentice",
-  founding: "Master",
-};
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function resolveTierLabel(value: string | undefined | null): string | null {
-  const normalized = normalizeTier(value);
-  if (!normalized) return null;
-
+function resolveTierKey(value: string | MembershipPlanKey | undefined | null): MembershipPlanKey | null {
+  if (!value) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  if (trimmed in TIER_ALIASES) {
+    return TIER_ALIASES[trimmed as keyof typeof TIER_ALIASES];
+  }
   const direct = TIERS.find(
     (tier) =>
-      normalizeTier(tier.label) === normalized || normalizeTier(tier.key) === normalized
+      tier.key === trimmed ||
+      normalizeTier(tier.key) === normalizeTier(trimmed) ||
+      normalizeTier(tier.label) === normalizeTier(trimmed)
   );
-  if (direct) return direct.label;
-
-  const alias = TIER_ALIASES[normalized];
-  if (!alias) return null;
-
-  const aliasNormalized = normalizeTier(alias);
-  const aliasTier = TIERS.find((tier) => normalizeTier(tier.label) === aliasNormalized);
-  return aliasTier ? aliasTier.label : alias;
+  if (direct) return direct.key;
+  return TIER_ALIASES[normalizeTier(trimmed)] ?? null;
 }
 
-function getTierIndex(label: string): number {
-  const resolved = resolveTierLabel(label) ?? TIERS[0]?.label ?? label;
-  const normalized = normalizeTier(resolved);
-  return TIERS.findIndex((tier) => normalizeTier(tier.label) === normalized);
+function getTierIndex(keyOrLabel: string | MembershipPlanKey | undefined | null): number {
+  const key = resolveTierKey(keyOrLabel) ?? TIERS[0]?.key ?? "a_la_carte";
+  return TIERS.findIndex((tier) => tier.key === key);
+}
+
+function parseMaybeDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function planCatalogEntryByKey(
+  plans: MembershipPlanCatalogEntry[] | undefined,
+  key: MembershipPlanKey | undefined | null
+): MembershipPlanCatalogEntry | null {
+  if (!plans || !key) return null;
+  return plans.find((plan) => plan.key === key) ?? null;
 }
 
 export default function MembershipView({ user }: { user: User }) {
-  const [profileDoc, setProfileDoc] = useState<ProfileDoc | null>(null);
+  const [summary, setSummary] = useState<MembershipSummaryData | null>(null);
   const [profileError, setProfileError] = useState("");
   const [saveBusy, setSaveBusy] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const [selectedTierIndex, setSelectedTierIndex] = useState(0);
   const [journeyOpen, setJourneyOpen] = useState(false);
 
+  const client = useMemo(
+    () =>
+      createFunctionsClient({
+        baseUrl: resolveFunctionsBaseUrl(),
+        getIdToken: () => user.getIdToken(),
+      }),
+    [user]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("intent") !== "membership") return;
+    const status = params.get("status");
+    const planKey = resolveTierKey(params.get("plan"));
+    const planLabel = planKey ? TIERS.find((tier) => tier.key === planKey)?.label : null;
+    if (status === "success") {
+      setSaveStatus(
+        `Checkout complete${planLabel ? ` for ${planLabel}` : ""}. We're syncing your membership now.`
+      );
+      return;
+    }
+    if (status === "cancel") {
+      setSaveStatus(
+        `Checkout canceled${planLabel ? ` for ${planLabel}` : ""}. You can reopen checkout any time.`
+      );
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    async function loadProfile() {
-      if (!user) return;
+
+    async function loadSummary() {
       setProfileError("");
       try {
-        const ref = doc(db, "profiles", user.uid);
-        const snap = await getDoc(ref);
+        const envelope = await client.postJson<ApiV1Envelope<MembershipSummaryData>>(
+          V1_MEMBERSHIPS_SUMMARY_FN,
+          {}
+        );
         if (cancelled) return;
-        setProfileDoc((snap.data() as ProfileDoc | undefined) ?? null);
+        if (!envelope.ok || !envelope.data) {
+          throw new Error(envelope.message || "Unable to load membership summary.");
+        }
+        setSummary(envelope.data);
       } catch (error: unknown) {
         if (cancelled) return;
-        setProfileError(`Membership failed: ${getErrorMessage(error) || "Unable to load profile."}`);
+        setProfileError(`Membership failed: ${requestErrorMessage(error, { includeSupportCode: false })}`);
       }
     }
-    void loadProfile();
+
+    void loadSummary();
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [client]);
 
-  const membershipTierRaw = profileDoc?.membershipTier ?? "Studio Member";
-  const membershipTierLabel = resolveTierLabel(membershipTierRaw) ?? membershipTierRaw;
+  const membership = summary?.membership ?? null;
+  const membershipPlanKey = resolveTierKey(membership?.planKey ?? membership?.label) ?? "a_la_carte";
+  const membershipTierLabel =
+    TIERS.find((tier) => tier.key === membershipPlanKey)?.label ?? membership?.label ?? "A la carte";
   const membershipSince =
-    profileDoc?.membershipSince?.toDate?.() ??
+    parseMaybeDate(membership?.since) ??
     (user.metadata.creationTime ? new Date(user.metadata.creationTime) : null);
-  const membershipExpires = profileDoc?.membershipExpiresAt?.toDate?.() ?? null;
+  const membershipExpires = parseMaybeDate(membership?.renewalAt);
 
-  const currentTierIndex = useMemo(() => getTierIndex(membershipTierLabel), [membershipTierLabel]);
+  const currentTierIndex = useMemo(() => getTierIndex(membershipPlanKey), [membershipPlanKey]);
   const currentTier = currentTierIndex >= 0 ? TIERS[currentTierIndex] : null;
   const selectedTier =
     selectedTierIndex >= 0 && selectedTierIndex < TIERS.length ? TIERS[selectedTierIndex] : null;
-  const hasSelectionChange = currentTierIndex >= 0 && selectedTierIndex !== currentTierIndex;
+  const hasSelectionChange =
+    currentTierIndex >= 0 && selectedTier != null && selectedTier.key !== membershipPlanKey;
   const canMoveDown = selectedTierIndex > 0;
   const canMoveUp = selectedTierIndex < TIERS.length - 1;
+  const selectedPlanCatalog = planCatalogEntryByKey(summary?.availablePlans, selectedTier?.key ?? null);
   const selectedTierChanges = useMemo(() => {
-    if (!selectedTier || currentTierIndex < 0) {
-      return {
-        visibleLines: [] as string[],
-        hiddenCount: 0,
-      };
-    }
-
-    if (!hasSelectionChange) {
+    if (!selectedTier || currentTierIndex < 0 || !hasSelectionChange) {
       return {
         visibleLines: [] as string[],
         hiddenCount: 0,
@@ -275,10 +330,10 @@ export default function MembershipView({ user }: { user: User }) {
     }
 
     const allChanges = PERKS.map((perk) => {
-      const fromValue = perk.values[currentTierIndex] ?? "—";
-      const toValue = perk.values[selectedTierIndex] ?? "—";
+      const fromValue = perk.values[currentTierIndex] ?? "-";
+      const toValue = perk.values[selectedTierIndex] ?? "-";
       if (fromValue === toValue) return null;
-      return `${perk.label}: ${fromValue} → ${toValue}`;
+      return `${perk.label}: ${fromValue} -> ${toValue}`;
     }).filter((line): line is string => Boolean(line));
 
     return {
@@ -302,28 +357,29 @@ export default function MembershipView({ user }: { user: User }) {
   };
 
   const handleSaveTier = async () => {
-    if (!user || saveBusy || !selectedTier || !hasSelectionChange) return;
+    if (!selectedTier || saveBusy || !hasSelectionChange) return;
+    if (!selectedPlanCatalog?.checkoutEnabled) {
+      setSaveStatus("This membership tier is not ready for checkout yet.");
+      return;
+    }
+
     setSaveBusy(true);
-    setSaveStatus("Saving membership level...");
+    setSaveStatus(`Opening secure checkout for ${selectedTier.label}...`);
 
     try {
-      const ref = doc(db, "profiles", user.uid);
-      await setDoc(
-        ref,
+      const envelope = await client.postJson<ApiV1Envelope<MembershipChangePlanResponse>>(
+        V1_MEMBERSHIPS_CHANGE_PLAN_FN,
         {
-          membershipTier: selectedTier.label,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
+          planKey: selectedTier.key,
+        }
       );
-      setProfileDoc((prev) => ({
-        ...(prev ?? {}),
-        membershipTier: selectedTier.label,
-      }));
-      setSaveStatus(`Membership updated to ${selectedTier.label}.`);
+      const data = envelope.data;
+      if (!envelope.ok || !data?.checkoutUrl) {
+        throw new Error(envelope.message || "Membership checkout link is unavailable.");
+      }
+      window.location.assign(data.checkoutUrl);
     } catch (error: unknown) {
-      setSaveStatus(`Update failed: ${getErrorMessage(error)}`);
-    } finally {
+      setSaveStatus(`Checkout failed: ${checkoutErrorMessage(error)}`);
       setSaveBusy(false);
     }
   };
@@ -341,7 +397,7 @@ export default function MembershipView({ user }: { user: User }) {
           <div>
             <div className="card-title">Membership level</div>
             <p className="membership-copy">
-              Use the arrows to move between tiers, then save when you are ready.
+              Choose a tier, review the changes, and open secure checkout when you're ready.
             </p>
           </div>
           <button className="btn btn-ghost journey-link" onClick={() => setJourneyOpen(true)}>
@@ -358,7 +414,7 @@ export default function MembershipView({ user }: { user: User }) {
             <div className="journey-card-title">{membershipTierLabel}</div>
             <div className="journey-card-meta">
               <span>Member since</span>
-              <strong>{membershipSince ? formatDateTime(membershipSince) : "—"}</strong>
+              <strong>{membershipSince ? formatDateTime(membershipSince) : "-"}</strong>
             </div>
             <div className="journey-card-meta">
               <span>Renewal</span>
@@ -371,10 +427,15 @@ export default function MembershipView({ user }: { user: User }) {
                 We are still syncing your membership tier details.
               </div>
             )}
+            {membership?.pendingPlanLabel ? (
+              <div className="notice inline-alert">
+                Pending checkout: {membership.pendingPlanLabel}
+              </div>
+            ) : null}
             {profileError ? <div className="alert inline-alert">{profileError}</div> : null}
             <div className="membership-status-actions">
               <div className="membership-target">
-                <span className="summary-label">Upgraded Features</span>
+                <span className="summary-label">Selected tier</span>
                 <span className="summary-value">
                   {selectedTier?.label ?? membershipTierLabel}
                 </span>
@@ -394,6 +455,11 @@ export default function MembershipView({ user }: { user: User }) {
                         +{selectedTierChanges.hiddenCount} more changes
                       </div>
                     ) : null}
+                    {selectedPlanCatalog && !selectedPlanCatalog.checkoutEnabled ? (
+                      <div className="membership-target-item">
+                        Checkout is not configured for this plan yet.
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <div className="membership-target-item">
@@ -406,9 +472,9 @@ export default function MembershipView({ user }: { user: User }) {
                 <button
                   className="btn btn-primary"
                   onClick={toVoidHandler(handleSaveTier)}
-                  disabled={saveBusy || !selectedTier}
+                  disabled={saveBusy || !selectedTier || !selectedPlanCatalog?.checkoutEnabled}
                 >
-                  {saveBusy ? "Saving..." : "Save membership level"}
+                  {saveBusy ? "Opening checkout..." : "Change membership in checkout"}
                 </button>
               ) : null}
             </div>
@@ -423,12 +489,12 @@ export default function MembershipView({ user }: { user: User }) {
                 aria-label="Move down one membership tier"
                 title="Move down one tier"
               >
-                ←
+                <span aria-hidden="true">&larr;</span>
               </button>
             ) : null}
             {canMoveDown && canMoveUp ? (
               <span className="journey-arrow-symbol" aria-hidden="true">
-                ↔
+                <span aria-hidden="true">&harr;</span>
               </span>
             ) : null}
             {canMoveUp ? (
@@ -439,7 +505,7 @@ export default function MembershipView({ user }: { user: User }) {
                 aria-label="Move up one membership tier"
                 title="Move up one tier"
               >
-                →
+                <span aria-hidden="true">&rarr;</span>
               </button>
             ) : null}
           </div>
@@ -447,7 +513,7 @@ export default function MembershipView({ user }: { user: User }) {
           <div className="journey-card next">
             <div className="journey-card-top">
               <span className="journey-label">Selected level</span>
-              {selectedTier ? <span className="journey-tier">{selectedTier.label}</span> : <span>—</span>}
+              {selectedTier ? <span className="journey-tier">{selectedTier.label}</span> : <span>-</span>}
             </div>
             {selectedTier ? (
               <>
@@ -516,13 +582,13 @@ export default function MembershipView({ user }: { user: User }) {
               <div
                 key={tier.key}
                 className={`membership-cell heading ${
-                  normalizeTier(tier.label) === normalizeTier(membershipTierLabel) ? "current" : ""
+                  tier.key === membershipPlanKey ? "current" : ""
                 }`}
               >
                 <span>{tier.label}</span>
-                {normalizeTier(tier.label) === normalizeTier(membershipTierLabel) ? (
+                {tier.key === membershipPlanKey ? (
                   <span className="membership-you-are-here" aria-label="You are here">
-                    👉 You are here
+                    You are here
                   </span>
                 ) : null}
               </div>
@@ -535,7 +601,7 @@ export default function MembershipView({ user }: { user: User }) {
                 <div
                   key={`${perk.label}-${TIERS[index]?.key}`}
                   className={`membership-cell ${
-                    normalizeTier(TIERS[index]?.label) === normalizeTier(membershipTierLabel) ? "current" : ""
+                    TIERS[index]?.key === membershipPlanKey ? "current" : ""
                   }`}
                 >
                   {value}
@@ -564,7 +630,6 @@ export default function MembershipView({ user }: { user: User }) {
           ))}
         </div>
       </section>
-
     </div>
   );
 }

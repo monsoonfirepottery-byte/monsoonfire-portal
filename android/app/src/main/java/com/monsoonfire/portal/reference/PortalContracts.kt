@@ -86,6 +86,47 @@ data class UpdateReservationRequest(
 )
 
 @Serializable
+data class ReservationGetRequest(
+    val reservationId: String
+)
+
+@Serializable
+data class ReservationListRequest(
+    val ownerUid: String? = null,
+    val limit: Int? = null,
+    val status: String? = null,
+    val includeCancelled: Boolean? = null
+)
+
+@Serializable
+data class ReservationLookupArrivalRequest(
+    val arrivalToken: String
+)
+
+@Serializable
+data class ReservationCheckInRequest(
+    val reservationId: String? = null,
+    val arrivalToken: String? = null,
+    val note: String? = null,
+    val photoUrl: String? = null,
+    val photoPath: String? = null
+)
+
+@Serializable
+data class ReservationRotateArrivalTokenRequest(
+    val reservationId: String,
+    val reason: String? = null
+)
+
+@Serializable
+class MembershipSummaryRequest
+
+@Serializable
+data class MembershipChangePlanRequest(
+    val planKey: String
+)
+
+@Serializable
 data class AssignReservationStationRequest(
     val reservationId: String,
     val assignedStationId: String,
@@ -280,6 +321,81 @@ data class CreateReservationResponse(
     val ok: Boolean,
     val reservationId: String? = null,
     val status: String? = null
+)
+
+@Serializable
+data class ReservationRecord(
+    val id: String
+)
+
+@Serializable
+data class ReservationGetResponse(
+    val ok: Boolean,
+    val reservation: ReservationRecord? = null
+)
+
+@Serializable
+data class ReservationListResponse(
+    val ok: Boolean,
+    val ownerUid: String? = null,
+    val reservations: List<ReservationRecord>
+)
+
+@Serializable
+data class ReservationLookupArrivalResponse(
+    val ok: Boolean,
+    val reservation: ReservationRecord? = null
+)
+
+@Serializable
+data class ReservationCheckInResponse(
+    val ok: Boolean,
+    val reservationId: String? = null,
+    val arrivalStatus: String? = null,
+    val arrivedAt: String? = null,
+    val idempotentReplay: Boolean? = null
+)
+
+@Serializable
+data class ReservationRotateArrivalTokenResponse(
+    val ok: Boolean,
+    val reservationId: String? = null,
+    val arrivalToken: String? = null,
+    val arrivalTokenExpiresAt: String? = null,
+    val arrivalTokenVersion: Int? = null
+)
+
+@Serializable
+data class MembershipPlanCatalogEntry(
+    val key: String,
+    val priceKey: String,
+    val label: String,
+    val stage: String,
+    val summary: String,
+    val focus: String,
+    val priceConfigured: Boolean,
+    val checkoutEnabled: Boolean,
+    val isCurrent: Boolean
+)
+
+@Serializable
+data class MembershipSummaryResponse(
+    val ok: Boolean,
+    val membership: JsonElement? = null,
+    val availablePlans: List<MembershipPlanCatalogEntry>,
+    val checkoutEnabled: Boolean,
+    val mode: String? = null
+)
+
+@Serializable
+data class MembershipChangePlanResponse(
+    val ok: Boolean,
+    val planKey: String? = null,
+    val checkoutUrl: String? = null,
+    val sessionId: String? = null,
+    val mode: String? = null,
+    val successUrl: String? = null,
+    val cancelUrl: String? = null
 )
 
 @Serializable

@@ -52,6 +52,7 @@ import {
   resolveStaffWorkspaceLaunch,
   resolveStaffWorkspaceMatch,
   resolveStaffWorkspaceRequestedPath,
+  shouldExitStaffWorkspaceForTargetNav,
   shouldNavigateToStaffWorkspaceTarget,
   type StaffWorkspaceMode,
 } from "./utils/staffWorkspacePaths";
@@ -381,6 +382,25 @@ function normalizeAppPath(pathname: string): string {
 
 function normalizeHashPath(hash: string): string {
   return normalizeStaffPath(hash);
+}
+
+function resolveIntentNav(search: string): NavKey | null {
+  if (!search) return null;
+  const params = new URLSearchParams(search);
+  const intent = (params.get("intent") ?? "").trim().toLowerCase();
+  if (intent === "reserve" || intent === "reservations") return "reservations";
+  if (intent === "membership") return "membership";
+  if (intent === "materials" || intent === "store") return "materials";
+  return null;
+}
+
+function resolveDiscoverabilityPathNav(pathname: string): NavKey | null {
+  const normalizedPath = normalizeAppPath(pathname);
+  if (normalizedPath === "/reserve" || normalizedPath === "/reservations") return "reservations";
+  if (normalizedPath === "/membership") return "membership";
+  if (normalizedPath === "/materials" || normalizedPath === "/store") return "materials";
+  if (normalizedPath === "/glazes" || normalizedPath === "/community/glazes") return "glazes";
+  return null;
 }
 
 function isLegacyRequestsPath(pathname: string): boolean {
@@ -826,7 +846,7 @@ export default function App() {
   const [emailLinkPending, setEmailLinkPending] = useState(false);
   const [nav, setNav] = useState<NavKey>(() => {
     if (typeof window === "undefined") return "dashboard";
-  const normalizedPathname = normalizeAppPath(window.location.pathname);
+    const normalizedPathname = normalizeAppPath(window.location.pathname);
     const staffWorkspaceLaunch = resolveStaffWorkspaceLaunch(normalizedPathname, window.location.hash);
     if (staffWorkspaceLaunch) return staffWorkspaceLaunch.targetNav;
     const legacyRedirect = resolveLegacyRequestsRedirect(
@@ -835,8 +855,10 @@ export default function App() {
       window.location.hash
     );
     if (legacyRedirect) return legacyRedirect.targetNav;
-    const path = normalizeAppPath(window.location.pathname);
-    if (path === "/glazes" || path === "/community/glazes") return "glazes";
+    const intentNav = resolveIntentNav(window.location.search);
+    if (intentNav) return intentNav;
+    const pathNav = resolveDiscoverabilityPathNav(window.location.pathname);
+    if (pathNav) return pathNav;
     const saved = readLocalItem(LOCAL_NAV_KEY);
     if (saved && isNavKey(saved)) return saved;
     return "dashboard";
@@ -884,6 +906,7 @@ export default function App() {
   const [supportStatus, setSupportStatus] = useState("");
   const [supportBusy, setSupportBusy] = useState(false);
   const [piecesFocusTarget, setPiecesFocusTarget] = useState<PieceFocusTarget | null>(null);
+  const [messagesInitialThreadId, setMessagesInitialThreadId] = useState<string | null>(null);
   const [bootstrapWarning, setBootstrapWarning] = useState("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [themeName, setThemeName] = useState<PortalThemeName>(() => readStoredPortalTheme());
@@ -1137,6 +1160,9 @@ export default function App() {
     const requestedStaffMode = requestedStaffPath ? resolveStaffWorkspaceMatch(requestedStaffPath)?.mode : null;
     const hasLegacyRequestsPath = isLegacyRequestsPath(pathname);
     const hasLegacyRequestsHash = isLegacyRequestsPath(hashPath);
+    const discoverabilityNav = resolveDiscoverabilityPathNav(pathname);
+    const discoverabilityPathActive = discoverabilityNav !== null;
+    const intentNav = resolveIntentNav(window.location.search);
     const hasStaffWorkspaceRequest = requestedStaffPath !== null;
     const hasStaffCockpitPath = pathnameStaffMatch?.mode === "cockpit";
     const hasStaffCockpitHashPath = hashStaffMatch?.mode === "cockpit";
@@ -1158,7 +1184,11 @@ export default function App() {
         }
       }
     } else if (
-      (pathname === "/glazes" || hasLegacyRequestsPath || hasLegacyRequestsHash)
+      intentNav !== null && nav !== intentNav
+    ) {
+      window.history.replaceState({}, "", pathname || "/");
+    } else if (
+      ((discoverabilityPathActive && nav !== discoverabilityNav) || hasLegacyRequestsPath || hasLegacyRequestsHash)
     ) {
       window.history.replaceState({}, "", "/");
     }
@@ -1194,9 +1224,21 @@ export default function App() {
         return;
       }
 
-      if (pathname === "/glazes" || pathname === "/community/glazes") {
-        if (nav !== "glazes") {
-          setNav("glazes");
+      const intentNav = resolveIntentNav(window.location.search);
+      if (intentNav) {
+        if (nav !== intentNav) {
+          setNav(intentNav);
+        }
+        if (staffWorkspaceMode !== "default") {
+          setStaffWorkspaceMode("default");
+        }
+        return;
+      }
+
+      const discoverabilityNav = resolveDiscoverabilityPathNav(pathname);
+      if (discoverabilityNav) {
+        if (nav !== discoverabilityNav) {
+          setNav(discoverabilityNav);
         }
         if (staffWorkspaceMode !== "default") {
           setStaffWorkspaceMode("default");
@@ -1807,12 +1849,25 @@ export default function App() {
     }
   };
 
+  const navigateToNav = useCallback((nextNav: NavKey) => {
+    if (
+      typeof window !== "undefined" &&
+      shouldExitStaffWorkspaceForTargetNav(window.location.pathname, window.location.hash, nextNav)
+    ) {
+      window.history.pushState({}, "", "/");
+    }
+    if (nextNav !== "staff" && staffWorkspaceMode !== "default") {
+      setStaffWorkspaceMode("default");
+    }
+    setNav(nextNav);
+  }, [staffWorkspaceMode]);
+
   const handleSignOut = async () => {
     track("auth_sign_out", {
       uid: user?.uid ? shortId(user.uid) : "unknown",
     });
     await signOut(authClient);
-    setNav("dashboard");
+    navigateToNav("dashboard");
   };
 
   const handleAuthHandlerError = (error: unknown) => {
@@ -1921,7 +1976,7 @@ export default function App() {
       return;
     }
     if (nav !== sectionKey) {
-      setNav(sectionKey);
+      navigateToNav(sectionKey);
     }
     if (navIsCollapsed) {
       setNavCollapsed(false);
@@ -2027,12 +2082,34 @@ export default function App() {
 
   const openPieces = useCallback((target?: PieceFocusTarget) => {
     setPiecesFocusTarget(target ?? null);
-    setNav("pieces");
-  }, []);
+    navigateToNav("pieces");
+  }, [navigateToNav]);
+
+  const openMessages = useCallback((threadId?: string | null) => {
+    const normalizedThreadId = typeof threadId === "string" ? threadId.trim() : "";
+    setMessagesInitialThreadId(normalizedThreadId || null);
+    navigateToNav("messages");
+  }, [navigateToNav]);
 
   const handlePiecesFocusConsumed = useCallback(() => {
     setPiecesFocusTarget(null);
   }, []);
+
+  const handleMessagesInitialThreadConsumed = useCallback(() => {
+    setMessagesInitialThreadId(null);
+  }, []);
+
+  const handleShellNavSelection = useCallback((nextNav: NavKey) => {
+    if (nextNav === "messages") {
+      openMessages();
+      return;
+    }
+    if (nextNav === "pieces") {
+      openPieces();
+      return;
+    }
+    navigateToNav(nextNav);
+  }, [navigateToNav, openMessages, openPieces]);
 
   const renderSignedOutView = () => (
     <SignedOutView
@@ -2065,14 +2142,14 @@ export default function App() {
             }}
             threads={threads}
             announcements={announcements}
-            onOpenKilnRentals={() => setNav("kilnRentals")}
-            onOpenCheckin={() => setNav("reservations")}
-            onOpenQueues={() => setNav("kilnLaunch")}
-            onOpenFirings={() => setNav("kiln")}
-            onOpenStudioResources={() => setNav("studioResources")}
-            onOpenGlazeBoard={() => setNav("glazes")}
-            onOpenCommunity={() => setNav("community")}
-            onOpenMessages={() => setNav("messages")}
+            onOpenKilnRentals={() => navigateToNav("kilnRentals")}
+            onOpenCheckin={() => navigateToNav("reservations")}
+            onOpenQueues={() => navigateToNav("kilnLaunch")}
+            onOpenFirings={() => navigateToNav("kiln")}
+            onOpenStudioResources={() => navigateToNav("studioResources")}
+            onOpenGlazeBoard={() => navigateToNav("glazes")}
+            onOpenCommunity={() => navigateToNav("community")}
+            onOpenMessages={() => openMessages()}
             onOpenPieces={openPieces}
           />
         );
@@ -2084,7 +2161,7 @@ export default function App() {
             isStaff={staffUi}
             focusTarget={piecesFocusTarget}
             onFocusTargetConsumed={handlePiecesFocusConsumed}
-            onOpenCheckin={() => setNav("reservations")}
+            onOpenCheckin={() => navigateToNav("reservations")}
           />
         );
       case "profile":
@@ -2100,8 +2177,8 @@ export default function App() {
             setEnhancedMotion(next);
             writeStoredEnhancedMotion(next);
           }}
-          onOpenIntegrations={() => setNav("integrations")}
-          onOpenBilling={() => setNav("billing")}
+          onOpenIntegrations={() => navigateToNav("integrations")}
+          onOpenBilling={() => navigateToNav("billing")}
           onAvatarUpdated={() => {
             void syncUserFromAuth();
           }}
@@ -2112,15 +2189,15 @@ export default function App() {
           <IntegrationsView
             user={user}
             functionsBaseUrl={FUNCTIONS_BASE_URL}
-            onBack={() => setNav("profile")}
+            onBack={() => navigateToNav("profile")}
           />
         );
       case "community":
         return (
           <CommunityView
             user={user}
-            onOpenLendingLibrary={() => setNav("lendingLibrary")}
-            onOpenWorkshops={() => setNav("events")}
+            onOpenLendingLibrary={() => navigateToNav("lendingLibrary")}
+            onOpenWorkshops={() => navigateToNav("events")}
           />
         );
       case "events":
@@ -2144,9 +2221,9 @@ export default function App() {
       case "kilnRentals":
         return (
           <KilnRentalsView
-            onOpenKilnLaunch={() => setNav("kilnLaunch")}
-            onOpenKilnSchedule={() => setNav("kiln")}
-            onOpenWorkSubmission={() => setNav("reservations")}
+            onOpenKilnLaunch={() => navigateToNav("kilnLaunch")}
+            onOpenKilnSchedule={() => navigateToNav("kiln")}
+            onOpenWorkSubmission={() => navigateToNav("reservations")}
           />
         );
       case "kilnLaunch":
@@ -2155,9 +2232,9 @@ export default function App() {
       return (
         <StudioResourcesView
           onOpenPieces={() => openPieces()}
-          onOpenMaterials={() => setNav("materials")}
-          onOpenMembership={() => setNav("membership")}
-          onOpenProfile={() => setNav("profile")}
+          onOpenMaterials={() => navigateToNav("materials")}
+          onOpenMembership={() => navigateToNav("membership")}
+          onOpenProfile={() => navigateToNav("profile")}
         />
       );
       case "messages":
@@ -2165,6 +2242,8 @@ export default function App() {
           <MessagesView
             user={user}
             supportEmail={SUPPORT_EMAIL}
+            initialThreadId={messagesInitialThreadId}
+            onInitialThreadIdConsumed={handleMessagesInitialThreadConsumed}
             threads={threads}
             threadsLoading={threadsLoading}
             threadsError={threadsError}
@@ -2181,7 +2260,7 @@ export default function App() {
         return (
           <NotificationsView
             user={user}
-            onOpenFirings={() => setNav("kiln")}
+            onOpenFirings={() => navigateToNav("kiln")}
             notifications={notifications}
             loading={notificationsLoading}
             error={notificationsError}
@@ -2206,12 +2285,16 @@ export default function App() {
             onDevAdminTokenChange={setDevAdminToken}
             devAdminEnabled={DEV_ADMIN_TOKEN_ENABLED}
             showEmulatorTools={isAuthEmulator}
-            onOpenCheckin={() => setNav("reservations")}
-            onOpenReservation={() => setNav("reservations")}
-            onOpenMessages={() => setNav("messages")}
-            onOpenMessageThread={() => setNav("messages")}
-            onOpenFirings={() => setNav("kiln")}
-            onStartFiring={() => setNav("kilnLaunch")}
+            onOpenCheckin={staffWorkspaceMode === "cockpit" ? undefined : () => navigateToNav("reservations")}
+            onOpenReservation={staffWorkspaceMode === "cockpit" ? undefined : () => navigateToNav("reservations")}
+            onOpenMessages={staffWorkspaceMode === "cockpit" ? undefined : () => openMessages()}
+            onOpenMessageThread={
+              staffWorkspaceMode === "cockpit"
+                ? undefined
+                : (threadId) => openMessages(threadId)
+            }
+            onOpenFirings={staffWorkspaceMode === "cockpit" ? undefined : () => navigateToNav("kiln")}
+            onStartFiring={staffWorkspaceMode === "cockpit" ? undefined : () => navigateToNav("kilnLaunch")}
             onOpenStaffWorkspace={openStaffWorkspace}
             initialModule={
               staffWorkspaceMode === "cockpit"
@@ -2323,7 +2406,7 @@ export default function App() {
             type="button"
             className="brand brand-home"
             onClick={() => {
-              setNav("dashboard");
+              navigateToNav("dashboard");
               setMobileNavOpen(false);
             }}
             aria-label="Go to dashboard"
@@ -2351,7 +2434,7 @@ export default function App() {
                   aria-current={nav === item.key ? "page" : undefined}
                   title={item.label}
                   onClick={() => {
-                    setNav(item.key);
+                    handleShellNavSelection(item.key);
                     if (navIsHorizontalDock) {
                       setOpenSection(null);
                     }
@@ -2393,7 +2476,7 @@ export default function App() {
                         aria-current={nav === item.key ? "page" : undefined}
                         title={item.label}
                         onClick={() => {
-                          setNav(item.key);
+                          handleShellNavSelection(item.key);
                           if (navIsHorizontalDock) {
                             setOpenSection(null);
                           }
@@ -2419,7 +2502,7 @@ export default function App() {
                   aria-current={nav === item.key ? "page" : undefined}
                   title={item.label}
                   onClick={() => {
-                    setNav(item.key);
+                    handleShellNavSelection(item.key);
                     if (navIsHorizontalDock) {
                       setOpenSection(null);
                     }
@@ -2467,7 +2550,7 @@ export default function App() {
                 className="profile-card profile-card-button"
                 title="Open profile"
                 aria-label="Open profile"
-                onClick={() => setNav("profile")}
+                onClick={() => navigateToNav("profile")}
               >
                 <div className="avatar">
                 <span className="avatar-fallback" aria-hidden="true">

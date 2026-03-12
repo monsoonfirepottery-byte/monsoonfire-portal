@@ -345,6 +345,14 @@
         },
         {
           "kind": "contains",
+          "id": "production-verify-well-known-source",
+          "file": "package.json",
+          "severity": "error",
+          "needle": "verify:well-known",
+          "message": "production deployment profile includes deploy-shaped discoverability verification command"
+        },
+        {
+          "kind": "contains",
           "id": "production-cutover-command-rail",
           "file": "scripts/studio-cutover-gate.mjs",
           "severity": "warning",

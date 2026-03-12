@@ -254,10 +254,22 @@ function parseWorkshopSignalSource(value: unknown): WorkshopDemandSignalSource |
   }
 
   if (source === "showcase-follow-up" || source === "showcase") return "events-showcase";
-  if (source === "withdrawn" || source === "interest-withdrawn") return "events-interest-withdrawal";
-  if (source === "request-form" || source === "workshop-request") return "events-request-form";
-  if (source === "interest-toggle") return "events-interest-toggle";
-  if (source === "interest-signal") return "events-interest";
+  if (
+    source === "withdrawn" ||
+    source === "withdraw" ||
+    source === "interest-withdrawn"
+  ) {
+    return "events-interest-withdrawal";
+  }
+  if (
+    source === "request-form" ||
+    source === "workshop-request" ||
+    source === "request"
+  ) {
+    return "events-request-form";
+  }
+  if (source === "interest-toggle" || source === "toggle-interest") return "events-interest-toggle";
+  if (source === "interest-signal" || source === "interest") return "events-interest";
 
   return null;
 }
@@ -526,6 +538,28 @@ type WorkshopCommunitySignalEventCount = {
   withdrawnSignals: number;
   latestSignalAtMs: number | null;
 };
+
+const WORKSHOP_DEMAND_SCORE_WEIGHTS = {
+  request: 3,
+  interest: 1,
+  showcase: 1,
+  withdrawn: -0.5,
+} as const;
+
+function computeWorkshopDemandScore(counts: WorkshopCommunitySignalEventCount): number {
+  const requestSignals = Math.max(0, counts.requestSignals);
+  const interestSignals = Math.max(0, counts.interestSignals);
+  const showcaseSignals = Math.max(0, counts.showcaseSignals);
+  const withdrawnSignals = Math.max(0, counts.withdrawnSignals);
+
+  const weightedScore =
+    requestSignals * WORKSHOP_DEMAND_SCORE_WEIGHTS.request +
+    interestSignals * WORKSHOP_DEMAND_SCORE_WEIGHTS.interest +
+    showcaseSignals * WORKSHOP_DEMAND_SCORE_WEIGHTS.showcase +
+    withdrawnSignals * WORKSHOP_DEMAND_SCORE_WEIGHTS.withdrawn;
+
+  return Math.round(Math.max(0, weightedScore) * 10) / 10;
+}
 
 type WorkshopCommunitySignalRequestEventCandidate = {
   uid: string;
@@ -1477,6 +1511,7 @@ export const listEvents = onRequest({ region: REGION, cors: true }, async (req, 
               communitySignalCount.showcaseSignals,
             0,
           );
+          const demandScore = computeWorkshopDemandScore(communitySignalCount);
           return {
             ...event,
             communitySignalCounts: {
@@ -1485,6 +1520,7 @@ export const listEvents = onRequest({ region: REGION, cors: true }, async (req, 
               showcaseSignals: communitySignalCount.showcaseSignals,
               withdrawnSignals: communitySignalCount.withdrawnSignals,
               totalSignals,
+              demandScore,
               latestSignalAtMs: communitySignalCount.latestSignalAtMs,
             },
           };
@@ -2239,7 +2275,7 @@ export const listWorkshopDemandSignals = onRequest({ region: REGION }, async (re
         );
       return {
           id: signal.id,
-          kind: signal.action === "request" ? "request" : "interest",
+          kind: signal.action,
           techniqueIds,
           techniqueLabel: techniqueLabelFromIds(techniqueIds),
           level: signal.level,
@@ -2363,6 +2399,7 @@ export const getEvent = onRequest({ region: REGION }, async (req, res) => {
                       communitySignalCount.showcaseSignals,
                     0,
                   ),
+                demandScore: computeWorkshopDemandScore(communitySignalCount),
                 latestSignalAtMs: communitySignalCount.latestSignalAtMs,
               },
             }

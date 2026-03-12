@@ -1,0 +1,46 @@
+{
+  "name": "Monsoon Fire Portal APIs",
+  "description": "Public API discovery index for portal.monsoonfire.com.",
+  "url": "https://portal.monsoonfire.com/apis.json",
+  "created": "2026-03-10",
+  "modified": "2026-03-10",
+  "specificationVersion": "0.16",
+  "apis": [
+    {
+      "name": "Monsoon Fire Portal Public API",
+      "description": "Member-safe reservation and membership operations published for agents, swarms, and developer tooling.",
+      "humanURL": "https://portal.monsoonfire.com/agent-docs/",
+      "baseURL": "https://us-central1-monsoonfire-portal.cloudfunctions.net/apiV1",
+      "accessURL": "https://portal.monsoonfire.com/.well-known/openapi.json",
+      "documentationURL": "https://portal.monsoonfire.com/agent-docs/",
+      "tags": [
+        "portal",
+        "reservations",
+        "memberships",
+        "openapi"
+      ],
+      "properties": [
+        {
+          "type": "OpenAPI",
+          "url": "https://portal.monsoonfire.com/.well-known/openapi.json"
+        },
+        {
+          "type": "Documentation",
+          "url": "https://portal.monsoonfire.com/agent-docs/"
+        },
+        {
+          "type": "PortalRoot",
+          "url": "https://portal.monsoonfire.com/"
+        },
+        {
+          "type": "ReserveAction",
+          "url": "https://portal.monsoonfire.com/reserve"
+        },
+        {
+          "type": "JoinAction",
+          "url": "https://portal.monsoonfire.com/membership"
+        }
+      ]
+    }
+  ]
+}

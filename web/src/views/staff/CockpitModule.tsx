@@ -77,9 +77,6 @@ type CockpitModuleProps = {
   paymentDegraded: boolean;
   commerceError: string;
   paymentAlerts: ReadonlyArray<TodayPaymentAlert>;
-
-  systemSummaryToneLabel: string;
-  systemSummaryMessage: string;
 };
 
 function when(ms: number): string {
@@ -125,8 +122,6 @@ export default function CockpitModule({
   paymentDegraded,
   commerceError,
   paymentAlerts,
-  systemSummaryToneLabel,
-  systemSummaryMessage,
 }: CockpitModuleProps) {
   const onPhotoSelected = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
@@ -417,16 +412,6 @@ export default function CockpitModule({
         </section>
       </section>
 
-      <section className="card staff-console-card">
-        <div className="card-title">System status summary</div>
-        <p className="card-subtitle">Operational health at a glance with cockpit-native section access.</p>
-        <div className="staff-note">
-          <strong>{systemSummaryToneLabel}</strong> · {systemSummaryMessage}
-        </div>
-        <div className="staff-note staff-note-muted">
-          Advanced diagnostics stay on the System workspace. Policy controls and agent operations now live in the Cockpit Policy & Agent Ops tab.
-        </div>
-      </section>
       {cockpitOpsContent}
     </section>
   );

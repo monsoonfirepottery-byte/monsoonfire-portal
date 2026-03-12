@@ -1,0 +1,29 @@
+{
+  "schema": "codex-automation-budget.v1",
+  "defaults": {
+    "paused": true,
+    "failClosed": true,
+    "cooldownMinutesOnQuotaFailure": 720,
+    "quotaFailurePauseThreshold": 1,
+    "quotaFailureWindowHours": 24,
+    "maxRunsPerDay": 0
+  },
+  "models": {
+    "gpt-5.3-codex-spark": {
+      "automationEnabled": false,
+      "maxRunsPerDay": 0
+    }
+  },
+  "launchers": {
+    "intent-codex-proc": {
+      "enabled": false,
+      "paused": true,
+      "maxRunsPerDay": 0
+    },
+    "monsoonfire-overnight.service": {
+      "enabled": false,
+      "paused": true,
+      "maxRunsPerDay": 0
+    }
+  }
+}

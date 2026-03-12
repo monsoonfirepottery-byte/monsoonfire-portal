@@ -3,12 +3,14 @@ services:
     image: ${STUDIO_BRAIN_POSTGRES_IMAGE:-pgvector/pgvector:pg16}
     container_name: studiobrain_postgres
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     environment:
       POSTGRES_DB: ${PGDATABASE:-monsoonfire_studio_os}
       POSTGRES_USER: ${PGUSER:-postgres}
       POSTGRES_PASSWORD: ${PGPASSWORD:-postgres}
     ports:
-      - "${PGPORT:-5433}:5432"
+      - "${STUDIO_BRAIN_POSTGRES_BIND_HOST:-127.0.0.1}:${PGPORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -33,11 +35,26 @@ services:
     image: redis:7-alpine
     container_name: studiobrain_redis
     restart: unless-stopped
-    command: ["redis-server", "--save", "60", "1", "--appendonly", "no"]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    command:
+      - sh
+      - -c
+      - |
+        if [ -n "$REDIS_PASSWORD" ]; then
+          exec redis-server --save 60 1 --appendonly no --requirepass "$REDIS_PASSWORD";
+        fi
+        exec redis-server --save 60 1 --appendonly no
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${STUDIO_BRAIN_REDIS_BIND_HOST:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+        [
+          "CMD-SHELL",
+          "if [ -n \"$REDIS_PASSWORD\" ]; then redis-cli -a \"$REDIS_PASSWORD\" ping; else redis-cli ping; fi",
+        ]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -58,13 +75,15 @@ services:
     image: minio/minio:latest
     container_name: studiobrain_minio
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     environment:
       MINIO_ROOT_USER: ${STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY:-minioadmin}
     command: server /data --console-address ":9001"
     ports:
-      - "${MINIO_API_PORT:-9010}:9000"
-      - "${MINIO_CONSOLE_PORT:-9011}:9001"
+      - "${STUDIO_BRAIN_MINIO_BIND_HOST:-127.0.0.1}:${MINIO_API_PORT:-9010}:9000"
+      - "${STUDIO_BRAIN_MINIO_BIND_HOST:-127.0.0.1}:${MINIO_CONSOLE_PORT:-9011}:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -91,14 +110,16 @@ services:
     user: "0:0"
     restart: unless-stopped
     profiles: ["observability"]
+    security_opt:
+      - no-new-privileges:true
     command: ["--config", "/etc/otel/config.yaml"]
     volumes:
       - ./docker/otel-collector.yaml:/etc/otel/config.yaml:ro
       - ../output/otel:/var/log/otel
     ports:
-      - "4317:4317"
-      - "4318:4318"
-      - "8889:8889"
+      - "${STUDIO_BRAIN_OTEL_BIND_HOST:-127.0.0.1}:4317:4317"
+      - "${STUDIO_BRAIN_OTEL_BIND_HOST:-127.0.0.1}:4318:4318"
+      - "${STUDIO_BRAIN_OTEL_BIND_HOST:-127.0.0.1}:8889:8889"
     depends_on:
       - postgres
       - redis

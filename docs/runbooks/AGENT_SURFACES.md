@@ -19,6 +19,10 @@ Portal (`portal.monsoonfire.com`):
 - `/robots.txt`
 - `/sitemap.xml`
 - `/agent-docs/`
+- `/reserve`
+- `/membership`
+- `/.well-known/openapi.json`
+- `/apis.json`
 - `/contracts/portal-contracts.json`
 
 ## Authoritative References
@@ -33,10 +37,13 @@ Portal (`portal.monsoonfire.com`):
 1. Update docs/contracts first when behavior changes.
 2. Refresh website + portal `llms.txt` and `ai.txt` links and labels.
 3. Keep `website/` and `website/ncsitebuilder/` agent surfaces in sync.
-4. Update portal static artifact (`web/public/contracts/portal-contracts.json`) when endpoint contracts change.
-5. Run deterministic check:
+4. Update portal landing pages (`web/public/reserve/index.html`, `web/public/membership/index.html`) when canonical routes or JSON-LD actions change.
+5. Update portal static artifacts (`web/public/contracts/portal-contracts.json`, `web/public/apis.json`, `web/public/.well-known/openapi.json`) when endpoint contracts change.
+6. Run deterministic check:
    - `npm run agent:surfaces:check`
-6. Run epic status view if needed:
+7. Run endpoint verification:
+   - `npm run verify:well-known`
+8. Run epic status view if needed:
    - `node ./scripts/epic-hub.mjs show tickets/P1-EPIC-09-agent-readable-website-and-portal.md`
 
 ## CI Gate
@@ -49,6 +56,12 @@ Portal (`portal.monsoonfire.com`):
 
 The gate is deterministic and does not perform external network calls.
 
+`npm run verify:well-known` adds the deploy-shaped acceptance layer:
+- builds the portal,
+- serves the portal and both website roots locally,
+- runs `curl -fsS` against required discovery endpoints,
+- validates the public OpenAPI document with `exegesis.compileRunner`.
+
 ## Safety Rules
 
 - Never publish secrets, bearer tokens, dev admin tokens, or internal hosts.
@@ -59,7 +72,7 @@ The gate is deterministic and does not perform external network calls.
 
 For future iOS docs tooling, keep these files structured so they can be transformed into a compact mobile index:
 
-- Inputs: website/portal `llms.txt`, `ai.txt`, and portal contracts JSON
+- Inputs: website/portal `llms.txt`, `ai.txt`, portal contracts JSON, `apis.json`, and the public OpenAPI file
 - Required fields: stable URLs, authority labels, and workflow pointers
 - Transform target: a single read-only JSON index consumable by native docs tooling
 

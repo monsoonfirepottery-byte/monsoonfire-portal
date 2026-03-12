@@ -8,6 +8,8 @@ Use this as the single source for runtime vars introduced by the backend-orchest
 |---|---|---|---|
 | `STUDIO_BRAIN_HOST` | HTTP bind host | No | `127.0.0.1` |
 | `STUDIO_BRAIN_PORT` | HTTP bind port | No | `8787` |
+| `STUDIO_BRAIN_PUBLIC_HOST` | Public HTTPS hostname for the Caddy proxy | No | `brain.monsoonfire.com` |
+| `STUDIO_BRAIN_PUBLIC_UPSTREAM` | Public HTTPS proxy upstream | No | `http://127.0.0.1:8787` |
 | `STUDIO_BRAIN_LOG_LEVEL` | Structured logger level | No | `info` |
 | `STUDIO_BRAIN_ALLOWED_ORIGINS` | Comma list for CORS allowlist | No | `http://127.0.0.1:5173,http://localhost:5173` |
 | `STUDIO_BRAIN_ADMIN_TOKEN` | Optional extra token gate for capability endpoints | No | empty |
@@ -29,6 +31,7 @@ Use this as the single source for runtime vars introduced by the backend-orchest
 | Variable | Description | Required | Default |
 |---|---|---|---|
 | `PGHOST` | Postgres host | No | `127.0.0.1` |
+| `STUDIO_BRAIN_POSTGRES_BIND_HOST` | Host interface for Postgres port publishing | No | `127.0.0.1` |
 | `PGPORT` | Postgres port | No | `5433` |
 | `PGDATABASE` | Postgres database | No | `monsoonfire_studio_os` |
 | `PGUSER` | Postgres user | No | `postgres` |
@@ -44,6 +47,7 @@ Use this as the single source for runtime vars introduced by the backend-orchest
 | Variable | Description | Required | Default |
 |---|---|---|---|
 | `REDIS_HOST` | Redis host | No | `127.0.0.1` |
+| `STUDIO_BRAIN_REDIS_BIND_HOST` | Host interface for Redis port publishing | No | `127.0.0.1` |
 | `REDIS_PORT` | Redis port | No | `6379` |
 | `REDIS_USERNAME` | Redis username (optional, for ACL mode) | No | empty |
 | `REDIS_PASSWORD` | Redis password (optional, for ACL mode) | No | empty |
@@ -59,9 +63,10 @@ Use this as the single source for runtime vars introduced by the backend-orchest
 | Variable | Description | Required | Default |
 |---|---|---|---|
 | `STUDIO_BRAIN_ARTIFACT_STORE_ENDPOINT` | MinIO endpoint URL | No | `http://127.0.0.1:9010` |
+| `STUDIO_BRAIN_MINIO_BIND_HOST` | Host interface for MinIO API/console publishing | No | `127.0.0.1` |
 | `STUDIO_BRAIN_ARTIFACT_STORE_BUCKET` | Bucket name | No | `studiobrain-artifacts` |
-| `STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY` | MinIO access key | No | `minioadmin` |
-| `STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY` | MinIO secret key | No | `minioadmin` |
+| `STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY` | MinIO access key | No | `studiobrainadmin` |
+| `STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY` | MinIO secret key | No | placeholder, rotate before public exposure |
 | `STUDIO_BRAIN_ARTIFACT_STORE_USE_SSL` | Use HTTPS for MinIO | No | `false` |
 | `STUDIO_BRAIN_ARTIFACT_STORE_TIMEOUT_MS` | Object operation timeout | No | `5000` |
 
@@ -118,8 +123,18 @@ Use this as the single source for runtime vars introduced by the backend-orchest
 | Variable | Description | Required | Default |
 |---|---|---|---|
 | `STUDIO_BRAIN_OTEL_ENABLED` | Enable OTEL wiring (optional) | No | `false` |
+| `STUDIO_BRAIN_OTEL_BIND_HOST` | Host interface for OTEL receiver/metrics publishing | No | `127.0.0.1` |
 | `STUDIO_BRAIN_OTEL_ENDPOINT` | OTEL collector endpoint | No | empty |
 | `STUDIO_BRAIN_OTEL_SERVICE_NAME` | OTEL service name | No | `studiobrain` |
+
+## Security and detection
+
+| Variable | Description | Required | Default |
+|---|---|---|---|
+| `STUDIO_BRAIN_CROWDSEC_IMAGE` | CrowdSec engine image override | No | `crowdsecurity/crowdsec:latest` |
+| `STUDIO_BRAIN_CROWDSEC_LAPI_PORT` | CrowdSec Local API port (loopback only) | No | `18082` |
+| `STUDIO_BRAIN_CROWDSEC_COLLECTIONS` | Space-separated CrowdSec collections to install | No | `crowdsecurity/linux crowdsecurity/caddy crowdsecurity/sshd` |
+| `STUDIO_BRAIN_CROWDSEC_GID` | CrowdSec host group id for mounted logs | No | `1000` |
 
 ## Runtime scheduling (existing app controls)
 
@@ -149,6 +164,7 @@ Use this as the single source for runtime vars introduced by the backend-orchest
 2. Recommended copy/update/verify flow before startup:
    - `cp .env.example .env`
    - update local secrets/tokens
+   - rotate away from the example Postgres / Redis / MinIO placeholders before public exposure
    - `npm run studio:env:verify` (from repo root)
 3. Redaction policy:
    - logs and status surfaces should use redacted fields (`[set]`/`[redacted]`) for token/secret/password variables.

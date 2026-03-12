@@ -111,6 +111,18 @@ jobs:
             --report output/qa/portal-virtual-staff-regression-prod.json \
             --json
 
+      - name: Verify public discoverability endpoints
+        run: |
+          curl -fsS "${{ steps.base_url.outputs.value }}/reserve" >/dev/null
+          curl -fsS "${{ steps.base_url.outputs.value }}/membership" >/dev/null
+          curl -fsS "${{ steps.base_url.outputs.value }}/.well-known/openapi.json" >/dev/null
+          curl -fsS "${{ steps.base_url.outputs.value }}/apis.json" >/dev/null
+          node ./web/deploy/namecheap/verify-cutover.mjs \
+            --portal-url "${{ steps.base_url.outputs.value }}" \
+            --deep-path /reserve \
+            --well-known-path /.well-known/openapi.json \
+            --report-path output/qa/portal-cutover-verify-prod.json
+
       - name: Run portal production smoke
         env:
           PORTAL_STAFF_EMAIL: ${{ secrets.PORTAL_STAFF_EMAIL }}
@@ -151,6 +163,15 @@ jobs:
         with:
           name: portal-virtual-staff-regression
           path: output/qa/portal-virtual-staff-regression-prod.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload discoverability verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-cutover-verify-prod
+          path: output/qa/portal-cutover-verify-prod.json
           if-no-files-found: ignore
           retention-days: 14
 

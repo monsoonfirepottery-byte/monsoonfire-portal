@@ -258,7 +258,8 @@
   };
 
   const normalizeUrlHost = (hostname) => String(hostname || '').toLowerCase().replace(/^www\./, '');
-  const canonicalCampaignHosts = ['monsoonfire.kilnfire.com', 'portal.monsoonfire.com', 'instagram.com', 'discord.com', 'discord.gg', 'phoenixcenterforthearts.org'];
+  const portalHost = 'portal.monsoonfire.com';
+  const canonicalCampaignHosts = [portalHost, 'instagram.com', 'discord.com', 'discord.gg', 'phoenixcenterforthearts.org'];
 
   const isCampaignHost = (hostname) => {
     const normalizedHost = normalizeUrlHost(hostname);
@@ -339,8 +340,19 @@
 
   const resolveCtaLabel = (href) => {
     if (!href) return null;
+    try {
+      const parsed = new URL(href, window.location.origin);
+      if (normalizeUrlHost(parsed.hostname) === portalHost) {
+        const portalPath = parsed.pathname.toLowerCase();
+        if (portalPath === '/' || portalPath === '') return 'login';
+        if (portalPath.startsWith('/reserve') || portalPath.startsWith('/reservations')) return 'reserve';
+        if (portalPath.startsWith('/membership')) return 'memberships';
+        if (portalPath.startsWith('/materials')) return 'supplies';
+      }
+    } catch {
+      // Keep the looser string checks below for malformed or relative hrefs.
+    }
     const cleaned = href.toLowerCase();
-    if (cleaned.includes('monsoonfire.kilnfire.com')) return 'login';
     if (cleaned.startsWith('mailto:')) return 'email';
     if (cleaned.startsWith('tel:')) return 'phone';
     if (cleaned.includes('discord')) return 'discord';

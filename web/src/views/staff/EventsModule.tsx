@@ -78,6 +78,8 @@ type Props = {
   loadEvents: () => Promise<void>;
   setStatus: (next: string) => void;
   handleExportWorkshopProgrammingBrief: () => void;
+  handleLoadWorkshopProgrammingCluster: (cluster: WorkshopProgrammingCluster) => void;
+  activeWorkshopProgrammingClusterLabel: string;
   workshopProgrammingKpis: WorkshopProgrammingKpis;
   workshopProgrammingClusters: WorkshopProgrammingCluster[];
   eventKpis: EventKpis;
@@ -171,12 +173,28 @@ export default function EventsModule(props: Props) {
           Export programming brief
         </button>
       </div>
+      {props.activeWorkshopProgrammingClusterLabel ? (
+        <div className="staff-note staff-note-ok">
+          Quick planning is loaded from the {props.activeWorkshopProgrammingClusterLabel} cluster. Add
+          the date/time, then create the next session from this console.
+        </div>
+      ) : null}
       <div className="staff-table-wrap">
         <table className="staff-table">
-          <thead><tr><th>Technique</th><th>Gap</th><th>Demand</th><th>Waitlist</th><th>Upcoming</th><th>Suggested action</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Technique</th>
+              <th>Gap</th>
+              <th>Demand</th>
+              <th>Waitlist</th>
+              <th>Upcoming</th>
+              <th>Suggested action</th>
+              <th>Workflow</th>
+            </tr>
+          </thead>
           <tbody>
             {props.workshopProgrammingClusters.length === 0 ? (
-              <tr><td colSpan={6}>No workshop clusters yet. Publish events to start demand modeling.</td></tr>
+              <tr><td colSpan={7}>No workshop clusters yet. Publish events to start demand modeling.</td></tr>
             ) : (
               props.workshopProgrammingClusters.map((cluster) => (
                 <tr key={cluster.key}>
@@ -189,6 +207,15 @@ export default function EventsModule(props: Props) {
                   <td>{cluster.waitlistCount}</td>
                   <td>{cluster.upcomingCount}</td>
                   <td>{cluster.recommendedAction}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-small"
+                      onClick={() => props.handleLoadWorkshopProgrammingCluster(cluster)}
+                    >
+                      Load into planning
+                    </button>
+                  </td>
                 </tr>
               ))
             )}

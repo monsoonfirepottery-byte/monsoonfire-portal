@@ -55,6 +55,10 @@ export type FunctionsClientConfig = {
   redactCurlByDefault?: boolean;
 };
 
+export type FunctionsClientPostOptions = {
+  requestTimeoutMs?: number;
+};
+
 export function safeJsonStringify(v: unknown) {
   try {
     return JSON.stringify(v, null, 2);
@@ -138,7 +142,7 @@ export function buildCurlReal(
 }
 
 export type FunctionsClient = {
-  postJson<TResp>(fn: string, payload: unknown): Promise<TResp>;
+  postJson<TResp>(fn: string, payload: unknown, opts?: FunctionsClientPostOptions): Promise<TResp>;
   getLastRequest(): LastRequest | null;
 
   /** Returns a curl string; redacted by default. */
@@ -162,7 +166,11 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
     config.onLastRequest?.(req);
   }
 
-  async function postJson<TResp>(fn: string, payload: unknown): Promise<TResp> {
+  async function postJson<TResp>(
+    fn: string,
+    payload: unknown,
+    opts?: FunctionsClientPostOptions
+  ): Promise<TResp> {
     const base = config.baseUrl.replace(/\/+$/, "");
     const path = fn.replace(/^\/+/, "");
     const url = `${base}/${path}`;
@@ -174,6 +182,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
     }
 
     const run = async (): Promise<TResp> => {
+      const effectiveRequestTimeoutMs = opts?.requestTimeoutMs ?? requestTimeoutMs;
       const startedAtMs = Date.now();
       const redactedPayload = redactTelemetryPayload(normalizedPayload);
       const req: LastRequest = {
@@ -256,7 +265,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
         timeoutHandle = setTimeout(() => {
           didTimeout = true;
           abortController.abort("request-timeout");
-        }, requestTimeoutMs);
+        }, effectiveRequestTimeoutMs);
 
         resp = await fetch(url, {
           method: "POST",
@@ -269,7 +278,7 @@ export function createFunctionsClient(config: FunctionsClientConfig): FunctionsC
         if (timeoutHandle) clearTimeout(timeoutHandle);
         let debugMessage = error instanceof Error ? error.message : String(error);
         if (didTimeout) {
-          debugMessage = `Request timeout after ${requestTimeoutMs}ms`;
+          debugMessage = `Request timeout after ${effectiveRequestTimeoutMs}ms`;
         }
         const appError = toAppError(error, {
           requestId: req.requestId,

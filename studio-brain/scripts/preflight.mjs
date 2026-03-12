@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import net from "node:net";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,19 @@ const STUDIO_BRAIN_ROOT = resolve(__dirname, "..");
 const warningPrefix = "[network-profile]";
 const DEFAULT_TIMEOUT_MS = 2000;
 const DEFAULT_MINIO_API_PORT = 9010;
+const LOOPBACK_ONLY_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
+const DEFAULT_SECRET_SENTINELS = new Map([
+  ["PGPASSWORD", new Set(["postgres", "changeme", "replace_with_strong_local_postgres_password"])],
+  ["REDIS_PASSWORD", new Set(["", "changeme", "replace_with_strong_local_redis_password"])],
+  [
+    "STUDIO_BRAIN_ARTIFACT_STORE_ACCESS_KEY",
+    new Set(["minioadmin", "studiobrainadmin", "changeme", "replace_with_strong_local_minio_access_key"]),
+  ],
+  [
+    "STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY",
+    new Set(["minioadmin", "changeme", "replace_with_strong_local_minio_secret"]),
+  ],
+]);
 const NETWORK_PROFILE_ENV_KEYS = [
   "STUDIO_BRAIN_NETWORK_PROFILE",
   "STUDIO_BRAIN_LOCAL_HOST",
@@ -202,6 +215,89 @@ function printCheckLine(name, result) {
   process.stdout.write(`  [${status}] ${name} - ${result.message}\n`);
 }
 
+function printSecurityCheckLine(name, status, message) {
+  process.stdout.write(`  [${status}] ${name} - ${message}\n`);
+}
+
+function isLoopbackHost(host) {
+  return LOOPBACK_ONLY_HOSTS.has(String(host || "").trim().toLowerCase());
+}
+
+function resolveEnvFilePermissions(path) {
+  if (!path || !existsSync(path)) {
+    return null;
+  }
+
+  try {
+    const stats = statSync(path);
+    return stats.mode & 0o777;
+  } catch {
+    return null;
+  }
+}
+
+function formatMode(mode) {
+  return mode === null ? "(missing)" : mode.toString(8).padStart(3, "0");
+}
+
+function evaluateSecurityGuardrails({ envPath, envLabel }) {
+  const findings = [];
+  const bindTargets = [
+    ["postgres-bind", "STUDIO_BRAIN_POSTGRES_BIND_HOST"],
+    ["redis-bind", "STUDIO_BRAIN_REDIS_BIND_HOST"],
+    ["minio-bind", "STUDIO_BRAIN_MINIO_BIND_HOST"],
+    ["otel-bind", "STUDIO_BRAIN_OTEL_BIND_HOST"],
+  ];
+
+  for (const [label, envKey] of bindTargets) {
+    const value = String(process.env[envKey] || "127.0.0.1").trim();
+    findings.push({
+      name: label,
+      status: isLoopbackHost(value) ? "PASS" : "WARN",
+      message: isLoopbackHost(value)
+        ? `${envKey} keeps the service on loopback (${value})`
+        : `${envKey} exposes the service beyond loopback (${value})`,
+    });
+  }
+
+  for (const [envKey, insecureValues] of DEFAULT_SECRET_SENTINELS.entries()) {
+    const value = String(process.env[envKey] || "").trim();
+    const isMissing = value.length === 0;
+    const isDefault = insecureValues.has(value);
+    findings.push({
+      name: envKey,
+      status: isMissing || isDefault ? "WARN" : "PASS",
+      message: isMissing || isDefault
+        ? `${envKey} still matches an insecure default or placeholder in ${envLabel}`
+        : `${envKey} is set away from the known insecure defaults`,
+    });
+  }
+
+  const mode = resolveEnvFilePermissions(envPath);
+  if (mode !== null) {
+    findings.push({
+      name: "env-file-permissions",
+      status: mode <= 0o600 ? "PASS" : "WARN",
+      message: mode <= 0o600
+        ? `${envLabel} permissions are tightened (${formatMode(mode)})`
+        : `${envLabel} permissions are broader than recommended (${formatMode(mode)}); tighten to 600`,
+    });
+  }
+
+  const publicUpstream = String(process.env.STUDIO_BRAIN_PUBLIC_UPSTREAM || "").trim();
+  findings.push({
+    name: "public-upstream",
+    status: publicUpstream.includes("127.0.0.1:8787") ? "PASS" : publicUpstream ? "WARN" : "PASS",
+    message: publicUpstream.includes("127.0.0.1:8787")
+      ? "Public proxy upstream targets loopback Studio Brain"
+      : publicUpstream
+        ? `Public proxy upstream is not loopback (${publicUpstream})`
+        : "Public proxy upstream not configured in env",
+  });
+
+  return findings;
+}
+
 function printRemediation(service, context) {
   const composeUpPostgres = composeCommand("up -d postgres");
   const composeUpRedis = composeCommand("up -d redis");
@@ -347,6 +443,13 @@ async function main() {
   if (guardrails.status !== "pass") {
     process.stdout.write("Guardrails reported warnings; run cleanup guidance before merge.\n");
   }
+
+  const securityChecks = evaluateSecurityGuardrails({
+    envPath: envSource.path,
+    envLabel: envSource.label,
+  });
+  process.stdout.write("Security guardrails:\n");
+  securityChecks.forEach((entry) => printSecurityCheckLine(entry.name, entry.status, entry.message));
 }
 
 void main().catch((error) => {

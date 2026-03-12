@@ -1,14 +1,17 @@
 # Monsoon Fire Portal — llms.txt
-Updated: 2026-02-22
+Updated: 2026-03-10
 Scope: Public discovery map for portal.monsoonfire.com.
 Safety: Discovery and documentation only; no privileged access is granted.
 
 ## Start Here
 - [Authoritative] https://portal.monsoonfire.com/agent-docs/
 - [Authoritative] https://portal.monsoonfire.com/
+- [Authoritative] https://portal.monsoonfire.com/reserve
+- [Authoritative] https://portal.monsoonfire.com/membership
 - [Authoritative] https://portal.monsoonfire.com/llms.txt
 - [Authoritative] https://portal.monsoonfire.com/ai.txt
-- [Authoritative] https://portal.monsoonfire.com/contracts/portal-contracts.json
+- [Authoritative] https://portal.monsoonfire.com/.well-known/openapi.json
+- [Authoritative] https://portal.monsoonfire.com/apis.json
 - [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/API_CONTRACTS.md
 - [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/DEEP_LINK_CONTRACT.md
 - [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/SOURCE_OF_TRUTH_INDEX.md

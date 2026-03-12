@@ -1,10 +1,15 @@
 # Monsoon Fire Website — llms.txt
-Updated: 2026-02-22
+Updated: 2026-03-10
 Scope: Public marketing website discovery for AI agents.
 Safety: Public, read-only guidance only. No secrets, private hosts, or privileged actions.
 
 ## Start Here
 - [Authoritative] https://monsoonfire.com/agent-docs/
+- [Authoritative] https://portal.monsoonfire.com/reserve
+- [Authoritative] https://portal.monsoonfire.com/membership
+- [Authoritative] https://portal.monsoonfire.com/materials
+- [Authoritative] https://portal.monsoonfire.com/.well-known/openapi.json
+- [Authoritative] https://portal.monsoonfire.com/apis.json
 - [Authoritative] https://monsoonfire.com/
 - [Authoritative] https://monsoonfire.com/services/
 - [Authoritative] https://monsoonfire.com/kiln-firing/
@@ -12,10 +17,6 @@ Safety: Public, read-only guidance only. No secrets, private hosts, or privilege
 - [Authoritative] https://monsoonfire.com/support/
 - [Authoritative] https://monsoonfire.com/contact/
 - [Authoritative] https://monsoonfire.com/policies/
-- [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/API_CONTRACTS.md
-- [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/DEEP_LINK_CONTRACT.md
-- [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/SOURCE_OF_TRUTH_INDEX.md
-- [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/runbooks/AGENT_SURFACES.md
 - [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/CONTINUE_JOURNEY_AGENT_QUICKSTART.md
 - [Advisory] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/policies/AGENT_POLICY_ACTIONS.md
 
@@ -23,7 +24,17 @@ Safety: Public, read-only guidance only. No secrets, private hosts, or privilege
 - Authoritative: Maintained contract docs and deployed production pages.
 - Advisory: Supporting context that may lag behind contract updates.
 
+## Contract Docs
+- [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/API_CONTRACTS.md
+- [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/DEEP_LINK_CONTRACT.md
+- [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/SOURCE_OF_TRUTH_INDEX.md
+- [Authoritative] https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/runbooks/AGENT_SURFACES.md
+
 ## Discovery Files
 - https://monsoonfire.com/ai.txt
 - https://monsoonfire.com/robots.txt
 - https://monsoonfire.com/sitemap.xml
+- https://portal.monsoonfire.com/llms.txt
+- https://portal.monsoonfire.com/ai.txt
+- https://portal.monsoonfire.com/.well-known/openapi.json
+- https://portal.monsoonfire.com/apis.json

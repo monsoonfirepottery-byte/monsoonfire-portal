@@ -45,7 +45,7 @@
 ## Memory context (load at session start)
 - Durable memory root: `C:\Users\micah\.codex\memory`
 - Read first: `accepted/accepted.jsonl`
-- Review queue: `working/proposed_review_queue.md`
+- Review queue: `proposed/proposed.jsonl`
 - Strategic open loop to keep visible: local West Valley/Phoenix studio expansion real-estate tracking.
 - On startup context transport failures for unchanged `(query + runId)` signatures (including `spawnSync ... ETIMEDOUT`), treat the state as blocked and do not rerun the same signature.
 - For that blocked signature, log blocker evidence in-order (`command`, `exit`, `query`, `runId`, `first signal`) and apply exactly one unblock action before retrying:

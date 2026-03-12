@@ -5,8 +5,7 @@
   };
   const RUNTIME_BANNER_HOST_ID = "mf-runtime-banner-host";
   const RUNTIME_BANNER_STYLE_ID = "mf-runtime-banner-style";
-  const kilnfirePortalHost = "monsoonfire.kilnfire.com";
-  const betaPortalHost = "portal.monsoonfire.com";
+  const portalHost = "portal.monsoonfire.com";
   const root = document.documentElement;
   const body = document.body;
   const header = document.querySelector(".site-header");
@@ -52,9 +51,14 @@
       }
       try {
         const parsed = new URL(href, window.location.origin);
-        // Keep live website links pointed at Kilnfire until portal cutover is complete.
-        if (parsed.hostname === betaPortalHost) {
-          parsed.hostname = kilnfirePortalHost;
+        if (parsed.hostname === portalHost) {
+          if (parsed.pathname.startsWith("/new-user") || parsed.pathname.startsWith("/book") || parsed.pathname.startsWith("/reservations")) {
+            parsed.pathname = "/reserve";
+          } else if (parsed.pathname.startsWith("/memberships")) {
+            parsed.pathname = "/membership";
+          } else if (parsed.pathname.startsWith("/supplies") || parsed.pathname.startsWith("/shop") || parsed.pathname.startsWith("/store")) {
+            parsed.pathname = "/materials";
+          }
           link.setAttribute("href", parsed.toString());
         }
       } catch {
@@ -581,7 +585,7 @@
     };
 
     const normalizeUrlHost = (hostname) => String(hostname || "").toLowerCase().replace(/^www\./, "");
-    const canonicalCampaignHosts = [kilnfirePortalHost, betaPortalHost, "instagram.com", "discord.com", "discord.gg", "phoenixcenterforthearts.org"];
+    const canonicalCampaignHosts = [portalHost, "instagram.com", "discord.com", "discord.gg", "phoenixcenterforthearts.org"];
 
     const isCampaignHost = (hostname) => {
       const normalizedHost = normalizeUrlHost(hostname);
@@ -664,7 +668,18 @@
       if (!href) return null;
       const cleanedPath = resolveLocalPathForLabel(href);
       const cleanedUrl = href.toLowerCase();
-      if (cleanedUrl.includes(kilnfirePortalHost) || cleanedUrl.includes(betaPortalHost)) return "login";
+      try {
+        const parsed = new URL(href, window.location.origin);
+        if (normalizeUrlHost(parsed.hostname) === portalHost) {
+          const portalPath = parsed.pathname.toLowerCase();
+          if (portalPath === "/" || portalPath === "") return "login";
+          if (portalPath.startsWith("/reserve") || portalPath.startsWith("/reservations")) return "reserve";
+          if (portalPath.startsWith("/membership")) return "memberships";
+          if (portalPath.startsWith("/materials")) return "supplies";
+        }
+      } catch {
+        // Fall back to the local-path and string heuristics below.
+      }
       if (cleanedUrl.startsWith("mailto:")) return "email";
       if (cleanedUrl.startsWith("tel:")) return "phone";
       if (cleanedUrl.includes("discord")) return "discord";

@@ -28,16 +28,26 @@ const REQUIRED_FILES = [
   "web/public/robots.txt",
   "web/public/sitemap.xml",
   "web/public/agent-docs/index.html",
+  "web/public/reserve/index.html",
+  "web/public/membership/index.html",
+  "web/public/apis.json",
+  "web/public/.well-known/openapi.json",
   "web/public/contracts/portal-contracts.json",
 ];
 
 const LINK_SURFACES = [
   { path: "website/llms.txt", localRoot: "website" },
   { path: "website/ai.txt", localRoot: "website" },
+  { path: "website/agent-docs/index.html", localRoot: "website" },
   { path: "website/ncsitebuilder/llms.txt", localRoot: "website/ncsitebuilder" },
   { path: "website/ncsitebuilder/ai.txt", localRoot: "website/ncsitebuilder" },
+  { path: "website/ncsitebuilder/agent-docs/index.html", localRoot: "website/ncsitebuilder" },
   { path: "web/public/llms.txt", localRoot: "web/public" },
   { path: "web/public/ai.txt", localRoot: "web/public" },
+  { path: "web/public/agent-docs/index.html", localRoot: "web/public" },
+  { path: "web/public/reserve/index.html", localRoot: "web/public" },
+  { path: "web/public/membership/index.html", localRoot: "web/public" },
+  { path: "web/public/apis.json", localRoot: "web/public" },
 ];
 
 const LLMS_FILES = [
@@ -56,6 +66,10 @@ const SECRET_SCAN_FILES = [
   "web/public/llms.txt",
   "web/public/ai.txt",
   "web/public/agent-docs/index.html",
+  "web/public/reserve/index.html",
+  "web/public/membership/index.html",
+  "web/public/apis.json",
+  "web/public/.well-known/openapi.json",
   "web/public/contracts/portal-contracts.json",
 ];
 
@@ -72,6 +86,7 @@ const ALLOWED_HTTPS_HOSTS = new Set([
   "portal.monsoonfire.com",
   "monsoonfire-portal.web.app",
   "monsoonfire-portal.firebaseapp.com",
+  "us-central1-monsoonfire-portal.cloudfunctions.net",
   "github.com",
 ]);
 
@@ -253,7 +268,7 @@ function checkLinks() {
     }
 
     const content = readFile(fullPath);
-    const links = extractLinks(content);
+    const links = extractLinks(content, surface.path);
 
     addFinding(
       links.length > 0 ? "pass" : "warning",
@@ -408,7 +423,60 @@ function mapHostToLocalRoot(hostname) {
   return null;
 }
 
-function extractLinks(content) {
+function extractLinks(content, surfacePath = "") {
+  if (surfacePath.endsWith(".html")) {
+    return extractHtmlLinks(content);
+  }
+  if (surfacePath.endsWith(".json")) {
+    return extractJsonLinks(content);
+  }
+  return extractTextLinks(content);
+}
+
+function extractHtmlLinks(content) {
+  const regex = /\b(?:href|src)\s*=\s*"([^"]+)"/gi;
+  const matches = [];
+  let match;
+  while ((match = regex.exec(content)) !== null) {
+    matches.push(match[1]);
+  }
+  return Array.from(new Set(matches.map(normalizeLink).filter(Boolean)));
+}
+
+function extractJsonLinks(content) {
+  try {
+    const payload = JSON.parse(content);
+    const matches = [];
+    collectJsonStringLinks(payload, matches);
+    return Array.from(new Set(matches.map(normalizeLink).filter(Boolean)));
+  } catch {
+    return extractTextLinks(content);
+  }
+}
+
+function collectJsonStringLinks(value, matches) {
+  if (typeof value === "string") {
+    if (value.startsWith("https://") || value.startsWith("http://") || value.startsWith("/")) {
+      matches.push(value);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      collectJsonStringLinks(entry, matches);
+    }
+    return;
+  }
+
+  if (value && typeof value === "object") {
+    for (const entry of Object.values(value)) {
+      collectJsonStringLinks(entry, matches);
+    }
+  }
+}
+
+function extractTextLinks(content) {
   const regex = /(https?:\/\/[A-Za-z0-9._~:/?#[\]@!$&'()*+,;=%-]+|\/[A-Za-z0-9._~\-/?#[\]@!$&'()*+,;=%]*)/g;
   const matches = content.match(regex) || [];
   return Array.from(new Set(matches.map(normalizeLink).filter(Boolean)));

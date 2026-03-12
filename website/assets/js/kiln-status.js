@@ -56,10 +56,10 @@
   };
 
   const load = async () => {
-    const candidates = [
-      '/api/websiteKilnBoard',
-      '/data/kiln-status.json',
-    ];
+    const preferStaticData = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
+    const candidates = preferStaticData
+      ? ['/data/kiln-status.json', '/api/websiteKilnBoard']
+      : ['/api/websiteKilnBoard', '/data/kiln-status.json'];
 
     try {
       let data = null;

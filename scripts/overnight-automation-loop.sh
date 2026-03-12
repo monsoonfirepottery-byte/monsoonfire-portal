@@ -10,11 +10,12 @@ SESSION_ID="${SESSION_ID:-overnight-${SESSION_TAG}}"
 MAX_HOURS="${MAX_HOURS:-10}"
 SLEEP_SECONDS="${SLEEP_SECONDS:-300}"
 COMMAND_TIMEOUT_MS="${COMMAND_TIMEOUT_MS:-1800000}"
-CODEX_PROC_ENABLED="${CODEX_PROC_ENABLED:-1}"
+CODEX_PROC_ENABLED="${CODEX_PROC_ENABLED:-0}"
 CODEX_PROC_TIMEOUT_MS="${CODEX_PROC_TIMEOUT_MS:-2700000}"
-CODEX_PROC_MODEL="${CODEX_PROC_MODEL:-gpt-5.3-codex-spark}"
+CODEX_PROC_MODEL="${CODEX_PROC_MODEL:-}"
 CODEX_PROC_REASONING_EFFORT="${CODEX_PROC_REASONING_EFFORT:-xhigh}"
 CODEX_FULL_PERMISSIONS="${CODEX_FULL_PERMISSIONS:-1}"
+CODEX_AUTOMATION_LAUNCHER="${CODEX_AUTOMATION_LAUNCHER:-monsoonfire-overnight.service}"
 WORKFLOW_FOLDIN_ENABLED="${WORKFLOW_FOLDIN_ENABLED:-1}"
 WORKFLOW_FOLDIN_CODEX_HOURS="${WORKFLOW_FOLDIN_CODEX_HOURS:-8}"
 WORKFLOW_FOLDIN_FRICTION_HOURS="${WORKFLOW_FOLDIN_FRICTION_HOURS:-24}"
@@ -71,6 +72,70 @@ run_step() {
   set -e
   log "END   ${label} :: exit=${exit_code}"
   return "${exit_code}"
+}
+
+resolve_json_field() {
+  local json_payload="$1"
+  local field_path="$2"
+  node --input-type=module - "${json_payload}" "${field_path}" <<'NODE'
+const [payloadRaw, fieldPath] = process.argv.slice(2);
+const payload = JSON.parse(payloadRaw);
+const value = String(fieldPath || "")
+  .split(".")
+  .filter(Boolean)
+  .reduce((current, key) => (current && typeof current === "object" ? current[key] : undefined), payload);
+if (value === undefined || value === null) {
+  process.stdout.write("");
+} else {
+  process.stdout.write(String(value));
+}
+NODE
+}
+
+resolve_codex_automation_gate() {
+  export CODEX_AUTOMATION_GATE_ALLOW="0"
+  export CODEX_AUTOMATION_GATE_REASON="proc_disabled"
+  export CODEX_AUTOMATION_GATE_SOURCE="local_toggle"
+
+  if [[ "${CODEX_PROC_ENABLED}" == "0" ]]; then
+    log "Codex automation gate blocked :: reason=proc_disabled source=local_toggle launcher=${CODEX_AUTOMATION_LAUNCHER}"
+    return 0
+  fi
+
+  local gate_args=(node ./scripts/codex-automation-control.mjs gate --launcher "${CODEX_AUTOMATION_LAUNCHER}" --json)
+  if [[ -n "${CODEX_PROC_MODEL}" ]]; then
+    gate_args+=(--model "${CODEX_PROC_MODEL}")
+  fi
+
+  local gate_output=""
+  local gate_exit=0
+  set +e
+  gate_output="$("${gate_args[@]}" 2>>"${LOG_FILE}")"
+  gate_exit=$?
+  set -e
+
+  if [[ "${gate_exit}" -ne 0 && "${gate_exit}" -ne 20 ]]; then
+    log "Codex automation gate failed; failing closed for launcher=${CODEX_AUTOMATION_LAUNCHER}."
+    export CODEX_AUTOMATION_GATE_REASON="gate_error"
+    export CODEX_AUTOMATION_GATE_SOURCE="guard_script"
+    return 0
+  fi
+
+  printf '%s\n' "${gate_output}" >>"${LOG_FILE}"
+
+  local allowed_raw
+  allowed_raw="$(resolve_json_field "${gate_output}" "allowed")"
+  if [[ "${allowed_raw}" == "true" ]]; then
+    export CODEX_AUTOMATION_GATE_ALLOW="1"
+  fi
+  export CODEX_AUTOMATION_GATE_REASON="$(resolve_json_field "${gate_output}" "reason")"
+  export CODEX_AUTOMATION_GATE_SOURCE="$(resolve_json_field "${gate_output}" "source")"
+
+  if [[ "${CODEX_AUTOMATION_GATE_ALLOW}" == "1" ]]; then
+    log "Codex automation gate allow :: launcher=${CODEX_AUTOMATION_LAUNCHER} model=${CODEX_PROC_MODEL:-"(default)"}"
+  else
+    log "Codex automation gate blocked :: launcher=${CODEX_AUTOMATION_LAUNCHER} reason=${CODEX_AUTOMATION_GATE_REASON:-blocked} source=${CODEX_AUTOMATION_GATE_SOURCE:-unknown}"
+  fi
 }
 
 stamp_path_for_key() {
@@ -144,8 +209,11 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 const [basePlanPath, outputPlanPath] = process.argv.slice(2);
 const plan = JSON.parse(readFileSync(basePlanPath, "utf8"));
-const codexProcEnabled = String(process.env.CODEX_PROC_ENABLED || "1") !== "0";
+const codexProcEnabled =
+  String(process.env.CODEX_PROC_ENABLED || "0") !== "0" &&
+  String(process.env.CODEX_AUTOMATION_GATE_ALLOW || "0") !== "0";
 const codexProcTimeoutMs = String(process.env.CODEX_PROC_TIMEOUT_MS || "2700000").trim();
+const codexProcModel = String(process.env.CODEX_PROC_MODEL || "").trim();
 
 const nonExecutionScopes = new Set([
   "none",
@@ -197,11 +265,12 @@ for (const task of Array.isArray(plan.tasks) ? plan.tasks : []) {
       `--title ${shellQuote(task.title || "")}`,
       `--write-scope ${shellQuote(task.writeScope || "")}`,
       `--risk-tier ${shellQuote(task.riskTier || "")}`,
-      `--model ${shellQuote(process.env.CODEX_PROC_MODEL || "gpt-5.3-codex-spark")}`,
       `--reasoning-effort ${shellQuote(process.env.CODEX_PROC_REASONING_EFFORT || "xhigh")}`,
+      `--launcher ${shellQuote(process.env.CODEX_AUTOMATION_LAUNCHER || "monsoonfire-overnight.service")}`,
       `--timeout-ms ${codexProcTimeoutMs}`,
     ].join(" ");
-    task.checks.unshift(command);
+    const modelArg = codexProcModel ? `${command} --model ${shellQuote(codexProcModel)}` : command;
+    task.checks.unshift(modelArg);
   }
 }
 
@@ -269,6 +338,7 @@ export CODEX_PROC_TIMEOUT_MS
 export CODEX_PROC_MODEL
 export CODEX_PROC_REASONING_EFFORT
 export CODEX_FULL_PERMISSIONS
+export CODEX_AUTOMATION_LAUNCHER
 export WORKFLOW_FOLDIN_ENABLED
 export WORKFLOW_FOLDIN_CODEX_HOURS
 export WORKFLOW_FOLDIN_PORTAL_HOURS
@@ -308,6 +378,7 @@ while (( $(date +%s) < DEADLINE_TS )); do
   run_step "intent.validate" npm run intent:validate:strict || true
   run_step "intent.compile" npm run intent:compile || true
   run_step "intent.drift" npm run intent:drift:strict || true
+  resolve_codex_automation_gate
 
   BASE_PLAN="${REPO_ROOT}/artifacts/intent-plan.generated.json"
   OVERLAY_PLAN="${ITERATION_DIR}/intent-plan.overnight.generated.json"

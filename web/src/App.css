@@ -2145,6 +2145,213 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   min-height: 40px;
 }
 
+.staff-shift-status-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)), var(--surface-2);
+}
+
+.staff-shift-status-card[data-tone="action"] {
+  border-color: rgba(230, 102, 112, 0.5);
+}
+
+.staff-shift-status-card[data-tone="watch"] {
+  border-color: rgba(223, 185, 108, 0.45);
+}
+
+.staff-shift-status-card[data-tone="clear"] {
+  border-color: rgba(112, 196, 145, 0.4);
+}
+
+.staff-shift-status-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.staff-shift-status-headline {
+  font-size: 18px;
+  line-height: 1.35;
+  font-weight: 650;
+}
+
+.staff-shift-status-pill {
+  align-self: flex-start;
+}
+
+.staff-shift-status-pill-action {
+  border: 1px solid rgba(230, 102, 112, 0.55);
+  background: rgba(230, 102, 112, 0.16);
+  color: #ffd0d6;
+}
+
+.staff-shift-status-pill-watch {
+  border: 1px solid rgba(223, 185, 108, 0.58);
+  background: rgba(223, 185, 108, 0.16);
+  color: #ffe5b6;
+}
+
+.staff-shift-status-pill-clear {
+  border: 1px solid rgba(112, 196, 145, 0.48);
+  background: rgba(112, 196, 145, 0.15);
+  color: #d7ffe7;
+}
+
+.staff-shift-status-reasons {
+  display: grid;
+  gap: 10px;
+}
+
+.staff-shift-status-reason {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.staff-shift-status-reason-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.staff-shift-status-reason-label {
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.staff-operations-overview,
+.staff-operations-focus {
+  display: grid;
+  gap: 16px;
+}
+
+.staff-operations-summary-card {
+  margin-top: 2px;
+}
+
+.staff-operations-priority-list {
+  display: grid;
+  gap: 10px;
+}
+
+.staff-operations-priority-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), rgba(255, 255, 255, 0)), var(--surface-2);
+}
+
+.staff-operations-priority-item[data-tone="action"] {
+  border-color: rgba(230, 102, 112, 0.42);
+}
+
+.staff-operations-priority-item[data-tone="watch"] {
+  border-color: rgba(223, 185, 108, 0.42);
+}
+
+.staff-operations-card-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
+.staff-operations-area-card {
+  display: grid;
+  gap: 12px;
+}
+
+.staff-operations-area-card[data-tone="action"] {
+  border-color: rgba(230, 102, 112, 0.36);
+}
+
+.staff-operations-area-card[data-tone="watch"] {
+  border-color: rgba(223, 185, 108, 0.34);
+}
+
+.staff-operations-area-card[data-tone="clear"] {
+  border-color: rgba(112, 196, 145, 0.28);
+}
+
+.staff-operations-area-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.staff-operations-area-pill {
+  align-self: flex-start;
+}
+
+.staff-operations-area-pill-action {
+  border: 1px solid rgba(230, 102, 112, 0.55);
+  background: rgba(230, 102, 112, 0.16);
+  color: #ffd0d6;
+}
+
+.staff-operations-area-pill-watch {
+  border: 1px solid rgba(223, 185, 108, 0.58);
+  background: rgba(223, 185, 108, 0.16);
+  color: #ffe5b6;
+}
+
+.staff-operations-area-pill-clear {
+  border: 1px solid rgba(112, 196, 145, 0.48);
+  background: rgba(112, 196, 145, 0.15);
+  color: #d7ffe7;
+}
+
+.staff-operations-area-pill-reference {
+  border: 1px solid rgba(148, 170, 200, 0.42);
+  background: rgba(148, 170, 200, 0.12);
+  color: #dde8ff;
+}
+
+.staff-operations-metric-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+
+.staff-operations-metric {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.staff-operations-metric span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.staff-operations-metric strong {
+  font-size: 22px;
+  line-height: 1.05;
+}
+
+.staff-operations-focus-card {
+  display: grid;
+  gap: 10px;
+}
+
 .staff-kpi-grid {
   display: grid;
   gap: 10px;
@@ -2708,6 +2915,7 @@ html[data-portal-theme="memoria"] .list-row.kiln-offline .list-meta {
   }
 
   .staff-today-overview-grid,
+  .staff-operations-card-grid,
   .staff-quick-actions {
     grid-template-columns: 1fr;
   }

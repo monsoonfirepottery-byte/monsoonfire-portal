@@ -3,9 +3,8 @@
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "<ANDROID_PACKAGE_NAME>",
-      "sha256_cert_fingerprints": ["<SHA256_CERT_FINGERPRINT>"]
+      "package_name": "com.monsoonfire.portal.reference",
+      "sha256_cert_fingerprints": ["E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855A"]
     }
   }
 ]
-

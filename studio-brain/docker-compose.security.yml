@@ -1,0 +1,25 @@
+services:
+  crowdsec:
+    image: ${STUDIO_BRAIN_CROWDSEC_IMAGE:-crowdsecurity/crowdsec:latest}
+    container_name: studiobrain_crowdsec
+    restart: unless-stopped
+    profiles: ["security"]
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
+    ports:
+      - "127.0.0.1:${STUDIO_BRAIN_CROWDSEC_LAPI_PORT:-18082}:8080"
+    environment:
+      COLLECTIONS: ${STUDIO_BRAIN_CROWDSEC_COLLECTIONS:-crowdsecurity/linux crowdsecurity/caddy crowdsecurity/sshd}
+      TZ: ${TZ:-UTC}
+      GID: ${STUDIO_BRAIN_CROWDSEC_GID:-1000}
+    volumes:
+      - ./docker/crowdsec/acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+      - crowdsec-db:/var/lib/crowdsec/data
+      - crowdsec-config:/etc/crowdsec
+      - ../output/security/public-proxy:/var/log/caddy:ro
+      - /var/log/auth.log:/var/log/auth.log:ro
+
+volumes:
+  crowdsec-db:
+  crowdsec-config:

@@ -151,6 +151,14 @@ const steps = [
     required: true,
   },
   {
+    name: "well-known endpoint verification",
+    kind: "command",
+    command: "npm",
+    args: ["run", "verify:well-known"],
+    remediation: "Fix portal/website discovery endpoints, local curl verification failures, or OpenAPI lint errors before merging.",
+    required: true,
+  },
+  {
     name: "studio-brain preflight",
     kind: "command",
     command: "npm",
@@ -173,6 +181,14 @@ const steps = [
     args: ["./scripts/validate-well-known.mjs", "--strict", "--json"],
     remediation: "Fix placeholder and host/package mismatches in .well-known files.",
     required: false,
+  },
+  {
+    name: "well-known endpoint verification",
+    kind: "command",
+    command: "node",
+    args: ["./scripts/verify-well-known.mjs", "--strict", "--json"],
+    remediation: "Fix portal/website discovery endpoints, content types, or OpenAPI validation failures.",
+    required: true,
   },
   {
     name: "backup freshness check",

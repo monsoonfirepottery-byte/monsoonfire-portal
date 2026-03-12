@@ -5,6 +5,18 @@ import { connectStorageEmulator, getDownloadURL, getStorage, ref, uploadBytes } 
 import { createFunctionsClient, type LastRequest } from "../api/functionsClient";
 import { createPortalApi } from "../api/portalApi";
 import { makeRequestId } from "../api/requestId";
+import type {
+  CreateReservationResponse,
+  ReservationCheckInResponse,
+  ReservationLookupArrivalResponse,
+  ReservationRotateArrivalTokenResponse,
+} from "../api/portalContracts";
+import {
+  V1_RESERVATION_CHECK_IN_FN,
+  V1_RESERVATION_CREATE_FN,
+  V1_RESERVATION_LOOKUP_ARRIVAL_FN,
+  V1_RESERVATION_ROTATE_ARRIVAL_TOKEN_FN,
+} from "../api/portalContracts";
 import { parseStaffRoleFromClaims } from "../auth/staffRole";
 import { db } from "../firebase";
 import {
@@ -44,6 +56,13 @@ type StaffQueueStatus = "REQUESTED" | "CONFIRMED" | "WAITLISTED" | "CANCELLED";
 type PickupWindowStatus = "open" | "confirmed" | "missed" | "expired" | "completed";
 type ReservationFilter = "ALL" | "WAITLISTED" | "UPCOMING" | "READY" | "STORAGE_RISK" | "STAFF_HOLD";
 type CapacityFilter = "ALL" | "HIGH" | "NORMAL";
+type ApiV1Envelope<TData> = {
+  ok: boolean;
+  requestId?: string;
+  code?: string;
+  message?: string;
+  data?: TData;
+};
 
 const FIRING_OPTIONS = [
   { id: "bisque", label: "Bisque fire" },
@@ -2749,14 +2768,13 @@ export default function ReservationsView({
     setArrivalBusyId(reservation.id);
     setArrivalMessage("");
     try {
-      const envelope = await client.postJson<{
-        data?: {
-          idempotentReplay?: boolean;
-        };
-      }>("apiV1/v1/reservations.checkIn", {
-        reservationId: reservation.id,
-        note: draftNote || null,
-      });
+      const envelope = await client.postJson<ApiV1Envelope<ReservationCheckInResponse>>(
+        V1_RESERVATION_CHECK_IN_FN,
+        {
+          reservationId: reservation.id,
+          note: draftNote || null,
+        }
+      );
       const replay = envelope?.data?.idempotentReplay === true;
       setArrivalMessage(
         replay
@@ -2784,14 +2802,12 @@ export default function ReservationsView({
     setArrivalLookupResult(null);
     setArrivalLookupOutstanding(null);
     try {
-      const envelope = await client.postJson<{
-        data?: {
-          reservation?: Partial<ReservationRecord> & { id?: string };
-          outstandingRequirements?: ArrivalLookupOutstanding;
-        };
-      }>("apiV1/v1/reservations.lookupArrival", {
-        arrivalToken: token,
-      });
+      const envelope = await client.postJson<ApiV1Envelope<ReservationLookupArrivalResponse>>(
+        V1_RESERVATION_LOOKUP_ARRIVAL_FN,
+        {
+          arrivalToken: token,
+        }
+      );
       const reservationRaw = envelope?.data?.reservation ?? null;
       if (!reservationRaw?.id) {
         throw new Error("Lookup returned no reservation.");
@@ -2802,7 +2818,9 @@ export default function ReservationsView({
           reservationRaw as Partial<ReservationRecord>
         )
       );
-      setArrivalLookupOutstanding(envelope?.data?.outstandingRequirements ?? null);
+      setArrivalLookupOutstanding(
+        (envelope?.data?.outstandingRequirements as ArrivalLookupOutstanding | null | undefined) ?? null
+      );
       setArrivalMessage("Arrival code matched successfully.");
     } catch (error: unknown) {
       setArrivalMessage(`Arrival lookup failed: ${getErrorMessage(error)}`);
@@ -2816,14 +2834,13 @@ export default function ReservationsView({
     setStaffActionBusyId(reservation.id);
     setStaffActionMessage("");
     try {
-      const envelope = await client.postJson<{
-        data?: {
-          arrivalToken?: string;
-        };
-      }>("apiV1/v1/reservations.rotateArrivalToken", {
-        reservationId: reservation.id,
-        reason: "manual_staff_reissue",
-      });
+      const envelope = await client.postJson<ApiV1Envelope<ReservationRotateArrivalTokenResponse>>(
+        V1_RESERVATION_ROTATE_ARRIVAL_TOKEN_FN,
+        {
+          reservationId: reservation.id,
+          reason: "manual_staff_reissue",
+        }
+      );
       const nextToken =
         envelope?.data?.arrivalToken && typeof envelope.data.arrivalToken === "string"
           ? envelope.data.arrivalToken
@@ -3124,7 +3141,7 @@ export default function ReservationsView({
         },
       };
 
-      await client.postJson("createReservation", payload);
+      await client.postJson<ApiV1Envelope<CreateReservationResponse>>(V1_RESERVATION_CREATE_FN, payload);
       track("batch_create_test_success", {
         uid: shortId(user.uid),
         batchId: shortId(linkedBatchId || requestId),

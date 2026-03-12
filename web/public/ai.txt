@@ -5,18 +5,23 @@ agent_access: public-read-only
 
 authoritative_resources:
 - https://portal.monsoonfire.com/agent-docs/
-- https://portal.monsoonfire.com/contracts/portal-contracts.json
+- https://portal.monsoonfire.com/reserve
+- https://portal.monsoonfire.com/membership
+- https://portal.monsoonfire.com/.well-known/openapi.json
+- https://portal.monsoonfire.com/apis.json
 - https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/API_CONTRACTS.md
 - https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/DEEP_LINK_CONTRACT.md
 - https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/SOURCE_OF_TRUTH_INDEX.md
 - https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/CONTINUE_JOURNEY_AGENT_QUICKSTART.md
 
 advisory_resources:
+- https://portal.monsoonfire.com/contracts/portal-contracts.json
 - https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/runbooks/AGENT_SURFACES.md
 - https://github.com/monsoonfirepottery-byte/monsoonfire-portal/blob/main/docs/runbooks/PR_GATE.md
 
 discovery_files:
 - https://portal.monsoonfire.com/llms.txt
+- https://portal.monsoonfire.com/ai.txt
 - https://portal.monsoonfire.com/robots.txt
 - https://portal.monsoonfire.com/sitemap.xml
 

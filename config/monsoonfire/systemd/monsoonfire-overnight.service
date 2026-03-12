@@ -1,0 +1,29 @@
+[Unit]
+Description=Monsoonfire Overnight Intent Automation
+After=network-online.target studio-brain.service
+Wants=network-online.target studio-brain.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/wuff/monsoonfire-portal
+Environment=PATH=/home/wuff/.local/jre21-portable/bin:/home/wuff/.nvm/versions/node/v25.6.1/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=MAX_HOURS=12
+Environment=SLEEP_SECONDS=300
+Environment=COMMAND_TIMEOUT_MS=1800000
+Environment=CODEX_PROC_ENABLED=0
+Environment=CODEX_AUTOMATION_LAUNCHER=monsoonfire-overnight.service
+Environment=WORKFLOW_FOLDIN_ENABLED=1
+Environment=WORKFLOW_FOLDIN_CODEX_HOURS=8
+Environment=WORKFLOW_FOLDIN_PORTAL_HOURS=6
+Environment=WORKFLOW_FOLDIN_WEEKLY_HOURS=168
+Environment=WORKFLOW_FOLDIN_BRANCH=main
+Environment=WORKFLOW_FOLDIN_EPIC_SELECTION=1-20
+Environment=WORKFLOW_FOLDIN_EPIC_LIMIT=48
+Environment=WORKFLOW_FOLDIN_MAX_ISSUES=8
+ExecStart=/usr/bin/env bash /home/wuff/monsoonfire-portal/scripts/overnight-automation-loop.sh
+Restart=on-failure
+RestartSec=20
+TimeoutStopSec=45
+KillSignal=SIGINT
+StandardOutput=journal
+StandardError=journal

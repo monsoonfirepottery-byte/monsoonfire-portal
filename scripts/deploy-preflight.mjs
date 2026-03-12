@@ -241,6 +241,7 @@ function runNamecheapPortalChecks(summary, options) {
   });
 
   const wellKnownFiles = [
+    resolve(repoRoot, "web", "public", ".well-known", "openapi.json"),
     resolve(repoRoot, "website", ".well-known", "apple-app-site-association"),
     resolve(repoRoot, "website", ".well-known", "assetlinks.json"),
   ];

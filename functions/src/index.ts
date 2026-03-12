@@ -21,6 +21,7 @@ import {
   Timestamp,
   logIntegrationTokenAudit,
 } from "./shared";
+import { STRIPE_SECRET_PARAMS } from "./stripeSecrets";
 import {
   enforceAppCheckIfEnabled,
   logAuditEvent,
@@ -166,7 +167,7 @@ async function bestEffortEmitIntegrationEvent(params: {
   }
 }
 
-export const apiV1 = onRequest({ region: REGION, timeoutSeconds: 60 }, async (req, res) => {
+export const apiV1 = onRequest({ region: REGION, timeoutSeconds: 60, secrets: [...STRIPE_SECRET_PARAMS] }, async (req, res) => {
   await dispatchApiV1(req, res);
 });
 export {
@@ -2598,6 +2599,7 @@ export { createMaterialsCheckoutSession, listMaterialsProducts, seedMaterialsCat
 export {
   importLibraryIsbns,
   refreshLibraryIsbnMetadata,
+  enrichLibraryIsbnMetadata,
   runLibraryMetadataRefreshNow,
   syncLibraryLoanOverdues,
   runLibraryOverdueSyncNow,

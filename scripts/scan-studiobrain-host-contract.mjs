@@ -99,6 +99,12 @@ const EXCEPTIONS = [
     tokenPattern: /127\.0\.0\.1:8787/,
   },
   {
+    path: /[\\/]scripts[\\/]studiobrain-secret-rotate\.mjs$/,
+    ruleIds: ["studio-brain-loopback-runtime"],
+    owner: "platform@security",
+    reason: "Secret rotation intentionally resets the public proxy upstream to loopback.",
+  },
+  {
     path: /[\\/]web[\\/]src[\\/].+\.test\.[cm]?[jt]sx?$/,
     ruleIds: ["studio-brain-loopback-runtime", "studio-brain-base-url-fallback"],
     owner: "platform@web",
@@ -122,6 +128,25 @@ const EXCEPTIONS = [
     owner: "platform@web",
     reason: "Portal local env files intentionally keep localhost/studio-brain local defaults.",
     tokenPattern: /(?:127\.0\.0\.1|localhost):8787/,
+  },
+  {
+    path: /[\\/]studio-brain[\\/]\.env(\..+)?$/,
+    ruleIds: ["studio-brain-base-url-fallback", "studio-brain-loopback-runtime"],
+    owner: "platform@studio",
+    reason: "Studio Brain runtime env may intentionally pin the service to loopback on internet-facing hosts.",
+    tokenPattern: /(?:127\.0\.0\.1|localhost):8787/,
+  },
+  {
+    path: /[\\/]studio-brain[\\/]docker-compose\.public-proxy\.yml$/,
+    ruleIds: ["studio-brain-loopback-runtime"],
+    owner: "platform@security",
+    reason: "Public proxy compose intentionally forwards to a loopback-bound Studio Brain process.",
+  },
+  {
+    path: /[\\/]studio-brain[\\/]scripts[\\/]preflight\.mjs$/,
+    ruleIds: ["studio-brain-loopback-runtime"],
+    owner: "platform@security",
+    reason: "Preflight now evaluates intentional loopback public-upstream hardening.",
   },
 ];
 

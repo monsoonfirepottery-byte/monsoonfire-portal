@@ -31,6 +31,7 @@ const axePages = ["./", "kiln-firing/", "support/", "contact/", "policies/"];
 const ignoredConsoleErrorPatterns = [
   /ERR_BLOCKED_BY_CLIENT/i,
 ];
+const canonicalPortalPaths = new Set(["/", "/reserve", "/membership", "/materials"]);
 
 const collectConsoleErrors = (page) => {
   const errors = [];
@@ -73,15 +74,32 @@ test.describe("marketing smoke coverage", () => {
 
   test("community hub includes key outbound links", async ({ page }) => {
     await page.goto("faq/", { waitUntil: "networkidle" });
-    const links = page.locator('a[href*="discord"], a[href*="instagram"], a[href*="mailto:"], a[href*="kilnfire.com"]');
+    const links = page.locator('a[href*="discord"], a[href*="instagram"], a[href*="mailto:"], a[href*="portal.monsoonfire.com"]');
     expect(await links.count()).toBeGreaterThan(0);
   });
 
-  test("portal entry links stay on kilnfire host", async ({ page }) => {
+  test("portal entry links use canonical portal routes", async ({ page }) => {
     for (const pagePath of portalEntryPages) {
       await page.goto(pagePath, { waitUntil: "networkidle" });
-      const legacyPortalLinks = page.locator('a[href*="portal.monsoonfire.com"]');
-      expect(await legacyPortalLinks.count(), `Legacy portal host found on ${pagePath}`).toBe(0);
+      const portalLinks = await page.locator('a[href*="portal.monsoonfire.com"]').evaluateAll((links) =>
+        links
+          .map((link) => link.getAttribute("href"))
+          .filter(Boolean)
+      );
+      expect(portalLinks.length, `Expected portal links on ${pagePath}`).toBeGreaterThan(0);
+
+      const unexpectedPortalLinks = portalLinks.filter((href) => {
+        try {
+          const parsed = new URL(href);
+          return parsed.hostname !== "portal.monsoonfire.com" || !canonicalPortalPaths.has(parsed.pathname || "/");
+        } catch {
+          return true;
+        }
+      });
+      expect(unexpectedPortalLinks, `Unexpected portal links on ${pagePath}`).toEqual([]);
+
+      const legacyPortalLinks = page.locator('a[href*="monsoonfire.kilnfire.com"], a[href*="/new-user"]');
+      expect(await legacyPortalLinks.count(), `Legacy portal link found on ${pagePath}`).toBe(0);
     }
   });
 });

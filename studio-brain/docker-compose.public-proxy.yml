@@ -1,0 +1,23 @@
+services:
+  studiobrain-public-proxy:
+    image: ${STUDIO_BRAIN_PUBLIC_PROXY_IMAGE:-caddy:2.8-alpine}
+    container_name: studiobrain_public_proxy
+    restart: unless-stopped
+    network_mode: host
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    environment:
+      STUDIO_BRAIN_PUBLIC_HOST: ${STUDIO_BRAIN_PUBLIC_HOST:-brain.monsoonfire.com}
+      STUDIO_BRAIN_PUBLIC_UPSTREAM: ${STUDIO_BRAIN_PUBLIC_UPSTREAM:-http://127.0.0.1:8787}
+    volumes:
+      - ./docker/Caddyfile.public:/etc/caddy/Caddyfile:ro
+      - ../output/security/public-proxy:/var/log/caddy
+      - studiobrain_public_caddy_data:/data
+      - studiobrain_public_caddy_config:/config
+
+volumes:
+  studiobrain_public_caddy_data:
+  studiobrain_public_caddy_config:

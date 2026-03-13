@@ -7,6 +7,7 @@ export const V1_RESERVATION_ASSIGN_STATION_FN = "apiV1/v1/reservations.assignSta
 export const V1_RESERVATION_PICKUP_WINDOW_FN = "apiV1/v1/reservations.pickupWindow";
 export const V1_RESERVATION_QUEUE_FAIRNESS_FN = "apiV1/v1/reservations.queueFairness";
 export const V1_RESERVATION_EXPORT_CONTINUITY_FN = "apiV1/v1/reservations.exportContinuity";
+export const V1_FIRINGS_LIST_TIMELINE_FN = "apiV1/v1/firings.listTimeline";
 export const V1_LIBRARY_ITEMS_LIST_FN = "apiV1/v1/library.items.list";
 export const V1_LIBRARY_ITEMS_GET_FN = "apiV1/v1/library.items.get";
 export const V1_LIBRARY_DISCOVERY_GET_FN = "apiV1/v1/library.discovery.get";
@@ -52,6 +53,7 @@ export type PortalFnName =
   | typeof V1_RESERVATION_PICKUP_WINDOW_FN
   | typeof V1_RESERVATION_QUEUE_FAIRNESS_FN
   | typeof V1_RESERVATION_EXPORT_CONTINUITY_FN
+  | typeof V1_FIRINGS_LIST_TIMELINE_FN
   | typeof V1_LIBRARY_ITEMS_LIST_FN
   | typeof V1_LIBRARY_ITEMS_GET_FN
   | typeof V1_LIBRARY_DISCOVERY_GET_FN
@@ -430,6 +432,49 @@ export type AssignReservationStationResponse = PortalApiOkEnvelope & {
   stationCapacity?: number | null;
   stationUsedAfter?: number | null;
   idempotentReplay?: boolean;
+};
+
+export type KilnTimelineState =
+  | "idle"
+  | "scheduled"
+  | "loading"
+  | "firing"
+  | "cooling"
+  | "unloading"
+  | "maintenance";
+
+export type KilnTimelineSegmentSource = "firing" | "queue-forecast" | "status";
+export type KilnTimelineConfidence = "confirmed" | "estimated" | "forecast";
+
+export type KilnTimelineSegment = {
+  id: string;
+  kilnId: string;
+  kilnName: string;
+  state: KilnTimelineState;
+  label: string;
+  startAt: string;
+  endAt: string;
+  source: KilnTimelineSegmentSource;
+  confidence: KilnTimelineConfidence;
+  notes?: string | null;
+};
+
+export type KilnTimelineKiln = {
+  id: string;
+  name: string;
+  currentState: KilnTimelineState;
+  currentLabel: string;
+  segments: KilnTimelineSegment[];
+  overflowNote?: string | null;
+};
+
+export type ListFiringsTimelineRequest = Record<string, never>;
+
+export type ListFiringsTimelineResponse = PortalApiOkEnvelope & {
+  generatedAt?: string;
+  windowStart?: string;
+  windowEnd?: string;
+  kilns?: KilnTimelineKiln[];
 };
 
 export type MaterialsCartItemRequest = {

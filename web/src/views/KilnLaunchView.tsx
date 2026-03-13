@@ -10,6 +10,8 @@ import type { User } from "firebase/auth";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { db } from "../firebase";
 import { createPortalApi } from "../api/portalApi";
+import type { ListFiringsTimelineResponse } from "../api/portalApi";
+import type { KilnTimelineKiln, KilnTimelineSegment, KilnTimelineState } from "../api/portalContracts";
 import { normalizeIntakeMode } from "../lib/intakeMode";
 import { shortId, track } from "../lib/analytics";
 import type { AnalyticsProps } from "../lib/analytics";
@@ -54,6 +56,15 @@ type QueueEntry = ReservationQueueItem & {
   intakeMode: "SHELF_PURCHASE" | "WHOLE_KILN" | "COMMUNITY_SHELF";
 };
 
+type TimelineSegmentEntry = KilnTimelineSegment & {
+  startDate: Date;
+  endDate: Date;
+};
+
+type TimelineKilnEntry = Omit<KilnTimelineKiln, "segments"> & {
+  segments: TimelineSegmentEntry[];
+};
+
 type KilnLaunchViewProps = {
   user: User;
   isStaff: boolean;
@@ -66,6 +77,18 @@ const LOAD_STATUS_LABELS: Record<LoadStatus, string> = {
   queued: "Awaiting",
   loading: "Loading",
   loaded: "Loaded",
+};
+
+const TIMELINE_DAYS = 7;
+
+const TIMELINE_STATE_LABELS: Record<KilnTimelineState, string> = {
+  idle: "Idle",
+  scheduled: "Scheduled",
+  loading: "Loading",
+  firing: "Firing",
+  cooling: "Cooling",
+  unloading: "Unloading",
+  maintenance: "Maintenance",
 };
 
 function normalizeLoadStatus(value: unknown): LoadStatus {
@@ -164,10 +187,76 @@ function getErrorCode(error: unknown): string | undefined {
   return undefined;
 }
 
+function coerceDate(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  if (typeof value === "object") {
+    const maybe = value as { toDate?: () => Date };
+    if (typeof maybe.toDate === "function") {
+      try {
+        const parsed = maybe.toDate();
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+function formatTimelineDay(date: Date) {
+  return {
+    key: date.toISOString(),
+    weekday: date.toLocaleDateString([], { weekday: "short" }),
+    shortDate: date.toLocaleDateString([], { month: "short", day: "numeric" }),
+    compact: date.toLocaleDateString([], { month: "numeric", day: "numeric" }),
+  };
+}
+
+function formatTimelineRange(startDate: Date, endDate: Date) {
+  const sameDay = startDate.toDateString() === endDate.toDateString();
+  const startTime = startDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const endTime = endDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (sameDay) {
+    return `${startDate.toLocaleDateString([], { month: "short", day: "numeric" })} · ${startTime} - ${endTime}`;
+  }
+  return `${startDate.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })} to ${endDate.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })}`;
+}
+
+function getTimelineSourceLabel(source: KilnTimelineSegment["source"]) {
+  if (source === "queue-forecast") return "Queued load forecast";
+  if (source === "status") return "Live kiln status";
+  return "Confirmed firing";
+}
+
+function getTimelineConfidenceLabel(confidence: KilnTimelineSegment["confidence"]) {
+  if (confidence === "forecast") return "Forecast";
+  if (confidence === "estimated") return "Estimated";
+  return "Confirmed";
+}
+
 export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
   const [reservations, setReservations] = useState<ReservationQueueItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [timelineData, setTimelineData] = useState<ListFiringsTimelineResponse | null>(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState("");
+  const [selectedTimelineSegmentId, setSelectedTimelineSegmentId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState("");
@@ -183,16 +272,19 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
     [user.uid]
   );
 
-  const loadReservations = useCallback(async () => {
+  const loadPageData = useCallback(async () => {
     setLoading(true);
+    setTimelineLoading(true);
     setError("");
-    try {
+    setTimelineError("");
+
+    const reservationsPromise = (async () => {
       const baseRef = collection(db, "reservations");
       const reservationsQuery = isStaff
         ? query(baseRef, orderBy("createdAt", "desc"), limit(250))
         : query(baseRef, where("ownerUid", "==", user.uid), orderBy("createdAt", "desc"), limit(200));
       const snap = await getDocs(reservationsQuery);
-      const rows: ReservationQueueItem[] = snap.docs.map((docSnap) => {
+      return snap.docs.map((docSnap) => {
         const data = docSnap.data() as Partial<ReservationQueueItem>;
         return {
           id: docSnap.id,
@@ -215,19 +307,51 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
           addOns: data.addOns ?? null,
           createdAt: data.createdAt,
         };
+      }) as ReservationQueueItem[];
+    })();
+
+    const timelinePromise = (async () => {
+      const idToken = await user.getIdToken();
+      const response = await portalApi.listFiringsTimeline({
+        idToken,
+        payload: {},
       });
-      setReservations(rows);
-      setLastUpdated(new Date());
-    } catch (error: unknown) {
-      setError(`Queue load failed: ${getErrorMessage(error)}`);
-    } finally {
-      setLoading(false);
+      return response.data;
+    })();
+
+    const [reservationsResult, timelineResult] = await Promise.allSettled([
+      reservationsPromise,
+      timelinePromise,
+    ]);
+
+    let didUpdate = false;
+    if (reservationsResult.status === "fulfilled") {
+      setReservations(reservationsResult.value);
+      didUpdate = true;
+    } else {
+      setReservations([]);
+      setError(`Queue load failed: ${getErrorMessage(reservationsResult.reason)}`);
     }
-  }, [isStaff, user.uid]);
+
+    if (timelineResult.status === "fulfilled") {
+      setTimelineData(timelineResult.value);
+      didUpdate = true;
+    } else {
+      setTimelineData(null);
+      setTimelineError(`Timeline unavailable: ${getErrorMessage(timelineResult.reason)}`);
+    }
+
+    if (didUpdate) {
+      setLastUpdated(new Date());
+    }
+
+    setLoading(false);
+    setTimelineLoading(false);
+  }, [isStaff, portalApi, user]);
 
   useEffect(() => {
-    void loadReservations();
-  }, [loadReservations]);
+    void loadPageData();
+  }, [loadPageData]);
 
   const scopedReservations = useMemo(
     () => reservations.filter((item) => !item.kilnId || item.kilnId === KILN_ID),
@@ -341,6 +465,78 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
     100,
     Math.round((totalQueuedHalfShelves / KILN_CAPACITY_HALF_SHELVES) * 100)
   );
+  const timelineWindowStart = useMemo(() => {
+    const next = coerceDate(timelineData?.windowStart);
+    return next ?? new Date();
+  }, [timelineData?.windowStart]);
+  const timelineWindowEnd = useMemo(() => {
+    const next = coerceDate(timelineData?.windowEnd);
+    if (next) return next;
+    return new Date(timelineWindowStart.getTime() + TIMELINE_DAYS * 24 * 60 * 60 * 1000);
+  }, [timelineData?.windowEnd, timelineWindowStart]);
+  const timelineGeneratedAt = useMemo(
+    () => coerceDate(timelineData?.generatedAt),
+    [timelineData?.generatedAt]
+  );
+  const timelineDays = useMemo(() => {
+    return Array.from({ length: TIMELINE_DAYS }, (_, index) => {
+      const date = new Date(timelineWindowStart.getTime() + index * 24 * 60 * 60 * 1000);
+      return formatTimelineDay(date);
+    });
+  }, [timelineWindowStart]);
+  const timelineWindowLabel = useMemo(() => {
+    const start = timelineDays[0];
+    const end = timelineDays[timelineDays.length - 1];
+    if (!start || !end) return "Next 7 days";
+    return `${start.shortDate} - ${end.shortDate}`;
+  }, [timelineDays]);
+  const timelineKilns = useMemo<TimelineKilnEntry[]>(() => {
+    return (timelineData?.kilns ?? []).map((kiln) => ({
+      ...kiln,
+      segments: (kiln.segments ?? [])
+        .map((segment) => {
+          const startDate = coerceDate(segment.startAt);
+          const endDate = coerceDate(segment.endAt);
+          if (!startDate || !endDate || endDate.getTime() <= startDate.getTime()) return null;
+          return {
+            ...segment,
+            startDate,
+            endDate,
+          };
+        })
+        .filter((segment): segment is TimelineSegmentEntry => Boolean(segment)),
+    }));
+  }, [timelineData?.kilns]);
+  const timelineSpanMs = Math.max(1, timelineWindowEnd.getTime() - timelineWindowStart.getTime());
+  const timelineNowMarkerPercent = useMemo(() => {
+    if (!timelineGeneratedAt) return null;
+    const nowMs = timelineGeneratedAt.getTime();
+    if (nowMs < timelineWindowStart.getTime() || nowMs > timelineWindowEnd.getTime()) return null;
+    return ((nowMs - timelineWindowStart.getTime()) / timelineSpanMs) * 100;
+  }, [timelineGeneratedAt, timelineSpanMs, timelineWindowEnd, timelineWindowStart]);
+  const flattenedTimelineSegments = useMemo(
+    () =>
+      timelineKilns.flatMap((kiln) =>
+        kiln.segments.map((segment) => ({
+          ...segment,
+          kilnName: kiln.name,
+          kilnCurrentState: kiln.currentState,
+          kilnCurrentLabel: kiln.currentLabel,
+        }))
+      ),
+    [timelineKilns]
+  );
+  const selectedTimelineSegment = useMemo(
+    () =>
+      flattenedTimelineSegments.find((segment) => segment.id === selectedTimelineSegmentId) ?? null,
+    [flattenedTimelineSegments, selectedTimelineSegmentId]
+  );
+
+  useEffect(() => {
+    if (!selectedTimelineSegmentId) return;
+    if (flattenedTimelineSegments.some((segment) => segment.id === selectedTimelineSegmentId)) return;
+    setSelectedTimelineSegmentId(null);
+  }, [flattenedTimelineSegments, selectedTimelineSegmentId]);
 
   const userEntries = useMemo(
     () => queueEntries.filter((item) => item.ownerUid === user.uid),
@@ -398,6 +594,17 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
     return slots;
   }, [loadedEntries, loadingEntries, queuedEntries]);
 
+  const getTimelineSegmentStyle = (segment: TimelineSegmentEntry) => {
+    const leftPercent =
+      ((segment.startDate.getTime() - timelineWindowStart.getTime()) / timelineSpanMs) * 100;
+    const widthPercent =
+      ((segment.endDate.getTime() - segment.startDate.getTime()) / timelineSpanMs) * 100;
+    return {
+      left: `${Math.max(0, Math.min(100, leftPercent))}%`,
+      width: `${Math.max(2.5, Math.min(100, widthPercent))}%`,
+    };
+  };
+
   const handleLoadStatusUpdate = async (reservationId: string, nextStatus: LoadStatus) => {
     if (!isStaff || actionBusyId) return;
     const currentStatus =
@@ -440,7 +647,7 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
           transitionTo: nextStatus,
         });
       }
-      await loadReservations();
+      await loadPageData();
     } catch (error: unknown) {
       setActionStatus(`Update failed: ${getErrorMessage(error)}`);
       trackStudioLifecycle("status_transition_exception", {
@@ -476,8 +683,12 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
           ) : null}
         </div>
         <div className="kiln-launch-actions">
-          <button className="btn btn-ghost" onClick={toVoidHandler(loadReservations)} disabled={loading}>
-            {loading ? "Refreshing..." : "Refresh"}
+          <button
+            className="btn btn-ghost"
+            onClick={toVoidHandler(loadPageData)}
+            disabled={loading || timelineLoading}
+          >
+            {loading || timelineLoading ? "Refreshing..." : "Refresh"}
           </button>
         </div>
       </header>
@@ -490,7 +701,9 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
           <div>
             <h2>What&apos;s happening now</h2>
             <p className="kiln-panel-meta">
-              {hasLoadActivity ? loadStatusSummary : "No active loading yet. Queue lanes are ready."}
+              {hasLoadActivity
+                ? `${loadStatusSummary} The calendar below shows the next seven days for each kiln.`
+                : "Read-only seven-day kiln calendar with live states, confirmed firings, and queued-load forecasts."}
             </p>
           </div>
         </div>
@@ -515,6 +728,156 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
               {queuedEntries.length} queued · {communityShelfEntries.length} community
             </strong>
           </div>
+        </div>
+        <div className="kiln-timeline">
+          <div className="kiln-timeline-header">
+            <div>
+              <h3>Seven-day kiln calendar</h3>
+              <p className="kiln-panel-meta">
+                Confirmed firings are shown alongside live kiln states. Queued shelf work appears as a forecast only when it has room in the next open slot.
+              </p>
+            </div>
+            <div className="kiln-timeline-window">{timelineWindowLabel}</div>
+          </div>
+
+          <div className="kiln-timeline-legend" aria-label="Kiln timeline legend">
+            {(Object.keys(TIMELINE_STATE_LABELS) as KilnTimelineState[]).map((state) => (
+              <div key={state} className="kiln-timeline-legend-item">
+                <span className={`kiln-timeline-swatch state-${state}`} aria-hidden="true" />
+                <span>{TIMELINE_STATE_LABELS[state]}</span>
+              </div>
+            ))}
+          </div>
+
+          {timelineError ? <div className="kiln-timeline-note error">{timelineError}</div> : null}
+
+          {timelineLoading && timelineKilns.length === 0 ? (
+            <p className="kiln-empty">Loading the seven-day kiln timeline.</p>
+          ) : null}
+
+          {!timelineLoading && timelineKilns.length === 0 && !timelineError ? (
+            <p className="kiln-empty">
+              No kiln schedule is visible yet. Confirmed firings and queued load forecasts will appear here.
+            </p>
+          ) : null}
+
+          {timelineKilns.length > 0 ? (
+            <>
+              <div className="kiln-timeline-scroll">
+                <div className="kiln-timeline-grid">
+                  <div className="kiln-timeline-days" aria-hidden="true">
+                    {timelineDays.map((day) => (
+                      <div key={day.key} className="kiln-timeline-day">
+                        <span>{day.weekday}</span>
+                        <strong>{day.compact}</strong>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="kiln-timeline-rows">
+                    {timelineKilns.map((kiln) => (
+                      <div key={kiln.id} className="kiln-timeline-row">
+                        <div className="kiln-timeline-row-head">
+                          <div>
+                            <strong>{kiln.name}</strong>
+                            <span className="kiln-timeline-row-subtitle">Read-only kiln status</span>
+                          </div>
+                          <span className={`kiln-timeline-pill state-${kiln.currentState}`}>
+                            {kiln.currentLabel}
+                          </span>
+                        </div>
+
+                        <div className="kiln-timeline-track">
+                          <div className="kiln-timeline-track-grid" aria-hidden="true">
+                            {timelineDays.map((day) => (
+                              <span key={`${kiln.id}-${day.key}`} className="kiln-timeline-track-day" />
+                            ))}
+                          </div>
+                          {timelineNowMarkerPercent != null ? (
+                            <div
+                              className="kiln-timeline-now-marker"
+                              style={{ left: `${timelineNowMarkerPercent}%` }}
+                              aria-hidden="true"
+                            />
+                          ) : null}
+                          {kiln.segments.length === 0 ? (
+                            <div className="kiln-timeline-idle-copy">Idle window</div>
+                          ) : null}
+                          {kiln.segments.map((segment) => {
+                            const isSelected = selectedTimelineSegmentId === segment.id;
+                            return (
+                              <button
+                                key={segment.id}
+                                type="button"
+                                className={`kiln-timeline-block state-${segment.state}${isSelected ? " active" : ""}`}
+                                style={getTimelineSegmentStyle(segment)}
+                                onClick={() => setSelectedTimelineSegmentId(segment.id)}
+                                aria-pressed={isSelected}
+                              >
+                                <span className="kiln-timeline-block-label">{segment.label}</span>
+                                <span className="kiln-timeline-block-meta">
+                                  {TIMELINE_STATE_LABELS[segment.state]}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {kiln.overflowNote ? (
+                          <p className="kiln-timeline-overflow">{kiln.overflowNote}</p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="kiln-timeline-detail">
+                {selectedTimelineSegment ? (
+                  <>
+                    <div className="kiln-timeline-detail-header">
+                      <div>
+                        <h3>{selectedTimelineSegment.label}</h3>
+                        <p className="kiln-panel-meta">
+                          {selectedTimelineSegment.kilnName} · {formatTimelineRange(
+                            selectedTimelineSegment.startDate,
+                            selectedTimelineSegment.endDate
+                          )}
+                        </p>
+                      </div>
+                      <span
+                        className={`kiln-timeline-pill state-${selectedTimelineSegment.state}`}
+                      >
+                        {TIMELINE_STATE_LABELS[selectedTimelineSegment.state]}
+                      </span>
+                    </div>
+                    <div className="kiln-timeline-detail-meta">
+                      <span className="kiln-tag">
+                        {getTimelineSourceLabel(selectedTimelineSegment.source)}
+                      </span>
+                      <span className="kiln-tag">
+                        {getTimelineConfidenceLabel(selectedTimelineSegment.confidence)}
+                      </span>
+                      <span className="kiln-tag">
+                        Current kiln state: {selectedTimelineSegment.kilnCurrentLabel}
+                      </span>
+                    </div>
+                    {selectedTimelineSegment.notes ? (
+                      <p className="kiln-flow-copy">{selectedTimelineSegment.notes}</p>
+                    ) : (
+                      <p className="kiln-flow-copy">
+                        This block is read-only on the queue page. Staff manage the actual schedule elsewhere in the portal.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="kiln-flow-copy">
+                    Tap a kiln block to inspect the status window, whether it is a confirmed firing or a queued-load forecast.
+                  </p>
+                )}
+              </div>
+            </>
+          ) : null}
         </div>
       </section>
 

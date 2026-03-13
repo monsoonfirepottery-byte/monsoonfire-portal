@@ -109,6 +109,7 @@ import {
   V1_RESERVATION_PICKUP_WINDOW_FN,
   V1_RESERVATION_QUEUE_FAIRNESS_FN,
   V1_RESERVATION_EXPORT_CONTINUITY_FN,
+  V1_FIRINGS_LIST_TIMELINE_FN,
   V1_RESERVATION_UPDATE_FN,
   V1_STUDIO_RESERVATIONS_CANCEL_FN,
   V1_STUDIO_RESERVATIONS_CREATE_FN,
@@ -890,7 +891,6 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
         { ...args, requestTimeoutMs }
       );
     },
-
     async continueJourney(args) {
       return await callFn<ContinueJourneyRequest, ContinueJourneyResponse>(baseUrl, "continueJourney", {
         ...args,

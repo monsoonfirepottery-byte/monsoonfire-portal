@@ -49,6 +49,7 @@ import {
   type LibraryRolloutPhase,
 } from "./library";
 import { collectWorkshopCommunitySignalCountsByEventIds } from "./events";
+import { buildKilnTimeline } from "./kilnTimeline";
 
 function boolEnv(name: string, fallback = false): boolean {
   const raw = process.env[name];
@@ -579,6 +580,8 @@ const timelineListSchema = z.object({
 const firingsListUpcomingSchema = z.object({
   limit: z.number().int().min(1).max(500).optional(),
 });
+
+const firingsListTimelineSchema = z.object({});
 
 const libraryItemsListSchema = z.object({
   q: z.string().max(200).optional().nullable(),
@@ -2208,6 +2211,7 @@ const ROUTE_SCOPE_HINTS: Record<string, string | null> = {
   "/v1/reservations.get": "reservations:read",
   "/v1/reservations.list": "reservations:read",
   "/v1/reservations.exportContinuity": "reservations:read",
+  "/v1/firings.listTimeline": "firings:read",
   "/v1/library.items.list": null,
   "/v1/library.items.get": null,
   "/v1/library.discovery.get": null,
@@ -2278,6 +2282,7 @@ const ALLOWED_API_V1_ROUTES = new Set<string>([
   "/v1/reservations.update",
   "/v1/events.feed",
   "/v1/firings.listUpcoming",
+  "/v1/firings.listTimeline",
   "/v1/library.items.list",
   "/v1/library.items.get",
   "/v1/library.discovery.get",
@@ -7144,6 +7149,55 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
 
       const firings = snap.docs.map((d) => toFiringRow(d.id, d.data() as Record<string, unknown>));
       jsonOk(res, requestId, { firings, now });
+      return;
+    }
+
+    if (route === "/v1/firings.listTimeline") {
+      const scopeCheck = requireScopes(ctx, ["firings:read"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+
+      const parsed = parseBody(firingsListTimelineSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const activeReservationStatuses = ["REQUESTED", "CONFIRMED", "WAITLISTED"] as const;
+      const visibleFiringStatuses = [
+        "scheduled",
+        "in-progress",
+        "loading",
+        "firing",
+        "cooling",
+        "unloading",
+      ] as const;
+
+      const [kilnsSnap, firingsSnap, reservationsSnap] = await Promise.all([
+        db.collection("kilns").limit(50).get(),
+        db.collection("kilnFirings").where("status", "in", visibleFiringStatuses).limit(300).get(),
+        db.collection("reservations").where("status", "in", activeReservationStatuses).limit(600).get(),
+      ]);
+
+      const timeline = buildKilnTimeline({
+        now: nowTs().toDate(),
+        kilns: kilnsSnap.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...(docSnap.data() as Record<string, unknown>),
+        })),
+        firings: firingsSnap.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...(docSnap.data() as Record<string, unknown>),
+        })),
+        reservations: reservationsSnap.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...(docSnap.data() as Record<string, unknown>),
+        })),
+      });
+
+      jsonOk(res, requestId, timeline);
       return;
     }
 

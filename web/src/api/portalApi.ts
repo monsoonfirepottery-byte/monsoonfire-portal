@@ -19,6 +19,8 @@ import type {
   ReservationQueueFairnessResponse as ContractsReservationQueueFairnessResponse,
   ReservationExportContinuityRequest as ContractsReservationExportContinuityRequest,
   ReservationExportContinuityResponse as ContractsReservationExportContinuityResponse,
+  ListFiringsTimelineRequest as ContractsListFiringsTimelineRequest,
+  ListFiringsTimelineResponse as ContractsListFiringsTimelineResponse,
   PickedUpAndCloseRequest as ContractsPickedUpAndCloseRequest,
   PickedUpAndCloseResponse as ContractsPickedUpAndCloseResponse,
   ListMaterialsProductsRequest as ContractsListMaterialsProductsRequest,
@@ -88,6 +90,7 @@ import {
   V1_RESERVATION_PICKUP_WINDOW_FN,
   V1_RESERVATION_QUEUE_FAIRNESS_FN,
   V1_RESERVATION_EXPORT_CONTINUITY_FN,
+  V1_FIRINGS_LIST_TIMELINE_FN,
   V1_RESERVATION_UPDATE_FN,
 } from "./portalContracts";
 import { makeRequestId as createRequestId } from "./requestId";
@@ -124,6 +127,8 @@ export type ReservationQueueFairnessRequest = ContractsReservationQueueFairnessR
 export type ReservationQueueFairnessResponse = ContractsReservationQueueFairnessResponse;
 export type ReservationExportContinuityRequest = ContractsReservationExportContinuityRequest;
 export type ReservationExportContinuityResponse = ContractsReservationExportContinuityResponse;
+export type ListFiringsTimelineRequest = ContractsListFiringsTimelineRequest;
+export type ListFiringsTimelineResponse = ContractsListFiringsTimelineResponse;
 
 export type ListMaterialsProductsRequest = ContractsListMaterialsProductsRequest;
 export type ListMaterialsProductsResponse = ContractsListMaterialsProductsResponse;
@@ -227,6 +232,9 @@ export type PortalApi = {
   exportReservationContinuity(
     args: PortalApiCallArgs<ReservationExportContinuityRequest>
   ): Promise<PortalApiCallResult<ReservationExportContinuityResponse>>;
+  listFiringsTimeline(
+    args: PortalApiCallArgs<ListFiringsTimelineRequest>
+  ): Promise<PortalApiCallResult<ListFiringsTimelineResponse>>;
   continueJourney(
     args: PortalApiCallArgs<ContinueJourneyRequest>
   ): Promise<PortalApiCallResult<ContinueJourneyResponse>>;
@@ -307,6 +315,7 @@ const RESERVATION_ASSIGN_STATION_FN = V1_RESERVATION_ASSIGN_STATION_FN;
 const RESERVATION_PICKUP_WINDOW_FN = V1_RESERVATION_PICKUP_WINDOW_FN;
 const RESERVATION_QUEUE_FAIRNESS_FN = V1_RESERVATION_QUEUE_FAIRNESS_FN;
 const RESERVATION_EXPORT_CONTINUITY_FN = V1_RESERVATION_EXPORT_CONTINUITY_FN;
+const FIRINGS_LIST_TIMELINE_FN = V1_FIRINGS_LIST_TIMELINE_FN;
 const LIBRARY_ITEMS_LIST_FN = V1_LIBRARY_ITEMS_LIST_FN;
 const LIBRARY_ITEMS_GET_FN = V1_LIBRARY_ITEMS_GET_FN;
 const LIBRARY_DISCOVERY_GET_FN = V1_LIBRARY_DISCOVERY_GET_FN;
@@ -717,6 +726,14 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
       return await callFn<ReservationExportContinuityRequest, ReservationExportContinuityResponse>(
         baseUrl,
         RESERVATION_EXPORT_CONTINUITY_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async listFiringsTimeline(args) {
+      return await callFn<ListFiringsTimelineRequest, ListFiringsTimelineResponse>(
+        baseUrl,
+        FIRINGS_LIST_TIMELINE_FN,
         { ...args, requestTimeoutMs }
       );
     },

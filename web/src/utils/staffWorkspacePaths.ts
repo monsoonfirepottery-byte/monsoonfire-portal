@@ -25,6 +25,7 @@ const STAFF_HOST_STAFF_PATH_RE = /(?:^|\/)staff(?:$|(\/|\?|#))/i;
 
 const STAFF_COCKPIT_MODULE_SEGMENTS = new Set([
   "reports",
+  "studio-reservations",
 ]);
 
 const STAFF_COCKPIT_TAB_ONLY_SEGMENTS = new Set([
@@ -47,6 +48,10 @@ const STAFF_COCKPIT_SEGMENT_ALIASES: Readonly<Record<string, string>> = {
   "policyagentops": "policy-agent-ops",
   "moduletelemetry": "module-telemetry",
   module_telemetry: "module-telemetry",
+  "studioreservations": "studio-reservations",
+  "studio_reservations": "studio-reservations",
+  "studiobookings": "studio-reservations",
+  "studio_bookings": "studio-reservations",
 };
 
 const STAFF_COCKPIT_TAB_SEGMENT_ALIASES: Readonly<Record<string, string>> = {
@@ -77,6 +82,10 @@ const STAFF_COCKPIT_ROOT_SEGMENT_ALIASES: Readonly<Record<string, string>> = {
   system: "platform",
   commerce: "finance",
   stripe: "finance",
+  reservations: "studio-reservations",
+  reservation: "studio-reservations",
+  "studio-bookings": "studio-reservations",
+  "studio_bookings": "studio-reservations",
   policyagentops: "policy-agent-ops",
 };
 

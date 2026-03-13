@@ -56,6 +56,12 @@ import {
   shouldNavigateToStaffWorkspaceTarget,
   type StaffWorkspaceMode,
 } from "./utils/staffWorkspacePaths";
+import {
+  buildStudioReservationsPath,
+  canonicalReservationsPath,
+  parseStudioReservationsSearch,
+  resolveReservationsPathTarget,
+} from "./utils/reservationsPaths";
 import "./App.css";
 
 const BillingView = React.lazy(() => import("./views/BillingView"));
@@ -75,11 +81,12 @@ const MyPiecesView = React.lazy(() => import("./views/MyPiecesView"));
 const NotificationsView = React.lazy(() => import("./views/NotificationsView"));
 const PlaceholderView = React.lazy(() => import("./views/PlaceholderView"));
 const ProfileView = React.lazy(() => import("./views/ProfileView"));
-const ReservationsView = React.lazy(() => import("./views/ReservationsView"));
+const StudioReservationsView = React.lazy(() => import("./views/StudioReservationsView"));
 const SignedOutView = React.lazy(() => import("./views/SignedOutView"));
 const StudioResourcesView = React.lazy(() => import("./views/StudioResourcesView"));
 const SupportView = React.lazy(() => import("./views/SupportView"));
 const StaffView = React.lazy(() => import("./views/StaffView"));
+const WareCheckInView = React.lazy(() => import("./views/WareCheckInView"));
 
 type NavKey =
   | "dashboard"
@@ -90,6 +97,7 @@ type NavKey =
   | "kilnRentals"
   | "kilnLaunch"
   | "reservations"
+  | "wareCheckIn"
   | "events"
   | "community"
   | "lendingLibrary"
@@ -135,9 +143,13 @@ type NotificationItem = {
   createdAt?: { toDate?: () => Date } | null;
   readAt?: { toDate?: () => Date } | null;
   data?: {
+    destination?: "firings" | "reservations" | string | null;
     firingId?: string;
     kilnName?: string | null;
     firingType?: string | null;
+    routePath?: string | null;
+    calendarDateKey?: string | null;
+    spaceId?: string | null;
   };
 };
 
@@ -169,7 +181,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: "Kiln Rentals",
     items: [
       { key: "kilnRentals", label: "Overview" },
-      { key: "reservations", label: "Ware Check-in" },
+      { key: "wareCheckIn", label: "Ware Check-in" },
       { key: "kilnLaunch", label: "View the Queues" },
       { key: "kiln", label: "Firings" },
     ],
@@ -179,6 +191,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: "Studio & Resources",
     items: [
       { key: "studioResources", label: "Overview" },
+      { key: "reservations", label: "Reservations" },
       { key: "pieces", label: "My Pieces" },
       { key: "lendingLibrary", label: "Lending Library" },
       { key: "glazes", label: "Glaze Board" },
@@ -316,7 +329,8 @@ const NAV_LABELS: Record<NavKey, string> = {
   kiln: "Firings",
   kilnRentals: "Kiln Rentals",
   kilnLaunch: "View the Queues",
-  reservations: "Ware Check-in",
+  reservations: "Reservations",
+  wareCheckIn: "Ware Check-in",
   community: "Community",
   events: "Workshops",
   lendingLibrary: "Lending Library",
@@ -817,7 +831,8 @@ function useNotifications(user: User | null, canLoad: boolean) {
 
 function prefetchLikelyNextViews() {
   void import("./views/KilnRentalsView");
-  void import("./views/ReservationsView");
+  void import("./views/StudioReservationsView");
+  void import("./views/WareCheckInView");
   void import("./views/KilnLaunchView");
 }
 
@@ -829,7 +844,7 @@ export default function App() {
   const [emailLinkPending, setEmailLinkPending] = useState(false);
   const [nav, setNav] = useState<NavKey>(() => {
     if (typeof window === "undefined") return "dashboard";
-  const normalizedPathname = normalizeAppPath(window.location.pathname);
+    const normalizedPathname = normalizeAppPath(window.location.pathname);
     const staffWorkspaceLaunch = resolveStaffWorkspaceLaunch(normalizedPathname, window.location.hash);
     if (staffWorkspaceLaunch) return staffWorkspaceLaunch.targetNav;
     const legacyRedirect = resolveLegacyRequestsRedirect(
@@ -838,8 +853,10 @@ export default function App() {
       window.location.hash
     );
     if (legacyRedirect) return legacyRedirect.targetNav;
-    const path = normalizeAppPath(window.location.pathname);
-    if (path === "/glazes" || path === "/community/glazes") return "glazes";
+    const reservationsTarget = resolveReservationsPathTarget(normalizedPathname);
+    if (reservationsTarget === "reservations") return "reservations";
+    if (reservationsTarget === "wareCheckIn") return "wareCheckIn";
+    if (normalizedPathname === "/glazes" || normalizedPathname === "/community/glazes") return "glazes";
     const saved = readLocalItem(LOCAL_NAV_KEY);
     if (saved && isNavKey(saved)) return saved;
     return "dashboard";
@@ -1148,6 +1165,16 @@ export default function App() {
     }
     if (nav === "glazes") {
       window.history.replaceState({}, "", "/glazes");
+    } else if (nav === "reservations") {
+      const reservationsTarget = resolveReservationsPathTarget(pathname);
+      if (reservationsTarget === "reservations") {
+        const { dateKey, spaceId } = parseStudioReservationsSearch(window.location.search);
+        window.history.replaceState({}, "", buildStudioReservationsPath({ dateKey, spaceId }));
+      } else {
+        window.history.replaceState({}, "", canonicalReservationsPath("reservations"));
+      }
+    } else if (nav === "wareCheckIn") {
+      window.history.replaceState({}, "", canonicalReservationsPath("wareCheckIn"));
     } else if (hasStaffWorkspaceRequest) {
       if (requestedStaffPath && pathname !== requestedStaffPath) {
         window.history.replaceState({}, "", requestedStaffPath);
@@ -1161,7 +1188,10 @@ export default function App() {
         }
       }
     } else if (
-      (pathname === "/glazes" || hasLegacyRequestsPath || hasLegacyRequestsHash)
+      pathname === "/glazes" ||
+      hasLegacyRequestsPath ||
+      hasLegacyRequestsHash ||
+      resolveReservationsPathTarget(pathname) !== null
     ) {
       window.history.replaceState({}, "", "/");
     }
@@ -1200,6 +1230,17 @@ export default function App() {
       if (pathname === "/glazes" || pathname === "/community/glazes") {
         if (nav !== "glazes") {
           setNav("glazes");
+        }
+        if (staffWorkspaceMode !== "default") {
+          setStaffWorkspaceMode("default");
+        }
+        return;
+      }
+
+      const reservationsTarget = resolveReservationsPathTarget(pathname);
+      if (reservationsTarget) {
+        if (nav !== reservationsTarget) {
+          setNav(reservationsTarget);
         }
         if (staffWorkspaceMode !== "default") {
           setStaffWorkspaceMode("default");
@@ -2033,6 +2074,21 @@ export default function App() {
     setNav("pieces");
   }, []);
 
+  const openReservations = useCallback((routePath?: string | null) => {
+    if (typeof window !== "undefined" && typeof routePath === "string" && routePath.trim().length > 0) {
+      try {
+        const parsed = new URL(routePath, window.location.origin);
+        if (resolveReservationsPathTarget(parsed.pathname) === "reservations") {
+          const { dateKey, spaceId } = parseStudioReservationsSearch(parsed.search);
+          window.history.replaceState({}, "", buildStudioReservationsPath({ dateKey, spaceId }));
+        }
+      } catch {
+        // Ignore malformed deep links and fall back to the canonical reservations route.
+      }
+    }
+    setNav("reservations");
+  }, []);
+
   const handlePiecesFocusConsumed = useCallback(() => {
     setPiecesFocusTarget(null);
   }, []);
@@ -2069,7 +2125,7 @@ export default function App() {
             threads={threads}
             announcements={announcements}
             onOpenKilnRentals={() => setNav("kilnRentals")}
-            onOpenCheckin={() => setNav("reservations")}
+            onOpenCheckin={() => setNav("wareCheckIn")}
             onOpenQueues={() => setNav("kilnLaunch")}
             onOpenFirings={() => setNav("kiln")}
             onOpenStudioResources={() => setNav("studioResources")}
@@ -2087,7 +2143,7 @@ export default function App() {
             isStaff={staffUi}
             focusTarget={piecesFocusTarget}
             onFocusTargetConsumed={handlePiecesFocusConsumed}
-            onOpenCheckin={() => setNav("reservations")}
+            onOpenCheckin={() => setNav("wareCheckIn")}
           />
         );
       case "profile":
@@ -2141,7 +2197,17 @@ export default function App() {
       case "billing":
         return <BillingView user={user} />;
       case "reservations":
-        return <ReservationsView user={user} isStaff={staffUi} adminToken={devAdminTokenValue} />;
+        return (
+          <StudioReservationsView
+            user={user}
+            adminToken={devAdminTokenValue}
+            isStaff={staffUi}
+            onOpenStaffWorkspace={openStaffWorkspace}
+            onOpenWareCheckIn={() => setNav("wareCheckIn")}
+          />
+        );
+      case "wareCheckIn":
+        return <WareCheckInView user={user} isStaff={staffUi} adminToken={devAdminTokenValue} />;
       case "kiln":
         return <KilnScheduleView user={user} isStaff={staffUi} />;
       case "kilnRentals":
@@ -2149,7 +2215,7 @@ export default function App() {
           <KilnRentalsView
             onOpenKilnLaunch={() => setNav("kilnLaunch")}
             onOpenKilnSchedule={() => setNav("kiln")}
-            onOpenWorkSubmission={() => setNav("reservations")}
+            onOpenWorkSubmission={() => setNav("wareCheckIn")}
           />
         );
       case "kilnLaunch":
@@ -2157,6 +2223,7 @@ export default function App() {
       case "studioResources":
       return (
         <StudioResourcesView
+          onOpenReservations={() => openReservations()}
           onOpenPieces={() => openPieces()}
           onOpenMaterials={() => setNav("materials")}
           onOpenMembership={() => setNav("membership")}
@@ -2185,6 +2252,7 @@ export default function App() {
           <NotificationsView
             user={user}
             onOpenFirings={() => setNav("kiln")}
+            onOpenReservations={openReservations}
             notifications={notifications}
             loading={notificationsLoading}
             error={notificationsError}
@@ -2209,8 +2277,8 @@ export default function App() {
             onDevAdminTokenChange={setDevAdminToken}
             devAdminEnabled={DEV_ADMIN_TOKEN_ENABLED}
             showEmulatorTools={isAuthEmulator}
-            onOpenCheckin={() => setNav("reservations")}
-            onOpenReservation={() => setNav("reservations")}
+            onOpenCheckin={() => setNav("wareCheckIn")}
+            onOpenReservation={() => setNav("wareCheckIn")}
             onOpenMessages={() => setNav("messages")}
             onOpenMessageThread={() => setNav("messages")}
             onOpenFirings={() => setNav("kiln")}

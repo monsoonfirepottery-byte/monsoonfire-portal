@@ -73,6 +73,7 @@ describe("NotificationsView mark-read feedback", () => {
         loading={false}
         error=""
         onOpenFirings={() => undefined}
+        onOpenReservations={() => undefined}
       />
     );
 
@@ -111,6 +112,7 @@ describe("NotificationsView mark-read feedback", () => {
         loading={false}
         error=""
         onOpenFirings={() => undefined}
+        onOpenReservations={() => undefined}
       />
     );
 
@@ -143,6 +145,7 @@ describe("NotificationsView mark-read feedback", () => {
         loading={false}
         error=""
         onOpenFirings={() => undefined}
+        onOpenReservations={() => undefined}
       />
     );
 
@@ -176,6 +179,7 @@ describe("NotificationsView mark-read feedback", () => {
         loading={false}
         error=""
         onOpenFirings={() => undefined}
+        onOpenReservations={() => undefined}
       />
     );
 
@@ -207,6 +211,7 @@ describe("NotificationsView mark-read feedback", () => {
         loading={false}
         error=""
         onOpenFirings={() => undefined}
+        onOpenReservations={() => undefined}
       />
     );
 
@@ -247,6 +252,7 @@ describe("NotificationsView mark-read feedback", () => {
         loading={false}
         error=""
         onOpenFirings={() => undefined}
+        onOpenReservations={() => undefined}
       />
     );
 
@@ -283,6 +289,7 @@ describe("NotificationsView mark-read feedback", () => {
         loading={false}
         error=""
         onOpenFirings={() => undefined}
+        onOpenReservations={() => undefined}
       />
     );
 
@@ -318,6 +325,7 @@ describe("NotificationsView mark-read feedback", () => {
         loading={false}
         error=""
         onOpenFirings={onOpenFirings}
+        onOpenReservations={() => undefined}
       />
     );
 
@@ -352,6 +360,7 @@ describe("NotificationsView mark-read feedback", () => {
         loading={false}
         error=""
         onOpenFirings={() => undefined}
+        onOpenReservations={() => undefined}
       />
     );
 
@@ -369,6 +378,7 @@ describe("NotificationsView mark-read feedback", () => {
         loading={false}
         error=""
         onOpenFirings={() => undefined}
+        onOpenReservations={() => undefined}
       />
     );
 

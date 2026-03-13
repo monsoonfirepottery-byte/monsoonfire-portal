@@ -19,6 +19,26 @@ import type {
   ReservationQueueFairnessResponse as ContractsReservationQueueFairnessResponse,
   ReservationExportContinuityRequest as ContractsReservationExportContinuityRequest,
   ReservationExportContinuityResponse as ContractsReservationExportContinuityResponse,
+  ListFiringsTimelineRequest as ContractsListFiringsTimelineRequest,
+  ListFiringsTimelineResponse as ContractsListFiringsTimelineResponse,
+  ListStudioReservationSpacesRequest as ContractsListStudioReservationSpacesRequest,
+  ListStudioReservationSpacesResponse as ContractsListStudioReservationSpacesResponse,
+  ListStudioReservationCalendarRequest as ContractsListStudioReservationCalendarRequest,
+  ListStudioReservationCalendarResponse as ContractsListStudioReservationCalendarResponse,
+  ListMyStudioReservationsRequest as ContractsListMyStudioReservationsRequest,
+  ListMyStudioReservationsResponse as ContractsListMyStudioReservationsResponse,
+  CreateStudioReservationRequest as ContractsCreateStudioReservationRequest,
+  CreateStudioReservationResponse as ContractsCreateStudioReservationResponse,
+  JoinStudioReservationWaitlistRequest as ContractsJoinStudioReservationWaitlistRequest,
+  JoinStudioReservationWaitlistResponse as ContractsJoinStudioReservationWaitlistResponse,
+  CancelStudioReservationRequest as ContractsCancelStudioReservationRequest,
+  CancelStudioReservationResponse as ContractsCancelStudioReservationResponse,
+  StaffUpsertStudioReservationSpaceRequest as ContractsStaffUpsertStudioReservationSpaceRequest,
+  StaffUpsertStudioReservationSpaceResponse as ContractsStaffUpsertStudioReservationSpaceResponse,
+  StaffUpsertStudioCalendarBlockRequest as ContractsStaffUpsertStudioCalendarBlockRequest,
+  StaffUpsertStudioCalendarBlockResponse as ContractsStaffUpsertStudioCalendarBlockResponse,
+  StaffManageStudioReservationRequest as ContractsStaffManageStudioReservationRequest,
+  StaffManageStudioReservationResponse as ContractsStaffManageStudioReservationResponse,
   PickedUpAndCloseRequest as ContractsPickedUpAndCloseRequest,
   PickedUpAndCloseResponse as ContractsPickedUpAndCloseResponse,
   ListMaterialsProductsRequest as ContractsListMaterialsProductsRequest,
@@ -83,12 +103,22 @@ import {
   V1_LIBRARY_ITEMS_LIST_FN,
   V1_LIBRARY_ROLLOUT_CONFIG_GET_FN,
   V1_LIBRARY_ROLLOUT_CONFIG_SET_FN,
+  V1_FIRINGS_LIST_TIMELINE_FN,
   V1_RESERVATION_ASSIGN_STATION_FN,
   V1_RESERVATION_CREATE_FN,
   V1_RESERVATION_PICKUP_WINDOW_FN,
   V1_RESERVATION_QUEUE_FAIRNESS_FN,
   V1_RESERVATION_EXPORT_CONTINUITY_FN,
   V1_RESERVATION_UPDATE_FN,
+  V1_STUDIO_RESERVATIONS_CANCEL_FN,
+  V1_STUDIO_RESERVATIONS_CREATE_FN,
+  V1_STUDIO_RESERVATIONS_JOIN_WAITLIST_FN,
+  V1_STUDIO_RESERVATIONS_LIST_CALENDAR_FN,
+  V1_STUDIO_RESERVATIONS_LIST_MINE_FN,
+  V1_STUDIO_RESERVATIONS_LIST_SPACES_FN,
+  V1_STUDIO_RESERVATIONS_STAFF_MANAGE_FN,
+  V1_STUDIO_RESERVATIONS_STAFF_UPSERT_BLOCK_FN,
+  V1_STUDIO_RESERVATIONS_STAFF_UPSERT_SPACE_FN,
 } from "./portalContracts";
 import { makeRequestId as createRequestId } from "./requestId";
 import type { AppError } from "../errors/appError";
@@ -124,6 +154,26 @@ export type ReservationQueueFairnessRequest = ContractsReservationQueueFairnessR
 export type ReservationQueueFairnessResponse = ContractsReservationQueueFairnessResponse;
 export type ReservationExportContinuityRequest = ContractsReservationExportContinuityRequest;
 export type ReservationExportContinuityResponse = ContractsReservationExportContinuityResponse;
+export type ListFiringsTimelineRequest = ContractsListFiringsTimelineRequest;
+export type ListFiringsTimelineResponse = ContractsListFiringsTimelineResponse;
+export type ListStudioReservationSpacesRequest = ContractsListStudioReservationSpacesRequest;
+export type ListStudioReservationSpacesResponse = ContractsListStudioReservationSpacesResponse;
+export type ListStudioReservationCalendarRequest = ContractsListStudioReservationCalendarRequest;
+export type ListStudioReservationCalendarResponse = ContractsListStudioReservationCalendarResponse;
+export type ListMyStudioReservationsRequest = ContractsListMyStudioReservationsRequest;
+export type ListMyStudioReservationsResponse = ContractsListMyStudioReservationsResponse;
+export type CreateStudioReservationRequest = ContractsCreateStudioReservationRequest;
+export type CreateStudioReservationResponse = ContractsCreateStudioReservationResponse;
+export type JoinStudioReservationWaitlistRequest = ContractsJoinStudioReservationWaitlistRequest;
+export type JoinStudioReservationWaitlistResponse = ContractsJoinStudioReservationWaitlistResponse;
+export type CancelStudioReservationRequest = ContractsCancelStudioReservationRequest;
+export type CancelStudioReservationResponse = ContractsCancelStudioReservationResponse;
+export type StaffUpsertStudioReservationSpaceRequest = ContractsStaffUpsertStudioReservationSpaceRequest;
+export type StaffUpsertStudioReservationSpaceResponse = ContractsStaffUpsertStudioReservationSpaceResponse;
+export type StaffUpsertStudioCalendarBlockRequest = ContractsStaffUpsertStudioCalendarBlockRequest;
+export type StaffUpsertStudioCalendarBlockResponse = ContractsStaffUpsertStudioCalendarBlockResponse;
+export type StaffManageStudioReservationRequest = ContractsStaffManageStudioReservationRequest;
+export type StaffManageStudioReservationResponse = ContractsStaffManageStudioReservationResponse;
 
 export type ListMaterialsProductsRequest = ContractsListMaterialsProductsRequest;
 export type ListMaterialsProductsResponse = ContractsListMaterialsProductsResponse;
@@ -227,6 +277,36 @@ export type PortalApi = {
   exportReservationContinuity(
     args: PortalApiCallArgs<ReservationExportContinuityRequest>
   ): Promise<PortalApiCallResult<ReservationExportContinuityResponse>>;
+  listFiringsTimeline(
+    args: PortalApiCallArgs<ListFiringsTimelineRequest>
+  ): Promise<PortalApiCallResult<ListFiringsTimelineResponse>>;
+  listStudioReservationSpaces(
+    args: PortalApiCallArgs<ListStudioReservationSpacesRequest>
+  ): Promise<PortalApiCallResult<ListStudioReservationSpacesResponse>>;
+  listStudioReservationCalendar(
+    args: PortalApiCallArgs<ListStudioReservationCalendarRequest>
+  ): Promise<PortalApiCallResult<ListStudioReservationCalendarResponse>>;
+  listMyStudioReservations(
+    args: PortalApiCallArgs<ListMyStudioReservationsRequest>
+  ): Promise<PortalApiCallResult<ListMyStudioReservationsResponse>>;
+  createStudioReservation(
+    args: PortalApiCallArgs<CreateStudioReservationRequest>
+  ): Promise<PortalApiCallResult<CreateStudioReservationResponse>>;
+  joinStudioReservationWaitlist(
+    args: PortalApiCallArgs<JoinStudioReservationWaitlistRequest>
+  ): Promise<PortalApiCallResult<JoinStudioReservationWaitlistResponse>>;
+  cancelStudioReservation(
+    args: PortalApiCallArgs<CancelStudioReservationRequest>
+  ): Promise<PortalApiCallResult<CancelStudioReservationResponse>>;
+  staffUpsertStudioReservationSpace(
+    args: PortalApiCallArgs<StaffUpsertStudioReservationSpaceRequest>
+  ): Promise<PortalApiCallResult<StaffUpsertStudioReservationSpaceResponse>>;
+  staffUpsertStudioCalendarBlock(
+    args: PortalApiCallArgs<StaffUpsertStudioCalendarBlockRequest>
+  ): Promise<PortalApiCallResult<StaffUpsertStudioCalendarBlockResponse>>;
+  staffManageStudioReservation(
+    args: PortalApiCallArgs<StaffManageStudioReservationRequest>
+  ): Promise<PortalApiCallResult<StaffManageStudioReservationResponse>>;
   continueJourney(
     args: PortalApiCallArgs<ContinueJourneyRequest>
   ): Promise<PortalApiCallResult<ContinueJourneyResponse>>;
@@ -307,6 +387,16 @@ const RESERVATION_ASSIGN_STATION_FN = V1_RESERVATION_ASSIGN_STATION_FN;
 const RESERVATION_PICKUP_WINDOW_FN = V1_RESERVATION_PICKUP_WINDOW_FN;
 const RESERVATION_QUEUE_FAIRNESS_FN = V1_RESERVATION_QUEUE_FAIRNESS_FN;
 const RESERVATION_EXPORT_CONTINUITY_FN = V1_RESERVATION_EXPORT_CONTINUITY_FN;
+const FIRINGS_LIST_TIMELINE_FN = V1_FIRINGS_LIST_TIMELINE_FN;
+const STUDIO_RESERVATIONS_LIST_SPACES_FN = V1_STUDIO_RESERVATIONS_LIST_SPACES_FN;
+const STUDIO_RESERVATIONS_LIST_CALENDAR_FN = V1_STUDIO_RESERVATIONS_LIST_CALENDAR_FN;
+const STUDIO_RESERVATIONS_LIST_MINE_FN = V1_STUDIO_RESERVATIONS_LIST_MINE_FN;
+const STUDIO_RESERVATIONS_CREATE_FN = V1_STUDIO_RESERVATIONS_CREATE_FN;
+const STUDIO_RESERVATIONS_CANCEL_FN = V1_STUDIO_RESERVATIONS_CANCEL_FN;
+const STUDIO_RESERVATIONS_JOIN_WAITLIST_FN = V1_STUDIO_RESERVATIONS_JOIN_WAITLIST_FN;
+const STUDIO_RESERVATIONS_STAFF_UPSERT_SPACE_FN = V1_STUDIO_RESERVATIONS_STAFF_UPSERT_SPACE_FN;
+const STUDIO_RESERVATIONS_STAFF_UPSERT_BLOCK_FN = V1_STUDIO_RESERVATIONS_STAFF_UPSERT_BLOCK_FN;
+const STUDIO_RESERVATIONS_STAFF_MANAGE_FN = V1_STUDIO_RESERVATIONS_STAFF_MANAGE_FN;
 const LIBRARY_ITEMS_LIST_FN = V1_LIBRARY_ITEMS_LIST_FN;
 const LIBRARY_ITEMS_GET_FN = V1_LIBRARY_ITEMS_GET_FN;
 const LIBRARY_DISCOVERY_GET_FN = V1_LIBRARY_DISCOVERY_GET_FN;
@@ -717,6 +807,86 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
       return await callFn<ReservationExportContinuityRequest, ReservationExportContinuityResponse>(
         baseUrl,
         RESERVATION_EXPORT_CONTINUITY_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async listFiringsTimeline(args) {
+      return await callFn<ListFiringsTimelineRequest, ListFiringsTimelineResponse>(
+        baseUrl,
+        FIRINGS_LIST_TIMELINE_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async listStudioReservationSpaces(args) {
+      return await callFn<ListStudioReservationSpacesRequest, ListStudioReservationSpacesResponse>(
+        baseUrl,
+        STUDIO_RESERVATIONS_LIST_SPACES_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async listStudioReservationCalendar(args) {
+      return await callFn<ListStudioReservationCalendarRequest, ListStudioReservationCalendarResponse>(
+        baseUrl,
+        STUDIO_RESERVATIONS_LIST_CALENDAR_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async listMyStudioReservations(args) {
+      return await callFn<ListMyStudioReservationsRequest, ListMyStudioReservationsResponse>(
+        baseUrl,
+        STUDIO_RESERVATIONS_LIST_MINE_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async createStudioReservation(args) {
+      return await callFn<CreateStudioReservationRequest, CreateStudioReservationResponse>(
+        baseUrl,
+        STUDIO_RESERVATIONS_CREATE_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async joinStudioReservationWaitlist(args) {
+      return await callFn<JoinStudioReservationWaitlistRequest, JoinStudioReservationWaitlistResponse>(
+        baseUrl,
+        STUDIO_RESERVATIONS_JOIN_WAITLIST_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async cancelStudioReservation(args) {
+      return await callFn<CancelStudioReservationRequest, CancelStudioReservationResponse>(
+        baseUrl,
+        STUDIO_RESERVATIONS_CANCEL_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async staffUpsertStudioReservationSpace(args) {
+      return await callFn<StaffUpsertStudioReservationSpaceRequest, StaffUpsertStudioReservationSpaceResponse>(
+        baseUrl,
+        STUDIO_RESERVATIONS_STAFF_UPSERT_SPACE_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async staffUpsertStudioCalendarBlock(args) {
+      return await callFn<StaffUpsertStudioCalendarBlockRequest, StaffUpsertStudioCalendarBlockResponse>(
+        baseUrl,
+        STUDIO_RESERVATIONS_STAFF_UPSERT_BLOCK_FN,
+        { ...args, requestTimeoutMs }
+      );
+    },
+
+    async staffManageStudioReservation(args) {
+      return await callFn<StaffManageStudioReservationRequest, StaffManageStudioReservationResponse>(
+        baseUrl,
+        STUDIO_RESERVATIONS_STAFF_MANAGE_FN,
         { ...args, requestTimeoutMs }
       );
     },

@@ -814,6 +814,178 @@ test("handleApiV1 rejects unknown and malformed route paths with route audit eve
   }
 });
 
+test("studioReservations.listCalendar dispatches without falling through to unknown route", async () => {
+  const response = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/studioReservations.listCalendar",
+      body: {
+        startAt: "2026-03-13T07:00:00.000Z",
+        endAt: "2026-03-14T07:00:00.000Z",
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  assert.ok(Array.isArray(data.spaces));
+  assert.ok(Array.isArray(data.entries));
+  assert.ok(Array.isArray(data.reservations));
+  assert.equal(body.code, undefined);
+});
+
+test("studioReservations.listSpaces returns the new fallback reservation inventory", async () => {
+  const response = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/studioReservations.listSpaces",
+      body: {
+        includeInactive: true,
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  const spaces = Array.isArray(data.spaces) ? (data.spaces as Array<Record<string, unknown>>) : [];
+  const ids = spaces
+    .map((space) => String(space.id ?? ""))
+    .filter(Boolean)
+    .sort();
+  assert.equal(data.generatedDefaults, true);
+  assert.deepEqual(ids, [
+    "community-spaces",
+    "dropoff-pickup",
+    "glaze-kitchen-outdoors",
+    "glazing-area-outdoors",
+    "handbuilding-area-indoors",
+    "wheel-throwing-sanding",
+  ]);
+  const wheelSpace = spaces.find((space) => String(space.id ?? "") === "wheel-throwing-sanding");
+  const wheelResources = Array.isArray(wheelSpace?.resources) ? wheelSpace.resources : [];
+  assert.deepEqual(
+    wheelResources.map((resource) => String((resource as Record<string, unknown>).label ?? "")),
+    ["Skutt wheel", "Vevor wheel (trimming only)"]
+  );
+  assert.equal(body.code, undefined);
+});
+
+test("studioReservations.listSpaces prefers stored inventory and does not merge fallback spaces", async () => {
+  const response = await invokeApiV1Route(
+    {
+      studioSpaces: {
+        "community-spaces": {
+          id: "community-spaces",
+          slug: "community-spaces",
+          name: "Community Spaces",
+          category: "Community",
+          description: "Custom community room inventory.",
+          memberHelpText: "Custom configured inventory.",
+          bookingMode: "capacity",
+          active: true,
+          capacity: 1,
+          colorToken: "#b38a4d",
+          sortOrder: 60,
+          resources: [],
+          templates: [
+            {
+              id: "community-spaces-default",
+              label: "Community block",
+              daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+              windowStart: "10:00",
+              windowEnd: "19:00",
+              slotDurationMinutes: 240,
+              slotIncrementMinutes: 240,
+            },
+          ],
+        },
+      },
+    },
+    makeApiV1Request({
+      path: "/v1/studioReservations.listSpaces",
+      body: {
+        includeInactive: true,
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  const spaces = Array.isArray(data.spaces) ? (data.spaces as Array<Record<string, unknown>>) : [];
+  assert.equal(data.generatedDefaults, false);
+  assert.deepEqual(
+    spaces.map((space) => String(space.id ?? "")),
+    ["community-spaces"]
+  );
+});
+
+test("studioReservations.listMine dispatches without falling through to unknown route", async () => {
+  const state: MockDbState = {
+    studioSpaceReservations: {
+      "reservation-owner-1": {
+        ownerUid: "owner-1",
+        ownerDisplayName: "Owner One",
+        ownerEmail: "owner-1@monsoonfire.com",
+        spaceId: "wheel-studio",
+        spaceName: "Wheel Studio",
+        category: "Studio",
+        bookingMode: "capacity",
+        startAt: "2026-03-13T16:00:00.000Z",
+        endAt: "2026-03-13T18:00:00.000Z",
+        quantity: 1,
+        status: "booked",
+        createdAt: "2026-03-01T16:00:00.000Z",
+        updatedAt: "2026-03-01T16:00:00.000Z",
+      },
+      "reservation-owner-2": {
+        ownerUid: "owner-2",
+        ownerDisplayName: "Owner Two",
+        ownerEmail: "owner-2@monsoonfire.com",
+        spaceId: "handbuilding",
+        spaceName: "Handbuilding",
+        category: "Studio",
+        bookingMode: "capacity",
+        startAt: "2026-03-14T16:00:00.000Z",
+        endAt: "2026-03-14T18:00:00.000Z",
+        quantity: 2,
+        status: "booked",
+        createdAt: "2026-03-02T16:00:00.000Z",
+        updatedAt: "2026-03-02T16:00:00.000Z",
+      },
+    },
+  };
+
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/studioReservations.listMine",
+      body: {},
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  const reservations = Array.isArray(data.reservations)
+    ? (data.reservations as Array<Record<string, unknown>>)
+    : [];
+  assert.equal(reservations.length, 1);
+  assert.equal(reservations[0]?.id, "reservation-owner-1");
+  assert.equal(reservations[0]?.spaceId, "wheel-studio");
+  assert.equal(body.code, undefined);
+});
+
 test("handleApiV1 dispatches /v1/batches.get with stable response contract", async () => {
   const request = makeRequest("/v1/batches.get", { batchId: "batch-1" }, patContext({ scopes: ["batches:read"] }));
   const response = createResponse();

@@ -124,10 +124,7 @@ img {
 }
 
 .runtime-hardening-tools {
-  position: fixed;
-  right: 14px;
-  bottom: 14px;
-  z-index: 3000;
+  margin: 0 14px 18px auto;
   width: min(360px, calc(100vw - 28px));
   display: grid;
   gap: 8px;

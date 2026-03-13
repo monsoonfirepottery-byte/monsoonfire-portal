@@ -7,6 +7,16 @@ export const V1_RESERVATION_ASSIGN_STATION_FN = "apiV1/v1/reservations.assignSta
 export const V1_RESERVATION_PICKUP_WINDOW_FN = "apiV1/v1/reservations.pickupWindow";
 export const V1_RESERVATION_QUEUE_FAIRNESS_FN = "apiV1/v1/reservations.queueFairness";
 export const V1_RESERVATION_EXPORT_CONTINUITY_FN = "apiV1/v1/reservations.exportContinuity";
+export const V1_FIRINGS_LIST_TIMELINE_FN = "apiV1/v1/firings.listTimeline";
+export const V1_STUDIO_RESERVATIONS_LIST_SPACES_FN = "apiV1/v1/studioReservations.listSpaces";
+export const V1_STUDIO_RESERVATIONS_LIST_CALENDAR_FN = "apiV1/v1/studioReservations.listCalendar";
+export const V1_STUDIO_RESERVATIONS_LIST_MINE_FN = "apiV1/v1/studioReservations.listMine";
+export const V1_STUDIO_RESERVATIONS_CREATE_FN = "apiV1/v1/studioReservations.create";
+export const V1_STUDIO_RESERVATIONS_CANCEL_FN = "apiV1/v1/studioReservations.cancel";
+export const V1_STUDIO_RESERVATIONS_JOIN_WAITLIST_FN = "apiV1/v1/studioReservations.joinWaitlist";
+export const V1_STUDIO_RESERVATIONS_STAFF_UPSERT_SPACE_FN = "apiV1/v1/studioReservations.staffUpsertSpace";
+export const V1_STUDIO_RESERVATIONS_STAFF_UPSERT_BLOCK_FN = "apiV1/v1/studioReservations.staffUpsertBlock";
+export const V1_STUDIO_RESERVATIONS_STAFF_MANAGE_FN = "apiV1/v1/studioReservations.staffManage";
 export const V1_LIBRARY_ITEMS_LIST_FN = "apiV1/v1/library.items.list";
 export const V1_LIBRARY_ITEMS_GET_FN = "apiV1/v1/library.items.get";
 export const V1_LIBRARY_DISCOVERY_GET_FN = "apiV1/v1/library.discovery.get";
@@ -52,6 +62,16 @@ export type PortalFnName =
   | typeof V1_RESERVATION_PICKUP_WINDOW_FN
   | typeof V1_RESERVATION_QUEUE_FAIRNESS_FN
   | typeof V1_RESERVATION_EXPORT_CONTINUITY_FN
+  | typeof V1_FIRINGS_LIST_TIMELINE_FN
+  | typeof V1_STUDIO_RESERVATIONS_LIST_SPACES_FN
+  | typeof V1_STUDIO_RESERVATIONS_LIST_CALENDAR_FN
+  | typeof V1_STUDIO_RESERVATIONS_LIST_MINE_FN
+  | typeof V1_STUDIO_RESERVATIONS_CREATE_FN
+  | typeof V1_STUDIO_RESERVATIONS_CANCEL_FN
+  | typeof V1_STUDIO_RESERVATIONS_JOIN_WAITLIST_FN
+  | typeof V1_STUDIO_RESERVATIONS_STAFF_UPSERT_SPACE_FN
+  | typeof V1_STUDIO_RESERVATIONS_STAFF_UPSERT_BLOCK_FN
+  | typeof V1_STUDIO_RESERVATIONS_STAFF_MANAGE_FN
   | typeof V1_LIBRARY_ITEMS_LIST_FN
   | typeof V1_LIBRARY_ITEMS_GET_FN
   | typeof V1_LIBRARY_DISCOVERY_GET_FN
@@ -430,6 +450,272 @@ export type AssignReservationStationResponse = PortalApiOkEnvelope & {
   stationCapacity?: number | null;
   stationUsedAfter?: number | null;
   idempotentReplay?: boolean;
+};
+
+export type KilnTimelineState =
+  | "idle"
+  | "scheduled"
+  | "loading"
+  | "firing"
+  | "cooling"
+  | "unloading"
+  | "maintenance";
+
+export type KilnTimelineSegmentSource = "firing" | "queue-forecast" | "status";
+export type KilnTimelineConfidence = "confirmed" | "estimated" | "forecast";
+
+export type KilnTimelineSegment = {
+  id: string;
+  kilnId: string;
+  kilnName: string;
+  state: KilnTimelineState;
+  label: string;
+  startAt: string;
+  endAt: string;
+  source: KilnTimelineSegmentSource;
+  confidence: KilnTimelineConfidence;
+  notes?: string | null;
+};
+
+export type KilnTimelineKiln = {
+  id: string;
+  name: string;
+  currentState: KilnTimelineState;
+  currentLabel: string;
+  segments: KilnTimelineSegment[];
+  overflowNote?: string | null;
+};
+
+export type ListFiringsTimelineRequest = Record<string, never>;
+
+export type ListFiringsTimelineResponse = PortalApiOkEnvelope & {
+  generatedAt?: string;
+  windowStart?: string;
+  windowEnd?: string;
+  kilns?: KilnTimelineKiln[];
+};
+
+export type StudioReservationBookingMode = "capacity" | "resource";
+export type StudioReservationStatus = "booked" | "waitlisted" | "cancelled" | "completed";
+export type StudioCalendarEntryKind = "availability" | "event" | "closure" | "maintenance";
+export type StudioCalendarEntryStatus = "available" | "partial" | "full" | "blocked" | "scheduled";
+export type StudioCalendarBlockType = "closure" | "maintenance" | "private";
+
+export type StudioSpaceResource = {
+  id: string;
+  label: string;
+  active?: boolean;
+};
+
+export type StudioSlotTemplate = {
+  id: string;
+  label: string;
+  daysOfWeek: number[];
+  windowStart: string;
+  windowEnd: string;
+  slotDurationMinutes: number;
+  slotIncrementMinutes: number;
+  cleanupBufferMinutes?: number;
+  leadTimeMinutes?: number;
+  maxAdvanceDays?: number;
+};
+
+export type StudioSpace = {
+  id: string;
+  slug: string;
+  name: string;
+  category: string;
+  description?: string | null;
+  memberHelpText?: string | null;
+  bookingMode: StudioReservationBookingMode;
+  active: boolean;
+  capacity: number;
+  colorToken?: string | null;
+  sortOrder?: number | null;
+  timezone: string;
+  resources: StudioSpaceResource[];
+  templates: StudioSlotTemplate[];
+};
+
+export type StudioReservation = {
+  id: string;
+  spaceId: string;
+  spaceName: string;
+  category: string;
+  bookingMode: StudioReservationBookingMode;
+  status: StudioReservationStatus;
+  startAt: string;
+  endAt: string;
+  quantity: number;
+  requestedResourceIds?: string[];
+  assignedResourceIds?: string[];
+  note?: string | null;
+  ownerUid?: string | null;
+  ownerDisplayName?: string | null;
+  ownerEmail?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  canCancel?: boolean;
+};
+
+export type StudioCalendarEntry = {
+  id: string;
+  kind: StudioCalendarEntryKind;
+  title: string;
+  description?: string | null;
+  location?: string | null;
+  startAt: string;
+  endAt: string;
+  status: StudioCalendarEntryStatus | (string & {});
+  spaceId?: string | null;
+  spaceName?: string | null;
+  category?: string | null;
+  bookingMode?: StudioReservationBookingMode | null;
+  capacity?: number | null;
+  bookedCount?: number | null;
+  waitlistCount?: number | null;
+  availableCount?: number | null;
+  availableResourceIds?: string[];
+  myReservationId?: string | null;
+  myWaitlistId?: string | null;
+  blockedBy?: {
+    blockId?: string | null;
+    type?: StudioCalendarBlockType | null;
+    title?: string | null;
+  } | null;
+  staffReservations?: Array<{
+    id: string;
+    ownerUid?: string | null;
+    ownerDisplayName?: string | null;
+    status: StudioReservationStatus | string;
+    quantity?: number | null;
+    assignedResourceIds?: string[];
+  }>;
+};
+
+export type ListStudioReservationSpacesRequest = {
+  includeInactive?: boolean;
+};
+
+export type ListStudioReservationSpacesResponse = PortalApiOkEnvelope & {
+  spaces: StudioSpace[];
+  timezone: string;
+  generatedDefaults?: boolean;
+};
+
+export type ListStudioReservationCalendarRequest = {
+  startAt: string;
+  endAt: string;
+  spaceIds?: string[];
+  includeMine?: boolean;
+};
+
+export type ListStudioReservationCalendarResponse = PortalApiOkEnvelope & {
+  spaces: StudioSpace[];
+  entries: StudioCalendarEntry[];
+  reservations: StudioReservation[];
+  timezone: string;
+  generatedDefaults?: boolean;
+};
+
+export type ListMyStudioReservationsRequest = {
+  includeCancelled?: boolean;
+  limit?: number;
+};
+
+export type ListMyStudioReservationsResponse = PortalApiOkEnvelope & {
+  reservations: StudioReservation[];
+  timezone: string;
+};
+
+export type CreateStudioReservationRequest = {
+  spaceId: string;
+  startAt: string;
+  endAt: string;
+  quantity?: number;
+  resourceIds?: string[];
+  note?: string | null;
+  clientRequestId?: string | null;
+};
+
+export type CreateStudioReservationResponse = PortalApiOkEnvelope & {
+  reservationId: string;
+  status: StudioReservationStatus;
+  routePath?: string | null;
+  calendarDateKey?: string | null;
+};
+
+export type JoinStudioReservationWaitlistRequest = {
+  spaceId: string;
+  startAt: string;
+  endAt: string;
+  quantity?: number;
+  note?: string | null;
+  clientRequestId?: string | null;
+};
+
+export type JoinStudioReservationWaitlistResponse = PortalApiOkEnvelope & {
+  reservationId: string;
+  status: StudioReservationStatus;
+  routePath?: string | null;
+  calendarDateKey?: string | null;
+};
+
+export type CancelStudioReservationRequest = {
+  reservationId: string;
+};
+
+export type CancelStudioReservationResponse = PortalApiOkEnvelope & {
+  reservationId: string;
+  status: StudioReservationStatus;
+};
+
+export type StaffUpsertStudioReservationSpaceRequest = {
+  id: string;
+  slug: string;
+  name: string;
+  category: string;
+  description?: string | null;
+  memberHelpText?: string | null;
+  bookingMode: StudioReservationBookingMode;
+  active?: boolean;
+  capacity?: number | null;
+  colorToken?: string | null;
+  sortOrder?: number | null;
+  resources?: StudioSpaceResource[];
+  templates: StudioSlotTemplate[];
+  timezone?: string | null;
+};
+
+export type StaffUpsertStudioReservationSpaceResponse = PortalApiOkEnvelope & {
+  space: StudioSpace;
+};
+
+export type StaffUpsertStudioCalendarBlockRequest = {
+  blockId?: string | null;
+  type: StudioCalendarBlockType;
+  title: string;
+  description?: string | null;
+  spaceId?: string | null;
+  startAt: string;
+  endAt: string;
+};
+
+export type StaffUpsertStudioCalendarBlockResponse = PortalApiOkEnvelope & {
+  blockId: string;
+  type: StudioCalendarBlockType;
+};
+
+export type StaffManageStudioReservationRequest = {
+  reservationId: string;
+  action: "cancel" | "promote" | "complete";
+  note?: string | null;
+  resourceIds?: string[];
+};
+
+export type StaffManageStudioReservationResponse = PortalApiOkEnvelope & {
+  reservationId: string;
+  status: StudioReservationStatus;
 };
 
 export type MaterialsCartItemRequest = {

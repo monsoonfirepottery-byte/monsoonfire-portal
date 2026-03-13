@@ -114,6 +114,14 @@ describe("resolveStaffWorkspaceMatch", () => {
       canonicalPath: "/staff/cockpit/reports",
       mode: "cockpit",
     });
+    expect(resolveStaffWorkspaceMatch("/staff/reservations")).toEqual({
+      canonicalPath: "/staff/cockpit/studio-reservations",
+      mode: "cockpit",
+    });
+    expect(resolveStaffWorkspaceMatch("/staff/studioReservations")).toEqual({
+      canonicalPath: "/staff/cockpit/studio-reservations",
+      mode: "cockpit",
+    });
     expect(resolveStaffWorkspaceMatch("/staff/operations")).toEqual({
       canonicalPath: "/staff/cockpit/operations",
       mode: "cockpit",
@@ -602,6 +610,7 @@ describe("resolveStaffWorkspaceOpenTarget", () => {
 describe("resolveStaffCockpitWorkspaceModule", () => {
   it("extracts dedicated cockpit module from deep cockpit path", () => {
     expect(resolveStaffCockpitWorkspaceModule("/staff/cockpit/reports")).toBe("reports");
+    expect(resolveStaffCockpitWorkspaceModule("/staff/cockpit/studio-reservations")).toBe("studio-reservations");
   });
 
   it("returns null when no cockpit module is present", () => {
@@ -633,6 +642,7 @@ describe("resolveStaffCockpitWorkspaceModule", () => {
 
   it("normalizes case and spacing for cockpit module extraction", () => {
     expect(resolveStaffCockpitWorkspaceModule(" /staff/Cockpit/Reports ")).toBe("reports");
+    expect(resolveStaffCockpitWorkspaceModule(" /staff/Cockpit/StudioReservations ")).toBe("studio-reservations");
   });
 });
 

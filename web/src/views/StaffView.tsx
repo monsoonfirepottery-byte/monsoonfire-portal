@@ -88,10 +88,11 @@ import CommerceModule from "./staff/CommerceModule";
 import EventsModule from "./staff/EventsModule";
 import LendingModule from "./staff/LendingModule";
 import OperationsCockpitModule from "./staff/OperationsCockpitModule";
+import StudioReservationsModule from "./staff/StudioReservationsModule";
 import { buildLendingAdminApiPayload } from "./staff/lendingAdminPayload";
 import { resolveStaffToolbarRefreshPlan } from "./staff/staffRefreshPlan";
 import { useStaffEventSignupAutoLoad } from "./staff/useStaffEventSignupAutoLoad";
-import ReservationsView from "./ReservationsView";
+import WareCheckInView from "./WareCheckInView";
 import { formatDateTime } from "../utils/format";
 
 type Props = {
@@ -121,6 +122,7 @@ type Props = {
 
 const MODULE_REGISTRY = {
   cockpit: { label: "Cockpit", owner: "Operations", testId: "staff-module-cockpit", nav: true },
+  studioReservations: { label: "Studio reservations", owner: "Studio Ops", testId: "staff-module-studio-reservations", nav: true },
   checkins: { label: "Check-ins", owner: "Queue Ops", testId: "staff-module-checkins", nav: false },
   members: { label: "Members", owner: "Member Ops", testId: "staff-module-members", nav: false },
   pieces: { label: "Pieces & batches", owner: "Production Ops", testId: "staff-module-pieces", nav: false },
@@ -199,6 +201,15 @@ const COCKPIT_PATH_TAB_BY_SEGMENT: Readonly<Record<string, CockpitTabKey>> = {
   "policy_agent_ops": "policyAgentOps",
   "module-telemetry": "moduleTelemetry",
 };
+
+const COCKPIT_MODULE_PATH_SEGMENT: Partial<Record<ModuleKey, string>> = {
+  studioReservations: "studio-reservations",
+};
+
+const COCKPIT_MODULE_KEY_BY_PATH_SEGMENT: Readonly<Record<string, ModuleKey>> = {
+  reports: "reports",
+  "studio-reservations": "studioReservations",
+};
 type CockpitNavigationTarget = {
   moduleKey: ModuleKey;
   tab?: CockpitTabKey;
@@ -256,7 +267,8 @@ function resolveCockpitNavigationTargetPath(target: CockpitNavigationTarget): st
   if (target.moduleKey === "cockpit") {
     return STAFF_COCKPIT_PATH;
   }
-  return `${STAFF_COCKPIT_PATH}/${target.moduleKey}`;
+  const modulePathSegment = COCKPIT_MODULE_PATH_SEGMENT[target.moduleKey] ?? target.moduleKey;
+  return `${STAFF_COCKPIT_PATH}/${modulePathSegment}`;
 }
 
 function isCockpitModuleNavigationTarget(moduleKey: ModuleKey): boolean {
@@ -268,9 +280,10 @@ function shouldLoadMemberStats(moduleKey: ModuleKey, cockpitTab: CockpitTabKey):
 }
 
 function resolveStaffCockpitModuleFromPath(pathname: string): ModuleKey | null {
-  const moduleKey = resolveStaffCockpitWorkspaceModule(pathname);
-  if (!moduleKey) return null;
-  return MODULE_KEY_SET.has(moduleKey as ModuleKey) ? (moduleKey as ModuleKey) : null;
+  const moduleSegment = resolveStaffCockpitWorkspaceModule(pathname);
+  if (!moduleSegment) return null;
+  const mappedModule = COCKPIT_MODULE_KEY_BY_PATH_SEGMENT[moduleSegment] ?? moduleSegment;
+  return MODULE_KEY_SET.has(mappedModule as ModuleKey) ? (mappedModule as ModuleKey) : null;
 }
 
 function resolveStaffCockpitTabFromPath(pathname: string): CockpitTabKey | undefined {
@@ -7462,7 +7475,7 @@ export default function StaffView({
         <div className="staff-note">
           Queue and lifecycle operations moved out of Ware Check-in so intake stays fast for both clients and staff.
         </div>
-        <ReservationsView
+        <WareCheckInView
           user={user}
           isStaff={hasStaffAuthority}
           adminToken={devAdminToken}
@@ -7470,6 +7483,13 @@ export default function StaffView({
         />
       </div>
     </section>
+  );
+  const studioReservationsContent = (
+    <StudioReservationsModule
+      user={user}
+      adminToken={devAdminToken}
+      onOpenWareCheckIn={onOpenCheckin}
+    />
   );
   const operationsContent = (
     <OperationsCockpitModule
@@ -7586,7 +7606,10 @@ export default function StaffView({
     />
   );
 
-  const moduleContent = cockpitContent;
+  const moduleContent =
+    moduleKey === "studioReservations"
+      ? studioReservationsContent
+      : cockpitContent;
 
   if (!hasStaffAuthority) {
     return (

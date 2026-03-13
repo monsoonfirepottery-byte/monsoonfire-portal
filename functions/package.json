@@ -7,6 +7,7 @@
     "archive:guard": "node scripts/check-archive-deprecation-gate.mjs",
     "type-safety:guard": "node scripts/check-type-safety-guard.mjs",
     "test": "npm run archive:guard && npm run type-safety:guard && npm run build && node --test \"lib/**/*.test.js\"",
+    "seed:studio-reservations": "node scripts/seed-studio-reservation-spaces.mjs --json",
     "seed:industry-events": "node scripts/seed-industry-events.mjs --json",
     "industry-events:import": "node scripts/import-industry-events.mjs",
     "industry-events:freshness:audit": "node scripts/audit-industry-events-freshness.mjs",

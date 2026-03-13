@@ -375,6 +375,8 @@
     "portal:index:guard": "node ./scripts/firestore-index-contract-guard.mjs --strict --json",
     "rules:index:drift:blocker": "npm run firestore:rules:sync:check && node ./scripts/firestore-index-contract-guard.mjs --strict --json --no-github --report output/qa/firestore-index-contract-guard-pr.json",
     "portal:fixture:steward": "node ./scripts/portal-fixture-steward.mjs --json",
+    "portal:studio:digest": "node ./scripts/portal-studio-digest.mjs --json",
+    "portal:studio:digest:cleanup-qa": "node ./scripts/portal-studio-digest.mjs --cleanup-qa-announcements --cleanup-only --json",
     "portal:promotion:gate": "node ./scripts/post-deploy-promotion-gate.mjs --json",
     "mail:import:watchdog:ssh": "bash ./scripts/mail-import-watchdog.sh",
     "mail:import:watchdog:stable32:ssh": "bash ./scripts/mail-import-watchdog.sh --run-root /home/wuff/monsoonfire-portal/imports/mail/runs/mail-office365-sentitems-stable32-2026-03-04T09-14-57Z --sleep-seconds 30 --stall-seconds 600 --max-restarts-per-hour 6 --max-restarts-per-cycle 8 --dead-streak-threshold 2 --flatline-pause-seconds 120 --clear-pause-on-start true",

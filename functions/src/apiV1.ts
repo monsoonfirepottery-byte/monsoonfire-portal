@@ -49,6 +49,18 @@ import {
   type LibraryRolloutPhase,
 } from "./library";
 import { collectWorkshopCommunitySignalCountsByEventIds } from "./events";
+import {
+  cancelStudioReservation,
+  createStudioReservation,
+  joinStudioWaitlist,
+  listMyStudioReservations,
+  listStudioCalendar,
+  listStudioSpaces,
+  staffManageStudioReservation,
+  staffUpsertStudioCalendarBlock,
+  staffUpsertStudioSpace,
+  StudioReservationError,
+} from "./studioReservations";
 
 function boolEnv(name: string, fallback = false): boolean {
   const raw = process.env[name];
@@ -311,6 +323,12 @@ function safeErrorMessage(error: unknown): string {
   } catch {
     return "Request failed";
   }
+}
+
+function jsonStudioReservationError(res: ResponseLike, requestId: string, error: unknown): boolean {
+  if (!(error instanceof StudioReservationError)) return false;
+  jsonError(res, requestId, error.httpStatus, error.code, error.message, error.details);
+  return true;
 }
 
 type DelegatedRiskPolicy = {
@@ -2240,6 +2258,15 @@ const ROUTE_SCOPE_HINTS: Record<string, string | null> = {
   "/v1/library.loans.assessReplacementFee": null,
   "/v1/library.items.overrideStatus": null,
   "/v1/notifications.markRead": null,
+  "/v1/studioReservations.listSpaces": "studioReservations:read",
+  "/v1/studioReservations.listCalendar": "studioReservations:read",
+  "/v1/studioReservations.listMine": "studioReservations:read",
+  "/v1/studioReservations.create": "studioReservations:write",
+  "/v1/studioReservations.cancel": "studioReservations:write",
+  "/v1/studioReservations.joinWaitlist": "studioReservations:write",
+  "/v1/studioReservations.staffUpsertSpace": "studioReservations:write",
+  "/v1/studioReservations.staffUpsertBlock": "studioReservations:write",
+  "/v1/studioReservations.staffManage": "studioReservations:write",
 };
 const ALLOWED_API_V1_ROUTES = new Set<string>([
   "/v1/hello",
@@ -2271,6 +2298,15 @@ const ALLOWED_API_V1_ROUTES = new Set<string>([
   "/v1/reservations.list",
   "/v1/reservations.exportContinuity",
   "/v1/notifications.markRead",
+  "/v1/studioReservations.listSpaces",
+  "/v1/studioReservations.listCalendar",
+  "/v1/studioReservations.listMine",
+  "/v1/studioReservations.create",
+  "/v1/studioReservations.cancel",
+  "/v1/studioReservations.joinWaitlist",
+  "/v1/studioReservations.staffUpsertSpace",
+  "/v1/studioReservations.staffUpsertBlock",
+  "/v1/studioReservations.staffManage",
   "/v1/reservations.lookupArrival",
   "/v1/reservations.rotateArrivalToken",
   "/v1/reservations.pickupWindow",
@@ -2451,6 +2487,42 @@ const API_V1_ROUTE_AUTHZ_EVENTS: Record<string, { action: string; resourceType: 
   "/v1/reservations.assignStation": {
     action: "reservations_assign_station",
     resourceType: "reservation",
+  },
+  "/v1/studioReservations.listSpaces": {
+    action: "studio_reservations_list_spaces",
+    resourceType: "studio_reservation",
+  },
+  "/v1/studioReservations.listCalendar": {
+    action: "studio_reservations_list_calendar",
+    resourceType: "studio_reservation",
+  },
+  "/v1/studioReservations.listMine": {
+    action: "studio_reservations_list_mine",
+    resourceType: "studio_reservation",
+  },
+  "/v1/studioReservations.create": {
+    action: "studio_reservations_create",
+    resourceType: "studio_reservation",
+  },
+  "/v1/studioReservations.cancel": {
+    action: "studio_reservations_cancel",
+    resourceType: "studio_reservation",
+  },
+  "/v1/studioReservations.joinWaitlist": {
+    action: "studio_reservations_join_waitlist",
+    resourceType: "studio_reservation",
+  },
+  "/v1/studioReservations.staffUpsertSpace": {
+    action: "studio_reservations_staff_upsert_space",
+    resourceType: "studio_reservation",
+  },
+  "/v1/studioReservations.staffUpsertBlock": {
+    action: "studio_reservations_staff_upsert_block",
+    resourceType: "studio_reservation",
+  },
+  "/v1/studioReservations.staffManage": {
+    action: "studio_reservations_staff_manage",
+    resourceType: "studio_reservation",
   },
 };
 const X1C_VALIDATION_VERSION = "2026-02-12.v1";
@@ -5102,6 +5174,150 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         .slice(0, limit);
 
       jsonOk(res, requestId, { ownerUid: targetOwnerUid, reservations });
+      return;
+    }
+
+    if (route === "/v1/studioReservations.listSpaces") {
+      const scopeCheck = requireScopes(ctx, ["studioReservations:read"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+      try {
+        const data = await listStudioSpaces(ctx, (req.body ?? {}) as Record<string, unknown>);
+        jsonOk(res, requestId, data);
+      } catch (error: unknown) {
+        if (jsonStudioReservationError(res, requestId, error)) return;
+        throw error;
+      }
+      return;
+    }
+
+    if (route === "/v1/studioReservations.listCalendar") {
+      const scopeCheck = requireScopes(ctx, ["studioReservations:read"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+      try {
+        const data = await listStudioCalendar(ctx, (req.body ?? {}) as Record<string, unknown>);
+        jsonOk(res, requestId, data);
+      } catch (error: unknown) {
+        if (jsonStudioReservationError(res, requestId, error)) return;
+        throw error;
+      }
+      return;
+    }
+
+    if (route === "/v1/studioReservations.listMine") {
+      const scopeCheck = requireScopes(ctx, ["studioReservations:read"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+      try {
+        const data = await listMyStudioReservations(ctx, (req.body ?? {}) as Record<string, unknown>);
+        jsonOk(res, requestId, data);
+      } catch (error: unknown) {
+        if (jsonStudioReservationError(res, requestId, error)) return;
+        throw error;
+      }
+      return;
+    }
+
+    if (route === "/v1/studioReservations.create") {
+      const scopeCheck = requireScopes(ctx, ["studioReservations:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+      try {
+        const data = await createStudioReservation(ctx, (req.body ?? {}) as Record<string, unknown>);
+        jsonOk(res, requestId, data);
+      } catch (error: unknown) {
+        if (jsonStudioReservationError(res, requestId, error)) return;
+        throw error;
+      }
+      return;
+    }
+
+    if (route === "/v1/studioReservations.cancel") {
+      const scopeCheck = requireScopes(ctx, ["studioReservations:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+      try {
+        const data = await cancelStudioReservation(ctx, (req.body ?? {}) as Record<string, unknown>);
+        jsonOk(res, requestId, data);
+      } catch (error: unknown) {
+        if (jsonStudioReservationError(res, requestId, error)) return;
+        throw error;
+      }
+      return;
+    }
+
+    if (route === "/v1/studioReservations.joinWaitlist") {
+      const scopeCheck = requireScopes(ctx, ["studioReservations:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+      try {
+        const data = await joinStudioWaitlist(ctx, (req.body ?? {}) as Record<string, unknown>);
+        jsonOk(res, requestId, data);
+      } catch (error: unknown) {
+        if (jsonStudioReservationError(res, requestId, error)) return;
+        throw error;
+      }
+      return;
+    }
+
+    if (route === "/v1/studioReservations.staffUpsertSpace") {
+      const scopeCheck = requireScopes(ctx, ["studioReservations:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+      try {
+        const data = await staffUpsertStudioSpace(ctx, (req.body ?? {}) as Record<string, unknown>);
+        jsonOk(res, requestId, data);
+      } catch (error: unknown) {
+        if (jsonStudioReservationError(res, requestId, error)) return;
+        throw error;
+      }
+      return;
+    }
+
+    if (route === "/v1/studioReservations.staffUpsertBlock") {
+      const scopeCheck = requireScopes(ctx, ["studioReservations:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+      try {
+        const data = await staffUpsertStudioCalendarBlock(ctx, (req.body ?? {}) as Record<string, unknown>);
+        jsonOk(res, requestId, data);
+      } catch (error: unknown) {
+        if (jsonStudioReservationError(res, requestId, error)) return;
+        throw error;
+      }
+      return;
+    }
+
+    if (route === "/v1/studioReservations.staffManage") {
+      const scopeCheck = requireScopes(ctx, ["studioReservations:write"]);
+      if (!scopeCheck.ok) {
+        jsonError(res, requestId, 403, "FORBIDDEN", scopeCheck.message);
+        return;
+      }
+      try {
+        const data = await staffManageStudioReservation(ctx, (req.body ?? {}) as Record<string, unknown>);
+        jsonOk(res, requestId, data);
+      } catch (error: unknown) {
+        if (jsonStudioReservationError(res, requestId, error)) return;
+        throw error;
+      }
       return;
     }
 

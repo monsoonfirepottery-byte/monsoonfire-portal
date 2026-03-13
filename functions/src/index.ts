@@ -34,6 +34,7 @@ import {
   staffScanCommunityDraft,
   staffUpdateCommunitySafetyConfig,
 } from "./communitySafety";
+export { staffCleanupQaAnnouncements } from "./announcements";
 import {
   getModerationPolicyCurrent,
   listModerationPolicies,

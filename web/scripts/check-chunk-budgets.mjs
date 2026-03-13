@@ -10,8 +10,10 @@ const budgets = [
   { prefix: "vendor-firebase-firestore-", maxBytes: 210_000 },
   { prefix: "vendor-firebase-auth-", maxBytes: 90_000 },
   { prefix: "vendor-firebase-core-", maxBytes: 80_000 },
-  // Reservations route now carries richer planner + policy UI state.
-  { prefix: "ReservationsView-", maxBytes: 100_000 },
+  // Member reservations stays lazy-loaded, but it now carries booking feedback and inventory-aware UI.
+  { prefix: "StudioReservationsView-", maxBytes: 40_000 },
+  // Ware check-in remains its own lazy route after the reservation flow split.
+  { prefix: "WareCheckInView-", maxBytes: 100_000 },
   // Staff stays lazy-loaded, but it now carries a broader operator workspace surface.
   { prefix: "StaffView-", maxBytes: 360_000 },
   // Current app shell carries route wiring and shared runtime used across most views.
@@ -19,7 +21,8 @@ const budgets = [
 ];
 const requiredRouteChunks = [
   "DashboardView-",
-  "ReservationsView-",
+  "StudioReservationsView-",
+  "WareCheckInView-",
   "KilnLaunchView-",
   "KilnScheduleView-",
   "MyPiecesView-",
@@ -29,10 +32,10 @@ const requiredRouteChunks = [
   "ProfileView-",
   "StaffView-",
 ];
-// Total budgets re-baselined after current lazy-route inventory expanded.
+// Total budgets re-baselined after the reservations/ware-check-in split and the new studio booking UI.
 // Keep modest headroom so bundle regressions still fail quickly.
-const MAX_TOTAL_JS_BYTES = 1_550_000;
-const MAX_TOTAL_CSS_BYTES = 230_000;
+const MAX_TOTAL_JS_BYTES = 1_625_000;
+const MAX_TOTAL_CSS_BYTES = 260_000;
 
 const files = readdirSync(assetsDir).filter((name) => name.endsWith(".js"));
 const failures = [];

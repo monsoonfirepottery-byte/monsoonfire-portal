@@ -18,9 +18,13 @@ type NotificationItem = {
   createdAt?: { toDate?: () => Date } | null;
   readAt?: { toDate?: () => Date } | null;
   data?: {
+    destination?: "firings" | "reservations" | string | null;
     firingId?: string;
     kilnName?: string | null;
     firingType?: string | null;
+    routePath?: string | null;
+    calendarDateKey?: string | null;
+    spaceId?: string | null;
   };
 };
 
@@ -30,6 +34,7 @@ type Props = {
   loading: boolean;
   error: string;
   onOpenFirings: () => void;
+  onOpenReservations: (routePath?: string | null) => void;
 };
 
 function readStoredPendingReadIds(): string[] {
@@ -155,6 +160,7 @@ export default function NotificationsView({
   loading,
   error,
   onOpenFirings,
+  onOpenReservations,
 }: Props) {
   const [readFilter, setReadFilter] = useState<ReadFilter>("inbox");
   const [markingId, setMarkingId] = useState<string | null>(null);
@@ -341,9 +347,13 @@ export default function NotificationsView({
     }
   };
 
-  const handleOpenFirings = (item: NotificationItem) => {
+  const handleOpenDestination = (item: NotificationItem) => {
     if (!isNotificationRead(item, optimisticReadSet) && !markingId) {
       void markNotificationRead(item.id);
+    }
+    if (item.data?.destination === "reservations") {
+      onOpenReservations(item.data.routePath ?? undefined);
+      return;
     }
     onOpenFirings();
   };
@@ -417,6 +427,7 @@ export default function NotificationsView({
                   {item.data?.firingType ? `${item.data.firingType} firing` : "firing"}
                 </span>
               ) : null;
+            const actionLabel = item.data?.destination === "reservations" ? "Open reservations" : "View firings";
 
             return (
               <article
@@ -435,8 +446,8 @@ export default function NotificationsView({
                   </div>
                 </div>
                 <div className="notification-actions">
-                  <button className="btn btn-ghost" onClick={() => handleOpenFirings(item)}>
-                    View firings
+                  <button className="btn btn-ghost" onClick={() => handleOpenDestination(item)}>
+                    {actionLabel}
                   </button>
                   {!isRead ? (
                     <button

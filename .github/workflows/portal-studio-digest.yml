@@ -1,0 +1,88 @@
+name: Portal Studio Digest
+
+on:
+  workflow_dispatch:
+    inputs:
+      cleanup_qa_announcements:
+        description: "Delete legacy QA fixture announcements before digest publish"
+        required: false
+        default: false
+        type: boolean
+      cleanup_only:
+        description: "Only run QA cleanup and skip digest publishing"
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    # 07:10 America/Phoenix (MST year-round) = 14:10 UTC
+    - cron: "10 14 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portal-studio-digest
+  cancel-in-progress: false
+
+jobs:
+  studio-digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Resolve Firebase API key
+        id: firebase_api_key
+        env:
+          PORTAL_FIREBASE_API_KEY: ${{ secrets.PORTAL_FIREBASE_API_KEY }}
+          FIREBASE_WEB_API_KEY: ${{ secrets.FIREBASE_WEB_API_KEY }}
+        run: node ./scripts/resolve-firebase-api-key.mjs --github-output --json
+
+      - name: Publish studio digest
+        env:
+          PORTAL_AGENT_STAFF_CREDENTIALS_JSON: ${{ secrets.PORTAL_AGENT_STAFF_CREDENTIALS_JSON }}
+          FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL }}
+          PORTAL_FIREBASE_API_KEY: ${{ steps.firebase_api_key.outputs.firebase_api_key }}
+        run: |
+          if [ -z "$PORTAL_AGENT_STAFF_CREDENTIALS_JSON" ]; then
+            echo "Missing required secret PORTAL_AGENT_STAFF_CREDENTIALS_JSON" >&2
+            exit 1
+          fi
+          if [ -z "$PORTAL_FIREBASE_API_KEY" ]; then
+            echo "Missing resolved PORTAL_FIREBASE_API_KEY." >&2
+            exit 1
+          fi
+
+          ARGS=(
+            --report output/qa/portal-studio-digest.json
+            --json
+          )
+          if [ "${{ github.event.inputs.cleanup_qa_announcements || 'false' }}" = "true" ]; then
+            ARGS+=(--cleanup-qa-announcements)
+          fi
+          if [ "${{ github.event.inputs.cleanup_only || 'false' }}" = "true" ]; then
+            ARGS+=(--cleanup-only)
+          fi
+
+          node ./scripts/portal-studio-digest.mjs "${ARGS[@]}"
+
+      - name: Upload digest artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-studio-digest-${{ github.run_id }}
+          path: |
+            output/qa/portal-studio-digest.json
+          if-no-files-found: ignore
+          retention-days: 14

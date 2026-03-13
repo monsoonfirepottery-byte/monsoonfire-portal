@@ -1,6 +1,6 @@
 # P1 — Library Frontend: Member Catalog and Discovery Experience
 
-Status: In Progress
+Status: Completed
 Date: 2026-03-01
 Priority: P1
 Owner: Frontend UX + Member Experience
@@ -48,3 +48,15 @@ Ship a discovery-first catalog shell for member/admin users only, with no public
 4. Error responses in the contract envelope render actionable messaging and preserve page interactivity.
 5. Unauthenticated access to lending routes does not render a browse surface and does not white-screen.
 6. QA verifies desktop and mobile rendering for member/admin mode paths.
+
+## Execution Update (2026-03-01, Discovery Surface Closeout)
+
+Completed in this pass:
+1. Confirmed authenticated member/admin discovery flow in `web/src/views/LendingLibraryView.tsx`:
+   - discovery rail loading,
+   - catalog + detail orchestration,
+   - request cancellation and guardrails,
+   - authenticated-only route behavior (no public preview branch).
+2. Revalidated UI behavior through:
+   - `npm --prefix web run test -- src/views/LendingLibraryView.test.ts`
+   - `npm --prefix web run build`

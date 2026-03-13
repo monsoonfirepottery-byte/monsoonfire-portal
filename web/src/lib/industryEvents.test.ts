@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { IndustryEventSummary } from "../api/portalContracts";
-import { filterIndustryEvents, industryEventLocationLabel, sortIndustryEvents } from "./industryEvents";
+import {
+  filterIndustryEvents,
+  industryEventLocationLabel,
+  isNationalIndustryEvent,
+  sortIndustryEvents,
+} from "./industryEvents";
 
 function makeEvent(overrides: Partial<IndustryEventSummary>): IndustryEventSummary {
   return {
@@ -82,5 +87,73 @@ describe("industryEvents helpers", () => {
       industryEventLocationLabel(makeEvent({ mode: "local", location: "", city: "Phoenix", region: "AZ" }))
     ).toBe("Phoenix, AZ");
   });
-});
 
+  it("supports national and time-window filtering", () => {
+    const nowMs = Date.parse("2026-03-01T12:00:00.000Z");
+    const events: IndustryEventSummary[] = [
+      makeEvent({
+        id: "national-this-month",
+        title: "National Clay Summit",
+        mode: "remote",
+        tags: ["national"],
+        startAt: "2026-03-18T10:00:00.000Z",
+      }),
+      makeEvent({
+        id: "national-next-quarter",
+        title: "National Ceramic Congress",
+        mode: "hybrid",
+        tags: ["national"],
+        startAt: "2026-05-10T10:00:00.000Z",
+      }),
+      makeEvent({
+        id: "local-this-month",
+        title: "Phoenix Kiln Roundtable",
+        mode: "local",
+        city: "Phoenix",
+        region: "AZ",
+        startAt: "2026-03-20T10:00:00.000Z",
+      }),
+    ];
+
+    const thisMonthNational = filterIndustryEvents(events, {
+      window: "this_month",
+      nationalOnly: true,
+      nowMs,
+    });
+    expect(thisMonthNational.map((event) => event.id)).toEqual(["national-this-month"]);
+
+    const next90Days = filterIndustryEvents(events, {
+      window: "next_90_days",
+      nowMs,
+    });
+    expect(next90Days.map((event) => event.id)).toEqual([
+      "national-this-month",
+      "local-this-month",
+      "national-next-quarter",
+    ]);
+  });
+
+  it("detects national rows from tags and broad US scope", () => {
+    expect(
+      isNationalIndustryEvent(
+        makeEvent({
+          mode: "hybrid",
+          tags: ["marquee"],
+          country: "US",
+          region: "US",
+          city: "",
+        })
+      )
+    ).toBe(true);
+    expect(
+      isNationalIndustryEvent(
+        makeEvent({
+          mode: "local",
+          city: "Phoenix",
+          region: "AZ",
+          country: "US",
+        })
+      )
+    ).toBe(false);
+  });
+});

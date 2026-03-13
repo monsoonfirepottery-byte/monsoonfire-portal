@@ -27,6 +27,10 @@ export type IndustryEvent = {
   registrationUrl: string | null;
   sourceName: string | null;
   sourceUrl: string | null;
+  curationState: string | null;
+  qualityScore: number | null;
+  dedupeHash: string | null;
+  ingestedAt: string | null;
   featured: boolean;
   tags: string[];
   verifiedAt: string | null;
@@ -81,6 +85,15 @@ function readString(value: unknown): string {
 
 function readBoolean(value: unknown, fallback = false): boolean {
   return typeof value === "boolean" ? value : fallback;
+}
+
+function readNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
 }
 
 function toIso(value: unknown): string | null {
@@ -179,6 +192,10 @@ export function normalizeIndustryEvent(id: string, rawValue: unknown): IndustryE
     registrationUrl: readString(raw["registrationUrl"]) || readString(raw["registerUrl"]) || null,
     sourceName: readString(raw["sourceName"]) || readString(raw["source"]) || null,
     sourceUrl: readString(raw["sourceUrl"]) || readString(raw["sourceLink"]) || null,
+    curationState: readString(raw["curationState"]) || null,
+    qualityScore: readNumber(raw["qualityScore"]),
+    dedupeHash: readString(raw["dedupeHash"]) || null,
+    ingestedAt: toIso(raw["ingestedAt"]),
     featured: readBoolean(raw["featured"], false),
     tags: normalizeTags(raw["tags"]),
     verifiedAt: toIso(raw["verifiedAt"] ?? raw["sourceVerifiedAt"]),

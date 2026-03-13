@@ -1,0 +1,93 @@
+name: Intent Runner Daily
+
+on:
+  schedule:
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Plan mode is default; execute mode runs checks.
+        required: true
+        default: plan
+        type: choice
+        options:
+          - plan
+          - execute
+      intent_id:
+        description: Optional intent selector (for example codex-continuous-improvement-v1).
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  intent-runner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Intent contract validate strict
+        run: npm run intent:validate:strict
+
+      - name: Intent compile
+        run: npm run intent:compile
+
+      - name: Intent drift strict
+        run: npm run intent:drift:strict
+
+      - name: Intent runner unit tests
+        run: npm run test:intent:runner
+
+      - name: Intent runner daily plan
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.mode == 'plan' }}
+        run: |
+          set -euo pipefail
+          EXTRA_ARGS=()
+          if [ -n "${{ github.event.inputs.intent_id || '' }}" ]; then
+            EXTRA_ARGS+=(--intent "${{ github.event.inputs.intent_id }}")
+          fi
+          npm run intent:run -- \
+            --run-id "intent-run-daily-${GITHUB_RUN_ID}" \
+            --report output/intent/intent-run-report-daily.json \
+            --ledger output/intent/intent-run-ledger-daily.jsonl \
+            "${EXTRA_ARGS[@]}"
+
+      - name: Intent runner manual execute
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'execute' }}
+        run: |
+          set -euo pipefail
+          EXTRA_ARGS=()
+          if [ -n "${{ github.event.inputs.intent_id || '' }}" ]; then
+            EXTRA_ARGS+=(--intent "${{ github.event.inputs.intent_id }}")
+          fi
+          npm run intent:run:scored -- \
+            --run-id "intent-run-manual-${GITHUB_RUN_ID}" \
+            --report output/intent/intent-run-report-manual-execute.json \
+            --ledger output/intent/intent-run-ledger-manual-execute.jsonl \
+            --run-artifacts-root output/intent/runs \
+            "${EXTRA_ARGS[@]}"
+
+      - name: Upload intent runner artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: intent-runner-artifacts
+          path: |
+            output/intent
+            artifacts/runs
+          if-no-files-found: ignore
+          retention-days: 14

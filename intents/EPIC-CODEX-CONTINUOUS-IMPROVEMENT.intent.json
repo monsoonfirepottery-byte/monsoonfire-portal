@@ -1,0 +1,97 @@
+{
+  "schemaVersion": "intent.v1",
+  "intentId": "codex-continuous-improvement-v1",
+  "title": "Codex Continuous Improvement Autopilot",
+  "objective": "Run a bounded and evidence-backed continuous-improvement loop that proposes high-signal fixes without unsafe write behavior or automation recursion.",
+  "epic": {
+    "path": "docs/epics/EPIC-CODEX-CONTINUOUS-IMPROVEMENT.md",
+    "owner": "Platform / DevEx"
+  },
+  "nonGoals": [
+    "No direct pushes to main.",
+    "No blame attribution or individual performance scoring.",
+    "No unbounded autonomous refactors."
+  ],
+  "constraints": {
+    "riskTier": "medium",
+    "writePolicy": "pr-only-no-main",
+    "maxChangedFiles": 40,
+    "maxWriteActions": 6
+  },
+  "autonomy": {
+    "mode": "bounded",
+    "maxRunMinutes": 30,
+    "allowedTools": [
+      "functions.exec_command",
+      "functions.apply_patch",
+      "functions.write_stdin"
+    ],
+    "requiresHumanApprovalFor": [
+      "force-push",
+      "history-rewrite",
+      "credential-rotation"
+    ],
+    "haltConditions": [
+      "duplicate-run-id-detected",
+      "strict-check-failure",
+      "anomaly-rate-above-threshold"
+    ]
+  },
+  "doneCriteria": {
+    "requiredChecks": [
+      "npm run codex:improve:daily -- --dry-run --json",
+      "npm run codex:rubric:strict:compat",
+      "npm run codex:telemetry:audit:strict"
+    ],
+    "requiredArtifacts": [
+      "output/qa/codex-agentic-rubric-scorecard.json",
+      "output/qa/codex-telemetry-random-audit.json"
+    ],
+    "requiredDocs": [
+      "docs/epics/EPIC-CODEX-CONTINUOUS-IMPROVEMENT.md",
+      "docs/runbooks/CODEX_AGENTIC_RUBRIC_AND_AUTOPILOT.md"
+    ]
+  },
+  "executionSlices": [
+    {
+      "id": "collect-signals",
+      "title": "Collect repo and tool-call signals",
+      "dependsOn": [],
+      "checks": [
+        "npm run codex:improve:daily -- --dry-run --json"
+      ],
+      "writeScope": "none"
+    },
+    {
+      "id": "generate-improvements",
+      "title": "Generate bounded improvement proposals",
+      "dependsOn": [
+        "collect-signals"
+      ],
+      "checks": [
+        "npm run codex:improve:daily -- --apply --allow-dirty --json"
+      ],
+      "writeScope": "issues-and-bot-pr-branch"
+    },
+    {
+      "id": "rubric-and-audit",
+      "title": "Produce rubric scorecard and telemetry audit",
+      "dependsOn": [
+        "collect-signals"
+      ],
+      "checks": [
+        "npm run codex:rubric:strict:compat",
+        "npm run codex:telemetry:audit:strict"
+      ],
+      "writeScope": "artifact-only"
+    }
+  ],
+  "escalation": {
+    "channel": "github-issue:Codex Continuous Improvement (Rolling)",
+    "when": [
+      "Any strict check fails.",
+      "Safety halt condition is triggered.",
+      "Execution slices cannot converge after retry."
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
 import {
   addDoc,
@@ -66,12 +66,31 @@ import {
   resolveStudioBrainFetchFailure,
   resolveUnavailableStudioBrainStatus,
 } from "../utils/studioBrainHealth";
+import {
+  normalizeStaffPath,
+  resolveStaffWorkspaceOpenTarget,
+  resolveStaffWorkspaceMatch,
+  resolveStaffWorkspaceRequestedPath,
+  shouldNavigateToStaffWorkspaceTarget,
+  STAFF_COCKPIT_PATH,
+  STAFF_PATH,
+  resolveStaffCockpitWorkspaceTabSegment,
+  resolveStaffCockpitWorkspaceModule,
+} from "../utils/staffWorkspacePaths";
 import { parseStaffRole } from "../auth/staffRole";
 import PolicyModule from "./staff/PolicyModule";
 import StripeSettingsModule from "./staff/StripeSettingsModule";
 import ReportsModule from "./staff/ReportsModule";
 import AgentOpsModule from "./staff/AgentOpsModule";
+import CockpitModule from "./staff/CockpitModule";
+import CockpitOpsPanel from "./staff/CockpitOpsPanel";
+import CommerceModule from "./staff/CommerceModule";
+import EventsModule from "./staff/EventsModule";
+import LendingModule from "./staff/LendingModule";
+import OperationsCockpitModule from "./staff/OperationsCockpitModule";
 import { buildLendingAdminApiPayload } from "./staff/lendingAdminPayload";
+import { resolveStaffToolbarRefreshPlan } from "./staff/staffRefreshPlan";
+import { useStaffEventSignupAutoLoad } from "./staff/useStaffEventSignupAutoLoad";
 import ReservationsView from "./ReservationsView";
 import { formatDateTime } from "../utils/format";
 
@@ -90,8 +109,7 @@ type Props = {
   onStartFiring?: () => void;
   initialModule?: ModuleKey;
   forceCockpitWorkspace?: boolean;
-  forceEventsWorkspace?: boolean;
-  forceSystemWorkspace?: boolean;
+  onOpenStaffWorkspace?: (target: string) => void;
   messageThreads?: DirectMessageThread[];
   messageThreadsLoading?: boolean;
   messageThreadsError?: string;
@@ -103,26 +121,27 @@ type Props = {
 
 const MODULE_REGISTRY = {
   cockpit: { label: "Cockpit", owner: "Operations", testId: "staff-module-cockpit", nav: true },
-  checkins: { label: "Check-ins", owner: "Queue Ops", testId: "staff-module-checkins", nav: true },
-  members: { label: "Members", owner: "Member Ops", testId: "staff-module-members", nav: true },
-  pieces: { label: "Pieces & batches", owner: "Production Ops", testId: "staff-module-pieces", nav: true },
-  firings: { label: "Firings", owner: "Kiln Ops", testId: "staff-module-firings", nav: true },
-  events: { label: "Events", owner: "Program Ops", testId: "staff-module-events", nav: true },
+  checkins: { label: "Check-ins", owner: "Queue Ops", testId: "staff-module-checkins", nav: false },
+  members: { label: "Members", owner: "Member Ops", testId: "staff-module-members", nav: false },
+  pieces: { label: "Pieces & batches", owner: "Production Ops", testId: "staff-module-pieces", nav: false },
+  firings: { label: "Firings", owner: "Kiln Ops", testId: "staff-module-firings", nav: false },
+  events: { label: "Events", owner: "Program Ops", testId: "staff-module-events", nav: false },
   reports: { label: "Reports", owner: "Trust & Safety", testId: "staff-module-reports", nav: true },
-  stripe: { label: "Stripe settings", owner: "Finance Ops", testId: "staff-module-stripe", nav: true },
-  commerce: { label: "Store & billing", owner: "Commerce Ops", testId: "staff-module-commerce", nav: true },
-  lending: { label: "Lending", owner: "Library Ops", testId: "staff-module-lending", nav: true },
+  stripe: { label: "Stripe settings", owner: "Finance Ops", testId: "staff-module-stripe", nav: false },
+  commerce: { label: "Store & billing", owner: "Commerce Ops", testId: "staff-module-commerce", nav: false },
+  lending: { label: "Lending", owner: "Library Ops", testId: "staff-module-lending", nav: false },
   system: { label: "System", owner: "Platform", testId: "staff-module-system", nav: false },
 } as const;
 
-const COCKPIT_TABS = [
-  { key: "triage", label: "Action queue" },
-  { key: "automation", label: "Automation" },
-  { key: "platform", label: "Platform" },
-  { key: "policyAgentOps", label: "Policy & Agent Ops" },
-  { key: "reports", label: "Reports" },
-  { key: "moduleTelemetry", label: "Telemetry" },
-] as const;
+type CockpitTabKey =
+  | "triage"
+  | "automation"
+  | "platform"
+  | "finance"
+  | "operations"
+  | "policyAgentOps"
+  | "reports"
+  | "moduleTelemetry";
 const STAFF_MODULE_USAGE_STORAGE_KEY = "mf_staff_module_usage_v1";
 const STAFF_MODULE_USAGE_STORAGE_VERSION = 2;
 const STAFF_ADAPTIVE_NAV_STORAGE_KEY = "mf_staff_adaptive_nav_v1";
@@ -136,7 +155,129 @@ const LIBRARY_ITEMS_API_PAGE_SIZE = 100;
 const LIBRARY_RECOMMENDATIONS_API_LIMIT = 100;
 
 type ModuleKey = keyof typeof MODULE_REGISTRY;
-type CockpitTabKey = (typeof COCKPIT_TABS)[number]["key"];
+
+const COCKPIT_MODULE_TAB_BY_KEY: Partial<Record<ModuleKey, CockpitTabKey>> = {
+  checkins: "operations",
+  members: "operations",
+  pieces: "operations",
+  firings: "operations",
+  events: "operations",
+  lending: "operations",
+  reports: "reports",
+  commerce: "finance",
+  stripe: "finance",
+  system: "platform",
+};
+const COCKPIT_FLOW_MODULE_KEYS = new Set<ModuleKey>(Object.keys(COCKPIT_MODULE_TAB_BY_KEY) as ModuleKey[]);
+
+const COCKPIT_TAB_PATH_SEGMENT: Record<CockpitTabKey, string> = {
+  triage: "triage",
+  automation: "automation",
+  platform: "platform",
+  finance: "finance",
+  operations: "operations",
+  policyAgentOps: "policy-agent-ops",
+  reports: "reports",
+  moduleTelemetry: "module-telemetry",
+};
+
+const COCKPIT_PATH_TAB_BY_SEGMENT: Readonly<Record<string, CockpitTabKey>> = {
+  commerce: "finance",
+  stripe: "finance",
+  operations: "operations",
+  overview: "triage",
+  governance: "policyAgentOps",
+  policy: "policyAgentOps",
+  "agent-ops": "policyAgentOps",
+  "agent_ops": "policyAgentOps",
+  agentops: "policyAgentOps",
+  triage: "triage",
+  automation: "automation",
+  platform: "platform",
+  finance: "finance",
+  "policy-agent-ops": "policyAgentOps",
+  "policy_agent_ops": "policyAgentOps",
+  "module-telemetry": "moduleTelemetry",
+};
+type CockpitNavigationTarget = {
+  moduleKey: ModuleKey;
+  tab?: CockpitTabKey;
+};
+
+const COCKPIT_ACTION_TARGET_TAB_BY_KEY: Record<string, CockpitTabKey> = {
+  ...COCKPIT_PATH_TAB_BY_SEGMENT,
+  workshop: "operations",
+  checkin: "operations",
+  member: "operations",
+  piece: "operations",
+  firing: "operations",
+  event: "operations",
+  ops: "operations",
+  triage: "triage",
+  automation: "automation",
+  platform: "platform",
+  moduletelemetry: "moduleTelemetry",
+  module_telemetry: "moduleTelemetry",
+  policyagentops: "policyAgentOps",
+  policy_agent_ops: "policyAgentOps",
+  agentops: "policyAgentOps",
+  billing: "finance",
+  payments: "finance",
+  commerce: "finance",
+  stripe: "finance",
+  finance: "finance",
+  system: "platform",
+  workshops: "operations",
+  reports: "reports",
+  ...COCKPIT_MODULE_TAB_BY_KEY,
+};
+
+const MODULE_KEY_SET = new Set<ModuleKey>(Object.keys(MODULE_REGISTRY) as ModuleKey[]);
+
+function resolveCockpitNavigationTarget(target: string): CockpitNavigationTarget {
+  const normalizedTarget = target.trim().toLowerCase();
+  if (!normalizedTarget) {
+    return { moduleKey: "cockpit" };
+  }
+  const mappedTab = COCKPIT_ACTION_TARGET_TAB_BY_KEY[normalizedTarget];
+  if (mappedTab) {
+    return { moduleKey: "cockpit", tab: mappedTab };
+  }
+  if (MODULE_KEY_SET.has(normalizedTarget as ModuleKey)) {
+    return { moduleKey: normalizedTarget as ModuleKey };
+  }
+  return { moduleKey: "cockpit" };
+}
+
+function resolveCockpitNavigationTargetPath(target: CockpitNavigationTarget): string {
+  if (target.tab) {
+    return `${STAFF_COCKPIT_PATH}/${COCKPIT_TAB_PATH_SEGMENT[target.tab]}`;
+  }
+  if (target.moduleKey === "cockpit") {
+    return STAFF_COCKPIT_PATH;
+  }
+  return `${STAFF_COCKPIT_PATH}/${target.moduleKey}`;
+}
+
+function isCockpitModuleNavigationTarget(moduleKey: ModuleKey): boolean {
+  return moduleKey === "cockpit" || COCKPIT_FLOW_MODULE_KEYS.has(moduleKey);
+}
+
+function shouldLoadMemberStats(moduleKey: ModuleKey, cockpitTab: CockpitTabKey): boolean {
+  return cockpitTab === "operations" && isCockpitModuleNavigationTarget(moduleKey);
+}
+
+function resolveStaffCockpitModuleFromPath(pathname: string): ModuleKey | null {
+  const moduleKey = resolveStaffCockpitWorkspaceModule(pathname);
+  if (!moduleKey) return null;
+  return MODULE_KEY_SET.has(moduleKey as ModuleKey) ? (moduleKey as ModuleKey) : null;
+}
+
+function resolveStaffCockpitTabFromPath(pathname: string): CockpitTabKey | undefined {
+  const segment = resolveStaffCockpitWorkspaceTabSegment(pathname);
+  return segment ? COCKPIT_PATH_TAB_BY_SEGMENT[segment] : undefined;
+}
+
 type ModuleUsageStat = {
   visits: number;
   dwellMs: number;
@@ -675,22 +816,28 @@ const AUTOMATION_WORKFLOW_SOURCES: AutomationWorkflowSource[] = [
 ];
 const AUTOMATION_ISSUE_SOURCES: AutomationIssueSource[] = [
   {
-    key: "thresholdTuning",
-    title: "Portal Automation Threshold Tuning (Rolling)",
-    issueNumber: 115,
-    purpose: "loop threshold recommendations",
-  },
-  {
-    key: "weeklyDigest",
-    title: "Portal Automation Weekly Digest (Rolling)",
+    key: "portalQa",
+    title: "Portal QA Automation (Rolling)",
     issueNumber: 116,
-    purpose: "weekly trend digest for loops",
+    purpose: "portal workflow failures, canary state changes, tuning, and digest updates",
   },
   {
-    key: "canaryRolling",
-    title: "Portal Authenticated Canary Failures (Rolling)",
-    issueNumber: 85,
-    purpose: "canary incident history and directives",
+    key: "portalInfra",
+    title: "Portal Infra and Security Guards (Rolling)",
+    issueNumber: 103,
+    purpose: "credential, index, and branch-integrity guard updates",
+  },
+  {
+    key: "governanceTuning",
+    title: "Governance Weekly Tuning (Rolling)",
+    issueNumber: 309,
+    purpose: "weekly governance tuning summaries and threshold proposals",
+  },
+  {
+    key: "codexAutomation",
+    title: "Codex Automation (Rolling)",
+    issueNumber: 84,
+    purpose: "Codex improvement, interaction, PR-green, and backlog reporting",
   },
 ];
 const WORKSHOP_PROGRAMMING_TECHNIQUES: WorkshopProgrammingTechnique[] = [
@@ -1081,20 +1228,6 @@ function commentPreview(body: string): string {
 function when(ms: number): string {
   if (!ms) return "-";
   return new Date(ms).toLocaleString();
-}
-
-function formatDurationMs(ms: number): string {
-  if (ms <= 0) return "0s";
-  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
-  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)}m`;
-  return `${(ms / 3_600_000).toFixed(1)}h`;
-}
-
-function formatLatencyMs(ms: number | null): string {
-  if (ms === null) return "-";
-  if (ms < 10_000) return `${(ms / 1000).toFixed(1)}s`;
-  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
-  return `${(ms / 60_000).toFixed(1)}m`;
 }
 
 function dollars(cents: number): string {
@@ -1520,14 +1653,6 @@ function loadAdaptiveNavPreference(): boolean {
   }
 }
 
-function sanitizeLastRequest(request: LastRequest | null): LastRequest | null {
-  if (!request) return null;
-  return {
-    ...request,
-    payload: (request as { payloadRedacted?: unknown }).payloadRedacted ?? request.payload,
-  };
-}
-
 export default function StaffView({
   user,
   isStaff,
@@ -1541,10 +1666,9 @@ export default function StaffView({
   onOpenMessageThread,
   onOpenFirings,
   onStartFiring,
+  onOpenStaffWorkspace,
   initialModule = "cockpit",
   forceCockpitWorkspace = false,
-  forceEventsWorkspace = false,
-  forceSystemWorkspace = false,
   messageThreads = [],
   messageThreadsLoading = false,
   messageThreadsError = "",
@@ -1553,7 +1677,27 @@ export default function StaffView({
   announcementsError = "",
   unreadAnnouncements = 0,
 }: Props) {
-  const [moduleKey, setModuleKey] = useState<ModuleKey>(initialModule);
+  const initialCockpitModule = useMemo<ModuleKey | null>(() => {
+    if (typeof window === "undefined") return null;
+    const requestedPath =
+      resolveStaffWorkspaceRequestedPath(window.location.pathname, window.location.hash) ??
+      window.location.pathname;
+    return resolveStaffCockpitModuleFromPath(requestedPath);
+  }, []);
+  const initialCockpitTab = useMemo<CockpitTabKey | undefined>(() => {
+    if (typeof window === "undefined") return undefined;
+    const requestedPath =
+      resolveStaffWorkspaceRequestedPath(window.location.pathname, window.location.hash) ??
+      window.location.pathname;
+    return resolveStaffCockpitTabFromPath(requestedPath);
+  }, []);
+  const resolvedInitialCockpitModule = initialCockpitModule
+    ? COCKPIT_MODULE_TAB_BY_KEY[initialCockpitModule]
+      ? "cockpit"
+      : initialCockpitModule
+    : initialModule;
+  const resolvedInitialCockpitTab = initialCockpitTab ?? (initialCockpitModule ? COCKPIT_MODULE_TAB_BY_KEY[initialCockpitModule] : undefined);
+  const [moduleKey, setModuleKey] = useState<ModuleKey>(resolvedInitialCockpitModule);
   const [moduleUsage, setModuleUsage] = useState<Record<ModuleKey, ModuleUsageStat>>(() => loadModuleUsageSnapshot());
   const [adaptiveNavEnabled, setAdaptiveNavEnabled] = useState<boolean>(() => loadAdaptiveNavPreference());
   const moduleSessionRef = useRef<{ key: ModuleKey; enteredAtMs: number } | null>(null);
@@ -1565,15 +1709,14 @@ export default function StaffView({
     : hasDevAdminAuthority
       ? "Dev admin token"
       : "No staff authority";
-  const isCockpitModule = moduleKey === "cockpit";
+  const isCockpitModule = isCockpitModuleNavigationTarget(moduleKey);
   const [cockpitWorkspaceMode, setCockpitWorkspaceMode] = useState(true);
-  const [cockpitTab, setCockpitTab] = useState<CockpitTabKey>("triage");
+  const [cockpitTab, setCockpitTab] = useState<CockpitTabKey>(resolvedInitialCockpitTab ?? "triage");
   const isWorkspaceFocused =
     forceCockpitWorkspace ||
-    forceEventsWorkspace ||
-    forceSystemWorkspace ||
-    (moduleKey === "cockpit" && cockpitWorkspaceMode);
+    (isCockpitModule && cockpitWorkspaceMode);
   const [busy, setBusy] = useState("");
+  const busyRef = useRef("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
@@ -1593,6 +1736,7 @@ export default function StaffView({
   const [todayReservationsError, setTodayReservationsError] = useState("");
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [signups, setSignups] = useState<SignupRecord[]>([]);
+  const signupsRequestIdRef = useRef(0);
   const [summary, setSummary] = useState<{
     unpaidCheckInsCount: number;
     unpaidCheckInsAmountCents: number;
@@ -2493,7 +2637,15 @@ export default function StaffView({
     };
   }, [orders, receipts.length, unpaidCheckIns.length]);
   const overviewAlerts = useMemo(() => {
-    const alerts: Array<{ id: string; severity: "high" | "medium" | "low"; label: string; actionLabel: string; module: ModuleKey }> = [];
+    const nowMs = Date.now();
+    const alerts: Array<{
+      id: string;
+      createdAtMs: number;
+      severity: "high" | "medium" | "low";
+      label: string;
+      actionLabel: string;
+      module: ModuleKey;
+    }> = [];
     const openBatches = batches.filter((batch) => !batch.isClosed).length;
     const staleOpenBatches = batches.filter(
       (batch) => !batch.isClosed && batch.updatedAtMs > 0 && Date.now() - batch.updatedAtMs > 7 * 24 * 60 * 60 * 1000
@@ -2516,6 +2668,7 @@ export default function StaffView({
     if (attentionFirings > 0) {
       alerts.push({
         id: "firings-attention",
+        createdAtMs: nowMs,
         severity: "high",
         label: `${attentionFirings} firing${attentionFirings === 1 ? "" : "s"} need attention`,
         actionLabel: "Review firings",
@@ -2525,6 +2678,7 @@ export default function StaffView({
     if (pendingOrders > 0) {
       alerts.push({
         id: "orders-pending",
+        createdAtMs: nowMs,
         severity: "medium",
         label: `${pendingOrders} store order${pendingOrders === 1 ? "" : "s"} pending payment`,
         actionLabel: "Open store & billing",
@@ -2534,6 +2688,7 @@ export default function StaffView({
     if (unpaidCheckIns.length > 0) {
       alerts.push({
         id: "checkins-unpaid",
+        createdAtMs: nowMs,
         severity: "medium",
         label: `${unpaidCheckIns.length} checked-in event signup${unpaidCheckIns.length === 1 ? "" : "s"} still unpaid`,
         actionLabel: "Open store & billing",
@@ -2543,6 +2698,7 @@ export default function StaffView({
     if (staleOpenBatches > 0) {
       alerts.push({
         id: "batches-stale",
+        createdAtMs: nowMs,
         severity: "medium",
         label: `${staleOpenBatches} open batch${staleOpenBatches === 1 ? "" : "es"} stale for 7+ days`,
         actionLabel: "Review pieces & batches",
@@ -2552,6 +2708,7 @@ export default function StaffView({
     if (highSeverityReports > 0) {
       alerts.push({
         id: "reports-high-open",
+        createdAtMs: nowMs,
         severity: "high",
         label: `${highSeverityReports} high-severity report${highSeverityReports === 1 ? "" : "s"} still open`,
         actionLabel: "Open reports triage",
@@ -2561,6 +2718,7 @@ export default function StaffView({
     if (reportSlaBreaches > 0) {
       alerts.push({
         id: "reports-sla",
+        createdAtMs: nowMs,
         severity: "high",
         label: `${reportSlaBreaches} report SLA breach${reportSlaBreaches === 1 ? "" : "es"} need review`,
         actionLabel: "Open reports triage",
@@ -2569,6 +2727,7 @@ export default function StaffView({
     } else if (unresolvedReports > 0) {
       alerts.push({
         id: "reports-open",
+        createdAtMs: nowMs,
         severity: "medium",
         label: `${unresolvedReports} moderation report${unresolvedReports === 1 ? "" : "s"} pending`,
         actionLabel: "Open reports triage",
@@ -2579,6 +2738,7 @@ export default function StaffView({
       const count = events.filter((event) => event.status === "review_required").length;
       alerts.push({
         id: "events-review",
+        createdAtMs: nowMs,
         severity: "high",
         label: `${count} event${count === 1 ? "" : "s"} blocked for review`,
         actionLabel: "Open events",
@@ -2588,6 +2748,7 @@ export default function StaffView({
     if (openBatches === 0 && activeFirings === 0 && pendingOrders === 0 && unresolvedReports === 0) {
       alerts.push({
         id: "all-clear",
+        createdAtMs: nowMs,
         severity: "low",
         label: "No immediate operational alerts.",
         actionLabel: "Stay on cockpit",
@@ -2771,7 +2932,8 @@ export default function StaffView({
 
   const run = useCallback(
     async (key: string, fn: () => Promise<void>) => {
-      if (busy) return;
+      if (busyRef.current) return;
+      busyRef.current = key;
       setBusy(key);
       setError("");
       setStatus("");
@@ -2780,10 +2942,11 @@ export default function StaffView({
       } catch (err) {
         markErr(err);
       } finally {
+        busyRef.current = "";
         setBusy("");
       }
     },
-    [busy, markErr]
+    [markErr]
   );
 
   const qTrace = useCallback((collectionName: string, params: Record<string, unknown>) => {
@@ -3373,7 +3536,7 @@ export default function StaffView({
     }
   }, [qTrace, selectedFiringId]);
 
-const loadEvents = useCallback(async () => {
+  const loadEvents = useCallback(async () => {
     let next: EventRecord[] = [];
     if (hasFunctionsAuthMismatch) {
       qTrace("events", { limit: 200, fallback: "firestore" });
@@ -3424,9 +3587,12 @@ const loadEvents = useCallback(async () => {
   const loadSignups = useCallback(
     async (eventId: string) => {
       if (!eventId) {
+        signupsRequestIdRef.current += 1;
         setSignups([]);
         return;
       }
+      const requestId = signupsRequestIdRef.current + 1;
+      signupsRequestIdRef.current = requestId;
       let next: SignupRecord[] = [];
       if (hasFunctionsAuthMismatch) {
         qTrace("eventSignups", { eventId, limit: 250, fallback: "firestore" });
@@ -3464,6 +3630,7 @@ const loadEvents = useCallback(async () => {
           checkedInAtMs: toTsMs(s.checkedInAt),
         } satisfies SignupRecord));
       }
+      if (signupsRequestIdRef.current !== requestId) return;
       setSignups(next);
     },
     [client, hasFunctionsAuthMismatch, qTrace]
@@ -4031,9 +4198,11 @@ const loadEvents = useCallback(async () => {
     }
   }, [hasFunctionsAuthMismatch, importLibraryIsbns, isbnScanBusy, isbnScanInput, loadLending]);
 
-  const handleSelectLendingAdminItem = useCallback((item: LendingAdminItemRecord) => {
-    setSelectedAdminItemId(item.id);
-    setLendingAdminItemDraft(buildLendingAdminDraftFromItem(item));
+  const handleSelectLendingAdminItem = useCallback((item: unknown) => {
+    if (!item || typeof item !== "object") return;
+    const lendingItem = item as LendingAdminItemRecord;
+    setSelectedAdminItemId(lendingItem.id);
+    setLendingAdminItemDraft(buildLendingAdminDraftFromItem(lendingItem));
     setLendingAdminItemDeleteConfirmInput("");
     setLendingAdminItemError("");
     setLendingAdminItemStatus("");
@@ -5193,46 +5362,51 @@ const loadEvents = useCallback(async () => {
     }
   }, []);
 
-  const loadAll = useCallback(async () => {
-    const tasks: Array<Promise<unknown>> = [
-      loadTodayReservations(),
-      loadUsers(),
-      loadBatches(),
-      loadFirings(),
-      loadLending(),
-      loadEvents(),
-      loadReportOps(),
-      loadStudioBrainStatus(),
-      loadAutomationHealthDashboard(),
-    ];
-    if (!hasFunctionsAuthMismatch) {
-      tasks.push(loadCommerce(), loadSystemStats());
-    } else {
-      setSummary(null);
-      setOrders([]);
-      setUnpaidCheckIns([]);
-      setReceipts([]);
-      setIntegrationTokenCount(null);
-    }
-    await Promise.allSettled(tasks);
-    if (selectedEventId) await loadSignups(selectedEventId);
-  }, [hasFunctionsAuthMismatch, loadAutomationHealthDashboard, loadBatches, loadCommerce, loadEvents, loadFirings, loadLending, loadReportOps, loadSignups, loadStudioBrainStatus, loadSystemStats, loadTodayReservations, loadUsers, selectedEventId]);
+  const toolbarRefreshPlan = useMemo(
+    () => resolveStaffToolbarRefreshPlan(cockpitTab),
+    [cockpitTab]
+  );
 
-  const loadCockpitModule = useCallback(async () => {
-    await Promise.allSettled([
-      loadTodayReservations(),
-      loadUsers(),
-      loadBatches(),
-      loadFirings(),
-      loadEvents(),
-      loadLending(),
-      loadReportOps(),
-      loadStudioBrainStatus(),
-      loadAutomationHealthDashboard(),
-    ]);
-    if (!hasFunctionsAuthMismatch) {
-      await Promise.allSettled([loadCommerce(), loadSystemStats()]);
+  const refreshVisibleData = useCallback(async () => {
+    switch (toolbarRefreshPlan.key) {
+      case "refreshVisibleTriage": {
+        const tasks: Array<Promise<unknown>> = [
+          loadTodayReservations(),
+          loadFirings(),
+          loadBatches(),
+          loadEvents(),
+          loadReportOps(),
+          loadStudioBrainStatus(),
+        ];
+        if (!hasFunctionsAuthMismatch) {
+          tasks.push(loadCommerce());
+        } else {
+          setSummary(null);
+          setOrders([]);
+          setUnpaidCheckIns([]);
+          setReceipts([]);
+        }
+        await Promise.allSettled(tasks);
+        break;
+      }
+      case "refreshVisibleAutomation":
+        await Promise.allSettled([loadAutomationHealthDashboard(), loadStudioBrainStatus()]);
+        break;
+      case "refreshVisiblePlatform":
+        if (hasFunctionsAuthMismatch) {
+          setIntegrationTokenCount(null);
+          await loadStudioBrainStatus();
+        } else {
+          await Promise.allSettled([loadSystemStats(), loadStudioBrainStatus()]);
+        }
+        break;
+      case "refreshVisibleFinance":
+        await loadCommerce();
+        break;
+      case null:
+        return;
     }
+    setStatus(toolbarRefreshPlan.statusMessage);
   }, [
     hasFunctionsAuthMismatch,
     loadAutomationHealthDashboard,
@@ -5240,77 +5414,23 @@ const loadEvents = useCallback(async () => {
     loadCommerce,
     loadEvents,
     loadFirings,
-    loadLending,
     loadReportOps,
     loadStudioBrainStatus,
     loadSystemStats,
     loadTodayReservations,
-    loadUsers,
+    toolbarRefreshPlan,
   ]);
 
-  const loadEventsModule = useCallback(async () => {
-    await loadEvents();
-    if (selectedEventId) await loadSignups(selectedEventId);
-  }, [loadEvents, loadSignups, selectedEventId]);
-
-  const loadCommerceModule = useCallback(async () => {
-    if (hasFunctionsAuthMismatch) {
-      setStatus("Commerce module requires matching Functions + Auth emulator settings.");
-      return;
-    }
-    await loadCommerce();
-  }, [hasFunctionsAuthMismatch, loadCommerce]);
-
-  const loadSystemModule = useCallback(async () => {
-    if (!hasFunctionsAuthMismatch) {
-      await loadSystemStats();
-    }
-    await loadStudioBrainStatus();
-  }, [hasFunctionsAuthMismatch, loadStudioBrainStatus, loadSystemStats]);
-
-  const moduleLoaders = useMemo<Record<ModuleKey, () => Promise<void>>>(
-    () => ({
-      cockpit: loadCockpitModule,
-      checkins: async () => {},
-      members: loadUsers,
-      pieces: loadBatches,
-      firings: loadFirings,
-      events: loadEventsModule,
-      reports: loadReportOps,
-      stripe: loadStudioBrainStatus,
-      commerce: loadCommerceModule,
-      lending: loadLending,
-      system: loadSystemModule,
-    }),
-    [
-      loadBatches,
-      loadCockpitModule,
-      loadCommerceModule,
-      loadEventsModule,
-      loadFirings,
-      loadLending,
-      loadReportOps,
-      loadStudioBrainStatus,
-      loadSystemModule,
-      loadUsers,
-    ]
-  );
-
-  const loadModule = useCallback(
-    async (target: ModuleKey) => {
-      await moduleLoaders[target]();
-    },
-    [moduleLoaders]
-  );
-
   useEffect(() => {
-    setStatus("Today Console loads key shift data automatically. Use Load current module for deeper module refreshes.");
+    setStatus("Today Console loads key shift data automatically. Use the visible refresh controls when you want focused updates.");
   }, []);
 
-  useEffect(() => {
-    if (!selectedEventId) return;
-    void run("signups", async () => await loadSignups(selectedEventId));
-  }, [loadSignups, selectedEventId, run]);
+  useStaffEventSignupAutoLoad({
+    cockpitTab,
+    selectedEventId,
+    loadSignups,
+    onError: markErr,
+  });
 
   useEffect(() => {
     if (!studioBrainStatus) return;
@@ -5404,9 +5524,9 @@ const loadEvents = useCallback(async () => {
   }, [selectedAdminItem]);
 
   useEffect(() => {
-    if (!selectedMemberId || moduleKey !== "members") return;
+    if (!selectedMemberId || !shouldLoadMemberStats(moduleKey, cockpitTab)) return;
     void loadMemberOperationalStats(selectedMemberId);
-  }, [loadMemberOperationalStats, moduleKey, selectedMemberId]);
+  }, [cockpitTab, loadMemberOperationalStats, moduleKey, selectedMemberId]);
 
   useEffect(() => {
     if (!selectedMember) {
@@ -6639,462 +6759,39 @@ const loadEvents = useCallback(async () => {
     await setDoc(doc(db, "events", selectedEventId), payload, { merge: true });
   };
 
-  const eventsContent = (
-    <section className="card staff-console-card">
-      <div className="card-title-row">
-        <div className="card-title">Events</div>
-        <button
-          className="btn btn-secondary"
-          disabled={Boolean(busy)}
-          onClick={() =>
-            void run("refreshEvents", async () => {
-              await loadEvents();
-              if (selectedEventId) await loadSignups(selectedEventId);
-              setStatus("Events refreshed");
-            })
-          }
-        >
-          Refresh events
-        </button>
-      </div>
-      {hasFunctionsAuthMismatch ? (
-        <div className="staff-note">
-          Events are running in Firestore fallback mode. Function actions like check-in are disabled until auth emulator is enabled.
-        </div>
-      ) : null}
-      <>
-          {forceEventsWorkspace ? (
-            <div className="staff-note">
-              Dedicated workshops workspace is active. Use this view for weekly programming triage and demand planning.
-            </div>
-          ) : null}
-          <div className="staff-subtitle">Workshop programming intelligence</div>
-          <div className="staff-kpi-grid">
-            <div className="staff-kpi"><span>Technique clusters</span><strong>{workshopProgrammingKpis.totalClusters}</strong></div>
-            <div className="staff-kpi"><span>High pressure</span><strong>{workshopProgrammingKpis.highPressure}</strong></div>
-            <div className="staff-kpi"><span>Waitlist pressure</span><strong>{workshopProgrammingKpis.totalWaitlist}</strong></div>
-            <div className="staff-kpi"><span>Demand score</span><strong>{workshopProgrammingKpis.totalDemandScore}</strong></div>
-            <div className="staff-kpi"><span>No upcoming coverage</span><strong>{workshopProgrammingKpis.noUpcomingCoverage}</strong></div>
-          </div>
-          <div className="staff-actions-row">
-            <button className="btn btn-ghost" onClick={handleExportWorkshopProgrammingBrief}>
-              Export programming brief
-            </button>
-            {!forceEventsWorkspace ? (
-              <button
-                className="btn btn-ghost"
-                type="button"
-                onClick={() => {
-                  if (typeof window === "undefined") return;
-                  window.open("/staff/workshops", "_blank", "noopener");
-                }}
-              >
-                Open dedicated workshops page
-              </button>
-            ) : null}
-          </div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
-              <thead><tr><th>Technique</th><th>Gap</th><th>Demand</th><th>Waitlist</th><th>Upcoming</th><th>Suggested action</th></tr></thead>
-              <tbody>
-                {workshopProgrammingClusters.length === 0 ? (
-                  <tr><td colSpan={6}>No workshop clusters yet. Publish events to start demand modeling.</td></tr>
-                ) : (
-                  workshopProgrammingClusters.map((cluster) => (
-                    <tr key={cluster.key}>
-                      <td>
-                        <strong>{cluster.label}</strong>
-                        <div className="staff-mini">{cluster.topEventTitle || "-"}</div>
-                      </td>
-                      <td>{cluster.gapScore}</td>
-                      <td>{cluster.demandScore}</td>
-                      <td>{cluster.waitlistCount}</td>
-                      <td>{cluster.upcomingCount}</td>
-                      <td>{cluster.recommendedAction}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          <div className="staff-kpi-grid">
-            <div className="staff-kpi"><span>Total events</span><strong>{eventKpis.total}</strong></div>
-            <div className="staff-kpi"><span>Upcoming</span><strong>{eventKpis.upcoming}</strong></div>
-            <div className="staff-kpi"><span>Published</span><strong>{eventKpis.published}</strong></div>
-            <div className="staff-kpi"><span>Needs review</span><strong>{eventKpis.reviewRequired}</strong></div>
-            <div className="staff-kpi"><span>Open seats</span><strong>{eventKpis.openSeats}</strong></div>
-            <div className="staff-kpi"><span>Waitlisted</span><strong>{eventKpis.waitlisted}</strong></div>
-            <div className="staff-kpi"><span>Signups loaded</span><strong>{signups.length}</strong></div>
-            <div className="staff-kpi"><span>Checked in</span><strong>{signups.filter((signup) => signup.status === "checked_in").length}</strong></div>
-            <div className="staff-kpi"><span>Paid</span><strong>{signups.filter((signup) => signup.paymentStatus === "paid").length}</strong></div>
-          </div>
-          <div className="staff-actions-row">
-            <label className="staff-field staff-field-flex-2">
-              Quick title
-              <input
-                value={eventCreateDraft.title}
-                onChange={(event) => setEventCreateDraft((prev) => ({ ...prev, title: event.target.value }))}
-                placeholder="Wheel Lab: Production Sprint"
-              />
-            </label>
-            <label className="staff-field">
-              Starts
-              <input
-                type="datetime-local"
-                value={eventCreateDraft.startAt}
-                onChange={(event) => setEventCreateDraft((prev) => ({ ...prev, startAt: event.target.value }))}
-              />
-            </label>
-            <label className="staff-field">
-              Duration (min)
-              <input
-                value={eventCreateDraft.durationMinutes}
-                onChange={(event) => setEventCreateDraft((prev) => ({ ...prev, durationMinutes: event.target.value }))}
-              />
-            </label>
-            <label className="staff-field">
-              Capacity
-              <input
-                value={eventCreateDraft.capacity}
-                onChange={(event) => setEventCreateDraft((prev) => ({ ...prev, capacity: event.target.value }))}
-              />
-            </label>
-            <button
-              className="btn btn-secondary"
-              disabled={Boolean(busy)}
-              onClick={() => void run("createQuickEvent", createQuickEvent)}
-            >
-              Create quick event
-            </button>
-          </div>
-          <div className="staff-actions-row">
-            <label className="staff-field staff-field-flex-1">
-              Publish override reason (optional)
-              <input
-                value={publishOverrideReason}
-                onChange={(event) => setPublishOverrideReason(event.target.value)}
-                placeholder="Required only for review-gated events"
-              />
-            </label>
-            <button
-              className="btn btn-secondary"
-              disabled={Boolean(busy) || !selectedEvent || selectedEvent.status === "published"}
-              onClick={() => void run("publishSelectedEvent", publishSelectedEvent)}
-            >
-              Publish selected
-            </button>
-          </div>
-          <div className="staff-actions-row">
-            <label className="staff-field staff-field-flex-1">
-              Status change reason {selectedEvent?.status !== "cancelled" ? "(required for cancel)" : "(optional)"}
-              <input
-                value={eventStatusReason}
-                onChange={(event) => setEventStatusReason(event.target.value)}
-                placeholder="Staff reason for lifecycle move"
-              />
-            </label>
-            <button
-              className="btn btn-secondary"
-              disabled={Boolean(busy) || !selectedEvent || selectedEvent.status === "draft"}
-              onClick={() => void run("setEventDraft", async () => setSelectedEventStatus("draft"))}
-            >
-              Move to draft
-            </button>
-            <button
-              className="btn btn-secondary"
-              disabled={Boolean(busy) || !selectedEvent || selectedEvent.status === "cancelled"}
-              onClick={() => void run("setEventCancelled", async () => setSelectedEventStatus("cancelled"))}
-            >
-              Cancel event
-            </button>
-          </div>
-          <div className="staff-note">
-            Use quick create for same-day ops. Full event copy and add-ons still live in the main Events view.
-          </div>
-          <div className="staff-module-grid">
-            <div className="staff-column">
-              <div className="staff-actions-row">
-                <input
-                  className="staff-member-search"
-                  placeholder="Search events by title, status, or location"
-                  value={eventSearch}
-                  onChange={(event) => setEventSearch(event.target.value)}
-                />
-                <select
-                  className="staff-member-role-filter"
-                  value={eventStatusFilter}
-                  onChange={(event) => setEventStatusFilter(event.target.value)}
-                >
-                  <option value="all">All statuses</option>
-                  {eventStatusOptions.map((statusName) => (
-                    <option key={statusName} value={statusName}>{statusName}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="staff-table-wrap">
-                <table className="staff-table">
-                  <thead><tr><th>Select</th><th>Event</th><th>Status</th><th>Starts</th><th>Seats</th><th>Waitlist</th></tr></thead>
-                  <tbody>
-                    {filteredEvents.length === 0 ? (
-                      <tr><td colSpan={6}>No events match current filters.</td></tr>
-                    ) : (
-                      filteredEvents.map((eventRow) => (
-                        <tr
-                          key={eventRow.id}
-                          className={selectedEventId === eventRow.id ? "staff-selected-row" : undefined}
-                        >
-                          <td>
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-small"
-                              aria-pressed={selectedEventId === eventRow.id}
-                              onClick={() => setSelectedEventId(eventRow.id)}
-                            >
-                              {selectedEventId === eventRow.id ? "Selected" : "View"}
-                            </button>
-                          </td>
-                          <td>
-                            <div>{eventRow.title}</div>
-                            <div className="staff-mini"><code>{eventRow.id}</code></div>
-                          </td>
-                          <td><span className="pill">{eventRow.status}</span></td>
-                          <td>{eventRow.startAt || when(eventRow.startAtMs)}</td>
-                          <td>{eventRow.remainingCapacity}/{eventRow.capacity}</td>
-                          <td>{eventRow.waitlistCount}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div className="staff-column">
-              <div className="staff-note">
-                {selectedEvent ? (
-                  <>
-                    <strong>{selectedEvent.title}</strong><br />
-                    <span>{selectedEvent.status} · {selectedEvent.location}</span><br />
-                    <span>Starts: {selectedEvent.startAt || when(selectedEvent.startAtMs)}</span><br />
-                    <span>Ends: {when(selectedEvent.endAtMs)}</span><br />
-                    <span>Seats: {selectedEvent.remainingCapacity}/{selectedEvent.capacity} · Waitlist: {selectedEvent.waitlistCount}</span><br />
-                    <span>Price: {selectedEvent.priceCents > 0 ? dollars(selectedEvent.priceCents) : "Free / n/a"}</span><br />
-                    <span>Last status note: {selectedEvent.lastStatusReason || "-"}</span><br />
-                    <span>Status changed: {when(selectedEvent.lastStatusChangedAtMs)}</span>
-                  </>
-                ) : (
-                  "Select an event to inspect signups."
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="staff-module-grid">
-            <div className="staff-column">
-              <div className="staff-actions-row">
-                <input
-                  className="staff-member-search"
-                  placeholder="Search signups by name, email, or UID"
-                  value={signupSearch}
-                  onChange={(event) => setSignupSearch(event.target.value)}
-                />
-                <select
-                  className="staff-member-role-filter"
-                  value={signupStatusFilter}
-                  onChange={(event) => setSignupStatusFilter(event.target.value)}
-                >
-                  <option value="all">All signup statuses</option>
-                  {signupStatusOptions.map((statusName) => (
-                    <option key={statusName} value={statusName}>{statusName}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="staff-table-wrap">
-                <table className="staff-table">
-                  <thead><tr><th>Select</th><th>Name</th><th>Email</th><th>Status</th><th>Payment</th><th>Action</th></tr></thead>
-                  <tbody>
-                    {filteredSignups.length === 0 ? (
-                      <tr><td colSpan={6}>No signups match current filters.</td></tr>
-                    ) : (
-                      filteredSignups.map((signup) => (
-                        <tr
-                          key={signup.id}
-                          className={selectedSignupId === signup.id ? "staff-selected-row" : undefined}
-                        >
-                          <td>
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-small"
-                              aria-pressed={selectedSignupId === signup.id}
-                              onClick={() => setSelectedSignupId(signup.id)}
-                            >
-                              {selectedSignupId === signup.id ? "Selected" : "View"}
-                            </button>
-                          </td>
-                          <td>{signup.displayName}</td>
-                          <td>{signup.email}</td>
-                          <td><span className="pill">{signup.status}</span></td>
-                          <td>{signup.paymentStatus}</td>
-                          <td>
-                            <button
-                              className="btn btn-ghost btn-small"
-                              disabled={!!busy || signup.status === "checked_in" || !selectedEventId}
-                              onClick={() =>
-                                void run(`checkin-${signup.id}`, async () => {
-                                  if (hasFunctionsAuthMismatch) {
-                                    await checkInSignupFallback(signup);
-                                  } else {
-                                    await client.postJson("checkInEvent", { signupId: signup.id, method: "staff" });
-                                  }
-                                  await loadSignups(selectedEventId);
-                                  await loadEvents();
-                                  setStatus("Signup checked in");
-                                })
-                              }
-                            >
-                              {signup.status === "checked_in" ? "Checked in" : "Check in"}
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div className="staff-column">
-              <div className="staff-note">
-                {selectedSignup ? (
-                  <>
-                    <strong>{selectedSignup.displayName}</strong><br />
-                    <span>{selectedSignup.email}</span><br />
-                    <span>Status: {selectedSignup.status} · Payment: {selectedSignup.paymentStatus}</span><br />
-                    <span>Created: {when(selectedSignup.createdAtMs)}</span><br />
-                    <span>Checked in: {when(selectedSignup.checkedInAtMs)}</span><br />
-                    <code>{selectedSignup.uid || selectedSignup.id}</code>
-                  </>
-                ) : (
-                  "Select a signup to inspect details."
-                )}
-              </div>
-            </div>
-          </div>
-      </>
-    </section>
+  const checkInSignup = useCallback(
+    async (signup: SignupRecord) => {
+      if (!selectedEventId) throw new Error("Select an event first.");
+      if (signup.status === "checked_in") return;
+      await client.postJson("checkInEvent", { signupId: signup.id, method: "staff" });
+    },
+    [client, selectedEventId]
   );
 
-  const commerceContent = (
-    <section className="card staff-console-card">
-      <div className="card-title">Store & billing</div>
-      {hasFunctionsAuthMismatch ? (
-        <div className="staff-note">
-          Billing summary comes from Cloud Functions. Enable auth emulator (`VITE_USE_AUTH_EMULATOR=true`) or use production Functions URL.
-        </div>
-      ) : (
-        <>
-          <div className="staff-kpi-grid">
-            <div className="staff-kpi"><span>Order queue</span><strong>{commerceKpis.ordersTotal}</strong></div>
-            <div className="staff-kpi"><span>Pending orders</span><strong>{commerceKpis.pendingOrders}</strong></div>
-            <div className="staff-kpi"><span>Pending value</span><strong>{dollars(commerceKpis.pendingAmount)}</strong></div>
-            <div className="staff-kpi"><span>Unpaid check-ins</span><strong>{commerceKpis.unpaidCheckIns}</strong></div>
-            <div className="staff-kpi"><span>Receipts</span><strong>{commerceKpis.receiptsTotal}</strong></div>
-            <div className="staff-kpi"><span>Receipts total</span><strong>{dollars(summary?.receiptsAmountCents ?? 0)}</strong></div>
-          </div>
-          <div className="staff-actions-row">
-            <button className="btn btn-secondary" disabled={!!busy} onClick={() => void run("seedMaterialsCatalog", async () => { await client.postJson("seedMaterialsCatalog", { force: true, acknowledge: "ALLOW_NON_DEV_SAMPLE_SEEDING", reason: "staff_console_commerce_seed" }); await loadCommerce(); setStatus("seedMaterialsCatalog completed"); })}>Seed materials catalog</button>
-            <input
-              className="staff-member-search"
-              placeholder="Search orders by id, status, notes"
-              value={commerceSearch}
-              onChange={(event) => setCommerceSearch(event.target.value)}
-            />
-            <select
-              className="staff-member-role-filter"
-              value={commerceStatusFilter}
-              onChange={(event) => setCommerceStatusFilter(event.target.value)}
-            >
-              <option value="all">All order statuses</option>
-              {commerceStatusOptions.map((statusName) => (
-                <option key={statusName} value={statusName}>{statusName}</option>
-              ))}
-            </select>
-          </div>
-          <div className="staff-subtitle">Unpaid check-ins</div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
-              <thead><tr><th>Event</th><th>Signup</th><th>Amount</th><th>Status</th><th>Checked in</th></tr></thead>
-              <tbody>
-                {unpaidCheckIns.length === 0 ? (
-                  <tr><td colSpan={5}>No unpaid check-ins.</td></tr>
-                ) : (
-                  unpaidCheckIns.slice(0, 40).map((entry) => (
-                    <tr key={entry.signupId}>
-                      <td>{entry.eventTitle}<div className="staff-mini"><code>{entry.eventId || "-"}</code></div></td>
-                      <td><code>{entry.signupId}</code></td>
-                      <td>{entry.amountCents !== null ? dollars(entry.amountCents) : "-"}</td>
-                      <td>{entry.paymentStatus || "pending"}</td>
-                      <td>{entry.checkedInAt || entry.createdAt || "-"}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          <div className="staff-subtitle">Material orders</div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
-              <thead><tr><th>Order</th><th>Status</th><th>Total</th><th>Items</th><th>Updated</th><th>Action</th></tr></thead>
-              <tbody>
-                {filteredOrders.length === 0 ? (
-                  <tr><td colSpan={6}>No orders match current filters.</td></tr>
-                ) : (
-                  filteredOrders.map((o) => (
-                    <tr key={o.id}>
-                      <td><code>{o.id}</code></td>
-                      <td><span className="pill">{o.status}</span></td>
-                      <td>{dollars(o.totalCents)}</td>
-                      <td>{o.itemCount}</td>
-                      <td>{o.updatedAt}</td>
-                      <td>
-                        {o.checkoutUrl ? (
-                          <button
-                            className="btn btn-ghost btn-small"
-                            onClick={() => void copy(o.checkoutUrl ?? "")}
-                          >
-                            Copy checkout link
-                          </button>
-                        ) : (
-                          <span className="staff-mini">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          <div className="staff-subtitle">Recent receipts</div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
-              <thead><tr><th>Receipt</th><th>Type</th><th>Amount</th><th>Paid</th></tr></thead>
-              <tbody>
-                {receipts.length === 0 ? (
-                  <tr><td colSpan={4}>No receipts yet.</td></tr>
-                ) : (
-                  receipts.slice(0, 40).map((entry) => (
-                    <tr key={entry.id}>
-                      <td>{entry.title}<div className="staff-mini"><code>{entry.id}</code></div></td>
-                      <td>{entry.type}</td>
-                      <td>{dollars(entry.amountCents)}</td>
-                      <td>{entry.paidAt || entry.createdAt || "-"}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-    </section>
-  );
+  const openStaffWorkspace = useCallback((target: string) => {
+    if (onOpenStaffWorkspace) {
+      onOpenStaffWorkspace(target);
+      return;
+    }
+    if (typeof window !== "undefined") {
+      const currentPath = normalizeStaffPath(window.location.pathname);
+      const match = resolveStaffWorkspaceOpenTarget(target);
+      if (!match) return;
+      const targetPath = match.canonicalPath;
+      const isCurrentlyInStaffWorkspace = Boolean(resolveStaffWorkspaceMatch(currentPath));
+      if (shouldNavigateToStaffWorkspaceTarget(currentPath, targetPath, window.location.hash)) {
+        if (isCurrentlyInStaffWorkspace) {
+          window.history.replaceState({}, "", targetPath);
+        } else {
+          window.history.pushState({}, "", targetPath);
+        }
+      }
+    }
+  }, [onOpenStaffWorkspace]);
+
+  const openCockpitWorkspace = useCallback(() => {
+    openStaffWorkspace(STAFF_COCKPIT_PATH);
+  }, [openStaffWorkspace]);
 
   useEffect(() => {
     if (!forceCockpitWorkspace) return;
@@ -7107,37 +6804,81 @@ const loadEvents = useCallback(async () => {
     }
   }, [cockpitWorkspaceMode, forceCockpitWorkspace, moduleKey]);
 
-  useEffect(() => {
-    if (!forceEventsWorkspace) return;
-    if (moduleKey !== "events") {
-      setModuleKey("events");
-      setStatus("Dedicated workshops page keeps focus on programming workspace. Open /staff for full module navigation.");
-    }
-  }, [forceEventsWorkspace, moduleKey]);
-
-  useEffect(() => {
-    if (!forceSystemWorkspace) return;
-    if (moduleKey !== "system") {
-      setModuleKey("system");
-      setStatus("Dedicated system page keeps advanced tooling in one place. Open /staff for the full module navigation.");
-    }
-  }, [forceSystemWorkspace, moduleKey]);
-
   const openModuleFromCockpit = useCallback(
-    (target: ModuleKey) => {
-      if (forceCockpitWorkspace || forceEventsWorkspace || forceSystemWorkspace) {
-        if (typeof window !== "undefined") {
-          window.location.assign("/staff");
+    (target: string) => {
+      const destination = resolveCockpitNavigationTarget(target);
+      if (forceCockpitWorkspace && !destination.tab) {
+        if (destination.moduleKey !== "cockpit") {
+          setModuleKey("cockpit");
         }
+        setCockpitWorkspaceMode(false);
+        setStatus("Returned to full staff console workspace.");
+        openStaffWorkspace(STAFF_PATH);
         return;
       }
-      setModuleKey(target);
+      if (destination.tab) {
+        setModuleKey("cockpit");
+        setCockpitTab(destination.tab);
+      } else {
+        setModuleKey(destination.moduleKey);
+      }
+      if (typeof window !== "undefined") {
+        const targetPath = resolveCockpitNavigationTargetPath(destination);
+        openStaffWorkspace(targetPath);
+      }
     },
-    [forceCockpitWorkspace, forceEventsWorkspace, forceSystemWorkspace]
+    [forceCockpitWorkspace, openStaffWorkspace]
   );
 
   useEffect(() => {
-    if (moduleKey !== "cockpit") return;
+    if (typeof window === "undefined") return;
+
+    const syncWorkspaceStateFromUrl = () => {
+      const requestedPath =
+        resolveStaffWorkspaceRequestedPath(window.location.pathname, window.location.hash) ?? null;
+
+      if (!requestedPath) return;
+      if (requestedPath === STAFF_PATH) {
+        setModuleKey("cockpit");
+        setCockpitTab("triage");
+        return;
+      }
+      if (requestedPath === STAFF_COCKPIT_PATH) {
+        setModuleKey("cockpit");
+        setCockpitTab((prev) => prev);
+        return;
+      }
+
+      const requestedModule = resolveStaffCockpitModuleFromPath(requestedPath);
+      const requestedTab = resolveStaffCockpitTabFromPath(requestedPath);
+
+      if (requestedModule) {
+        const mappedTab = COCKPIT_MODULE_TAB_BY_KEY[requestedModule];
+        if (mappedTab) {
+          setModuleKey("cockpit");
+          setCockpitTab(mappedTab);
+          return;
+        }
+        setModuleKey(requestedModule);
+        return;
+      }
+      if (!requestedTab) return;
+
+      setModuleKey("cockpit");
+      setCockpitTab(requestedTab);
+    };
+
+    syncWorkspaceStateFromUrl();
+    window.addEventListener("popstate", syncWorkspaceStateFromUrl);
+    window.addEventListener("hashchange", syncWorkspaceStateFromUrl);
+    return () => {
+      window.removeEventListener("popstate", syncWorkspaceStateFromUrl);
+      window.removeEventListener("hashchange", syncWorkspaceStateFromUrl);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isCockpitModule) return;
     if (todayBootstrapAttempted) return;
     setTodayBootstrapAttempted(true);
     const tasks: Array<Promise<unknown>> = [
@@ -7155,8 +6896,8 @@ const loadEvents = useCallback(async () => {
     loadCommerce,
     loadFirings,
     loadTodayReservations,
-    moduleKey,
     todayBootstrapAttempted,
+    isCockpitModule,
   ]);
 
   const todayMessageRows = useMemo(
@@ -7166,6 +6907,18 @@ const loadEvents = useCallback(async () => {
         .slice(0, TODAY_MESSAGE_LIMIT),
     [messageThreads]
   );
+  const cockpitTodayMessageRows = useMemo(
+    () =>
+      todayMessageRows.map((thread) => ({
+        id: thread.id,
+        sender: firstNonBlankString(thread.lastSenderName, thread.lastSenderEmail, thread.subject, "Conversation"),
+        snippet: firstNonBlankString(thread.lastMessagePreview, thread.subject, "Open thread"),
+        kind: thread.kind || "direct",
+        atMs: readTimestampMs(thread.lastMessageAt),
+        unread: isDirectMessageUnread(thread, user.uid),
+      })),
+    [todayMessageRows, user.uid]
+  );
   const unreadMessageCount = useMemo(
     () => messageThreads.reduce((sum, thread) => sum + (isDirectMessageUnread(thread, user.uid) ? 1 : 0), 0),
     [messageThreads, user.uid]
@@ -7174,6 +6927,17 @@ const loadEvents = useCallback(async () => {
     const activeStatuses = new Set(["loading", "loaded", "firing", "cooling", "unloading", "in-progress"]);
     return firings.find((firing) => activeStatuses.has(firing.status.toLowerCase())) ?? null;
   }, [firings]);
+  const cockpitActiveFiring = useMemo(
+    () =>
+      activeFiring
+        ? {
+            label: `${activeFiring.kilnName || activeFiring.kilnId || "Kiln unknown"} · ${activeFiring.status}`,
+            startedLabel: activeFiring.startAtMs ? formatDateTime(activeFiring.startAtMs) : "time pending",
+            updatedLabel: activeFiring.updatedAtMs ? when(activeFiring.updatedAtMs) : "-",
+          }
+        : null,
+    [activeFiring]
+  );
   const messagesDegraded = Boolean(messageThreadsError) || Boolean(announcementsError);
   const paymentAlerts = useMemo(() => {
     const alerts: TodayPaymentAlert[] = [];
@@ -7254,8 +7018,8 @@ const loadEvents = useCallback(async () => {
       onOpenCheckin();
       return;
     }
-    setModuleKey("checkins");
-  }, [onOpenCheckin]);
+    openModuleFromCockpit("checkins");
+  }, [onOpenCheckin, openModuleFromCockpit]);
 
   const openReservationDetail = useCallback(
     (reservationId: string) => {
@@ -7292,8 +7056,8 @@ const loadEvents = useCallback(async () => {
       onOpenFirings();
       return;
     }
-    setModuleKey("firings");
-  }, [onOpenFirings]);
+    openModuleFromCockpit("firings");
+  }, [onOpenFirings, openModuleFromCockpit]);
 
   const startFiringFlow = useCallback(() => {
     if (onStartFiring) {
@@ -7302,12 +7066,6 @@ const loadEvents = useCallback(async () => {
     }
     openFiringsWorkspace();
   }, [onStartFiring, openFiringsWorkspace]);
-
-  const openSystemWorkspace = useCallback(() => {
-    if (typeof window !== "undefined") {
-      window.open("/staff/system", "_blank", "noopener");
-    }
-  }, []);
 
   const handleFiringPhotoFile = useCallback(
     async (file: File | null) => {
@@ -7324,9 +7082,7 @@ const loadEvents = useCallback(async () => {
       try {
         const storage = resolveStorageForStaffToday();
         const extension = toFileExtension(file);
-        const path = `firings/${user.uid}/${targetFiringId}/${Date.now()}-${Math.random()
-          .toString(36)
-          .slice(2, 8)}.${extension}`;
+        const path = `firings/${user.uid}/${targetFiringId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
         const uploadRef = ref(storage, path);
         await uploadBytes(uploadRef, file, { contentType: file.type || "image/jpeg" });
         const url = await getDownloadURL(uploadRef);
@@ -7364,10 +7120,31 @@ const loadEvents = useCallback(async () => {
   );
 
   const stripeContent = <StripeSettingsModule client={client} isStaff={isStaff} />;
+  const commerceContent = (
+    <CommerceModule
+      client={client}
+      run={run}
+      busy={busy}
+      hasFunctionsAuthMismatch={hasFunctionsAuthMismatch}
+      setStatus={setStatus}
+      loadCommerce={loadCommerce}
+      commerceSearch={commerceSearch}
+      setCommerceSearch={setCommerceSearch}
+      commerceStatusFilter={commerceStatusFilter}
+      setCommerceStatusFilter={setCommerceStatusFilter}
+      commerceStatusOptions={commerceStatusOptions}
+      commerceKpis={commerceKpis}
+      unpaidCheckIns={unpaidCheckIns}
+      filteredOrders={filteredOrders}
+      summary={summary}
+      receipts={receipts}
+      copy={copy}
+    />
+  );
   const reportsContent = (
     <ReportsModule
       client={client}
-      active={moduleKey === "reports" || isCockpitModule}
+      active={moduleKey === "reports" || (isCockpitModule && cockpitTab === "reports")}
       disabled={hasFunctionsAuthMismatch}
       user={user}
       studioBrainAdminToken={devAdminToken}
@@ -7379,1606 +7156,193 @@ const loadEvents = useCallback(async () => {
   const agentOpsContent = (
     <AgentOpsModule client={client} active={isCockpitModule} disabled={hasFunctionsAuthMismatch} />
   );
-  const legacySystemOpsContent = (
-    <section className="staff-module-grid">
-      <section className="card staff-console-card">
-        <div className="card-title-row">
-          <div className="card-title">Ops Cockpit</div>
-          <button
-            className="btn btn-secondary"
-            disabled={Boolean(busy)}
-            onClick={() =>
-              void run("refreshCockpit", async () => {
-                await Promise.allSettled([loadReportOps(), loadSystemStats(), loadAutomationHealthDashboard()]);
-                setStatus("Refreshed cockpit telemetry");
-              })
-            }
-          >
-            Refresh cockpit
-          </button>
-        </div>
-        <div className="staff-kpi-grid">
-          <div className="staff-kpi"><span>High alerts</span><strong>{cockpitKpis.highAlerts}</strong></div>
-          <div className="staff-kpi"><span>Medium alerts</span><strong>{cockpitKpis.mediumAlerts}</strong></div>
-          <div className="staff-kpi"><span>Open reports</span><strong>{cockpitKpis.openReports}</strong></div>
-          <div className="staff-kpi"><span>Failed checks</span><strong>{cockpitKpis.failedChecks}</strong></div>
-          <div className="staff-kpi"><span>Checks loaded</span><strong>{cockpitKpis.totalChecks}</strong></div>
-          <div className="staff-kpi"><span>Recent handler errors</span><strong>{cockpitKpis.recentErrors}</strong></div>
-        </div>
-        {cockpitKpis.authMismatch ? (
-          <div className="staff-note">
-            Local Functions is active while Auth emulator is disabled. Cockpit data may be partial for function-backed operations.
-          </div>
-        ) : null}
-        <nav className="segmented staff-cockpit-tabs" aria-label="Ops cockpit tabs">
-          {COCKPIT_TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              className={cockpitTab === tab.key ? "active" : ""}
-              onClick={() => setCockpitTab(tab.key)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-        {cockpitTab === "triage" ? (
-          <>
-            <div className="staff-subtitle">Action queue</div>
-            <div className="staff-log-list">
-              {overviewAlerts.map((alert) => (
-                <div key={alert.id} className="staff-log-entry">
-                  <div className="staff-log-meta">
-                    <span className="staff-log-label">{alert.severity.toUpperCase()}</span>
-                    <span>{new Date().toLocaleDateString()}</span>
-                  </div>
-                  <div className="staff-log-message">
-                    {alert.label}
-                    <div className="staff-actions-row staff-actions-row--mt8">
-                      <button className="btn btn-ghost btn-small" onClick={() => openModuleFromCockpit(alert.module)}>
-                        {forceCockpitWorkspace ? "Open in full staff console" : alert.actionLabel}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="staff-actions-row">
-              <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("pieces")}>
-                Open pieces queue
-              </button>
-              <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("firings")}>
-                Open firings triage
-              </button>
-              <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("events")}>
-                Open events desk
-              </button>
-              <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("commerce")}>
-                Open billing queue
-              </button>
-              <button className="btn btn-secondary" onClick={() => openModuleFromCockpit("reports")}>
-                Open reports triage
-              </button>
-            </div>
-          </>
-        ) : null}
-        {cockpitTab === "automation" ? (
-          <>
-            <div className="staff-subtitle">Automation health dashboard</div>
-            <div className="staff-kpi-grid">
-              <div className="staff-kpi"><span>Monitored workflows</span><strong>{automationKpis.monitored}</strong></div>
-              <div className="staff-kpi"><span>Healthy</span><strong>{automationKpis.healthy}</strong></div>
-              <div className="staff-kpi"><span>Failing</span><strong>{automationKpis.failing}</strong></div>
-              <div className="staff-kpi"><span>In progress</span><strong>{automationKpis.inProgress}</strong></div>
-              <div className="staff-kpi"><span>Stale workflows</span><strong>{automationKpis.stale}</strong></div>
-              <div className="staff-kpi"><span>Rolling threads</span><strong>{automationKpis.threads}</strong></div>
-            </div>
-            <div className="staff-actions-row">
-              <button
-                className="btn btn-secondary btn-small"
-                disabled={Boolean(busy) || automationDashboard.loading}
-                onClick={() => void run("refreshAutomationHealth", loadAutomationHealthDashboard)}
-              >
-                {automationDashboard.loading ? "Refreshing..." : "Refresh automation dashboard"}
-              </button>
-              <a
-                className="btn btn-ghost btn-small"
-                href={`https://github.com/${GITHUB_REPO_SLUG}/actions/workflows/portal-automation-health-daily.yml`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Open daily workflow
-              </a>
-              <a
-                className="btn btn-ghost btn-small"
-                href={`https://github.com/${GITHUB_REPO_SLUG}/actions/workflows/portal-automation-weekly-digest.yml`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Open weekly digest
-              </a>
-            </div>
-            {automationDashboard.error ? (
-              <div className="staff-note staff-note-error">
-                Automation dashboard fetch error: {automationDashboard.error}
-              </div>
-            ) : null}
-            <div className="staff-mini">
-              Source: GitHub Actions + rolling issues for <code>{GITHUB_REPO_SLUG}</code>.
-              {automationKpis.loadedAtMs ? ` Last refresh ${when(automationKpis.loadedAtMs)}.` : " Not loaded yet."}
-            </div>
-            <div className="staff-table-wrap">
-              <table className="staff-table">
-                <thead>
-                  <tr>
-                    <th>Workflow</th>
-                    <th>Status</th>
-                    <th>Conclusion</th>
-                    <th>Last run</th>
-                    <th>Output</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {automationDashboard.workflows.length === 0 ? (
-                    <tr><td colSpan={5}>No automation workflow status loaded yet.</td></tr>
-                  ) : (
-                    automationDashboard.workflows.map((workflow) => (
-                      <tr key={workflow.key}>
-                        <td>
-                          <div>{workflow.label}</div>
-                          <div className="staff-mini"><code>{workflow.workflowFile}</code></div>
-                          <div className="staff-mini">{workflow.outputHint}</div>
-                          {workflow.error ? <div className="staff-mini">{workflow.error}</div> : null}
-                        </td>
-                        <td><span className="pill">{workflow.status || "-"}</span></td>
-                        <td>
-                          <span className="pill">
-                            {workflow.conclusion || (workflow.status === "queued" || workflow.status === "in_progress" ? "running" : "unknown")}
-                          </span>
-                        </td>
-                        <td>
-                          {workflow.createdAtMs ? when(workflow.createdAtMs) : "-"}
-                          {workflow.isStale ? <div className="staff-mini">stale</div> : null}
-                        </td>
-                        <td>
-                          {workflow.runUrl ? (
-                            <a href={workflow.runUrl} target="_blank" rel="noreferrer">Run</a>
-                          ) : (
-                            "-"
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <div className="staff-subtitle">Rolling output threads</div>
-            <div className="staff-table-wrap">
-              <table className="staff-table">
-                <thead>
-                  <tr>
-                    <th>Thread</th>
-                    <th>State</th>
-                    <th>Updated</th>
-                    <th>Latest output preview</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {automationDashboard.issues.length === 0 ? (
-                    <tr><td colSpan={4}>No rolling issue threads loaded yet.</td></tr>
-                  ) : (
-                    automationDashboard.issues.map((issue) => (
-                      <tr key={issue.key}>
-                        <td>
-                          {issue.issueUrl ? (
-                            <a href={issue.issueUrl} target="_blank" rel="noreferrer">{issue.title}</a>
-                          ) : (
-                            issue.title
-                          )}
-                          <div className="staff-mini">#{issue.issueNumber} · {issue.purpose}</div>
-                          {issue.error ? <div className="staff-mini">{issue.error}</div> : null}
-                        </td>
-                        <td><span className="pill">{issue.state || "-"}</span></td>
-                        <td>{issue.updatedAtMs ? when(issue.updatedAtMs) : "-"}</td>
-                        <td>
-                          {issue.latestCommentPreview || "-"}
-                          {issue.latestCommentUrl ? (
-                            <div className="staff-mini">
-                              <a href={issue.latestCommentUrl} target="_blank" rel="noreferrer">Open latest comment</a>
-                            </div>
-                          ) : null}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </>
-        ) : null}
-        {cockpitTab === "platform" ? (
-          <>
-            <div className="staff-subtitle">Platform diagnostics</div>
-            <div className="staff-note">
-              Legacy System diagnostics now live here so operators can work from one place.
-            </div>
-            <div className="staff-kpi-grid">
-              <div className="staff-kpi"><span>Functions base</span><strong>{usingLocalFunctions ? "Local" : "Remote"}</strong></div>
-              <div className="staff-kpi"><span>Auth mode</span><strong>{showEmulatorTools ? "Emulator" : "Production"}</strong></div>
-              <div className="staff-kpi"><span>Integration tokens</span><strong>{integrationTokenCount ?? 0}</strong></div>
-              <div className="staff-kpi"><span>System checks</span><strong>{systemChecks.length}</strong></div>
-              <div className="staff-kpi"><span>Notif success</span><strong>{notificationMetricsSummary ? `${num(notificationMetricsSummary.successRate, 0)}%` : "-"}</strong></div>
-              <div className="staff-kpi"><span>Notif failed</span><strong>{notificationMetricsSummary ? num(notificationMetricsSummary.totalFailed, 0) : "-"}</strong></div>
-            </div>
-            <div className="staff-actions-row">
-              <button
-                className="btn btn-secondary"
-                disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-                onClick={() => void run("cockpitSystemPing", runSystemPing)}
-              >
-                Ping functions
-              </button>
-              <button
-                className="btn btn-secondary"
-                disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-                onClick={() => void run("cockpitCalendarProbe", runCalendarProbe)}
-              >
-                Probe calendar
-              </button>
-              <button
-                className="btn btn-secondary"
-                disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-                onClick={() => void run("cockpitNotificationMetricsProbe", runNotificationMetricsProbe)}
-              >
-                Refresh notif metrics
-              </button>
-              <button
-                className="btn btn-secondary"
-                disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-                onClick={() => void run("cockpitNotificationDrill", runNotificationFailureDrillNow)}
-              >
-                Run push failure drill
-              </button>
-              <button
-                className="btn btn-secondary"
-                disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-                onClick={() => void run("cockpitRefreshSystemStats", loadSystemStats)}
-              >
-                Refresh token stats
-              </button>
-            </div>
-            {hasFunctionsAuthMismatch ? (
-              <div className="staff-note">
-                Local functions detected at <code>{fBaseUrl}</code> while auth emulator is disabled.
-                Function-backed modules are paused to avoid false 401 errors.
-              </div>
-            ) : null}
-            <div className="card-title-row">
-              <div className="staff-subtitle">Recent handler errors</div>
-              <div className="staff-log-actions">
-                <button type="button" className="btn btn-ghost" onClick={() => setHandlerLog(getHandlerErrorLog())}>Refresh</button>
-                <button type="button" className="btn btn-ghost" onClick={() => { clearHandlerErrorLog(); setHandlerLog([]); }}>Clear</button>
-              </div>
-            </div>
-            <div className="staff-log-list">
-              {latestErrors.length === 0 ? <div className="staff-note">No handler errors logged.</div> : latestErrors.map((entry, idx) => <div key={`${entry.atIso}-${idx}`} className="staff-log-entry"><div className="staff-log-meta"><span className="staff-log-label">{entry.label}</span><span>{new Date(entry.atIso).toLocaleString()}</span></div><div className="staff-log-message">{entry.message}</div></div>)}
-            </div>
-            <details className="staff-troubleshooting">
-              <summary>Developer troubleshooting and raw diagnostics</summary>
-              <div className="staff-module-grid">
-                <div className="staff-column">
-                  <div className="staff-subtitle">System checks</div>
-                  <div className="staff-table-wrap">
-                    <table className="staff-table">
-                      <thead><tr><th>Check</th><th>Status</th><th>Ran at</th><th>Details</th></tr></thead>
-                      <tbody>
-                        {systemChecks.length === 0 ? (
-                          <tr><td colSpan={4}>No checks run yet.</td></tr>
-                        ) : (
-                          systemChecks.map((entry) => (
-                            <tr key={`${entry.key}-${entry.atMs}`}>
-                              <td>{entry.label}</td>
-                              <td><span className="pill">{entry.ok ? "ok" : "failed"}</span></td>
-                              <td>{when(entry.atMs)}</td>
-                              <td>{entry.details}</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                <div className="staff-column">
-                  {devAdminEnabled ? (
-                    <label className="staff-field">Dev admin token<input type="password" value={devAdminToken} onChange={(e) => onDevAdminTokenChange(e.target.value)} /></label>
-                  ) : (
-                    <div className="staff-note">Dev admin token disabled outside emulator mode.</div>
-                  )}
-                  {showEmulatorTools ? <button type="button" className="btn btn-secondary" onClick={() => window.open("http://127.0.0.1:4000/", "_blank")}>Open Emulator UI</button> : null}
-                  <div className="staff-subtitle">Last Firestore write</div>
-                  <pre>{safeJsonStringify(lastWrite)}</pre>
-                  <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastWrite))}>Copy write JSON</button>
-                </div>
-                <div className="staff-column">
-                  <div className="staff-subtitle">Last query params</div>
-                  <pre>{safeJsonStringify(lastQuery)}</pre>
-                  <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastQuery))}>Copy query JSON</button>
-                  <div className="staff-subtitle">Last GitHub/Functions call</div>
-                  <pre>{safeJsonStringify(sanitizeLastRequest(lastReq))}</pre>
-                  <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(sanitizeLastRequest(lastReq)))}>Copy call JSON</button>
-                  <div className="staff-mini">curl hint</div>
-                  <pre>{lastReq?.curlExample ?? "(none)"}</pre>
-                  <button className="btn btn-ghost" onClick={() => void copy(lastReq?.curlExample ?? "")} disabled={!lastReq?.curlExample}>Copy curl hint</button>
-                </div>
-                <div className="staff-column">
-                  <div className="staff-subtitle">Last error stack/message</div>
-                  <pre>{safeJsonStringify(lastErr)}</pre>
-                  {copyStatus ? (
-                    <div className="staff-note" role="status" aria-live="polite">
-                      {copyStatus}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </details>
-          </>
-        ) : null}
-        {cockpitTab === "moduleTelemetry" ? (
-          <>
-            <div className="staff-subtitle">Module engagement telemetry (rolling local)</div>
-            <div className="staff-actions-row">
-              <button className="btn btn-ghost btn-small" onClick={resetModuleTelemetry}>
-                Reset telemetry
-              </button>
-              <button className="btn btn-ghost btn-small" onClick={() => void copy(safeJsonStringify(moduleTelemetrySnapshot))}>
-                Copy telemetry JSON
-              </button>
-            </div>
-            <div className="staff-note">
-              {lowEngagementModules.length === 0
-                ? "No low-engagement modules detected in the current telemetry sample."
-                : `Low-engagement modules in the current telemetry sample: ${lowEngagementModules.join(", ")}`}
-            </div>
-            <div className="staff-table-wrap">
-              <table className="staff-table">
-                <thead>
-                  <tr>
-                    <th>Module</th>
-                    <th>Owner</th>
-                    <th>Visits</th>
-                    <th>Dwell</th>
-                    <th>First action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {moduleUsageRows.length === 0 ? (
-                    <tr><td colSpan={5}>No module activity captured yet.</td></tr>
-                  ) : (
-                    moduleUsageRows.map((row) => (
-                      <tr key={row.key}>
-                        <td>{row.label}</td>
-                        <td>{row.owner}</td>
-                        <td>{row.visits}</td>
-                        <td>{formatDurationMs(row.dwellMs)}</td>
-                        <td>{formatLatencyMs(row.firstActionMs)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </>
-        ) : null}
-      </section>
-      {cockpitTab === "policyAgentOps" ? (
-        <>
-          <div className="card staff-console-card">{agentOpsContent}</div>
-          <div className="card staff-console-card">{governanceContent}</div>
-        </>
-      ) : null}
-      {cockpitTab === "reports" ? <div className="card staff-console-card">{reportsContent}</div> : null}
-    </section>
-  );
 
-const lendingContent = (
-    <section className="card staff-console-card">
-      <div className="card-title-row">
-        <div className="card-title">Lending</div>
-        <button className="btn btn-secondary" disabled={Boolean(busy)} onClick={() => void run("refreshLending", loadLending)}>
-          Refresh lending
-        </button>
-      </div>
-      {hasFunctionsAuthMismatch ? (
-        <div className="staff-note">
-          Local functions detected at <code>{fBaseUrl}</code> while Auth emulator is off. ISBN import, scanner check-in, provider policy/probe controls, and rollout phase controls are paused to prevent false auth failures.
-        </div>
-      ) : null}
-      <div className="staff-module-grid">
-        <section className="staff-column">
-          <div className="staff-subtitle">ISBN bulk import</div>
-          <label className="staff-field">
-            Paste ISBNs
-            <textarea
-              value={isbnInput}
-              onChange={(event) => setIsbnInput(event.target.value)}
-              placeholder="9780596007126, 9780132350884"
-            />
-            <span className="helper">Comma or newline separated. ISBN-10 and ISBN-13 are supported.</span>
-          </label>
-          <label className="staff-field">
-            Upload CSV
-            <input
-              type="file"
-              accept=".csv,text/csv,text/plain"
-              onChange={(event) => {
-                const file = event.target.files?.[0] ?? null;
-                void handleLendingIsbnFile(file);
-              }}
-            />
-          </label>
-          {isbnImportError ? <div className="staff-note staff-note-error">{isbnImportError}</div> : null}
-          {isbnImportStatus ? <div className="staff-note staff-note-ok">{isbnImportStatus}</div> : null}
-          <div className="staff-actions-row">
-            <button className="btn btn-primary" disabled={Boolean(busy) || isbnImportBusy || hasFunctionsAuthMismatch} onClick={() => void handleLendingIsbnImport()}>
-              {isbnImportBusy ? "Importing..." : "Import ISBNs"}
-            </button>
-          </div>
-        </section>
-        <section className="staff-column">
-          <div className="staff-subtitle">Scanner check-in</div>
-          <label className="staff-field">
-            Scan ISBN
-            <input
-              type="text"
-              value={isbnScanInput}
-              placeholder="Scan ISBN here"
-              onChange={(event) => setIsbnScanInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  void handleLendingIsbnScanSubmit();
-                }
-              }}
-            />
-            <span className="helper">Use a Bluetooth scanner then press Enter to submit one item instantly.</span>
-          </label>
-          {isbnScanStatus ? <div className="staff-note">{isbnScanStatus}</div> : null}
-          <div className="staff-actions-row">
-            <button className="btn btn-primary" onClick={() => void handleLendingIsbnScanSubmit()} disabled={Boolean(busy) || isbnScanBusy || hasFunctionsAuthMismatch}>
-              {isbnScanBusy ? "Adding..." : "Add scanned ISBN"}
-            </button>
-          </div>
-        </section>
-        <section className="staff-column">
-          <div className="staff-subtitle">External source provider diagnostics</div>
-          <label className="staff-field">
-            Provider policy
-            <div className="staff-actions-row">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={externalLookupPolicyOpenLibraryEnabled}
-                  onChange={(event) => setExternalLookupPolicyOpenLibraryEnabled(event.target.checked)}
-                  disabled={Boolean(busy) || externalLookupPolicyBusy || hasFunctionsAuthMismatch}
-                />
-                {" "}
-                Open Library enabled
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={externalLookupPolicyGoogleBooksEnabled}
-                  onChange={(event) => setExternalLookupPolicyGoogleBooksEnabled(event.target.checked)}
-                  disabled={Boolean(busy) || externalLookupPolicyBusy || hasFunctionsAuthMismatch}
-                />
-                {" "}
-                Google Books enabled
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={externalLookupPolicyCoverReviewGuardrailEnabled}
-                  onChange={(event) => setExternalLookupPolicyCoverReviewGuardrailEnabled(event.target.checked)}
-                  disabled={Boolean(busy) || externalLookupPolicyBusy || hasFunctionsAuthMismatch}
-                />
-                {" "}
-                Require staff cover approval for imported covers
-              </label>
-            </div>
-            <input
-              type="text"
-              value={externalLookupPolicyNote}
-              onChange={(event) => setExternalLookupPolicyNote(event.target.value)}
-              placeholder="Optional note for why this policy is set."
-              disabled={Boolean(busy) || externalLookupPolicyBusy || hasFunctionsAuthMismatch}
-            />
-            <span className="helper">
-              Use this to pause a provider when rate limits or reliability issues occur, and temporarily bypass manual cover approvals for trusted bulk ingestion.
-              Cover approvals are handled in Staff / Lending / Cover review queue.
-            </span>
-          </label>
-          <div className="staff-actions-row">
-            <button
-              className="btn btn-secondary"
-              disabled={Boolean(busy) || externalLookupPolicyBusy || hasFunctionsAuthMismatch}
-              onClick={() => void saveExternalLookupProviderPolicy()}
-            >
-              {externalLookupPolicyBusy ? "Saving..." : "Save provider policy"}
-            </button>
-          </div>
-          {externalLookupPolicyStatus ? <div className="staff-note">{externalLookupPolicyStatus}</div> : null}
-          {externalLookupPolicyUpdatedAtMs > 0 ? (
-            <div className="staff-note">
-              Policy updated {when(externalLookupPolicyUpdatedAtMs)}
-              {externalLookupPolicyUpdatedByUid ? ` by ${externalLookupPolicyUpdatedByUid}` : ""}
-            </div>
-          ) : null}
-          <label className="staff-field">
-            Probe query
-            <input
-              type="text"
-              value={externalLookupProbeQuery}
-              onChange={(event) => setExternalLookupProbeQuery(event.target.value)}
-              placeholder="ceramics glaze chemistry"
-            />
-            <span className="helper">Runs the same route members use for external fallback and reports provider health.</span>
-          </label>
-          {externalLookupProbeStatus ? <div className="staff-note">{externalLookupProbeStatus}</div> : null}
-          <div className="staff-actions-row">
-            <button
-              className="btn btn-secondary"
-              disabled={Boolean(busy) || externalLookupProbeBusy || hasFunctionsAuthMismatch}
-              onClick={() => void runExternalLookupProviderProbe()}
-            >
-              {externalLookupProbeBusy ? "Probing..." : "Run provider probe"}
-            </button>
-          </div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
-              <thead><tr><th>Provider</th><th>Healthy</th><th>Policy</th><th>Items</th><th>Cache</th></tr></thead>
-              <tbody>
-                {externalLookupProbeProviders.length === 0 ? (
-                  <tr><td colSpan={5}>No probe results yet.</td></tr>
-                ) : (
-                  externalLookupProbeProviders.map((entry) => (
-                    <tr key={entry.provider}>
-                      <td>{entry.provider}</td>
-                      <td>{entry.ok ? "yes" : "no"}</td>
-                      <td>{entry.disabled ? "paused" : "active"}</td>
-                      <td>{entry.itemCount}</td>
-                      <td>{entry.cached ? "hit" : "miss"}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-        <section className="staff-column">
-          <div className="staff-subtitle">Library rollout phase</div>
-          <label className="staff-field">
-            Phase selector
-            <select
-              value={libraryRolloutPhase}
-              onChange={(event) =>
-                setLibraryRolloutPhase(normalizeLibraryRolloutPhase(event.target.value, libraryRolloutPhase))
-              }
-              disabled={Boolean(busy) || libraryRolloutPhaseBusy || hasFunctionsAuthMismatch}
-            >
-              <option value="phase_1_read_only">Phase 1 - Authenticated discovery (member writes paused)</option>
-              <option value="phase_2_member_writes">Phase 2 - Member interactions enabled</option>
-              <option value="phase_3_admin_full">Phase 3 - Admin management + cutover</option>
-            </select>
-            <span className="helper">
-              Phase 1 pauses member interaction writes in the member library view while keeping browse/read available.
-            </span>
-          </label>
-          <label className="staff-field">
-            Rollout note
-            <input
-              type="text"
-              value={libraryRolloutNote}
-              onChange={(event) => setLibraryRolloutNote(event.target.value)}
-              placeholder="Optional context shown to staff and surfaced in member pause notice."
-              disabled={Boolean(busy) || libraryRolloutPhaseBusy || hasFunctionsAuthMismatch}
-            />
-          </label>
-          <div className="staff-note">
-            Member interactions are currently {libraryRolloutMemberWritesEnabled ? "enabled" : "paused"}.
-          </div>
-          <div className="staff-actions-row">
-            <button
-              className="btn btn-secondary"
-              disabled={Boolean(busy) || libraryRolloutPhaseBusy || hasFunctionsAuthMismatch}
-              onClick={() => void saveLibraryRolloutPhasePolicy()}
-            >
-              {libraryRolloutPhaseBusy ? "Saving..." : "Save rollout phase"}
-            </button>
-          </div>
-          {libraryRolloutPhaseStatus ? <div className="staff-note">{libraryRolloutPhaseStatus}</div> : null}
-          {libraryRolloutUpdatedAtMs > 0 ? (
-            <div className="staff-note">
-              Rollout updated {when(libraryRolloutUpdatedAtMs)}
-              {libraryRolloutUpdatedByUid ? ` by ${libraryRolloutUpdatedByUid}` : ""}
-            </div>
-          ) : null}
-          <div className="staff-subtitle">Phase metrics snapshot</div>
-          <div className="staff-note">
-            Tracks library route health over the last {LIBRARY_PHASE_METRICS_WINDOW_MINUTES} minutes for go/no-go checks.
-          </div>
-          <div className="staff-actions-row">
-            <button
-              className="btn btn-ghost btn-small"
-              disabled={Boolean(busy)}
-              onClick={() => refreshLibraryPhaseMetricsSnapshot()}
-            >
-              Refresh phase metrics
-            </button>
-            <button
-              className="btn btn-ghost btn-small"
-              disabled={!libraryPhaseMetricsArtifact}
-              onClick={() => void copy(libraryPhaseMetricsArtifact ? safeJsonStringify(libraryPhaseMetricsArtifact) : "")}
-            >
-              Copy phase metrics JSON
-            </button>
-          </div>
-          {libraryPhaseMetricsStatus ? <div className="staff-note">{libraryPhaseMetricsStatus}</div> : null}
-          <div className="staff-table-wrap">
-            <table className="staff-table">
-              <tbody>
-                <tr>
-                  <th>Requests</th>
-                  <td>{libraryPhaseMetricsSnapshot?.requestCount ?? 0}</td>
-                  <th>Errors</th>
-                  <td>{libraryPhaseMetricsSnapshot?.errorCount ?? 0}</td>
-                </tr>
-                <tr>
-                  <th>Conflicts</th>
-                  <td>{libraryPhaseMetricsSnapshot?.conflictCount ?? 0}</td>
-                  <th>Route errors</th>
-                  <td>{libraryPhaseMetricsSnapshot?.routeErrorCount ?? 0}</td>
-                </tr>
-                <tr>
-                  <th>Error rate</th>
-                  <td>
-                    {libraryPhaseMetricsSnapshot
-                      ? `${(libraryPhaseMetricsSnapshot.errorRate * 100).toFixed(1)}%`
-                      : "-"}
-                  </td>
-                  <th>Conflict rate</th>
-                  <td>
-                    {libraryPhaseMetricsSnapshot
-                      ? `${(libraryPhaseMetricsSnapshot.conflictRate * 100).toFixed(1)}%`
-                      : "-"}
-                  </td>
-                </tr>
-                <tr>
-                  <th>P50 latency</th>
-                  <td>{formatLatencyMs(libraryPhaseMetricsSnapshot?.p50LatencyMs ?? null)}</td>
-                  <th>P95 latency</th>
-                  <td>{formatLatencyMs(libraryPhaseMetricsSnapshot?.p95LatencyMs ?? null)}</td>
-                </tr>
-                <tr>
-                  <th>Max latency</th>
-                  <td>{formatLatencyMs(libraryPhaseMetricsSnapshot?.maxLatencyMs ?? null)}</td>
-                  <th>Generated</th>
-                  <td>{libraryPhaseMetricsSnapshot ? when(Date.parse(libraryPhaseMetricsSnapshot.generatedAtIso)) : "-"}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
-              <thead>
-                <tr>
-                  <th>Endpoint</th>
-                  <th>Requests</th>
-                  <th>Errors</th>
-                  <th>Conflicts</th>
-                  <th>Route errors</th>
-                  <th>P95 latency</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(libraryPhaseMetricsSnapshot?.endpoints ?? []).slice(0, 12).map((entry) => (
-                  <tr key={entry.route}>
-                    <td><code>{entry.route}</code></td>
-                    <td>{entry.requestCount}</td>
-                    <td>{entry.errorCount}</td>
-                    <td>{entry.conflictCount}</td>
-                    <td>{entry.routeErrorCount}</td>
-                    <td>{formatLatencyMs(entry.p95LatencyMs)}</td>
-                  </tr>
-                ))}
-                {!libraryPhaseMetricsSnapshot || libraryPhaseMetricsSnapshot.endpoints.length === 0 ? (
-                  <tr>
-                    <td colSpan={6}>No library telemetry recorded in this browser session yet.</td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
-      <details className="staff-troubleshooting">
-        <summary>Catalog admin (create/edit/delete + ISBN resolve)</summary>
-        <div className="staff-note">
-          Item save/delete dispatches to v1 admin routes when present and falls back to direct Firestore writes when routes are unavailable.
-        </div>
-        <div className="staff-module-grid">
-          <section className="staff-column">
-            <div className="staff-actions-row">
-              <input
-                className="staff-member-search"
-                placeholder="Search library items by title, author, ISBN, ID"
-                value={lendingAdminItemSearch}
-                onChange={(event) => setLendingAdminItemSearch(event.target.value)}
-              />
-              <button
-                type="button"
-                className="btn btn-ghost btn-small"
-                onClick={() => handleStartLendingAdminItemCreate()}
-                disabled={Boolean(busy) || lendingAdminItemBusy}
-              >
-                New item
-              </button>
-            </div>
-            <div className="staff-table-wrap">
-              <table className="staff-table">
-                <thead>
-                  <tr>
-                    <th>Title</th>
-                    <th>Status</th>
-                    <th>Copies</th>
-                    <th>Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredLendingAdminItems.length === 0 ? (
-                    <tr><td colSpan={4}>No library items match this search.</td></tr>
-                  ) : (
-                    filteredLendingAdminItems.slice(0, 80).map((item) => (
-                      <tr
-                        key={item.id}
-                        className={`staff-click-row ${selectedAdminItemId === item.id ? "active" : ""}`}
-                        onClick={() => handleSelectLendingAdminItem(item)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            handleSelectLendingAdminItem(item);
-                          }
-                        }}
-                        tabIndex={0}
-                      >
-                        <td>
-                          <div>{item.title}</div>
-                          <div className="staff-mini">{item.authorLine}</div>
-                          <div className="staff-mini"><code>{item.id}</code></div>
-                          {item.isbn ? <div className="staff-mini">ISBN {item.isbn}</div> : null}
-                        </td>
-                        <td><span className="pill">{item.status}</span></td>
-                        <td>{item.availableCopies}/{item.totalCopies}</td>
-                        <td>{when(item.updatedAtMs)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-          <section className="staff-column">
-            <div className="staff-subtitle">
-              {selectedAdminItem ? `Editing ${selectedAdminItem.title}` : "New library item"}
-            </div>
-            <label className="staff-field">
-              Title
-              <input
-                type="text"
-                value={lendingAdminItemDraft.title}
-                onChange={(event) =>
-                  setLendingAdminItemDraft((prev) => ({ ...prev, title: event.target.value }))
-                }
-                disabled={Boolean(busy) || lendingAdminItemBusy}
-              />
-            </label>
-            <label className="staff-field">
-              Authors (comma/newline)
-              <textarea
-                value={lendingAdminItemDraft.authorsCsv}
-                onChange={(event) =>
-                  setLendingAdminItemDraft((prev) => ({ ...prev, authorsCsv: event.target.value }))
-                }
-                disabled={Boolean(busy) || lendingAdminItemBusy}
-              />
-            </label>
-            <div className="staff-actions-row">
-              <label className="staff-field">
-                ISBN
-                <input
-                  type="text"
-                  value={lendingAdminItemDraft.isbn}
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, isbn: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy || lendingAdminIsbnResolveBusy}
-                />
-              </label>
-              <button
-                type="button"
-                className="btn btn-secondary btn-small"
-                onClick={() => void handleLendingAdminResolveIsbn()}
-                disabled={Boolean(busy) || lendingAdminItemBusy || lendingAdminIsbnResolveBusy}
-              >
-                {lendingAdminIsbnResolveBusy ? "Resolving..." : "Resolve ISBN"}
-              </button>
-            </div>
-            <label className="staff-field">
-              Subtitle
-              <input
-                type="text"
-                value={lendingAdminItemDraft.subtitle}
-                onChange={(event) =>
-                  setLendingAdminItemDraft((prev) => ({ ...prev, subtitle: event.target.value }))
-                }
-                disabled={Boolean(busy) || lendingAdminItemBusy}
-              />
-            </label>
-            <label className="staff-field">
-              Description
-              <textarea
-                value={lendingAdminItemDraft.description}
-                onChange={(event) =>
-                  setLendingAdminItemDraft((prev) => ({ ...prev, description: event.target.value }))
-                }
-                disabled={Boolean(busy) || lendingAdminItemBusy}
-              />
-            </label>
-            <div className="staff-actions-row">
-              <label className="staff-field">
-                Publisher
-                <input
-                  type="text"
-                  value={lendingAdminItemDraft.publisher}
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, publisher: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                />
-              </label>
-              <label className="staff-field">
-                Published date
-                <input
-                  type="text"
-                  value={lendingAdminItemDraft.publishedDate}
-                  placeholder="YYYY-MM-DD"
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, publishedDate: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                />
-              </label>
-            </div>
-            <div className="staff-actions-row">
-              <label className="staff-field">
-                Media type
-                <input
-                  type="text"
-                  value={lendingAdminItemDraft.mediaType}
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, mediaType: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                />
-              </label>
-              <label className="staff-field">
-                Status
-                <select
-                  value={lendingAdminItemDraft.status}
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, status: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                >
-                  <option value="available">available</option>
-                  <option value="checked_out">checked_out</option>
-                  <option value="overdue">overdue</option>
-                  <option value="lost">lost</option>
-                  <option value="unavailable">unavailable</option>
-                  <option value="archived">archived</option>
-                </select>
-              </label>
-              <label className="staff-field">
-                Source
-                <input
-                  type="text"
-                  value={lendingAdminItemDraft.source}
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, source: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                />
-              </label>
-            </div>
-            <div className="staff-actions-row">
-              <label className="staff-field">
-                Total copies
-                <input
-                  type="number"
-                  min={1}
-                  value={lendingAdminItemDraft.totalCopies}
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, totalCopies: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                />
-              </label>
-              <label className="staff-field">
-                Available copies
-                <input
-                  type="number"
-                  min={0}
-                  value={lendingAdminItemDraft.availableCopies}
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, availableCopies: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                />
-              </label>
-              <label className="staff-field">
-                Format
-                <input
-                  type="text"
-                  value={lendingAdminItemDraft.format}
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, format: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                />
-              </label>
-            </div>
-            <label className="staff-field">
-              Cover URL
-              <input
-                type="url"
-                value={lendingAdminItemDraft.coverUrl}
-                onChange={(event) =>
-                  setLendingAdminItemDraft((prev) => ({ ...prev, coverUrl: event.target.value }))
-                }
-                disabled={Boolean(busy) || lendingAdminItemBusy}
-              />
-            </label>
-            <div className="staff-actions-row">
-              <label className="staff-field">
-                Subjects
-                <input
-                  type="text"
-                  value={lendingAdminItemDraft.subjectsCsv}
-                  placeholder="glaze chemistry, kiln control"
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, subjectsCsv: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                />
-              </label>
-              <label className="staff-field">
-                Techniques
-                <input
-                  type="text"
-                  value={lendingAdminItemDraft.techniquesCsv}
-                  placeholder="wheel, handbuilding"
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, techniquesCsv: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                />
-              </label>
-            </div>
-            <div className="staff-actions-row">
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => void handleLendingAdminSave()}
-                disabled={Boolean(busy) || lendingAdminItemBusy}
-              >
-                {lendingAdminItemBusy ? "Saving..." : selectedAdminItem ? "Save item" : "Create item"}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => handleStartLendingAdminItemCreate()}
-                disabled={Boolean(busy) || lendingAdminItemBusy}
-              >
-                Reset draft
-              </button>
-            </div>
-            {selectedAdminItem ? (
-              <>
-                <label className="staff-field">
-                  Type <code>{lendingAdminDeleteConfirmationPhrase || "delete <itemId>"}</code> to enable delete
-                  <input
-                    type="text"
-                    value={lendingAdminItemDeleteConfirmInput}
-                    onChange={(event) => setLendingAdminItemDeleteConfirmInput(event.target.value)}
-                    disabled={Boolean(busy) || lendingAdminItemBusy}
-                  />
-                </label>
-                <div className="staff-actions-row">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => void handleLendingAdminDelete()}
-                    disabled={Boolean(busy) || lendingAdminItemBusy}
-                  >
-                    {lendingAdminItemBusy ? "Deleting..." : "Delete item"}
-                  </button>
-                </div>
-              </>
-            ) : null}
-            {lendingAdminIsbnResolveStatus ? <div className="staff-note">{lendingAdminIsbnResolveStatus}</div> : null}
-            {lendingAdminItemError ? <div className="staff-note staff-note-error">{lendingAdminItemError}</div> : null}
-            {lendingAdminItemStatus ? <div className="staff-note staff-note-ok">{lendingAdminItemStatus}</div> : null}
-          </section>
-        </div>
-      </details>
-      <div className="staff-kpi-grid">
-        <div className="staff-kpi"><span>Catalog items</span><strong>{libraryAdminItems.length}</strong></div>
-        <div className="staff-kpi"><span>Requests</span><strong>{libraryRequests.length}</strong></div>
-        <div className="staff-kpi"><span>Loans</span><strong>{libraryLoans.length}</strong></div>
-        <div className="staff-kpi"><span>Filtered requests</span><strong>{lendingTriage.requestView.length}</strong></div>
-        <div className="staff-kpi"><span>Filtered loans</span><strong>{lendingTriage.loanView.length}</strong></div>
-        <div className="staff-kpi"><span>Open requests</span><strong>{lendingTriage.openRequests.length}</strong></div>
-        <div className="staff-kpi"><span>Active loans</span><strong>{lendingTriage.activeLoans.length}</strong></div>
-        <div className="staff-kpi"><span>Overdue loans</span><strong>{lendingTriage.overdueLoans.length}</strong></div>
-        <div className="staff-kpi"><span>Returned loans</span><strong>{lendingTriage.returnedLoans.length}</strong></div>
-        <div className="staff-kpi"><span>Recommendations</span><strong>{recommendationModerationKpis.total}</strong></div>
-        <div className="staff-kpi"><span>Pending review</span><strong>{recommendationModerationKpis.pendingReview}</strong></div>
-        <div className="staff-kpi"><span>Approved recs</span><strong>{recommendationModerationKpis.approved}</strong></div>
-        <div className="staff-kpi"><span>Hidden recs</span><strong>{recommendationModerationKpis.hidden}</strong></div>
-        <div className="staff-kpi"><span>Tag queue</span><strong>{tagModerationKpis.pending}</strong></div>
-        <div className="staff-kpi"><span>Total tag subs</span><strong>{tagModerationKpis.total}</strong></div>
-        <div className="staff-kpi"><span>Cover review queue</span><strong>{libraryCoverReviews.length}</strong></div>
-      </div>
-      <div className="staff-actions-row">
-        <input
-          className="staff-member-search"
-          placeholder="Search lending by title, member, email, UID, or ID"
-          value={lendingSearch}
-          onChange={(event) => setLendingSearch(event.target.value)}
-        />
-        <select
-          className="staff-member-role-filter"
-          value={lendingStatusFilter}
-          onChange={(event) => setLendingStatusFilter(event.target.value)}
-        >
-          <option value="all">All statuses</option>
-          {lendingStatusOptions.map((statusName) => (
-            <option key={statusName} value={statusName}>{statusName}</option>
-          ))}
-        </select>
-        <select
-          className="staff-member-role-filter"
-          value={lendingFocusFilter}
-          onChange={(event) =>
-            setLendingFocusFilter(
-              event.target.value as "all" | "requests" | "active" | "overdue" | "returned"
-            )
-          }
-        >
-          <option value="all">All focus</option>
-          <option value="requests">Open requests</option>
-          <option value="active">Active loans</option>
-          <option value="overdue">Overdue loans</option>
-          <option value="returned">Returned loans</option>
-        </select>
-        <select
-          className="staff-member-role-filter"
-          value={lendingRecommendationFilter}
-          onChange={(event) => setLendingRecommendationFilter(event.target.value)}
-        >
-          <option value="all">All recommendation states</option>
-          {lendingRecommendationStatusOptions.map((statusName) => (
-            <option key={statusName} value={statusName}>{statusName}</option>
-          ))}
-        </select>
-      </div>
-      <div className="staff-module-grid">
-        <div className="staff-column">
-          <div className="staff-subtitle">Requests</div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
-              <thead><tr><th>Title</th><th>Status</th><th>Requester</th><th>Created</th></tr></thead>
-              <tbody>
-                {lendingTriage.requestView.length === 0 ? (
-                  <tr><td colSpan={4}>No requests match current filters.</td></tr>
-                ) : (
-                  lendingTriage.requestView.map((request) => (
-                    <tr
-                      key={request.id}
-                      className={`staff-click-row ${selectedRequestId === request.id ? "active" : ""}`}
-                      onClick={() => setSelectedRequestId(request.id)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          setSelectedRequestId(request.id);
-                        }
-                      }}
-                      tabIndex={0}
-                    >
-                      <td>
-                        <div>{request.title}</div>
-                        <div className="staff-mini"><code>{request.id}</code></div>
-                      </td>
-                      <td><span className="pill">{request.status}</span></td>
-                      <td>{request.requesterName}</td>
-                      <td>{when(request.createdAtMs)}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div className="staff-column">
-          <div className="staff-subtitle">Loans</div>
-          <div className="staff-table-wrap">
-            <table className="staff-table">
-              <thead><tr><th>Title</th><th>Status</th><th>Borrower</th><th>Created</th></tr></thead>
-              <tbody>
-                {lendingTriage.loanView.length === 0 ? (
-                  <tr><td colSpan={4}>No loans match current filters.</td></tr>
-                ) : (
-                  lendingTriage.loanView.map((loan) => (
-                    <tr
-                      key={loan.id}
-                      className={`staff-click-row ${selectedLoanId === loan.id ? "active" : ""}`}
-                      onClick={() => setSelectedLoanId(loan.id)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          setSelectedLoanId(loan.id);
-                        }
-                      }}
-                      tabIndex={0}
-                    >
-                      <td>
-                        <div>{loan.title}</div>
-                        <div className="staff-mini"><code>{loan.id}</code></div>
-                      </td>
-                      <td>
-                        <span className="pill">{loan.status}</span>
-                        {loan.dueAtMs > 0 && loan.dueAtMs < Date.now() && loan.returnedAtMs === 0 ? (
-                          <span className="pill staff-pill-margin-left">overdue</span>
-                        ) : null}
-                      </td>
-                      <td>{loan.borrowerName}</td>
-                      <td>{when(loan.createdAtMs)}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-      <div className="staff-module-grid">
-        <div className="staff-column">
-          <div className="staff-subtitle">Selected request</div>
-          <div className="staff-note">
-            {selectedRequest ? (
-              <>
-                <strong>{selectedRequest.title}</strong><br />
-                <span>{selectedRequest.status}</span><br />
-                <span>{selectedRequest.requesterName} · {selectedRequest.requesterEmail}</span><br />
-                <code>{selectedRequest.requesterUid || selectedRequest.id}</code><br />
-                <span>Created: {when(selectedRequest.createdAtMs)}</span>
-              </>
-            ) : (
-              "Select a request to inspect details."
-            )}
-          </div>
-          {selectedRequest ? (
-            <div className="staff-actions-row">
-              <button type="button" className="btn btn-ghost btn-small" onClick={() => void copy(selectedRequest.requesterEmail || "")}>
-                Copy email
-              </button>
-              <button type="button" className="btn btn-ghost btn-small" onClick={() => void copy(selectedRequest.requesterUid || selectedRequest.id)}>
-                Copy UID
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-small"
-                onClick={() =>
-                  void copy(
-                    `Hi ${selectedRequest.requesterName || "there"} — your lending request for "${selectedRequest.title}" is in review. We'll update you with pickup timing soon.`
-                  )
-                }
-              >
-                Copy reply template
-              </button>
-            </div>
-          ) : null}
-          {selectedRequest ? (
-            <details className="staff-troubleshooting">
-              <summary>Raw request document</summary>
-              <pre>{safeJsonStringify(selectedRequest.rawDoc)}</pre>
-            </details>
-          ) : null}
-        </div>
-        <div className="staff-column">
-          <div className="staff-subtitle">Selected loan</div>
-          <div className="staff-note">
-            {selectedLoan ? (
-              <>
-                <strong>{selectedLoan.title}</strong><br />
-                <span>{selectedLoan.status}</span><br />
-                <span>{selectedLoan.borrowerName} · {selectedLoan.borrowerEmail}</span><br />
-                <code>{selectedLoan.borrowerUid || selectedLoan.id}</code><br />
-                <span>Created: {when(selectedLoan.createdAtMs)}</span><br />
-                <span>Due: {when(selectedLoan.dueAtMs)} · Returned: {when(selectedLoan.returnedAtMs)}</span>
-              </>
-            ) : (
-              "Select a loan to inspect details."
-            )}
-          </div>
-          {selectedLoan ? (
-            <div className="staff-actions-row">
-              <button type="button" className="btn btn-ghost btn-small" onClick={() => void copy(selectedLoan.borrowerEmail || "")}>
-                Copy borrower email
-              </button>
-              <button type="button" className="btn btn-ghost btn-small" onClick={() => void copy(selectedLoan.borrowerUid || selectedLoan.id)}>
-                Copy borrower UID
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-small"
-                onClick={() =>
-                  void copy(
-                    `Hi ${selectedLoan.borrowerName || "there"} — reminder that "${selectedLoan.title}" is due ${when(selectedLoan.dueAtMs)}. Reply if you need an extension.`
-                  )
-                }
-              >
-                Copy due reminder
-              </button>
-            </div>
-          ) : null}
-          {selectedLoan ? (
-            <>
-              <div className="staff-subtitle">Loan recovery</div>
-              <div className="staff-actions-row">
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-small"
-                  disabled={
-                    Boolean(busy) ||
-                    loanRecoveryBusy ||
-                    selectedLoan.status.trim().toLowerCase() === "lost" ||
-                    selectedLoan.status.trim().toLowerCase() === "returned"
-                  }
-                  onClick={() => void handleLoanMarkLost(selectedLoan)}
-                >
-                  {loanRecoveryBusy ? "Saving..." : "Mark lost"}
-                </button>
-                <input
-                  className="staff-member-search"
-                  placeholder="Replacement fee cents (optional)"
-                  value={loanReplacementFeeAmountInput}
-                  onChange={(event) => setLoanReplacementFeeAmountInput(event.target.value)}
-                  disabled={Boolean(busy) || loanRecoveryBusy}
-                />
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-small"
-                  disabled={Boolean(busy) || loanRecoveryBusy || selectedLoan.status.trim().toLowerCase() !== "lost"}
-                  onClick={() => void handleLoanAssessReplacementFee(selectedLoan)}
-                >
-                  {loanRecoveryBusy ? "Saving..." : "Assess replacement fee"}
-                </button>
-              </div>
-              <div className="staff-actions-row">
-                <select
-                  className="staff-member-role-filter"
-                  value={loanOverrideStatusDraft}
-                  onChange={(event) =>
-                    setLoanOverrideStatusDraft(
-                      normalizeLibraryItemOverrideStatus(event.target.value)
-                    )
-                  }
-                  disabled={Boolean(busy) || loanRecoveryBusy}
-                >
-                  <option value="available">available</option>
-                  <option value="checked_out">checked_out</option>
-                  <option value="overdue">overdue</option>
-                  <option value="lost">lost</option>
-                  <option value="unavailable">unavailable</option>
-                  <option value="archived">archived</option>
-                </select>
-                <input
-                  className="staff-member-search"
-                  placeholder="Override note (optional)"
-                  value={loanOverrideNoteDraft}
-                  onChange={(event) => setLoanOverrideNoteDraft(event.target.value)}
-                  disabled={Boolean(busy) || loanRecoveryBusy}
-                />
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-small"
-                  disabled={Boolean(busy) || loanRecoveryBusy}
-                  onClick={() => void handleLoanItemStatusOverride(selectedLoan)}
-                >
-                  {loanRecoveryBusy ? "Saving..." : "Override item status"}
-                </button>
-              </div>
-              {loanRecoveryStatus ? <div className="staff-note">{loanRecoveryStatus}</div> : null}
-            </>
-          ) : null}
-          {selectedLoan ? (
-            <details className="staff-troubleshooting">
-              <summary>Raw loan document</summary>
-              <pre>{safeJsonStringify(selectedLoan.rawDoc)}</pre>
-            </details>
-          ) : null}
-        </div>
-      </div>
-      <div className="staff-subtitle">Recommendation moderation</div>
-      {recommendationModerationStatus ? <div className="staff-note">{recommendationModerationStatus}</div> : null}
-      <div className="staff-table-wrap">
-        <table className="staff-table">
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Recommender</th>
-              <th>Status</th>
-              <th>Created</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredRecommendations.length === 0 ? (
-              <tr><td colSpan={5}>No recommendations match current filters.</td></tr>
-            ) : (
-              filteredRecommendations.map((row) => {
-                const rowBusy = Boolean(recommendationModerationBusyById[row.id]);
-                const statusLower = row.moderationStatus.toLowerCase();
-                return (
-                  <tr key={row.id}>
-                    <td>
-                      <div>{row.title}</div>
-                      {row.author ? <div className="staff-mini">by {row.author}</div> : null}
-                      {row.isbn ? <div className="staff-mini">ISBN {row.isbn}</div> : null}
-                      {row.rationale ? <div className="staff-mini">{row.rationale}</div> : null}
-                      <div className="staff-mini"><code>{row.id}</code></div>
-                    </td>
-                    <td>
-                      <div>{row.recommenderName || "Unknown"}</div>
-                      <div className="staff-mini"><code>{row.recommenderUid || "-"}</code></div>
-                    </td>
-                    <td><span className="pill">{row.moderationStatus || "pending_review"}</span></td>
-                    <td>{when(row.createdAtMs)}</td>
-                    <td>
-                      <div className="staff-actions-row">
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-small"
-                          disabled={Boolean(busy) || rowBusy || statusLower === "approved"}
-                          onClick={() => void handleRecommendationModeration(row, "approve")}
-                        >
-                          {rowBusy ? "Saving..." : "Approve"}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-small"
-                          disabled={Boolean(busy) || rowBusy || statusLower === "hidden"}
-                          onClick={() => void handleRecommendationModeration(row, "hide")}
-                        >
-                          {rowBusy ? "Saving..." : "Hide"}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-small"
-                          disabled={Boolean(busy) || rowBusy || statusLower !== "hidden"}
-                          onClick={() => void handleRecommendationModeration(row, "restore")}
-                        >
-                          {rowBusy ? "Saving..." : "Restore"}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-      <div className="staff-subtitle">Tag moderation queue</div>
-      {tagModerationStatus ? <div className="staff-note">{tagModerationStatus}</div> : null}
-      <div className="staff-table-wrap">
-        <table className="staff-table">
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th>Suggested tag</th>
-              <th>Member</th>
-              <th>Created</th>
-              <th>Approve</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredTagSubmissions.length === 0 ? (
-              <tr><td colSpan={5}>No pending tag submissions match current filters.</td></tr>
-            ) : (
-              filteredTagSubmissions.map((row) => {
-                const rowBusy = Boolean(tagModerationBusyById[row.id]);
-                const draftName = tagSubmissionApprovalDraftById[row.id] ?? row.tag;
-                const canApprove = Boolean(normalizeLibraryTagLabel(draftName));
-                return (
-                  <tr key={row.id}>
-                    <td>
-                      <div>{row.itemTitle || "Library item"}</div>
-                      <div className="staff-mini"><code>{row.itemId || row.id}</code></div>
-                    </td>
-                    <td>
-                      <div>{row.tag || "(empty)"}</div>
-                      <div className="staff-mini"><code>{row.normalizedTag || "-"}</code></div>
-                    </td>
-                    <td>
-                      <div>{row.submittedByName || "Member"}</div>
-                      <div className="staff-mini"><code>{row.submittedByUid || "-"}</code></div>
-                    </td>
-                    <td>{when(row.createdAtMs)}</td>
-                    <td>
-                      <div className="staff-actions-row">
-                        <input
-                          type="text"
-                          className="staff-member-search"
-                          value={draftName}
-                          placeholder="Canonical tag name"
-                          maxLength={80}
-                          onChange={(event) =>
-                            setTagSubmissionApprovalDraftById((prev) => ({
-                              ...prev,
-                              [row.id]: event.target.value,
-                            }))
-                          }
-                          disabled={Boolean(busy) || rowBusy}
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-small"
-                          disabled={Boolean(busy) || rowBusy || !canApprove}
-                          onClick={() => void handleTagSubmissionApprove(row)}
-                        >
-                          {rowBusy ? "Saving..." : "Approve"}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-      <div className="staff-subtitle">Tag merge</div>
-      <div className="staff-note">
-        Merge duplicate tags by canonical tag ID. Source is marked merged and item-tag links are migrated.
-      </div>
-      <div className="staff-actions-row">
-        <input
-          className="staff-member-search"
-          placeholder="Source tag ID (tag_...)"
-          value={tagMergeSourceId}
-          onChange={(event) => setTagMergeSourceId(event.target.value)}
-          disabled={Boolean(busy) || tagMergeBusy}
-        />
-        <input
-          className="staff-member-search"
-          placeholder="Target tag ID (tag_...)"
-          value={tagMergeTargetId}
-          onChange={(event) => setTagMergeTargetId(event.target.value)}
-          disabled={Boolean(busy) || tagMergeBusy}
-        />
-        <input
-          className="staff-member-search"
-          placeholder="Merge note (optional)"
-          value={tagMergeNote}
-          onChange={(event) => setTagMergeNote(event.target.value)}
-          disabled={Boolean(busy) || tagMergeBusy}
-        />
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={() => void handleTagMerge()}
-          disabled={Boolean(busy) || tagMergeBusy}
-        >
-          {tagMergeBusy ? "Merging..." : "Merge tags"}
-        </button>
-      </div>
-      <div className="staff-subtitle">Cover review queue</div>
-      <div className="staff-note">
-        Review and approve imported covers here. This queue is the manual approval workflow for cover guardrails.
-      </div>
-      {coverReviewStatus ? <div className="staff-note">{coverReviewStatus}</div> : null}
-      <div className="staff-table-wrap">
-        <table className="staff-table">
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Status</th>
-              <th>Reason</th>
-              <th>Updated</th>
-              <th>Resolve</th>
-            </tr>
-          </thead>
-          <tbody>
-            {libraryCoverReviews.length === 0 ? (
-              <tr><td colSpan={5}>No items currently flagged for cover review.</td></tr>
-            ) : (
-              libraryCoverReviews.map((row) => {
-                const rowBusy = Boolean(coverReviewBusyById[row.id]);
-                const currentCoverValid = isValidHttpUrl((row.coverUrl ?? "").trim());
-                const rowError = coverReviewErrorById[row.id] ?? "";
-                return (
-                  <tr key={row.id}>
-                    <td>
-                      <div>{row.title}</div>
-                      <div className="staff-mini"><code>{row.id}</code></div>
-                      {row.coverUrl ? (
-                        <a className="staff-mini" href={row.coverUrl} target="_blank" rel="noreferrer">
-                          Open current cover
-                        </a>
-                      ) : null}
-                      {!currentCoverValid ? <div className="staff-mini">Current cover URL is missing or invalid.</div> : null}
-                    </td>
-                    <td><span className="pill">{row.coverQualityStatus || "needs_review"}</span></td>
-                    <td>{row.coverQualityReason || "manual_review_required"}</td>
-                    <td>{when(row.updatedAtMs)}</td>
-                    <td>
-                      <div className="staff-actions-row">
-                        <input
-                          type="url"
-                          className="staff-member-search"
-                          placeholder="https://cover-image-url"
-                          value={coverReviewDraftById[row.id] ?? ""}
-                          onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setCoverReviewDraftById((prev) => ({ ...prev, [row.id]: nextValue }));
-                            setCoverReviewErrorById((prev) => {
-                              const next = { ...prev };
-                              delete next[row.id];
-                              return next;
-                            });
-                          }}
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-small"
-                          onClick={() => void handleCoverReviewResolve(row, "approve_existing")}
-                          disabled={Boolean(busy) || rowBusy || !currentCoverValid}
-                        >
-                          {rowBusy ? "Saving..." : "Approve current"}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-small"
-                          onClick={() => void handleCoverReviewResolve(row, "set_replacement")}
-                          disabled={Boolean(busy) || rowBusy}
-                        >
-                          {rowBusy ? "Saving..." : "Use replacement URL"}
-                        </button>
-                      </div>
-                      {rowError ? <div className="staff-note staff-note-error">{rowError}</div> : null}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
+  const eventsContent = (
+    <EventsModule
+      run={run}
+      busy={busy}
+      hasFunctionsAuthMismatch={hasFunctionsAuthMismatch}
+      fBaseUrl={fBaseUrl}
+      loadEvents={loadEvents}
+      setStatus={setStatus}
+      handleExportWorkshopProgrammingBrief={handleExportWorkshopProgrammingBrief}
+      workshopProgrammingKpis={workshopProgrammingKpis}
+      workshopProgrammingClusters={workshopProgrammingClusters}
+      eventKpis={eventKpis}
+      filteredEvents={filteredEvents}
+      filteredSignups={filteredSignups}
+      selectedEventId={selectedEventId}
+      selectedSignupId={selectedSignupId}
+      selectedEvent={selectedEvent}
+      selectedSignup={selectedSignup}
+      setSelectedEventId={setSelectedEventId}
+      setSelectedSignupId={setSelectedSignupId}
+      eventSearch={eventSearch}
+      setEventSearch={setEventSearch}
+      eventStatusFilter={eventStatusFilter}
+      setEventStatusFilter={setEventStatusFilter}
+      eventStatusOptions={eventStatusOptions}
+      signupSearch={signupSearch}
+      setSignupSearch={setSignupSearch}
+      signupStatusFilter={signupStatusFilter}
+      setSignupStatusFilter={setSignupStatusFilter}
+      signupStatusOptions={signupStatusOptions}
+      eventCreateDraft={eventCreateDraft}
+      setEventCreateDraft={setEventCreateDraft}
+      publishOverrideReason={publishOverrideReason}
+      setPublishOverrideReason={setPublishOverrideReason}
+      eventStatusReason={eventStatusReason}
+      setEventStatusReason={setEventStatusReason}
+      createQuickEvent={createQuickEvent}
+      publishSelectedEvent={publishSelectedEvent}
+      setSelectedEventStatus={setSelectedEventStatus}
+      checkInSignupFallback={checkInSignupFallback}
+      onCheckinSignup={checkInSignup}
+      loadSignups={loadSignups}
+    />
   );
-
+  const lendingContent = (
+    <LendingModule
+      run={run}
+      busy={busy}
+      hasFunctionsAuthMismatch={hasFunctionsAuthMismatch}
+      fBaseUrl={fBaseUrl}
+      copy={copy}
+      safeJsonStringify={safeJsonStringify}
+      libraryPhaseMetricsWindowMinutes={LIBRARY_PHASE_METRICS_WINDOW_MINUTES}
+      loadLending={loadLending}
+      isbnInput={isbnInput}
+      setIsbnInput={setIsbnInput}
+      isbnImportBusy={isbnImportBusy}
+      isbnImportStatus={isbnImportStatus}
+      isbnImportError={isbnImportError}
+      handleLendingIsbnFile={(file) => {
+        void handleLendingIsbnFile(file);
+      }}
+      handleLendingIsbnImport={handleLendingIsbnImport}
+      isbnScanInput={isbnScanInput}
+      setIsbnScanInput={setIsbnScanInput}
+      isbnScanBusy={isbnScanBusy}
+      isbnScanStatus={isbnScanStatus}
+      handleLendingIsbnScanSubmit={handleLendingIsbnScanSubmit}
+      externalLookupPolicyOpenLibraryEnabled={externalLookupPolicyOpenLibraryEnabled}
+      setExternalLookupPolicyOpenLibraryEnabled={setExternalLookupPolicyOpenLibraryEnabled}
+      externalLookupPolicyGoogleBooksEnabled={externalLookupPolicyGoogleBooksEnabled}
+      setExternalLookupPolicyGoogleBooksEnabled={setExternalLookupPolicyGoogleBooksEnabled}
+      externalLookupPolicyCoverReviewGuardrailEnabled={externalLookupPolicyCoverReviewGuardrailEnabled}
+      setExternalLookupPolicyCoverReviewGuardrailEnabled={setExternalLookupPolicyCoverReviewGuardrailEnabled}
+      externalLookupPolicyBusy={externalLookupPolicyBusy}
+      externalLookupPolicyNote={externalLookupPolicyNote}
+      setExternalLookupPolicyNote={setExternalLookupPolicyNote}
+      externalLookupPolicyStatus={externalLookupPolicyStatus}
+      externalLookupPolicyUpdatedAtMs={externalLookupPolicyUpdatedAtMs}
+      externalLookupPolicyUpdatedByUid={externalLookupPolicyUpdatedByUid}
+      externalLookupProbeQuery={externalLookupProbeQuery}
+      setExternalLookupProbeQuery={setExternalLookupProbeQuery}
+      externalLookupProbeBusy={externalLookupProbeBusy}
+      externalLookupProbeStatus={externalLookupProbeStatus}
+      externalLookupProbeProviders={externalLookupProbeProviders}
+      runExternalLookupProviderProbe={runExternalLookupProviderProbe}
+      saveExternalLookupProviderPolicy={saveExternalLookupProviderPolicy}
+      libraryRolloutPhase={libraryRolloutPhase}
+      setLibraryRolloutPhase={setLibraryRolloutPhase}
+      libraryRolloutMemberWritesEnabled={libraryRolloutMemberWritesEnabled}
+      libraryRolloutPhaseBusy={libraryRolloutPhaseBusy}
+      libraryRolloutNote={libraryRolloutNote}
+      setLibraryRolloutNote={setLibraryRolloutNote}
+      saveLibraryRolloutPhasePolicy={saveLibraryRolloutPhasePolicy}
+      libraryRolloutPhaseStatus={libraryRolloutPhaseStatus}
+      libraryRolloutUpdatedAtMs={libraryRolloutUpdatedAtMs}
+      libraryRolloutUpdatedByUid={libraryRolloutUpdatedByUid}
+      refreshLibraryPhaseMetricsSnapshot={refreshLibraryPhaseMetricsSnapshot}
+      libraryPhaseMetricsArtifact={libraryPhaseMetricsArtifact}
+      libraryPhaseMetricsStatus={libraryPhaseMetricsStatus}
+      libraryPhaseMetricsSnapshot={libraryPhaseMetricsSnapshot}
+      lendingAdminItemSearch={lendingAdminItemSearch}
+      setLendingAdminItemSearch={setLendingAdminItemSearch}
+      lendingAdminItemBusy={lendingAdminItemBusy}
+      filteredLendingAdminItems={filteredLendingAdminItems}
+      selectedAdminItemId={selectedAdminItemId}
+      handleStartLendingAdminItemCreate={handleStartLendingAdminItemCreate}
+      handleSelectLendingAdminItem={handleSelectLendingAdminItem}
+      selectedAdminItem={selectedAdminItem}
+      lendingAdminItemDeleteConfirmInput={lendingAdminItemDeleteConfirmInput}
+      setLendingAdminItemDeleteConfirmInput={setLendingAdminItemDeleteConfirmInput}
+      lendingAdminDeleteConfirmationPhrase={lendingAdminDeleteConfirmationPhrase}
+      setLendingAdminItemDraft={setLendingAdminItemDraft}
+      lendingAdminItemDraft={lendingAdminItemDraft}
+      handleLendingAdminResolveIsbn={handleLendingAdminResolveIsbn}
+      lendingAdminIsbnResolveBusy={lendingAdminIsbnResolveBusy}
+      lendingAdminIsbnResolveStatus={lendingAdminIsbnResolveStatus}
+      lendingAdminIsbnResolveNote={lendingAdminIsbnResolveStatus}
+      lendingAdminItemError={lendingAdminItemError}
+      lendingAdminItemStatus={lendingAdminItemStatus}
+      handleLendingAdminSave={handleLendingAdminSave}
+      handleLendingAdminDelete={handleLendingAdminDelete}
+      libraryAdminItems={libraryAdminItems}
+      libraryRequests={libraryRequests}
+      libraryLoans={libraryLoans}
+      lendingTriage={lendingTriage}
+      recommendationModerationKpis={recommendationModerationKpis}
+      tagModerationKpis={tagModerationKpis}
+      lendingSearch={lendingSearch}
+      setLendingSearch={setLendingSearch}
+      lendingStatusFilter={lendingStatusFilter}
+      setLendingStatusFilter={setLendingStatusFilter}
+      lendingStatusOptions={lendingStatusOptions}
+      lendingFocusFilter={lendingFocusFilter}
+      setLendingFocusFilter={setLendingFocusFilter}
+      lendingRecommendationFilter={lendingRecommendationFilter}
+      setLendingRecommendationFilter={setLendingRecommendationFilter}
+      lendingRecommendationStatusOptions={lendingRecommendationStatusOptions}
+      selectedRequestId={selectedRequestId}
+      setSelectedRequestId={setSelectedRequestId}
+      selectedLoanId={selectedLoanId}
+      setSelectedLoanId={setSelectedLoanId}
+      overdueLoanIdsById={Object.fromEntries(lendingTriage.overdueLoans.map((loan) => [loan.id, true]))}
+      selectedRequest={selectedRequest}
+      selectedLoan={selectedLoan}
+      filteredRequests={filteredRequests}
+      filteredLoans={filteredLoans}
+      filteredRecommendations={filteredRecommendations}
+      recommendationModerationBusyById={recommendationModerationBusyById}
+      recommendationModerationStatus={recommendationModerationStatus}
+      handleRecommendationModeration={handleRecommendationModeration}
+      filteredTagSubmissions={filteredTagSubmissions}
+      tagSubmissionApprovalDraftById={tagSubmissionApprovalDraftById}
+      setTagSubmissionApprovalDraftById={setTagSubmissionApprovalDraftById}
+      tagModerationBusyById={tagModerationBusyById}
+      tagModerationStatus={tagModerationStatus}
+      handleTagSubmissionApprove={handleTagSubmissionApprove}
+      tagMergeSourceId={tagMergeSourceId}
+      setTagMergeSourceId={setTagMergeSourceId}
+      tagMergeTargetId={tagMergeTargetId}
+      setTagMergeTargetId={setTagMergeTargetId}
+      tagMergeNote={tagMergeNote}
+      setTagMergeNote={setTagMergeNote}
+      tagMergeBusy={tagMergeBusy}
+      handleTagMerge={handleTagMerge}
+      coverReviewStatus={coverReviewStatus}
+      coverReviewBusyById={coverReviewBusyById}
+      coverReviewDraftById={coverReviewDraftById}
+      setCoverReviewDraftById={setCoverReviewDraftById}
+      coverReviewErrorById={coverReviewErrorById}
+      setCoverReviewErrorById={setCoverReviewErrorById}
+      libraryCoverReviews={libraryCoverReviews}
+      handleCoverReviewResolve={handleCoverReviewResolve}
+      loanRecoveryBusy={loanRecoveryBusy}
+      loanRecoveryStatus={loanRecoveryStatus}
+      loanReplacementFeeAmountInput={loanReplacementFeeAmountInput}
+      setLoanReplacementFeeAmountInput={setLoanReplacementFeeAmountInput}
+      loanOverrideStatusDraft={loanOverrideStatusDraft}
+      setLoanOverrideStatusDraft={setLoanOverrideStatusDraft}
+      loanOverrideNoteDraft={loanOverrideNoteDraft}
+      setLoanOverrideNoteDraft={setLoanOverrideNoteDraft}
+      handleLoanMarkLost={handleLoanMarkLost}
+      handleLoanAssessReplacementFee={handleLoanAssessReplacementFee}
+      handleLoanItemStatusOverride={handleLoanItemStatusOverride}
+    />
+  );
   const runSystemPing = async () => {
     const atMs = Date.now();
     try {
@@ -9089,532 +7453,140 @@ const lendingContent = (
     }
   };
 
-  const systemContent = (
-    <section className="card staff-console-card">
-      <div className="card-title">System</div>
-      <div className="staff-kpi-grid">
-        <div className="staff-kpi"><span>Functions base</span><strong>{usingLocalFunctions ? "Local" : "Remote"}</strong></div>
-        <div className="staff-kpi"><span>Auth mode</span><strong>{showEmulatorTools ? "Emulator" : "Production"}</strong></div>
-        <div className="staff-kpi"><span>Integration tokens</span><strong>{integrationTokenCount ?? 0}</strong></div>
-        <div className="staff-kpi"><span>System checks</span><strong>{systemChecks.length}</strong></div>
-        <div className="staff-kpi"><span>Notif success</span><strong>{notificationMetricsSummary ? `${num(notificationMetricsSummary.successRate, 0)}%` : "-"}</strong></div>
-        <div className="staff-kpi"><span>Notif failed</span><strong>{notificationMetricsSummary ? num(notificationMetricsSummary.totalFailed, 0) : "-"}</strong></div>
-      </div>
-      <div className="staff-actions-row">
-        <button
-          className="btn btn-secondary"
-          disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-          onClick={() => void run("systemPing", runSystemPing)}
-        >
-          Ping functions
-        </button>
-        <button
-          className="btn btn-secondary"
-          disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-          onClick={() => void run("calendarProbe", runCalendarProbe)}
-        >
-          Probe calendar
-        </button>
-        <button
-          className="btn btn-secondary"
-          disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-          onClick={() => void run("notificationMetricsProbe", runNotificationMetricsProbe)}
-        >
-          Refresh notif metrics
-        </button>
-        <button
-          className="btn btn-secondary"
-          disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-          onClick={() => void run("notificationDrill", runNotificationFailureDrillNow)}
-        >
-          Run push failure drill
-        </button>
-        <button
-          className="btn btn-secondary"
-          disabled={Boolean(busy) || hasFunctionsAuthMismatch}
-          onClick={() => void run("refreshSystemStats", loadSystemStats)}
-        >
-          Refresh token stats
-        </button>
-        <button className="btn btn-secondary" disabled>
-          Studio Brain checks retired
-        </button>
-      </div>
-      {hasFunctionsAuthMismatch ? (
+  const checkinsContent = (
+    <section className="staff-module-grid">
+      <div className="staff-column">
+        <div className="card-title-row">
+          <div className="card-title">Check-ins queue</div>
+        </div>
         <div className="staff-note">
-          Local functions detected at <code>{fBaseUrl}</code> while auth emulator is disabled.
-          Function-backed modules are paused to avoid false 401 errors.
+          Queue and lifecycle operations moved out of Ware Check-in so intake stays fast for both clients and staff.
         </div>
-      ) : null}
-      {devAdminEnabled ? (
-        <label className="staff-field">Dev admin token<input type="password" value={devAdminToken} onChange={(e) => onDevAdminTokenChange(e.target.value)} /></label>
-      ) : (
-        <div className="staff-note">Dev admin token disabled outside emulator mode.</div>
-      )}
-      {showEmulatorTools ? <button type="button" className="btn btn-secondary" onClick={() => window.open("http://127.0.0.1:4000/", "_blank")}>Open Emulator UI</button> : null}
-      <div className="card-title-row">
-        <div className="staff-subtitle">Handler errors</div>
-        <div className="staff-log-actions">
-          <button type="button" className="btn btn-ghost" onClick={() => setHandlerLog(getHandlerErrorLog())}>Refresh</button>
-          <button type="button" className="btn btn-ghost" onClick={() => { clearHandlerErrorLog(); setHandlerLog([]); }}>Clear</button>
-        </div>
+        <ReservationsView
+          user={user}
+          isStaff={hasStaffAuthority}
+          adminToken={devAdminToken}
+          viewMode="listOnly"
+        />
       </div>
-      <div className="staff-log-list">
-        {latestErrors.length === 0 ? <div className="staff-note">No handler errors logged.</div> : latestErrors.map((entry, idx) => <div key={`${entry.atIso}-${idx}`} className="staff-log-entry"><div className="staff-log-meta"><span className="staff-log-label">{entry.label}</span><span>{new Date(entry.atIso).toLocaleString()}</span></div><div className="staff-log-message">{entry.message}</div></div>)}
-      </div>
-      <div className="card-title-row">
-        <div className="staff-subtitle">System checks</div>
-      </div>
-      <div className="staff-table-wrap">
-        <table className="staff-table">
-          <thead><tr><th>Check</th><th>Status</th><th>Ran at</th><th>Details</th></tr></thead>
-          <tbody>
-            {systemChecks.length === 0 ? (
-              <tr><td colSpan={4}>No checks run yet.</td></tr>
-            ) : (
-              systemChecks.map((entry) => (
-                <tr key={`${entry.key}-${entry.atMs}`}>
-                  <td>{entry.label}</td>
-                  <td><span className="pill">{entry.ok ? "ok" : "failed"}</span></td>
-                  <td>{when(entry.atMs)}</td>
-                  <td>{entry.details}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-      <details className="staff-troubleshooting">
-        <summary>Troubleshooting drawer</summary>
-        <div className="staff-module-grid">
-          <div className="staff-column">
-            <div className="staff-subtitle">Last Firestore write</div>
-            <pre>{safeJsonStringify(lastWrite)}</pre>
-            <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastWrite))}>Copy write JSON</button>
-          </div>
-          <div className="staff-column">
-            <div className="staff-subtitle">Last query params</div>
-            <pre>{safeJsonStringify(lastQuery)}</pre>
-            <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(lastQuery))}>Copy query JSON</button>
-          </div>
-          <div className="staff-column">
-            <div className="staff-subtitle">Last GitHub/Functions call</div>
-            <pre>{safeJsonStringify(sanitizeLastRequest(lastReq))}</pre>
-            <button className="btn btn-ghost" onClick={() => void copy(safeJsonStringify(sanitizeLastRequest(lastReq)))}>Copy call JSON</button>
-            <div className="staff-mini">curl hint</div>
-            <pre>{lastReq?.curlExample ?? "(none)"}</pre>
-            <button className="btn btn-ghost" onClick={() => void copy(lastReq?.curlExample ?? "")} disabled={!lastReq?.curlExample}>Copy curl hint</button>
-          </div>
-          <div className="staff-column">
-            <div className="staff-subtitle">Last error stack/message</div>
-            <pre>{safeJsonStringify(lastErr)}</pre>
-          </div>
-        </div>
-        {copyStatus ? (
-          <div className="staff-note" role="status" aria-live="polite">
-            {copyStatus}
-          </div>
-        ) : null}
-      </details>
     </section>
+  );
+  const operationsContent = (
+    <OperationsCockpitModule
+      checkinsContent={checkinsContent}
+      membersContent={membersContent}
+      piecesContent={piecesContent}
+      firingsContent={firingsContent}
+      eventsContent={eventsContent}
+      lendingContent={lendingContent}
+    />
+  );
+
+  const cockpitOpsContent = (
+    <CockpitOpsPanel
+      busy={busy}
+      cockpitTab={cockpitTab}
+      setCockpitTab={setCockpitTab}
+      overviewAlerts={overviewAlerts}
+      cockpitKpis={cockpitKpis}
+      automationKpis={automationKpis}
+      automationDashboard={automationDashboard}
+      hasFunctionsAuthMismatch={hasFunctionsAuthMismatch}
+      onRefreshCockpit={() => setStatus("Refreshed cockpit telemetry")}
+      run={run}
+      openModuleFromCockpit={openModuleFromCockpit}
+      loadReportOps={loadReportOps}
+      loadSystemStats={loadSystemStats}
+      loadAutomationHealthDashboard={loadAutomationHealthDashboard}
+      usingLocalFunctions={usingLocalFunctions}
+      showEmulatorTools={showEmulatorTools}
+      integrationTokenCount={integrationTokenCount}
+      notificationMetricsSummary={notificationMetricsSummary}
+      runSystemPing={runSystemPing}
+      runCalendarProbe={runCalendarProbe}
+      runNotificationMetricsProbe={runNotificationMetricsProbe}
+      runNotificationFailureDrillNow={runNotificationFailureDrillNow}
+      fBaseUrl={fBaseUrl}
+      devAdminEnabled={devAdminEnabled}
+      devAdminToken={devAdminToken}
+      onDevAdminTokenChange={onDevAdminTokenChange}
+      onOpenEmulatorUi={() => window.open("http://127.0.0.1:4000/", "_blank")}
+      onRefreshHandlerLog={() => setHandlerLog(getHandlerErrorLog())}
+      onClearHandlerLog={() => {
+        clearHandlerErrorLog();
+        setHandlerLog([]);
+      }}
+      latestErrors={latestErrors}
+      systemChecks={systemChecks}
+      lastWrite={lastWrite}
+      lastQuery={lastQuery}
+      lastReq={lastReq}
+      lastErr={lastErr}
+      copy={copy}
+      copyStatus={copyStatus}
+      resetModuleTelemetry={resetModuleTelemetry}
+      moduleUsageRows={moduleUsageRows}
+      lowEngagementModules={lowEngagementModules}
+      operationsContent={operationsContent}
+      moduleTelemetrySnapshot={moduleTelemetrySnapshot}
+      commerceContent={commerceContent}
+      stripeContent={stripeContent}
+      agentOpsContent={agentOpsContent}
+      governanceContent={governanceContent}
+      reportsContent={reportsContent}
+      githubRepoSlug={GITHUB_REPO_SLUG}
+    />
   );
 
   const cockpitContent = (
-    <section className="staff-today-console">
-      <section className="card staff-console-card">
-        <div className="card-title">Quick actions</div>
-        <p className="card-subtitle">Large iPad-friendly shortcuts for the most common daily staff actions.</p>
-        <div className="staff-quick-actions">
-          <button className="btn btn-primary staff-quick-action-btn" onClick={openReservationsToday}>
-            View reservations (today)
-          </button>
-          <button className="btn btn-primary staff-quick-action-btn" onClick={openMessagesInbox}>
-            Open messages
-          </button>
-          <button className="btn btn-primary staff-quick-action-btn" onClick={startFiringFlow}>
-            Start firing
-          </button>
-          <button className="btn btn-primary staff-quick-action-btn" onClick={() => openModuleFromCockpit("commerce")}>
-            Payment lookup and alerts
-          </button>
-          <button className="btn btn-primary staff-quick-action-btn" onClick={() => openModuleFromCockpit("events")}>
-            Open content tools
-          </button>
-        </div>
-      </section>
-
-      <section className="staff-module-grid staff-today-overview-grid">
-        <section className="card staff-console-card staff-today-card">
-          <div className="card-title-row">
-            <div className="card-title">Reservations today</div>
-            <button
-              className="btn btn-secondary btn-small"
-              disabled={Boolean(busy) || todayReservationsLoading}
-              onClick={() => void run("refreshTodayReservations", loadTodayReservations)}
-            >
-              {todayReservationsLoading ? "Refreshing..." : "Refresh"}
-            </button>
-          </div>
-          <p className="card-subtitle">
-            Fast scan for who is due today, when they are expected, and what needs prep.
-          </p>
-          {todayReservationsLoading ? (
-            <div className="staff-skeleton-list" aria-hidden="true">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <div key={`today-reservation-skeleton-${index}`} className="staff-skeleton-row" />
-              ))}
-            </div>
-          ) : todayReservationsError ? (
-            <>
-              <div className="staff-note staff-note-error">
-                Reservations are temporarily unavailable: {todayReservationsError}
-              </div>
-              <div className="staff-actions-row">
-                <button className="btn btn-secondary btn-small" onClick={() => void run("retryTodayReservations", loadTodayReservations)}>
-                  Retry
-                </button>
-                <button className="btn btn-ghost btn-small" onClick={openReservationsToday}>
-                  Open reservations
-                </button>
-              </div>
-            </>
-          ) : todayReservations.length === 0 ? (
-            <>
-              <div className="staff-note">No reservations due today.</div>
-              <div className="staff-actions-row">
-                <button className="btn btn-secondary btn-small" onClick={openReservationsToday}>
-                  Open full calendar
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <ul className="staff-today-list" aria-label="Reservations today">
-                {todayReservations.map((reservation) => (
-                  <li key={reservation.id}>
-                    <button
-                      type="button"
-                      className="staff-today-row"
-                      onClick={() => openReservationDetail(reservation.id)}
-                    >
-                      <div className="staff-today-row-top">
-                        <strong>{reservation.displayName}</strong>
-                        <span>{toShortTimeLabel(reservation.timeMs)}</span>
-                      </div>
-                      <div className="staff-today-row-meta">
-                        <span>{reservation.itemCount} item{reservation.itemCount === 1 ? "" : "s"}</span>
-                        <span className="pill">{reservation.status}</span>
-                        <span>{reservation.visitType}</span>
-                      </div>
-                      {reservation.notes ? <div className="staff-today-row-note">{shortText(reservation.notes, 120)}</div> : null}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <div className="staff-actions-row">
-                <button className="btn btn-ghost btn-small" onClick={openReservationsToday}>
-                  View all reservations
-                </button>
-              </div>
-            </>
-          )}
-        </section>
-
-        <section className="card staff-console-card staff-today-card">
-          <div className="card-title-row">
-            <div className="card-title">Messages</div>
-            <button className="btn btn-secondary btn-small" onClick={openMessagesInbox}>
-              Open inbox
-            </button>
-          </div>
-          <p className="card-subtitle">
-            Unread conversations, support requests, and operational communication in one quick list.
-          </p>
-          <div className="staff-meta-inline">
-            <span className="pill">Unread {unreadMessageCount}</span>
-            <span className="pill">Announcements {unreadAnnouncements}</span>
-            <span className="pill">Posts {announcements.length}</span>
-          </div>
-          {messageThreadsLoading || announcementsLoading ? (
-            <div className="staff-skeleton-list" aria-hidden="true">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div key={`today-message-skeleton-${index}`} className="staff-skeleton-row" />
-              ))}
-            </div>
-          ) : messagesDegraded ? (
-            <>
-              <div className="staff-note staff-note-warn">
-                Degraded mode: message feeds may be delayed.
-                {messageThreadsError ? ` Threads: ${messageThreadsError}.` : ""}
-                {announcementsError ? ` Announcements: ${announcementsError}.` : ""}
-              </div>
-              <div className="staff-actions-row">
-                <button className="btn btn-secondary btn-small" onClick={openMessagesInbox}>
-                  View all messages
-                </button>
-              </div>
-            </>
-          ) : todayMessageRows.length === 0 ? (
-            <>
-              <div className="staff-note">No active conversations right now.</div>
-              <div className="staff-actions-row">
-                <button className="btn btn-secondary btn-small" onClick={openMessagesInbox}>
-                  Send message
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <ul className="staff-today-list" aria-label="Recent messages">
-                {todayMessageRows.map((thread) => {
-                  const unread = isDirectMessageUnread(thread, user.uid);
-                  const sender = firstNonBlankString(thread.lastSenderName, thread.lastSenderEmail, thread.subject, "Conversation");
-                  const snippet = firstNonBlankString(thread.lastMessagePreview, thread.subject, "Open thread");
-                  const atMs = readTimestampMs(thread.lastMessageAt);
-                  return (
-                    <li key={thread.id}>
-                      <button type="button" className="staff-today-row" onClick={() => openMessageThread(thread.id)}>
-                        <div className="staff-today-row-top">
-                          <strong>{sender}</strong>
-                          <span>{atMs ? when(atMs) : "-"}</span>
-                        </div>
-                        <div className="staff-today-row-meta">
-                          <span>{thread.kind || "direct"}</span>
-                          {unread ? <span className="staff-unread-dot">Unread</span> : <span>Read</span>}
-                        </div>
-                        <div className="staff-today-row-note">{shortText(snippet, 120)}</div>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-              <div className="staff-actions-row">
-                <button className="btn btn-ghost btn-small" onClick={openMessagesInbox}>
-                  View all messages
-                </button>
-                <button className="btn btn-ghost btn-small" onClick={openMessagesInbox}>
-                  Send message
-                </button>
-              </div>
-            </>
-          )}
-        </section>
-
-        <section className="card staff-console-card staff-today-card">
-          <div className="card-title-row">
-            <div className="card-title">Firings</div>
-            <button
-              className="btn btn-secondary btn-small"
-              disabled={Boolean(busy) || firingsLoading}
-              onClick={() => void run("refreshTodayFirings", loadFirings)}
-            >
-              {firingsLoading ? "Refreshing..." : "Refresh"}
-            </button>
-          </div>
-          <p className="card-subtitle">
-            Single active firing model with quick launch and iPad photo capture for kiln evidence.
-          </p>
-          {firingsLoading ? (
-            <div className="staff-skeleton-list" aria-hidden="true">
-              {Array.from({ length: 3 }).map((_, index) => (
-                <div key={`today-firing-skeleton-${index}`} className="staff-skeleton-row" />
-              ))}
-            </div>
-          ) : firingsError ? (
-            <>
-              <div className="staff-note staff-note-error">Firings are unavailable: {firingsError}</div>
-              <div className="staff-actions-row">
-                <button className="btn btn-secondary btn-small" onClick={() => void run("retryTodayFirings", loadFirings)}>
-                  Retry
-                </button>
-                <button className="btn btn-ghost btn-small" onClick={openFiringsWorkspace}>
-                  Open firings view
-                </button>
-              </div>
-            </>
-          ) : activeFiring ? (
-            <>
-              <div className="staff-note">
-                <strong>{activeFiring.kilnName || activeFiring.kilnId || "Kiln unknown"}</strong> · {activeFiring.status}
-                <div className="staff-mini">
-                  Started {activeFiring.startAtMs ? formatDateTime(activeFiring.startAtMs) : "time pending"} · last update{" "}
-                  {activeFiring.updatedAtMs ? when(activeFiring.updatedAtMs) : "-"}
-                </div>
-              </div>
-              <div className="staff-actions-row">
-                <button className="btn btn-secondary btn-small" onClick={openFiringsWorkspace}>
-                  Monitor firing
-                </button>
-                <button className="btn btn-ghost btn-small" onClick={startFiringFlow}>
-                  Start new firing
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="staff-note">No active firing. Start a new run from the queue workflow.</div>
-              <div className="staff-actions-row">
-                <button className="btn btn-primary btn-small" onClick={startFiringFlow}>
-                  Start New Firing
-                </button>
-              </div>
-            </>
-          )}
-          <label className="staff-field">
-            Capture kiln/status photo
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              disabled={firingPhotoBusy}
-              onChange={(event) => {
-                const file = event.target.files?.[0] ?? null;
-                void handleFiringPhotoFile(file);
-                event.currentTarget.value = "";
-              }}
-            />
-          </label>
-          <div className="staff-mini">
-            Photos now upload to portal storage. Existing Kilnfire storage remains intact during migration.
-          </div>
-          {firingPhotoStatus ? <div className="staff-note staff-note-ok">{firingPhotoStatus}</div> : null}
-          {firingPhotoError ? <div className="staff-note staff-note-error">{firingPhotoError}</div> : null}
-        </section>
-
-        <section className="card staff-console-card staff-today-card">
-          <div className="card-title-row">
-            <div className="card-title">Payment alerts (P0/P1)</div>
-            <button
-              className="btn btn-secondary btn-small"
-              disabled={Boolean(busy) || commerceLoading}
-              onClick={() =>
-                void run("refreshTodayPayments", async () => {
-                  await Promise.allSettled([loadCommerce(), loadAutomationHealthDashboard()]);
-                })
-              }
-            >
-              {commerceLoading ? "Refreshing..." : "Refresh"}
-            </button>
-          </div>
-          <p className="card-subtitle">
-            Critical payment and smoke/canary risk signals only. Use details links for full transaction workflows.
-          </p>
-          {paymentDegraded ? (
-            <div className="staff-note staff-note-warn">
-              Degraded mode: payments status may be delayed.
-              {commerceError ? ` ${commerceError}` : ""}
-            </div>
-          ) : null}
-          {commerceLoading ? (
-            <div className="staff-skeleton-list" aria-hidden="true">
-              {Array.from({ length: 3 }).map((_, index) => (
-                <div key={`today-payment-skeleton-${index}`} className="staff-skeleton-row" />
-              ))}
-            </div>
-          ) : paymentAlerts.length === 0 ? (
-            <>
-              <div className="staff-note">No P0/P1 payment alerts right now.</div>
-              <div className="staff-actions-row">
-                <button className="btn btn-ghost btn-small" onClick={() => openModuleFromCockpit("commerce")}>
-                  Payment lookup
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <ul className="staff-today-list" aria-label="Payment alerts">
-                {paymentAlerts.map((alert) => (
-                  <li key={alert.id}>
-                    <div className="staff-today-row staff-today-row-static">
-                      <div className="staff-today-row-top">
-                        <strong>{alert.title}</strong>
-                        <span className={`pill ${alert.severity === "P0" ? "staff-pill-danger" : "staff-pill-warn"}`}>
-                          {alert.severity}
-                        </span>
-                      </div>
-                      <div className="staff-today-row-note">{alert.detail}</div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-              <div className="staff-actions-row">
-                <button className="btn btn-secondary btn-small" onClick={() => openModuleFromCockpit("commerce")}>
-                  View payment details
-                </button>
-                <button className="btn btn-ghost btn-small" onClick={() => openModuleFromCockpit("stripe")}>
-                  Open Stripe settings
-                </button>
-              </div>
-            </>
-          )}
-        </section>
-      </section>
-
-      <section className="card staff-console-card">
-        <div className="card-title">System status summary</div>
-        <p className="card-subtitle">Operational health at a glance with one link to advanced tools.</p>
-        <div className="staff-note">
-          <strong>{systemSummaryToneLabel}</strong> · {systemSummaryMessage}
-        </div>
-        <div className="staff-note staff-note-muted">
-          Advanced diagnostics, policy controls, and agent operations have moved off this primary page.
-        </div>
-        <div className="staff-actions-row">
-          <button className="btn btn-secondary" onClick={() => setModuleKey("system")}>
-            Open System Tools
-          </button>
-          <button className="btn btn-ghost" onClick={openSystemWorkspace}>
-            Open dedicated /staff/system
-          </button>
-        </div>
-      </section>
-    </section>
+    <CockpitModule
+      busy={busy}
+      cockpitOpsContent={cockpitOpsContent}
+      shortText={shortText}
+      toShortTimeLabel={toShortTimeLabel}
+      openReservationsToday={openReservationsToday}
+      openMessagesInbox={openMessagesInbox}
+      startFiringFlow={startFiringFlow}
+      onOpenMessage={openMessageThread}
+      refreshTodayReservations={() => run("refreshTodayReservations", loadTodayReservations)}
+      refreshTodayFirings={() => run("refreshTodayFirings", loadFirings)}
+      retryTodayReservations={() => run("retryTodayReservations", loadTodayReservations)}
+      retryTodayFirings={() => run("retryTodayFirings", loadFirings)}
+      refreshTodayPayments={() =>
+        run("refreshTodayPayments", async () => {
+          await Promise.allSettled([loadCommerce(), loadAutomationHealthDashboard()]);
+        })
+      }
+      openReservationDetail={openReservationDetail}
+      handleFiringPhotoFile={handleFiringPhotoFile}
+      todayReservations={todayReservations}
+      todayReservationsLoading={todayReservationsLoading}
+      todayReservationsError={todayReservationsError}
+      unreadMessageCount={unreadMessageCount}
+      announcementsCount={announcements.length}
+      unreadAnnouncements={unreadAnnouncements}
+      messageThreadsLoading={messageThreadsLoading}
+      announcementsLoading={announcementsLoading}
+      messagesDegraded={messagesDegraded}
+      messageThreadsError={messageThreadsError}
+      announcementsError={announcementsError}
+      todayMessageRows={cockpitTodayMessageRows}
+      firingsLoading={firingsLoading}
+      firingsError={firingsError}
+      activeFiring={cockpitActiveFiring}
+      firingPhotoBusy={firingPhotoBusy}
+      firingPhotoStatus={firingPhotoStatus}
+      firingPhotoError={firingPhotoError}
+      commerceLoading={commerceLoading}
+      paymentDegraded={paymentDegraded}
+      commerceError={commerceError}
+      paymentAlerts={paymentAlerts}
+      systemSummaryToneLabel={systemSummaryToneLabel}
+      systemSummaryMessage={systemSummaryMessage}
+    />
   );
 
-  const systemWorkspaceContent = (
-    <section className="staff-system-workspace">
-      <section className="card staff-console-card">
-        <div className="card-title">System tools workspace</div>
-        <p className="card-subtitle">
-          Internal tooling, diagnostics, policy controls, and agent operations live here to keep the Today Console focused.
-        </p>
-      </section>
-      {systemContent}
-      {legacySystemOpsContent}
-    </section>
-  );
-
-  const moduleContentByKey: Record<ModuleKey, ReactNode> = {
-    cockpit: cockpitContent,
-    checkins: (
-      <section className="staff-module-grid">
-        <div className="staff-column">
-          <div className="card-title-row">
-            <div className="card-title">Check-ins queue</div>
-          </div>
-          <div className="staff-note">
-            Queue and lifecycle operations moved out of Ware Check-in so intake stays fast for both clients and staff.
-          </div>
-          <ReservationsView
-            user={user}
-            isStaff={hasStaffAuthority}
-            adminToken={devAdminToken}
-            viewMode="listOnly"
-          />
-        </div>
-      </section>
-    ),
-    members: membersContent,
-    pieces: piecesContent,
-    firings: firingsContent,
-    events: eventsContent,
-    reports: reportsContent,
-    stripe: stripeContent,
-    commerce: commerceContent,
-    lending: lendingContent,
-    system: systemWorkspaceContent,
-  };
-  const moduleContent = moduleContentByKey[moduleKey];
+  const moduleContent = cockpitContent;
 
   if (!hasStaffAuthority) {
     return (
@@ -9638,36 +7610,21 @@ const lendingContent = (
           Manage members, pieces, firings, events, billing, lending, and system health.
         </p>
         <div className="staff-actions-row">
-          <button
-            className="btn btn-secondary"
-            disabled={Boolean(busy)}
-            onClick={() =>
-              void run("refreshModule", async () => {
-                await loadModule(moduleKey);
-                setStatus(`Loaded ${moduleKey} module.`);
-              })
-            }
-          >
-            {busy ? "Working..." : "Load current module"}
-          </button>
-          <button
-            className="btn btn-ghost"
-            disabled={Boolean(busy)}
-            onClick={() =>
-              void run("refreshAll", async () => {
-                await loadAll();
-                setStatus("Refreshed all modules");
-              })
-            }
-          >
-            Refresh all
-          </button>
+          {toolbarRefreshPlan.visible ? (
+            <button
+              className="btn btn-secondary"
+              disabled={Boolean(busy)}
+              onClick={() => void run(toolbarRefreshPlan.key, refreshVisibleData)}
+            >
+              {busy === toolbarRefreshPlan.key ? "Refreshing..." : "Refresh visible data"}
+            </button>
+          ) : null}
           {onOpenCheckin ? (
             <button className="btn btn-ghost" type="button" onClick={onOpenCheckin}>
               Open ware check-in
             </button>
           ) : null}
-          {moduleKey === "cockpit" && !forceCockpitWorkspace ? (
+          {isCockpitModule && !forceCockpitWorkspace ? (
             <button
               className="btn btn-ghost"
               type="button"
@@ -9676,57 +7633,23 @@ const lendingContent = (
               {cockpitWorkspaceMode ? "Show module rail" : "Focus cockpit workspace"}
             </button>
           ) : null}
-          {moduleKey === "cockpit" ? (
+          {(isCockpitModule || forceCockpitWorkspace) ? (
             <button
               className="btn btn-ghost"
               type="button"
               onClick={() => {
                 if (typeof window === "undefined") return;
-                if (forceCockpitWorkspace) {
-                  window.location.assign("/staff");
-                  return;
-                }
-                window.open("/staff/cockpit", "_blank", "noopener");
+                openCockpitWorkspace();
               }}
             >
-              {forceCockpitWorkspace ? "Open full staff console" : "Open dedicated cockpit page"}
-            </button>
-          ) : null}
-          {moduleKey === "events" ? (
-            <button
-              className="btn btn-ghost"
-              type="button"
-              onClick={() => {
-                if (typeof window === "undefined") return;
-                if (forceEventsWorkspace) {
-                  window.location.assign("/staff");
-                  return;
-                }
-                window.open("/staff/workshops", "_blank", "noopener");
-              }}
-            >
-              {forceEventsWorkspace ? "Open full staff console" : "Open dedicated workshops page"}
-            </button>
-          ) : null}
-          {moduleKey === "system" ? (
-            <button
-              className="btn btn-ghost"
-              type="button"
-              onClick={() => {
-                if (typeof window === "undefined") return;
-                if (forceSystemWorkspace) {
-                  window.location.assign("/staff");
-                  return;
-                }
-                window.open("/staff/system", "_blank", "noopener");
-              }}
-            >
-              {forceSystemWorkspace ? "Open full staff console" : "Open dedicated system page"}
+              {forceCockpitWorkspace ? "Return staff console" : "Open cockpit home"}
             </button>
           ) : null}
         </div>
         <div className="staff-mini">
-          Data loads lazily. Start with <strong>Load current module</strong> when you want focused refreshes.
+          {toolbarRefreshPlan.visible
+            ? "Data loads lazily. Use Refresh visible data for the current cockpit surface, and keep deep module refreshes inside their cards."
+            : "Data loads lazily. Use the refresh controls inside the visible module cards to avoid runaway reload chains."}
         </div>
         {hasFunctionsAuthMismatch ? <div className="staff-note">Functions emulator is local, but Auth emulator is off. StaffView is running in Firestore-only safe mode for function-backed modules.</div> : null}
         {studioBrainUiState ? (
@@ -9783,7 +7706,7 @@ const lendingContent = (
               <button
                 key={m.key}
                 className={`staff-module-btn ${moduleKey === m.key ? "active" : ""}`}
-                onClick={() => setModuleKey(m.key)}
+                onClick={() => openModuleFromCockpit(m.key)}
                 data-testid={m.testId}
                 title={`Owner: ${m.owner}`}
               >
@@ -9797,13 +7720,13 @@ const lendingContent = (
               <summary>Low-use modules ({navLayout.overflow.length})</summary>
               <div className="staff-module-list">
                 {navLayout.overflow.map((m) => (
-                  <button
-                    key={m.key}
-                    className={`staff-module-btn ${moduleKey === m.key ? "active" : ""}`}
-                    onClick={() => setModuleKey(m.key)}
-                    data-testid={m.testId}
-                    title={`Owner: ${m.owner}`}
-                  >
+                <button
+                  key={m.key}
+                  className={`staff-module-btn ${moduleKey === m.key ? "active" : ""}`}
+                  onClick={() => openModuleFromCockpit(m.key)}
+                  data-testid={m.testId}
+                  title={`Owner: ${m.owner}`}
+                >
                     <span>{m.label}</span>
                     <span className="staff-module-hint">Low use</span>
                   </button>

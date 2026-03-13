@@ -1,0 +1,42 @@
+{
+  "schema": "intent-memory-governance.v1",
+  "defaults": {
+    "enabled": true,
+    "minConfidence": 0.55,
+    "maxAgeDays": 730,
+    "dedupeKeyFields": [
+      "content",
+      "source",
+      "tags"
+    ]
+  },
+  "trustedSources": [
+    "user-direct",
+    "user_direct",
+    "import-context-slice",
+    "import_context_slice"
+  ],
+  "promptInjectionPatterns": [
+    "ignore\\s+previous\\s+instructions",
+    "override\\s+system\\s+prompt",
+    "you\\s+must\\s+execute\\s+this\\s+command",
+    "run\\s+this\\s+shell\\s+command",
+    "exfiltrate\\s+secrets",
+    "bypass\\s+safety\\s+rails"
+  ],
+  "poisoning": {
+    "quarantineEnabled": true,
+    "maxPromptInjectionMatchesBeforeFail": 0,
+    "maxContradictionMatchesBeforeFail": 2
+  },
+  "confidenceBySource": {
+    "user-direct": 0.98,
+    "user_direct": 0.98,
+    "import-context-slice": 0.82,
+    "import_context_slice": 0.82,
+    "codex-resumable-session": 0.76,
+    "codex_resumable_session": 0.76,
+    "chatgpt-export:memory-pack.zip": 0.45,
+    "memory-pack-mined-memories-unique-runid": 0.35
+  }
+}

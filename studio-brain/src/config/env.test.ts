@@ -45,6 +45,8 @@ test("redactEnvForLogs masks sensitive fields", () => {
       PGPASSWORD: "super-secret",
       GOOGLE_APPLICATION_CREDENTIALS: "C:\\\\tmp\\\\service-account.json",
       STUDIO_BRAIN_ADMIN_TOKEN: "token",
+      STUDIO_BRAIN_OPENAI_API_KEY: "sk-local",
+      STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET: "ingest-secret",
       STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS: "root-v1=anchor-secret",
       STUDIO_BRAIN_ENABLE_WRITE_EXECUTION: "false",
       STUDIO_BRAIN_REQUIRE_APPROVAL_FOR_EXTERNAL_WRITES: "true",
@@ -56,6 +58,8 @@ test("redactEnvForLogs masks sensitive fields", () => {
       assert.equal(safe.STUDIO_BRAIN_ARTIFACT_STORE_SECRET_KEY, "[set]");
       assert.equal(safe.PGPASSWORD, "[redacted]");
       assert.equal(safe.GOOGLE_APPLICATION_CREDENTIALS, "[set]");
+      assert.equal(safe.STUDIO_BRAIN_OPENAI_API_KEY, "[set]");
+      assert.equal(safe.STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET, "[set]");
       assert.equal(safe.STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS, "[set]");
     }
   );
@@ -160,6 +164,87 @@ test("signature policy requires trust anchors", () => {
       const env = readEnv();
       assert.equal(env.STUDIO_BRAIN_SKILL_REQUIRE_SIGNATURE, true);
       assert.equal(env.STUDIO_BRAIN_SKILL_SIGNATURE_TRUST_KEYS, "root-v1=anchor-secret");
+    }
+  );
+});
+
+test("openai embedding provider allows missing API key for null-adapter fallback", () => {
+  withPatchedEnv(
+    {
+      STUDIO_BRAIN_EMBEDDING_PROVIDER: "openai",
+      STUDIO_BRAIN_OPENAI_API_KEY: "",
+    },
+    () => {
+      const env = readEnv();
+      assert.equal(env.STUDIO_BRAIN_EMBEDDING_PROVIDER, "openai");
+      assert.equal(env.STUDIO_BRAIN_OPENAI_API_KEY, "");
+    }
+  );
+
+  withPatchedEnv(
+    {
+      STUDIO_BRAIN_EMBEDDING_PROVIDER: "openai",
+      STUDIO_BRAIN_OPENAI_API_KEY: "sk-test",
+    },
+    () => {
+      const env = readEnv();
+      assert.equal(env.STUDIO_BRAIN_EMBEDDING_PROVIDER, "openai");
+      assert.equal(env.STUDIO_BRAIN_OPENAI_API_KEY, "sk-test");
+    }
+  );
+});
+
+test("vertex embedding provider requires project id", () => {
+  withPatchedEnv(
+    {
+      STUDIO_BRAIN_EMBEDDING_PROVIDER: "vertex",
+      STUDIO_BRAIN_VERTEX_PROJECT_ID: "",
+      FIREBASE_PROJECT_ID: "",
+    },
+    () => {
+      assert.throws(() => readEnv(), /STUDIO_BRAIN_VERTEX_PROJECT_ID|FIREBASE_PROJECT_ID/);
+    }
+  );
+
+  withPatchedEnv(
+    {
+      STUDIO_BRAIN_EMBEDDING_PROVIDER: "vertex",
+      STUDIO_BRAIN_VERTEX_PROJECT_ID: "monsoonfire-portal",
+    },
+    () => {
+      const env = readEnv();
+      assert.equal(env.STUDIO_BRAIN_EMBEDDING_PROVIDER, "vertex");
+      assert.equal(env.STUDIO_BRAIN_VERTEX_PROJECT_ID, "monsoonfire-portal");
+    }
+  );
+});
+
+test("memory ingest requires hmac secret when enabled", () => {
+  withPatchedEnv(
+    {
+      STUDIO_BRAIN_MEMORY_INGEST_ENABLED: "true",
+      STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET: "",
+    },
+    () => {
+      assert.throws(() => readEnv(), /STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET/);
+    }
+  );
+
+  withPatchedEnv(
+    {
+      STUDIO_BRAIN_MEMORY_INGEST_ENABLED: "true",
+      STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET: "memory-ingest-secret",
+      STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_SOURCES: "discord,bot",
+      STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_DISCORD_GUILD_IDS: "guild-1,guild-2",
+      STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_DISCORD_CHANNEL_IDS: "chan-1,chan-2",
+    },
+    () => {
+      const env = readEnv();
+      assert.equal(env.STUDIO_BRAIN_MEMORY_INGEST_ENABLED, true);
+      assert.equal(env.STUDIO_BRAIN_MEMORY_INGEST_HMAC_SECRET, "memory-ingest-secret");
+      assert.deepEqual(env.STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_SOURCES, ["discord", "bot"]);
+      assert.deepEqual(env.STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_DISCORD_GUILD_IDS, ["guild-1", "guild-2"]);
+      assert.deepEqual(env.STUDIO_BRAIN_MEMORY_INGEST_ALLOWED_DISCORD_CHANNEL_IDS, ["chan-1", "chan-2"]);
     }
   );
 });

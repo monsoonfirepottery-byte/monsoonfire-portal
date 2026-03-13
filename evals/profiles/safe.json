@@ -1,0 +1,14 @@
+{
+  "schema": "intent-simulation-profile.v1",
+  "profileId": "safe",
+  "description": "Conservative static simulation profile for nightly production-adjacent runs.",
+  "maxChecksPerTask": 20,
+  "maxTotalChecks": 400,
+  "requiredEnv": [],
+  "denyCommandPatterns": [
+    "git reset --hard",
+    "git checkout --",
+    "rm -rf /"
+  ],
+  "allowNetworkWrites": false
+}

@@ -1,6 +1,6 @@
 # P1 — Library Backend: Catalog and Discovery API v1
 
-Status: In Progress
+Status: Completed
 Date: 2026-03-01
 Priority: P1
 Owner: Platform Backend + Library Ops
@@ -49,3 +49,16 @@ Ship a contract-accurate, server-authoritative catalog/discovery API layer with 
 5. Discovery response includes all four required sections: staff picks, most borrowed, recently added, and recently reviewed.
 6. Schema dependencies and indexes referenced in `docs/library/SCHEMA_RELATIONAL.md` are implemented and exercised by backend tests.
 7. Validation failures and unsupported sort/filter values return contract-compliant error envelopes.
+
+## Execution Update (2026-03-01, Contract and Test Closeout)
+
+Completed in this pass:
+1. Shipped contract routes in `functions/src/apiV1.ts`:
+   - `/v1/library.items.list`
+   - `/v1/library.items.get`
+   - `/v1/library.discovery.get`
+2. Added deterministic filtering/sorting behavior with fallback-safe ordering and server-authoritative pagination handling.
+3. Preserved soft-delete exclusion and stable item/detail projection with aggregate fields.
+4. Verified route coverage and contract behavior through `functions/src/apiV1.test.ts`.
+5. Verified with:
+   - `node --test functions/lib/apiV1.test.js`

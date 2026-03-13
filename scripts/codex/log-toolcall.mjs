@@ -32,6 +32,22 @@ const SECRET_VALUE_PATTERNS = [
   /(sk-[A-Za-z0-9]{20,})/g,
 ];
 
+const USAGE_ESTIMATE_DEFAULTS = {
+  enabled: true,
+  tokensPerSecond: 45,
+  minTotalTokens: 32,
+  inputRatio: 0.32,
+  outputRatio: 0.5,
+  reasoningRatio: 0.18,
+};
+
+const RETRY_GOVERNOR_DEFAULTS = {
+  enabled: true,
+  windowMinutes: 15,
+  burstThreshold: 2,
+  recentEntryLimit: 250,
+};
+
 function printUsage() {
   process.stdout.write(
     [
@@ -297,6 +313,194 @@ function buildUsagePayload(options) {
   return usage;
 }
 
+function toNonNegativeInteger(value) {
+  if (value == null || value === "") return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  return Math.round(numeric);
+}
+
+function firstNumberFromObject(obj, keys) {
+  if (!obj || typeof obj !== "object") return null;
+  for (const key of keys) {
+    if (!(key in obj)) continue;
+    const parsed = toNonNegativeInteger(obj[key]);
+    if (parsed != null) return parsed;
+  }
+  return null;
+}
+
+function extractUsageFromContext(rawContext) {
+  if (!rawContext || typeof rawContext !== "object") return null;
+
+  const candidates = [
+    rawContext?.usage,
+    rawContext?.tokenUsage,
+    rawContext?.runtimeUsage,
+    rawContext?.context?.usage,
+    rawContext?.context?.tokenUsage,
+  ].filter((value) => value && typeof value === "object");
+
+  const inputKeys = ["inputTokens", "promptTokens", "prompt_tokens", "tokensIn", "input_tokens"];
+  const outputKeys = ["outputTokens", "completionTokens", "completion_tokens", "tokensOut", "output_tokens"];
+  const reasoningKeys = ["reasoningTokens", "reasoning_tokens", "tokensReasoning", "reasoning"];
+  const cacheReadKeys = ["cacheReadTokens", "cache_read_tokens", "cachedTokensRead", "cacheRead"];
+  const cacheWriteKeys = ["cacheWriteTokens", "cache_write_tokens", "cachedTokensWrite", "cacheWrite"];
+  const totalKeys = ["totalTokens", "total_tokens", "tokensTotal", "total"];
+
+  let inputTokens = null;
+  let outputTokens = null;
+  let reasoningTokens = null;
+  let cacheReadTokens = null;
+  let cacheWriteTokens = null;
+  let totalTokens = null;
+
+  for (const candidate of candidates) {
+    inputTokens = inputTokens ?? firstNumberFromObject(candidate, inputKeys);
+    outputTokens = outputTokens ?? firstNumberFromObject(candidate, outputKeys);
+    reasoningTokens = reasoningTokens ?? firstNumberFromObject(candidate, reasoningKeys);
+    cacheReadTokens = cacheReadTokens ?? firstNumberFromObject(candidate, cacheReadKeys);
+    cacheWriteTokens = cacheWriteTokens ?? firstNumberFromObject(candidate, cacheWriteKeys);
+    totalTokens = totalTokens ?? firstNumberFromObject(candidate, totalKeys);
+  }
+
+  if (totalTokens == null) {
+    const sum = [inputTokens, outputTokens, reasoningTokens, cacheWriteTokens]
+      .filter((value) => value != null)
+      .reduce((acc, value) => acc + Number(value || 0), 0);
+    totalTokens = sum > 0 ? sum : null;
+  }
+
+  const hasAny =
+    inputTokens != null ||
+    outputTokens != null ||
+    reasoningTokens != null ||
+    cacheReadTokens != null ||
+    cacheWriteTokens != null ||
+    totalTokens != null;
+
+  if (!hasAny) return null;
+
+  return {
+    inputTokens,
+    outputTokens,
+    reasoningTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    totalTokens,
+    estimated: false,
+    source: "context-usage-v1",
+  };
+}
+
+function parseNdjsonLines(raw) {
+  const rows = [];
+  for (const line of String(raw || "").split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      rows.push(JSON.parse(line));
+    } catch {
+      // ignore corrupt line
+    }
+  }
+  return rows;
+}
+
+async function readRecentEntries(limit = RETRY_GOVERNOR_DEFAULTS.recentEntryLimit) {
+  try {
+    const raw = await readFile(toolcallPath, "utf8");
+    const rows = parseNdjsonLines(raw);
+    if (!Number.isFinite(limit) || limit <= 0) return rows;
+    return rows.slice(-Math.round(limit));
+  } catch {
+    return [];
+  }
+}
+
+function estimateUsageFromDuration(options) {
+  const enabled = String(process.env.CODEX_TOOLCALL_ESTIMATE_USAGE ?? "true").trim().toLowerCase();
+  if (["0", "false", "no", "off"].includes(enabled)) return null;
+  const durationMs = Number(options.durationMs);
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return null;
+
+  const perSecondRaw = Number(process.env.CODEX_TOOLCALL_ESTIMATE_TOKENS_PER_SECOND);
+  const minTotalRaw = Number(process.env.CODEX_TOOLCALL_ESTIMATE_MIN_TOTAL_TOKENS);
+  const perSecond = Number.isFinite(perSecondRaw) && perSecondRaw > 0 ? perSecondRaw : USAGE_ESTIMATE_DEFAULTS.tokensPerSecond;
+  const minimum = Number.isFinite(minTotalRaw) && minTotalRaw >= 0 ? minTotalRaw : USAGE_ESTIMATE_DEFAULTS.minTotalTokens;
+
+  const estimatedTotal = Math.max(Math.round((durationMs / 1000) * perSecond), Math.round(minimum));
+  if (!Number.isFinite(estimatedTotal) || estimatedTotal <= 0) return null;
+
+  const outputTokens = Math.max(1, Math.round(estimatedTotal * USAGE_ESTIMATE_DEFAULTS.outputRatio));
+  const inputTokens = Math.max(1, Math.round(estimatedTotal * USAGE_ESTIMATE_DEFAULTS.inputRatio));
+  const reasoningTokens = Math.max(
+    0,
+    Math.max(estimatedTotal - outputTokens - inputTokens, Math.round(estimatedTotal * USAGE_ESTIMATE_DEFAULTS.reasoningRatio))
+  );
+  const totalTokens = inputTokens + outputTokens + reasoningTokens;
+
+  return {
+    inputTokens,
+    outputTokens,
+    reasoningTokens,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    totalTokens,
+    estimated: true,
+    estimationMethod: "duration-rate-v1",
+    estimatedTokensPerSecond: perSecond,
+    estimatedFromDurationMs: Math.round(durationMs),
+  };
+}
+
+function applyRetryGovernor(payload, recentEntries) {
+  const enabled = String(process.env.CODEX_TOOLCALL_RETRY_GOVERNOR ?? "true").trim().toLowerCase();
+  if (["0", "false", "no", "off"].includes(enabled)) return payload;
+  if (payload.ok) return payload;
+
+  const windowRaw = Number(process.env.CODEX_TOOLCALL_RETRY_GOVERNOR_WINDOW_MINUTES);
+  const thresholdRaw = Number(process.env.CODEX_TOOLCALL_RETRY_GOVERNOR_BURST_THRESHOLD);
+  const windowMinutes =
+    Number.isFinite(windowRaw) && windowRaw > 0 ? Math.round(windowRaw) : RETRY_GOVERNOR_DEFAULTS.windowMinutes;
+  const burstThreshold =
+    Number.isFinite(thresholdRaw) && thresholdRaw > 0
+      ? Math.round(thresholdRaw)
+      : RETRY_GOVERNOR_DEFAULTS.burstThreshold;
+
+  const nowMs = Date.parse(payload.tsIso);
+  const windowMs = Math.max(1, windowMinutes) * 60 * 1000;
+  const signature = `${payload.tool}::${payload.action}::${payload.errorType || "none"}`;
+
+  const burstCount = recentEntries.filter((entry) => {
+    if (!entry || entry.ok !== false) return false;
+    if (String(entry.tool || "") !== payload.tool) return false;
+    if (String(entry.action || "") !== payload.action) return false;
+    if (String(entry.errorType || "none") !== String(payload.errorType || "none")) return false;
+    const tsMs = Date.parse(String(entry.tsIso || ""));
+    if (!Number.isFinite(tsMs) || !Number.isFinite(nowMs)) return false;
+    return nowMs - tsMs <= windowMs;
+  }).length;
+
+  const governor = {
+    enabled: true,
+    signature,
+    burstCount,
+    burstThreshold,
+    windowMinutes,
+    triggered: burstCount >= burstThreshold,
+    action: burstCount >= burstThreshold ? "pause-and-diagnose" : "none",
+  };
+
+  const baseContext = payload.context && typeof payload.context === "object" ? payload.context : {};
+  return {
+    ...payload,
+    context: {
+      ...baseContext,
+      retryGovernor: governor,
+    },
+  };
+}
+
 async function readContext(options) {
   if (options.contextJson) {
     return JSON.parse(options.contextJson);
@@ -324,9 +528,9 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const rawContext = await readContext(options);
   const tsIso = options.tsIso || new Date().toISOString();
-  const usage = buildUsagePayload(options);
+  const usage = buildUsagePayload(options) || extractUsageFromContext(rawContext) || estimateUsageFromDuration(options);
 
-  const payload = {
+  let payload = {
     tsIso,
     actor: options.actor,
     tool: options.tool,
@@ -338,6 +542,8 @@ async function main() {
     context: rawContext == null ? null : sanitizeValue(rawContext),
     usage,
   };
+  const recentEntries = await readRecentEntries();
+  payload = applyRetryGovernor(payload, recentEntries);
   assertContractShape(payload);
 
   await ensureLogFile();

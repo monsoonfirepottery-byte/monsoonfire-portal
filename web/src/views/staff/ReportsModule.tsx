@@ -836,7 +836,7 @@ export default function ReportsModule({ client, active, disabled, user, studioBr
       ) : null}
       {!disabled && !activePolicy ? (
         <div className="staff-note staff-note-error">
-          No active Code of Conduct policy is published. Open Governance module, publish a policy version, then return to reports triage.
+          No active Code of Conduct policy is published. Open the Policy section in the Cockpit Policy & Agent Ops tab, publish a policy version, then return to reports triage.
         </div>
       ) : null}
       {activePolicy ? (

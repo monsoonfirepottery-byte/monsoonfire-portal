@@ -6,6 +6,8 @@ import { createSign } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { access } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,6 +19,40 @@ const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloud
 const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "portal-fixture-steward.json");
 const DEFAULT_STATE_PATH = resolve(repoRoot, ".codex", "fixture-steward-state.json");
 const DEFAULT_CREDENTIALS_PATH = resolve(repoRoot, "secrets", "portal", "portal-agent-staff.json");
+const DEFAULT_PORTAL_AUTOMATION_ENV_PATH = resolve(repoRoot, "secrets", "portal", "portal-automation.env");
+const GOOGLE_OAUTH_TOKEN_ENDPOINT = "https://www.googleapis.com/oauth2/v3/token";
+const FIREBASE_CLI_OAUTH_CLIENT_ID =
+  "563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com";
+const FIREBASE_CLI_OAUTH_CLIENT_SECRET = String(process.env.FIREBASE_CLI_OAUTH_CLIENT_SECRET || "").trim();
+
+function loadPortalAutomationEnv() {
+  const configuredPath = String(process.env.PORTAL_AUTOMATION_ENV_PATH || "").trim();
+  const envPath = configuredPath || DEFAULT_PORTAL_AUTOMATION_ENV_PATH;
+  if (!envPath || !existsSync(envPath)) return;
+
+  const raw = readFileSync(envPath, "utf8");
+  const lines = raw.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex <= 0) continue;
+    const key = trimmed.slice(0, separatorIndex).trim();
+    if (!key || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    if (String(process.env[key] || "").trim()) continue;
+
+    let value = trimmed.slice(separatorIndex + 1).trim();
+    if (
+      (value.startsWith("\"") && value.endsWith("\"")) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
+}
+
+loadPortalAutomationEnv();
 
 function parseArgs(argv) {
   const options = {
@@ -236,15 +272,43 @@ async function writeJsonFile(path, value) {
 }
 
 function loadServiceAccountFromEnv() {
-  const raw = String(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL || "").trim();
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed.client_email || !parsed.private_key) return null;
-    return parsed;
-  } catch {
-    return null;
+  const parseServiceAccountJson = (raw) => {
+    const text = String(raw || "").trim();
+    if (!text) return null;
+    try {
+      const parsed = JSON.parse(text);
+      if (!parsed.client_email || !parsed.private_key) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+
+  const inline =
+    parseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_JSON) ||
+    parseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_MONSOONFIRE_PORTAL);
+  if (inline) return inline;
+
+  const candidatePaths = [
+    process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    process.env.FIREBASE_SERVICE_ACCOUNT_PATH,
+    process.env.PORTAL_FIREBASE_SERVICE_ACCOUNT_PATH,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  for (const filePath of candidatePaths) {
+    if (!existsSync(filePath)) continue;
+    try {
+      const raw = readFileSync(filePath, "utf8");
+      const parsed = parseServiceAccountJson(raw);
+      if (parsed) return parsed;
+    } catch {
+      // continue
+    }
   }
+
+  return null;
 }
 
 async function mintServiceAccessToken(serviceAccount) {
@@ -279,6 +343,96 @@ async function mintServiceAccessToken(serviceAccount) {
   }
 
   return String(response.json.access_token);
+}
+
+function looksLikeRefreshToken(token) {
+  return String(token || "").trim().startsWith("1//");
+}
+
+async function exchangeRefreshToken(refreshToken, source) {
+  const form = new URLSearchParams({
+    refresh_token: refreshToken,
+    client_id: FIREBASE_CLI_OAUTH_CLIENT_ID,
+    grant_type: "refresh_token",
+  });
+  if (FIREBASE_CLI_OAUTH_CLIENT_SECRET) {
+    form.set("client_secret", FIREBASE_CLI_OAUTH_CLIENT_SECRET);
+  }
+
+  const response = await requestJson(GOOGLE_OAUTH_TOKEN_ENDPOINT, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: form.toString(),
+  });
+
+  if (!response.ok || !response.json?.access_token) {
+    const message =
+      response.json?.error_description || response.json?.error || response.json?.raw || `HTTP ${response.status}`;
+    throw new Error(`Unable to exchange refresh token from ${source}: ${String(message)}`);
+  }
+
+  return String(response.json.access_token);
+}
+
+function loadFirebaseCliAccessToken() {
+  try {
+    const configPath = resolve(homedir(), ".config", "configstore", "firebase-tools.json");
+    if (!existsSync(configPath)) return "";
+    const raw = readFileSync(configPath, "utf8");
+    const parsed = JSON.parse(raw);
+    const accessToken = String(parsed?.tokens?.access_token || "").trim();
+    return accessToken || "";
+  } catch {
+    return "";
+  }
+}
+
+async function resolveEnvAdminTokenCandidates() {
+  const candidateSources = [
+    { source: "FIREBASE_RULES_API_TOKEN", value: process.env.FIREBASE_RULES_API_TOKEN },
+    { source: "FIREBASE_ACCESS_TOKEN", value: process.env.FIREBASE_ACCESS_TOKEN },
+    { source: "FIREBASE_TOKEN", value: process.env.FIREBASE_TOKEN },
+  ];
+  const candidates = [];
+
+  for (const entry of candidateSources) {
+    const raw = String(entry.value || "").trim();
+    if (!raw) continue;
+    if (looksLikeRefreshToken(raw)) {
+      try {
+        const accessToken = await exchangeRefreshToken(raw, entry.source);
+        candidates.push({
+          source: `${entry.source} (refresh-token exchange)`,
+          token: accessToken,
+          error: "",
+        });
+      } catch (error) {
+        const fallbackAccessToken = loadFirebaseCliAccessToken();
+        if (fallbackAccessToken) {
+          candidates.push({
+            source: `${entry.source} (firebase-tools access fallback)`,
+            token: fallbackAccessToken,
+            error: "",
+          });
+          continue;
+        }
+        candidates.push({
+          source: entry.source,
+          token: "",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      continue;
+    }
+
+    candidates.push({
+      source: entry.source,
+      token: raw,
+      error: "",
+    });
+  }
+
+  return candidates;
 }
 
 async function fireUpsert(projectId, token, docPath, payload) {
@@ -316,6 +470,47 @@ async function fireDelete(projectId, token, docPath) {
       Authorization: `Bearer ${token}`,
     },
   });
+}
+
+async function verifyFirestoreWriteAccess(projectId, token) {
+  const probeId = `portal-fixture-steward-probe-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+  const probePath = `_qaFixtureProbe/${probeId}`;
+  const now = new Date();
+
+  const upsert = await fireUpsert(projectId, token, probePath, {
+    createdAt: now,
+    updatedAt: now,
+    source: "portal-fixture-steward",
+  });
+
+  if (!upsert.ok) {
+    const message =
+      upsert.json?.error?.message || upsert.json?.raw || `HTTP ${upsert.status}`;
+    return {
+      ok: false,
+      status: upsert.status,
+      message: String(message),
+    };
+  }
+
+  const cleanup = await fireDelete(projectId, token, probePath);
+  if (!cleanup.ok && cleanup.status !== 404) {
+    const message =
+      cleanup.json?.error?.message || cleanup.json?.raw || `HTTP ${cleanup.status}`;
+    return {
+      ok: false,
+      status: cleanup.status,
+      message: `cleanup failed: ${String(message)}`,
+    };
+  }
+
+  return {
+    ok: true,
+    status: 200,
+    message: "",
+  };
 }
 
 async function main() {
@@ -368,11 +563,14 @@ async function main() {
 
   const idToken = String(tokenResp.json.id_token);
 
-  let adminToken = "";
+  const adminTokenCandidates = [];
   const serviceAccount = loadServiceAccountFromEnv();
   if (serviceAccount) {
     try {
-      adminToken = await mintServiceAccessToken(serviceAccount);
+      adminTokenCandidates.push({
+        source: "service account",
+        token: await mintServiceAccessToken(serviceAccount),
+      });
     } catch (error) {
       summary.warnings.push(
         `Service account token mint failed: ${error instanceof Error ? error.message : String(error)}`
@@ -380,17 +578,36 @@ async function main() {
     }
   }
 
-  let firestoreToken = idToken;
-  if (adminToken) {
-    const adminProbe = await fireGet(options.projectId, adminToken, "batches/__portal_fixture_probe__");
-    if (adminProbe.status === 401 || adminProbe.status === 403) {
+  const envAdminCandidates = await resolveEnvAdminTokenCandidates();
+  for (const candidate of envAdminCandidates) {
+    if (!candidate.token) {
       summary.warnings.push(
-        `Service account token is not authorized for Firestore (status ${adminProbe.status}); falling back to staff token.`
+        `Admin token candidate ${candidate.source} unavailable: ${truncate(String(candidate.error || "token resolution failed"), 220)}`
       );
-    } else {
-      firestoreToken = adminToken;
-      summary.usedAdminToken = true;
+      continue;
     }
+    adminTokenCandidates.push({
+      source: candidate.source,
+      token: candidate.token,
+    });
+  }
+
+  let firestoreToken = idToken;
+  const adminTokenProbeWarnings = [];
+  for (const candidate of adminTokenCandidates) {
+    const adminProbe = await verifyFirestoreWriteAccess(options.projectId, candidate.token);
+    if (!adminProbe.ok) {
+      adminTokenProbeWarnings.push(
+        `${candidate.source} token cannot write Firestore fixtures (status ${adminProbe.status}); trying next credential. ${truncate(adminProbe.message, 220)}`
+      );
+      continue;
+    }
+    firestoreToken = candidate.token;
+    summary.usedAdminToken = true;
+    break;
+  }
+  if (!summary.usedAdminToken && adminTokenProbeWarnings.length > 0) {
+    summary.warnings.push(...adminTokenProbeWarnings);
   }
   const now = new Date();
   const runNonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -575,9 +792,13 @@ async function main() {
   for (const result of upsertResults) {
     const ok = result.response.ok;
     const permissionDenied = !ok && isPermissionDeniedStatus(result.response.status);
+    const optionalWithoutAdmin =
+      !ok &&
+      !summary.usedAdminToken &&
+      (result.step === "upsert notification" || result.step === "upsert workshop event");
     summary.steps.push({
       step: result.step,
-      status: ok ? "passed" : permissionDenied ? "skipped" : "failed",
+      status: ok ? "passed" : permissionDenied || optionalWithoutAdmin ? "skipped" : "failed",
       httpStatus: result.response.status,
     });
 
@@ -592,7 +813,7 @@ async function main() {
         );
         continue;
       }
-      if ((result.step === "upsert notification" || result.step === "upsert workshop event") && !summary.usedAdminToken) {
+      if (optionalWithoutAdmin) {
         summary.warnings.push(
           `${result.step === "upsert notification" ? "Notification" : "Workshop"} fixture seed skipped without admin token: ${truncate(String(message), 280)}`
         );
@@ -615,10 +836,14 @@ async function main() {
     const response = await fireGet(options.projectId, firestoreToken, checkItem.path);
     const passed = response.ok;
     const permissionDenied = !passed && isPermissionDeniedStatus(response.status);
+    const optionalWithoutAdmin =
+      !passed &&
+      !summary.usedAdminToken &&
+      (checkItem.key === "notification" || checkItem.key === "workshopEvent");
 
     summary.steps.push({
       step: `validate ${checkItem.key}`,
-      status: passed ? "passed" : permissionDenied ? "skipped" : "failed",
+      status: passed ? "passed" : permissionDenied || optionalWithoutAdmin ? "skipped" : "failed",
       httpStatus: response.status,
     });
 
@@ -629,7 +854,7 @@ async function main() {
         );
         continue;
       }
-      if ((checkItem.key === "notification" || checkItem.key === "workshopEvent") && !summary.usedAdminToken) {
+      if (optionalWithoutAdmin) {
         summary.warnings.push(
           `${checkItem.key === "notification" ? "Notification" : "Workshop"} fixture validation skipped without admin token (status ${response.status}).`
         );

@@ -48,6 +48,7 @@ import {
   findExistingLibraryItemIdByIsbn,
   type LibraryRolloutPhase,
 } from "./library";
+import { collectWorkshopCommunitySignalCountsByEventIds } from "./events";
 
 function boolEnv(name: string, fallback = false): boolean {
   const raw = process.env[name];
@@ -603,6 +604,8 @@ const libraryItemGetSchema = z.object({
 
 const libraryDiscoverySchema = z.object({
   limit: z.number().int().min(1).max(30).optional(),
+  includeWorkshopDiscovery: z.boolean().optional(),
+  workshopDiscoveryLimit: z.number().int().min(1).max(12).optional(),
 });
 
 const libraryExternalLookupSchema = z.object({
@@ -621,14 +624,19 @@ const libraryExternalLookupProviderConfigSetSchema = z
   .object({
     openlibraryEnabled: z.boolean().optional(),
     googlebooksEnabled: z.boolean().optional(),
+    coverReviewGuardrailEnabled: z.boolean().optional(),
     note: z.string().max(300).optional().nullable(),
   })
   .superRefine((value, ctx) => {
-    if (typeof value.openlibraryEnabled !== "boolean" && typeof value.googlebooksEnabled !== "boolean") {
+    if (
+      typeof value.openlibraryEnabled !== "boolean" &&
+      typeof value.googlebooksEnabled !== "boolean" &&
+      typeof value.coverReviewGuardrailEnabled !== "boolean"
+    ) {
       ctx.addIssue({
         code: "custom",
         path: [],
-        message: "Provide at least one provider toggle.",
+        message: "Provide at least one provider policy toggle.",
       });
     }
   });
@@ -940,11 +948,11 @@ const reservationCreateSchema = z.object({
     .min(0.25)
     .max(999)
     .default(1),
-  footprintHalfShelves: z.number().optional(),
-  heightInches: z.number().optional(),
-  tiers: z.number().optional(),
-  estimatedHalfShelves: z.number().optional(),
-  estimatedCost: z.number().optional(),
+  footprintHalfShelves: z.number().optional().nullable(),
+  heightInches: z.number().optional().nullable(),
+  tiers: z.number().optional().nullable(),
+  estimatedHalfShelves: z.number().optional().nullable(),
+  estimatedCost: z.number().optional().nullable(),
   preferredWindow: z
     .object({
       earliestDate: z.any().optional().nullable(),
@@ -1022,6 +1030,14 @@ const reservationCreateSchema = z.object({
       glazeAccessCost: z.number().optional().nullable(),
       waxResistAssistRequested: z.boolean().optional().nullable(),
       glazeSanityCheckRequested: z.boolean().optional().nullable(),
+      fragileHandlingRequested: z.boolean().optional().nullable(),
+      fragileHandlingCost: z.number().optional().nullable(),
+      placementPreferenceRequested: z.boolean().optional().nullable(),
+      placementPreferenceZone: z.enum(["top", "middle", "bottom"]).optional().nullable(),
+      placementPreferenceCost: z.number().optional().nullable(),
+      prepaidStorageRequested: z.boolean().optional().nullable(),
+      prepaidStorageWeeks: z.number().int().min(1).max(12).optional().nullable(),
+      prepaidStorageCost: z.number().optional().nullable(),
       deliveryAddress: z.string().optional().nullable(),
       deliveryInstructions: z.string().optional().nullable(),
     })
@@ -3108,6 +3124,351 @@ function toLibraryApiItemRow(
   return out;
 }
 
+type WorkshopDiscoverySignalCounts = {
+  requestSignals: number;
+  interestSignals: number;
+  showcaseSignals: number;
+  withdrawnSignals: number;
+  demandScore?: number;
+  latestSignalAtMs: number | null;
+};
+
+const WORKSHOP_DEMAND_SCORE_WEIGHTS = {
+  request: 3,
+  interest: 1,
+  showcase: 1,
+  withdrawn: 0.5,
+} as const;
+
+function computeWorkshopDemandScore(
+  counts: {
+    requestSignals: number;
+    interestSignals: number;
+    showcaseSignals: number;
+    withdrawnSignals: number;
+  },
+): number {
+  const requestSignals = Math.max(0, counts.requestSignals);
+  const interestSignals = Math.max(0, counts.interestSignals);
+  const showcaseSignals = Math.max(0, counts.showcaseSignals);
+  const withdrawnSignals = Math.max(0, counts.withdrawnSignals);
+  const weightedScore =
+    requestSignals * WORKSHOP_DEMAND_SCORE_WEIGHTS.request +
+    interestSignals * WORKSHOP_DEMAND_SCORE_WEIGHTS.interest +
+    showcaseSignals * WORKSHOP_DEMAND_SCORE_WEIGHTS.showcase +
+    withdrawnSignals * WORKSHOP_DEMAND_SCORE_WEIGHTS.withdrawn;
+  return Math.round(weightedScore * 10) / 10;
+}
+
+type LibraryDiscoveryWorkshopSummary = {
+  id: string;
+  title: string;
+  summary: string;
+  startAt: string | null;
+  endAt: string | null;
+  timezone: string;
+  location: string;
+  priceCents: number;
+  currency: string;
+  includesFiring: boolean;
+  firingDetails: string | null;
+  capacity: number;
+  waitlistEnabled: boolean;
+  waitlistCount: number | null;
+  status: string;
+  remainingCapacity: number | null;
+  communitySignalCounts?: {
+    requestSignals: number;
+    interestSignals: number;
+    showcaseSignals: number;
+    withdrawnSignals: number;
+    totalSignals: number;
+    demandScore: number;
+    latestSignalAtMs?: number | null;
+  } | null;
+};
+
+function normalizeWorkshopSignalCounts(
+  counts: WorkshopDiscoverySignalCounts | null,
+): {
+  requestSignals: number;
+  interestSignals: number;
+  showcaseSignals: number;
+  withdrawnSignals: number;
+  totalSignals: number;
+  demandScore: number;
+  latestSignalAtMs?: number | null;
+} | null {
+  if (!counts) return null;
+  const totalSignals = counts.requestSignals + counts.interestSignals + counts.showcaseSignals;
+  if (totalSignals <= 0 && counts.withdrawnSignals <= 0) return null;
+  return {
+    requestSignals: counts.requestSignals,
+    interestSignals: counts.interestSignals,
+    showcaseSignals: counts.showcaseSignals,
+    withdrawnSignals: counts.withdrawnSignals,
+    totalSignals,
+    demandScore: counts.demandScore ?? computeWorkshopDemandScore(counts),
+    latestSignalAtMs: counts.latestSignalAtMs,
+  };
+}
+
+function readEventDiscoveryStatus(row: Record<string, unknown>): string {
+  const status = safeString(row.status).trim().toLowerCase();
+  if (status) {
+    return status;
+  }
+
+  const publishedState = safeString(row.publishedState).trim().toLowerCase();
+  if (publishedState) {
+    return publishedState;
+  }
+
+  return "draft";
+}
+
+function readNonNegativeInt(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.floor(parsed));
+}
+
+function normalizeLibraryDiscoveryWorkshopSummary(
+  id: string,
+  row: Record<string, unknown>,
+  count: WorkshopDiscoverySignalCounts | null,
+): LibraryDiscoveryWorkshopSummary {
+  const status = readEventDiscoveryStatus(row);
+  const capacity = readNonNegativeInt(row.capacity);
+  const ticketedCount = readNonNegativeInt(row.ticketedCount);
+  const offeredCount = readNonNegativeInt(row.offeredCount);
+  const checkedInCount = readNonNegativeInt(row.checkedInCount);
+  const remainingCapacity = Math.max(capacity - (ticketedCount + offeredCount + checkedInCount), 0);
+  const waitlistCount = Number.isFinite(readNonNegativeInt(row.waitlistCount, 0))
+    ? readNonNegativeInt(row.waitlistCount, 0)
+    : null;
+  const summary = {
+    id,
+    title: safeString(row.title).trim() || "Untitled event",
+    summary: safeString(row.summary).trim() || "",
+    startAt: toIsoString(row.startAt),
+    endAt: toIsoString(row.endAt),
+    timezone: safeString(row.timezone).trim() || "UTC",
+    location: safeString(row.location).trim(),
+    priceCents: readNonNegativeInt(row.priceCents),
+    currency: safeString(row.currency).trim() || "USD",
+    includesFiring: row.includesFiring === true,
+    firingDetails: safeString(row.firingDetails) || null,
+    capacity,
+    waitlistEnabled: row.waitlistEnabled !== false,
+    waitlistCount,
+    status,
+    remainingCapacity,
+  } satisfies LibraryDiscoveryWorkshopSummary;
+
+  const communitySignalCounts = normalizeWorkshopSignalCounts(count);
+  return {
+    ...summary,
+    ...(communitySignalCounts ? { communitySignalCounts } : {}),
+  };
+}
+
+type WorkshopDiscoveryWorkshopRow = LibraryDiscoveryWorkshopSummary & {
+  startAtMs: number;
+  latestSignalAtMs: number;
+  totalSignalCount: number;
+  demandScore: number;
+  hasCommunitySignalActivity: boolean;
+};
+
+function sanitizeWorkshopDiscoveryRow(
+  row: WorkshopDiscoveryWorkshopRow,
+): LibraryDiscoveryWorkshopSummary {
+  const copy = { ...(row as Record<string, unknown>) };
+  delete copy.startAtMs;
+  delete copy.latestSignalAtMs;
+  delete copy.totalSignalCount;
+  delete copy.demandScore;
+  delete copy.hasCommunitySignalActivity;
+  return copy as LibraryDiscoveryWorkshopSummary;
+}
+
+type WorkshopDiscoverySection = {
+  workshops: LibraryDiscoveryWorkshopSummary[];
+  source: "signals" | "fallback";
+  totalSignals: number;
+  requestSignals: number;
+  interestSignals: number;
+  showcaseSignals: number;
+  withdrawnSignals: number;
+  topDemandScore: number | null;
+  workshopCount: number;
+  signalWorkshopCount: number;
+  latestSignalAtMs: number | null;
+};
+
+async function loadWorkshopDiscoverySection(
+  uid: string,
+  limit: number,
+): Promise<WorkshopDiscoverySection> {
+  const nowMs = nowTs().toMillis();
+  let eventSnaps;
+  try {
+    eventSnaps = await db
+      .collection("events")
+      .orderBy("startAt", "asc")
+      .limit(400)
+      .get();
+  } catch (error) {
+    logger.warn("library.discovery.get workshop discovery fallback engaged", {
+      message: safeErrorMessage(error),
+    });
+    eventSnaps = await db.collection("events").get();
+  }
+
+  const entries = eventSnaps.docs
+    .map((docSnap) => ({ id: docSnap.id, row: (docSnap.data() as Record<string, unknown>) || {} }))
+    .filter((entry) => {
+      if (!entry.row || typeof entry.row !== "object") return false;
+      const status = readEventDiscoveryStatus(entry.row);
+      if (status !== "published") return false;
+
+      const startAtMs = parseWorkshopStartMs(toIsoString(entry.row.startAt) ?? entry.row.startAt);
+      return Number.isFinite(startAtMs) && startAtMs >= nowMs;
+    });
+
+  const countsByEvent = await collectWorkshopCommunitySignalCountsByEventIds(
+    uid,
+    entries.map((entry) => entry.id),
+  );
+
+  const discoveryRows = entries
+    .map((entry): WorkshopDiscoveryWorkshopRow => {
+      const count = countsByEvent.get(entry.id) ?? null;
+      const eventSummary = normalizeLibraryDiscoveryWorkshopSummary(entry.id, entry.row, count);
+      const startAtMs = parseWorkshopStartMs(eventSummary.startAt);
+      const totalSignalCount = eventSummary.communitySignalCounts?.totalSignals ?? 0;
+      const withdrawnSignalCount = eventSummary.communitySignalCounts?.withdrawnSignals ?? 0;
+      return {
+        ...eventSummary,
+        startAtMs,
+        latestSignalAtMs: eventSummary.communitySignalCounts?.latestSignalAtMs ?? 0,
+        totalSignalCount,
+        demandScore: eventSummary.communitySignalCounts?.demandScore ?? 0,
+        hasCommunitySignalActivity: totalSignalCount + withdrawnSignalCount > 0,
+      };
+    });
+
+  const featuredBySignals = discoveryRows
+    .filter((entry) => entry.hasCommunitySignalActivity)
+    .sort((left, right) => {
+      if ((right.demandScore - left.demandScore) !== 0) {
+        return right.demandScore - left.demandScore;
+      }
+      if ((right.totalSignalCount - left.totalSignalCount) !== 0) {
+        return right.totalSignalCount - left.totalSignalCount;
+      }
+      if ((right.latestSignalAtMs - left.latestSignalAtMs) !== 0) {
+        return right.latestSignalAtMs - left.latestSignalAtMs;
+      }
+      if (left.startAtMs !== right.startAtMs) {
+        return left.startAtMs - right.startAtMs;
+      }
+      return left.id.localeCompare(right.id);
+    })
+    .slice(0, limit);
+
+  if (featuredBySignals.length > 0) {
+    const signalWorkshopIds = new Set(featuredBySignals.map((entry) => entry.id));
+    const fillCount = Math.max(0, limit - featuredBySignals.length);
+    const featuredFallbackByStart = discoveryRows
+      .filter((entry) => !entry.hasCommunitySignalActivity && !signalWorkshopIds.has(entry.id))
+      .sort((left, right) => {
+        if (left.startAtMs !== right.startAtMs) {
+          return left.startAtMs - right.startAtMs;
+        }
+        return left.id.localeCompare(right.id);
+      })
+      .slice(0, fillCount);
+
+    const featuredWorkshops = [...featuredBySignals, ...featuredFallbackByStart];
+    const summarySignalRows = featuredWorkshops.filter((entry) => entry.hasCommunitySignalActivity);
+    const signalWorkshopCount = summarySignalRows.length;
+    const summaryTotalSignals = summarySignalRows.reduce(
+      (sum, entry) => sum + (entry.communitySignalCounts?.totalSignals ?? 0),
+      0,
+    );
+    const summaryRequestSignals = summarySignalRows.reduce(
+      (sum, entry) => sum + (entry.communitySignalCounts?.requestSignals ?? 0),
+      0,
+    );
+    const summaryInterestSignals = summarySignalRows.reduce(
+      (sum, entry) => sum + (entry.communitySignalCounts?.interestSignals ?? 0),
+      0,
+    );
+    const summaryShowcaseSignals = summarySignalRows.reduce(
+      (sum, entry) => sum + (entry.communitySignalCounts?.showcaseSignals ?? 0),
+      0,
+    );
+    const summaryWithdrawnSignals = summarySignalRows.reduce(
+      (sum, entry) => sum + (entry.communitySignalCounts?.withdrawnSignals ?? 0),
+      0,
+    );
+    const summaryTopDemandScore = summarySignalRows.reduce(
+      (maxScore, entry) => Math.max(maxScore, entry.communitySignalCounts?.demandScore ?? 0),
+      0,
+    );
+    const latestSignalAtMs = summarySignalRows.reduce((acc, entry) => {
+      if (!Number.isFinite(entry.latestSignalAtMs)) return acc;
+      return Math.max(acc, entry.latestSignalAtMs);
+    }, 0);
+    return {
+      workshops: featuredWorkshops.map(sanitizeWorkshopDiscoveryRow),
+      source: "signals",
+      totalSignals: summaryTotalSignals,
+      requestSignals: summaryRequestSignals,
+      interestSignals: summaryInterestSignals,
+      showcaseSignals: summaryShowcaseSignals,
+      withdrawnSignals: summaryWithdrawnSignals,
+      topDemandScore: summaryTopDemandScore > 0 ? summaryTopDemandScore : null,
+      workshopCount: featuredWorkshops.length,
+      signalWorkshopCount,
+      latestSignalAtMs: latestSignalAtMs > 0 ? latestSignalAtMs : null,
+    };
+  }
+
+  const fallbackWorkshops = discoveryRows
+    .sort((left, right) => {
+      if (left.startAtMs !== right.startAtMs) {
+        return left.startAtMs - right.startAtMs;
+      }
+      return left.id.localeCompare(right.id);
+    })
+    .slice(0, limit)
+    .map(sanitizeWorkshopDiscoveryRow);
+
+  return {
+    workshops: fallbackWorkshops,
+    source: "fallback",
+    topDemandScore: null,
+    totalSignals: 0,
+    requestSignals: 0,
+    interestSignals: 0,
+    showcaseSignals: 0,
+    withdrawnSignals: 0,
+    workshopCount: fallbackWorkshops.length,
+    signalWorkshopCount: 0,
+    latestSignalAtMs: null,
+  };
+}
+
+function parseWorkshopStartMs(value: unknown): number {
+  if (!value) return Number.NaN;
+  const parsed = parseReservationIsoDate(value);
+  if (!parsed) return Number.NaN;
+  return parsed.getTime();
+}
+
 function emptyLibraryReviewSignals(): LibraryReviewSignals {
   return {
     averageByItem: new Map<string, number>(),
@@ -4416,6 +4777,19 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
 
       const addOnsInput = body.addOns ?? {};
       const isCommunityShelf = intakeMode === "COMMUNITY_SHELF";
+      const fragileHandlingRatePerHalfShelf = 4;
+      const placementPreferenceFlatCost = 3;
+      const prepaidStorageWeeklyCost = 2;
+      const placementPreferenceZoneInput = addOnsInput.placementPreferenceZone;
+      const placementPreferenceZone =
+        placementPreferenceZoneInput === "top" ||
+        placementPreferenceZoneInput === "middle" ||
+        placementPreferenceZoneInput === "bottom"
+          ? placementPreferenceZoneInput
+          : "middle";
+      const prepaidStorageWeeksInput = normalizeNumber(addOnsInput.prepaidStorageWeeks, 1);
+      const prepaidStorageWeeks =
+        prepaidStorageWeeksInput != null ? clampNumber(Math.round(prepaidStorageWeeksInput), 1, 12) : 1;
       const addOns = {
         rushRequested: !isCommunityShelf && addOnsInput.rushRequested === true,
         wholeKilnRequested: intakeMode === "WHOLE_KILN",
@@ -4432,6 +4806,32 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           : null,
         waxResistAssistRequested: !isCommunityShelf && addOnsInput.waxResistAssistRequested === true,
         glazeSanityCheckRequested: !isCommunityShelf && addOnsInput.glazeSanityCheckRequested === true,
+        fragileHandlingRequested: !isCommunityShelf && addOnsInput.fragileHandlingRequested === true,
+        fragileHandlingCost:
+          !isCommunityShelf &&
+          addOnsInput.fragileHandlingRequested === true &&
+          resolvedEstimatedHalfShelves &&
+          resolvedEstimatedHalfShelves > 0
+            ? resolvedEstimatedHalfShelves * fragileHandlingRatePerHalfShelf
+            : null,
+        placementPreferenceRequested: !isCommunityShelf && addOnsInput.placementPreferenceRequested === true,
+        placementPreferenceZone:
+          !isCommunityShelf && addOnsInput.placementPreferenceRequested === true
+            ? placementPreferenceZone
+            : null,
+        placementPreferenceCost:
+          !isCommunityShelf && addOnsInput.placementPreferenceRequested === true
+            ? placementPreferenceFlatCost
+            : null,
+        prepaidStorageRequested: !isCommunityShelf && addOnsInput.prepaidStorageRequested === true,
+        prepaidStorageWeeks:
+          !isCommunityShelf && addOnsInput.prepaidStorageRequested === true
+            ? prepaidStorageWeeks
+            : null,
+        prepaidStorageCost:
+          !isCommunityShelf && addOnsInput.prepaidStorageRequested === true
+            ? prepaidStorageWeeks * prepaidStorageWeeklyCost
+            : null,
         deliveryAddress: trimOrNull(addOnsInput.deliveryAddress),
         deliveryInstructions: trimOrNull(addOnsInput.deliveryInstructions),
       };
@@ -6897,6 +7297,9 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       }
 
       const limit = parsed.data.limit ?? 8;
+      const includeWorkshopDiscovery = parsed.data.includeWorkshopDiscovery === true;
+      const workshopDiscoveryLimit = parsed.data.workshopDiscoveryLimit ?? 4;
+      const safeWorkshopDiscoveryLimit = Math.max(1, Math.min(Math.floor(workshopDiscoveryLimit), 12));
       let itemsSnap;
       try {
         itemsSnap = await db.collection("libraryItems").orderBy("title", "asc").limit(1200).get();
@@ -6962,12 +7365,47 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         .slice(0, limit)
         .map((entry) => toLibraryApiItemRow(entry.id, entry.row, reviewSignals, borrowCounts));
 
+      const featuredWorkshopsSection = includeWorkshopDiscovery
+        ? await loadWorkshopDiscoverySection(ctx.uid, safeWorkshopDiscoveryLimit)
+        : {
+            workshops: [],
+            source: "fallback",
+            totalSignals: 0,
+            requestSignals: 0,
+            interestSignals: 0,
+            showcaseSignals: 0,
+            withdrawnSignals: 0,
+            topDemandScore: null,
+            workshopCount: 0,
+            signalWorkshopCount: 0,
+            latestSignalAtMs: null,
+          };
+      const featuredWorkshops = featuredWorkshopsSection.workshops;
+      const featuredWorkshopsSource = includeWorkshopDiscovery ? featuredWorkshopsSection.source : undefined;
+      const featuredWorkshopsSignalSummary = includeWorkshopDiscovery
+        ? {
+            source: featuredWorkshopsSection.source,
+            workshopCount: featuredWorkshops.length,
+            signalWorkshopCount: featuredWorkshopsSection.signalWorkshopCount,
+            totalSignals: featuredWorkshopsSection.totalSignals,
+            requestSignals: featuredWorkshopsSection.requestSignals,
+            interestSignals: featuredWorkshopsSection.interestSignals,
+            showcaseSignals: featuredWorkshopsSection.showcaseSignals,
+            withdrawnSignals: featuredWorkshopsSection.withdrawnSignals,
+            topDemandScore: featuredWorkshopsSection.topDemandScore,
+            latestSignalAtMs: featuredWorkshopsSection.latestSignalAtMs,
+          }
+        : undefined;
+
       jsonOk(res, requestId, {
         limit,
         staffPicks,
         mostBorrowed,
         recentlyAdded,
         recentlyReviewed,
+        featuredWorkshops,
+        ...(featuredWorkshopsSource ? { featuredWorkshopsSource } : {}),
+        ...(featuredWorkshopsSignalSummary ? { featuredWorkshopsSignalSummary } : {}),
       });
       return;
     }
@@ -7162,12 +7600,14 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           metadata: {
             openlibraryEnabled: config.openlibraryEnabled,
             googlebooksEnabled: config.googlebooksEnabled,
+            coverReviewGuardrailEnabled: config.coverReviewGuardrailEnabled,
             disabledProviders: config.disabledProviders,
           },
         });
         jsonOk(res, requestId, {
           openlibraryEnabled: config.openlibraryEnabled,
           googlebooksEnabled: config.googlebooksEnabled,
+          coverReviewGuardrailEnabled: config.coverReviewGuardrailEnabled,
           disabledProviders: config.disabledProviders,
           note: config.note,
           updatedAtMs: config.updatedAtMs,
@@ -7204,6 +7644,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         const config = await setLibraryExternalLookupProviderConfig({
           openlibraryEnabled: parsed.data.openlibraryEnabled,
           googlebooksEnabled: parsed.data.googlebooksEnabled,
+          coverReviewGuardrailEnabled: parsed.data.coverReviewGuardrailEnabled,
           note: parsed.data.note ?? null,
           updatedByUid: ctx.uid,
         });
@@ -7219,6 +7660,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           metadata: {
             openlibraryEnabled: config.openlibraryEnabled,
             googlebooksEnabled: config.googlebooksEnabled,
+            coverReviewGuardrailEnabled: config.coverReviewGuardrailEnabled,
             disabledProviders: config.disabledProviders,
             hasNote: Boolean(config.note),
           },
@@ -7226,6 +7668,7 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         jsonOk(res, requestId, {
           openlibraryEnabled: config.openlibraryEnabled,
           googlebooksEnabled: config.googlebooksEnabled,
+          coverReviewGuardrailEnabled: config.coverReviewGuardrailEnabled,
           disabledProviders: config.disabledProviders,
           note: config.note,
           updatedAtMs: config.updatedAtMs,

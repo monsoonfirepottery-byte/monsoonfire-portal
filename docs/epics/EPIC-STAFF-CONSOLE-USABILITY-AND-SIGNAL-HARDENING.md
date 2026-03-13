@@ -56,6 +56,11 @@ Harden staff-console usability and operational signals so staff can trust health
 5. Member tier chiplets match authoritative member type in all supported staff paths.
 6. Suspicious batch artifacts are triaged and cleaned up with audit-safe guardrails.
 
+## Progress log
+
+- Added/updated staff workspace path hardening to normalize noisy, copy/paste variants (including protocol-relative and protocol-less staff links such as `portal.monsoonfire.com/staff/cockpit`) to reduce navigation ambiguity and low-value route friction.
+- Added/updated cockpit hash routing so legacy deep links like `/staff/cockpit#finance` now stay on the intended dedicated cockpit tab path (`/staff/cockpit/finance`) instead of collapsing to cockpit root.
+
 ## Child Tickets
 
 - tickets/P1-EPIC-15-staff-console-usability-and-signal-hardening.md

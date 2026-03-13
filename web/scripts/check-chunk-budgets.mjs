@@ -12,6 +12,8 @@ const budgets = [
   { prefix: "vendor-firebase-core-", maxBytes: 80_000 },
   // Reservations route now carries richer planner + policy UI state.
   { prefix: "ReservationsView-", maxBytes: 100_000 },
+  // Staff stays lazy-loaded, but it now carries a broader operator workspace surface.
+  { prefix: "StaffView-", maxBytes: 360_000 },
   // Current app shell carries route wiring and shared runtime used across most views.
   { prefix: "index-", maxBytes: 110_000 },
 ];
@@ -25,10 +27,11 @@ const requiredRouteChunks = [
   "MaterialsView-",
   "EventsView-",
   "ProfileView-",
+  "StaffView-",
 ];
-// Total budgets re-baselined after library + events/staff expansion landed.
-// Keep modest headroom so regressions still fail quickly.
-const MAX_TOTAL_JS_BYTES = 1_520_000;
+// Total budgets re-baselined after current lazy-route inventory expanded.
+// Keep modest headroom so bundle regressions still fail quickly.
+const MAX_TOTAL_JS_BYTES = 1_550_000;
 const MAX_TOTAL_CSS_BYTES = 230_000;
 
 const files = readdirSync(assetsDir).filter((name) => name.endsWith(".js"));

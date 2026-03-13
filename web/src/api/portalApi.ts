@@ -33,6 +33,8 @@ import type {
   ListIndustryEventsResponse as ContractsListIndustryEventsResponse,
   ListEventSignupsRequest as ContractsListEventSignupsRequest,
   ListEventSignupsResponse as ContractsListEventSignupsResponse,
+  ListWorkshopDemandSignalsRequest as ContractsListWorkshopDemandSignalsRequest,
+  ListWorkshopDemandSignalsResponse as ContractsListWorkshopDemandSignalsResponse,
   GetEventRequest as ContractsGetEventRequest,
   GetEventResponse as ContractsGetEventResponse,
   GetIndustryEventRequest as ContractsGetIndustryEventRequest,
@@ -136,6 +138,8 @@ export type ListIndustryEventsRequest = ContractsListIndustryEventsRequest;
 export type ListIndustryEventsResponse = ContractsListIndustryEventsResponse;
 export type ListEventSignupsRequest = ContractsListEventSignupsRequest;
 export type ListEventSignupsResponse = ContractsListEventSignupsResponse;
+export type ListWorkshopDemandSignalsRequest = ContractsListWorkshopDemandSignalsRequest;
+export type ListWorkshopDemandSignalsResponse = ContractsListWorkshopDemandSignalsResponse;
 export type GetEventRequest = ContractsGetEventRequest;
 export type GetEventResponse = ContractsGetEventResponse;
 export type GetIndustryEventRequest = ContractsGetIndustryEventRequest;
@@ -256,6 +260,9 @@ export type PortalApi = {
     args: PortalApiCallArgs<ListIndustryEventsRequest>
   ): Promise<PortalApiCallResult<ListIndustryEventsResponse>>;
   listEventSignups(args: PortalApiCallArgs<ListEventSignupsRequest>): Promise<PortalApiCallResult<ListEventSignupsResponse>>;
+  listWorkshopDemandSignals(
+    args: PortalApiCallArgs<ListWorkshopDemandSignalsRequest>
+  ): Promise<PortalApiCallResult<ListWorkshopDemandSignalsResponse>>;
   getEvent(args: PortalApiCallArgs<GetEventRequest>): Promise<PortalApiCallResult<GetEventResponse>>;
   getIndustryEvent(
     args: PortalApiCallArgs<GetIndustryEventRequest>
@@ -816,6 +823,17 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
         ...args,
         requestTimeoutMs,
       });
+    },
+
+    async listWorkshopDemandSignals(args) {
+      return await callFn<ListWorkshopDemandSignalsRequest, ListWorkshopDemandSignalsResponse>(
+        baseUrl,
+        "listWorkshopDemandSignals",
+        {
+          ...args,
+          requestTimeoutMs,
+        }
+      );
     },
 
     async listBillingSummary(args) {

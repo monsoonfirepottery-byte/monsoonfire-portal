@@ -178,6 +178,7 @@ The JSON artifact includes:
 - `npm run studio:env:validate` — env-only check
 - `npm run guardrails:check` — stability guardrails (resource, log, artifact, volume posture)
 - `npm run test:journey:fast` — deterministic journey + Stripe negative regression lane
+  - Includes `continueJourney` endpoint runtime checks (`functions/lib/continueJourneyEndpoint.test.js`) in addition to contract checks.
 - `npm run test:journey:deep` — expanded journey lane with optional strict agent smoke
 - `npm run test:stripe:negative` — Stripe negative-event contract tests only
 

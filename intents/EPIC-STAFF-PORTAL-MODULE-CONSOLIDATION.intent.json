@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "intent.v1",
+  "intentId": "staff-portal-module-consolidation-v1",
+  "title": "Staff Portal Module Consolidation",
+  "objective": "Consolidate duplicated staff portal modules into a task-oriented cockpit flow while preserving operational capabilities and lowering navigation friction.",
+  "epic": {
+    "path": "docs/epics/EPIC-STAFF-PORTAL-MODULE-CONSOLIDATION.md",
+    "owner": "Portal Staff Console"
+  },
+  "nonGoals": [
+    "No deletion of operational capability without relocation.",
+    "No loss of telemetry visibility for consolidated modules.",
+    "No regressions in staff critical-path actions."
+  ],
+  "constraints": {
+    "riskTier": "medium",
+    "writePolicy": "pr-only-no-main",
+    "maxChangedFiles": 45,
+    "maxWriteActions": 8
+  },
+  "autonomy": {
+    "mode": "bounded",
+    "maxRunMinutes": 35,
+    "allowedTools": [
+      "functions.exec_command",
+      "functions.apply_patch",
+      "functions.write_stdin"
+    ],
+    "requiresHumanApprovalFor": [
+      "force-push",
+      "history-rewrite",
+      "credential-rotation"
+    ],
+    "haltConditions": [
+      "strict-check-failure",
+      "blocking-runtime-error",
+      "confidence-below-threshold"
+    ]
+  },
+  "doneCriteria": {
+    "requiredChecks": [
+      "npm run portal:pr:functional:gate",
+      "npm run portal:theme:contrast",
+      "npm run portal:canary:community-layout"
+    ],
+    "requiredArtifacts": [
+      "output/qa/portal-pr-functional-gate.json"
+    ],
+    "requiredDocs": [
+      "docs/epics/EPIC-STAFF-PORTAL-MODULE-CONSOLIDATION.md"
+    ]
+  },
+  "executionSlices": [
+    {
+      "id": "map-duplicate-modules",
+      "title": "Map duplicate staff modules and cockpit relocation targets",
+      "dependsOn": [],
+      "checks": [
+        "npm run portal:pr:functional:gate"
+      ],
+      "writeScope": "none"
+    },
+    {
+      "id": "consolidate-cockpit-flows",
+      "title": "Consolidate staff flows into cockpit-oriented modules",
+      "dependsOn": [
+        "map-duplicate-modules"
+      ],
+      "checks": [
+        "npm run portal:theme:contrast"
+      ],
+      "writeScope": "staff-portal-ui"
+    },
+    {
+      "id": "verify-layout-and-signal-stability",
+      "title": "Verify consolidated layout and signal stability",
+      "dependsOn": [
+        "consolidate-cockpit-flows"
+      ],
+      "checks": [
+        "npm run portal:canary:community-layout"
+      ],
+      "writeScope": "artifact-only"
+    }
+  ],
+  "escalation": {
+    "channel": "github-issue:Staff Portal Module Consolidation",
+    "when": [
+      "Consolidation introduces staff flow regressions.",
+      "Theme/readability checks fail on critical staff pages.",
+      "Layout canary detects persistent overflow or breakage."
+    ]
+  }
+}

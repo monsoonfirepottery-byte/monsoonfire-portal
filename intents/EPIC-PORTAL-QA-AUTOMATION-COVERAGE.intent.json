@@ -1,0 +1,123 @@
+{
+  "schemaVersion": "intent.v1",
+  "intentId": "portal-qa-automation-coverage-v1",
+  "title": "Portal QA Automation Coverage Expansion",
+  "objective": "Close recurring QA gaps with repeatable automated checks for authz, index drift, canary health, fixture stewardship, and promotion safety.",
+  "epic": {
+    "path": "docs/epics/EPIC-PORTAL-QA-AUTOMATION-COVERAGE.md",
+    "owner": "Platform / QA / Portal"
+  },
+  "nonGoals": [
+    "No replacement of human exploratory QA.",
+    "No bypass of strict authz or index guards.",
+    "No deploy promotion without gate evidence."
+  ],
+  "constraints": {
+    "riskTier": "medium",
+    "writePolicy": "pr-only-no-main",
+    "maxChangedFiles": 45,
+    "maxWriteActions": 8
+  },
+  "autonomy": {
+    "mode": "bounded",
+    "maxRunMinutes": 35,
+    "allowedTools": [
+      "functions.exec_command",
+      "functions.apply_patch",
+      "functions.write_stdin"
+    ],
+    "requiresHumanApprovalFor": [
+      "force-push",
+      "history-rewrite",
+      "credential-rotation"
+    ],
+    "haltConditions": [
+      "strict-check-failure",
+      "blocking-runtime-error",
+      "confidence-below-threshold"
+    ]
+  },
+  "doneCriteria": {
+    "requiredChecks": [
+      "npm run portal:pr:functional:gate",
+      "npm run portal:canary:auth",
+      "npm run portal:index:guard",
+      "npm run portal:fixture:steward"
+    ],
+    "requiredArtifacts": [
+      "output/qa/portal-pr-functional-gate.json"
+    ],
+    "requiredDocs": [
+      "docs/epics/EPIC-PORTAL-QA-AUTOMATION-COVERAGE.md",
+      "docs/runbooks/PORTAL_AUTOMATION_MATRIX.md"
+    ]
+  },
+  "simulation": {
+    "profile": "safe",
+    "required": true,
+    "strict": true
+  },
+  "evaluation": {
+    "required": true,
+    "threshold": 0.9,
+    "suite": "evals/suites/portal-qa-automation-coverage-v1.suite.json"
+  },
+  "budget": {
+    "maxTasks": 6,
+    "maxChecks": 20,
+    "maxRuntimeMs": 1800000,
+    "maxRetriesPerCheck": 1
+  },
+  "policy": {
+    "profile": "default",
+    "allowUntrustedMcp": false
+  },
+  "memoryGovernance": {
+    "enabled": true,
+    "minConfidence": 0.72,
+    "maxAgeDays": 365
+  },
+  "executionSlices": [
+    {
+      "id": "run-pr-functional-gate",
+      "title": "Run emulator-backed PR functional/authz checks",
+      "dependsOn": [],
+      "checks": [
+        "npm run portal:pr:functional:gate"
+      ],
+      "writeScope": "artifact-only"
+    },
+    {
+      "id": "run-production-canary-and-index-guard",
+      "title": "Run authenticated canary and strict index guard",
+      "dependsOn": [
+        "run-pr-functional-gate"
+      ],
+      "checks": [
+        "npm run portal:canary:auth",
+        "npm run portal:index:guard"
+      ],
+      "writeScope": "artifact-only"
+    },
+    {
+      "id": "run-fixture-steward-and-promotion-gate",
+      "title": "Run fixture stewardship and promotion safety checks",
+      "dependsOn": [
+        "run-production-canary-and-index-guard"
+      ],
+      "checks": [
+        "npm run portal:fixture:steward",
+        "npm run portal:promotion:gate"
+      ],
+      "writeScope": "artifact-only"
+    }
+  ],
+  "escalation": {
+    "channel": "github-issue:Portal QA Automation Coverage",
+    "when": [
+      "Authz/index guards fail in strict mode.",
+      "Canary health degrades across consecutive runs.",
+      "Fixture stewardship cannot converge."
+    ]
+  }
+}

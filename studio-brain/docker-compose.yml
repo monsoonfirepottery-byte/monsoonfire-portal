@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: ${STUDIO_BRAIN_POSTGRES_IMAGE:-pgvector/pgvector:pg16}
     container_name: studiobrain_postgres
     restart: unless-stopped
     environment:

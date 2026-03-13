@@ -25,6 +25,7 @@ type MockQuery = {
   orderBy: (..._args: unknown[]) => MockQuery;
   limit: (limit: number) => MockQuery;
   get: () => Promise<{ docs: MockSnapshot[]; empty: boolean }>;
+  forEach: (fn: (doc: MockSnapshot) => void) => void;
 };
 type MockTransaction = {
   get: (docRef: unknown) => Promise<unknown>;
@@ -51,7 +52,17 @@ function createCollectionQuery(rows: Record<string, DbValue>, limitCount?: numbe
     limit: (nextLimit) => createCollectionQuery(rows, nextLimit),
     get: async () => {
       const docs = limitCount ? listSnapshots(rows).slice(0, limitCount) : listSnapshots(rows);
-      return { docs, empty: docs.length === 0 };
+      return {
+        docs,
+        empty: docs.length === 0,
+        forEach: (fn: (doc: MockSnapshot) => void) => {
+          for (const doc of docs) fn(doc);
+        },
+      };
+    },
+    forEach: (fn: (doc: MockSnapshot) => void) => {
+      const docs = limitCount ? listSnapshots(rows).slice(0, limitCount) : listSnapshots(rows);
+      for (const doc of docs) fn(doc);
     },
   };
 }
@@ -128,9 +139,15 @@ function withMockFirestore<T>(
       where: () => createCollectionQuery(rows),
       orderBy: () => createCollectionQuery(rows),
       limit: (limit: number) => createCollectionQuery(rows, limit),
-      get: async () => {
+    get: async () => {
         const docs = listSnapshots(rows);
-        return { docs, empty: docs.length === 0 };
+        return {
+          docs,
+          empty: docs.length === 0,
+          forEach: (fn: (doc: MockSnapshot) => void) => {
+            for (const doc of docs) fn(doc);
+          },
+        };
       },
     };
   };
@@ -819,6 +836,9 @@ test("handleApiV1 dispatches /v1/batches.get with stable response contract", asy
     }),
   );
 
+  if (response.status() !== 200) {
+    console.error("workshop discovery response", JSON.stringify(response.body()));
+  }
   assert.equal(response.status(), 200);
   const body = response.body() as { ok: boolean; data: { batch: Record<string, unknown> } };
   assert.equal(body.ok, true);
@@ -874,6 +894,9 @@ test("handleApiV1 dispatches /v1/batches.timeline.list with projected timeline r
     }),
   );
 
+  if (response.status() !== 200) {
+    console.error("workshop discovery response", JSON.stringify(response.body()));
+  }
   assert.equal(response.status(), 200);
   assert.deepEqual(withoutRequestId(response.body()), {
     ok: true,
@@ -960,6 +983,9 @@ test("handleApiV1 dispatches /v1/library.items.list with filtering and computed 
     }),
   );
 
+  if (response.status() !== 200) {
+    console.error("workshop discovery response", JSON.stringify(response.body()));
+  }
   assert.equal(response.status(), 200);
   const body = response.body() as {
     ok: boolean;
@@ -1325,6 +1351,1116 @@ test("handleApiV1 dispatches /v1/library.discovery.get with required sections", 
   assert.equal(body.data.recentlyReviewed[0]?.id, "item-3");
 });
 
+test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery and community signals", async () => {
+  const request = makeRequest(
+    "/v1/library.discovery.get",
+    {
+      limit: 2,
+      includeWorkshopDiscovery: true,
+      workshopDiscoveryLimit: 4,
+    },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    events: {
+      "event-1-published-aaaaaaaa": {
+        title: "Community Circle",
+        summary: "Workshop driven by community demand",
+        status: "published",
+        startAt: "2031-01-01T10:00:00.000Z",
+        endAt: "2031-01-01T12:30:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Main Studio",
+        priceCents: 3500,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 20,
+        waitlistEnabled: true,
+        waitlistCount: 2,
+        publishedState: "published",
+      },
+      "event-2-cancelled-bbbbb": {
+        title: "Cancelled Signal",
+        summary: "Should be ignored",
+        status: "cancelled",
+        startAt: "2031-01-08T14:00:00.000Z",
+        endAt: "2031-01-08T16:30:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Gallery",
+        priceCents: 2500,
+        currency: "usd",
+        includesFiring: true,
+        capacity: 10,
+        waitlistEnabled: false,
+        waitlistCount: 0,
+        publishedState: "cancelled",
+      },
+      "event-3-published-cccccc": {
+        title: "Quiet Draft",
+        summary: "No community signal yet",
+        status: "cancelled",
+        startAt: "2031-01-09T09:00:00.000Z",
+        endAt: "2031-01-09T11:30:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Studio Annex",
+        priceCents: 1800,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 12,
+        waitlistEnabled: false,
+        waitlistCount: 0,
+        publishedState: "published",
+      },
+    },
+    supportRequests: {
+      "support-1": {
+        category: "Workshops",
+        source: "events-request-form",
+        eventId: "event-1-published-aaaaaaaa",
+        uid: "member-a",
+        createdAt: "2023-11-15T10:15:00.000Z",
+        subject: "Workshop request",
+        body: "Workshop id: event-1",
+      },
+      "support-2": {
+        category: "Workshops",
+        source: "events-interest-toggle",
+        eventId: "event-1-published-aaaaaaaa",
+        uid: "member-b",
+        createdAt: "2023-11-15T10:20:00.000Z",
+        subject: "Workshop interest",
+        body: "Event id: event-1",
+      },
+      "support-3": {
+        category: "Workshops",
+        source: "events-interest-toggle",
+        eventId: "event-1-published-aaaaaaaa",
+        uid: "member-b",
+        createdAt: "2023-11-15T10:20:10.000Z",
+        subject: "Workshop interest update",
+        body: "Event id: event-1\nSome detail",
+      },
+    "support-4": {
+      category: "Workshops",
+      source: "events-interest-withdrawal",
+      eventId: "event-1-published-aaaaaaaa",
+      uid: "member-c",
+      createdAt: "2023-11-15T10:21:00.000Z",
+      subject: "Workshop interest withdrawn",
+      body: "Event id: event-1",
+    },
+    "support-5": {
+      category: "Workshops",
+      source: "events-showcase",
+      eventId: "event-1-published-aaaaaaaa",
+      uid: "member-d",
+      createdAt: "2023-11-15T10:22:00.000Z",
+      subject: "Workshop showcase follow-up",
+      body: "Event id: event-1",
+    },
+  },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  if (response.status() !== 200) {
+    console.error("workshop discovery response", JSON.stringify(response.body()));
+  }
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      limit: number;
+      featuredWorkshopsSource?: string;
+        featuredWorkshops: Array<
+          Record<string, unknown> & {
+            id: string;
+            communitySignalCounts?: {
+              requestSignals: number;
+              interestSignals: number;
+              showcaseSignals: number;
+              withdrawnSignals: number;
+              totalSignals: number;
+              demandScore: number;
+              latestSignalAtMs: number | null;
+            };
+          }
+        >;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.limit, 2);
+  assert.equal(body.data.featuredWorkshopsSource, "signals");
+  assert.equal(body.data.featuredWorkshops.length, 1);
+  assert.equal(body.data.featuredWorkshops[0]?.id, "event-1-published-aaaaaaaa");
+      const counts = body.data.featuredWorkshops[0]?.communitySignalCounts;
+      assert.ok(counts);
+      assert.equal(counts?.requestSignals, 1);
+      assert.equal(counts?.interestSignals, 1);
+      assert.equal(counts?.showcaseSignals, 1);
+      assert.equal(counts?.totalSignals, 3);
+      assert.equal(counts?.withdrawnSignals, 1);
+      assert.equal(counts?.demandScore, 5.5);
+      assert.ok(typeof counts?.latestSignalAtMs === "number");
+      assert.ok((counts?.latestSignalAtMs ?? 0) > 0);
+      const signalSummary = (body.data as { featuredWorkshopsSignalSummary?: Record<string, unknown> })
+        .featuredWorkshopsSignalSummary;
+      assert.equal(signalSummary?.source, "signals");
+      assert.equal(signalSummary?.workshopCount, 1);
+      assert.equal(signalSummary?.totalSignals, 3);
+      assert.equal(signalSummary?.requestSignals, 1);
+      assert.equal(signalSummary?.interestSignals, 1);
+      assert.equal(signalSummary?.showcaseSignals, 1);
+      assert.equal(signalSummary?.withdrawnSignals, 1);
+      assert.equal(signalSummary?.topDemandScore, 5.5);
+      assert.ok(typeof signalSummary?.latestSignalAtMs === "number");
+      assert.ok((signalSummary?.latestSignalAtMs ?? 0) > 0);
+});
+
+test("handleApiV1 library.discovery.get keeps request totals when another member withdraws", async () => {
+  const request = makeRequest(
+    "/v1/library.discovery.get",
+    {
+      limit: 2,
+      includeWorkshopDiscovery: true,
+      workshopDiscoveryLimit: 4,
+    },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    events: {
+      "event-cross-user": {
+        title: "Requests with later withdrawals",
+        summary: "Cross-user withdrawal should not erase community requests",
+        status: "published",
+        startAt: "2031-02-02T10:00:00.000Z",
+        endAt: "2031-02-02T12:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Main Studio",
+        priceCents: 2700,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 14,
+        waitlistEnabled: false,
+        waitlistCount: 0,
+        publishedState: "published",
+      },
+    },
+    supportRequests: {
+      "support-request-member-a": {
+        category: "Workshops",
+        source: "events-request-form",
+        eventId: "event-cross-user",
+        uid: "member-a",
+        createdAt: "2024-01-10T10:00:00.000Z",
+        subject: "Workshop request",
+        body: "Event id: event-cross-user",
+      },
+      "support-withdraw-member-b": {
+        category: "Workshops",
+        source: "events-interest-withdrawal",
+        eventId: "event-cross-user",
+        uid: "member-b",
+        createdAt: "2024-01-10T10:05:00.000Z",
+        subject: "Workshop interest withdrawn",
+        body: "Event id: event-cross-user",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      limit: number;
+      featuredWorkshopsSource?: string;
+      featuredWorkshops: Array<
+        Record<string, unknown> & {
+          id: string;
+          communitySignalCounts?: {
+            requestSignals: number;
+            interestSignals: number;
+            showcaseSignals: number;
+            withdrawnSignals?: number;
+            totalSignals: number;
+            latestSignalAtMs: number | null;
+          };
+        }
+      >;
+    };
+  };
+
+  assert.equal(body.ok, true);
+  assert.equal(body.data.limit, 2);
+  assert.equal(body.data.featuredWorkshopsSource, "signals");
+  assert.equal(body.data.featuredWorkshops.length, 1);
+  assert.equal(body.data.featuredWorkshops[0]?.id, "event-cross-user");
+
+  const counts = body.data.featuredWorkshops[0]?.communitySignalCounts;
+  assert.ok(counts);
+  assert.equal(counts?.requestSignals, 1);
+  assert.equal(counts?.withdrawnSignals, 1);
+  assert.equal(counts?.totalSignals, 1);
+
+  const signalSummary = (body.data as { featuredWorkshopsSignalSummary?: Record<string, unknown> })
+    .featuredWorkshopsSignalSummary;
+  assert.equal(signalSummary?.source, "signals");
+  assert.equal(signalSummary?.workshopCount, 1);
+  assert.equal(signalSummary?.totalSignals, 1);
+  assert.equal(signalSummary?.requestSignals, 1);
+  assert.equal(signalSummary?.withdrawnSignals, 1);
+});
+
+test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery when signals use legacy source values", async () => {
+  const request = makeRequest(
+    "/v1/library.discovery.get",
+    {
+      limit: 2,
+      includeWorkshopDiscovery: true,
+      workshopDiscoveryLimit: 4,
+    },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    events: {
+      "event-legacy-source": {
+        title: "Legacy Signal Workshop",
+        summary: "Signal should still be included with unrecognized source values",
+        status: "published",
+        startAt: "2031-01-20T10:00:00.000Z",
+        endAt: "2031-01-20T12:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Main Studio",
+        priceCents: 3000,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 12,
+        waitlistEnabled: true,
+        waitlistCount: 0,
+        publishedState: "published",
+      },
+    },
+    supportRequests: {
+      "support-legacy-1": {
+        category: "Workshops",
+        source: "legacy-workshop-app",
+        eventId: "event-legacy-source",
+        uid: "member-a",
+        createdAt: "2024-01-10T09:00:00.000Z",
+        subject: "Workshop interest",
+        body: "Event id: event-legacy-source",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      limit: number;
+      featuredWorkshopsSource?: string;
+      featuredWorkshops: Array<
+        Record<string, unknown> & {
+          id: string;
+          communitySignalCounts?: {
+            requestSignals: number;
+            interestSignals: number;
+            showcaseSignals: number;
+            totalSignals: number;
+            latestSignalAtMs: number | null;
+          };
+        }
+      >;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.limit, 2);
+  assert.equal(body.data.featuredWorkshopsSource, "signals");
+  assert.equal(body.data.featuredWorkshops.length, 1);
+  assert.equal(body.data.featuredWorkshops[0]?.id, "event-legacy-source");
+  const counts = body.data.featuredWorkshops[0]?.communitySignalCounts;
+  assert.ok(counts);
+  assert.equal(counts?.requestSignals, 0);
+  assert.equal(counts?.interestSignals, 1);
+  assert.equal(counts?.showcaseSignals, 0);
+  assert.equal(counts?.totalSignals, 1);
+  const signalSummary = (body.data as { featuredWorkshopsSignalSummary?: Record<string, unknown> })
+    .featuredWorkshopsSignalSummary;
+  assert.equal(signalSummary?.source, "signals");
+  assert.equal(signalSummary?.workshopCount, 1);
+  assert.equal(signalSummary?.totalSignals, 1);
+  assert.equal(signalSummary?.requestSignals, 0);
+  assert.equal(signalSummary?.interestSignals, 1);
+  assert.equal(signalSummary?.showcaseSignals, 0);
+});
+
+test("handleApiV1 dispatches /v1/library.discovery.get with mixed workshop discovery signals and upcoming fill", async () => {
+  const request = makeRequest(
+    "/v1/library.discovery.get",
+    {
+      limit: 2,
+      includeWorkshopDiscovery: true,
+      workshopDiscoveryLimit: 4,
+    },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    events: {
+      "event-signal-hot": {
+        title: "Top Signal Workshop",
+        summary: "High demand signal activity",
+        status: "published",
+        startAt: "2032-02-15T10:00:00.000Z",
+        endAt: "2032-02-15T12:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Main Studio",
+        priceCents: 2800,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 16,
+        waitlistEnabled: true,
+        waitlistCount: 1,
+      },
+      "event-signal-support": {
+        title: "Secondary Signal Workshop",
+        summary: "Steady second-tier interest",
+        status: "published",
+        startAt: "2032-02-20T10:00:00.000Z",
+        endAt: "2032-02-20T12:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Studio Annex",
+        priceCents: 2600,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 14,
+        waitlistEnabled: false,
+        waitlistCount: 0,
+      },
+      "event-upcoming-early": {
+        title: "Quiet Intro",
+        summary: "No signals yet",
+        status: "published",
+        startAt: "2032-02-05T09:00:00.000Z",
+        endAt: "2032-02-05T11:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Gallery",
+        priceCents: 2200,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 12,
+        waitlistEnabled: true,
+        waitlistCount: 0,
+      },
+      "event-upcoming-late": {
+        title: "Later Quiet Session",
+        summary: "No signals yet",
+        status: "published",
+        startAt: "2032-02-22T13:00:00.000Z",
+        endAt: "2032-02-22T15:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Main Studio",
+        priceCents: 2400,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 20,
+        waitlistEnabled: false,
+        waitlistCount: 2,
+      },
+    },
+    supportRequests: {
+      "support-signaled-hot-request": {
+        category: "Workshops",
+        source: "events-request-form",
+        eventId: "event-signal-hot",
+        uid: "member-a",
+        createdAt: "2024-01-10T10:00:00.000Z",
+        subject: "Workshop request",
+        body: "Event id: event-signal-hot",
+      },
+      "support-signal-hot-interest": {
+        category: "Workshops",
+        source: "events-interest-toggle",
+        eventId: "event-signal-hot",
+        uid: "member-b",
+        createdAt: "2024-01-10T10:05:00.000Z",
+        subject: "Workshop interest",
+        body: "Event id: event-signal-hot",
+      },
+      "support-signal-support": {
+        category: "Workshops",
+        source: "events-request-form",
+        eventId: "event-signal-support",
+        uid: "member-c",
+        createdAt: "2024-01-10T10:10:00.000Z",
+        subject: "Workshop request",
+        body: "Event id: event-signal-support",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      limit: number;
+      featuredWorkshopsSource?: string;
+      featuredWorkshops: Array<
+        Record<string, unknown> & {
+          id: string;
+          communitySignalCounts?: {
+            requestSignals: number;
+            interestSignals: number;
+            showcaseSignals: number;
+            totalSignals: number;
+            latestSignalAtMs: number | null;
+          };
+        }
+      >;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.limit, 2);
+  assert.equal(body.data.featuredWorkshopsSource, "signals");
+  assert.equal(body.data.featuredWorkshops.length, 4);
+  assert.equal(body.data.featuredWorkshops[0]?.id, "event-signal-hot");
+  assert.equal(body.data.featuredWorkshops[1]?.id, "event-signal-support");
+  assert.equal(body.data.featuredWorkshops[2]?.id, "event-upcoming-early");
+  assert.equal(body.data.featuredWorkshops[3]?.id, "event-upcoming-late");
+  assert.ok(body.data.featuredWorkshops[0]?.communitySignalCounts);
+  assert.ok(body.data.featuredWorkshops[1]?.communitySignalCounts);
+  assert.ok(!("communitySignalCounts" in body.data.featuredWorkshops[2]));
+  assert.ok(!("communitySignalCounts" in body.data.featuredWorkshops[3]));
+
+  const signalSummary = (body.data as { featuredWorkshopsSignalSummary?: Record<string, unknown> })
+    .featuredWorkshopsSignalSummary;
+  assert.equal(signalSummary?.source, "signals");
+  assert.equal(signalSummary?.workshopCount, 4);
+  assert.equal(signalSummary?.signalWorkshopCount, 2);
+  assert.equal(signalSummary?.totalSignals, 3);
+  assert.equal(signalSummary?.requestSignals, 2);
+  assert.equal(signalSummary?.interestSignals, 1);
+  assert.equal(signalSummary?.showcaseSignals, 0);
+});
+
+test("handleApiV1 dispatches /v1/library.discovery.get with short workshop signal ids from body aliases", async () => {
+  const request = makeRequest(
+    "/v1/library.discovery.get",
+    {
+      limit: 2,
+      includeWorkshopDiscovery: true,
+      workshopDiscoveryLimit: 4,
+    },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    events: {
+      "evt-1a2b": {
+        title: "Legacy ID workshop",
+        summary: "Short ids from body alias parsing",
+        status: "published",
+        startAt: "2031-01-15T10:00:00.000Z",
+        endAt: "2031-01-15T12:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Main Studio",
+        priceCents: 3000,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 15,
+        waitlistEnabled: false,
+        waitlistCount: 0,
+        publishedState: "published",
+      },
+    },
+    supportRequests: {
+      "support-legacy-1": {
+        category: "Workshops",
+        source: "events-request-form",
+        eventId: "evt-1a2b",
+        uid: "member-a",
+        createdAt: "2024-01-10T08:15:00.000Z",
+        subject: "Workshop request",
+        body: "Session id: evt-1a2b",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      limit: number;
+      featuredWorkshopsSource?: string;
+      featuredWorkshops: Array<
+        Record<string, unknown> & {
+            id: string;
+            communitySignalCounts?: {
+              requestSignals: number;
+              interestSignals: number;
+              withdrawnSignals?: number;
+              totalSignals: number;
+              latestSignalAtMs: number | null;
+            };
+          }
+        >;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.limit, 2);
+  assert.equal(body.data.featuredWorkshopsSource, "signals");
+  assert.equal(body.data.featuredWorkshops.length, 1);
+  assert.equal(body.data.featuredWorkshops[0]?.id, "evt-1a2b");
+  const counts = body.data.featuredWorkshops[0]?.communitySignalCounts;
+  assert.ok(counts);
+  assert.equal(counts?.requestSignals, 1);
+  assert.equal(counts?.interestSignals, 0);
+  assert.equal(counts?.totalSignals, 1);
+  const signalSummary = (body.data as { featuredWorkshopsSignalSummary?: Record<string, unknown> })
+    .featuredWorkshopsSignalSummary;
+  assert.equal(signalSummary?.source, "signals");
+  assert.equal(signalSummary?.workshopCount, 1);
+  assert.equal(signalSummary?.totalSignals, 1);
+  assert.equal(signalSummary?.requestSignals, 1);
+  assert.equal(signalSummary?.interestSignals, 0);
+});
+
+test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery fallback when no community signals exist", async () => {
+  const request = makeRequest(
+    "/v1/library.discovery.get",
+    {
+      limit: 2,
+      includeWorkshopDiscovery: true,
+      workshopDiscoveryLimit: 4,
+    },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    events: {
+      "event-1": {
+        title: "Weekend Intro",
+        summary: "Upcoming technique warm-up",
+        status: "published",
+        startAt: "2032-02-11T11:00:00.000Z",
+        endAt: "2032-02-11T13:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Main Studio",
+        priceCents: 2200,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 18,
+        waitlistEnabled: true,
+        waitlistCount: 0,
+      },
+      "event-2": {
+        title: "Thursday Deep Practice",
+        summary: "Focused tile techniques",
+        status: "published",
+        startAt: "2032-02-03T09:00:00.000Z",
+        endAt: "2032-02-03T12:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Studio Annex",
+        priceCents: 2600,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 14,
+        waitlistEnabled: false,
+        waitlistCount: 1,
+      },
+      "event-3": {
+        title: "Past Workshop",
+        summary: "Should be ignored for discovery",
+        status: "published",
+        startAt: "2024-12-01T10:00:00.000Z",
+        endAt: "2024-12-01T12:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Gallery",
+        priceCents: 2400,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 12,
+        waitlistEnabled: true,
+        waitlistCount: 0,
+      },
+      "event-4": {
+        title: "Drafted Practice",
+        summary: "Should be ignored",
+        status: "draft",
+        startAt: "2032-03-01T10:00:00.000Z",
+        endAt: "2032-03-01T12:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Studio Annex",
+        priceCents: 2800,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 16,
+        waitlistEnabled: false,
+        waitlistCount: 0,
+      },
+    },
+    supportRequests: {},
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      limit: number;
+      featuredWorkshopsSource?: string;
+      featuredWorkshops: Array<
+        Record<string, unknown> & {
+          id: string;
+          communitySignalCounts?: {
+            requestSignals: number;
+            interestSignals: number;
+            totalSignals: number;
+            latestSignalAtMs: number | null;
+          } | null;
+        }
+      >;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.limit, 2);
+  assert.equal(body.data.featuredWorkshopsSource, "fallback");
+  assert.equal(body.data.featuredWorkshops.length, 2);
+  assert.equal(body.data.featuredWorkshops[0]?.id, "event-2");
+  assert.equal(body.data.featuredWorkshops[1]?.id, "event-1");
+  assert.ok(!("communitySignalCounts" in body.data.featuredWorkshops[0]));
+  assert.ok(!("communitySignalCounts" in body.data.featuredWorkshops[1]));
+
+  const signalSummary = (body.data as { featuredWorkshopsSignalSummary?: Record<string, unknown> })
+    .featuredWorkshopsSignalSummary;
+  assert.equal(signalSummary?.source, "fallback");
+  assert.equal(signalSummary?.workshopCount, 2);
+  assert.equal(signalSummary?.signalWorkshopCount, 0);
+});
+
+test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery fallback when signal lookup fails", async () => {
+  const request = makeRequest(
+    "/v1/library.discovery.get",
+    {
+      limit: 2,
+      includeWorkshopDiscovery: true,
+      workshopDiscoveryLimit: 4,
+    },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    events: {
+      "event-1": {
+        title: "Resilient Intro",
+        summary: "Signals should fail and fallback should remain",
+        status: "published",
+        startAt: "2032-02-11T11:00:00.000Z",
+        endAt: "2032-02-11T13:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Main Studio",
+        priceCents: 2200,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 18,
+        waitlistEnabled: true,
+        waitlistCount: 0,
+      },
+      "event-2": {
+        title: "Resilient Deep Practice",
+        summary: "Fallback should still show this",
+        status: "published",
+        startAt: "2032-02-03T09:00:00.000Z",
+        endAt: "2032-02-03T12:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Studio Annex",
+        priceCents: 2600,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 14,
+        waitlistEnabled: false,
+        waitlistCount: 1,
+      },
+    },
+    supportRequests: {
+      "support-1": {
+        category: "Workshops",
+        source: "events-interest",
+        eventId: "event-1",
+        uid: "member-a",
+        createdAt: "2023-11-15T09:00:00.000Z",
+        subject: "Workshop interest",
+        body: "Event id: event-1",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      const originalCollection = (shared.db as any).collection;
+      const failingCollectionQuery = {
+        where: () => failingCollectionQuery,
+        orderBy: () => failingCollectionQuery,
+        limit: () => failingCollectionQuery,
+        get: async () => {
+          throw new Error("simulated supportRequests lookup failure");
+        },
+        forEach: () => undefined,
+      };
+      (shared.db as any).collection = (collectionName: string) => {
+        if (collectionName !== "supportRequests") {
+          return originalCollection(collectionName);
+        }
+        return {
+          ...originalCollection(collectionName),
+          where: () => failingCollectionQuery,
+          orderBy: () => failingCollectionQuery,
+          limit: () => failingCollectionQuery,
+          get: failingCollectionQuery.get,
+          forEach: failingCollectionQuery.forEach,
+        };
+      };
+      try {
+        await handleApiV1(request, response.res);
+      } finally {
+        (shared.db as any).collection = originalCollection;
+      }
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      limit: number;
+      featuredWorkshopsSource?: string;
+      featuredWorkshops: Array<
+        Record<string, unknown> & {
+          id: string;
+          communitySignalCounts?: {
+            requestSignals: number;
+            interestSignals: number;
+            totalSignals: number;
+            latestSignalAtMs: number | null;
+          } | null;
+        }
+      >;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.limit, 2);
+  assert.equal(body.data.featuredWorkshopsSource, "fallback");
+  assert.equal(body.data.featuredWorkshops.length, 2);
+  assert.equal(body.data.featuredWorkshops[0]?.id, "event-2");
+  assert.equal(body.data.featuredWorkshops[1]?.id, "event-1");
+});
+
+test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery filtering out workshops missing start time", async () => {
+  const request = makeRequest(
+    "/v1/library.discovery.get",
+    {
+      limit: 2,
+      includeWorkshopDiscovery: true,
+      workshopDiscoveryLimit: 4,
+    },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    events: {
+      "event-without-start": {
+        title: "Needs Time",
+        summary: "Missing start time",
+        status: "published",
+        endAt: "2032-02-11T13:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Storage Room",
+        priceCents: 2200,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 10,
+        waitlistEnabled: true,
+        waitlistCount: 0,
+        publishedState: "published",
+      },
+      "event-with-time": {
+        title: "Has Time",
+        summary: "Has upcoming start time",
+        status: "published",
+        startAt: "2032-02-11T11:00:00.000Z",
+        endAt: "2032-02-11T13:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Main Studio",
+        priceCents: 2400,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 14,
+        waitlistEnabled: false,
+        waitlistCount: 1,
+        publishedState: "published",
+      },
+      "event-invalid-time": {
+        title: "Bad Time",
+        summary: "Invalid start time",
+        status: "published",
+        startAt: "not-a-date",
+        endAt: "2032-02-12T13:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Gallery",
+        priceCents: 2300,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 12,
+        waitlistEnabled: false,
+        waitlistCount: 0,
+        publishedState: "published",
+      },
+    },
+    supportRequests: {},
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      limit: number;
+      featuredWorkshopsSource?: string;
+      featuredWorkshops: Array<Record<string, unknown> & { id: string }>;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.featuredWorkshopsSource, "fallback");
+  assert.equal(body.data.featuredWorkshops.length, 1);
+  assert.equal(body.data.featuredWorkshops[0]?.id, "event-with-time");
+});
+
+test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery including legacy rows with missing status", async () => {
+  const request = makeRequest(
+    "/v1/library.discovery.get",
+    {
+      limit: 2,
+      includeWorkshopDiscovery: true,
+      workshopDiscoveryLimit: 4,
+    },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    events: {
+      "event-legacy": {
+        title: "Legacy Published",
+        summary: "Uses publishedState only",
+        startAt: "2032-02-11T11:00:00.000Z",
+        endAt: "2032-02-11T13:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Main Studio",
+        priceCents: 2400,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 18,
+        waitlistEnabled: true,
+        waitlistCount: 0,
+        publishedState: "published",
+      },
+      "event-draft": {
+        title: "Legacy Draft",
+        summary: "Legacy draft should be ignored",
+        startAt: "2032-02-12T09:00:00.000Z",
+        endAt: "2032-02-12T11:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Gallery",
+        priceCents: 2000,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 12,
+        waitlistEnabled: true,
+        waitlistCount: 0,
+        publishedState: "draft",
+      },
+    },
+    supportRequests: {},
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      limit: number;
+      featuredWorkshopsSource?: string;
+      featuredWorkshops: Array<
+        Record<string, unknown> & {
+          id: string;
+          communitySignalCounts?: {
+            requestSignals: number;
+            interestSignals: number;
+            withdrawnSignals?: number;
+            totalSignals: number;
+            latestSignalAtMs: number | null;
+          };
+        }
+      >;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.limit, 2);
+  assert.equal(body.data.featuredWorkshops.length, 1);
+  assert.equal(body.data.featuredWorkshops[0]?.id, "event-legacy");
+  assert.equal(body.data.featuredWorkshops[0]?.title, "Legacy Published");
+});
+
+test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery via signals when signals are withdrawal-only", async () => {
+  const request = makeRequest(
+    "/v1/library.discovery.get",
+    {
+      limit: 2,
+      includeWorkshopDiscovery: true,
+      workshopDiscoveryLimit: 4,
+    },
+    firebaseContext({ uid: "owner-1" }),
+  );
+  const response = createResponse();
+  const state: MockDbState = {
+    events: {
+      "event-1": {
+        title: "Community Pull",
+        summary: "Withdrawal-only example",
+        status: "published",
+        startAt: "2032-02-11T11:00:00.000Z",
+        endAt: "2032-02-11T13:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Main Studio",
+        priceCents: 2200,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 18,
+        waitlistEnabled: true,
+        waitlistCount: 0,
+      },
+      "event-2": {
+        title: "Community Quiet",
+        summary: "Another published event",
+        status: "published",
+        startAt: "2032-02-03T09:00:00.000Z",
+        endAt: "2032-02-03T12:00:00.000Z",
+        timezone: "America/Phoenix",
+        location: "Studio Annex",
+        priceCents: 2600,
+        currency: "usd",
+        includesFiring: false,
+        capacity: 14,
+        waitlistEnabled: false,
+        waitlistCount: 1,
+      },
+    },
+    supportRequests: {
+      "support-withdrawal-1": {
+        category: "Workshops",
+        source: "events-interest-withdrawal",
+        eventId: "event-1",
+        uid: "member-a",
+        createdAt: "2024-11-15T10:22:00.000Z",
+        subject: "Workshop interest withdrawn",
+        body: "Event id: event-1",
+      },
+    },
+  };
+
+  await withMockedRateLimit(async () =>
+    withMockFirestore(state, async () => {
+      await handleApiV1(request, response.res);
+    }),
+  );
+
+  assert.equal(response.status(), 200);
+  const body = response.body() as {
+    ok: boolean;
+    data: {
+      limit: number;
+      featuredWorkshopsSource?: string;
+      featuredWorkshops: Array<
+        Record<string, unknown> & {
+          id: string;
+          communitySignalCounts?: {
+            requestSignals: number;
+            interestSignals: number;
+            totalSignals: number;
+            latestSignalAtMs: number | null;
+          };
+        }
+      >;
+    };
+  };
+  assert.equal(body.ok, true);
+  assert.equal(body.data.limit, 2);
+  assert.equal(body.data.featuredWorkshopsSource, "signals");
+  assert.equal(body.data.featuredWorkshops.length, 2);
+  assert.equal(body.data.featuredWorkshops[0]?.id, "event-1");
+  assert.equal(body.data.featuredWorkshops[1]?.id, "event-2");
+  assert.ok(!("communitySignalCounts" in body.data.featuredWorkshops[1]));
+  const featuredWorkshopSignalCounts = body.data.featuredWorkshops[0]?.communitySignalCounts as
+    | {
+      requestSignals?: number;
+      interestSignals?: number;
+      showcaseSignals?: number;
+      withdrawnSignals?: number;
+      totalSignals?: number;
+      latestSignalAtMs?: number | null;
+    }
+    | undefined;
+  assert.equal(featuredWorkshopSignalCounts?.withdrawnSignals, 1);
+  assert.equal(featuredWorkshopSignalCounts?.totalSignals, 0);
+  assert.equal(typeof featuredWorkshopSignalCounts?.latestSignalAtMs, "number");
+});
+
 test("handleApiV1 rejects /v1/library.items.importIsbns for non-staff firebase caller", async () => {
   const request = makeRequest(
     "/v1/library.items.importIsbns",
@@ -1595,12 +2731,14 @@ test("handleApiV1 dispatches /v1/library.externalLookup.providerConfig.get for s
     data: {
       openlibraryEnabled: boolean;
       googlebooksEnabled: boolean;
+      coverReviewGuardrailEnabled: boolean;
       disabledProviders: string[];
     };
   };
   assert.equal(body.ok, true);
   assert.equal(typeof body.data.openlibraryEnabled, "boolean");
   assert.equal(typeof body.data.googlebooksEnabled, "boolean");
+  assert.equal(typeof body.data.coverReviewGuardrailEnabled, "boolean");
   assert.ok(Array.isArray(body.data.disabledProviders));
 });
 
@@ -1609,6 +2747,7 @@ test("handleApiV1 dispatches /v1/library.externalLookup.providerConfig.set for s
     "/v1/library.externalLookup.providerConfig.set",
     {
       openlibraryEnabled: false,
+      coverReviewGuardrailEnabled: false,
       note: "Temporary hold due provider error budget burn.",
     },
     staffContext({ uid: "staff-1" }),
@@ -1627,6 +2766,7 @@ test("handleApiV1 dispatches /v1/library.externalLookup.providerConfig.set for s
     data: {
       openlibraryEnabled: boolean;
       googlebooksEnabled: boolean;
+      coverReviewGuardrailEnabled: boolean;
       disabledProviders: string[];
       note?: string | null;
       updatedByUid?: string | null;
@@ -1635,6 +2775,7 @@ test("handleApiV1 dispatches /v1/library.externalLookup.providerConfig.set for s
   assert.equal(body.ok, true);
   assert.equal(body.data.openlibraryEnabled, false);
   assert.equal(typeof body.data.googlebooksEnabled, "boolean");
+  assert.equal(body.data.coverReviewGuardrailEnabled, false);
   assert.equal(body.data.updatedByUid, "staff-1");
   assert.equal(body.data.note, "Temporary hold due provider error budget burn.");
   assert.equal(body.data.disabledProviders.includes("openlibrary"), true);
@@ -4407,6 +5548,50 @@ test("reservations.create accepts dropoff + pickup details when provided", async
   assert.equal(data.status, "REQUESTED");
 });
 
+test("reservations.create accepts null numeric placeholders from client payload", async () => {
+  const response = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/reservations.create",
+      body: {
+        intakeMode: "SHELF_PURCHASE",
+        firingType: "bisque",
+        shelfEquivalent: 1,
+        footprintHalfShelves: 2,
+        heightInches: null,
+        tiers: 1,
+        estimatedHalfShelves: 2,
+        estimatedCost: 30,
+        preferredWindow: {
+          latestDate: null,
+        },
+        addOns: {
+          rushRequested: false,
+          waxResistAssistRequested: false,
+          glazeSanityCheckRequested: false,
+          staffGlazePrepRequested: false,
+          staffGlazePrepRatePerHalfShelf: null,
+          wholeKilnRequested: false,
+          communityShelfFillInAllowed: false,
+          pickupDeliveryRequested: false,
+          returnDeliveryRequested: false,
+          useStudioGlazes: false,
+          glazeAccessCost: null,
+          deliveryAddress: null,
+          deliveryInstructions: null,
+        },
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  assert.equal(data.status, "REQUESTED");
+});
+
 test("reservations.create accepts optional piece rows in request payload", async () => {
   const response = await invokeApiV1Route(
     {},
@@ -4427,6 +5612,33 @@ test("reservations.create accepts optional piece rows in request payload", async
             pieceCount: 4,
           },
         ],
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  assert.equal(data.status, "REQUESTED");
+});
+
+test("reservations.create accepts fragile handling, placement preference, and prepaid storage add-ons", async () => {
+  const response = await invokeApiV1Route(
+    {},
+    makeApiV1Request({
+      path: "/v1/reservations.create",
+      body: {
+        firingType: "glaze",
+        shelfEquivalent: 1,
+        addOns: {
+          fragileHandlingRequested: true,
+          placementPreferenceRequested: true,
+          placementPreferenceZone: "top",
+          prepaidStorageRequested: true,
+          prepaidStorageWeeks: 2,
+        },
       },
       ctx: firebaseContext({ uid: "owner-1" }),
       routeFamily: "v1",

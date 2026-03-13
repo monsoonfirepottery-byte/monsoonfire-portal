@@ -1,0 +1,1463 @@
+{
+  "schema": "intent-plan.v1",
+  "controlPlaneDigests": {
+    "intentSchema": "400cf76c55079f23690993fe76a661f11ebc451016f2462b4bd5cd7d7a26fc5f",
+    "policyConfig": "1b376142dd8cb4efb789b83a949155381574e565b81a3f38a8fa83b5d6a5b4eb",
+    "budgetConfig": "54dd893f7affaa280b4faaafe32cf2c0f834f854bf833369c8e36e95fd6c6989",
+    "memoryGovernanceConfig": "15bf3034e45631a57fca01056e66714939904486b1c3e42d50bc3a6ab4a2d39f",
+    "safetyRailsConfig": "bbc21b745c69da277eb938200646ee4c035efc8c9c48c548cfc19bce3fd29e9b",
+    "hardeningRegistry": "fbe47eaad2b7ddb416bf0f977321543ab0ed1fb16ffd4dbef97b8370ed1a3f59"
+  },
+  "intents": [
+    {
+      "schemaVersion": "intent.v1",
+      "intentId": "codex-continuous-improvement-v1",
+      "title": "Codex Continuous Improvement Autopilot",
+      "file": "intents/EPIC-CODEX-CONTINUOUS-IMPROVEMENT.intent.json",
+      "epicPath": "docs/epics/EPIC-CODEX-CONTINUOUS-IMPROVEMENT.md",
+      "epicDigestSha256": "dc2793e76ab68c58aaa79c02c3beb90897360e23aa1169a61144a73c4da07e8c",
+      "intentDigestSha256": "c2a870d3695b34e92239e9fde66af3544667cbf3abfb5dad011d66c72483b3fe",
+      "objective": "Run a bounded and evidence-backed continuous-improvement loop that proposes high-signal fixes without unsafe write behavior or automation recursion.",
+      "riskTier": "medium",
+      "constraints": {
+        "writePolicy": "pr-only-no-main",
+        "maxChangedFiles": 40,
+        "maxWriteActions": 6
+      },
+      "autonomyMode": "bounded",
+      "allowedTools": [
+        "functions.exec_command",
+        "functions.apply_patch",
+        "functions.write_stdin"
+      ],
+      "authority": {
+        "tier": "T2",
+        "approvalRequiredFor": [
+          "force-push",
+          "history-rewrite",
+          "credential-rotation"
+        ]
+      },
+      "priorityClass": "P2",
+      "progressModel": {
+        "kind": "criteria",
+        "minimumEvidenceCoverage": 0.75
+      },
+      "requiredEvidenceTypes": [
+        "tool_output",
+        "repo_state"
+      ],
+      "verificationProfile": {
+        "mustVerifyAfterMutate": true
+      },
+      "preemptionPolicy": {
+        "preemptibleBy": [
+          "P0",
+          "P1"
+        ],
+        "resumeAllowed": true
+      },
+      "degradedModePolicy": {
+        "allowReadOnlyContinuation": true,
+        "reduceMutationScopeOnOutage": true
+      },
+      "compensationPolicy": {
+        "strategy": "forward_fix"
+      },
+      "idempotencyProfile": {
+        "enabled": true,
+        "keyTemplate": "codex-continuous-improvement-v1:{sliceId}"
+      },
+      "dataHandlingPolicy": {
+        "redactSecrets": true,
+        "retentionDays": 30
+      },
+      "modelGovernancePolicy": {
+        "canaryPercent": 10,
+        "rollbackOnDriftIncreasePct": 10
+      },
+      "capabilityToken": "capref_codex_continuous_improvement_v1",
+      "dependsOnIntents": [],
+      "doneCriteria": {
+        "requiredChecks": [
+          "npm run codex:improve:daily -- --dry-run --json",
+          "npm run codex:rubric:strict:compat",
+          "npm run codex:telemetry:audit:strict"
+        ],
+        "requiredArtifacts": [
+          "output/qa/codex-agentic-rubric-scorecard.json",
+          "output/qa/codex-telemetry-random-audit.json"
+        ],
+        "requiredDocs": [
+          "docs/epics/EPIC-CODEX-CONTINUOUS-IMPROVEMENT.md",
+          "docs/runbooks/CODEX_AGENTIC_RUBRIC_AND_AUTOPILOT.md"
+        ]
+      },
+      "simulation": null,
+      "evaluation": null,
+      "budget": null,
+      "policy": null,
+      "memoryGovernance": null,
+      "executionSlices": [
+        {
+          "id": "collect-signals",
+          "title": "Collect repo and tool-call signals",
+          "dependsOn": [],
+          "checks": [
+            "npm run codex:improve:daily -- --dry-run --json"
+          ],
+          "writeScope": "none"
+        },
+        {
+          "id": "generate-improvements",
+          "title": "Generate bounded improvement proposals",
+          "dependsOn": [
+            "collect-signals"
+          ],
+          "checks": [
+            "npm run codex:improve:daily -- --apply --allow-dirty --json"
+          ],
+          "writeScope": "issues-and-bot-pr-branch"
+        },
+        {
+          "id": "rubric-and-audit",
+          "title": "Produce rubric scorecard and telemetry audit",
+          "dependsOn": [
+            "collect-signals"
+          ],
+          "checks": [
+            "npm run codex:rubric:strict:compat",
+            "npm run codex:telemetry:audit:strict"
+          ],
+          "writeScope": "artifact-only"
+        }
+      ]
+    },
+    {
+      "schemaVersion": "intent.v1",
+      "intentId": "codex-interaction-interrogation-v1",
+      "title": "Codex Interaction Interrogation Loop",
+      "file": "intents/EPIC-CODEX-INTERACTION-INTERROGATION.intent.json",
+      "epicPath": "docs/epics/EPIC-CODEX-INTERACTION-INTERROGATION.md",
+      "epicDigestSha256": "10da735b5990b6cf7fb9e7b061f5b3fe912a2abc0c7978abacfc229ffc1f908a",
+      "intentDigestSha256": "c3dffec4e0d5a62b1a608661cb0d4dd00f38a5b588b35444a9df90a32a18957a",
+      "objective": "Continuously interrogate recent Codex/human collaboration patterns and apply structural instruction improvements that reduce ambiguity and workflow drift.",
+      "riskTier": "medium",
+      "constraints": {
+        "writePolicy": "pr-only-no-main",
+        "maxChangedFiles": 45,
+        "maxWriteActions": 8
+      },
+      "autonomyMode": "bounded",
+      "allowedTools": [
+        "functions.exec_command",
+        "functions.apply_patch",
+        "functions.write_stdin"
+      ],
+      "authority": {
+        "tier": "T2",
+        "approvalRequiredFor": [
+          "force-push",
+          "history-rewrite",
+          "credential-rotation"
+        ]
+      },
+      "priorityClass": "P2",
+      "progressModel": {
+        "kind": "criteria",
+        "minimumEvidenceCoverage": 0.75
+      },
+      "requiredEvidenceTypes": [
+        "tool_output",
+        "repo_state"
+      ],
+      "verificationProfile": {
+        "mustVerifyAfterMutate": true
+      },
+      "preemptionPolicy": {
+        "preemptibleBy": [
+          "P0",
+          "P1"
+        ],
+        "resumeAllowed": true
+      },
+      "degradedModePolicy": {
+        "allowReadOnlyContinuation": true,
+        "reduceMutationScopeOnOutage": true
+      },
+      "compensationPolicy": {
+        "strategy": "forward_fix"
+      },
+      "idempotencyProfile": {
+        "enabled": true,
+        "keyTemplate": "codex-interaction-interrogation-v1:{sliceId}"
+      },
+      "dataHandlingPolicy": {
+        "redactSecrets": true,
+        "retentionDays": 30
+      },
+      "modelGovernancePolicy": {
+        "canaryPercent": 10,
+        "rollbackOnDriftIncreasePct": 10
+      },
+      "capabilityToken": "capref_codex_interaction_interrogation_v1",
+      "dependsOnIntents": [],
+      "doneCriteria": {
+        "requiredChecks": [
+          "npm run codex:interaction:daily -- --dry-run --json",
+          "npm run codex:docs:drift:strict",
+          "npm run codex:doctor:strict"
+        ],
+        "requiredArtifacts": [
+          "output/codex-docs-drift/latest.json"
+        ],
+        "requiredDocs": [
+          "docs/epics/EPIC-CODEX-INTERACTION-INTERROGATION.md",
+          "docs/runbooks/MCP_OPERATIONS.md"
+        ]
+      },
+      "simulation": null,
+      "evaluation": null,
+      "budget": null,
+      "policy": null,
+      "memoryGovernance": null,
+      "executionSlices": [
+        {
+          "id": "collect-interaction-signals",
+          "title": "Collect recent interaction and tooling signals",
+          "dependsOn": [],
+          "checks": [
+            "npm run codex:interaction:daily -- --dry-run --json"
+          ],
+          "writeScope": "none"
+        },
+        {
+          "id": "propose-instruction-updates",
+          "title": "Propose structural instruction updates with bounded scope",
+          "dependsOn": [
+            "collect-interaction-signals"
+          ],
+          "checks": [
+            "npm run codex:interaction:apply -- --json"
+          ],
+          "writeScope": "codex-docs-only"
+        },
+        {
+          "id": "verify-doc-drift-and-health",
+          "title": "Verify docs drift and codex harness health",
+          "dependsOn": [
+            "propose-instruction-updates"
+          ],
+          "checks": [
+            "npm run codex:docs:drift:strict",
+            "npm run codex:doctor:strict"
+          ],
+          "writeScope": "artifact-only"
+        }
+      ]
+    },
+    {
+      "schemaVersion": "intent.v1",
+      "intentId": "codex-pr-green-daily-v1",
+      "title": "Codex PR Green Daily Automation",
+      "file": "intents/EPIC-CODEX-PR-GREEN-DAILY.intent.json",
+      "epicPath": "docs/epics/EPIC-CODEX-PR-GREEN-DAILY.md",
+      "epicDigestSha256": "4265cbf96fe54254f3da3dc5f5ce16a17cc42799794a4402801332260fc87fde",
+      "intentDigestSha256": "aa377b3cb103d913ecff522b5907eed4deaf932fe3fa399060343b1d3a0102ba",
+      "objective": "Keep open pull requests moving toward green by detecting blocked checks, requesting safe reruns for flaky failures, and publishing unblock summaries.",
+      "riskTier": "medium",
+      "constraints": {
+        "writePolicy": "pr-only-no-main",
+        "maxChangedFiles": 45,
+        "maxWriteActions": 8
+      },
+      "autonomyMode": "bounded",
+      "allowedTools": [
+        "functions.exec_command",
+        "functions.apply_patch",
+        "functions.write_stdin"
+      ],
+      "authority": {
+        "tier": "T2",
+        "approvalRequiredFor": [
+          "force-push",
+          "history-rewrite",
+          "credential-rotation"
+        ]
+      },
+      "priorityClass": "P2",
+      "progressModel": {
+        "kind": "criteria",
+        "minimumEvidenceCoverage": 0.75
+      },
+      "requiredEvidenceTypes": [
+        "tool_output",
+        "repo_state"
+      ],
+      "verificationProfile": {
+        "mustVerifyAfterMutate": true
+      },
+      "preemptionPolicy": {
+        "preemptibleBy": [
+          "P0",
+          "P1"
+        ],
+        "resumeAllowed": true
+      },
+      "degradedModePolicy": {
+        "allowReadOnlyContinuation": true,
+        "reduceMutationScopeOnOutage": true
+      },
+      "compensationPolicy": {
+        "strategy": "forward_fix"
+      },
+      "idempotencyProfile": {
+        "enabled": true,
+        "keyTemplate": "codex-pr-green-daily-v1:{sliceId}"
+      },
+      "dataHandlingPolicy": {
+        "redactSecrets": true,
+        "retentionDays": 30
+      },
+      "modelGovernancePolicy": {
+        "canaryPercent": 10,
+        "rollbackOnDriftIncreasePct": 10
+      },
+      "capabilityToken": "capref_codex_pr_green_daily_v1",
+      "dependsOnIntents": [],
+      "doneCriteria": {
+        "requiredChecks": [
+          "npm run codex:pr-green:daily -- --dry-run --json",
+          "npm run codex:pr-green:daily:persist",
+          "npm run codex:pr-green:apply -- --json"
+        ],
+        "requiredArtifacts": [
+          "output/qa/codex-agentic-rubric-scorecard.json"
+        ],
+        "requiredDocs": [
+          "docs/epics/EPIC-CODEX-PR-GREEN-DAILY.md",
+          "docs/runbooks/CODEX_AGENTIC_RUBRIC_AND_AUTOPILOT.md"
+        ]
+      },
+      "simulation": null,
+      "evaluation": null,
+      "budget": null,
+      "policy": null,
+      "memoryGovernance": null,
+      "executionSlices": [
+        {
+          "id": "collect-pr-signal-state",
+          "title": "Collect PR check-run health and classify status",
+          "dependsOn": [],
+          "checks": [
+            "npm run codex:pr-green:daily -- --dry-run --json"
+          ],
+          "writeScope": "none"
+        },
+        {
+          "id": "execute-safe-reruns",
+          "title": "Execute bounded rerun requests for flaky check classes",
+          "dependsOn": [
+            "collect-pr-signal-state"
+          ],
+          "checks": [
+            "npm run codex:pr-green:apply -- --json"
+          ],
+          "writeScope": "external-api-readwrite-bounded"
+        },
+        {
+          "id": "publish-unblock-summary",
+          "title": "Persist and publish unblock summary artifacts",
+          "dependsOn": [
+            "execute-safe-reruns"
+          ],
+          "checks": [
+            "npm run codex:pr-green:daily:persist"
+          ],
+          "writeScope": "codex-artifacts-only"
+        }
+      ]
+    },
+    {
+      "schemaVersion": "intent.v1",
+      "intentId": "events-industry-local-remote-v1",
+      "title": "Events Page Industry Events Expansion",
+      "file": "intents/EPIC-EVENTS-PAGE-INDUSTRY-EVENTS-LOCAL-REMOTE.intent.json",
+      "epicPath": "docs/epics/EPIC-EVENTS-PAGE-INDUSTRY-EVENTS-LOCAL-REMOTE.md",
+      "epicDigestSha256": "f6e048eb47106cfa63cafc7605e62ea84830af3259022b657fc12a058402caa1",
+      "intentDigestSha256": "3a095095550107e5c6e8c9d1995ea753170f28fd2ea05211a4d05d0a2bd90db0",
+      "objective": "Expand events discovery to include trusted local and remote industry events with curation, freshness, and member-facing reliability safeguards.",
+      "riskTier": "medium",
+      "constraints": {
+        "writePolicy": "pr-only-no-main",
+        "maxChangedFiles": 45,
+        "maxWriteActions": 8
+      },
+      "autonomyMode": "bounded",
+      "allowedTools": [
+        "functions.exec_command",
+        "functions.apply_patch",
+        "functions.write_stdin"
+      ],
+      "authority": {
+        "tier": "T2",
+        "approvalRequiredFor": [
+          "force-push",
+          "history-rewrite",
+          "credential-rotation"
+        ]
+      },
+      "priorityClass": "P2",
+      "progressModel": {
+        "kind": "criteria",
+        "minimumEvidenceCoverage": 0.75
+      },
+      "requiredEvidenceTypes": [
+        "tool_output",
+        "repo_state"
+      ],
+      "verificationProfile": {
+        "mustVerifyAfterMutate": true
+      },
+      "preemptionPolicy": {
+        "preemptibleBy": [
+          "P0",
+          "P1"
+        ],
+        "resumeAllowed": true
+      },
+      "degradedModePolicy": {
+        "allowReadOnlyContinuation": true,
+        "reduceMutationScopeOnOutage": true
+      },
+      "compensationPolicy": {
+        "strategy": "forward_fix"
+      },
+      "idempotencyProfile": {
+        "enabled": true,
+        "keyTemplate": "events-industry-local-remote-v1:{sliceId}"
+      },
+      "dataHandlingPolicy": {
+        "redactSecrets": true,
+        "retentionDays": 30
+      },
+      "modelGovernancePolicy": {
+        "canaryPercent": 10,
+        "rollbackOnDriftIncreasePct": 10
+      },
+      "capabilityToken": "capref_events_industry_local_remote_v1",
+      "dependsOnIntents": [],
+      "doneCriteria": {
+        "requiredChecks": [
+          "npm run events:industry:check",
+          "npm run events:industry:import",
+          "npm run events:industry:canary"
+        ],
+        "requiredArtifacts": [
+          "output/qa/industry-events-canary.json"
+        ],
+        "requiredDocs": [
+          "docs/epics/EPIC-EVENTS-PAGE-INDUSTRY-EVENTS-LOCAL-REMOTE.md"
+        ]
+      },
+      "simulation": null,
+      "evaluation": null,
+      "budget": null,
+      "policy": null,
+      "memoryGovernance": null,
+      "executionSlices": [
+        {
+          "id": "ingest-industry-sources",
+          "title": "Ingest and normalize industry event sources",
+          "dependsOn": [],
+          "checks": [
+            "npm run events:industry:import"
+          ],
+          "writeScope": "events-source-ingest"
+        },
+        {
+          "id": "validate-event-contracts",
+          "title": "Validate local/remote event contracts and freshness rules",
+          "dependsOn": [
+            "ingest-industry-sources"
+          ],
+          "checks": [
+            "npm run events:industry:check"
+          ],
+          "writeScope": "none"
+        },
+        {
+          "id": "canary-industry-surface",
+          "title": "Run canary coverage for listing and stale-content regressions",
+          "dependsOn": [
+            "validate-event-contracts"
+          ],
+          "checks": [
+            "npm run events:industry:canary"
+          ],
+          "writeScope": "artifact-only"
+        }
+      ]
+    },
+    {
+      "schemaVersion": "intent.v1",
+      "intentId": "portal-qa-automation-coverage-v1",
+      "title": "Portal QA Automation Coverage Expansion",
+      "file": "intents/EPIC-PORTAL-QA-AUTOMATION-COVERAGE.intent.json",
+      "epicPath": "docs/epics/EPIC-PORTAL-QA-AUTOMATION-COVERAGE.md",
+      "epicDigestSha256": "0e17d6868411cf34b34a3d70e53e5ce719a8b96e530355b1be506fabf310a966",
+      "intentDigestSha256": "36acedf2604bf0f5e60a72df2b3f0ecd970d36054e34382a0e3e29d9ae281efc",
+      "objective": "Close recurring QA gaps with repeatable automated checks for authz, index drift, canary health, fixture stewardship, and promotion safety.",
+      "riskTier": "medium",
+      "constraints": {
+        "writePolicy": "pr-only-no-main",
+        "maxChangedFiles": 45,
+        "maxWriteActions": 8
+      },
+      "autonomyMode": "bounded",
+      "allowedTools": [
+        "functions.exec_command",
+        "functions.apply_patch",
+        "functions.write_stdin"
+      ],
+      "authority": {
+        "tier": "T2",
+        "approvalRequiredFor": [
+          "force-push",
+          "history-rewrite",
+          "credential-rotation"
+        ]
+      },
+      "priorityClass": "P2",
+      "progressModel": {
+        "kind": "criteria",
+        "minimumEvidenceCoverage": 0.75
+      },
+      "requiredEvidenceTypes": [
+        "tool_output",
+        "repo_state"
+      ],
+      "verificationProfile": {
+        "mustVerifyAfterMutate": true
+      },
+      "preemptionPolicy": {
+        "preemptibleBy": [
+          "P0",
+          "P1"
+        ],
+        "resumeAllowed": true
+      },
+      "degradedModePolicy": {
+        "allowReadOnlyContinuation": true,
+        "reduceMutationScopeOnOutage": true
+      },
+      "compensationPolicy": {
+        "strategy": "forward_fix"
+      },
+      "idempotencyProfile": {
+        "enabled": true,
+        "keyTemplate": "portal-qa-automation-coverage-v1:{sliceId}"
+      },
+      "dataHandlingPolicy": {
+        "redactSecrets": true,
+        "retentionDays": 30
+      },
+      "modelGovernancePolicy": {
+        "canaryPercent": 10,
+        "rollbackOnDriftIncreasePct": 10
+      },
+      "capabilityToken": "capref_portal_qa_automation_coverage_v1",
+      "dependsOnIntents": [],
+      "doneCriteria": {
+        "requiredChecks": [
+          "npm run portal:pr:functional:gate",
+          "npm run portal:canary:auth",
+          "npm run portal:index:guard",
+          "npm run portal:fixture:steward"
+        ],
+        "requiredArtifacts": [
+          "output/qa/portal-pr-functional-gate.json"
+        ],
+        "requiredDocs": [
+          "docs/epics/EPIC-PORTAL-QA-AUTOMATION-COVERAGE.md",
+          "docs/runbooks/PORTAL_AUTOMATION_MATRIX.md"
+        ]
+      },
+      "simulation": {
+        "profile": "safe",
+        "required": true,
+        "strict": true
+      },
+      "evaluation": {
+        "required": true,
+        "threshold": 0.9,
+        "suite": "evals/suites/portal-qa-automation-coverage-v1.suite.json"
+      },
+      "budget": {
+        "maxTasks": 6,
+        "maxChecks": 20,
+        "maxRuntimeMs": 1800000,
+        "maxRetriesPerCheck": 1
+      },
+      "policy": {
+        "profile": "default",
+        "allowUntrustedMcp": false
+      },
+      "memoryGovernance": {
+        "enabled": true,
+        "minConfidence": 0.72,
+        "maxAgeDays": 365
+      },
+      "executionSlices": [
+        {
+          "id": "run-pr-functional-gate",
+          "title": "Run emulator-backed PR functional/authz checks",
+          "dependsOn": [],
+          "checks": [
+            "npm run portal:pr:functional:gate"
+          ],
+          "writeScope": "artifact-only"
+        },
+        {
+          "id": "run-production-canary-and-index-guard",
+          "title": "Run authenticated canary and strict index guard",
+          "dependsOn": [
+            "run-pr-functional-gate"
+          ],
+          "checks": [
+            "npm run portal:canary:auth",
+            "npm run portal:index:guard"
+          ],
+          "writeScope": "artifact-only"
+        },
+        {
+          "id": "run-fixture-steward-and-promotion-gate",
+          "title": "Run fixture stewardship and promotion safety checks",
+          "dependsOn": [
+            "run-production-canary-and-index-guard"
+          ],
+          "checks": [
+            "npm run portal:fixture:steward",
+            "npm run portal:promotion:gate"
+          ],
+          "writeScope": "artifact-only"
+        }
+      ]
+    },
+    {
+      "schemaVersion": "intent.v1",
+      "intentId": "staff-console-usability-signal-hardening-v1",
+      "title": "Staff Console Usability and Signal Hardening",
+      "file": "intents/EPIC-STAFF-CONSOLE-USABILITY-AND-SIGNAL-HARDENING.intent.json",
+      "epicPath": "docs/epics/EPIC-STAFF-CONSOLE-USABILITY-AND-SIGNAL-HARDENING.md",
+      "epicDigestSha256": "6635fd384218deb9967d01d07eea06a7b00aeca2d02bc248a7698528053b6561",
+      "intentDigestSha256": "15e3557cd51b21641b94370453d25b1c5a461e773e47b8d9f7eed3749a091eba",
+      "objective": "Improve staff-console trust and triage velocity by hardening health signals, reducing noisy controls, and strengthening supporting operations checks.",
+      "riskTier": "medium",
+      "constraints": {
+        "writePolicy": "pr-only-no-main",
+        "maxChangedFiles": 45,
+        "maxWriteActions": 8
+      },
+      "autonomyMode": "bounded",
+      "allowedTools": [
+        "functions.exec_command",
+        "functions.apply_patch",
+        "functions.write_stdin"
+      ],
+      "authority": {
+        "tier": "T2",
+        "approvalRequiredFor": [
+          "force-push",
+          "history-rewrite",
+          "credential-rotation"
+        ]
+      },
+      "priorityClass": "P2",
+      "progressModel": {
+        "kind": "criteria",
+        "minimumEvidenceCoverage": 0.75
+      },
+      "requiredEvidenceTypes": [
+        "tool_output",
+        "repo_state"
+      ],
+      "verificationProfile": {
+        "mustVerifyAfterMutate": true
+      },
+      "preemptionPolicy": {
+        "preemptibleBy": [
+          "P0",
+          "P1"
+        ],
+        "resumeAllowed": true
+      },
+      "degradedModePolicy": {
+        "allowReadOnlyContinuation": true,
+        "reduceMutationScopeOnOutage": true
+      },
+      "compensationPolicy": {
+        "strategy": "forward_fix"
+      },
+      "idempotencyProfile": {
+        "enabled": true,
+        "keyTemplate": "staff-console-usability-signal-hardening-v1:{sliceId}"
+      },
+      "dataHandlingPolicy": {
+        "redactSecrets": true,
+        "retentionDays": 30
+      },
+      "modelGovernancePolicy": {
+        "canaryPercent": 10,
+        "rollbackOnDriftIncreasePct": 10
+      },
+      "capabilityToken": "capref_staff_console_usability_signal_hardening_v1",
+      "dependsOnIntents": [],
+      "doneCriteria": {
+        "requiredChecks": [
+          "npm run studio:check:safe -- --no-evidence --no-host-scan",
+          "npm run portal:canary:auth",
+          "npm run portal:fixture:steward"
+        ],
+        "requiredArtifacts": [
+          "output/host-contract-evidence/latest.json"
+        ],
+        "requiredDocs": [
+          "docs/epics/EPIC-STAFF-CONSOLE-USABILITY-AND-SIGNAL-HARDENING.md",
+          "docs/runbooks/PORTAL_AUTOMATION_MATRIX.md"
+        ]
+      },
+      "simulation": null,
+      "evaluation": null,
+      "budget": null,
+      "policy": null,
+      "memoryGovernance": null,
+      "executionSlices": [
+        {
+          "id": "verify-health-signals",
+          "title": "Verify Studio Brain and staff health signal surfaces",
+          "dependsOn": [],
+          "checks": [
+            "npm run studio:check:safe -- --no-evidence --no-host-scan"
+          ],
+          "writeScope": "none"
+        },
+        {
+          "id": "harden-staff-console-paths",
+          "title": "Harden staff-console paths and remove low-value friction points",
+          "dependsOn": [
+            "verify-health-signals"
+          ],
+          "checks": [
+            "npm run portal:canary:auth"
+          ],
+          "writeScope": "staff-console-ui-and-ops-docs"
+        },
+        {
+          "id": "verify-operational-supporting-loops",
+          "title": "Verify fixtures and ops support loops remain stable",
+          "dependsOn": [
+            "harden-staff-console-paths"
+          ],
+          "checks": [
+            "npm run portal:fixture:steward"
+          ],
+          "writeScope": "artifact-only"
+        }
+      ]
+    },
+    {
+      "schemaVersion": "intent.v1",
+      "intentId": "staff-portal-module-consolidation-v1",
+      "title": "Staff Portal Module Consolidation",
+      "file": "intents/EPIC-STAFF-PORTAL-MODULE-CONSOLIDATION.intent.json",
+      "epicPath": "docs/epics/EPIC-STAFF-PORTAL-MODULE-CONSOLIDATION.md",
+      "epicDigestSha256": "cad021bcc8e77ee8aa9f7d95dcf25988dbb6f08d43da0b6786b91591e8318838",
+      "intentDigestSha256": "2fd89425b37587ed983bfb19d131d78773758eea38800480886d7403f22ad9e0",
+      "objective": "Consolidate duplicated staff portal modules into a task-oriented cockpit flow while preserving operational capabilities and lowering navigation friction.",
+      "riskTier": "medium",
+      "constraints": {
+        "writePolicy": "pr-only-no-main",
+        "maxChangedFiles": 45,
+        "maxWriteActions": 8
+      },
+      "autonomyMode": "bounded",
+      "allowedTools": [
+        "functions.exec_command",
+        "functions.apply_patch",
+        "functions.write_stdin"
+      ],
+      "authority": {
+        "tier": "T2",
+        "approvalRequiredFor": [
+          "force-push",
+          "history-rewrite",
+          "credential-rotation"
+        ]
+      },
+      "priorityClass": "P2",
+      "progressModel": {
+        "kind": "criteria",
+        "minimumEvidenceCoverage": 0.75
+      },
+      "requiredEvidenceTypes": [
+        "tool_output",
+        "repo_state"
+      ],
+      "verificationProfile": {
+        "mustVerifyAfterMutate": true
+      },
+      "preemptionPolicy": {
+        "preemptibleBy": [
+          "P0",
+          "P1"
+        ],
+        "resumeAllowed": true
+      },
+      "degradedModePolicy": {
+        "allowReadOnlyContinuation": true,
+        "reduceMutationScopeOnOutage": true
+      },
+      "compensationPolicy": {
+        "strategy": "forward_fix"
+      },
+      "idempotencyProfile": {
+        "enabled": true,
+        "keyTemplate": "staff-portal-module-consolidation-v1:{sliceId}"
+      },
+      "dataHandlingPolicy": {
+        "redactSecrets": true,
+        "retentionDays": 30
+      },
+      "modelGovernancePolicy": {
+        "canaryPercent": 10,
+        "rollbackOnDriftIncreasePct": 10
+      },
+      "capabilityToken": "capref_staff_portal_module_consolidation_v1",
+      "dependsOnIntents": [],
+      "doneCriteria": {
+        "requiredChecks": [
+          "npm run portal:pr:functional:gate",
+          "npm run portal:theme:contrast",
+          "npm run portal:canary:community-layout"
+        ],
+        "requiredArtifacts": [
+          "output/qa/portal-pr-functional-gate.json"
+        ],
+        "requiredDocs": [
+          "docs/epics/EPIC-STAFF-PORTAL-MODULE-CONSOLIDATION.md"
+        ]
+      },
+      "simulation": null,
+      "evaluation": null,
+      "budget": null,
+      "policy": null,
+      "memoryGovernance": null,
+      "executionSlices": [
+        {
+          "id": "map-duplicate-modules",
+          "title": "Map duplicate staff modules and cockpit relocation targets",
+          "dependsOn": [],
+          "checks": [
+            "npm run portal:pr:functional:gate"
+          ],
+          "writeScope": "none"
+        },
+        {
+          "id": "consolidate-cockpit-flows",
+          "title": "Consolidate staff flows into cockpit-oriented modules",
+          "dependsOn": [
+            "map-duplicate-modules"
+          ],
+          "checks": [
+            "npm run portal:theme:contrast"
+          ],
+          "writeScope": "staff-portal-ui"
+        },
+        {
+          "id": "verify-layout-and-signal-stability",
+          "title": "Verify consolidated layout and signal stability",
+          "dependsOn": [
+            "consolidate-cockpit-flows"
+          ],
+          "checks": [
+            "npm run portal:canary:community-layout"
+          ],
+          "writeScope": "artifact-only"
+        }
+      ]
+    },
+    {
+      "schemaVersion": "intent.v1",
+      "intentId": "workshops-experience-community-signals-v1",
+      "title": "Workshops Experience and Community Signals",
+      "file": "intents/EPIC-WORKSHOPS-EXPERIENCE-AND-COMMUNITY-SIGNALS.intent.json",
+      "epicPath": "docs/epics/EPIC-WORKSHOPS-EXPERIENCE-AND-COMMUNITY-SIGNALS.md",
+      "epicDigestSha256": "51ed6c1744cf107a1f2dab03e2319a75e53f4408657999e9317c4108ded1a322",
+      "intentDigestSha256": "5b6846c450d49dc8171fe1965269b143a58dae39f82857b5034e7fa2db2c7eb1",
+      "objective": "Evolve workshops into a community learning hub with stronger discovery, demand signaling, and feedback loops while preserving transactional reliability.",
+      "riskTier": "medium",
+      "constraints": {
+        "writePolicy": "pr-only-no-main",
+        "maxChangedFiles": 45,
+        "maxWriteActions": 8
+      },
+      "autonomyMode": "bounded",
+      "allowedTools": [
+        "functions.exec_command",
+        "functions.apply_patch",
+        "functions.write_stdin"
+      ],
+      "authority": {
+        "tier": "T2",
+        "approvalRequiredFor": [
+          "force-push",
+          "history-rewrite",
+          "credential-rotation"
+        ]
+      },
+      "priorityClass": "P2",
+      "progressModel": {
+        "kind": "criteria",
+        "minimumEvidenceCoverage": 0.75
+      },
+      "requiredEvidenceTypes": [
+        "tool_output",
+        "repo_state"
+      ],
+      "verificationProfile": {
+        "mustVerifyAfterMutate": true
+      },
+      "preemptionPolicy": {
+        "preemptibleBy": [
+          "P0",
+          "P1"
+        ],
+        "resumeAllowed": true
+      },
+      "degradedModePolicy": {
+        "allowReadOnlyContinuation": true,
+        "reduceMutationScopeOnOutage": true
+      },
+      "compensationPolicy": {
+        "strategy": "forward_fix"
+      },
+      "idempotencyProfile": {
+        "enabled": true,
+        "keyTemplate": "workshops-experience-community-signals-v1:{sliceId}"
+      },
+      "dataHandlingPolicy": {
+        "redactSecrets": true,
+        "retentionDays": 30
+      },
+      "modelGovernancePolicy": {
+        "canaryPercent": 10,
+        "rollbackOnDriftIncreasePct": 10
+      },
+      "capabilityToken": "capref_workshops_experience_community_signals_v1",
+      "dependsOnIntents": [],
+      "doneCriteria": {
+        "requiredChecks": [
+          "npm run portal:pricing:intake:check",
+          "npm run portal:pr:functional:gate",
+          "PORTAL_CANARY_ENFORCE_STAFF_ROUTES=true npm run portal:canary:auth"
+        ],
+        "requiredArtifacts": [
+          "output/qa/portal-pr-functional-gate.json"
+        ],
+        "requiredDocs": [
+          "docs/epics/EPIC-WORKSHOPS-EXPERIENCE-AND-COMMUNITY-SIGNALS.md",
+          "docs/runbooks/PORTAL_AUTOMATION_MATRIX.md"
+        ]
+      },
+      "simulation": null,
+      "evaluation": null,
+      "budget": null,
+      "policy": null,
+      "memoryGovernance": null,
+      "executionSlices": [
+        {
+          "id": "validate-intake-and-demand-flows",
+          "title": "Validate workshop intake and demand signal flows",
+          "dependsOn": [],
+          "checks": [
+            "npm run portal:pricing:intake:check"
+          ],
+          "writeScope": "none"
+        },
+        {
+          "id": "ship-discovery-and-community-improvements",
+          "title": "Ship workshop discovery and community-signal improvements",
+          "dependsOn": [
+            "validate-intake-and-demand-flows"
+          ],
+          "checks": [
+            "npm run portal:pr:functional:gate"
+          ],
+          "writeScope": "workshops-ui-and-supporting-functions"
+        },
+        {
+          "id": "verify-member-surface-reliability",
+          "title": "Verify member-facing reliability after workshop updates",
+          "dependsOn": [
+            "ship-discovery-and-community-improvements"
+          ],
+          "checks": [
+            "PORTAL_CANARY_ENFORCE_STAFF_ROUTES=true npm run portal:canary:auth"
+          ],
+          "writeScope": "artifact-only"
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "taskId": "codex-continuous-improvement-v1::collect-signals",
+      "intentId": "codex-continuous-improvement-v1",
+      "criterionRef": "collect-signals",
+      "title": "Collect repo and tool-call signals",
+      "dependsOn": [],
+      "checks": [
+        "npm run codex:improve:daily -- --dry-run --json"
+      ],
+      "writeScope": "none",
+      "actionType": "analyze",
+      "lockScope": "none",
+      "capabilityToken": "capref_codex_continuous_improvement_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "codex-continuous-improvement-v1::generate-improvements",
+      "intentId": "codex-continuous-improvement-v1",
+      "criterionRef": "generate-improvements",
+      "title": "Generate bounded improvement proposals",
+      "dependsOn": [
+        "codex-continuous-improvement-v1::collect-signals"
+      ],
+      "checks": [
+        "npm run codex:improve:daily -- --apply --allow-dirty --json"
+      ],
+      "writeScope": "issues-and-bot-pr-branch",
+      "actionType": "mutate",
+      "lockScope": "issues-and-bot-pr-branch",
+      "capabilityToken": "capref_codex_continuous_improvement_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "codex-continuous-improvement-v1::rubric-and-audit",
+      "intentId": "codex-continuous-improvement-v1",
+      "criterionRef": "rubric-and-audit",
+      "title": "Produce rubric scorecard and telemetry audit",
+      "dependsOn": [
+        "codex-continuous-improvement-v1::collect-signals"
+      ],
+      "checks": [
+        "npm run codex:rubric:strict:compat",
+        "npm run codex:telemetry:audit:strict"
+      ],
+      "writeScope": "artifact-only",
+      "actionType": "verify",
+      "lockScope": "artifact-only",
+      "capabilityToken": "capref_codex_continuous_improvement_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "codex-interaction-interrogation-v1::collect-interaction-signals",
+      "intentId": "codex-interaction-interrogation-v1",
+      "criterionRef": "collect-interaction-signals",
+      "title": "Collect recent interaction and tooling signals",
+      "dependsOn": [],
+      "checks": [
+        "npm run codex:interaction:daily -- --dry-run --json"
+      ],
+      "writeScope": "none",
+      "actionType": "analyze",
+      "lockScope": "none",
+      "capabilityToken": "capref_codex_interaction_interrogation_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "codex-interaction-interrogation-v1::propose-instruction-updates",
+      "intentId": "codex-interaction-interrogation-v1",
+      "criterionRef": "propose-instruction-updates",
+      "title": "Propose structural instruction updates with bounded scope",
+      "dependsOn": [
+        "codex-interaction-interrogation-v1::collect-interaction-signals"
+      ],
+      "checks": [
+        "npm run codex:interaction:apply -- --json"
+      ],
+      "writeScope": "codex-docs-only",
+      "actionType": "mutate",
+      "lockScope": "codex-docs-only",
+      "capabilityToken": "capref_codex_interaction_interrogation_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "codex-interaction-interrogation-v1::verify-doc-drift-and-health",
+      "intentId": "codex-interaction-interrogation-v1",
+      "criterionRef": "verify-doc-drift-and-health",
+      "title": "Verify docs drift and codex harness health",
+      "dependsOn": [
+        "codex-interaction-interrogation-v1::propose-instruction-updates"
+      ],
+      "checks": [
+        "npm run codex:docs:drift:strict",
+        "npm run codex:doctor:strict"
+      ],
+      "writeScope": "artifact-only",
+      "actionType": "verify",
+      "lockScope": "artifact-only",
+      "capabilityToken": "capref_codex_interaction_interrogation_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "codex-pr-green-daily-v1::collect-pr-signal-state",
+      "intentId": "codex-pr-green-daily-v1",
+      "criterionRef": "collect-pr-signal-state",
+      "title": "Collect PR check-run health and classify status",
+      "dependsOn": [],
+      "checks": [
+        "npm run codex:pr-green:daily -- --dry-run --json"
+      ],
+      "writeScope": "none",
+      "actionType": "analyze",
+      "lockScope": "none",
+      "capabilityToken": "capref_codex_pr_green_daily_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "codex-pr-green-daily-v1::execute-safe-reruns",
+      "intentId": "codex-pr-green-daily-v1",
+      "criterionRef": "execute-safe-reruns",
+      "title": "Execute bounded rerun requests for flaky check classes",
+      "dependsOn": [
+        "codex-pr-green-daily-v1::collect-pr-signal-state"
+      ],
+      "checks": [
+        "npm run codex:pr-green:apply -- --json"
+      ],
+      "writeScope": "external-api-readwrite-bounded",
+      "actionType": "mutate",
+      "lockScope": "external-api-readwrite-bounded",
+      "capabilityToken": "capref_codex_pr_green_daily_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "codex-pr-green-daily-v1::publish-unblock-summary",
+      "intentId": "codex-pr-green-daily-v1",
+      "criterionRef": "publish-unblock-summary",
+      "title": "Persist and publish unblock summary artifacts",
+      "dependsOn": [
+        "codex-pr-green-daily-v1::execute-safe-reruns"
+      ],
+      "checks": [
+        "npm run codex:pr-green:daily:persist"
+      ],
+      "writeScope": "codex-artifacts-only",
+      "actionType": "mutate",
+      "lockScope": "codex-artifacts-only",
+      "capabilityToken": "capref_codex_pr_green_daily_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "events-industry-local-remote-v1::canary-industry-surface",
+      "intentId": "events-industry-local-remote-v1",
+      "criterionRef": "canary-industry-surface",
+      "title": "Run canary coverage for listing and stale-content regressions",
+      "dependsOn": [
+        "events-industry-local-remote-v1::validate-event-contracts"
+      ],
+      "checks": [
+        "npm run events:industry:canary"
+      ],
+      "writeScope": "artifact-only",
+      "actionType": "verify",
+      "lockScope": "artifact-only",
+      "capabilityToken": "capref_events_industry_local_remote_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "events-industry-local-remote-v1::ingest-industry-sources",
+      "intentId": "events-industry-local-remote-v1",
+      "criterionRef": "ingest-industry-sources",
+      "title": "Ingest and normalize industry event sources",
+      "dependsOn": [],
+      "checks": [
+        "npm run events:industry:import"
+      ],
+      "writeScope": "events-source-ingest",
+      "actionType": "mutate",
+      "lockScope": "events-source-ingest",
+      "capabilityToken": "capref_events_industry_local_remote_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "events-industry-local-remote-v1::validate-event-contracts",
+      "intentId": "events-industry-local-remote-v1",
+      "criterionRef": "validate-event-contracts",
+      "title": "Validate local/remote event contracts and freshness rules",
+      "dependsOn": [
+        "events-industry-local-remote-v1::ingest-industry-sources"
+      ],
+      "checks": [
+        "npm run events:industry:check"
+      ],
+      "writeScope": "none",
+      "actionType": "analyze",
+      "lockScope": "none",
+      "capabilityToken": "capref_events_industry_local_remote_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "portal-qa-automation-coverage-v1::run-fixture-steward-and-promotion-gate",
+      "intentId": "portal-qa-automation-coverage-v1",
+      "criterionRef": "run-fixture-steward-and-promotion-gate",
+      "title": "Run fixture stewardship and promotion safety checks",
+      "dependsOn": [
+        "portal-qa-automation-coverage-v1::run-production-canary-and-index-guard"
+      ],
+      "checks": [
+        "npm run portal:fixture:steward",
+        "npm run portal:promotion:gate"
+      ],
+      "writeScope": "artifact-only",
+      "actionType": "verify",
+      "lockScope": "artifact-only",
+      "capabilityToken": "capref_portal_qa_automation_coverage_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "portal-qa-automation-coverage-v1::run-pr-functional-gate",
+      "intentId": "portal-qa-automation-coverage-v1",
+      "criterionRef": "run-pr-functional-gate",
+      "title": "Run emulator-backed PR functional/authz checks",
+      "dependsOn": [],
+      "checks": [
+        "npm run portal:pr:functional:gate"
+      ],
+      "writeScope": "artifact-only",
+      "actionType": "verify",
+      "lockScope": "artifact-only",
+      "capabilityToken": "capref_portal_qa_automation_coverage_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "portal-qa-automation-coverage-v1::run-production-canary-and-index-guard",
+      "intentId": "portal-qa-automation-coverage-v1",
+      "criterionRef": "run-production-canary-and-index-guard",
+      "title": "Run authenticated canary and strict index guard",
+      "dependsOn": [
+        "portal-qa-automation-coverage-v1::run-pr-functional-gate"
+      ],
+      "checks": [
+        "npm run portal:canary:auth",
+        "npm run portal:index:guard"
+      ],
+      "writeScope": "artifact-only",
+      "actionType": "verify",
+      "lockScope": "artifact-only",
+      "capabilityToken": "capref_portal_qa_automation_coverage_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "staff-console-usability-signal-hardening-v1::harden-staff-console-paths",
+      "intentId": "staff-console-usability-signal-hardening-v1",
+      "criterionRef": "harden-staff-console-paths",
+      "title": "Harden staff-console paths and remove low-value friction points",
+      "dependsOn": [
+        "staff-console-usability-signal-hardening-v1::verify-health-signals"
+      ],
+      "checks": [
+        "npm run portal:canary:auth"
+      ],
+      "writeScope": "staff-console-ui-and-ops-docs",
+      "actionType": "mutate",
+      "lockScope": "staff-console-ui-and-ops-docs",
+      "capabilityToken": "capref_staff_console_usability_signal_hardening_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "staff-console-usability-signal-hardening-v1::verify-health-signals",
+      "intentId": "staff-console-usability-signal-hardening-v1",
+      "criterionRef": "verify-health-signals",
+      "title": "Verify Studio Brain and staff health signal surfaces",
+      "dependsOn": [],
+      "checks": [
+        "npm run studio:check:safe -- --no-evidence --no-host-scan"
+      ],
+      "writeScope": "none",
+      "actionType": "analyze",
+      "lockScope": "none",
+      "capabilityToken": "capref_staff_console_usability_signal_hardening_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "staff-console-usability-signal-hardening-v1::verify-operational-supporting-loops",
+      "intentId": "staff-console-usability-signal-hardening-v1",
+      "criterionRef": "verify-operational-supporting-loops",
+      "title": "Verify fixtures and ops support loops remain stable",
+      "dependsOn": [
+        "staff-console-usability-signal-hardening-v1::harden-staff-console-paths"
+      ],
+      "checks": [
+        "npm run portal:fixture:steward"
+      ],
+      "writeScope": "artifact-only",
+      "actionType": "verify",
+      "lockScope": "artifact-only",
+      "capabilityToken": "capref_staff_console_usability_signal_hardening_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "staff-portal-module-consolidation-v1::consolidate-cockpit-flows",
+      "intentId": "staff-portal-module-consolidation-v1",
+      "criterionRef": "consolidate-cockpit-flows",
+      "title": "Consolidate staff flows into cockpit-oriented modules",
+      "dependsOn": [
+        "staff-portal-module-consolidation-v1::map-duplicate-modules"
+      ],
+      "checks": [
+        "npm run portal:theme:contrast"
+      ],
+      "writeScope": "staff-portal-ui",
+      "actionType": "mutate",
+      "lockScope": "staff-portal-ui",
+      "capabilityToken": "capref_staff_portal_module_consolidation_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "staff-portal-module-consolidation-v1::map-duplicate-modules",
+      "intentId": "staff-portal-module-consolidation-v1",
+      "criterionRef": "map-duplicate-modules",
+      "title": "Map duplicate staff modules and cockpit relocation targets",
+      "dependsOn": [],
+      "checks": [
+        "npm run portal:pr:functional:gate"
+      ],
+      "writeScope": "none",
+      "actionType": "analyze",
+      "lockScope": "none",
+      "capabilityToken": "capref_staff_portal_module_consolidation_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "staff-portal-module-consolidation-v1::verify-layout-and-signal-stability",
+      "intentId": "staff-portal-module-consolidation-v1",
+      "criterionRef": "verify-layout-and-signal-stability",
+      "title": "Verify consolidated layout and signal stability",
+      "dependsOn": [
+        "staff-portal-module-consolidation-v1::consolidate-cockpit-flows"
+      ],
+      "checks": [
+        "npm run portal:canary:community-layout"
+      ],
+      "writeScope": "artifact-only",
+      "actionType": "verify",
+      "lockScope": "artifact-only",
+      "capabilityToken": "capref_staff_portal_module_consolidation_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "workshops-experience-community-signals-v1::ship-discovery-and-community-improvements",
+      "intentId": "workshops-experience-community-signals-v1",
+      "criterionRef": "ship-discovery-and-community-improvements",
+      "title": "Ship workshop discovery and community-signal improvements",
+      "dependsOn": [
+        "workshops-experience-community-signals-v1::validate-intake-and-demand-flows"
+      ],
+      "checks": [
+        "npm run portal:pr:functional:gate"
+      ],
+      "writeScope": "workshops-ui-and-supporting-functions",
+      "actionType": "mutate",
+      "lockScope": "workshops-ui-and-supporting-functions",
+      "capabilityToken": "capref_workshops_experience_community_signals_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "workshops-experience-community-signals-v1::validate-intake-and-demand-flows",
+      "intentId": "workshops-experience-community-signals-v1",
+      "criterionRef": "validate-intake-and-demand-flows",
+      "title": "Validate workshop intake and demand signal flows",
+      "dependsOn": [],
+      "checks": [
+        "npm run portal:pricing:intake:check"
+      ],
+      "writeScope": "none",
+      "actionType": "analyze",
+      "lockScope": "none",
+      "capabilityToken": "capref_workshops_experience_community_signals_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    },
+    {
+      "taskId": "workshops-experience-community-signals-v1::verify-member-surface-reliability",
+      "intentId": "workshops-experience-community-signals-v1",
+      "criterionRef": "verify-member-surface-reliability",
+      "title": "Verify member-facing reliability after workshop updates",
+      "dependsOn": [
+        "workshops-experience-community-signals-v1::ship-discovery-and-community-improvements"
+      ],
+      "checks": [
+        "PORTAL_CANARY_ENFORCE_STAFF_ROUTES=true npm run portal:canary:auth"
+      ],
+      "writeScope": "artifact-only",
+      "actionType": "verify",
+      "lockScope": "artifact-only",
+      "capabilityToken": "capref_workshops_experience_community_signals_v1",
+      "riskTier": "medium",
+      "priorityClass": "P2",
+      "authorityTier": "T2"
+    }
+  ],
+  "generatedAt": "2026-03-06T20:49:58.106Z",
+  "intentCount": 8,
+  "taskCount": 24,
+  "planDigestSha256": "1bd780fb0713024ed116b9f27f831b900728fa54501f3d161757800e1cff4e7d"
+}

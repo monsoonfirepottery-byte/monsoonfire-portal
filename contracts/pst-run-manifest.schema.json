@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pst-run-manifest.schema.json",
+  "title": "PST Run Manifest",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "runId",
+    "inputs",
+    "outputs",
+    "counts"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "pst-memory-run-manifest.v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "counts": {
+      "type": "object",
+      "properties": {
+        "units": { "type": "integer", "minimum": 0 },
+        "messages": { "type": "integer", "minimum": 0 },
+        "attachments": { "type": "integer", "minimum": 0 },
+        "deadLetter": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

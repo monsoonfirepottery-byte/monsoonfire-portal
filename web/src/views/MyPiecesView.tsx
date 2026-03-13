@@ -8,12 +8,14 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  where,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useBatches } from "../hooks/useBatches";
 import { createPortalApi, PortalApiError } from "../api/portalApi";
 import type { PortalApiMeta } from "../api/portalContracts";
 import { getResultBatchId } from "../api/portalContracts";
+import { normalizeReservationRecord, type ReservationRecord } from "../lib/normalizers/reservations";
 import { formatMaybeTimestamp } from "../utils/format";
 import { toVoidHandler } from "../utils/toVoidHandler";
 import { shortId, track } from "../lib/analytics";
@@ -22,6 +24,7 @@ import { useUiSettings } from "../context/UiSettingsContext";
 import { trackedAddDoc, trackedGetDocs, trackedUpdateDoc } from "../lib/firestoreTelemetry";
 import { safeStorageSetItem } from "../lib/safeStorage";
 import { requestErrorMessage } from "../utils/userFacingErrors";
+import "./MyPiecesView.css";
 
 const PIECES_PAGE_SIZE = 25;
 const BATCHES_PAGE_SIZE = 5;
@@ -124,6 +127,20 @@ type PieceMedia = {
   searchTokens?: string[];
 };
 
+type ReservationSummary = {
+  id: string;
+  ownerUid: string | null;
+  status: string;
+  loadStatus: string | null;
+  firingType: string;
+  wareType: string | null;
+  intakeMode: string | null;
+  estimatedHalfShelves: number | null;
+  linkedBatchId: string | null;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+};
+
 type LocalMeta = {
   ok: boolean;
   status: number | string | null;
@@ -172,6 +189,13 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function isMissingIndexError(error: unknown): boolean {
+  const errObj = error as { code?: unknown; message?: unknown } | null | undefined;
+  const code = typeof errObj?.code === "string" ? errObj.code.toLowerCase() : "";
+  const message = typeof errObj?.message === "string" ? errObj.message.toLowerCase() : "";
+  return code.includes("failed-precondition") || message.includes("index");
+}
+
 function isPermissionDeniedError(error: unknown): boolean {
   const message = getErrorMessage(error).toLowerCase();
   const code =
@@ -218,6 +242,16 @@ function toMillis(value: unknown): number {
     return (value as { toMillis: () => number }).toMillis();
   }
   return new Date((value as string | number | Date | null) ?? 0).getTime();
+}
+
+function reservationStatusLabel(reservation: ReservationSummary): string {
+  const status = reservation.status.toUpperCase();
+  if (status === "CONFIRMED") return "Confirmed";
+  if (status === "WAITLISTED") return "Waitlisted";
+  if (status === "CANCELLED") return "Cancelled";
+  if (reservation.loadStatus === "loaded") return "Loaded";
+  if (reservation.loadStatus === "loading") return "Loading";
+  return "Queued";
 }
 
 type StarRatingProps = {
@@ -271,6 +305,9 @@ export default function MyPiecesView({
   const [piecesLoading, setPiecesLoading] = useState(false);
   const [piecesError, setPiecesError] = useState("");
   const [piecesWarning, setPiecesWarning] = useState("");
+  const [recentCheckins, setRecentCheckins] = useState<ReservationSummary[]>([]);
+  const [checkinsLoading, setCheckinsLoading] = useState(false);
+  const [checkinsError, setCheckinsError] = useState("");
   const [selectedPieceKey, setSelectedPieceKey] = useState<string | null>(null);
   const [selectedPieceTab, setSelectedPieceTab] = useState<"client" | "studio" | "photos" | "audit">(
     "client"
@@ -294,6 +331,9 @@ export default function MyPiecesView({
   const [pieceListLimit, setPieceListLimit] = useState(PIECES_PAGE_SIZE);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"recent" | "oldest" | "stage" | "rating">("recent");
+  const [browserControlsOpen, setBrowserControlsOpen] = useState(false);
+  const [checkinsPanelOpen, setCheckinsPanelOpen] = useState(false);
+  const [detailPanelOpen, setDetailPanelOpen] = useState(false);
   const [ratingStatus, setRatingStatus] = useState<Record<string, string>>({});
   const [ratingPulseKey, setRatingPulseKey] = useState<string | null>(null);
 
@@ -306,6 +346,10 @@ export default function MyPiecesView({
   );
   const historyPieceCount = useMemo(
     () => pieces.filter((piece) => piece.batchIsHistory).length,
+    [pieces]
+  );
+  const pendingRatingCount = useMemo(
+    () => pieces.filter((piece) => !piece.batchIsHistory && !piece.clientRating).length,
     [pieces]
   );
 
@@ -335,6 +379,93 @@ export default function MyPiecesView({
   useEffect(() => {
     setPieceListLimit(PIECES_PAGE_SIZE);
   }, [searchQuery, sortBy]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!user) {
+      setRecentCheckins([]);
+      setCheckinsError("");
+      setCheckinsLoading(false);
+      return;
+    }
+
+    const loadRecentCheckins = async () => {
+      setCheckinsLoading(true);
+      setCheckinsError("");
+      try {
+        const loadByField = async (field: "ownerUid" | "createdByUid", value: string) => {
+          try {
+            const byCreatedAt = query(
+              collection(db, "reservations"),
+              where(field, "==", value),
+              orderBy("createdAt", "desc"),
+              limit(24)
+            );
+            return await trackedGetDocs("reservations:list", byCreatedAt);
+          } catch (error: unknown) {
+            if (!isMissingIndexError(error)) throw error;
+            const fallback = query(collection(db, "reservations"), where(field, "==", value), limit(300));
+            return await trackedGetDocs("reservations:list", fallback);
+          }
+        };
+
+        const snapshots = [await loadByField("ownerUid", user.uid)];
+        if (isStaff) {
+          snapshots.push(await loadByField("createdByUid", user.uid));
+        }
+
+        if (cancelled) return;
+        const rows = snapshots
+          .flatMap((snap) =>
+            snap.docs.map((docSnap) =>
+              normalizeReservationRecord(docSnap.id, docSnap.data() as Partial<ReservationRecord>)
+            )
+          )
+          .reduce((accumulator, reservation) => {
+            accumulator.set(reservation.id, reservation);
+            return accumulator;
+          }, new Map<string, ReservationRecord>());
+        const normalizedRows = Array.from(rows.values())
+          .sort((left, right) => {
+            const leftMs = toMillis(left.createdAt ?? left.updatedAt);
+            const rightMs = toMillis(right.createdAt ?? right.updatedAt);
+            if (leftMs !== rightMs) return rightMs - leftMs;
+            return right.id.localeCompare(left.id);
+          })
+          .filter((reservation) => String(reservation.status || "").toUpperCase() !== "CANCELLED")
+          .slice(0, 8)
+          .map(
+            (reservation): ReservationSummary => ({
+              id: reservation.id,
+              ownerUid: typeof reservation.ownerUid === "string" ? reservation.ownerUid : null,
+              status: String(reservation.status || "REQUESTED"),
+              loadStatus: typeof reservation.loadStatus === "string" ? reservation.loadStatus : null,
+              firingType: String(reservation.firingType || "other"),
+              wareType: typeof reservation.wareType === "string" ? reservation.wareType : null,
+              intakeMode: typeof reservation.intakeMode === "string" ? reservation.intakeMode : null,
+              estimatedHalfShelves:
+                typeof reservation.estimatedHalfShelves === "number" ? reservation.estimatedHalfShelves : null,
+              linkedBatchId: typeof reservation.linkedBatchId === "string" ? reservation.linkedBatchId : null,
+              createdAt: reservation.createdAt ?? null,
+              updatedAt: reservation.updatedAt ?? null,
+            })
+          );
+        setRecentCheckins(normalizedRows);
+      } catch (error: unknown) {
+        if (cancelled) return;
+        setRecentCheckins([]);
+        setCheckinsError(`Recent check-ins failed: ${getErrorMessage(error)}`);
+      } finally {
+        if (!cancelled) setCheckinsLoading(false);
+      }
+    };
+
+    void loadRecentCheckins();
+    return () => {
+      cancelled = true;
+    };
+  }, [isStaff, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -525,6 +656,14 @@ export default function MyPiecesView({
   }, [pieces, selectedPieceKey]);
 
   useEffect(() => {
+    if (selectedPiece) {
+      setDetailPanelOpen(true);
+      return;
+    }
+    setDetailPanelOpen(false);
+  }, [selectedPiece]);
+
+  useEffect(() => {
     if (!focusTarget || piecesLoading) return;
 
     const targetBatchId = typeof focusTarget.batchId === "string" ? focusTarget.batchId.trim() : "";
@@ -549,6 +688,7 @@ export default function MyPiecesView({
     if (nextSelected) {
       setSelectedPieceKey(nextSelected.key);
       setSelectedPieceTab("client");
+      setDetailPanelOpen(true);
     }
     onFocusTargetConsumed?.();
   }, [focusTarget, onFocusTargetConsumed, pieces, piecesLoading]);
@@ -1029,7 +1169,7 @@ export default function MyPiecesView({
   };
 
   return (
-    <div className="page">
+    <div className="page my-pieces-page">
       <div className="page-header">
         <h1>My Pieces</h1>
       </div>
@@ -1043,8 +1183,48 @@ export default function MyPiecesView({
         </div>
       ) : null}
 
-      <div className="pieces-toolbar">
-        <div className="filter-chips">
+      <section className="my-pieces-summary">
+        <article className="my-pieces-summary-card">
+          <div className="my-pieces-summary-label">In progress</div>
+          <div className="my-pieces-summary-value">{activePieceCount}</div>
+          <p className="my-pieces-summary-copy">Pieces currently moving through the studio workflow.</p>
+        </article>
+        <article className="my-pieces-summary-card">
+          <div className="my-pieces-summary-label">Needs rating</div>
+          <div className="my-pieces-summary-value">{pendingRatingCount}</div>
+          <p className="my-pieces-summary-copy">Leave quick feedback so staff can tune future loads.</p>
+        </article>
+        <article className="my-pieces-summary-card">
+          <div className="my-pieces-summary-label">History</div>
+          <div className="my-pieces-summary-value">{historyPieceCount}</div>
+          <p className="my-pieces-summary-copy">Completed pieces from earlier check-ins.</p>
+        </article>
+        {onOpenCheckin ? (
+          <button className="btn btn-primary my-pieces-summary-cta" type="button" onClick={() => onOpenCheckin()}>
+            Open Ware Check-in
+          </button>
+        ) : null}
+      </section>
+
+      <section className="card card-3d my-pieces-browser-shell">
+        <div className="my-pieces-browser-header">
+          <div>
+            <div className="card-title">Piece browser</div>
+            <p className="piece-meta my-pieces-browser-copy">
+              Browse first, then open filters only when you need to narrow things down.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost btn-small"
+            aria-expanded={browserControlsOpen}
+            aria-controls="my-pieces-browser-controls"
+            onClick={() => setBrowserControlsOpen((previous) => !previous)}
+          >
+            {browserControlsOpen ? "Hide filters" : "Open filters"}
+          </button>
+        </div>
+        <div className="filter-chips my-pieces-filter-chips">
           <button
             className={`chip ${piecesFilter === "all" ? "active" : ""}`}
             onClick={() => setPiecesFilter("all")}
@@ -1055,50 +1235,46 @@ export default function MyPiecesView({
             className={`chip ${piecesFilter === "active" ? "active" : ""}`}
             onClick={() => setPiecesFilter("active")}
           >
-            In progress ({pieces.filter((piece) => !piece.batchIsHistory).length})
+            In progress ({activePieceCount})
           </button>
           <button
             className={`chip ${piecesFilter === "history" ? "active" : ""}`}
             onClick={() => setPiecesFilter("history")}
           >
-            History ({pieces.filter((piece) => piece.batchIsHistory).length})
+            History ({historyPieceCount})
           </button>
         </div>
-        <div className="toolbar-fields">
-          <input
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search pieces"
-          />
-          <select value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)}>
-            <option value="recent">Newest updates</option>
-            <option value="oldest">Oldest updates</option>
-            <option value="stage">Stage</option>
-            <option value="rating">Rating</option>
-          </select>
-          {hasMoreBatches ? (
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => setBatchWindow((prev) => prev + BATCHES_PAGE_SIZE)}
-              disabled={piecesLoading}
-            >
-              {piecesLoading ? "Loading..." : "Load more check-ins"}
-            </button>
-          ) : null}
+        {browserControlsOpen ? (
+          <div id="my-pieces-browser-controls" className="toolbar-fields my-pieces-toolbar-fields">
+            <input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search pieces"
+            />
+            <select value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)}>
+              <option value="recent">Newest updates</option>
+              <option value="oldest">Oldest updates</option>
+              <option value="stage">Stage</option>
+              <option value="rating">Rating</option>
+            </select>
+            {hasMoreBatches ? (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setBatchWindow((prev) => prev + BATCHES_PAGE_SIZE)}
+                disabled={piecesLoading}
+              >
+                {piecesLoading ? "Loading..." : "Load more check-ins"}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="piece-meta my-pieces-browser-meta">
+          Showing up to {batchWindow} recent check-ins and up to {BATCH_PIECES_QUERY_LIMIT} pieces per check-in.
         </div>
-      </div>
-      <div className="piece-meta">
-        Showing up to {batchWindow} recent check-ins and up to {BATCH_PIECES_QUERY_LIMIT} pieces per check-in.
-      </div>
+      </section>
 
-      <div className="cta-bar">
-        <div className="piece-meta">
-          Use Ware Check-in to add new pieces. You can archive, rate, and update details right here.
-        </div>
-      </div>
-
-      <div className="wares-layout">
+      <div className="wares-layout my-pieces-layout">
         <div className="pieces-grid collections-pane">
           <RevealCard className="card card-3d" index={0} enabled={motionEnabled}>
             <div className="card-title">
@@ -1135,8 +1311,14 @@ export default function MyPiecesView({
                         {piece.clientRating ? `Rating: ${piece.clientRating}★` : "No rating yet"}
                       </div>
                       <div className="piece-actions">
-                        <button className="btn btn-ghost" onClick={() => setSelectedPieceKey(piece.key)}>
-                          View details
+                        <button
+                          className="btn btn-ghost"
+                          onClick={() => {
+                            setSelectedPieceKey(piece.key);
+                            setDetailPanelOpen(true);
+                          }}
+                        >
+                          Open detail
                         </button>
                         <button
                           className="btn btn-ghost"
@@ -1167,10 +1349,28 @@ export default function MyPiecesView({
           </RevealCard>
         </div>
 
-        <RevealCard className="card card-3d collection-detail-pane" index={1} enabled={motionEnabled}>
-          <div className="card-title">Piece detail</div>
+        <RevealCard className="card card-3d collection-detail-pane my-piece-detail-shell" index={1} enabled={motionEnabled}>
+          <div className="my-piece-detail-toolbar">
+            <div className="card-title">Piece detail</div>
+            <button
+              type="button"
+              className="btn btn-ghost btn-small"
+              disabled={!selectedPiece}
+              aria-expanded={detailPanelOpen}
+              onClick={() => {
+                if (!selectedPiece) return;
+                setDetailPanelOpen((previous) => !previous);
+              }}
+            >
+              {detailPanelOpen ? "Hide detail panel" : "Open detail panel"}
+            </button>
+          </div>
           {!selectedPiece ? (
             <div className="empty-state">Select a piece to view details.</div>
+          ) : !detailPanelOpen ? (
+            <div className="empty-state">
+              Detail is hidden so browsing stays fast. Open detail panel to edit this piece.
+            </div>
           ) : (
             <div className="detail-grid">
               <div className="detail-block">
@@ -1505,6 +1705,74 @@ export default function MyPiecesView({
           )}
         </RevealCard>
       </div>
+
+      <RevealCard className="card card-3d my-pieces-secondary-shell" index={2} enabled={motionEnabled}>
+        <div className="my-pieces-secondary-header">
+          <div>
+            <div className="card-title">Check-in activity</div>
+            <p className="piece-meta my-pieces-browser-copy">
+              Keep this collapsed while browsing. Open it when you need reservation-level history.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost btn-small"
+            aria-expanded={checkinsPanelOpen}
+            aria-controls="my-pieces-checkins-panel"
+            onClick={() => setCheckinsPanelOpen((previous) => !previous)}
+          >
+            {checkinsPanelOpen ? "Hide check-in activity" : "Open check-in activity"}
+          </button>
+        </div>
+        {!checkinsPanelOpen && recentCheckins.length > 0 ? (
+          <div className="inline-alert notice">
+            {recentCheckins.length} recent check-in item{recentCheckins.length === 1 ? "" : "s"} available.
+          </div>
+        ) : null}
+        {checkinsPanelOpen ? (
+          <div id="my-pieces-checkins-panel">
+            {checkinsLoading ? (
+              <div className="empty-state">Loading recent check-ins...</div>
+            ) : checkinsError ? (
+              <div className="alert inline-alert">{checkinsError}</div>
+            ) : recentCheckins.length === 0 ? (
+              <div className="empty-state">No recent check-ins yet.</div>
+            ) : (
+              <div className="pieces-list">
+                {recentCheckins.map((reservation) => (
+                  <div className="piece-row" key={`reservation:${reservation.id}`}>
+                    <div>
+                      <div className="piece-title-row">
+                        <div className="piece-title">{`Check-in ${shortId(reservation.id)}`}</div>
+                        <div className="pill piece-status">{reservationStatusLabel(reservation)}</div>
+                      </div>
+                      <div className="piece-meta">
+                        {reservation.firingType.toUpperCase()} {reservation.wareType ? `· ${reservation.wareType}` : ""}
+                        {reservation.estimatedHalfShelves ? ` · ${reservation.estimatedHalfShelves} half-shelves` : ""}
+                      </div>
+                      <div className="piece-meta">
+                        Updated: {formatMaybeTimestamp(reservation.updatedAt ?? reservation.createdAt)}
+                      </div>
+                      {isStaff && reservation.ownerUid && reservation.ownerUid !== user.uid ? (
+                        <div className="piece-meta">For member: {shortId(reservation.ownerUid)}</div>
+                      ) : null}
+                    </div>
+                    <div className="piece-right">
+                      <div className="piece-actions">
+                        {onOpenCheckin ? (
+                          <button className="btn btn-ghost" type="button" onClick={() => onOpenCheckin()}>
+                            Open Ware Check-in
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
+      </RevealCard>
 
       {meta ? (
         <details className="card card-3d troubleshooting">

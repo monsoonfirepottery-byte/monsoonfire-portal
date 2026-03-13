@@ -209,7 +209,7 @@ function appendJsonl(filePath, records) {
 function normalizeIngestEntry(raw, fallbackSource) {
   if (raw && typeof raw === "object") {
     const statement =
-      String(raw.statement || raw.memory || raw.summary || raw.note || raw.text || "").trim();
+      String(raw.statement || raw.content || raw.memory || raw.summary || raw.note || raw.text || "").trim();
     if (!statement) return null;
 
     const confidence = Number(raw.confidence);

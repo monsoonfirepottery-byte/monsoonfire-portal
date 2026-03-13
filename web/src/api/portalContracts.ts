@@ -87,6 +87,7 @@ export type PortalFnName =
   | "getIndustryEvent"
   | "upsertIndustryEvent"
   | "runIndustryEventsFreshnessNow"
+  | "listWorkshopDemandSignals"
   | "createEvent"
   | "publishEvent"
   | "signupForEvent"
@@ -454,6 +455,7 @@ export type SeedMaterialsCatalogRequest = {
 export type ListEventsRequest = {
   includeDrafts?: boolean;
   includeCancelled?: boolean;
+  includeCommunitySignals?: boolean;
 };
 
 export type IndustryEventMode = "local" | "remote" | "hybrid";
@@ -504,6 +506,7 @@ export type RunIndustryEventsFreshnessNowRequest = {
 
 export type GetEventRequest = {
   eventId: string;
+  includeCommunitySignals?: boolean;
 };
 
 export type ListEventSignupsRequest = {
@@ -511,6 +514,56 @@ export type ListEventSignupsRequest = {
   includeCancelled?: boolean;
   includeExpired?: boolean;
   limit?: number;
+};
+
+export type WorkshopDemandSignalLevel = "all-levels" | "beginner" | "intermediate" | "advanced";
+export type WorkshopDemandSignalSchedule = "weekday-evening" | "weekday-daytime" | "weekend-morning" | "weekend-afternoon" | "flexible";
+export type WorkshopDemandSignalBuddyMode = "solo" | "buddy" | "circle";
+export type WorkshopDemandSignalKind = "request" | "interest";
+export type WorkshopDemandSignalSource =
+  | "events-interest-toggle"
+  | "events-interest-withdrawal"
+  | "events-showcase"
+  | "events-interest"
+  | "events-request-form"
+  | "cluster-routing";
+export type WorkshopDemandSignalAction = "request" | "interest" | "showcase" | "withdrawal";
+
+export type ListWorkshopDemandSignalsRequest = {
+  eventIds?: string[];
+  sources?: WorkshopDemandSignalSource[];
+  limit?: number;
+};
+
+export type WorkshopDemandSignal = {
+  id: string;
+  kind: WorkshopDemandSignalKind;
+  action?: WorkshopDemandSignalAction;
+  techniqueIds: string[];
+  techniqueLabel: string;
+  level: WorkshopDemandSignalLevel;
+  schedule: WorkshopDemandSignalSchedule;
+  buddyMode: WorkshopDemandSignalBuddyMode;
+  createdAt: number;
+  sourceEventId?: string | null;
+  source?: WorkshopDemandSignalSource;
+  sourceEventTitle?: string | null;
+  sourceLabel?: string | null;
+  signalNote?: string;
+};
+
+export type ListWorkshopDemandSignalsResponse = PortalApiOkEnvelope & {
+  signals: WorkshopDemandSignal[];
+};
+
+export type WorkshopCommunitySignalCounts = {
+  requestSignals: number;
+  interestSignals: number;
+  showcaseSignals?: number;
+  withdrawnSignals?: number;
+  totalSignals: number;
+  demandScore?: number;
+  latestSignalAtMs?: number | null;
 };
 
 export type ListBillingSummaryRequest = {
@@ -684,6 +737,23 @@ export type LibraryItemsGetRequest = {
 
 export type LibraryDiscoveryGetRequest = {
   limit?: number;
+  includeWorkshopDiscovery?: boolean;
+  workshopDiscoveryLimit?: number;
+};
+
+export type LibraryWorkshopDiscoverySource = "signals" | "fallback";
+
+export type LibraryWorkshopDiscoverySignalSummary = {
+  source: LibraryWorkshopDiscoverySource;
+  workshopCount: number;
+  signalWorkshopCount?: number;
+  totalSignals: number;
+  requestSignals?: number;
+  interestSignals?: number;
+  showcaseSignals?: number;
+  withdrawnSignals?: number;
+  topDemandScore?: number;
+  latestSignalAtMs?: number | null;
 };
 
 export type LibraryExternalLookupRequest = {
@@ -965,8 +1035,10 @@ export type EventSummary = {
   firingDetails?: string | null;
   capacity: number;
   waitlistEnabled: boolean;
+  waitlistCount?: number | null;
   status: EventStatus;
   remainingCapacity?: number | null;
+  communitySignalCounts?: WorkshopCommunitySignalCounts | null;
 };
 
 export type IndustryEventStatus = "draft" | "published" | "cancelled" | (string & {});
@@ -989,6 +1061,10 @@ export type IndustryEventSummary = {
   registrationUrl?: string | null;
   sourceName?: string | null;
   sourceUrl?: string | null;
+  curationState?: string | null;
+  qualityScore?: number | null;
+  dedupeHash?: string | null;
+  ingestedAt?: string | null;
   featured: boolean;
   tags?: string[];
   verifiedAt?: string | null;
@@ -1021,9 +1097,11 @@ export type EventDetail = {
   addOns?: EventAddOn[];
   capacity: number;
   waitlistEnabled: boolean;
+  waitlistCount?: number | null;
   offerClaimWindowHours?: number | null;
   cancelCutoffHours?: number | null;
   status: EventStatus;
+  communitySignalCounts?: WorkshopCommunitySignalCounts | null;
 };
 
 export type EventSignupSummary = {
@@ -1056,6 +1134,8 @@ export type ListIndustryEventsResponse = PortalApiOkEnvelope & {
 export type ListEventSignupsResponse = PortalApiOkEnvelope & {
   signups: EventSignupRosterEntry[];
 };
+
+export type ListWorkshopDemandSignalsResponseEnvelope = ListWorkshopDemandSignalsResponse;
 
 export type GetEventResponse = PortalApiOkEnvelope & {
   event: EventDetail;
@@ -1150,12 +1230,18 @@ export type LibraryDiscoveryGetResponse = PortalApiOkEnvelope & {
   mostBorrowed?: LibraryItemContract[];
   recentlyAdded?: LibraryItemContract[];
   recentlyReviewed?: LibraryItemContract[];
+  featuredWorkshops?: EventSummary[];
+  featuredWorkshopsSource?: LibraryWorkshopDiscoverySource;
+  featuredWorkshopsSignalSummary?: LibraryWorkshopDiscoverySignalSummary;
   data?: {
     limit?: number;
     staffPicks?: LibraryItemContract[];
     mostBorrowed?: LibraryItemContract[];
     recentlyAdded?: LibraryItemContract[];
     recentlyReviewed?: LibraryItemContract[];
+    featuredWorkshops?: EventSummary[];
+    featuredWorkshopsSource?: LibraryWorkshopDiscoverySource;
+    featuredWorkshopsSignalSummary?: LibraryWorkshopDiscoverySignalSummary;
   };
 };
 

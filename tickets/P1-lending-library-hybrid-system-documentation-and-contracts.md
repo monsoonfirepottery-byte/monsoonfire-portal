@@ -1,6 +1,6 @@
 # P1 — Lending Library: Hybrid System Documentation and Contracts
 
-Status: In Progress
+Status: Completed
 Date: 2026-03-01
 Priority: P1
 Owner: Library Ops + Platform + Member Experience
@@ -90,3 +90,37 @@ Status guardrail:
 - `tickets/P2-library-backend-observability-audit-and-safeguards.md`
 4. Run phased release execution:
 - `tickets/P2-library-release-plan-phased-rollout-and-cutover.md`
+
+## Execution Update (2026-03-01, Sprint Reconcile)
+
+1. Child-ticket state has been reconciled to current execution:
+   1. backend catalog/discovery, ISBN ingestion, lifecycle/overdue, observability, and cover-quality loops are marked completed,
+   2. frontend member discovery, functional browse path, filtering/mobile polish, and staff admin management loops are marked completed.
+2. Authenticated browser QA evidence pass is captured in:
+   - `output/playwright/portal/library-epic-auth/portal-smoke-summary.json`
+3. This docs/contract ticket remains `In Progress` pending final release acceptance closure:
+   1. rollback drill timing evidence in the release-plan ticket,
+   2. final runbook acceptance sign-off after that drill.
+
+## Execution Update (2026-03-01, Rollback Drill Runbook Automation)
+
+1. Added explicit rollback drill automation documentation in:
+   - `docs/library/ROLLOUT_CUTOVER_RUNBOOK.md`
+2. Added a reusable drill command and artifact contract:
+   - `npm run library:rollout:drill`
+   - `output/qa/library-rollout-rollback-drill.json`
+   - `output/qa/library-rollout-rollback-drill.md`
+3. Captured dry-run readiness evidence to confirm auth/contract wiring before live mutation:
+   - baseline phase observed as `phase_3_admin_full`
+   - rollback target resolved to `phase_2_member_writes`
+4. Status remains `In Progress` until release-plan ticket captures executed rollback timing evidence (`--execute`) in an approved change window.
+
+## Execution Update (2026-03-01, Final Release Acceptance)
+
+1. Release-plan rollback drill timing evidence is now captured in production:
+   - `tickets/P2-library-release-plan-phased-rollout-and-cutover.md`
+   - `output/qa/library-rollout-rollback-drill.json`
+2. Runbook acceptance loop is closed with executable operator automation:
+   - `docs/library/ROLLOUT_CUTOVER_RUNBOOK.md`
+   - `npm run library:rollout:drill`
+3. Documentation/contract closure criteria are fully met. Ticket moved to `Completed`.

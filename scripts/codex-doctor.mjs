@@ -352,14 +352,56 @@ function main() {
     }
   }
 
+  const openMemoryAuthConfigured = Boolean(
+    String(process.env.STUDIO_BRAIN_AUTH_TOKEN || process.env.STUDIO_BRAIN_ID_TOKEN || "").trim(),
+  );
+  let openMemoryHealthy = false;
+  if (!openMemoryAuthConfigured) {
+    checkCollector.push(
+      "codex-open-memory",
+      "info",
+      true,
+      "Open Memory auth token not configured; skipping live memory stats check.",
+      {
+        expectedEnvVars: ["STUDIO_BRAIN_AUTH_TOKEN", "STUDIO_BRAIN_ID_TOKEN"],
+      },
+    );
+  } else {
+    const openMemoryRun = runNodeScript("scripts/open-memory.mjs", ["stats"]);
+    const openMemoryPayload = openMemoryRun.json;
+    if (openMemoryRun.ok && openMemoryPayload?.stats) {
+      openMemoryHealthy = true;
+      checkCollector.push("codex-open-memory", "info", true, "Open Memory stats check passed.", {
+        command: openMemoryRun.command,
+        total: openMemoryPayload.stats.total ?? null,
+        bySource: Array.isArray(openMemoryPayload.stats.bySource) ? openMemoryPayload.stats.bySource.slice(0, 8) : [],
+      });
+    } else {
+      checkCollector.push(
+        "codex-open-memory",
+        "warning",
+        false,
+        "Open Memory stats check failed; falling back to local memory layout check.",
+        {
+          command: openMemoryRun.command,
+          exitCode: openMemoryRun.exitCode,
+          stderr: openMemoryRun.stderr,
+          stdout: openMemoryRun.stdout,
+        },
+      );
+    }
+  }
+
   const memoryRun = runNodeScript("scripts/codex-memory-pipeline.mjs", ["status", "--json"]);
   const memoryPayload = memoryRun.json;
   if (!memoryPayload || !memoryPayload.memory) {
     checkCollector.push(
-      "codex-memory-layout",
-      "warning",
-      false,
-      "Unable to inspect local memory layout. Run `npm run codex:memory:init` to initialize.",
+      "codex-memory-fallback-layout",
+      openMemoryHealthy ? "info" : "warning",
+      openMemoryHealthy,
+      openMemoryHealthy
+        ? "Local memory fallback status unavailable (Open Memory is healthy)."
+        : "Unable to inspect local memory layout fallback. Run `npm run codex:memory:init` to initialize.",
       {
         command: memoryRun.command,
         exitCode: memoryRun.exitCode,
@@ -367,16 +409,18 @@ function main() {
     );
   } else if (!memoryPayload.memory.layoutReady) {
     checkCollector.push(
-      "codex-memory-layout",
-      "warning",
-      false,
-      "Local memory workspace is not initialized. Run `npm run codex:memory:init`.",
+      "codex-memory-fallback-layout",
+      openMemoryHealthy ? "info" : "warning",
+      openMemoryHealthy,
+      openMemoryHealthy
+        ? "Local memory fallback is not initialized (Open Memory is healthy)."
+        : "Local memory workspace is not initialized. Run `npm run codex:memory:init`.",
       {
         memoryRoot: memoryPayload.memory.memoryRoot,
       },
     );
   } else {
-    checkCollector.push("codex-memory-layout", "info", true, "Local memory workspace is initialized.", {
+    checkCollector.push("codex-memory-fallback-layout", "info", true, "Local memory fallback workspace is initialized.", {
       memoryRoot: memoryPayload.memory.memoryRoot,
       proposedCount: memoryPayload.memory.proposedCount,
       acceptedCount: memoryPayload.memory.acceptedCount,
@@ -426,7 +470,8 @@ function main() {
     remediation: {
       docsDrift: "npm run codex:docs:drift",
       mcpAudit: "npm run audit:codex-mcp",
-      memoryInit: "npm run codex:memory:init",
+      openMemoryStats: "npm run open-memory -- stats",
+      memoryFallbackInit: "npm run codex:memory:init",
       ephemeralGuard: "npm run guard:ephemeral:artifacts",
     },
   };

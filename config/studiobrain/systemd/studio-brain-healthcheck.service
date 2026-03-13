@@ -1,0 +1,8 @@
+[Unit]
+Description=Studio Brain healthcheck
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /usr/local/bin/studio-brain-healthcheck.sh

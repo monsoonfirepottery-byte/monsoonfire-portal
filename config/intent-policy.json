@@ -1,0 +1,91 @@
+{
+  "schema": "intent-policy.v1",
+  "generatedFor": "intent-control-plane",
+  "trustedMcpSources": [
+    "open_memory",
+    "context7",
+    "firebase",
+    "github",
+    "local-shell"
+  ],
+  "forbiddenCommandPatterns": [
+    "git reset --hard",
+    "git checkout --",
+    "rm -rf /",
+    "curl .*\\|\\s*sh"
+  ],
+  "destructiveCommandPatterns": [
+    "\\bfirebase-tools\\s+deploy\\b",
+    "\\bnpx\\s+firebase-tools\\s+deploy\\b",
+    "\\bgit\\s+push\\s+--force\\b",
+    "\\bgit\\s+push\\s+-f\\b",
+    "\\brm\\s+-rf\\b",
+    "\\bterraform\\s+apply\\b",
+    "\\bkubectl\\s+delete\\b",
+    "\\bchmod\\s+600\\b.*secrets"
+  ],
+  "deployCommandPatterns": [
+    "\\bdeploy:namecheap\\b",
+    "\\bfirebase-tools\\s+deploy\\b",
+    "\\bnpm\\s+run\\s+deploy\\b",
+    "\\bportal\\.monsoonfire\\.com\\b",
+    "\\bmonsoonfire-portal\\.web\\.app\\b"
+  ],
+  "allowedWriteScopes": [
+    "none",
+    "artifact-only",
+    "artifact_only",
+    "codex-artifacts-only",
+    "issues-and-bot-pr-branch",
+    "codex-docs-only",
+    "external-api-readwrite-bounded",
+    "events-source-ingest",
+    "staff-console-ui-and-ops-docs",
+    "staff-portal-ui",
+    "workshops-ui-and-supporting-functions"
+  ],
+  "runtimeControls": {
+    "killSwitch": false,
+    "brownoutMode": "off",
+    "phase": "normal",
+    "failOpenMatrix": {
+      "policyGate": "fail_closed",
+      "budgetPreflight": "fail_closed",
+      "budgetPostflight": "fail_closed",
+      "memoryGovernance": "fail_open",
+      "safetyRailsPreflight": "fail_closed",
+      "safetyRailsPostflight": "fail_closed",
+      "replayDeterminism": "fail_open",
+      "errorBudgetGate": "fail_open",
+      "policyDecisionTable": "fail_closed"
+    },
+    "environmentIsolation": {
+      "enforce": true,
+      "disallowProdCommandsIn": [
+        "local",
+        "staging"
+      ],
+      "prodCommandPatterns": [
+        "https://portal\\.monsoonfire\\.com",
+        "\\bdeploy:namecheap(:|\\b)",
+        "\\bdeploy:functions(:|\\b)",
+        "\\bdeploy:functions-hosting(:|\\b)"
+      ]
+    },
+    "capabilityTokens": {
+      "requireForDestructive": false,
+      "acceptedPrefixes": [
+        "capref_"
+      ]
+    },
+    "twoPhaseCommit": {
+      "enforceForDestructive": true,
+      "dryRunPattern": "--dry-run"
+    }
+  },
+  "allowedProviderChecks": {
+    "skipProviders": [
+      "apple.com"
+    ]
+  }
+}

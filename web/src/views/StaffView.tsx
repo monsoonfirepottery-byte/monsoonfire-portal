@@ -85,6 +85,7 @@ import AgentOpsModule from "./staff/AgentOpsModule";
 import CockpitModule from "./staff/CockpitModule";
 import CockpitOpsPanel from "./staff/CockpitOpsPanel";
 import CommerceModule from "./staff/CommerceModule";
+import CommunityBlogsModule from "./staff/CommunityBlogsModule";
 import EventsModule from "./staff/EventsModule";
 import LendingModule from "./staff/LendingModule";
 import OperationsCockpitModule from "./staff/OperationsCockpitModule";
@@ -128,6 +129,7 @@ const MODULE_REGISTRY = {
   pieces: { label: "Pieces & batches", owner: "Production Ops", testId: "staff-module-pieces", nav: false },
   firings: { label: "Firings", owner: "Kiln Ops", testId: "staff-module-firings", nav: false },
   events: { label: "Events", owner: "Program Ops", testId: "staff-module-events", nav: false },
+  communityBlogs: { label: "Community blogs", owner: "Community Ops", testId: "staff-module-community-blogs", nav: true },
   reports: { label: "Reports", owner: "Trust & Safety", testId: "staff-module-reports", nav: true },
   stripe: { label: "Stripe settings", owner: "Finance Ops", testId: "staff-module-stripe", nav: false },
   commerce: { label: "Store & billing", owner: "Commerce Ops", testId: "staff-module-commerce", nav: false },
@@ -203,10 +205,12 @@ const COCKPIT_PATH_TAB_BY_SEGMENT: Readonly<Record<string, CockpitTabKey>> = {
 };
 
 const COCKPIT_MODULE_PATH_SEGMENT: Partial<Record<ModuleKey, string>> = {
+  communityBlogs: "community-blogs",
   studioReservations: "studio-reservations",
 };
 
 const COCKPIT_MODULE_KEY_BY_PATH_SEGMENT: Readonly<Record<string, ModuleKey>> = {
+  "community-blogs": "communityBlogs",
   reports: "reports",
   "studio-reservations": "studioReservations",
 };
@@ -7163,6 +7167,13 @@ export default function StaffView({
       studioBrainAdminToken={devAdminToken}
     />
   );
+  const communityBlogsContent = (
+    <CommunityBlogsModule
+      client={client}
+      user={user}
+      active={moduleKey === "communityBlogs"}
+    />
+  );
   const governanceContent = (
     <PolicyModule client={client} active={isCockpitModule} disabled={hasFunctionsAuthMismatch} />
   );
@@ -7609,7 +7620,11 @@ export default function StaffView({
   const moduleContent =
     moduleKey === "studioReservations"
       ? studioReservationsContent
-      : cockpitContent;
+      : moduleKey === "communityBlogs"
+        ? communityBlogsContent
+      : moduleKey === "reports"
+        ? reportsContent
+        : cockpitContent;
 
   if (!hasStaffAuthority) {
     return (

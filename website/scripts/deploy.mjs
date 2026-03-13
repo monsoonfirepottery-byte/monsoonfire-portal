@@ -57,6 +57,11 @@ if (keyPath && !existsSync(keyPath)) {
   process.exit(1);
 }
 
+process.stdout.write("Syncing generated community blog pages...\n");
+runCommand(process.execPath, [
+  resolve(__dirname, "sync-community-blogs.mjs"),
+]);
+
 process.stdout.write(`Deploying ${source} to ${args.server}:${args.remotePath} (port ${args.port})...\n`);
 const scpArgs = [];
 if (keyPath) {

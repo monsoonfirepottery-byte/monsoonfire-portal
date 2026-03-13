@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Studio Notes | Monsoon Fire Pottery</title>
+  <meta name="description" content="Short studio notes, process updates, and practical pottery community posts from Monsoon Fire." />
+  <link rel="canonical" href="https://monsoonfire.com/blog/" />
+  <link rel="icon" href="/assets/images/logo-mark-black.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/css/styles.css" />
+  <style>
+    .blog-shell { display: grid; gap: 28px; }
+    .blog-feature, .blog-card, .blog-cta, .blog-nav-card, .blog-share, .blog-rail-card {
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      background: var(--surface);
+    }
+    .blog-feature {
+      display: grid;
+      gap: 18px;
+      padding: 20px;
+      background:
+        radial-gradient(circle at top left, rgba(180, 79, 53, 0.18), transparent 40%),
+        var(--surface);
+    }
+    .blog-feature-grid, .blog-grid, .blog-rail-grid, .blog-nav-grid { display: grid; gap: 18px; }
+    .blog-card, .blog-nav-card, .blog-rail-card { padding: 18px; display: grid; gap: 14px; }
+    .blog-card-media, .blog-feature-media, .blog-article-media {
+      width: 100%;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      aspect-ratio: 16 / 9;
+      object-fit: cover;
+    }
+    .blog-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      color: var(--ink-700);
+      font-family: var(--font-ui);
+      font-size: var(--text-xs);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    .blog-tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .blog-tag {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 6px 10px;
+      border: 1px solid rgba(180, 79, 53, 0.22);
+      background: rgba(180, 79, 53, 0.1);
+      color: var(--accent);
+      font-family: var(--font-ui);
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .blog-rich {
+      display: grid;
+      gap: 18px;
+      line-height: 1.75;
+    }
+    .blog-rich p, .blog-rich blockquote, .blog-rich ul, .blog-rich ol, .blog-rich h1, .blog-rich h2, .blog-rich h3, .blog-rich figure { margin: 0; }
+    .blog-rich blockquote {
+      padding-left: 16px;
+      border-left: 3px solid rgba(180, 79, 53, 0.35);
+      color: var(--ink-700);
+    }
+    .blog-rich ul, .blog-rich ol { padding-left: 20px; }
+    .blog-rich a { color: var(--accent); }
+    .blog-rich figure { display: grid; gap: 8px; }
+    .blog-rich figure img {
+      width: 100%;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+    }
+    .blog-rich figcaption {
+      font-size: var(--text-xs);
+      color: var(--ink-700);
+    }
+    .blog-share {
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+    .blog-share-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .blog-share-status {
+      color: var(--ink-700);
+      font-size: var(--text-sm);
+      min-height: 1.3em;
+    }
+    .blog-cta {
+      padding: 18px;
+      display: grid;
+      gap: 10px;
+      background:
+        linear-gradient(135deg, rgba(180, 79, 53, 0.18), transparent 55%),
+        var(--surface);
+    }
+    .blog-cta p, .blog-card p, .blog-rail-card p { margin: 0; }
+    .blog-nav-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .blog-rail-card .meta { color: var(--ink-700); font-size: var(--text-sm); }
+    .blog-list-split {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: minmax(0, 1.5fr) minmax(300px, 0.95fr);
+      align-items: start;
+    }
+    .blog-side-stack { display: grid; gap: 18px; }
+    @media (max-width: 960px) {
+      .blog-list-split, .blog-nav-grid { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (max-width: 720px) {
+      .blog-feature, .blog-card, .blog-share, .blog-cta, .blog-nav-card, .blog-rail-card { padding: 16px; }
+      .blog-share-actions { flex-direction: column; }
+    }
+  </style>
+  <script src="/assets/js/analytics.js" defer></script>
+  <meta property="og:site_name" content="Monsoon Fire Pottery" />
+  <meta property="og:title" content="Studio Notes | Monsoon Fire Pottery" />
+  <meta property="og:description" content="Short studio notes, process updates, and practical pottery community posts from Monsoon Fire." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://monsoonfire.com/blog/" />
+  <meta property="og:image" content="https://monsoonfire.com/assets/images/finished-work-1200.jpg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="1600" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Studio Notes | Monsoon Fire Pottery" />
+  <meta name="twitter:description" content="Short studio notes, process updates, and practical pottery community posts from Monsoon Fire." />
+  <meta name="twitter:image" content="https://monsoonfire.com/assets/images/finished-work-1200.jpg" />
+  
+</head>
+<body data-nav-parent="/blog/">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="container navbar">
+      <a class="brand" href="/">
+        <img loading="eager" src="/assets/images/logo-mark-black.png" alt="Monsoon Fire Pottery logo" />
+        Monsoon Fire Pottery
+      </a>
+      <nav class="nav-links" data-nav-links>
+        <a href="/services/">The Studio</a>
+        <a href="/kiln-firing/">Kiln Firing</a>
+        <a href="/faq/">Community</a>
+        <a href="/support/">Support</a>
+        <a href="/blog/">Studio Notes</a>
+      </nav>
+      <div class="nav-portal-wrap">
+        <a class="button button-ghost nav-login" href="https://monsoonfire.kilnfire.com" target="_blank" rel="noopener noreferrer">Login</a>
+      </div>
+      <button class="menu-toggle" type="button" aria-label="Toggle menu" aria-expanded="false" data-menu-toggle>
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+  <main class="page" id="main">
+    <section class="section">
+      <div class="container blog-shell">
+        <div class="heading-block">
+          <p class="eyebrow">Studio notes</p>
+          <h1 class="section-title">Short reads from the studio floor.</h1>
+          <p class="lead">Operational notes, pottery process thinking, and studio signals that can turn into real momentum.</p>
+          <p class="meta">Updated March 13, 2026</p>
+        </div>
+        <article class="blog-card"><h2>No studio notes yet.</h2><p>Published studio notes will appear here once staff posts them from the portal.</p></article>
+        <div class="blog-list-split">
+          <div class="blog-grid">
+            <div class="heading-block heading-block--compact">
+              <p class="eyebrow">Recent notes</p>
+              <h2 class="section-title">Fresh from Monsoon Fire.</h2>
+            </div>
+            <article class="blog-card"><h2>More notes soon.</h2><p>The latest published post will stay featured here until another note lands.</p></article>
+          </div>
+          <aside class="blog-side-stack">
+            <div class="heading-block heading-block--compact">
+              <p class="eyebrow">Around the studio</p>
+              <h2 class="section-title">Outside reads we’re tracking.</h2>
+              <p class="lead">A few external posts and feeds that support the way Monsoon Fire thinks and works.</p>
+            </div>
+            <div class="blog-rail-grid">
+              <article class="blog-rail-card"><h3>No outside highlights yet.</h3><p>Featured outside sources will show up here once staff curates them.</p></article>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="footer">
+    <div class="container footer-grid">
+      <div>
+        <div class="footer-brand">Monsoon Fire Pottery</div>
+        <p class="footer-note">West Valley, Arizona. Address shared via portal.</p>
+        <p>All interactions are by appointment only.</p>
+      </div>
+      <div>
+        <div class="footer-title">Contact</div>
+        <p><a href="mailto:support@monsoonfire.com">support@monsoonfire.com</a></p>
+        <p><a href="/contact/">Contact form</a></p>
+        <p><a href="/policies/accessibility/">Accessibility statement</a></p>
+      </div>
+    </div>
+  </footer>
+  <script defer src="/assets/js/main.js"></script>
+</body>
+</html>

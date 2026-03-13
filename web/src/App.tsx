@@ -2178,6 +2178,7 @@ export default function App() {
         return (
           <CommunityView
             user={user}
+            isStaff={staffUi}
             onOpenLendingLibrary={() => setNav("lendingLibrary")}
             onOpenWorkshops={() => setNav("events")}
           />

@@ -603,10 +603,10 @@ function renderImageBlock(altRaw: string, urlRaw: string): string | null {
   if (!url) return null;
   const alt = normalizeWhitespace(altRaw) || "Blog image";
   return [
-    `<figure class="community-blog-body-figure">`,
+    "<figure class=\"community-blog-body-figure\">",
     `<img src="${escapeAttribute(url)}" alt="${escapeAttribute(alt)}" loading="lazy" />`,
     `<figcaption>${escapeHtml(alt)}</figcaption>`,
-    `</figure>`,
+    "</figure>",
   ].join("");
 }
 
@@ -1579,12 +1579,12 @@ function buildAiPrompt(params: z.infer<typeof staffAiAssistSchema>): string {
     bodyHintByMode[params.mode],
     "Do not mention AI, policies, or moderation in the draft unless explicitly present in the source material.",
     "Return JSON only with this exact shape:",
-    '{ "suggestions": [{ "title": "string", "excerpt": "string|null", "bodyMarkdown": "string|null", "note": "string|null" }] }',
+    "{ \"suggestions\": [{ \"title\": \"string\", \"excerpt\": \"string|null\", \"bodyMarkdown\": \"string|null\", \"note\": \"string|null\" }] }",
     "",
     `Current title: ${title || "(none yet)"}`,
     `Current excerpt: ${excerpt || "(none yet)"}`,
     `Current tags: ${tags.join(", ") || "(none yet)"}`,
-    `Current draft:`,
+    "Current draft:",
     focusText || "(empty draft)",
   ].join("\n");
 }

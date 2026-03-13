@@ -23,8 +23,9 @@ async function deleteQaAnnouncements(prefix = QA_ANNOUNCEMENT_ID_PREFIX) {
 
   for (const currentPrefix of [prefix, LEGACY_QA_ANNOUNCEMENT_ID_PREFIX]) {
     const range = buildQaAnnouncementCleanupRange(currentPrefix);
+    let hasMoreInRange = true;
 
-    while (true) {
+    while (hasMoreInRange) {
       const snap = await db
         .collection("announcements")
         .where(FieldPath.documentId(), ">=", range.startAt)
@@ -44,7 +45,7 @@ async function deleteQaAnnouncements(prefix = QA_ANNOUNCEMENT_ID_PREFIX) {
       await batch.commit();
       deletedCount += snap.size;
 
-      if (snap.size < DELETE_BATCH_LIMIT) break;
+      hasMoreInRange = snap.size === DELETE_BATCH_LIMIT;
     }
   }
 

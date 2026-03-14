@@ -835,6 +835,26 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /communityBlogs/{blogId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /communityBlogSlugs/{slug} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /communityBlogSources/{sourceId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /communityBlogExternalItems/{itemId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
     match /studioJukebox/tracks/items/{trackId} {
       allow read: if isStaff();
       allow write: if isStaff();

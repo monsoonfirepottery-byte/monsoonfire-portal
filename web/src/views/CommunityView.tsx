@@ -2,7 +2,18 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import type { User } from "firebase/auth";
 import { createFunctionsClient } from "../api/functionsClient";
 import { safeStorageReadJson, safeStorageSetItem } from "../lib/safeStorage";
+import CommunityBlogStudio from "./community/CommunityBlogStudio";
+import {
+  COMMUNITY_BLOGS_LIST_EXPERIENCE_FN,
+  communityBlogMarketingFocusLabel,
+  formatCommunityBlogDate,
+  normalizeCommunityBlogExternalHighlight,
+  normalizeCommunityBlogPost,
+  type CommunityBlogExternalHighlight,
+  type CommunityBlogPost,
+} from "./community/communityBlogTypes";
 import "./CommunityView.css";
+import "./community/CommunityBlogs.css";
 
 type ValueChip = {
   title: string;
@@ -207,6 +218,7 @@ const SUGGESTED_VIDEOS: VideoLink[] = [
 
 type Props = {
   user: User;
+  isStaff: boolean;
   onOpenLendingLibrary: () => void;
   onOpenWorkshops: () => void;
 };
@@ -254,6 +266,13 @@ type ListMyAppealsResponse = {
   ok: boolean;
   message?: string;
   appeals?: Array<Record<string, unknown>>;
+};
+
+type ListPublishedCommunityBlogExperienceResponse = {
+  ok: boolean;
+  message?: string;
+  posts?: Array<Record<string, unknown>>;
+  externalHighlights?: Array<Record<string, unknown>>;
 };
 
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
@@ -327,7 +346,7 @@ function normalizeAppeal(row: Record<string, unknown>): ReportAppeal {
   };
 }
 
-export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorkshops }: Props) {
+export default function CommunityView({ user, isStaff, onOpenLendingLibrary, onOpenWorkshops }: Props) {
   const [quoteIndex, setQuoteIndex] = useState(0);
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
@@ -345,6 +364,13 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
   const [appealNote, setAppealNote] = useState("");
   const [appealBusy, setAppealBusy] = useState(false);
   const [appealStatus, setAppealStatus] = useState("");
+  const [blogPosts, setBlogPosts] = useState<CommunityBlogPost[]>([]);
+  const [externalHighlights, setExternalHighlights] = useState<CommunityBlogExternalHighlight[]>([]);
+  const [blogsLoading, setBlogsLoading] = useState(false);
+  const [blogsError, setBlogsError] = useState("");
+  const [expandedBlogId, setExpandedBlogId] = useState<string | null>(null);
+  const [blogStudioOpen, setBlogStudioOpen] = useState(false);
+  const [blogActionStatus, setBlogActionStatus] = useState("");
   const [hiddenCards, setHiddenCards] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     const parsed = safeStorageReadJson<unknown[]>("localStorage", HIDDEN_CARDS_KEY, []);
@@ -381,6 +407,15 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [openMenuKey]);
+
+  useEffect(() => {
+    if (!blogStudioOpen || typeof document === "undefined") return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [blogStudioOpen]);
 
   const loadReportHistory = useCallback(async () => {
     setReportHistoryBusy(true);
@@ -439,12 +474,43 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
     }
   }, [functionsClient]);
 
+  const loadPublishedBlogs = useCallback(async () => {
+    setBlogsLoading(true);
+    setBlogsError("");
+    try {
+      const resp = await functionsClient.postJson<ListPublishedCommunityBlogExperienceResponse>(
+        COMMUNITY_BLOGS_LIST_EXPERIENCE_FN,
+        {}
+      );
+      if (!resp.ok) {
+        setBlogsError(resp.message ?? "Could not load studio notes.");
+        return;
+      }
+      const rows = Array.isArray(resp.posts)
+        ? resp.posts.map((row) => normalizeCommunityBlogPost(row)).filter((row) => row.id)
+        : [];
+      const externalRows = Array.isArray(resp.externalHighlights)
+        ? resp.externalHighlights.map((row) => normalizeCommunityBlogExternalHighlight(row)).filter((row) => row.id)
+        : [];
+      setBlogPosts(rows);
+      setExternalHighlights(externalRows);
+      setExpandedBlogId((current) => (current && rows.some((row) => row.id === current) ? current : null));
+    } catch (error: unknown) {
+      setBlogsError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBlogsLoading(false);
+    }
+  }, [functionsClient]);
+
   useEffect(() => {
     void loadReportHistory();
     void loadAppeals();
     void loadActivePolicyLabel();
-  }, [loadActivePolicyLabel, loadAppeals, loadReportHistory]);
+    void loadPublishedBlogs();
+  }, [loadActivePolicyLabel, loadAppeals, loadPublishedBlogs, loadReportHistory]);
 
+  const latestBlog = blogPosts[0] ?? null;
+  const recentBlogs = blogPosts.slice(1);
   const activeQuote = MEMBER_QUOTES[quoteIndex];
   const reportStatusIsError = isErrorMessage(reportStatus);
   const appealStatusIsError = isErrorMessage(appealStatus);
@@ -465,6 +531,36 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
     if (isHidden(cardKey)) return;
     persistHidden([...hiddenCards, cardKey]);
     setOpenMenuKey(null);
+  };
+
+  const copyBlogLink = async (url: string) => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setBlogActionStatus("Clipboard is unavailable on this device.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setBlogActionStatus("Copied the studio note link.");
+    } catch (error: unknown) {
+      setBlogActionStatus(error instanceof Error ? error.message : "Could not copy the link.");
+    }
+  };
+
+  const shareBlogLink = async (post: Pick<CommunityBlogPost, "title" | "canonicalUrl">) => {
+    if (typeof navigator === "undefined" || typeof navigator.share !== "function") {
+      await copyBlogLink(post.canonicalUrl);
+      return;
+    }
+    try {
+      await navigator.share({
+        title: post.title,
+        url: post.canonicalUrl,
+      });
+      setBlogActionStatus("Share sheet opened.");
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === "AbortError") return;
+      setBlogActionStatus(error instanceof Error ? error.message : "Could not share the note.");
+    }
   };
 
   const openReport = (target: ReportTarget) => {
@@ -638,6 +734,233 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
             </div>
           </section>
 
+          <section className="card card-3d community-studio-notes">
+            <div className="community-studio-notes-head">
+              <div>
+                <h2 className="card-title">Studio notes</h2>
+                <p className="community-copy">
+                  Short updates from the studio floor, plus a few outside reads worth keeping in the studio orbit.
+                </p>
+              </div>
+              <div className="community-event-chips">
+                {isStaff ? (
+                  <button
+                    type="button"
+                    className="community-event-chip"
+                    aria-label={blogStudioOpen ? "Blog studio open" : "Write blog"}
+                    aria-expanded={blogStudioOpen}
+                    onClick={() => setBlogStudioOpen(true)}
+                  >
+                    <span className="community-event-chip-title">{blogStudioOpen ? "Blog studio open" : "Write blog"}</span>
+                    <span className="community-event-chip-detail">
+                      Draft and publish short community posts from phone or laptop.
+                    </span>
+                    <span className="community-event-chip-outcome">Staff only</span>
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            {blogActionStatus ? <div className="staff-note">{blogActionStatus}</div> : null}
+            {blogsError ? <div className="staff-note">{blogsError}</div> : null}
+            {blogsLoading ? <div className="staff-note">Loading studio notes...</div> : null}
+            {!blogsLoading && !blogsError && blogPosts.length === 0 ? (
+              <div className="staff-note">No published studio notes yet.</div>
+            ) : null}
+            {!blogsLoading && latestBlog ? (
+              <div className="community-blog-stack">
+                <article className="community-blog-card community-blog-feature">
+                  <div className="community-blog-card-head">
+                    <div className="community-blog-card-meta">
+                      <span>Latest studio note</span>
+                      <span>{formatCommunityBlogDate(latestBlog.publishedAtMs)}</span>
+                      <span>{latestBlog.readingMinutes} min read</span>
+                      <span>{communityBlogMarketingFocusLabel(latestBlog.marketingFocus)}</span>
+                    </div>
+                    {reportMenu(`blog:${latestBlog.id}`, {
+                      targetType: "blog_post",
+                      targetRef: {
+                        id: latestBlog.id,
+                        slug: latestBlog.slug,
+                        url: latestBlog.canonicalUrl,
+                      },
+                      targetSnapshot: {
+                        title: latestBlog.title,
+                        source: "Studio notes",
+                        author: latestBlog.authorName ?? "Studio staff",
+                        publishedAtMs: latestBlog.publishedAtMs,
+                      },
+                    })}
+                  </div>
+                  <div className="community-blog-card-body">
+                    {latestBlog.featuredImage ? (
+                      <img
+                        className="community-blog-card-cover"
+                        src={latestBlog.featuredImage.url}
+                        alt={latestBlog.featuredImage.alt}
+                      />
+                    ) : null}
+                    <h3 className="community-blog-card-title">{latestBlog.title}</h3>
+                    <p className="community-copy">{latestBlog.excerpt}</p>
+                    <div className="community-blog-tag-list">
+                      {latestBlog.tags.map((tag) => (
+                        <span className="community-blog-tag" key={tag}>
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="community-blog-actions">
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-small community-blog-toggle"
+                        aria-expanded={expandedBlogId === latestBlog.id}
+                        onClick={() => setExpandedBlogId((current) => (current === latestBlog.id ? null : latestBlog.id))}
+                      >
+                        {expandedBlogId === latestBlog.id ? "Close quick look" : "Quick look"}
+                      </button>
+                      <a className="btn btn-primary btn-small" href={latestBlog.canonicalUrl} target="_blank" rel="noreferrer">
+                        Open full note
+                      </a>
+                      <button type="button" className="btn btn-ghost btn-small" onClick={() => void copyBlogLink(latestBlog.canonicalUrl)}>
+                        Copy link
+                      </button>
+                      <button type="button" className="btn btn-ghost btn-small" onClick={() => void shareBlogLink(latestBlog)}>
+                        Share
+                      </button>
+                    </div>
+                    {expandedBlogId === latestBlog.id ? (
+                      <div className="community-blog-rendered" dangerouslySetInnerHTML={{ __html: latestBlog.bodyHtml }} />
+                    ) : null}
+                  </div>
+                </article>
+
+                {recentBlogs.length > 0 ? (
+                  <div className="community-blog-list">
+                    {recentBlogs.map((post) => (
+                      <article className="community-blog-card" key={post.id}>
+                        <div className="community-blog-card-head">
+                          <div className="community-blog-card-meta">
+                            <span>{formatCommunityBlogDate(post.publishedAtMs)}</span>
+                            <span>{post.readingMinutes} min read</span>
+                            <span>{communityBlogMarketingFocusLabel(post.marketingFocus)}</span>
+                          </div>
+                          {reportMenu(`blog:${post.id}`, {
+                            targetType: "blog_post",
+                            targetRef: {
+                              id: post.id,
+                              slug: post.slug,
+                              url: post.canonicalUrl,
+                            },
+                            targetSnapshot: {
+                              title: post.title,
+                              source: "Studio notes",
+                              author: post.authorName ?? "Studio staff",
+                              publishedAtMs: post.publishedAtMs,
+                            },
+                          })}
+                        </div>
+                        <div className="community-blog-card-body">
+                          {post.featuredImage ? (
+                            <img className="community-blog-card-cover" src={post.featuredImage.url} alt={post.featuredImage.alt} />
+                          ) : null}
+                          <h3 className="community-blog-card-title">{post.title}</h3>
+                          <p className="community-copy">{post.excerpt}</p>
+                          <div className="community-blog-tag-list">
+                            {post.tags.map((tag) => (
+                              <span className="community-blog-tag" key={tag}>
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="community-blog-actions">
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-small community-blog-toggle"
+                              aria-expanded={expandedBlogId === post.id}
+                              onClick={() => setExpandedBlogId((current) => (current === post.id ? null : post.id))}
+                            >
+                              {expandedBlogId === post.id ? "Close quick look" : "Quick look"}
+                            </button>
+                            <a className="btn btn-secondary btn-small" href={post.canonicalUrl} target="_blank" rel="noreferrer">
+                              Open full note
+                            </a>
+                            <button type="button" className="btn btn-ghost btn-small" onClick={() => void copyBlogLink(post.canonicalUrl)}>
+                              Copy link
+                            </button>
+                          </div>
+                          {expandedBlogId === post.id ? (
+                            <div className="community-blog-rendered" dangerouslySetInnerHTML={{ __html: post.bodyHtml }} />
+                          ) : null}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+
+                {externalHighlights.length > 0 ? (
+                  <div className="community-blog-external-rail">
+                    <div className="community-blog-rail-head">
+                      <h3 className="community-blog-rail-title">Around the studio</h3>
+                      <p className="community-copy">
+                        A few outside posts and feeds worth keeping in the mix.
+                      </p>
+                    </div>
+                    <div className="community-blog-external-list">
+                      {externalHighlights.map((item) => (
+                        <article className="community-blog-card community-blog-card-external" key={item.id}>
+                          <div className="community-blog-card-head">
+                            <div className="community-blog-card-meta">
+                              <span>{item.sourceTitle}</span>
+                              <span>{formatCommunityBlogDate(item.publishedAtMs)}</span>
+                              {item.authorName ? <span>{item.authorName}</span> : null}
+                            </div>
+                            {reportMenu(`external:${item.id}`, {
+                              targetType: "blog_post",
+                              targetRef: {
+                                id: item.id,
+                                url: item.canonicalUrl,
+                              },
+                              targetSnapshot: {
+                                title: item.title,
+                                url: item.canonicalUrl,
+                                source: item.sourceTitle,
+                                author: item.authorName ?? "External author",
+                                publishedAtMs: item.publishedAtMs,
+                              },
+                            })}
+                          </div>
+                          <div className="community-blog-card-body">
+                            {item.imageUrl ? (
+                              <img className="community-blog-card-cover" src={item.imageUrl} alt={item.imageAlt ?? item.title} />
+                            ) : null}
+                            <h3 className="community-blog-card-title">{item.title}</h3>
+                            <p className="community-copy">{item.excerpt}</p>
+                            {item.studioNote ? <div className="community-blog-external-note">{item.studioNote}</div> : null}
+                            <div className="community-blog-tag-list">
+                              {item.tags.map((tag) => (
+                                <span className="community-blog-tag" key={tag}>
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                            <div className="community-blog-actions">
+                              <a className="btn btn-secondary btn-small" href={item.canonicalUrl} target="_blank" rel="noreferrer">
+                                Open source
+                              </a>
+                              <button type="button" className="btn btn-ghost btn-small" onClick={() => void copyBlogLink(item.canonicalUrl)}>
+                                Copy link
+                              </button>
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </section>
+
           <section className="card card-3d community-main">
             <h2 className="card-title">Community events & gatherings</h2>
             <p className="community-copy">
@@ -801,6 +1124,24 @@ export default function CommunityView({ user, onOpenLendingLibrary, onOpenWorksh
           </section>
         </aside>
       </div>
+
+      {blogStudioOpen ? (
+        <div className="community-blog-overlay" role="dialog" aria-modal="true" aria-label="Blog studio">
+          <div className="community-blog-overlay-backdrop" />
+          <div className="community-blog-overlay-panel">
+            <CommunityBlogStudio
+              client={functionsClient}
+              user={user}
+              active={blogStudioOpen}
+              variant="community"
+              onPostsChanged={() => {
+                void loadPublishedBlogs();
+              }}
+              onRequestClose={() => setBlogStudioOpen(false)}
+            />
+          </div>
+        </div>
+      ) : null}
 
       {reportTarget ? (
         <div className="community-report-modal-backdrop" role="dialog" aria-modal="true" aria-label="Report content">

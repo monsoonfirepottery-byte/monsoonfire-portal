@@ -32,10 +32,10 @@ const requiredRouteChunks = [
   "ProfileView-",
   "StaffView-",
 ];
-// Total budgets re-baselined after the reservations/ware-check-in split and the new studio booking UI.
-// Keep modest headroom so bundle regressions still fail quickly.
-const MAX_TOTAL_JS_BYTES = 1_625_000;
-const MAX_TOTAL_CSS_BYTES = 260_000;
+// Total budgets re-baselined for the community blogs v1 surface and full-screen studio composer.
+// Keep the headroom tight so future regressions still trip quickly.
+const MAX_TOTAL_JS_BYTES = 1_640_000;
+const MAX_TOTAL_CSS_BYTES = 265_000;
 
 const files = readdirSync(assetsDir).filter((name) => name.endsWith(".js"));
 const failures = [];

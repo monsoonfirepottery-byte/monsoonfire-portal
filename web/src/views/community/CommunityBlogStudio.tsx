@@ -387,6 +387,7 @@ export default function CommunityBlogStudio({
   const [sourceDraft, setSourceDraft] = useState<SourceDraft>({ ...EMPTY_SOURCE_DRAFT });
   const [selectionSnapshot, setSelectionSnapshot] = useState<SelectionSnapshot | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const selectedPostIdRef = useRef<string | null>(null);
   const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const featuredInputRef = useRef<HTMLInputElement | null>(null);
   const inlineInputRef = useRef<HTMLInputElement | null>(null);
@@ -410,6 +411,10 @@ export default function CommunityBlogStudio({
     acc[entry.channel] = entry;
     return acc;
   }, {});
+
+  useEffect(() => {
+    selectedPostIdRef.current = selectedPostId;
+  }, [selectedPostId]);
 
   useEffect(() => {
     if (!active) return;
@@ -458,7 +463,7 @@ export default function CommunityBlogStudio({
             : []
         );
         const nextSelected =
-          nextPosts.find((post) => post.id === selectedPostId) ??
+          nextPosts.find((post) => post.id === selectedPostIdRef.current) ??
           nextPosts.find((post) => post.status !== "deleted") ??
           nextPosts[0] ??
           null;

@@ -42,17 +42,24 @@ export type DirectMessage = {
 export type Announcement = {
   id: string;
   title?: string;
+  summary?: string;
   body?: string;
   type?: string;
+  category?: string;
   source?: string;
   audience?: string;
   digestDateKey?: string;
   digestFingerprint?: string;
   authorName?: string;
   createdAt?: unknown;
+  publishAt?: unknown;
+  expiresAt?: unknown;
   pinned?: boolean;
   readBy?: string[];
   ctaLabel?: string;
   ctaUrl?: string;
+  sourceId?: string;
+  sourceSystem?: string;
+  archived?: boolean;
   [key: string]: unknown;
 };

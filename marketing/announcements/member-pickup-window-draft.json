@@ -1,0 +1,25 @@
+{
+  "id": "member-pickup-window-draft",
+  "status": "draft",
+  "audience": {
+    "publicWebsite": false,
+    "portalMembers": true
+  },
+  "category": "ops_update",
+  "publishAt": "2026-03-16T18:00:00.000Z",
+  "expiresAt": "2026-03-20T18:00:00.000Z",
+  "title": "Draft pickup window placeholder",
+  "summary": "This draft stays internal until a person reviews the exact pickup timing.",
+  "body": "This is a draft placeholder so the agent has a real unpublished example to work from.\n\nFlip the status to approved only after the pickup timing, audience, and CTA are confirmed.",
+  "ctaLabel": "Open portal messages",
+  "ctaUrl": "https://monsoonfire.kilnfire.com",
+  "homepageTeaser": false,
+  "portalPinned": true,
+  "assetRefs": [
+    {
+      "repoPath": "website/assets/images/finished-work-800.jpg",
+      "dropboxSource": "dropbox://marketing/member-pickup-window-draft",
+      "alt": "Finished pottery pieces staged for pickup"
+    }
+  ]
+}

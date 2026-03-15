@@ -325,4 +325,51 @@ describe("MessagesView initial thread focus", () => {
     expect(screen.getByTestId("announcement-card-ann-unread")).toBeTruthy();
     expect(screen.getByTestId("announcement-card-ann-read")).toBeTruthy();
   });
+
+  it("preserves mirrored announcement CTA affordances and read tracking", async () => {
+    render(
+      <MessagesView
+        user={createUser()}
+        supportEmail="support@monsoonfire.com"
+        threads={[]}
+        threadsLoading={false}
+        threadsError=""
+        liveUsers={[]}
+        liveUsersLoading={false}
+        liveUsersError=""
+        announcements={[
+          {
+            id: "marketing-public-updates-live",
+            sourceId: "public-updates-live",
+            sourceSystem: "marketing-feed-v1",
+            category: "ops_update",
+            title: "Public studio updates are now live",
+            summary: "Broad studio notices now have a public home.",
+            body: "Fresh studio update",
+            ctaLabel: "View public updates",
+            ctaUrl: "/updates/",
+            publishAt: createTimestamp(Date.UTC(2026, 2, 14, 16, 0, 0)),
+            expiresAt: null,
+            createdAt: createTimestamp(Date.UTC(2026, 2, 14, 16, 0, 0)),
+            readBy: [],
+          },
+        ]}
+        announcementsLoading={false}
+        announcementsError=""
+        unreadAnnouncements={1}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^Studio updates/i }));
+    fireEvent.click(screen.getByTestId("announcement-card-marketing-public-updates-live"));
+
+    expect(screen.getByText("View public updates")).toBeTruthy();
+    await waitFor(() => {
+      expect(trackedUpdateDocMock).toHaveBeenCalledWith(
+        "messages:announcement",
+        { path: "announcements/marketing-public-updates-live" },
+        { readBy: ["staff-user"] }
+      );
+    });
+  });
 });

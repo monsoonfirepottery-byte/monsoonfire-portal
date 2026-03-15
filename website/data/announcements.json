@@ -1,0 +1,200 @@
+{
+  "generatedAtUtc": "2026-03-15T01:00:37.078Z",
+  "sourceDir": "marketing/announcements",
+  "items": [
+    {
+      "id": "public-updates-live",
+      "category": "ops_update",
+      "categoryLabel": "Ops Update",
+      "title": "Public studio updates are now live",
+      "summary": "Non-member announcements now have a public home while member-only logistics stay inside the portal.",
+      "body": "We now keep a public studio updates page for people who are not in the member portal but still need clear studio-wide news.\n\nMember-specific pickup windows, queue details, and operational notices still land inside the portal. Public updates are for broad notices, policy reminders, and studio-facing announcements that are useful to visitors, students, and close studio folks.",
+      "bodyParagraphs": [
+        "We now keep a public studio updates page for people who are not in the member portal but still need clear studio-wide news.",
+        "Member-specific pickup windows, queue details, and operational notices still land inside the portal. Public updates are for broad notices, policy reminders, and studio-facing announcements that are useful to visitors, students, and close studio folks."
+      ],
+      "publishAt": "2026-03-14T16:00:00.000Z",
+      "expiresAt": null,
+      "ctaLabel": "View public updates",
+      "ctaUrl": "/updates/",
+      "homepageTeaser": true,
+      "asset": {
+        "repoPath": "website/assets/images/finished-work-800.jpg",
+        "sitePath": "/assets/images/finished-work-800.jpg",
+        "dropboxSource": "dropbox://marketing/public-updates-live",
+        "alt": "Finished pottery pieces staged for pickup"
+      },
+      "assetRefs": [
+        {
+          "repoPath": "website/assets/images/finished-work-800.jpg",
+          "sitePath": "/assets/images/finished-work-800.jpg",
+          "dropboxSource": "dropbox://marketing/public-updates-live",
+          "alt": "Finished pottery pieces staged for pickup"
+        }
+      ],
+      "sourceId": "public-updates-live"
+    },
+    {
+      "id": "appointment-only-reminder",
+      "category": "policy",
+      "categoryLabel": "Policy",
+      "title": "Studio visits are still by appointment only",
+      "summary": "We do not keep open retail or drop-in hours, so please reach out before heading over.",
+      "body": "Monsoon Fire is still an appointment-only studio. We do not keep regular walk-in hours, even when work is moving quickly through the kiln.\n\nIf you need firing support, studio access, or help figuring out whether the space is a fit, use the contact form or support email first. That keeps arrivals coordinated and protects working studio time.",
+      "bodyParagraphs": [
+        "Monsoon Fire is still an appointment-only studio. We do not keep regular walk-in hours, even when work is moving quickly through the kiln.",
+        "If you need firing support, studio access, or help figuring out whether the space is a fit, use the contact form or support email first. That keeps arrivals coordinated and protects working studio time."
+      ],
+      "publishAt": "2026-03-12T17:00:00.000Z",
+      "expiresAt": null,
+      "ctaLabel": "Contact the studio",
+      "ctaUrl": "/contact/",
+      "homepageTeaser": true,
+      "asset": {
+        "repoPath": "website/assets/images/hero-kiln-800.jpg",
+        "sitePath": "/assets/images/hero-kiln-800.jpg",
+        "dropboxSource": "dropbox://marketing/appointment-only-reminder",
+        "alt": "Kiln loaded with bisque pieces"
+      },
+      "assetRefs": [
+        {
+          "repoPath": "website/assets/images/hero-kiln-800.jpg",
+          "sitePath": "/assets/images/hero-kiln-800.jpg",
+          "dropboxSource": "dropbox://marketing/appointment-only-reminder",
+          "alt": "Kiln loaded with bisque pieces"
+        }
+      ],
+      "sourceId": "appointment-only-reminder"
+    },
+    {
+      "id": "support-response-window",
+      "category": "offer",
+      "categoryLabel": "Offer",
+      "title": "Best way to reach the studio this week",
+      "summary": "Email and the support form are the fastest path for new requests, scheduling questions, and fit checks.",
+      "body": "The fastest way to reach the studio is still the support form or support email. That gives us the project details we need and keeps the conversation tied to the right context.\n\nIf you are asking about firing, include clay body, firing target, and whether the work is already glazed. If you are asking about studio access, tell us what kind of making rhythm and support you need so we can point you to the right next step.",
+      "bodyParagraphs": [
+        "The fastest way to reach the studio is still the support form or support email. That gives us the project details we need and keeps the conversation tied to the right context.",
+        "If you are asking about firing, include clay body, firing target, and whether the work is already glazed. If you are asking about studio access, tell us what kind of making rhythm and support you need so we can point you to the right next step."
+      ],
+      "publishAt": "2026-03-11T18:00:00.000Z",
+      "expiresAt": null,
+      "ctaLabel": "Open support",
+      "ctaUrl": "/support/",
+      "homepageTeaser": true,
+      "asset": {
+        "repoPath": "website/assets/images/kiln-interior-800.jpg",
+        "sitePath": "/assets/images/kiln-interior-800.jpg",
+        "dropboxSource": "dropbox://marketing/support-response-window",
+        "alt": "Kiln interior with stacked shelves"
+      },
+      "assetRefs": [
+        {
+          "repoPath": "website/assets/images/kiln-interior-800.jpg",
+          "sitePath": "/assets/images/kiln-interior-800.jpg",
+          "dropboxSource": "dropbox://marketing/support-response-window",
+          "alt": "Kiln interior with stacked shelves"
+        }
+      ],
+      "sourceId": "support-response-window"
+    }
+  ],
+  "homepageTeasers": [
+    {
+      "id": "public-updates-live",
+      "category": "ops_update",
+      "categoryLabel": "Ops Update",
+      "title": "Public studio updates are now live",
+      "summary": "Non-member announcements now have a public home while member-only logistics stay inside the portal.",
+      "body": "We now keep a public studio updates page for people who are not in the member portal but still need clear studio-wide news.\n\nMember-specific pickup windows, queue details, and operational notices still land inside the portal. Public updates are for broad notices, policy reminders, and studio-facing announcements that are useful to visitors, students, and close studio folks.",
+      "bodyParagraphs": [
+        "We now keep a public studio updates page for people who are not in the member portal but still need clear studio-wide news.",
+        "Member-specific pickup windows, queue details, and operational notices still land inside the portal. Public updates are for broad notices, policy reminders, and studio-facing announcements that are useful to visitors, students, and close studio folks."
+      ],
+      "publishAt": "2026-03-14T16:00:00.000Z",
+      "expiresAt": null,
+      "ctaLabel": "View public updates",
+      "ctaUrl": "/updates/",
+      "homepageTeaser": true,
+      "asset": {
+        "repoPath": "website/assets/images/finished-work-800.jpg",
+        "sitePath": "/assets/images/finished-work-800.jpg",
+        "dropboxSource": "dropbox://marketing/public-updates-live",
+        "alt": "Finished pottery pieces staged for pickup"
+      },
+      "assetRefs": [
+        {
+          "repoPath": "website/assets/images/finished-work-800.jpg",
+          "sitePath": "/assets/images/finished-work-800.jpg",
+          "dropboxSource": "dropbox://marketing/public-updates-live",
+          "alt": "Finished pottery pieces staged for pickup"
+        }
+      ],
+      "sourceId": "public-updates-live"
+    },
+    {
+      "id": "appointment-only-reminder",
+      "category": "policy",
+      "categoryLabel": "Policy",
+      "title": "Studio visits are still by appointment only",
+      "summary": "We do not keep open retail or drop-in hours, so please reach out before heading over.",
+      "body": "Monsoon Fire is still an appointment-only studio. We do not keep regular walk-in hours, even when work is moving quickly through the kiln.\n\nIf you need firing support, studio access, or help figuring out whether the space is a fit, use the contact form or support email first. That keeps arrivals coordinated and protects working studio time.",
+      "bodyParagraphs": [
+        "Monsoon Fire is still an appointment-only studio. We do not keep regular walk-in hours, even when work is moving quickly through the kiln.",
+        "If you need firing support, studio access, or help figuring out whether the space is a fit, use the contact form or support email first. That keeps arrivals coordinated and protects working studio time."
+      ],
+      "publishAt": "2026-03-12T17:00:00.000Z",
+      "expiresAt": null,
+      "ctaLabel": "Contact the studio",
+      "ctaUrl": "/contact/",
+      "homepageTeaser": true,
+      "asset": {
+        "repoPath": "website/assets/images/hero-kiln-800.jpg",
+        "sitePath": "/assets/images/hero-kiln-800.jpg",
+        "dropboxSource": "dropbox://marketing/appointment-only-reminder",
+        "alt": "Kiln loaded with bisque pieces"
+      },
+      "assetRefs": [
+        {
+          "repoPath": "website/assets/images/hero-kiln-800.jpg",
+          "sitePath": "/assets/images/hero-kiln-800.jpg",
+          "dropboxSource": "dropbox://marketing/appointment-only-reminder",
+          "alt": "Kiln loaded with bisque pieces"
+        }
+      ],
+      "sourceId": "appointment-only-reminder"
+    },
+    {
+      "id": "support-response-window",
+      "category": "offer",
+      "categoryLabel": "Offer",
+      "title": "Best way to reach the studio this week",
+      "summary": "Email and the support form are the fastest path for new requests, scheduling questions, and fit checks.",
+      "body": "The fastest way to reach the studio is still the support form or support email. That gives us the project details we need and keeps the conversation tied to the right context.\n\nIf you are asking about firing, include clay body, firing target, and whether the work is already glazed. If you are asking about studio access, tell us what kind of making rhythm and support you need so we can point you to the right next step.",
+      "bodyParagraphs": [
+        "The fastest way to reach the studio is still the support form or support email. That gives us the project details we need and keeps the conversation tied to the right context.",
+        "If you are asking about firing, include clay body, firing target, and whether the work is already glazed. If you are asking about studio access, tell us what kind of making rhythm and support you need so we can point you to the right next step."
+      ],
+      "publishAt": "2026-03-11T18:00:00.000Z",
+      "expiresAt": null,
+      "ctaLabel": "Open support",
+      "ctaUrl": "/support/",
+      "homepageTeaser": true,
+      "asset": {
+        "repoPath": "website/assets/images/kiln-interior-800.jpg",
+        "sitePath": "/assets/images/kiln-interior-800.jpg",
+        "dropboxSource": "dropbox://marketing/support-response-window",
+        "alt": "Kiln interior with stacked shelves"
+      },
+      "assetRefs": [
+        {
+          "repoPath": "website/assets/images/kiln-interior-800.jpg",
+          "sitePath": "/assets/images/kiln-interior-800.jpg",
+          "dropboxSource": "dropbox://marketing/support-response-window",
+          "alt": "Kiln interior with stacked shelves"
+        }
+      ],
+      "sourceId": "support-response-window"
+    }
+  ]
+}

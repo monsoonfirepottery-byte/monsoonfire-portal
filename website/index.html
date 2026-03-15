@@ -50,7 +50,7 @@
         <a href="/support/">Support</a>
         <a href="/highlights/">Gallery</a></nav>
             <div class="nav-portal-wrap">
-        <a class="button button-ghost nav-login" href="https://monsoonfire.kilnfire.com" target="_blank" rel="noopener noreferrer">Login</a>
+        <a class="button button-ghost nav-login" href="https://portal.monsoonfire.com" data-portal-target="dashboard" target="_blank" rel="noopener noreferrer">Login</a>
       </div><button class="menu-toggle" type="button" aria-label="Toggle menu" aria-expanded="false" data-menu-toggle>
         <span></span><span></span><span></span>
       </button>
@@ -66,7 +66,7 @@
           <h1 class="hero-title">Production Ceramics Studio Serving Working Potters.</h1>
           <p class="lead">Monsoon Fire is a home production ceramics studio making resources available to local potters. We focus on firing other artist's work in our kilns, renting our studio and studio resources, and providing community to local potters.</p>
           <div class="cta-row">
-            <a class="button button-primary" href="/services/">Get started</a>
+            <a class="button button-primary" href="https://portal.monsoonfire.com" target="_blank" rel="noopener noreferrer">Open the portal</a>
             <a class="button button-ghost" href="/kiln-firing/">Kiln rentals</a>
             <a class="button button-ghost" href="/services/#studio-resources">Studio and resources</a>
             <a class="button button-ghost" href="/services/#community">Community</a>
@@ -258,6 +258,24 @@
     </section>
 
     <section class="section section--band">
+      <div class="container updates-home-shell">
+        <div class="heading-block heading-block--inline">
+          <div>
+            <p class="eyebrow">Public bulletin</p>
+            <h2 class="section-title">Studio updates for visitors and close studio folks.</h2>
+          </div>
+          <p class="lead">Broad studio announcements now live outside the member portal.</p>
+        </div>
+        <div class="updates-teaser-grid" data-updates-teasers>
+          <div class="update-empty">Loading public updates...</div>
+        </div>
+        <div class="cta-row">
+          <a class="button button-ghost" href="/updates/" data-cta="public_updates_page">View all updates</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section--band">
       <div class="container">
         <div class="heading-block">
           <p class="eyebrow">Policies</p>
@@ -414,6 +432,7 @@
 
   <script defer src="/assets/js/main.js"></script>
   <script defer src="/assets/js/kiln-status.js"></script>
+  <script defer src="/assets/js/updates.js"></script>
   
 </body>
 </html>

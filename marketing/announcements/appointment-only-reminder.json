@@ -1,0 +1,25 @@
+{
+  "id": "appointment-only-reminder",
+  "status": "approved",
+  "audience": {
+    "publicWebsite": true,
+    "portalMembers": false
+  },
+  "category": "policy",
+  "publishAt": "2026-03-12T17:00:00.000Z",
+  "expiresAt": null,
+  "title": "Studio visits are still by appointment only",
+  "summary": "We do not keep open retail or drop-in hours, so please reach out before heading over.",
+  "body": "Monsoon Fire is still an appointment-only studio. We do not keep regular walk-in hours, even when work is moving quickly through the kiln.\n\nIf you need firing support, studio access, or help figuring out whether the space is a fit, use the contact form or support email first. That keeps arrivals coordinated and protects working studio time.",
+  "ctaLabel": "Contact the studio",
+  "ctaUrl": "/contact/",
+  "homepageTeaser": true,
+  "portalPinned": false,
+  "assetRefs": [
+    {
+      "repoPath": "website/assets/images/hero-kiln-800.jpg",
+      "dropboxSource": "dropbox://marketing/appointment-only-reminder",
+      "alt": "Kiln loaded with bisque pieces"
+    }
+  ]
+}

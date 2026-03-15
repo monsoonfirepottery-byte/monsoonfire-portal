@@ -72,6 +72,7 @@ For swarm backend scaffolding, use:
 
 1. `docs/SWARM_BACKEND_ARCHITECTURE.md` - component map and handoff notes.
 1. `docs/SWARM_BACKEND_SETUP.md` - local compose startup and diagnostics.
+1. `docs/FABRICATION_CELL.md` - X1C fabrication cell seed model, event vocabulary, and pilot workflow.
 1. `docs/SKILL_SECURITY_MODEL.md` - installation, sandbox, and supply-chain controls.
 1. `docs/ENVIRONMENT_REFERENCE.md` - backend env reference and defaults.
 1. `docs/SWARM_BACKEND_EXTEND_GUIDE.md` - extension patterns for adding checks, events, skills, and policies.

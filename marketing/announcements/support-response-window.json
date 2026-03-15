@@ -1,0 +1,25 @@
+{
+  "id": "support-response-window",
+  "status": "approved",
+  "audience": {
+    "publicWebsite": true,
+    "portalMembers": true
+  },
+  "category": "offer",
+  "publishAt": "2026-03-11T18:00:00.000Z",
+  "expiresAt": null,
+  "title": "Best way to reach the studio this week",
+  "summary": "Email and the support form are the fastest path for new requests, scheduling questions, and fit checks.",
+  "body": "The fastest way to reach the studio is still the support form or support email. That gives us the project details we need and keeps the conversation tied to the right context.\n\nIf you are asking about firing, include clay body, firing target, and whether the work is already glazed. If you are asking about studio access, tell us what kind of making rhythm and support you need so we can point you to the right next step.",
+  "ctaLabel": "Open support",
+  "ctaUrl": "/support/",
+  "homepageTeaser": true,
+  "portalPinned": false,
+  "assetRefs": [
+    {
+      "repoPath": "website/assets/images/kiln-interior-800.jpg",
+      "dropboxSource": "dropbox://marketing/support-response-window",
+      "alt": "Kiln interior with stacked shelves"
+    }
+  ]
+}

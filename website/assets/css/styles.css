@@ -1261,6 +1261,120 @@ select:focus-visible {
   letter-spacing: 0.04em;
 }
 
+.updates-home-shell {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.updates-teaser-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4);
+}
+
+.updates-list {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.update-card {
+  display: grid;
+  gap: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-0);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-1);
+}
+
+.update-card--full {
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.update-card--full.update-card--no-asset {
+  grid-template-columns: 1fr;
+}
+
+.update-card-asset {
+  margin: 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  background: var(--paper-100);
+  min-height: 180px;
+}
+
+.update-card-asset img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.update-card-content {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.update-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--ink-500);
+}
+
+.update-card-category {
+  color: var(--accent-700);
+}
+
+.update-card-title {
+  margin: 0;
+  font-size: clamp(22px, 3vw, 32px);
+  line-height: 1.15;
+}
+
+.update-card-summary {
+  margin: 0;
+  font-size: var(--text-lg);
+  color: var(--ink-700);
+}
+
+.update-body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.update-body p {
+  margin: 0;
+  color: var(--ink-700);
+}
+
+.updates-callout {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  background: var(--surface-0);
+  box-shadow: var(--shadow-1);
+}
+
+.updates-callout p {
+  margin-top: 0;
+}
+
+.update-empty {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  background: rgba(255, 255, 255, 0.45);
+  color: var(--ink-500);
+  font-family: var(--font-ui);
+  letter-spacing: 0.04em;
+}
+
 .highlight {
   background: var(--paper-100);
   border-left: 3px solid var(--accent-600);
@@ -1569,6 +1683,10 @@ select:focus-visible {
   .hero-grid,
   .workflow-grid,
   .calendar-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .update-card--full {
     grid-template-columns: 1fr;
   }
 

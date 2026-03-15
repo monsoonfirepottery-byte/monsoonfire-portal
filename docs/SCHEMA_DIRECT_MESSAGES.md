@@ -66,13 +66,20 @@ Document ID: auto
 
 Fields
 - title: string (optional)
+- summary: string (optional)
 - body: string (optional)
 - type: string (optional, e.g. "update" | "alert")
+- category: string (optional)
 - createdAt: Timestamp (optional)
+- publishAt: Timestamp | ISO string (optional)
+- expiresAt: Timestamp | ISO string | null (optional)
 - pinned: boolean (optional)
 - readBy: string[] (optional, user UIDs)
 - ctaLabel: string (optional)
 - ctaUrl: string (optional)
+- sourceId: string (optional)
+- sourceSystem: string (optional, namespaced mirror origin such as `marketing-feed-v1`)
+- archived: boolean (optional)
 
 ## Indexes
 - directMessages: (participantUids array-contains) + orderBy lastMessageAt desc

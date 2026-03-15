@@ -1,0 +1,25 @@
+{
+  "id": "public-updates-live",
+  "status": "approved",
+  "audience": {
+    "publicWebsite": true,
+    "portalMembers": true
+  },
+  "category": "ops_update",
+  "publishAt": "2026-03-14T16:00:00.000Z",
+  "expiresAt": null,
+  "title": "Public studio updates are now live",
+  "summary": "Non-member announcements now have a public home while member-only logistics stay inside the portal.",
+  "body": "We now keep a public studio updates page for people who are not in the member portal but still need clear studio-wide news.\n\nMember-specific pickup windows, queue details, and operational notices still land inside the portal. Public updates are for broad notices, policy reminders, and studio-facing announcements that are useful to visitors, students, and close studio folks.",
+  "ctaLabel": "View public updates",
+  "ctaUrl": "/updates/",
+  "homepageTeaser": true,
+  "portalPinned": true,
+  "assetRefs": [
+    {
+      "repoPath": "website/assets/images/finished-work-800.jpg",
+      "dropboxSource": "dropbox://marketing/public-updates-live",
+      "alt": "Finished pottery pieces staged for pickup"
+    }
+  ]
+}

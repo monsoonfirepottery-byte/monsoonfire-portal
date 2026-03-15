@@ -1,0 +1,25 @@
+{
+  "id": "winter-open-studio-recap",
+  "status": "archived",
+  "audience": {
+    "publicWebsite": true,
+    "portalMembers": true
+  },
+  "category": "event",
+  "publishAt": "2026-01-18T18:00:00.000Z",
+  "expiresAt": "2026-02-18T18:00:00.000Z",
+  "title": "Winter open studio recap",
+  "summary": "Archived sample announcement for the feed lifecycle.",
+  "body": "This archived announcement stays in source control as a sample of a completed studio event.\n\nIt should never appear in the live website bulletin or the synced portal feed once the generator runs.",
+  "ctaLabel": "See community",
+  "ctaUrl": "/faq/",
+  "homepageTeaser": false,
+  "portalPinned": false,
+  "assetRefs": [
+    {
+      "repoPath": "website/assets/images/finished-work-800.jpg",
+      "dropboxSource": "dropbox://marketing/winter-open-studio-recap",
+      "alt": "Finished pottery pieces staged for pickup"
+    }
+  ]
+}

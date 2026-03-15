@@ -560,6 +560,26 @@ function readTimestampMillis(value: unknown): number | null {
   }
 }
 
+function readAnnouncementScheduleMillis(value: unknown): number | null {
+  const timestampMillis = readTimestampMillis(value);
+  if (timestampMillis !== null) return timestampMillis;
+  if (typeof value !== "string") return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.getTime() : null;
+}
+
+function isActiveAnnouncement(announcement: Announcement, now = Date.now()): boolean {
+  if (announcement.archived === true) return false;
+
+  const publishAt = readAnnouncementScheduleMillis(announcement.publishAt ?? announcement.createdAt);
+  if (publishAt !== null && publishAt > now) return false;
+
+  const expiresAt = readAnnouncementScheduleMillis(announcement.expiresAt);
+  if (expiresAt !== null && expiresAt <= now) return false;
+
+  return true;
+}
+
 function isDirectMessageThreadUnread(thread: DirectMessageThread, uid: string): boolean {
   const lastMessageMillis = readTimestampMillis(thread.lastMessageAt);
   if (lastMessageMillis === null) return false;
@@ -765,7 +785,11 @@ function useAnnouncements(user: User | null, canLoad: boolean) {
           ...(docSnap.data() as Partial<Announcement>),
           id: docSnap.id,
         }));
-        setAnnouncements(filterVisibleAnnouncements(rows).slice(0, visibleLimit));
+        setAnnouncements(
+          filterVisibleAnnouncements(rows)
+            .filter((announcement) => isActiveAnnouncement(announcement))
+            .slice(0, visibleLimit)
+        );
       } catch (error: unknown) {
         if (!canceled) setError(`Announcements failed: ${getErrorMessage(error)}`);
       } finally {

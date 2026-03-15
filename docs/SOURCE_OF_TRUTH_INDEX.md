@@ -21,6 +21,12 @@ It also tracks public agent-readable discovery surfaces for website and portal.
 | iOS API contract mirror | `ios/PortalContracts.swift` | `scripts/source-of-truth-contract-matrix.mjs` | derived |
 | Android API contract mirror | `android/app/src/main/java/com/monsoonfire/portal/reference/PortalContracts.kt` | `scripts/source-of-truth-contract-matrix.mjs` | derived |
 
+### Studio Brain Ops Domains
+
+| Domain | Authoritative Source | Derived/Validated By | Trust |
+|---|---|---|---|
+| Fabrication cell domain model and pilot workflow | `studio-brain/src/fabrication/model.ts`, `studio-brain/src/fabrication/defaults.ts`, `studio-brain/src/fabrication/workflows.ts` | `studio-brain/src/fabrication/workflows.test.ts`, `docs/runbooks/STUDIO_BRAIN_FABRICATION_CELL_RUNBOOK.md` | authoritative |
+
 ### Deep Links
 
 | Domain | Authoritative Source | Derived/Validated By | Trust |
@@ -97,6 +103,7 @@ It also tracks public agent-readable discovery surfaces for website and portal.
 - `docs/runbooks/MOCK_DATA_GOVERNANCE.md`
 - `docs/runbooks/PR_GATE.md`
 - `docs/runbooks/PORTAL_PLAYWRIGHT_SMOKE.md`
+- `docs/runbooks/STUDIO_BRAIN_FABRICATION_CELL_RUNBOOK.md`
 - `docs/runbooks/STUDIO_RESERVATION_OPERATIONS_PLAYBOOK.md`
 - `docs/runbooks/WEBSITE_GA_SPRINT1_FOUNDATIONS.md`
 - `docs/runbooks/WEBSITE_KILN_BOARD_SYNC.md`

@@ -12,6 +12,7 @@ This folder contains active runbooks and contracts for the portal, functions, na
 - Deep-link contract: [`DEEP_LINK_CONTRACT.md`](DEEP_LINK_CONTRACT.md)
 - Library docs pack: [`library/README.md`](library/README.md)
 - Agent-readable surface runbook: [`runbooks/AGENT_SURFACES.md`](runbooks/AGENT_SURFACES.md)
+- Fabrication cell runbook: [`runbooks/STUDIO_BRAIN_FABRICATION_CELL_RUNBOOK.md`](runbooks/STUDIO_BRAIN_FABRICATION_CELL_RUNBOOK.md)
 - Docs hygiene runbook: [`runbooks/DOCS_HYGIENE.md`](runbooks/DOCS_HYGIENE.md)
 - Industry events curation runbook: [`runbooks/INDUSTRY_EVENTS_CURATION_RUNBOOK.md`](runbooks/INDUSTRY_EVENTS_CURATION_RUNBOOK.md)
 

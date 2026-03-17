@@ -32,6 +32,19 @@ import { auth, db } from "./firebase";
 import type { Announcement, DirectMessageThread, LiveUser } from "./types/messaging";
 import { toVoidHandler } from "./utils/toVoidHandler";
 import { identify, shortId, track } from "./lib/analytics";
+import {
+  capturePortalEntryAttributionFromHref,
+  clearPortalEntryAttribution,
+  consumePortalTarget,
+  markPortalEntryArrived,
+  markPortalEntryAuthenticated,
+  markPortalTargetOpened,
+  readPendingPortalTarget,
+  readPortalEntryAttribution,
+  shouldTrackPortalEntryArrived,
+  shouldTrackPortalEntryAuthenticated,
+  shouldTrackPortalTargetOpened,
+} from "./lib/portalAttribution";
 import { ensureUserDocForSession } from "./api/ensureUserDoc";
 import FirestoreTelemetryPanel from "./components/FirestoreTelemetryPanel";
 import type { SupportRequestInput } from "./views/SupportView";
@@ -1325,6 +1338,35 @@ export default function App() {
   }, [devAdminToken]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const capture = capturePortalEntryAttributionFromHref(
+      window.location.href,
+      normalizeAppPath(window.location.pathname) || "/"
+    );
+
+    if (capture.cleanedHref && capture.cleanedHref !== window.location.href) {
+      const cleanedUrl = new URL(capture.cleanedHref);
+      const nextRelative = `${cleanedUrl.pathname}${cleanedUrl.search}${cleanedUrl.hash}` || "/";
+      window.history.replaceState({}, "", nextRelative);
+    }
+
+    if (!shouldTrackPortalEntryArrived()) return;
+    const entry = readPortalEntryAttribution();
+    if (!entry) return;
+
+    track("portal_entry_arrived", {
+      experiment: entry.experiment,
+      variant: entry.variant,
+      surface: entry.surface,
+      target: entry.target,
+      landingPath: normalizeAppPath(window.location.pathname) || "/",
+      sourcePath: entry.sourcePath,
+    });
+    markPortalEntryArrived();
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     let unsub = () => {};
 
@@ -1880,6 +1922,7 @@ export default function App() {
       uid: user?.uid ? shortId(user.uid) : "unknown",
     });
     await signOut(authClient);
+    clearPortalEntryAttribution();
     setNav("dashboard");
   };
 
@@ -1947,6 +1990,49 @@ export default function App() {
       setNav("dashboard");
     }
   }, [staffUi, nav]);
+
+  useEffect(() => {
+    if (!authReady || !user?.uid) return;
+    if (!shouldTrackPortalEntryAuthenticated(user.uid)) return;
+    const entry = readPortalEntryAttribution(Date.now(), user.uid);
+    if (!entry) return;
+
+    track("portal_entry_authenticated", {
+      uid: shortId(user.uid),
+      experiment: entry.experiment,
+      variant: entry.variant,
+      surface: entry.surface,
+      target: entry.target,
+      sourcePath: entry.sourcePath,
+    });
+    markPortalEntryAuthenticated(user.uid);
+  }, [authReady, user?.uid]);
+
+  useEffect(() => {
+    if (!authReady || !user?.uid) return;
+    const pendingTarget = readPendingPortalTarget(user.uid);
+    if (!pendingTarget) return;
+    const target = consumePortalTarget(user.uid);
+    if (!target) return;
+    if (nav !== target) {
+      setNav(target);
+    }
+  }, [authReady, user?.uid, nav]);
+
+  useEffect(() => {
+    if (!authReady || !user?.uid) return;
+    const entry = readPortalEntryAttribution(Date.now(), user.uid);
+    if (!entry || nav !== entry.target || !shouldTrackPortalTargetOpened(user.uid)) return;
+
+    track("portal_entry_target_opened", {
+      uid: shortId(user.uid),
+      experiment: entry.experiment,
+      variant: entry.variant,
+      surface: entry.surface,
+      targetNav: nav,
+    });
+    markPortalTargetOpened(user.uid);
+  }, [authReady, user?.uid, nav]);
 
   useEffect(() => {
     if (!authReady || !user || nav !== "dashboard" || typeof window === "undefined") {

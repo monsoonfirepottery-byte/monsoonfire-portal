@@ -15,15 +15,46 @@ const majorPages = [
 ];
 
 const portalEntryPages = [
-  "./",
-  "services/",
-  "kiln-firing/",
-  "faq/",
-  "support/",
-  "contact/",
-  "policies/",
-  "memberships/",
-  "supplies/",
+  {
+    path: "ab/b/",
+    label: "home variant b",
+    selector: "header .nav-portal",
+    surface: "home",
+    target: "dashboard",
+    variant: "b",
+  },
+  {
+    path: "services/",
+    label: "services",
+    selector: 'a.button-primary[data-portal-target="reservations"]',
+    surface: "services",
+    target: "reservations",
+    variant: "a",
+  },
+  {
+    path: "kiln-firing/",
+    label: "kiln firing",
+    selector: 'a.button-primary[data-portal-target="reservations"]',
+    surface: "kiln_firing",
+    target: "reservations",
+    variant: "a",
+  },
+  {
+    path: "memberships/",
+    label: "memberships",
+    selector: 'a.button-primary[data-portal-target="membership"]',
+    surface: "memberships",
+    target: "membership",
+    variant: "a",
+  },
+  {
+    path: "contact/",
+    label: "contact",
+    selector: 'a.button-primary[data-portal-target="support"]',
+    surface: "contact",
+    target: "support",
+    variant: "a",
+  },
 ];
 
 const axePages = ["./", "kiln-firing/", "support/", "contact/", "policies/"];
@@ -77,11 +108,25 @@ test.describe("marketing smoke coverage", () => {
     expect(await links.count()).toBeGreaterThan(0);
   });
 
-  test("portal entry links stay on kilnfire host", async ({ page }) => {
-    for (const pagePath of portalEntryPages) {
-      await page.goto(pagePath, { waitUntil: "networkidle" });
-      const legacyPortalLinks = page.locator('a[href*="portal.monsoonfire.com"]');
-      expect(await legacyPortalLinks.count(), `Legacy portal host found on ${pagePath}`).toBe(0);
+  test("portal entry links point to the portal host with scoped experiment params", async ({ page }) => {
+    for (const entry of portalEntryPages) {
+      await page.goto(entry.path, { waitUntil: "networkidle" });
+      const link = page.locator(entry.selector).first();
+      await expect(link, `Portal entry link missing on ${entry.label}`).toBeVisible();
+
+      const href = await link.getAttribute("href");
+      expect(href, `Portal entry href missing on ${entry.label}`).toBeTruthy();
+      expect(href, `Legacy kilnfire host remained on ${entry.label}`).not.toContain("monsoonfire.kilnfire.com");
+
+      const parsed = new URL(href);
+      expect(parsed.hostname, `Portal host mismatch on ${entry.label}`).toBe("portal.monsoonfire.com");
+      expect(parsed.searchParams.get("mf_experiment"), `Experiment missing on ${entry.label}`).toBe("portal_path_v1");
+      expect(parsed.searchParams.get("mf_variant"), `Variant mismatch on ${entry.label}`).toBe(entry.variant);
+      expect(parsed.searchParams.get("mf_surface"), `Surface mismatch on ${entry.label}`).toBe(entry.surface);
+      expect(parsed.searchParams.get("mf_target"), `Target mismatch on ${entry.label}`).toBe(entry.target);
+      expect(parsed.searchParams.get("utm_content"), `utm_content mismatch on ${entry.label}`).toBe(
+        `portal_path_v1_${entry.surface}_${entry.variant}_${entry.target}`
+      );
     }
   });
 });

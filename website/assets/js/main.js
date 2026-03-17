@@ -263,8 +263,18 @@
       .replace(/^_+|_+$/g, '');
   };
 
+  const portalExperimentName = 'portal_path_v1';
+  const portalHost = 'portal.monsoonfire.com';
+  const legacyPortalHost = 'monsoonfire.kilnfire.com';
   const normalizeUrlHost = (hostname) => String(hostname || '').toLowerCase().replace(/^www\./, '');
-  const canonicalCampaignHosts = ['monsoonfire.kilnfire.com', 'portal.monsoonfire.com', 'instagram.com', 'discord.com', 'discord.gg', 'phoenixcenterforthearts.org'];
+  const canonicalCampaignHosts = [legacyPortalHost, portalHost, 'instagram.com', 'discord.com', 'discord.gg', 'phoenixcenterforthearts.org'];
+  const portalSurfaceTargets = {
+    home: 'dashboard',
+    services: 'reservations',
+    kiln_firing: 'reservations',
+    memberships: 'membership',
+    contact: 'support',
+  };
 
   const isCampaignHost = (hostname) => {
     const normalizedHost = normalizeUrlHost(hostname);
@@ -278,6 +288,54 @@
     return `${pathKey}_${labelKey}_${locationKey}_2026q1`;
   };
 
+  const resolvePortalPageContext = () => {
+    const normalizedPath = normalizePath(window.location.pathname).toLowerCase();
+    if (normalizedPath === '/ab/b/') {
+      return { surface: 'home', variant: 'b' };
+    }
+    if (normalizedPath === '/services/') {
+      return { surface: 'services', variant: 'a' };
+    }
+    if (normalizedPath === '/kiln-firing/') {
+      return { surface: 'kiln_firing', variant: 'a' };
+    }
+    if (normalizedPath === '/memberships/') {
+      return { surface: 'memberships', variant: 'a' };
+    }
+    if (normalizedPath === '/contact/') {
+      return { surface: 'contact', variant: 'a' };
+    }
+    return null;
+  };
+
+  const resolvePortalTarget = (link, surface) => {
+    const explicitTarget = normalizeLabel(link && link.getAttribute ? link.getAttribute('data-portal-target') || '' : '');
+    if (explicitTarget === 'dashboard' || explicitTarget === 'reservations' || explicitTarget === 'membership' || explicitTarget === 'support') {
+      return explicitTarget;
+    }
+    return portalSurfaceTargets[surface] || null;
+  };
+
+  const resolvePortalAttribution = (link, parsed) => {
+    const pageContext = resolvePortalPageContext();
+    if (!pageContext) return null;
+    const normalizedHost = normalizeUrlHost(parsed.hostname);
+    const normalizedPath = parsed.pathname.toLowerCase();
+    const isPortalCandidate =
+      normalizedHost === portalHost ||
+      normalizedHost === legacyPortalHost ||
+      normalizedPath === '/new-user' ||
+      normalizedPath.startsWith('/new-user/');
+    if (!isPortalCandidate) return null;
+    const target = resolvePortalTarget(link, pageContext.surface);
+    if (!target) return null;
+    return {
+      surface: pageContext.surface,
+      variant: pageContext.variant,
+      target,
+    };
+  };
+
   const annotateCampaignHref = (link, href, label, location) => {
     if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) {
       return {
@@ -287,12 +345,75 @@
           source: null,
           medium: null,
           campaign: null,
+          content: null,
         },
+        portalAttribution: null,
       };
     }
 
     try {
       const parsed = new URL(href, window.location.origin);
+      const portalAttribution = resolvePortalAttribution(link, parsed);
+      if (portalAttribution) {
+        let mutated = false;
+        const ensureParam = (key, value) => {
+          if (parsed.searchParams.get(key)) return;
+          parsed.searchParams.set(key, value);
+          mutated = true;
+        };
+        const setParam = (key, value) => {
+          if (parsed.searchParams.get(key) === value) return;
+          parsed.searchParams.set(key, value);
+          mutated = true;
+        };
+
+        if (normalizeUrlHost(parsed.hostname) !== portalHost) {
+          parsed.hostname = portalHost;
+          parsed.protocol = 'https:';
+          mutated = true;
+        }
+        if (parsed.pathname !== '/') {
+          parsed.pathname = '/';
+          mutated = true;
+        }
+        if (parsed.hash) {
+          parsed.hash = '';
+          mutated = true;
+        }
+
+        setParam('mf_experiment', portalExperimentName);
+        setParam('mf_variant', portalAttribution.variant);
+        setParam('mf_surface', portalAttribution.surface);
+        setParam('mf_target', portalAttribution.target);
+        setParam('utm_content', `${portalExperimentName}_${portalAttribution.surface}_${portalAttribution.variant}_${portalAttribution.target}`);
+        ensureParam('utm_source', 'monsoonfire_website');
+        ensureParam('utm_medium', 'referral');
+        ensureParam('utm_campaign', deriveUtmCampaign(label, location));
+
+        const finalHref = parsed.toString();
+        if (mutated && link) {
+          link.setAttribute('href', finalHref);
+        }
+
+        return {
+          href: finalHref,
+          autoTagged: mutated,
+          utm: {
+            source: parsed.searchParams.get('utm_source'),
+            medium: parsed.searchParams.get('utm_medium'),
+            campaign: parsed.searchParams.get('utm_campaign'),
+            content: parsed.searchParams.get('utm_content'),
+          },
+          portalAttribution: {
+            mf_experiment: portalExperimentName,
+            mf_variant: portalAttribution.variant,
+            mf_surface: portalAttribution.surface,
+            mf_target: portalAttribution.target,
+            destination_host: portalHost,
+          },
+        };
+      }
+
       if (parsed.origin === window.location.origin || !isCampaignHost(parsed.hostname)) {
         return {
           href,
@@ -301,7 +422,9 @@
             source: parsed.searchParams.get('utm_source'),
             medium: parsed.searchParams.get('utm_medium'),
             campaign: parsed.searchParams.get('utm_campaign'),
+            content: parsed.searchParams.get('utm_content'),
           },
+          portalAttribution: null,
         };
       }
 
@@ -328,7 +451,9 @@
           source: parsed.searchParams.get('utm_source'),
           medium: parsed.searchParams.get('utm_medium'),
           campaign: parsed.searchParams.get('utm_campaign'),
+          content: parsed.searchParams.get('utm_content'),
         },
+        portalAttribution: null,
       };
     } catch {
       return {
@@ -338,15 +463,19 @@
           source: null,
           medium: null,
           campaign: null,
+          content: null,
         },
+        portalAttribution: null,
       };
     }
   };
 
-  const resolveCtaLabel = (href) => {
+  const resolveCtaLabel = (href, link) => {
     if (!href) return null;
     const cleaned = href.toLowerCase();
-    if (cleaned.includes('monsoonfire.kilnfire.com')) return 'login';
+    const portalTarget = normalizeLabel(link && link.getAttribute ? link.getAttribute('data-portal-target') || '' : '');
+    if (portalTarget) return `portal_${portalTarget}`;
+    if (cleaned.includes(legacyPortalHost) || cleaned.includes(portalHost)) return cleaned.includes('/new-user') ? 'get_started' : 'login';
     if (cleaned.startsWith('mailto:')) return 'email';
     if (cleaned.startsWith('tel:')) return 'phone';
     if (cleaned.includes('discord')) return 'discord';
@@ -398,6 +527,21 @@
     });
   };
 
+  const primeTrackedLinks = () => {
+    document.querySelectorAll('a[href]').forEach((link) => {
+      const href = link.getAttribute('href') || '';
+      if (!href || href.startsWith('javascript:')) return;
+      const location = resolveLocation(link);
+      const explicitLabel = link.getAttribute('data-cta');
+      const textLabel = normalizeLabel(explicitLabel || link.getAttribute('aria-label') || link.textContent.trim());
+      const label = resolveCtaLabel(href, link) || textLabel;
+      if (!label) return;
+      annotateCampaignHref(link, href, label, location);
+    });
+  };
+
+  primeTrackedLinks();
+
   document.addEventListener('click', (event) => {
     const link = event.target && event.target.closest ? event.target.closest('a') : null;
     if (!link || typeof window.gtag !== 'function') return;
@@ -410,7 +554,7 @@
     const location = resolveLocation(link);
     const explicitLabel = link.getAttribute('data-cta');
     const textLabel = normalizeLabel(explicitLabel || link.getAttribute('aria-label') || link.textContent.trim());
-    const label = resolveCtaLabel(originalHref) || textLabel;
+    const label = resolveCtaLabel(originalHref, link) || textLabel;
     if (!label) return;
     const hrefWithCampaign = annotateCampaignHref(link, originalHref, label, location);
     const trackedHref = hrefWithCampaign.href;
@@ -428,7 +572,9 @@
       utm_source: hrefWithCampaign.utm.source,
       utm_medium: hrefWithCampaign.utm.medium,
       utm_campaign: hrefWithCampaign.utm.campaign,
+      utm_content: hrefWithCampaign.utm.content,
       campaign_autotag_applied: hrefWithCampaign.autoTagged,
+      ...(hrefWithCampaign.portalAttribution || {}),
     });
 
     const canonicalPayload = {
@@ -445,6 +591,15 @@
         ...canonicalPayload,
         goal_name: 'quote_start',
         funnel_step: 'landing_cta',
+      });
+    }
+
+    if (hrefWithCampaign.portalAttribution) {
+      emitCanonicalEvent('portal_entry_click', {
+        ...canonicalPayload,
+        goal_name: 'portal_entry',
+        funnel_step: 'handoff',
+        ...hrefWithCampaign.portalAttribution,
       });
     }
 

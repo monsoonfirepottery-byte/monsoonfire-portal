@@ -34,9 +34,9 @@ const requiredRouteChunks = [
   "ProfileView-",
   "StaffView-",
 ];
-// Total budgets re-baselined for the lending workspace rollout and kiln queue timeline route
-// while keeping future regressions visible.
-const MAX_TOTAL_JS_BYTES = 1_725_000;
+// Total budgets re-baselined for the lending workspace rollout, kiln queue timeline route,
+// and portal handoff attribution path while keeping future regressions visible.
+const MAX_TOTAL_JS_BYTES = 1_727_000;
 const MAX_TOTAL_CSS_BYTES = 271_000;
 
 const files = readdirSync(assetsDir).filter((name) => name.endsWith(".js"));

@@ -34,39 +34,39 @@ export const AUTOMATION_LABELS = {
 export const AUTOMATION_FAMILIES = {
   portalQa: {
     key: "portal-qa",
-    preferredNumber: 116,
-    title: "Portal QA Automation (Rolling)",
+    preferredNumber: 350,
+    title: "Portal QA Reliability (Rolling)",
     marker: "automation-family:portal-qa",
     labels: [AUTOMATION_LABELS.automation, AUTOMATION_LABELS.portalQa],
     body:
-      "Canonical rolling thread for portal QA automation. Use this issue for workflow failures, canary state changes, tuning snapshots, and digest updates.",
+      "Primary rolling thread for portal QA automation and reliability coordination. Replaces legacy tracker #116 and collects workflow failures, canary state changes, tuning snapshots, and digest updates.",
   },
   portalInfra: {
     key: "portal-infra",
-    preferredNumber: 103,
-    title: "Portal Infra and Security Guards (Rolling)",
+    preferredNumber: 349,
+    title: "Portal Infra and Security Coordination (Rolling)",
     marker: "automation-family:portal-infra",
     labels: [AUTOMATION_LABELS.automation, AUTOMATION_LABELS.infra, AUTOMATION_LABELS.security],
     body:
-      "Canonical rolling thread for portal infra and security guard automation. Use this issue for index, credential, and branch integrity updates.",
+      "Primary rolling thread for portal infra and security automation coordination. Replaces legacy tracker #103 and collects index, credential, and branch integrity updates.",
   },
   codexAutomation: {
     key: "codex-automation",
-    preferredNumber: 84,
-    title: "Codex Automation (Rolling)",
+    preferredNumber: 348,
+    title: "Codex Automation Coordination (Rolling)",
     marker: "automation-family:codex-automation",
     labels: [AUTOMATION_LABELS.automation, AUTOMATION_LABELS.codexReporting],
     body:
-      "Canonical rolling thread for Codex automation reporting. Use this issue for improvement, interaction, PR-green, and backlog autopilot updates.",
+      "Primary rolling thread for Codex automation reporting and coordination. Replaces legacy tracker #84 and collects improvement, interaction, PR-green, and backlog autopilot updates.",
   },
   governanceTuning: {
     key: "governance-tuning",
-    preferredNumber: 309,
-    title: "Governance Weekly Tuning (Rolling)",
+    preferredNumber: 351,
+    title: "Governance Tuning Coordination (Rolling)",
     marker: "automation-family:governance-tuning",
     labels: [AUTOMATION_LABELS.governance],
     body:
-      "Canonical rolling thread for weekly governance tuning summaries and threshold proposals.",
+      "Primary rolling thread for weekly governance tuning coordination. Replaces legacy tracker #309 and collects threshold proposals, tuning summaries, and governance follow-through.",
   },
 };
 

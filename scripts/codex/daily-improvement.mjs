@@ -7,6 +7,7 @@ import { constants as fsConstants } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getAutomationFamily } from "../lib/automation-issue-families.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..", "..");
@@ -22,7 +23,8 @@ const improvementLogPath = resolve(codexDir, "improvement-log.md");
 const improvementStatePath = resolve(codexDir, "improvement-state.json");
 const improvementReportsDir = resolve(repoRoot, "docs", "runbooks", "codex-improvement");
 
-const rollingIssueTitle = "Codex Automation (Rolling)";
+const CODEX_AUTOMATION_FAMILY = getAutomationFamily("codex-automation");
+const rollingIssueTitle = CODEX_AUTOMATION_FAMILY?.title || "Codex Automation Coordination (Rolling)";
 const ignoreAnalysisFiles = new Set([
   ".codex/improvement-log.md",
   ".codex/improvement-state.json",

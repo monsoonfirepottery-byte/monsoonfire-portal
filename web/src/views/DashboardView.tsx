@@ -17,14 +17,11 @@ import {
 } from "../lib/normalizers/reservations";
 import type { Kiln, KilnFiring } from "../types/kiln";
 import type { Announcement, DirectMessageThread } from "../types/messaging";
+import { resolveFunctionsBaseUrl } from "../utils/functionsBaseUrl";
 import { formatDateTime, formatMaybeTimestamp } from "../utils/format";
 import { DASHBOARD_MOCK_NON_DEV_ACK, resolveDashboardMockPolicy } from "./dashboardMockPolicy";
 
 const DASHBOARD_PIECES_PREVIEW = 3;
-const DASHBOARD_WORKSHOP_PREVIEW = 3;
-const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
-type ImportMetaEnvShape = { VITE_FUNCTIONS_BASE_URL?: string };
-const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
 
 const STATUS_LABELS: Record<string, string> = {
   idle: "Idle",
@@ -101,10 +98,6 @@ function inferFiringTypeLabel(value?: string) {
   return "Firing";
 }
 
-function resolveFunctionsBaseUrl() {
-  return ENV.VITE_FUNCTIONS_BASE_URL ? String(ENV.VITE_FUNCTIONS_BASE_URL) : DEFAULT_FUNCTIONS_BASE_URL;
-}
-
 function isMissingIndexError(err: unknown) {
   const code = (err as { code?: unknown })?.code;
   const message = String((err as { message?: unknown })?.message || "");
@@ -128,8 +121,7 @@ function reservationStatusLabel(reservation: ReservationRecord) {
 }
 
 function parseWorkshopStartMs(value: string | null | undefined) {
-  if (!value) return Number.POSITIVE_INFINITY;
-  const parsed = new Date(value).getTime();
+  const parsed = Date.parse(value ?? "");
   return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
 }
 
@@ -145,49 +137,26 @@ function workshopAvailabilityLabel(event: EventSummary) {
     const waitlistCount =
       typeof event.waitlistCount === "number" && Number.isFinite(event.waitlistCount)
         ? Math.max(0, Math.round(event.waitlistCount))
-        : null;
-    if (waitlistCount !== null && waitlistCount > 0) {
+        : 0;
+    if (waitlistCount > 0) {
       return `${waitlistCount} on waitlist`;
     }
-    if (remainingCapacity === 0) {
-      return "Waitlist open";
-    }
+    return "Waitlist open";
   }
   if (remainingCapacity === 0) return "Sold out";
-  return "Open registration";
-}
-
-function workshopSignalLabel(event: EventSummary) {
-  const totalSignals =
-    typeof event.communitySignalCounts?.totalSignals === "number" &&
-    Number.isFinite(event.communitySignalCounts.totalSignals)
-      ? Math.max(0, Math.round(event.communitySignalCounts.totalSignals))
-      : 0;
-  if (totalSignals <= 0) return null;
-  return `${totalSignals} community signal${totalSignals === 1 ? "" : "s"}`;
-}
-
-function workshopMetaLabel(event: EventSummary) {
-  const dateLabel = formatDateTime(event.startAt);
-  const locationLabel = (event.location || "").trim() || "Studio";
-  if (dateLabel === "-") return locationLabel;
-  return `${dateLabel} · ${locationLabel}`;
+  return "Open";
 }
 
 function useDashboardWorkshopPreview(user: User) {
-  const baseUrl = useMemo(() => resolveFunctionsBaseUrl(), []);
-  const portalApi = useMemo(() => createPortalApi({ baseUrl }), [baseUrl]);
+  const portalApi = useMemo(() => createPortalApi({ baseUrl: resolveFunctionsBaseUrl() }), []);
   const [workshops, setWorkshops] = useState<EventSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-    const abortController = new AbortController();
 
     const loadWorkshops = async () => {
       setLoading(true);
-      setError("");
 
       try {
         const response = await portalApi.listEvents({
@@ -195,9 +164,7 @@ function useDashboardWorkshopPreview(user: User) {
           payload: {
             includeDrafts: false,
             includeCancelled: false,
-            includeCommunitySignals: true,
           },
-          signal: abortController.signal,
         });
         if (cancelled) return;
 
@@ -206,13 +173,12 @@ function useDashboardWorkshopPreview(user: User) {
           .filter((event) => event.status === "published")
           .filter((event) => parseWorkshopStartMs(event.startAt) >= nowMs)
           .sort((left, right) => parseWorkshopStartMs(left.startAt) - parseWorkshopStartMs(right.startAt))
-          .slice(0, DASHBOARD_WORKSHOP_PREVIEW);
+          .slice(0, 3);
 
         setWorkshops(nextWorkshops);
-      } catch (_err) {
-        if (cancelled || abortController.signal.aborted) return;
+      } catch {
+        if (cancelled) return;
         setWorkshops([]);
-        setError("Workshop preview unavailable right now.");
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -223,14 +189,12 @@ function useDashboardWorkshopPreview(user: User) {
     void loadWorkshops();
     return () => {
       cancelled = true;
-      abortController.abort();
     };
   }, [portalApi, user]);
 
   return {
     workshops,
     loading,
-    error,
   };
 }
 
@@ -524,7 +488,6 @@ export default function DashboardView({
   const { active, history } = useBatches(user);
   const [recentReservations, setRecentReservations] = useState<ReservationRecord[]>([]);
   const activePreview = active.slice(0, DASHBOARD_PIECES_PREVIEW);
-  const archivedCount = history.length;
   const messagePreview = threads.slice(0, 3);
   const announcementPreview = announcements.slice(0, 3);
   const {
@@ -580,17 +543,7 @@ export default function DashboardView({
   const {
     workshops: workshopPreview,
     loading: workshopsLoading,
-    error: workshopsError,
   } = useDashboardWorkshopPreview(user);
-  const workshopSubtitle = useMemo(() => {
-    const workshopSignals = workshopPreview.reduce((count, event) => {
-      return count + (workshopSignalLabel(event) ? 1 : 0);
-    }, 0);
-    if (workshopSignals > 0) {
-      return "Live availability + community demand";
-    }
-    return "Live workshop availability";
-  }, [workshopPreview]);
 
   useEffect(() => {
     let cancelled = false;
@@ -668,7 +621,6 @@ export default function DashboardView({
                 onThemeChange(nextTheme);
               }}
               aria-label={`Switch to ${nextThemeLabel} theme`}
-              title={`Switch to ${nextThemeLabel} theme`}
               aria-pressed={isDarkTheme}
             >
               <span className="theme-toggle-icon" aria-hidden="true">
@@ -726,7 +678,6 @@ export default function DashboardView({
               Message the studio
             </button>
           </div>
-          <p className="quick-action-note">Pick a lane and we will take it from there.</p>
         </RevealCard>
       </section>
 
@@ -749,7 +700,6 @@ export default function DashboardView({
                       key={reservation.id}
                       className="piece-thumb"
                       aria-label={`Open check-in ${reservation.id}`}
-                      title={`Check-in ${reservation.id}`}
                       data-index={index + 1}
                       onClick={onOpenCheckin}
                     >
@@ -757,7 +707,7 @@ export default function DashboardView({
                     </button>
                   ))}
                 </div>
-                <div className="pieces-next-meta">Your recent check-ins are queued in ware intake.</div>
+                <div className="pieces-next-meta">Recent check-ins are queued.</div>
               </div>
             ) : (
               <div className="empty-block">
@@ -796,7 +746,6 @@ export default function DashboardView({
                       key={piece.id}
                       className="piece-thumb"
                       aria-label={`Open ${title} in My Pieces`}
-                      title={title}
                       data-index={index + 1}
                       onClick={() => onOpenPieces({ batchId: piece.id })}
                     >
@@ -859,7 +808,7 @@ export default function DashboardView({
                 <div className={`list-row kiln-row ${kiln.isOffline ? "kiln-offline" : ""}`} key={kiln.id}>
                   <div className="kiln-left">
                     <div className="list-title">{kiln.name}</div>
-                    <div className="kiln-time" title={`Firing type: ${kiln.firingTypeLabel}`}>
+                    <div className="kiln-time">
                       {kiln.timeLabel}
                     </div>
                     <div className="list-meta">{kiln.statusLabel}</div>
@@ -888,36 +837,22 @@ export default function DashboardView({
 
         <RevealCard className="card card-3d" index={5} enabled={motionEnabled}>
           <div className="card-title">Upcoming workshops</div>
-          <div className="card-subtitle">{workshopSubtitle}</div>
-          {workshopsError ? (
-            <div className="notice" role="status" aria-live="polite">
-              {workshopsError}
-            </div>
-          ) : null}
           {workshopsLoading ? (
             <div className="empty-state" role="status" aria-live="polite">
-              Loading workshops...
+              Loading...
             </div>
           ) : workshopPreview.length === 0 ? (
             <div className="empty-block">
-              <div className="empty-state">No upcoming workshops are available right now.</div>
-              <div className="empty-meta">Open workshops to see the next studio drop.</div>
+              <div className="empty-state">No upcoming workshops.</div>
             </div>
           ) : (
             <div className="list">
               {workshopPreview.map((item) => {
-                const signal = workshopSignalLabel(item);
                 return (
                   <div className="list-row workshop-row" key={item.id}>
                     <div>
                       <div className="list-title">{item.title}</div>
-                      <div className="list-meta">{workshopMetaLabel(item)}</div>
-                      {item.includesFiring || signal ? (
-                        <div className="workshop-tags">
-                          {item.includesFiring ? <span className="pill pill-muted">Firing included</span> : null}
-                          {signal ? <span className="pill pill-muted">{signal}</span> : null}
-                        </div>
-                      ) : null}
+                      <div className="list-meta">{formatDateTime(item.startAt)}</div>
                     </div>
                     <div className="workshop-right">
                       <div className="pill">{workshopAvailabilityLabel(item)}</div>
@@ -937,7 +872,7 @@ export default function DashboardView({
           <div className="messages-preview">
             {messagePreview.length === 0 ? (
               <div className="empty-block">
-                <div className="empty-state">Questions about your work? We're here.</div>
+                <div className="empty-state">Questions? We're here.</div>
                 <button className="btn btn-ghost btn-small" onClick={onOpenMessages}>
                   Ask the studio
                 </button>
@@ -958,20 +893,6 @@ export default function DashboardView({
           </div>
           <button className="btn btn-ghost" onClick={onOpenMessages}>
             Open messages inbox
-          </button>
-        </RevealCard>
-
-        <RevealCard className="card card-3d span-2 archived-summary" index={7} enabled={motionEnabled}>
-          <div>
-            <div className="card-title">Archived pieces</div>
-            <div className="archived-count">
-              {archivedCount === 0
-                ? "No archived pieces yet."
-                : `${archivedCount} piece${archivedCount === 1 ? "" : "s"} archived.`}
-            </div>
-          </div>
-          <button className="btn btn-ghost" onClick={() => onOpenPieces()}>
-            View archived pieces
           </button>
         </RevealCard>
       </section>

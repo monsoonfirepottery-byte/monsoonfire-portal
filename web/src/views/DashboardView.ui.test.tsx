@@ -349,8 +349,6 @@ describe("DashboardView kiln reload", () => {
 
     expect(await screen.findByText("Kiln Club")).toBeDefined();
     expect(screen.getByText("2 spots left")).toBeDefined();
-    expect(screen.getByText("Firing included")).toBeDefined();
-    expect(screen.getByText("3 community signals")).toBeDefined();
     expect(screen.getAllByText("Glaze inspiration")).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: /Open workshops/i }));

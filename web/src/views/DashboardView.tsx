@@ -209,7 +209,7 @@ function useDashboardWorkshopPreview(user: User) {
           .slice(0, DASHBOARD_WORKSHOP_PREVIEW);
 
         setWorkshops(nextWorkshops);
-      } catch (err) {
+      } catch (_err) {
         if (cancelled || abortController.signal.aborted) return;
         setWorkshops([]);
         setError("Workshop preview unavailable right now.");

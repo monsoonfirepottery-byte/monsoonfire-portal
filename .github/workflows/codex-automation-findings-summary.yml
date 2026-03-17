@@ -11,16 +11,9 @@ on:
   workflow_run:
     workflows:
       - Codex Self Improvement
-      - Codex Interaction Interrogation
       - Codex PR Green Daily
-      - Codex Backlog Autopilot
     types:
       - completed
-  schedule:
-    # 07:45 America/Phoenix (MST year-round) = 14:45 UTC
-    - cron: "45 14 * * *"
-    # 16:45 America/Phoenix (MST year-round) = 23:45 UTC
-    - cron: "45 23 * * *"
 
 permissions:
   contents: read

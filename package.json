@@ -412,6 +412,9 @@
     "playwright": "^1.58.2"
   },
   "overrides": {
-    "qs": "^6.14.2"
+    "qs": "^6.14.2",
+    "tar": "^7.5.11",
+    "http-proxy-agent": "^7.0.2",
+    "https-proxy-agent": "^7.0.6"
   }
 }

@@ -14,8 +14,8 @@ const budgets = [
   { prefix: "StudioReservationsView-", maxBytes: 40_000 },
   // Ware check-in remains its own lazy route after the reservation flow split.
   { prefix: "WareCheckInView-", maxBytes: 100_000 },
-  // Staff stays lazy-loaded, but it now carries a broader operator workspace surface.
-  { prefix: "StaffView-", maxBytes: 360_000 },
+  // Staff stays lazy-loaded, but the lending workspace adds catalog and intake flows to this route.
+  { prefix: "StaffView-", maxBytes: 430_000 },
   // Current app shell carries route wiring and shared runtime used across most views.
   { prefix: "index-", maxBytes: 110_000 },
 ];
@@ -32,10 +32,9 @@ const requiredRouteChunks = [
   "ProfileView-",
   "StaffView-",
 ];
-// Total budgets re-baselined for the community blogs v1 surface and full-screen studio composer.
-// Keep the headroom tight so future regressions still trip quickly.
-const MAX_TOTAL_JS_BYTES = 1_640_000;
-const MAX_TOTAL_CSS_BYTES = 265_000;
+// Total budgets re-baselined for the lending workspace rollout while keeping future regressions visible.
+const MAX_TOTAL_JS_BYTES = 1_725_000;
+const MAX_TOTAL_CSS_BYTES = 270_000;
 
 const files = readdirSync(assetsDir).filter((name) => name.endsWith(".js"));
 const failures = [];

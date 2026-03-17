@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-02-17T05:58:52.185Z",
+  "generatedAt": "2026-03-17T22:09:36.622Z",
   "policies": [
     {
       "slug": "accessibility",
@@ -293,37 +293,38 @@
     {
       "slug": "storage-abandoned-work",
       "title": "Storage limits & abandoned work",
-      "summary": "Storage limits depend on membership tier and available space. Long-abandoned work may move through notice and follow-up steps.",
+      "summary": "Pickup-ready work gets 2.75 weeks of grace, optional prepaid storage at $2 per half-shelf per week, billed storage at $1.50 per half-shelf per day, and studio reclamation after 28 billed days.",
       "status": "active",
       "tags": [
         "storage",
-        "memberships",
+        "pickup",
         "policy"
       ],
-      "effectiveDate": "2026-02-17",
-      "reviewDate": "2026-08-01",
+      "effectiveDate": "2026-03-17",
+      "reviewDate": "2026-09-17",
       "owner": "Studio Operations",
       "sourceUrl": "/policies/storage-abandoned-work/",
       "agent": {
         "canActForSelf": true,
         "canActForOthers": true,
-        "decisionDomain": "Stale-item notification, pickup reminders, and storage hold escalation.",
+        "decisionDomain": "Pickup-ready reminders, prepaid storage quotes, billed storage escalation, and studio reclamation.",
         "defaultActions": [
-          "check piece age and membership tier",
-          "issue/remind pickup and hold-status notification",
-          "route items near retention boundary for review"
+          "confirm the pickup-ready date and current storage timeline",
+          "quote prepaid weekly storage and billed daily storage using half-shelf equivalents",
+          "share the grace-end, billing-end, and reclamation dates before promising exceptions"
         ],
         "requiredSignals": [
-          "last pickup status update",
-          "membership tier and hold duration",
-          "contact method on file"
+          "readyForPickupAt",
+          "estimatedHalfShelves or storageBilling.chargeBasisHalfShelves",
+          "pickupReminderCount and storageNoticeHistory",
+          "contact methods on file"
         ],
         "escalateWhen": [
-          "extended hold beyond policy boundary",
-          "dispute over prior notice",
-          "storage capacity conflict affecting active batches"
+          "artist disputes reclamation, ownership transfer, or notice history",
+          "legal or operations review is requested for abandoned work handling",
+          "staff wants to grant an exception after billed storage has started or reclamation has occurred"
         ],
-        "replyTemplate": "State current hold status, reminder obligations, and next action date before any removal step."
+        "replyTemplate": "Share the pickup-ready date, grace-end date, current storage fees, and reclamation date before quoting next steps."
       }
     },
     {

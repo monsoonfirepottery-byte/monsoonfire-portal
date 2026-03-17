@@ -93,6 +93,22 @@ export type ReservationRecord = {
     reminderCount?: number | null;
     failureCode?: string | null;
   }> | null;
+  storageBilling?: {
+    chargeBasis?: "estimatedHalfShelves" | string | null;
+    chargeBasisHalfShelves?: number | null;
+    prepaidWeeklyRatePerHalfShelf?: number | null;
+    dailyRatePerHalfShelf?: number | null;
+    graceEndsAt?: { toDate?: () => Date } | null;
+    billingStartsAt?: { toDate?: () => Date } | null;
+    billingEndsAt?: { toDate?: () => Date } | null;
+    billedDays?: number | null;
+    accruedCost?: number | null;
+    status?: "grace" | "billing" | "reclaimed" | string | null;
+    reclaimedAt?: { toDate?: () => Date } | null;
+    reclaimedReason?: string | null;
+  } | null;
+  isArchived?: boolean;
+  archivedAt?: { toDate?: () => Date } | null;
   arrivalStatus?: string | null;
   arrivedAt?: { toDate?: () => Date } | null;
   arrivalToken?: string | null;
@@ -156,6 +172,8 @@ export type ReservationRecord = {
     returnDeliveryRequested?: boolean;
     useStudioGlazes?: boolean;
     glazeAccessCost?: number | null;
+    selfLoadedKilnRequested?: boolean;
+    selfLoadedKilnCost?: number | null;
     waxResistAssistRequested?: boolean;
     glazeSanityCheckRequested?: boolean;
     fragileHandlingRequested?: boolean;
@@ -173,6 +191,98 @@ export type ReservationRecord = {
   createdAt?: { toDate?: () => Date } | null;
   updatedAt?: { toDate?: () => Date } | null;
 };
+
+function normalizeFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function normalizeBoolean(value: unknown): boolean {
+  return value === true;
+}
+
+function normalizeReservationStorageBilling(
+  raw: ReservationRecord["storageBilling"] | Record<string, unknown> | null | undefined
+): ReservationRecord["storageBilling"] {
+  if (!raw || typeof raw !== "object") return null;
+  const statusRaw =
+    typeof raw.status === "string" && raw.status.trim().length > 0
+      ? raw.status.trim().toLowerCase()
+      : null;
+  const status =
+    statusRaw === "grace" || statusRaw === "billing" || statusRaw === "reclaimed"
+      ? statusRaw
+      : null;
+
+  return {
+    chargeBasis:
+      typeof raw.chargeBasis === "string" && raw.chargeBasis.trim().length > 0
+        ? raw.chargeBasis.trim()
+        : null,
+    chargeBasisHalfShelves: normalizeFiniteNumber(raw.chargeBasisHalfShelves),
+    prepaidWeeklyRatePerHalfShelf: normalizeFiniteNumber(raw.prepaidWeeklyRatePerHalfShelf),
+    dailyRatePerHalfShelf: normalizeFiniteNumber(raw.dailyRatePerHalfShelf),
+    graceEndsAt: raw.graceEndsAt ?? null,
+    billingStartsAt: raw.billingStartsAt ?? null,
+    billingEndsAt: raw.billingEndsAt ?? null,
+    billedDays:
+      typeof raw.billedDays === "number" && Number.isFinite(raw.billedDays)
+        ? Math.max(0, Math.round(raw.billedDays))
+        : null,
+    accruedCost: normalizeFiniteNumber(raw.accruedCost),
+    status,
+    reclaimedAt: raw.reclaimedAt ?? null,
+    reclaimedReason:
+      typeof raw.reclaimedReason === "string" && raw.reclaimedReason.trim().length > 0
+        ? raw.reclaimedReason.trim()
+        : null,
+  };
+}
+
+function normalizeReservationAddOns(
+  raw: ReservationRecord["addOns"] | Record<string, unknown> | null | undefined
+): ReservationRecord["addOns"] {
+  if (!raw || typeof raw !== "object") return null;
+  const selfLoadedKilnRequested =
+    normalizeBoolean(raw.selfLoadedKilnRequested) || normalizeBoolean(raw.fragileHandlingRequested);
+  const selfLoadedKilnCost =
+    normalizeFiniteNumber(raw.selfLoadedKilnCost) ?? normalizeFiniteNumber(raw.fragileHandlingCost);
+
+  return {
+    rushRequested: normalizeBoolean(raw.rushRequested),
+    wholeKilnRequested: normalizeBoolean(raw.wholeKilnRequested),
+    communityShelfFillInAllowed: normalizeBoolean(raw.communityShelfFillInAllowed),
+    pickupDeliveryRequested: normalizeBoolean(raw.pickupDeliveryRequested),
+    returnDeliveryRequested: normalizeBoolean(raw.returnDeliveryRequested),
+    useStudioGlazes: normalizeBoolean(raw.useStudioGlazes),
+    glazeAccessCost: normalizeFiniteNumber(raw.glazeAccessCost),
+    selfLoadedKilnRequested,
+    selfLoadedKilnCost,
+    waxResistAssistRequested: normalizeBoolean(raw.waxResistAssistRequested),
+    glazeSanityCheckRequested: normalizeBoolean(raw.glazeSanityCheckRequested),
+    placementPreferenceRequested: normalizeBoolean(raw.placementPreferenceRequested),
+    placementPreferenceZone:
+      raw.placementPreferenceZone === "top" ||
+      raw.placementPreferenceZone === "middle" ||
+      raw.placementPreferenceZone === "bottom"
+        ? raw.placementPreferenceZone
+        : null,
+    placementPreferenceCost: normalizeFiniteNumber(raw.placementPreferenceCost),
+    prepaidStorageRequested: normalizeBoolean(raw.prepaidStorageRequested),
+    prepaidStorageWeeks:
+      typeof raw.prepaidStorageWeeks === "number" && Number.isFinite(raw.prepaidStorageWeeks)
+        ? Math.max(1, Math.round(raw.prepaidStorageWeeks))
+        : null,
+    prepaidStorageCost: normalizeFiniteNumber(raw.prepaidStorageCost),
+    deliveryAddress:
+      typeof raw.deliveryAddress === "string" && raw.deliveryAddress.trim().length > 0
+        ? raw.deliveryAddress.trim()
+        : null,
+    deliveryInstructions:
+      typeof raw.deliveryInstructions === "string" && raw.deliveryInstructions.trim().length > 0
+        ? raw.deliveryInstructions.trim()
+        : null,
+  };
+}
 
 export function normalizeReservationRecord(
   id: string,
@@ -440,6 +550,9 @@ export function normalizeReservationRecord(
           return acc;
         }, [])
       : null,
+    storageBilling: normalizeReservationStorageBilling(raw.storageBilling),
+    isArchived: raw.isArchived === true,
+    archivedAt: raw.archivedAt ?? null,
     arrivalStatus: typeof raw.arrivalStatus === "string" ? raw.arrivalStatus : null,
     arrivedAt: raw.arrivedAt ?? null,
     arrivalToken: typeof raw.arrivalToken === "string" ? raw.arrivalToken : null,
@@ -492,7 +605,7 @@ export function normalizeReservationRecord(
     staffNotes: raw.staffNotes ?? null,
     stageStatus: raw.stageStatus ?? null,
     stageHistory: Array.isArray(raw.stageHistory) ? raw.stageHistory : null,
-    addOns: raw.addOns ?? null,
+    addOns: normalizeReservationAddOns(raw.addOns),
     createdByRole: raw.createdByRole ?? null,
     createdAt: raw.createdAt ?? null,
     updatedAt: raw.updatedAt ?? null,

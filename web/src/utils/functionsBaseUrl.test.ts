@@ -8,10 +8,15 @@ import {
 
 describe("functions URL resolution", () => {
   it("defaults to production function host when no override is configured", () => {
-    expect(resolveFunctionsBaseUrlWithContext({ browserHostname: "localhost" })).toBe(
+    expect(resolveFunctionsBaseUrlWithContext({ configuredBaseUrl: "", browserHostname: "localhost" })).toBe(
       "https://us-central1-monsoonfire-portal.cloudfunctions.net"
     );
-    expect(resolveFunctionsBaseUrlWithContext({ browserHostname: "monsoonfire-portal.web.app" })).toBe(
+    expect(
+      resolveFunctionsBaseUrlWithContext({
+        configuredBaseUrl: "",
+        browserHostname: "monsoonfire-portal.web.app",
+      })
+    ).toBe(
       "https://us-central1-monsoonfire-portal.cloudfunctions.net"
     );
   });
@@ -43,13 +48,16 @@ describe("functions URL resolution", () => {
 
 describe("resolveFunctionsBaseUrlResolution", () => {
   it("returns default enabled resolution for production and localhost browser contexts", () => {
-    const production = resolveFunctionsBaseUrlResolution({ browserHostname: "monsoonfire-portal.web.app" });
+    const production = resolveFunctionsBaseUrlResolution({
+      configuredBaseUrl: "",
+      browserHostname: "monsoonfire-portal.web.app",
+    });
     expect(production.configured).toBe(false);
     expect(production.enabled).toBe(true);
     expect(production.baseUrl).toBe("https://us-central1-monsoonfire-portal.cloudfunctions.net");
     expect(production.reason).toBe("");
 
-    const local = resolveFunctionsBaseUrlResolution({ browserHostname: "localhost" });
+    const local = resolveFunctionsBaseUrlResolution({ configuredBaseUrl: "", browserHostname: "localhost" });
     expect(local.configured).toBe(false);
     expect(local.enabled).toBe(true);
     expect(local.baseUrl).toBe("https://us-central1-monsoonfire-portal.cloudfunctions.net");

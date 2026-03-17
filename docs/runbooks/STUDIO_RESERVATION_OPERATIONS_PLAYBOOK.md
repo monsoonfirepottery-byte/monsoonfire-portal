@@ -79,12 +79,52 @@ When delayed:
 When ready for pickup:
 1. Ready status and next steps.
 2. Pickup timing guidance.
-3. Storage-window reminder if applicable.
+3. Reminder that the grace period lasts 2.75 weeks from the pickup-ready notice.
 
 Storage escalation:
-1. Mention hold status and notice history.
-2. Share latest action date.
-3. Provide recovery/collection path.
+1. Mention the exact pickup-ready date and the current storage status (`active`, `reminder_pending`, `hold_pending`, or reclaimed).
+2. Share the grace-end date, current billed-storage amount if any, and the reclamation date.
+3. Explain that prepaid storage is cheaper than post-grace daily storage.
+4. Provide the next collection path or escalation path.
+
+## Storage and reclamation workflow
+1. `readyForPickupAt` starts the clock when a reservation becomes pickup-ready.
+2. Grace period:
+   - lasts `19.25 days` (`462 hours`),
+   - reminders go out at day `14`, day `17.5`, and day `19.25`.
+3. Prepaid extra pickup time:
+   - can be sold before billed storage begins,
+   - price is `$2 per half-shelf per week`,
+   - use the reservation's estimated half-shelf count as the charge basis.
+4. Billed storage:
+   - begins automatically at the end of grace,
+   - costs `$1.50 per half-shelf per day`,
+   - accrues only after each fully elapsed 24-hour period,
+   - caps at `28 billed days`.
+5. Pickup-window misses:
+   - record the miss,
+   - do not reset the grace or billing clock,
+   - do not fast-track reclamation on their own.
+6. Reclamation:
+   - happens automatically after the 28 billed days are exhausted,
+   - writes `storageStatus = stored_by_policy`,
+   - writes `storageBilling.status = reclaimed`,
+   - sets `isArchived = true`,
+   - is shown in staff/client UI as `Reclaimed by studio`.
+7. Reclaimed work:
+   - is removed from active storage workflows,
+   - transfers ownership to the studio,
+   - may be destroyed, sold, repurposed, copied, displayed, or otherwise used per policy.
+
+## Staff handling guidance for storage cases
+1. Do not promise exceptions after billed storage has begun without operations approval.
+2. Quote storage using the reservation's half-shelf estimate, not ad hoc shelf guesses.
+3. If a member disputes notice history or reclamation timing, review:
+   - `readyForPickupAt`
+   - `pickupReminderCount`
+   - `storageNoticeHistory`
+   - `storageBilling`
+4. If a reservation already shows reclaimed/archive markers, route the case to operations instead of re-opening it manually.
 
 ## Continuity export and restore
 1. Use `apiV1/v1/reservations.exportContinuity` for owner-scoped continuity bundles.
@@ -117,7 +157,7 @@ Run this path in release validation:
 2. Staff confirm (`CONFIRMED`).
 3. Delay/deferral (`WAITLISTED`) with reason note.
 4. Ready-for-pickup reminder path (`loaded` + customer update).
-5. Storage escalation policy handoff path.
+5. Storage escalation path through grace, billed storage, and reclamation/archive.
 
 Station-level scenario (required in QA evidence):
 1. Fill a station to near-capacity.

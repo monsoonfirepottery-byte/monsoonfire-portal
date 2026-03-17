@@ -902,6 +902,20 @@ const libraryRatingUpsertSchema = z.object({
   stars: z.number().int().min(1).max(5),
 });
 
+const supportRequestCreateSchema = z.object({
+  subject: z.string().min(1).max(200).trim(),
+  body: z.string().min(1).max(4_000).trim(),
+  category: z.string().min(1).max(80).trim(),
+  eventId: z.string().min(1).max(200).trim().optional().nullable(),
+  sourceEventTitle: z.string().min(1).max(200).trim().optional().nullable(),
+  eventTitle: z.string().min(1).max(200).trim().optional().nullable(),
+  source: z.string().min(1).max(120).trim().optional().nullable(),
+  level: z.string().min(1).max(80).trim().optional().nullable(),
+  schedule: z.string().min(1).max(80).trim().optional().nullable(),
+  buddyMode: z.string().min(1).max(80).trim().optional().nullable(),
+  techniqueIds: z.array(z.string().min(1).max(80).trim()).max(20).optional(),
+});
+
 const libraryReviewCreateSchema = z
   .object({
     itemId: z.string().min(1).max(200).trim(),
@@ -1101,6 +1115,8 @@ const reservationCreateSchema = z.object({
       returnDeliveryRequested: z.boolean().optional().nullable(),
       useStudioGlazes: z.boolean().optional().nullable(),
       glazeAccessCost: z.number().optional().nullable(),
+      selfLoadedKilnRequested: z.boolean().optional().nullable(),
+      selfLoadedKilnCost: z.number().optional().nullable(),
       waxResistAssistRequested: z.boolean().optional().nullable(),
       glazeSanityCheckRequested: z.boolean().optional().nullable(),
       fragileHandlingRequested: z.boolean().optional().nullable(),
@@ -1303,6 +1319,7 @@ type ReservationStatus = "REQUESTED" | "CONFIRMED" | "WAITLISTED" | "CANCELLED" 
 type ReservationLoadStatus = "queued" | "loading" | "loaded" | null;
 type ReservationPieceStatus = "awaiting_placement" | "loaded" | "fired" | "ready" | "picked_up";
 type ReservationStorageStatus = "active" | "reminder_pending" | "hold_pending" | "stored_by_policy";
+type ReservationStorageBillingStatus = "grace" | "billing" | "reclaimed";
 type ReservationPickupWindowStatus = "open" | "confirmed" | "missed" | "expired" | "completed";
 
 type ReservationPieceEntry = {
@@ -1335,6 +1352,21 @@ type ReservationStorageNoticeEntry = {
   reminderOrdinal: number | null;
   reminderCount: number | null;
   failureCode: string | null;
+};
+
+type ReservationStorageBillingEntry = {
+  chargeBasis: "estimatedHalfShelves" | string | null;
+  chargeBasisHalfShelves: number;
+  prepaidWeeklyRatePerHalfShelf: number;
+  dailyRatePerHalfShelf: number;
+  graceEndsAt: Date | null;
+  billingStartsAt: Date | null;
+  billingEndsAt: Date | null;
+  billedDays: number;
+  accruedCost: number;
+  status: ReservationStorageBillingStatus | null;
+  reclaimedAt: Date | null;
+  reclaimedReason: string | null;
 };
 
 type ReservationPickupWindowEntry = {
@@ -1379,6 +1411,8 @@ const RESERVATION_QUEUE_FAIRNESS_POLICY_VERSION = "2026-02-24.v1";
 const RESERVATION_QUEUE_FAIRNESS_NO_SHOW_PENALTY = 2;
 const RESERVATION_QUEUE_FAIRNESS_LATE_PENALTY = 1;
 const RESERVATION_CONTINUITY_EXPORT_SCHEMA_VERSION = "2026-02-24.v1";
+const RESERVATION_STORAGE_PREPAID_WEEKLY_RATE_PER_HALF_SHELF = 2;
+const RESERVATION_STORAGE_DAILY_RATE_PER_HALF_SHELF = 1.5;
 
 const RESERVATION_STORAGE_STATUS_VALUES: ReadonlySet<ReservationStorageStatus> = new Set([
   "active",
@@ -1666,6 +1700,143 @@ function normalizeReservationStorageNoticeHistory(raw: unknown): ReservationStor
     });
   }
   return out.slice(-80);
+}
+
+function roundCurrency(value: number): number {
+  return Number(value.toFixed(2));
+}
+
+function normalizeReservationStorageBillingStatus(
+  value: unknown
+): ReservationStorageBillingStatus | null {
+  const normalized = safeString(value).trim().toLowerCase();
+  if (normalized === "grace" || normalized === "billing" || normalized === "reclaimed") {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizeReservationStorageBilling(
+  value: unknown
+): ReservationStorageBillingEntry | null {
+  const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+  if (!raw) return null;
+
+  const chargeBasisHalfShelvesRaw = normalizeNumber(raw.chargeBasisHalfShelves);
+  const prepaidWeeklyRateRaw = normalizeNumber(raw.prepaidWeeklyRatePerHalfShelf);
+  const dailyRateRaw = normalizeNumber(raw.dailyRatePerHalfShelf);
+  const billedDaysRaw = normalizeNumber(raw.billedDays);
+  const accruedCostRaw = normalizeNumber(raw.accruedCost);
+
+  return {
+    chargeBasis: trimOrNull(raw.chargeBasis),
+    chargeBasisHalfShelves:
+      typeof chargeBasisHalfShelvesRaw === "number" && chargeBasisHalfShelvesRaw > 0
+        ? chargeBasisHalfShelvesRaw
+        : 0,
+    prepaidWeeklyRatePerHalfShelf:
+      typeof prepaidWeeklyRateRaw === "number" && prepaidWeeklyRateRaw >= 0
+        ? prepaidWeeklyRateRaw
+        : RESERVATION_STORAGE_PREPAID_WEEKLY_RATE_PER_HALF_SHELF,
+    dailyRatePerHalfShelf:
+      typeof dailyRateRaw === "number" && dailyRateRaw >= 0
+        ? dailyRateRaw
+        : RESERVATION_STORAGE_DAILY_RATE_PER_HALF_SHELF,
+    graceEndsAt: parseReservationIsoDate(raw.graceEndsAt),
+    billingStartsAt: parseReservationIsoDate(raw.billingStartsAt),
+    billingEndsAt: parseReservationIsoDate(raw.billingEndsAt),
+    billedDays:
+      typeof billedDaysRaw === "number" && billedDaysRaw >= 0
+        ? Math.max(0, Math.round(billedDaysRaw))
+        : 0,
+    accruedCost:
+      typeof accruedCostRaw === "number" && accruedCostRaw >= 0
+        ? roundCurrency(accruedCostRaw)
+        : 0,
+    status: normalizeReservationStorageBillingStatus(raw.status),
+    reclaimedAt: parseReservationIsoDate(raw.reclaimedAt),
+    reclaimedReason: trimOrNull(raw.reclaimedReason),
+  };
+}
+
+function toReservationStorageBillingWrite(
+  entry: ReservationStorageBillingEntry | null
+): Record<string, unknown> | null {
+  if (!entry) return null;
+  return {
+    chargeBasis: entry.chargeBasis ?? "estimatedHalfShelves",
+    chargeBasisHalfShelves: Math.max(0, entry.chargeBasisHalfShelves),
+    prepaidWeeklyRatePerHalfShelf: roundCurrency(
+      Math.max(0, entry.prepaidWeeklyRatePerHalfShelf)
+    ),
+    dailyRatePerHalfShelf: roundCurrency(Math.max(0, entry.dailyRatePerHalfShelf)),
+    graceEndsAt: entry.graceEndsAt ? Timestamp.fromDate(entry.graceEndsAt) : null,
+    billingStartsAt: entry.billingStartsAt ? Timestamp.fromDate(entry.billingStartsAt) : null,
+    billingEndsAt: entry.billingEndsAt ? Timestamp.fromDate(entry.billingEndsAt) : null,
+    billedDays: Math.max(0, Math.round(entry.billedDays)),
+    accruedCost: roundCurrency(Math.max(0, entry.accruedCost)),
+    status: entry.status ?? "grace",
+    reclaimedAt: entry.reclaimedAt ? Timestamp.fromDate(entry.reclaimedAt) : null,
+    reclaimedReason: entry.reclaimedReason ?? null,
+  };
+}
+
+function seedReservationStorageBilling(
+  chargeBasisHalfShelves: number | null | undefined
+): ReservationStorageBillingEntry {
+  return {
+    chargeBasis: "estimatedHalfShelves",
+    chargeBasisHalfShelves:
+      typeof chargeBasisHalfShelves === "number" && Number.isFinite(chargeBasisHalfShelves)
+        ? Math.max(0, chargeBasisHalfShelves)
+        : 0,
+    prepaidWeeklyRatePerHalfShelf: RESERVATION_STORAGE_PREPAID_WEEKLY_RATE_PER_HALF_SHELF,
+    dailyRatePerHalfShelf: RESERVATION_STORAGE_DAILY_RATE_PER_HALF_SHELF,
+    graceEndsAt: null,
+    billingStartsAt: null,
+    billingEndsAt: null,
+    billedDays: 0,
+    accruedCost: 0,
+    status: "grace",
+    reclaimedAt: null,
+    reclaimedReason: null,
+  };
+}
+
+function normalizeReservationAddOnsForRow(value: unknown): Record<string, unknown> | null {
+  const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+  if (!raw) return null;
+
+  const selfLoadedKilnRequested = raw.selfLoadedKilnRequested === true || raw.fragileHandlingRequested === true;
+  const selfLoadedKilnCost =
+    normalizeNumber(raw.selfLoadedKilnCost) ?? normalizeNumber(raw.fragileHandlingCost);
+
+  return {
+    rushRequested: raw.rushRequested === true,
+    wholeKilnRequested: raw.wholeKilnRequested === true,
+    communityShelfFillInAllowed: raw.communityShelfFillInAllowed === true,
+    pickupDeliveryRequested: raw.pickupDeliveryRequested === true,
+    returnDeliveryRequested: raw.returnDeliveryRequested === true,
+    useStudioGlazes: raw.useStudioGlazes === true,
+    glazeAccessCost: normalizeNumber(raw.glazeAccessCost),
+    selfLoadedKilnRequested,
+    selfLoadedKilnCost,
+    waxResistAssistRequested: raw.waxResistAssistRequested === true,
+    glazeSanityCheckRequested: raw.glazeSanityCheckRequested === true,
+    placementPreferenceRequested: raw.placementPreferenceRequested === true,
+    placementPreferenceZone:
+      raw.placementPreferenceZone === "top" ||
+      raw.placementPreferenceZone === "middle" ||
+      raw.placementPreferenceZone === "bottom"
+        ? raw.placementPreferenceZone
+        : null,
+    placementPreferenceCost: normalizeNumber(raw.placementPreferenceCost),
+    prepaidStorageRequested: raw.prepaidStorageRequested === true,
+    prepaidStorageWeeks: normalizeNumber(raw.prepaidStorageWeeks),
+    prepaidStorageCost: normalizeNumber(raw.prepaidStorageCost),
+    deliveryAddress: trimOrNull(raw.deliveryAddress),
+    deliveryInstructions: trimOrNull(raw.deliveryInstructions),
+  };
 }
 
 function normalizeReservationWindow(value: unknown): { earliestDate: Date | null; latestDate: Date | null } {
@@ -1994,6 +2165,7 @@ function toReservationRow(id: string, row: Record<string, unknown>) {
       ? (row.queueFairnessPolicy as Record<string, unknown>)
       : {};
   const pieces = normalizeReservationPiecesInput(row.pieces, id);
+  const storageBilling = normalizeReservationStorageBilling(row.storageBilling);
 
   return {
     id,
@@ -2024,7 +2196,7 @@ function toReservationRow(id: string, row: Record<string, unknown>) {
     notes: row.notes ? (row.notes as Record<string, unknown>) : null,
     pieces,
     notesHistory: Array.isArray(row.notesHistory) ? row.notesHistory : null,
-    addOns: row.addOns ? (row.addOns as Record<string, unknown>) : null,
+    addOns: normalizeReservationAddOnsForRow(row.addOns),
     loadStatus,
     queuePositionHint: normalizeNumber(row.queuePositionHint),
     queueFairness: {
@@ -2096,6 +2268,24 @@ function toReservationRow(id: string, row: Record<string, unknown>) {
     pickupReminderFailureCount: normalizeNumber(row.pickupReminderFailureCount),
     lastReminderFailureAt: parseReservationIsoDate(row.lastReminderFailureAt),
     storageNoticeHistory,
+    storageBilling: storageBilling
+      ? {
+          chargeBasis: storageBilling.chargeBasis ?? null,
+          chargeBasisHalfShelves: storageBilling.chargeBasisHalfShelves,
+          prepaidWeeklyRatePerHalfShelf: storageBilling.prepaidWeeklyRatePerHalfShelf,
+          dailyRatePerHalfShelf: storageBilling.dailyRatePerHalfShelf,
+          graceEndsAt: storageBilling.graceEndsAt,
+          billingStartsAt: storageBilling.billingStartsAt,
+          billingEndsAt: storageBilling.billingEndsAt,
+          billedDays: storageBilling.billedDays,
+          accruedCost: storageBilling.accruedCost,
+          status: storageBilling.status ?? null,
+          reclaimedAt: storageBilling.reclaimedAt,
+          reclaimedReason: storageBilling.reclaimedReason,
+        }
+      : null,
+    isArchived: row.isArchived === true,
+    archivedAt: parseReservationIsoDate(row.archivedAt),
     arrivalStatus: safeString(row.arrivalStatus) || null,
     arrivedAt: parseReservationIsoDate(row.arrivedAt),
     arrivalToken: safeString(row.arrivalToken) || null,
@@ -2306,6 +2496,7 @@ const ROUTE_SCOPE_HINTS: Record<string, string | null> = {
   "/v1/library.recommendations.feedback.submit": null,
   "/v1/library.recommendations.moderate": null,
   "/v1/library.recommendations.feedback.moderate": null,
+  "/v1/support.requests.create": null,
   "/v1/library.ratings.upsert": null,
   "/v1/library.reviews.create": null,
   "/v1/library.reviews.update": null,
@@ -2398,6 +2589,7 @@ const ALLOWED_API_V1_ROUTES = new Set<string>([
   "/v1/library.recommendations.feedback.submit",
   "/v1/library.recommendations.moderate",
   "/v1/library.recommendations.feedback.moderate",
+  "/v1/support.requests.create",
   "/v1/library.ratings.upsert",
   "/v1/library.reviews.create",
   "/v1/library.reviews.update",
@@ -5174,9 +5366,10 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
 
       const addOnsInput = body.addOns ?? {};
       const isCommunityShelf = intakeMode === "COMMUNITY_SHELF";
-      const fragileHandlingRatePerHalfShelf = 4;
+      const studioGlazeAccessRatePerHalfShelf = 5;
+      const selfLoadedKilnFlatCost = 15;
       const placementPreferenceFlatCost = 3;
-      const prepaidStorageWeeklyCost = 2;
+      const prepaidStorageWeeklyCostPerHalfShelf = RESERVATION_STORAGE_PREPAID_WEEKLY_RATE_PER_HALF_SHELF;
       const placementPreferenceZoneInput = addOnsInput.placementPreferenceZone;
       const placementPreferenceZone =
         placementPreferenceZoneInput === "top" ||
@@ -5184,6 +5377,9 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         placementPreferenceZoneInput === "bottom"
           ? placementPreferenceZoneInput
           : "middle";
+      const selfLoadedKilnRequested =
+        !isCommunityShelf &&
+        (addOnsInput.selfLoadedKilnRequested === true || addOnsInput.fragileHandlingRequested === true);
       const prepaidStorageWeeksInput = normalizeNumber(addOnsInput.prepaidStorageWeeks, 1);
       const prepaidStorageWeeks =
         prepaidStorageWeeksInput != null ? clampNumber(Math.round(prepaidStorageWeeksInput), 1, 12) : 1;
@@ -5199,18 +5395,12 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           resolvedEstimatedHalfShelves &&
           resolvedEstimatedHalfShelves > 0 &&
           addOnsInput.useStudioGlazes === true
-          ? resolvedEstimatedHalfShelves * 3
+          ? resolvedEstimatedHalfShelves * studioGlazeAccessRatePerHalfShelf
           : null,
         waxResistAssistRequested: !isCommunityShelf && addOnsInput.waxResistAssistRequested === true,
         glazeSanityCheckRequested: !isCommunityShelf && addOnsInput.glazeSanityCheckRequested === true,
-        fragileHandlingRequested: !isCommunityShelf && addOnsInput.fragileHandlingRequested === true,
-        fragileHandlingCost:
-          !isCommunityShelf &&
-          addOnsInput.fragileHandlingRequested === true &&
-          resolvedEstimatedHalfShelves &&
-          resolvedEstimatedHalfShelves > 0
-            ? resolvedEstimatedHalfShelves * fragileHandlingRatePerHalfShelf
-            : null,
+        selfLoadedKilnRequested,
+        selfLoadedKilnCost: selfLoadedKilnRequested ? selfLoadedKilnFlatCost : null,
         placementPreferenceRequested: !isCommunityShelf && addOnsInput.placementPreferenceRequested === true,
         placementPreferenceZone:
           !isCommunityShelf && addOnsInput.placementPreferenceRequested === true
@@ -5226,12 +5416,17 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
             ? prepaidStorageWeeks
             : null,
         prepaidStorageCost:
-          !isCommunityShelf && addOnsInput.prepaidStorageRequested === true
-            ? prepaidStorageWeeks * prepaidStorageWeeklyCost
+          !isCommunityShelf &&
+          addOnsInput.prepaidStorageRequested === true &&
+          resolvedEstimatedHalfShelves &&
+          resolvedEstimatedHalfShelves > 0
+            ? prepaidStorageWeeks * resolvedEstimatedHalfShelves * prepaidStorageWeeklyCostPerHalfShelf
             : null,
         deliveryAddress: trimOrNull(addOnsInput.deliveryAddress),
         deliveryInstructions: trimOrNull(addOnsInput.deliveryInstructions),
       };
+
+      const storageBillingSeed = seedReservationStorageBilling(resolvedEstimatedHalfShelves);
 
       if (
         (addOns.pickupDeliveryRequested || addOns.returnDeliveryRequested) &&
@@ -5351,6 +5546,9 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         pickupReminderFailureCount: 0,
         lastReminderFailureAt: null,
         storageNoticeHistory: [],
+        storageBilling: toReservationStorageBillingWrite(storageBillingSeed),
+        isArchived: false,
+        archivedAt: null,
         createdByUid: ctx.uid,
         createdByRole: isStaff ? "staff" : ctx.mode === "firebase" ? "client" : "dev",
         createdAt: now,
@@ -6697,24 +6895,11 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
             pickupWindow.lastMissedAt = nowDate;
             pickupWindow.confirmedAt = null;
             transitionReason = "pickup_window_missed";
-
-            if (pickupWindow.missedCount >= 2) {
-              storageStatus = "stored_by_policy";
-              updates.storageStatus = storageStatus;
-              storageNotice(
-                "stored_by_policy",
-                "Reservation exceeded pickup-window misses and moved to stored-by-policy.",
-                storageStatus
-              );
-            } else {
-              storageStatus = "hold_pending";
-              updates.storageStatus = storageStatus;
-              storageNotice(
-                "pickup_window_missed",
-                "Pickup window was missed. Reservation moved to hold-pending for follow-up.",
-                storageStatus
-              );
-            }
+            storageNotice(
+              "pickup_window_missed",
+              "Pickup window was missed. Grace, storage billing, and reclamation timers still follow the pickup-ready date.",
+              storageStatus
+            );
           } else if (action === "staff_mark_completed") {
             pickupWindow.status = "completed";
             pickupWindow.completedAt = nowDate;
@@ -9891,6 +10076,50 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
           note: moderationNote,
         },
       });
+      return;
+    }
+
+    if (route === "/v1/support.requests.create") {
+      if (ctx.mode !== "firebase") {
+        jsonError(res, requestId, 403, "FORBIDDEN", "Support request routes require a member firebase session.");
+        return;
+      }
+
+      const parsed = parseBody(supportRequestCreateSchema, req.body);
+      if (!parsed.ok) {
+        jsonError(res, requestId, 400, "INVALID_ARGUMENT", parsed.message);
+        return;
+      }
+
+      const decoded = ctx.decoded as Record<string, unknown>;
+      const displayName = trimOrNull(safeString(decoded.name, null));
+      const email = trimOrNull(safeString(decoded.email, null));
+      const supportRequest = {
+        uid: ctx.uid,
+        subject: parsed.data.subject.trim(),
+        body: parsed.data.body.trim(),
+        category: parsed.data.category.trim(),
+        status: "new",
+        urgency: "non-urgent",
+        channel: "portal",
+        createdAt: nowTs(),
+        displayName,
+        email,
+        ...(trimOrNull(parsed.data.eventId) ? { eventId: trimOrNull(parsed.data.eventId) } : {}),
+        ...(trimOrNull(parsed.data.sourceEventTitle)
+          ? { sourceEventTitle: trimOrNull(parsed.data.sourceEventTitle) }
+          : {}),
+        ...(trimOrNull(parsed.data.eventTitle) ? { eventTitle: trimOrNull(parsed.data.eventTitle) } : {}),
+        ...(trimOrNull(parsed.data.source) ? { source: trimOrNull(parsed.data.source) } : {}),
+        ...(trimOrNull(parsed.data.level) ? { level: trimOrNull(parsed.data.level) } : {}),
+        ...(trimOrNull(parsed.data.schedule) ? { schedule: trimOrNull(parsed.data.schedule) } : {}),
+        ...(trimOrNull(parsed.data.buddyMode) ? { buddyMode: trimOrNull(parsed.data.buddyMode) } : {}),
+        ...(Array.isArray(parsed.data.techniqueIds) && parsed.data.techniqueIds.length > 0
+          ? { techniqueIds: parsed.data.techniqueIds.map((entry) => entry.trim()) }
+          : {}),
+      };
+      const supportRef = await db.collection("supportRequests").add(supportRequest);
+      jsonOk(res, requestId, { supportRequestId: supportRef.id });
       return;
     }
 

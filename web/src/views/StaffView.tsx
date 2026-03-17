@@ -20,6 +20,8 @@ import {
 import { connectStorageEmulator, getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
 import { createFunctionsClient, safeJsonStringify, type LastRequest } from "../api/functionsClient";
 import {
+  type LibraryCoverReviewReconcileRequest,
+  type LibraryCoverReviewReconcileResponse,
   type ImportLibraryIsbnsResponse,
   type LibraryExternalLookupResponse,
   type LibraryExternalLookupProviderConfigResponse,
@@ -33,7 +35,17 @@ import {
   type LibraryLoanAssessReplacementFeeResponse,
   type LibraryLoanMarkLostRequest,
   type LibraryLoanMarkLostResponse,
+  type LibraryMetadataEnrichmentRunRequest,
+  type LibraryMetadataEnrichmentRunResponse,
+  type LibraryMetadataEnrichmentSummaryContract,
   type LibraryRecommendationsListResponse,
+  type LibraryStaffDashboardCoverReviewContract,
+  type LibraryStaffDashboardMetadataGapContract,
+  type LibraryStaffDashboardLoanContract,
+  type LibraryStaffDashboardRequest,
+  type LibraryStaffDashboardRequestContract,
+  type LibraryStaffDashboardResponse,
+  type LibraryStaffDashboardTagSubmissionContract,
   type LibraryTagMergeRequest,
   type LibraryTagMergeResponse,
   type LibraryTagSubmissionApproveRequest,
@@ -41,6 +53,8 @@ import {
   V1_LIBRARY_EXTERNAL_LOOKUP_FN,
   V1_LIBRARY_EXTERNAL_LOOKUP_PROVIDER_CONFIG_GET_FN,
   V1_LIBRARY_EXTERNAL_LOOKUP_PROVIDER_CONFIG_SET_FN,
+  V1_LIBRARY_COVER_REVIEWS_RECONCILE_FN,
+  V1_LIBRARY_METADATA_ENRICHMENT_RUN_FN,
   V1_LIBRARY_ITEMS_LIST_FN,
   V1_LIBRARY_ITEMS_OVERRIDE_STATUS_FN,
   V1_LIBRARY_ITEMS_IMPORT_ISBNS_FN,
@@ -49,6 +63,7 @@ import {
   V1_LIBRARY_LOANS_ASSESS_REPLACEMENT_FEE_FN,
   V1_LIBRARY_LOANS_MARK_LOST_FN,
   V1_LIBRARY_RECOMMENDATIONS_LIST_FN,
+  V1_LIBRARY_STAFF_DASHBOARD_FN,
   V1_LIBRARY_TAGS_MERGE_FN,
   V1_LIBRARY_TAG_SUBMISSIONS_APPROVE_FN,
 } from "../api/portalContracts";
@@ -76,6 +91,7 @@ import {
   STAFF_PATH,
   resolveStaffCockpitWorkspaceTabSegment,
   resolveStaffCockpitWorkspaceModule,
+  resolveStaffCockpitOperationsModule,
 } from "../utils/staffWorkspacePaths";
 import { parseStaffRole } from "../auth/staffRole";
 import PolicyModule from "./staff/PolicyModule";
@@ -87,10 +103,14 @@ import CockpitOpsPanel from "./staff/CockpitOpsPanel";
 import CommerceModule from "./staff/CommerceModule";
 import CommunityBlogsModule from "./staff/CommunityBlogsModule";
 import EventsModule from "./staff/EventsModule";
+import LendingIntakeModule, { type LendingScanSubmitResult } from "./staff/LendingIntakeModule";
 import LendingModule from "./staff/LendingModule";
 import OperationsCockpitModule from "./staff/OperationsCockpitModule";
 import StudioReservationsModule from "./staff/StudioReservationsModule";
+import { resolveOperationsOverview } from "./staff/operationsOverview";
+import { resolveShiftStatusSummary } from "./staff/shiftStatus";
 import { buildLendingAdminApiPayload } from "./staff/lendingAdminPayload";
+import { isDisallowedRetailCoverUrl } from "./staff/lendingResearch";
 import { resolveStaffToolbarRefreshPlan } from "./staff/staffRefreshPlan";
 import { useStaffEventSignupAutoLoad } from "./staff/useStaffEventSignupAutoLoad";
 import WareCheckInView from "./WareCheckInView";
@@ -133,7 +153,13 @@ const MODULE_REGISTRY = {
   reports: { label: "Reports", owner: "Trust & Safety", testId: "staff-module-reports", nav: true },
   stripe: { label: "Stripe settings", owner: "Finance Ops", testId: "staff-module-stripe", nav: false },
   commerce: { label: "Store & billing", owner: "Commerce Ops", testId: "staff-module-commerce", nav: false },
-  lending: { label: "Lending", owner: "Library Ops", testId: "staff-module-lending", nav: false },
+  lending: { label: "Lending", owner: "Library Ops", testId: "staff-module-lending", nav: true },
+  "lending-intake": {
+    label: "Lending intake",
+    owner: "Library Ops",
+    testId: "staff-module-lending-intake",
+    nav: false,
+  },
   system: { label: "System", owner: "Platform", testId: "staff-module-system", nav: false },
 } as const;
 
@@ -167,12 +193,22 @@ const COCKPIT_MODULE_TAB_BY_KEY: Partial<Record<ModuleKey, CockpitTabKey>> = {
   firings: "operations",
   events: "operations",
   lending: "operations",
+  "lending-intake": "operations",
   reports: "reports",
   commerce: "finance",
   stripe: "finance",
   system: "platform",
 };
 const COCKPIT_FLOW_MODULE_KEYS = new Set<ModuleKey>(Object.keys(COCKPIT_MODULE_TAB_BY_KEY) as ModuleKey[]);
+const COCKPIT_OPERATION_FOCUS_MODULE_KEYS = new Set<ModuleKey>([
+  "checkins",
+  "members",
+  "pieces",
+  "firings",
+  "events",
+  "lending",
+  "lending-intake",
+]);
 
 const COCKPIT_TAB_PATH_SEGMENT: Record<CockpitTabKey, string> = {
   triage: "triage",
@@ -195,6 +231,8 @@ const COCKPIT_PATH_TAB_BY_SEGMENT: Readonly<Record<string, CockpitTabKey>> = {
   "agent-ops": "policyAgentOps",
   "agent_ops": "policyAgentOps",
   agentops: "policyAgentOps",
+  lendingintake: "operations",
+  lending_intake: "operations",
   triage: "triage",
   automation: "automation",
   platform: "platform",
@@ -223,10 +261,19 @@ const COCKPIT_ACTION_TARGET_TAB_BY_KEY: Record<string, CockpitTabKey> = {
   ...COCKPIT_PATH_TAB_BY_SEGMENT,
   workshop: "operations",
   checkin: "operations",
+  checkins: "operations",
   member: "operations",
+  members: "operations",
   piece: "operations",
+  pieces: "operations",
   firing: "operations",
+  firings: "operations",
   event: "operations",
+  events: "operations",
+  lending: "operations",
+  "lending-intake": "operations",
+  lendingintake: "operations",
+  lending_intake: "operations",
   ops: "operations",
   triage: "triage",
   automation: "automation",
@@ -247,7 +294,29 @@ const COCKPIT_ACTION_TARGET_TAB_BY_KEY: Record<string, CockpitTabKey> = {
   ...COCKPIT_MODULE_TAB_BY_KEY,
 };
 
+const COCKPIT_OPERATION_FOCUS_MODULE_BY_TARGET: Partial<Record<string, ModuleKey>> = {
+  checkin: "checkins",
+  checkins: "checkins",
+  member: "members",
+  members: "members",
+  piece: "pieces",
+  pieces: "pieces",
+  firing: "firings",
+  firings: "firings",
+  event: "events",
+  events: "events",
+  lending: "lending",
+  "lending-intake": "lending-intake",
+  lendingintake: "lending-intake",
+  lending_intake: "lending-intake",
+};
+
 const MODULE_KEY_SET = new Set<ModuleKey>(Object.keys(MODULE_REGISTRY) as ModuleKey[]);
+const COCKPIT_CONTENT_ONLY_MODULE_KEYS: ReadonlySet<ModuleKey> = new Set(["reports", "commerce", "stripe", "system"]);
+
+function isCockpitContentOnlyModule(moduleKey: unknown): moduleKey is ModuleKey {
+  return typeof moduleKey === "string" && COCKPIT_CONTENT_ONLY_MODULE_KEYS.has(moduleKey as ModuleKey);
+}
 
 function resolveCockpitNavigationTarget(target: string): CockpitNavigationTarget {
   const normalizedTarget = target.trim().toLowerCase();
@@ -256,9 +325,27 @@ function resolveCockpitNavigationTarget(target: string): CockpitNavigationTarget
   }
   const mappedTab = COCKPIT_ACTION_TARGET_TAB_BY_KEY[normalizedTarget];
   if (mappedTab) {
+    if (isCockpitContentOnlyModule(normalizedTarget)) {
+      return { moduleKey: "cockpit", tab: mappedTab };
+    }
+    if (mappedTab === "operations" && COCKPIT_OPERATION_FOCUS_MODULE_KEYS.has(normalizedTarget as ModuleKey)) {
+      return { moduleKey: normalizedTarget as ModuleKey, tab: mappedTab };
+    }
+    if (mappedTab === "operations") {
+      const focusedModule = COCKPIT_OPERATION_FOCUS_MODULE_BY_TARGET[normalizedTarget];
+      if (focusedModule) {
+        return { moduleKey: focusedModule, tab: mappedTab };
+      }
+    }
+    if (MODULE_KEY_SET.has(normalizedTarget as ModuleKey)) {
+      return { moduleKey: normalizedTarget as ModuleKey, tab: mappedTab };
+    }
     return { moduleKey: "cockpit", tab: mappedTab };
   }
   if (MODULE_KEY_SET.has(normalizedTarget as ModuleKey)) {
+    if (isCockpitContentOnlyModule(normalizedTarget)) {
+      return { moduleKey: "cockpit" };
+    }
     return { moduleKey: normalizedTarget as ModuleKey };
   }
   return { moduleKey: "cockpit" };
@@ -266,6 +353,9 @@ function resolveCockpitNavigationTarget(target: string): CockpitNavigationTarget
 
 function resolveCockpitNavigationTargetPath(target: CockpitNavigationTarget): string {
   if (target.tab) {
+    if (target.moduleKey !== "cockpit") {
+      return `${STAFF_COCKPIT_PATH}/${target.moduleKey}`;
+    }
     return `${STAFF_COCKPIT_PATH}/${COCKPIT_TAB_PATH_SEGMENT[target.tab]}`;
   }
   if (target.moduleKey === "cockpit") {
@@ -518,6 +608,7 @@ type LendingAdminItemDraft = {
   title: string;
   subtitle: string;
   authorsCsv: string;
+  summary: string;
   description: string;
   publisher: string;
   publishedDate: string;
@@ -529,6 +620,8 @@ type LendingAdminItemDraft = {
   availableCopies: string;
   status: string;
   source: string;
+  staffPick: boolean;
+  staffRationale: string;
   subjectsCsv: string;
   techniquesCsv: string;
 };
@@ -536,9 +629,42 @@ type LendingAdminItemDraft = {
 type LendingCoverReviewRecord = {
   id: string;
   title: string;
+  isbn: string;
+  source: string;
+  mediaType: string;
   coverUrl: string | null;
+  coverProvider: "openlibrary" | "googlebooks" | "amazon" | "unknown";
   coverQualityStatus: string;
   coverQualityReason: string | null;
+  coverIssueKind: "missing" | "invalid" | "low_confidence" | "untrusted" | "non_book_mismatch" | "manual_review";
+  updatedAtMs: number;
+  rawDoc: Record<string, unknown>;
+};
+
+type LendingMetadataEnrichmentSummary = {
+  pendingCount: number;
+  thinBacklogCount: number;
+  lastRunAtMs: number;
+  lastRunStatus: string;
+  lastRunSource: string;
+  lastRunQueued: number;
+  lastRunAttempted: number;
+  lastRunEnriched: number;
+  lastRunSkipped: number;
+  lastRunErrors: number;
+  lastRunStillPending: number;
+};
+
+type LendingMetadataGapRecord = {
+  itemId: string;
+  title: string;
+  isbn: string;
+  source: string;
+  mediaType: string;
+  coverQualityStatus: string;
+  coverQualityReason: string;
+  detailStatus: string;
+  gapReasons: string[];
   updatedAtMs: number;
   rawDoc: Record<string, unknown>;
 };
@@ -569,6 +695,14 @@ type LendingTagSubmissionRecord = {
   createdAtMs: number;
   updatedAtMs: number;
   rawDoc: Record<string, unknown>;
+};
+
+type LendingLoadErrorState = {
+  requests: string;
+  loans: string;
+  coverReviews: string;
+  recommendations: string;
+  tagSubmissions: string;
 };
 
 type CommerceOrderRecord = {
@@ -1274,11 +1408,106 @@ function inferIsbnVariants(raw: string): { primary: string; isbn10: string | nul
   return { primary: cleaned, isbn10: null, isbn13: null };
 }
 
+function looksLikeTimeoutMessage(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  return normalized.includes("timed out") || normalized.includes("timeout");
+}
+
+function isLendingRequestTimeout(error: unknown): boolean {
+  const raw = record(error);
+  const appError = record(raw.appError);
+  return [
+    firstNonBlankString(raw.message),
+    firstNonBlankString(raw.error),
+    firstNonBlankString(appError.debugMessage),
+    firstNonBlankString(appError.userMessage),
+  ].some((value) => Boolean(value && looksLikeTimeoutMessage(value)));
+}
+
+function readLendingRequestSupportCode(error: unknown, fallbackRequestId = ""): string | null {
+  const raw = record(error);
+  const meta = record(raw.meta);
+  return (
+    firstNonBlankString(
+      raw.correlationId,
+      raw.requestId,
+      meta.requestId,
+      fallbackRequestId
+    ) || null
+  );
+}
+
+function readLendingRequestErrorMessage(error: unknown): string {
+  const raw = record(error);
+  const appError = record(raw.appError);
+  return (
+    firstNonBlankString(
+      appError.userMessage,
+      appError.debugMessage,
+      raw.message,
+      raw.error
+    ) || "Request failed."
+  );
+}
+
+function shouldFallbackToLegacyLibraryImport(error: unknown): boolean {
+  return isLibraryRouteUnavailableError(error);
+}
+
+function isLibraryRouteUnavailableError(error: unknown): boolean {
+  const raw = record(error);
+  const appError = record(raw.appError);
+  const statusCode =
+    num(raw.statusCode, num(appError.statusCode, num(record(raw.meta).status, 0)));
+  const code = firstNonBlankString(raw.code, appError.code, record(raw.meta).code) || "";
+  const message = readLendingRequestErrorMessage(error).toLowerCase();
+  return (
+    statusCode === 404 ||
+    code.toUpperCase() === "NOT_FOUND" ||
+    message.includes("unknown route") ||
+    message.includes("not found")
+  );
+}
+
+const LENDING_ADMIN_SUMMARY_MAX_LENGTH = 500;
+
+function trimLendingAdminSummary(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  const slice = value.slice(0, Math.max(0, maxLength + 1));
+  const boundary = Math.max(slice.lastIndexOf(" "), slice.lastIndexOf("\n"), slice.lastIndexOf("\t"));
+  const trimmed = (boundary >= Math.max(80, Math.floor(maxLength * 0.55)) ? slice.slice(0, boundary) : slice.slice(0, maxLength))
+    .trim()
+    .replace(/[,:;]+$/g, "");
+  return trimmed || value.slice(0, maxLength).trim();
+}
+
+function deriveLendingAdminSummary(value: unknown): string {
+  const normalized = firstNonBlankString(value)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized || normalized.toLowerCase() === "reference copy from local monsoon fire isbn catalog.") {
+    return "";
+  }
+  const sentences = normalized
+    .match(/[^.!?]+[.!?]?/g)
+    ?.map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0) ?? [];
+  const base = sentences.length > 0 ? sentences.slice(0, 2).join(" ") : normalized;
+  return trimLendingAdminSummary(base, LENDING_ADMIN_SUMMARY_MAX_LENGTH);
+}
+
 function makeEmptyLendingAdminItemDraft(): LendingAdminItemDraft {
   return {
     title: "",
     subtitle: "",
     authorsCsv: "",
+    summary: "",
     description: "",
     publisher: "",
     publishedDate: "",
@@ -1290,6 +1519,8 @@ function makeEmptyLendingAdminItemDraft(): LendingAdminItemDraft {
     availableCopies: "1",
     status: "available",
     source: "manual",
+    staffPick: false,
+    staffRationale: "",
     subjectsCsv: "",
     techniquesCsv: "",
   };
@@ -1337,6 +1568,212 @@ function normalizeLendingAdminItemRecord(
   };
 }
 
+function normalizeLendingRequestRecord(
+  fallbackId: string,
+  raw: Record<string, unknown>
+): LendingRequestRecord {
+  const title = firstNonBlankString(raw.itemTitle, raw.title, raw.bookTitle);
+  const id = firstNonBlankString(raw.id, raw.requestId, fallbackId) || fallbackId;
+  return {
+    id,
+    title: title || "Request",
+    status: firstNonBlankString(raw.status) || "open",
+    requesterUid: firstNonBlankString(raw.requesterUid, raw.uid),
+    requesterName: firstNonBlankString(raw.requesterName, raw.displayName, "Unknown"),
+    requesterEmail: firstNonBlankString(raw.requesterEmail, raw.email, "-"),
+    createdAtMs: maxMs(toTsMs(raw.createdAt), num(raw.createdAtMs, 0)),
+    rawDoc: raw,
+  };
+}
+
+function normalizeLendingLoanRecord(
+  fallbackId: string,
+  raw: Record<string, unknown>
+): LendingLoanRecord {
+  const title = firstNonBlankString(raw.itemTitle, raw.title, raw.bookTitle);
+  const id = firstNonBlankString(raw.id, raw.loanId, fallbackId) || fallbackId;
+  return {
+    id,
+    title: title || "Loan",
+    status: firstNonBlankString(raw.status) || "active",
+    borrowerUid: firstNonBlankString(raw.borrowerUid, raw.uid),
+    borrowerName: firstNonBlankString(raw.borrowerName, raw.displayName, "Unknown"),
+    borrowerEmail: firstNonBlankString(raw.borrowerEmail, raw.email, "-"),
+    createdAtMs: maxMs(toTsMs(raw.createdAt), num(raw.createdAtMs, 0)),
+    dueAtMs: maxMs(toTsMs(raw.dueAt), num(raw.dueAtMs, 0)),
+    returnedAtMs: maxMs(toTsMs(raw.returnedAt), num(raw.returnedAtMs, 0)),
+    rawDoc: raw,
+  };
+}
+
+function detectLendingCoverProvider(coverUrl: unknown): "openlibrary" | "googlebooks" | "amazon" | "unknown" {
+  if (typeof coverUrl !== "string" || coverUrl.trim().length === 0) return "unknown";
+  try {
+    const parsedUrl = new URL(coverUrl);
+    const host = parsedUrl.hostname.toLowerCase();
+    const path = parsedUrl.pathname.toLowerCase();
+    if (host === "covers.openlibrary.org" && path.startsWith("/b/")) return "openlibrary";
+    if (
+      host === "books.googleusercontent.com" ||
+      (host === "books.google.com" && path.startsWith("/books/content"))
+    ) {
+      return "googlebooks";
+    }
+    if (host === "m.media-amazon.com" || host === "images-na.ssl-images-amazon.com") {
+      return "amazon";
+    }
+  } catch {
+    return "unknown";
+  }
+  return "unknown";
+}
+
+function normalizeLendingCoverIssueKind(input: {
+  coverUrl?: string | null;
+  coverQualityStatus?: string | null;
+  coverQualityReason?: string | null;
+}): "missing" | "invalid" | "low_confidence" | "untrusted" | "non_book_mismatch" | "manual_review" {
+  const coverUrl = input.coverUrl?.trim() ?? "";
+  const status = input.coverQualityStatus?.trim().toLowerCase() ?? "";
+  const reason = input.coverQualityReason?.trim().toLowerCase() ?? "";
+  if (!coverUrl || status === "missing" || reason === "missing_cover") return "missing";
+  if (reason === "invalid_cover_url") return "invalid";
+  if (reason === "low_confidence_cover_url") return "low_confidence";
+  if (reason === "untrusted_cover_source") return "untrusted";
+  if (reason === "provider_book_cover_for_non_book_media") return "non_book_mismatch";
+  return "manual_review";
+}
+
+function normalizeLendingCoverReviewRecord(
+  fallbackId: string,
+  raw: Record<string, unknown>
+): LendingCoverReviewRecord {
+  const title = firstNonBlankString(raw.itemTitle, raw.title, raw.bookTitle);
+  const id = firstNonBlankString(raw.id, raw.itemId, fallbackId) || fallbackId;
+  const identifiers =
+    raw.identifiers && typeof raw.identifiers === "object" && !Array.isArray(raw.identifiers)
+      ? (raw.identifiers as Record<string, unknown>)
+      : null;
+  const coverUrl = (() => {
+    const value = firstNonBlankString(raw.coverUrl);
+    return value || null;
+  })();
+  const coverQualityStatus = firstNonBlankString(raw.coverQualityStatus) || "needs_review";
+  const coverQualityReason = (() => {
+    const value = firstNonBlankString(raw.coverQualityReason);
+    return value || null;
+  })();
+  return {
+    id,
+    title: title || "Library item",
+    isbn:
+      firstNonBlankString(
+        raw.isbn13,
+        raw.isbn,
+        raw.isbn10,
+        identifiers?.isbn13,
+        identifiers?.isbn10
+      ) || "",
+    source: firstNonBlankString(raw.source) || "manual",
+    mediaType: firstNonBlankString(raw.mediaType, raw.format) || "book",
+    coverUrl,
+    coverProvider: detectLendingCoverProvider(coverUrl),
+    coverQualityStatus,
+    coverQualityReason,
+    coverIssueKind: normalizeLendingCoverIssueKind({
+      coverUrl,
+      coverQualityStatus,
+      coverQualityReason,
+    }),
+    updatedAtMs: maxMs(toTsMs(raw.updatedAt), num(raw.updatedAtMs, 0)),
+    rawDoc: raw,
+  };
+}
+
+function normalizeLendingMetadataEnrichmentSummary(
+  raw: LibraryMetadataEnrichmentSummaryContract | Record<string, unknown> | null | undefined
+): LendingMetadataEnrichmentSummary {
+  const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  return {
+    pendingCount: Math.max(0, num(source.pendingCount, 0)),
+    thinBacklogCount: Math.max(0, num(source.thinBacklogCount, 0)),
+    lastRunAtMs: Math.max(0, num(source.lastRunAtMs, 0)),
+    lastRunStatus: firstNonBlankString(source.lastRunStatus),
+    lastRunSource: firstNonBlankString(source.lastRunSource),
+    lastRunQueued: Math.max(0, num(source.lastRunQueued, 0)),
+    lastRunAttempted: Math.max(0, num(source.lastRunAttempted, 0)),
+    lastRunEnriched: Math.max(0, num(source.lastRunEnriched, 0)),
+    lastRunSkipped: Math.max(0, num(source.lastRunSkipped, 0)),
+    lastRunErrors: Math.max(0, num(source.lastRunErrors, 0)),
+    lastRunStillPending: Math.max(0, num(source.lastRunStillPending, 0)),
+  };
+}
+
+function normalizeLendingMetadataGapRecord(
+  fallbackId: string,
+  raw: LibraryStaffDashboardMetadataGapContract | Record<string, unknown>
+): LendingMetadataGapRecord {
+  const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  return {
+    itemId: firstNonBlankString(source.itemId, fallbackId),
+    title: firstNonBlankString(source.title) || "Library item",
+    isbn: firstNonBlankString(source.isbn),
+    source: firstNonBlankString(source.source) || "manual",
+    mediaType: firstNonBlankString(source.mediaType) || "book",
+    coverQualityStatus: firstNonBlankString(source.coverQualityStatus) || "needs_review",
+    coverQualityReason: firstNonBlankString(source.coverQualityReason),
+    detailStatus: firstNonBlankString(source.detailStatus),
+    gapReasons: Array.isArray(source.gapReasons)
+      ? source.gapReasons.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+      : [],
+    updatedAtMs: Math.max(0, num(source.updatedAtMs, 0)),
+    rawDoc: source,
+  };
+}
+
+function normalizeLendingRecommendationRecord(
+  fallbackId: string,
+  raw: Record<string, unknown>
+): LendingRecommendationRecord {
+  const firstAuthorFromArray =
+    Array.isArray(raw.authors) && raw.authors.length > 0 ? firstNonBlankString(raw.authors[0]) : "";
+  const title = firstNonBlankString(raw.itemTitle, raw.title, raw.bookTitle);
+  const recommendationId = firstNonBlankString(raw.id, raw.recommendationId, fallbackId) || fallbackId;
+  return {
+    id: recommendationId,
+    title: title || "Untitled recommendation",
+    author: firstNonBlankString(raw.author, firstAuthorFromArray),
+    isbn: firstNonBlankString(raw.isbn, raw.isbn13, raw.isbn10),
+    moderationStatus: firstNonBlankString(raw.moderationStatus, raw.status) || "pending_review",
+    recommenderUid: firstNonBlankString(raw.recommenderUid, raw.recommendedByUid, raw.uid),
+    recommenderName: firstNonBlankString(raw.recommenderName, raw.recommendedByName, raw.displayName),
+    rationale: firstNonBlankString(raw.rationale, raw.reason, raw.note),
+    createdAtMs: maxMs(toTsMs(raw.createdAt), toTsMs(raw.createdAtIso)),
+    updatedAtMs: maxMs(toTsMs(raw.updatedAt), toTsMs(raw.updatedAtIso), toTsMs(raw.moderatedAt)),
+    rawDoc: raw,
+  };
+}
+
+function normalizeLendingTagSubmissionRecord(
+  fallbackId: string,
+  raw: Record<string, unknown>
+): LendingTagSubmissionRecord {
+  const itemTitle = firstNonBlankString(raw.itemTitle, raw.title, raw.bookTitle);
+  return {
+    id: firstNonBlankString(raw.id, fallbackId) || fallbackId,
+    itemId: firstNonBlankString(raw.itemId),
+    itemTitle: itemTitle || "Library item",
+    tag: firstNonBlankString(raw.tag),
+    normalizedTag: firstNonBlankString(raw.normalizedTag),
+    status: firstNonBlankString(raw.status) || "pending",
+    submittedByUid: firstNonBlankString(raw.submittedByUid, raw.uid),
+    submittedByName: firstNonBlankString(raw.submittedByName, raw.displayName),
+    createdAtMs: maxMs(toTsMs(raw.createdAt), toTsMs(raw.createdAtIso), num(raw.createdAtMs, 0)),
+    updatedAtMs: maxMs(toTsMs(raw.updatedAt), toTsMs(raw.updatedAtIso), num(raw.updatedAtMs, 0)),
+    rawDoc: raw,
+  };
+}
+
 function buildLendingAdminDraftFromItem(item: LendingAdminItemRecord): LendingAdminItemDraft {
   const raw = item.rawDoc;
   const identifiers = record(raw.identifiers);
@@ -1353,6 +1790,7 @@ function buildLendingAdminDraftFromItem(item: LendingAdminItemRecord): LendingAd
     title: item.title,
     subtitle: firstNonBlankString(raw.subtitle),
     authorsCsv: authors.length > 0 ? authors.join(", ") : item.authorLine,
+    summary: firstNonBlankString(raw.summary) || deriveLendingAdminSummary(raw.description),
     description: firstNonBlankString(raw.description),
     publisher: firstNonBlankString(raw.publisher),
     publishedDate: firstNonBlankString(raw.publishedDate),
@@ -1364,8 +1802,107 @@ function buildLendingAdminDraftFromItem(item: LendingAdminItemRecord): LendingAd
     availableCopies: String(Math.max(0, Math.min(item.availableCopies || 0, item.totalCopies || 1))),
     status: firstNonBlankString(raw.status, item.status) || "available",
     source: firstNonBlankString(raw.source, item.source) || "manual",
+    staffPick: raw.curation && typeof raw.curation === "object" ? record(raw.curation).staffPick === true : false,
+    staffRationale:
+      raw.curation && typeof raw.curation === "object" ? firstNonBlankString(record(raw.curation).staffRationale) : "",
     subjectsCsv: subjects.join(", "),
     techniquesCsv: techniques.join(", "),
+  };
+}
+
+const LENDING_METADATA_LOCK_FIELDS = [
+  "title",
+  "subtitle",
+  "authors",
+  "summary",
+  "description",
+  "publisher",
+  "publishedDate",
+  "subjects",
+  "format",
+  "coverUrl",
+] as const;
+
+function normalizeStaffMetadataLockString(value: unknown): string | null {
+  const text = firstNonBlankString(value);
+  return text || null;
+}
+
+function normalizeStaffMetadataLockArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(value.filter((entry): entry is string => typeof entry === "string").map((entry) => entry.trim()).filter(Boolean))
+  );
+}
+
+function sameStaffMetadataFieldValue(
+  field: (typeof LENDING_METADATA_LOCK_FIELDS)[number],
+  left: unknown,
+  right: unknown
+): boolean {
+  if (field === "authors" || field === "subjects") {
+    return normalizeStaffMetadataLockArray(left).join("\u0000") === normalizeStaffMetadataLockArray(right).join("\u0000");
+  }
+  return normalizeStaffMetadataLockString(left) === normalizeStaffMetadataLockString(right);
+}
+
+function buildStaffMetadataLocks(input: {
+  existingRawDoc: Record<string, unknown> | null;
+  nextValues: Record<string, unknown>;
+}): Record<string, true> | null {
+  const prior = input.existingRawDoc && typeof input.existingRawDoc.metadataLocks === "object" && input.existingRawDoc.metadataLocks
+    ? (input.existingRawDoc.metadataLocks as Record<string, unknown>)
+    : {};
+  const next: Record<string, true> = {};
+  for (const [key, value] of Object.entries(prior)) {
+    if ((LENDING_METADATA_LOCK_FIELDS as readonly string[]).includes(key) && value === true) {
+      next[key] = true;
+    }
+  }
+  for (const field of LENDING_METADATA_LOCK_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(input.nextValues, field)) continue;
+    if (sameStaffMetadataFieldValue(field, input.existingRawDoc?.[field], input.nextValues[field])) continue;
+    next[field] = true;
+  }
+  return Object.keys(next).length > 0 ? next : null;
+}
+
+function buildStaffFallbackMetadataEnrichmentState(input: {
+  nextValues: Record<string, unknown>;
+  now: unknown;
+}): Record<string, unknown> {
+  const summary = firstNonBlankString(input.nextValues.summary) || deriveLendingAdminSummary(input.nextValues.description);
+  const description = firstNonBlankString(input.nextValues.description);
+  const subjects = normalizeStaffMetadataLockArray(input.nextValues.subjects);
+  const authors = normalizeStaffMetadataLockArray(input.nextValues.authors);
+  const coverApproved =
+    firstNonBlankString(input.nextValues.coverQualityStatus).toLowerCase() === "approved" &&
+    firstNonBlankString(input.nextValues.coverUrl).length > 0;
+  const thin =
+    Boolean(firstNonBlankString(input.nextValues.isbn, input.nextValues.isbn13, input.nextValues.isbn10)) &&
+    (
+      !coverApproved ||
+      !summary ||
+      !description ||
+      description.length < 140 ||
+      subjects.length === 0 ||
+      authors.length === 0 ||
+      !firstNonBlankString(input.nextValues.publisher) ||
+      !firstNonBlankString(input.nextValues.publishedDate)
+    );
+  if (!thin) {
+    return {
+      metadataEnrichmentPending: false,
+      metadataEnrichmentReason: null,
+      metadataEnrichmentQueuedAt: null,
+      metadataEnrichmentStatus: "skipped",
+    };
+  }
+  return {
+    metadataEnrichmentPending: true,
+    metadataEnrichmentReason: "manual_save",
+    metadataEnrichmentQueuedAt: input.now,
+    metadataEnrichmentStatus: "pending",
   };
 }
 
@@ -1699,7 +2236,13 @@ export default function StaffView({
     const requestedPath =
       resolveStaffWorkspaceRequestedPath(window.location.pathname, window.location.hash) ??
       window.location.pathname;
-    return resolveStaffCockpitModuleFromPath(requestedPath);
+    const operationsModule =
+      resolveStaffCockpitOperationsModule(window.location.pathname) ??
+      resolveStaffCockpitOperationsModule(window.location.hash);
+    return (
+      resolveStaffCockpitModuleFromPath(requestedPath) ??
+      (operationsModule === "operations" ? null : operationsModule)
+    );
   }, []);
   const initialCockpitTab = useMemo<CockpitTabKey | undefined>(() => {
     if (typeof window === "undefined") return undefined;
@@ -1708,12 +2251,15 @@ export default function StaffView({
       window.location.pathname;
     return resolveStaffCockpitTabFromPath(requestedPath);
   }, []);
-  const resolvedInitialCockpitModule = initialCockpitModule
-    ? COCKPIT_MODULE_TAB_BY_KEY[initialCockpitModule]
-      ? "cockpit"
-      : initialCockpitModule
-    : initialModule;
-  const resolvedInitialCockpitTab = initialCockpitTab ?? (initialCockpitModule ? COCKPIT_MODULE_TAB_BY_KEY[initialCockpitModule] : undefined);
+  const requestedInitialCockpitModule = initialCockpitModule ?? initialModule;
+  const resolvedInitialCockpitModule = COCKPIT_CONTENT_ONLY_MODULE_KEYS.has(requestedInitialCockpitModule)
+    ? "cockpit"
+    : requestedInitialCockpitModule;
+  const resolvedInitialCockpitTab = initialCockpitTab
+    ? initialCockpitTab
+    : requestedInitialCockpitModule
+      ? COCKPIT_MODULE_TAB_BY_KEY[requestedInitialCockpitModule]
+      : undefined;
   const [moduleKey, setModuleKey] = useState<ModuleKey>(resolvedInitialCockpitModule);
   const [moduleUsage, setModuleUsage] = useState<Record<ModuleKey, ModuleUsageStat>>(() => loadModuleUsageSnapshot());
   const [adaptiveNavEnabled, setAdaptiveNavEnabled] = useState<boolean>(() => loadAdaptiveNavPreference());
@@ -1738,6 +2284,7 @@ export default function StaffView({
   const [error, setError] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
   const [lastReq, setLastReq] = useState<LastRequest | null>(null);
+  const lastReqRef = useRef<LastRequest | null>(null);
   const [lastQuery, setLastQuery] = useState<QueryTrace | null>(null);
   const [lastWrite] = useState<WriteTrace | null>(null);
   const [lastErr, setLastErr] = useState<{ atIso: string; message: string; stack: string | null } | null>(null);
@@ -1776,6 +2323,13 @@ export default function StaffView({
   const [libraryCoverReviews, setLibraryCoverReviews] = useState<LendingCoverReviewRecord[]>([]);
   const [libraryRecommendations, setLibraryRecommendations] = useState<LendingRecommendationRecord[]>([]);
   const [libraryTagSubmissions, setLibraryTagSubmissions] = useState<LendingTagSubmissionRecord[]>([]);
+  const [lendingLoadErrors, setLendingLoadErrors] = useState<LendingLoadErrorState>({
+    requests: "",
+    loans: "",
+    coverReviews: "",
+    recommendations: "",
+    tagSubmissions: "",
+  });
   const [reportOps, setReportOps] = useState({ total: 0, open: 0, highOpen: 0, slaBreaches: 0 });
 
   const [memberSearch, setMemberSearch] = useState("");
@@ -1860,6 +2414,7 @@ export default function StaffView({
   const [selectedRequestId, setSelectedRequestId] = useState("");
   const [selectedLoanId, setSelectedLoanId] = useState("");
   const [selectedAdminItemId, setSelectedAdminItemId] = useState("");
+  const [lendingIntakeManualPassEditorOpen, setLendingIntakeManualPassEditorOpen] = useState(false);
   const [lendingAdminItemSearch, setLendingAdminItemSearch] = useState("");
   const [lendingAdminItemDraft, setLendingAdminItemDraft] = useState<LendingAdminItemDraft>(() =>
     makeEmptyLendingAdminItemDraft()
@@ -1874,6 +2429,23 @@ export default function StaffView({
   const [coverReviewBusyById, setCoverReviewBusyById] = useState<Record<string, boolean>>({});
   const [coverReviewErrorById, setCoverReviewErrorById] = useState<Record<string, string>>({});
   const [coverReviewStatus, setCoverReviewStatus] = useState("");
+  const [coverReviewReconcileBusy, setCoverReviewReconcileBusy] = useState(false);
+  const [metadataEnrichmentSummary, setMetadataEnrichmentSummary] = useState<LendingMetadataEnrichmentSummary>({
+    pendingCount: 0,
+    thinBacklogCount: 0,
+    lastRunAtMs: 0,
+    lastRunStatus: "",
+    lastRunSource: "",
+    lastRunQueued: 0,
+    lastRunAttempted: 0,
+    lastRunEnriched: 0,
+    lastRunSkipped: 0,
+    lastRunErrors: 0,
+    lastRunStillPending: 0,
+  });
+  const [libraryMetadataGaps, setLibraryMetadataGaps] = useState<LendingMetadataGapRecord[]>([]);
+  const [metadataEnrichmentBusy, setMetadataEnrichmentBusy] = useState(false);
+  const [metadataEnrichmentStatus, setMetadataEnrichmentStatus] = useState("");
   const [recommendationModerationBusyById, setRecommendationModerationBusyById] = useState<Record<string, boolean>>({});
   const [recommendationModerationStatus, setRecommendationModerationStatus] = useState("");
   const [tagSubmissionApprovalDraftById, setTagSubmissionApprovalDraftById] = useState<Record<string, string>>({});
@@ -2024,7 +2596,10 @@ export default function StaffView({
         baseUrl: fBaseUrl,
         getIdToken: async () => await user.getIdToken(),
         getAdminToken: () => (devAdminEnabled ? devAdminToken.trim() : undefined),
-        onLastRequest: setLastReq,
+        onLastRequest: (req) => {
+          lastReqRef.current = req;
+          setLastReq(req);
+        },
       }),
     [devAdminEnabled, devAdminToken, fBaseUrl, user]
   );
@@ -3765,7 +4340,7 @@ export default function StaffView({
     setIntegrationTokenCount(tokens.length);
   }, [client, hasFunctionsAuthMismatch]);
 
-  const loadLending = useCallback(async () => {
+  const loadLendingAdminItems = useCallback(async (): Promise<LendingAdminItemRecord[]> => {
     const loadAdminItemsFromFirestore = async (): Promise<LendingAdminItemRecord[]> => {
       qTrace("libraryItems", { orderBy: "updatedAt:desc", limit: 200, fallback: "firestore_admin_items" });
       const snap = await getDocs(query(collection(db, "libraryItems"), orderBy("updatedAt", "desc"), limit(200)));
@@ -3830,106 +4405,264 @@ export default function StaffView({
       if (current && adminItems.some((item) => item.id === current)) return current;
       return "";
     });
+    return adminItems;
+  }, [client, hasFunctionsAuthMismatch, qTrace]);
 
-    qTrace("libraryRequests", { orderBy: "createdAt:desc", limit: 60 });
-    const reqSnap = await getDocs(query(collection(db, "libraryRequests"), orderBy("createdAt", "desc"), limit(60)));
-    setLibraryRequests(
-      reqSnap.docs.map((d) => {
-        const data = d.data();
-        const title = firstNonBlankString(data.itemTitle, data.title, data.bookTitle);
-        return {
-          id: d.id,
-          title: title || "Request",
-          status: str(data.status, "open"),
-          requesterUid: str(data.requesterUid, str(data.uid)),
-          requesterName: str(data.requesterName, str(data.displayName, "Unknown")),
-          requesterEmail: str(data.requesterEmail, str(data.email, "-")),
-          createdAtMs: toTsMs(data.createdAt),
-          rawDoc: (data ?? {}) as Record<string, unknown>,
-        } satisfies LendingRequestRecord;
-      })
-    );
+  const loadLendingIntake = useCallback(async () => {
+    await loadLendingAdminItems();
+  }, [loadLendingAdminItems]);
 
-    qTrace("libraryLoans", { orderBy: "createdAt:desc", limit: 60 });
-    const loanSnap = await getDocs(query(collection(db, "libraryLoans"), orderBy("createdAt", "desc"), limit(60)));
-    setLibraryLoans(
-      loanSnap.docs.map((d) => {
-        const data = d.data();
-        const title = firstNonBlankString(data.itemTitle, data.title, data.bookTitle);
-        return {
-          id: d.id,
-          title: title || "Loan",
-          status: str(data.status, "active"),
-          borrowerUid: str(data.borrowerUid, str(data.uid)),
-          borrowerName: str(data.borrowerName, str(data.displayName, "Unknown")),
-          borrowerEmail: str(data.borrowerEmail, str(data.email, "-")),
-          createdAtMs: toTsMs(data.createdAt),
-          dueAtMs: toTsMs(data.dueAt),
-          returnedAtMs: toTsMs(data.returnedAt),
-          rawDoc: (data ?? {}) as Record<string, unknown>,
-        } satisfies LendingLoanRecord;
-      })
-    );
+  const loadLending = useCallback(async () => {
+    const nextLoadErrors: LendingLoadErrorState = {
+      requests: "",
+      loans: "",
+      coverReviews: "",
+      recommendations: "",
+      tagSubmissions: "",
+    };
 
-    let coverSnap;
-    try {
-      qTrace("libraryItems", { where: "needsCoverReview==true", limit: 80 });
-      coverSnap = await getDocs(
-        query(collection(db, "libraryItems"), where("needsCoverReview", "==", true), limit(80))
+    const loadDashboardFromFirestore = async () => {
+      qTrace("libraryRequests", { orderBy: "createdAt:desc", limit: 60, fallback: "firestore" });
+      const requestSnap = await getDocs(
+        query(collection(db, "libraryRequests"), orderBy("createdAt", "desc"), limit(60))
       );
-    } catch {
-      qTrace("libraryItems", { orderBy: "updatedAt:desc", limit: 160, fallback: "client_filter_cover_review" });
-      coverSnap = await getDocs(query(collection(db, "libraryItems"), orderBy("updatedAt", "desc"), limit(160)));
-    }
+      const requests = requestSnap.docs.map((docSnap) =>
+        normalizeLendingRequestRecord(docSnap.id, (docSnap.data() ?? {}) as Record<string, unknown>)
+      );
 
-    const coverRows = coverSnap.docs
-      .map((d) => {
-        const data = d.data();
-        const title = firstNonBlankString(data.itemTitle, data.title, data.bookTitle);
-        return {
-          id: d.id,
-          title: title || "Library item",
-          coverUrl: (() => {
-            const raw = str(data.coverUrl, "");
-            return raw || null;
-          })(),
-          coverQualityStatus: str(data.coverQualityStatus, "needs_review"),
-          coverQualityReason: (() => {
-            const raw = str(data.coverQualityReason, "");
-            return raw || null;
-          })(),
-          updatedAtMs: toTsMs(data.updatedAt),
-          rawDoc: (data ?? {}) as Record<string, unknown>,
-        } satisfies LendingCoverReviewRecord;
-      })
-      .filter((entry) => {
-        const rawNeedsReview = entry.rawDoc.needsCoverReview === true;
-        return rawNeedsReview || entry.coverQualityStatus === "needs_review" || entry.coverQualityStatus === "missing";
-      })
-      .slice(0, 80);
-    setLibraryCoverReviews(coverRows);
+      qTrace("libraryLoans", { orderBy: "createdAt:desc", limit: 60, fallback: "firestore" });
+      const loanSnap = await getDocs(
+        query(collection(db, "libraryLoans"), orderBy("createdAt", "desc"), limit(60))
+      );
+      const loans = loanSnap.docs.map((docSnap) =>
+        normalizeLendingLoanRecord(docSnap.id, (docSnap.data() ?? {}) as Record<string, unknown>)
+      );
 
-    const normalizeRecommendationRow = (
-      data: Record<string, unknown>,
-      fallbackId: string
-    ): LendingRecommendationRecord => {
-      const firstAuthorFromArray =
-        Array.isArray(data.authors) && data.authors.length > 0 ? firstNonBlankString(data.authors[0]) : "";
-      const title = firstNonBlankString(data.itemTitle, data.title, data.bookTitle);
-      const recommendationId = firstNonBlankString(data.id, data.recommendationId, fallbackId) || fallbackId;
+      let coverSnap;
+      try {
+        qTrace("libraryItems", { orderBy: "updatedAt:desc", limit: 1200, fallback: "client_filter_cover_review" });
+        coverSnap = await getDocs(query(collection(db, "libraryItems"), orderBy("updatedAt", "desc"), limit(1200)));
+      } catch {
+        qTrace("libraryItems", { limit: 1200, fallback: "client_filter_cover_review_unordered" });
+        coverSnap = await getDocs(query(collection(db, "libraryItems"), limit(1200)));
+      }
+      const coverReviews = coverSnap.docs
+        .map((docSnap) =>
+          normalizeLendingCoverReviewRecord(docSnap.id, (docSnap.data() ?? {}) as Record<string, unknown>)
+        )
+        .filter((entry) => {
+          const rawNeedsReview = entry.rawDoc.needsCoverReview === true;
+          return rawNeedsReview || entry.coverQualityStatus === "needs_review" || entry.coverQualityStatus === "missing";
+        })
+        .slice(0, 80);
+
+      qTrace("libraryTagSubmissions", { orderBy: "createdAt:desc", limit: 160, fallback: "firestore" });
+      const tagSubmissionSnap = await getDocs(
+        query(collection(db, "libraryTagSubmissions"), orderBy("createdAt", "desc"), limit(160))
+      );
+      const tagSubmissions = tagSubmissionSnap.docs
+        .map((docSnap) =>
+          normalizeLendingTagSubmissionRecord(docSnap.id, (docSnap.data() ?? {}) as Record<string, unknown>)
+        )
+        .slice(0, 160);
+
+      let metadataSummarySnap;
+      try {
+        metadataSummarySnap = await getDocs(query(collection(db, "libraryItems"), orderBy("updatedAt", "desc"), limit(1200)));
+      } catch {
+        metadataSummarySnap = await getDocs(query(collection(db, "libraryItems"), limit(1200)));
+      }
+      const metadataRows = metadataSummarySnap.docs
+        .map((docSnap) => ({ id: docSnap.id, row: (docSnap.data() ?? {}) as Record<string, unknown> }))
+        .filter((row) => {
+          const deleted = row.row.deleted === true || row.row.isDeleted === true || row.row.softDeleted === true;
+          const deletedAt = toTsMs(row.row.deletedAt);
+          return !deleted && deletedAt === 0;
+        });
+      const metadataGapRows = metadataRows
+        .map(({ id, row }) => {
+          const gapReasons: string[] = [];
+          const title = firstNonBlankString(row.title);
+          const description = firstNonBlankString(row.description);
+          const summary = firstNonBlankString(row.summary);
+          const authors = Array.isArray(row.authors)
+            ? row.authors.filter((entry: unknown): entry is string => typeof entry === "string" && entry.trim().length > 0)
+            : [];
+          const coverApproved = firstNonBlankString(row.coverQualityStatus).toLowerCase() === "approved" && firstNonBlankString(row.coverUrl).length > 0;
+          const normalizedTitle = title.trim().toLowerCase();
+          if (!title || /^isbn\s+[0-9x-]+$/i.test(normalizedTitle)) gapReasons.push("placeholder_title");
+          if (!coverApproved) gapReasons.push("missing_cover");
+          if (!summary || !description || description.length < 140) gapReasons.push("sparse_synopsis");
+          if (authors.length === 0) gapReasons.push("missing_creator");
+          if ((row.detailStatus ?? "").toString().trim().toLowerCase() === "sparse") gapReasons.push("thin_metadata");
+          if ((row.catalogVisibility ?? "").toString().trim().toLowerCase() === "manual_only" || row.manualPassRequired === true) {
+            gapReasons.push("manual_finish_required");
+          }
+          const isbn = firstNonBlankString(row.isbn, row.isbn13, row.isbn10);
+          if (isbn && !/^(\d{9}[\dX]|\d{13})$/i.test(isbn.replace(/[^0-9x]/gi, ""))) {
+            gapReasons.push("malformed_identifier");
+          }
+          return normalizeLendingMetadataGapRecord(id, {
+            itemId: id,
+            title,
+            isbn,
+            source: firstNonBlankString(row.source),
+            mediaType: firstNonBlankString(row.mediaType, row.format),
+            coverQualityStatus: firstNonBlankString(row.coverQualityStatus),
+            coverQualityReason: firstNonBlankString(row.coverQualityReason),
+            detailStatus: firstNonBlankString(row.detailStatus),
+            gapReasons,
+            updatedAtMs: maxMs(toTsMs(row.updatedAt), toTsMs(row.createdAt)),
+          });
+        })
+        .filter((row) => row.gapReasons.length > 0)
+        .slice(0, 80);
+
       return {
-        id: recommendationId,
-        title: title || "Untitled recommendation",
-        author: firstNonBlankString(data.author, firstAuthorFromArray),
-        isbn: firstNonBlankString(data.isbn, data.isbn13, data.isbn10),
-        moderationStatus: firstNonBlankString(data.moderationStatus, data.status) || "pending_review",
-        recommenderUid: firstNonBlankString(data.recommenderUid, data.recommendedByUid, data.uid),
-        recommenderName: firstNonBlankString(data.recommenderName, data.recommendedByName, data.displayName),
-        rationale: firstNonBlankString(data.rationale, data.reason, data.note),
-        createdAtMs: maxMs(toTsMs(data.createdAt), toTsMs(data.createdAtIso)),
-        updatedAtMs: maxMs(toTsMs(data.updatedAt), toTsMs(data.updatedAtIso), toTsMs(data.moderatedAt)),
-        rawDoc: data,
+        requests,
+        loans,
+        coverReviews,
+        metadataGaps: metadataGapRows,
+        tagSubmissions,
+        metadataEnrichmentSummary: {
+          pendingCount: metadataRows.filter(({ row }) => row.metadataEnrichmentPending === true).length,
+          thinBacklogCount: metadataRows.filter(({ row }) => {
+            const description = firstNonBlankString(row.description);
+            const subjects = Array.isArray(row.subjects)
+              ? row.subjects.filter((entry: unknown): entry is string => typeof entry === "string" && entry.trim().length > 0)
+              : [];
+            const coverApproved = firstNonBlankString(row.coverQualityStatus).toLowerCase() === "approved" && firstNonBlankString(row.coverUrl).length > 0;
+            return Boolean(firstNonBlankString(row.isbn, row.isbn13, row.isbn10)) && (
+              !coverApproved ||
+              !description ||
+              description.length < 140 ||
+              subjects.length === 0 ||
+              !firstNonBlankString(row.publisher) ||
+              !firstNonBlankString(row.publishedDate) ||
+              !Number.isFinite(Number(row.pageCount)) ||
+              (
+                Array.isArray(row.authors)
+                  ? row.authors.filter((entry: unknown): entry is string => typeof entry === "string" && entry.trim().length > 0).length === 0
+                  : true
+              )
+            );
+          }).length,
+          lastRunAtMs: 0,
+          lastRunStatus: "",
+          lastRunSource: "",
+          lastRunQueued: 0,
+          lastRunAttempted: 0,
+          lastRunEnriched: 0,
+          lastRunSkipped: 0,
+          lastRunErrors: 0,
+          lastRunStillPending: 0,
+        },
       };
+    };
+
+    const loadStaffDashboard = async () => {
+      if (hasFunctionsAuthMismatch) {
+        return loadDashboardFromFirestore();
+      }
+
+      const payload: LibraryStaffDashboardRequest = {
+        requestLimit: 60,
+        loanLimit: 60,
+        coverReviewLimit: 80,
+        tagSubmissionLimit: 160,
+      };
+
+      try {
+        qTrace("libraryStaffDashboard", {
+          route: V1_LIBRARY_STAFF_DASHBOARD_FN,
+          ...payload,
+        });
+        const response = await client.postJson<LibraryStaffDashboardResponse>(
+          V1_LIBRARY_STAFF_DASHBOARD_FN,
+          payload
+        );
+        const responseData = response?.data ?? {};
+        const requestRows = Array.isArray(responseData.requests)
+          ? responseData.requests
+          : Array.isArray((response as { requests?: unknown }).requests)
+            ? ((response as { requests?: LibraryStaffDashboardRequestContract[] }).requests ?? [])
+            : null;
+        const loanRows = Array.isArray(responseData.loans)
+          ? responseData.loans
+          : Array.isArray((response as { loans?: unknown }).loans)
+            ? ((response as { loans?: LibraryStaffDashboardLoanContract[] }).loans ?? [])
+            : null;
+        const coverReviewRows = Array.isArray(responseData.coverReviews)
+          ? responseData.coverReviews
+          : Array.isArray((response as { coverReviews?: unknown }).coverReviews)
+            ? ((response as { coverReviews?: LibraryStaffDashboardCoverReviewContract[] }).coverReviews ?? [])
+            : null;
+        const metadataGapRows = Array.isArray(responseData.metadataGaps)
+          ? responseData.metadataGaps
+          : Array.isArray((response as { metadataGaps?: unknown }).metadataGaps)
+            ? ((response as { metadataGaps?: LibraryStaffDashboardMetadataGapContract[] }).metadataGaps ?? [])
+            : null;
+        const tagSubmissionRows = Array.isArray(responseData.tagSubmissions)
+          ? responseData.tagSubmissions
+          : Array.isArray((response as { tagSubmissions?: unknown }).tagSubmissions)
+            ? ((response as { tagSubmissions?: LibraryStaffDashboardTagSubmissionContract[] }).tagSubmissions ?? [])
+            : null;
+        const metadataEnrichmentSummaryRaw =
+          responseData.metadataEnrichmentSummary ??
+          ((response as { metadataEnrichmentSummary?: LibraryMetadataEnrichmentSummaryContract }).metadataEnrichmentSummary ?? null);
+        if (!requestRows || !loanRows || !coverReviewRows || !metadataGapRows || !tagSubmissionRows) {
+          return loadDashboardFromFirestore();
+        }
+
+        return {
+          requests: requestRows
+            .map((entry, index) =>
+              normalizeLendingRequestRecord(
+                `library-staff-request-${index + 1}`,
+                (entry ?? {}) as Record<string, unknown>
+              )
+            )
+            .slice(0, 60),
+          loans: loanRows
+            .map((entry, index) =>
+              normalizeLendingLoanRecord(
+                `library-staff-loan-${index + 1}`,
+                (entry ?? {}) as Record<string, unknown>
+              )
+            )
+            .slice(0, 60),
+          coverReviews: coverReviewRows
+            .map((entry, index) =>
+              normalizeLendingCoverReviewRecord(
+                `library-staff-cover-${index + 1}`,
+                (entry ?? {}) as Record<string, unknown>
+              )
+            )
+            .slice(0, 80),
+          metadataGaps: metadataGapRows
+            .map((entry, index) =>
+              normalizeLendingMetadataGapRecord(
+                `library-staff-gap-${index + 1}`,
+                (entry ?? {}) as Record<string, unknown>
+              )
+            )
+            .slice(0, 80),
+          tagSubmissions: tagSubmissionRows
+            .map((entry, index) =>
+              normalizeLendingTagSubmissionRecord(
+                `library-staff-tag-${index + 1}`,
+                (entry ?? {}) as Record<string, unknown>
+              )
+            )
+            .slice(0, 160),
+          metadataEnrichmentSummary: normalizeLendingMetadataEnrichmentSummary(metadataEnrichmentSummaryRaw),
+        };
+      } catch (error: unknown) {
+        if (!isLibraryRouteUnavailableError(error)) {
+          throw error;
+        }
+        return loadDashboardFromFirestore();
+      }
     };
 
     const loadRecommendationsFromFirestore = async (): Promise<LendingRecommendationRecord[]> => {
@@ -3937,16 +4670,19 @@ export default function StaffView({
       const snap = await getDocs(
         query(collection(db, "libraryRecommendations"), orderBy("createdAt", "desc"), limit(120))
       );
-      return snap.docs.map((docSnap) => {
-        const data = (docSnap.data() ?? {}) as Record<string, unknown>;
-        return normalizeRecommendationRow(data, docSnap.id);
-      });
+      return snap.docs.map((docSnap) =>
+        normalizeLendingRecommendationRecord(
+          docSnap.id,
+          (docSnap.data() ?? {}) as Record<string, unknown>
+        )
+      );
     };
 
-    let recommendationRows: LendingRecommendationRecord[] = [];
-    if (hasFunctionsAuthMismatch) {
-      recommendationRows = await loadRecommendationsFromFirestore();
-    } else {
+    const loadRecommendations = async (): Promise<LendingRecommendationRecord[]> => {
+      if (hasFunctionsAuthMismatch) {
+        return loadRecommendationsFromFirestore();
+      }
+
       try {
         qTrace("libraryRecommendations", { route: V1_LIBRARY_RECOMMENDATIONS_LIST_FN, limit: LIBRARY_RECOMMENDATIONS_API_LIMIT });
         const response = await client.postJson<LibraryRecommendationsListResponse>(
@@ -3958,55 +4694,58 @@ export default function StaffView({
           : Array.isArray((response as { recommendations?: unknown }).recommendations)
             ? ((response as { recommendations?: unknown[] }).recommendations ?? [])
             : null;
-        if (apiRows) {
-          recommendationRows = apiRows
-            .map((entry, index) => {
-              if (!entry || typeof entry !== "object") return null;
-              return normalizeRecommendationRow(
-                entry as Record<string, unknown>,
-                `recommendation-api-${index + 1}`
-              );
-            })
-            .filter((entry): entry is LendingRecommendationRecord => Boolean(entry));
-        } else {
-          recommendationRows = await loadRecommendationsFromFirestore();
+        if (!apiRows) {
+          return loadRecommendationsFromFirestore();
         }
-      } catch {
-        recommendationRows = await loadRecommendationsFromFirestore();
+        return apiRows
+          .map((entry, index) => {
+            if (!entry || typeof entry !== "object") return null;
+            return normalizeLendingRecommendationRecord(
+              `recommendation-api-${index + 1}`,
+              entry as Record<string, unknown>
+            );
+          })
+          .filter((entry): entry is LendingRecommendationRecord => Boolean(entry));
+      } catch (error: unknown) {
+        if (!isLibraryRouteUnavailableError(error)) {
+          throw error;
+        }
+        return loadRecommendationsFromFirestore();
       }
-    }
-    setLibraryRecommendations(recommendationRows.slice(0, 120));
-
-    const normalizeTagSubmissionRow = (
-      data: Record<string, unknown>,
-      fallbackId: string
-    ): LendingTagSubmissionRecord => {
-      const itemTitle = firstNonBlankString(data.itemTitle, data.title, data.bookTitle);
-      return {
-        id: fallbackId,
-        itemId: firstNonBlankString(data.itemId),
-        itemTitle: itemTitle || "Library item",
-        tag: firstNonBlankString(data.tag),
-        normalizedTag: firstNonBlankString(data.normalizedTag),
-        status: firstNonBlankString(data.status) || "pending",
-        submittedByUid: firstNonBlankString(data.submittedByUid, data.uid),
-        submittedByName: firstNonBlankString(data.submittedByName, data.displayName),
-        createdAtMs: maxMs(toTsMs(data.createdAt), toTsMs(data.createdAtIso)),
-        updatedAtMs: maxMs(toTsMs(data.updatedAt), toTsMs(data.updatedAtIso)),
-        rawDoc: data,
-      };
     };
 
-    qTrace("libraryTagSubmissions", { orderBy: "createdAt:desc", limit: 160 });
-    const tagSubmissionSnap = await getDocs(
-      query(collection(db, "libraryTagSubmissions"), orderBy("createdAt", "desc"), limit(160))
-    );
-    const tagSubmissionRows = tagSubmissionSnap.docs
-      .map((docSnap) =>
-        normalizeTagSubmissionRow((docSnap.data() ?? {}) as Record<string, unknown>, docSnap.id)
-      )
-      .slice(0, 160);
-    setLibraryTagSubmissions(tagSubmissionRows);
+    try {
+      await loadLendingAdminItems();
+      setLendingAdminItemError((current) => (current.startsWith("Load failed:") ? "" : current));
+    } catch (error: unknown) {
+      setLendingAdminItemError(`Load failed: ${readLendingRequestErrorMessage(error)}`);
+    }
+
+    try {
+      const dashboard = await loadStaffDashboard();
+      setLibraryRequests(dashboard.requests);
+      setLibraryLoans(dashboard.loans);
+      setLibraryCoverReviews(dashboard.coverReviews);
+      setLibraryMetadataGaps(dashboard.metadataGaps);
+      setLibraryTagSubmissions(dashboard.tagSubmissions);
+      setMetadataEnrichmentSummary(dashboard.metadataEnrichmentSummary);
+    } catch (error: unknown) {
+      const message = readLendingRequestErrorMessage(error);
+      nextLoadErrors.requests = message;
+      nextLoadErrors.loans = message;
+      nextLoadErrors.coverReviews = message;
+      nextLoadErrors.tagSubmissions = message;
+      setLibraryMetadataGaps([]);
+      setMetadataEnrichmentSummary(normalizeLendingMetadataEnrichmentSummary(null));
+    }
+
+    try {
+      setLibraryRecommendations((await loadRecommendations()).slice(0, 120));
+    } catch (error: unknown) {
+      nextLoadErrors.recommendations = readLendingRequestErrorMessage(error);
+    }
+
+    setLendingLoadErrors(nextLoadErrors);
 
     const snapshot = buildLibraryPhaseMetricsSnapshot(
       getRecentRequestTelemetry(LIBRARY_PHASE_METRICS_MAX_ENTRIES),
@@ -4066,7 +4805,7 @@ export default function StaffView({
         setLibraryRolloutPhaseStatus(`Rollout phase load failed: ${message}`);
       }
     }
-  }, [client, hasFunctionsAuthMismatch, qTrace]);
+  }, [client, hasFunctionsAuthMismatch, loadLendingAdminItems, qTrace]);
 
   const refreshLibraryPhaseMetricsSnapshot = useCallback(() => {
     const snapshot = buildLibraryPhaseMetricsSnapshot(
@@ -4103,7 +4842,6 @@ export default function StaffView({
 
   const importLibraryIsbns = useCallback(
     async (isbns: string[], source: "csv" | "scanner"): Promise<ImportLibraryIsbnsResponse> => {
-      let response: ImportLibraryIsbnsResponse | null = null;
       try {
         const v1Response = await client.postJson<{ data?: ImportLibraryIsbnsResponse }>(
           V1_LIBRARY_ITEMS_IMPORT_ISBNS_FN,
@@ -4113,18 +4851,21 @@ export default function StaffView({
           }
         );
         if (v1Response?.data) {
-          response = v1Response.data;
+          return v1Response.data;
         }
-      } catch {
-        response = null;
+      } catch (error: unknown) {
+        if (!shouldFallbackToLegacyLibraryImport(error)) {
+          throw error;
+        }
       }
-      if (!response) {
-        response = await client.postJson<ImportLibraryIsbnsResponse>("importLibraryIsbns", {
+
+      return await client.postJson<ImportLibraryIsbnsResponse>(
+        "importLibraryIsbns",
+        {
           isbns,
           source,
-        });
-      }
-      return response;
+        }
+      );
     },
     [client]
   );
@@ -4142,78 +4883,109 @@ export default function StaffView({
     }
   }, []);
 
-  const handleLendingIsbnImport = useCallback(async () => {
-    if (isbnImportBusy) return;
+  const handleLendingIsbnImport = useCallback(async (): Promise<ImportLibraryIsbnsResponse | null> => {
+    if (isbnImportBusy) return null;
     setIsbnImportStatus("");
     setIsbnImportError("");
     if (hasFunctionsAuthMismatch) {
       setIsbnImportError(
         "ISBN import requires function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
       );
-      return;
+      return null;
     }
     const isbns = parseList(isbnInput);
     if (isbns.length === 0) {
       setIsbnImportError("Paste at least one ISBN (comma or newline separated).");
-      return;
+      return null;
     }
     setIsbnImportBusy(true);
     try {
       const response = await importLibraryIsbns(isbns, "csv");
       const errorCount = response.errors?.length ?? 0;
-      setIsbnImportStatus(`Imported ${response.created} new, updated ${response.updated}. ${errorCount} errors.`);
+      const manualPassCount = response.manualPassRequired?.length ?? 0;
+      const rejectedCount = response.rejected?.length ?? 0;
+      setIsbnImportStatus(
+        `Imported ${response.created} new, updated ${response.updated}, queued ${manualPassCount} manual pass, rejected ${rejectedCount}. ${errorCount} errors.`
+      );
       setIsbnInput("");
       track("staff_lending_isbn_import", {
         source: "csv",
         requested: isbns.length,
         created: response.created,
         updated: response.updated,
+        manualPassRequired: manualPassCount,
+        rejected: rejectedCount,
         errors: errorCount,
       });
+      return response;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      setIsbnImportError(message);
+      setIsbnImportError(readLendingRequestErrorMessage(error));
+      return null;
     } finally {
-      await loadLending();
       setIsbnImportBusy(false);
     }
-  }, [hasFunctionsAuthMismatch, importLibraryIsbns, isbnImportBusy, isbnInput, loadLending]);
+  }, [hasFunctionsAuthMismatch, importLibraryIsbns, isbnImportBusy, isbnInput]);
 
-  const handleLendingIsbnScanSubmit = useCallback(async () => {
-    if (isbnScanBusy) return;
+  const handleLendingIsbnScanSubmit = useCallback(async (): Promise<LendingScanSubmitResult | null> => {
+    if (isbnScanBusy) return null;
     setIsbnScanStatus("");
     if (hasFunctionsAuthMismatch) {
       setIsbnScanStatus(
-        "Scanner check-in requires function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
+        "Scan books requires function auth. Enable `VITE_USE_AUTH_EMULATOR=true` or point `VITE_FUNCTIONS_BASE_URL` to production."
       );
-      return;
+      return null;
     }
     const raw = isbnScanInput.trim();
     if (!raw) {
       setIsbnScanStatus("Scan an ISBN first.");
-      return;
+      return null;
     }
     setIsbnScanBusy(true);
+    let scanResult: LendingScanSubmitResult | null = null;
     try {
       const response = await importLibraryIsbns([raw], "scanner");
       const errorCount = response.errors?.length ?? 0;
-      setIsbnScanStatus(`Imported ${response.created} new, updated ${response.updated}. ${errorCount} errors.`);
+      const manualPassCount = response.manualPassRequired?.length ?? 0;
+      const rejectedCount = response.rejected?.length ?? 0;
+      setIsbnScanStatus(
+        `Imported ${response.created} new, updated ${response.updated}, queued ${manualPassCount} manual pass, rejected ${rejectedCount}. ${errorCount} errors.`
+      );
       setIsbnScanInput("");
+      const supportCode = lastReqRef.current?.requestId ?? null;
       track("staff_lending_isbn_import", {
         source: "scanner",
         requested: 1,
         created: response.created,
         updated: response.updated,
+        manualPassRequired: manualPassCount,
+        rejected: rejectedCount,
         errors: errorCount,
       });
+      scanResult = {
+        scannedIsbn: raw,
+        response,
+        errorMessage: null,
+        requestId: supportCode,
+        supportCode,
+        timedOut: false,
+      };
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = readLendingRequestErrorMessage(error);
+      const supportCode = readLendingRequestSupportCode(error, lastReqRef.current?.requestId ?? "");
       setIsbnScanStatus(message);
+      scanResult = {
+        scannedIsbn: raw,
+        response: null,
+        errorMessage: message,
+        requestId: supportCode,
+        supportCode,
+        timedOut: isLendingRequestTimeout(error),
+      };
     } finally {
-      await loadLending();
       setIsbnScanBusy(false);
     }
-  }, [hasFunctionsAuthMismatch, importLibraryIsbns, isbnScanBusy, isbnScanInput, loadLending]);
+    return scanResult;
+  }, [hasFunctionsAuthMismatch, importLibraryIsbns, isbnScanBusy, isbnScanInput]);
 
   const handleSelectLendingAdminItem = useCallback((item: unknown) => {
     if (!item || typeof item !== "object") return;
@@ -4240,8 +5012,11 @@ export default function StaffView({
     setLendingAdminIsbnResolveStatus("");
     setLendingAdminItemError("");
     const cleaned = cleanIsbnToken(lendingAdminItemDraft.isbn);
-    if (!cleaned) {
-      setLendingAdminIsbnResolveStatus("Enter an ISBN first.");
+    const titleLookupQuery = [lendingAdminItemDraft.title.trim(), lendingAdminItemDraft.authorsCsv.split(",")[0]?.trim() ?? ""]
+      .filter(Boolean)
+      .join(" ");
+    if (!cleaned && !titleLookupQuery) {
+      setLendingAdminIsbnResolveStatus("Enter an ISBN or provide a title first.");
       return;
     }
 
@@ -4264,16 +5039,20 @@ export default function StaffView({
         const resolvedIsbn13 = firstNonBlankString(candidate.isbn13, identifiers.isbn13);
         const resolvedIsbn10 = firstNonBlankString(candidate.isbn10, identifiers.isbn10);
         const resolvedIsbn = firstNonBlankString(candidate.isbn, resolvedIsbn13, resolvedIsbn10, cleaned) || cleaned;
+        const resolvedDescription = firstNonBlankString(candidate.description);
+        const derivedSummary = deriveLendingAdminSummary(resolvedDescription);
         setLendingAdminItemDraft((prev) => ({
           ...prev,
           title: firstNonBlankString(candidate.title, prev.title),
           subtitle: firstNonBlankString(candidate.subtitle, prev.subtitle),
           authorsCsv:
             authors.length > 0 ? authors.join(", ") : authorFallback ? authorFallback : prev.authorsCsv,
-          description: firstNonBlankString(candidate.description, prev.description),
+          summary: firstNonBlankString(prev.summary) || derivedSummary,
+          description: firstNonBlankString(resolvedDescription, prev.description),
           publisher: firstNonBlankString(candidate.publisher, prev.publisher),
           publishedDate: firstNonBlankString(candidate.publishedDate, prev.publishedDate),
           isbn: resolvedIsbn,
+          mediaType: firstNonBlankString(candidate.mediaType, prev.mediaType),
           format: firstNonBlankString(candidate.format, prev.format),
           coverUrl: firstNonBlankString(candidate.coverUrl, prev.coverUrl),
           source: firstNonBlankString(candidate.source, sourceHint, prev.source),
@@ -4304,32 +5083,34 @@ export default function StaffView({
       };
 
       let resolved = false;
-      try {
-        const response = await client.postJson<Record<string, unknown>>(
-          V1_LIBRARY_ITEMS_RESOLVE_ISBN_FN,
-          { isbn: cleaned }
-        );
-        const data = record((response as { data?: unknown }).data);
-        resolved =
-          tryApplyMetadata(
-            (() => {
-              const candidates = [data.item, data.resolvedItem, data.lookup, data.result, data.metadata];
-              for (const value of candidates) {
-                if (value && typeof value === "object") return value as Record<string, unknown>;
-              }
-              return null;
-            })(),
-            firstNonBlankString(data.source, record(data.item).source, record(data.lookup).source) ||
-              "v1/library.items.resolveIsbn"
-          ) || false;
-      } catch {
-        resolved = false;
+      if (cleaned) {
+        try {
+          const response = await client.postJson<Record<string, unknown>>(
+            V1_LIBRARY_ITEMS_RESOLVE_ISBN_FN,
+            { isbn: cleaned }
+          );
+          const data = record((response as { data?: unknown }).data);
+          resolved =
+            tryApplyMetadata(
+              (() => {
+                const candidates = [data.item, data.resolvedItem, data.lookup, data.result, data.metadata];
+                for (const value of candidates) {
+                  if (value && typeof value === "object") return value as Record<string, unknown>;
+                }
+                return null;
+              })(),
+              firstNonBlankString(data.source, record(data.item).source, record(data.lookup).source) ||
+                "v1/library.items.resolveIsbn"
+            ) || false;
+        } catch {
+          resolved = false;
+        }
       }
 
       if (!resolved) {
         const response = await client.postJson<LibraryExternalLookupResponse>(
           V1_LIBRARY_EXTERNAL_LOOKUP_FN,
-          { q: cleaned, limit: 6 }
+          { q: cleaned || titleLookupQuery, limit: 6 }
         );
         const items = Array.isArray(response?.data?.items)
           ? response.data.items.map((entry) => record(entry))
@@ -4347,7 +5128,9 @@ export default function StaffView({
             return normalizedSearch ? candidates.includes(normalizedSearch) : false;
           }) ?? items[0];
         if (!best || !tryApplyMetadata(best, firstNonBlankString(best.source, best.sourceLabel, "external_lookup"))) {
-          setLendingAdminIsbnResolveStatus(`No metadata results for ISBN ${cleaned}.`);
+          setLendingAdminIsbnResolveStatus(cleaned
+            ? `No metadata results for ISBN ${cleaned}.`
+            : `No metadata results for "${titleLookupQuery}".`);
         }
       }
     } catch (error: unknown) {
@@ -4361,38 +5144,40 @@ export default function StaffView({
     hasFunctionsAuthMismatch,
     lendingAdminIsbnResolveBusy,
     lendingAdminItemDraft.isbn,
+    lendingAdminItemDraft.title,
+    lendingAdminItemDraft.authorsCsv,
     libraryAdminItems,
     selectedAdminItemId,
   ]);
 
-  const handleLendingAdminSave = useCallback(async () => {
-    if (lendingAdminItemBusy) return;
+  const handleLendingAdminSave = useCallback(async (): Promise<boolean> => {
+    if (lendingAdminItemBusy) return false;
     setLendingAdminItemError("");
     setLendingAdminItemStatus("");
     const editing = Boolean(selectedAdminItemId);
     const title = lendingAdminItemDraft.title.trim();
     if (!title) {
       setLendingAdminItemError("Title is required.");
-      return;
+      return false;
     }
     const authors = parseUniqueCsv(lendingAdminItemDraft.authorsCsv);
     if (authors.length === 0) {
       setLendingAdminItemError("Provide at least one author.");
-      return;
+      return false;
     }
     const totalCopies = Number.parseInt(lendingAdminItemDraft.totalCopies.trim(), 10);
     if (!Number.isFinite(totalCopies) || totalCopies < 1) {
       setLendingAdminItemError("Total copies must be a whole number greater than 0.");
-      return;
+      return false;
     }
     const availableCopies = Number.parseInt(lendingAdminItemDraft.availableCopies.trim(), 10);
     if (!Number.isFinite(availableCopies) || availableCopies < 0) {
       setLendingAdminItemError("Available copies must be a non-negative whole number.");
-      return;
+      return false;
     }
     if (availableCopies > totalCopies) {
       setLendingAdminItemError("Available copies cannot exceed total copies.");
-      return;
+      return false;
     }
 
     const isbn = inferIsbnVariants(lendingAdminItemDraft.isbn);
@@ -4405,6 +5190,15 @@ export default function StaffView({
       techniques,
       isbn,
     });
+    if (!payload.summary) {
+      payload.summary = deriveLendingAdminSummary(payload.description ?? "") || null;
+    }
+    if (isDisallowedRetailCoverUrl(payload.coverUrl)) {
+      setLendingAdminItemError(
+        "Retail-hosted cover URLs are not allowed. Use those pages as reference only and save an approved catalog/community cover instead."
+      );
+      return false;
+    }
 
     setLendingAdminItemBusy(true);
     let savedItemId = selectedAdminItemId;
@@ -4451,12 +5245,24 @@ export default function StaffView({
       }
 
       if (usedFirestoreFallback) {
+        const existingFallbackRawDoc =
+          editing && selectedAdminItemId
+            ? libraryAdminItems.find((item) => item.id === selectedAdminItemId)?.rawDoc ?? null
+            : null;
+        const existingFallbackCuration = record(existingFallbackRawDoc?.curation);
         const firestorePayload: Record<string, unknown> = {
           ...payload,
           techniques,
           updatedAt: serverTimestamp(),
           updatedByUid: user.uid,
         };
+        firestorePayload.curation = {
+          ...existingFallbackCuration,
+          staffPick: payload.staffPick === true,
+          staffRationale: payload.staffRationale ?? null,
+        };
+        delete firestorePayload.staffPick;
+        delete firestorePayload.staffRationale;
         if (isbn.primary) {
           firestorePayload.isbn = isbn.primary;
           firestorePayload.isbn_normalized = isbn.primary;
@@ -4467,6 +5273,20 @@ export default function StaffView({
           if (isbn.isbn10) firestorePayload.isbn10 = isbn.isbn10;
           if (isbn.isbn13) firestorePayload.isbn13 = isbn.isbn13;
         }
+        const fallbackLocks = buildStaffMetadataLocks({
+          existingRawDoc: existingFallbackRawDoc,
+          nextValues: firestorePayload,
+        });
+        if (fallbackLocks) {
+          firestorePayload.metadataLocks = fallbackLocks;
+        }
+        Object.assign(
+          firestorePayload,
+          buildStaffFallbackMetadataEnrichmentState({
+            nextValues: firestorePayload,
+            now: serverTimestamp(),
+          })
+        );
         if (editing && selectedAdminItemId) {
           await setDoc(doc(db, "libraryItems", selectedAdminItemId), firestorePayload, { merge: true });
           savedItemId = selectedAdminItemId;
@@ -4512,9 +5332,11 @@ export default function StaffView({
         mode: editing ? "edit" : "create",
         usedFirestoreFallback,
       });
+      return true;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       setLendingAdminItemError(`Save failed: ${message}`);
+      return false;
     } finally {
       setLendingAdminItemBusy(false);
     }
@@ -4679,6 +5501,110 @@ export default function StaffView({
       }
     },
     [coverReviewBusyById, coverReviewDraftById, loadLending, user.uid]
+  );
+
+  const handleCoverReviewReconcile = useCallback(async () => {
+    if (coverReviewReconcileBusy) return;
+
+    setCoverReviewStatus("");
+    setCoverReviewReconcileBusy(true);
+    try {
+      const payload: LibraryCoverReviewReconcileRequest = {
+        limit: 160,
+      };
+      const response = await client.postJson<LibraryCoverReviewReconcileResponse>(
+        V1_LIBRARY_COVER_REVIEWS_RECONCILE_FN,
+        payload
+      );
+      const responseData = response?.data ?? {};
+      const scanned = Math.max(
+        0,
+        num(responseData.scanned, num((response as { scanned?: unknown }).scanned, 0))
+      );
+      const approved = Math.max(
+        0,
+        num(responseData.approved, num((response as { approved?: unknown }).approved, 0))
+      );
+      const stillNeedsReview = Math.max(
+        0,
+        num(responseData.stillNeedsReview, num((response as { stillNeedsReview?: unknown }).stillNeedsReview, 0))
+      );
+      const missing = Math.max(
+        0,
+        num(responseData.missing, num((response as { missing?: unknown }).missing, 0))
+      );
+
+      let refreshNote = "";
+      try {
+        await loadLending();
+      } catch (refreshError: unknown) {
+        const message = refreshError instanceof Error ? refreshError.message : String(refreshError);
+        refreshNote = ` Lending refresh failed: ${message}`;
+      }
+
+      setCoverReviewStatus(
+        `Reconciled ${scanned} imported cover candidates. Auto-approved ${approved}, still need manual review ${stillNeedsReview}, missing covers ${missing}.${refreshNote}`.trim()
+      );
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      setCoverReviewStatus(`Cover reconciliation failed: ${message}`);
+    } finally {
+      setCoverReviewReconcileBusy(false);
+    }
+  }, [client, coverReviewReconcileBusy, loadLending]);
+
+  const handleMetadataEnrichmentRun = useCallback(
+    async (scope: LibraryMetadataEnrichmentRunRequest["scope"]) => {
+      if (metadataEnrichmentBusy || !scope) return;
+
+      setMetadataEnrichmentStatus("");
+      setMetadataEnrichmentBusy(true);
+      try {
+        const payload: LibraryMetadataEnrichmentRunRequest = {
+          scope,
+          limit: scope === "thin_backfill" ? 120 : 80,
+        };
+        const response = await client.postJson<LibraryMetadataEnrichmentRunResponse>(
+          V1_LIBRARY_METADATA_ENRICHMENT_RUN_FN,
+          payload
+        );
+        const responseData = response?.data ?? {};
+        const queued = Math.max(0, num(responseData.queued, num((response as { queued?: unknown }).queued, 0)));
+        const attempted = Math.max(0, num(responseData.attempted, num((response as { attempted?: unknown }).attempted, 0)));
+        const enriched = Math.max(0, num(responseData.enriched, num((response as { enriched?: unknown }).enriched, 0)));
+        const skipped = Math.max(0, num(responseData.skipped, num((response as { skipped?: unknown }).skipped, 0)));
+        const errors = Math.max(0, num(responseData.errors, num((response as { errors?: unknown }).errors, 0)));
+        const stillPending = Math.max(
+          0,
+          num(responseData.stillPending, num((response as { stillPending?: unknown }).stillPending, 0))
+        );
+        const summaryRaw =
+          responseData.summary ??
+          ((response as { summary?: LibraryMetadataEnrichmentSummaryContract }).summary ?? null);
+        if (summaryRaw) {
+          setMetadataEnrichmentSummary(normalizeLendingMetadataEnrichmentSummary(summaryRaw));
+        }
+
+        let refreshNote = "";
+        try {
+          await loadLending();
+        } catch (refreshError: unknown) {
+          const message = refreshError instanceof Error ? refreshError.message : String(refreshError);
+          refreshNote = ` Lending refresh failed: ${message}`;
+        }
+
+        const scopeLabel = scope === "thin_backfill" ? "thin-record backfill" : scope === "recent_imports" ? "recent imports" : scope;
+        setMetadataEnrichmentStatus(
+          `Metadata enrichment ran for ${scopeLabel}. Queued ${queued}, attempted ${attempted}, enriched ${enriched}, skipped ${skipped}, errors ${errors}, still pending ${stillPending}.${refreshNote}`.trim()
+        );
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        setMetadataEnrichmentStatus(`Metadata enrichment failed: ${message}`);
+      } finally {
+        setMetadataEnrichmentBusy(false);
+      }
+    },
+    [client, loadLending, metadataEnrichmentBusy]
   );
 
   const handleRecommendationModeration = useCallback(
@@ -5528,6 +6454,7 @@ export default function StaffView({
     if (!selectedAdminItemId) return;
     if (libraryAdminItems.some((item) => item.id === selectedAdminItemId)) return;
     setSelectedAdminItemId("");
+    setLendingIntakeManualPassEditorOpen(false);
     setLendingAdminItemDraft(makeEmptyLendingAdminItemDraft());
     setLendingAdminItemDeleteConfirmInput("");
   }, [libraryAdminItems, selectedAdminItemId]);
@@ -5541,9 +6468,24 @@ export default function StaffView({
   }, [selectedAdminItem]);
 
   useEffect(() => {
+    if (!lendingIntakeManualPassEditorOpen || selectedAdminItemId) return;
+    setLendingIntakeManualPassEditorOpen(false);
+  }, [lendingIntakeManualPassEditorOpen, selectedAdminItemId]);
+
+  useEffect(() => {
     if (!selectedMemberId || !shouldLoadMemberStats(moduleKey, cockpitTab)) return;
     void loadMemberOperationalStats(selectedMemberId);
   }, [cockpitTab, loadMemberOperationalStats, moduleKey, selectedMemberId]);
+
+  useEffect(() => {
+    if (moduleKey === "lending") {
+      void loadLending();
+      return;
+    }
+    if (moduleKey === "lending-intake") {
+      void loadLendingIntake();
+    }
+  }, [loadLending, loadLendingIntake, moduleKey]);
 
   useEffect(() => {
     if (!selectedMember) {
@@ -6785,6 +7727,64 @@ export default function StaffView({
     [client, selectedEventId]
   );
 
+  const syncWorkspaceStateFromUrl = useCallback(() => {
+    if (typeof window === "undefined") return;
+
+    const requestedPath =
+      resolveStaffWorkspaceRequestedPath(window.location.pathname, window.location.hash) ?? null;
+
+    if (!requestedPath) return;
+    if (requestedPath === STAFF_PATH) {
+      setModuleKey("cockpit");
+      setCockpitTab("triage");
+      return;
+    }
+    if (requestedPath === STAFF_COCKPIT_PATH) {
+      setModuleKey("cockpit");
+      setCockpitTab((prev) => prev);
+      return;
+    }
+
+    const requestedModule = resolveStaffCockpitModuleFromPath(requestedPath);
+    const requestedOperationsModule =
+      resolveStaffCockpitOperationsModule(window.location.pathname) ??
+      resolveStaffCockpitOperationsModule(window.location.hash);
+    const requestedTab = resolveStaffCockpitTabFromPath(requestedPath);
+
+    if (requestedModule) {
+      const mappedTab = COCKPIT_MODULE_TAB_BY_KEY[requestedModule];
+      if (mappedTab) {
+        if (mappedTab === "operations" && COCKPIT_OPERATION_FOCUS_MODULE_KEYS.has(requestedModule)) {
+          setModuleKey(requestedModule);
+          setCockpitTab(mappedTab);
+          return;
+        }
+        setModuleKey(requestedModule);
+        setCockpitTab(mappedTab);
+        return;
+      }
+      setModuleKey(requestedModule);
+      if (requestedTab) {
+        setCockpitTab(requestedTab);
+      }
+      return;
+    }
+    if (requestedOperationsModule) {
+      if (requestedOperationsModule === "operations") {
+        setModuleKey("cockpit");
+        setCockpitTab("operations");
+        return;
+      }
+      setModuleKey(requestedOperationsModule);
+      setCockpitTab("operations");
+      return;
+    }
+    if (!requestedTab) return;
+
+    setModuleKey("cockpit");
+    setCockpitTab(requestedTab);
+  }, []);
+
   const openStaffWorkspace = useCallback((target: string) => {
     if (onOpenStaffWorkspace) {
       onOpenStaffWorkspace(target);
@@ -6802,9 +7802,10 @@ export default function StaffView({
         } else {
           window.history.pushState({}, "", targetPath);
         }
+        syncWorkspaceStateFromUrl();
       }
     }
-  }, [onOpenStaffWorkspace]);
+  }, [onOpenStaffWorkspace, syncWorkspaceStateFromUrl]);
 
   const openCockpitWorkspace = useCallback(() => {
     openStaffWorkspace(STAFF_COCKPIT_PATH);
@@ -6812,78 +7813,49 @@ export default function StaffView({
 
   useEffect(() => {
     if (!forceCockpitWorkspace) return;
-    if (moduleKey !== "cockpit") {
-      setModuleKey("cockpit");
-      setStatus("Dedicated cockpit page keeps focus on cockpit workspace. Open /staff for full module navigation.");
-    }
+    setStatus("Dedicated cockpit page keeps focus on cockpit workspace. Open /staff for full module navigation.");
     if (!cockpitWorkspaceMode) {
       setCockpitWorkspaceMode(true);
     }
-  }, [cockpitWorkspaceMode, forceCockpitWorkspace, moduleKey]);
+    syncWorkspaceStateFromUrl();
+  }, [cockpitWorkspaceMode, forceCockpitWorkspace, syncWorkspaceStateFromUrl]);
 
   const openModuleFromCockpit = useCallback(
     (target: string) => {
       const destination = resolveCockpitNavigationTarget(target);
-      if (forceCockpitWorkspace && !destination.tab) {
-        if (destination.moduleKey !== "cockpit") {
-          setModuleKey("cockpit");
-        }
-        setCockpitWorkspaceMode(false);
-        setStatus("Returned to full staff console workspace.");
-        openStaffWorkspace(STAFF_PATH);
-        return;
-      }
+      setModuleKey(destination.moduleKey);
       if (destination.tab) {
-        setModuleKey("cockpit");
         setCockpitTab(destination.tab);
-      } else {
-        setModuleKey(destination.moduleKey);
       }
       if (typeof window !== "undefined") {
         const targetPath = resolveCockpitNavigationTargetPath(destination);
         openStaffWorkspace(targetPath);
       }
     },
-    [forceCockpitWorkspace, openStaffWorkspace]
+    [openStaffWorkspace]
+  );
+
+  const openLendingToolsFromIntake = useCallback(() => {
+    openModuleFromCockpit("lending");
+  }, [openModuleFromCockpit]);
+
+  const closeLendingManualPassEditorFromIntake = useCallback(() => {
+    setLendingIntakeManualPassEditorOpen(false);
+    setLendingAdminItemError("");
+    setLendingAdminItemStatus("");
+    setLendingAdminIsbnResolveStatus("");
+  }, []);
+
+  const openLendingManualPassEditorFromIntake = useCallback(
+    (item: LendingAdminItemRecord) => {
+      handleSelectLendingAdminItem(item);
+      setLendingIntakeManualPassEditorOpen(true);
+    },
+    [handleSelectLendingAdminItem]
   );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
-    const syncWorkspaceStateFromUrl = () => {
-      const requestedPath =
-        resolveStaffWorkspaceRequestedPath(window.location.pathname, window.location.hash) ?? null;
-
-      if (!requestedPath) return;
-      if (requestedPath === STAFF_PATH) {
-        setModuleKey("cockpit");
-        setCockpitTab("triage");
-        return;
-      }
-      if (requestedPath === STAFF_COCKPIT_PATH) {
-        setModuleKey("cockpit");
-        setCockpitTab((prev) => prev);
-        return;
-      }
-
-      const requestedModule = resolveStaffCockpitModuleFromPath(requestedPath);
-      const requestedTab = resolveStaffCockpitTabFromPath(requestedPath);
-
-      if (requestedModule) {
-        const mappedTab = COCKPIT_MODULE_TAB_BY_KEY[requestedModule];
-        if (mappedTab) {
-          setModuleKey("cockpit");
-          setCockpitTab(mappedTab);
-          return;
-        }
-        setModuleKey(requestedModule);
-        return;
-      }
-      if (!requestedTab) return;
-
-      setModuleKey("cockpit");
-      setCockpitTab(requestedTab);
-    };
 
     syncWorkspaceStateFromUrl();
     window.addEventListener("popstate", syncWorkspaceStateFromUrl);
@@ -6892,7 +7864,7 @@ export default function StaffView({
       window.removeEventListener("popstate", syncWorkspaceStateFromUrl);
       window.removeEventListener("hashchange", syncWorkspaceStateFromUrl);
     };
-  }, []);
+  }, [syncWorkspaceStateFromUrl]);
 
   useEffect(() => {
     if (!isCockpitModule) return;
@@ -7010,25 +7982,128 @@ export default function StaffView({
     return alerts.slice(0, TODAY_ALERT_LIMIT);
   }, [automationDashboard.workflows, latestErrors, orders, unpaidCheckIns.length]);
   const paymentDegraded = hasFunctionsAuthMismatch || Boolean(commerceError) || Boolean(automationDashboard.error);
-  const systemSummaryTone = useMemo<"green" | "amber" | "red">(() => {
-    if (cockpitKpis.highAlerts > 0 || paymentAlerts.some((alert) => alert.severity === "P0")) return "red";
-    if (cockpitKpis.mediumAlerts > 0 || paymentDegraded || messagesDegraded) return "amber";
-    return "green";
-  }, [cockpitKpis.highAlerts, cockpitKpis.mediumAlerts, messagesDegraded, paymentAlerts, paymentDegraded]);
-  const systemSummaryToneLabel = useMemo(() => {
-    if (systemSummaryTone === "red") return "Action needed";
-    if (systemSummaryTone === "amber") return "Watch";
-    return "Healthy";
-  }, [systemSummaryTone]);
-  const systemSummaryMessage = useMemo(() => {
-    if (systemSummaryTone === "red") {
-      return "Immediate attention needed. Resolve critical operational alerts first.";
-    }
-    if (systemSummaryTone === "amber") {
-      return "Some services are degraded. Continue operations with caution and follow fallback links.";
-    }
-    return "Systems are stable for routine shift operations.";
-  }, [systemSummaryTone]);
+  const operationsNextReservationLabel = useMemo(() => {
+    const nextReservation = [...todayReservations]
+      .filter((reservation) => reservation.timeMs > 0)
+      .sort((left, right) => left.timeMs - right.timeMs)[0];
+    return nextReservation ? toShortTimeLabel(nextReservation.timeMs) : "";
+  }, [todayReservations]);
+  const operationsFiringSummary = useMemo(() => {
+    const now = Date.now();
+    const activeStatuses = new Set(["loading", "firing", "cooling", "unloading", "loaded"]);
+    const activeCount = firings.filter((firing) => activeStatuses.has(firing.status.toLowerCase())).length;
+    const attentionCount = firings.filter((firing) => {
+      const statusLower = firing.status.toLowerCase();
+      const isActive = activeStatuses.has(statusLower);
+      const staleActive = isActive && firing.updatedAtMs > 0 && now - firing.updatedAtMs > 12 * 60 * 60 * 1000;
+      const missingWindow = firing.startAtMs > 0 && firing.endAtMs === 0;
+      const lowConfidence = firing.confidence.toLowerCase() === "low";
+      return staleActive || missingWindow || lowConfidence;
+    }).length;
+    const scheduledCount = firings.filter((firing) => firing.status.toLowerCase() === "scheduled").length;
+    return {
+      activeCount,
+      attentionCount,
+      scheduledCount,
+    };
+  }, [firings]);
+  const operationsLendingSummary = useMemo(() => {
+    const now = Date.now();
+    const activeLoans = libraryLoans.filter((loan) => {
+      const status = loan.status.toLowerCase();
+      return status === "active" || status === "checked_out" || status === "borrowed";
+    });
+    const overdueCount = activeLoans.filter((loan) => loan.dueAtMs > 0 && loan.dueAtMs < now && loan.returnedAtMs === 0).length;
+    const openRequestsCount = libraryRequests.filter((request) => request.status.toLowerCase() === "open").length;
+    return {
+      activeLoansCount: activeLoans.length,
+      overdueCount,
+      openRequestsCount,
+    };
+  }, [libraryLoans, libraryRequests]);
+  const operationsOverview = useMemo(
+    () =>
+      resolveOperationsOverview({
+        todayReservationsCount: todayReservations.length,
+        nextReservationTimeLabel: operationsNextReservationLabel,
+        reservationsWithNotesCount: todayReservations.filter((reservation) => reservation.notes.trim()).length,
+        memberTotalCount: memberRoleCounts.all,
+        memberStaffCount: memberRoleCounts.staff,
+        memberAdminCount: memberRoleCounts.admin,
+        memberInferredCount: memberSourceStats.inferredMembers,
+        memberFallbackSources: memberSourceStats.fallbackCollections,
+        openBatchesCount: batches.filter((batch) => !batch.isClosed).length,
+        likelyArtifactsCount: batchArtifactSummary.totalLikelyArtifacts,
+        highConfidenceArtifactsCount: batchArtifactSummary.highConfidence,
+        manualReviewHintsCount: batchArtifactSummary.manualReview,
+        firingActiveCount: operationsFiringSummary.activeCount,
+        firingAttentionCount: operationsFiringSummary.attentionCount,
+        firingScheduledCount: operationsFiringSummary.scheduledCount,
+        eventUpcomingCount: eventKpis.upcoming,
+        eventReviewRequiredCount: eventKpis.reviewRequired,
+        eventWaitlistedCount: eventKpis.waitlisted,
+        eventHighPressureCount: workshopProgrammingKpis.highPressure,
+        lendingOpenRequestsCount: operationsLendingSummary.openRequestsCount,
+        lendingActiveLoansCount: operationsLendingSummary.activeLoansCount,
+        lendingOverdueCount: operationsLendingSummary.overdueCount,
+        lendingPendingReviewCount: recommendationModerationKpis.pendingReview,
+        lendingTagQueueCount: tagModerationKpis.pending,
+        lendingCoverReviewCount: libraryCoverReviews.length,
+      }),
+    [
+      batchArtifactSummary.highConfidence,
+      batchArtifactSummary.manualReview,
+      batchArtifactSummary.totalLikelyArtifacts,
+      batches,
+      eventKpis.reviewRequired,
+      eventKpis.upcoming,
+      eventKpis.waitlisted,
+      libraryCoverReviews.length,
+      memberRoleCounts.admin,
+      memberRoleCounts.all,
+      memberRoleCounts.staff,
+      memberSourceStats.fallbackCollections,
+      memberSourceStats.inferredMembers,
+      operationsFiringSummary.activeCount,
+      operationsFiringSummary.attentionCount,
+      operationsFiringSummary.scheduledCount,
+      operationsLendingSummary.activeLoansCount,
+      operationsLendingSummary.openRequestsCount,
+      operationsLendingSummary.overdueCount,
+      operationsNextReservationLabel,
+      recommendationModerationKpis.pendingReview,
+      tagModerationKpis.pending,
+      todayReservations,
+      workshopProgrammingKpis.highPressure,
+    ]
+  );
+  const shiftStatus = useMemo(
+    () =>
+      resolveShiftStatusSummary({
+        overviewAlerts,
+        paymentAlerts,
+        messagesDegraded,
+        messageThreadsError,
+        announcementsError,
+        paymentDegraded,
+        commerceError,
+        hasFunctionsAuthMismatch,
+        failedChecks: cockpitKpis.failedChecks,
+        recentErrors: cockpitKpis.recentErrors,
+      }),
+    [
+      announcementsError,
+      cockpitKpis.failedChecks,
+      cockpitKpis.recentErrors,
+      commerceError,
+      hasFunctionsAuthMismatch,
+      messageThreadsError,
+      messagesDegraded,
+      overviewAlerts,
+      paymentAlerts,
+      paymentDegraded,
+    ]
+  );
 
   const openReservationsToday = useCallback(() => {
     if (onOpenCheckin) {
@@ -7225,16 +8300,13 @@ export default function StaffView({
       loadSignups={loadSignups}
     />
   );
-  const lendingContent = (
-    <LendingModule
+  const lendingIntakeContent = (
+    <LendingIntakeModule
       run={run}
       busy={busy}
       hasFunctionsAuthMismatch={hasFunctionsAuthMismatch}
       fBaseUrl={fBaseUrl}
-      copy={copy}
-      safeJsonStringify={safeJsonStringify}
-      libraryPhaseMetricsWindowMinutes={LIBRARY_PHASE_METRICS_WINDOW_MINUTES}
-      loadLending={loadLending}
+      loadLendingIntake={loadLendingIntake}
       isbnInput={isbnInput}
       setIsbnInput={setIsbnInput}
       isbnImportBusy={isbnImportBusy}
@@ -7249,6 +8321,34 @@ export default function StaffView({
       isbnScanBusy={isbnScanBusy}
       isbnScanStatus={isbnScanStatus}
       handleLendingIsbnScanSubmit={handleLendingIsbnScanSubmit}
+      libraryAdminItems={libraryAdminItems}
+      manualPassEditorOpen={lendingIntakeManualPassEditorOpen}
+      manualPassEditorItem={lendingIntakeManualPassEditorOpen ? selectedAdminItem : null}
+      openManualPassEditor={openLendingManualPassEditorFromIntake}
+      closeManualPassEditor={closeLendingManualPassEditorFromIntake}
+      lendingAdminItemBusy={lendingAdminItemBusy}
+      lendingAdminItemDraft={lendingAdminItemDraft}
+      setLendingAdminItemDraft={setLendingAdminItemDraft}
+      handleLendingAdminResolveIsbn={handleLendingAdminResolveIsbn}
+      lendingAdminIsbnResolveBusy={lendingAdminIsbnResolveBusy}
+      lendingAdminIsbnResolveStatus={lendingAdminIsbnResolveStatus}
+      lendingAdminItemError={lendingAdminItemError}
+      lendingAdminItemStatus={lendingAdminItemStatus}
+      handleLendingAdminSave={handleLendingAdminSave}
+      openLendingTools={openLendingToolsFromIntake}
+    />
+  );
+  const lendingContent = (
+    <LendingModule
+      run={run}
+      busy={busy}
+      hasFunctionsAuthMismatch={hasFunctionsAuthMismatch}
+      fBaseUrl={fBaseUrl}
+      copy={copy}
+      safeJsonStringify={safeJsonStringify}
+      libraryPhaseMetricsWindowMinutes={LIBRARY_PHASE_METRICS_WINDOW_MINUTES}
+      loadLending={loadLending}
+      openLendingIntake={() => openModuleFromCockpit("lending-intake")}
       externalLookupPolicyOpenLibraryEnabled={externalLookupPolicyOpenLibraryEnabled}
       setExternalLookupPolicyOpenLibraryEnabled={setExternalLookupPolicyOpenLibraryEnabled}
       externalLookupPolicyGoogleBooksEnabled={externalLookupPolicyGoogleBooksEnabled}
@@ -7298,7 +8398,6 @@ export default function StaffView({
       handleLendingAdminResolveIsbn={handleLendingAdminResolveIsbn}
       lendingAdminIsbnResolveBusy={lendingAdminIsbnResolveBusy}
       lendingAdminIsbnResolveStatus={lendingAdminIsbnResolveStatus}
-      lendingAdminIsbnResolveNote={lendingAdminIsbnResolveStatus}
       lendingAdminItemError={lendingAdminItemError}
       lendingAdminItemStatus={lendingAdminItemStatus}
       handleLendingAdminSave={handleLendingAdminSave}
@@ -7306,6 +8405,11 @@ export default function StaffView({
       libraryAdminItems={libraryAdminItems}
       libraryRequests={libraryRequests}
       libraryLoans={libraryLoans}
+      requestsLoadError={lendingLoadErrors.requests}
+      loansLoadError={lendingLoadErrors.loans}
+      recommendationsLoadError={lendingLoadErrors.recommendations}
+      tagSubmissionsLoadError={lendingLoadErrors.tagSubmissions}
+      coverReviewsLoadError={lendingLoadErrors.coverReviews}
       lendingTriage={lendingTriage}
       recommendationModerationKpis={recommendationModerationKpis}
       tagModerationKpis={tagModerationKpis}
@@ -7326,8 +8430,6 @@ export default function StaffView({
       overdueLoanIdsById={Object.fromEntries(lendingTriage.overdueLoans.map((loan) => [loan.id, true]))}
       selectedRequest={selectedRequest}
       selectedLoan={selectedLoan}
-      filteredRequests={filteredRequests}
-      filteredLoans={filteredLoans}
       filteredRecommendations={filteredRecommendations}
       recommendationModerationBusyById={recommendationModerationBusyById}
       recommendationModerationStatus={recommendationModerationStatus}
@@ -7347,12 +8449,19 @@ export default function StaffView({
       tagMergeBusy={tagMergeBusy}
       handleTagMerge={handleTagMerge}
       coverReviewStatus={coverReviewStatus}
+      coverReviewReconcileBusy={coverReviewReconcileBusy}
       coverReviewBusyById={coverReviewBusyById}
       coverReviewDraftById={coverReviewDraftById}
       setCoverReviewDraftById={setCoverReviewDraftById}
       coverReviewErrorById={coverReviewErrorById}
       setCoverReviewErrorById={setCoverReviewErrorById}
       libraryCoverReviews={libraryCoverReviews}
+      libraryMetadataGaps={libraryMetadataGaps}
+      metadataEnrichmentSummary={metadataEnrichmentSummary}
+      metadataEnrichmentBusy={metadataEnrichmentBusy}
+      metadataEnrichmentStatus={metadataEnrichmentStatus}
+      handleMetadataEnrichmentRun={handleMetadataEnrichmentRun}
+      handleCoverReviewReconcile={handleCoverReviewReconcile}
       handleCoverReviewResolve={handleCoverReviewResolve}
       loanRecoveryBusy={loanRecoveryBusy}
       loanRecoveryStatus={loanRecoveryStatus}
@@ -7502,14 +8611,36 @@ export default function StaffView({
       onOpenWareCheckIn={onOpenCheckin}
     />
   );
+  const cockpitOperationsFocusModule:
+    | "operations"
+    | "checkins"
+    | "members"
+    | "pieces"
+    | "firings"
+    | "events"
+    | "lending"
+    | "lending-intake" =
+    moduleKey === "lending-intake" ||
+    moduleKey === "checkins" ||
+    moduleKey === "members" ||
+    moduleKey === "pieces" ||
+    moduleKey === "firings" ||
+    moduleKey === "events" ||
+    moduleKey === "lending"
+      ? moduleKey
+      : "operations";
   const operationsContent = (
     <OperationsCockpitModule
+      overview={operationsOverview}
       checkinsContent={checkinsContent}
       membersContent={membersContent}
       piecesContent={piecesContent}
       firingsContent={firingsContent}
       eventsContent={eventsContent}
       lendingContent={lendingContent}
+      lendingIntakeContent={lendingIntakeContent}
+      activeOperationsModule={cockpitOperationsFocusModule}
+      openModuleFromCockpit={openModuleFromCockpit}
     />
   );
 
@@ -7519,6 +8650,7 @@ export default function StaffView({
       cockpitTab={cockpitTab}
       setCockpitTab={setCockpitTab}
       overviewAlerts={overviewAlerts}
+      shiftStatus={shiftStatus}
       cockpitKpis={cockpitKpis}
       automationKpis={automationKpis}
       automationDashboard={automationDashboard}
@@ -7526,6 +8658,7 @@ export default function StaffView({
       onRefreshCockpit={() => setStatus("Refreshed cockpit telemetry")}
       run={run}
       openModuleFromCockpit={openModuleFromCockpit}
+      openMessagesInbox={openMessagesInbox}
       loadReportOps={loadReportOps}
       loadSystemStats={loadSystemStats}
       loadAutomationHealthDashboard={loadAutomationHealthDashboard}
@@ -7612,8 +8745,8 @@ export default function StaffView({
       paymentDegraded={paymentDegraded}
       commerceError={commerceError}
       paymentAlerts={paymentAlerts}
-      systemSummaryToneLabel={systemSummaryToneLabel}
-      systemSummaryMessage={systemSummaryMessage}
+      systemSummaryToneLabel={shiftStatus.label}
+      systemSummaryMessage={shiftStatus.headline}
     />
   );
 

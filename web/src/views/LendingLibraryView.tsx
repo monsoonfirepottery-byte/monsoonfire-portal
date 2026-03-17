@@ -45,12 +45,14 @@ import { db } from "../firebase";
 import { track } from "../lib/analytics";
 import type { AnalyticsProps } from "../lib/analytics";
 import {
+  deriveMemberLibraryPendingBadges,
   normalizeLibraryExternalLookupResult,
   normalizeLibraryItem,
   normalizeLibraryLoan,
   normalizeLibraryRecommendation,
   normalizeLibraryRequest,
   resolveMemberApprovedLibraryCoverUrl,
+  resolveMemberLibraryCoverDisplay,
 } from "../lib/normalizers/library";
 import type {
   LibraryDifficulty,
@@ -183,6 +185,10 @@ const DISCOVERY_RAIL_CONFIG: Array<{
 
 const MEDIA_TYPE_OPTIONS = [
   { value: "book", label: "Book" },
+  { value: "comic", label: "Comic" },
+  { value: "tabletop_rpg", label: "Tabletop RPG" },
+  { value: "board_game", label: "Board game" },
+  { value: "video_game", label: "Video game" },
   { value: "media", label: "Media" },
   { value: "tool", label: "Tool" },
   { value: "other", label: "Other" },
@@ -253,20 +259,29 @@ function formatAvailability(item: LibraryItem) {
   return `${available} available - ${total} total`;
 }
 
-function memberCoverPlaceholderLabel(item: LibraryItem): string {
-  const coverUrl = typeof item.coverUrl === "string" ? item.coverUrl.trim() : "";
-  if (!coverUrl || item.coverQualityStatus === "missing") {
-    return "No cover";
+function renderMemberLibraryCover(item: LibraryItem) {
+  const coverDisplay = resolveMemberLibraryCoverDisplay(item);
+  if (coverDisplay.kind === "approved") {
+    return <img className="library-cover" src={coverDisplay.coverUrl} alt={item.title} />;
   }
-  return "Cover pending review";
+  return (
+    <div className="library-cover placeholder" role="img" aria-label={coverDisplay.ariaLabel}>
+      <span>{coverDisplay.label}</span>
+      <span className="library-meta">{coverDisplay.accent}</span>
+    </div>
+  );
 }
 
-function renderMemberLibraryCover(item: LibraryItem) {
-  const approvedCoverUrl = resolveMemberApprovedLibraryCoverUrl(item);
-  if (approvedCoverUrl) {
-    return <img className="library-cover" src={approvedCoverUrl} alt={item.title} />;
-  }
-  return <div className="library-cover placeholder">{memberCoverPlaceholderLabel(item)}</div>;
+function renderPendingBadges(item: LibraryItem, suffix: string) {
+  const badges = deriveMemberLibraryPendingBadges(item);
+  if (badges.length === 0) return null;
+  return (
+    <div className="library-chip-row">
+      {badges.map((badge) => (
+        <span className="chip" key={`${item.id}-${suffix}-${badge}`}>{badge}</span>
+      ))}
+    </div>
+  );
 }
 
 function requestIsActive(status: string) {
@@ -373,12 +388,81 @@ function buildLibraryDetailTags(item: LibraryItem): string[] {
   return deduped;
 }
 
+function normalizeSynopsisText(value: unknown): string {
+  return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+}
+
+function clampLibraryValueCopy(value: string, maxLength = 150): string {
+  const cleaned = normalizeSynopsisText(value);
+  if (!cleaned || cleaned.length <= maxLength) return cleaned;
+  const slice = cleaned.slice(0, Math.max(0, maxLength + 1));
+  const boundary = Math.max(slice.lastIndexOf(" "), slice.lastIndexOf("\n"), slice.lastIndexOf("\t"));
+  const trimmed = (boundary >= Math.max(50, Math.floor(maxLength * 0.55)) ? slice.slice(0, boundary) : slice.slice(0, maxLength))
+    .trim()
+    .replace(/[,:;]+$/g, "");
+  return `${trimmed || cleaned.slice(0, maxLength).trim()}...`;
+}
+
 function resolveLibrarySummaryText(item: LibraryItem): string | null {
-  const description = typeof item.description === "string" ? item.description.trim() : "";
+  const summary = normalizeSynopsisText(item.summary);
+  if (summary) return summary;
+  const description = normalizeSynopsisText(item.description);
   if (description) return description;
-  const subtitle = typeof item.subtitle === "string" ? item.subtitle.trim() : "";
+  const subtitle = normalizeSynopsisText(item.subtitle);
   if (subtitle) return subtitle;
   return null;
+}
+
+function resolveLibraryFullDescriptionText(item: LibraryItem): string | null {
+  const description = normalizeSynopsisText(item.description);
+  if (!description) return null;
+  const summary = normalizeSynopsisText(resolveLibrarySummaryText(item));
+  if (!summary) return description;
+  const normalizedSummary = summary.toLowerCase();
+  const normalizedDescription = description.toLowerCase();
+  if (normalizedSummary === normalizedDescription) return null;
+  if (normalizedDescription.startsWith(normalizedSummary) && normalizedDescription.length - normalizedSummary.length < 80) {
+    return null;
+  }
+  return description;
+}
+
+function resolveLibraryShelfReason(item: LibraryItem): string | null {
+  const rationale = normalizeSynopsisText(item.curation?.staffRationale);
+  if (rationale) return clampLibraryValueCopy(rationale, 120);
+  const summary = normalizeSynopsisText(item.summary);
+  if (summary) return clampLibraryValueCopy(summary, 120);
+  const bestFor = normalizeSynopsisText(item.reviewSummary?.topBestFor);
+  if (bestFor) return `Best for ${clampLibraryValueCopy(bestFor, 72)}`;
+  const subtitle = normalizeSynopsisText(item.subtitle);
+  return subtitle ? clampLibraryValueCopy(subtitle, 120) : null;
+}
+
+function resolveLibraryShelfBadge(item: LibraryItem): string | null {
+  if (item.curation?.staffPick) return "Staff pick";
+  const practicality =
+    typeof item.reviewSummary?.averagePracticality === "number" && Number.isFinite(item.reviewSummary.averagePracticality)
+      ? Math.round(item.reviewSummary.averagePracticality * 10) / 10
+      : null;
+  if (practicality !== null && practicality >= 4) return `${practicality.toFixed(1)} practical`;
+  const bestFor = normalizeSynopsisText(item.reviewSummary?.topBestFor);
+  return bestFor ? `Best for ${clampLibraryValueCopy(bestFor, 24)}` : null;
+}
+
+function formatLibraryDifficultyLabel(value: LibraryDifficulty | null | undefined): string {
+  if (value === "all-levels") return "All levels";
+  if (!value) return "Flexible difficulty";
+  return capitalizeWords(value);
+}
+
+function resolveLibraryDetailFallbackCopy(item: LibraryItem): string {
+  if (item.source === "manual" && /^isbn\s+[0-9x-]+$/i.test(item.title.trim())) {
+    return "Staff is still finishing this record so the title can be browsed cleanly.";
+  }
+  if (item.detailStatus === "enriching") {
+    return "More details are still being added for this title.";
+  }
+  return "Detailed synopsis is not available yet for this title.";
 }
 
 function parseCatalogUrlState(searchValue: string): CatalogUrlState {
@@ -886,7 +970,7 @@ function synthesizeWorkshopDiscoverySignalSummary(
   const workshopHasCommunitySignal = (workshop: EventSummary): boolean => {
     const activeSignals = safeNonNegativeInt(workshop.communitySignalCounts?.totalSignals ?? 0);
     const withdrawnSignals = safeNonNegativeInt(workshop.communitySignalCounts?.withdrawnSignals ?? 0);
-    return activeSignals + withdrawnSignals > 0;
+    return activeSignals > 0 || withdrawnSignals > 0;
   };
 
   const workshopsWithSignals = workshops.filter((workshop) => {
@@ -926,7 +1010,7 @@ function synthesizeWorkshopDiscoverySignalSummary(
     0,
   );
 
-  const hasSignalActivity = totalSignals + withdrawnSignals > 0;
+  const hasSignalActivity = totalSignals > 0 || withdrawnSignals > 0;
 
   const source: WorkshopDiscoverySectionSource = sourceHint === "signals" || hasSignalActivity ? "signals" : "fallback";
   return {
@@ -1051,6 +1135,25 @@ function workshopSignalText(event: EventSummary): string {
   return `${baseText}${demandText}`;
 }
 
+function workshopSignalTags(event: EventSummary): string[] {
+  const counts = event.communitySignalCounts;
+  if (!counts) return [];
+
+  const requestSignals = safeNonNegativeInt(counts.requestSignals);
+  const interestSignals = safeNonNegativeInt(counts.interestSignals);
+  const showcaseSignals = safeNonNegativeInt(counts.showcaseSignals);
+  const withdrawnSignals = safeNonNegativeInt(counts.withdrawnSignals);
+  const demandScore = safeNonNegativeNumber(counts.demandScore, 0);
+
+  const tags: string[] = [];
+  if (requestSignals > 0) tags.push(`${requestSignals} request`);
+  if (interestSignals > 0) tags.push(`${interestSignals} interest`);
+  if (showcaseSignals > 0) tags.push(`${showcaseSignals} showcase`);
+  if (withdrawnSignals > 0) tags.push(`${withdrawnSignals} withdrawal`);
+  if (demandScore > 0) tags.push(`demand ${formatWorkshopDemandScore(demandScore)}`);
+  return tags;
+}
+
 function workshopSignalMetaLine(
   event: EventSummary,
   sectionSource: WorkshopDiscoverySectionSource,
@@ -1062,7 +1165,10 @@ function workshopSignalMetaLine(
   }
 
   if (sectionSource === "signals") {
-    return "This workshop is in the community-signal rail, but has no current activity yet";
+    if (safeNonNegativeInt(event.communitySignalCounts?.withdrawnSignals) > 0) {
+      return "Community interest cooled after recent withdrawals";
+    }
+    return "Signal activity is being built from recent community demand";
   }
 
   return "No community signals yet";
@@ -1122,6 +1228,17 @@ function workshopSignalCountsForAnalytics(event: EventSummary): {
     demandScore: safeNonNegativeNumber(counts.demandScore, 0),
     latestSignalAtMs: counts.latestSignalAtMs === null ? null : safeNonNegativeInt(counts.latestSignalAtMs, 0),
   };
+}
+
+function workshopHasAnyCommunitySignals(event: EventSummary): boolean {
+  const counts = event.communitySignalCounts;
+  if (!counts) return false;
+  const activeSignals =
+    safeNonNegativeInt(counts.requestSignals) +
+    safeNonNegativeInt(counts.interestSignals) +
+    safeNonNegativeInt(counts.showcaseSignals);
+  const withdrawnSignals = safeNonNegativeInt(counts.withdrawnSignals);
+  return activeSignals + withdrawnSignals > 0;
 }
 
 function workshopWaitlistLabel(event: EventSummary): string | null {
@@ -2118,7 +2235,19 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
     }
 
     if (discoveryWorkshopSignalSummary?.source === "fallback") {
-      return `${discoveryWorkshopSignalSummary.workshopCount} upcoming workshops`;
+      const hasSignalActivity =
+        safeNonNegativeInt(discoveryWorkshopSignalSummary.totalSignals) > 0 ||
+        safeNonNegativeInt(discoveryWorkshopSignalSummary.requestSignals) > 0 ||
+        safeNonNegativeInt(discoveryWorkshopSignalSummary.interestSignals) > 0 ||
+        safeNonNegativeInt(discoveryWorkshopSignalSummary.showcaseSignals) > 0 ||
+        safeNonNegativeInt(discoveryWorkshopSignalSummary.withdrawnSignals) > 0;
+
+      if (!hasSignalActivity) {
+        return `${discoveryWorkshopSignalSummary.workshopCount} upcoming workshops`;
+      }
+
+      const fallbackSignalLabel = formatWorkshopDiscoverySignalSummary(discoveryWorkshopSignalSummary);
+      return `${discoveryWorkshopSignalSummary.workshopCount} upcoming workshops • ${fallbackSignalLabel}`;
     }
 
     if (discoveryWorkshopsSource === "signals") {
@@ -2126,13 +2255,44 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
     }
 
     if (discoveryWorkshopsSource === "fallback") {
-      return `${discoveryWorkshops.length} upcoming workshops`;
+      const hasSignalActivity =
+        discoveryWorkshopSignalSummary?.source === "signals" ||
+        discoveryWorkshopSignalSummary?.source === "fallback"
+          ? safeNonNegativeInt(discoveryWorkshopSignalSummary.totalSignals) > 0 ||
+            safeNonNegativeInt(discoveryWorkshopSignalSummary.requestSignals) > 0 ||
+            safeNonNegativeInt(discoveryWorkshopSignalSummary.interestSignals) > 0 ||
+            safeNonNegativeInt(discoveryWorkshopSignalSummary.showcaseSignals) > 0 ||
+            safeNonNegativeInt(discoveryWorkshopSignalSummary.withdrawnSignals) > 0
+          : discoveryWorkshops.some((workshop) => {
+              return workshopHasAnyCommunitySignals(workshop);
+            });
+
+      if (!hasSignalActivity) {
+        return `${discoveryWorkshops.length} upcoming workshops`;
+      }
+
+      if (discoveryWorkshopSignalSummary) {
+        const fallbackSignalLabel = formatWorkshopDiscoverySignalSummary(discoveryWorkshopSignalSummary);
+        return `${discoveryWorkshops.length} upcoming workshops • ${fallbackSignalLabel}`;
+      }
+
+      const activeSignals = discoveryWorkshops.reduce((sum, workshop) => {
+        const counts = workshop.communitySignalCounts;
+        return sum + (counts ? safeNonNegativeInt(counts.totalSignals) : 0);
+      }, 0);
+      const withdrawnSignals = discoveryWorkshops.reduce((sum, workshop) => {
+        const counts = workshop.communitySignalCounts;
+        return sum + (counts ? safeNonNegativeInt(counts.withdrawnSignals) : 0);
+      }, 0);
+      const signalParts: string[] = [];
+      if (activeSignals > 0) signalParts.push(`${activeSignals} active`);
+      if (withdrawnSignals > 0) signalParts.push(`${withdrawnSignals} withdrawn`);
+      const signalSuffix = signalParts.length > 0 ? ` • ${signalParts.join(", ")}` : "";
+      return `${discoveryWorkshops.length} upcoming workshops${signalSuffix}`;
     }
 
     const hasCommunitySignal = discoveryWorkshops.some((workshop) => {
-      const totalSignals = safeNonNegativeInt(workshop.communitySignalCounts?.totalSignals ?? 0);
-      const withdrawnSignals = safeNonNegativeInt(workshop.communitySignalCounts?.withdrawnSignals ?? 0);
-      return totalSignals + withdrawnSignals > 0;
+      return workshopHasAnyCommunitySignals(workshop);
     });
     return hasCommunitySignal
       ? `${discoveryWorkshops.length} featured by community signal`
@@ -2141,13 +2301,19 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
 
   const discoveryWorkshopsAreSignal = useMemo(() => {
     if (!discoveryWorkshops.length) return false;
-    if (discoveryWorkshopsSource === "fallback") return false;
     if (discoveryWorkshopsSource === "signals") return true;
     if (discoveryWorkshopSignalSummary?.source === "signals") return true;
+    if (discoveryWorkshopSignalSummary?.source === "fallback") {
+      const hasSignalActivity =
+        safeNonNegativeInt(discoveryWorkshopSignalSummary.totalSignals) > 0 ||
+        safeNonNegativeInt(discoveryWorkshopSignalSummary.requestSignals) > 0 ||
+        safeNonNegativeInt(discoveryWorkshopSignalSummary.interestSignals) > 0 ||
+        safeNonNegativeInt(discoveryWorkshopSignalSummary.showcaseSignals) > 0 ||
+        safeNonNegativeInt(discoveryWorkshopSignalSummary.withdrawnSignals) > 0;
+      if (hasSignalActivity) return true;
+    }
     return discoveryWorkshops.some((workshop) => {
-      const totalSignals = safeNonNegativeInt(workshop.communitySignalCounts?.totalSignals ?? 0);
-      const withdrawnSignals = safeNonNegativeInt(workshop.communitySignalCounts?.withdrawnSignals ?? 0);
-      return totalSignals + withdrawnSignals > 0;
+      return workshopHasAnyCommunitySignals(workshop);
     });
   }, [discoveryWorkshops, discoveryWorkshopSignalSummary, discoveryWorkshopsSource]);
 
@@ -2249,6 +2415,14 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
   }, [discoveryItemMap, itemMap, selectedItemDetail, selectedItemId]);
   const selectedItemSummary = useMemo(
     () => (selectedItem ? resolveLibrarySummaryText(selectedItem) : null),
+    [selectedItem]
+  );
+  const selectedItemValueBadge = useMemo(
+    () => (selectedItem ? resolveLibraryShelfBadge(selectedItem) : null),
+    [selectedItem]
+  );
+  const selectedItemFullDescription = useMemo(
+    () => (selectedItem ? resolveLibraryFullDescriptionText(selectedItem) : null),
     [selectedItem]
   );
   const selectedItemDetailTags = useMemo(
@@ -3441,6 +3615,8 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
             <div className="library-shelf-track" ref={shelfTrackRef} role="list" aria-label="Library cover shelf">
               {filteredItems.map((item) => {
                 const availableCopies = typeof item.availableCopies === "number" ? item.availableCopies : 0;
+                const shelfReason = resolveLibraryShelfReason(item);
+                const shelfBadge = resolveLibraryShelfBadge(item);
                 return (
                   <button
                     key={item.id}
@@ -3461,6 +3637,9 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                     <div className="library-shelf-cover-wrap">{renderMemberLibraryCover(item)}</div>
                     <div className="library-shelf-item-title">{item.title}</div>
                     <div className="library-shelf-item-meta">{(item.authors ?? [])[0] || "Unknown author"}</div>
+                    {renderPendingBadges(item, "shelf")}
+                    {shelfBadge ? <div className="library-shelf-item-badge">{shelfBadge}</div> : null}
+                    {shelfReason ? <div className="library-shelf-item-reason">{shelfReason}</div> : null}
                     <div className={`library-shelf-item-status ${availableCopies > 0 ? "is-available" : "is-waitlist"}`}>
                       {availableCopies > 0 ? "Available" : "Waitlist"}
                     </div>
@@ -3749,8 +3928,15 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                 {(selectedItem.authors ?? []).join(", ") || "Unknown author"}
               </div>
               <div className="library-meta">{formatAvailability(selectedItem)}</div>
+              {renderPendingBadges(selectedItem, "detail")}
+            </div>
+            <div className="lending-detail-badges">
+              {selectedItemValueBadge ? (
+                <span className="chip detail-value-badge">{selectedItemValueBadge}</span>
+              ) : null}
             </div>
           </div>
+          <div className="summary-label">What can I do next</div>
           {renderDetailPrimaryActions(selectedItem)}
           {selectedItemDetailLoading ? <div className="notice inline-alert">Refreshing detail...</div> : null}
           {selectedItemDetailError ? <div className="notice inline-alert">{selectedItemDetailError}</div> : null}
@@ -3758,11 +3944,20 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
 
           <div className="lending-detail-grid">
             <article className="lending-detail-panel lending-detail-about">
-              <div className="summary-label">About this title</div>
+              <div className="summary-label">Why this title matters</div>
+              {normalizeSynopsisText(selectedItem.curation?.staffRationale) &&
+              normalizeSynopsisText(selectedItem.curation?.staffRationale) !== normalizeSynopsisText(selectedItemSummary) ? (
+                <p className="detail-rationale">{selectedItem.curation?.staffRationale}</p>
+              ) : null}
               <p className="library-description lending-detail-description">
-                {selectedItemSummary ??
-                  "Summary details are not available yet for this title. Staff can add synopsis content during catalog curation."}
+                {selectedItemSummary ?? resolveLibraryDetailFallbackCopy(selectedItem)}
               </p>
+              {selectedItemFullDescription ? (
+                <details className="detail-full-description">
+                  <summary>Full description</summary>
+                  <p className="library-description lending-detail-description">{selectedItemFullDescription}</p>
+                </details>
+              ) : null}
               {selectedItemDetailTags.length > 0 ? (
                 <div className="lending-detail-tag-list" aria-label="Title tags">
                   {selectedItemDetailTags.map((tag) => (
@@ -3774,6 +3969,86 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
               ) : (
                 <div className="library-meta">Tags will appear here when metadata is added.</div>
               )}
+            </article>
+
+            <article className="lending-detail-panel">
+              <div className="summary-label">Is this for me?</div>
+              {selectedItem.reviewSummary ? (
+                <>
+                  <div className="detail-fit-grid">
+                    <div className="detail-fit-card">
+                      <span className="summary-label">Practicality</span>
+                      <span className="detail-fit-value">
+                        {typeof selectedItem.reviewSummary.averagePracticality === "number" &&
+                        Number.isFinite(selectedItem.reviewSummary.averagePracticality)
+                          ? `${(Math.round(selectedItem.reviewSummary.averagePracticality * 10) / 10).toFixed(1)} / 5`
+                          : "Still forming"}
+                      </span>
+                    </div>
+                    <div className="detail-fit-card">
+                      <span className="summary-label">Difficulty</span>
+                      <span className="detail-fit-value">
+                        {formatLibraryDifficultyLabel(selectedItem.reviewSummary.topDifficulty)}
+                      </span>
+                    </div>
+                    <div className="detail-fit-card">
+                      <span className="summary-label">Best for</span>
+                      <span className="detail-fit-value">
+                        {selectedItem.reviewSummary.topBestFor || "Broad studio use"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="library-meta">
+                    {selectedItem.reviewSummary.reviewCount > 0
+                      ? `${selectedItem.reviewSummary.reviewCount} member review${selectedItem.reviewSummary.reviewCount === 1 ? "" : "s"} inform this snapshot.`
+                      : "Member feedback is still starting to build for this title."}
+                  </div>
+                  {selectedItem.reviewSummary.latestReflection ? (
+                    <blockquote className="detail-reflection-quote">
+                      {selectedItem.reviewSummary.latestReflection}
+                    </blockquote>
+                  ) : null}
+                </>
+              ) : (
+                <div className="library-meta">
+                  Member reflections have not filled in the practical-fit snapshot yet.
+                </div>
+              )}
+            </article>
+
+            <article className="lending-detail-panel">
+              <div className="summary-label">Can I get it now?</div>
+              <div className="detail-availability-list">
+                <div className="detail-availability-line">{formatAvailability(selectedItem)}</div>
+                {selectedItem.lifecycle?.queueMessage ? (
+                  <div className="library-meta">{selectedItem.lifecycle.queueMessage}</div>
+                ) : (
+                  <div className="library-meta">
+                    {selectedItem.availableCopies > 0
+                      ? "A copy is available to reserve now."
+                      : "This title is currently circulating through the queue."}
+                  </div>
+                )}
+                {typeof selectedItem.lifecycle?.waitlistCount === "number" && selectedItem.lifecycle.waitlistCount > 0 ? (
+                  <div className="library-meta">
+                    Waitlist: {selectedItem.lifecycle.waitlistCount} member{selectedItem.lifecycle.waitlistCount === 1 ? "" : "s"}
+                  </div>
+                ) : null}
+                {selectedItem.lifecycle?.nextAvailableIso ? (
+                  <div className="library-meta">
+                    Next expected availability: {formatDateTime(selectedItem.lifecycle.nextAvailableIso)}
+                  </div>
+                ) : null}
+                {selectedItem.lifecycle?.renewable === true ? (
+                  <div className="library-meta">Renewals are allowed when another member is not waiting.</div>
+                ) : null}
+                {selectedItem.lifecycle?.renewalPolicyNote ? (
+                  <div className="library-meta">{selectedItem.lifecycle.renewalPolicyNote}</div>
+                ) : null}
+                {selectedItem.lifecycle?.notifyEnabledByDefault === true ? (
+                  <div className="library-meta">Waitlist notifications are enabled by default for this title.</div>
+                ) : null}
+              </div>
             </article>
 
             <article className="lending-detail-panel">
@@ -4245,6 +4520,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                     const when = formatDateTime(workshop.startAt);
                     const signalMeta = workshopSignalMetaLine(workshop, discoveryWorkshopsSource);
                     const waitlistMeta = workshopWaitlistLabel(workshop);
+                    const signalTags = workshopSignalTags(workshop);
                     const slots =
                       typeof workshop.remainingCapacity === "number" && workshop.remainingCapacity >= 0
                         ? `${workshop.remainingCapacity} spots`
@@ -4293,6 +4569,15 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                           {waitlistMeta ? <span>{waitlistMeta}</span> : null}
                           <span>{signalMeta}</span>
                         </div>
+                      {signalTags.length > 0 ? (
+                        <div className="discovery-workshop-signal-tags">
+                          {signalTags.map((tag, index) => (
+                            <span key={`${workshop.id}-${tag}-${index}`} className="discovery-workshop-signal-tag">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                     </button>
                     );
                   })}
@@ -4331,6 +4616,7 @@ export default function LendingLibraryView({ user, adminToken, isStaff }: Props)
                       >
                         <div className="discovery-rail-cover">{renderMemberLibraryCover(item)}</div>
                         <span className="discovery-rail-title">{item.title}</span>
+                        {renderPendingBadges(item, "discovery")}
                       </button>
                     ))}
                   </div>

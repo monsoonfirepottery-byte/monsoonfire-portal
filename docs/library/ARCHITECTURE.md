@@ -11,7 +11,7 @@ This document defines the production architecture for a curated, studio-native l
 
 1. API boundary is role-aware and stateless (`Authorization: Bearer <idToken>` + existing role claims).
 2. Persistence is relational (PostgreSQL) for lending lifecycle integrity, moderation workflows, and future recommendations.
-3. ISBN scanning remains in admin item creation/edit flow and does not require a separate tool page.
+3. ISBN scanning and bulk ISBN import run from a dedicated staff intake page, while admin item create/edit remains the cleanup and manual override surface.
 4. Physical and digital media share one item model and one UI shell; only physical items enter borrow lifecycle.
 5. Borrowing remains trust-based with soft reminders and admin-confirmed lost-item replacement charges.
 6. Library routes are authenticated only; no public browse surface is exposed from the portal.
@@ -85,8 +85,11 @@ This document defines the production architecture for a curated, studio-native l
 - Borrow/check-in (physical only)
 - Rate/review/tag/status actions
 
+`LendingIntakePage`
+- Dedicated staff intake workspace for scanner-led ISBN entry, batch import, operator status feedback, and needs-details triage.
+
 `AdminAddEditItemModal`
-- Single creation/edit workflow with integrated ISBN scan/manual modes.
+- Single creation/edit workflow for manual cleanup, overrides, and ISBN-assisted drafting after intake.
 
 `AdminModerationPanel`
 - Tag review/merge queue
@@ -135,7 +138,7 @@ This document defines the production architecture for a curated, studio-native l
 | Submit tags | yes (moderated) | yes |
 | Approve/merge tags | no | yes |
 | Create/edit/delete items | no | yes |
-| ISBN scan/import in add flow | no | yes |
+| ISBN scan/import intake page | no | yes |
 | Mark lost + assess replacement fee | no | yes |
 | Flag staff pick + curate shelves | no | yes |
 
@@ -157,15 +160,16 @@ Policy note: UI gating is convenience only; API remains the enforcement point.
 
 ### Flow
 
-1. Admin opens `Add Item` modal and chooses `Scan ISBN`.
-2. Scanner (existing tooling) returns raw ISBN.
+1. Staff opens the dedicated lending intake page and scans or pastes ISBNs.
+2. Intake shows operator-facing request state: `ready`, `importing`, `matching`, then `pass` / `fail` / `timeout`.
 3. Backend normalizes ISBN and performs duplicate check.
 4. Metadata lookup returns draft fields + source attribution.
-5. Cover candidate passes quality rules (front-cover confidence); otherwise flagged for manual review.
-6. Admin reviews/edits and submits.
-7. Save validates unique ISBN index and writes item.
-8. If remote lookup fails, UI falls back to manual entry mode with ISBN prefilled.
-9. Scheduled backend refresh revisits stale/missing metadata and updates items without blocking member-facing requests.
+5. Trusted Google Books and Open Library book covers auto-approve when they pass quality rules; invalid, low-confidence, untrusted, missing, or non-book-mismatch covers stay in staff review.
+6. Intake refreshes the catalog and routes placeholder or thin-metadata rows into the needs-details queue.
+7. Staff opens the admin editor for manual cleanup when needed.
+8. Save validates unique ISBN index and writes item updates.
+9. If remote lookup fails, UI falls back to manual entry mode with ISBN prefilled.
+10. Scheduled backend refresh revisits stale/missing metadata and updates items without blocking member-facing requests.
 
 ## 6) UI Layout Wireframe Description
 

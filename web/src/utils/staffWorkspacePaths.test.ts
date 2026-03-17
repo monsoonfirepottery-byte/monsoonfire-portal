@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   isStaffWorkspaceRequest,
   resolveStaffCockpitWorkspaceModule,
+  resolveStaffCockpitOperationsModule,
   resolveStaffCockpitWorkspaceTabSegment,
   resolveStaffWorkspaceRequestedPath,
   resolveStaffWorkspaceOpenTarget,
   resolveStaffWorkspaceLaunch,
   resolveStaffWorkspaceMatch,
+  shouldExitStaffWorkspaceForTargetNav,
   shouldNavigateToStaffWorkspaceTarget,
 } from "./staffWorkspacePaths";
 
@@ -33,7 +35,7 @@ describe("resolveStaffWorkspaceMatch", () => {
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/checkins/queue")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/checkins",
       mode: "cockpit",
     });
   });
@@ -59,43 +61,43 @@ describe("resolveStaffWorkspaceMatch", () => {
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/checkins")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/checkins",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/checkin")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/checkins",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/members")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/members",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/member")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/members",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/pieces")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/pieces",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/piece")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/pieces",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/firings")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/firings",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/firing")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/firings",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/events")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/events",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/event")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/events",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/stripe")).toEqual({
@@ -107,7 +109,15 @@ describe("resolveStaffWorkspaceMatch", () => {
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/lending")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/lending",
+      mode: "cockpit",
+    });
+    expect(resolveStaffWorkspaceMatch("/staff/lending-intake")).toEqual({
+      canonicalPath: "/staff/cockpit/lending-intake",
+      mode: "cockpit",
+    });
+    expect(resolveStaffWorkspaceMatch("/staff/lendingIntake")).toEqual({
+      canonicalPath: "/staff/cockpit/lending-intake",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/reports")).toEqual({
@@ -138,6 +148,10 @@ describe("resolveStaffWorkspaceMatch", () => {
       canonicalPath: "/staff/cockpit/module-telemetry",
       mode: "cockpit",
     });
+    expect(resolveStaffWorkspaceMatch("/staff/moduleTelemetry")).toEqual({
+      canonicalPath: "/staff/cockpit/module-telemetry",
+      mode: "cockpit",
+    });
     expect(resolveStaffWorkspaceMatch("/staff/finance")).toEqual({
       canonicalPath: "/staff/cockpit/finance",
       mode: "cockpit",
@@ -155,6 +169,10 @@ describe("resolveStaffWorkspaceMatch", () => {
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/governance")).toEqual({
+      canonicalPath: "/staff/cockpit/policy-agent-ops",
+      mode: "cockpit",
+    });
+    expect(resolveStaffWorkspaceMatch("/staff/policy")).toEqual({
       canonicalPath: "/staff/cockpit/policy-agent-ops",
       mode: "cockpit",
     });
@@ -193,8 +211,16 @@ describe("resolveStaffWorkspaceMatch", () => {
       canonicalPath: "/staff/cockpit/platform",
       mode: "cockpit",
     });
+    expect(resolveStaffWorkspaceMatch("/staff/cockpit/policy")).toEqual({
+      canonicalPath: "/staff/cockpit/policy-agent-ops",
+      mode: "cockpit",
+    });
     expect(resolveStaffWorkspaceMatch("/staff/cockpit/finance")).toEqual({
       canonicalPath: "/staff/cockpit/finance",
+      mode: "cockpit",
+    });
+    expect(resolveStaffWorkspaceMatch("/staff/cockpit/lending-intake")).toEqual({
+      canonicalPath: "/staff/cockpit/lending-intake",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/cockpit/module-telemetry")).toEqual({
@@ -202,6 +228,10 @@ describe("resolveStaffWorkspaceMatch", () => {
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/cockpit/module_telemetry")).toEqual({
+      canonicalPath: "/staff/cockpit/module-telemetry",
+      mode: "cockpit",
+    });
+    expect(resolveStaffWorkspaceMatch("/staff/cockpit/moduleTelemetry")).toEqual({
       canonicalPath: "/staff/cockpit/module-telemetry",
       mode: "cockpit",
     });
@@ -225,27 +255,27 @@ describe("resolveStaffWorkspaceMatch", () => {
 
   it("normalizes legacy cockpit module-like routes to consolidated anchors", () => {
     expect(resolveStaffWorkspaceMatch("/staff/cockpit/checkins")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/checkins",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/cockpit/checkin")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/checkins",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/cockpit/member")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/members",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/cockpit/piece")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/pieces",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/cockpit/firing")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/firings",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/cockpit/event")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/events",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/cockpit/workshops")).toEqual({
@@ -265,7 +295,7 @@ describe("resolveStaffWorkspaceMatch", () => {
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/cockpit/lending")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/lending",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceMatch("/staff/cockpit/agentops")).toEqual({
@@ -553,19 +583,19 @@ describe("resolveStaffWorkspaceOpenTarget", () => {
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceOpenTarget("/staff/checkins")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/checkins",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceOpenTarget("/staff/checkin")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/checkins",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceOpenTarget("/staff/members")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/members",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceOpenTarget("/staff/member")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/members",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceOpenTarget("/staff/operations")).toEqual({
@@ -584,16 +614,24 @@ describe("resolveStaffWorkspaceOpenTarget", () => {
       canonicalPath: "/staff/cockpit/module-telemetry",
       mode: "cockpit",
     });
+    expect(resolveStaffWorkspaceOpenTarget("/staff/moduleTelemetry")).toEqual({
+      canonicalPath: "/staff/cockpit/module-telemetry",
+      mode: "cockpit",
+    });
+    expect(resolveStaffWorkspaceOpenTarget("/staff/cockpit/moduleTelemetry")).toEqual({
+      canonicalPath: "/staff/cockpit/module-telemetry",
+      mode: "cockpit",
+    });
     expect(resolveStaffWorkspaceOpenTarget("/staff/piece")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/pieces",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceOpenTarget("/staff/firing")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/firings",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceOpenTarget("/staff/event")).toEqual({
-      canonicalPath: "/staff/cockpit/operations",
+      canonicalPath: "/staff/cockpit/events",
       mode: "cockpit",
     });
     expect(resolveStaffWorkspaceOpenTarget("\\staff\\workshops")).toEqual({
@@ -621,7 +659,13 @@ describe("resolveStaffCockpitWorkspaceModule", () => {
   it("returns null for legacy deep links now handled as cockpit tab anchors", () => {
     expect(resolveStaffCockpitWorkspaceModule("/staff/cockpit/commerce")).toBeNull();
     expect(resolveStaffCockpitWorkspaceModule("/staff/cockpit/stripe")).toBeNull();
-    expect(resolveStaffCockpitWorkspaceModule("/staff/cockpit/checkins")).toBeNull();
+    expect(resolveStaffCockpitWorkspaceModule("/staff/cockpit/checkins")).toBe("checkins");
+    expect(resolveStaffCockpitWorkspaceModule("/staff/cockpit/member")).toBe("members");
+    expect(resolveStaffCockpitWorkspaceModule("/staff/cockpit/piece")).toBe("pieces");
+    expect(resolveStaffCockpitWorkspaceModule("/staff/cockpit/firing")).toBe("firings");
+    expect(resolveStaffCockpitWorkspaceModule("/staff/cockpit/event")).toBe("events");
+    expect(resolveStaffCockpitWorkspaceModule("/staff/cockpit/lendingIntake")).toBe("lending-intake");
+    expect(resolveStaffCockpitWorkspaceModule("/staff/cockpit/lending_intake")).toBe("lending-intake");
   });
 
   it("normalizes legacy tab-only cockpit paths without treating them as module routes", () => {
@@ -643,6 +687,45 @@ describe("resolveStaffCockpitWorkspaceModule", () => {
   it("normalizes case and spacing for cockpit module extraction", () => {
     expect(resolveStaffCockpitWorkspaceModule(" /staff/Cockpit/Reports ")).toBe("reports");
     expect(resolveStaffCockpitWorkspaceModule(" /staff/Cockpit/StudioReservations ")).toBe("studio-reservations");
+  });
+});
+
+describe("resolveStaffCockpitOperationsModule", () => {
+  it("extracts focused operations modules from legacy cockpit paths", () => {
+    expect(resolveStaffCockpitOperationsModule("/staff/cockpit/checkins")).toBe("checkins");
+    expect(resolveStaffCockpitOperationsModule("/staff/cockpit/member")).toBe("members");
+    expect(resolveStaffCockpitOperationsModule("/staff/cockpit/piece")).toBe("pieces");
+    expect(resolveStaffCockpitOperationsModule("/staff/cockpit/firing")).toBe("firings");
+    expect(resolveStaffCockpitOperationsModule("/staff/cockpit/event")).toBe("events");
+    expect(resolveStaffCockpitOperationsModule("/staff/cockpit/lending")).toBe("lending");
+  });
+
+  it("extracts focused operations modules from legacy root staff paths", () => {
+    expect(resolveStaffCockpitOperationsModule("/staff/checkins")).toBe("checkins");
+    expect(resolveStaffCockpitOperationsModule("/staff/member")).toBe("members");
+    expect(resolveStaffCockpitOperationsModule("/staff/piece")).toBe("pieces");
+    expect(resolveStaffCockpitOperationsModule("/staff/firing")).toBe("firings");
+    expect(resolveStaffCockpitOperationsModule("/staff/event")).toBe("events");
+    expect(resolveStaffCockpitOperationsModule("/staff/lendingIntake")).toBe("lending-intake");
+    expect(resolveStaffCockpitOperationsModule("/staff/lending_intake")).toBe("lending-intake");
+  });
+
+  it("normalizes finance and platform aliases as non-operation focus targets", () => {
+    expect(resolveStaffCockpitOperationsModule("/staff/cockpit/finance")).toBeNull();
+    expect(resolveStaffCockpitOperationsModule("/staff/cockpit/stripe")).toBeNull();
+    expect(resolveStaffCockpitOperationsModule("/staff/cockpit/system")).toBeNull();
+  });
+
+  it("normalizes mixed-case operation module aliases before mapping to focused operations", () => {
+    expect(resolveStaffCockpitOperationsModule("/staff/cockpit/Checkins")).toBe("checkins");
+    expect(resolveStaffCockpitOperationsModule("/staff/cockpit/MEMBER")).toBe("members");
+    expect(resolveStaffCockpitOperationsModule("/staff/CHECKIN")).toBe("checkins");
+  });
+
+  it("falls back to generic operations for raw operations and workshops aliases", () => {
+    expect(resolveStaffCockpitOperationsModule("/staff/cockpit/operations")).toBe("operations");
+    expect(resolveStaffCockpitOperationsModule("/staff/cockpit/workshops")).toBe("operations");
+    expect(resolveStaffCockpitOperationsModule("/staff/workshops")).toBe("operations");
   });
 });
 
@@ -668,7 +751,7 @@ describe("resolveStaffCockpitWorkspaceTabSegment", () => {
     expect(resolveStaffCockpitWorkspaceTabSegment("/staff/cockpit/payments")).toBe("finance");
     expect(resolveStaffCockpitWorkspaceTabSegment("/staff/cockpit/commerce")).toBe("finance");
     expect(resolveStaffCockpitWorkspaceTabSegment("/staff/cockpit/stripe")).toBe("finance");
-    expect(resolveStaffCockpitWorkspaceTabSegment("/staff/cockpit/checkins")).toBe("operations");
+    expect(resolveStaffCockpitWorkspaceTabSegment("/staff/cockpit/checkins")).toBeNull();
   });
 
   it("returns null for unknown cockpit segments", () => {
@@ -871,19 +954,22 @@ describe("resolveStaffWorkspaceRequestedPath", () => {
     expect(resolveStaffWorkspaceRequestedPath("/staff/ops", "")).toBe("/staff/cockpit/operations");
     expect(resolveStaffWorkspaceRequestedPath("/staff/finance", "/staff/workshops")).toBe("/staff/cockpit/finance");
     expect(resolveStaffWorkspaceRequestedPath("/staff/commerce", "")).toBe("/staff/cockpit/finance");
-    expect(resolveStaffWorkspaceRequestedPath("/staff/events", "")).toBe("/staff/cockpit/operations");
-    expect(resolveStaffWorkspaceRequestedPath("/staff/lending", "")).toBe("/staff/cockpit/operations");
+    expect(resolveStaffWorkspaceRequestedPath("/staff/events", "")).toBe("/staff/cockpit/events");
+    expect(resolveStaffWorkspaceRequestedPath("/staff/lending", "")).toBe("/staff/cockpit/lending");
     expect(resolveStaffWorkspaceRequestedPath("/staff/stripe", "")).toBe("/staff/cockpit/finance");
-    expect(resolveStaffWorkspaceRequestedPath("/staff/checkins", "")).toBe("/staff/cockpit/operations");
-    expect(resolveStaffWorkspaceRequestedPath("/staff/checkin", "")).toBe("/staff/cockpit/operations");
-    expect(resolveStaffWorkspaceRequestedPath("/staff/member", "")).toBe("/staff/cockpit/operations");
-    expect(resolveStaffWorkspaceRequestedPath("/staff/piece", "")).toBe("/staff/cockpit/operations");
-    expect(resolveStaffWorkspaceRequestedPath("/staff/firing", "")).toBe("/staff/cockpit/operations");
-    expect(resolveStaffWorkspaceRequestedPath("/staff/event", "")).toBe("/staff/cockpit/operations");
+    expect(resolveStaffWorkspaceRequestedPath("/staff/checkins", "")).toBe("/staff/cockpit/checkins");
+    expect(resolveStaffWorkspaceRequestedPath("/staff/checkin", "")).toBe("/staff/cockpit/checkins");
+    expect(resolveStaffWorkspaceRequestedPath("/staff/member", "")).toBe("/staff/cockpit/members");
+    expect(resolveStaffWorkspaceRequestedPath("/staff/piece", "")).toBe("/staff/cockpit/pieces");
+    expect(resolveStaffWorkspaceRequestedPath("/staff/firing", "")).toBe("/staff/cockpit/firings");
+    expect(resolveStaffWorkspaceRequestedPath("/staff/event", "")).toBe("/staff/cockpit/events");
     expect(resolveStaffWorkspaceRequestedPath("/staff/operations", "")).toBe("/staff/cockpit/operations");
     expect(resolveStaffWorkspaceRequestedPath("/staff/policy-agent-ops", "")).toBe("/staff/cockpit/policy-agent-ops");
     expect(resolveStaffWorkspaceRequestedPath("/staff/module-telemetry", "")).toBe("/staff/cockpit/module-telemetry");
     expect(resolveStaffWorkspaceRequestedPath("/staff/module_telemetry", "")).toBe("/staff/cockpit/module-telemetry");
+    expect(resolveStaffWorkspaceRequestedPath("/staff/cockpit/moduleTelemetry", "")).toBe(
+      "/staff/cockpit/module-telemetry"
+    );
   });
 
   it("returns null when neither path nor hash is a staff workspace", () => {
@@ -931,5 +1017,18 @@ describe("isStaffWorkspaceRequest", () => {
     expect(isStaffWorkspaceRequest("/staff/does-not-exist", "/")).toBe(true);
     expect(isStaffWorkspaceRequest("/", "/staff/system")).toBe(true);
     expect(isStaffWorkspaceRequest(undefined, undefined)).toBe(false);
+  });
+});
+
+describe("shouldExitStaffWorkspaceForTargetNav", () => {
+  it("exits staff workspace when navigating to non-staff views", () => {
+    expect(shouldExitStaffWorkspaceForTargetNav("/staff/cockpit", "", "messages")).toBe(true);
+    expect(shouldExitStaffWorkspaceForTargetNav("/dashboard", "#/staff/system", "reservations")).toBe(true);
+  });
+
+  it("keeps staff navigation in place for staff targets or non-staff routes", () => {
+    expect(shouldExitStaffWorkspaceForTargetNav("/staff/cockpit", "", "staff")).toBe(false);
+    expect(shouldExitStaffWorkspaceForTargetNav("/dashboard", "", "messages")).toBe(false);
+    expect(shouldExitStaffWorkspaceForTargetNav(undefined, undefined, "dashboard")).toBe(false);
   });
 });

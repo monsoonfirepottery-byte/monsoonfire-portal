@@ -1,5 +1,9 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { LibraryRolloutPhase } from "../../api/portalContracts";
+import LendingCatalogEditor, {
+  type LendingAdminItemDraft,
+  type LendingAdminItemRecord,
+} from "./LendingCatalogEditor";
 
 type RunAction = (key: string, fn: () => Promise<void>) => Promise<void>;
 
@@ -25,40 +29,6 @@ type LendingLoanRecord = {
   dueAtMs: number;
   returnedAtMs: number;
   rawDoc: Record<string, unknown>;
-};
-
-type LendingAdminItemRecord = {
-  id: string;
-  title: string;
-  authorLine: string;
-  isbn: string;
-  isbn10: string;
-  isbn13: string;
-  status: string;
-  source: string;
-  totalCopies: number;
-  availableCopies: number;
-  updatedAtMs: number;
-  rawDoc: Record<string, unknown>;
-};
-
-type LendingAdminItemDraft = {
-  title: string;
-  subtitle: string;
-  authorsCsv: string;
-  description: string;
-  publisher: string;
-  publishedDate: string;
-  isbn: string;
-  mediaType: string;
-  format: string;
-  coverUrl: string;
-  totalCopies: string;
-  availableCopies: string;
-  status: string;
-  source: string;
-  subjectsCsv: string;
-  techniquesCsv: string;
 };
 
 type LendingRecommendationRecord = {
@@ -92,12 +62,29 @@ type LendingTagSubmissionRecord = {
 type LendingCoverReviewRecord = {
   id: string;
   title: string;
+  isbn: string;
+  source: string;
+  mediaType: string;
   coverUrl: string | null;
+  coverProvider: "openlibrary" | "googlebooks" | "amazon" | "unknown";
   coverQualityStatus: string;
   coverQualityReason: string | null;
+  coverIssueKind: "missing" | "invalid" | "low_confidence" | "untrusted" | "non_book_mismatch" | "manual_review";
   updatedAtMs: number;
   rawDoc: Record<string, unknown>;
 };
+
+type CoverReviewFilter = "all" | "needs_manual_review" | "missing";
+
+function formatCoverIssueKindLabel(kind: LendingCoverReviewRecord["coverIssueKind"]): string {
+  if (kind === "low_confidence") return "Low confidence";
+  if (kind === "non_book_mismatch") return "Non-book mismatch";
+  if (kind === "manual_review") return "Manual review";
+  if (kind === "missing") return "Missing cover";
+  if (kind === "invalid") return "Invalid URL";
+  if (kind === "untrusted") return "Untrusted source";
+  return kind;
+}
 
 type LendingLibraryPhaseRouteMetrics = {
   route: string;
@@ -164,6 +151,34 @@ type TagModerationKpis = {
   pending: number;
 };
 
+type LendingMetadataEnrichmentSummary = {
+  pendingCount: number;
+  thinBacklogCount: number;
+  lastRunAtMs: number;
+  lastRunStatus: string;
+  lastRunSource: string;
+  lastRunQueued: number;
+  lastRunAttempted: number;
+  lastRunEnriched: number;
+  lastRunSkipped: number;
+  lastRunErrors: number;
+  lastRunStillPending: number;
+};
+
+type LendingMetadataGapRecord = {
+  itemId: string;
+  title: string;
+  isbn: string;
+  source: string;
+  mediaType: string;
+  coverQualityStatus: string;
+  coverQualityReason: string;
+  detailStatus: string;
+  gapReasons: string[];
+  updatedAtMs: number;
+  rawDoc: Record<string, unknown>;
+};
+
 type ExternalLookupProbeProvider = {
   provider: string;
   ok: boolean;
@@ -181,20 +196,7 @@ type Props = {
   safeJsonStringify: (value: unknown) => string;
   libraryPhaseMetricsWindowMinutes: number;
   loadLending: () => Promise<void>;
-
-  isbnInput: string;
-  setIsbnInput: Dispatch<SetStateAction<string>>;
-  isbnImportBusy: boolean;
-  isbnImportStatus: string;
-  isbnImportError: string;
-  handleLendingIsbnFile: (file: File | null) => void;
-  handleLendingIsbnImport: () => Promise<void>;
-
-  isbnScanInput: string;
-  setIsbnScanInput: Dispatch<SetStateAction<string>>;
-  isbnScanBusy: boolean;
-  isbnScanStatus: string;
-  handleLendingIsbnScanSubmit: () => Promise<void>;
+  openLendingIntake: () => void;
 
   externalLookupPolicyOpenLibraryEnabled: boolean;
   setExternalLookupPolicyOpenLibraryEnabled: Dispatch<SetStateAction<boolean>>;
@@ -249,13 +251,17 @@ type Props = {
   lendingAdminIsbnResolveStatus: string;
   lendingAdminItemError: string;
   lendingAdminItemStatus: string;
-  lendingAdminIsbnResolveNote: string;
-  handleLendingAdminSave: () => Promise<void>;
+  handleLendingAdminSave: () => Promise<boolean>;
   handleLendingAdminDelete: () => Promise<void>;
 
   libraryAdminItems: LendingAdminItemRecord[];
   libraryRequests: LendingRequestRecord[];
   libraryLoans: LendingLoanRecord[];
+  requestsLoadError: string;
+  loansLoadError: string;
+  recommendationsLoadError: string;
+  tagSubmissionsLoadError: string;
+  coverReviewsLoadError: string;
 
   lendingTriage: LendingTriage;
   recommendationModerationKpis: RecommendationModerationKpis;
@@ -279,8 +285,6 @@ type Props = {
   overdueLoanIdsById: Record<string, true>;
   selectedRequest: LendingRequestRecord | null;
   selectedLoan: LendingLoanRecord | null;
-  filteredRequests: LendingRequestRecord[];
-  filteredLoans: LendingLoanRecord[];
   filteredRecommendations: LendingRecommendationRecord[];
   recommendationModerationBusyById: Record<string, boolean>;
   recommendationModerationStatus: string;
@@ -301,12 +305,19 @@ type Props = {
   handleTagMerge: () => Promise<void>;
 
   coverReviewStatus: string;
+  coverReviewReconcileBusy: boolean;
   coverReviewBusyById: Record<string, boolean>;
   coverReviewDraftById: Record<string, string>;
   setCoverReviewDraftById: Dispatch<SetStateAction<Record<string, string>>>;
   coverReviewErrorById: Record<string, string>;
   setCoverReviewErrorById: Dispatch<SetStateAction<Record<string, string>>>;
   libraryCoverReviews: LendingCoverReviewRecord[];
+  libraryMetadataGaps: LendingMetadataGapRecord[];
+  metadataEnrichmentSummary: LendingMetadataEnrichmentSummary;
+  metadataEnrichmentBusy: boolean;
+  metadataEnrichmentStatus: string;
+  handleMetadataEnrichmentRun: (scope: "recent_imports" | "thin_backfill") => Promise<void>;
+  handleCoverReviewReconcile: () => Promise<void>;
   handleCoverReviewResolve: (
     row: LendingCoverReviewRecord,
     mode: "approve_existing" | "set_replacement"
@@ -398,18 +409,7 @@ export default function LendingModule({
   safeJsonStringify,
   libraryPhaseMetricsWindowMinutes,
   loadLending,
-  isbnInput,
-  setIsbnInput,
-  isbnImportBusy,
-  isbnImportStatus,
-  isbnImportError,
-  handleLendingIsbnFile,
-  handleLendingIsbnImport,
-  isbnScanInput,
-  setIsbnScanInput,
-  isbnScanBusy,
-  isbnScanStatus,
-  handleLendingIsbnScanSubmit,
+  openLendingIntake,
   externalLookupPolicyOpenLibraryEnabled,
   setExternalLookupPolicyOpenLibraryEnabled,
   externalLookupPolicyGoogleBooksEnabled,
@@ -466,6 +466,11 @@ export default function LendingModule({
   libraryAdminItems,
   libraryRequests,
   libraryLoans,
+  requestsLoadError,
+  loansLoadError,
+  recommendationsLoadError,
+  tagSubmissionsLoadError,
+  coverReviewsLoadError,
   lendingTriage,
   recommendationModerationKpis,
   tagModerationKpis,
@@ -505,12 +510,19 @@ export default function LendingModule({
   tagMergeBusy,
   handleTagMerge,
   coverReviewStatus,
+  coverReviewReconcileBusy,
   coverReviewBusyById,
   coverReviewDraftById,
   setCoverReviewDraftById,
   coverReviewErrorById,
   setCoverReviewErrorById,
   libraryCoverReviews,
+  libraryMetadataGaps,
+  metadataEnrichmentSummary,
+  metadataEnrichmentBusy,
+  metadataEnrichmentStatus,
+  handleMetadataEnrichmentRun,
+  handleCoverReviewReconcile,
   handleCoverReviewResolve,
   loanRecoveryBusy,
   loanRecoveryStatus,
@@ -524,72 +536,100 @@ export default function LendingModule({
   handleLoanAssessReplacementFee,
   handleLoanItemStatusOverride,
 }: Props) {
+  const [catalogAdminOpen, setCatalogAdminOpen] = useState(Boolean(selectedAdminItemId));
+  const [coverReviewFilter, setCoverReviewFilter] = useState<CoverReviewFilter>("all");
+  const [metadataGapFilter, setMetadataGapFilter] = useState<"all" | "placeholder" | "missing_cover" | "sparse_synopsis" | "thin_metadata">("all");
+  const catalogAdminRef = useRef<HTMLDetailsElement | null>(null);
+
+  const coverReviewSummary = useMemo(() => {
+    const summary = {
+      all: libraryCoverReviews.length,
+      needs_manual_review: 0,
+      missing: 0,
+      invalid: 0,
+      low_confidence: 0,
+      untrusted: 0,
+      non_book_mismatch: 0,
+      manual_review: 0,
+    };
+    for (const row of libraryCoverReviews) {
+      if (row.coverIssueKind === "missing") {
+        summary.missing += 1;
+      } else {
+        summary.needs_manual_review += 1;
+      }
+      if (row.coverIssueKind === "invalid") summary.invalid += 1;
+      if (row.coverIssueKind === "low_confidence") summary.low_confidence += 1;
+      if (row.coverIssueKind === "untrusted") summary.untrusted += 1;
+      if (row.coverIssueKind === "non_book_mismatch") summary.non_book_mismatch += 1;
+      if (row.coverIssueKind === "manual_review") summary.manual_review += 1;
+    }
+    return summary;
+  }, [libraryCoverReviews]);
+
+  const filteredCoverReviews = useMemo(() => {
+    if (coverReviewFilter === "missing") {
+      return libraryCoverReviews.filter((row) => row.coverIssueKind === "missing");
+    }
+    if (coverReviewFilter === "needs_manual_review") {
+      return libraryCoverReviews.filter((row) => row.coverIssueKind !== "missing");
+    }
+    return libraryCoverReviews;
+  }, [coverReviewFilter, libraryCoverReviews]);
+
+  const metadataGapSummary = useMemo(() => {
+    return {
+      all: libraryMetadataGaps.length,
+      placeholder: libraryMetadataGaps.filter((row) => row.gapReasons.includes("placeholder_title")).length,
+      missing_cover: libraryMetadataGaps.filter((row) => row.gapReasons.includes("missing_cover")).length,
+      sparse_synopsis: libraryMetadataGaps.filter((row) => row.gapReasons.includes("sparse_synopsis")).length,
+      thin_metadata: libraryMetadataGaps.filter((row) => row.gapReasons.includes("thin_metadata")).length,
+    };
+  }, [libraryMetadataGaps]);
+
+  const filteredMetadataGaps = useMemo(() => {
+    if (metadataGapFilter === "all") return libraryMetadataGaps;
+    return libraryMetadataGaps.filter((row) => row.gapReasons.includes(metadataGapFilter));
+  }, [libraryMetadataGaps, metadataGapFilter]);
+
+  useEffect(() => {
+    if (!catalogAdminOpen) return;
+    const frame = window.requestAnimationFrame(() => {
+      catalogAdminRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [catalogAdminOpen, selectedAdminItemId]);
+
   return (
-    <section className="card staff-console-card">
+    <section className="card staff-console-card" data-testid="lending-tools-page">
       <div className="card-title-row">
-        <div className="card-title">Lending</div>
+        <div className="staff-column">
+          <div className="card-title">Lending</div>
+          <p className="card-subtitle">
+            Deeper lending operations live here after titles land in the catalog.
+          </p>
+        </div>
         <button className="btn btn-secondary" disabled={Boolean(busy)} onClick={() => void run("refreshLending", loadLending)}>
           Refresh lending
         </button>
       </div>
       {hasFunctionsAuthMismatch ? (
         <div className="staff-note">
-          Local functions detected at <code>{fBaseUrl}</code> while Auth emulator is off. ISBN import, scanner check-in, provider policy/probe controls, and rollout phase controls are paused to prevent false auth failures.
+          Local functions detected at <code>{fBaseUrl}</code> while Auth emulator is off. The intake page, provider policy/probe controls, and rollout phase controls are paused to prevent false auth failures.
         </div>
       ) : null}
+      <div className="staff-note">
+        ISBN scan and bulk import moved to a dedicated intake page so staff can stay in a clean ready/importing/matching loop while this workspace stays readable.
+      </div>
       <div className="staff-module-grid">
         <section className="staff-column">
-          <div className="staff-subtitle">ISBN bulk import</div>
-          <label className="staff-field">
-            Paste ISBNs
-            <textarea
-              value={isbnInput}
-              onChange={(event) => setIsbnInput(event.target.value)}
-              placeholder="9780596007126, 9780132350884"
-            />
-            <span className="helper">Comma or newline separated. ISBN-10 and ISBN-13 are supported.</span>
-          </label>
-          <label className="staff-field">
-            Upload CSV
-            <input
-              type="file"
-              accept=".csv,text/csv,text/plain"
-              onChange={(event) => {
-                const file = event.target.files?.[0] ?? null;
-                void handleLendingIsbnFile(file);
-              }}
-            />
-          </label>
-          {isbnImportError ? <div className="staff-note staff-note-error">{isbnImportError}</div> : null}
-          {isbnImportStatus ? <div className="staff-note staff-note-ok">{isbnImportStatus}</div> : null}
-          <div className="staff-actions-row">
-            <button className="btn btn-primary" disabled={Boolean(busy) || isbnImportBusy || hasFunctionsAuthMismatch} onClick={() => void handleLendingIsbnImport()}>
-              {isbnImportBusy ? "Importing..." : "Import ISBNs"}
-            </button>
+          <div className="staff-subtitle">Lending intake</div>
+          <div className="staff-note">
+            Use the dedicated intake page for scanner-led ISBN entry, batch ISBN imports, and the manual-pass cleanup queue.
           </div>
-        </section>
-        <section className="staff-column">
-          <div className="staff-subtitle">Scanner check-in</div>
-          <label className="staff-field">
-            Scan ISBN
-            <input
-              type="text"
-              value={isbnScanInput}
-              placeholder="Scan ISBN here"
-              onChange={(event) => setIsbnScanInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  void handleLendingIsbnScanSubmit();
-                }
-              }}
-            />
-            <span className="helper">Use a Bluetooth scanner then press Enter to submit one item instantly.</span>
-          </label>
-          {isbnScanStatus ? <div className="staff-note">{isbnScanStatus}</div> : null}
           <div className="staff-actions-row">
-            <button className="btn btn-primary" onClick={() => void handleLendingIsbnScanSubmit()} disabled={Boolean(busy) || isbnScanBusy || hasFunctionsAuthMismatch}>
-              {isbnScanBusy ? "Adding..." : "Add scanned ISBN"}
+            <button type="button" className="btn btn-primary" onClick={openLendingIntake}>
+              Open lending intake
             </button>
           </div>
         </section>
@@ -844,7 +884,12 @@ export default function LendingModule({
           </div>
         </section>
       </div>
-      <details className="staff-troubleshooting">
+      <details
+        ref={catalogAdminRef}
+        className="staff-troubleshooting"
+        open={catalogAdminOpen}
+        onToggle={(event) => setCatalogAdminOpen(event.currentTarget.open)}
+      >
         <summary>Catalog admin (create/edit/delete + ISBN resolve)</summary>
         <div className="staff-note">
           Item save/delete dispatches to v1 admin routes when present and falls back to direct Firestore writes when routes are unavailable.
@@ -861,7 +906,10 @@ export default function LendingModule({
               <button
                 type="button"
                 className="btn btn-ghost btn-small"
-                onClick={() => handleStartLendingAdminItemCreate()}
+                onClick={() => {
+                  setCatalogAdminOpen(true);
+                  handleStartLendingAdminItemCreate();
+                }}
                 disabled={Boolean(busy) || lendingAdminItemBusy}
               >
                 New item
@@ -885,10 +933,14 @@ export default function LendingModule({
                       <tr
                         key={item.id}
                         className={`staff-click-row ${selectedAdminItemId === item.id ? "active" : ""}`}
-                        onClick={() => handleSelectLendingAdminItem(item)}
+                        onClick={() => {
+                          setCatalogAdminOpen(true);
+                          handleSelectLendingAdminItem(item);
+                        }}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
+                            setCatalogAdminOpen(true);
                             handleSelectLendingAdminItem(item);
                           }
                         }}
@@ -910,258 +962,27 @@ export default function LendingModule({
               </table>
             </div>
           </section>
-          <section className="staff-column">
-            <div className="staff-subtitle">
-              {selectedAdminItem ? `Editing ${selectedAdminItem.title}` : "New library item"}
-            </div>
-            <label className="staff-field">
-              Title
-              <input
-                type="text"
-                value={lendingAdminItemDraft.title}
-                onChange={(event) =>
-                  setLendingAdminItemDraft((prev) => ({ ...prev, title: event.target.value }))
-                }
-                disabled={Boolean(busy) || lendingAdminItemBusy}
-              />
-            </label>
-            <label className="staff-field">
-              Authors (comma/newline)
-              <textarea
-                value={lendingAdminItemDraft.authorsCsv}
-                onChange={(event) =>
-                  setLendingAdminItemDraft((prev) => ({ ...prev, authorsCsv: event.target.value }))
-                }
-                disabled={Boolean(busy) || lendingAdminItemBusy}
-              />
-            </label>
-            <div className="staff-actions-row">
-              <label className="staff-field">
-                ISBN
-                <input
-                  type="text"
-                  value={lendingAdminItemDraft.isbn}
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, isbn: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy || lendingAdminIsbnResolveBusy}
-                />
-              </label>
-              <button
-                type="button"
-                className="btn btn-secondary btn-small"
-                onClick={() => void handleLendingAdminResolveIsbn()}
-                disabled={Boolean(busy) || lendingAdminItemBusy || lendingAdminIsbnResolveBusy}
-              >
-                {lendingAdminIsbnResolveBusy ? "Resolving..." : "Resolve ISBN"}
-              </button>
-            </div>
-            <label className="staff-field">
-              Subtitle
-              <input
-                type="text"
-                value={lendingAdminItemDraft.subtitle}
-                onChange={(event) =>
-                  setLendingAdminItemDraft((prev) => ({ ...prev, subtitle: event.target.value }))
-                }
-                disabled={Boolean(busy) || lendingAdminItemBusy}
-              />
-            </label>
-            <label className="staff-field">
-              Description
-              <textarea
-                value={lendingAdminItemDraft.description}
-                onChange={(event) =>
-                  setLendingAdminItemDraft((prev) => ({ ...prev, description: event.target.value }))
-                }
-                disabled={Boolean(busy) || lendingAdminItemBusy}
-              />
-            </label>
-            <div className="staff-actions-row">
-              <label className="staff-field">
-                Publisher
-                <input
-                  type="text"
-                  value={lendingAdminItemDraft.publisher}
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, publisher: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                />
-              </label>
-              <label className="staff-field">
-                Published date
-                <input
-                  type="text"
-                  value={lendingAdminItemDraft.publishedDate}
-                  placeholder="YYYY-MM-DD"
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, publishedDate: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                />
-              </label>
-            </div>
-            <div className="staff-actions-row">
-              <label className="staff-field">
-                Media type
-                <input
-                  type="text"
-                  value={lendingAdminItemDraft.mediaType}
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, mediaType: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                />
-              </label>
-              <label className="staff-field">
-                Status
-                <select
-                  value={lendingAdminItemDraft.status}
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, status: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                >
-                  <option value="available">available</option>
-                  <option value="checked_out">checked_out</option>
-                  <option value="overdue">overdue</option>
-                  <option value="lost">lost</option>
-                  <option value="unavailable">unavailable</option>
-                  <option value="archived">archived</option>
-                </select>
-              </label>
-              <label className="staff-field">
-                Source
-                <input
-                  type="text"
-                  value={lendingAdminItemDraft.source}
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, source: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                />
-              </label>
-            </div>
-            <div className="staff-actions-row">
-              <label className="staff-field">
-                Total copies
-                <input
-                  type="number"
-                  min={1}
-                  value={lendingAdminItemDraft.totalCopies}
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, totalCopies: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                />
-              </label>
-              <label className="staff-field">
-                Available copies
-                <input
-                  type="number"
-                  min={0}
-                  value={lendingAdminItemDraft.availableCopies}
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, availableCopies: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                />
-              </label>
-              <label className="staff-field">
-                Format
-                <input
-                  type="text"
-                  value={lendingAdminItemDraft.format}
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, format: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                />
-              </label>
-            </div>
-            <label className="staff-field">
-              Cover URL
-              <input
-                type="url"
-                value={lendingAdminItemDraft.coverUrl}
-                onChange={(event) =>
-                  setLendingAdminItemDraft((prev) => ({ ...prev, coverUrl: event.target.value }))
-                }
-                disabled={Boolean(busy) || lendingAdminItemBusy}
-              />
-            </label>
-            <div className="staff-actions-row">
-              <label className="staff-field">
-                Subjects
-                <input
-                  type="text"
-                  value={lendingAdminItemDraft.subjectsCsv}
-                  placeholder="glaze chemistry, kiln control"
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, subjectsCsv: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                />
-              </label>
-              <label className="staff-field">
-                Techniques
-                <input
-                  type="text"
-                  value={lendingAdminItemDraft.techniquesCsv}
-                  placeholder="wheel, handbuilding"
-                  onChange={(event) =>
-                    setLendingAdminItemDraft((prev) => ({ ...prev, techniquesCsv: event.target.value }))
-                  }
-                  disabled={Boolean(busy) || lendingAdminItemBusy}
-                />
-              </label>
-            </div>
-            <div className="staff-actions-row">
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => void handleLendingAdminSave()}
-                disabled={Boolean(busy) || lendingAdminItemBusy}
-              >
-                {lendingAdminItemBusy ? "Saving..." : selectedAdminItem ? "Save item" : "Create item"}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => handleStartLendingAdminItemCreate()}
-                disabled={Boolean(busy) || lendingAdminItemBusy}
-              >
-                Reset draft
-              </button>
-            </div>
-            {selectedAdminItem ? (
-              <>
-                <label className="staff-field">
-                  Type <code>{lendingAdminDeleteConfirmationPhrase || "delete <itemId>"}</code> to enable delete
-                  <input
-                    type="text"
-                    value={lendingAdminItemDeleteConfirmInput}
-                    onChange={(event) => setLendingAdminItemDeleteConfirmInput(event.target.value)}
-                    disabled={Boolean(busy) || lendingAdminItemBusy}
-                  />
-                </label>
-                <div className="staff-actions-row">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => void handleLendingAdminDelete()}
-                    disabled={Boolean(busy) || lendingAdminItemBusy}
-                  >
-                    {lendingAdminItemBusy ? "Deleting..." : "Delete item"}
-                  </button>
-                </div>
-              </>
-            ) : null}
-            {lendingAdminIsbnResolveStatus ? <div className="staff-note">{lendingAdminIsbnResolveStatus}</div> : null}
-            {lendingAdminItemError ? <div className="staff-note staff-note-error">{lendingAdminItemError}</div> : null}
-            {lendingAdminItemStatus ? <div className="staff-note staff-note-ok">{lendingAdminItemStatus}</div> : null}
-          </section>
+          <LendingCatalogEditor
+            busy={busy}
+            lendingAdminItemBusy={lendingAdminItemBusy}
+            selectedAdminItem={selectedAdminItem}
+            lendingAdminItemDraft={lendingAdminItemDraft}
+            setLendingAdminItemDraft={setLendingAdminItemDraft}
+            handleLendingAdminResolveIsbn={handleLendingAdminResolveIsbn}
+            lendingAdminIsbnResolveBusy={lendingAdminIsbnResolveBusy}
+            lendingAdminIsbnResolveStatus={lendingAdminIsbnResolveStatus}
+            lendingAdminItemError={lendingAdminItemError}
+            lendingAdminItemStatus={lendingAdminItemStatus}
+            handleLendingAdminSave={handleLendingAdminSave}
+            allowResetDraft
+            onResetDraft={handleStartLendingAdminItemCreate}
+            showDeleteControls
+            lendingAdminItemDeleteConfirmInput={lendingAdminItemDeleteConfirmInput}
+            setLendingAdminItemDeleteConfirmInput={setLendingAdminItemDeleteConfirmInput}
+            lendingAdminDeleteConfirmationPhrase={lendingAdminDeleteConfirmationPhrase}
+            handleLendingAdminDelete={handleLendingAdminDelete}
+            testId="lending-catalog-editor"
+          />
         </div>
       </details>
       <div className="staff-kpi-grid">
@@ -1181,6 +1002,8 @@ export default function LendingModule({
         <div className="staff-kpi"><span>Tag queue</span><strong>{tagModerationKpis.pending}</strong></div>
         <div className="staff-kpi"><span>Total tag subs</span><strong>{tagModerationKpis.total}</strong></div>
         <div className="staff-kpi"><span>Cover review queue</span><strong>{libraryCoverReviews.length}</strong></div>
+        <div className="staff-kpi"><span>Metadata pending</span><strong>{metadataEnrichmentSummary.pendingCount}</strong></div>
+        <div className="staff-kpi"><span>Thin metadata backlog</span><strong>{metadataEnrichmentSummary.thinBacklogCount}</strong></div>
       </div>
       <div className="staff-actions-row">
         <input
@@ -1228,6 +1051,7 @@ export default function LendingModule({
       <div className="staff-module-grid">
         <div className="staff-column">
           <div className="staff-subtitle">Requests</div>
+          {requestsLoadError ? <div className="staff-note staff-note-error">{requestsLoadError}</div> : null}
           <div className="staff-table-wrap">
             <table className="staff-table">
               <thead><tr><th>Title</th><th>Status</th><th>Requester</th><th>Created</th></tr></thead>
@@ -1264,6 +1088,7 @@ export default function LendingModule({
         </div>
         <div className="staff-column">
           <div className="staff-subtitle">Loans</div>
+          {loansLoadError ? <div className="staff-note staff-note-error">{loansLoadError}</div> : null}
           <div className="staff-table-wrap">
             <table className="staff-table">
               <thead><tr><th>Title</th><th>Status</th><th>Borrower</th><th>Created</th></tr></thead>
@@ -1464,6 +1289,7 @@ export default function LendingModule({
         </div>
       </div>
       <div className="staff-subtitle">Recommendation moderation</div>
+      {recommendationsLoadError ? <div className="staff-note staff-note-error">{recommendationsLoadError}</div> : null}
       {recommendationModerationStatus ? <div className="staff-note">{recommendationModerationStatus}</div> : null}
       <div className="staff-table-wrap">
         <table className="staff-table">
@@ -1534,6 +1360,7 @@ export default function LendingModule({
         </table>
       </div>
       <div className="staff-subtitle">Tag moderation queue</div>
+      {tagSubmissionsLoadError ? <div className="staff-note staff-note-error">{tagSubmissionsLoadError}</div> : null}
       {tagModerationStatus ? <div className="staff-note">{tagModerationStatus}</div> : null}
       <div className="staff-table-wrap">
         <table className="staff-table">
@@ -1637,27 +1464,191 @@ export default function LendingModule({
           {tagMergeBusy ? "Merging..." : "Merge tags"}
         </button>
       </div>
+      <div className="staff-subtitle">Metadata enrichment</div>
+      <div className="staff-note">
+        Bulk-flesh imported books here. Use recent imports for the newest scan batches, or backfill thin records to revisit sparse descriptions, subjects, and covers without overwriting staff-locked fields.
+      </div>
+      {metadataEnrichmentStatus ? <div className="staff-note">{metadataEnrichmentStatus}</div> : null}
+      <div className="staff-actions-row">
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => void handleMetadataEnrichmentRun("recent_imports")}
+          disabled={Boolean(busy) || metadataEnrichmentBusy || hasFunctionsAuthMismatch}
+        >
+          {metadataEnrichmentBusy ? "Running..." : "Enrich recent imports"}
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => void handleMetadataEnrichmentRun("thin_backfill")}
+          disabled={Boolean(busy) || metadataEnrichmentBusy || hasFunctionsAuthMismatch}
+        >
+          {metadataEnrichmentBusy ? "Running..." : "Backfill thin records"}
+        </button>
+      </div>
+      <div className="staff-note">
+        Pending {metadataEnrichmentSummary.pendingCount} | Thin backlog {metadataEnrichmentSummary.thinBacklogCount}
+        {metadataEnrichmentSummary.lastRunAtMs > 0
+          ? ` | Last run ${when(metadataEnrichmentSummary.lastRunAtMs)} (${metadataEnrichmentSummary.lastRunStatus || "unknown"} via ${metadataEnrichmentSummary.lastRunSource || "unknown"})`
+          : ""}
+      </div>
+      {(metadataEnrichmentSummary.lastRunAtMs > 0 || metadataEnrichmentSummary.lastRunAttempted > 0) ? (
+        <div className="staff-note">
+          Last run queued {metadataEnrichmentSummary.lastRunQueued} | attempted {metadataEnrichmentSummary.lastRunAttempted} | enriched {metadataEnrichmentSummary.lastRunEnriched} | skipped {metadataEnrichmentSummary.lastRunSkipped} | errors {metadataEnrichmentSummary.lastRunErrors} | still pending {metadataEnrichmentSummary.lastRunStillPending}
+        </div>
+      ) : null}
+      <div className="staff-subtitle">Metadata gap queue</div>
+      <div className="staff-note">
+        Work placeholder titles, missing covers, and thin descriptions from here. Selecting a row jumps straight into the catalog editor so staff can finish the record without hunting for it first.
+      </div>
+      <div className="staff-actions-row">
+        <button
+          type="button"
+          className={metadataGapFilter === "all" ? "btn btn-primary btn-small" : "btn btn-ghost btn-small"}
+          onClick={() => setMetadataGapFilter("all")}
+        >
+          All ({metadataGapSummary.all})
+        </button>
+        <button
+          type="button"
+          className={metadataGapFilter === "placeholder" ? "btn btn-primary btn-small" : "btn btn-ghost btn-small"}
+          onClick={() => setMetadataGapFilter("placeholder")}
+        >
+          Placeholder ({metadataGapSummary.placeholder})
+        </button>
+        <button
+          type="button"
+          className={metadataGapFilter === "missing_cover" ? "btn btn-primary btn-small" : "btn btn-ghost btn-small"}
+          onClick={() => setMetadataGapFilter("missing_cover")}
+        >
+          Missing cover ({metadataGapSummary.missing_cover})
+        </button>
+        <button
+          type="button"
+          className={metadataGapFilter === "sparse_synopsis" ? "btn btn-primary btn-small" : "btn btn-ghost btn-small"}
+          onClick={() => setMetadataGapFilter("sparse_synopsis")}
+        >
+          Sparse synopsis ({metadataGapSummary.sparse_synopsis})
+        </button>
+        <button
+          type="button"
+          className={metadataGapFilter === "thin_metadata" ? "btn btn-primary btn-small" : "btn btn-ghost btn-small"}
+          onClick={() => setMetadataGapFilter("thin_metadata")}
+        >
+          Thin metadata ({metadataGapSummary.thin_metadata})
+        </button>
+      </div>
+      <div className="staff-table-wrap">
+        <table className="staff-table">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Gaps</th>
+              <th>Status</th>
+              <th>Updated</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredMetadataGaps.length === 0 ? (
+              <tr><td colSpan={4}>No metadata gaps match this filter.</td></tr>
+            ) : (
+              filteredMetadataGaps.map((row) => {
+                const linkedItem = libraryAdminItems.find((item) => item.id === row.itemId) ?? null;
+                return (
+                  <tr
+                    key={`metadata-gap-${row.itemId}`}
+                    className={linkedItem ? "staff-click-row" : ""}
+                    onClick={() => {
+                      if (!linkedItem) return;
+                      setCatalogAdminOpen(true);
+                      handleSelectLendingAdminItem(linkedItem);
+                    }}
+                  >
+                    <td>
+                      <div>{row.title}</div>
+                      <div className="staff-mini"><code>{row.itemId}</code></div>
+                      {row.isbn ? <div className="staff-mini">ISBN {row.isbn}</div> : null}
+                    </td>
+                    <td>
+                      <div className="staff-actions-row">
+                        {row.gapReasons.map((reason) => (
+                          <span className="pill" key={`${row.itemId}-${reason}`}>{reason.replace(/_/g, " ")}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td>
+                      <div>{row.coverQualityStatus || "needs_review"}</div>
+                      <div className="staff-mini">
+                        {row.mediaType || "book"} | {row.source || "manual"}{row.detailStatus ? ` | ${row.detailStatus}` : ""}
+                      </div>
+                    </td>
+                    <td>{when(row.updatedAtMs)}</td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
       <div className="staff-subtitle">Cover review queue</div>
       <div className="staff-note">
-        Review and approve imported covers here. This queue is the manual approval workflow for cover guardrails.
+        Review and approve imported covers here. Reconcile imported covers first to auto-clear trusted matches, then work the remaining manual-review and missing-cover cases.
       </div>
+      {coverReviewsLoadError ? <div className="staff-note staff-note-error">{coverReviewsLoadError}</div> : null}
       {coverReviewStatus ? <div className="staff-note">{coverReviewStatus}</div> : null}
+      <div className="staff-actions-row">
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => void handleCoverReviewReconcile()}
+          disabled={Boolean(busy) || coverReviewReconcileBusy || hasFunctionsAuthMismatch}
+        >
+          {coverReviewReconcileBusy ? "Reconciling..." : "Reconcile imported covers"}
+        </button>
+        <button
+          type="button"
+          className={coverReviewFilter === "all" ? "btn btn-primary btn-small" : "btn btn-ghost btn-small"}
+          onClick={() => setCoverReviewFilter("all")}
+        >
+          All ({coverReviewSummary.all})
+        </button>
+        <button
+          type="button"
+          className={
+            coverReviewFilter === "needs_manual_review" ? "btn btn-primary btn-small" : "btn btn-ghost btn-small"
+          }
+          onClick={() => setCoverReviewFilter("needs_manual_review")}
+        >
+          Needs manual review ({coverReviewSummary.needs_manual_review})
+        </button>
+        <button
+          type="button"
+          className={coverReviewFilter === "missing" ? "btn btn-primary btn-small" : "btn btn-ghost btn-small"}
+          onClick={() => setCoverReviewFilter("missing")}
+        >
+          Missing cover ({coverReviewSummary.missing})
+        </button>
+      </div>
+      <div className="staff-note">
+        Missing {coverReviewSummary.missing} | Invalid {coverReviewSummary.invalid} | Low confidence {coverReviewSummary.low_confidence} | Untrusted {coverReviewSummary.untrusted} | Non-book mismatch {coverReviewSummary.non_book_mismatch} | Manual review {coverReviewSummary.manual_review}
+      </div>
       <div className="staff-table-wrap">
         <table className="staff-table">
           <thead>
             <tr>
               <th>Title</th>
               <th>Status</th>
-              <th>Reason</th>
+              <th>Issue</th>
               <th>Updated</th>
               <th>Resolve</th>
             </tr>
           </thead>
           <tbody>
-            {libraryCoverReviews.length === 0 ? (
-              <tr><td colSpan={5}>No items currently flagged for cover review.</td></tr>
+            {filteredCoverReviews.length === 0 ? (
+              <tr><td colSpan={5}>{libraryCoverReviews.length === 0 ? "No items currently flagged for cover review." : "No items match this cover filter."}</td></tr>
             ) : (
-              libraryCoverReviews.map((row) => {
+              filteredCoverReviews.map((row) => {
                 const rowBusy = Boolean(coverReviewBusyById[row.id]);
                 const currentCoverValid = isValidHttpUrl((row.coverUrl ?? "").trim());
                 const rowError = coverReviewErrorById[row.id] ?? "";
@@ -1666,6 +1657,10 @@ export default function LendingModule({
                     <td>
                       <div>{row.title}</div>
                       <div className="staff-mini"><code>{row.id}</code></div>
+                      {row.isbn ? <div className="staff-mini">ISBN {row.isbn}</div> : null}
+                      <div className="staff-mini">
+                        Source {row.source || "manual"} | Media {row.mediaType || "book"} | Provider {row.coverProvider}
+                      </div>
                       {row.coverUrl ? (
                         <a className="staff-mini" href={row.coverUrl} target="_blank" rel="noreferrer">
                           Open current cover
@@ -1674,7 +1669,10 @@ export default function LendingModule({
                       {!currentCoverValid ? <div className="staff-mini">Current cover URL is missing or invalid.</div> : null}
                     </td>
                     <td><span className="pill">{row.coverQualityStatus || "needs_review"}</span></td>
-                    <td>{row.coverQualityReason || "manual_review_required"}</td>
+                    <td>
+                      <div>{formatCoverIssueKindLabel(row.coverIssueKind)}</div>
+                      <div className="staff-mini">{row.coverQualityReason || "manual_review_required"}</div>
+                    </td>
                     <td>{when(row.updatedAtMs)}</td>
                     <td>
                       <div className="staff-actions-row">

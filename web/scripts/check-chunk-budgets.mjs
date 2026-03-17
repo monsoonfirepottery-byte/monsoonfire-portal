@@ -14,6 +14,8 @@ const budgets = [
   { prefix: "StudioReservationsView-", maxBytes: 40_000 },
   // Ware check-in remains its own lazy route after the reservation flow split.
   { prefix: "WareCheckInView-", maxBytes: 100_000 },
+  // Kiln launch stays lazy-loaded, but the seven-day timeline calendar adds its own route payload.
+  { prefix: "KilnLaunchView-", maxBytes: 30_000 },
   // Staff stays lazy-loaded, but the lending workspace adds catalog and intake flows to this route.
   { prefix: "StaffView-", maxBytes: 430_000 },
   // Current app shell carries route wiring and shared runtime used across most views.
@@ -32,7 +34,8 @@ const requiredRouteChunks = [
   "ProfileView-",
   "StaffView-",
 ];
-// Total budgets re-baselined for the lending workspace rollout while keeping future regressions visible.
+// Total budgets re-baselined for the lending workspace rollout and kiln queue timeline route
+// while keeping future regressions visible.
 const MAX_TOTAL_JS_BYTES = 1_725_000;
 const MAX_TOTAL_CSS_BYTES = 270_000;
 

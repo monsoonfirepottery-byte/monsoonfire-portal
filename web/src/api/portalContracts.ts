@@ -897,7 +897,6 @@ export type StaffManageStudioReservationResponse = PortalApiOkEnvelope & {
   reservationId: string;
   status: StudioReservationStatus;
 };
-
 export type MaterialsCartItemRequest = {
   productId: string;
   quantity: number;

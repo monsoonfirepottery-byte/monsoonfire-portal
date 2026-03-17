@@ -890,7 +890,6 @@ export function createPortalApi(options: CreatePortalApiOptions = {}): PortalApi
         { ...args, requestTimeoutMs }
       );
     },
-
     async continueJourney(args) {
       return await callFn<ContinueJourneyRequest, ContinueJourneyResponse>(baseUrl, "continueJourney", {
         ...args,

@@ -269,7 +269,7 @@ export function createLendingScanAudioController(): ScanAudioController {
         audio.currentTime = 0;
         activeAudio = audio;
         const playResult = audio.play();
-        if (playResult && typeof playResult.catch === "function") {
+        if (typeof playResult?.catch === "function") {
           void playResult.catch(() => {
             activeAudio = null;
             playFallbackCue(cue, audioContextRef);

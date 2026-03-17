@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { ImportLibraryIsbnsResponse } from "../../api/portalContracts";
 import LendingCatalogEditor, {
   type LendingAdminItemDraft,
@@ -228,9 +228,8 @@ export default function LendingIntakeModule({
     return () => audioController.dispose();
   }, [audioController]);
 
-  useEffect(() => {
-    if (!pendingScan) return;
-    const { token, result } = pendingScan;
+  const processPendingScan = useEffectEvent((currentPendingScan: PendingScan) => {
+    const { token, result } = currentPendingScan;
     const manualPassResponse = result.response?.manualPassRequired?.[0] ?? null;
     const rejectedResponse = result.response?.rejected?.[0] ?? null;
     const matchedItem = libraryAdminItems
@@ -253,9 +252,9 @@ export default function LendingIntakeModule({
       });
       setScanPhase("fail");
       setScanMessage(rejectedResponse.message || "Rejected. No public item was created.");
-      playAudioCue("error");
+      audioController.play("error", audioFeedbackEnabled);
       setPendingScan(null);
-      return;
+      return undefined;
     }
 
     if (matchedItem) {
@@ -286,9 +285,9 @@ export default function LendingIntakeModule({
           ? `Manual pass required. Pull ${matchedItem.title || `ISBN ${result.scannedIsbn}`} and finish it from the queue.`
           : `${matchedItem.title || `ISBN ${result.scannedIsbn}`} matched in the catalog.`
       );
-      playAudioCue(outcome === "manual-pass" ? "manual-pass" : "success");
+      audioController.play(outcome === "manual-pass" ? "manual-pass" : "success", audioFeedbackEnabled);
       setPendingScan(null);
-      return;
+      return undefined;
     }
 
     if (manualPassResponse) {
@@ -304,9 +303,9 @@ export default function LendingIntakeModule({
       });
       setScanPhase("pass");
       setScanMessage("Manual pass required. Pull this title aside and finish it from the queue.");
-      playAudioCue("manual-pass");
+      audioController.play("manual-pass", audioFeedbackEnabled);
       setPendingScan(null);
-      return;
+      return undefined;
     }
 
     const timeout = window.setTimeout(() => {
@@ -332,11 +331,16 @@ export default function LendingIntakeModule({
           ? "Import completed. Catalog sync is still catching up, but the request finished."
           : "Intake finished without a catalog match."
       );
-      playAudioCue("success");
+      audioController.play("success", audioFeedbackEnabled);
       setPendingScan(null);
     }, 1800);
 
     return () => window.clearTimeout(timeout);
+  });
+
+  useEffect(() => {
+    if (!pendingScan) return;
+    return processPendingScan(pendingScan);
   }, [libraryAdminItems, pendingScan]);
 
   async function submitScan(): Promise<void> {

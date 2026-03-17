@@ -593,11 +593,6 @@ export default function LendingModule({
   }, [libraryMetadataGaps, metadataGapFilter]);
 
   useEffect(() => {
-    if (!selectedAdminItemId) return;
-    setCatalogAdminOpen(true);
-  }, [selectedAdminItemId]);
-
-  useEffect(() => {
     if (!catalogAdminOpen) return;
     const frame = window.requestAnimationFrame(() => {
       catalogAdminRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
@@ -911,7 +906,10 @@ export default function LendingModule({
               <button
                 type="button"
                 className="btn btn-ghost btn-small"
-                onClick={() => handleStartLendingAdminItemCreate()}
+                onClick={() => {
+                  setCatalogAdminOpen(true);
+                  handleStartLendingAdminItemCreate();
+                }}
                 disabled={Boolean(busy) || lendingAdminItemBusy}
               >
                 New item
@@ -935,10 +933,14 @@ export default function LendingModule({
                       <tr
                         key={item.id}
                         className={`staff-click-row ${selectedAdminItemId === item.id ? "active" : ""}`}
-                        onClick={() => handleSelectLendingAdminItem(item)}
+                        onClick={() => {
+                          setCatalogAdminOpen(true);
+                          handleSelectLendingAdminItem(item);
+                        }}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
+                            setCatalogAdminOpen(true);
                             handleSelectLendingAdminItem(item);
                           }
                         }}
@@ -1559,6 +1561,7 @@ export default function LendingModule({
                     className={linkedItem ? "staff-click-row" : ""}
                     onClick={() => {
                       if (!linkedItem) return;
+                      setCatalogAdminOpen(true);
                       handleSelectLendingAdminItem(linkedItem);
                     }}
                   >

@@ -4805,7 +4805,7 @@ export default function StaffView({
         setLibraryRolloutPhaseStatus(`Rollout phase load failed: ${message}`);
       }
     }
-  }, [client, hasFunctionsAuthMismatch, qTrace]);
+  }, [client, hasFunctionsAuthMismatch, loadLendingAdminItems, qTrace]);
 
   const refreshLibraryPhaseMetricsSnapshot = useCallback(() => {
     const snapshot = buildLibraryPhaseMetricsSnapshot(

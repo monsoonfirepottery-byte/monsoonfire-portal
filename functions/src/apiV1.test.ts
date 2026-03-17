@@ -6658,7 +6658,7 @@ test("reservations.create accepts optional piece rows in request payload", async
   assert.equal(data.status, "REQUESTED");
 });
 
-test("reservations.create writes self-loaded kiln, glaze access, and per-half-shelf prepaid storage pricing", async () => {
+test("reservations.create writes self-loaded kiln, glaze access, and flat-fee prepaid storage pricing", async () => {
   const state: MockDbState = {};
   const response = await invokeApiV1Route(
     state,
@@ -6696,8 +6696,8 @@ test("reservations.create writes self-loaded kiln, glaze access, and per-half-sh
   assert.equal(addOns.selfLoadedKilnRequested, true);
   assert.equal(addOns.selfLoadedKilnCost, 15);
   assert.equal(addOns.prepaidStorageRequested, true);
-  assert.equal(addOns.prepaidStorageWeeks, 2);
-  assert.equal(addOns.prepaidStorageCost, 12);
+  assert.equal(addOns.prepaidStorageWeeks, 4);
+  assert.equal(addOns.prepaidStorageCost, 15);
   assert.equal("fragileHandlingRequested" in addOns, false);
   assert.equal(storageBilling.chargeBasis, "estimatedHalfShelves");
   assert.equal(storageBilling.chargeBasisHalfShelves, 3);

@@ -11,10 +11,12 @@ import {
   FULL_KILN_CUSTOM_PRICE,
   DELIVERY_PRICE_PER_TRIP,
   PLACEMENT_PREFERENCE_PRICE,
-  PREPAID_STORAGE_WEEKLY_PRICE_PER_HALF_SHELF,
+  PREPAID_STORAGE_FLAT_PRICE,
+  PREPAID_STORAGE_INCLUDED_WEEKS,
   RUSH_REQUEST_PRICE,
   SELF_LOADED_KILN_FLAT_PRICE,
   STAFF_GLAZE_PREP_PER_HALF_SHELF_PRICE,
+  STORAGE_BILLING_DAILY_RATE_PER_HALF_SHELF,
   STUDIO_GLAZE_ACCESS_PER_HALF_SHELF_PRICE,
   applyHalfKilnPriceBreak,
   computeDeliveryCost,
@@ -135,11 +137,7 @@ const RESERVATION_FILTERS: Array<{ id: ReservationFilter; label: string }> = [
 const STAFF_UNDO_WINDOW_MS = 20_000;
 const PICKUP_WINDOW_RESCHEDULE_LIMIT = 1;
 const FAIRNESS_OVERRIDE_MAX_POINTS = 20;
-const STORAGE_REMINDER_THRESHOLDS_HOURS = [336, 420, 462] as const;
-const STORAGE_GRACE_HOURS = 462;
 const STORAGE_BILLING_WINDOW_DAYS = 28;
-const STORAGE_BILLING_DAILY_RATE_PER_HALF_SHELF = 1.5;
-const STORAGE_POLICY_CAP_HOURS = STORAGE_GRACE_HOURS + STORAGE_BILLING_WINDOW_DAYS * 24;
 const STAFF_OFFLINE_QUEUE_STORAGE_KEY = "mf_staff_queue_offline_actions_v1";
 const STAFF_OFFLINE_QUEUE_MAX = 80;
 const STAFF_OFFLINE_SYNC_MIN_DELAY_MS = 1200;
@@ -330,13 +328,21 @@ function getStorageHoursSinceReady(record: ReservationRecord): number | null {
 }
 
 function isStorageCapApproaching(record: ReservationRecord): boolean {
+  const graceEndsAt = record.storageBilling?.graceEndsAt?.toDate?.();
+  const billingEndsAt = record.storageBilling?.billingEndsAt?.toDate?.();
+  if (
+    graceEndsAt &&
+    billingEndsAt &&
+    Number.isFinite(graceEndsAt.getTime()) &&
+    Number.isFinite(billingEndsAt.getTime())
+  ) {
+    const now = Date.now();
+    return now >= graceEndsAt.getTime() && now < billingEndsAt.getTime();
+  }
+
   const hours = getStorageHoursSinceReady(record);
   if (hours == null) return false;
-  const warningStartHours = Math.max(
-    STORAGE_REMINDER_THRESHOLDS_HOURS[STORAGE_REMINDER_THRESHOLDS_HOURS.length - 1] ?? 0,
-    STORAGE_GRACE_HOURS
-  );
-  return hours >= warningStartHours && hours < STORAGE_POLICY_CAP_HOURS;
+  return hours >= 462 && hours < 462 + STORAGE_BILLING_WINDOW_DAYS * 24;
 }
 
 function isStorageRisk(record: ReservationRecord): boolean {
@@ -396,7 +402,20 @@ function formatStorageBillingSummary(record: ReservationRecord): string | null {
     return `Billed ${billedDays}/${STORAGE_BILLING_WINDOW_DAYS} days · accrued ${formatUsd(accruedCost)}`;
   }
   if (graceEndsAt) {
-    return `Grace ends ${formatDateTime(graceEndsAt)} · then ${formatUsd(STORAGE_BILLING_DAILY_RATE_PER_HALF_SHELF)} per half-shelf per day`;
+    const prepaidStorageWeeksRaw = Number(record.addOns?.prepaidStorageWeeks);
+    const prepaidStorageWeeksLabel = Number.isFinite(prepaidStorageWeeksRaw)
+      ? Math.max(1, Math.round(prepaidStorageWeeksRaw))
+      : PREPAID_STORAGE_INCLUDED_WEEKS;
+    return record.addOns?.prepaidStorageRequested
+      ? `Covered storage ends ${formatDateTime(graceEndsAt)} · prepaid up to ${prepaidStorageWeeksLabel} weeks · then ${formatUsd(STORAGE_BILLING_DAILY_RATE_PER_HALF_SHELF)} per half-shelf per day`
+      : `Grace ends ${formatDateTime(graceEndsAt)} · then ${formatUsd(STORAGE_BILLING_DAILY_RATE_PER_HALF_SHELF)} per half-shelf per day`;
+  }
+  if (record.addOns?.prepaidStorageRequested) {
+    const prepaidStorageWeeksRaw = Number(record.addOns?.prepaidStorageWeeks);
+    const prepaidStorageWeeksLabel = Number.isFinite(prepaidStorageWeeksRaw)
+      ? Math.max(1, Math.round(prepaidStorageWeeksRaw))
+      : PREPAID_STORAGE_INCLUDED_WEEKS;
+    return `Covered storage starts at pickup-ready and lasts up to ${prepaidStorageWeeksLabel} weeks.`;
   }
   return `Grace window starts at pickup-ready and lasts 2.75 weeks.`;
 }
@@ -843,7 +862,6 @@ export default function ReservationsView({
     (typeof PLACEMENT_PREFERENCE_ZONES)[number]["id"]
   >("middle");
   const [prepaidStorageRequested, setPrepaidStorageRequested] = useState(false);
-  const [prepaidStorageWeeks, setPrepaidStorageWeeks] = useState(1);
   const [pickupDeliveryRequested, setPickupDeliveryRequested] = useState(false);
   const [returnDeliveryRequested, setReturnDeliveryRequested] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState("");
@@ -1013,12 +1031,8 @@ export default function ReservationsView({
       : 0;
   const selfLoadedKilnCost = selfLoadedKilnRequested ? SELF_LOADED_KILN_FLAT_PRICE : 0;
   const placementPreferenceCost = placementPreferenceRequested ? PLACEMENT_PREFERENCE_PRICE : 0;
-  const prepaidStorageWeeksClamped = Math.max(1, Math.min(12, Math.round(prepaidStorageWeeks)));
-  const prepaidStorageCost = prepaidStorageRequested
-    ? prepaidStorageWeeksClamped *
-      estimatedHalfShelvesRounded *
-      PREPAID_STORAGE_WEEKLY_PRICE_PER_HALF_SHELF
-    : 0;
+  const prepaidStorageWeeksClamped = PREPAID_STORAGE_INCLUDED_WEEKS;
+  const prepaidStorageCost = prepaidStorageRequested ? PREPAID_STORAGE_FLAT_PRICE : 0;
   const totalEstimate =
     estimatedCostWithDelivery != null
       ? estimatedCostWithDelivery +
@@ -1389,7 +1403,6 @@ export default function ReservationsView({
     setPlacementPreferenceRequested(false);
     setPlacementPreferenceZone("middle");
     setPrepaidStorageRequested(false);
-    setPrepaidStorageWeeks(1);
     setPickupDeliveryRequested(false);
     setReturnDeliveryRequested(false);
     setDeliveryAddress("");
@@ -2934,7 +2947,6 @@ export default function ReservationsView({
     setPlacementPreferenceRequested(false);
     setPlacementPreferenceZone("middle");
     setPrepaidStorageRequested(false);
-    setPrepaidStorageWeeks(1);
     setPickupDeliveryRequested(false);
     setReturnDeliveryRequested(false);
     setDeliveryAddress("");
@@ -3675,10 +3687,7 @@ export default function ReservationsView({
                       ) : null}
                       {prepaidStorageRequested ? (
                         <div className="estimate-line">
-                          <span>
-                            Prepaid storage ({formatHalfShelfCount(estimatedHalfShelvesRounded)} ·{" "}
-                            {prepaidStorageWeeksClamped} week{prepaidStorageWeeksClamped === 1 ? "" : "s"})
-                          </span>
+                          <span>Covered storage hold (up to {prepaidStorageWeeksClamped} weeks)</span>
                           <span>{formatUsd(prepaidStorageCost)}</span>
                         </div>
                       ) : null}
@@ -3846,14 +3855,13 @@ export default function ReservationsView({
                     <span className="addon-text">
                       <span className="addon-title">Need extra pickup time?</span>
                       <span className="addon-copy">
-                        Prepay storage at the lower weekly rate now. After the 2.75-week grace period, storage
-                        switches to {formatUsd(STORAGE_BILLING_DAILY_RATE_PER_HALF_SHELF)} per half-shelf per day,
-                        and unclaimed work is reclaimed by the studio after 4 billed weeks.
+                        Flat {formatUsd(PREPAID_STORAGE_FLAT_PRICE)} covers up to {prepaidStorageWeeksClamped} weeks
+                        of storage from pickup-ready. After that, storage switches to{" "}
+                        {formatUsd(STORAGE_BILLING_DAILY_RATE_PER_HALF_SHELF)} per half-shelf per day for up to 4
+                        more weeks, then unclaimed work is reclaimed by the studio.
                       </span>
                     </span>
-                    <span className="addon-tag">
-                      {formatUsd(PREPAID_STORAGE_WEEKLY_PRICE_PER_HALF_SHELF)} per half-shelf per week
-                    </span>
+                    <span className="addon-tag">{formatUsd(PREPAID_STORAGE_FLAT_PRICE)} flat</span>
                   </label>
                   <label className="addon-toggle">
                     <input
@@ -3878,7 +3886,7 @@ export default function ReservationsView({
                     <span className="addon-tag">{formatUsd(DELIVERY_PRICE_PER_TRIP)}</span>
                   </label>
                 </div>
-                {placementPreferenceRequested || prepaidStorageRequested || pickupDeliveryRequested || returnDeliveryRequested ? (
+                {placementPreferenceRequested || pickupDeliveryRequested || returnDeliveryRequested ? (
                   <div className="addon-fields">
                     {placementPreferenceRequested ? (
                       <label>
@@ -3894,28 +3902,6 @@ export default function ReservationsView({
                           {PLACEMENT_PREFERENCE_ZONES.map((zone) => (
                             <option key={zone.id} value={zone.id}>
                               {zone.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : null}
-                    {prepaidStorageRequested ? (
-                      <label>
-                        Prepaid storage weeks before billing begins
-                        <select
-                          value={String(prepaidStorageWeeksClamped)}
-                          onChange={(event) => {
-                            const parsed = Number(event.target.value);
-                            if (!Number.isFinite(parsed)) {
-                              setPrepaidStorageWeeks(1);
-                              return;
-                            }
-                            setPrepaidStorageWeeks(Math.max(1, Math.min(12, Math.round(parsed))));
-                          }}
-                        >
-                          {Array.from({ length: 12 }, (_, index) => index + 1).map((week) => (
-                            <option key={`storage-week-${week}`} value={week}>
-                              {week} week{week === 1 ? "" : "s"}
                             </option>
                           ))}
                         </select>
@@ -4831,7 +4817,8 @@ export default function ReservationsView({
                       ) : null}
                       {reservation.addOns?.prepaidStorageRequested ? (
                         <span className="reservation-addon-pill">
-                          Storage: {prepaidStorageWeeksLabel} week{prepaidStorageWeeksLabel === 1 ? "" : "s"} prepaid
+                          Storage: prepaid hold up to {prepaidStorageWeeksLabel} week
+                          {prepaidStorageWeeksLabel === 1 ? "" : "s"}
                         </span>
                       ) : null}
                     </div>

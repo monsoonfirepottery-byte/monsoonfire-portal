@@ -117,13 +117,21 @@ function withMockFirestore<T>(state: MockDbState, callback: () => Promise<T>): P
   });
 }
 
-function storageSeed(readyIso: string, chargeBasisHalfShelves: number) {
+function storageSeed(
+  readyIso: string,
+  chargeBasisHalfShelves: number,
+  storagePolicy?: { prepaidStorageRequested?: boolean; prepaidStorageWeeks?: number | null }
+) {
   const readyForPickupAt = shared.Timestamp.fromDate(new Date(readyIso));
   return computeReservationStorageBilling({
     existing: null,
     readyForPickupAt,
     chargeBasisHalfShelves,
     now: readyForPickupAt,
+    storagePolicy: {
+      prepaidStorageRequested: storagePolicy?.prepaidStorageRequested === true,
+      prepaidStorageWeeks: storagePolicy?.prepaidStorageWeeks ?? null,
+    },
   });
 }
 
@@ -133,6 +141,27 @@ test("nextDueReminderOrdinal uses the shifted grace-period thresholds", () => {
   assert.equal(nextDueReminderOrdinal({ elapsedMs: 14 * dayMs, currentCount: 0 }), 1);
   assert.equal(nextDueReminderOrdinal({ elapsedMs: 17.5 * dayMs, currentCount: 1 }), 2);
   assert.equal(nextDueReminderOrdinal({ elapsedMs: 19.25 * dayMs, currentCount: 2 }), 3);
+});
+
+test("nextDueReminderOrdinal scales to the prepaid storage window", () => {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const prepaidReminderSchedule = [20.36 * dayMs, 25.45 * dayMs, 28 * dayMs];
+  assert.equal(
+    nextDueReminderOrdinal({
+      elapsedMs: 20 * dayMs,
+      currentCount: 0,
+      reminderScheduleMs: prepaidReminderSchedule,
+    }),
+    null
+  );
+  assert.equal(
+    nextDueReminderOrdinal({
+      elapsedMs: 20.36 * dayMs,
+      currentCount: 0,
+      reminderScheduleMs: prepaidReminderSchedule,
+    }),
+    1
+  );
 });
 
 test("storageStatusForElapsed maps grace, billing, and reclamation windows", () => {
@@ -169,6 +198,36 @@ test("computeReservationStorageBilling accrues full days and caps at reclamation
   assert.equal(reclaimed.billedDays, 28);
   assert.equal(reclaimed.accruedCost, 126);
   assert.ok(reclaimed.reclaimedAt);
+});
+
+test("computeReservationStorageBilling delays billing for prepaid storage holds", () => {
+  const readyForPickupAt = shared.Timestamp.fromDate(new Date("2026-03-01T00:00:00.000Z"));
+  const beforeBilling = computeReservationStorageBilling({
+    existing: null,
+    readyForPickupAt,
+    chargeBasisHalfShelves: 3,
+    now: shared.Timestamp.fromDate(new Date("2026-03-28T06:00:00.000Z")),
+    storagePolicy: {
+      prepaidStorageRequested: true,
+      prepaidStorageWeeks: 4,
+    },
+  });
+  assert.equal(beforeBilling.status, "grace");
+  assert.equal(beforeBilling.billedDays, 0);
+
+  const billing = computeReservationStorageBilling({
+    existing: beforeBilling,
+    readyForPickupAt,
+    chargeBasisHalfShelves: 3,
+    now: shared.Timestamp.fromDate(new Date("2026-03-30T06:00:00.000Z")),
+    storagePolicy: {
+      prepaidStorageRequested: true,
+      prepaidStorageWeeks: 4,
+    },
+  });
+  assert.equal(billing.status, "billing");
+  assert.equal(billing.billedDays, 1);
+  assert.equal(billing.accruedCost, 4.5);
 });
 
 test("runReservationStorageHoldEvaluation leaves reservations untouched before the first reminder window", async () => {
@@ -234,6 +293,47 @@ test("runReservationStorageHoldEvaluation sends the shifted reminders and starts
   assert.equal(reservation.pickupReminderCount, 3);
   const storageBilling = (reservation.storageBilling ?? {}) as Record<string, unknown>;
   assert.equal(storageBilling.status, "billing");
+  assert.equal(storageBilling.billedDays, 0);
+});
+
+test("runReservationStorageHoldEvaluation keeps prepaid storage reservations out of billing until week four", async () => {
+  const state: MockDbState = {
+    reservations: {
+      "reservation-prepaid-hold": {
+        ownerUid: "owner-1",
+        status: "CONFIRMED",
+        loadStatus: "loaded",
+        estimatedHalfShelves: 2,
+        readyForPickupAt: shared.Timestamp.fromDate(new Date("2026-03-01T00:00:00.000Z")),
+        addOns: {
+          prepaidStorageRequested: true,
+          prepaidStorageWeeks: 4,
+        },
+        storageStatus: "active",
+        pickupReminderCount: 0,
+        storageBilling: storageSeed("2026-03-01T00:00:00.000Z", 2, {
+          prepaidStorageRequested: true,
+          prepaidStorageWeeks: 4,
+        }),
+        pickupWindow: {
+          status: "open",
+        },
+      },
+    },
+  };
+
+  const summary = await withMockFirestore(state, () =>
+    runReservationStorageHoldEvaluation(
+      shared.Timestamp.fromDate(new Date("2026-03-20T06:00:00.000Z"))
+    )
+  );
+
+  assert.equal(summary.reminderJobs, 0);
+  assert.equal(summary.updatedReservations, 0);
+  const reservation = state.reservations["reservation-prepaid-hold"] as Record<string, unknown>;
+  const storageBilling = (reservation.storageBilling ?? {}) as Record<string, unknown>;
+  assert.equal(reservation.storageStatus, "active");
+  assert.equal(storageBilling.status, "grace");
   assert.equal(storageBilling.billedDays, 0);
 });
 

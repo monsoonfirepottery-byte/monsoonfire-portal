@@ -11,7 +11,9 @@ export const ADD_ON_HALF_SHELF_CAP = Number((HALF_SHELF_BISQUE_PRICE * ADD_ON_HA
 export const STUDIO_GLAZE_ACCESS_PER_HALF_SHELF_PRICE = 5;
 export const SELF_LOADED_KILN_FLAT_PRICE = 15;
 export const PLACEMENT_PREFERENCE_PRICE = 3;
-export const PREPAID_STORAGE_WEEKLY_PRICE_PER_HALF_SHELF = 2;
+export const PREPAID_STORAGE_FLAT_PRICE = 15;
+export const PREPAID_STORAGE_INCLUDED_WEEKS = 4;
+export const STORAGE_BILLING_DAILY_RATE_PER_HALF_SHELF = 1.5;
 
 export type FiringType = "bisque" | "glaze" | "other";
 

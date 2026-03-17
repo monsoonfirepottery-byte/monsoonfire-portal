@@ -7,6 +7,7 @@ import { constants as fsConstants } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getAutomationFamily } from "../lib/automation-issue-families.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..", "..");
@@ -16,7 +17,8 @@ const codexDir = resolve(repoRoot, ".codex");
 const toolcallPath = resolve(codexDir, "toolcalls.ndjson");
 const improvementStatePath = resolve(codexDir, "improvement-state.json");
 const prGreenLogPath = resolve(codexDir, "pr-green-log.md");
-const rollingIssueTitle = "Codex Automation (Rolling)";
+const CODEX_AUTOMATION_FAMILY = getAutomationFamily("codex-automation");
+const rollingIssueTitle = CODEX_AUTOMATION_FAMILY?.title || "Codex Automation Coordination (Rolling)";
 
 const secretKeyPattern = /(token|secret|password|authorization|api[_-]?key|cookie|session|private[_-]?key)/i;
 const secretValuePatterns = [

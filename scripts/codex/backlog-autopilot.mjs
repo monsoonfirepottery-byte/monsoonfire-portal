@@ -6,6 +6,7 @@ import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promise
 import { spawnSync } from "node:child_process";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getAutomationFamily } from "../lib/automation-issue-families.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..", "..");
@@ -18,7 +19,8 @@ const defaultOutputDir = resolve(repoRoot, "output", "qa");
 const defaultReportJsonPath = resolve(defaultOutputDir, "codex-backlog-autopilot.json");
 const defaultReportMarkdownPath = resolve(defaultOutputDir, "codex-backlog-autopilot.md");
 
-const rollingIssueTitle = "Codex Automation (Rolling)";
+const CODEX_AUTOMATION_FAMILY = getAutomationFamily("codex-automation");
+const rollingIssueTitle = CODEX_AUTOMATION_FAMILY?.title || "Codex Automation Coordination (Rolling)";
 const defaultLendingLibraryExclusionRegex =
   "(lending[ -]?library|tickets/p1-epic-16|tickets/p1-library-|tickets/p2-library-|tickets/p1-lending-library-|tickets/p2-lending-library-)";
 

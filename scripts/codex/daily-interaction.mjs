@@ -7,6 +7,7 @@ import { constants as fsConstants } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getAutomationFamily } from "../lib/automation-issue-families.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(__filename), "..", "..");
@@ -23,7 +24,8 @@ const interactionLogPath = resolve(codexDir, "interaction-log.md");
 const userDocPath = resolve(codexDir, "user.md");
 const agentsDocPath = resolve(codexDir, "agents.md");
 
-const rollingIssueTitle = "Codex Automation (Rolling)";
+const CODEX_AUTOMATION_FAMILY = getAutomationFamily("codex-automation");
+const rollingIssueTitle = CODEX_AUTOMATION_FAMILY?.title || "Codex Automation Coordination (Rolling)";
 const epicPath = "docs/epics/EPIC-CODEX-INTERACTION-INTERROGATION.md";
 
 const ignoreChurnPaths = new Set([

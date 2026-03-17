@@ -24,6 +24,30 @@ const DEFAULT_REPORT_PATH = resolve(repoRoot, "output", "qa", "github-automation
 const FAMILY_KEYS = ["portal-qa", "portal-infra", "codex-automation", "governance-tuning"];
 
 const SUPERSeded_ISSUES = [
+  {
+    issueNumber: 116,
+    familyKey: "portal-qa",
+    stateReason: "not_planned",
+    note: "Legacy rolling tracker replaced by the portal QA reliability coordination thread.",
+  },
+  {
+    issueNumber: 103,
+    familyKey: "portal-infra",
+    stateReason: "not_planned",
+    note: "Legacy rolling tracker replaced by the portal infra and security coordination thread.",
+  },
+  {
+    issueNumber: 84,
+    familyKey: "codex-automation",
+    stateReason: "not_planned",
+    note: "Legacy rolling tracker replaced by the Codex automation coordination thread.",
+  },
+  {
+    issueNumber: 309,
+    familyKey: "governance-tuning",
+    stateReason: "not_planned",
+    note: "Legacy rolling tracker replaced by the governance tuning coordination thread.",
+  },
   { issueNumber: 315, familyKey: "portal-qa", stateReason: "not_planned", note: "Load-test rolling failures now aggregate into the portal QA family thread." },
   { issueNumber: 264, familyKey: "portal-qa", stateReason: "not_planned", note: "Older duplicate load-test rolling thread superseded by the portal QA family thread." },
   { issueNumber: 310, familyKey: "portal-qa", stateReason: "not_planned", note: "Smoke-test workflow failures now aggregate into the portal QA family thread." },

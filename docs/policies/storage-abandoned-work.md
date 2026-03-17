@@ -2,66 +2,94 @@
 slug: "storage-abandoned-work"
 title: "Storage limits & abandoned work"
 status: "active"
-version: "2026-02-17"
-effectiveDate: "2026-02-17"
-reviewDate: "2026-08-01"
+version: "2026-03-17"
+effectiveDate: "2026-03-17"
+reviewDate: "2026-09-17"
 owner: "Studio Operations"
 sourceUrl: "/policies/storage-abandoned-work/"
-summary: "Storage limits depend on membership tier and available space. Long-abandoned work may move through notice and follow-up steps."
+summary: "Pickup-ready work gets 2.75 weeks of grace, optional prepaid storage at $2 per half-shelf per week, billed storage at $1.50 per half-shelf per day, and studio reclamation after 28 billed days."
 tags:
   - "storage"
-  - "memberships"
+  - "pickup"
   - "policy"
 agent:
   canActForSelf: true
   canActForOthers: true
-  decisionDomain: "Stale-item notification, pickup reminders, and storage hold escalation."
+  decisionDomain: "Pickup-ready reminders, prepaid storage quotes, billed storage escalation, and studio reclamation."
   defaultActions:
-    - "check piece age and membership tier"
-    - "issue/remind pickup and hold-status notification"
-    - "route items near retention boundary for review"
+    - "confirm the pickup-ready date and current storage timeline"
+    - "quote prepaid weekly storage and billed daily storage using half-shelf equivalents"
+    - "share the grace-end, billing-end, and reclamation dates before promising exceptions"
   requiredSignals:
-    - "last pickup status update"
-    - "membership tier and hold duration"
-    - "contact method on file"
+    - "readyForPickupAt"
+    - "estimatedHalfShelves or storageBilling.chargeBasisHalfShelves"
+    - "pickupReminderCount and storageNoticeHistory"
+    - "contact methods on file"
   escalateWhen:
-    - "extended hold beyond policy boundary"
-    - "dispute over prior notice"
-    - "storage capacity conflict affecting active batches"
-  replyTemplate: "State current hold status, reminder obligations, and next action date before any removal step."
+    - "artist disputes reclamation, ownership transfer, or notice history"
+    - "legal or operations review is requested for abandoned work handling"
+    - "staff wants to grant an exception after billed storage has started or reclamation has occurred"
+  replyTemplate: "Share the pickup-ready date, grace-end date, current storage fees, and reclamation date before quoting next steps."
 ---
 
 ## Purpose
 
-To define transparent storage expectations and prevent studio floor crowding.
+Define one clear storage timeline for pickup-ready work so artists know when reminders,
+fees, and reclamation apply.
 
 ## Scope
 
-Completed and in-progress work not yet collected, including work waiting beyond normal
-pickup windows.
+Pickup-ready reservations and any finished work that remains at the studio after an
+artist has been notified it is ready.
 
 ## Policy
 
-- Storage limits vary by membership tier and available shelf capacity.
-- Users should confirm pickup windows before a piece is considered abandoned.
-- The studio will make good-faith efforts to notify before any removal or disposal actions.
-- Extended storage beyond policy windows can move into priority storage tiers or removal
-  workflow.
+- `readyForPickupAt` begins the storage timeline when a reservation reaches pickup-ready status.
+- Artists receive a grace period of `19.25 days` (`462 hours`) after `readyForPickupAt`.
+- During grace, the studio sends pickup reminders at:
+  - `14 days`
+  - `17.5 days`
+  - `19.25 days` (final grace-period reminder)
+- Artists may prepay extra pickup time before billed storage starts. Prepaid storage is
+  charged at `$2 per half-shelf per week`, based on the reservation's half-shelf estimate.
+- Once grace ends, billed storage begins automatically at `$1.50 per half-shelf per day`.
+  Billing accrues only for each fully elapsed 24-hour day.
+- Billed storage is capped at `28 billed days`.
+- Missing a confirmed pickup window does not pause, reset, or shorten the grace or billed
+  storage timeline. The original `readyForPickupAt` date remains the anchor.
+- When a reservation reaches the end of the 28 billed days, the work is considered
+  abandoned and reclaimed by the studio.
+- After reclamation:
+  - ownership transfers to the studio,
+  - the reservation may be archived from active storage workflows,
+  - the studio may destroy, recycle, donate, sell, repurpose, photograph, copy, display,
+    or otherwise use the reclaimed work without further notice or compensation.
 
 ## Automated reminder cadence (portal enforcement)
 
 - `readyForPickupAt` starts when a reservation reaches loaded/pickup-ready state.
-- Reminder 1: ~72 hours after `readyForPickupAt`.
-- Reminder 2: ~120 hours after `readyForPickupAt`.
-- Reminder 3 (final): ~168 hours after `readyForPickupAt`.
+- Reminder 1: `14 days` after `readyForPickupAt`.
+- Reminder 2: `17.5 days` after `readyForPickupAt`.
+- Reminder 3 (final grace reminder): `19.25 days` after `readyForPickupAt`.
 - `storageStatus` escalation:
-  - `active` -> `reminder_pending` once reminders start.
-  - `hold_pending` around ~240 hours.
-  - `stored_by_policy` around ~336 hours (14 days), with staff review required before any disposal action.
+  - `active` during early grace.
+  - `reminder_pending` once reminders begin.
+  - `hold_pending` during the 28-day billed storage window.
+  - `stored_by_policy` once the reservation is reclaimed and archived by policy.
+- `storageBilling` tracks:
+  - `chargeBasis = "estimatedHalfShelves"`
+  - `chargeBasisHalfShelves`
+  - `prepaidWeeklyRatePerHalfShelf = 2`
+  - `dailyRatePerHalfShelf = 1.5`
+  - `graceEndsAt`, `billingStartsAt`, `billingEndsAt`
+  - `billedDays`, `accruedCost`
+  - `status = grace | billing | reclaimed`
+  - `reclaimedAt`, `reclaimedReason`
+- `isArchived` and `archivedAt` are set when reclamation occurs.
 - Pickup-window miss handling:
-  - if a confirmed/open pickup window elapses, status auto-marks `missed`,
-  - first miss moves reservation to `hold_pending`,
-  - repeated misses escalate to `stored_by_policy` without requiring manual queue edits.
+  - if a confirmed/open pickup window elapses, the reservation auto-marks `missed`,
+  - the missed pickup is recorded in notice history and audit logs,
+  - the grace, billing, and reclamation timeline still follows the original pickup-ready date.
 - Every notice/escalation writes an immutable-style entry to `storageNoticeHistory`
   plus audit rows in `reservationStorageAudit`.
 - Reminder failures are tracked (`pickupReminderFailureCount`, `lastReminderFailureAt`) so
@@ -73,19 +101,32 @@ pickup windows.
 
 ## Implementation in portal
 
-- Surface pickup due dates and storage warnings in status views.
-- Route long-stale items to a follow-up path before actions are scheduled.
-- Keep written notices and contact attempts tied to the account record.
+- Surface the grace-end date, billed storage summary, and reclamation state in reservation
+  status views.
+- Offer prepaid extra pickup time in the intake/check-in flow before billed storage begins.
+- Show reclaimed reservations to staff and artists as `Reclaimed by studio`, even though the
+  stored compatibility value remains `stored_by_policy`.
+- Keep reminder history, billing accrual, and contact attempts tied to the reservation record.
 
 ## Enforcement
 
-When notices are exhausted and storage is still needed for operations, removal actions may be
-taken according to active workflow and retention thresholds.
+When the 28 billed storage days are exhausted, the work is reclaimed automatically and removed
+from active storage workflows. Support or staff may review disputes, but exceptions require
+operations approval.
 
 ## Support language
 
 Support should confirm:
 
-- last known status and hold period
-- whether storage notices were delivered
-- collection options and potential fees if applicable
+- the exact `readyForPickupAt` date/time
+- the grace-end date and billed-storage end date
+- whether prepaid storage was purchased
+- the current accrued billed storage amount, if any
+- whether the reservation has already been reclaimed by studio policy
+
+## Implementation notes
+
+- This March 17, 2026 update replaces the old 72h / 120h / 168h reminder cadence and the
+  earlier 14-day removal workflow.
+- Legal and operations review are still required before publishing future changes to storage
+  pricing, abandonment language, or ownership-transfer terms.

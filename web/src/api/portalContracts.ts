@@ -308,6 +308,9 @@ export type CreateReservationRequest = {
     glazeSanityCheckRequested?: boolean;
     staffGlazePrepRequested?: boolean;
     staffGlazePrepRatePerHalfShelf?: number | null;
+    selfLoadedKilnRequested?: boolean;
+    selfLoadedKilnCost?: number | null;
+    // Legacy aliases remain accepted server-side for older clients.
     fragileHandlingRequested?: boolean;
     fragileHandlingCost?: number | null;
     placementPreferenceRequested?: boolean;

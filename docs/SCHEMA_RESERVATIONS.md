@@ -1,4 +1,4 @@
-# Monsoon Fire Portal — Reservations schema (Feb 2026)
+# Monsoon Fire Portal — Reservations schema (Mar 2026)
 
 ## Firestore: `reservations`
 
@@ -78,7 +78,11 @@ Fields:
   - `rescheduleCount` (number | null)
   - `lastMissedAt` (timestamp | null)
   - `lastRescheduleRequestedAt` (timestamp | null)
-- `storageStatus` (string | null) — `active`, `reminder_pending`, `hold_pending`, `stored_by_policy`
+- `storageStatus` (string | null) — compatibility storage state:
+  - `active` during early grace
+  - `reminder_pending` once late-grace reminders begin
+  - `hold_pending` during billed storage
+  - `stored_by_policy` once the reservation is reclaimed/archived by policy
 - `readyForPickupAt` (timestamp | null)
 - `pickupReminderCount` (number | null)
 - `lastReminderAt` (timestamp | null)
@@ -86,12 +90,27 @@ Fields:
 - `lastReminderFailureAt` (timestamp | null)
 - `storageNoticeHistory` (array<map> | null) — date-ordered notice and escalation trail
   - `at` (timestamp)
-  - `kind` (`pickup_ready` | `pickup_reminder_1` | `pickup_reminder_2` | `pickup_reminder_3` | `pickup_window_opened` | `pickup_window_confirmed` | `pickup_window_missed` | `pickup_window_completed` | `hold_pending` | `stored_by_policy` | `reminder_failed`)
+  - `kind` (`pickup_ready` | `pickup_reminder_1` | `pickup_reminder_2` | `pickup_reminder_3` | `pickup_window_opened` | `pickup_window_confirmed` | `pickup_window_missed` | `pickup_window_completed` | `hold_pending` | `stored_by_policy` | `storage_billing_update` | `reminder_failed`)
   - `detail` (string | null)
   - `status` (`active` | `reminder_pending` | `hold_pending` | `stored_by_policy` | null)
   - `reminderOrdinal` (number | null)
   - `reminderCount` (number | null)
   - `failureCode` (string | null)
+- `storageBilling` (map | null) — server-computed storage billing timeline
+  - `chargeBasis` (`estimatedHalfShelves`)
+  - `chargeBasisHalfShelves` (number)
+  - `prepaidWeeklyRatePerHalfShelf` (number) — currently `2`
+  - `dailyRatePerHalfShelf` (number) — currently `1.5`
+  - `graceEndsAt` (timestamp | null)
+  - `billingStartsAt` (timestamp | null)
+  - `billingEndsAt` (timestamp | null)
+  - `billedDays` (number)
+  - `accruedCost` (number)
+  - `status` (`grace` | `billing` | `reclaimed`)
+  - `reclaimedAt` (timestamp | null)
+  - `reclaimedReason` (string | null)
+- `isArchived` (boolean | null) — set to `true` once reclaimed by policy
+- `archivedAt` (timestamp | null)
 - `staffNotes` (string | null)
 - `notesHistory` (array<object> | null)
 - `pieces` (array<map> | null) — optional piece-level traceability rows
@@ -110,6 +129,17 @@ Fields:
 - `arrivalCheckIns` (array<object> | null) — append-only arrival check-in events (`at`, `byUid`, `byRole`, `via`, `note`, `photoUrl`, `photoPath`).
 - `linkedBatchId` (string | null) — optional batch id for context.
 - `wareType`, `kilnId`, `kilnLabel`, `quantityTier`, `quantityLabel`, `dropOffProfile`, `dropOffQuantity`, `photoUrl`, `photoPath`, `notes`, `addOns` (map | null)
+  - common `addOns` keys written by current reservation flows:
+    - `useStudioGlazes` (boolean)
+    - `glazeAccessCost` (number | null) — `$5` per half-shelf
+    - `selfLoadedKilnRequested` (boolean)
+    - `selfLoadedKilnCost` (number | null) — `$15` flat fee
+    - `prepaidStorageRequested` (boolean)
+    - `prepaidStorageWeeks` (number | null)
+    - `prepaidStorageCost` (number | null) — `$2` per half-shelf per week
+  - legacy `fragileHandlingRequested` / `fragileHandlingCost` may appear on older rows and
+    should be normalized to `selfLoadedKiln*` at read time only. New writes should not persist
+    the legacy field names.
 - `createdByUid`, `createdByRole` (string | null)
 - `createdAt` (timestamp)
 - `updatedAt` (timestamp)
@@ -129,6 +159,26 @@ Fields:
 - Check-in paths:
   - Member/owner check-in: `/v1/reservations.checkIn` with `reservationId`.
   - Staff scanner/lookup: `/v1/reservations.lookupArrival` + `/v1/reservations.checkIn` with `arrivalToken`.
+
+## Storage automation semantics
+
+- `readyForPickupAt` anchors the storage timeline.
+- Grace period: `462 hours` (`19.25 days`) after `readyForPickupAt`.
+- Reminder thresholds:
+  - day `14`
+  - day `17.5`
+  - day `19.25`
+- Billed storage:
+  - starts at `graceEndsAt`
+  - accrues for each fully elapsed 24-hour day
+  - uses `estimatedHalfShelves` as the storage charge basis
+  - caps at `28 billed days`
+- Reclamation:
+  - sets `storageStatus = stored_by_policy`
+  - sets `storageBilling.status = reclaimed`
+  - sets `isArchived = true`
+  - sets `archivedAt`
+- UI may humanize `stored_by_policy` as `Reclaimed by studio` while keeping the stored enum for compatibility.
 
 ## Status lifecycle graph (canonical)
 
@@ -228,6 +278,31 @@ Fields:
   "pickupReminderFailureCount": 0,
   "lastReminderFailureAt": null,
   "storageNoticeHistory": [],
+  "storageBilling": {
+    "chargeBasis": "estimatedHalfShelves",
+    "chargeBasisHalfShelves": 2,
+    "prepaidWeeklyRatePerHalfShelf": 2,
+    "dailyRatePerHalfShelf": 1.5,
+    "graceEndsAt": null,
+    "billingStartsAt": null,
+    "billingEndsAt": null,
+    "billedDays": 0,
+    "accruedCost": 0,
+    "status": "grace",
+    "reclaimedAt": null,
+    "reclaimedReason": null
+  },
+  "isArchived": false,
+  "archivedAt": null,
+  "addOns": {
+    "useStudioGlazes": true,
+    "glazeAccessCost": 10,
+    "selfLoadedKilnRequested": false,
+    "selfLoadedKilnCost": null,
+    "prepaidStorageRequested": true,
+    "prepaidStorageWeeks": 1,
+    "prepaidStorageCost": 4
+  },
   "linkedBatchId": "H3T5...",
   "createdAt": "2026-02-01T02:30:00Z",
   "updatedAt": "2026-02-01T02:30:00Z"
@@ -362,6 +437,9 @@ This keeps queue hint ordering consistent across clients and prevents UI-only or
   - Missing `stageStatus`/`stageHistory` => show stable fallback copy and use `updatedAt`.
   - Missing `estimatedWindow`/`queuePositionHint` => use server recompute when next mutation occurs; UI may show fallback ETA text.
   - Missing `pieces` => treat as no piece-level traceability rows.
+  - Missing `storageBilling` => seed from `estimatedHalfShelves` and current storage timeline.
+  - Missing `isArchived` / `archivedAt` => treat as active/not archived unless policy status says otherwise.
+  - Legacy `fragileHandling*` fields => normalize to `selfLoadedKiln*` when projecting for clients.
 - `assignedStationId`, `requiredResources`, `queueClass`, `queueLaneHint`, `arrivalStatus`, and `arrivalToken*` are included as operational expansion targets to support station-aware capacity, station-specific fairness, and member-assisted check-in.
 - `stageStatus`, `estimatedWindow`, `pickupWindow`, and `storageStatus` are included as expansion targets, currently implemented through phased tickets (P1/P2).
 - `pieces` remains optional for intake compatibility; server-generated piece IDs are only created when piece rows are provided.

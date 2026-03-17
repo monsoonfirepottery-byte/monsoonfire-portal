@@ -33,6 +33,9 @@ describe("normalizeReservationRecord", () => {
       pickupReminderFailureCount: null,
       lastReminderFailureAt: null,
       storageNoticeHistory: null,
+      storageBilling: null,
+      isArchived: false,
+      archivedAt: null,
       arrivalStatus: null,
       arrivedAt: null,
       arrivalToken: null,
@@ -52,5 +55,39 @@ describe("normalizeReservationRecord", () => {
       createdAt: null,
       updatedAt: null,
     });
+  });
+
+  it("maps legacy fragile handling fields into the self-loaded kiln add-on shape", () => {
+    const row = normalizeReservationRecord("res-legacy", {
+      addOns: {
+        fragileHandlingRequested: true,
+        fragileHandlingCost: 12,
+      },
+      storageBilling: {
+        chargeBasis: "estimatedHalfShelves",
+        chargeBasisHalfShelves: 3,
+        prepaidWeeklyRatePerHalfShelf: 2,
+        dailyRatePerHalfShelf: 1.5,
+        billedDays: 4,
+        accruedCost: 18,
+        status: "billing",
+      },
+      isArchived: true,
+    });
+
+    expect(row.addOns).toMatchObject({
+      selfLoadedKilnRequested: true,
+      selfLoadedKilnCost: 12,
+    });
+    expect(row.storageBilling).toMatchObject({
+      chargeBasis: "estimatedHalfShelves",
+      chargeBasisHalfShelves: 3,
+      prepaidWeeklyRatePerHalfShelf: 2,
+      dailyRatePerHalfShelf: 1.5,
+      billedDays: 4,
+      accruedCost: 18,
+      status: "billing",
+    });
+    expect(row.isArchived).toBe(true);
   });
 });

@@ -14,15 +14,22 @@ const SMS_MESSAGE_MAX_CHARS = 1200;
 const RESERVATION_DELAY_FOLLOW_UP_INITIAL_MS = 12 * 60 * 60 * 1000;
 const RESERVATION_DELAY_FOLLOW_UP_REPEAT_MS = 24 * 60 * 60 * 1000;
 const RESERVATION_STORAGE_REMINDER_SCHEDULE_MS = [
-  72 * 60 * 60 * 1000,
-  120 * 60 * 60 * 1000,
-  168 * 60 * 60 * 1000,
+  14 * 24 * 60 * 60 * 1000,
+  Math.round(17.5 * 24 * 60 * 60 * 1000),
+  Math.round(19.25 * 24 * 60 * 60 * 1000),
 ] as const;
-const RESERVATION_STORAGE_HOLD_PENDING_MS = 10 * 24 * 60 * 60 * 1000;
-const RESERVATION_STORAGE_STORED_BY_POLICY_MS = 14 * 24 * 60 * 60 * 1000;
+const RESERVATION_STORAGE_GRACE_MS = 462 * 60 * 60 * 1000;
+const RESERVATION_STORAGE_BILLING_DAY_MS = 24 * 60 * 60 * 1000;
+const RESERVATION_STORAGE_BILLING_MAX_DAYS = 28;
+const RESERVATION_STORAGE_STORED_BY_POLICY_MS =
+  RESERVATION_STORAGE_GRACE_MS +
+  RESERVATION_STORAGE_BILLING_DAY_MS * RESERVATION_STORAGE_BILLING_MAX_DAYS;
+const RESERVATION_STORAGE_PREPAID_WEEKLY_RATE_PER_HALF_SHELF = 2;
+const RESERVATION_STORAGE_DAILY_RATE_PER_HALF_SHELF = 1.5;
 const RESERVATION_STORAGE_HISTORY_MAX = 60;
 
 type ReservationStorageStatus = "active" | "reminder_pending" | "hold_pending" | "stored_by_policy";
+type ReservationStorageBillingStatus = "grace" | "billing" | "reclaimed";
 type ReservationPickupWindowStatus = "open" | "confirmed" | "missed" | "expired" | "completed";
 
 function asRecord(value: unknown): value is Record<string, unknown> {
@@ -582,6 +589,21 @@ type ReservationPickupWindowSnapshot = {
   lastRescheduleRequestedAt: Timestamp | null;
 };
 
+type ReservationStorageBillingSnapshot = {
+  chargeBasis: "estimatedHalfShelves" | string | null;
+  chargeBasisHalfShelves: number;
+  prepaidWeeklyRatePerHalfShelf: number;
+  dailyRatePerHalfShelf: number;
+  graceEndsAt: Timestamp | null;
+  billingStartsAt: Timestamp | null;
+  billingEndsAt: Timestamp | null;
+  billedDays: number;
+  accruedCost: number;
+  status: ReservationStorageBillingStatus | null;
+  reclaimedAt: Timestamp | null;
+  reclaimedReason: string | null;
+};
+
 type ReservationNotificationSnapshot = {
   ownerUid: string;
   status: string | null;
@@ -592,6 +614,7 @@ type ReservationNotificationSnapshot = {
   stageReason: string | null;
   stageNotes: string | null;
   staffNotes: string | null;
+  estimatedHalfShelves: number;
   storageStatus: ReservationStorageStatus | null;
   readyForPickupAt: Timestamp | null;
   pickupReminderCount: number;
@@ -599,6 +622,9 @@ type ReservationNotificationSnapshot = {
   pickupReminderFailureCount: number;
   lastReminderFailureAt: Timestamp | null;
   storageNoticeHistory: ReservationStorageNoticeEntry[];
+  storageBilling: ReservationStorageBillingSnapshot | null;
+  isArchived: boolean;
+  archivedAt: Timestamp | null;
   pickupWindow: ReservationPickupWindowSnapshot;
 };
 
@@ -691,6 +717,16 @@ function normalizeReservationStorageStatusValue(value: unknown): ReservationStor
   return null;
 }
 
+function normalizeReservationStorageBillingStatusValue(
+  value: unknown
+): ReservationStorageBillingStatus | null {
+  const normalized = safeString(value).trim().toLowerCase();
+  if (normalized === "grace" || normalized === "billing" || normalized === "reclaimed") {
+    return normalized;
+  }
+  return null;
+}
+
 function normalizeReservationPickupWindowStatusValue(value: unknown): ReservationPickupWindowStatus | null {
   const normalized = safeString(value).trim().toLowerCase();
   if (
@@ -709,6 +745,16 @@ function normalizeReminderCount(value: unknown): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return 0;
   return Math.max(0, Math.trunc(parsed));
+}
+
+function normalizeNonNegativeNumber(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return parsed;
+}
+
+function roundCurrency(value: number): number {
+  return Number(value.toFixed(2));
 }
 
 function normalizeStorageNoticeHistory(raw: unknown): ReservationStorageNoticeEntry[] {
@@ -730,6 +776,27 @@ function normalizeStorageNoticeHistory(raw: unknown): ReservationStorageNoticeEn
     });
   }
   return rows.slice(-RESERVATION_STORAGE_HISTORY_MAX);
+}
+
+function normalizeStorageBillingForWrite(
+  billing: ReservationStorageBillingSnapshot
+): Record<string, unknown> {
+  return {
+    chargeBasis: billing.chargeBasis ?? "estimatedHalfShelves",
+    chargeBasisHalfShelves: Math.max(0, billing.chargeBasisHalfShelves),
+    prepaidWeeklyRatePerHalfShelf: roundCurrency(
+      Math.max(0, billing.prepaidWeeklyRatePerHalfShelf)
+    ),
+    dailyRatePerHalfShelf: roundCurrency(Math.max(0, billing.dailyRatePerHalfShelf)),
+    graceEndsAt: billing.graceEndsAt ?? null,
+    billingStartsAt: billing.billingStartsAt ?? null,
+    billingEndsAt: billing.billingEndsAt ?? null,
+    billedDays: Math.max(0, Math.trunc(billing.billedDays)),
+    accruedCost: roundCurrency(Math.max(0, billing.accruedCost)),
+    status: billing.status ?? "grace",
+    reclaimedAt: billing.reclaimedAt ?? null,
+    reclaimedReason: billing.reclaimedReason ?? null,
+  };
 }
 
 function normalizeStorageNoticeForWrite(entry: ReservationStorageNoticeEntry): Record<string, unknown> {
@@ -760,6 +827,137 @@ function normalizePickupWindowForWrite(window: ReservationPickupWindowSnapshot):
   };
 }
 
+function normalizeStorageBilling(
+  raw: unknown,
+  chargeBasisHalfShelvesFallback: number
+): ReservationStorageBillingSnapshot | null {
+  if (!asRecord(raw)) return null;
+
+  return {
+    chargeBasis: safeString(raw.chargeBasis).trim() || "estimatedHalfShelves",
+    chargeBasisHalfShelves: Math.max(
+      0,
+      normalizeNonNegativeNumber(raw.chargeBasisHalfShelves, chargeBasisHalfShelvesFallback)
+    ),
+    prepaidWeeklyRatePerHalfShelf: roundCurrency(
+      normalizeNonNegativeNumber(
+        raw.prepaidWeeklyRatePerHalfShelf,
+        RESERVATION_STORAGE_PREPAID_WEEKLY_RATE_PER_HALF_SHELF
+      )
+    ),
+    dailyRatePerHalfShelf: roundCurrency(
+      normalizeNonNegativeNumber(
+        raw.dailyRatePerHalfShelf,
+        RESERVATION_STORAGE_DAILY_RATE_PER_HALF_SHELF
+      )
+    ),
+    graceEndsAt: parseTimestampValue(raw.graceEndsAt),
+    billingStartsAt: parseTimestampValue(raw.billingStartsAt),
+    billingEndsAt: parseTimestampValue(raw.billingEndsAt),
+    billedDays: Math.max(0, Math.trunc(normalizeNonNegativeNumber(raw.billedDays, 0))),
+    accruedCost: roundCurrency(normalizeNonNegativeNumber(raw.accruedCost, 0)),
+    status: normalizeReservationStorageBillingStatusValue(raw.status),
+    reclaimedAt: parseTimestampValue(raw.reclaimedAt),
+    reclaimedReason: safeString(raw.reclaimedReason).trim() || null,
+  };
+}
+
+function timestampFromMillis(ms: number): Timestamp {
+  return Timestamp.fromMillis(ms);
+}
+
+function baselineStorageBilling(
+  readyForPickupAt: Timestamp,
+  chargeBasisHalfShelves: number
+): ReservationStorageBillingSnapshot {
+  const readyMs = readyForPickupAt.toMillis();
+  const graceEndsAt = timestampFromMillis(readyMs + RESERVATION_STORAGE_GRACE_MS);
+  const billingStartsAt = graceEndsAt;
+  const billingEndsAt = timestampFromMillis(
+    billingStartsAt.toMillis() +
+      RESERVATION_STORAGE_BILLING_DAY_MS * RESERVATION_STORAGE_BILLING_MAX_DAYS
+  );
+
+  return {
+    chargeBasis: "estimatedHalfShelves",
+    chargeBasisHalfShelves: Math.max(0, chargeBasisHalfShelves),
+    prepaidWeeklyRatePerHalfShelf: RESERVATION_STORAGE_PREPAID_WEEKLY_RATE_PER_HALF_SHELF,
+    dailyRatePerHalfShelf: RESERVATION_STORAGE_DAILY_RATE_PER_HALF_SHELF,
+    graceEndsAt,
+    billingStartsAt,
+    billingEndsAt,
+    billedDays: 0,
+    accruedCost: 0,
+    status: "grace",
+    reclaimedAt: null,
+    reclaimedReason: null,
+  };
+}
+
+export function computeReservationStorageBilling(params: {
+  existing: ReservationStorageBillingSnapshot | null;
+  readyForPickupAt: Timestamp;
+  chargeBasisHalfShelves: number;
+  now: Timestamp;
+}): ReservationStorageBillingSnapshot {
+  const base = baselineStorageBilling(params.readyForPickupAt, params.chargeBasisHalfShelves);
+  const existing = params.existing;
+  const billingStartsAt = base.billingStartsAt ?? params.readyForPickupAt;
+  const billingEndsAt = base.billingEndsAt ?? params.readyForPickupAt;
+  const nowMs = params.now.toMillis();
+  const billingStartsMs = billingStartsAt.toMillis();
+  const billingEndsMs = billingEndsAt.toMillis();
+  const billedDays =
+    nowMs < billingStartsMs
+      ? 0
+      : Math.min(
+          RESERVATION_STORAGE_BILLING_MAX_DAYS,
+          Math.floor((Math.max(nowMs, billingStartsMs) - billingStartsMs) / RESERVATION_STORAGE_BILLING_DAY_MS)
+        );
+  const status: ReservationStorageBillingStatus =
+    nowMs >= billingEndsMs ? "reclaimed" : nowMs >= billingStartsMs ? "billing" : "grace";
+
+  return {
+    ...base,
+    billedDays,
+    accruedCost: roundCurrency(
+      billedDays * base.chargeBasisHalfShelves * base.dailyRatePerHalfShelf
+    ),
+    status,
+    reclaimedAt:
+      status === "reclaimed"
+        ? existing?.reclaimedAt ?? billingEndsAt
+        : null,
+    reclaimedReason:
+      status === "reclaimed"
+        ? existing?.reclaimedReason ??
+          "No artist response during grace and billed storage windows; studio reclaimed the work."
+        : null,
+  };
+}
+
+function storageBillingEquals(
+  left: ReservationStorageBillingSnapshot | null,
+  right: ReservationStorageBillingSnapshot | null
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return (
+    left.chargeBasis === right.chargeBasis &&
+    left.chargeBasisHalfShelves === right.chargeBasisHalfShelves &&
+    left.prepaidWeeklyRatePerHalfShelf === right.prepaidWeeklyRatePerHalfShelf &&
+    left.dailyRatePerHalfShelf === right.dailyRatePerHalfShelf &&
+    tsMillis(left.graceEndsAt) === tsMillis(right.graceEndsAt) &&
+    tsMillis(left.billingStartsAt) === tsMillis(right.billingStartsAt) &&
+    tsMillis(left.billingEndsAt) === tsMillis(right.billingEndsAt) &&
+    left.billedDays === right.billedDays &&
+    left.accruedCost === right.accruedCost &&
+    left.status === right.status &&
+    tsMillis(left.reclaimedAt) === tsMillis(right.reclaimedAt) &&
+    left.reclaimedReason === right.reclaimedReason
+  );
+}
+
 function parseReservationSnapshot(value: Record<string, unknown> | undefined): ReservationNotificationSnapshot {
   const estimatedWindow = asRecord(value?.estimatedWindow)
     ? (value.estimatedWindow as Record<string, unknown>)
@@ -770,6 +968,7 @@ function parseReservationSnapshot(value: Record<string, unknown> | undefined): R
   const pickupWindow = asRecord(value?.pickupWindow)
     ? (value.pickupWindow as Record<string, unknown>)
     : {};
+  const estimatedHalfShelves = Math.max(0, normalizeNonNegativeNumber(value?.estimatedHalfShelves, 0));
 
   return {
     ownerUid: safeString(value?.ownerUid),
@@ -787,6 +986,7 @@ function parseReservationSnapshot(value: Record<string, unknown> | undefined): R
     stageReason: safeString(stageStatus.reason).trim() || null,
     stageNotes: safeString(stageStatus.notes).trim() || null,
     staffNotes: safeString(value?.staffNotes).trim() || null,
+    estimatedHalfShelves,
     storageStatus: normalizeReservationStorageStatusValue(value?.storageStatus),
     readyForPickupAt: parseTimestampValue(value?.readyForPickupAt),
     pickupReminderCount: normalizeReminderCount(value?.pickupReminderCount),
@@ -794,6 +994,9 @@ function parseReservationSnapshot(value: Record<string, unknown> | undefined): R
     pickupReminderFailureCount: normalizeReminderCount(value?.pickupReminderFailureCount),
     lastReminderFailureAt: parseTimestampValue(value?.lastReminderFailureAt),
     storageNoticeHistory: normalizeStorageNoticeHistory(value?.storageNoticeHistory),
+    storageBilling: normalizeStorageBilling(value?.storageBilling, estimatedHalfShelves),
+    isArchived: value?.isArchived === true,
+    archivedAt: parseTimestampValue(value?.archivedAt),
     pickupWindow: {
       requestedStart: parseTimestampValue(pickupWindow.requestedStart),
       requestedEnd: parseTimestampValue(pickupWindow.requestedEnd),
@@ -814,18 +1017,18 @@ function currentStorageStatus(snapshot: ReservationNotificationSnapshot): Reserv
   return snapshot.storageStatus ?? "active";
 }
 
-function storageStatusForElapsed(params: {
+export function storageStatusForElapsed(params: {
   elapsedMs: number;
   reminderCount: number;
 }): ReservationStorageStatus {
   const elapsedMs = Math.max(0, params.elapsedMs);
   if (elapsedMs >= RESERVATION_STORAGE_STORED_BY_POLICY_MS) return "stored_by_policy";
-  if (elapsedMs >= RESERVATION_STORAGE_HOLD_PENDING_MS) return "hold_pending";
+  if (elapsedMs >= RESERVATION_STORAGE_GRACE_MS) return "hold_pending";
   if (params.reminderCount > 0) return "reminder_pending";
   return "active";
 }
 
-function nextDueReminderOrdinal(params: {
+export function nextDueReminderOrdinal(params: {
   elapsedMs: number;
   currentCount: number;
 }): number | null {
@@ -837,10 +1040,11 @@ function nextDueReminderOrdinal(params: {
 }
 
 function storagePolicyWindowLabel(reminderOrdinal: number): string {
-  const nextThreshold = RESERVATION_STORAGE_REMINDER_SCHEDULE_MS[reminderOrdinal] ?? RESERVATION_STORAGE_HOLD_PENDING_MS;
+  const nextThreshold =
+    RESERVATION_STORAGE_REMINDER_SCHEDULE_MS[reminderOrdinal] ?? RESERVATION_STORAGE_GRACE_MS;
   const nextHours = Math.round(nextThreshold / (60 * 60 * 1000));
   if (reminderOrdinal >= 3) {
-    return "Final reminder window. Reservation moves to storage hold soon if pickup is still pending.";
+    return "Final grace-period reminder. Billable storage begins at the 19.25-day cutoff if pickup is still pending.";
   }
   return `Next storage policy checkpoint is around ${nextHours} hours after pickup-ready status.`;
 }
@@ -1445,7 +1649,8 @@ export const onReservationLifecycleUpdated = onDocumentWritten(
           previousStorageStatus: currentStorageStatus(before),
           reminderCount: 0,
           readyForPickupAtIso: tsIso(readyForPickupAt),
-          policyWindowLabel: "Pickup-ready notice sent. Storage reminders begin after 72 hours.",
+          policyWindowLabel:
+            "Pickup-ready notice sent. Grace runs for 2.75 weeks, then billed storage begins at $1.50 per half-shelf per day for up to 28 days.",
           estimateWindowLabel,
           suggestedNextUpdateAtIso: null,
           previousWindowStartIso,
@@ -1473,6 +1678,19 @@ export const onReservationLifecycleUpdated = onDocumentWritten(
           pickupReminderFailureCount: 0,
           lastReminderFailureAt: null,
           storageNoticeHistory: nextHistory.map(normalizeStorageNoticeForWrite),
+          storageBilling: normalizeStorageBillingForWrite(
+            computeReservationStorageBilling({
+              existing: after.storageBilling,
+              readyForPickupAt,
+              chargeBasisHalfShelves:
+                after.storageBilling?.chargeBasisHalfShelves && after.storageBilling.chargeBasisHalfShelves > 0
+                  ? after.storageBilling.chargeBasisHalfShelves
+                  : after.estimatedHalfShelves,
+              now: readyForPickupAt,
+            })
+          ),
+          isArchived: false,
+          archivedAt: null,
           updatedAt: nowTs(),
         },
         { merge: true }
@@ -2939,202 +3157,231 @@ export const processQueuedNotificationJobs = onSchedule(
 
 function pickupReminderReason(reminderOrdinal: number): string {
   if (reminderOrdinal >= 3) {
-    return "Final pickup reminder: reservation is nearing storage-hold policy thresholds.";
+    return "Final pickup reminder: grace ends soon, and billable storage starts after the 19.25-day pickup-ready cutoff.";
   }
   if (reminderOrdinal === 2) {
-    return "Second pickup reminder: reservation is still awaiting pickup scheduling.";
+    return "Second pickup reminder: your reservation is still in the grace window, but storage fees are getting closer.";
   }
-  return "Pickup reminder: reservation has been ready for collection for several days.";
+  return "Pickup reminder: your reservation has been ready for pickup for two weeks.";
 }
 
-export const evaluateReservationStorageHolds = onSchedule(
-  { region: REGION, schedule: "every 60 minutes" },
-  async () => {
-    const now = nowTs();
-    const nowMs = now.toMillis();
-    const snap = await db
-      .collection("reservations")
-      .where("loadStatus", "==", "loaded")
-      .limit(200)
-      .get();
+export async function runReservationStorageHoldEvaluation(currentNow: Timestamp = nowTs()) {
+  const now = currentNow;
+  const nowMs = now.toMillis();
+  const snap = await db
+    .collection("reservations")
+    .where("loadStatus", "==", "loaded")
+    .limit(200)
+    .get();
 
-    let scanned = 0;
-    let updatedReservations = 0;
-    let reminderJobs = 0;
-    let statusTransitions = 0;
+  let scanned = 0;
+  let updatedReservations = 0;
+  let reminderJobs = 0;
+  let statusTransitions = 0;
 
-    for (const docSnap of snap.docs) {
-      const reservationId = docSnap.id;
-      const reservation = parseReservationSnapshot(docSnap.data() as Record<string, unknown>);
-      const uid = safeString(reservation.ownerUid).trim();
-      if (!uid) continue;
-      if (reservation.status === "CANCELLED") continue;
-      if (reservation.pickupWindow.status === "completed") continue;
-      scanned += 1;
+  for (const docSnap of snap.docs) {
+    const reservationId = docSnap.id;
+    const reservation = parseReservationSnapshot(docSnap.data() as Record<string, unknown>);
+    const uid = safeString(reservation.ownerUid).trim();
+    if (!uid) continue;
+    if (reservation.status === "CANCELLED") continue;
+    if (reservation.pickupWindow.status === "completed") continue;
+    if (reservation.isArchived && currentStorageStatus(reservation) === "stored_by_policy") continue;
+    scanned += 1;
 
-      const readyAnchor = reservation.readyForPickupAt ?? reservation.updatedAt ?? reservation.createdAt;
-      if (!readyAnchor) continue;
+    const readyAnchor = reservation.readyForPickupAt ?? reservation.updatedAt ?? reservation.createdAt;
+    if (!readyAnchor) continue;
 
-      const elapsedMs = Math.max(0, nowMs - readyAnchor.toMillis());
-      const previousStorageStatus = currentStorageStatus(reservation);
-      let nextStorageStatus = previousStorageStatus;
-      let nextReminderCount = reservation.pickupReminderCount;
-      let nextHistory = reservation.storageNoticeHistory;
-      const updates: Record<string, unknown> = {};
-      let autoMissApplied = false;
+    const elapsedMs = Math.max(0, nowMs - readyAnchor.toMillis());
+    const previousStorageStatus = currentStorageStatus(reservation);
+    let nextStorageStatus = previousStorageStatus;
+    let nextReminderCount = reservation.pickupReminderCount;
+    let nextHistory = reservation.storageNoticeHistory;
+    const updates: Record<string, unknown> = {};
+    let autoMissApplied = false;
 
-      if (!reservation.readyForPickupAt) {
-        updates.readyForPickupAt = readyAnchor;
-      }
+    if (!reservation.readyForPickupAt) {
+      updates.readyForPickupAt = readyAnchor;
+    }
 
-      const pickupWindowStatus = reservation.pickupWindow.status;
-      const pickupWindowEndMs = tsMillis(reservation.pickupWindow.confirmedEnd);
-      if (
-        (pickupWindowStatus === "open" || pickupWindowStatus === "confirmed") &&
-        pickupWindowEndMs !== null &&
-        pickupWindowEndMs <= nowMs
-      ) {
-        const nextMissedCount = reservation.pickupWindow.missedCount + 1;
-        const missedStatus: ReservationStorageStatus =
-          nextMissedCount >= 2 ? "stored_by_policy" : "hold_pending";
-        const missReason =
-          nextMissedCount >= 2
-            ? "Pickup window was missed again and reservation moved to stored-by-policy."
-            : "Pickup window elapsed and reservation moved to hold-pending.";
-        updates.pickupWindow = normalizePickupWindowForWrite({
-          ...reservation.pickupWindow,
-          status: "missed",
-          confirmedAt: null,
-          completedAt: null,
-          missedCount: nextMissedCount,
-          lastMissedAt: now,
-        });
-        updates.storageStatus = missedStatus;
-        nextStorageStatus = missedStatus;
-        autoMissApplied = true;
-        if (previousStorageStatus !== missedStatus) {
-          statusTransitions += 1;
-        }
-        nextHistory = pushStorageNotice(nextHistory, {
-          at: now,
-          kind: "pickup_window_missed",
-          detail: missReason,
-          status: missedStatus,
-          reminderOrdinal: null,
-          reminderCount: nextReminderCount,
-          failureCode: null,
-        });
-        await writeReservationStorageAudit({
-          reservationId,
-          uid,
-          action: "pickup_window_missed",
-          reason: missReason,
-          fromStatus: previousStorageStatus,
-          toStatus: missedStatus,
-          reminderCount: nextReminderCount,
-        });
-        const routing = await readReservationRouting(uid);
-        await enqueueReservationNotificationJob({
-          uid,
-          type: "RESERVATION_PICKUP_REMINDER",
-          routing,
-          payload: {
-            dedupeKey: `RESERVATION_PICKUP_WINDOW_MISSED:${reservationId}:${pickupWindowEndMs}:${nextMissedCount}`,
-            firingId: reservationId,
-            reservationId,
-            reservationStatus: reservation.status,
-            reservationLoadStatus: reservation.loadStatus,
-            eventKind: "pickup_reminder",
-            reason: missReason,
-            storageStatus: missedStatus,
-            previousStorageStatus,
-            reminderCount: nextReminderCount,
-            readyForPickupAtIso: tsIso(readyAnchor),
-            policyWindowLabel: "Pickup window missed. Staff follow-up is now required.",
-            suggestedNextUpdateAtIso: null,
-          },
-        });
-        reminderJobs += 1;
-      }
+    const chargeBasisHalfShelves =
+      reservation.storageBilling?.chargeBasisHalfShelves && reservation.storageBilling.chargeBasisHalfShelves > 0
+        ? reservation.storageBilling.chargeBasisHalfShelves
+        : reservation.estimatedHalfShelves;
+    const existingBilling = reservation.storageBilling;
+    const nextStorageBilling = computeReservationStorageBilling({
+      existing: existingBilling,
+      readyForPickupAt: readyAnchor,
+      chargeBasisHalfShelves,
+      now,
+    });
 
-      const dueReminderOrdinal = nextDueReminderOrdinal({
-        elapsedMs,
-        currentCount: reservation.pickupReminderCount,
+    const pickupWindowStatus = reservation.pickupWindow.status;
+    const pickupWindowEndMs =
+      tsMillis(reservation.pickupWindow.confirmedEnd) ?? tsMillis(reservation.pickupWindow.requestedEnd);
+    if (
+      (pickupWindowStatus === "open" || pickupWindowStatus === "confirmed") &&
+      pickupWindowEndMs !== null &&
+      pickupWindowEndMs <= nowMs
+    ) {
+      const nextMissedCount = reservation.pickupWindow.missedCount + 1;
+      const missReason =
+        "Pickup window elapsed. Grace, billed storage, and studio reclamation still follow the original pickup-ready timeline.";
+      updates.pickupWindow = normalizePickupWindowForWrite({
+        ...reservation.pickupWindow,
+        status: "missed",
+        confirmedAt: null,
+        completedAt: null,
+        missedCount: nextMissedCount,
+        lastMissedAt: now,
       });
-
-      if (dueReminderOrdinal && !autoMissApplied) {
-        const reason = pickupReminderReason(dueReminderOrdinal);
-        const routing = await readReservationRouting(uid);
-        const reminderStatus: ReservationStorageStatus =
-          dueReminderOrdinal >= 3 ? "hold_pending" : "reminder_pending";
-        await enqueueReservationNotificationJob({
-          uid,
-          type: "RESERVATION_PICKUP_REMINDER",
-          routing,
-          payload: {
-            dedupeKey: `RESERVATION_PICKUP_REMINDER:${reservationId}:${tsIso(readyAnchor) ?? readyAnchor.toMillis()}:${dueReminderOrdinal}`,
-            firingId: reservationId,
-            reservationId,
-            reservationStatus: reservation.status,
-            reservationLoadStatus: reservation.loadStatus,
-            eventKind: "pickup_reminder",
-            reason,
-            storageStatus: reminderStatus,
-            previousStorageStatus: previousStorageStatus,
-            reminderOrdinal: dueReminderOrdinal,
-            reminderCount: dueReminderOrdinal,
-            readyForPickupAtIso: tsIso(readyAnchor),
-            policyWindowLabel: storagePolicyWindowLabel(dueReminderOrdinal),
-            suggestedNextUpdateAtIso: null,
-          },
-        });
-        reminderJobs += 1;
-
-        nextReminderCount = Math.max(nextReminderCount, dueReminderOrdinal);
-        nextStorageStatus = reminderStatus;
-        updates.pickupReminderCount = nextReminderCount;
-        updates.lastReminderAt = now;
-        updates.storageStatus = nextStorageStatus;
-        nextHistory = pushStorageNotice(nextHistory, {
-          at: now,
-          kind: `pickup_reminder_${dueReminderOrdinal}`,
-          detail: reason,
-          status: nextStorageStatus,
-          reminderOrdinal: dueReminderOrdinal,
-          reminderCount: nextReminderCount,
-          failureCode: null,
-        });
-        await writeReservationStorageAudit({
-          reservationId,
-          uid,
-          action: "pickup_reminder_enqueued",
-          reason,
-          fromStatus: previousStorageStatus,
-          toStatus: nextStorageStatus,
-          reminderOrdinal: dueReminderOrdinal,
-          reminderCount: nextReminderCount,
-        });
-      }
-
-      const policyStatus = storageStatusForElapsed({
-        elapsedMs,
+      autoMissApplied = true;
+      nextHistory = pushStorageNotice(nextHistory, {
+        at: now,
+        kind: "pickup_window_missed",
+        detail: missReason,
+        status: nextStorageStatus,
+        reminderOrdinal: null,
+        reminderCount: nextReminderCount,
+        failureCode: null,
+      });
+      await writeReservationStorageAudit({
+        reservationId,
+        uid,
+        action: "pickup_window_missed",
+        reason: missReason,
+        fromStatus: previousStorageStatus,
+        toStatus: nextStorageStatus,
         reminderCount: nextReminderCount,
       });
-      if (policyStatus !== nextStorageStatus) {
-        const fromStatus = nextStorageStatus;
-        nextStorageStatus = policyStatus;
-        updates.storageStatus = policyStatus;
-        statusTransitions += 1;
-        const transitionDetail =
-          policyStatus === "stored_by_policy"
-            ? "Reservation reached storage policy threshold and is marked stored by policy."
-            : policyStatus === "hold_pending"
-              ? "Reservation entered storage hold pending status."
+      const routing = await readReservationRouting(uid);
+      await enqueueReservationNotificationJob({
+        uid,
+        type: "RESERVATION_PICKUP_REMINDER",
+        routing,
+        payload: {
+          dedupeKey: `RESERVATION_PICKUP_WINDOW_MISSED:${reservationId}:${pickupWindowEndMs}:${nextMissedCount}`,
+          firingId: reservationId,
+          reservationId,
+          reservationStatus: reservation.status,
+          reservationLoadStatus: reservation.loadStatus,
+          eventKind: "pickup_reminder",
+          reason: missReason,
+          storageStatus: nextStorageStatus,
+          previousStorageStatus,
+          reminderCount: nextReminderCount,
+          readyForPickupAtIso: tsIso(readyAnchor),
+          policyWindowLabel:
+            "Pickup window missed. Billing still begins after the 19.25-day grace period, and the studio reclaims unclaimed work after 28 billed days.",
+          suggestedNextUpdateAtIso: null,
+        },
+      });
+      reminderJobs += 1;
+    }
+
+    const dueReminderOrdinal = nextDueReminderOrdinal({
+      elapsedMs,
+      currentCount: reservation.pickupReminderCount,
+    });
+
+    if (dueReminderOrdinal && !autoMissApplied) {
+      const reason = pickupReminderReason(dueReminderOrdinal);
+      const routing = await readReservationRouting(uid);
+      const reminderStatus: ReservationStorageStatus = "reminder_pending";
+      await enqueueReservationNotificationJob({
+        uid,
+        type: "RESERVATION_PICKUP_REMINDER",
+        routing,
+        payload: {
+          dedupeKey: `RESERVATION_PICKUP_REMINDER:${reservationId}:${tsIso(readyAnchor) ?? readyAnchor.toMillis()}:${dueReminderOrdinal}`,
+          firingId: reservationId,
+          reservationId,
+          reservationStatus: reservation.status,
+          reservationLoadStatus: reservation.loadStatus,
+          eventKind: "pickup_reminder",
+          reason,
+          storageStatus: reminderStatus,
+          previousStorageStatus,
+          reminderOrdinal: dueReminderOrdinal,
+          reminderCount: dueReminderOrdinal,
+          readyForPickupAtIso: tsIso(readyAnchor),
+          policyWindowLabel: storagePolicyWindowLabel(dueReminderOrdinal),
+          suggestedNextUpdateAtIso: null,
+        },
+      });
+      reminderJobs += 1;
+
+      nextReminderCount = Math.max(nextReminderCount, dueReminderOrdinal);
+      nextStorageStatus = reminderStatus;
+      updates.pickupReminderCount = nextReminderCount;
+      updates.lastReminderAt = now;
+      updates.storageStatus = nextStorageStatus;
+      nextHistory = pushStorageNotice(nextHistory, {
+        at: now,
+        kind: `pickup_reminder_${dueReminderOrdinal}`,
+        detail: reason,
+        status: nextStorageStatus,
+        reminderOrdinal: dueReminderOrdinal,
+        reminderCount: nextReminderCount,
+        failureCode: null,
+      });
+      await writeReservationStorageAudit({
+        reservationId,
+        uid,
+        action: "pickup_reminder_enqueued",
+        reason,
+        fromStatus: previousStorageStatus,
+        toStatus: nextStorageStatus,
+        reminderOrdinal: dueReminderOrdinal,
+        reminderCount: nextReminderCount,
+      });
+    }
+
+    const policyStatus = storageStatusForElapsed({
+      elapsedMs,
+      reminderCount: nextReminderCount,
+    });
+    if (policyStatus !== nextStorageStatus) {
+      const fromStatus = nextStorageStatus;
+      nextStorageStatus = policyStatus;
+      updates.storageStatus = policyStatus;
+      statusTransitions += 1;
+      const transitionDetail =
+        policyStatus === "stored_by_policy"
+          ? "Reservation exhausted the 2.75-week grace period and 28 billed storage days. The studio has reclaimed the work."
+          : policyStatus === "hold_pending"
+            ? `Grace ended. Reservation is now in billed storage at $${RESERVATION_STORAGE_DAILY_RATE_PER_HALF_SHELF.toFixed(2)} per half-shelf per day.`
+            : policyStatus === "reminder_pending"
+              ? "Reservation entered the late-grace reminder window."
               : "Reservation storage status returned to active.";
+      nextHistory = pushStorageNotice(nextHistory, {
+        at: now,
+        kind: policyStatus,
+        detail: transitionDetail,
+        status: policyStatus,
+        reminderOrdinal: null,
+        reminderCount: nextReminderCount,
+        failureCode: null,
+      });
+      await writeReservationStorageAudit({
+        reservationId,
+        uid,
+        action: "storage_status_transition",
+        reason: transitionDetail,
+        fromStatus,
+        toStatus: policyStatus,
+        reminderCount: nextReminderCount,
+      });
+    }
+
+    if (!storageBillingEquals(existingBilling, nextStorageBilling)) {
+      updates.storageBilling = normalizeStorageBillingForWrite(nextStorageBilling);
+      if (existingBilling && nextStorageBilling.billedDays !== existingBilling.billedDays) {
+        const billingDetail = `Storage fees now cover ${nextStorageBilling.billedDays} billed day${nextStorageBilling.billedDays === 1 ? "" : "s"} for ${Math.max(0, nextStorageBilling.chargeBasisHalfShelves)} half-shelf equivalents ($${nextStorageBilling.accruedCost.toFixed(2)} accrued).`;
         nextHistory = pushStorageNotice(nextHistory, {
           at: now,
-          kind: policyStatus,
-          detail: transitionDetail,
+          kind: "storage_billing_update",
+          detail: billingDetail,
           status: policyStatus,
           reminderOrdinal: null,
           reminderCount: nextReminderCount,
@@ -3143,30 +3390,46 @@ export const evaluateReservationStorageHolds = onSchedule(
         await writeReservationStorageAudit({
           reservationId,
           uid,
-          action: "storage_status_transition",
-          reason: transitionDetail,
-          fromStatus,
-          toStatus: policyStatus,
+          action: "storage_billing_update",
+          reason: billingDetail,
+          fromStatus: nextStorageStatus,
+          toStatus: nextStorageStatus,
           reminderCount: nextReminderCount,
         });
       }
-
-      if (Object.keys(updates).length === 0) {
-        continue;
-      }
-
-      updates.storageNoticeHistory = nextHistory.map(normalizeStorageNoticeForWrite);
-      updates.updatedAt = now;
-      await docSnap.ref.set(updates, { merge: true });
-      updatedReservations += 1;
     }
 
-    logger.info("reservation_storage_hold_evaluation_complete", {
-      scanned,
-      updatedReservations,
-      reminderJobs,
-      statusTransitions,
-    });
+    if (nextStorageBilling.status === "reclaimed") {
+      updates.storageBilling = normalizeStorageBillingForWrite(nextStorageBilling);
+      updates.storageStatus = "stored_by_policy";
+      updates.isArchived = true;
+      updates.archivedAt = nextStorageBilling.reclaimedAt ?? now;
+      nextStorageStatus = "stored_by_policy";
+    }
+
+    if (Object.keys(updates).length === 0) {
+      continue;
+    }
+
+    updates.storageNoticeHistory = nextHistory.map(normalizeStorageNoticeForWrite);
+    updates.updatedAt = now;
+    await docSnap.ref.set(updates, { merge: true });
+    updatedReservations += 1;
+  }
+
+  return {
+    scanned,
+    updatedReservations,
+    reminderJobs,
+    statusTransitions,
+  };
+}
+
+export const evaluateReservationStorageHolds = onSchedule(
+  { region: REGION, schedule: "every 60 minutes" },
+  async () => {
+    const summary = await runReservationStorageHoldEvaluation();
+    logger.info("reservation_storage_hold_evaluation_complete", summary);
   }
 );
 

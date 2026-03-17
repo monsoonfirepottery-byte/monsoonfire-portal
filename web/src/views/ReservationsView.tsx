@@ -8,14 +8,14 @@ import { makeRequestId } from "../api/requestId";
 import { parseStaffRoleFromClaims } from "../auth/staffRole";
 import { db } from "../firebase";
 import {
-  ADD_ON_HALF_SHELF_CAP,
   FULL_KILN_CUSTOM_PRICE,
   DELIVERY_PRICE_PER_TRIP,
-  FRAGILE_HANDLING_PER_HALF_SHELF_PRICE,
   PLACEMENT_PREFERENCE_PRICE,
-  PREPAID_STORAGE_WEEKLY_PRICE,
+  PREPAID_STORAGE_WEEKLY_PRICE_PER_HALF_SHELF,
   RUSH_REQUEST_PRICE,
+  SELF_LOADED_KILN_FLAT_PRICE,
   STAFF_GLAZE_PREP_PER_HALF_SHELF_PRICE,
+  STUDIO_GLAZE_ACCESS_PER_HALF_SHELF_PRICE,
   applyHalfKilnPriceBreak,
   computeDeliveryCost,
   computeEstimatedCost,
@@ -135,9 +135,11 @@ const RESERVATION_FILTERS: Array<{ id: ReservationFilter; label: string }> = [
 const STAFF_UNDO_WINDOW_MS = 20_000;
 const PICKUP_WINDOW_RESCHEDULE_LIMIT = 1;
 const FAIRNESS_OVERRIDE_MAX_POINTS = 20;
-const STORAGE_REMINDER_THRESHOLDS_HOURS = [72, 120, 168] as const;
-const STORAGE_HOLD_PENDING_HOURS = 240;
-const STORAGE_POLICY_CAP_HOURS = 336;
+const STORAGE_REMINDER_THRESHOLDS_HOURS = [336, 420, 462] as const;
+const STORAGE_GRACE_HOURS = 462;
+const STORAGE_BILLING_WINDOW_DAYS = 28;
+const STORAGE_BILLING_DAILY_RATE_PER_HALF_SHELF = 1.5;
+const STORAGE_POLICY_CAP_HOURS = STORAGE_GRACE_HOURS + STORAGE_BILLING_WINDOW_DAYS * 24;
 const STAFF_OFFLINE_QUEUE_STORAGE_KEY = "mf_staff_queue_offline_actions_v1";
 const STAFF_OFFLINE_QUEUE_MAX = 80;
 const STAFF_OFFLINE_SYNC_MIN_DELAY_MS = 1200;
@@ -260,8 +262,8 @@ function normalizeStorageStatus(
 function getStorageStatusLabel(record: ReservationRecord): string {
   const status = normalizeStorageStatus(record.storageStatus);
   if (status === "reminder_pending") return "Reminder pending";
-  if (status === "hold_pending") return "Hold pending";
-  if (status === "stored_by_policy") return "Stored by policy";
+  if (status === "hold_pending") return "Billable storage";
+  if (status === "stored_by_policy") return "Reclaimed by studio";
   return "Active";
 }
 
@@ -332,7 +334,7 @@ function isStorageCapApproaching(record: ReservationRecord): boolean {
   if (hours == null) return false;
   const warningStartHours = Math.max(
     STORAGE_REMINDER_THRESHOLDS_HOURS[STORAGE_REMINDER_THRESHOLDS_HOURS.length - 1] ?? 0,
-    STORAGE_HOLD_PENDING_HOURS
+    STORAGE_GRACE_HOURS
   );
   return hours >= warningStartHours && hours < STORAGE_POLICY_CAP_HOURS;
 }
@@ -361,10 +363,42 @@ function formatStorageNoticeKind(kind: string): string {
   if (value === "pickup_reminder_1") return "Reminder 1";
   if (value === "pickup_reminder_2") return "Reminder 2";
   if (value === "pickup_reminder_3") return "Reminder 3";
-  if (value === "hold_pending") return "Hold pending";
-  if (value === "stored_by_policy") return "Stored by policy";
+  if (value === "hold_pending") return "Billable storage";
+  if (value === "stored_by_policy") return "Reclaimed by studio";
+  if (value === "pickup_window_missed") return "Pickup window missed";
+  if (value === "storage_billing_update") return "Storage billing update";
   if (value === "reminder_failed") return "Reminder failed";
   return kind;
+}
+
+function formatStorageBillingSummary(record: ReservationRecord): string | null {
+  const billing = record.storageBilling;
+  if (!billing) return null;
+
+  const graceEndsAt = billing.graceEndsAt?.toDate?.() ?? null;
+  const billingEndsAt = billing.billingEndsAt?.toDate?.() ?? null;
+  const reclaimedAt = billing.reclaimedAt?.toDate?.() ?? billingEndsAt;
+  const billedDays =
+    typeof billing.billedDays === "number" && Number.isFinite(billing.billedDays)
+      ? Math.max(0, Math.round(billing.billedDays))
+      : 0;
+  const accruedCost =
+    typeof billing.accruedCost === "number" && Number.isFinite(billing.accruedCost)
+      ? billing.accruedCost
+      : 0;
+
+  if (billing.status === "reclaimed") {
+    return reclaimedAt
+      ? `Reclaimed ${formatDateTime(reclaimedAt)}${billing.reclaimedReason ? ` · ${billing.reclaimedReason}` : ""}`
+      : "Reclaimed by studio after the billed storage window.";
+  }
+  if (billing.status === "billing") {
+    return `Billed ${billedDays}/${STORAGE_BILLING_WINDOW_DAYS} days · accrued ${formatUsd(accruedCost)}`;
+  }
+  if (graceEndsAt) {
+    return `Grace ends ${formatDateTime(graceEndsAt)} · then ${formatUsd(STORAGE_BILLING_DAILY_RATE_PER_HALF_SHELF)} per half-shelf per day`;
+  }
+  return `Grace window starts at pickup-ready and lasts 2.75 weeks.`;
 }
 
 function normalizeArrivalStatus(value: unknown): "expected" | "arrived" | "overdue" | "no_show" | null {
@@ -803,7 +837,7 @@ export default function ReservationsView({
   const [notesTags, setNotesTags] = useState<string[]>([]);
   const [rushRequested, setRushRequested] = useState(false);
   const [staffGlazePrepRequested, setStaffGlazePrepRequested] = useState(false);
-  const [fragileHandlingRequested, setFragileHandlingRequested] = useState(false);
+  const [selfLoadedKilnRequested, setSelfLoadedKilnRequested] = useState(false);
   const [placementPreferenceRequested, setPlacementPreferenceRequested] = useState(false);
   const [placementPreferenceZone, setPlacementPreferenceZone] = useState<
     (typeof PLACEMENT_PREFERENCE_ZONES)[number]["id"]
@@ -977,14 +1011,13 @@ export default function ReservationsView({
     staffGlazePrepRequested && Number.isFinite(estimatedHalfShelvesRounded)
       ? estimatedHalfShelvesRounded * STAFF_GLAZE_PREP_PER_HALF_SHELF_PRICE
       : 0;
-  const fragileHandlingCost =
-    fragileHandlingRequested && Number.isFinite(estimatedHalfShelvesRounded)
-      ? estimatedHalfShelvesRounded * FRAGILE_HANDLING_PER_HALF_SHELF_PRICE
-      : 0;
+  const selfLoadedKilnCost = selfLoadedKilnRequested ? SELF_LOADED_KILN_FLAT_PRICE : 0;
   const placementPreferenceCost = placementPreferenceRequested ? PLACEMENT_PREFERENCE_PRICE : 0;
   const prepaidStorageWeeksClamped = Math.max(1, Math.min(12, Math.round(prepaidStorageWeeks)));
   const prepaidStorageCost = prepaidStorageRequested
-    ? prepaidStorageWeeksClamped * PREPAID_STORAGE_WEEKLY_PRICE
+    ? prepaidStorageWeeksClamped *
+      estimatedHalfShelvesRounded *
+      PREPAID_STORAGE_WEEKLY_PRICE_PER_HALF_SHELF
     : 0;
   const totalEstimate =
     estimatedCostWithDelivery != null
@@ -992,7 +1025,7 @@ export default function ReservationsView({
         (glazeAccessCost ?? 0) +
         rushCost +
         staffGlazePrepCost +
-        fragileHandlingCost +
+        selfLoadedKilnCost +
         placementPreferenceCost +
         prepaidStorageCost
       : estimatedCostWithDelivery;
@@ -1352,7 +1385,7 @@ export default function ReservationsView({
     setFitsOnOneLayer(null);
     setRushRequested(false);
     setStaffGlazePrepRequested(false);
-    setFragileHandlingRequested(false);
+    setSelfLoadedKilnRequested(false);
     setPlacementPreferenceRequested(false);
     setPlacementPreferenceZone("middle");
     setPrepaidStorageRequested(false);
@@ -1381,7 +1414,7 @@ export default function ReservationsView({
       setGlazeAccessCost(null);
       return;
     }
-    setGlazeAccessCost(estimatedHalfShelvesRounded * 3);
+    setGlazeAccessCost(estimatedHalfShelvesRounded * STUDIO_GLAZE_ACCESS_PER_HALF_SHELF_PRICE);
   }, [useStudioGlazes, estimatedHalfShelvesRounded]);
 
   useEffect(() => {
@@ -2897,7 +2930,7 @@ export default function ReservationsView({
     setNotesGeneral("");
     setRushRequested(false);
     setStaffGlazePrepRequested(false);
-    setFragileHandlingRequested(false);
+    setSelfLoadedKilnRequested(false);
     setPlacementPreferenceRequested(false);
     setPlacementPreferenceZone("middle");
     setPrepaidStorageRequested(false);
@@ -3102,8 +3135,8 @@ export default function ReservationsView({
           staffGlazePrepRequested: !isCommunityShelf && staffGlazePrepRequested,
           staffGlazePrepRatePerHalfShelf:
             !isCommunityShelf && staffGlazePrepRequested ? STAFF_GLAZE_PREP_PER_HALF_SHELF_PRICE : null,
-          fragileHandlingRequested: !isCommunityShelf && fragileHandlingRequested,
-          fragileHandlingCost: !isCommunityShelf && fragileHandlingRequested ? fragileHandlingCost : null,
+          selfLoadedKilnRequested: !isCommunityShelf && selfLoadedKilnRequested,
+          selfLoadedKilnCost: !isCommunityShelf && selfLoadedKilnRequested ? selfLoadedKilnCost : null,
           placementPreferenceRequested: !isCommunityShelf && placementPreferenceRequested,
           placementPreferenceZone:
             !isCommunityShelf && placementPreferenceRequested ? placementPreferenceZone : null,
@@ -3579,7 +3612,7 @@ export default function ReservationsView({
                       {useStudioGlazes ||
                       rushRequested ||
                       staffGlazePrepRequested ||
-                      fragileHandlingRequested ||
+                      selfLoadedKilnRequested ||
                       placementPreferenceRequested ||
                       prepaidStorageRequested
                         ? "Total estimate"
@@ -3599,7 +3632,7 @@ export default function ReservationsView({
                   (useStudioGlazes ||
                     rushRequested ||
                     staffGlazePrepRequested ||
-                    fragileHandlingRequested ||
+                    selfLoadedKilnRequested ||
                     placementPreferenceRequested ||
                     prepaidStorageRequested) ? (
                     <div className="estimate-breakdown">
@@ -3625,10 +3658,10 @@ export default function ReservationsView({
                           <span>{formatUsd(staffGlazePrepCost)}</span>
                         </div>
                       ) : null}
-                      {fragileHandlingRequested ? (
+                      {selfLoadedKilnRequested ? (
                         <div className="estimate-line">
-                          <span>Fragile handling ({formatHalfShelfCount(estimatedHalfShelvesRounded)})</span>
-                          <span>{formatUsd(fragileHandlingCost)}</span>
+                          <span>Self-loaded kiln</span>
+                          <span>{formatUsd(selfLoadedKilnCost)}</span>
                         </div>
                       ) : null}
                       {placementPreferenceRequested ? (
@@ -3643,8 +3676,8 @@ export default function ReservationsView({
                       {prepaidStorageRequested ? (
                         <div className="estimate-line">
                           <span>
-                            Prepaid storage ({prepaidStorageWeeksClamped} week
-                            {prepaidStorageWeeksClamped === 1 ? "" : "s"})
+                            Prepaid storage ({formatHalfShelfCount(estimatedHalfShelvesRounded)} ·{" "}
+                            {prepaidStorageWeeksClamped} week{prepaidStorageWeeksClamped === 1 ? "" : "s"})
                           </span>
                           <span>{formatUsd(prepaidStorageCost)}</span>
                         </div>
@@ -3725,7 +3758,9 @@ export default function ReservationsView({
                     <span className="addon-text">
                       <span className="addon-title">Use Studio Glazes + Kitchen Access</span>
                     </span>
-                    <span className="addon-tag">$3 per half-shelf</span>
+                    <span className="addon-tag">
+                      {formatUsd(STUDIO_GLAZE_ACCESS_PER_HALF_SHELF_PRICE)} per half-shelf
+                    </span>
                   </label>
                 </div>
                 <div className="addon-helper">
@@ -3741,10 +3776,6 @@ export default function ReservationsView({
               </div>
               <div className="addon-section">
                 <div className="addon-subtitle">Firing boosts + handling</div>
-                <div className="addon-helper">
-                  New care add-ons stay under {formatUsd(ADD_ON_HALF_SHELF_CAP)} each (35% cap of one bisque
-                  half-shelf).
-                </div>
                 <div className="addon-grid">
                   <label className="addon-toggle">
                     <input
@@ -3780,18 +3811,17 @@ export default function ReservationsView({
                   <label className="addon-toggle">
                     <input
                       type="checkbox"
-                      checked={fragileHandlingRequested}
-                      onChange={(event) => setFragileHandlingRequested(event.target.checked)}
+                      checked={selfLoadedKilnRequested}
+                      onChange={(event) => setSelfLoadedKilnRequested(event.target.checked)}
                     />
                     <span className="addon-text">
-                      <span className="addon-title">Fragile handling</span>
+                      <span className="addon-title">Self-loaded kiln</span>
                       <span className="addon-copy">
-                        Added care for delicate work during loading and unloading.
+                        You load the kiln entirely yourself. Artists usually choose this for fragile work, but
+                        you can request it for any reason.
                       </span>
                     </span>
-                    <span className="addon-tag">
-                      {formatUsd(FRAGILE_HANDLING_PER_HALF_SHELF_PRICE)} per half-shelf
-                    </span>
+                    <span className="addon-tag">{formatUsd(SELF_LOADED_KILN_FLAT_PRICE)} flat</span>
                   </label>
                   <label className="addon-toggle">
                     <input
@@ -3816,10 +3846,14 @@ export default function ReservationsView({
                     <span className="addon-text">
                       <span className="addon-title">Need extra pickup time?</span>
                       <span className="addon-copy">
-                        Prepay dedicated shelf storage beyond the first 7 days and pause reminder nudges.
+                        Prepay storage at the lower weekly rate now. After the 2.75-week grace period, storage
+                        switches to {formatUsd(STORAGE_BILLING_DAILY_RATE_PER_HALF_SHELF)} per half-shelf per day,
+                        and unclaimed work is reclaimed by the studio after 4 billed weeks.
                       </span>
                     </span>
-                    <span className="addon-tag">{formatUsd(PREPAID_STORAGE_WEEKLY_PRICE)} per week</span>
+                    <span className="addon-tag">
+                      {formatUsd(PREPAID_STORAGE_WEEKLY_PRICE_PER_HALF_SHELF)} per half-shelf per week
+                    </span>
                   </label>
                   <label className="addon-toggle">
                     <input
@@ -3867,7 +3901,7 @@ export default function ReservationsView({
                     ) : null}
                     {prepaidStorageRequested ? (
                       <label>
-                        Extra storage weeks after day 7
+                        Prepaid storage weeks before billing begins
                         <select
                           value={String(prepaidStorageWeeksClamped)}
                           onChange={(event) => {
@@ -3912,7 +3946,7 @@ export default function ReservationsView({
                 ) : null}
                 {(rushRequested ||
                   staffGlazePrepRequested ||
-                  fragileHandlingRequested ||
+                  selfLoadedKilnRequested ||
                   placementPreferenceRequested ||
                   prepaidStorageRequested ||
                   pickupDeliveryRequested ||
@@ -4219,7 +4253,7 @@ export default function ReservationsView({
                 Entering hold: <strong>{storageTriageSummary.enteringHold}</strong>
               </span>
               <span>
-                Stored by policy: <strong>{storageTriageSummary.storedByPolicy}</strong>
+                Reclaimed by studio: <strong>{storageTriageSummary.storedByPolicy}</strong>
               </span>
               <span>
                 Reminder failures: <strong>{storageTriageSummary.reminderFailures}</strong>
@@ -4413,6 +4447,7 @@ export default function ReservationsView({
               const storageHistory = Array.isArray(reservation.storageNoticeHistory)
                 ? reservation.storageNoticeHistory
                 : [];
+              const storageBillingSummary = formatStorageBillingSummary(reservation);
               const pickupWindow = reservation.pickupWindow ?? null;
               const pickupWindowStatus = normalizePickupWindowStatus(pickupWindow?.status);
               const pickupWindowStatusLabel = getPickupWindowStatusLabel(pickupWindowStatus);
@@ -4675,14 +4710,21 @@ export default function ReservationsView({
                         : ""}
                     </span>
                   </div>
+                  {storageBillingSummary ? (
+                    <div className="reservation-note-history">
+                      Storage billing: <strong>{storageBillingSummary}</strong>
+                    </div>
+                  ) : null}
                   {isStorageCapApproaching(reservation) ? (
                     <div className="reservation-storage-warning">
-                      Pickup window is approaching the storage policy cap. Queue staff follow-up now.
+                      Grace has ended or is ending soon. Track billed storage days now so the reservation does not
+                      drift into studio reclamation.
                     </div>
                   ) : null}
                   {storageStatusClass === "stored_by_policy" ? (
                     <div className="reservation-storage-warning critical">
-                      Reservation is marked stored by policy. Coordinate support action before disposal.
+                      Reservation has been reclaimed by the studio. Keep any artist follow-up and disposition notes in
+                      support.
                     </div>
                   ) : null}
                   <div className="reservation-sla-copy">
@@ -4763,7 +4805,7 @@ export default function ReservationsView({
                   {reservation.addOns?.pickupDeliveryRequested ||
                   reservation.addOns?.returnDeliveryRequested ||
                   reservation.addOns?.communityShelfFillInAllowed ||
-                  reservation.addOns?.fragileHandlingRequested ||
+                  reservation.addOns?.selfLoadedKilnRequested ||
                   reservation.addOns?.placementPreferenceRequested ||
                   reservation.addOns?.prepaidStorageRequested ? (
                     <div className="reservation-addons-inline">
@@ -4776,8 +4818,8 @@ export default function ReservationsView({
                       {reservation.addOns?.communityShelfFillInAllowed ? (
                         <span className="reservation-addon-pill">Community shelf fill-in allowed</span>
                       ) : null}
-                      {reservation.addOns?.fragileHandlingRequested ? (
-                        <span className="reservation-addon-pill">Fragile handling</span>
+                      {reservation.addOns?.selfLoadedKilnRequested ? (
+                        <span className="reservation-addon-pill">Self-loaded kiln</span>
                       ) : null}
                       {reservation.addOns?.placementPreferenceRequested ? (
                         <span className="reservation-addon-pill">
@@ -4789,7 +4831,7 @@ export default function ReservationsView({
                       ) : null}
                       {reservation.addOns?.prepaidStorageRequested ? (
                         <span className="reservation-addon-pill">
-                          Storage: {prepaidStorageWeeksLabel} week{prepaidStorageWeeksLabel === 1 ? "" : "s"}
+                          Storage: {prepaidStorageWeeksLabel} week{prepaidStorageWeeksLabel === 1 ? "" : "s"} prepaid
                         </span>
                       ) : null}
                     </div>

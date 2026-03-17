@@ -16,7 +16,7 @@ const parseScalar = (raw) => {
 };
 
 export const parseFrontmatter = (content) => {
-  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  const match = content.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/);
   if (!match) return null;
 
   const lines = match[1].split(/\r?\n/);

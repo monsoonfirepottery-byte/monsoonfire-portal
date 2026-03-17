@@ -8,9 +8,10 @@ export const GLAZE_SANITY_CHECK_PRICE = 12;
 export const STAFF_GLAZE_PREP_PER_HALF_SHELF_PRICE = 10;
 export const ADD_ON_HALF_SHELF_CAP_RATIO = 0.35;
 export const ADD_ON_HALF_SHELF_CAP = Number((HALF_SHELF_BISQUE_PRICE * ADD_ON_HALF_SHELF_CAP_RATIO).toFixed(2));
-export const FRAGILE_HANDLING_PER_HALF_SHELF_PRICE = 4;
+export const STUDIO_GLAZE_ACCESS_PER_HALF_SHELF_PRICE = 5;
+export const SELF_LOADED_KILN_FLAT_PRICE = 15;
 export const PLACEMENT_PREFERENCE_PRICE = 3;
-export const PREPAID_STORAGE_WEEKLY_PRICE = 2;
+export const PREPAID_STORAGE_WEEKLY_PRICE_PER_HALF_SHELF = 2;
 
 export type FiringType = "bisque" | "glaze" | "other";
 

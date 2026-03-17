@@ -75,7 +75,8 @@ function withMockFirestore<T>(
   const db = shared.db as unknown as {
     collection: (path: string) => {
       add: (value: Record<string, unknown>) => Promise<{ id: string }>;
-      doc: (id: string) => {
+      doc: (id?: string) => {
+        id: string;
         __mfCollection: string;
         __mfDocId: string;
       };
@@ -87,7 +88,7 @@ function withMockFirestore<T>(
     doc: (path: string) => {
       exists: boolean;
       get: () => Promise<MockSnapshot>;
-      set: (value: Record<string, unknown>, options?: { merge?: boolean }) => Promise<void>;
+      set: (value?: Record<string, unknown>, options?: { merge?: boolean }) => Promise<void>;
     };
     runTransaction: (cb: (tx: MockTransaction) => Promise<unknown>) => Promise<unknown>;
   };
@@ -146,16 +147,21 @@ function withMockFirestore<T>(
         rows[generatedId] = _doc;
         return { id: generatedId };
       },
-      doc: (id: string) => {
-        const collectionRow = rows[id] ?? null;
+      doc: (id?: string) => {
+        const resolvedId = typeof id === "string" && id.trim().length > 0 ? id : nextGeneratedId(collectionName);
         return {
+          id: resolvedId,
           __mfCollection: collectionName,
-          __mfDocId: id,
-          get: async () => createSnapshot(id, Object.prototype.hasOwnProperty.call(rows, id) ? collectionRow : null),
-          set: async (value: Record<string, unknown>, options?: { merge?: boolean }) => {
-            applySet(collectionName, id, value, options);
+          __mfDocId: resolvedId,
+          get: async () =>
+            createSnapshot(
+              resolvedId,
+              Object.prototype.hasOwnProperty.call(rows, resolvedId) ? rows[resolvedId] : null
+            ),
+          set: async (value?: Record<string, unknown>, options?: { merge?: boolean }) => {
+            applySet(collectionName, resolvedId, value ?? {}, options);
           },
-          collection: (sub: string) => createCollectionRef(`${collectionName}/${id}/${sub}`),
+          collection: (sub: string) => createCollectionRef(`${collectionName}/${resolvedId}/${sub}`),
         };
       },
       where: () => createCollectionQuery(rows),
@@ -184,8 +190,8 @@ function withMockFirestore<T>(
     const raw = Object.prototype.hasOwnProperty.call(rows, docId) ? rows[docId] : null;
     return {
       get: async () => createSnapshot(docId, raw),
-      set: async (value: Record<string, unknown>, options?: { merge?: boolean }) => {
-        applySet(collectionName, docId, value, options);
+      set: async (value?: Record<string, unknown>, options?: { merge?: boolean }) => {
+        applySet(collectionName, docId, value ?? {}, options);
       },
       exists: raw !== null,
     };
@@ -6652,16 +6658,19 @@ test("reservations.create accepts optional piece rows in request payload", async
   assert.equal(data.status, "REQUESTED");
 });
 
-test("reservations.create accepts fragile handling, placement preference, and prepaid storage add-ons", async () => {
+test("reservations.create writes self-loaded kiln, glaze access, and per-half-shelf prepaid storage pricing", async () => {
+  const state: MockDbState = {};
   const response = await invokeApiV1Route(
-    {},
+    state,
     makeApiV1Request({
       path: "/v1/reservations.create",
       body: {
         firingType: "glaze",
-        shelfEquivalent: 1,
+        shelfEquivalent: 1.5,
+        estimatedHalfShelves: 3,
         addOns: {
-          fragileHandlingRequested: true,
+          useStudioGlazes: true,
+          selfLoadedKilnRequested: true,
           placementPreferenceRequested: true,
           placementPreferenceZone: "top",
           prepaidStorageRequested: true,
@@ -6677,6 +6686,57 @@ test("reservations.create accepts fragile handling, placement preference, and pr
   const body = response.body as Record<string, unknown>;
   const data = (body.data ?? {}) as Record<string, unknown>;
   assert.equal(data.status, "REQUESTED");
+  const reservationId = String(data.reservationId ?? "");
+  const reservation = state.reservations?.[reservationId] as Record<string, unknown>;
+  assert.ok(reservation, "reservation should be written to state");
+  const addOns = (reservation.addOns ?? {}) as Record<string, unknown>;
+  const storageBilling = (reservation.storageBilling ?? {}) as Record<string, unknown>;
+  assert.equal(addOns.useStudioGlazes, true);
+  assert.equal(addOns.glazeAccessCost, 15);
+  assert.equal(addOns.selfLoadedKilnRequested, true);
+  assert.equal(addOns.selfLoadedKilnCost, 15);
+  assert.equal(addOns.prepaidStorageRequested, true);
+  assert.equal(addOns.prepaidStorageWeeks, 2);
+  assert.equal(addOns.prepaidStorageCost, 12);
+  assert.equal("fragileHandlingRequested" in addOns, false);
+  assert.equal(storageBilling.chargeBasis, "estimatedHalfShelves");
+  assert.equal(storageBilling.chargeBasisHalfShelves, 3);
+  assert.equal(storageBilling.prepaidWeeklyRatePerHalfShelf, 2);
+  assert.equal(storageBilling.dailyRatePerHalfShelf, 1.5);
+  assert.equal(storageBilling.status, "grace");
+  assert.equal(storageBilling.billedDays, 0);
+  assert.equal(storageBilling.accruedCost, 0);
+  assert.equal(reservation.isArchived, false);
+});
+
+test("reservations.create accepts legacy fragile handling alias and normalizes it to self-loaded kiln", async () => {
+  const state: MockDbState = {};
+  const response = await invokeApiV1Route(
+    state,
+    makeApiV1Request({
+      path: "/v1/reservations.create",
+      body: {
+        firingType: "bisque",
+        shelfEquivalent: 1,
+        estimatedHalfShelves: 2,
+        addOns: {
+          fragileHandlingRequested: true,
+        },
+      },
+      ctx: firebaseContext({ uid: "owner-1" }),
+      routeFamily: "v1",
+    }),
+  );
+
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const body = response.body as Record<string, unknown>;
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  const reservationId = String(data.reservationId ?? "");
+  const reservation = state.reservations?.[reservationId] as Record<string, unknown>;
+  const addOns = (reservation.addOns ?? {}) as Record<string, unknown>;
+  assert.equal(addOns.selfLoadedKilnRequested, true);
+  assert.equal(addOns.selfLoadedKilnCost, 15);
+  assert.equal("fragileHandlingRequested" in addOns, false);
 });
 
 test("reservations.create rejects bisque-only profile for non-bisque firings", async () => {
@@ -6965,7 +7025,7 @@ test("reservations.pickupWindow enforces one reschedule request without force", 
   assert.equal(secondBody.code, "CONFLICT");
 });
 
-test("reservations.pickupWindow escalates to stored_by_policy after repeated missed windows", async () => {
+test("reservations.pickupWindow records misses without bypassing the storage grace and billing timeline", async () => {
   const state: MockDbState = {
     reservations: {
       "reservation-pickup-missed": {
@@ -7001,7 +7061,8 @@ test("reservations.pickupWindow escalates to stored_by_policy after repeated mis
   assert.equal(response.status, 200);
   const body = response.body as Record<string, unknown>;
   const data = (body.data ?? {}) as Record<string, unknown>;
-  assert.equal(data.storageStatus, "stored_by_policy");
+  assert.equal(data.storageStatus, "active");
+  assert.equal(data.pickupWindowStatus, "missed");
 });
 
 test("reservations.queueFairness records no-show evidence and updates policy penalty", async () => {

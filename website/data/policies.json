@@ -90,14 +90,14 @@
   },
   {
     "title": "Storage limits & abandoned work",
-    "body": "<p>Storage limits depend on membership tier and available space. Long-abandoned work may move through notice and follow-up steps.</p>",
+    "body": "<p>Pickup-ready work gets 2.75 weeks of grace, optional prepaid storage at $2 per half-shelf per week, billed storage at $1.50 per half-shelf per day, and studio reclamation after 28 billed days.</p>",
     "tags": [
       "storage",
-      "memberships",
+      "pickup",
       "policy"
     ],
     "status": "active",
-    "effectiveDate": "2026-02-17"
+    "effectiveDate": "2026-03-17"
   },
   {
     "title": "Studio access & supervision",

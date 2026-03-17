@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { User } from "firebase/auth";
 import DashboardView from "./DashboardView";
+import type { EventSummary } from "../api/portalContracts";
 import type { Batch } from "../types/domain";
 
 type MockQuery = { path: string };
@@ -13,6 +14,7 @@ type Snapshot = { docs: { id: string; data: () => Record<string, unknown> }[] };
 type GetDocsMock = (queryRef: MockQuery) => Promise<Snapshot>;
 let getDocsMock: GetDocsMock;
 let getDocsCalls: MockQuery[] = [];
+const listEventsMock = vi.fn();
 let useBatchesState: { active: Batch[]; history: Batch[]; error: string } = {
   active: [],
   history: [],
@@ -59,6 +61,12 @@ vi.mock("firebase/firestore", () => {
 
 vi.mock("../hooks/useBatches", () => ({
   useBatches: () => useBatchesState,
+}));
+
+vi.mock("../api/portalApi", () => ({
+  createPortalApi: () => ({
+    listEvents: listEventsMock,
+  }),
 }));
 
 function setupGetDocsPermissionThenSuccess() {
@@ -130,12 +138,43 @@ function createUser(): User {
   return {
     uid: "studio-user-id",
     email: "maker@monsoon.com",
+    getIdToken: vi.fn(async () => "test-id-token"),
   } as unknown as User;
+}
+
+function buildEventSummary(overrides: Partial<EventSummary> = {}): EventSummary {
+  return {
+    id: "event-1",
+    title: "Wheel Lab Live",
+    summary: "A focused wheel session.",
+    startAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    endAt: new Date(Date.now() + 25 * 60 * 60 * 1000).toISOString(),
+    timezone: "America/Phoenix",
+    location: "Main studio",
+    priceCents: 4500,
+    currency: "USD",
+    includesFiring: false,
+    firingDetails: null,
+    capacity: 8,
+    waitlistEnabled: true,
+    waitlistCount: 0,
+    status: "published",
+    remainingCapacity: 4,
+    communitySignalCounts: null,
+    ...overrides,
+  };
 }
 
 beforeEach(() => {
   setupGetDocsPermissionThenSuccess();
   useBatchesState = { active: [], history: [], error: "" };
+  listEventsMock.mockResolvedValue({
+    data: {
+      ok: true,
+      events: [],
+    },
+    meta: {},
+  });
 });
 
 afterEach(() => {
@@ -163,6 +202,7 @@ describe("DashboardView kiln reload", () => {
         onOpenStudioResources={vi.fn()}
         onOpenGlazeBoard={vi.fn()}
         onOpenCommunity={vi.fn()}
+        onOpenWorkshops={vi.fn()}
         onOpenMessages={vi.fn()}
         onOpenPieces={vi.fn()}
       />
@@ -203,6 +243,7 @@ describe("DashboardView kiln reload", () => {
         onOpenStudioResources={vi.fn()}
         onOpenGlazeBoard={vi.fn()}
         onOpenCommunity={vi.fn()}
+        onOpenWorkshops={vi.fn()}
         onOpenMessages={vi.fn()}
         onOpenPieces={vi.fn()}
       />
@@ -246,6 +287,7 @@ describe("DashboardView kiln reload", () => {
         onOpenStudioResources={vi.fn()}
         onOpenGlazeBoard={vi.fn()}
         onOpenCommunity={vi.fn()}
+        onOpenWorkshops={vi.fn()}
         onOpenMessages={vi.fn()}
         onOpenPieces={onOpenPieces}
       />
@@ -254,5 +296,64 @@ describe("DashboardView kiln reload", () => {
     const previewButton = await screen.findByRole("button", { name: /Open QA target batch in My Pieces/i });
     fireEvent.click(previewButton);
     expect(onOpenPieces).toHaveBeenCalledWith({ batchId: "batch-focus" });
+  });
+
+  it("renders live workshop availability and routes to the workshops view", async () => {
+    setupGetDocsEmptySuccess();
+    listEventsMock.mockResolvedValue({
+      data: {
+        ok: true,
+        events: [
+          buildEventSummary({
+            id: "event-live",
+            title: "Kiln Club",
+            remainingCapacity: 2,
+            includesFiring: true,
+            communitySignalCounts: {
+              totalSignals: 3,
+              requestSignals: 1,
+              interestSignals: 2,
+              showcaseSignals: 0,
+              withdrawnSignals: 0,
+              demandScore: 4,
+              latestSignalAtMs: Date.now() - 60_000,
+            },
+          }),
+        ],
+      },
+      meta: {},
+    });
+    const onOpenWorkshops = vi.fn();
+
+    render(
+      <DashboardView
+        user={createUser()}
+        isStaff={false}
+        name="Maker"
+        themeName="portal"
+        threads={[]}
+        announcements={[]}
+        onThemeChange={vi.fn()}
+        onOpenKilnRentals={vi.fn()}
+        onOpenCheckin={vi.fn()}
+        onOpenQueues={vi.fn()}
+        onOpenFirings={vi.fn()}
+        onOpenStudioResources={vi.fn()}
+        onOpenGlazeBoard={vi.fn()}
+        onOpenCommunity={vi.fn()}
+        onOpenWorkshops={onOpenWorkshops}
+        onOpenMessages={vi.fn()}
+        onOpenPieces={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText("Kiln Club")).toBeDefined();
+    expect(screen.getByText("2 spots left")).toBeDefined();
+    expect(screen.getByText("Firing included")).toBeDefined();
+    expect(screen.getByText("3 community signals")).toBeDefined();
+    expect(screen.getAllByText("Glaze inspiration")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /Open workshops/i }));
+    expect(onOpenWorkshops).toHaveBeenCalledTimes(1);
   });
 });

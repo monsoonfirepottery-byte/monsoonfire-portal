@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
 import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
+import { createPortalApi } from "../api/portalApi";
+import type { EventSummary } from "../api/portalContracts";
 import RevealCard from "../components/RevealCard";
 import { useUiSettings } from "../context/UiSettingsContext";
 import { db } from "../firebase";
@@ -15,27 +17,14 @@ import {
 } from "../lib/normalizers/reservations";
 import type { Kiln, KilnFiring } from "../types/kiln";
 import type { Announcement, DirectMessageThread } from "../types/messaging";
-import { formatMaybeTimestamp } from "../utils/format";
+import { formatDateTime, formatMaybeTimestamp } from "../utils/format";
 import { DASHBOARD_MOCK_NON_DEV_ACK, resolveDashboardMockPolicy } from "./dashboardMockPolicy";
 
-const SAMPLE_WORKSHOPS = [
-  {
-    name: "Wheel Lab",
-    time: "Sat 10:00 AM",
-    spotsLeft: 3,
-    waitlist: 0,
-    level: "Beginner",
-  },
-  {
-    name: "Glaze Science",
-    time: "Sun 4:00 PM",
-    spotsLeft: 0,
-    waitlist: 6,
-    level: "Intermediate",
-  },
-];
-
 const DASHBOARD_PIECES_PREVIEW = 3;
+const DASHBOARD_WORKSHOP_PREVIEW = 3;
+const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
+type ImportMetaEnvShape = { VITE_FUNCTIONS_BASE_URL?: string };
+const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
 
 const STATUS_LABELS: Record<string, string> = {
   idle: "Idle",
@@ -112,6 +101,10 @@ function inferFiringTypeLabel(value?: string) {
   return "Firing";
 }
 
+function resolveFunctionsBaseUrl() {
+  return ENV.VITE_FUNCTIONS_BASE_URL ? String(ENV.VITE_FUNCTIONS_BASE_URL) : DEFAULT_FUNCTIONS_BASE_URL;
+}
+
 function isMissingIndexError(err: unknown) {
   const code = (err as { code?: unknown })?.code;
   const message = String((err as { message?: unknown })?.message || "");
@@ -132,6 +125,113 @@ function reservationStatusLabel(reservation: ReservationRecord) {
   if (loadStatus === "loaded") return "Loaded";
   if (loadStatus === "loading") return "Loading";
   return "Queued";
+}
+
+function parseWorkshopStartMs(value: string | null | undefined) {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+}
+
+function workshopAvailabilityLabel(event: EventSummary) {
+  const remainingCapacity =
+    typeof event.remainingCapacity === "number" && Number.isFinite(event.remainingCapacity)
+      ? Math.max(0, Math.round(event.remainingCapacity))
+      : null;
+  if (remainingCapacity !== null && remainingCapacity > 0) {
+    return `${remainingCapacity} spot${remainingCapacity === 1 ? "" : "s"} left`;
+  }
+  if (event.waitlistEnabled) {
+    const waitlistCount =
+      typeof event.waitlistCount === "number" && Number.isFinite(event.waitlistCount)
+        ? Math.max(0, Math.round(event.waitlistCount))
+        : null;
+    if (waitlistCount !== null && waitlistCount > 0) {
+      return `${waitlistCount} on waitlist`;
+    }
+    if (remainingCapacity === 0) {
+      return "Waitlist open";
+    }
+  }
+  if (remainingCapacity === 0) return "Sold out";
+  return "Open registration";
+}
+
+function workshopSignalLabel(event: EventSummary) {
+  const totalSignals =
+    typeof event.communitySignalCounts?.totalSignals === "number" &&
+    Number.isFinite(event.communitySignalCounts.totalSignals)
+      ? Math.max(0, Math.round(event.communitySignalCounts.totalSignals))
+      : 0;
+  if (totalSignals <= 0) return null;
+  return `${totalSignals} community signal${totalSignals === 1 ? "" : "s"}`;
+}
+
+function workshopMetaLabel(event: EventSummary) {
+  const dateLabel = formatDateTime(event.startAt);
+  const locationLabel = (event.location || "").trim() || "Studio";
+  if (dateLabel === "-") return locationLabel;
+  return `${dateLabel} · ${locationLabel}`;
+}
+
+function useDashboardWorkshopPreview(user: User) {
+  const baseUrl = useMemo(() => resolveFunctionsBaseUrl(), []);
+  const portalApi = useMemo(() => createPortalApi({ baseUrl }), [baseUrl]);
+  const [workshops, setWorkshops] = useState<EventSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const abortController = new AbortController();
+
+    const loadWorkshops = async () => {
+      setLoading(true);
+      setError("");
+
+      try {
+        const response = await portalApi.listEvents({
+          idToken: await user.getIdToken(),
+          payload: {
+            includeDrafts: false,
+            includeCancelled: false,
+            includeCommunitySignals: true,
+          },
+          signal: abortController.signal,
+        });
+        if (cancelled) return;
+
+        const nowMs = Date.now();
+        const nextWorkshops = (response.data.events ?? [])
+          .filter((event) => event.status === "published")
+          .filter((event) => parseWorkshopStartMs(event.startAt) >= nowMs)
+          .sort((left, right) => parseWorkshopStartMs(left.startAt) - parseWorkshopStartMs(right.startAt))
+          .slice(0, DASHBOARD_WORKSHOP_PREVIEW);
+
+        setWorkshops(nextWorkshops);
+      } catch (err) {
+        if (cancelled || abortController.signal.aborted) return;
+        setWorkshops([]);
+        setError("Workshop preview unavailable right now.");
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadWorkshops();
+    return () => {
+      cancelled = true;
+      abortController.abort();
+    };
+  }, [portalApi, user]);
+
+  return {
+    workshops,
+    loading,
+    error,
+  };
 }
 
 function useKilnDashboardRows(actor: { uid?: string | null; email?: string | null }) {
@@ -392,6 +492,7 @@ type Props = {
   onOpenStudioResources: () => void;
   onOpenGlazeBoard: () => void;
   onOpenCommunity: () => void;
+  onOpenWorkshops: () => void;
   onOpenMessages: () => void;
   onOpenPieces: (target?: { batchId: string; pieceId?: string }) => void;
 };
@@ -411,6 +512,7 @@ export default function DashboardView({
   onOpenStudioResources,
   onOpenGlazeBoard,
   onOpenCommunity,
+  onOpenWorkshops,
   onOpenMessages,
   onOpenPieces,
 }: Props) {
@@ -475,6 +577,20 @@ export default function DashboardView({
       ? shortId(nextReservationOwnerUid)
       : null;
   const kilnEmptyStateLabel = statusNotice || "No kiln status available yet.";
+  const {
+    workshops: workshopPreview,
+    loading: workshopsLoading,
+    error: workshopsError,
+  } = useDashboardWorkshopPreview(user);
+  const workshopSubtitle = useMemo(() => {
+    const workshopSignals = workshopPreview.reduce((count, event) => {
+      return count + (workshopSignalLabel(event) ? 1 : 0);
+    }, 0);
+    if (workshopSignals > 0) {
+      return "Live availability + community demand";
+    }
+    return "Live workshop availability";
+  }, [workshopPreview]);
 
   useEffect(() => {
     let cancelled = false;
@@ -772,41 +888,51 @@ export default function DashboardView({
 
         <RevealCard className="card card-3d" index={5} enabled={motionEnabled}>
           <div className="card-title">Upcoming workshops</div>
-          <div className="list">
-            {SAMPLE_WORKSHOPS.map((item) => (
-              <div className="list-row workshop-row" key={item.name}>
-                <div>
-                  <div className="list-title">{item.name}</div>
-                  <div className="list-meta">{item.time}</div>
-                  <div className="workshop-tags">
-                    <span className="pill pill-muted">{item.level}</span>
+          <div className="card-subtitle">{workshopSubtitle}</div>
+          {workshopsError ? (
+            <div className="notice" role="status" aria-live="polite">
+              {workshopsError}
+            </div>
+          ) : null}
+          {workshopsLoading ? (
+            <div className="empty-state" role="status" aria-live="polite">
+              Loading workshops...
+            </div>
+          ) : workshopPreview.length === 0 ? (
+            <div className="empty-block">
+              <div className="empty-state">No upcoming workshops are available right now.</div>
+              <div className="empty-meta">Open workshops to see the next studio drop.</div>
+            </div>
+          ) : (
+            <div className="list">
+              {workshopPreview.map((item) => {
+                const signal = workshopSignalLabel(item);
+                return (
+                  <div className="list-row workshop-row" key={item.id}>
+                    <div>
+                      <div className="list-title">{item.title}</div>
+                      <div className="list-meta">{workshopMetaLabel(item)}</div>
+                      {item.includesFiring || signal ? (
+                        <div className="workshop-tags">
+                          {item.includesFiring ? <span className="pill pill-muted">Firing included</span> : null}
+                          {signal ? <span className="pill pill-muted">{signal}</span> : null}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="workshop-right">
+                      <div className="pill">{workshopAvailabilityLabel(item)}</div>
+                    </div>
                   </div>
-                </div>
-                <div className="workshop-right">
-                  <div className="pill">
-                    {item.spotsLeft > 0
-                      ? `${item.spotsLeft} spot${item.spotsLeft === 1 ? "" : "s"} left`
-                      : `${item.waitlist} on waitlist`}
-                  </div>
-                  <button className="btn btn-ghost btn-small">Quick RSVP</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </RevealCard>
-
-        <RevealCard className="card card-3d" index={6} enabled={motionEnabled}>
-          <div className="card-title">Glaze inspiration</div>
-          <div className="card-subtitle">Pick a base + top combo</div>
-          <p className="card-body-copy">
-            Browse the studio glaze matrix and save combos for your next firing.
-          </p>
-          <button className="btn btn-ghost dashboard-link" onClick={onOpenGlazeBoard}>
-            Open the glaze board
+                );
+              })}
+            </div>
+          )}
+          <button className="btn btn-ghost dashboard-link" onClick={onOpenWorkshops}>
+            Open workshops
           </button>
         </RevealCard>
 
-        <RevealCard className="card card-3d" index={7} enabled={motionEnabled}>
+        <RevealCard className="card card-3d" index={6} enabled={motionEnabled}>
           <div className="card-title">Direct messages</div>
           <div className="messages-preview">
             {messagePreview.length === 0 ? (
@@ -835,7 +961,7 @@ export default function DashboardView({
           </button>
         </RevealCard>
 
-        <RevealCard className="card card-3d span-2 archived-summary" index={8} enabled={motionEnabled}>
+        <RevealCard className="card card-3d span-2 archived-summary" index={7} enabled={motionEnabled}>
           <div>
             <div className="card-title">Archived pieces</div>
             <div className="archived-count">

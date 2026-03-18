@@ -7,6 +7,8 @@ This file is the canonical registry for source-of-truth artifacts used by Epic-0
 contract parity, deployment gates, smoke profiles, and mobile store-readiness checks.
 It also tracks public agent-readable discovery surfaces for website and portal.
 
+For the current launch-readiness operator entrypoint, start with `docs/RELEASE_COMMAND_CENTER.md`.
+
 ## 1) Contract Sources
 
 ### API Contracts
@@ -97,6 +99,7 @@ It also tracks public agent-readable discovery surfaces for website and portal.
 ## 5) Operator Runbooks
 
 - `docs/EMULATOR_RUNBOOK.md` (environment profile and emulator contract assumptions)
+- `docs/RELEASE_COMMAND_CENTER.md`
 - `docs/runbooks/AGENT_SURFACES.md`
 - `docs/runbooks/JOURNEY_AND_STRIPE_TESTING_PLAN.md`
 - `docs/runbooks/JOURNEY_TESTING_RUNBOOK.md`

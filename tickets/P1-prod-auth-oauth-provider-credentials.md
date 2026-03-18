@@ -1,6 +1,6 @@
 # P1 - Production Auth: Create OAuth Apps + Configure Provider Secrets
 
-Status: Blocked
+Status: Deferred
 
 Created: 2026-02-10
 
@@ -93,3 +93,8 @@ Redirect URI note:
 - Hosted authenticated portal canary remains green for baseline portal auth/session flow:
   - `node ./scripts/portal-authenticated-canary.mjs --functional-only --no-theme-sweep --output-dir ./output/qa/industry-events-visual-check --json`
 - Ticket remains `Blocked` until Facebook provider app setup/configuration + hosted sign-in evidence is completed.
+
+## Update (2026-03-18 RC consolidation)
+- Single-RC auth baseline is now explicitly limited to Google, Email/Password, Email Link, and Microsoft.
+- Facebook and Apple provider expansion are deferred out of the release candidate so the ship decision stays focused on the already-live baseline auth flows.
+- Keep this ticket out of the RC blocker set unless business requirements change and provider expansion is reintroduced into scope.

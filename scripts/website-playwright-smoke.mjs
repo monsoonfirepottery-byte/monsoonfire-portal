@@ -48,6 +48,8 @@ const contentTypes = {
   ".txt": "text/plain; charset=utf-8"
 };
 
+const supportTopicSelectors = ['[data-topic="payments"]', '[data-topic="pricing"]'];
+
 const ensureDir = async (dirPath) => mkdir(dirPath, { recursive: true });
 
 const normalizeBaseUrl = (value) => {
@@ -291,17 +293,26 @@ const run = async () => {
       });
     }
 
-    await check("mobile:/support/ pricing filter interaction", async () => {
+    await check("mobile:/support/ payments filter interaction", async () => {
       await mobilePage.goto(`${baseUrl}/support/`, { waitUntil: "networkidle" });
-      await mobilePage.click('[data-topic="pricing"]');
+      const topicSelector = await mobilePage.evaluate((selectors) => {
+        for (const selector of selectors) {
+          if (document.querySelector(selector)) {
+            return selector;
+          }
+        }
+        return "";
+      }, supportTopicSelectors);
+      assert(topicSelector, "Support payments topic filter selector was not found.");
+      await mobilePage.click(topicSelector);
       await mobilePage.waitForTimeout(300);
-      const pricingActive = await mobilePage.evaluate(() => {
-        const el = document.querySelector('[data-topic="pricing"]');
+      const paymentsActive = await mobilePage.evaluate((selector) => {
+        const el = document.querySelector(selector);
         return !!el && el.classList.contains("active");
-      });
-      assert(pricingActive, "Support pricing topic filter did not become active.");
+      }, topicSelector);
+      assert(paymentsActive, "Support payments topic filter did not become active.");
       await mobilePage.screenshot({
-        path: resolve(outputRoot, "smoke-support-mobile-pricing-filter.png"),
+        path: resolve(outputRoot, "smoke-support-mobile-payments-filter.png"),
         fullPage: true
       });
     });

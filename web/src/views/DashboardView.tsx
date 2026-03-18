@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
 import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
+import { createPortalApi } from "../api/portalApi";
+import type { EventSummary } from "../api/portalContracts";
 import RevealCard from "../components/RevealCard";
 import { useUiSettings } from "../context/UiSettingsContext";
 import { db } from "../firebase";
@@ -15,25 +17,9 @@ import {
 } from "../lib/normalizers/reservations";
 import type { Kiln, KilnFiring } from "../types/kiln";
 import type { Announcement, DirectMessageThread } from "../types/messaging";
-import { formatMaybeTimestamp } from "../utils/format";
+import { resolveFunctionsBaseUrl } from "../utils/functionsBaseUrl";
+import { formatDateTime, formatMaybeTimestamp } from "../utils/format";
 import { DASHBOARD_MOCK_NON_DEV_ACK, resolveDashboardMockPolicy } from "./dashboardMockPolicy";
-
-const SAMPLE_WORKSHOPS = [
-  {
-    name: "Wheel Lab",
-    time: "Sat 10:00 AM",
-    spotsLeft: 3,
-    waitlist: 0,
-    level: "Beginner",
-  },
-  {
-    name: "Glaze Science",
-    time: "Sun 4:00 PM",
-    spotsLeft: 0,
-    waitlist: 6,
-    level: "Intermediate",
-  },
-];
 
 const DASHBOARD_PIECES_PREVIEW = 3;
 
@@ -132,6 +118,84 @@ function reservationStatusLabel(reservation: ReservationRecord) {
   if (loadStatus === "loaded") return "Loaded";
   if (loadStatus === "loading") return "Loading";
   return "Queued";
+}
+
+function parseWorkshopStartMs(value: string | null | undefined) {
+  const parsed = Date.parse(value ?? "");
+  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+}
+
+function workshopAvailabilityLabel(event: EventSummary) {
+  const remainingCapacity =
+    typeof event.remainingCapacity === "number" && Number.isFinite(event.remainingCapacity)
+      ? Math.max(0, Math.round(event.remainingCapacity))
+      : null;
+  if (remainingCapacity !== null && remainingCapacity > 0) {
+    return `${remainingCapacity} spot${remainingCapacity === 1 ? "" : "s"} left`;
+  }
+  if (event.waitlistEnabled) {
+    const waitlistCount =
+      typeof event.waitlistCount === "number" && Number.isFinite(event.waitlistCount)
+        ? Math.max(0, Math.round(event.waitlistCount))
+        : 0;
+    if (waitlistCount > 0) {
+      return `${waitlistCount} on waitlist`;
+    }
+    return "Waitlist open";
+  }
+  if (remainingCapacity === 0) return "Sold out";
+  return "Open";
+}
+
+function useDashboardWorkshopPreview(user: User) {
+  const portalApi = useMemo(() => createPortalApi({ baseUrl: resolveFunctionsBaseUrl() }), []);
+  const [workshops, setWorkshops] = useState<EventSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadWorkshops = async () => {
+      setLoading(true);
+
+      try {
+        const response = await portalApi.listEvents({
+          idToken: await user.getIdToken(),
+          payload: {
+            includeDrafts: false,
+            includeCancelled: false,
+          },
+        });
+        if (cancelled) return;
+
+        const nowMs = Date.now();
+        const nextWorkshops = (response.data.events ?? [])
+          .filter((event) => event.status === "published")
+          .filter((event) => parseWorkshopStartMs(event.startAt) >= nowMs)
+          .sort((left, right) => parseWorkshopStartMs(left.startAt) - parseWorkshopStartMs(right.startAt))
+          .slice(0, 3);
+
+        setWorkshops(nextWorkshops);
+      } catch {
+        if (cancelled) return;
+        setWorkshops([]);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadWorkshops();
+    return () => {
+      cancelled = true;
+    };
+  }, [portalApi, user]);
+
+  return {
+    workshops,
+    loading,
+  };
 }
 
 function useKilnDashboardRows(actor: { uid?: string | null; email?: string | null }) {
@@ -392,6 +456,7 @@ type Props = {
   onOpenStudioResources: () => void;
   onOpenGlazeBoard: () => void;
   onOpenCommunity: () => void;
+  onOpenWorkshops: () => void;
   onOpenMessages: () => void;
   onOpenPieces: (target?: { batchId: string; pieceId?: string }) => void;
 };
@@ -411,6 +476,7 @@ export default function DashboardView({
   onOpenStudioResources,
   onOpenGlazeBoard,
   onOpenCommunity,
+  onOpenWorkshops,
   onOpenMessages,
   onOpenPieces,
 }: Props) {
@@ -422,7 +488,6 @@ export default function DashboardView({
   const { active, history } = useBatches(user);
   const [recentReservations, setRecentReservations] = useState<ReservationRecord[]>([]);
   const activePreview = active.slice(0, DASHBOARD_PIECES_PREVIEW);
-  const archivedCount = history.length;
   const messagePreview = threads.slice(0, 3);
   const announcementPreview = announcements.slice(0, 3);
   const {
@@ -475,6 +540,10 @@ export default function DashboardView({
       ? shortId(nextReservationOwnerUid)
       : null;
   const kilnEmptyStateLabel = statusNotice || "No kiln status available yet.";
+  const {
+    workshops: workshopPreview,
+    loading: workshopsLoading,
+  } = useDashboardWorkshopPreview(user);
 
   useEffect(() => {
     let cancelled = false;
@@ -552,7 +621,6 @@ export default function DashboardView({
                 onThemeChange(nextTheme);
               }}
               aria-label={`Switch to ${nextThemeLabel} theme`}
-              title={`Switch to ${nextThemeLabel} theme`}
               aria-pressed={isDarkTheme}
             >
               <span className="theme-toggle-icon" aria-hidden="true">
@@ -610,7 +678,6 @@ export default function DashboardView({
               Message the studio
             </button>
           </div>
-          <p className="quick-action-note">Pick a lane and we will take it from there.</p>
         </RevealCard>
       </section>
 
@@ -633,7 +700,6 @@ export default function DashboardView({
                       key={reservation.id}
                       className="piece-thumb"
                       aria-label={`Open check-in ${reservation.id}`}
-                      title={`Check-in ${reservation.id}`}
                       data-index={index + 1}
                       onClick={onOpenCheckin}
                     >
@@ -641,7 +707,7 @@ export default function DashboardView({
                     </button>
                   ))}
                 </div>
-                <div className="pieces-next-meta">Your recent check-ins are queued in ware intake.</div>
+                <div className="pieces-next-meta">Recent check-ins are queued.</div>
               </div>
             ) : (
               <div className="empty-block">
@@ -680,7 +746,6 @@ export default function DashboardView({
                       key={piece.id}
                       className="piece-thumb"
                       aria-label={`Open ${title} in My Pieces`}
-                      title={title}
                       data-index={index + 1}
                       onClick={() => onOpenPieces({ batchId: piece.id })}
                     >
@@ -743,7 +808,7 @@ export default function DashboardView({
                 <div className={`list-row kiln-row ${kiln.isOffline ? "kiln-offline" : ""}`} key={kiln.id}>
                   <div className="kiln-left">
                     <div className="list-title">{kiln.name}</div>
-                    <div className="kiln-time" title={`Firing type: ${kiln.firingTypeLabel}`}>
+                    <div className="kiln-time">
                       {kiln.timeLabel}
                     </div>
                     <div className="list-meta">{kiln.statusLabel}</div>
@@ -772,46 +837,42 @@ export default function DashboardView({
 
         <RevealCard className="card card-3d" index={5} enabled={motionEnabled}>
           <div className="card-title">Upcoming workshops</div>
-          <div className="list">
-            {SAMPLE_WORKSHOPS.map((item) => (
-              <div className="list-row workshop-row" key={item.name}>
-                <div>
-                  <div className="list-title">{item.name}</div>
-                  <div className="list-meta">{item.time}</div>
-                  <div className="workshop-tags">
-                    <span className="pill pill-muted">{item.level}</span>
+          {workshopsLoading ? (
+            <div className="empty-state" role="status" aria-live="polite">
+              Loading...
+            </div>
+          ) : workshopPreview.length === 0 ? (
+            <div className="empty-block">
+              <div className="empty-state">No upcoming workshops.</div>
+            </div>
+          ) : (
+            <div className="list">
+              {workshopPreview.map((item) => {
+                return (
+                  <div className="list-row workshop-row" key={item.id}>
+                    <div>
+                      <div className="list-title">{item.title}</div>
+                      <div className="list-meta">{formatDateTime(item.startAt)}</div>
+                    </div>
+                    <div className="workshop-right">
+                      <div className="pill">{workshopAvailabilityLabel(item)}</div>
+                    </div>
                   </div>
-                </div>
-                <div className="workshop-right">
-                  <div className="pill">
-                    {item.spotsLeft > 0
-                      ? `${item.spotsLeft} spot${item.spotsLeft === 1 ? "" : "s"} left`
-                      : `${item.waitlist} on waitlist`}
-                  </div>
-                  <button className="btn btn-ghost btn-small">Quick RSVP</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </RevealCard>
-
-        <RevealCard className="card card-3d" index={6} enabled={motionEnabled}>
-          <div className="card-title">Glaze inspiration</div>
-          <div className="card-subtitle">Pick a base + top combo</div>
-          <p className="card-body-copy">
-            Browse the studio glaze matrix and save combos for your next firing.
-          </p>
-          <button className="btn btn-ghost dashboard-link" onClick={onOpenGlazeBoard}>
-            Open the glaze board
+                );
+              })}
+            </div>
+          )}
+          <button className="btn btn-ghost dashboard-link" onClick={onOpenWorkshops}>
+            Open workshops
           </button>
         </RevealCard>
 
-        <RevealCard className="card card-3d" index={7} enabled={motionEnabled}>
+        <RevealCard className="card card-3d" index={6} enabled={motionEnabled}>
           <div className="card-title">Direct messages</div>
           <div className="messages-preview">
             {messagePreview.length === 0 ? (
               <div className="empty-block">
-                <div className="empty-state">Questions about your work? We're here.</div>
+                <div className="empty-state">Questions? We're here.</div>
                 <button className="btn btn-ghost btn-small" onClick={onOpenMessages}>
                   Ask the studio
                 </button>
@@ -832,20 +893,6 @@ export default function DashboardView({
           </div>
           <button className="btn btn-ghost" onClick={onOpenMessages}>
             Open messages inbox
-          </button>
-        </RevealCard>
-
-        <RevealCard className="card card-3d span-2 archived-summary" index={8} enabled={motionEnabled}>
-          <div>
-            <div className="card-title">Archived pieces</div>
-            <div className="archived-count">
-              {archivedCount === 0
-                ? "No archived pieces yet."
-                : `${archivedCount} piece${archivedCount === 1 ? "" : "s"} archived.`}
-            </div>
-          </div>
-          <button className="btn btn-ghost" onClick={() => onOpenPieces()}>
-            View archived pieces
           </button>
         </RevealCard>
       </section>

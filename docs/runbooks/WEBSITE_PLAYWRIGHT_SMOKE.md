@@ -60,7 +60,7 @@ Production monitor workflow:
 
 ## Failure triage
 - `Missing mobile menu toggle`: verify header/menu toggle exists and is visible at 390x844.
-- `Support pricing topic filter did not become active`: check `data-topic="pricing"` buttons and filter JS state.
+- `Support payments topic filter did not become active`: check support topic buttons (`data-topic="payments"` or legacy `data-topic="pricing"`) and filter JS state.
 - `Contact form validation error did not render`: check required fields and `[data-contact-error]` visibility logic.
 - Browser missing: rerun `npm run website:smoke:playwright:install`.
 

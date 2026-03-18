@@ -9,6 +9,7 @@ This folder contains active runbooks and contracts for the portal, functions, na
 - Root operating guide: [`../AGENTS.md`](../AGENTS.md)
 - Portal/API contracts: [`API_CONTRACTS.md`](API_CONTRACTS.md)
 - Source-of-truth map: [`SOURCE_OF_TRUTH_INDEX.md`](SOURCE_OF_TRUTH_INDEX.md)
+- Release command center: [`RELEASE_COMMAND_CENTER.md`](RELEASE_COMMAND_CENTER.md)
 - Deep-link contract: [`DEEP_LINK_CONTRACT.md`](DEEP_LINK_CONTRACT.md)
 - Library docs pack: [`library/README.md`](library/README.md)
 - Agent-readable surface runbook: [`runbooks/AGENT_SURFACES.md`](runbooks/AGENT_SURFACES.md)

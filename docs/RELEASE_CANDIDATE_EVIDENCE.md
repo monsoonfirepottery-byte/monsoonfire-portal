@@ -1,15 +1,31 @@
 # Release Candidate Evidence Pack
 
+## Current RC Refresh (2026-03-18)
+- Canonical launch-readiness entrypoint is [docs/RELEASE_COMMAND_CENTER.md](RELEASE_COMMAND_CENTER.md).
+- Portal and website are both live, and `main` currently has no open PRs.
+- Current RC auth baseline is Google, Email/Password, Email Link, and Microsoft.
+- Facebook and Apple provider expansion are explicitly deferred from this RC unless business requirements change.
+- Feature-growth work outside deploy/cutover, auth readiness, smoke/promotion gates, accessibility guardrails, and analytics/policy parity is frozen out of this RC.
+
+## Current blockers (2026-03-18)
+- Notification reliability evidence is still incomplete.
+- Security rotation proof is still incomplete.
+- Release sign-off fields below are still blank.
+
 ## Build + CI Evidence
-- [x] `Smoke Tests` workflow pass ([run 21955700046](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/21955700046))
-- [x] `Lighthouse Audit` workflow pass ([run 21955700011](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/21955700011))
+- [x] `Smoke Tests` workflow pass ([run 23259872136](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259872136))
+- [x] `Lighthouse Audit` workflow pass ([run 23259872137](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259872137))
 - [x] Local LHCI reproducibility pass (2026-02-22, sandbox-safe chrome flags)
   - portal: `npx @lhci/cli@0.15.1 collect --config=web/lighthouserc.json --settings.chromeFlags="--no-sandbox --disable-dev-shm-usage"` + assert
   - website: `npx @lhci/cli@0.15.1 collect --config=website/lighthouserc.json --settings.chromeFlags="--no-sandbox --disable-dev-shm-usage"` + assert
-- [x] `iOS macOS Smoke` workflow pass ([run 21955699963](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/21955699963))
-- [x] `ios-build-gate` workflow pass ([run 21955700012](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/21955700012))
-- [x] `Android Compile Check` workflow pass ([run 21955700047](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/21955700047))
-- [x] `Deploy to Firebase Hosting on PR` workflow pass ([run 21955700044](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/21955700044))
+- [x] `iOS macOS Smoke` workflow pass ([run 23259872190](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259872190))
+- [x] `ios-build-gate` workflow pass ([run 23259872139](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259872139))
+- [x] `Android Compile Check` workflow pass ([run 23218840965](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23218840965))
+- [x] `Deploy to Firebase Hosting on merge` workflow pass ([run 23259872147](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259872147))
+- [x] `Portal Post-Deploy Promotion Gate` workflow pass ([run 23259950672](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259950672))
+- [x] `Portal Daily Authenticated Canary` workflow pass ([run 23257627816](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23257627816))
+- [x] Local portal cutover verify refreshed on 2026-03-18 -> `output/qa/post-deploy-cutover-verify.json`
+- [x] Local website production smoke refreshed on 2026-03-18 -> `output/playwright/prod/smoke-summary.json`
 - [x] Functions TypeScript build pass (`npm --prefix functions run build`)
 - [x] Functions lint pass (`npm --prefix functions run lint`) (warnings only)
 - [x] Web lint pass (`npm --prefix web run lint`)
@@ -18,6 +34,11 @@
 - [x] Web chunk budgets pass (`npm --prefix web run perf:chunks`)
 - [x] Functions cold-start profile snapshot captured (`npm run functions:profile:coldstart -- --runs 9`) -> `output/functions-coldstart-profile/latest.json`
 - [x] Alpha preflight script run (`node ./scripts/ps1-run.mjs scripts/alpha-preflight.ps1`) on head `62eba15dc593cb1c1422183e4d314238859dca51`
+
+## Current notes (2026-03-18)
+- The live portal cutover verifier now confirms `/.well-known/apple-app-site-association` returns `200` from `https://portal.monsoonfire.com`.
+- The website production smoke needed a smoke-runner selector refresh from `pricing` to `payments` to match the current support taxonomy.
+- Local website production smoke required a temporary `STUDIO_BRAIN_INTEGRITY_OVERRIDE` because the smoke runner is coupled to an unrelated Studio Brain integrity manifest; the website behavior itself passed once the unrelated guard was bypassed.
 
 ## Notification Reliability Evidence
 - [ ] Retry/backoff verified for retryable classes (`provider_5xx`, `network`, `unknown`)

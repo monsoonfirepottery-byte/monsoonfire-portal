@@ -1,6 +1,6 @@
 # Portal + Website Release Command Center
 
-Last reviewed: 2026-03-18
+Last reviewed: 2026-03-18 (RC exit hard-gate pass)
 Operating mode: single release candidate consolidation
 
 ## Current posture
@@ -19,10 +19,10 @@ Operating mode: single release candidate consolidation
 
 ## Current live evidence
 
-- Smoke Tests: success on 2026-03-18 ([run 23259872136](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259872136))
-- Lighthouse Audit: success on 2026-03-18 ([run 23259872137](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259872137))
-- iOS macOS Smoke: success on 2026-03-18 ([run 23259872190](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259872190))
-- `ios-build-gate`: success on 2026-03-18 ([run 23259872139](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259872139))
+- Smoke Tests: success on 2026-03-18 ([run 23268174209](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23268174209))
+- Lighthouse Audit: success on 2026-03-18 ([run 23268174183](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23268174183))
+- iOS macOS Smoke: success on 2026-03-18 ([run 23268174197](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23268174197))
+- `ios-build-gate`: success on 2026-03-18 ([run 23268174202](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23268174202))
 - Android Compile Check: success on 2026-03-17 ([run 23218840965](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23218840965))
 - Deploy to Firebase Hosting on merge: success on 2026-03-18 ([run 23259872147](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259872147))
 - Portal Post-Deploy Promotion Gate: success on 2026-03-18 ([run 23259950672](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259950672))
@@ -44,26 +44,23 @@ Operating mode: single release candidate consolidation
 
 ## Remaining blockers
 
-- Release evidence still needs explicit operator completion in [docs/RELEASE_CANDIDATE_EVIDENCE.md](RELEASE_CANDIDATE_EVIDENCE.md):
+- RC exit is hard-gated in [docs/RELEASE_CANDIDATE_EVIDENCE.md](RELEASE_CANDIDATE_EVIDENCE.md):
   - notification reliability proof
   - security rotation proof
-  - release sign-off fields
-- Portal infra/security and QA rolling threads still need final disposition against the refreshed evidence:
+  - final operator sign-off must remain populated and current
+- The only hard-blocking issues are:
   - [#349](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/349)
   - [#350](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/350)
 
 ## Open GitHub issue dispositions
 
-| Issue | Disposition | RC status |
+| Issue | Owner | Disposition | Close condition | RC status |
 | --- | --- | --- |
-| [#348](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/348) | Keep open as rolling Codex coordination | not a ship blocker |
-| [#349](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/349) | Keep open until infra/security evidence is explicitly signed off | ship review lane |
-| [#350](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/350) | Keep open until QA evidence is explicitly signed off | ship review lane |
-| [#351](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/351) | Keep open as rolling governance tuning | not a ship blocker |
-| [#352](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/352) | Defer until after ship | out of RC scope |
-| [#360](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/360) - [#365](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/365) | Close as Codex improvement noise for post-RC handling | remove from RC queue |
-| [#366](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/366) | Close as duplicate rolling digest | fold into [#348](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/348) |
-| [#367](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/367) | Close as stale after latest green promotion gate/canary | fold into [#350](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/350) if the signature recurs |
+| [#348](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/348) | `monsoonfirepottery-byte` (automation owner by default) | Keep open as rolling Codex coordination | Close only if automation coordination is intentionally retired or moved out of GitHub issue tracking | not a ship blocker |
+| [#349](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/349) | `monsoonfirepottery-byte` (infra/security owner by default) | Keep open until infra/security evidence is explicitly signed off | Close after security rotation proof is complete, the evidence pack is updated, and the final ship decision is recorded | hard blocker |
+| [#350](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/350) | `monsoonfirepottery-byte` (QA/release operator by default) | Keep open until QA evidence is explicitly signed off | Close after notification reliability evidence is complete, smoke/canary/promotion evidence is linked, and the final QA sign-off is recorded | hard blocker |
+| [#351](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/351) | `monsoonfirepottery-byte` (governance owner by default) | Keep open as rolling governance tuning | Close only if governance tuning is intentionally moved out of the rolling issue loop | not a ship blocker |
+| [#352](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/352) | `monsoonfirepottery-byte` (backlog/product owner by default) | Defer until after ship | Close only when superseded by smaller implementation tickets or a delivered PR | out of RC scope |
 
 ## Frozen scope
 
@@ -75,7 +72,8 @@ Operating mode: single release candidate consolidation
 ## RC exit checklist
 
 - No open PRs against `main`
-- Release evidence pack reflects current successful runs
-- Every open GitHub issue has an explicit RC disposition
-- Only ship-review lanes remain open for launch readiness
+- Latest successful `Smoke Tests` on `main` remains current and is not superseded by a newer failing run
+- Release evidence pack reflects current successful runs and current hard blockers only
+- Every open GitHub issue has an explicit owner, RC status, and close condition
+- Only [#349](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/349) and [#350](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/350) remain as ship blockers
 - Final operator sign-off is recorded in the release evidence pack

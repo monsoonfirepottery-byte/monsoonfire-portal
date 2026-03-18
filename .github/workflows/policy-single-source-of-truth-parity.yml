@@ -2,8 +2,6 @@ name: Policy Single Source Of Truth Parity
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "11 6 * * *"
   push:
     paths:
       - "docs/policies/**"

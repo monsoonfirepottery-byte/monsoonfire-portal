@@ -1,8 +1,6 @@
 name: Intent Runner Daily
 
 on:
-  schedule:
-    - cron: "30 6 * * *"
   workflow_dispatch:
     inputs:
       mode:

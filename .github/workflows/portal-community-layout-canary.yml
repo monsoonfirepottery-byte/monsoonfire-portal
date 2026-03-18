@@ -7,9 +7,6 @@ on:
         description: "Portal base URL"
         required: false
         default: "https://portal.monsoonfire.com"
-  schedule:
-    # Hourly guard for intermittent community sidebar/chiplet layout regressions.
-    - cron: "17 * * * *"
 
 permissions:
   contents: read

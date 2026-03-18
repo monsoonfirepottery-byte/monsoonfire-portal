@@ -15,8 +15,6 @@ on:
         options:
           - "false"
           - "true"
-  schedule:
-    - cron: "0 15 * * 1"
 
 permissions:
   contents: read

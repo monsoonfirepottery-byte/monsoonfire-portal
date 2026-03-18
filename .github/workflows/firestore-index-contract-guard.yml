@@ -8,10 +8,6 @@ on:
         required: false
         default: true
         type: boolean
-  schedule:
-    # 06:20 and 15:20 America/Phoenix (MST year-round) = 13:20 and 22:20 UTC
-    - cron: "20 13 * * *"
-    - cron: "20 22 * * *"
 
 permissions:
   actions: read

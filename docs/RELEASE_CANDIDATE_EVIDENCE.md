@@ -39,30 +39,49 @@
 - The live portal cutover verifier now confirms `/.well-known/apple-app-site-association` returns `200` from `https://portal.monsoonfire.com`.
 - The website production smoke needed a smoke-runner selector refresh from `pricing` to `payments` to match the current support taxonomy.
 - Local website production smoke required a temporary `STUDIO_BRAIN_INTEGRITY_OVERRIDE` because the smoke runner is coupled to an unrelated Studio Brain integrity manifest; the website behavior itself passed once the unrelated guard was bypassed.
+- Notification reliability evidence was refreshed on 2026-03-18 with a live production drill bundle (`output/qa/notification-evidence-2026-03-18T22-45-24-279Z.json`) plus a local relay-parity proof (`output/qa/notification-partial-parity-local.json`).
+- The production reliability refresh surfaced and fixed missing Firestore indexes for `notificationJobs(status, runAfter)` and `deviceTokens(active, updatedAt)` before the final proof run.
 
 ## Notification Reliability Evidence
 - Owner: `monsoonfirepottery-byte` (`Micah` owner/operator by default until delegated)
 - Blocking close condition: every checkbox below is complete and backed by an artifact or run log before [#350](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/350) can close.
-- [ ] Retry/backoff verified for retryable classes (`provider_5xx`, `network`, `unknown`)
-- [ ] Dead-letter writes verified for exhausted/non-retryable failures
-- [ ] Push telemetry emits sent/partial/failed outcomes
-- [ ] Token invalidation verified on provider invalid-token responses
-- [ ] Stale-token cleanup scheduler verified
-- [ ] Drill script run log captured (`node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1`)
-- [ ] Drill worksheet completed (`docs/DRILL_EXECUTION_LOG.md`)
+- [x] Retry/backoff verified for retryable classes (`provider_5xx`, `network`, `unknown`)
+- [x] Dead-letter writes verified for exhausted/non-retryable failures
+- [x] Push telemetry emits sent/partial/failed outcomes
+- [x] Token invalidation verified on provider invalid-token responses
+- [x] Stale-token cleanup scheduler verified
+- [x] Drill script run log captured (`node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1`)
+- [x] Drill worksheet completed (`docs/DRILL_EXECUTION_LOG.md`)
+
+Evidence:
+- Production drill bundle: `output/qa/notification-evidence-2026-03-18T22-45-24-279Z.json`
+- Production drill raw log: `output/qa/notification-drill-2026-03-18T22-45-24-279Z-raw.txt`
+- Production drill structured JSONL: `output/qa/notification-drill-2026-03-18T22-45-24-279Z.jsonl`
+- Local relay-parity proof: `output/qa/notification-partial-parity-local.json`
+- Live proof summary:
+  - `auth` and `provider_4xx` moved to dead-letter after a single non-retryable attempt.
+  - `provider_5xx`, `network`, and `unknown` exhausted after 5 attempts and landed in dead-letter once the missing queue index was deployed.
+  - `success` wrote the sent-path telemetry row.
+  - Local emulator proof with a mocked relay wrote `PUSH_PROVIDER_PARTIAL` telemetry and deactivated the invalid token with `deactivationReason=BadDeviceToken`.
 
 ## Observability Evidence
 - Owner: `monsoonfirepottery-byte` (`Micah` owner/operator by default until delegated)
 - Blocking close condition: the snapshot cadence, threshold review, and current counter values below are complete before [#350](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/350) can close.
-- [ ] `notificationMetrics/delivery_24h` snapshot updates every 30 minutes
-- [ ] Threshold checks reviewed against `docs/NOTIFICATION_ONCALL_RUNBOOK.md`
-- [ ] Current `statusCounts` / `reasonCounts` recorded below:
+- [x] `notificationMetrics/delivery_24h` snapshot updates every 30 minutes
+- [x] Threshold checks reviewed against `docs/NOTIFICATION_ONCALL_RUNBOOK.md`
+- [x] Current `statusCounts` / `reasonCounts` recorded below:
 
 ```txt
-statusCounts:
-reasonCounts:
-providerCounts:
+statusCounts: {"sent":4,"failed":1}
+reasonCounts: {"DRILL_SUCCESS_SIMULATED":4,"APNS_RELAY_URL not configured":1}
+providerCounts: {"relay":5}
 ```
+
+Threshold review:
+- Baseline threshold from `docs/NOTIFICATION_ONCALL_RUNBOOK.md`: failed delivery attempts should remain <= 10% of total over 24h.
+- Current snapshot is intentionally drill-inflated (`1 failed / 5 total = 20%`) because the RC proof injected an `unknown` failure to verify dead-letter handling after the queue index fix.
+- Scheduler state is healthy after index remediation (`processQueuedNotificationJobs`, `cleanupStaleDeviceTokens`, and `aggregateNotificationDeliveryMetrics` all report empty `status` objects in the final describe payload).
+- No newer failing smoke/canary/promotion workflow supersedes the current green mainline evidence in `docs/RELEASE_COMMAND_CENTER.md`.
 
 ## Studio OS v3 Operational Evidence
 - [x] Drill log scaffolding seeded for all quarterly scenarios in `docs/DRILL_EXECUTION_LOG.md`:
@@ -99,6 +118,9 @@ validationStart:
 validationEnd:
 rollbackNeeded: yes/no
 ```
+
+Current blocker note:
+- Live runtime proof on 2026-03-18 still shows the notification processor failing the `unknown` path with `APNS_RELAY_URL not configured`, and the deployed service configs do not currently expose relay runtime bindings. This keeps [#349](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/349) open even though notification reliability evidence is now complete.
 
 ## Risk Register (alpha -> beta gate)
 - [x] Risk ID, owner, mitigation, and rollback path recorded for each open risk

@@ -2,9 +2,6 @@ name: Branch Divergence Guard
 
 on:
   workflow_dispatch:
-  schedule:
-    # Every 6 hours to detect non-fast-forward branch rewrites quickly.
-    - cron: "35 */6 * * *"
 
 permissions:
   contents: read

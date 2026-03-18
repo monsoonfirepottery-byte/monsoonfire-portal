@@ -23,8 +23,6 @@ on:
         description: Resolve provided alert number as revoked.
         required: false
         default: "false"
-  schedule:
-    - cron: "17 * * * *"
 
 permissions:
   contents: read

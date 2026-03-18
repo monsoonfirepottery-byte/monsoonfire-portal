@@ -23,8 +23,6 @@ on:
         options:
           - "true"
           - "false"
-  schedule:
-    - cron: "50 16 * * *"
 
 permissions:
   contents: read

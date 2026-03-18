@@ -13,9 +13,6 @@ on:
         required: false
         default: 48
         type: number
-  schedule:
-    # Daily snapshot keeps trends visible without turning health checks into issue churn.
-    - cron: "15 14 * * *"
 
 permissions:
   actions: read

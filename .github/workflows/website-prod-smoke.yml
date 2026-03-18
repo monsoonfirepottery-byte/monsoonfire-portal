@@ -7,8 +7,6 @@ on:
         description: "Website base URL"
         required: false
         default: "https://monsoonfire.com"
-  schedule:
-    - cron: "0 17 * * 2"
 
 permissions:
   contents: read

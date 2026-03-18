@@ -7,9 +7,6 @@ on:
         description: "Portal base URL"
         required: false
         default: "https://portal.monsoonfire.com"
-  schedule:
-    # Every 4 hours balances regression coverage with workflow cost.
-    - cron: "15 */4 * * *"
 
 permissions:
   actions: read

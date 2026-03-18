@@ -1,8 +1,6 @@
 name: Governance Weekly Tuning
 
 on:
-  schedule:
-    - cron: "15 9 * * 1"
   workflow_dispatch:
 
 permissions:

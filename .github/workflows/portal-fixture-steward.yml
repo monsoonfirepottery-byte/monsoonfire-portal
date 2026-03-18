@@ -7,9 +7,6 @@ on:
         description: "Fixture TTL days"
         required: false
         default: "21"
-  schedule:
-    # 06:55 America/Phoenix (MST year-round) = 13:55 UTC
-    - cron: "55 13 * * *"
 
 permissions:
   contents: read

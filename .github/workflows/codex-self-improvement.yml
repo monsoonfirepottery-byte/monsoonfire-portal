@@ -13,9 +13,6 @@ on:
         required: false
         default: false
         type: boolean
-  schedule:
-    # 06:10 America/Phoenix (MST year-round) = 13:10 UTC
-    - cron: "10 13 * * *"
 
 permissions:
   contents: write

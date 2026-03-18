@@ -1,8 +1,6 @@
 name: Real Estate Quarterly Cadence
 
 on:
-  schedule:
-    - cron: "0 9 1 1,4,7,10 *"
   workflow_dispatch:
 
 permissions:

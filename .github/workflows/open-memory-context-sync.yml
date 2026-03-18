@@ -1,8 +1,6 @@
 name: Open Memory Context Sync
 
 on:
-  schedule:
-    - cron: "45 7 * * *"
   workflow_dispatch:
     inputs:
       include_resumable:

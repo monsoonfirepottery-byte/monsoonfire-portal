@@ -2492,8 +2492,22 @@ test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery f
 
   await withMockedRateLimit(async () =>
     withMockFirestore(state, async () => {
-      const originalCollection = (shared.db as any).collection;
-      const failingCollectionQuery = {
+      const db = shared.db as unknown as {
+        collection: (path: string) => {
+          add: (value: Record<string, unknown>) => Promise<{ id: string }>;
+          doc: (id?: string) => {
+            id: string;
+            __mfCollection: string;
+            __mfDocId: string;
+          };
+          where: (..._args: unknown[]) => MockQuery;
+          orderBy: (..._args: unknown[]) => MockQuery;
+          limit: (_limit: number) => MockQuery;
+          get: () => Promise<{ docs: MockSnapshot[]; empty: boolean }>;
+        };
+      };
+      const originalCollection = db.collection;
+      const failingCollectionQuery: MockQuery = {
         where: () => failingCollectionQuery,
         orderBy: () => failingCollectionQuery,
         limit: () => failingCollectionQuery,
@@ -2502,7 +2516,7 @@ test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery f
         },
         forEach: () => undefined,
       };
-      (shared.db as any).collection = (collectionName: string) => {
+      db.collection = (collectionName: string) => {
         if (collectionName !== "supportRequests") {
           return originalCollection(collectionName);
         }
@@ -2518,7 +2532,7 @@ test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery f
       try {
         await handleApiV1(request, response.res);
       } finally {
-        (shared.db as any).collection = originalCollection;
+        db.collection = originalCollection;
       }
     }),
   );

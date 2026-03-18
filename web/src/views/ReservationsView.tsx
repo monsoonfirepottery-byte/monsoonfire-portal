@@ -407,15 +407,15 @@ function formatStorageBillingSummary(record: ReservationRecord): string | null {
       ? Math.max(1, Math.round(prepaidStorageWeeksRaw))
       : PREPAID_STORAGE_INCLUDED_WEEKS;
     return record.addOns?.prepaidStorageRequested
-      ? `Covered storage ends ${formatDateTime(graceEndsAt)} · prepaid up to ${prepaidStorageWeeksLabel} weeks · then ${formatUsd(STORAGE_BILLING_DAILY_RATE_PER_HALF_SHELF)} per half-shelf per day`
-      : `Grace ends ${formatDateTime(graceEndsAt)} · then ${formatUsd(STORAGE_BILLING_DAILY_RATE_PER_HALF_SHELF)} per half-shelf per day`;
+      ? `Covered until ${formatDateTime(graceEndsAt)} · prepaid ${prepaidStorageWeeksLabel} weeks · then ${formatUsd(STORAGE_BILLING_DAILY_RATE_PER_HALF_SHELF)} / half-shelf / day`
+      : `Grace ends ${formatDateTime(graceEndsAt)} · then ${formatUsd(STORAGE_BILLING_DAILY_RATE_PER_HALF_SHELF)} / half-shelf / day`;
   }
   if (record.addOns?.prepaidStorageRequested) {
     const prepaidStorageWeeksRaw = Number(record.addOns?.prepaidStorageWeeks);
     const prepaidStorageWeeksLabel = Number.isFinite(prepaidStorageWeeksRaw)
       ? Math.max(1, Math.round(prepaidStorageWeeksRaw))
       : PREPAID_STORAGE_INCLUDED_WEEKS;
-    return `Covered storage starts at pickup-ready and lasts up to ${prepaidStorageWeeksLabel} weeks.`;
+    return `Covered storage lasts up to ${prepaidStorageWeeksLabel} weeks from pickup-ready.`;
   }
   return `Grace window starts at pickup-ready and lasts 2.75 weeks.`;
 }
@@ -3687,7 +3687,7 @@ export default function ReservationsView({
                       ) : null}
                       {prepaidStorageRequested ? (
                         <div className="estimate-line">
-                          <span>Covered storage hold (up to {prepaidStorageWeeksClamped} weeks)</span>
+                          <span>Covered storage (up to {prepaidStorageWeeksClamped} weeks)</span>
                           <span>{formatUsd(prepaidStorageCost)}</span>
                         </div>
                       ) : null}
@@ -3855,10 +3855,9 @@ export default function ReservationsView({
                     <span className="addon-text">
                       <span className="addon-title">Need extra pickup time?</span>
                       <span className="addon-copy">
-                        Flat {formatUsd(PREPAID_STORAGE_FLAT_PRICE)} covers up to {prepaidStorageWeeksClamped} weeks
-                        of storage from pickup-ready. After that, storage switches to{" "}
-                        {formatUsd(STORAGE_BILLING_DAILY_RATE_PER_HALF_SHELF)} per half-shelf per day for up to 4
-                        more weeks, then unclaimed work is reclaimed by the studio.
+                        Flat {formatUsd(PREPAID_STORAGE_FLAT_PRICE)} covers {prepaidStorageWeeksClamped} weeks after
+                        pickup-ready. Then it's {formatUsd(STORAGE_BILLING_DAILY_RATE_PER_HALF_SHELF)} per
+                        half-shelf per day for up to 4 more weeks before reclamation.
                       </span>
                     </span>
                     <span className="addon-tag">{formatUsd(PREPAID_STORAGE_FLAT_PRICE)} flat</span>
@@ -4817,7 +4816,7 @@ export default function ReservationsView({
                       ) : null}
                       {reservation.addOns?.prepaidStorageRequested ? (
                         <span className="reservation-addon-pill">
-                          Storage: prepaid hold up to {prepaidStorageWeeksLabel} week
+                          Storage: prepaid {prepaidStorageWeeksLabel} week
                           {prepaidStorageWeeksLabel === 1 ? "" : "s"}
                         </span>
                       ) : null}

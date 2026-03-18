@@ -2492,8 +2492,22 @@ test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery f
 
   await withMockedRateLimit(async () =>
     withMockFirestore(state, async () => {
-      const originalCollection = (shared.db as any).collection;
-      const failingCollectionQuery = {
+      const db = shared.db as unknown as {
+        collection: (path: string) => {
+          add: (value: Record<string, unknown>) => Promise<{ id: string }>;
+          doc: (id?: string) => {
+            id: string;
+            __mfCollection: string;
+            __mfDocId: string;
+          };
+          where: (..._args: unknown[]) => MockQuery;
+          orderBy: (..._args: unknown[]) => MockQuery;
+          limit: (_limit: number) => MockQuery;
+          get: () => Promise<{ docs: MockSnapshot[]; empty: boolean }>;
+        };
+      };
+      const originalCollection = db.collection;
+      const failingCollectionQuery: MockQuery = {
         where: () => failingCollectionQuery,
         orderBy: () => failingCollectionQuery,
         limit: () => failingCollectionQuery,
@@ -2502,7 +2516,7 @@ test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery f
         },
         forEach: () => undefined,
       };
-      (shared.db as any).collection = (collectionName: string) => {
+      db.collection = (collectionName: string) => {
         if (collectionName !== "supportRequests") {
           return originalCollection(collectionName);
         }
@@ -2518,7 +2532,7 @@ test("handleApiV1 dispatches /v1/library.discovery.get with workshop discovery f
       try {
         await handleApiV1(request, response.res);
       } finally {
-        (shared.db as any).collection = originalCollection;
+        db.collection = originalCollection;
       }
     }),
   );
@@ -6658,7 +6672,7 @@ test("reservations.create accepts optional piece rows in request payload", async
   assert.equal(data.status, "REQUESTED");
 });
 
-test("reservations.create writes self-loaded kiln, glaze access, and per-half-shelf prepaid storage pricing", async () => {
+test("reservations.create writes self-loaded kiln, glaze access, and flat-fee prepaid storage pricing", async () => {
   const state: MockDbState = {};
   const response = await invokeApiV1Route(
     state,
@@ -6696,8 +6710,8 @@ test("reservations.create writes self-loaded kiln, glaze access, and per-half-sh
   assert.equal(addOns.selfLoadedKilnRequested, true);
   assert.equal(addOns.selfLoadedKilnCost, 15);
   assert.equal(addOns.prepaidStorageRequested, true);
-  assert.equal(addOns.prepaidStorageWeeks, 2);
-  assert.equal(addOns.prepaidStorageCost, 12);
+  assert.equal(addOns.prepaidStorageWeeks, 4);
+  assert.equal(addOns.prepaidStorageCost, 15);
   assert.equal("fragileHandlingRequested" in addOns, false);
   assert.equal(storageBilling.chargeBasis, "estimatedHalfShelves");
   assert.equal(storageBilling.chargeBasisHalfShelves, 3);

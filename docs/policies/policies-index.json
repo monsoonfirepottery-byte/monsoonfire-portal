@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-17T22:09:36.622Z",
+  "generatedAt": "2026-03-17T23:54:56.546Z",
   "policies": [
     {
       "slug": "accessibility",
@@ -293,7 +293,7 @@
     {
       "slug": "storage-abandoned-work",
       "title": "Storage limits & abandoned work",
-      "summary": "Pickup-ready work gets 2.75 weeks of grace, optional prepaid storage at $2 per half-shelf per week, billed storage at $1.50 per half-shelf per day, and studio reclamation after 28 billed days.",
+      "summary": "Pickup-ready work gets 2.75 weeks of grace by default, optional prepaid storage at $15 flat for up to 4 weeks total from pickup-ready, billed storage at $1.50 per half-shelf per day, and studio reclamation after 28 billed days.",
       "status": "active",
       "tags": [
         "storage",
@@ -310,8 +310,8 @@
         "decisionDomain": "Pickup-ready reminders, prepaid storage quotes, billed storage escalation, and studio reclamation.",
         "defaultActions": [
           "confirm the pickup-ready date and current storage timeline",
-          "quote prepaid weekly storage and billed daily storage using half-shelf equivalents",
-          "share the grace-end, billing-end, and reclamation dates before promising exceptions"
+          "quote the flat prepaid storage hold and billed daily storage using half-shelf equivalents",
+          "share the covered-storage end, billing-end, and reclamation dates before promising exceptions"
         ],
         "requiredSignals": [
           "readyForPickupAt",
@@ -324,7 +324,7 @@
           "legal or operations review is requested for abandoned work handling",
           "staff wants to grant an exception after billed storage has started or reclamation has occurred"
         ],
-        "replyTemplate": "Share the pickup-ready date, grace-end date, current storage fees, and reclamation date before quoting next steps."
+        "replyTemplate": "Share the pickup-ready date, covered-storage end date, current storage fees, and reclamation date before quoting next steps."
       }
     },
     {

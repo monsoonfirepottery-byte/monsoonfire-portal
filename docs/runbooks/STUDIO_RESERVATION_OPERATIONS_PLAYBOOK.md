@@ -83,8 +83,8 @@ When ready for pickup:
 
 Storage escalation:
 1. Mention the exact pickup-ready date and the current storage status (`active`, `reminder_pending`, `hold_pending`, or reclaimed).
-2. Share the grace-end date, current billed-storage amount if any, and the reclamation date.
-3. Explain that prepaid storage is cheaper than post-grace daily storage.
+2. Share the covered-storage end date, current billed-storage amount if any, and the reclamation date.
+3. Explain that prepaid storage is a flat `$15` hold before post-hold daily storage begins.
 4. Provide the next collection path or escalation path.
 
 ## Storage and reclamation workflow
@@ -94,10 +94,11 @@ Storage escalation:
    - reminders go out at day `14`, day `17.5`, and day `19.25`.
 3. Prepaid extra pickup time:
    - can be sold before billed storage begins,
-   - price is `$2 per half-shelf per week`,
-   - use the reservation's estimated half-shelf count as the charge basis.
+   - price is `$15` flat,
+   - covers up to `4 weeks total` from the pickup-ready timestamp,
+   - shifts the later reminder cutoffs to the longer covered-storage window.
 4. Billed storage:
-   - begins automatically at the end of grace,
+   - begins automatically at the end of the covered-storage window,
    - costs `$1.50 per half-shelf per day`,
    - accrues only after each fully elapsed 24-hour period,
    - caps at `28 billed days`.

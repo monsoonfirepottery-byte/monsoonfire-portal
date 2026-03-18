@@ -7,7 +7,7 @@ effectiveDate: "2026-03-17"
 reviewDate: "2026-09-17"
 owner: "Studio Operations"
 sourceUrl: "/policies/storage-abandoned-work/"
-summary: "Pickup-ready work gets 2.75 weeks of grace, optional prepaid storage at $2 per half-shelf per week, billed storage at $1.50 per half-shelf per day, and studio reclamation after 28 billed days."
+summary: "Pickup-ready work gets 2.75 weeks of grace by default, optional prepaid storage at $15 flat for up to 4 weeks total from pickup-ready, billed storage at $1.50 per half-shelf per day, and studio reclamation after 28 billed days."
 tags:
   - "storage"
   - "pickup"
@@ -18,8 +18,8 @@ agent:
   decisionDomain: "Pickup-ready reminders, prepaid storage quotes, billed storage escalation, and studio reclamation."
   defaultActions:
     - "confirm the pickup-ready date and current storage timeline"
-    - "quote prepaid weekly storage and billed daily storage using half-shelf equivalents"
-    - "share the grace-end, billing-end, and reclamation dates before promising exceptions"
+    - "quote the flat prepaid storage hold and billed daily storage using half-shelf equivalents"
+    - "share the covered-storage end, billing-end, and reclamation dates before promising exceptions"
   requiredSignals:
     - "readyForPickupAt"
     - "estimatedHalfShelves or storageBilling.chargeBasisHalfShelves"
@@ -29,7 +29,7 @@ agent:
     - "artist disputes reclamation, ownership transfer, or notice history"
     - "legal or operations review is requested for abandoned work handling"
     - "staff wants to grant an exception after billed storage has started or reclamation has occurred"
-  replyTemplate: "Share the pickup-ready date, grace-end date, current storage fees, and reclamation date before quoting next steps."
+  replyTemplate: "Share the pickup-ready date, covered-storage end date, current storage fees, and reclamation date before quoting next steps."
 ---
 
 ## Purpose
@@ -51,8 +51,11 @@ artist has been notified it is ready.
   - `17.5 days`
   - `19.25 days` (final grace-period reminder)
 - Artists may prepay extra pickup time before billed storage starts. Prepaid storage is
-  charged at `$2 per half-shelf per week`, based on the reservation's half-shelf estimate.
-- Once grace ends, billed storage begins automatically at `$1.50 per half-shelf per day`.
+  charged at `$15 flat` and covers up to `4 weeks total from pickup-ready`.
+- When prepaid storage is purchased, the portal extends the covered-storage cutoff to the
+  `4-week` mark and shifts later reminder thresholds to match the longer hold window.
+- Once the covered storage window ends, billed storage begins automatically at
+  `$1.50 per half-shelf per day`.
   Billing accrues only for each fully elapsed 24-hour day.
 - Billed storage is capped at `28 billed days`.
 - Missing a confirmed pickup window does not pause, reset, or shorten the grace or billed
@@ -79,7 +82,7 @@ artist has been notified it is ready.
 - `storageBilling` tracks:
   - `chargeBasis = "estimatedHalfShelves"`
   - `chargeBasisHalfShelves`
-  - `prepaidWeeklyRatePerHalfShelf = 2`
+  - `prepaidWeeklyRatePerHalfShelf = 2` (legacy compatibility field)
   - `dailyRatePerHalfShelf = 1.5`
   - `graceEndsAt`, `billingStartsAt`, `billingEndsAt`
   - `billedDays`, `accruedCost`
@@ -119,7 +122,7 @@ operations approval.
 Support should confirm:
 
 - the exact `readyForPickupAt` date/time
-- the grace-end date and billed-storage end date
+- the covered-storage end date and billed-storage end date
 - whether prepaid storage was purchased
 - the current accrued billed storage amount, if any
 - whether the reservation has already been reclaimed by studio policy

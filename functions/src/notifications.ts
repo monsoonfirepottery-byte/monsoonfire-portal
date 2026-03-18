@@ -21,12 +21,18 @@ const RESERVATION_STORAGE_REMINDER_SCHEDULE_MS = [
 const RESERVATION_STORAGE_GRACE_MS = 462 * 60 * 60 * 1000;
 const RESERVATION_STORAGE_BILLING_DAY_MS = 24 * 60 * 60 * 1000;
 const RESERVATION_STORAGE_BILLING_MAX_DAYS = 28;
+const RESERVATION_STORAGE_PREPAID_INCLUDED_WEEKS = 4;
 const RESERVATION_STORAGE_STORED_BY_POLICY_MS =
   RESERVATION_STORAGE_GRACE_MS +
   RESERVATION_STORAGE_BILLING_DAY_MS * RESERVATION_STORAGE_BILLING_MAX_DAYS;
 const RESERVATION_STORAGE_PREPAID_WEEKLY_RATE_PER_HALF_SHELF = 2;
 const RESERVATION_STORAGE_DAILY_RATE_PER_HALF_SHELF = 1.5;
 const RESERVATION_STORAGE_HISTORY_MAX = 60;
+const RESERVATION_STORAGE_BILLING_WINDOW_MS =
+  RESERVATION_STORAGE_BILLING_DAY_MS * RESERVATION_STORAGE_BILLING_MAX_DAYS;
+const RESERVATION_STORAGE_REMINDER_SCHEDULE_RATIOS = RESERVATION_STORAGE_REMINDER_SCHEDULE_MS.map(
+  (threshold) => threshold / RESERVATION_STORAGE_GRACE_MS
+);
 
 type ReservationStorageStatus = "active" | "reminder_pending" | "hold_pending" | "stored_by_policy";
 type ReservationStorageBillingStatus = "grace" | "billing" | "reclaimed";
@@ -604,6 +610,11 @@ type ReservationStorageBillingSnapshot = {
   reclaimedReason: string | null;
 };
 
+type ReservationStoragePolicySnapshot = {
+  prepaidStorageRequested: boolean;
+  prepaidStorageWeeks: number | null;
+};
+
 type ReservationNotificationSnapshot = {
   ownerUid: string;
   status: string | null;
@@ -615,6 +626,7 @@ type ReservationNotificationSnapshot = {
   stageNotes: string | null;
   staffNotes: string | null;
   estimatedHalfShelves: number;
+  storagePolicy: ReservationStoragePolicySnapshot;
   storageStatus: ReservationStorageStatus | null;
   readyForPickupAt: Timestamp | null;
   pickupReminderCount: number;
@@ -626,6 +638,14 @@ type ReservationNotificationSnapshot = {
   isArchived: boolean;
   archivedAt: Timestamp | null;
   pickupWindow: ReservationPickupWindowSnapshot;
+};
+
+type ReservationStoragePolicy = {
+  prepaidStorageRequested: boolean;
+  prepaidStorageWeeks: number | null;
+  coveredStorageMs: number;
+  reminderScheduleMs: number[];
+  storedByPolicyMs: number;
 };
 
 type ReservationNotificationRouting = {
@@ -862,21 +882,53 @@ function normalizeStorageBilling(
   };
 }
 
+function normalizePrepaidStorageWeeks(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Math.max(1, Math.round(value));
+}
+
+function resolveReservationStoragePolicy(
+  input: ReservationStoragePolicySnapshot | null | undefined
+): ReservationStoragePolicy {
+  const prepaidStorageRequested = input?.prepaidStorageRequested === true;
+  const prepaidStorageWeeks = prepaidStorageRequested
+    ? normalizePrepaidStorageWeeks(input?.prepaidStorageWeeks) ??
+      RESERVATION_STORAGE_PREPAID_INCLUDED_WEEKS
+    : null;
+  const prepaidStorageWindowMs =
+    prepaidStorageWeeks != null
+      ? prepaidStorageWeeks * 7 * RESERVATION_STORAGE_BILLING_DAY_MS
+      : 0;
+  const coveredStorageMs = prepaidStorageRequested
+    ? Math.max(RESERVATION_STORAGE_GRACE_MS, prepaidStorageWindowMs)
+    : RESERVATION_STORAGE_GRACE_MS;
+  const reminderScheduleMs = RESERVATION_STORAGE_REMINDER_SCHEDULE_RATIOS.map((ratio, index) => {
+    if (index === RESERVATION_STORAGE_REMINDER_SCHEDULE_RATIOS.length - 1) return coveredStorageMs;
+    return Math.min(coveredStorageMs, Math.round(coveredStorageMs * ratio));
+  });
+
+  return {
+    prepaidStorageRequested,
+    prepaidStorageWeeks,
+    coveredStorageMs,
+    reminderScheduleMs,
+    storedByPolicyMs: coveredStorageMs + RESERVATION_STORAGE_BILLING_WINDOW_MS,
+  };
+}
+
 function timestampFromMillis(ms: number): Timestamp {
   return Timestamp.fromMillis(ms);
 }
 
 function baselineStorageBilling(
   readyForPickupAt: Timestamp,
-  chargeBasisHalfShelves: number
+  chargeBasisHalfShelves: number,
+  storagePolicy: ReservationStoragePolicy
 ): ReservationStorageBillingSnapshot {
   const readyMs = readyForPickupAt.toMillis();
-  const graceEndsAt = timestampFromMillis(readyMs + RESERVATION_STORAGE_GRACE_MS);
+  const graceEndsAt = timestampFromMillis(readyMs + storagePolicy.coveredStorageMs);
   const billingStartsAt = graceEndsAt;
-  const billingEndsAt = timestampFromMillis(
-    billingStartsAt.toMillis() +
-      RESERVATION_STORAGE_BILLING_DAY_MS * RESERVATION_STORAGE_BILLING_MAX_DAYS
-  );
+  const billingEndsAt = timestampFromMillis(billingStartsAt.toMillis() + RESERVATION_STORAGE_BILLING_WINDOW_MS);
 
   return {
     chargeBasis: "estimatedHalfShelves",
@@ -899,8 +951,14 @@ export function computeReservationStorageBilling(params: {
   readyForPickupAt: Timestamp;
   chargeBasisHalfShelves: number;
   now: Timestamp;
+  storagePolicy?: ReservationStoragePolicySnapshot | null;
 }): ReservationStorageBillingSnapshot {
-  const base = baselineStorageBilling(params.readyForPickupAt, params.chargeBasisHalfShelves);
+  const storagePolicy = resolveReservationStoragePolicy(params.storagePolicy);
+  const base = baselineStorageBilling(
+    params.readyForPickupAt,
+    params.chargeBasisHalfShelves,
+    storagePolicy
+  );
   const existing = params.existing;
   const billingStartsAt = base.billingStartsAt ?? params.readyForPickupAt;
   const billingEndsAt = base.billingEndsAt ?? params.readyForPickupAt;
@@ -968,6 +1026,9 @@ function parseReservationSnapshot(value: Record<string, unknown> | undefined): R
   const pickupWindow = asRecord(value?.pickupWindow)
     ? (value.pickupWindow as Record<string, unknown>)
     : {};
+  const addOns = asRecord(value?.addOns)
+    ? (value.addOns as Record<string, unknown>)
+    : {};
   const estimatedHalfShelves = Math.max(0, normalizeNonNegativeNumber(value?.estimatedHalfShelves, 0));
 
   return {
@@ -987,6 +1048,10 @@ function parseReservationSnapshot(value: Record<string, unknown> | undefined): R
     stageNotes: safeString(stageStatus.notes).trim() || null,
     staffNotes: safeString(value?.staffNotes).trim() || null,
     estimatedHalfShelves,
+    storagePolicy: {
+      prepaidStorageRequested: addOns.prepaidStorageRequested === true,
+      prepaidStorageWeeks: normalizePrepaidStorageWeeks(addOns.prepaidStorageWeeks),
+    },
     storageStatus: normalizeReservationStorageStatusValue(value?.storageStatus),
     readyForPickupAt: parseTimestampValue(value?.readyForPickupAt),
     pickupReminderCount: normalizeReminderCount(value?.pickupReminderCount),
@@ -1020,10 +1085,17 @@ function currentStorageStatus(snapshot: ReservationNotificationSnapshot): Reserv
 export function storageStatusForElapsed(params: {
   elapsedMs: number;
   reminderCount: number;
+  coveredStorageMs?: number;
+  storedByPolicyMs?: number;
 }): ReservationStorageStatus {
   const elapsedMs = Math.max(0, params.elapsedMs);
-  if (elapsedMs >= RESERVATION_STORAGE_STORED_BY_POLICY_MS) return "stored_by_policy";
-  if (elapsedMs >= RESERVATION_STORAGE_GRACE_MS) return "hold_pending";
+  const coveredStorageMs = Math.max(0, params.coveredStorageMs ?? RESERVATION_STORAGE_GRACE_MS);
+  const storedByPolicyMs = Math.max(
+    coveredStorageMs,
+    params.storedByPolicyMs ?? RESERVATION_STORAGE_STORED_BY_POLICY_MS
+  );
+  if (elapsedMs >= storedByPolicyMs) return "stored_by_policy";
+  if (elapsedMs >= coveredStorageMs) return "hold_pending";
   if (params.reminderCount > 0) return "reminder_pending";
   return "active";
 }
@@ -1031,19 +1103,27 @@ export function storageStatusForElapsed(params: {
 export function nextDueReminderOrdinal(params: {
   elapsedMs: number;
   currentCount: number;
+  reminderScheduleMs?: readonly number[];
 }): number | null {
+  const schedule = params.reminderScheduleMs ?? RESERVATION_STORAGE_REMINDER_SCHEDULE_MS;
   const nextOrdinal = Math.max(1, params.currentCount + 1);
-  if (nextOrdinal > RESERVATION_STORAGE_REMINDER_SCHEDULE_MS.length) return null;
-  const thresholdMs = RESERVATION_STORAGE_REMINDER_SCHEDULE_MS[nextOrdinal - 1];
+  if (nextOrdinal > schedule.length) return null;
+  const thresholdMs = schedule[nextOrdinal - 1];
   if (params.elapsedMs < thresholdMs) return null;
   return nextOrdinal;
 }
 
-function storagePolicyWindowLabel(reminderOrdinal: number): string {
+function storagePolicyWindowLabel(
+  reminderOrdinal: number,
+  storagePolicy: ReservationStoragePolicy
+): string {
   const nextThreshold =
-    RESERVATION_STORAGE_REMINDER_SCHEDULE_MS[reminderOrdinal] ?? RESERVATION_STORAGE_GRACE_MS;
+    storagePolicy.reminderScheduleMs[reminderOrdinal] ?? storagePolicy.coveredStorageMs;
   const nextHours = Math.round(nextThreshold / (60 * 60 * 1000));
   if (reminderOrdinal >= 3) {
+    if (storagePolicy.prepaidStorageRequested && storagePolicy.prepaidStorageWeeks) {
+      return `Final covered-storage reminder. Billable storage begins at the ${storagePolicy.prepaidStorageWeeks}-week pickup-ready cutoff if pickup is still pending.`;
+    }
     return "Final grace-period reminder. Billable storage begins at the 19.25-day cutoff if pickup is still pending.";
   }
   return `Next storage policy checkpoint is around ${nextHours} hours after pickup-ready status.`;
@@ -1631,6 +1711,7 @@ export const onReservationLifecycleUpdated = onDocumentWritten(
         "Reservation load is complete and ready for pickup planning."
       );
       const readyForPickupAt = after.readyForPickupAt ?? after.updatedAt ?? nowTs();
+      const storagePolicy = resolveReservationStoragePolicy(after.storagePolicy);
       await enqueueReservationNotificationJob({
         uid,
         type: "RESERVATION_READY_PICKUP",
@@ -1649,8 +1730,7 @@ export const onReservationLifecycleUpdated = onDocumentWritten(
           previousStorageStatus: currentStorageStatus(before),
           reminderCount: 0,
           readyForPickupAtIso: tsIso(readyForPickupAt),
-          policyWindowLabel:
-            "Pickup-ready notice sent. Grace runs for 2.75 weeks, then billed storage begins at $1.50 per half-shelf per day for up to 28 days.",
+          policyWindowLabel: pickupReadyPolicyWindowLabel(storagePolicy),
           estimateWindowLabel,
           suggestedNextUpdateAtIso: null,
           previousWindowStartIso,
@@ -1682,6 +1762,7 @@ export const onReservationLifecycleUpdated = onDocumentWritten(
             computeReservationStorageBilling({
               existing: after.storageBilling,
               readyForPickupAt,
+              storagePolicy: after.storagePolicy,
               chargeBasisHalfShelves:
                 after.storageBilling?.chargeBasisHalfShelves && after.storageBilling.chargeBasisHalfShelves > 0
                   ? after.storageBilling.chargeBasisHalfShelves
@@ -3155,12 +3236,57 @@ export const processQueuedNotificationJobs = onSchedule(
   }
 );
 
-function pickupReminderReason(reminderOrdinal: number): string {
+function pickupReadyPolicyWindowLabel(storagePolicy: ReservationStoragePolicy): string {
+  if (storagePolicy.prepaidStorageRequested && storagePolicy.prepaidStorageWeeks) {
+    return `Pickup-ready notice sent. Prepaid storage covers ${storagePolicy.prepaidStorageWeeks} weeks from pickup-ready, then billed storage begins at $${RESERVATION_STORAGE_DAILY_RATE_PER_HALF_SHELF.toFixed(2)} per half-shelf per day for up to 28 days.`;
+  }
+  return "Pickup-ready notice sent. Grace runs for 2.75 weeks, then billed storage begins at $1.50 per half-shelf per day for up to 28 days.";
+}
+
+function pickupWindowMissedPolicyLabel(storagePolicy: ReservationStoragePolicy): string {
+  if (storagePolicy.prepaidStorageRequested && storagePolicy.prepaidStorageWeeks) {
+    return `Pickup window missed. Billing still begins after the ${storagePolicy.prepaidStorageWeeks}-week prepaid storage window, and the studio reclaims unclaimed work after 28 billed days.`;
+  }
+  return "Pickup window missed. Billing still begins after the 19.25-day grace period, and the studio reclaims unclaimed work after 28 billed days.";
+}
+
+function storageStatusTransitionDetail(
+  policyStatus: ReservationStorageStatus,
+  storagePolicy: ReservationStoragePolicy
+): string {
+  if (policyStatus === "stored_by_policy") {
+    if (storagePolicy.prepaidStorageRequested && storagePolicy.prepaidStorageWeeks) {
+      return `Reservation exhausted the ${storagePolicy.prepaidStorageWeeks}-week prepaid storage window and 28 billed storage days. The studio has reclaimed the work.`;
+    }
+    return "Reservation exhausted the 2.75-week grace period and 28 billed storage days. The studio has reclaimed the work.";
+  }
+  if (policyStatus === "hold_pending") {
+    return `Covered pickup time ended. Reservation is now in billed storage at $${RESERVATION_STORAGE_DAILY_RATE_PER_HALF_SHELF.toFixed(2)} per half-shelf per day.`;
+  }
+  if (policyStatus === "reminder_pending") {
+    return "Reservation entered the late pickup reminder window.";
+  }
+  return "Reservation storage status returned to active.";
+}
+
+function pickupReminderReason(
+  reminderOrdinal: number,
+  storagePolicy: ReservationStoragePolicy
+): string {
   if (reminderOrdinal >= 3) {
+    if (storagePolicy.prepaidStorageRequested && storagePolicy.prepaidStorageWeeks) {
+      return `Final pickup reminder: your prepaid storage ends at the ${storagePolicy.prepaidStorageWeeks}-week pickup-ready cutoff, and billable storage starts after that.`;
+    }
     return "Final pickup reminder: grace ends soon, and billable storage starts after the 19.25-day pickup-ready cutoff.";
   }
   if (reminderOrdinal === 2) {
+    if (storagePolicy.prepaidStorageRequested) {
+      return "Second pickup reminder: your prepaid storage hold is active, but billable storage is getting closer.";
+    }
     return "Second pickup reminder: your reservation is still in the grace window, but storage fees are getting closer.";
+  }
+  if (storagePolicy.prepaidStorageRequested) {
+    return "Pickup reminder: your reservation has been ready for pickup for a while and is still inside the prepaid storage window.";
   }
   return "Pickup reminder: your reservation has been ready for pickup for two weeks.";
 }
@@ -3204,6 +3330,7 @@ export async function runReservationStorageHoldEvaluation(currentNow: Timestamp 
       updates.readyForPickupAt = readyAnchor;
     }
 
+    const storagePolicy = resolveReservationStoragePolicy(reservation.storagePolicy);
     const chargeBasisHalfShelves =
       reservation.storageBilling?.chargeBasisHalfShelves && reservation.storageBilling.chargeBasisHalfShelves > 0
         ? reservation.storageBilling.chargeBasisHalfShelves
@@ -3212,6 +3339,7 @@ export async function runReservationStorageHoldEvaluation(currentNow: Timestamp 
     const nextStorageBilling = computeReservationStorageBilling({
       existing: existingBilling,
       readyForPickupAt: readyAnchor,
+      storagePolicy: reservation.storagePolicy,
       chargeBasisHalfShelves,
       now,
     });
@@ -3271,8 +3399,7 @@ export async function runReservationStorageHoldEvaluation(currentNow: Timestamp 
           previousStorageStatus,
           reminderCount: nextReminderCount,
           readyForPickupAtIso: tsIso(readyAnchor),
-          policyWindowLabel:
-            "Pickup window missed. Billing still begins after the 19.25-day grace period, and the studio reclaims unclaimed work after 28 billed days.",
+          policyWindowLabel: pickupWindowMissedPolicyLabel(storagePolicy),
           suggestedNextUpdateAtIso: null,
         },
       });
@@ -3282,10 +3409,11 @@ export async function runReservationStorageHoldEvaluation(currentNow: Timestamp 
     const dueReminderOrdinal = nextDueReminderOrdinal({
       elapsedMs,
       currentCount: reservation.pickupReminderCount,
+      reminderScheduleMs: storagePolicy.reminderScheduleMs,
     });
 
     if (dueReminderOrdinal && !autoMissApplied) {
-      const reason = pickupReminderReason(dueReminderOrdinal);
+      const reason = pickupReminderReason(dueReminderOrdinal, storagePolicy);
       const routing = await readReservationRouting(uid);
       const reminderStatus: ReservationStorageStatus = "reminder_pending";
       await enqueueReservationNotificationJob({
@@ -3305,7 +3433,7 @@ export async function runReservationStorageHoldEvaluation(currentNow: Timestamp 
           reminderOrdinal: dueReminderOrdinal,
           reminderCount: dueReminderOrdinal,
           readyForPickupAtIso: tsIso(readyAnchor),
-          policyWindowLabel: storagePolicyWindowLabel(dueReminderOrdinal),
+          policyWindowLabel: storagePolicyWindowLabel(dueReminderOrdinal, storagePolicy),
           suggestedNextUpdateAtIso: null,
         },
       });
@@ -3340,20 +3468,15 @@ export async function runReservationStorageHoldEvaluation(currentNow: Timestamp 
     const policyStatus = storageStatusForElapsed({
       elapsedMs,
       reminderCount: nextReminderCount,
+      coveredStorageMs: storagePolicy.coveredStorageMs,
+      storedByPolicyMs: storagePolicy.storedByPolicyMs,
     });
     if (policyStatus !== nextStorageStatus) {
       const fromStatus = nextStorageStatus;
       nextStorageStatus = policyStatus;
       updates.storageStatus = policyStatus;
       statusTransitions += 1;
-      const transitionDetail =
-        policyStatus === "stored_by_policy"
-          ? "Reservation exhausted the 2.75-week grace period and 28 billed storage days. The studio has reclaimed the work."
-          : policyStatus === "hold_pending"
-            ? `Grace ended. Reservation is now in billed storage at $${RESERVATION_STORAGE_DAILY_RATE_PER_HALF_SHELF.toFixed(2)} per half-shelf per day.`
-            : policyStatus === "reminder_pending"
-              ? "Reservation entered the late-grace reminder window."
-              : "Reservation storage status returned to active.";
+      const transitionDetail = storageStatusTransitionDetail(policyStatus, storagePolicy);
       nextHistory = pushStorageNotice(nextHistory, {
         at: now,
         kind: policyStatus,

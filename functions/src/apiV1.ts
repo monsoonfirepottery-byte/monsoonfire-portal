@@ -1411,6 +1411,8 @@ const RESERVATION_QUEUE_FAIRNESS_POLICY_VERSION = "2026-02-24.v1";
 const RESERVATION_QUEUE_FAIRNESS_NO_SHOW_PENALTY = 2;
 const RESERVATION_QUEUE_FAIRNESS_LATE_PENALTY = 1;
 const RESERVATION_CONTINUITY_EXPORT_SCHEMA_VERSION = "2026-02-24.v1";
+const RESERVATION_STORAGE_PREPAID_FLAT_FEE = 15;
+const RESERVATION_STORAGE_PREPAID_INCLUDED_WEEKS = 4;
 const RESERVATION_STORAGE_PREPAID_WEEKLY_RATE_PER_HALF_SHELF = 2;
 const RESERVATION_STORAGE_DAILY_RATE_PER_HALF_SHELF = 1.5;
 
@@ -5369,7 +5371,8 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       const studioGlazeAccessRatePerHalfShelf = 5;
       const selfLoadedKilnFlatCost = 15;
       const placementPreferenceFlatCost = 3;
-      const prepaidStorageWeeklyCostPerHalfShelf = RESERVATION_STORAGE_PREPAID_WEEKLY_RATE_PER_HALF_SHELF;
+      const prepaidStorageFlatCost = RESERVATION_STORAGE_PREPAID_FLAT_FEE;
+      const prepaidStorageIncludedWeeks = RESERVATION_STORAGE_PREPAID_INCLUDED_WEEKS;
       const placementPreferenceZoneInput = addOnsInput.placementPreferenceZone;
       const placementPreferenceZone =
         placementPreferenceZoneInput === "top" ||
@@ -5380,9 +5383,6 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
       const selfLoadedKilnRequested =
         !isCommunityShelf &&
         (addOnsInput.selfLoadedKilnRequested === true || addOnsInput.fragileHandlingRequested === true);
-      const prepaidStorageWeeksInput = normalizeNumber(addOnsInput.prepaidStorageWeeks, 1);
-      const prepaidStorageWeeks =
-        prepaidStorageWeeksInput != null ? clampNumber(Math.round(prepaidStorageWeeksInput), 1, 12) : 1;
       const addOns = {
         rushRequested: !isCommunityShelf && addOnsInput.rushRequested === true,
         wholeKilnRequested: intakeMode === "WHOLE_KILN",
@@ -5413,14 +5413,12 @@ export async function handleApiV1(req: RequestLike, res: ResponseLike) {
         prepaidStorageRequested: !isCommunityShelf && addOnsInput.prepaidStorageRequested === true,
         prepaidStorageWeeks:
           !isCommunityShelf && addOnsInput.prepaidStorageRequested === true
-            ? prepaidStorageWeeks
+            ? prepaidStorageIncludedWeeks
             : null,
         prepaidStorageCost:
           !isCommunityShelf &&
-          addOnsInput.prepaidStorageRequested === true &&
-          resolvedEstimatedHalfShelves &&
-          resolvedEstimatedHalfShelves > 0
-            ? prepaidStorageWeeks * resolvedEstimatedHalfShelves * prepaidStorageWeeklyCostPerHalfShelf
+          addOnsInput.prepaidStorageRequested === true
+            ? prepaidStorageFlatCost
             : null,
         deliveryAddress: trimOrNull(addOnsInput.deliveryAddress),
         deliveryInstructions: trimOrNull(addOnsInput.deliveryInstructions),

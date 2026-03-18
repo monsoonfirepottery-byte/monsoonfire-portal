@@ -99,7 +99,7 @@ Fields:
 - `storageBilling` (map | null) — server-computed storage billing timeline
   - `chargeBasis` (`estimatedHalfShelves`)
   - `chargeBasisHalfShelves` (number)
-  - `prepaidWeeklyRatePerHalfShelf` (number) — currently `2`
+  - `prepaidWeeklyRatePerHalfShelf` (number) — legacy compatibility field, currently `2`
   - `dailyRatePerHalfShelf` (number) — currently `1.5`
   - `graceEndsAt` (timestamp | null)
   - `billingStartsAt` (timestamp | null)
@@ -135,8 +135,8 @@ Fields:
     - `selfLoadedKilnRequested` (boolean)
     - `selfLoadedKilnCost` (number | null) — `$15` flat fee
     - `prepaidStorageRequested` (boolean)
-    - `prepaidStorageWeeks` (number | null)
-    - `prepaidStorageCost` (number | null) — `$2` per half-shelf per week
+    - `prepaidStorageWeeks` (number | null) — current writes pin this to `4`
+    - `prepaidStorageCost` (number | null) — `$15` flat fee
   - legacy `fragileHandlingRequested` / `fragileHandlingCost` may appear on older rows and
     should be normalized to `selfLoadedKiln*` at read time only. New writes should not persist
     the legacy field names.
@@ -164,10 +164,14 @@ Fields:
 
 - `readyForPickupAt` anchors the storage timeline.
 - Grace period: `462 hours` (`19.25 days`) after `readyForPickupAt`.
+- If `addOns.prepaidStorageRequested = true`, covered storage extends to the later of the
+  standard grace window or `prepaidStorageWeeks`.
 - Reminder thresholds:
   - day `14`
   - day `17.5`
   - day `19.25`
+- For prepaid storage holds, the portal keeps the three-step reminder pattern but shifts the
+  later reminder thresholds to the longer covered-storage window.
 - Billed storage:
   - starts at `graceEndsAt`
   - accrues for each fully elapsed 24-hour day
@@ -300,8 +304,8 @@ Fields:
     "selfLoadedKilnRequested": false,
     "selfLoadedKilnCost": null,
     "prepaidStorageRequested": true,
-    "prepaidStorageWeeks": 1,
-    "prepaidStorageCost": 4
+    "prepaidStorageWeeks": 4,
+    "prepaidStorageCost": 15
   },
   "linkedBatchId": "H3T5...",
   "createdAt": "2026-02-01T02:30:00Z",

@@ -3,6 +3,7 @@
 ## Current RC Refresh (2026-03-18)
 - Canonical launch-readiness entrypoint is [docs/RELEASE_COMMAND_CENTER.md](RELEASE_COMMAND_CENTER.md).
 - Portal and website are both live, and `main` currently has no open PRs.
+- RC exit remains a hard gate until notification reliability evidence, security rotation proof, and sign-off are all complete.
 - Current RC auth baseline is Google, Email/Password, Email Link, and Microsoft.
 - Facebook and Apple provider expansion are explicitly deferred from this RC unless business requirements change.
 - Feature-growth work outside deploy/cutover, auth readiness, smoke/promotion gates, accessibility guardrails, and analytics/policy parity is frozen out of this RC.
@@ -10,16 +11,15 @@
 ## Current blockers (2026-03-18)
 - Notification reliability evidence is still incomplete.
 - Security rotation proof is still incomplete.
-- Release sign-off fields below are still blank.
 
 ## Build + CI Evidence
-- [x] `Smoke Tests` workflow pass ([run 23259872136](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259872136))
-- [x] `Lighthouse Audit` workflow pass ([run 23259872137](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259872137))
+- [x] `Smoke Tests` workflow pass ([run 23268174209](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23268174209))
+- [x] `Lighthouse Audit` workflow pass ([run 23268174183](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23268174183))
 - [x] Local LHCI reproducibility pass (2026-02-22, sandbox-safe chrome flags)
   - portal: `npx @lhci/cli@0.15.1 collect --config=web/lighthouserc.json --settings.chromeFlags="--no-sandbox --disable-dev-shm-usage"` + assert
   - website: `npx @lhci/cli@0.15.1 collect --config=website/lighthouserc.json --settings.chromeFlags="--no-sandbox --disable-dev-shm-usage"` + assert
-- [x] `iOS macOS Smoke` workflow pass ([run 23259872190](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259872190))
-- [x] `ios-build-gate` workflow pass ([run 23259872139](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259872139))
+- [x] `iOS macOS Smoke` workflow pass ([run 23268174197](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23268174197))
+- [x] `ios-build-gate` workflow pass ([run 23268174202](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23268174202))
 - [x] `Android Compile Check` workflow pass ([run 23218840965](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23218840965))
 - [x] `Deploy to Firebase Hosting on merge` workflow pass ([run 23259872147](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259872147))
 - [x] `Portal Post-Deploy Promotion Gate` workflow pass ([run 23259950672](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/actions/runs/23259950672))
@@ -41,6 +41,8 @@
 - Local website production smoke required a temporary `STUDIO_BRAIN_INTEGRITY_OVERRIDE` because the smoke runner is coupled to an unrelated Studio Brain integrity manifest; the website behavior itself passed once the unrelated guard was bypassed.
 
 ## Notification Reliability Evidence
+- Owner: `monsoonfirepottery-byte` (`Micah` owner/operator by default until delegated)
+- Blocking close condition: every checkbox below is complete and backed by an artifact or run log before [#350](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/350) can close.
 - [ ] Retry/backoff verified for retryable classes (`provider_5xx`, `network`, `unknown`)
 - [ ] Dead-letter writes verified for exhausted/non-retryable failures
 - [ ] Push telemetry emits sent/partial/failed outcomes
@@ -50,6 +52,8 @@
 - [ ] Drill worksheet completed (`docs/DRILL_EXECUTION_LOG.md`)
 
 ## Observability Evidence
+- Owner: `monsoonfirepottery-byte` (`Micah` owner/operator by default until delegated)
+- Blocking close condition: the snapshot cadence, threshold review, and current counter values below are complete before [#350](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/350) can close.
 - [ ] `notificationMetrics/delivery_24h` snapshot updates every 30 minutes
 - [ ] Threshold checks reviewed against `docs/NOTIFICATION_ONCALL_RUNBOOK.md`
 - [ ] Current `statusCounts` / `reasonCounts` recorded below:
@@ -81,6 +85,8 @@ providerCounts:
   - `docs/STUDIO_OS_V3_EVIDENCE_PACK.md`
 
 ## Security + Secrets Evidence
+- Owner: `monsoonfirepottery-byte` (`Micah` owner/operator by default until delegated)
+- Blocking close condition: every item below is complete before [#349](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/349) can close.
 - [ ] `APNS_RELAY_KEY` configured in runtime environment for notification processors
 - [ ] Relay key rotation drill completed
 - [x] No plaintext secret values committed in repo docs/code (basic pattern scan; Firebase web `apiKey` is expected and not a secret)
@@ -115,10 +121,10 @@ rollback: Disable any failing provider in Firebase Auth and retain Google/email 
 ```
 
 ## Sign-off
-- Engineering lead:
-- Mobile lead:
-- Release manager:
-- Date:
+- Engineering lead: Micah (owner/operator; default until delegated)
+- Mobile lead: Micah (owner/operator; default until delegated)
+- Release manager: Micah (owner/operator; default until delegated)
+- Date: 2026-03-18
 
 ## Accessibility Changelog (Portal)
 - Accessibility fixes included in this release:

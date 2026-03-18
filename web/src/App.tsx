@@ -2241,6 +2241,7 @@ export default function App() {
             onOpenStudioResources={() => setNav("studioResources")}
             onOpenGlazeBoard={() => setNav("glazes")}
             onOpenCommunity={() => setNav("community")}
+            onOpenWorkshops={() => setNav("events")}
             onOpenMessages={() => setNav("messages")}
             onOpenPieces={openPieces}
           />

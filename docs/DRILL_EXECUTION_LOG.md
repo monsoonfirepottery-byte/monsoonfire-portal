@@ -135,6 +135,73 @@ notificationMetrics/delivery_24h: aggregation endpoint returned ok=true with pop
 
 ---
 
+## Run metadata
+```txt
+dateUtc: 2026-03-18T22:45:24Z
+executedBy: codex (approved by micah)
+baseUrl: https://us-central1-monsoonfire-portal.cloudfunctions.net
+uid: 6qU0XDdJ32e4PUFVvdBfQKuAF7u1
+idTokenSource: local admin service-account JSON outside repo + Firebase Identity Toolkit signInWithCustomToken for the dedicated staff UID
+adminTokenUsed: no
+```
+
+## Command used
+```shell
+node ./scripts/ps1-run.mjs scripts/run-notification-drills.ps1 \
+  -BaseUrl "https://us-central1-monsoonfire-portal.cloudfunctions.net" \
+  -IdToken "<REDACTED_ID_TOKEN>" \
+  -Uid "6qU0XDdJ32e4PUFVvdBfQKuAF7u1" \
+  -LogFile "output/qa/notification-drill-2026-03-18T22-45-24-279Z.jsonl" \
+  -OutputJson
+```
+
+## Captured outputs
+```txt
+runNotificationFailureDrill responses:
+- auth: 200 ok, job queued -> failed after attempt 1 -> dead-lettered
+- provider_4xx: 200 ok, job queued -> failed after attempt 1 -> dead-lettered
+- provider_5xx: 200 ok, job queued -> retried to attempt 5 after queue index remediation -> dead-lettered
+- network: 200 ok, job queued -> retried to attempt 5 after queue index remediation -> dead-lettered
+- success: 200 ok, job queued -> completed with sent telemetry
+- unknown (live runtime proof): seeded separately after the drill run -> failed with `APNS_RELAY_URL not configured` -> retried to attempt 5 -> dead-lettered
+
+runNotificationMetricsAggregationNow response:
+- 200 ok with totalAttempts=5
+- statusCounts={"sent":4,"failed":1}
+- reasonCounts={"DRILL_SUCCESS_SIMULATED":4,"APNS_RELAY_URL not configured":1}
+- providerCounts={"relay":5}
+```
+
+## Firestore checks
+```txt
+notificationJobs:
+- auth -> status=failed, attemptCount=1, lastErrorClass=auth
+- provider_4xx -> status=failed, attemptCount=1, lastErrorClass=provider_4xx
+- provider_5xx -> status=failed, attemptCount=5, lastErrorClass=provider_5xx
+- network -> status=failed, attemptCount=5, lastErrorClass=network
+- success -> status=done, attemptCount=1
+- unknown -> status=failed, attemptCount=5, lastErrorClass=unknown
+
+notificationJobDeadLetters:
+- auth, provider_4xx, provider_5xx, network, and unknown all present in the final drill bundle
+
+notificationDeliveryAttempts:
+- live production proof: sent (`DRILL_SUCCESS_SIMULATED`) and failed (`APNS_RELAY_URL not configured`) recorded
+- local relay-parity proof: `PUSH_PROVIDER_PARTIAL` recorded with provider code `BadDeviceToken`
+
+notificationMetrics/delivery_24h:
+- manual aggregation + scheduler describe confirmed the snapshot is updating and readable
+- final live counters recorded in docs/RELEASE_CANDIDATE_EVIDENCE.md
+```
+
+## Evidence handoff
+- Production drill bundle: `output/qa/notification-evidence-2026-03-18T22-45-24-279Z.json`
+- Production drill raw log: `output/qa/notification-drill-2026-03-18T22-45-24-279Z-raw.txt`
+- Production drill structured JSONL: `output/qa/notification-drill-2026-03-18T22-45-24-279Z.jsonl`
+- Local relay-parity proof: `output/qa/notification-partial-parity-local.json`
+
+---
+
 # Studio OS v3 Drill Execution Log
 
 Use this section for Studio Brain / Studio OS v3 safety drills.

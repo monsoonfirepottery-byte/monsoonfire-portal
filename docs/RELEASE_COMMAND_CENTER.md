@@ -1,6 +1,6 @@
 # Portal + Website Release Command Center
 
-Last reviewed: 2026-03-18 (RC exit hard-gate pass)
+Last reviewed: 2026-03-18 (notification evidence complete; security blocker remains)
 Operating mode: single release candidate consolidation
 
 ## Current posture
@@ -34,6 +34,11 @@ Operating mode: single release candidate consolidation
   - [output/playwright/prod/smoke-summary.json](../output/playwright/prod/smoke-summary.json)
   - Smoke currently passes after aligning the support-topic selector to the live `payments` taxonomy.
   - Local execution required a temporary `STUDIO_BRAIN_INTEGRITY_OVERRIDE` because the smoke runner is coupled to an unrelated Studio Brain integrity guard.
+- Notification reliability proof refreshed on 2026-03-18:
+  - [output/qa/notification-evidence-2026-03-18T22-45-24-279Z.json](../output/qa/notification-evidence-2026-03-18T22-45-24-279Z.json)
+  - [output/qa/notification-partial-parity-local.json](../output/qa/notification-partial-parity-local.json)
+  - Production proof now covers retry exhaustion, dead letters, aggregate metrics, and stale-token cleanup after Firestore index remediation.
+  - Local parity proof covers `PUSH_PROVIDER_PARTIAL` plus invalid-token deactivation (`BadDeviceToken`) against the real notification code path.
 
 ## RC decisions
 
@@ -45,12 +50,12 @@ Operating mode: single release candidate consolidation
 ## Remaining blockers
 
 - RC exit is hard-gated in [docs/RELEASE_CANDIDATE_EVIDENCE.md](RELEASE_CANDIDATE_EVIDENCE.md):
-  - notification reliability proof
   - security rotation proof
   - final operator sign-off must remain populated and current
-- The only hard-blocking issues are:
-  - [#349](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/349)
-  - [#350](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/350)
+- The only remaining hard-blocking issue is [#349](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/349).
+- Current blocker detail:
+  - live runtime proof still shows the push relay path failing with `APNS_RELAY_URL not configured`
+  - APNS relay runtime configuration and rotation evidence remain incomplete
 
 ## Open GitHub issue dispositions
 
@@ -58,7 +63,6 @@ Operating mode: single release candidate consolidation
 | --- | --- | --- |
 | [#348](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/348) | `monsoonfirepottery-byte` (automation owner by default) | Keep open as rolling Codex coordination | Close only if automation coordination is intentionally retired or moved out of GitHub issue tracking | not a ship blocker |
 | [#349](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/349) | `monsoonfirepottery-byte` (infra/security owner by default) | Keep open until infra/security evidence is explicitly signed off | Close after security rotation proof is complete, the evidence pack is updated, and the final ship decision is recorded | hard blocker |
-| [#350](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/350) | `monsoonfirepottery-byte` (QA/release operator by default) | Keep open until QA evidence is explicitly signed off | Close after notification reliability evidence is complete, smoke/canary/promotion evidence is linked, and the final QA sign-off is recorded | hard blocker |
 | [#351](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/351) | `monsoonfirepottery-byte` (governance owner by default) | Keep open as rolling governance tuning | Close only if governance tuning is intentionally moved out of the rolling issue loop | not a ship blocker |
 | [#352](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/352) | `monsoonfirepottery-byte` (backlog/product owner by default) | Defer until after ship | Close only when superseded by smaller implementation tickets or a delivered PR | out of RC scope |
 
@@ -75,5 +79,5 @@ Operating mode: single release candidate consolidation
 - Latest successful `Smoke Tests` on `main` remains current and is not superseded by a newer failing run
 - Release evidence pack reflects current successful runs and current hard blockers only
 - Every open GitHub issue has an explicit owner, RC status, and close condition
-- Only [#349](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/349) and [#350](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/350) remain as ship blockers
+- Only [#349](https://github.com/monsoonfirepottery-byte/monsoonfire-portal/issues/349) remains as a ship blocker
 - Final operator sign-off is recorded in the release evidence pack

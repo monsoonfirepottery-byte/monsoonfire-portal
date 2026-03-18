@@ -56,6 +56,26 @@ const requiredIndexes = [
     ],
     reason: "My pieces active batch list",
   },
+  {
+    id: "deviceTokens-active-updatedAt",
+    collectionGroup: "deviceTokens",
+    queryScope: "COLLECTION_GROUP",
+    fields: [
+      { fieldPath: "active", order: "ASCENDING" },
+      { fieldPath: "updatedAt", order: "ASCENDING" },
+    ],
+    reason: "Stale device token cleanup scheduler (collectionGroup active + updatedAt cutoff)",
+  },
+  {
+    id: "notificationJobs-status-runAfter",
+    collectionGroup: "notificationJobs",
+    queryScope: "COLLECTION",
+    fields: [
+      { fieldPath: "status", order: "ASCENDING" },
+      { fieldPath: "runAfter", order: "ASCENDING" },
+    ],
+    reason: "Queued notification processor scheduler (status equality + runAfter cutoff)",
+  },
 ];
 
 function parseArgs(argv) {

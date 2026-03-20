@@ -8384,7 +8384,6 @@ export default function StaffView({
   }, [
     announcementsError,
     cockpitTodayMessageRows,
-    formatDateTime,
     messageThreadsError,
     messagesDegraded,
     operationsOverview.priorityItems,
@@ -8624,7 +8623,6 @@ export default function StaffView({
     commerceKpis.pendingOrders,
     commerceKpis.receiptsTotal,
     commerceKpis.unpaidCheckIns,
-    formatDateTime,
     messageThreadsError,
     messagesDegraded,
     operationsNextReservationLabel,

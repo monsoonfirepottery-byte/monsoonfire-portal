@@ -524,12 +524,6 @@
   align-items: center;
 }
 
-.quick-action-note {
-  margin: 12px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-}
-
 .dashboard-link {
   margin-top: 12px;
   align-self: flex-start;
@@ -595,6 +589,12 @@
   transition: transform 0.16s ease, border-color 0.16s ease;
 }
 
+.piece-thumb-archived {
+  background: var(--surface);
+  color: var(--muted);
+  border-style: dashed;
+}
+
 .piece-thumb:hover {
   transform: translateY(-1px);
   border-color: var(--border-strong);
@@ -631,30 +631,9 @@
   font-weight: 600;
 }
 
-.meter {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 100%;
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(180, 79, 53, 0.1);
-  overflow: hidden;
-}
-
-.meter::-webkit-progress-bar {
-  background: rgba(180, 79, 53, 0.1);
-  border-radius: 999px;
-}
-
-.meter::-webkit-progress-value {
-  background: var(--accent);
-  border-radius: 999px;
-  transition: width 0.3s ease;
-}
-
-.meter::-moz-progress-bar {
-  background: var(--accent);
-  border-radius: 999px;
+.snapshot-meta {
+  font-size: 13px;
+  color: var(--muted);
 }
 
 .kiln-progress,
@@ -825,6 +804,10 @@
   justify-content: space-between;
   gap: 16px;
   background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 13px;
 }
 
 .archived-count {

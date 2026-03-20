@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import { homedir, tmpdir } from "node:os";
 
 const cwd = process.cwd();
 const args = process.argv.slice(2);
@@ -99,9 +100,17 @@ function readJson(path, fallback = null) {
   }
 }
 
-function safeExec(cmd) {
+const workspaceRoot = resolve(readFlag("repo-root", cwd));
+const codexHome = resolve(readFlag("codex-home", process.env.CODEX_HOME || join(homedir(), ".codex")));
+const repoMetadataCachePath = join(tmpdir(), "__ctx_repo.json");
+
+function safeExec(cmd, options = {}) {
   try {
-    return execSync(cmd, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+    return execSync(cmd, {
+      cwd: options.cwd ?? workspaceRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
   } catch {
     return "";
   }
@@ -409,7 +418,7 @@ function ingestMemoryLedgerSummary() {
 }
 
 function ingestLocalGit() {
-  const logRaw = safeExec("cd /home/wuff/monsoonfire-portal && git log --oneline -n 20");
+  const logRaw = safeExec("git log --oneline -n 20");
   if (!logRaw) return;
   const commits = logRaw
     .split(/\r?\n/)
@@ -427,7 +436,7 @@ function ingestLocalGit() {
 }
 
 function ingestGithub() {
-  const auth = safeExec("cd /home/wuff/monsoonfire-portal && gh auth status 2>&1");
+  const auth = safeExec("gh auth status 2>&1");
   if (!auth.includes("Logged in")) {
     addItem({
       category: "github",
@@ -439,11 +448,11 @@ function ingestGithub() {
   }
 
   const repo = readJson(
-    "/tmp/__ctx_repo.json",
+    repoMetadataCachePath,
     null
   );
   const repoRaw = safeExec(
-    "cd /home/wuff/monsoonfire-portal && gh repo view --json nameWithOwner,description,defaultBranchRef,viewerPermission,createdAt,updatedAt,repositoryTopics"
+    "gh repo view --json nameWithOwner,description,defaultBranchRef,viewerPermission,createdAt,updatedAt,repositoryTopics"
   );
   let repoParsed = null;
   try {
@@ -466,7 +475,7 @@ function ingestGithub() {
   }
 
   const prsRaw = safeExec(
-    "cd /home/wuff/monsoonfire-portal && gh pr list --limit 20 --json number,title,state,isDraft,headRefName,baseRefName,updatedAt,author"
+    "gh pr list --limit 20 --json number,title,state,isDraft,headRefName,baseRefName,updatedAt,author"
   );
   if (prsRaw) {
     try {
@@ -488,7 +497,7 @@ function ingestGithub() {
   }
 
   const issuesRaw = safeExec(
-    "cd /home/wuff/monsoonfire-portal && gh issue list --limit 20 --state open --json number,title,labels,updatedAt,author"
+    "gh issue list --limit 20 --state open --json number,title,labels,updatedAt,author"
   );
   if (issuesRaw) {
     try {
@@ -510,7 +519,7 @@ function ingestGithub() {
   }
 
   const runsRaw = safeExec(
-    "cd /home/wuff/monsoonfire-portal && gh run list --limit 30 --json workflowName,status,conclusion,headBranch,event,createdAt,updatedAt,url"
+    "gh run list --limit 30 --json workflowName,status,conclusion,headBranch,event,createdAt,updatedAt,url"
   );
   if (runsRaw) {
     try {
@@ -537,7 +546,7 @@ function ingestGithub() {
 }
 
 function ingestMcpConfig() {
-  const configPath = resolve("/home/wuff/.codex/config.toml");
+  const configPath = join(codexHome, "config.toml");
   const text = safeRead(configPath);
   if (!text) return;
 

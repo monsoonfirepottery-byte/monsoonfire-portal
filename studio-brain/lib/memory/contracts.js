@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.memoryLoopAutomationTickRequestSchema = exports.memoryLoopActionPlanRequestSchema = exports.memoryLoopOwnerQueuesRequestSchema = exports.memoryLoopFeedbackStatsRequestSchema = exports.memoryLoopIncidentActionBatchRequestSchema = exports.memoryLoopIncidentActionRequestSchema = exports.memoryLoopsRequestSchema = exports.memorySignalIndexBackfillRequestSchema = exports.memoryEmailThreadBackfillRequestSchema = exports.memoryImportRequestSchema = exports.memoryContextRequestSchema = exports.memoryStatsRequestSchema = exports.memoryRecentRequestSchema = exports.memorySearchRequestSchema = exports.memoryCaptureRequestSchema = exports.memoryLoopSortSchema = exports.memoryLoopActionPrioritySchema = exports.memoryLoopIncidentActionTypeSchema = exports.memoryLoopLaneSchema = exports.memoryLoopStateSchema = exports.memoryTypeSchema = exports.memoryStatusSchema = exports.memoryQueryLaneSchema = exports.retrievalModeSchema = exports.embeddingSchema = exports.MAX_MEMORY_IMPORT_ITEMS = exports.MAX_MEMORY_LIMIT = exports.MAX_MEMORY_CONTENT_CHARS = void 0;
 const zod_1 = require("zod");
-exports.MAX_MEMORY_CONTENT_CHARS = 20_000;
+exports.MAX_MEMORY_CONTENT_CHARS = 65_536;
 exports.MAX_MEMORY_LIMIT = 100;
 exports.MAX_MEMORY_IMPORT_ITEMS = 500;
 const embeddingValue = zod_1.z.number().finite();

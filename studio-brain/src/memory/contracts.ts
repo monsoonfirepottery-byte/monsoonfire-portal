@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const MAX_MEMORY_CONTENT_CHARS = 20_000;
+export const MAX_MEMORY_CONTENT_CHARS = 65_536;
 export const MAX_MEMORY_LIMIT = 100;
 export const MAX_MEMORY_IMPORT_ITEMS = 500;
 

@@ -67,11 +67,18 @@ import { createMemoryNanny } from "./nanny";
 const SENSITIVE_KEY_PATTERN = /(secret|password|authorization|api[-_]?key|cookie|session)/i;
 const SENSITIVE_TOKEN_COMPONENT_PATTERN = /(^|_)(token|jwt|bearer|access|refresh|id)($|_)/i;
 const SAFE_TOKEN_COMPONENT_PATTERN = /(^|_)(topic_tokens|participant_tokens|token_count|tokens_count|structure_signal_count)($|_)/i;
+const SAFE_METADATA_POINTER_KEY_PATTERN =
+  /^(corpus_record_id|corpus_source_unit_id|chunk_id|source_client_request_id|source_client_request_ids)$/;
 const SOURCE_CONFIDENCE_DEFAULT = 0.5;
 const SOURCE_CONFIDENCE_BY_SOURCE: Record<string, number> = {
   "user-direct": 0.98,
+  "codex-compaction-promoted": 0.88,
+  "codex-compaction-window": 0.72,
+  "codex-compaction-raw": 0.64,
   "codex-resumable-session": 0.76,
+  "codex-history-export": 0.72,
   "import-context-slice": 0.82,
+  "repo-markdown": 0.84,
   "chatgpt-export:memory-pack.zip": 0.45,
   "memory-pack-mined-memories-unique-runid": 0.35,
 };
@@ -240,6 +247,7 @@ function toNormalizedMetadataKey(value: string): string {
 function shouldRedactMetadataKey(key: string): boolean {
   const normalized = toNormalizedMetadataKey(key);
   if (!normalized) return false;
+  if (SAFE_METADATA_POINTER_KEY_PATTERN.test(normalized)) return false;
   if (SENSITIVE_KEY_PATTERN.test(normalized)) return true;
   if (SAFE_TOKEN_COMPONENT_PATTERN.test(normalized)) return false;
   if (SENSITIVE_TOKEN_COMPONENT_PATTERN.test(normalized)) return true;
@@ -365,6 +373,36 @@ function deriveMemoryId(payload: {
 function normalizeMetadata(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value as Record<string, unknown>;
+}
+
+function readExpiryMs(metadata: Record<string, unknown>): number | null {
+  const expiresAt = normalizeText(metadata.expiresAt);
+  if (!expiresAt) return null;
+  const parsed = Date.parse(expiresAt);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isExpiredMetadata(metadata: Record<string, unknown>, nowMs = Date.now()): boolean {
+  const expiresMs = readExpiryMs(metadata);
+  return expiresMs !== null && expiresMs <= nowMs;
+}
+
+function isExpiredRecord(row: Pick<MemoryRecord, "metadata" | "status">, nowMs = Date.now()): boolean {
+  if (row.status === "archived") return true;
+  return isExpiredMetadata(normalizeMetadata(row.metadata), nowMs);
+}
+
+function isExpiredSearchResult(row: Pick<MemorySearchResult, "metadata" | "status">, nowMs = Date.now()): boolean {
+  if (row.status === "archived") return true;
+  return isExpiredMetadata(normalizeMetadata(row.metadata), nowMs);
+}
+
+function filterExpiredSearchResults(rows: MemorySearchResult[], nowMs = Date.now()): MemorySearchResult[] {
+  return rows.filter((row) => !isExpiredSearchResult(row, nowMs));
+}
+
+function filterExpiredMemoryRecords(rows: MemoryRecord[], nowMs = Date.now()): MemoryRecord[] {
+  return rows.filter((row) => !isExpiredRecord(row, nowMs));
 }
 
 function normalizeText(value: unknown): string {
@@ -1358,6 +1396,8 @@ function classifyStatus(source: string, content: string): MemoryStatus {
   if (normalizedSource.includes("import-context-slice")) return "proposed";
   if (normalizedSource.includes("user-direct")) return "accepted";
   if (normalizedSource.includes("codex-resumable-session")) return "accepted";
+  if (normalizedSource.includes("codex-history-export")) return "accepted";
+  if (normalizedSource.includes("repo-markdown")) return "accepted";
   return "proposed";
 }
 
@@ -1500,6 +1540,64 @@ function parseQuerySignals(query: string): {
   };
 }
 
+function inferProjectLaneFromQuery(query: string): string {
+  const text = query.toLowerCase();
+  if (/\bstudio brain\b|\bstudio-brain\b|\bopen memory\b|\bmemory service\b/.test(text)) return "studio-brain";
+  if (/\bcloud functions\b|\bfirestore\b|\bfunctions?\b/.test(text)) return "functions";
+  if (/\bwebsite\b|\bseo\b|\bga\b|\bmonsoonfire\.com\b/.test(text)) return "website";
+  if (/\bportal\b|\bmonsoonfire\b|\breservations\b|\bkiln\b|\bmaterials\b/.test(text)) return "monsoonfire-portal";
+  if (/\breal estate\b|\bzillow\b|\bphoenix\b|\bwest valley\b/.test(text)) return "real-estate";
+  return "";
+}
+
+function readProjectLaneFromMetadata(row: MemorySearchResult): string {
+  const metadata = normalizeMetadata(row.metadata);
+  const sourceMetadata = normalizeMetadata(metadata.sourceMetadata);
+  return normalizeText(
+    sourceMetadata.projectLane || metadata.projectLane || metadata.lane || metadata.signalLane || ""
+  );
+}
+
+function queryLooksProjectScoped(query: string): boolean {
+  const text = query.toLowerCase();
+  return (
+    Boolean(inferProjectLaneFromQuery(query)) ||
+    /\b(codex|repo|repository|markdown|sqlite|corpus|memory|session|ticket|issue|pr|deploy|firebase|runbook)\b/.test(
+      text
+    )
+  );
+}
+
+function computeProjectLaneBoost(row: MemorySearchResult, query: string): number {
+  const metadata = normalizeMetadata(row.metadata);
+  const queryLane = inferProjectLaneFromQuery(query);
+  const queryScoped = queryLooksProjectScoped(query);
+  if (!queryLane && !queryScoped) return 0;
+
+  const rowLane = readProjectLaneFromMetadata(row);
+  const source = normalizeSource(row.source);
+  const isMail = source.startsWith("mail:");
+  const hasCorpusPointer = Boolean(
+    normalizeText(metadata.corpusRecordId) ||
+      normalizeText(metadata.corpusSourceUnitId) ||
+      normalizeText(metadata.corpusManifestPath)
+  );
+  const recency = recencyScore(row.occurredAt, row.createdAt, row.memoryType);
+
+  let boost = 0;
+  if (queryLane && rowLane) {
+    if (rowLane === queryLane) boost += 0.14;
+    else boost -= 0.08;
+  }
+  if (queryScoped && hasCorpusPointer) boost += 0.06;
+  if (queryScoped && row.status === "accepted") boost += 0.03;
+  if (queryScoped && source.includes("codex") && recency >= 0.55) boost += 0.04;
+  if (queryScoped && isMail) boost -= 0.08;
+  if (queryScoped && isMail && (!rowLane || rowLane === "unknown" || rowLane === "personal")) boost -= 0.08;
+
+  return Math.min(0.24, Math.max(-0.18, boost));
+}
+
 function metadataFlag(metadata: Record<string, unknown>, key: string): boolean {
   const contextSignals = normalizeMetadata(metadata.contextSignals);
   if (contextSignals[key] === true) return true;
@@ -1614,15 +1712,20 @@ function applySignalBoost(rows: MemorySearchResult[], query: string): MemorySear
   return rows
     .map((row) => {
       const signalBoost = computeSignalBoost(row, query);
-      if (signalBoost <= 0) return row;
-      const matchedBy = row.matchedBy.includes("signal") ? row.matchedBy : [...row.matchedBy, "signal"];
+      const projectLaneBoost = computeProjectLaneBoost(row, query);
+      const totalBoost = signalBoost + projectLaneBoost;
+      if (totalBoost === 0) return row;
+      const matchedBy = new Set(row.matchedBy);
+      if (signalBoost > 0) matchedBy.add("signal");
+      if (projectLaneBoost > 0) matchedBy.add("pattern");
       return {
         ...row,
-        score: row.score + signalBoost,
-        matchedBy,
+        score: row.score + totalBoost,
+        matchedBy: Array.from(matchedBy),
         scoreBreakdown: {
           ...row.scoreBreakdown,
           signal: (row.scoreBreakdown.signal ?? 0) + signalBoost,
+          pattern: (row.scoreBreakdown.pattern ?? 0) + projectLaneBoost,
         },
       };
     })
@@ -2473,7 +2576,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
       searchFallbackCache.delete(cacheKey);
       return null;
     }
-    return entry.rows.map((row) => cloneSearchResultRow(row));
+    return entry.rows.map((row) => cloneSearchResultRow(row)).filter((row) => !isExpiredSearchResult(row));
   };
   const contextFallbackCache = new Map<
     string,
@@ -2528,14 +2631,16 @@ export function createMemoryService(options: MemoryServiceOptions) {
       return null;
     }
     return {
-      rows: entry.rows.map((row) =>
+      rows: entry.rows
+        .map((row) =>
         row.matchedBy.includes("context-stale-cache-fallback")
           ? cloneSearchResultRow(row)
           : {
               ...cloneSearchResultRow(row),
               matchedBy: [...row.matchedBy, "context-stale-cache-fallback"],
             }
-      ),
+        )
+        .filter((row) => !isExpiredSearchResult(row)),
       retrievalModeUsed: entry.retrievalModeUsed,
     };
   };
@@ -2973,13 +3078,15 @@ export function createMemoryService(options: MemoryServiceOptions) {
       limit: parsed.limit,
     };
     try {
-      rows = await withTimeout(
-        options.store.search({
-          ...baseSearchInput,
-          retrievalMode: effectiveRetrievalMode,
-        }),
-        stageTimeoutMs,
-        "memory search primary stage"
+      rows = filterExpiredSearchResults(
+        await withTimeout(
+          options.store.search({
+            ...baseSearchInput,
+            retrievalMode: effectiveRetrievalMode,
+          }),
+          stageTimeoutMs,
+          "memory search primary stage"
+        )
       );
     } catch (error) {
       primarySearchError = error;
@@ -2990,13 +3097,15 @@ export function createMemoryService(options: MemoryServiceOptions) {
         isTransientStoreTimeoutError(error)
       ) {
         try {
-          rows = await withTimeout(
+          rows = filterExpiredSearchResults(
+            await withTimeout(
             options.store.search({
-              ...baseSearchInput,
-              retrievalMode: "semantic",
-            }),
-            stageTimeoutMs,
-            "memory search semantic fallback stage"
+                ...baseSearchInput,
+                retrievalMode: "semantic",
+              }),
+              stageTimeoutMs,
+              "memory search semantic fallback stage"
+            )
           );
           rows = rows.map((row) => ({
             ...row,
@@ -3016,15 +3125,17 @@ export function createMemoryService(options: MemoryServiceOptions) {
         effectiveRetrievalMode !== "lexical"
       ) {
         try {
-          rows = await withTimeout(
+          rows = filterExpiredSearchResults(
+            await withTimeout(
             options.store.search({
-              ...baseSearchInput,
-              retrievalMode: "lexical",
-              embedding: undefined,
-              limit: Math.max(parsed.limit * 3, 24),
-            }),
-            fallbackStageTimeoutMs,
-            "memory search lexical timeout fallback stage"
+                ...baseSearchInput,
+                retrievalMode: "lexical",
+                embedding: undefined,
+                limit: Math.max(parsed.limit * 3, 24),
+              }),
+              fallbackStageTimeoutMs,
+              "memory search lexical timeout fallback stage"
+            )
           );
           rows = rows.map((row) => ({
             ...row,
@@ -3038,18 +3149,20 @@ export function createMemoryService(options: MemoryServiceOptions) {
         }
       }
       if (primarySearchError && isTransientStoreTimeoutError(primarySearchError)) {
-        const fallbackRows = await withTimeout(
+        const fallbackRows = filterExpiredMemoryRecords(
+          await withTimeout(
           options.store.recent({
-            tenantId,
-            agentId: parsed.agentId,
-            runId: parsed.runId,
-            sourceAllowlist: allowSources,
-            sourceDenylist: denySources,
-            excludeStatuses: ["quarantined"],
-            limit: Math.max(parsed.limit * 6, 120),
-          }),
-          fallbackStageTimeoutMs,
-          "memory search recent fallback stage"
+              tenantId,
+              agentId: parsed.agentId,
+              runId: parsed.runId,
+              sourceAllowlist: allowSources,
+              sourceDenylist: denySources,
+              excludeStatuses: ["quarantined"],
+              limit: Math.max(parsed.limit * 6, 120),
+            }),
+            fallbackStageTimeoutMs,
+            "memory search recent fallback stage"
+          )
         );
         const queryTokens = String(parsed.query)
           .toLowerCase()
@@ -3255,7 +3368,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
       const withLoopState = await applyLoopStateOnRows(boosted);
       const withLoopPointers = await mergeLoopStatePointerRows(withLoopState);
       return diversifyRankedRows(
-        applyRequestedScope(withLoopPointers).sort(
+        filterExpiredSearchResults(applyRequestedScope(withLoopPointers)).sort(
           (left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt)
         ),
         parsed.limit
@@ -3269,7 +3382,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
       const withLoopState = await applyLoopStateOnRows(boosted);
       const withLoopPointers = await mergeLoopStatePointerRows(withLoopState);
       return diversifyRankedRows(
-        applyRequestedScope(withLoopPointers).sort(
+        filterExpiredSearchResults(applyRequestedScope(withLoopPointers)).sort(
           (left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt)
         ),
         parsed.limit
@@ -3291,7 +3404,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
       const withLoopState = await applyLoopStateOnRows(boosted);
       const withLoopPointers = await mergeLoopStatePointerRows(withLoopState);
       return diversifyRankedRows(
-        applyRequestedScope(withLoopPointers).sort(
+        filterExpiredSearchResults(applyRequestedScope(withLoopPointers)).sort(
           (left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt)
         ),
         parsed.limit
@@ -3301,7 +3414,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
       const withLoopState = await applyLoopStateOnRows(boosted);
       const withLoopPointers = await mergeLoopStatePointerRows(withLoopState);
       return diversifyRankedRows(
-        applyRequestedScope(withLoopPointers).sort(
+        filterExpiredSearchResults(applyRequestedScope(withLoopPointers)).sort(
           (left, right) => right.score - left.score || right.createdAt.localeCompare(left.createdAt)
         ),
         parsed.limit
@@ -3319,6 +3432,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
       });
       for (const row of fetched) {
         if (row.status === "quarantined") continue;
+        if (isExpiredRecord(row)) continue;
         if (!sourceAllowed(row.source, allowSources, denySources)) {
           continue;
         }
@@ -3348,7 +3462,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
       .slice(0, Math.max(parsed.limit * 4, parsed.limit));
     reranked = await applyLoopStateOnRows(reranked);
     reranked = await mergeLoopStatePointerRows(reranked);
-    return diversifyRankedRows(applyRequestedScope(reranked), parsed.limit);
+    return diversifyRankedRows(filterExpiredSearchResults(applyRequestedScope(reranked)), parsed.limit);
   };
 
   const recent = async (raw: unknown): Promise<MemoryRecord[]> => {
@@ -3359,10 +3473,47 @@ export function createMemoryService(options: MemoryServiceOptions) {
       throw normalizeError(error);
     }
     const tenantId = normalizeTenant(parsed.tenantId);
-    return options.store.recent({
+    return filterExpiredMemoryRecords(
+      await options.store.recent({
+        tenantId,
+        limit: parsed.limit,
+      })
+    );
+  };
+
+  const getByIds = async (
+    raw: unknown
+  ): Promise<MemoryRecord[]> => {
+    let parsed: {
+      tenantId?: string;
+      ids: string[];
+      includeArchived: boolean;
+    };
+    try {
+      parsed = z
+        .object({
+          tenantId: z.string().trim().min(1).max(128).optional(),
+          ids: z.array(z.string().trim().min(1).max(128)).min(1).max(500),
+          includeArchived: z.boolean().default(false),
+        })
+        .parse(raw);
+    } catch (error) {
+      throw normalizeError(error);
+    }
+    const tenantId = normalizeTenant(parsed.tenantId);
+    const uniqueIds = Array.from(
+      new Set(parsed.ids.map((id) => String(id ?? "").trim()).filter(Boolean))
+    );
+    if (uniqueIds.length === 0) return [];
+    const rows = await options.store.getByIds({
       tenantId,
-      limit: parsed.limit,
+      ids: uniqueIds,
     });
+    const filtered = parsed.includeArchived ? rows : filterExpiredMemoryRecords(rows);
+    const byId = new Map(filtered.map((row) => [row.id, row] as const));
+    return uniqueIds
+      .map((id) => byId.get(id))
+      .filter((row): row is MemoryRecord => Boolean(row));
   };
 
   const stats = async (raw: unknown): Promise<MemoryStats> => {
@@ -5237,7 +5388,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
         tenantRows = [];
       }
     }
-    const scopedRows = tenantRows.filter((row) => {
+    const scopedRows = filterExpiredMemoryRecords(tenantRows).filter((row) => {
       if (agentId && row.agentId !== agentId) return false;
       if (runId && row.runId !== runId) return false;
       if (!sourceAllowed(row.source, sourceAllowlist, sourceDenylist)) return false;
@@ -5247,13 +5398,14 @@ export function createMemoryService(options: MemoryServiceOptions) {
 
     const effectiveRows =
       scopedRows.length === 0 && parsed.includeTenantFallback && (agentId !== null || runId !== null)
-        ? tenantRows.filter((row) => sourceAllowed(row.source, sourceAllowlist, sourceDenylist) && row.status !== "quarantined")
+        ? filterExpiredMemoryRecords(tenantRows).filter((row) => sourceAllowed(row.source, sourceAllowlist, sourceDenylist) && row.status !== "quarantined")
         : scopedRows;
     const tenantFallbackUsedForEmptyScope =
       effectiveRows.length > 0 && scopedRows.length === 0 && (agentId !== null || runId !== null) && parsed.includeTenantFallback;
-    const matchesContextScope = (row: Pick<MemoryRecord, "agentId" | "runId" | "source" | "status">): boolean => {
+    const matchesContextScope = (row: Pick<MemoryRecord, "agentId" | "runId" | "source" | "status" | "metadata">): boolean => {
       if (!sourceAllowed(row.source, sourceAllowlist, sourceDenylist)) return false;
       if (row.status === "quarantined") return false;
+      if (isExpiredRecord(row)) return false;
       if (tenantFallbackUsedForEmptyScope) return true;
       if (agentId && row.agentId !== agentId) return false;
       if (runId && row.runId !== runId) return false;
@@ -5291,26 +5443,28 @@ export function createMemoryService(options: MemoryServiceOptions) {
         retrievalMode === "lexical" ? "lexical" : queryEmbedding ? retrievalMode : "lexical";
       retrievalModeUsed = effectiveRetrievalMode;
       try {
-        searchRows = applySignalBoost(
-          await withTimeout(
-            options.store.search({
-              query,
-              tenantId: tenantResolution.tenantId,
-              agentId: agentId ?? undefined,
-              runId: runId ?? undefined,
-              sourceAllowlist,
-              sourceDenylist,
-              retrievalMode: effectiveRetrievalMode,
-              minScore: 0,
-              explain: parsed.explain,
-              embedding: queryEmbedding ?? undefined,
-              limit: Math.max(parsed.maxItems * 4, 24),
-            }),
-            stageTimeoutMs,
-            "memory context search stage"
-          ),
-          query
-        );
+            searchRows = applySignalBoost(
+              filterExpiredSearchResults(
+                await withTimeout(
+                options.store.search({
+                    query,
+                    tenantId: tenantResolution.tenantId,
+                    agentId: agentId ?? undefined,
+                    runId: runId ?? undefined,
+                    sourceAllowlist,
+                    sourceDenylist,
+                    retrievalMode: effectiveRetrievalMode,
+                    minScore: 0,
+                    explain: parsed.explain,
+                    embedding: queryEmbedding ?? undefined,
+                    limit: Math.max(parsed.maxItems * 4, 24),
+                  }),
+                  stageTimeoutMs,
+                  "memory context search stage"
+                )
+              ),
+              query
+            );
       } catch (error) {
         queryFallbackActivated = true;
         let contextSearchError: unknown = error;
@@ -5321,21 +5475,23 @@ export function createMemoryService(options: MemoryServiceOptions) {
         ) {
           try {
             searchRows = applySignalBoost(
-              await withTimeout(
+              filterExpiredSearchResults(
+                await withTimeout(
                 options.store.search({
-                  query,
-                  tenantId: tenantResolution.tenantId,
-                  agentId: agentId ?? undefined,
-                  runId: runId ?? undefined,
-                  sourceAllowlist,
-                  sourceDenylist,
-                  retrievalMode: "lexical",
-                  minScore: 0,
-                  explain: parsed.explain,
-                  limit: Math.max(parsed.maxItems * 4, 24),
-                }),
-                fallbackStageTimeoutMs,
-                "memory context lexical timeout fallback stage"
+                    query,
+                    tenantId: tenantResolution.tenantId,
+                    agentId: agentId ?? undefined,
+                    runId: runId ?? undefined,
+                    sourceAllowlist,
+                    sourceDenylist,
+                    retrievalMode: "lexical",
+                    minScore: 0,
+                    explain: parsed.explain,
+                    limit: Math.max(parsed.maxItems * 4, 24),
+                  }),
+                  fallbackStageTimeoutMs,
+                  "memory context lexical timeout fallback stage"
+                )
               ),
               query
             ).map((row) => ({
@@ -5355,18 +5511,20 @@ export function createMemoryService(options: MemoryServiceOptions) {
         }
         if (contextSearchError) {
           try {
-            const fallbackRows = await withTimeout(
+            const fallbackRows = filterExpiredMemoryRecords(
+              await withTimeout(
               options.store.recent({
-                tenantId: tenantResolution.tenantId,
-                agentId: agentId ?? undefined,
-                runId: runId ?? undefined,
-                sourceAllowlist,
-                sourceDenylist,
-                excludeStatuses: ["quarantined"],
-                limit: Math.max(parsed.maxItems * 8, 120),
-              }),
-              fallbackStageTimeoutMs,
-              "memory context recent fallback stage"
+                  tenantId: tenantResolution.tenantId,
+                  agentId: agentId ?? undefined,
+                  runId: runId ?? undefined,
+                  sourceAllowlist,
+                  sourceDenylist,
+                  excludeStatuses: ["quarantined"],
+                  limit: Math.max(parsed.maxItems * 8, 120),
+                }),
+                fallbackStageTimeoutMs,
+                "memory context recent fallback stage"
+              )
             );
             const queryTokens = String(query)
               .toLowerCase()
@@ -5556,7 +5714,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
           tenantId: tenantResolution.tenantId,
         });
         const row = fetched[0];
-        if (row && sourceAllowed(row.source, sourceAllowlist, sourceDenylist) && row.status !== "quarantined") {
+        if (row && !isExpiredRecord(row) && sourceAllowed(row.source, sourceAllowlist, sourceDenylist) && row.status !== "quarantined") {
           knownRows.set(row.id, row);
           addWithBudget(toSearchResultFromRecord(row, undefined, temporalAnchorMs));
         }
@@ -6779,13 +6937,15 @@ export function createMemoryService(options: MemoryServiceOptions) {
     const sourceCounts = new Map<string, number>();
     const topicCounts = new Map<string, number>();
 
+    const explicitSourceOverride = parsed.sourceOverride ? normalizeSource(parsed.sourceOverride) : null;
+
     for (const [index, item] of parsed.items.entries()) {
       try {
         const normalized =
           item && typeof item === "object"
             ? ({ ...(item as Record<string, unknown>) } as Record<string, unknown>)
             : ({ content: String(item ?? "") } as Record<string, unknown>);
-        const sourceHint = normalizeSource(parsed.sourceOverride ?? String(normalized.source ?? "import"));
+        const sourceHint = normalizeSource(String(explicitSourceOverride ?? normalized.source ?? "import"));
         if (sourceHint) {
           sourceCounts.set(sourceHint, (sourceCounts.get(sourceHint) ?? 0) + 1);
         }
@@ -6794,7 +6954,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
         for (const token of subjectHint.split(/[^a-z0-9]+/g).filter((token) => token.length >= 4).slice(0, 8)) {
           topicCounts.set(token, (topicCounts.get(token) ?? 0) + 1);
         }
-        const next = parsed.sourceOverride ? { ...normalized, source: parsed.sourceOverride } : normalized;
+        const next = explicitSourceOverride ? { ...normalized, source: explicitSourceOverride } : normalized;
         const row = await capture(next, {
           bypassRunWriteBurstLimit: parsed.disableRunWriteBurstLimit,
         });
@@ -6908,6 +7068,7 @@ export function createMemoryService(options: MemoryServiceOptions) {
     capture,
     search,
     recent,
+    getByIds,
     stats,
     loops,
     incidentAction,

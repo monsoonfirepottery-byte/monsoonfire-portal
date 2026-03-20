@@ -186,6 +186,12 @@ function main() {
   const trustedSources = new Set(
     Array.isArray(config?.trustedSources) ? config.trustedSources.map((row) => normalize(row)).filter(Boolean) : []
   );
+  const laneRules = config?.laneRules && typeof config.laneRules === "object" ? config.laneRules : {};
+  const quarantineLanes = new Set(
+    Array.isArray(laneRules?.quarantineLanes) ? laneRules.quarantineLanes.map((row) => normalize(row)).filter(Boolean) : []
+  );
+  const autoAcceptByLane =
+    laneRules?.autoAcceptByLane && typeof laneRules.autoAcceptByLane === "object" ? laneRules.autoAcceptByLane : {};
   const poisoningConfig = config?.poisoning && typeof config.poisoning === "object" ? config.poisoning : {};
   const quarantineEnabled = poisoningConfig.quarantineEnabled !== false;
   const maxPromptInjectionMatchesBeforeFail = Number(poisoningConfig.maxPromptInjectionMatchesBeforeFail ?? 0);
@@ -207,6 +213,7 @@ function main() {
         promptInjection: 0,
         contradiction: 0,
         quarantined: 0,
+        autoAcceptCandidates: 0,
       },
       actions: [],
       warnings: ["Input memory slice not found; governance skipped."],
@@ -230,6 +237,7 @@ function main() {
   let promptInjectionCount = 0;
   let contradictionCount = 0;
   let quarantinedCount = 0;
+  let autoAcceptCandidateCount = 0;
   const actions = [];
 
   for (const entry of entries) {
@@ -253,6 +261,7 @@ function main() {
     }
 
     const confidence = confidenceForItem(entry, config);
+    const projectLane = normalize(entry?.metadata?.projectLane || entry?.projectLane || "");
     if (confidence < minConfidence) {
       lowConfidenceCount += 1;
       actions.push({
@@ -268,6 +277,29 @@ function main() {
         reason: `source "${sourceKey}" is outside trustedSources`,
         memoryId: entry?.id || null,
       });
+    }
+
+    if (quarantineEnabled && projectLane && quarantineLanes.has(projectLane)) {
+      quarantinedCount += 1;
+      actions.push({
+        type: "lane_quarantine",
+        reason: `lane "${projectLane}" is configured for quarantine`,
+        memoryId: entry?.id || null,
+      });
+    }
+
+    if (projectLane && sourceKey) {
+      const allowedSources = Array.isArray(autoAcceptByLane[projectLane])
+        ? autoAcceptByLane[projectLane].map((row) => normalize(row)).filter(Boolean)
+        : [];
+      if (allowedSources.includes(sourceKey) && confidence >= minConfidence) {
+        autoAcceptCandidateCount += 1;
+        actions.push({
+          type: "auto_accept_candidate",
+          reason: `lane "${projectLane}" allows source "${sourceKey}" at confidence ${confidence.toFixed(3)}`,
+          memoryId: entry?.id || null,
+        });
+      }
     }
 
     let flaggedPromptInjection = false;
@@ -341,6 +373,7 @@ function main() {
       promptInjection: promptInjectionCount,
       contradiction: contradictionCount,
       quarantined: quarantinedCount,
+      autoAcceptCandidates: autoAcceptCandidateCount,
       minConfidence,
       maxAgeDays,
     },

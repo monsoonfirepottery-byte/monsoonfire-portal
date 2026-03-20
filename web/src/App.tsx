@@ -935,6 +935,7 @@ export default function App() {
   const [devAdminToken, setDevAdminToken] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -1427,14 +1428,19 @@ export default function App() {
         }
         if (!nextUser) {
           setIsStaff(false);
+          setIsAdmin(false);
         } else {
           nextUser
             .getIdTokenResult()
             .then((result) => {
               const parsedRole = parseStaffRoleFromClaims(result.claims ?? {});
               setIsStaff(parsedRole.isStaff);
+              setIsAdmin(parsedRole.isAdmin);
             })
-            .catch(() => setIsStaff(false));
+            .catch(() => {
+              setIsStaff(false);
+              setIsAdmin(false);
+            });
         }
         if (!nextUser) {
           setPiecesFocusTarget(null);
@@ -1969,7 +1975,7 @@ export default function App() {
   };
 
   const navSection = getSectionForNav(nav);
-  const roleLabel = staffUi ? (isStaff ? "Staff" : "Dev Admin") : "Client";
+  const roleLabel = staffUi ? (isAdmin ? "Admin" : isStaff ? "Staff" : "Dev Admin") : "Client";
   const sidebarAvatarUrl = user?.photoURL || PROFILE_DEFAULT_AVATAR_URL;
 
   useEffect(() => {
@@ -2385,6 +2391,7 @@ export default function App() {
           <StaffView
             user={user}
             isStaff={isStaff}
+            isAdmin={isAdmin}
             devAdminToken={devAdminToken}
             onDevAdminTokenChange={setDevAdminToken}
             devAdminEnabled={DEV_ADMIN_TOKEN_ENABLED}

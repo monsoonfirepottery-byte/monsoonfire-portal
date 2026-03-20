@@ -284,10 +284,49 @@ describe("StaffView cockpit routing", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("operations-focus-lending-intake")).toBeTruthy();
-      expect(screen.getByTestId("cockpit-current-tab").textContent).toBe("operations");
+    expect(screen.getByTestId("operations-focus-lending-intake")).toBeTruthy();
+    expect(screen.getByTestId("cockpit-current-tab").textContent).toBe("operations");
     });
     expect(screen.queryByTestId("operations-overview")).toBeNull();
+  });
+
+  it("shows in-app role management controls for admins in the members module", async () => {
+    window.history.replaceState({}, "", "/staff/members");
+    render(
+      <StaffView
+        user={buildUser()}
+        isStaff
+        isAdmin
+        devAdminToken=""
+        onDevAdminTokenChange={() => undefined}
+        devAdminEnabled={false}
+        showEmulatorTools={false}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh members" }));
+    expect(await screen.findByText("Access role")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Save role change" })).toBeTruthy();
+    expect((screen.getByLabelText("Role") as HTMLSelectElement).value).toBe("admin");
+  });
+
+  it("keeps role management read-only for staff without admin authority", async () => {
+    window.history.replaceState({}, "", "/staff/members");
+    render(
+      <StaffView
+        user={buildUser()}
+        isStaff
+        devAdminToken=""
+        onDevAdminTokenChange={() => undefined}
+        devAdminEnabled={false}
+        showEmulatorTools={false}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh members" }));
+    expect(await screen.findByText("Access role")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Save role change" })).toBeNull();
+    expect(screen.getByText(/Admin claim required to change roles\./)).toBeTruthy();
   });
 
   it("normalizes content-only initialModule values into cockpit tab state", async () => {

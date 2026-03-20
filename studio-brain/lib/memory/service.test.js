@@ -46,6 +46,66 @@ const inMemoryAdapter_1 = require("./inMemoryAdapter");
     strict_1.default.equal(result.results.length, 2);
     strict_1.default.equal(result.results[1]?.ok, false);
 });
+(0, node_test_1.default)("memory service importBatch preserves per-row source when no sourceOverride is supplied", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-import-preserve",
+    });
+    await service.importBatch({
+        items: [
+            {
+                id: "mem-row-repo",
+                content: "Repo markdown row should keep repo-markdown as source.",
+                source: "repo-markdown",
+                clientRequestId: "row-repo-1",
+                metadata: {
+                    projectLane: "monsoonfire-portal",
+                    corpusRecordId: "fact-portal-1",
+                },
+            },
+            {
+                id: "mem-row-codex",
+                content: "Codex resumable row should keep codex-resumable-session as source.",
+                source: "codex-resumable-session",
+                clientRequestId: "row-codex-1",
+                metadata: {
+                    projectLane: "monsoonfire-portal",
+                    corpusRecordId: "fact-portal-2",
+                },
+            },
+        ],
+    });
+    const rows = await service.getByIds({
+        ids: ["mem-row-repo", "mem-row-codex"],
+        includeArchived: true,
+    });
+    strict_1.default.equal(rows[0]?.source, "repo-markdown");
+    strict_1.default.equal(rows[1]?.source, "codex-resumable-session");
+    strict_1.default.equal(rows[0]?.metadata.corpusRecordId, "fact-portal-1");
+    strict_1.default.equal(rows[1]?.metadata.projectLane, "monsoonfire-portal");
+});
+(0, node_test_1.default)("memory service importBatch honors explicit sourceOverride when intentionally supplied", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-import-override",
+    });
+    await service.importBatch({
+        sourceOverride: "import",
+        items: [
+            {
+                id: "mem-row-override",
+                content: "Explicit overrides should still be honored for archive/replay batches.",
+                source: "repo-markdown",
+                clientRequestId: "row-override-1",
+            },
+        ],
+    });
+    const [row] = await service.getByIds({
+        ids: ["mem-row-override"],
+        includeArchived: true,
+    });
+    strict_1.default.equal(row?.source, "import");
+});
 (0, node_test_1.default)("memory nanny reroutes non-allowlisted tenant and derives stable namespace", async () => {
     const service = (0, service_1.createMemoryService)({
         store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
@@ -206,6 +266,133 @@ const inMemoryAdapter_1 = require("./inMemoryAdapter");
     });
     strict_1.default.equal(context.selection.seedMemoryId, "mem-seed");
     strict_1.default.equal(context.items[0]?.id, "mem-seed");
+});
+(0, node_test_1.default)("project-scoped queries boost same-lane corpus-backed rows over mail noise", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-project-lane",
+    });
+    await service.capture({
+        id: "mem-mail",
+        content: "Support email thread about a generic follow up.",
+        source: "mail:outlook",
+        metadata: {
+            projectLane: "personal",
+            participants: ["support@example.com"],
+        },
+    });
+    await service.capture({
+        id: "mem-cross-lane",
+        content: "Decision: real estate search coverage was updated.",
+        source: "repo-markdown",
+        metadata: {
+            projectLane: "real-estate",
+            corpusRecordId: "fact-real-estate",
+            corpusManifestPath: "/tmp/real-estate-manifest.json",
+            contextSignals: { decisionLike: true },
+        },
+        status: "accepted",
+        sourceConfidence: 0.84,
+    });
+    await service.capture({
+        id: "mem-portal",
+        content: "Decision: Monsoon Fire portal memory retrieval now prefers same-project corpus rows.",
+        source: "repo-markdown",
+        metadata: {
+            projectLane: "monsoonfire-portal",
+            corpusRecordId: "fact-portal",
+            corpusManifestPath: "/tmp/portal-manifest.json",
+            contextSignals: { decisionLike: true },
+        },
+        status: "accepted",
+        sourceConfidence: 0.84,
+    });
+    const rows = await service.search({
+        query: "codex monsoonfire portal memory decisions",
+        limit: 3,
+    });
+    strict_1.default.equal(rows[0]?.id, "mem-portal");
+    strict_1.default.equal(rows[2]?.id, "mem-mail");
+});
+(0, node_test_1.default)("compaction-promoted memories outrank raw compaction captures for startup-style queries", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-compaction-ranking",
+    });
+    await service.capture({
+        id: "mem-raw",
+        content: "Raw tool transcript for portal memory retrieval tuning.",
+        source: "codex-compaction-raw",
+        metadata: {
+            threadId: "thread-1",
+            cwd: "D:/monsoonfire-portal",
+            captureKind: "function_call_output",
+        },
+    });
+    await service.capture({
+        id: "mem-promoted",
+        content: "Decision: startup retrieval should prefer promoted compaction memories for portal context.",
+        source: "codex-compaction-promoted",
+        metadata: {
+            threadId: "thread-1",
+            cwd: "D:/monsoonfire-portal",
+            captureKind: "promoted",
+            contextSignals: { decisionLike: true },
+        },
+    });
+    const rows = await service.search({
+        query: "portal startup retrieval promoted compaction context",
+        limit: 2,
+    });
+    strict_1.default.equal(rows[0]?.id, "mem-promoted");
+    strict_1.default.equal(rows[1]?.id, "mem-raw");
+});
+(0, node_test_1.default)("expired compaction raw rows are excluded from search and context selection", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-compaction-expiry",
+        defaultAgentId: "agent:codex",
+    });
+    await service.capture({
+        id: "mem-expired-raw",
+        content: "Expired raw compaction capture about portal memory context.",
+        source: "codex-compaction-raw",
+        agentId: "agent:codex",
+        runId: "codex-thread:expired",
+        metadata: {
+            threadId: "thread-expired",
+            expiresAt: "2020-01-01T00:00:00.000Z",
+            captureKind: "function_call_output",
+        },
+    });
+    await service.capture({
+        id: "mem-live-promoted",
+        content: "Decision: keep live promoted memory for portal context bootstrap.",
+        source: "codex-compaction-promoted",
+        agentId: "agent:codex",
+        runId: "codex-thread:expired",
+        metadata: {
+            threadId: "thread-expired",
+            captureKind: "promoted",
+        },
+    });
+    const searchRows = await service.search({
+        query: "portal context bootstrap memory",
+        limit: 5,
+    });
+    strict_1.default.equal(searchRows.some((row) => row.id === "mem-expired-raw"), false);
+    strict_1.default.equal(searchRows.some((row) => row.id === "mem-live-promoted"), true);
+    const context = await service.context({
+        agentId: "agent:codex",
+        runId: "codex-thread:expired",
+        query: "portal context bootstrap memory",
+        maxItems: 5,
+        maxChars: 1200,
+        scanLimit: 50,
+        includeTenantFallback: false,
+    });
+    strict_1.default.equal(context.items.some((row) => row.id === "mem-expired-raw"), false);
+    strict_1.default.equal(context.items.some((row) => row.id === "mem-live-promoted"), true);
 });
 (0, node_test_1.default)("incident action idempotency replays when occurredAt is omitted", async () => {
     const service = (0, service_1.createMemoryService)({

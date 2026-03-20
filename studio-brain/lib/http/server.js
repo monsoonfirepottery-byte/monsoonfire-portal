@@ -1614,6 +1614,30 @@ function startHttpServer(params) {
                 }
                 return;
             }
+            if (memoryService && method === "POST" && url.pathname === "/api/memory/get-by-ids") {
+                const auth = await assertCapabilityAuth(req);
+                if (!auth.ok) {
+                    statusCode = 401;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message: auth.message }));
+                    return;
+                }
+                try {
+                    const payload = await readJsonBody(req);
+                    const rows = await memoryService.getByIds(payload);
+                    statusCode = 200;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: true, rows }));
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    const isValidation = error instanceof service_1.MemoryValidationError;
+                    statusCode = isValidation ? 400 : 500;
+                    res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+                    res.end(JSON.stringify({ ok: false, message }));
+                }
+                return;
+            }
             if (memoryService && method === "GET" && url.pathname === "/api/memory/stats") {
                 const auth = await assertCapabilityAuth(req);
                 if (!auth.ok) {

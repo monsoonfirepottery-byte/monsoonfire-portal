@@ -13,6 +13,7 @@ export { FieldValue, Timestamp };
 
 export type HeaderValue = string | string[] | undefined;
 export type HeaderRecord = Record<string, unknown>;
+export type PortalUserRole = "member" | "staff" | "admin";
 export type RequestLike = {
   headers?: HeaderRecord;
   method?: string;
@@ -182,7 +183,9 @@ export function readAdminTokenFromReq(req: RequestLike): string {
   return "";
 }
 
-export function isStaffFromDecoded(decoded: DecodedIdToken | null | undefined): boolean {
+export function isStaffFromDecoded(
+  decoded: DecodedIdToken | Record<string, unknown> | null | undefined
+): boolean {
   if (!decoded) return false;
   const decodedRecord = decoded as Record<string, unknown> | null | undefined;
   const explicitStaff = decodedRecord?.staff;
@@ -193,6 +196,72 @@ export function isStaffFromDecoded(decoded: DecodedIdToken | null | undefined): 
         .filter((entry): entry is "staff" => entry === "staff")
     : [];
   return roles.length > 0;
+}
+
+export function isAdminFromDecoded(
+  decoded: DecodedIdToken | Record<string, unknown> | null | undefined
+): boolean {
+  if (!decoded) return false;
+  const decodedRecord = decoded as Record<string, unknown> | null | undefined;
+  const explicitAdmin = decodedRecord?.admin;
+  if (typeof explicitAdmin === "boolean") return explicitAdmin;
+  const roles = Array.isArray(decodedRecord?.roles)
+    ? decodedRecord.roles
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim().toLowerCase())
+        .filter(Boolean)
+        .filter((entry): entry is "admin" => entry === "admin")
+    : [];
+  return roles.length > 0;
+}
+
+function asClaimsRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return { ...(value as Record<string, unknown>) };
+}
+
+function normalizeClaimRoles(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const deduped: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const trimmed = entry.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(trimmed);
+  }
+  return deduped;
+}
+
+export function buildClaimsForPortalRole(
+  existingClaims: Record<string, unknown> | null | undefined,
+  role: PortalUserRole
+): Record<string, unknown> | null {
+  const nextClaims = asClaimsRecord(existingClaims);
+  const otherRoles = normalizeClaimRoles(nextClaims.roles).filter((entry) => {
+    const normalized = entry.toLowerCase();
+    return normalized !== "staff" && normalized !== "admin";
+  });
+
+  delete nextClaims.roles;
+  delete nextClaims.staff;
+  delete nextClaims.admin;
+
+  if (role === "staff") {
+    nextClaims.staff = true;
+    nextClaims.roles = [...otherRoles, "staff"];
+  } else if (role === "admin") {
+    nextClaims.staff = true;
+    nextClaims.admin = true;
+    nextClaims.roles = [...otherRoles, "staff", "admin"];
+  } else if (otherRoles.length > 0) {
+    nextClaims.roles = otherRoles;
+  }
+
+  return Object.keys(nextClaims).length > 0 ? nextClaims : null;
 }
 
 export function parseAuthToken(req: RequestLike): string | null {
@@ -771,6 +840,30 @@ export async function requireAdmin(
 
   if (isStaffFromDecoded(decoded)) {
     return { ok: true, mode: "staff" };
+  }
+
+  if (allowDevAdminToken()) {
+    const expected = (process.env.ADMIN_TOKEN ?? "").trim();
+    if (expected) {
+      const got = readAdminTokenFromReq(req);
+      if (got && got === expected) return { ok: true, mode: "dev" };
+    }
+  }
+
+  return { ok: false, message: "Unauthorized", code: "FORBIDDEN", httpStatus: 403 };
+}
+
+export async function requireAdminRole(
+  req: RequestLike
+): Promise<
+  { ok: true; mode: "admin" | "dev" } |
+  { ok: false; message: string; code: "UNAUTHENTICATED" | "FORBIDDEN"; httpStatus: 401 | 403 }
+> {
+  const decoded = await getAuthDecoded(req);
+  if (!decoded) return { ok: false, message: "Unauthorized", code: "UNAUTHENTICATED", httpStatus: 401 };
+
+  if (isAdminFromDecoded(decoded)) {
+    return { ok: true, mode: "admin" };
   }
 
   if (allowDevAdminToken()) {

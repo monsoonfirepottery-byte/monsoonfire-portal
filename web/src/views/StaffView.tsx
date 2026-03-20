@@ -119,6 +119,7 @@ import { formatDateTime } from "../utils/format";
 type Props = {
   user: User;
   isStaff: boolean;
+  isAdmin?: boolean;
   devAdminToken: string;
   onDevAdminTokenChange: (next: string) => void;
   devAdminEnabled: boolean;
@@ -394,6 +395,7 @@ type ModuleUsageStat = {
 type QueryTrace = { atIso: string; collection: string; params: Record<string, unknown> };
 type WriteTrace = { atIso: string; collection: string; docId: string; payload: Record<string, unknown> };
 type MemberRoleFilter = "all" | "staff" | "admin" | "member";
+type MemberRoleValue = Exclude<MemberRoleFilter, "all">;
 
 type MemberOperationalStats = {
   batches: number | null;
@@ -460,7 +462,7 @@ type MemberRecord = {
   id: string;
   displayName: string;
   email: string;
-  role: string;
+  role: MemberRoleValue;
   createdAtMs: number;
   updatedAtMs: number;
   lastSeenAtMs: number;
@@ -1952,7 +1954,13 @@ function normalizeBatchState(status: string): string {
   return status.trim().toUpperCase().replace(/\s+/g, "_");
 }
 
-function memberRole(data: Record<string, unknown>): string {
+function memberRoleLabel(role: MemberRoleValue): string {
+  if (role === "admin") return "Admin";
+  if (role === "staff") return "Staff";
+  return "Client";
+}
+
+function memberRole(data: Record<string, unknown>): MemberRoleValue {
   const fallbackRole = [
     str(data.role),
     str(data.userRole),
@@ -1968,7 +1976,7 @@ function memberRole(data: Record<string, unknown>): string {
   }).role;
 }
 
-function deriveMembershipTier(data: Record<string, unknown>, role: string): string {
+function deriveMembershipTier(data: Record<string, unknown>, role: MemberRoleValue): string {
   if (role === "admin") return "Admin";
   if (role === "staff") return "Staff";
   const membership = record(data.membership);
@@ -2210,6 +2218,7 @@ function loadAdaptiveNavPreference(): boolean {
 export default function StaffView({
   user,
   isStaff,
+  isAdmin = false,
   devAdminToken,
   onDevAdminTokenChange,
   devAdminEnabled,
@@ -2267,8 +2276,11 @@ export default function StaffView({
   const moduleContentRef = useRef<HTMLDivElement | null>(null);
   const hasDevAdminAuthority = devAdminEnabled && devAdminToken.trim().length > 0;
   const hasStaffAuthority = isStaff || hasDevAdminAuthority;
-  const staffAuthorityLabel = isStaff
-    ? "Staff claim"
+  const hasAdminAuthority = isAdmin || hasDevAdminAuthority;
+  const staffAuthorityLabel = isAdmin
+    ? "Admin claim"
+    : isStaff
+      ? "Staff claim"
     : hasDevAdminAuthority
       ? "Dev admin token"
       : "No staff authority";
@@ -2351,6 +2363,8 @@ export default function StaffView({
     staffNotes: "",
     reason: "",
   });
+  const [memberRoleDraft, setMemberRoleDraft] = useState<MemberRoleValue>("member");
+  const [memberRoleReason, setMemberRoleReason] = useState("");
 
   const [selectedBatchId, setSelectedBatchId] = useState("");
   const [batchNotes, setBatchNotes] = useState("");
@@ -3842,11 +3856,11 @@ export default function StaffView({
         id: user.uid,
         displayName: user.displayName ?? "Current user",
         email: user.email ?? "-",
-        role: isStaff ? "staff" : "member",
+        role: isAdmin ? "admin" : isStaff ? "staff" : "member",
         createdAtMs: 0,
         updatedAtMs: 0,
         lastSeenAtMs: Date.now(),
-        membershipTier: isStaff ? "Staff" : "Studio Member",
+        membershipTier: isAdmin ? "Admin" : isStaff ? "Staff" : "Studio Member",
         kilnPreferences: "-",
         rawDoc: {},
       });
@@ -3863,7 +3877,7 @@ export default function StaffView({
     });
     setUsers(rows);
     if (!selectedMemberId && rows[0]) setSelectedMemberId(rows[0].id);
-  }, [isStaff, qTrace, selectedMemberId, user.displayName, user.email, user.uid]);
+  }, [isAdmin, isStaff, qTrace, selectedMemberId, user.displayName, user.email, user.uid]);
 
   const countFor = useCallback(
     async (collectionName: string, ...constraints: QueryConstraint[]): Promise<number> => {
@@ -6496,6 +6510,8 @@ export default function StaffView({
         staffNotes: "",
         reason: "",
       });
+      setMemberRoleDraft("member");
+      setMemberRoleReason("");
       return;
     }
     setMemberEditDraft({
@@ -6505,6 +6521,8 @@ export default function StaffView({
       staffNotes: str(selectedMember.rawDoc.staffNotes, ""),
       reason: "",
     });
+    setMemberRoleDraft(selectedMember.role);
+    setMemberRoleReason("");
   }, [selectedMember]);
 
   const handleSaveMemberProfile = () => {
@@ -6540,6 +6558,43 @@ export default function StaffView({
       await loadUsers();
       await loadMemberOperationalStats(selectedMember.id);
       setMemberEditDraft((prev) => ({ ...prev, reason: "" }));
+    });
+  };
+
+  const handleSaveMemberRole = () => {
+    if (!selectedMember) return;
+    if (hasFunctionsAuthMismatch) {
+      setError("Cannot change roles while local Functions/Auth emulators are mismatched.");
+      return;
+    }
+    if (!hasAdminAuthority) {
+      setError("Only admins can change member roles.");
+      return;
+    }
+    if (selectedMember.id === user.uid) {
+      setError("Use another admin session to change your own role.");
+      return;
+    }
+
+    const nextRole = memberRoleDraft;
+    if (nextRole === selectedMember.role) {
+      setStatus("No role changes to save.");
+      return;
+    }
+
+    void run("saveMemberRole", async () => {
+      const response = await client.postJson<{ role?: MemberRoleValue; tokenNeedsRefresh?: boolean }>("staffUpdateUserRole", {
+        uid: selectedMember.id,
+        role: nextRole,
+        reason: memberRoleReason.trim() || null,
+      });
+      const savedRole = response.role ?? nextRole;
+      setStatus(
+        `${selectedMember.displayName} is now ${memberRoleLabel(savedRole)}. They must sign out and back in to refresh access.`
+      );
+      await loadUsers();
+      await loadMemberOperationalStats(selectedMember.id);
+      setMemberRoleReason("");
     });
   };
 
@@ -6813,7 +6868,7 @@ export default function StaffView({
                       tabIndex={0}
                     >
                       <td>{member.displayName}</td>
-                      <td><span className="pill">{member.role}</span></td>
+                      <td><span className="pill">{memberRoleLabel(member.role)}</span></td>
                       <td><span className="pill">{member.membershipTier}</span></td>
                       <td>{member.email}</td>
                       <td>{when(member.lastSeenAtMs)}</td>
@@ -6846,18 +6901,61 @@ export default function StaffView({
                 <button type="button" className="btn btn-ghost" onClick={() => void copy(selectedMember.email)}>
                   Copy email
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() =>
-                    void copy(
-                      `node functions/scripts/setStaffClaim.js --uid ${selectedMember.id}`
-                    )
-                  }
-                >
-                  Copy promote command
-                </button>
               </div>
+              <div className="staff-subtitle">Access role</div>
+              <div className="staff-note">
+                Current role: <strong>{memberRoleLabel(selectedMember.role)}</strong>. Role changes update Firebase Auth claims and
+                the mirrored user record.
+              </div>
+              {hasAdminAuthority ? (
+                <>
+                  <div className="staff-module-grid">
+                    <label className="staff-field">
+                      Role
+                      <select
+                        value={memberRoleDraft}
+                        onChange={(event) => setMemberRoleDraft(event.target.value as MemberRoleValue)}
+                      >
+                        <option value="member">Client</option>
+                        <option value="staff">Staff</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </label>
+                    <label className="staff-field">
+                      Role change reason (audit log)
+                      <input
+                        value={memberRoleReason}
+                        onChange={(event) => setMemberRoleReason(event.target.value)}
+                        placeholder="Why this role change was made"
+                      />
+                    </label>
+                  </div>
+                  {selectedMember.id === user.uid ? (
+                    <div className="staff-note">
+                      Use another admin session to change your own role so you do not lock yourself out mid-session.
+                    </div>
+                  ) : null}
+                  {hasDevAdminAuthority && !isAdmin ? (
+                    <div className="staff-note">
+                      Role management is currently authorized by the dev admin token for this session.
+                    </div>
+                  ) : null}
+                  <div className="staff-actions-row">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={Boolean(busy) || selectedMember.id === user.uid}
+                      onClick={handleSaveMemberRole}
+                    >
+                      {busy === "saveMemberRole" ? "Saving role..." : "Save role change"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="staff-note">
+                  Admin claim required to change roles. Staff can still update profile fields and internal notes.
+                </div>
+              )}
               <div className="staff-subtitle">Edit profile</div>
               <div className="staff-module-grid">
                 <label className="staff-field">
@@ -6904,6 +7002,7 @@ export default function StaffView({
                 </button>
               </div>
               <div className="staff-kpi-grid">
+                <div className="staff-kpi"><span>Role</span><strong>{memberRoleLabel(selectedMember.role)}</strong></div>
                 <div className="staff-kpi"><span>Membership</span><strong>{selectedMember.membershipTier}</strong></div>
                 <div className="staff-kpi"><span>Created</span><strong>{when(selectedMember.createdAtMs)}</strong></div>
                 <div className="staff-kpi"><span>Updated</span><strong>{when(selectedMember.updatedAtMs)}</strong></div>

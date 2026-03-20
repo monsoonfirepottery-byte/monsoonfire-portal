@@ -14,7 +14,13 @@
     "user-direct",
     "user_direct",
     "import-context-slice",
-    "import_context_slice"
+    "import_context_slice",
+    "repo-markdown",
+    "codex-compaction-promoted",
+    "codex-compaction-window",
+    "codex-compaction-raw",
+    "codex-resumable-session",
+    "codex-history-export"
   ],
   "promptInjectionPatterns": [
     "ignore\\s+previous\\s+instructions",
@@ -34,9 +40,62 @@
     "user_direct": 0.98,
     "import-context-slice": 0.82,
     "import_context_slice": 0.82,
+    "repo-markdown": 0.84,
+    "codex-compaction-promoted": 0.88,
+    "codex-compaction-window": 0.72,
+    "codex-compaction-raw": 0.64,
     "codex-resumable-session": 0.76,
     "codex_resumable_session": 0.76,
+    "codex-history-export": 0.72,
+    "codex_history_export": 0.72,
     "chatgpt-export:memory-pack.zip": 0.45,
     "memory-pack-mined-memories-unique-runid": 0.35
+  },
+  "laneRules": {
+    "quarantineLanes": [
+      "personal",
+      "unknown"
+    ],
+    "autoAcceptByLane": {
+      "monsoonfire-portal": [
+        "repo-markdown",
+        "codex-compaction-promoted",
+        "codex-compaction-window",
+        "codex-compaction-raw",
+        "codex-resumable-session",
+        "codex-history-export"
+      ],
+      "studio-brain": [
+        "repo-markdown",
+        "codex-compaction-promoted",
+        "codex-compaction-window",
+        "codex-compaction-raw",
+        "codex-resumable-session",
+        "codex-history-export"
+      ],
+      "functions": [
+        "repo-markdown",
+        "codex-compaction-promoted",
+        "codex-compaction-window",
+        "codex-compaction-raw",
+        "codex-resumable-session",
+        "codex-history-export"
+      ],
+      "website": [
+        "repo-markdown",
+        "codex-compaction-promoted",
+        "codex-compaction-window",
+        "codex-compaction-raw",
+        "codex-resumable-session",
+        "codex-history-export"
+      ],
+      "general-dev": [
+        "codex-compaction-promoted",
+        "codex-compaction-window",
+        "codex-compaction-raw",
+        "codex-resumable-session",
+        "codex-history-export"
+      ]
+    }
   }
 }

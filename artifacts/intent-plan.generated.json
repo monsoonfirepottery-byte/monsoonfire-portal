@@ -1,12 +1,12 @@
 {
   "schema": "intent-plan.v1",
   "controlPlaneDigests": {
-    "intentSchema": "400cf76c55079f23690993fe76a661f11ebc451016f2462b4bd5cd7d7a26fc5f",
-    "policyConfig": "1b376142dd8cb4efb789b83a949155381574e565b81a3f38a8fa83b5d6a5b4eb",
-    "budgetConfig": "54dd893f7affaa280b4faaafe32cf2c0f834f854bf833369c8e36e95fd6c6989",
-    "memoryGovernanceConfig": "15bf3034e45631a57fca01056e66714939904486b1c3e42d50bc3a6ab4a2d39f",
-    "safetyRailsConfig": "bbc21b745c69da277eb938200646ee4c035efc8c9c48c548cfc19bce3fd29e9b",
-    "hardeningRegistry": "fbe47eaad2b7ddb416bf0f977321543ab0ed1fb16ffd4dbef97b8370ed1a3f59"
+    "intentSchema": "1061e878339d1782370d3a27385cee9e92739d7bde9fc9679c3d5c76619ee0c1",
+    "policyConfig": "94a6aeab1675c628fcf574383e75d21e58dba7cccb4fb32a07eb909a62bbb669",
+    "budgetConfig": "7201255f3d2cd40ffff4b5e7f24ad132088f605c96d8c8ca266e81cea595d035",
+    "memoryGovernanceConfig": "c50fd6521dc9202035b505607cadf1d7ac8f56b150fc1f2b2457dade502fce20",
+    "safetyRailsConfig": "f13d85ec9ee3158dc3c9544f88795d13fadd750893055045692a52599936c936",
+    "hardeningRegistry": "f87339c7788dce9e5db7f63f4a04badd4f9f85d164ca342899393f15525aab0f"
   },
   "intents": [
     {
@@ -15,8 +15,8 @@
       "title": "Codex Continuous Improvement Autopilot",
       "file": "intents/EPIC-CODEX-CONTINUOUS-IMPROVEMENT.intent.json",
       "epicPath": "docs/epics/EPIC-CODEX-CONTINUOUS-IMPROVEMENT.md",
-      "epicDigestSha256": "dc2793e76ab68c58aaa79c02c3beb90897360e23aa1169a61144a73c4da07e8c",
-      "intentDigestSha256": "c2a870d3695b34e92239e9fde66af3544667cbf3abfb5dad011d66c72483b3fe",
+      "epicDigestSha256": "97db7d7c4fc45f21b15e1ec4769d88f40483b29cef6b216f1539bf0412486cbc",
+      "intentDigestSha256": "c375d9325e99f1c3804e48534ea319067e15c0abdfa7ec3005e048b1614318d0",
       "objective": "Run a bounded and evidence-backed continuous-improvement loop that proposes high-signal fixes without unsafe write behavior or automation recursion.",
       "riskTier": "medium",
       "constraints": {
@@ -139,8 +139,8 @@
       "title": "Codex Interaction Interrogation Loop",
       "file": "intents/EPIC-CODEX-INTERACTION-INTERROGATION.intent.json",
       "epicPath": "docs/epics/EPIC-CODEX-INTERACTION-INTERROGATION.md",
-      "epicDigestSha256": "10da735b5990b6cf7fb9e7b061f5b3fe912a2abc0c7978abacfc229ffc1f908a",
-      "intentDigestSha256": "c3dffec4e0d5a62b1a608661cb0d4dd00f38a5b588b35444a9df90a32a18957a",
+      "epicDigestSha256": "3d60b88a8c89eba919f088bc681c7d00a7bbc4452358d47e7c8b7e063a846d8f",
+      "intentDigestSha256": "6d4f27a6c45b9fbed13859f05d0df9b0e8835ad3a6bf79d8dddb8a62b3c249c7",
       "objective": "Continuously interrogate recent Codex/human collaboration patterns and apply structural instruction improvements that reduce ambiguity and workflow drift.",
       "riskTier": "medium",
       "constraints": {
@@ -262,8 +262,8 @@
       "title": "Codex PR Green Daily Automation",
       "file": "intents/EPIC-CODEX-PR-GREEN-DAILY.intent.json",
       "epicPath": "docs/epics/EPIC-CODEX-PR-GREEN-DAILY.md",
-      "epicDigestSha256": "4265cbf96fe54254f3da3dc5f5ce16a17cc42799794a4402801332260fc87fde",
-      "intentDigestSha256": "aa377b3cb103d913ecff522b5907eed4deaf932fe3fa399060343b1d3a0102ba",
+      "epicDigestSha256": "4eff6029272399b4ca9dcc544b3f2bfe35048bcf7960bfd6c75a217f30c302ee",
+      "intentDigestSha256": "cc6cdabdf18be7769604e0195d498dc0d0449f3b34b310997422d09f7407b250",
       "objective": "Keep open pull requests moving toward green by detecting blocked checks, requesting safe reruns for flaky failures, and publishing unblock summaries.",
       "riskTier": "medium",
       "constraints": {
@@ -384,8 +384,8 @@
       "title": "Events Page Industry Events Expansion",
       "file": "intents/EPIC-EVENTS-PAGE-INDUSTRY-EVENTS-LOCAL-REMOTE.intent.json",
       "epicPath": "docs/epics/EPIC-EVENTS-PAGE-INDUSTRY-EVENTS-LOCAL-REMOTE.md",
-      "epicDigestSha256": "f6e048eb47106cfa63cafc7605e62ea84830af3259022b657fc12a058402caa1",
-      "intentDigestSha256": "3a095095550107e5c6e8c9d1995ea753170f28fd2ea05211a4d05d0a2bd90db0",
+      "epicDigestSha256": "36f49b2a4f74ffae840482cc00812e7c4523147b130ae121505ec6f40346ba0f",
+      "intentDigestSha256": "d4d29f57a8e9149d741ea0c952f4b6e101214598cba6251e74512fa74450f8b7",
       "objective": "Expand events discovery to include trusted local and remote industry events with curation, freshness, and member-facing reliability safeguards.",
       "riskTier": "medium",
       "constraints": {
@@ -505,8 +505,8 @@
       "title": "Portal QA Automation Coverage Expansion",
       "file": "intents/EPIC-PORTAL-QA-AUTOMATION-COVERAGE.intent.json",
       "epicPath": "docs/epics/EPIC-PORTAL-QA-AUTOMATION-COVERAGE.md",
-      "epicDigestSha256": "0e17d6868411cf34b34a3d70e53e5ce719a8b96e530355b1be506fabf310a966",
-      "intentDigestSha256": "36acedf2604bf0f5e60a72df2b3f0ecd970d36054e34382a0e3e29d9ae281efc",
+      "epicDigestSha256": "fd7c0bb733f770f3a6e9d7402fa4972163bef6a25d4d34ca304ebd11d761a8c1",
+      "intentDigestSha256": "e7298c133db1f5081f1938ff1dca74da3ab767ed672e0e1fc959f14828a94e5e",
       "objective": "Close recurring QA gaps with repeatable automated checks for authz, index drift, canary health, fixture stewardship, and promotion safety.",
       "riskTier": "medium",
       "constraints": {
@@ -650,8 +650,8 @@
       "title": "Staff Console Usability and Signal Hardening",
       "file": "intents/EPIC-STAFF-CONSOLE-USABILITY-AND-SIGNAL-HARDENING.intent.json",
       "epicPath": "docs/epics/EPIC-STAFF-CONSOLE-USABILITY-AND-SIGNAL-HARDENING.md",
-      "epicDigestSha256": "6635fd384218deb9967d01d07eea06a7b00aeca2d02bc248a7698528053b6561",
-      "intentDigestSha256": "15e3557cd51b21641b94370453d25b1c5a461e773e47b8d9f7eed3749a091eba",
+      "epicDigestSha256": "bd0062a4f6d99e4f99b37237c4cd2bc9e4511f33f4a660b4dc6110a92d089737",
+      "intentDigestSha256": "7e86db49ef89dc65bfa9ba2b625faba7c34c4ba03ea2526a6dab40db620100b5",
       "objective": "Improve staff-console trust and triage velocity by hardening health signals, reducing noisy controls, and strengthening supporting operations checks.",
       "riskTier": "medium",
       "constraints": {
@@ -772,8 +772,8 @@
       "title": "Staff Portal Module Consolidation",
       "file": "intents/EPIC-STAFF-PORTAL-MODULE-CONSOLIDATION.intent.json",
       "epicPath": "docs/epics/EPIC-STAFF-PORTAL-MODULE-CONSOLIDATION.md",
-      "epicDigestSha256": "cad021bcc8e77ee8aa9f7d95dcf25988dbb6f08d43da0b6786b91591e8318838",
-      "intentDigestSha256": "2fd89425b37587ed983bfb19d131d78773758eea38800480886d7403f22ad9e0",
+      "epicDigestSha256": "6104252a132febd977d089b1fa7e3f555fd6220f7284626a1e30998fa0a14bfb",
+      "intentDigestSha256": "96ff0a83d1f35eafced0d23118bb7f12ded4db5118c1e8e1b9e85002ca0ef78c",
       "objective": "Consolidate duplicated staff portal modules into a task-oriented cockpit flow while preserving operational capabilities and lowering navigation friction.",
       "riskTier": "medium",
       "constraints": {
@@ -893,8 +893,8 @@
       "title": "Workshops Experience and Community Signals",
       "file": "intents/EPIC-WORKSHOPS-EXPERIENCE-AND-COMMUNITY-SIGNALS.intent.json",
       "epicPath": "docs/epics/EPIC-WORKSHOPS-EXPERIENCE-AND-COMMUNITY-SIGNALS.md",
-      "epicDigestSha256": "51ed6c1744cf107a1f2dab03e2319a75e53f4408657999e9317c4108ded1a322",
-      "intentDigestSha256": "5b6846c450d49dc8171fe1965269b143a58dae39f82857b5034e7fa2db2c7eb1",
+      "epicDigestSha256": "82ffc9c2dbad5b84be5cf13bf3dc60441244117a701f75a738b7764aa310d5bf",
+      "intentDigestSha256": "6c2bacc50217e7d7b6feb5234cba16bdae02f6f1a286d6831b6fc3774d9ea33e",
       "objective": "Evolve workshops into a community learning hub with stronger discovery, demand signaling, and feedback loops while preserving transactional reliability.",
       "riskTier": "medium",
       "constraints": {
@@ -1456,8 +1456,8 @@
       "authorityTier": "T2"
     }
   ],
-  "generatedAt": "2026-03-06T20:49:58.106Z",
+  "generatedAt": "2026-03-20T18:13:07.577Z",
   "intentCount": 8,
   "taskCount": 24,
-  "planDigestSha256": "1bd780fb0713024ed116b9f27f831b900728fa54501f3d161757800e1cff4e7d"
+  "planDigestSha256": "81ca577a55e20ac26fdc7c8aac266472b3f15c6aeacdaf63a05fedbf3feb658b"
 }

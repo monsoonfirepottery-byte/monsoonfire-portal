@@ -22,6 +22,7 @@ import { formatDateTime, formatMaybeTimestamp } from "../utils/format";
 import { DASHBOARD_MOCK_NON_DEV_ACK, resolveDashboardMockPolicy } from "./dashboardMockPolicy";
 
 const DASHBOARD_PIECES_PREVIEW = 3;
+const DASHBOARD_BATCH_PIECES_QUERY_LIMIT = 12;
 
 const STATUS_LABELS: Record<string, string> = {
   idle: "Idle",
@@ -45,6 +46,25 @@ type KilnRow = {
   firingTypeLabel: string;
   progress: number | null;
   isOffline: boolean;
+};
+
+type DashboardPieceRow = {
+  key: string;
+  batchId: string;
+  pieceId: string;
+  batchTitle: string;
+  pieceCode: string;
+  shortDesc: string;
+  stage: string;
+  isArchived: boolean;
+  updatedAt?: unknown;
+};
+
+type BatchAccessRow = {
+  id: string;
+  title?: string;
+  ownerUid?: string;
+  editors?: unknown;
 };
 
 function isPermissionDenied(err: unknown) {
@@ -109,6 +129,76 @@ function getTimestampMs(value: unknown) {
   return date ? date.getTime() : 0;
 }
 
+function formatDashboardPieceStage(stage: string) {
+  const normalized = String(stage || "").trim().toUpperCase();
+  if (!normalized || normalized === "UNKNOWN") return "In progress";
+  return normalized
+    .split("_")
+    .map((token) => token.charAt(0) + token.slice(1).toLowerCase())
+    .join(" ");
+}
+
+export function getDashboardPieceTitle(piece: Pick<DashboardPieceRow, "pieceId" | "pieceCode" | "shortDesc">) {
+  const pieceCode = String(piece.pieceCode || "").trim();
+  if (pieceCode) return pieceCode;
+  const shortDesc = String(piece.shortDesc || "").trim();
+  if (shortDesc) return shortDesc;
+  return `Piece ${shortId(piece.pieceId)}`;
+}
+
+export function getDashboardPieceBadge(piece: Pick<DashboardPieceRow, "pieceId" | "pieceCode" | "shortDesc">) {
+  const seed = String(piece.pieceCode || piece.shortDesc || piece.pieceId || "")
+    .replace(/[^a-z0-9]+/gi, "")
+    .toUpperCase();
+  return seed.slice(0, 3) || "PI";
+}
+
+export function getDashboardPieceStatus(piece: Pick<DashboardPieceRow, "isArchived" | "stage">) {
+  return piece.isArchived ? "Archived" : formatDashboardPieceStage(piece.stage);
+}
+
+function isReadableBatchForUser(batch: BatchAccessRow, user: User, isStaff: boolean) {
+  if (isStaff) return true;
+  const ownerUid = typeof batch.ownerUid === "string" ? batch.ownerUid : "";
+  const editors = Array.isArray(batch.editors)
+    ? batch.editors.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  return ownerUid === user.uid || editors.includes(user.uid);
+}
+
+function sortDashboardPieceRows(rows: DashboardPieceRow[]) {
+  return [...rows].sort((left, right) => {
+    const rightMs = getTimestampMs(right.updatedAt);
+    const leftMs = getTimestampMs(left.updatedAt);
+    if (rightMs !== leftMs) return rightMs - leftMs;
+    return left.key.localeCompare(right.key);
+  });
+}
+
+export function summarizeDashboardPieces(rows: DashboardPieceRow[], limit = DASHBOARD_PIECES_PREVIEW) {
+  const sorted = sortDashboardPieceRows(rows);
+  const archivedRows = sorted.filter((piece) => piece.isArchived);
+  const preview = sorted.slice(0, limit);
+  const previewHasArchived = preview.some((piece) => piece.isArchived);
+
+  if (!previewHasArchived && archivedRows.length > 0) {
+    const latestArchived = archivedRows[0];
+    const nextPreview =
+      preview.length < limit
+        ? [...preview, latestArchived]
+        : [...preview.slice(0, Math.max(0, limit - 1)), latestArchived];
+    return {
+      preview: nextPreview,
+      archivedCount: archivedRows.length,
+    };
+  }
+
+  return {
+    preview,
+    archivedCount: archivedRows.length,
+  };
+}
+
 function reservationStatusLabel(reservation: ReservationRecord) {
   const status = String(reservation.status || "").toUpperCase();
   if (status === "CONFIRMED") return "Confirmed";
@@ -123,6 +213,18 @@ function reservationStatusLabel(reservation: ReservationRecord) {
 function parseWorkshopStartMs(value: string | null | undefined) {
   const parsed = Date.parse(value ?? "");
   return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+}
+
+function normalizeWorkshopText(value: string | null | undefined) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+export function isQaWorkshopEvent(event: Pick<EventSummary, "title" | "summary">) {
+  const title = normalizeWorkshopText(event.title);
+  const summary = normalizeWorkshopText(event.summary);
+  return title.startsWith("qa fixture workshop") || summary.includes("seeded workshop fixture");
 }
 
 function workshopAvailabilityLabel(event: EventSummary) {
@@ -171,6 +273,7 @@ function useDashboardWorkshopPreview(user: User) {
         const nowMs = Date.now();
         const nextWorkshops = (response.data.events ?? [])
           .filter((event) => event.status === "published")
+          .filter((event) => !isQaWorkshopEvent(event))
           .filter((event) => parseWorkshopStartMs(event.startAt) >= nowMs)
           .sort((left, right) => parseWorkshopStartMs(left.startAt) - parseWorkshopStartMs(right.startAt))
           .slice(0, 3);
@@ -196,6 +299,89 @@ function useDashboardWorkshopPreview(user: User) {
     workshops,
     loading,
   };
+}
+
+function useDashboardPiecePreview(user: User, isStaff: boolean, active: BatchAccessRow[], history: BatchAccessRow[]) {
+  const [pieces, setPieces] = useState<DashboardPieceRow[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPieces = async () => {
+      const readableBatches = [...active, ...history].filter((batch) => isReadableBatchForUser(batch, user, isStaff));
+      if (readableBatches.length === 0) {
+        setPieces([]);
+        return;
+      }
+
+      try {
+        const results = await Promise.allSettled(
+          readableBatches.map(async (batch) => {
+            const batchTitle = typeof batch.title === "string" && batch.title.trim() ? batch.title : "Check-in";
+            const orderedQuery = query(
+              collection(db, "batches", batch.id, "pieces"),
+              orderBy("updatedAt", "desc"),
+              limit(DASHBOARD_BATCH_PIECES_QUERY_LIMIT)
+            );
+
+            const mapDocs = async (sourceQuery: ReturnType<typeof query>) => {
+              const snap = await getDocs(sourceQuery);
+              return snap.docs.map((docSnap) => {
+                const data = docSnap.data() as Partial<DashboardPieceRow>;
+                return {
+                  key: `${batch.id}:${docSnap.id}`,
+                  batchId: batch.id,
+                  pieceId: docSnap.id,
+                  batchTitle,
+                  pieceCode: typeof data.pieceCode === "string" ? data.pieceCode : "",
+                  shortDesc: typeof data.shortDesc === "string" ? data.shortDesc : "",
+                  stage: typeof data.stage === "string" ? data.stage : "UNKNOWN",
+                  isArchived: data.isArchived === true,
+                  updatedAt: data.updatedAt ?? null,
+                } satisfies DashboardPieceRow;
+              });
+            };
+
+            try {
+              return await mapDocs(orderedQuery);
+            } catch (error: unknown) {
+              if (!isPermissionDenied(error) && !isMissingIndexError(error)) {
+                throw error;
+              }
+              const fallbackQuery = query(
+                collection(db, "batches", batch.id, "pieces"),
+                limit(DASHBOARD_BATCH_PIECES_QUERY_LIMIT)
+              );
+              return await mapDocs(fallbackQuery);
+            }
+          })
+        );
+
+        if (cancelled) return;
+
+        const deduped = new Map<string, DashboardPieceRow>();
+        for (const result of results) {
+          if (result.status !== "fulfilled") continue;
+          for (const piece of result.value) {
+            deduped.set(piece.key, piece);
+          }
+        }
+
+        setPieces(sortDashboardPieceRows(Array.from(deduped.values())));
+      } catch {
+        if (!cancelled) {
+          setPieces([]);
+        }
+      }
+    };
+
+    void loadPieces();
+    return () => {
+      cancelled = true;
+    };
+  }, [active, history, isStaff, user]);
+
+  return useMemo(() => summarizeDashboardPieces(pieces), [pieces]);
 }
 
 function useKilnDashboardRows(actor: { uid?: string | null; email?: string | null }) {
@@ -487,7 +673,6 @@ export default function DashboardView({
   const nextThemeLabel = isDarkTheme ? "light" : "dark";
   const { active, history } = useBatches(user);
   const [recentReservations, setRecentReservations] = useState<ReservationRecord[]>([]);
-  const activePreview = active.slice(0, DASHBOARD_PIECES_PREVIEW);
   const messagePreview = threads.slice(0, 3);
   const announcementPreview = announcements.slice(0, 3);
   const {
@@ -500,8 +685,13 @@ export default function DashboardView({
     loading: kilnLoading,
     reload: reloadKilns,
   } = useKilnDashboardRows({ uid: user.uid, email: user.email ?? null });
-  const queueFillCount = Math.min(8, Math.max(active.length, 0));
-  const queueFillRatio = Math.min(1, queueFillCount / 8);
+  const { preview: piecePreview, archivedCount } = useDashboardPiecePreview(
+    user,
+    isStaff,
+    active as BatchAccessRow[],
+    history as BatchAccessRow[]
+  );
+  const openLoadCount = active.length;
   const averageTurnaroundDays = useMemo(() => {
     const durations = history
       .map((item) => {
@@ -517,8 +707,9 @@ export default function DashboardView({
     const avg = sample.reduce((total, value) => total + value, 0) / sample.length;
     return Math.round(avg);
   }, [history]);
-  const nextPiece = activePreview[0];
-  const nextPieceStatus = nextPiece?.status || "In progress";
+  const nextPiece = piecePreview[0] ?? null;
+  const nextPieceTitle = nextPiece ? getDashboardPieceTitle(nextPiece) : "Piece";
+  const nextPieceStatus = nextPiece ? getDashboardPieceStatus(nextPiece) : "In progress";
   const nextPieceEta = nextPiece?.updatedAt
     ? formatMaybeTimestamp(nextPiece.updatedAt)
     : "Check back soon";
@@ -603,7 +794,30 @@ export default function DashboardView({
 
   return (
     <div className="dashboard">
-      <RevealCard as="section" className="card hero-card" index={0} enabled={motionEnabled}>
+      <section className="quick-actions">
+        <RevealCard className="card card-3d quick-action-card" index={0} enabled={motionEnabled}>
+          <div className="card-title">Quick actions</div>
+          <div className="quick-action-row">
+            <button className="btn btn-primary" onClick={onOpenCheckin}>
+              Start a check-in
+            </button>
+            <button className="btn btn-ghost" onClick={onOpenQueues}>
+              View the queues
+            </button>
+            <button className="btn btn-ghost" onClick={onOpenFirings}>
+              Firings
+            </button>
+            <button className="btn btn-ghost" onClick={onOpenGlazeBoard}>
+              Glaze inspiration
+            </button>
+            <button className="btn btn-ghost" onClick={onOpenMessages}>
+              Message the studio
+            </button>
+          </div>
+        </RevealCard>
+      </section>
+
+      <RevealCard as="section" className="card hero-card" index={1} enabled={motionEnabled}>
         <div className="hero-content">
           <div className="hero-toolbar">
             <div className="hero-title-block">
@@ -658,34 +872,11 @@ export default function DashboardView({
         </div>
       </RevealCard>
 
-      <section className="quick-actions">
-        <RevealCard className="card card-3d quick-action-card" index={1} enabled={motionEnabled}>
-          <div className="card-title">Quick actions</div>
-          <div className="quick-action-row">
-            <button className="btn btn-primary" onClick={onOpenCheckin}>
-              Start a check-in
-            </button>
-            <button className="btn btn-ghost" onClick={onOpenQueues}>
-              View the queues
-            </button>
-            <button className="btn btn-ghost" onClick={onOpenFirings}>
-              Firings
-            </button>
-            <button className="btn btn-ghost" onClick={onOpenGlazeBoard}>
-              Glaze inspiration
-            </button>
-            <button className="btn btn-ghost" onClick={onOpenMessages}>
-              Message the studio
-            </button>
-          </div>
-        </RevealCard>
-      </section>
-
       <section className="dashboard-grid">
         <RevealCard className="card card-3d" index={2} enabled={motionEnabled}>
           <div className="card-title">Your pieces</div>
-          <div className="card-subtitle">Personal queue</div>
-          {activePreview.length === 0 ? (
+          <div className="card-subtitle">Recent piece activity + archive</div>
+          {piecePreview.length === 0 ? (
             reservationPreview.length > 0 ? (
               <div className="pieces-preview">
                 <div className="pieces-next">
@@ -721,9 +912,11 @@ export default function DashboardView({
           ) : (
             <div className="pieces-preview">
               <div className="pieces-next">
-                <div className="pieces-next-label">Next status</div>
-                <div className="pieces-next-title">{nextPieceStatus}</div>
-                <div className="pieces-next-meta">{nextPieceEta}</div>
+                <div className="pieces-next-label">{nextPiece?.isArchived ? "Archived piece" : "Recently updated piece"}</div>
+                <div className="pieces-next-title">{nextPieceTitle}</div>
+                <div className="pieces-next-meta">{nextPieceStatus}</div>
+                <div className="pieces-next-meta">Check-in: {nextPiece?.batchTitle || "Check-in"}</div>
+                <div className="pieces-next-meta">Updated: {nextPieceEta}</div>
                 {nextReservation ? (
                   <div className="pieces-next-meta">
                     Latest check-in queued{nextReservationOwnerLabel ? ` for ${nextReservationOwnerLabel}` : ""}:{" "}
@@ -732,28 +925,31 @@ export default function DashboardView({
                 ) : null}
               </div>
               <div className="pieces-thumbs">
-                {activePreview.map((piece, index) => {
-                  const title = piece.title || "Piece";
-                  const initials = title
-                    .split(" ")
-                    .filter(Boolean)
-                    .slice(0, 2)
-                    .map((word) => word[0]?.toUpperCase())
-                    .join("");
+                {piecePreview.map((piece, index) => {
+                  const title = getDashboardPieceTitle(piece);
+                  const badge = getDashboardPieceBadge(piece);
                   return (
                     <button
                       type="button"
-                      key={piece.id}
-                      className="piece-thumb"
+                      key={piece.key}
+                      className={`piece-thumb ${piece.isArchived ? "piece-thumb-archived" : ""}`}
                       aria-label={`Open ${title} in My Pieces`}
                       data-index={index + 1}
-                      onClick={() => onOpenPieces({ batchId: piece.id })}
+                      onClick={() => onOpenPieces({ batchId: piece.batchId, pieceId: piece.pieceId })}
                     >
-                      {initials || "•"}
+                      {badge}
                     </button>
                   );
                 })}
               </div>
+              {archivedCount > 0 ? (
+                <div className="archived-summary">
+                  <span>Archive is available in My Pieces.</span>
+                  <span className="archived-count">
+                    {archivedCount} archived piece{archivedCount === 1 ? "" : "s"}
+                  </span>
+                </div>
+              ) : null}
             </div>
           )}
           <button className="btn btn-ghost dashboard-link" onClick={() => onOpenPieces()}>
@@ -762,27 +958,24 @@ export default function DashboardView({
         </RevealCard>
 
         <RevealCard className="card card-3d" index={3} enabled={motionEnabled}>
-          <div className="card-title">Studio snapshot</div>
-          <div className="card-subtitle">Studio-wide status</div>
+          <div className="card-title">Firing snapshot</div>
+          <div className="card-subtitle">Studio timing + your recent loads</div>
           <div className="snapshot-grid">
             <div className="snapshot-block">
               <div className="snapshot-label">Next scheduled firing</div>
               <div className="snapshot-value">{nextFiringLabel}</div>
             </div>
             <div className="snapshot-block">
-              <div className="snapshot-label">Queue fullness</div>
-              <div className="snapshot-value">
-                {queueFillCount} / 8 half shelves
+              <div className="snapshot-label">Open loads</div>
+              <div className="snapshot-value">{openLoadCount}</div>
+              <div className="snapshot-meta">
+                {openLoadCount === 0
+                  ? "No active firing loads right now."
+                  : `${openLoadCount} load${openLoadCount === 1 ? "" : "s"} currently in progress.`}
               </div>
-              <progress
-                className="meter"
-                value={Math.round(queueFillRatio * 100)}
-                max={100}
-                aria-label="Queue fullness"
-              />
             </div>
             <div className="snapshot-block">
-              <div className="snapshot-label">Average turnaround this month</div>
+              <div className="snapshot-label">Recent turnaround average</div>
               <div className="snapshot-value">
                 {averageTurnaroundDays ? `${averageTurnaroundDays} days` : "We are still collecting data"}
               </div>
@@ -836,14 +1029,15 @@ export default function DashboardView({
         </RevealCard>
 
         <RevealCard className="card card-3d" index={5} enabled={motionEnabled}>
-          <div className="card-title">Upcoming workshops</div>
+          <div className="card-title">Workshop calendar</div>
           {workshopsLoading ? (
             <div className="empty-state" role="status" aria-live="polite">
               Loading...
             </div>
           ) : workshopPreview.length === 0 ? (
             <div className="empty-block">
-              <div className="empty-state">No upcoming workshops.</div>
+              <div className="empty-state">No workshops are currently scheduled.</div>
+              <div className="empty-meta">Open the workshop calendar for the latest schedule.</div>
             </div>
           ) : (
             <div className="list">
@@ -863,7 +1057,7 @@ export default function DashboardView({
             </div>
           )}
           <button className="btn btn-ghost dashboard-link" onClick={onOpenWorkshops}>
-            Open workshops
+            Open workshop calendar
           </button>
         </RevealCard>
 

@@ -173,6 +173,10 @@ describe("KilnLaunchView timeline", () => {
   it("renders the 7-day kiln timeline and shows read-only details for a selected segment", async () => {
     render(<KilnLaunchView user={createUser()} isStaff={false} />);
 
+    expect(screen.getByRole("heading", { level: 1, name: "Live view of our Kilns" })).toBeDefined();
+    expect(
+      screen.getByText(/Track what is queued, what is loading, and how full the next kiln plan is getting while/i)
+    ).toBeDefined();
     expect(await screen.findByText("Seven-day kiln calendar")).toBeDefined();
     expect(screen.getByText("L&L eQ2827-3")).toBeDefined();
     expect(screen.getByText("Reduction Raku")).toBeDefined();

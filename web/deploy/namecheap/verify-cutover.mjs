@@ -12,6 +12,8 @@ const DEFAULT_WELL_KNOWN_PATH = "/.well-known/apple-app-site-association";
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
 const DEFAULT_PROTECTED_FUNCTION = "listMaterialsProducts";
 const DEFAULT_ID_TOKEN_ENV = "PORTAL_CUTOVER_ID_TOKEN";
+const FIREBASE_COMPILED_KEY_REGEX = /AIza[0-9A-Za-z_-]{20,}/g;
+const FIREBASE_MISSING_KEY_TOKEN = "MISSING_VITE_FIREBASE_API_KEY";
 
 const CLI_ALIAS_MAP = {
   portalurl: "portalUrl",
@@ -93,6 +95,7 @@ async function runVerify(parsed) {
   });
 
   const rootSampleAssets = extractAssetPaths(root.body || "");
+  const rootJavaScriptAssets = rootSampleAssets.filter((assetPath) => /\.js$/i.test(assetPath));
   const sampleAssets = rootSampleAssets.slice(0, 3);
   const assetChecks = [];
   for (const assetPath of sampleAssets) {
@@ -117,6 +120,17 @@ async function runVerify(parsed) {
     } else {
       failures.push(`asset ${check.path} request failed (${check.status})`);
     }
+  }
+
+  const bundleAudit = await auditFirebaseBundle({
+    portalUrl,
+    assetPaths: rootJavaScriptAssets,
+    timeoutMs,
+  });
+  if (bundleAudit.ok) {
+    passes.push("bundleFirebaseConfig");
+  } else {
+    failures.push(bundleAudit.message);
   }
 
   checkHeaders("rootCache", root, root.path, failures, passes, warnings);
@@ -203,8 +217,101 @@ async function runVerify(parsed) {
     wellKnownPath,
     sampleAssets,
     assetChecks,
+    bundleAudit,
     protectedFunctionCheck,
     reportPath: parsed.reportPath || "",
+  };
+}
+
+async function auditFirebaseBundle({ portalUrl, assetPaths, timeoutMs }) {
+  const uniqueAssetPaths = [...new Set(assetPaths.filter(Boolean))];
+  const assets = [];
+  const compiledApiKeyAssets = [];
+  const compiledApiKeys = new Set();
+  const placeholderTokenAssets = [];
+
+  if (uniqueAssetPaths.length === 0) {
+    return {
+      ok: false,
+      message: "bundle audit failed: no JavaScript assets were discovered in the portal HTML.",
+      assets,
+      compiledApiKeyAssets,
+      compiledApiKeys: [],
+      placeholderTokenAssets,
+    };
+  }
+
+  for (const assetPath of uniqueAssetPaths) {
+    const response = await requestWithTimeout({
+      url: `${portalUrl}${assetPath}`,
+      timeoutMs,
+    });
+    const body = response.body || "";
+    const assetApiKeys = extractCompiledFirebaseApiKeys(body);
+    const hasPlaceholderToken = body.includes(FIREBASE_MISSING_KEY_TOKEN);
+
+    if (assetApiKeys.length > 0) {
+      compiledApiKeyAssets.push(assetPath);
+      for (const key of assetApiKeys) {
+        compiledApiKeys.add(key);
+      }
+    }
+    if (hasPlaceholderToken) {
+      placeholderTokenAssets.push(assetPath);
+    }
+
+    assets.push({
+      path: assetPath,
+      status: response.status,
+      ok: response.ok && response.status === 200,
+      bodyLength: body.length,
+      firebaseKeyCount: assetApiKeys.length,
+      hasPlaceholderToken,
+      error: response.error || "",
+    });
+  }
+
+  const failedAsset = assets.find((asset) => !asset.ok);
+  if (failedAsset) {
+    return {
+      ok: false,
+      message: `bundle audit failed: ${failedAsset.path} returned ${failedAsset.status || 0}${failedAsset.error ? ` (${failedAsset.error})` : ""}.`,
+      assets,
+      compiledApiKeyAssets,
+      compiledApiKeys: [...compiledApiKeys],
+      placeholderTokenAssets,
+    };
+  }
+
+  if (placeholderTokenAssets.length > 0) {
+    return {
+      ok: false,
+      message: `bundle audit failed: ${FIREBASE_MISSING_KEY_TOKEN} is still present in ${placeholderTokenAssets.join(", ")}.`,
+      assets,
+      compiledApiKeyAssets,
+      compiledApiKeys: [...compiledApiKeys],
+      placeholderTokenAssets,
+    };
+  }
+
+  if (compiledApiKeyAssets.length === 0) {
+    return {
+      ok: false,
+      message: "bundle audit failed: no compiled Firebase API key was found in the deployed JavaScript assets.",
+      assets,
+      compiledApiKeyAssets,
+      compiledApiKeys: [...compiledApiKeys],
+      placeholderTokenAssets,
+    };
+  }
+
+  return {
+    ok: true,
+    message: "",
+    assets,
+    compiledApiKeyAssets,
+    compiledApiKeys: [...compiledApiKeys],
+    placeholderTokenAssets,
   };
 }
 
@@ -374,6 +481,11 @@ function extractAssetPaths(html) {
     candidates.push(candidate);
   }
   return [...new Set(candidates)];
+}
+
+function extractCompiledFirebaseApiKeys(text) {
+  const matches = String(text || "").match(FIREBASE_COMPILED_KEY_REGEX) || [];
+  return [...new Set(matches)];
 }
 
 function normalizeUrl(raw) {

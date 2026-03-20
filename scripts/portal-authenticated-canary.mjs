@@ -46,6 +46,7 @@ const NAV_DOCK_SWEEP_TARGETS = [
   },
 ];
 const STAFF_PATHS = {
+  home: "/staff",
   cockpit: "/staff/cockpit",
   workshops: "/staff/workshops",
   system: "/staff/system",
@@ -53,6 +54,7 @@ const STAFF_PATHS = {
 const STAFF_PATHS_CASE_NOISE = "/STAFF/Workshops";
 const STAFF_FALLBACK_PATH = "/staff";
 const STAFF_CANONICAL_TARGETS = {
+  [STAFF_PATHS.home]: "/staff",
   [STAFF_PATHS.cockpit]: "/staff/cockpit",
   [STAFF_PATHS.workshops]: "/staff/cockpit/operations",
   [STAFF_PATHS.system]: "/staff/cockpit/platform",
@@ -1861,6 +1863,25 @@ async function run() {
             : "Skipped strict staff-route assertions in theme-only mode.",
       });
     } else {
+      await check(summary, "staff home path resolves to the task-first landing", async () => {
+        await assertStaffWorkspaceRoute(
+          page,
+          summary,
+          options.baseUrl,
+          STAFF_PATHS.home,
+          STAFF_PATHS.home,
+          "Staff tasks",
+          "Needs attention now",
+        );
+        await takeScreenshot(
+          page,
+          options.outputDir,
+          "canary-02c-staff-home.png",
+          summary,
+          "staff task home"
+        );
+      });
+
       await check(summary, "staff dedicated cockpit path resolves to cockpit workspace", async () => {
         await assertStaffWorkspaceRoute(
           page,
@@ -1872,7 +1893,7 @@ async function run() {
         await takeScreenshot(
           page,
           options.outputDir,
-          "canary-02c-staff-cockpit.png",
+          "canary-02d-staff-cockpit.png",
           summary,
           "staff cockpit workspace"
         );
@@ -1889,7 +1910,7 @@ async function run() {
         await takeScreenshot(
           page,
           options.outputDir,
-          "canary-02d-staff-workshops.png",
+          "canary-02e-staff-workshops.png",
           summary,
           "staff workshops workspace"
         );
@@ -1906,7 +1927,7 @@ async function run() {
         await takeScreenshot(
           page,
           options.outputDir,
-          "canary-02e-staff-system.png",
+          "canary-02f-staff-system.png",
           summary,
           "staff system workspace"
         );
@@ -1944,7 +1965,7 @@ async function run() {
           `${STAFF_UNKNOWN_FALLBACK_PATH}/?from=legacy`,
           STAFF_FALLBACK_PATH,
         );
-        await takeScreenshot(page, options.outputDir, "canary-02f-staff-recovery.png", summary, "staff path fallback");
+        await takeScreenshot(page, options.outputDir, "canary-02g-staff-recovery.png", summary, "staff path fallback");
       });
     }
 

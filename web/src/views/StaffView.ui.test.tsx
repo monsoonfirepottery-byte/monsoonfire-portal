@@ -307,7 +307,8 @@ describe("StaffView cockpit routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Refresh members" }));
     expect(await screen.findByText("Access role")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Save role change" })).toBeTruthy();
-    expect((screen.getByLabelText("Role") as HTMLSelectElement).value).toBe("admin");
+    const roleSelect = screen.getByLabelText("Role") as HTMLSelectElement;
+    expect(Array.from(roleSelect.options).map((option) => option.value)).toEqual(["member", "staff", "admin"]);
   });
 
   it("keeps role management read-only for staff without admin authority", async () => {

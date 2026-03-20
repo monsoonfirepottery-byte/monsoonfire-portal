@@ -14,7 +14,7 @@ import { resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(__filename, "..", "..");
 
-const DEFAULT_BASE_URL = "https://monsoonfire-portal.web.app";
+const DEFAULT_BASE_URL = "https://portal.monsoonfire.com";
 const defaultOutputRoot = resolve(repoRoot, "output", "playwright", "portal");
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
 const DEFAULT_STUDIO_BRAIN_READYZ_PATH = "/readyz";

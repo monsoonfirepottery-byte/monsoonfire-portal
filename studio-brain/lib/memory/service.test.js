@@ -106,6 +106,133 @@ const inMemoryAdapter_1 = require("./inMemoryAdapter");
     });
     strict_1.default.equal(row?.source, "import");
 });
+(0, node_test_1.default)("repo markdown rows do not synthesize thread lineage without real thread evidence", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-thread-evidence",
+    });
+    const row = await service.capture({
+        content: "Portal dashboard documentation notes and implementation outline.",
+        source: "repo-markdown",
+        metadata: {
+            subject: "Portal dashboard docs",
+        },
+    });
+    const metadata = (row.metadata ?? {});
+    strict_1.default.equal(metadata.threadEvidence, "none");
+    strict_1.default.equal(typeof metadata.threadKey, "undefined");
+    strict_1.default.equal(Array.isArray(metadata.patternHints), true);
+    strict_1.default.equal(metadata.patternHints.includes("structure:has-thread"), false);
+});
+(0, node_test_1.default)("mail-like rows retain derived thread evidence for relationship indexing", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-mail-thread-evidence",
+    });
+    const row = await service.capture({
+        content: "Re: kiln queue blocker follow-up with references and next action.",
+        source: "email",
+        metadata: {
+            subject: "Re: Kiln queue blocker",
+            from: "owner@example.com",
+            to: "team@example.com",
+            normalizedMessageId: "<msg-2@example.com>",
+            inReplyToNormalized: "<msg-1@example.com>",
+            referenceMessageIds: ["<msg-1@example.com>"],
+        },
+    });
+    const metadata = (row.metadata ?? {});
+    strict_1.default.equal(metadata.threadEvidence, "derived");
+    strict_1.default.equal(typeof metadata.threadKey, "string");
+    strict_1.default.notEqual(String(metadata.threadKey || "").length, 0);
+});
+(0, node_test_1.default)("synthetic thread metadata scrubber rewrites legacy non-threaded rows", async () => {
+    const store = (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)();
+    const service = (0, service_1.createMemoryService)({
+        store,
+        defaultTenantId: "tenant-thread-scrub",
+    });
+    await store.upsert({
+        id: "mem-legacy-thread-noise",
+        tenantId: "tenant-thread-scrub",
+        agentId: "agent:import",
+        runId: "import:legacy",
+        content: "Imported repo notes that should not behave like an email thread.",
+        source: "repo-markdown",
+        tags: ["import"],
+        metadata: {
+            source: "repo-markdown",
+            threadKey: "mail-thread:unknown",
+            loopClusterKey: "thread:mail-thread:unknown",
+            threadDeterministicSignature: "threadsig_legacy_noise",
+            threadEvidence: "derived",
+            entityHints: ["thread:mail-thread:unknown", "thread-signature:threadsig_legacy_noise"],
+            patternHints: ["loop-cluster:thread:mail-thread:unknown", "structure:has-thread"],
+            workstreamKey: "thread:mail-thread:unknown",
+            messageStructure: {
+                hasThreadKey: true,
+                sourceFamily: "generic",
+            },
+            threadReconstructionSignals: {
+                deterministicSignature: "threadsig_legacy_noise",
+                hasLinkableMessagePath: false,
+            },
+        },
+        embedding: null,
+        occurredAt: null,
+        clientRequestId: "legacy-thread-noise-1",
+        status: "accepted",
+        memoryType: "semantic",
+        sourceConfidence: 0.75,
+        importance: 0.6,
+        contextualizedContent: "Imported repo notes that should not behave like an email thread.",
+        fingerprint: null,
+        embeddingModel: null,
+        embeddingVersion: 1,
+    });
+    const result = await service.scrubSyntheticThreadMetadata({
+        dryRun: false,
+        limit: 10,
+    });
+    strict_1.default.equal(result.updated, 1);
+    strict_1.default.equal(result.sample[0]?.beforeThreadKey, "mail-thread:unknown");
+    strict_1.default.equal(result.sample[0]?.afterThreadKey, null);
+    const [row] = await service.getByIds({
+        ids: ["mem-legacy-thread-noise"],
+        includeArchived: true,
+    });
+    const metadata = (row?.metadata ?? {});
+    strict_1.default.equal(metadata.threadEvidence, "none");
+    strict_1.default.equal(typeof metadata.threadKey, "undefined");
+    strict_1.default.equal(typeof metadata.loopClusterKey, "undefined");
+    strict_1.default.equal(typeof metadata.threadDeterministicSignature, "undefined");
+    strict_1.default.equal(metadata.patternHints.includes("structure:has-thread"), false);
+});
+(0, node_test_1.default)("synthetic thread metadata scrubber leaves legitimate mail threading alone", async () => {
+    const service = (0, service_1.createMemoryService)({
+        store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),
+        defaultTenantId: "tenant-thread-scrub-mail",
+    });
+    await service.capture({
+        content: "Re: real thread with actual message references.",
+        source: "email",
+        metadata: {
+            subject: "Re: Kiln notice",
+            from: "owner@example.com",
+            to: "team@example.com",
+            normalizedMessageId: "<msg-10@example.com>",
+            inReplyToNormalized: "<msg-9@example.com>",
+            referenceMessageIds: ["<msg-9@example.com>"],
+        },
+    });
+    const result = await service.scrubSyntheticThreadMetadata({
+        dryRun: true,
+        limit: 10,
+        includeMailLike: true,
+    });
+    strict_1.default.equal(result.eligible, 0);
+    strict_1.default.equal(result.updated, 0);
+});
 (0, node_test_1.default)("memory nanny reroutes non-allowlisted tenant and derives stable namespace", async () => {
     const service = (0, service_1.createMemoryService)({
         store: (0, inMemoryAdapter_1.createInMemoryMemoryStoreAdapter)(),

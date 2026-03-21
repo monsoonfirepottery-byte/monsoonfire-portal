@@ -72,7 +72,7 @@ describe("NotificationsView mark-read feedback", () => {
         ]}
         loading={false}
         error=""
-        onOpenFirings={() => undefined}
+        onOpenKilnStatus={() => undefined}
         onOpenReservations={() => undefined}
       />
     );
@@ -111,7 +111,7 @@ describe("NotificationsView mark-read feedback", () => {
         ]}
         loading={false}
         error=""
-        onOpenFirings={() => undefined}
+        onOpenKilnStatus={() => undefined}
         onOpenReservations={() => undefined}
       />
     );
@@ -144,7 +144,7 @@ describe("NotificationsView mark-read feedback", () => {
         ]}
         loading={false}
         error=""
-        onOpenFirings={() => undefined}
+        onOpenKilnStatus={() => undefined}
         onOpenReservations={() => undefined}
       />
     );
@@ -178,7 +178,7 @@ describe("NotificationsView mark-read feedback", () => {
         ]}
         loading={false}
         error=""
-        onOpenFirings={() => undefined}
+        onOpenKilnStatus={() => undefined}
         onOpenReservations={() => undefined}
       />
     );
@@ -210,7 +210,7 @@ describe("NotificationsView mark-read feedback", () => {
         ]}
         loading={false}
         error=""
-        onOpenFirings={() => undefined}
+        onOpenKilnStatus={() => undefined}
         onOpenReservations={() => undefined}
       />
     );
@@ -251,7 +251,7 @@ describe("NotificationsView mark-read feedback", () => {
         ]}
         loading={false}
         error=""
-        onOpenFirings={() => undefined}
+        onOpenKilnStatus={() => undefined}
         onOpenReservations={() => undefined}
       />
     );
@@ -288,7 +288,7 @@ describe("NotificationsView mark-read feedback", () => {
         ]}
         loading={false}
         error=""
-        onOpenFirings={() => undefined}
+        onOpenKilnStatus={() => undefined}
         onOpenReservations={() => undefined}
       />
     );
@@ -302,8 +302,8 @@ describe("NotificationsView mark-read feedback", () => {
     expect(screen.getByTestId("notification-card-notif-read")).toBeTruthy();
   });
 
-  it("removes a notification from inbox when viewing firings", async () => {
-    const onOpenFirings = vi.fn();
+  it("removes a notification from inbox when opening kiln queues", async () => {
+    const onOpenKilnStatus = vi.fn();
 
     render(
       <NotificationsView
@@ -324,14 +324,14 @@ describe("NotificationsView mark-read feedback", () => {
         ]}
         loading={false}
         error=""
-        onOpenFirings={onOpenFirings}
+        onOpenKilnStatus={onOpenKilnStatus}
         onOpenReservations={() => undefined}
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /^View firings$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^View queues$/i }));
 
-    expect(onOpenFirings).toHaveBeenCalledTimes(1);
+    expect(onOpenKilnStatus).toHaveBeenCalledTimes(1);
     await waitFor(() => {
       expect(updateDocMock).toHaveBeenCalledTimes(1);
     });
@@ -339,7 +339,7 @@ describe("NotificationsView mark-read feedback", () => {
     expect(screen.queryByText("You're caught up. Switch to All to review earlier notifications.")).not.toBeNull();
   });
 
-  it("keeps view-firings notifications out of inbox across a remount while read sync finishes", async () => {
+  it("keeps view-queues notifications out of inbox across a remount while read sync finishes", async () => {
     const notification = {
       id: "notif-remount",
       title: "Kiln update",
@@ -359,12 +359,12 @@ describe("NotificationsView mark-read feedback", () => {
         notifications={[notification]}
         loading={false}
         error=""
-        onOpenFirings={() => undefined}
+        onOpenKilnStatus={() => undefined}
         onOpenReservations={() => undefined}
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /^View firings$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^View queues$/i }));
     await waitFor(() => {
       expect(updateDocMock).toHaveBeenCalledTimes(1);
     });
@@ -377,7 +377,7 @@ describe("NotificationsView mark-read feedback", () => {
         notifications={[notification]}
         loading={false}
         error=""
-        onOpenFirings={() => undefined}
+        onOpenKilnStatus={() => undefined}
         onOpenReservations={() => undefined}
       />
     );

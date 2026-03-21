@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FacebookAuthProvider,
   GoogleAuthProvider,
@@ -69,6 +69,7 @@ import {
   shouldNavigateToStaffWorkspaceTarget,
   type StaffWorkspaceMode,
 } from "./utils/staffWorkspacePaths";
+import { resolveStaffTaskShortcut } from "./utils/staffTaskShortcuts";
 import {
   buildStudioReservationsPath,
   canonicalReservationsPath,
@@ -766,7 +767,7 @@ function useDirectMessages(user: User | null, canLoad: boolean) {
   return { threads, loading, error };
 }
 
-function useAnnouncements(user: User | null, canLoad: boolean) {
+function useAnnouncements(user: User | null, canLoad: boolean, refreshToken = 0) {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -814,7 +815,7 @@ function useAnnouncements(user: User | null, canLoad: boolean) {
     return () => {
       canceled = true;
     };
-  }, [user, canLoad, rawLimit, visibleLimit]);
+  }, [user, canLoad, rawLimit, refreshToken, visibleLimit]);
 
   return { announcements, loading, error };
 }
@@ -882,6 +883,8 @@ export default function App() {
   const [nav, setNav] = useState<NavKey>(() => {
     if (typeof window === "undefined") return "dashboard";
     const normalizedPathname = normalizeAppPath(window.location.pathname);
+    const staffTaskShortcut = resolveStaffTaskShortcut(normalizedPathname, window.location.hash);
+    if (staffTaskShortcut) return staffTaskShortcut.targetNav;
     const staffWorkspaceLaunch = resolveStaffWorkspaceLaunch(normalizedPathname, window.location.hash);
     if (staffWorkspaceLaunch) return staffWorkspaceLaunch.targetNav;
     const legacyRedirect = resolveLegacyRequestsRedirect(
@@ -900,8 +903,17 @@ export default function App() {
   });
   const [staffWorkspaceMode, setStaffWorkspaceMode] = useState<StaffWorkspaceMode>(() => {
     if (typeof window === "undefined") return "default";
+    const shortcut = resolveStaffTaskShortcut(normalizeAppPath(window.location.pathname), window.location.hash);
+    if (shortcut?.targetNav === "staff") {
+      return shortcut.workspaceMode ?? "default";
+    }
     const launch = resolveStaffWorkspaceLaunch(normalizeAppPath(window.location.pathname), window.location.hash);
     return launch?.mode ?? "default";
+  });
+  const [staffInitialTaskAction, setStaffInitialTaskAction] = useState<"announcementComposer" | null>(() => {
+    if (typeof window === "undefined") return null;
+    const shortcut = resolveStaffTaskShortcut(normalizeAppPath(window.location.pathname), window.location.hash);
+    return shortcut?.initialTaskAction ?? null;
   });
   const [legacyRouteNotice] = useState(() => {
     if (typeof window === "undefined") return "";
@@ -935,6 +947,7 @@ export default function App() {
   const [devAdminToken, setDevAdminToken] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -943,6 +956,7 @@ export default function App() {
   const [piecesFocusTarget, setPiecesFocusTarget] = useState<PieceFocusTarget | null>(null);
   const [bootstrapWarning, setBootstrapWarning] = useState("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [announcementsRefreshToken, setAnnouncementsRefreshToken] = useState(0);
   const [themeName, setThemeName] = useState<PortalThemeName>(() => readStoredPortalTheme());
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
   const prefersReducedMotion = usePrefersReducedMotion();
@@ -974,6 +988,15 @@ export default function App() {
   const navIsHorizontalDock = isHorizontalNavDock(navDock);
   const navSupportsCollapse = !navIsHorizontalDock;
   const navIsCollapsed = navSupportsCollapse && navCollapsed;
+  const navSections = useMemo(
+    () =>
+      NAV_SECTIONS.map((section) =>
+        !staffUi && section.key === "kilnRentals"
+          ? { ...section, items: section.items.filter((item) => item.key !== "kiln") }
+          : section
+      ),
+    [staffUi]
+  );
   const navBottomItems: NavItem[] = staffUi
     ? [...NAV_BOTTOM_ITEMS, { key: "staff", label: "Staff" }]
     : NAV_BOTTOM_ITEMS;
@@ -1044,6 +1067,7 @@ export default function App() {
       }
     }
     setStaffWorkspaceMode(match.mode);
+    setStaffInitialTaskAction(null);
     if (nav !== "staff") {
       setNav("staff");
     }
@@ -1188,6 +1212,7 @@ export default function App() {
     if (typeof window === "undefined") return;
     const pathname = normalizeAppPath(window.location.pathname);
     const hashPath = normalizeHashPath(window.location.hash);
+    const staffTaskShortcut = resolveStaffTaskShortcut(pathname, window.location.hash);
     const pathnameStaffMatch = resolveStaffWorkspaceMatch(pathname);
     const hashStaffMatch = resolveStaffWorkspaceMatch(hashPath);
     const requestedStaffPath = resolveStaffWorkspaceRequestedPath(pathname, window.location.hash);
@@ -1197,6 +1222,17 @@ export default function App() {
     const hasStaffWorkspaceRequest = requestedStaffPath !== null;
     const hasStaffCockpitPath = pathnameStaffMatch?.mode === "cockpit";
     const hasStaffCockpitHashPath = hashStaffMatch?.mode === "cockpit";
+    if (staffTaskShortcut?.targetNav === "staff") {
+      const shortcutMode = staffTaskShortcut.workspaceMode ?? "default";
+      if (shortcutMode !== staffWorkspaceMode) {
+        setStaffWorkspaceMode(shortcutMode);
+      }
+      if ((staffTaskShortcut.initialTaskAction ?? null) !== staffInitialTaskAction) {
+        setStaffInitialTaskAction(staffTaskShortcut.initialTaskAction ?? null);
+      }
+    } else if (staffInitialTaskAction !== null) {
+      setStaffInitialTaskAction(null);
+    }
     if (requestedStaffMode && requestedStaffMode !== staffWorkspaceMode) {
       setStaffWorkspaceMode(requestedStaffMode);
     }
@@ -1232,13 +1268,44 @@ export default function App() {
     ) {
       window.history.replaceState({}, "", "/");
     }
-  }, [nav, staffUi, staffWorkspaceMode]);
+  }, [nav, staffInitialTaskAction, staffUi, staffWorkspaceMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const syncStateWithBrowserLocation = () => {
       const pathname = normalizeAppPath(window.location.pathname);
+      const staffTaskShortcut = resolveStaffTaskShortcut(pathname, window.location.hash);
+      if (staffTaskShortcut) {
+        if (staffTaskShortcut.targetNav === "staff") {
+          const nextMode = staffTaskShortcut.workspaceMode ?? "default";
+          if (staffWorkspaceMode !== nextMode) {
+            setStaffWorkspaceMode(nextMode);
+          }
+          if (nav !== "staff") {
+            setNav("staff");
+          }
+          if ((staffTaskShortcut.initialTaskAction ?? null) !== staffInitialTaskAction) {
+            setStaffInitialTaskAction(staffTaskShortcut.initialTaskAction ?? null);
+          }
+        } else {
+          if (staffWorkspaceMode !== "default") {
+            setStaffWorkspaceMode("default");
+          }
+          if (nav !== staffTaskShortcut.targetNav) {
+            setNav(staffTaskShortcut.targetNav);
+          }
+          if (staffInitialTaskAction !== null) {
+            setStaffInitialTaskAction(null);
+          }
+        }
+        return;
+      }
+
+      if (staffInitialTaskAction !== null) {
+        setStaffInitialTaskAction(null);
+      }
+
       const staffLaunch = resolveStaffWorkspaceLaunch(pathname, window.location.hash);
       const requestedStaffPath = resolveStaffWorkspaceRequestedPath(pathname, window.location.hash);
 
@@ -1300,7 +1367,7 @@ export default function App() {
       window.removeEventListener("popstate", syncStateWithBrowserLocation);
       window.removeEventListener("hashchange", syncStateWithBrowserLocation);
     };
-  }, [nav, staffWorkspaceMode]);
+  }, [nav, staffInitialTaskAction, staffWorkspaceMode]);
 
   useEffect(() => {
     writeLocalItem(LOCAL_NAV_COLLAPSED_KEY, navCollapsed ? "1" : "0");
@@ -1427,14 +1494,19 @@ export default function App() {
         }
         if (!nextUser) {
           setIsStaff(false);
+          setIsAdmin(false);
         } else {
           nextUser
             .getIdTokenResult()
             .then((result) => {
               const parsedRole = parseStaffRoleFromClaims(result.claims ?? {});
               setIsStaff(parsedRole.isStaff);
+              setIsAdmin(parsedRole.isAdmin);
             })
-            .catch(() => setIsStaff(false));
+            .catch(() => {
+              setIsStaff(false);
+              setIsAdmin(false);
+            });
         }
         if (!nextUser) {
           setPiecesFocusTarget(null);
@@ -1700,7 +1772,7 @@ export default function App() {
     announcements,
     loading: announcementsLoading,
     error: announcementsError,
-  } = useAnnouncements(user, shouldLoadAnnouncements);
+  } = useAnnouncements(user, shouldLoadAnnouncements, announcementsRefreshToken);
   const {
     notifications,
     loading: notificationsLoading,
@@ -1764,33 +1836,21 @@ export default function App() {
         default:
           return;
       }
-      try {
-        const result = await signInWithPopup(authClient, provider);
-        if (result?.user) {
-          track("auth_sign_in_success", {
-            method: providerId,
-            uid: shortId(result.user.uid),
-          });
-          identify(result.user);
-          setUser(result.user);
-          setAuthReady(true);
-        }
-      } catch (error: unknown) {
-        // Popups can be blocked (mobile Safari, aggressive privacy settings). Redirect is a reliable fallback.
-        const code = getErrorCode(error);
-        const shouldFallbackToRedirect =
-          code === "auth/cancelled-popup-request" ||
-          code === "auth/popup-blocked" ||
-          code === "auth/popup-closed-by-user" ||
-          code === "auth/operation-not-supported-in-this-environment";
-        if (shouldFallbackToRedirect) {
-          if (!isAuthEmulator) {
-            setAuthStatus("Continuing sign-in in redirect mode...");
-          }
-          await signInWithRedirect(authClient, provider);
-          return;
-        }
-        throw error;
+      if (!isAuthEmulator) {
+        setAuthStatus("Continuing sign-in...");
+        await signInWithRedirect(authClient, provider);
+        return;
+      }
+
+      const result = await signInWithPopup(authClient, provider);
+      if (result?.user) {
+        track("auth_sign_in_success", {
+          method: providerId,
+          uid: shortId(result.user.uid),
+        });
+        identify(result.user);
+        setUser(result.user);
+        setAuthReady(true);
       }
     } catch (error: unknown) {
       setAuthStatus(getErrorMessage(error) || "Sign-in failed. Please try again.");
@@ -1969,7 +2029,7 @@ export default function App() {
   };
 
   const navSection = getSectionForNav(nav);
-  const roleLabel = staffUi ? (isStaff ? "Staff" : "Dev Admin") : "Client";
+  const roleLabel = staffUi ? (isAdmin ? "Admin" : isStaff ? "Staff" : "Dev Admin") : "Client";
   const sidebarAvatarUrl = user?.photoURL || PROFILE_DEFAULT_AVATAR_URL;
 
   useEffect(() => {
@@ -2237,7 +2297,7 @@ export default function App() {
             onOpenKilnRentals={() => setNav("kilnRentals")}
             onOpenCheckin={() => setNav("wareCheckIn")}
             onOpenQueues={() => setNav("kilnLaunch")}
-            onOpenFirings={() => setNav("kiln")}
+            onOpenFirings={() => openStaffWorkspace("firings")}
             onOpenStudioResources={() => setNav("studioResources")}
             onOpenGlazeBoard={() => setNav("glazes")}
             onOpenCommunity={() => setNav("community")}
@@ -2326,7 +2386,6 @@ export default function App() {
         return (
           <KilnRentalsView
             onOpenKilnLaunch={() => setNav("kilnLaunch")}
-            onOpenKilnSchedule={() => setNav("kiln")}
             onOpenWorkSubmission={() => setNav("wareCheckIn")}
           />
         );
@@ -2363,7 +2422,14 @@ export default function App() {
         return (
           <NotificationsView
             user={user}
-            onOpenFirings={() => setNav("kiln")}
+            onOpenKilnStatus={() => {
+              if (staffUi) {
+                openStaffWorkspace("firings");
+                return;
+              }
+              setNav("kilnLaunch");
+            }}
+            kilnActionLabel={staffUi ? "View firings" : "View queues"}
             onOpenReservations={openReservations}
             notifications={notifications}
             loading={notificationsLoading}
@@ -2385,6 +2451,7 @@ export default function App() {
           <StaffView
             user={user}
             isStaff={isStaff}
+            isAdmin={isAdmin}
             devAdminToken={devAdminToken}
             onDevAdminTokenChange={setDevAdminToken}
             devAdminEnabled={DEV_ADMIN_TOKEN_ENABLED}
@@ -2393,9 +2460,10 @@ export default function App() {
             onOpenReservation={() => setNav("wareCheckIn")}
             onOpenMessages={() => setNav("messages")}
             onOpenMessageThread={() => setNav("messages")}
-            onOpenFirings={() => setNav("kiln")}
+            onOpenFirings={() => openStaffWorkspace("firings")}
             onStartFiring={() => setNav("kilnLaunch")}
             onOpenStaffWorkspace={openStaffWorkspace}
+            initialTaskAction={staffInitialTaskAction}
             initialModule={
               staffWorkspaceMode === "cockpit"
                 ? "cockpit"
@@ -2409,6 +2477,9 @@ export default function App() {
             announcementsLoading={announcementsLoading}
             announcementsError={announcementsError}
             unreadAnnouncements={unreadAnnouncements}
+            onAnnouncementsChanged={() =>
+              setAnnouncementsRefreshToken((current) => current + 1)
+            }
           />
         );
       default:
@@ -2547,7 +2618,7 @@ export default function App() {
                   <span className="nav-label">{item.label}</span>
                 </button>
               ))}
-              {NAV_SECTIONS.map((section) => (
+              {navSections.map((section) => (
                 <div
                   key={section.key}
                   className={`nav-section ${openSection === section.key ? "open" : "closed"}`}

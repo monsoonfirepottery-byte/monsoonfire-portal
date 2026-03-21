@@ -4,18 +4,23 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  loadPortalAutomationEnv,
+  resolveNamecheapSshKeyPath,
+  resolvePortalAutomationEnvPath,
+} from "./lib/runtime-secrets.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, "..");
-const defaultPortalAutomationEnvPath = resolve(repoRoot, "secrets", "portal", "portal-automation.env");
+const defaultPortalAutomationEnvPath = resolvePortalAutomationEnvPath();
 
-loadPortalAutomationEnv();
+const portalEnvLoad = loadPortalAutomationEnv();
 
 const defaults = {
   server: process.env.WEBSITE_DEPLOY_SERVER || "monsggbd@66.29.137.142",
   port: Number.parseInt(process.env.WEBSITE_DEPLOY_PORT || "", 10) || 21098,
-  key: process.env.WEBSITE_DEPLOY_KEY || "~/.ssh/namecheap-portal",
+  key: process.env.WEBSITE_DEPLOY_KEY || "",
   remotePath: process.env.WEBSITE_DEPLOY_REMOTE_PATH || "portal/",
   portalUrl: process.env.PORTAL_DEPLOY_URL || "https://portal.monsoonfire.com",
   noBuild: false,
@@ -44,7 +49,8 @@ if (options.help) {
 const FIREBASE_WEB_APP_ID = "1:667865114946:web:7275b02c9345aa975200db";
 const FIREBASE_PROJECT_ID = "monsoonfire-portal";
 const FIREBASE_API_KEY_REGEX = /^AIza[0-9A-Za-z_-]{20,}$/;
-const FIREBASE_EMBEDDED_KEY_REGEX = /VITE_FIREBASE_API_KEY["']?\s*:\s*["']AIza[0-9A-Za-z_-]{20,}["']/;
+const FIREBASE_COMPILED_KEY_REGEX = /AIza[0-9A-Za-z_-]{20,}/g;
+const FIREBASE_MISSING_KEY_TOKEN = "MISSING_VITE_FIREBASE_API_KEY";
 
 if (!options.server.trim()) {
   fail("Missing --server (or WEBSITE_DEPLOY_SERVER).");
@@ -53,10 +59,18 @@ if (!Number.isInteger(options.port) || options.port < 1 || options.port > 65535)
   fail(`Invalid --port value: ${options.port}`);
 }
 
-const keyPath = expandHome(options.key);
-if (!existsSync(keyPath)) {
-  fail(`SSH key not found: ${keyPath}`);
+const keyResolution = resolveNamecheapSshKeyPath({
+  explicitPath: options.key,
+  server: options.server,
+});
+const keyPath = keyResolution.path;
+if (!keyResolution.exists) {
+  fail(`SSH key not found: ${keyPath}\nChecked source: ${keyResolution.source}`);
 }
+if (portalEnvLoad.loaded) {
+  process.stdout.write(`Loaded portal automation env: ${portalEnvLoad.path}\n`);
+}
+process.stdout.write(`Using SSH key source: ${keyResolution.source} (${keyPath})\n`);
 
 const webDist = resolve(repoRoot, "web", "dist");
 const htaccessTemplate = resolve(repoRoot, "web", "deploy", "namecheap", ".htaccess");
@@ -456,23 +470,38 @@ function readValue(argv, idx, name) {
   return value;
 }
 
-function expandHome(pathValue) {
-  if (pathValue === "~") return process.env.HOME || pathValue;
-  if (pathValue.startsWith("~/")) {
-    return resolve(process.env.HOME || "", pathValue.slice(2));
-  }
-  return pathValue;
-}
-
 function shellQuote(raw) {
   return `'${String(raw).replace(/'/g, "'\"'\"'")}'`;
+}
+
+function resolveCommand(command) {
+  if (process.platform !== "win32") {
+    return command;
+  }
+  if (command === "npm" || command === "npx") {
+    return `${command}.cmd`;
+  }
+  if (command === "rsync") {
+    const candidates = [
+      "C:/msys64/usr/bin/rsync.exe",
+      "C:/Program Files/Git/usr/bin/rsync.exe",
+      "C:/Program Files/Git/bin/rsync.exe",
+    ];
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return command;
 }
 
 function run(command, args, options = {}) {
   if (options.label) {
     process.stdout.write(`${options.label}...\n`);
   }
-  const result = spawnSync(command, args, {
+  const resolvedCommand = resolveCommand(command);
+  const result = spawnSync(resolvedCommand, args, {
     stdio: "inherit",
     shell: false,
     env: options.env || process.env,
@@ -485,12 +514,12 @@ function run(command, args, options = {}) {
         status: 1,
       };
     }
-    throw new Error(`${command} failed: ${result.error.message}`);
+    throw new Error(`${resolvedCommand} failed: ${result.error.message}`);
   }
 
   const status = typeof result.status === "number" ? result.status : 1;
   if (status !== 0 && !options.allowFailure) {
-    throw new Error(`${command} exited with status ${status}`);
+    throw new Error(`${resolvedCommand} exited with status ${status}`);
   }
 
   return {
@@ -500,7 +529,8 @@ function run(command, args, options = {}) {
 }
 
 function runCapture(command, args, options = {}) {
-  return spawnSync(command, args, {
+  const resolvedCommand = resolveCommand(command);
+  return spawnSync(resolvedCommand, args, {
     stdio: ["ignore", "pipe", "pipe"],
     shell: false,
     encoding: "utf8",
@@ -586,23 +616,36 @@ function collectFiles(rootDir, includeFile) {
 
 function assertFirebaseApiKeyIsEmbedded(distDir) {
   const buildFiles = collectFiles(distDir, (filePath) => filePath.endsWith(".js"));
-  const matchingFiles = [];
+  const compiledApiKeyFiles = [];
+  const placeholderTokenFiles = [];
 
   for (const filePath of buildFiles) {
     const text = readFileSync(filePath, "utf8");
-    if (FIREBASE_EMBEDDED_KEY_REGEX.test(text)) {
-      matchingFiles.push(filePath);
+    if (extractCompiledFirebaseApiKeys(text).length > 0) {
+      compiledApiKeyFiles.push(filePath);
+    }
+    if (text.includes(FIREBASE_MISSING_KEY_TOKEN)) {
+      placeholderTokenFiles.push(filePath);
     }
   }
 
-  if (matchingFiles.length > 0) {
-    return;
+  if (placeholderTokenFiles.length > 0) {
+    fail(
+      `Build output still contains ${FIREBASE_MISSING_KEY_TOKEN}; refusing deploy.\n` +
+        `Affected files:\n - ${placeholderTokenFiles.join("\n - ")}`
+    );
   }
+  if (compiledApiKeyFiles.length === 0) {
+    fail(
+      "Build output does not include a compiled Firebase API key value; refusing deploy.\n" +
+        "Set VITE_FIREBASE_API_KEY (or ensure web build injects it) before deploy."
+    );
+  }
+}
 
-  fail(
-    "Build output does not include a compiled VITE_FIREBASE_API_KEY value; refusing deploy.\n" +
-      "Set VITE_FIREBASE_API_KEY (or ensure web build injects it) before deploy."
-  );
+function extractCompiledFirebaseApiKeys(text) {
+  const matches = String(text || "").match(FIREBASE_COMPILED_KEY_REGEX) || [];
+  return [...new Set(matches)];
 }
 
 function writeJson(path, payload) {
@@ -617,7 +660,7 @@ function printHelp() {
       "Options:\n" +
       "  --server <user@host>       default: monsggbd@66.29.137.142\n" +
       "  --port <ssh-port>          default: 21098\n" +
-      "  --key <private-key-path>   default: ~/.ssh/namecheap-portal\n" +
+      "  --key <private-key-path>   default: WEBSITE_DEPLOY_KEY -> ~/.ssh/namecheap-portal -> ~/.ssh/config Host monsoonfire IdentityFile\n" +
       "  --remote-path <path>       default: portal/\n" +
       "  --portal-url <url>         default: https://portal.monsoonfire.com\n" +
       "  --no-build                 skip web build\n" +
@@ -638,38 +681,11 @@ function printHelp() {
       "Env auto-load:\n" +
       `  If present, ${defaultPortalAutomationEnvPath} is loaded before preflight/build.\n` +
       "  Override path with PORTAL_AUTOMATION_ENV_PATH.\n" +
+      "  Shared runtime fallback lives under ~/secrets/portal/.\n" +
+      "  Refresh that shared copy with: node ./scripts/sync-codex-home-runtime.mjs\n" +
       "\n" +
       "Any unknown args are forwarded to verify-cutover when --verify is enabled.\n"
   );
-}
-
-function loadPortalAutomationEnv() {
-  const configuredPath = String(process.env.PORTAL_AUTOMATION_ENV_PATH || "").trim();
-  const envPath = configuredPath || defaultPortalAutomationEnvPath;
-  if (!envPath || !existsSync(envPath)) return;
-
-  const raw = readFileSync(envPath, "utf8");
-  const lines = raw.split(/\r?\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-
-    const separatorIndex = trimmed.indexOf("=");
-    if (separatorIndex <= 0) continue;
-
-    const key = trimmed.slice(0, separatorIndex).trim();
-    if (!key || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
-    if (String(process.env[key] || "").trim()) continue;
-
-    let value = trimmed.slice(separatorIndex + 1).trim();
-    if (
-      (value.startsWith("\"") && value.endsWith("\"")) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    process.env[key] = value;
-  }
 }
 
 function fail(message) {

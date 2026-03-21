@@ -308,7 +308,7 @@
           "id": "production-portal-prod-base-url",
           "file": ".github/workflows/portal-prod-smoke.yml",
           "severity": "error",
-          "needle": "https://monsoonfire-portal.web.app",
+          "needle": "https://portal.monsoonfire.com",
           "message": "portal production workflow uses the portal production base URL"
         },
         {

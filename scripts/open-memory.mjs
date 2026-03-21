@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 import crypto from "node:crypto";
-import { readFileSync } from "node:fs";
-import { extname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { resolveStudioBrainBaseUrlFromEnv } from "./studio-brain-url-resolution.mjs";
+import { buildImportCommandPayload } from "./lib/open-memory-import-utils.mjs";
 
 function parseArgs(argv) {
   const positionals = [];
@@ -76,128 +76,6 @@ async function readStdinText() {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   return Buffer.concat(chunks).toString("utf8").trim();
-}
-
-function parseCsvLine(line) {
-  const values = [];
-  let current = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i += 1) {
-    const char = line[i];
-    if (char === '"' && line[i + 1] === '"') {
-      current += '"';
-      i += 1;
-      continue;
-    }
-    if (char === '"') {
-      inQuotes = !inQuotes;
-      continue;
-    }
-    if (char === "," && !inQuotes) {
-      values.push(current);
-      current = "";
-      continue;
-    }
-    current += char;
-  }
-  values.push(current);
-  return values.map((entry) => entry.trim());
-}
-
-function parseImportItems(inputPath, sourceOverride) {
-  const absolute = resolve(process.cwd(), inputPath);
-  const raw = readFileSync(absolute, "utf8");
-  const extension = extname(absolute).toLowerCase();
-
-  if (extension === ".jsonl" || extension === ".ndjson") {
-    return raw
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        try {
-          const parsed = JSON.parse(line);
-          if (parsed && typeof parsed === "object") {
-            return {
-              id: typeof parsed.id === "string" ? parsed.id : undefined,
-              content: String(parsed.content ?? parsed.statement ?? parsed.text ?? ""),
-              source: String(parsed.source ?? sourceOverride ?? "import"),
-              tags: Array.isArray(parsed.tags) ? parsed.tags.map((tag) => String(tag)) : [],
-              metadata: parsed.metadata && typeof parsed.metadata === "object" ? parsed.metadata : {},
-              tenantId: typeof parsed.tenantId === "string" ? parsed.tenantId : undefined,
-              agentId: typeof parsed.agentId === "string" ? parsed.agentId : undefined,
-              runId: typeof parsed.runId === "string" ? parsed.runId : undefined,
-              clientRequestId: typeof parsed.clientRequestId === "string" ? parsed.clientRequestId : undefined,
-              occurredAt: typeof parsed.occurredAt === "string" ? parsed.occurredAt : undefined,
-            };
-          }
-        } catch {
-          // plain text line fallback below
-        }
-        return { content: line, source: sourceOverride ?? "import", tags: [], metadata: {} };
-      })
-      .filter((item) => item.content.trim().length > 0);
-  }
-
-  if (extension === ".json") {
-    const parsed = JSON.parse(raw);
-    const rows = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.items) ? parsed.items : [];
-    return rows
-      .map((row) => ({
-        id: typeof row?.id === "string" ? row.id : undefined,
-        content: String(row?.content ?? row?.statement ?? row?.text ?? ""),
-        source: String(row?.source ?? sourceOverride ?? "import"),
-        tags: Array.isArray(row?.tags) ? row.tags.map((tag) => String(tag)) : [],
-        metadata: row?.metadata && typeof row.metadata === "object" ? row.metadata : {},
-        tenantId: typeof row?.tenantId === "string" ? row.tenantId : undefined,
-        agentId: typeof row?.agentId === "string" ? row.agentId : undefined,
-        runId: typeof row?.runId === "string" ? row.runId : undefined,
-        clientRequestId: typeof row?.clientRequestId === "string" ? row.clientRequestId : undefined,
-        occurredAt: typeof row?.occurredAt === "string" ? row.occurredAt : undefined,
-      }))
-      .filter((item) => item.content.trim().length > 0);
-  }
-
-  if (extension === ".csv") {
-    const lines = raw
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-    if (lines.length <= 1) return [];
-    const header = parseCsvLine(lines[0] ?? "");
-    const lower = header.map((value) => value.toLowerCase());
-    const contentIndex = Math.max(
-      lower.indexOf("content"),
-      lower.indexOf("text"),
-      lower.indexOf("statement"),
-      lower.indexOf("note")
-    );
-    const tenantIndex = lower.indexOf("tenantid");
-    const sourceIndex = lower.indexOf("source");
-    return lines.slice(1).map((line) => {
-      const cols = parseCsvLine(line);
-      return {
-        content: String(contentIndex >= 0 ? cols[contentIndex] ?? "" : cols[0] ?? ""),
-        source: String(sourceIndex >= 0 ? cols[sourceIndex] ?? sourceOverride ?? "import" : sourceOverride ?? "import"),
-        tags: [],
-        metadata: {
-          csvRow: line,
-        },
-        tenantId: tenantIndex >= 0 ? String(cols[tenantIndex] ?? "").trim() || undefined : undefined,
-      };
-    });
-  }
-
-  return raw
-    .split(/\r?\n\r?\n/)
-    .map((chunk) => chunk.trim())
-    .filter(Boolean)
-    .map((content) => ({
-      content,
-      source: sourceOverride ?? "import",
-      tags: [],
-      metadata: {},
-    }));
 }
 
 function extractSearchRows(payload) {
@@ -327,6 +205,7 @@ async function main() {
         "  node ./scripts/open-memory.mjs backfill-email-threading [--tenant-id ...] [--limit 2000] [--dry-run true] [--source-prefixes mail:,email]",
         "  node ./scripts/open-memory.mjs backfill-email-intelligence [--tenant-id ...] [--limit 2000] [--dry-run true] [--source-prefixes mail:,email]",
         "  node ./scripts/open-memory.mjs backfill-signal-indexing [--tenant-id ...] [--limit 2000] [--dry-run true] [--source-prefixes mail:,email] [--min-signals 2]",
+        "  node ./scripts/open-memory.mjs scrub-thread-metadata [--tenant-id ...] [--limit 2000] [--dry-run true] [--source-prefixes import,replay:,repo-markdown]",
         "  node ./scripts/open-memory.mjs ingest --text \"...\" --source discord --client-request-id msg-123 [--discord-guild-id ...] [--discord-channel-id ...]",
         "",
         "Optional flags:",
@@ -342,11 +221,12 @@ async function main() {
         "  --relationship-preview-max-chars <n> Search mode: context payload chars per seed (default: 10000).",
         "  --disable-run-burst-limit true|false  Disable run-write burst limiter for this import batch (default: false).",
         "  --post-import-briefing true|false  Generate loop/action briefing after import (default: auto for mail-like sources).",
-        "  --dry-run true|false  For backfill-email-threading/backfill-signal-indexing, preview changes without writing.",
-        "  --max-writes <n>  For backfill-email-threading/backfill-signal-indexing, cap write operations per run (default: 500).",
+        "  --dry-run true|false  For backfill-email-threading/backfill-signal-indexing/scrub-thread-metadata, preview changes without writing.",
+        "  --max-writes <n>  For backfill-email-threading/backfill-signal-indexing/scrub-thread-metadata, cap write operations per run (default: 500).",
         "  --write-delay-ms <n>  Delay between backfill writes to reduce load (default: 20).",
         "  --stop-after-timeout-errors <n>  Stop backfill after consecutive timeout errors (default: 5).",
         "  --include-non-mail-like true|false  Include non-mail sources in backfill-signal-indexing (default: false).",
+        "  --include-mail-like true|false  Include mail-like rows in scrub-thread-metadata (default: false).",
         "  --min-signals <n>  For backfill-signal-indexing, minimum derived signal items per memory (default: 1).",
         "  --skip-already-indexed true|false  For backfill-signal-indexing, skip rows whose signal index already appears populated (default: true).",
         "  --infer-relationships true|false  For backfill-signal-indexing, infer high-signal edges using related-memory probes (default: true).",
@@ -1022,29 +902,12 @@ async function main() {
     if (!inputPath) {
       throw new Error("import requires --input <path>.");
     }
-    const source = String(flags.source ?? "import");
-    const items = parseImportItems(inputPath, source);
-    const payload = {
-      sourceOverride: source,
-      continueOnError: String(flags["continue-on-error"] ?? "true").toLowerCase() !== "false",
-      disableRunWriteBurstLimit:
-        String(flags["disable-run-burst-limit"] ?? "false").toLowerCase() === "true",
-      generateBriefing:
-        String(flags["post-import-briefing"] ?? flags["generate-briefing"] ?? "").toLowerCase() === "true",
-      briefingQuery: flags["briefing-query"] ? String(flags["briefing-query"]).trim() : undefined,
-      briefingLimit: intFlag(flags["briefing-limit"], 12),
-      briefingStates: flags["briefing-states"] ? parseCsv(flags["briefing-states"]) : [],
-      briefingLanes: flags["briefing-lanes"] ? parseCsv(flags["briefing-lanes"]) : [],
-      briefingIncidentMinEscalation: flags["briefing-incident-min-escalation"]
-        ? Number(String(flags["briefing-incident-min-escalation"]).trim())
-        : undefined,
-      briefingIncidentMinBlastRadius: flags["briefing-incident-min-blast-radius"]
-        ? Number(String(flags["briefing-incident-min-blast-radius"]).trim())
-        : undefined,
-      dispatch: String(flags.dispatch ?? "").trim().toLowerCase() === "true",
-      webhookUrl: flags["webhook-url"] ? String(flags["webhook-url"]).trim() : undefined,
-      items,
-    };
+    const payload = buildImportCommandPayload({
+      inputPath,
+      flags,
+      intFlag,
+      parseCsv,
+    });
     const result = await request("/api/memory/import", "POST", payload);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return;
@@ -1085,6 +948,22 @@ async function main() {
       stopAfterTimeoutErrors: intFlag(flags["stop-after-timeout-errors"], 5),
     };
     const result = await request("/api/memory/backfill-signal-indexing", "POST", payload);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return;
+  }
+
+  if (command === "scrub-thread-metadata") {
+    const payload = {
+      tenantId: flags["tenant-id"] ? String(flags["tenant-id"]).trim() : undefined,
+      limit: intFlag(flags.limit, 2000),
+      dryRun: boolFlag(flags["dry-run"], false),
+      sourcePrefixes: flags["source-prefixes"] ? parseCsv(flags["source-prefixes"]) : undefined,
+      includeMailLike: boolFlag(flags["include-mail-like"], false),
+      maxWrites: intFlag(flags["max-writes"], 500),
+      writeDelayMs: intFlag(flags["write-delay-ms"], 20),
+      stopAfterTimeoutErrors: intFlag(flags["stop-after-timeout-errors"], 5),
+    };
+    const result = await request("/api/memory/scrub-thread-metadata", "POST", payload);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return;
   }

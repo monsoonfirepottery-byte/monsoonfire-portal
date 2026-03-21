@@ -246,6 +246,24 @@ function flattenEntities(record) {
     pushEntity(entities, seen, { ...recordBase, entityType, entityLabel: label, role: "header" });
   }
 
+  const hybridPairs = [
+    ["project_lane", sourceMetadata.projectLane || provenance?.sourceLocation?.projectLane],
+    ["doc_path", sourceMetadata.docPath || provenance?.sourceLocation?.docPath],
+    ["heading_path", sourceMetadata.headingPath || provenance?.sourceLocation?.headingPath],
+    ["chunk_id", sourceMetadata.chunkId || provenance?.sourceLocation?.chunkId],
+    ["content_hash", sourceMetadata.contentHash || provenance?.sourceLocation?.contentHash],
+    ["session_file", sourceMetadata.sessionFile || provenance?.sourceLocation?.sessionFile],
+    ["conversation_id", sourceMetadata.conversationId || provenance?.sourceLocation?.conversationId],
+    ["message_node_id", sourceMetadata.messageNodeId || provenance?.sourceLocation?.messageNodeId],
+    ["memory_kind", sourceMetadata.memoryKind],
+    ["source_family", sourceMetadata.sourceFamily],
+  ];
+  for (const [entityType, rawValue] of hybridPairs) {
+    const label = String(rawValue || "").trim();
+    if (!label) continue;
+    pushEntity(entities, seen, { ...recordBase, entityType, entityLabel: label, role: "hybrid-source" });
+  }
+
   for (const value of Array.isArray(payload?.influenceMap) ? payload.influenceMap : []) {
     const label = String(value?.actor || "").trim();
     if (!label) continue;

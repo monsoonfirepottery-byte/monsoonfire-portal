@@ -32,6 +32,17 @@ type ActiveFiringSummary = {
   updatedLabel: string;
 };
 
+type AnnouncementComposerDraft = {
+  title: string;
+  summary: string;
+  body: string;
+  ctaLabel: string;
+  ctaUrl: string;
+  publishAt: string;
+  expiresAt: string;
+  pinned: boolean;
+};
+
 type CockpitModuleProps = {
   busy: string;
   cockpitOpsContent: ReactNode;
@@ -65,6 +76,14 @@ type CockpitModuleProps = {
   messageThreadsError: string;
   announcementsError: string;
   todayMessageRows: ReadonlyArray<TodayMessageRow>;
+  announcementComposerOpen: boolean;
+  announcementDraft: AnnouncementComposerDraft;
+  announcementPublishBusy: boolean;
+  announcementPublishStatus: string;
+  announcementPublishError: string;
+  toggleAnnouncementComposer: () => void;
+  updateAnnouncementDraft: (field: keyof AnnouncementComposerDraft, value: string | boolean) => void;
+  publishAnnouncement: () => Promise<void>;
 
   firingsLoading: boolean;
   firingsError: string;
@@ -115,6 +134,14 @@ export default function CockpitModule({
   messageThreadsError,
   announcementsError,
   todayMessageRows,
+  announcementComposerOpen,
+  announcementDraft,
+  announcementPublishBusy,
+  announcementPublishStatus,
+  announcementPublishError,
+  toggleAnnouncementComposer,
+  updateAnnouncementDraft,
+  publishAnnouncement,
   firingsLoading,
   firingsError,
   activeFiring,
@@ -238,6 +265,115 @@ export default function CockpitModule({
             <span className="pill">Unread announcements {unreadAnnouncements}</span>
             <span className="pill">Announcements {announcementsCount}</span>
           </div>
+          <div className="staff-actions-row">
+            <button
+              className="btn btn-secondary btn-small"
+              type="button"
+              data-testid="staff-create-announcement-toggle"
+              onClick={() => toggleAnnouncementComposer()}
+            >
+              {announcementComposerOpen ? "Hide announcement composer" : "Create studio announcement"}
+            </button>
+          </div>
+          {announcementComposerOpen ? (
+            <div className="staff-announcement-composer" data-testid="staff-announcement-composer">
+              <div className="staff-note">
+                Publish a studio announcement for signed-in members. New announcements appear in Dashboard and Messages.
+              </div>
+              <div className="staff-module-grid">
+                <label className="staff-field staff-column">
+                  <span>Title</span>
+                  <input
+                    type="text"
+                    value={announcementDraft.title}
+                    placeholder="Studio update title"
+                    onChange={(event) => updateAnnouncementDraft("title", event.target.value)}
+                  />
+                </label>
+                <label className="staff-field staff-column">
+                  <span>Summary</span>
+                  <input
+                    type="text"
+                    value={announcementDraft.summary}
+                    placeholder="Optional short preview"
+                    onChange={(event) => updateAnnouncementDraft("summary", event.target.value)}
+                  />
+                </label>
+              </div>
+              <label className="staff-field staff-column">
+                <span>Body</span>
+                <textarea
+                  value={announcementDraft.body}
+                  placeholder="Share the studio update, schedule note, or member-facing alert."
+                  onChange={(event) => updateAnnouncementDraft("body", event.target.value)}
+                />
+                <span className="helper">
+                  Leave publish time blank to post immediately. Leave expiration blank to keep it visible until archived.
+                </span>
+              </label>
+              <div className="staff-module-grid">
+                <label className="staff-field staff-column">
+                  <span>Publish at</span>
+                  <input
+                    type="datetime-local"
+                    value={announcementDraft.publishAt}
+                    onChange={(event) => updateAnnouncementDraft("publishAt", event.target.value)}
+                  />
+                </label>
+                <label className="staff-field staff-column">
+                  <span>Expires at</span>
+                  <input
+                    type="datetime-local"
+                    value={announcementDraft.expiresAt}
+                    onChange={(event) => updateAnnouncementDraft("expiresAt", event.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="staff-module-grid">
+                <label className="staff-field staff-column">
+                  <span>Call to action label</span>
+                  <input
+                    type="text"
+                    value={announcementDraft.ctaLabel}
+                    placeholder="Optional CTA label"
+                    onChange={(event) => updateAnnouncementDraft("ctaLabel", event.target.value)}
+                  />
+                </label>
+                <label className="staff-field staff-column">
+                  <span>Call to action URL</span>
+                  <input
+                    type="url"
+                    value={announcementDraft.ctaUrl}
+                    placeholder="https://portal.monsoonfire.com/..."
+                    onChange={(event) => updateAnnouncementDraft("ctaUrl", event.target.value)}
+                  />
+                </label>
+              </div>
+              <label className="staff-announcement-checkbox">
+                <input
+                  type="checkbox"
+                  checked={announcementDraft.pinned}
+                  onChange={(event) => updateAnnouncementDraft("pinned", event.target.checked)}
+                />
+                <span>Pin this announcement near the top of the member feed.</span>
+              </label>
+              {announcementPublishStatus ? <div className="staff-note staff-note-ok">{announcementPublishStatus}</div> : null}
+              {announcementPublishError ? <div className="staff-note staff-note-error">{announcementPublishError}</div> : null}
+              <div className="staff-actions-row">
+                <button
+                  className="btn btn-primary btn-small"
+                  type="button"
+                  disabled={announcementPublishBusy || !announcementDraft.title.trim() || !announcementDraft.body.trim()}
+                  onClick={() => void publishAnnouncement()}
+                >
+                  {announcementPublishBusy ? "Publishing..." : "Publish announcement"}
+                </button>
+                <button className="btn btn-ghost btn-small" type="button" onClick={() => toggleAnnouncementComposer()}>
+                  Close
+                </button>
+              </div>
+            </div>
+          ) : null}
           {messageThreadsLoading || announcementsLoading ? (
             <div className="staff-skeleton-list" aria-hidden="true">
               {Array.from({ length: 4 }).map((_, index) => (

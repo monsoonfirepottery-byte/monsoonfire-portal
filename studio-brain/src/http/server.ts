@@ -1853,6 +1853,30 @@ export function startHttpServer(params: {
         return;
       }
 
+      if (memoryService && method === "POST" && url.pathname === "/api/memory/get-by-ids") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        try {
+          const payload = await readJsonBody(req);
+          const rows = await memoryService.getByIds(payload);
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, rows }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
       if (memoryService && method === "GET" && url.pathname === "/api/memory/stats") {
         const auth = await assertCapabilityAuth(req);
         if (!auth.ok) {
@@ -2700,6 +2724,82 @@ export function startHttpServer(params: {
             relationshipInference: result.relationshipInference ?? null,
             relationshipProbes: result.relationshipInference?.probes ?? 0,
             relationshipEdgesAdded: result.relationshipInference?.inferredEdgesAdded ?? 0,
+            stopReason: result.stopReason ?? null,
+            convergence: result.convergence ?? null,
+            pressure: memoryPressureSnapshot(),
+          });
+          statusCode = 200;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: true, result }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isValidation = error instanceof MemoryValidationError;
+          statusCode = isValidation ? 400 : 500;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message }));
+        }
+        return;
+      }
+
+      if (memoryService && method === "POST" && url.pathname === "/api/memory/scrub-thread-metadata") {
+        const auth = await assertCapabilityAuth(req);
+        if (!auth.ok) {
+          statusCode = 401;
+          res.writeHead(statusCode, withSecurityHeaders({ "content-type": "application/json", ...corsHeaders, "x-request-id": requestId }));
+          res.end(JSON.stringify({ ok: false, message: auth.message }));
+          return;
+        }
+        const pressure = memoryPressureSnapshot();
+        if (
+          pressure.activeImportRequests >= memoryPressureConfig.maxActiveImportsBeforeBackfill ||
+          pressure.activeBackfillRequests >= memoryPressureConfig.maxConcurrentBackfills
+        ) {
+          const reason =
+            pressure.activeImportRequests >= memoryPressureConfig.maxActiveImportsBeforeBackfill
+              ? "active-import-pressure"
+              : "backfill-concurrency-limit";
+          statusCode = 503;
+          res.writeHead(
+            statusCode,
+            withSecurityHeaders({
+              "content-type": "application/json",
+              ...corsHeaders,
+              "x-request-id": requestId,
+              "retry-after": String(memoryPressureConfig.retryAfterSeconds),
+            })
+          );
+          res.end(
+            JSON.stringify({
+              ok: false,
+              message: "Backfill deferred due current memory ingest pressure.",
+              reason,
+              retryAfterSeconds: memoryPressureConfig.retryAfterSeconds,
+              pressure,
+            })
+          );
+          return;
+        }
+        try {
+          const payload = await readJsonBody(req);
+          let result;
+          activeBackfillRequests += 1;
+          try {
+            result = await memoryService.scrubSyntheticThreadMetadata(payload);
+          } finally {
+            activeBackfillRequests = Math.max(0, activeBackfillRequests - 1);
+          }
+          logger.info("memory_scrub_thread_metadata_summary", {
+            requestId,
+            tenantId: result.tenantId ?? null,
+            dryRun: result.dryRun,
+            scanned: result.scanned,
+            eligible: result.eligible,
+            updated: result.updated,
+            skipped: result.skipped,
+            failed: result.failed,
+            writesAttempted: result.writesAttempted ?? 0,
+            maxWrites: result.maxWrites ?? 0,
+            timeoutErrors: result.timeoutErrors ?? 0,
             stopReason: result.stopReason ?? null,
             convergence: result.convergence ?? null,
             pressure: memoryPressureSnapshot(),

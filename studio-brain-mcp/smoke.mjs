@@ -3,7 +3,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 
 const transport = new StdioClientTransport({
   command: process.execPath,
-  args: ["./server.mjs"],
+  args: ["./launch.mjs"],
   cwd: new URL(".", import.meta.url),
   stderr: "pipe",
   env: {

@@ -6,13 +6,11 @@ import "./KilnRentalsView.css";
 
 type Props = {
   onOpenKilnLaunch: () => void;
-  onOpenKilnSchedule: () => void;
   onOpenWorkSubmission: () => void;
 };
 
 export default function KilnRentalsView({
   onOpenKilnLaunch,
-  onOpenKilnSchedule,
   onOpenWorkSubmission,
 }: Props) {
   return (
@@ -27,7 +25,7 @@ export default function KilnRentalsView({
         <div>
           <div className="card-title">How to get your stuff fired</div>
           <p className="kiln-rentals-copy">
-            Check in fast. Join the queue. Track the firing.
+            Check in fast. Join the queue. Watch confirmed firings take shape from the live queue.
           </p>
           <div className="kiln-rentals-steps">
             <button className="kiln-step-button" onClick={onOpenWorkSubmission}>
@@ -40,14 +38,8 @@ export default function KilnRentalsView({
             <button className="kiln-step-button" onClick={onOpenKilnLaunch}>
               <div className="kiln-step-title">2. View the Queues</div>
               <div className="kiln-step-copy">
-                The live, gamified queue—see the whole studio load, fill shelves together, and
-                rally the next firing.
-              </div>
-            </button>
-            <button className="kiln-step-button" onClick={onOpenKilnSchedule}>
-              <div className="kiln-step-title">3. Firings</div>
-              <div className="kiln-step-copy">
-                The long-view plan of what is coming next and what has already fired.
+                The live kiln view shows what is queued, what is loading, and which firings are
+                already confirmed next.
               </div>
             </button>
           </div>

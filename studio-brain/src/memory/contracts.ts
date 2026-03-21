@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const MAX_MEMORY_CONTENT_CHARS = 20_000;
+export const MAX_MEMORY_CONTENT_CHARS = 65_536;
 export const MAX_MEMORY_LIMIT = 100;
 export const MAX_MEMORY_IMPORT_ITEMS = 500;
 
@@ -141,6 +141,17 @@ export const memorySignalIndexBackfillRequestSchema = z.object({
   stopAfterTimeoutErrors: z.number().int().min(1).max(100).default(5),
 });
 
+export const memoryThreadMetadataScrubRequestSchema = z.object({
+  tenantId: z.string().trim().min(1).max(128).nullable().optional(),
+  limit: z.number().int().min(1).max(20_000).default(2_000),
+  dryRun: z.boolean().default(false),
+  sourcePrefixes: z.array(z.string().trim().min(1).max(64)).max(24).default([]),
+  includeMailLike: z.boolean().default(false),
+  maxWrites: z.number().int().min(1).max(20_000).default(500),
+  writeDelayMs: z.number().int().min(0).max(60_000).default(20),
+  stopAfterTimeoutErrors: z.number().int().min(1).max(100).default(5),
+});
+
 export const memoryLoopsRequestSchema = z.object({
   tenantId: z.string().trim().min(1).max(128).nullable().optional(),
   loopKeys: stringList.default([]),
@@ -259,6 +270,7 @@ export type MemoryContextRequest = z.infer<typeof memoryContextRequestSchema>;
 export type MemoryImportRequest = z.infer<typeof memoryImportRequestSchema>;
 export type MemoryEmailThreadBackfillRequest = z.infer<typeof memoryEmailThreadBackfillRequestSchema>;
 export type MemorySignalIndexBackfillRequest = z.infer<typeof memorySignalIndexBackfillRequestSchema>;
+export type MemoryThreadMetadataScrubRequest = z.infer<typeof memoryThreadMetadataScrubRequestSchema>;
 export type MemoryLoopsRequest = z.infer<typeof memoryLoopsRequestSchema>;
 export type MemoryLoopIncidentActionRequest = z.infer<typeof memoryLoopIncidentActionRequestSchema>;
 export type MemoryLoopIncidentActionBatchRequest = z.infer<typeof memoryLoopIncidentActionBatchRequestSchema>;
@@ -405,6 +417,36 @@ export type MemorySignalIndexBackfillResult = {
     patternCount: number;
     signalCount: number;
     loopKeys: string[];
+  }>;
+  errors: Array<{ id: string; message: string }>;
+};
+
+export type MemoryThreadMetadataScrubResult = {
+  tenantId: string | null;
+  dryRun: boolean;
+  startedAt: string;
+  finishedAt: string;
+  scanned: number;
+  eligible: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  writesAttempted?: number;
+  maxWrites?: number;
+  stoppedEarly?: boolean;
+  stopReason?: string | null;
+  timeoutErrors?: number;
+  convergence?: MemoryBackfillConvergenceTelemetry;
+  sample: Array<{
+    id: string;
+    source: string;
+    reason: string;
+    beforeThreadKey: string | null;
+    afterThreadKey: string | null;
+    beforeLoopClusterKey: string | null;
+    afterLoopClusterKey: string | null;
+    beforeThreadEvidence: "explicit" | "derived" | "none";
+    afterThreadEvidence: "explicit" | "derived" | "none";
   }>;
   errors: Array<{ id: string; message: string }>;
 };

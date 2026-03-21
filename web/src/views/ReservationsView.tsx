@@ -60,18 +60,18 @@ const INTAKE_MODE_OPTIONS: Array<{
 }> = [
   {
     id: "SHELF_PURCHASE",
-    label: "Per-shelf purchase",
-    detail: "Pay for the half-shelves your work uses.",
+    label: "Standard shelf purchase",
+    detail: "Best for most drop-offs. Pay for the shelf space your work uses.",
   },
   {
     id: "WHOLE_KILN",
-    label: "Whole kiln",
-    detail: "Dedicated kiln load and queue priority.",
+    label: "Reserve the whole kiln",
+    detail: "Dedicated kiln load when you want the whole chamber.",
   },
   {
     id: "COMMUNITY_SHELF",
-    label: "Community shelf",
-    detail: "Tiny-load lane for flexible timing when extra kiln space appears.",
+    label: "Flexible tiny drop-off",
+    detail: "Free tiny-load lane when timing can wait for open kiln space.",
   },
 ];
 
@@ -594,6 +594,23 @@ function sanitizeDateInput(value: string) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+type PriorityQueueTimingWindow = "community_shelf" | "none" | "within_two_weeks" | "within_one_week";
+
+function getPriorityQueueTimingWindow(
+  latestDate: Date | null,
+  intakeMode: IntakeMode,
+  nowMs: number = Date.now()
+): PriorityQueueTimingWindow {
+  if (intakeMode === "COMMUNITY_SHELF") return "community_shelf";
+  if (!latestDate || !Number.isFinite(latestDate.getTime())) return "none";
+  const leadTimeMs = latestDate.getTime() - nowMs;
+  const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
+  const twoWeeksMs = 14 * 24 * 60 * 60 * 1000;
+  if (leadTimeMs <= oneWeekMs) return "within_one_week";
+  if (leadTimeMs < twoWeeksMs) return "within_two_weeks";
+  return "none";
+}
+
 function playCheckinSuccessTone() {
   if (typeof window === "undefined") return;
   const AudioContextCtor =
@@ -848,6 +865,7 @@ export default function ReservationsView({
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
   const [photoStatus, setPhotoStatus] = useState("");
   const [animateEstimate, setAnimateEstimate] = useState(false);
+  const priorityQueueAutoAppliedLatestRef = useRef<string | null>(null);
 
   const [latest, setLatest] = useState("");
   const [linkedBatchId, setLinkedBatchId] = useState("");
@@ -986,11 +1004,15 @@ export default function ReservationsView({
     const safeFootprint = Math.min(8, Math.max(1, footprintHalfShelves));
     return safeFootprint + (hasTallPieces ? 1 : 0);
   }, [footprintHalfShelves, hasTallPieces]);
+  const latestDate = useMemo(() => sanitizeDateInput(latest), [latest]);
+  const priorityQueueTimingWindow = useMemo(
+    () => getPriorityQueueTimingWindow(latestDate, intakeMode),
+    [latestDate, intakeMode]
+  );
+  const communityShelfEligible = footprintHalfShelves <= COMMUNITY_SHELF_MAX_HALF_SHELVES && !hasTallPieces;
   const communityShelfSizeExceeded =
     intakeMode === "COMMUNITY_SHELF" && computedHalfShelves > COMMUNITY_SHELF_MAX_HALF_SHELVES;
-  const computedCost = useMemo(() => {
-    if (intakeMode === "COMMUNITY_SHELF") return 0;
-    if (intakeMode === "WHOLE_KILN") return FULL_KILN_CUSTOM_PRICE;
+  const shelfPurchasePricing = useMemo(() => {
     const base = computeEstimatedCost({
       kilnType: selectedKiln?.id ?? null,
       firingType,
@@ -999,8 +1021,14 @@ export default function ReservationsView({
     return applyHalfKilnPriceBreak({
       estimatedHalfShelves: computedHalfShelves,
       estimatedCost: base,
-    }).estimatedCost;
-  }, [selectedKiln?.id, firingType, computedHalfShelves, intakeMode]);
+    });
+  }, [selectedKiln?.id, firingType, computedHalfShelves]);
+  const shelfPurchaseEstimate = shelfPurchasePricing.estimatedCost;
+  const computedCost = useMemo(() => {
+    if (intakeMode === "COMMUNITY_SHELF") return 0;
+    if (intakeMode === "WHOLE_KILN") return FULL_KILN_CUSTOM_PRICE;
+    return shelfPurchaseEstimate;
+  }, [intakeMode, shelfPurchaseEstimate]);
   const shelfEquivalent = useMemo(() => {
     if (!Number.isFinite(estimatedHalfShelves)) return 1;
     return Math.max(0.25, (estimatedHalfShelves ?? 1) / 2);
@@ -1015,11 +1043,13 @@ export default function ReservationsView({
   const kilnLabel = selectedKiln?.label ?? "Select kiln";
   const intakeModeLabel =
     intakeMode === "COMMUNITY_SHELF"
-      ? "Community shelf"
+      ? "Flexible tiny drop-off"
       : intakeMode === "WHOLE_KILN"
-        ? "Whole kiln"
-        : "Per-shelf purchase";
+        ? "Reserve the whole kiln"
+        : "Standard shelf purchase";
   const canSuggestPriorityQueue = intakeMode !== "COMMUNITY_SHELF";
+  const effectiveCommunityShelfFillInAllowed =
+    intakeMode === "SHELF_PURCHASE" && (communityShelfFillInAllowed || rushRequested);
   const deliveryTrips = (pickupDeliveryRequested ? 1 : 0) + (returnDeliveryRequested ? 1 : 0);
   const deliveryCost = computeDeliveryCost(deliveryTrips);
   const estimatedCostWithDelivery =
@@ -1043,18 +1073,20 @@ export default function ReservationsView({
         placementPreferenceCost +
         prepaidStorageCost
       : estimatedCostWithDelivery;
+  const shelfPurchaseHitsWholeKilnPriceBreak = shelfPurchasePricing.priceBreakApplied;
   const priceBreakApplied = useMemo(() => {
     if (intakeMode !== "SHELF_PURCHASE") return false;
-    const base = computeEstimatedCost({
-      kilnType: selectedKiln?.id ?? null,
-      firingType,
-      estimatedHalfShelves: computedHalfShelves,
-    });
-    return applyHalfKilnPriceBreak({
-      estimatedHalfShelves: computedHalfShelves,
-      estimatedCost: base,
-    }).priceBreakApplied;
-  }, [selectedKiln?.id, firingType, computedHalfShelves, intakeMode]);
+    return shelfPurchasePricing.priceBreakApplied;
+  }, [intakeMode, shelfPurchasePricing.priceBreakApplied]);
+  const recommendedIntakeMode = useMemo(() => {
+    if (communityShelfEligible && computedHalfShelves <= COMMUNITY_SHELF_MAX_HALF_SHELVES && priorityQueueTimingWindow === "none") {
+      return "COMMUNITY_SHELF" as IntakeMode;
+    }
+    if (computedHalfShelves >= 4 || shelfPurchaseHitsWholeKilnPriceBreak) {
+      return "WHOLE_KILN" as IntakeMode;
+    }
+    return "SHELF_PURCHASE" as IntakeMode;
+  }, [communityShelfEligible, computedHalfShelves, priorityQueueTimingWindow, shelfPurchaseHitsWholeKilnPriceBreak]);
 
   const client = useMemo(
     () =>
@@ -1393,10 +1425,7 @@ export default function ReservationsView({
 
   useEffect(() => {
     if (intakeMode !== "COMMUNITY_SHELF") return;
-    setFootprintHalfShelves(1);
     setShowMoreFootprints(false);
-    setHasTallPieces(false);
-    setFitsOnOneLayer(null);
     setRushRequested(false);
     setStaffGlazePrepRequested(false);
     setSelfLoadedKilnRequested(false);
@@ -1410,6 +1439,17 @@ export default function ReservationsView({
     setUseStudioGlazes(false);
     setGlazeAccessCost(null);
   }, [intakeMode]);
+
+  useEffect(() => {
+    if (priorityQueueTimingWindow !== "within_one_week") {
+      priorityQueueAutoAppliedLatestRef.current = null;
+      return;
+    }
+    if (!latest) return;
+    if (priorityQueueAutoAppliedLatestRef.current === latest) return;
+    priorityQueueAutoAppliedLatestRef.current = latest;
+    setRushRequested(true);
+  }, [latest, priorityQueueTimingWindow]);
 
   useEffect(() => {
     if (intakeMode !== "SHELF_PURCHASE") return;
@@ -2975,9 +3015,7 @@ export default function ReservationsView({
   const confirmCommunityShelfFlow = useCallback(() => {
     if (!communityShelfSmallLoadConfirmed) return;
     setIntakeMode("COMMUNITY_SHELF");
-    setFootprintHalfShelves(1);
     setShowMoreFootprints(false);
-    setHasTallPieces(false);
     setFitsOnOneLayer(null);
     setCommunityShelfInfoOpen(false);
   }, [communityShelfSmallLoadConfirmed]);
@@ -2986,6 +3024,7 @@ export default function ReservationsView({
     (nextMode: IntakeMode) => {
       if (nextMode === "COMMUNITY_SHELF") {
         if (intakeMode === "COMMUNITY_SHELF") return;
+        if (!communityShelfEligible) return;
         beginCommunityShelfFlow();
         return;
       }
@@ -2993,7 +3032,7 @@ export default function ReservationsView({
       setCommunityShelfSmallLoadConfirmed(false);
       setIntakeMode(nextMode);
     },
-    [beginCommunityShelfFlow, intakeMode]
+    [beginCommunityShelfFlow, communityShelfEligible, intakeMode]
   );
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -3032,10 +3071,6 @@ export default function ReservationsView({
     }
 
     if (intakeMode === "COMMUNITY_SHELF") {
-      if (!communityShelfSmallLoadConfirmed) {
-        setFormError("Confirm the tiny-load community shelf policy before submitting this check-in.");
-        return;
-      }
       if (communityShelfSizeExceeded || footprintHalfShelves > COMMUNITY_SHELF_MAX_HALF_SHELVES || hasTallPieces) {
         setFormError(
           "Community shelf is limited to tiny drops under one half-shelf. Switch to Per-shelf purchase for larger work."
@@ -3055,36 +3090,7 @@ export default function ReservationsView({
       }
     }
 
-    const latestDate = sanitizeDateInput(latest);
-    let rushRequestedForSubmission = rushRequested;
-    if (canSuggestPriorityQueue && latestDate && Number.isFinite(latestDate.getTime())) {
-      const leadTimeMs = latestDate.getTime() - Date.now();
-      const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
-      const twoWeeksMs = 14 * 24 * 60 * 60 * 1000;
-      if (leadTimeMs < twoWeeksMs) {
-        if (leadTimeMs <= oneWeekMs) {
-          if (!rushRequestedForSubmission) {
-            rushRequestedForSubmission = true;
-            setRushRequested(true);
-          }
-          const keepPriorityQueue = window.confirm(
-            "Your need-by date is within 1 week, so Priority Queue is pre-selected to protect timing. Press OK to keep it, or Cancel to continue without it."
-          );
-          if (!keepPriorityQueue) {
-            rushRequestedForSubmission = false;
-            setRushRequested(false);
-          }
-        } else {
-          const addPriorityQueue = window.confirm(
-            "Your need-by date is within 2 weeks. Priority Queue can help avoid misses when the kiln queue is long. Press OK to add it, or Cancel to continue without it."
-          );
-          if (addPriorityQueue) {
-            rushRequestedForSubmission = true;
-            setRushRequested(true);
-          }
-        }
-      }
-    }
+    const rushRequestedForSubmission = rushRequested;
     const communityShelfFillInAllowedForSubmission =
       intakeMode === "SHELF_PURCHASE" && (communityShelfFillInAllowed || rushRequestedForSubmission);
     if (communityShelfFillInAllowedForSubmission && !communityShelfFillInAllowed) {
@@ -3424,61 +3430,32 @@ export default function ReservationsView({
               ) : null}
             </div>
 
-            <div className="checkin-step">
-              <div className="checkin-step-title">4. Choose your pricing path</div>
-              <div className="option-grid">
-                {INTAKE_MODE_OPTIONS.map((option) => (
-                  <button
-                    type="button"
-                    key={option.id}
-                    className={`option-card compact ${intakeMode === option.id ? "selected" : ""}`}
-                    onClick={() => chooseIntakeMode(option.id)}
-                    aria-pressed={intakeMode === option.id}
-                  >
-                    <span className="option-title">{option.label}</span>
-                    <span className="option-meta">{option.detail}</span>
-                  </button>
-                ))}
-              </div>
-              <p className="form-helper checkin-policy-chip">
-                We bill by shelf space or whole kiln only. We do not bill by kiln volume.
-              </p>
-              {intakeMode === "COMMUNITY_SHELF" ? (
-                <div className="notice inline-alert">
-                  Community shelf is for tiny drops only (under one half shelf), remains lowest priority, and does
-                  not trigger firings.
-                </div>
-              ) : null}
-            </div>
-
             <div className="checkin-step estimator-step">
-              <div className="checkin-step-title">5. Space + cost estimate</div>
+              <div className="checkin-step-title">4. Size + firing option</div>
+              <p className="form-helper">
+                Start with the size of the drop-off, then choose the firing option that best matches how flexible or
+                time-sensitive this load is.
+              </p>
               <div className="estimator-grid">
                 <div className="estimator-controls">
-                <div className="estimator-block">
-                  <div className="estimator-label">How much table space?</div>
-                  <div
-                    className={`segmented-grid footprint-grid ${
-                      fitsOnOneLayer === "no" ? "needs-attention" : ""
-                    }`}
-                  >
-                    {[1, 2, 3].map((count) => (
-                      <button
-                        type="button"
-                        key={`footprint-${count}`}
-                        className={`segmented-button ${
-                          footprintHalfShelves === count ? "selected" : ""
-                        }`}
-                        onClick={() => setFootprintHalfShelves(count)}
-                        disabled={
-                          intakeMode === "COMMUNITY_SHELF" && count > COMMUNITY_SHELF_MAX_HALF_SHELVES
-                        }
-                        aria-pressed={footprintHalfShelves === count}
-                      >
-                        <span className="segmented-main">{count}</span>
-                      </button>
-                    ))}
-                    {intakeMode !== "COMMUNITY_SHELF" ? (
+                  <div className="estimator-block">
+                    <div className="estimator-label">How much shelf space does this need?</div>
+                    <div
+                      className={`segmented-grid footprint-grid ${
+                        fitsOnOneLayer === "no" ? "needs-attention" : ""
+                      }`}
+                    >
+                      {[1, 2, 3].map((count) => (
+                        <button
+                          type="button"
+                          key={`footprint-${count}`}
+                          className={`segmented-button ${footprintHalfShelves === count ? "selected" : ""}`}
+                          onClick={() => setFootprintHalfShelves(count)}
+                          aria-pressed={footprintHalfShelves === count}
+                        >
+                          <span className="segmented-main">{count}</span>
+                        </button>
+                      ))}
                       <button
                         type="button"
                         className={`segmented-button ${showMoreFootprints ? "selected" : ""}`}
@@ -3488,35 +3465,30 @@ export default function ReservationsView({
                       >
                         <span className="segmented-main">More</span>
                       </button>
-                    ) : null}
-                    {intakeMode !== "COMMUNITY_SHELF" && showMoreFootprints
-                      ? Array.from({ length: 5 }, (_, index) => index + 4).map((count) => (
-                          <button
-                            type="button"
-                            key={`footprint-${count}`}
-                            className={`segmented-button ${
-                              footprintHalfShelves === count ? "selected" : ""
-                            }`}
-                            onClick={() => {
-                              setFootprintHalfShelves(count);
-                              setShowMoreFootprints(true);
-                            }}
-                            aria-pressed={footprintHalfShelves === count}
-                          >
-                            <span className="segmented-main">{count}</span>
-                            {count === 4 ? (
-                              <span className="segmented-sub">Whole kiln option</span>
-                            ) : null}
-                          </button>
-                        ))
-                      : null}
+                      {showMoreFootprints
+                        ? Array.from({ length: 5 }, (_, index) => index + 4).map((count) => (
+                            <button
+                              type="button"
+                              key={`footprint-${count}`}
+                              className={`segmented-button ${footprintHalfShelves === count ? "selected" : ""}`}
+                              onClick={() => {
+                                setFootprintHalfShelves(count);
+                                setShowMoreFootprints(true);
+                              }}
+                              aria-pressed={footprintHalfShelves === count}
+                            >
+                              <span className="segmented-main">{count}</span>
+                              {count === 4 ? <span className="segmented-sub">Whole kiln range</span> : null}
+                            </button>
+                          ))
+                        : null}
+                    </div>
+                    <p className="form-helper">
+                      {intakeMode === "COMMUNITY_SHELF"
+                        ? "Flexible tiny drop-off only works when the load stays under one half shelf."
+                        : "Think of one half shelf as about a carry-on suitcase laid flat."}
+                    </p>
                   </div>
-                  <p className="form-helper">
-                    {intakeMode === "COMMUNITY_SHELF"
-                      ? "Community shelf is for tiny drops only: under one half shelf per check-in."
-                      : "About one carry-on suitcase laid flat."}
-                  </p>
-                </div>
 
                   {showFitPrompt ? (
                     <div className="estimator-block">
@@ -3548,21 +3520,13 @@ export default function ReservationsView({
                       ) : null}
                     </div>
                   ) : null}
-
-                </div>
-
-                <div className="estimator-side">
                   <div className="estimator-block estimate-height">
                     <div className="estimator-label">Anything taller than 10 inches?</div>
                     <div className="segmented-grid yesno-grid">
                       <button
                         type="button"
                         className={`segmented-button ${hasTallPieces ? "selected" : ""}`}
-                        onClick={() => {
-                          if (intakeMode === "COMMUNITY_SHELF") return;
-                          setHasTallPieces(true);
-                        }}
-                        disabled={intakeMode === "COMMUNITY_SHELF"}
+                        onClick={() => setHasTallPieces(true)}
                         aria-pressed={hasTallPieces}
                       >
                         Yes, it&apos;s tall
@@ -3581,21 +3545,81 @@ export default function ReservationsView({
                     ) : null}
                     {intakeMode === "COMMUNITY_SHELF" ? (
                       <div className="form-helper">
-                        Tall pieces and larger loads are not eligible for community shelf. Choose Per-shelf purchase
-                        for those.
+                        Tall work is not eligible for flexible tiny drop-off. Switch to Standard shelf purchase for
+                        taller pieces.
                       </div>
                     ) : null}
-                    <div className="form-helper">
-                      Not sure? Choose standard height. We&apos;ll measure it with you.
+                    <div className="form-helper">Not sure? Choose standard height. We&apos;ll measure it with you.</div>
+                  </div>
+
+                  <div className="estimator-block firing-option-block">
+                    <div className="estimator-label">Choose your firing option</div>
+                    <div className="option-grid firing-option-grid">
+                      {INTAKE_MODE_OPTIONS.map((option) => {
+                        const isSelected = intakeMode === option.id;
+                        const isRecommended = recommendedIntakeMode === option.id;
+                        const isCommunityOption = option.id === "COMMUNITY_SHELF";
+                        const optionDisabled = isCommunityOption && !communityShelfEligible && !isSelected;
+                        const optionPrice =
+                          option.id === "COMMUNITY_SHELF"
+                            ? "Free when eligible"
+                            : option.id === "WHOLE_KILN"
+                              ? `Flat firing ${formatUsd(FULL_KILN_CUSTOM_PRICE)}`
+                              : `Estimated firing ${
+                                  Number.isFinite(shelfPurchaseEstimate)
+                                    ? formatUsd(shelfPurchaseEstimate as number)
+                                    : "We’ll confirm"
+                                }`;
+                        const optionFit =
+                          option.id === "COMMUNITY_SHELF"
+                            ? "Best for tiny test pieces with flexible timing."
+                            : option.id === "WHOLE_KILN"
+                              ? "Best when you need the whole chamber or a dedicated run."
+                              : "Best for most drop-offs and predictable pickup planning.";
+                        return (
+                          <button
+                            type="button"
+                            key={option.id}
+                            className={`option-card firing-option-card ${isSelected ? "selected" : ""} ${
+                              isRecommended ? "recommended" : ""
+                            }`}
+                            onClick={() => chooseIntakeMode(option.id)}
+                            aria-pressed={isSelected}
+                            disabled={optionDisabled}
+                          >
+                            <div className="firing-option-badges">
+                              {isRecommended ? <span className="option-sticker">Recommended</span> : null}
+                              {isCommunityOption && optionDisabled ? (
+                                <span className="option-sticker subdued">Tiny load only</span>
+                              ) : null}
+                            </div>
+                            <span className="option-title">{option.label}</span>
+                            <span className="option-meta">{option.detail}</span>
+                            <span className="firing-option-price">{optionPrice}</span>
+                            <span className="firing-option-fit">{optionFit}</span>
+                            {option.id === "SHELF_PURCHASE" && shelfPurchaseHitsWholeKilnPriceBreak ? (
+                              <span className="firing-option-note">This size is already in the whole-kiln price range.</span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
                     </div>
+                    <p className="form-helper checkin-policy-chip">
+                      We bill by shelf space or whole kiln only. We do not bill by kiln volume.
+                    </p>
+                    {intakeMode === "COMMUNITY_SHELF" ? (
+                      <div className="notice inline-alert">
+                        Flexible tiny drop-off stays free, lowest priority, and never triggers firings on its own.
+                      </div>
+                    ) : null}
+                    {intakeMode === "COMMUNITY_SHELF" && (communityShelfSizeExceeded || hasTallPieces) ? (
+                      <div className="notice inline-alert">
+                        This load is currently too large for flexible tiny drop-off. Switch to Standard shelf purchase
+                        or shrink the size back under one half shelf.
+                      </div>
+                    ) : null}
                   </div>
                 </div>
-
-                {communityShelfSizeExceeded ? (
-                  <div className="notice inline-alert">
-                    This load exceeds the community shelf tiny-load cap. Switch to Per-shelf purchase to continue.
-                  </div>
-                ) : null}
 
                 <aside className={`estimate-summary ${animateEstimate ? "animate" : ""}`}>
                   <div className="estimate-summary-header">
@@ -3612,8 +3636,8 @@ export default function ReservationsView({
                     {intakeMode === "SHELF_PURCHASE" && priceBreakApplied ? (
                       <span className="estimate-chip">Whole kiln option</span>
                     ) : null}
-                    {intakeMode === "SHELF_PURCHASE" && communityShelfFillInAllowed ? (
-                      <span className="estimate-chip">Community shelf fill-in allowed</span>
+                    {intakeMode === "SHELF_PURCHASE" && effectiveCommunityShelfFillInAllowed ? (
+                      <span className="estimate-chip">Community shelf fill-in enabled</span>
                     ) : null}
                     {selectedKiln?.id === "reduction-raku" ? (
                       <span className="estimate-chip">Raku is always glaze pricing</span>
@@ -3722,7 +3746,7 @@ export default function ReservationsView({
                     <label className="addon-toggle">
                       <input
                         type="checkbox"
-                        checked={communityShelfFillInAllowed}
+                        checked={effectiveCommunityShelfFillInAllowed}
                         disabled={rushRequested}
                         onChange={(event) => {
                           if (rushRequested) return;
@@ -3730,7 +3754,7 @@ export default function ReservationsView({
                         }}
                       />
                       <span className="addon-text">
-                        <span className="addon-title">Allow community shelf fill-in on unused space</span>
+                        <span className="addon-title">Allow leftover space to help community-shelf work</span>
                         <span className="addon-copy">
                           If your shelf has open space after your pieces are loaded, staff may use only that extra
                           area for community shelf work.
@@ -3739,7 +3763,7 @@ export default function ReservationsView({
                     </label>
                     {rushRequested ? (
                       <p className="form-helper">
-                        Priority Queue policy keeps this on to help offset line-cut pressure.
+                        Priority queue keeps this on to help offset the faster lane.
                       </p>
                     ) : null}
                   </div>
@@ -3748,7 +3772,7 @@ export default function ReservationsView({
             </div>
 
             <details className="checkin-step checkin-optional-step">
-              <summary className="checkin-step-title">6. Helpful extras (optional)</summary>
+              <summary className="checkin-step-title">5. Helpful extras (optional)</summary>
               {intakeMode === "COMMUNITY_SHELF" ? (
                 <div className="notice inline-alert">
                   Community shelf stays free. Paid add-ons are unavailable for this intake mode.
@@ -3793,10 +3817,10 @@ export default function ReservationsView({
                       onChange={(event) => setRushRequested(event.target.checked)}
                     />
                     <span className="addon-text">
-                      <span className="addon-title">Priority queue lane (line-cut penalty)</span>
+                      <span className="addon-title">Priority queue</span>
                       <span className="addon-copy">
                         Move ahead when queues are long. Includes a fairness surcharge and automatically enables
-                        community shelf fill-in on your unused shelf space.
+                        leftover-space help on your unused shelf space.
                       </span>
                     </span>
                     <span className="addon-tag">{formatUsd(RUSH_REQUEST_PRICE)}</span>
@@ -3944,7 +3968,7 @@ export default function ReservationsView({
             </details>
 
             <details className="checkin-step checkin-optional-step">
-              <summary className="checkin-step-title">7. Notes (optional)</summary>
+              <summary className="checkin-step-title">6. Notes (optional)</summary>
               <div className="notes-grid">
                 <label>
                   General notes
@@ -3961,15 +3985,36 @@ export default function ReservationsView({
                     value={latest}
                     onChange={(event) => setLatest(event.target.value)}
                   />
-                  {canSuggestPriorityQueue ? (
+                  {priorityQueueTimingWindow === "within_one_week" ? (
+                    <div className="priority-queue-callout priority-queue-callout-urgent">
+                      <strong>Priority queue was turned on for this date.</strong>
+                      <span>
+                        This target is inside 1 week, so we pre-select the faster lane to protect timing. You can
+                        still switch it off before submitting.
+                      </span>
+                      <button type="button" className="btn btn-ghost" onClick={() => setRushRequested((prev) => !prev)}>
+                        {rushRequested ? "Use standard timing instead" : "Turn priority queue back on"}
+                      </button>
+                    </div>
+                  ) : priorityQueueTimingWindow === "within_two_weeks" ? (
+                    <div className="priority-queue-callout">
+                      <strong>Priority queue is recommended for this date.</strong>
+                      <span>
+                        You&apos;re inside 2 weeks. Add the faster lane if timing matters, or keep the standard queue
+                        if you&apos;re flexible.
+                      </span>
+                      <button type="button" className="btn btn-ghost" onClick={() => setRushRequested((prev) => !prev)}>
+                        {rushRequested ? "Keep standard timing" : "Add priority queue"}
+                      </button>
+                    </div>
+                  ) : canSuggestPriorityQueue ? (
                     <span className="deadline-helper">
-                      2+ weeks auto-approves timing. Inside 2 weeks, we suggest Priority Queue. Inside 1 week,
-                      Priority Queue is pre-selected (you can opt out).
+                      Optional timing target. With 2+ weeks of lead time, the standard queue is usually the right fit.
                     </span>
                   ) : (
                     <span className="deadline-helper">
-                      Optional timing target. Community shelf stays lowest priority, and staff will confirm what timing
-                      is realistic.
+                      Optional timing target. Flexible tiny drop-off stays lowest priority, and staff will confirm what
+                      timing is realistic.
                     </span>
                   )}
                 </label>
@@ -4080,12 +4125,12 @@ export default function ReservationsView({
             {communityShelfInfoOpen ? (
               <div className="intake-modal-backdrop" role="presentation">
                 <div className="intake-modal" role="dialog" aria-modal="true" aria-label="Community shelf policy">
-                  <h3>Community shelf summary</h3>
+                  <h3>Flexible tiny drop-off summary</h3>
                   <p>
-                    Community shelf is best for flexible timelines. It keeps check-ins free ({formatUsd(0)})
-                    and helps fill leftover space when a shelf owner opts in.
+                    Flexible tiny drop-off is best when timing can wait. It keeps check-ins free ({formatUsd(0)})
+                    and only uses leftover kiln space when a shelf owner opts in.
                   </p>
-                  <div className="community-shelf-summary" aria-label="Community shelf pros and tradeoffs">
+                  <div className="community-shelf-summary" aria-label="Flexible tiny drop-off pros and tradeoffs">
                     <p className="community-shelf-summary-title">Pros</p>
                     <ul>
                       <li>Free check-in when timing is flexible.</li>
@@ -4108,21 +4153,21 @@ export default function ReservationsView({
                     <span>
                       I confirm this drop-off is under one half shelf and can wait for leftover kiln space.
                     </span>
-                  </label>
-                  <div className="intake-modal-actions">
-                    <button type="button" className="btn btn-ghost" onClick={cancelCommunityShelfFlow}>
-                      Keep Shelf Purchase
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      onClick={confirmCommunityShelfFlow}
-                      disabled={!communityShelfSmallLoadConfirmed}
-                    >
-                      Use Community Shelf (tiny load)
-                    </button>
+                    </label>
+                    <div className="intake-modal-actions">
+                      <button type="button" className="btn btn-ghost" onClick={cancelCommunityShelfFlow}>
+                        Keep standard shelf purchase
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={confirmCommunityShelfFlow}
+                        disabled={!communityShelfSmallLoadConfirmed}
+                      >
+                        Use flexible tiny drop-off
+                      </button>
+                    </div>
                   </div>
-                </div>
               </div>
             ) : null}
           </form>

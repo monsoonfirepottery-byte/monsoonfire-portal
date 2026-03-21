@@ -14,7 +14,7 @@ import { resolveStudioBrainNetworkProfile } from "./studio-network-profile.mjs";
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = resolve(__filename, "..", "..");
 
-const DEFAULT_BASE_URL = "https://monsoonfire-portal.web.app";
+const DEFAULT_BASE_URL = "https://portal.monsoonfire.com";
 const defaultOutputRoot = resolve(repoRoot, "output", "playwright", "portal");
 const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-monsoonfire-portal.cloudfunctions.net";
 const DEFAULT_STUDIO_BRAIN_READYZ_PATH = "/readyz";
@@ -367,6 +367,9 @@ const COOP_WARNING_TOKENS = [
   /Cross-Origin-Opener-Policy policy would block/i,
   /window\.closed/i,
   /window\.close/i,
+];
+const CRITICAL_CONSOLE_WARNING_TOKENS = [
+  /Password field is not contained in a form/i,
 ];
 
 const PAGE_NOISE_TOKENS = [
@@ -2187,12 +2190,20 @@ const run = async () => {
     const criticalResponseWarnings = advisoryReadyzFailures
       ? summary.network.criticalResponseWarnings.filter((entry) => !isReadyzUrl(entry.url))
       : summary.network.criticalResponseWarnings;
+    const criticalConsoleWarnings = summary.network.consoleWarnings.filter((entry) =>
+      hasMatch(entry.text || "", CRITICAL_CONSOLE_WARNING_TOKENS)
+    );
+    const criticalConsoleErrors = summary.network.consoleErrors;
+    const criticalPageErrors = summary.network.pageErrors;
 
     const isCriticalFailure =
       summary.network.forbiddenRequests.length > 0 ||
       criticalRequestFailures.length > 0 ||
       criticalCorsFailures.length > 0 ||
       criticalResponseWarnings.length > 0 ||
+      criticalConsoleWarnings.length > 0 ||
+      criticalConsoleErrors.length > 0 ||
+      criticalPageErrors.length > 0 ||
       criticalReadyzFailures.length > 0 ||
       summary.network.endpointProbes.some((probe) => {
         if (probe.skipped) return false;
@@ -2224,6 +2235,15 @@ const run = async () => {
       }
       if (criticalResponseWarnings.length > 0) {
         errors.push(`critical response failures: ${criticalResponseWarnings.length}`);
+      }
+      if (criticalConsoleWarnings.length > 0) {
+        errors.push(`critical console warnings: ${criticalConsoleWarnings.length}`);
+      }
+      if (criticalConsoleErrors.length > 0) {
+        errors.push(`console errors: ${criticalConsoleErrors.length}`);
+      }
+      if (criticalPageErrors.length > 0) {
+        errors.push(`page errors: ${criticalPageErrors.length}`);
       }
       if (summary.network.responseWarnings.length > 0 && !desktopRuntime.authenticated) {
         const authOnly = summary.network.responseWarnings.filter((item) => item.isAuthFailure).length;
@@ -2306,6 +2326,15 @@ const run = async () => {
       }
       if (summary.network.responseWarnings.length > 0) {
         summary.notes.push("Some endpoint calls returned authorization errors without session auth; expected for staff-only routes while unsigned-in.");
+      }
+      if (summary.network.consoleWarnings.length > 0) {
+        summary.notes.push(`Console warnings observed (${summary.network.consoleWarnings.length}).`);
+      }
+      if (summary.network.consoleErrors.length > 0) {
+        summary.notes.push(`Console errors observed (${summary.network.consoleErrors.length}).`);
+      }
+      if (summary.network.pageErrors.length > 0) {
+        summary.notes.push(`Page errors observed (${summary.network.pageErrors.length}).`);
       }
     }
     await writeFile(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");

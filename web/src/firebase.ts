@@ -19,6 +19,9 @@ type ImportMetaEnvShape = {
 const ENV = (import.meta.env ?? {}) as ImportMetaEnvShape;
 
 const DEFAULT_AUTH_DOMAIN = "monsoonfire-portal.firebaseapp.com";
+// This is the public Firebase Web API key already shipped in the client bundle.
+// Keep an embedded fallback so manual/static builds cannot publish a broken auth config.
+const EMBEDDED_FIREBASE_API_KEY = "AIzaSyC7ynej0nGJas9me9M5oW6jHfLsWe5gHbU";
 const AUTH_DOMAIN =
   typeof import.meta !== "undefined" && ENV.VITE_AUTH_DOMAIN
     ? String(ENV.VITE_AUTH_DOMAIN)
@@ -27,14 +30,10 @@ const AUTH_DOMAIN =
 const FIREBASE_API_KEY =
   typeof import.meta !== "undefined" && ENV.VITE_FIREBASE_API_KEY
     ? String(ENV.VITE_FIREBASE_API_KEY)
-    : "";
-
-if (!FIREBASE_API_KEY && typeof window !== "undefined") {
-  console.error("Missing VITE_FIREBASE_API_KEY. Set it in web/.env.local for local dev and GitHub secrets for CI deploy builds.");
-}
+    : EMBEDDED_FIREBASE_API_KEY;
 
 const firebaseConfig = {
-  apiKey: FIREBASE_API_KEY || "MISSING_VITE_FIREBASE_API_KEY",
+  apiKey: FIREBASE_API_KEY,
   authDomain: AUTH_DOMAIN,
   projectId: "monsoonfire-portal",
   storageBucket: "monsoonfire-portal.firebasestorage.app",

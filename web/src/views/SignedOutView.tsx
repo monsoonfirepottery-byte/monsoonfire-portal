@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 
 type ProviderId = "google" | "apple" | "facebook" | "microsoft";
 
@@ -98,6 +98,14 @@ export default function SignedOutView({
 
   const trimmedEmail = useMemo(() => email.trim(), [email]);
   const trimmedLinkEmail = useMemo(() => linkEmail.trim(), [linkEmail]);
+  const handleEmailPasswordSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onEmailPassword(trimmedEmail, password, emailMode);
+  };
+  const handleEmailLinkSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onEmailLink(trimmedLinkEmail);
+  };
 
   return (
     <div className="signed-out">
@@ -126,7 +134,7 @@ export default function SignedOutView({
           <span>Or use email</span>
         </div>
 
-        <div className="signed-out-email">
+        <form className="signed-out-email" onSubmit={handleEmailPasswordSubmit}>
           <div className="signed-out-toggle">
             <button
               type="button"
@@ -169,19 +177,19 @@ export default function SignedOutView({
             />
           </label>
           <button
+            type="submit"
             className="primary"
-            onClick={() => onEmailPassword(trimmedEmail, password, emailMode)}
             disabled={busy}
           >
             {emailMode === "create" ? "Create account" : "Sign in"}
           </button>
-        </div>
+        </form>
 
         <div className="signed-out-divider compact">
           <span>Prefer a sign-in link?</span>
         </div>
 
-        <div className="signed-out-email-link">
+        <form className="signed-out-email-link" onSubmit={handleEmailLinkSubmit}>
           <label className="signed-out-field">
             Email for link
             <input
@@ -194,8 +202,8 @@ export default function SignedOutView({
             />
           </label>
           <button
+            type="submit"
             className="secondary"
-            onClick={() => onEmailLink(trimmedLinkEmail)}
             disabled={busy}
           >
             Email me a sign-in link
@@ -203,13 +211,14 @@ export default function SignedOutView({
           {emailLinkPending ? (
             <button
               className="btn btn-ghost"
+              type="button"
               onClick={() => onCompleteEmailLink(trimmedLinkEmail)}
               disabled={busy}
             >
               Finish sign-in from link
             </button>
           ) : null}
-        </div>
+        </form>
 
         {status ? (
           <div className="signed-out-status" role="status" aria-live="polite">

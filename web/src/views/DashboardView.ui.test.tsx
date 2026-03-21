@@ -43,7 +43,7 @@ function permissionDeniedError() {
 vi.mock("firebase/firestore", () => {
   const actual = {} as typeof import("firebase/firestore");
   const initializeFirestore = vi.fn((_: unknown) => ({ name: "mock-db" }));
-  const collection = vi.fn((_: unknown, path: string) => ({ path }));
+  const collection = vi.fn((_: unknown, ...segments: string[]) => ({ path: segments.join("/") }));
   const query = vi.fn((source: MockQuery) => source);
   const orderBy = vi.fn(() => ({}));
   const limit = vi.fn(() => ({}));
@@ -208,6 +208,7 @@ describe("DashboardView kiln reload", () => {
       />
     );
 
+    expect(screen.queryByRole("button", { name: /^Firings$/i })).toBeNull();
     const retryButton = await screen.findByRole("button", { name: /Retry loading kiln status/i });
     expect(screen.getByText("Unable to load kiln schedules. Permissions may not be configured yet.")).toBeDefined();
 
@@ -255,9 +256,9 @@ describe("DashboardView kiln reload", () => {
   });
 
   it("opens My Pieces with focus target when preview chip is clicked", async () => {
-    setupGetDocsEmptySuccess();
     const user = createUser();
     const onOpenPieces = vi.fn();
+    getDocsCalls = [];
     useBatchesState = {
       active: [
         {
@@ -265,10 +266,32 @@ describe("DashboardView kiln reload", () => {
           title: "QA target batch",
           status: "GREENWARE",
           isClosed: false,
+          ownerUid: user.uid,
         },
       ],
       history: [],
       error: "",
+    };
+    getDocsMock = async (queryRef: MockQuery) => {
+      getDocsCalls.push(queryRef);
+      if (queryRef.path === "kilns" || queryRef.path === "kilnFirings") {
+        return createSnapshot([]);
+      }
+      if (queryRef.path === "batches/batch-focus/pieces") {
+        return createSnapshot([
+          {
+            id: "piece-focus",
+            data: {
+              pieceCode: "",
+              shortDesc: "QA target batch",
+              stage: "GREENWARE",
+              isArchived: false,
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        ]);
+      }
+      return createSnapshot([]);
     };
 
     render(
@@ -295,10 +318,10 @@ describe("DashboardView kiln reload", () => {
 
     const previewButton = await screen.findByRole("button", { name: /Open QA target batch in My Pieces/i });
     fireEvent.click(previewButton);
-    expect(onOpenPieces).toHaveBeenCalledWith({ batchId: "batch-focus" });
+    expect(onOpenPieces).toHaveBeenCalledWith({ batchId: "batch-focus", pieceId: "piece-focus" });
   });
 
-  it("renders live workshop availability and routes to the workshops view", async () => {
+  it("renders live workshop availability and routes to the workshop calendar", async () => {
     setupGetDocsEmptySuccess();
     listEventsMock.mockResolvedValue({
       data: {
@@ -351,7 +374,85 @@ describe("DashboardView kiln reload", () => {
     expect(screen.getByText("2 spots left")).toBeDefined();
     expect(screen.getAllByText("Glaze inspiration")).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole("button", { name: /Open workshops/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Open workshop calendar/i }));
     expect(onOpenWorkshops).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides QA workshop fixtures and falls back to a quick note when no live workshops remain", async () => {
+    setupGetDocsEmptySuccess();
+    listEventsMock.mockResolvedValue({
+      data: {
+        ok: true,
+        events: [
+          buildEventSummary({
+            id: "event-qa",
+            title: "QA Fixture Workshop 2026-03-20",
+            summary: "Seeded workshop fixture for deterministic canary coverage.",
+            remainingCapacity: 6,
+          }),
+        ],
+      },
+      meta: {},
+    });
+    const onOpenWorkshops = vi.fn();
+
+    render(
+      <DashboardView
+        user={createUser()}
+        isStaff={false}
+        name="Maker"
+        themeName="portal"
+        threads={[]}
+        announcements={[]}
+        onThemeChange={vi.fn()}
+        onOpenKilnRentals={vi.fn()}
+        onOpenCheckin={vi.fn()}
+        onOpenQueues={vi.fn()}
+        onOpenFirings={vi.fn()}
+        onOpenStudioResources={vi.fn()}
+        onOpenGlazeBoard={vi.fn()}
+        onOpenCommunity={vi.fn()}
+        onOpenWorkshops={onOpenWorkshops}
+        onOpenMessages={vi.fn()}
+        onOpenPieces={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText("No workshops are currently scheduled.")).toBeDefined();
+    expect(screen.getByText("Open the workshop calendar for the latest schedule.")).toBeDefined();
+    expect(screen.queryByText(/QA Fixture Workshop/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Open workshop calendar/i }));
+    expect(onOpenWorkshops).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the firings quick action available for staff dashboards", () => {
+    setupGetDocsEmptySuccess();
+    const onOpenFirings = vi.fn();
+
+    render(
+      <DashboardView
+        user={createUser()}
+        isStaff={true}
+        name="Maker"
+        themeName="portal"
+        threads={[]}
+        announcements={[]}
+        onThemeChange={vi.fn()}
+        onOpenKilnRentals={vi.fn()}
+        onOpenCheckin={vi.fn()}
+        onOpenQueues={vi.fn()}
+        onOpenFirings={onOpenFirings}
+        onOpenStudioResources={vi.fn()}
+        onOpenGlazeBoard={vi.fn()}
+        onOpenCommunity={vi.fn()}
+        onOpenWorkshops={vi.fn()}
+        onOpenMessages={vi.fn()}
+        onOpenPieces={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^Firings$/i }));
+    expect(onOpenFirings).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -122,6 +122,16 @@ export function readJsonlWithRaw(path) {
     });
 }
 
+export async function* streamJsonlWithRaw(path) {
+  const rows = readJsonlWithRaw(path);
+  for (let index = 0; index < rows.length; index += 1) {
+    yield {
+      ...rows[index],
+      lineNumber: index + 1,
+    };
+  }
+}
+
 export function writeJsonl(path, rows) {
   ensureParentDir(path);
   const body = rows.map((row) => JSON.stringify(row)).join("\n");
@@ -135,6 +145,30 @@ export function appendJsonl(path, rows) {
   ensureParentDir(path);
   const separator = current && !current.endsWith("\n") ? "\n" : "";
   writeFileSync(path, `${current}${separator}${appendBody}\n`, "utf8");
+}
+
+export async function countJsonlRows(path) {
+  if (!fileHasContent(path)) return 0;
+  const raw = readFileSync(path, "utf8");
+  return raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean).length;
+}
+
+export function createJsonlWriter(path, { append = false } = {}) {
+  ensureParentDir(path);
+  if (!append) {
+    writeFileSync(path, "", "utf8");
+  }
+  return {
+    async writeRow(row) {
+      appendFileSync(path, `${JSON.stringify(row)}\n`, "utf8");
+    },
+    async close() {
+      return undefined;
+    },
+  };
 }
 
 export function stableHash(value, len = 24) {

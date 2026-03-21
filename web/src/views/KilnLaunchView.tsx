@@ -670,17 +670,13 @@ export default function KilnLaunchView({ user, isStaff }: KilnLaunchViewProps) {
       <header className="kiln-launch-header">
         <div>
           <p className="kiln-launch-kicker">Kiln queues</p>
-          <h1 className="kiln-launch-title">Kiln queues, live</h1>
-          <p className="kiln-launch-subtitle">
-            Track what is queued, what is loading, and how full the next kiln plan is getting.
+          <h1 className="kiln-launch-title">Live view of our Kilns</h1>
+          <p className="kiln-launch-summary">
+            Track what is queued, what is loading, and how full the next kiln plan is getting while
+            staff balance bisque, glaze, and community shelf lanes into a safe, efficient firing
+            plan.
+            {lastUpdated ? ` Last updated ${lastUpdated.toLocaleTimeString()}.` : ""}
           </p>
-          <p className="kiln-launch-meaning">
-            As new check-ins arrive, staff balance bisque, glaze, and community shelf lanes into
-            a safe, efficient firing plan.
-          </p>
-          {lastUpdated ? (
-            <p className="kiln-launch-updated">Last updated {lastUpdated.toLocaleTimeString()}</p>
-          ) : null}
         </div>
         <div className="kiln-launch-actions">
           <button

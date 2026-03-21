@@ -32,23 +32,11 @@
   letter-spacing: 0.04em;
 }
 
-.kiln-launch-subtitle {
+.kiln-launch-summary {
   margin: 0;
+  max-width: 620px;
   color: var(--muted);
-  max-width: 520px;
-}
-
-.kiln-launch-meaning {
-  margin: 10px 0 0;
-  font-size: 13px;
-  color: var(--text);
-  max-width: 560px;
-}
-
-.kiln-launch-updated {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: var(--muted);
+  line-height: 1.5;
 }
 
 .kiln-launch-actions {

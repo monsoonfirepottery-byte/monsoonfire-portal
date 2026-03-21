@@ -1,16 +1,38 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { mintStaffIdTokenFromPortalEnv, normalizeBearer } from "../scripts/lib/firebase-auth-token.mjs";
+import {
+  filterExpiredRows,
+  loadBootstrapArtifacts,
+  preferredStartupSources,
+  rankBootstrapRows,
+} from "../scripts/lib/codex-session-memory-utils.mjs";
 
-const DEFAULT_BASE_URL = process.env.STUDIO_BRAIN_MCP_BASE_URL || "http://127.0.0.1:8787";
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(__dirname, "..");
+const DEFAULT_BASE_URL = process.env.STUDIO_BRAIN_MCP_BASE_URL || "http://192.168.1.226:8787";
 const DEFAULT_TIMEOUT_MS = parsePositiveInt(process.env.STUDIO_BRAIN_MCP_TIMEOUT_MS, 10000);
-const ID_TOKEN = process.env.STUDIO_BRAIN_MCP_ID_TOKEN || "";
-const ADMIN_TOKEN = process.env.STUDIO_BRAIN_MCP_ADMIN_TOKEN || "";
+const ADMIN_TOKEN = process.env.STUDIO_BRAIN_MCP_ADMIN_TOKEN || process.env.STUDIO_BRAIN_ADMIN_TOKEN || "";
+const AUTH_REFRESH_MIN_INTERVAL_MS = 10_000;
+const DEFAULT_REPO_CREDENTIALS_PATH = resolve(repoRoot, "secrets", "portal", "portal-agent-staff.json");
+const DEFAULT_HOME_CREDENTIALS_PATH = resolve(homedir(), ".ssh", "portal-agent-staff.json");
+
+let authorizationHeader = normalizeBearer(process.env.STUDIO_BRAIN_MCP_ID_TOKEN || process.env.STUDIO_BRAIN_ID_TOKEN || "");
+let lastAuthRefreshAtMs = 0;
 
 function parsePositiveInt(value, fallback) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return Math.trunc(parsed);
+}
+
+function clean(value) {
+  return String(value ?? "").trim();
 }
 
 function withOptionalString(schema) {
@@ -32,13 +54,168 @@ function withOptionalStringArray() {
     );
 }
 
+const bootstrapArtifacts = loadBootstrapArtifacts(clean(process.env.STUDIO_BRAIN_BOOTSTRAP_THREAD_ID || ""));
+const bootstrapThreadInfo = {
+  threadId: clean(bootstrapArtifacts.metadata?.threadId || bootstrapArtifacts.context?.threadId || process.env.STUDIO_BRAIN_BOOTSTRAP_THREAD_ID),
+  cwd: clean(bootstrapArtifacts.metadata?.cwd || bootstrapArtifacts.context?.cwd),
+  rolloutPath: clean(bootstrapArtifacts.metadata?.rolloutPath),
+  title: clean(bootstrapArtifacts.metadata?.threadTitle),
+  firstUserMessage: clean(bootstrapArtifacts.metadata?.firstUserMessage),
+};
+
+function bootstrapItems() {
+  const items = Array.isArray(bootstrapArtifacts.context?.items) ? bootstrapArtifacts.context.items : [];
+  return rankBootstrapRows(filterExpiredRows(items), bootstrapThreadInfo);
+}
+
+function hasBootstrapContext() {
+  return bootstrapItems().length > 0;
+}
+
+function summarizeRows(rows, maxChars = 400) {
+  const lines = [];
+  for (const [index, row] of rows.entries()) {
+    const source = clean(row?.source || row?.metadata?.source || "memory");
+    const content = clean(row?.content || row?.summary || "").replace(/\s+/g, " ").slice(0, 120);
+    if (!content) continue;
+    lines.push(`${index + 1}. [${source}] ${content}`);
+    if (lines.join("\n").length >= maxChars) break;
+  }
+  return lines.join("\n").slice(0, maxChars);
+}
+
+function queryTokens(query) {
+  return clean(query)
+    .toLowerCase()
+    .split(/\s+/)
+    .map((token) => token.replace(/[^a-z0-9._:@/-]+/g, "").trim())
+    .filter((token) => token.length >= 3)
+    .slice(0, 16);
+}
+
+function localBootstrapSearch(query, limit = 10) {
+  const rows = bootstrapItems();
+  if (rows.length === 0) return [];
+  const tokens = queryTokens(query);
+  return rows
+    .map((row, index) => {
+      const haystack = `${clean(row?.content)}\n${clean(row?.source)}\n${clean(row?.metadata?.threadTitle)}`.toLowerCase();
+      const tokenHits = tokens.reduce((count, token) => count + (haystack.includes(token) ? 1 : 0), 0);
+      const baseScore = Number(row?.score);
+      const score = (Number.isFinite(baseScore) ? baseScore : 0.5) + tokenHits * 0.08 - index * 0.001;
+      return {
+        ...row,
+        score: Math.round(score * 1000) / 1000,
+        matchedBy: Array.isArray(row?.matchedBy) ? [...new Set([...row.matchedBy, "bootstrap-artifact"])] : ["bootstrap-artifact"],
+      };
+    })
+    .filter((row) => tokens.length === 0 || Number(row.score) > 0.5)
+    .sort((left, right) => Number(right.score ?? 0) - Number(left.score ?? 0))
+    .slice(0, Math.max(1, limit));
+}
+
+function applyRowsToPayload(payload, rows) {
+  if (Array.isArray(payload)) {
+    return {
+      rows,
+      results: rows,
+      items: rows,
+    };
+  }
+  if (!payload || typeof payload !== "object") {
+    return { rows, results: rows };
+  }
+  const next = { ...payload };
+  if (Array.isArray(next.rows)) next.rows = rows;
+  if (Array.isArray(next.results)) next.results = rows;
+  if (Array.isArray(next.items)) next.items = rows;
+  return next;
+}
+
+function extractPayloadRows(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  if (Array.isArray(payload.rows)) return payload.rows;
+  if (Array.isArray(payload.results)) return payload.results;
+  if (Array.isArray(payload.items)) return payload.items;
+  return [];
+}
+
+function rewriteContextPayload(payload, rows) {
+  const root = payload && typeof payload === "object" ? { ...payload } : {};
+  const context =
+    root.context && typeof root.context === "object"
+      ? { ...root.context }
+      : root.payload && typeof root.payload === "object"
+        ? { ...root.payload }
+        : { ...root };
+  context.items = rows;
+  if (!clean(context.summary)) {
+    context.summary = summarizeRows(rows, 600);
+  }
+  context.diagnostics = {
+    ...(context.diagnostics && typeof context.diagnostics === "object" ? context.diagnostics : {}),
+    bootstrapContextLoaded: hasBootstrapContext(),
+  };
+  root.context = context;
+  root.items = rows;
+  root.summary = context.summary;
+  root.diagnostics = context.diagnostics;
+  return root;
+}
+
+function localBootstrapContextPayload(query, maxItems, maxChars) {
+  const rows = localBootstrapSearch(query, maxItems);
+  const summary =
+    clean(bootstrapArtifacts.context?.summary) || summarizeRows(rows, Math.max(256, Math.min(600, maxChars || 600)));
+  return {
+    context: {
+      ...(bootstrapArtifacts.context && typeof bootstrapArtifacts.context === "object" ? bootstrapArtifacts.context : {}),
+      items: rows.slice(0, Math.max(1, maxItems)),
+      summary: summary.slice(0, Math.max(256, maxChars || 8000)),
+      diagnostics: {
+        ...(bootstrapArtifacts.context?.diagnostics && typeof bootstrapArtifacts.context.diagnostics === "object"
+          ? bootstrapArtifacts.context.diagnostics
+          : {}),
+        bootstrapContextLoaded: true,
+        fallbackUsed: true,
+        fallbackStrategy: "bootstrap-artifact",
+      },
+    },
+    items: rows.slice(0, Math.max(1, maxItems)),
+    summary: summary.slice(0, Math.max(256, maxChars || 8000)),
+    diagnostics: {
+      bootstrapContextLoaded: true,
+      fallbackUsed: true,
+      fallbackStrategy: "bootstrap-artifact",
+    },
+  };
+}
+
+function resolveDefaultCredentialsPath() {
+  const explicitPath = clean(process.env.PORTAL_AGENT_STAFF_CREDENTIALS);
+  const candidates = [explicitPath, DEFAULT_REPO_CREDENTIALS_PATH, DEFAULT_HOME_CREDENTIALS_PATH].filter(Boolean);
+  return candidates.find((candidate) => existsSync(candidate)) || DEFAULT_REPO_CREDENTIALS_PATH;
+}
+
+async function mintAuthorizationHeader() {
+  const minted = await mintStaffIdTokenFromPortalEnv({
+    env: process.env,
+    defaultCredentialsPath: resolveDefaultCredentialsPath(),
+    preferRefreshToken: true,
+  });
+  if (!minted.ok || !minted.token) return "";
+  process.env.STUDIO_BRAIN_MCP_ID_TOKEN = minted.token;
+  return normalizeBearer(minted.token);
+}
+
 function getHeaders() {
   const headers = {
     "content-type": "application/json",
     accept: "application/json",
   };
-  if (ID_TOKEN) {
-    headers.authorization = `Bearer ${ID_TOKEN}`;
+  if (authorizationHeader) {
+    headers.authorization = authorizationHeader;
   }
   if (ADMIN_TOKEN) {
     headers["x-studio-brain-admin-token"] = ADMIN_TOKEN;
@@ -46,7 +223,28 @@ function getHeaders() {
   return headers;
 }
 
-async function studioBrainRequest({ method, path, body, baseUrl = DEFAULT_BASE_URL, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+function getErrorMessage(payload) {
+  if (typeof payload?.message === "string" && payload.message.trim()) {
+    return payload.message.trim();
+  }
+  if (typeof payload?.error?.message === "string" && payload.error.message.trim()) {
+    return payload.error.message.trim();
+  }
+  if (typeof payload?.raw === "string" && payload.raw.trim()) {
+    return payload.raw.trim();
+  }
+  return "";
+}
+
+function shouldRefreshAuthorization(status, payload) {
+  if (status !== 401 && status !== 403) return false;
+  const message = getErrorMessage(payload);
+  return /missing authorization header|invalid authorization|id-token-expired|auth\/id-token-expired|token.*expired/i.test(
+    message
+  );
+}
+
+async function studioBrainRequestOnce({ method, path, body, baseUrl = DEFAULT_BASE_URL, timeoutMs = DEFAULT_TIMEOUT_MS }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const url = new URL(path, baseUrl);
@@ -64,17 +262,37 @@ async function studioBrainRequest({ method, path, body, baseUrl = DEFAULT_BASE_U
     } catch {
       payload = { raw };
     }
-    if (!response.ok) {
-      const message =
-        typeof payload?.message === "string"
-          ? payload.message
-          : `Studio Brain returned HTTP ${response.status}`;
-      throw new Error(message);
-    }
-    return payload;
+    return {
+      ok: response.ok,
+      status: response.status,
+      payload,
+    };
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function studioBrainRequest(args) {
+  let result = await studioBrainRequestOnce(args);
+
+  if (!result.ok && shouldRefreshAuthorization(result.status, result.payload)) {
+    const now = Date.now();
+    if (now - lastAuthRefreshAtMs > AUTH_REFRESH_MIN_INTERVAL_MS) {
+      lastAuthRefreshAtMs = now;
+      const refreshed = await mintAuthorizationHeader().catch(() => "");
+      if (refreshed) {
+        authorizationHeader = refreshed;
+        result = await studioBrainRequestOnce(args);
+      }
+    }
+  }
+
+  if (!result.ok) {
+    const message = getErrorMessage(result.payload) || `Studio Brain returned HTTP ${result.status}`;
+    throw new Error(message);
+  }
+
+  return result.payload;
 }
 
 function asToolResult(data) {
@@ -149,19 +367,49 @@ server.registerTool(
   },
   async ({ query, limit, tenantId, baseUrl, timeoutMs }) => {
     try {
+      const requestedLimit = limit ?? 10;
+      const internalLimit = hasBootstrapContext() ? Math.min(Math.max(requestedLimit * 4, 24), 80) : requestedLimit;
       const payload = await studioBrainRequest({
         method: "POST",
         path: "/api/memory/search",
         body: {
           query,
-          limit,
+          limit: internalLimit,
           tenantId,
+          sourceAllowlist: hasBootstrapContext() ? preferredStartupSources() : undefined,
+          sourceDenylist: [],
         },
         baseUrl,
         timeoutMs,
       });
-      return asToolResult(payload);
+      const rows = rankBootstrapRows(filterExpiredRows(extractPayloadRows(payload)), bootstrapThreadInfo)
+        .slice(0, requestedLimit);
+      return asToolResult(
+        applyRowsToPayload(
+          {
+            ...payload,
+            diagnostics: {
+              ...(payload?.diagnostics && typeof payload.diagnostics === "object" ? payload.diagnostics : {}),
+              bootstrapContextLoaded: hasBootstrapContext(),
+            },
+          },
+          rows
+        )
+      );
     } catch (error) {
+      if (hasBootstrapContext()) {
+        const rows = localBootstrapSearch(query, limit ?? 10);
+        return asToolResult({
+          ok: true,
+          rows,
+          results: rows,
+          diagnostics: {
+            bootstrapContextLoaded: true,
+            fallbackUsed: true,
+            fallbackStrategy: "bootstrap-artifact",
+          },
+        });
+      }
       return asToolError(error);
     }
   }
@@ -180,8 +428,9 @@ server.registerTool(
   },
   async ({ limit, baseUrl, timeoutMs }) => {
     try {
+      const requestedLimit = limit ?? 20;
       const query = new URLSearchParams();
-      if (limit) query.set("limit", String(limit));
+      if (requestedLimit) query.set("limit", String(hasBootstrapContext() ? Math.min(Math.max(requestedLimit * 3, 30), 90) : requestedLimit));
       const path = query.size > 0 ? `/api/memory/recent?${query.toString()}` : "/api/memory/recent";
       const payload = await studioBrainRequest({
         method: "GET",
@@ -189,7 +438,20 @@ server.registerTool(
         baseUrl,
         timeoutMs,
       });
-      return asToolResult(payload);
+      const rows = rankBootstrapRows(filterExpiredRows(extractPayloadRows(payload)), bootstrapThreadInfo)
+        .slice(0, requestedLimit);
+      return asToolResult(
+        applyRowsToPayload(
+          {
+            ...payload,
+            diagnostics: {
+              ...(payload?.diagnostics && typeof payload.diagnostics === "object" ? payload.diagnostics : {}),
+              bootstrapContextLoaded: hasBootstrapContext(),
+            },
+          },
+          rows
+        )
+      );
     } catch (error) {
       return asToolError(error);
     }
@@ -239,6 +501,9 @@ server.registerTool(
   },
   async ({ query, agentId, runId, maxItems, maxChars, tenantId, baseUrl, timeoutMs }) => {
     try {
+      const requestedMaxItems = maxItems ?? 12;
+      const requestedMaxChars = maxChars ?? 8000;
+      const applyBootstrapBias = hasBootstrapContext() && !agentId && !runId;
       const payload = await studioBrainRequest({
         method: "POST",
         path: "/api/memory/context",
@@ -246,15 +511,25 @@ server.registerTool(
           query,
           agentId,
           runId,
-          maxItems,
-          maxChars,
+          maxItems: applyBootstrapBias ? Math.min(Math.max(requestedMaxItems * 2, 16), 40) : requestedMaxItems,
+          maxChars: requestedMaxChars,
           tenantId,
+          sourceAllowlist: applyBootstrapBias ? preferredStartupSources() : undefined,
+          sourceDenylist: [],
         },
         baseUrl,
         timeoutMs,
       });
-      return asToolResult(payload);
+      const rawRows =
+        (payload?.context && typeof payload.context === "object" && Array.isArray(payload.context.items) ? payload.context.items : null) ||
+        (payload?.payload && typeof payload.payload === "object" && Array.isArray(payload.payload.items) ? payload.payload.items : null) ||
+        extractPayloadRows(payload);
+      const rankedRows = rankBootstrapRows(filterExpiredRows(rawRows), bootstrapThreadInfo).slice(0, requestedMaxItems);
+      return asToolResult(rewriteContextPayload(payload, rankedRows));
     } catch (error) {
+      if (hasBootstrapContext()) {
+        return asToolResult(localBootstrapContextPayload(query, maxItems ?? 12, maxChars ?? 8000));
+      }
       return asToolError(error);
     }
   }
@@ -375,6 +650,12 @@ server.registerTool(
 );
 
 async function main() {
+  if (!authorizationHeader) {
+    const minted = await mintAuthorizationHeader().catch(() => "");
+    if (minted) {
+      authorizationHeader = minted;
+    }
+  }
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

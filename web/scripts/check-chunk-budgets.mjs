@@ -16,8 +16,8 @@ const budgets = [
   { prefix: "WareCheckInView-", maxBytes: 100_000 },
   // Kiln launch stays lazy-loaded, but the seven-day timeline calendar adds its own route payload.
   { prefix: "KilnLaunchView-", maxBytes: 30_000 },
-  // Staff stays lazy-loaded, but the lending workspace adds catalog and intake flows to this route.
-  { prefix: "StaffView-", maxBytes: 430_000 },
+  // Staff stays lazy-loaded, but the task-first home and promoted message workflows add route-only payload.
+  { prefix: "StaffView-", maxBytes: 445_000 },
   // Current app shell carries route wiring and shared runtime used across most views.
   { prefix: "index-", maxBytes: 110_000 },
 ];
@@ -34,11 +34,11 @@ const requiredRouteChunks = [
   "ProfileView-",
   "StaffView-",
 ];
-// Total budgets re-baselined for the lending workspace rollout, kiln queue timeline route,
+// Total budgets re-baselined for the staff task-home rollout, kiln queue timeline route,
 // portal handoff attribution path, and current mainline vendor split while keeping
 // future regressions visible.
-const MAX_TOTAL_JS_BYTES = 1_730_000;
-const MAX_TOTAL_CSS_BYTES = 271_000;
+const MAX_TOTAL_JS_BYTES = 1_760_000;
+const MAX_TOTAL_CSS_BYTES = 275_000;
 
 const files = readdirSync(assetsDir).filter((name) => name.endsWith(".js"));
 const failures = [];
